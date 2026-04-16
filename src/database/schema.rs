@@ -17,7 +17,10 @@ impl SymbolDatabase {
 
         // Create tables in dependency order
         self.create_workspaces_table()?;
+        self.create_canonical_revisions_table()?;
+        self.create_projection_states_table()?;
         self.create_files_table()?;
+        self.create_indexing_repairs_table()?;
         self.create_symbols_table()?;
         self.create_identifiers_table()?; // Reference tracking
         self.create_types_table()?; // Type intelligence
@@ -90,6 +93,27 @@ impl SymbolDatabase {
 
         debug!("Created files table and indexes");
 
+        Ok(())
+    }
+
+    fn create_indexing_repairs_table(&self) -> Result<()> {
+        self.conn.execute(
+            "CREATE TABLE IF NOT EXISTS indexing_repairs (
+                path TEXT PRIMARY KEY,
+                reason TEXT NOT NULL,
+                detail TEXT,
+                updated_at INTEGER NOT NULL
+            )",
+            [],
+        )?;
+
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_indexing_repairs_reason
+             ON indexing_repairs(reason)",
+            [],
+        )?;
+
+        debug!("Created indexing_repairs table and indexes");
         Ok(())
     }
 

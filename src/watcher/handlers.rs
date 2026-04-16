@@ -7,10 +7,58 @@ use crate::database::SymbolDatabase;
 use crate::extractors::ExtractorManager;
 use crate::language; // Centralized language support
 use crate::search::SearchIndex;
+use crate::tools::workspace::indexing::state::IndexingRepairReason;
 use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tracing::{debug, error, info, warn};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct FileIndexOutcome {
+    pub(crate) tantivy_ok: bool,
+    pub(crate) repair_reason: Option<IndexingRepairReason>,
+}
+
+impl FileIndexOutcome {
+    fn clean() -> Self {
+        Self {
+            tantivy_ok: true,
+            repair_reason: None,
+        }
+    }
+
+    fn repair_needed(tantivy_ok: bool, repair_reason: IndexingRepairReason) -> Self {
+        Self {
+            tantivy_ok,
+            repair_reason: Some(repair_reason),
+        }
+    }
+}
+
+fn persist_repair_state(
+    db: &Arc<std::sync::Mutex<SymbolDatabase>>,
+    relative_path: &str,
+    reason: IndexingRepairReason,
+    detail: Option<&str>,
+) {
+    let db_lock = match db.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            warn!(
+                "Database mutex poisoned during repair-state update, recovering: {}",
+                poisoned
+            );
+            poisoned.into_inner()
+        }
+    };
+
+    if let Err(err) = db_lock.record_indexing_repair(relative_path, reason.as_str(), detail) {
+        warn!(
+            "Failed to persist repair state for {} ({}): {}",
+            relative_path, reason, err
+        );
+    }
+}
 
 /// Handle file creation or modification with Blake3 change detection.
 ///
@@ -18,16 +66,15 @@ use tracing::{debug, error, info, warn};
 /// both SQLite and Tantivy atomically. Pass `None` for `search_index` if
 /// Tantivy updates are not needed (e.g., in tests).
 ///
-/// Returns `Ok(true)` if both SQLite and Tantivy succeeded, `Ok(false)` if SQLite
-/// succeeded but Tantivy had errors. The caller can use this to track files for
-/// Tantivy retry on the next queue-processor tick.
-pub async fn handle_file_created_or_modified_static(
+/// Returns a repair-aware outcome so callers can track projection failures and
+/// extraction drift without inferring meaning from a bare bool.
+pub(crate) async fn handle_file_created_or_modified_static(
     path: PathBuf,
     db: &Arc<std::sync::Mutex<SymbolDatabase>>,
     extractor_manager: &Arc<ExtractorManager>,
     workspace_root: &Path,
     search_index: Option<&Arc<std::sync::Mutex<SearchIndex>>>,
-) -> Result<bool> {
+) -> Result<FileIndexOutcome> {
     info!("Processing file: {}", path.display());
 
     // 1. Read file content and calculate hash
@@ -61,7 +108,7 @@ pub async fn handle_file_created_or_modified_static(
                     "File {} unchanged (Blake3 hash match), skipping",
                     path.display()
                 );
-                return Ok(true); // Hash match = nothing to do, not a failure
+                return Ok(FileIndexOutcome::clean()); // Hash match = nothing to do
             }
         }
     }
@@ -80,7 +127,16 @@ pub async fn handle_file_created_or_modified_static(
         Ok(results) => results,
         Err(e) => {
             error!("Extraction failed for {}: {}", relative_path, e);
-            return Ok(true); // Skip update to preserve existing data; not a Tantivy failure
+            persist_repair_state(
+                db,
+                &relative_path,
+                IndexingRepairReason::ExtractorFailure,
+                Some(&e.to_string()),
+            );
+            return Ok(FileIndexOutcome::repair_needed(
+                true,
+                IndexingRepairReason::ExtractorFailure,
+            ));
         }
     };
 
@@ -110,12 +166,24 @@ pub async fn handle_file_created_or_modified_static(
 
         // Safeguard against data loss
         if results.symbols.is_empty() && !existing_symbols.is_empty() {
+            let detail = format!(
+                "refused to drop {} existing symbols after empty extraction result",
+                existing_symbols.len()
+            );
             warn!(
                 "SAFEGUARD: Refusing to delete {} existing symbols from {}",
                 existing_symbols.len(),
                 relative_path
             );
-            return Ok(true); // Safeguard skip; not a Tantivy failure
+            let _ = db_lock.record_indexing_repair(
+                &relative_path,
+                IndexingRepairReason::ExtractorFailure.as_str(),
+                Some(&detail),
+            );
+            return Ok(FileIndexOutcome::repair_needed(
+                true,
+                IndexingRepairReason::ExtractorFailure,
+            ));
         }
 
         // Build FileInfo from the already-read content and hash to avoid a TOCTOU race:
@@ -167,6 +235,7 @@ pub async fn handle_file_created_or_modified_static(
 
         // Update file hash after successful atomic update
         db_lock.update_file_hash(&relative_path, &new_hash_str)?;
+        db_lock.clear_indexing_repair(&relative_path)?;
     }
 
     // 6. Update Tantivy search index (if available)
@@ -232,7 +301,14 @@ pub async fn handle_file_created_or_modified_static(
     };
 
     info!("Successfully indexed {}", path.display());
-    Ok(tantivy_ok)
+    if tantivy_ok {
+        Ok(FileIndexOutcome::clean())
+    } else {
+        Ok(FileIndexOutcome::repair_needed(
+            false,
+            IndexingRepairReason::ProjectionFailure,
+        ))
+    }
 }
 
 /// Handle file deletion.
@@ -242,7 +318,7 @@ pub async fn handle_file_created_or_modified_static(
 /// check here creates a TOCTOU race: embeddings can be deleted by the caller while
 /// this function bails out if the file is recreated between the two checks, leaving
 /// symbols/Tantivy docs orphaned. Trust the caller's decision.
-pub async fn handle_file_deleted_static(
+pub(crate) async fn handle_file_deleted_static(
     path: PathBuf,
     db: &Arc<std::sync::Mutex<SymbolDatabase>>,
     workspace_root: &Path,
@@ -301,6 +377,7 @@ pub async fn handle_file_deleted_static(
                 }
             }
         }
+        db_lock.clear_indexing_repair(&relative_path)?;
     } // db_lock is dropped here
 
     info!("Successfully removed indexes for {}", path.display());
@@ -334,24 +411,46 @@ pub async fn handle_file_deleted_static(
 }
 
 /// Handle file rename
-pub async fn handle_file_renamed_static(
+pub(crate) async fn handle_file_renamed_static(
     from: PathBuf,
     to: PathBuf,
     db: &Arc<std::sync::Mutex<SymbolDatabase>>,
     extractor_manager: &Arc<ExtractorManager>,
     workspace_root: &Path,
     search_index: Option<&Arc<std::sync::Mutex<SearchIndex>>>,
-) -> Result<bool> {
+) -> Result<FileIndexOutcome> {
     info!(
         "Handling file rename: {} -> {}",
         from.display(),
         to.display()
     );
 
-    // Delete old path, then create/modify new path.
-    // Returns the Tantivy success status from the create side so the caller
-    // can track failures in the dirty-retry set.
-    handle_file_deleted_static(from, db, workspace_root, search_index).await?;
-    handle_file_created_or_modified_static(to, db, extractor_manager, workspace_root, search_index)
-        .await
+    // Create/update the destination first. If that fails, keep the source index
+    // in place rather than deleting it and hoping for the best.
+    let outcome = handle_file_created_or_modified_static(
+        to,
+        db,
+        extractor_manager,
+        workspace_root,
+        search_index,
+    )
+    .await?;
+
+    if outcome.repair_reason == Some(IndexingRepairReason::ExtractorFailure) {
+        return Ok(outcome);
+    }
+
+    let relative_from = crate::utils::paths::to_relative_unix_style(&from, workspace_root)
+        .unwrap_or_else(|_| from.to_string_lossy().replace('\\', "/"));
+    if let Err(err) = handle_file_deleted_static(from, db, workspace_root, search_index).await {
+        persist_repair_state(
+            db,
+            &relative_from,
+            IndexingRepairReason::DeletedFiles,
+            Some(&format!("source retirement after rename failed: {err}")),
+        );
+        return Err(err);
+    }
+
+    Ok(outcome)
 }

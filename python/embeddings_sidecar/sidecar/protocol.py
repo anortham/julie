@@ -58,9 +58,69 @@ def _extract_request_id(request: dict[str, Any]) -> tuple[str, str | None]:
 
 
 def handle_health(runtime: EmbeddingRuntime) -> dict[str, object]:
-    data = runtime.metadata()
+    data = dict(runtime.metadata())
     data["ready"] = runtime.ready
+    _validate_health_metadata(data)
     return data
+
+
+def _validate_health_metadata(data: dict[str, object]) -> None:
+    capabilities = data.get("capabilities")
+    if not isinstance(capabilities, dict):
+        raise ValueError("health metadata.capabilities must be an object")
+
+    for backend in ("cpu", "cuda", "directml", "mps"):
+        backend_capability = capabilities.get(backend)
+        if not isinstance(backend_capability, dict):
+            raise ValueError(f"health metadata.capabilities.{backend} must be an object")
+        available = backend_capability.get("available")
+        if not isinstance(available, bool):
+            raise ValueError(
+                f"health metadata.capabilities.{backend}.available must be a boolean"
+            )
+
+    load_policy = data.get("load_policy")
+    if not isinstance(load_policy, dict):
+        raise ValueError("health metadata.load_policy must be an object")
+
+    requested = load_policy.get("requested_device_backend")
+    resolved = load_policy.get("resolved_device_backend")
+    if not isinstance(requested, str) or not requested:
+        raise ValueError(
+            "health metadata.load_policy.requested_device_backend must be a non-empty string"
+        )
+    if not isinstance(resolved, str) or not resolved:
+        raise ValueError(
+            "health metadata.load_policy.resolved_device_backend must be a non-empty string"
+        )
+
+    load_policy_accelerated = load_policy.get("accelerated")
+    if not isinstance(load_policy_accelerated, bool):
+        raise ValueError("health metadata.load_policy.accelerated must be a boolean")
+
+    degraded_reason = data.get("degraded_reason")
+    load_policy_degraded_reason = load_policy.get("degraded_reason")
+    if load_policy_degraded_reason is not None and not isinstance(
+        load_policy_degraded_reason, str
+    ):
+        raise ValueError(
+            "health metadata.load_policy.degraded_reason must be a string or null"
+        )
+
+    if load_policy_accelerated != data.get("accelerated"):
+        raise ValueError(
+            "health metadata.load_policy.accelerated must match top-level accelerated"
+        )
+
+    if load_policy_degraded_reason != degraded_reason:
+        raise ValueError(
+            "health metadata.load_policy.degraded_reason must match top-level degraded_reason"
+        )
+
+    if requested != resolved and degraded_reason is None:
+        raise ValueError(
+            "health metadata must include degraded_reason when requested_device_backend differs from resolved_device_backend"
+        )
 
 
 def handle_embed_query(runtime: EmbeddingRuntime, text: str) -> dict[str, object]:

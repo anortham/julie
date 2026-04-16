@@ -1,6 +1,9 @@
 //! Main workspace indexing orchestration
 //! Coordinates file discovery, processing, and Tantivy search indexing
 
+use super::pipeline::run_indexing_pipeline;
+use super::route::IndexRoute;
+use super::state::IndexingOperation;
 use crate::handler::JulieServerHandler;
 use crate::tools::workspace::commands::ManageWorkspaceTool;
 use anyhow::Result;
@@ -14,6 +17,8 @@ pub(crate) struct IndexResult {
     pub files_processed: usize,
     /// Orphaned files cleaned from DB (deleted from disk since last index)
     pub orphans_cleaned: usize,
+    /// Latest canonical SQLite revision after this indexing run
+    pub canonical_revision: Option<i64>,
     /// Total files in the workspace DB after indexing
     pub files_total: usize,
     /// Total symbols in the workspace DB after indexing
@@ -41,39 +46,25 @@ impl ManageWorkspaceTool {
         let index_start = std::time::Instant::now();
         info!("🔍 Scanning workspace: {}", workspace_path.display());
 
-        // 🔥 CRITICAL DEADLOCK FIX: Call get_workspace() ONCE and reuse throughout function
-        // Moved up from later in function so we can use workspace.root for primary detection.
-        let workspace = handler
-            .get_workspace()
-            .await?
-            .ok_or_else(|| anyhow::anyhow!("No workspace available for indexing"))?;
-
-        // Check if this is the primary workspace by comparing against the session's
-        // current root candidate. In deferred daemon sessions there may be no bound
-        // primary identity yet, but the startup hint still tells us which root should
-        // count as primary for this comparison.
-        let workspace_canonical = workspace_path
-            .canonicalize()
-            .unwrap_or_else(|_| workspace_path.to_path_buf());
-        let primary_root = handler.current_workspace_root();
-        let root_canonical = primary_root
-            .canonicalize()
-            .unwrap_or_else(|_| primary_root.clone());
-        let is_primary_workspace = workspace_canonical == root_canonical;
+        let route = IndexRoute::for_workspace_path(handler, workspace_path)
+            .await
+            .map_err(anyhow::Error::new)?;
         debug!(
-            "Workspace comparison: path={:?}, root={:?}, is_primary={}",
-            workspace_canonical, root_canonical, is_primary_workspace
+            workspace_id = %route.workspace_id,
+            workspace_root = %route.workspace_root.display(),
+            db_path = %route.db_path.display(),
+            tantivy_path = %route.tantivy_path.display(),
+            is_primary = route.is_primary,
+            "Resolved indexing route"
         );
 
         // Only clear existing data for primary workspace reindex to preserve workspace isolation
-        if force_reindex && is_primary_workspace {
+        if force_reindex && route.is_primary {
             debug!("Clearing primary workspace for force reindex");
             // Database will be cleared during workspace initialization
         } else if force_reindex {
             debug!("Force reindexing reference workspace");
         }
-
-        let mut total_files = 0;
 
         // Use blacklist-based file discovery
         // 🚨 CRITICAL: File discovery uses std::fs blocking I/O - must run on blocking thread pool
@@ -110,7 +101,7 @@ impl ManageWorkspaceTool {
         } else {
             debug!("🐛 [INDEX TRACE E2] Calling filter_changed_files");
             let (files, orphans) = self
-                .filter_changed_files(handler, all_discovered_files, workspace_path)
+                .filter_changed_files(handler, all_discovered_files, &route)
                 .await?;
             debug!(
                 "🐛 [INDEX TRACE E3] filter_changed_files returned {} files, {} orphans cleaned",
@@ -134,138 +125,75 @@ impl ManageWorkspaceTool {
             workspace_path
         );
 
-        // workspace was already acquired at top of function (reusing throughout)
-
-        // Get workspace ID early for use throughout the function
-        // CRITICAL DEADLOCK FIX: Generate workspace ID directly to avoid registry lock contention
-        // CRITICAL FIX: Use the workspace_path parameter to determine canonical path
-        // This ensures we get the correct workspace_id for BOTH primary and reference workspaces
-        debug!("🐛 [INDEX TRACE I] Canonicalizing path");
-        let canonical_path = workspace_path
-            .canonicalize()
-            .unwrap_or_else(|_| workspace_path.to_path_buf())
-            .to_string_lossy()
-            .to_string();
-
-        // DEADLOCK FIX: Generate workspace ID directly from path (no registry access)
-        // Same pattern as other indexing operations to avoid lock contention
-        debug!(
-            "🐛 [INDEX TRACE J] Generating workspace ID directly from: {}",
-            canonical_path
-        );
-        let workspace_id = match crate::workspace::registry::generate_workspace_id(&canonical_path)
-        {
-            Ok(id) => {
-                debug!("🐛 [INDEX TRACE K] Generated workspace ID: {}", id);
-                id
-            }
-            Err(e) => {
-                return Err(anyhow::anyhow!(
-                    "Failed to generate workspace ID for path {}: {}",
-                    canonical_path,
-                    e
-                ));
-            }
-        };
-        debug!("🐛 [INDEX TRACE L] workspace_id obtained: {}", workspace_id);
-
         // ═══════════════════════════════════════════════════════════════════
         // TANTIVY: Force re-index clears index; normal startup backfills
         // ═══════════════════════════════════════════════════════════════════
-        if is_primary_workspace {
-            if force_reindex {
-                // Clear Tantivy so stale entries (e.g. previously-indexed .memories files)
-                // don't persist. process_files_optimized will rebuild from discovered files.
-                if let Some(ref search_index) = workspace.search_index {
-                    let si = search_index.clone();
-                    tokio::task::spawn_blocking(move || {
-                        if let Ok(idx) = si.lock() {
-                            if let Err(e) = idx.clear_all() {
-                                tracing::warn!("Failed to clear Tantivy index: {}", e);
-                            } else {
-                                info!("🗑️  Cleared Tantivy index for force re-index");
-                            }
+        if force_reindex {
+            if let Some(search_index) = route.search_index_for_write().await? {
+                tokio::task::spawn_blocking(move || {
+                    if let Ok(idx) = search_index.lock() {
+                        if let Err(e) = idx.clear_all() {
+                            tracing::warn!("Failed to clear Tantivy index: {}", e);
+                        } else {
+                            info!("🗑️  Cleared Tantivy index for force re-index");
                         }
-                    })
-                    .await?;
-                }
-            } else {
-                // Normal startup: backfill Tantivy from SQLite if empty (v1→v2 upgrade)
-                self.backfill_tantivy_if_needed(&workspace).await?;
+                    }
+                })
+                .await?;
             }
         } else {
-            // Reference workspace Tantivy handling
-            let tantivy_path = handler.workspace_tantivy_dir_for(&workspace_id).await?;
-
-            if force_reindex {
-                // Clear reference Tantivy directory so process_files_optimized rebuilds it
-                if tantivy_path.exists() {
-                    if let Err(e) = std::fs::remove_dir_all(&tantivy_path) {
-                        tracing::warn!("Failed to clear reference Tantivy index: {}", e);
-                    } else {
-                        info!("🗑️  Cleared reference Tantivy index for force re-index");
-                    }
-                }
-            } else if !tantivy_path.join("meta.json").exists() {
-                // Tantivy index missing or empty — backfill from reference DB
-                let ref_db_path = handler.workspace_db_file_path_for(&workspace_id).await?;
-                if ref_db_path.exists() {
-                    self.backfill_reference_tantivy(&ref_db_path, &tantivy_path)
-                        .await?;
-                }
-            }
+            let database = route.database_for_read(handler).await?;
+            let search_index = route.search_index_for_write().await?;
+            self.backfill_tantivy_if_needed(
+                &route.workspace_id,
+                database.as_ref(),
+                search_index.as_ref(),
+            )
+            .await?;
         }
 
         // Proceeding with indexing (parser pool groups files by language for 10-50x speedup)
-        debug!("🐛 [INDEX TRACE S] About to call process_files_optimized");
-        self.process_files_optimized(
-            handler,
-            files_to_index,
-            is_primary_workspace,
-            &mut total_files,
-            workspace_id.clone(), // Pass workspace_id to avoid re-lookup
-            workspace_path,       // Pass workspace path for correct relative path conversion
-        )
-        .await?;
-        debug!("🐛 [INDEX TRACE T] process_files_optimized completed");
+        debug!("🐛 [INDEX TRACE S] About to call run_indexing_pipeline");
+        let indexing_operation = route
+            .indexing_runtime
+            .as_ref()
+            .and_then(|runtime| {
+                let snapshot = runtime
+                    .read()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner())
+                    .snapshot();
+                if snapshot.catchup_active {
+                    Some(IndexingOperation::CatchUp)
+                } else {
+                    None
+                }
+            })
+            .unwrap_or_else(|| {
+                if force_reindex {
+                    IndexingOperation::Full
+                } else {
+                    IndexingOperation::Incremental
+                }
+            });
+        let pipeline_result =
+            run_indexing_pipeline(self, handler, files_to_index, &route, indexing_operation)
+                .await?;
+        let total_files = pipeline_result.files_processed;
+        if pipeline_result.state.repair_needed() {
+            warn!(
+                workspace_id = %route.workspace_id,
+                canonical_revision = pipeline_result.canonical_revision,
+                repair_files = pipeline_result.state.repair_file_count(),
+                "Indexing finished with repair-needed files"
+            );
+        }
+        debug!("🐛 [INDEX TRACE T] run_indexing_pipeline completed");
 
         // 🚀 NEW ARCHITECTURE: Get final counts from DATABASE, not memory!
         // 🔴 CRITICAL FIX: Query the CORRECT database for reference vs primary workspaces!
         // Reference workspaces have their own separate databases at indexes/{workspace_id}/db/symbols.db
         let (total_symbols, total_files_in_db, total_relationships) = {
-            // Determine which database to query based on workspace type
-            let db_to_query = if is_primary_workspace {
-                // Primary workspace - use handler's database connection
-                workspace.db.clone()
-            } else {
-                // Reference workspace - must have been created in process_files_optimized
-                // Get the reference workspace database we just indexed
-                let ref_db_path = handler.workspace_db_file_path_for(&workspace_id).await?;
-                if ref_db_path.exists() {
-                    // Open the reference workspace database for reading final counts
-                    match tokio::task::spawn_blocking(move || {
-                        crate::database::SymbolDatabase::new(ref_db_path)
-                    })
-                    .await
-                    {
-                        Ok(Ok(db)) => Some(std::sync::Arc::new(std::sync::Mutex::new(db))),
-                        Ok(Err(e)) => {
-                            tracing::warn!(
-                                "Failed to open reference workspace DB for final count: {}",
-                                e
-                            );
-                            None
-                        }
-                        Err(e) => {
-                            tracing::warn!("Reference workspace DB open task failed: {}", e);
-                            None
-                        }
-                    }
-                } else {
-                    tracing::warn!("Reference workspace database not found at expected path");
-                    None
-                }
-            };
+            let db_to_query = route.database_for_read(handler).await?;
 
             // Query the correct database
             if let Some(db_arc) = db_to_query {
@@ -300,6 +228,7 @@ impl ManageWorkspaceTool {
         Ok(IndexResult {
             files_processed: total_files,
             orphans_cleaned,
+            canonical_revision: pipeline_result.canonical_revision,
             files_total: total_files_in_db,
             symbols_total: total_symbols,
             relationships_total: total_relationships,
@@ -307,203 +236,34 @@ impl ManageWorkspaceTool {
         })
     }
 
-    /// Backfill Tantivy search index from SQLite data when Tantivy is empty.
+    /// Ensure the Tantivy projection matches canonical SQLite state.
     ///
-    /// This handles the v1.x → v2.0 upgrade scenario where SQLite already has
-    /// all symbols and file content, but Tantivy was just created empty.
-    /// Instead of re-parsing every file with tree-sitter, we read directly
-    /// from SQLite — skipping parsing entirely for a ~10x speedup.
+    /// This handles empty indexes, stale projection metadata, and revision lag
+    /// without requiring a daemon restart or a full tree-sitter re-extract.
     async fn backfill_tantivy_if_needed(
         &self,
-        workspace: &crate::workspace::JulieWorkspace,
+        workspace_id: &str,
+        database: Option<&Arc<std::sync::Mutex<crate::database::SymbolDatabase>>>,
+        search_index: Option<&Arc<std::sync::Mutex<crate::search::SearchIndex>>>,
     ) -> Result<()> {
-        let search_index = match &workspace.search_index {
+        let search_index = match search_index {
             Some(idx) => Arc::clone(idx),
             None => return Ok(()),
         };
-        let db = match &workspace.db {
+        let db = match database {
             Some(db) => Arc::clone(db),
             None => return Ok(()),
         };
 
-        // Quick check: does Tantivy already have data?
-        let tantivy_docs = {
+        let workspace_id = workspace_id.to_string();
+        tokio::task::spawn_blocking(move || {
+            let mut db_lock = db.lock().unwrap_or_else(|p| p.into_inner());
             let idx = search_index.lock().unwrap_or_else(|p| p.into_inner());
-            idx.num_docs()
-        };
-
-        if tantivy_docs > 0 {
-            debug!(
-                "Tantivy already has {} docs, no backfill needed",
-                tantivy_docs
-            );
-            return Ok(());
-        }
-
-        // Tantivy is empty — check if SQLite has data (upgrade scenario)
-        let sqlite_symbol_count = {
-            let db_lock = db.lock().unwrap_or_else(|p| p.into_inner());
-            db_lock.get_symbol_count_for_workspace().unwrap_or(0)
-        };
-
-        if sqlite_symbol_count == 0 {
-            debug!("Both Tantivy and SQLite empty — first run, no backfill needed");
-            return Ok(());
-        }
-
-        info!(
-            "🔄 Tantivy backfill: index empty but SQLite has {} symbols — populating from database",
-            sqlite_symbol_count
-        );
-
-        // Read all symbols from SQLite
-        let symbols = {
-            let db_lock = db.lock().unwrap_or_else(|p| p.into_inner());
-            db_lock.get_all_symbols().unwrap_or_default()
-        };
-
-        // Read all file contents with language from SQLite
-        let file_contents = {
-            let db_lock = db.lock().unwrap_or_else(|p| p.into_inner());
-            db_lock
-                .get_all_file_contents_with_language()
-                .unwrap_or_default()
-        };
-
-        let symbol_count = symbols.len();
-        let file_count = file_contents.len();
-
-        // Populate Tantivy in a blocking task (Tantivy I/O is blocking)
-        let backfill_result = tokio::task::spawn_blocking(move || {
-            let idx = search_index.lock().unwrap_or_else(|p| p.into_inner());
-
-            // Index all symbols
-            let mut symbol_errors = 0;
-            for symbol in &symbols {
-                let doc = crate::search::SymbolDocument::from_symbol(symbol);
-                if let Err(e) = idx.add_symbol(&doc) {
-                    symbol_errors += 1;
-                    if symbol_errors <= 3 {
-                        warn!(
-                            "Tantivy backfill: failed to add symbol {}: {}",
-                            symbol.name, e
-                        );
-                    }
-                }
-            }
-
-            // Index all file contents
-            let mut file_errors = 0;
-            for (path, language, content) in &file_contents {
-                let doc = crate::search::FileDocument {
-                    file_path: path.clone(),
-                    content: content.clone(),
-                    language: language.clone(),
-                };
-                if let Err(e) = idx.add_file_content(&doc) {
-                    file_errors += 1;
-                    if file_errors <= 3 {
-                        warn!("Tantivy backfill: failed to add file {}: {}", path, e);
-                    }
-                }
-            }
-
-            if let Err(e) = idx.commit() {
-                warn!("Tantivy backfill: commit failed: {}", e);
-                return Err(anyhow::anyhow!("Tantivy backfill commit failed: {}", e));
-            }
-
-            if symbol_errors > 0 || file_errors > 0 {
-                warn!(
-                    "Tantivy backfill completed with errors: {} symbol errors, {} file errors",
-                    symbol_errors, file_errors
-                );
-            }
-
-            Ok(())
+            let projection = crate::search::SearchProjection::tantivy(workspace_id);
+            projection.ensure_current_from_database(&mut db_lock, &idx)
         })
         .await
-        .map_err(|e| anyhow::anyhow!("Tantivy backfill task panicked: {}", e))?;
-
-        backfill_result?;
-
-        info!(
-            "✅ Tantivy backfill complete: {} symbols, {} files indexed from SQLite",
-            symbol_count, file_count
-        );
-
-        Ok(())
-    }
-
-    /// Backfill a reference workspace's Tantivy index from its SQLite database.
-    /// Called when the Tantivy index is missing/empty but the DB has data.
-    async fn backfill_reference_tantivy(
-        &self,
-        ref_db_path: &std::path::Path,
-        tantivy_path: &std::path::Path,
-    ) -> Result<()> {
-        let db_path = ref_db_path.to_path_buf();
-        let tantivy_dir = tantivy_path.to_path_buf();
-
-        let result = tokio::task::spawn_blocking(move || -> Result<(usize, usize)> {
-            let db = crate::database::SymbolDatabase::new(db_path)?;
-
-            let symbols = db.get_all_symbols().unwrap_or_default();
-            let file_contents = db.get_all_file_contents_with_language().unwrap_or_default();
-            let symbol_count = symbols.len();
-            let file_count = file_contents.len();
-
-            if symbol_count == 0 {
-                debug!("Reference workspace DB has no symbols, skipping Tantivy backfill");
-                return Ok((0, 0));
-            }
-
-            info!(
-                "🔄 Reference Tantivy backfill: populating from {} symbols, {} files",
-                symbol_count, file_count
-            );
-
-            std::fs::create_dir_all(&tantivy_dir)?;
-            let configs = crate::search::LanguageConfigs::load_embedded();
-            let idx = crate::search::SearchIndex::open_or_create_with_language_configs(
-                &tantivy_dir,
-                &configs,
-            )?;
-
-            for symbol in &symbols {
-                let doc = crate::search::SymbolDocument::from_symbol(symbol);
-                if let Err(e) = idx.add_symbol(&doc) {
-                    warn!(
-                        "Reference backfill: failed to add symbol {}: {}",
-                        symbol.name, e
-                    );
-                }
-            }
-
-            for (path, language, content) in &file_contents {
-                let doc = crate::search::FileDocument {
-                    file_path: path.clone(),
-                    content: content.clone(),
-                    language: language.clone(),
-                };
-                if let Err(e) = idx.add_file_content(&doc) {
-                    warn!("Reference backfill: failed to add file {}: {}", path, e);
-                }
-            }
-
-            idx.commit()?;
-            Ok((symbol_count, file_count))
-        })
-        .await
-        .map_err(|e| anyhow::anyhow!("Reference Tantivy backfill task panicked: {}", e))??;
-
-        let (symbol_count, file_count) = result;
-        if symbol_count > 0 {
-            info!(
-                "✅ Reference Tantivy backfill complete: {} symbols, {} files",
-                symbol_count, file_count
-            );
-        }
+        .map_err(|e| anyhow::anyhow!("Tantivy projection sync task panicked: {}", e))??;
 
         Ok(())
     }

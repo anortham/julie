@@ -14,5 +14,8 @@ pub(crate) mod embeddings;
 pub(crate) mod extractor;
 pub(crate) mod incremental;
 pub(crate) mod index;
+pub(crate) mod pipeline;
 pub(crate) mod processor;
 pub(crate) mod resolver;
+pub(crate) mod route;
+pub(crate) mod state;

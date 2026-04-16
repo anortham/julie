@@ -16,11 +16,21 @@ impl SymbolDatabase {
             tx.query_row("SELECT COUNT(*) FROM relationships", [], |row| row.get(0))?;
 
         let files_count: i64 = tx.query_row("SELECT COUNT(*) FROM files", [], |row| row.get(0))?;
+        let revisions_count: i64 =
+            tx.query_row("SELECT COUNT(*) FROM canonical_revisions", [], |row| {
+                row.get(0)
+            })?;
+        let projections_count: i64 =
+            tx.query_row("SELECT COUNT(*) FROM projection_states", [], |row| {
+                row.get(0)
+            })?;
 
         // Delete all workspace data in proper order (relationships first due to foreign keys)
         tx.execute("DELETE FROM relationships", [])?;
         tx.execute("DELETE FROM symbols", [])?;
         tx.execute("DELETE FROM files", [])?;
+        tx.execute("DELETE FROM canonical_revisions", [])?;
+        tx.execute("DELETE FROM projection_states", [])?;
 
         tx.commit()?;
 
@@ -28,11 +38,13 @@ impl SymbolDatabase {
             symbols_deleted: symbols_count,
             relationships_deleted: relationships_count,
             files_deleted: files_count,
+            revisions_deleted: revisions_count,
+            projections_deleted: projections_count,
         };
 
         info!(
-            "Deleted workspace data: {} symbols, {} relationships, {} files",
-            symbols_count, relationships_count, files_count
+            "Deleted workspace data: {} symbols, {} relationships, {} files, {} revisions, {} projections",
+            symbols_count, relationships_count, files_count, revisions_count, projections_count
         );
 
         Ok(stats)
@@ -58,6 +70,7 @@ impl SymbolDatabase {
             symbol_count,
             file_count,
             total_size_bytes,
+            canonical_revision: self.get_current_canonical_revision(workspace_id)?,
         })
     }
 

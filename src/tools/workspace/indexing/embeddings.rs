@@ -41,13 +41,13 @@ pub(crate) async fn spawn_workspace_embedding(
             .wait_until_settled(std::time::Duration::from_secs(120))
             .await
         {
-            EmbeddingServiceSettled::Ready(p) => {
+            EmbeddingServiceSettled::Ready { provider: p, .. } => {
                 debug!(
                     "Daemon embedding service became Ready; proceeding with workspace embedding"
                 );
                 p
             }
-            EmbeddingServiceSettled::Unavailable(reason) => {
+            EmbeddingServiceSettled::Unavailable { reason, .. } => {
                 debug!(
                     %reason,
                     "Daemon embedding service settled to Unavailable; skipping workspace embedding"
@@ -64,6 +64,17 @@ pub(crate) async fn spawn_workspace_embedding(
     } else {
         // Stdio mode: provider not yet initialized. Do it now (deferred from
         // workspace init to avoid blocking symbol extraction and Tantivy indexing).
+        let existing_runtime_status = handler.embedding_runtime_status().await;
+        if let Some(runtime_status) = existing_runtime_status {
+            debug!(
+                resolved_backend = %runtime_status.resolved_backend.as_str(),
+                accelerated = runtime_status.accelerated,
+                degraded_reason = runtime_status.degraded_reason.as_deref().unwrap_or("none"),
+                "Embedding runtime already settled without a provider in stdio mode; skipping workspace embedding retry"
+            );
+            return 0;
+        }
+
         info!("Initializing embedding provider (deferred from workspace startup)...");
 
         let (workspace_identity_root, workspace_for_init) = {

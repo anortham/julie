@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 use std::path::PathBuf;
 
+use crate::daemon::session::SessionLifecyclePhase;
 use crate::workspace::startup_hint::WorkspaceStartupHint;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -15,6 +16,8 @@ pub struct SessionWorkspaceState {
     pub client_supports_workspace_roots: bool,
     pub roots_dirty: bool,
     pub last_roots_snapshot: Option<Vec<PathBuf>>,
+    serving_active: bool,
+    closing: bool,
     primary_swap_in_progress: bool,
     primary_binding: Option<PrimaryWorkspaceBinding>,
     secondary_workspace_ids: HashSet<String>,
@@ -28,10 +31,24 @@ impl SessionWorkspaceState {
             client_supports_workspace_roots: false,
             roots_dirty: false,
             last_roots_snapshot: None,
+            serving_active: false,
+            closing: false,
             primary_swap_in_progress: false,
             primary_binding: None,
             secondary_workspace_ids: HashSet::new(),
             attached_workspace_ids: HashSet::new(),
+        }
+    }
+
+    pub fn lifecycle_phase(&self) -> SessionLifecyclePhase {
+        if self.closing {
+            SessionLifecyclePhase::Closing
+        } else if self.primary_swap_in_progress || self.primary_binding.is_none() {
+            SessionLifecyclePhase::Connecting
+        } else if self.serving_active {
+            SessionLifecyclePhase::Serving
+        } else {
+            SessionLifecyclePhase::Bound
         }
     }
 
@@ -70,6 +87,14 @@ impl SessionWorkspaceState {
 
     pub fn clear_primary_binding(&mut self) {
         self.primary_binding = None;
+    }
+
+    pub fn mark_serving(&mut self) {
+        self.serving_active = true;
+    }
+
+    pub fn mark_closing(&mut self) {
+        self.closing = true;
     }
 
     pub fn apply_root_snapshot(

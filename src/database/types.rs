@@ -34,6 +34,8 @@ pub struct WorkspaceCleanupStats {
     pub symbols_deleted: i64,
     pub relationships_deleted: i64,
     pub files_deleted: i64,
+    pub revisions_deleted: i64,
+    pub projections_deleted: i64,
 }
 
 /// Usage statistics for a workspace (for LRU eviction)
@@ -43,4 +45,5 @@ pub struct WorkspaceUsageStats {
     pub symbol_count: i64,
     pub file_count: i64,
     pub total_size_bytes: i64,
+    pub canonical_revision: Option<i64>,
 }

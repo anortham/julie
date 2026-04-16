@@ -13,7 +13,7 @@ fn get_unix_timestamp() -> Result<i64> {
 }
 
 /// Current schema version - increment when adding migrations
-pub const LATEST_SCHEMA_VERSION: i32 = 14;
+pub const LATEST_SCHEMA_VERSION: i32 = 18;
 
 impl SymbolDatabase {
     // ============================================================
@@ -110,6 +110,10 @@ impl SymbolDatabase {
             12 => self.migration_012_add_memory_vectors()?,
             13 => self.migration_013_add_tool_calls_and_line_count()?,
             14 => self.migration_014_add_embedding_format_version()?,
+            15 => self.migration_015_add_indexing_repairs()?,
+            16 => self.migration_016_add_canonical_revisions()?,
+            17 => self.migration_017_add_projection_states()?,
+            18 => self.migration_018_add_projected_revision_to_projection_states()?,
             _ => return Err(anyhow!("Unknown migration version: {}", version)),
         }
         Ok(())
@@ -132,6 +136,10 @@ impl SymbolDatabase {
             12 => "Add memory vectors table",
             13 => "Add tool_calls table and line_count column",
             14 => "Add format_version to embedding_config",
+            15 => "Add indexing_repairs table",
+            16 => "Add canonical_revisions table",
+            17 => "Add projection_states table",
+            18 => "Add projected_revision to projection_states",
             _ => "Unknown migration",
         };
 
@@ -769,6 +777,91 @@ impl SymbolDatabase {
         )?;
 
         info!("Migration 014 complete: format_version column added to embedding_config");
+        Ok(())
+    }
+
+    fn migration_015_add_indexing_repairs(&self) -> Result<()> {
+        info!("Running migration 015: Add indexing_repairs table");
+
+        self.conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS indexing_repairs (
+                path TEXT PRIMARY KEY,
+                reason TEXT NOT NULL,
+                detail TEXT,
+                updated_at INTEGER NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_indexing_repairs_reason
+            ON indexing_repairs(reason);",
+        )?;
+
+        info!("Migration 015 complete: indexing_repairs table added");
+        Ok(())
+    }
+
+    fn migration_016_add_canonical_revisions(&self) -> Result<()> {
+        info!("Running migration 016: Add canonical_revisions table");
+
+        self.conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS canonical_revisions (
+                revision INTEGER PRIMARY KEY AUTOINCREMENT,
+                workspace_id TEXT NOT NULL,
+                kind TEXT NOT NULL CHECK(kind IN ('fresh', 'incremental')),
+                cleaned_file_count INTEGER NOT NULL DEFAULT 0,
+                file_count INTEGER NOT NULL DEFAULT 0,
+                symbol_count INTEGER NOT NULL DEFAULT 0,
+                relationship_count INTEGER NOT NULL DEFAULT 0,
+                identifier_count INTEGER NOT NULL DEFAULT 0,
+                type_count INTEGER NOT NULL DEFAULT 0,
+                created_at INTEGER NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_canonical_revisions_workspace_revision
+            ON canonical_revisions(workspace_id, revision DESC);",
+        )?;
+
+        info!("Migration 016 complete: canonical_revisions table added");
+        Ok(())
+    }
+
+    fn migration_017_add_projection_states(&self) -> Result<()> {
+        info!("Running migration 017: Add projection_states table");
+
+        self.conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS projection_states (
+                projection TEXT NOT NULL,
+                workspace_id TEXT NOT NULL,
+                status TEXT NOT NULL CHECK(status IN ('missing', 'building', 'ready', 'stale')),
+                canonical_revision INTEGER,
+                projected_revision INTEGER,
+                detail TEXT,
+                updated_at INTEGER NOT NULL,
+                PRIMARY KEY (projection, workspace_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_projection_states_workspace
+            ON projection_states(workspace_id);",
+        )?;
+
+        info!("Migration 017 complete: projection_states table added");
+        Ok(())
+    }
+
+    fn migration_018_add_projected_revision_to_projection_states(&self) -> Result<()> {
+        info!("Running migration 018: Add projected_revision to projection_states");
+
+        if !self.has_column("projection_states", "projected_revision")? {
+            self.conn.execute(
+                "ALTER TABLE projection_states ADD COLUMN projected_revision INTEGER",
+                [],
+            )?;
+        }
+
+        self.conn.execute(
+            "UPDATE projection_states
+             SET projected_revision = canonical_revision
+             WHERE status = 'ready' AND projected_revision IS NULL",
+            [],
+        )?;
+
+        info!("Migration 018 complete: projected_revision backfilled for ready states");
         Ok(())
     }
 }

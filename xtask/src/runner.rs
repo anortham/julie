@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Result, anyhow};
 
-use crate::manifest::{BucketConfig, TestManifest};
+use crate::manifest::TestManifest;
 
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
@@ -82,6 +82,28 @@ struct BucketFailure {
     result: BucketResult,
     message: String,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct BucketPlan {
+    expected_seconds: u64,
+    timeout_seconds: u64,
+    commands: Vec<String>,
+}
+
+const PROGRAM_TIERS: &[(&str, &[&str])] = &[
+    (
+        "reliability",
+        &["daemon", "workspace-init", "integration", "system-health"],
+    ),
+    ("benchmark", &["system-health"]),
+];
+
+const SPECIAL_BUCKETS: &[(&str, u64, u64, &[&str])] = &[(
+    "system-health",
+    30,
+    120,
+    &["cargo test --lib tests::integration::system_health"],
+)];
 
 pub struct ProcessCommandExecutor;
 
@@ -222,6 +244,11 @@ pub fn render_manifest_listing(manifest: &TestManifest) -> String {
         }
     }
 
+    output.push_str("\nPROGRAM TIERS\n");
+    for (tier_name, buckets) in PROGRAM_TIERS {
+        output.push_str(&format!("- {tier_name}: {}\n", buckets.join(", ")));
+    }
+
     output
 }
 
@@ -241,6 +268,7 @@ where
         .tiers
         .get(tier_name)
         .cloned()
+        .or_else(|| special_tier_bucket_names(tier_name))
         .ok_or_else(|| RunFailure {
             summary: empty_summary(Vec::new()),
             message: format!("unknown test tier `{tier_name}`"),
@@ -360,20 +388,17 @@ where
     E: CommandExecutor,
     W: Write,
 {
-    let bucket = manifest
-        .buckets
-        .get(bucket_name)
-        .ok_or_else(|| BucketFailure {
-            result: BucketResult {
-                bucket_name: bucket_name.to_string(),
-                status: BucketStatus::Failed,
-                elapsed: Duration::ZERO,
-                command_count: 0,
-            },
-            message: format!("unknown test bucket `{bucket_name}`"),
-        })?;
-    let timeout = bucket_timeout(bucket, timeout_multiplier).map_err(|error| BucketFailure {
-        result: build_bucket_result(bucket_name, BucketStatus::Failed, Duration::ZERO, bucket),
+    let bucket = resolve_bucket_plan(manifest, bucket_name).ok_or_else(|| BucketFailure {
+        result: BucketResult {
+            bucket_name: bucket_name.to_string(),
+            status: BucketStatus::Failed,
+            elapsed: Duration::ZERO,
+            command_count: 0,
+        },
+        message: format!("unknown test bucket `{bucket_name}`"),
+    })?;
+    let timeout = bucket_timeout(&bucket, timeout_multiplier).map_err(|error| BucketFailure {
+        result: build_bucket_result(bucket_name, BucketStatus::Failed, Duration::ZERO, &bucket),
         message: error.to_string(),
     })?;
     let bucket_started = Instant::now();
@@ -382,7 +407,7 @@ where
     writer
         .write_all(format!("START {bucket_name}\n").as_bytes())
         .map_err(|error| BucketFailure {
-            result: build_bucket_result(bucket_name, BucketStatus::Failed, elapsed, bucket),
+            result: build_bucket_result(bucket_name, BucketStatus::Failed, elapsed, &bucket),
             message: error.to_string(),
         })?;
 
@@ -394,18 +419,18 @@ where
         };
         let remaining_timeout = timeout.checked_sub(elapsed).unwrap_or(Duration::ZERO);
         if remaining_timeout.is_zero() {
-            let result = build_bucket_result(bucket_name, BucketStatus::TimedOut, elapsed, bucket);
+            let result = build_bucket_result(bucket_name, BucketStatus::TimedOut, elapsed, &bucket);
             write_bucket_end(writer, &result)?;
             return Err(BucketFailure {
                 result,
-                message: timeout_error(bucket_name, bucket, timeout, command),
+                message: timeout_error(bucket_name, &bucket, timeout, command),
             });
         }
 
         let CommandResult { outcome, captured } = executor
             .run(bucket_name, command, remaining_timeout)
             .map_err(|error| BucketFailure {
-                result: build_bucket_result(bucket_name, BucketStatus::Failed, elapsed, bucket),
+                result: build_bucket_result(bucket_name, BucketStatus::Failed, elapsed, &bucket),
                 message: error.to_string(),
             })?;
 
@@ -417,11 +442,11 @@ where
                 if elapsed >= timeout {
                     write_captured_on_failure(writer, &captured)?;
                     let result =
-                        build_bucket_result(bucket_name, BucketStatus::TimedOut, elapsed, bucket);
+                        build_bucket_result(bucket_name, BucketStatus::TimedOut, elapsed, &bucket);
                     write_bucket_end(writer, &result)?;
                     return Err(BucketFailure {
                         result,
-                        message: timeout_error(bucket_name, bucket, timeout, command),
+                        message: timeout_error(bucket_name, &bucket, timeout, command),
                     });
                 }
             }
@@ -432,7 +457,7 @@ where
                 elapsed = bucket_started.elapsed().max(elapsed + command_elapsed);
                 write_captured_on_failure(writer, &captured)?;
                 let result =
-                    build_bucket_result(bucket_name, BucketStatus::Failed, elapsed, bucket);
+                    build_bucket_result(bucket_name, BucketStatus::Failed, elapsed, &bucket);
                 write_bucket_end(writer, &result)?;
                 return Err(BucketFailure {
                     result,
@@ -449,17 +474,17 @@ where
                 elapsed = bucket_started.elapsed().max(elapsed + command_elapsed);
                 write_captured_on_failure(writer, &captured)?;
                 let result =
-                    build_bucket_result(bucket_name, BucketStatus::TimedOut, elapsed, bucket);
+                    build_bucket_result(bucket_name, BucketStatus::TimedOut, elapsed, &bucket);
                 write_bucket_end(writer, &result)?;
                 return Err(BucketFailure {
                     result,
-                    message: timeout_error(bucket_name, bucket, timeout, command),
+                    message: timeout_error(bucket_name, &bucket, timeout, command),
                 });
             }
         }
     }
 
-    let result = build_bucket_result(bucket_name, BucketStatus::Passed, elapsed, bucket);
+    let result = build_bucket_result(bucket_name, BucketStatus::Passed, elapsed, &bucket);
     write_bucket_end(writer, &result)?;
     Ok(result)
 }
@@ -468,7 +493,7 @@ fn build_bucket_result(
     bucket_name: &str,
     status: BucketStatus,
     elapsed: Duration,
-    bucket: &BucketConfig,
+    bucket: &BucketPlan,
 ) -> BucketResult {
     BucketResult {
         bucket_name: bucket_name.to_string(),
@@ -497,17 +522,15 @@ fn write_captured_on_failure<W: Write>(
             message: error.to_string(),
         })?;
     if !captured.ends_with('\n') {
-        writer
-            .write_all(b"\n")
-            .map_err(|error| BucketFailure {
-                result: BucketResult {
-                    bucket_name: String::new(),
-                    status: BucketStatus::Failed,
-                    elapsed: Duration::ZERO,
-                    command_count: 0,
-                },
-                message: error.to_string(),
-            })?;
+        writer.write_all(b"\n").map_err(|error| BucketFailure {
+            result: BucketResult {
+                bucket_name: String::new(),
+                status: BucketStatus::Failed,
+                elapsed: Duration::ZERO,
+                command_count: 0,
+            },
+            message: error.to_string(),
+        })?;
     }
     Ok(())
 }
@@ -533,7 +556,7 @@ fn empty_summary(bucket_names: Vec<String>) -> RunSummary {
     }
 }
 
-fn bucket_timeout(bucket: &BucketConfig, timeout_multiplier: u64) -> Result<Duration> {
+fn bucket_timeout(bucket: &BucketPlan, timeout_multiplier: u64) -> Result<Duration> {
     let seconds = bucket
         .timeout_seconds
         .checked_mul(timeout_multiplier)
@@ -543,7 +566,7 @@ fn bucket_timeout(bucket: &BucketConfig, timeout_multiplier: u64) -> Result<Dura
 
 fn timeout_error(
     bucket_name: &str,
-    bucket: &BucketConfig,
+    bucket: &BucketPlan,
     timeout: Duration,
     command: &str,
 ) -> String {
@@ -575,6 +598,41 @@ fn format_duration(duration: Duration) -> String {
     format!("{:.1}s", duration.as_secs_f64())
 }
 
+fn resolve_bucket_plan(manifest: &TestManifest, bucket_name: &str) -> Option<BucketPlan> {
+    manifest
+        .buckets
+        .get(bucket_name)
+        .map(|bucket| BucketPlan {
+            expected_seconds: bucket.expected_seconds,
+            timeout_seconds: bucket.timeout_seconds,
+            commands: bucket.commands.clone(),
+        })
+        .or_else(|| special_bucket_plan(bucket_name))
+}
+
+fn special_tier_bucket_names(tier_name: &str) -> Option<Vec<String>> {
+    PROGRAM_TIERS
+        .iter()
+        .find(|(name, _)| *name == tier_name)
+        .map(|(_, buckets)| buckets.iter().map(|bucket| (*bucket).to_string()).collect())
+}
+
+fn special_bucket_plan(bucket_name: &str) -> Option<BucketPlan> {
+    SPECIAL_BUCKETS
+        .iter()
+        .find(|(name, _, _, _)| *name == bucket_name)
+        .map(
+            |(_, expected_seconds, timeout_seconds, commands)| BucketPlan {
+                expected_seconds: *expected_seconds,
+                timeout_seconds: *timeout_seconds,
+                commands: commands
+                    .iter()
+                    .map(|command| (*command).to_string())
+                    .collect(),
+            },
+        )
+}
+
 #[cfg(unix)]
 fn shell_command(command: &str) -> Command {
     let mut shell = Command::new("sh");
@@ -587,4 +645,185 @@ fn shell_command(command: &str) -> Command {
     let mut shell = Command::new("cmd");
     shell.arg("/C").arg(command);
     shell
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::cell::RefCell;
+    use std::collections::{HashMap, VecDeque};
+    use std::rc::Rc;
+
+    struct FakeExecutor {
+        expectations: Rc<RefCell<HashMap<String, VecDeque<CommandOutcome>>>>,
+        calls: Rc<RefCell<Vec<(String, String, Duration)>>>,
+    }
+
+    impl FakeExecutor {
+        fn with_outcomes(entries: &[(&str, CommandOutcome)]) -> Self {
+            let mut expectations = HashMap::new();
+            for (command, outcome) in entries {
+                expectations
+                    .entry((*command).to_string())
+                    .or_insert_with(VecDeque::new)
+                    .push_back(outcome.clone());
+            }
+
+            Self {
+                expectations: Rc::new(RefCell::new(expectations)),
+                calls: Rc::new(RefCell::new(Vec::new())),
+            }
+        }
+
+        fn calls(&self) -> Vec<String> {
+            self.calls
+                .borrow()
+                .iter()
+                .map(|(_, command, _)| command.clone())
+                .collect()
+        }
+    }
+
+    impl CommandExecutor for FakeExecutor {
+        fn run(&self, bucket: &str, command: &str, timeout: Duration) -> Result<CommandResult> {
+            self.calls
+                .borrow_mut()
+                .push((bucket.to_string(), command.to_string(), timeout));
+
+            let outcome = self
+                .expectations
+                .borrow_mut()
+                .get_mut(command)
+                .and_then(|queue| queue.pop_front())
+                .unwrap_or_else(|| panic!("unexpected command: {command}"));
+
+            Ok(CommandResult {
+                outcome,
+                captured: String::new(),
+            })
+        }
+    }
+
+    fn manifest_with_program_buckets() -> TestManifest {
+        TestManifest::from_str(
+            r#"
+[tiers]
+daemon = ["daemon"]
+workspace-init = ["workspace-init"]
+integration = ["integration"]
+
+[buckets.daemon]
+expected_seconds = 1
+timeout_seconds = 2
+commands = ["daemon cmd"]
+
+[buckets.workspace-init]
+expected_seconds = 1
+timeout_seconds = 2
+commands = ["workspace init cmd"]
+
+[buckets.integration]
+expected_seconds = 1
+timeout_seconds = 2
+commands = ["integration cmd"]
+"#,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn runner_tests_render_manifest_listing_includes_program_tiers() {
+        let manifest = manifest_with_program_buckets();
+
+        let listing = render_manifest_listing(&manifest);
+
+        assert!(listing.contains("PROGRAM TIERS"), "{listing}");
+        assert!(listing.contains("reliability"), "{listing}");
+        assert!(listing.contains("benchmark"), "{listing}");
+        assert!(listing.contains("system-health"), "{listing}");
+    }
+
+    #[test]
+    fn runner_tests_reliability_tier_routes_program_bucket_sequence() {
+        let manifest = manifest_with_program_buckets();
+        let executor = FakeExecutor::with_outcomes(&[
+            (
+                "daemon cmd",
+                CommandOutcome::Passed {
+                    elapsed: Duration::from_millis(10),
+                },
+            ),
+            (
+                "workspace init cmd",
+                CommandOutcome::Passed {
+                    elapsed: Duration::from_millis(15),
+                },
+            ),
+            (
+                "integration cmd",
+                CommandOutcome::Passed {
+                    elapsed: Duration::from_millis(20),
+                },
+            ),
+            (
+                "cargo test --lib tests::integration::system_health",
+                CommandOutcome::Passed {
+                    elapsed: Duration::from_millis(25),
+                },
+            ),
+        ]);
+        let mut output = Vec::new();
+
+        let summary = run_tier(&manifest, "reliability", 1, false, &executor, &mut output).unwrap();
+
+        assert_eq!(
+            summary.bucket_names,
+            vec![
+                "daemon".to_string(),
+                "workspace-init".to_string(),
+                "integration".to_string(),
+                "system-health".to_string(),
+            ]
+        );
+        assert_eq!(
+            executor.calls(),
+            vec![
+                "daemon cmd".to_string(),
+                "workspace init cmd".to_string(),
+                "integration cmd".to_string(),
+                "cargo test --lib tests::integration::system_health".to_string(),
+            ]
+        );
+        assert!(
+            String::from_utf8(output)
+                .unwrap()
+                .contains("START system-health")
+        );
+    }
+
+    #[test]
+    fn runner_tests_benchmark_bucket_runs_system_health_command() {
+        let manifest = manifest_with_program_buckets();
+        let executor = FakeExecutor::with_outcomes(&[(
+            "cargo test --lib tests::integration::system_health",
+            CommandOutcome::Passed {
+                elapsed: Duration::from_millis(25),
+            },
+        )]);
+        let mut output = Vec::new();
+
+        let summary =
+            run_bucket(&manifest, "system-health", 1, false, &executor, &mut output).unwrap();
+
+        assert_eq!(summary.bucket_names, vec!["system-health".to_string()]);
+        assert_eq!(
+            executor.calls(),
+            vec!["cargo test --lib tests::integration::system_health".to_string()]
+        );
+        assert!(
+            String::from_utf8(output)
+                .unwrap()
+                .contains("END system-health PASS")
+        );
+    }
 }

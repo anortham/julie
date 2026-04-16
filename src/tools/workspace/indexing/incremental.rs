@@ -2,11 +2,12 @@
 //! Handles efficient re-indexing by detecting changed files
 //! Removes database entries for deleted files
 
+use super::route::IndexRoute;
 use crate::handler::JulieServerHandler;
 use crate::tools::workspace::commands::ManageWorkspaceTool;
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use tracing::{debug, info, trace, warn};
 
 impl ManageWorkspaceTool {
@@ -18,142 +19,52 @@ impl ManageWorkspaceTool {
         &self,
         handler: &JulieServerHandler,
         all_files: Vec<PathBuf>,
-        workspace_path: &Path,
+        route: &IndexRoute,
     ) -> Result<(Vec<PathBuf>, usize)> {
-        // 🔥 CRITICAL DEADLOCK FIX: Generate workspace ID directly instead of registry lookup
-        // Same fix as other indexing operations - avoids registry lock contention
-        let workspace_id = if let Some(_workspace) = handler.get_workspace().await? {
-            // CRITICAL FIX: Use the workspace_path parameter to determine canonical path
-            // This ensures we get the correct workspace_id for BOTH primary and reference workspaces
-            let canonical_path = workspace_path
-                .canonicalize()
-                .unwrap_or_else(|_| workspace_path.to_path_buf())
-                .to_string_lossy()
-                .to_string();
+        let workspace_id = route.workspace_id.clone();
 
-            // 🚀 DEADLOCK FIX: Generate workspace ID directly from path (no registry access)
-            // This avoids the registry lock that was causing deadlocks during indexing
-            match crate::workspace::registry::generate_workspace_id(&canonical_path) {
-                Ok(id) => id,
+        let Some(db) = route.database_for_read(handler).await? else {
+            return Ok((all_files, 0));
+        };
+        debug!(
+            "🐛 filter_changed_files: is_primary={}, workspace_id={}, db_path={}",
+            route.is_primary,
+            workspace_id,
+            route.db_path.display()
+        );
+
+        let existing_file_hashes = {
+            let db_lock = match db.lock() {
+                Ok(guard) => guard,
+                Err(poisoned) => {
+                    warn!(
+                        "Database mutex poisoned during file hash query, recovering: {}",
+                        poisoned
+                    );
+                    poisoned.into_inner()
+                }
+            };
+
+            let symbol_count = db_lock.count_symbols_for_workspace().unwrap_or(0);
+            if symbol_count == 0 {
+                info!(
+                    "🔄 Workspace database has 0 symbols - bypassing incremental logic and re-indexing all {} files",
+                    all_files.len()
+                );
+                drop(db_lock);
+                return Ok((all_files, 0));
+            }
+
+            match db_lock.get_file_hashes_for_workspace() {
+                Ok(hashes) => hashes,
                 Err(e) => {
                     warn!(
-                        "Failed to generate workspace ID: {} - indexing all files",
+                        "Failed to get existing file hashes: {} - treating all files as new",
                         e
                     );
                     return Ok((all_files, 0));
                 }
             }
-        } else {
-            // No workspace available - all files are new
-            return Ok((all_files, 0));
-        };
-
-        // 🔥 CRITICAL FIX: Query the CORRECT database based on workspace_id
-        // Primary workspace: use handler.get_workspace().db
-        // Reference workspace: open its separate database at indexes/{workspace_id}/db/symbols.db
-        let existing_file_hashes = if let Some(primary_workspace) = handler.get_workspace().await? {
-            // Check if this is the primary workspace by comparing workspace IDs
-            let primary_workspace_id = match crate::workspace::registry::generate_workspace_id(
-                primary_workspace.root.to_string_lossy().as_ref(),
-            ) {
-                Ok(id) => id,
-                Err(_) => {
-                    warn!("Failed to generate primary workspace ID - treating all files as new");
-                    return Ok((all_files, 0));
-                }
-            };
-
-            let is_primary = workspace_id == primary_workspace_id;
-            debug!(
-                "🐛 filter_changed_files: is_primary={}, workspace_id={}, primary_workspace_id={}",
-                is_primary, workspace_id, primary_workspace_id
-            );
-
-            // Get the correct database based on workspace type
-            let db_to_query = if is_primary {
-                // Primary workspace - use handler's database connection
-                primary_workspace.db.clone()
-            } else {
-                // Reference workspace - open its separate database
-                let ref_db_path = primary_workspace.workspace_db_path(&workspace_id);
-                debug!(
-                    "🐛 filter_changed_files: Reference workspace DB path: {}, exists: {}",
-                    ref_db_path.display(),
-                    ref_db_path.exists()
-                );
-
-                if ref_db_path.exists() {
-                    match tokio::task::spawn_blocking(move || {
-                        crate::database::SymbolDatabase::new(ref_db_path)
-                    })
-                    .await
-                    {
-                        Ok(Ok(db)) => Some(std::sync::Arc::new(std::sync::Mutex::new(db))),
-                        Ok(Err(e)) => {
-                            debug!(
-                                "Reference workspace DB doesn't exist yet: {} - treating all files as new",
-                                e
-                            );
-                            return Ok((all_files, 0));
-                        }
-                        Err(e) => {
-                            warn!(
-                                "Failed to open reference workspace DB: {} - treating all files as new",
-                                e
-                            );
-                            return Ok((all_files, 0));
-                        }
-                    }
-                } else {
-                    // Reference workspace database doesn't exist yet - all files are new
-                    debug!("Reference workspace DB doesn't exist yet - treating all files as new");
-                    return Ok((all_files, 0));
-                }
-            };
-
-            // Query the correct database
-            if let Some(db) = db_to_query {
-                let db_lock = match db.lock() {
-                    Ok(guard) => guard,
-                    Err(poisoned) => {
-                        warn!(
-                            "Database mutex poisoned during file hash query, recovering: {}",
-                            poisoned
-                        );
-                        poisoned.into_inner()
-                    }
-                };
-
-                // 🔥 CRITICAL FIX: Check if THIS workspace's database has 0 symbols
-                // If so, bypass incremental logic and re-index all files
-                // This prevents the bug where file hashes exist but symbols were never extracted
-                let symbol_count = db_lock.count_symbols_for_workspace().unwrap_or(0);
-                if symbol_count == 0 {
-                    info!(
-                        "🔄 Workspace database has 0 symbols - bypassing incremental logic and re-indexing all {} files",
-                        all_files.len()
-                    );
-                    drop(db_lock);
-                    return Ok((all_files, 0));
-                }
-
-                let hashes = match db_lock.get_file_hashes_for_workspace() {
-                    Ok(hashes) => hashes,
-                    Err(e) => {
-                        warn!(
-                            "Failed to get existing file hashes: {} - treating all files as new",
-                            e
-                        );
-                        return Ok((all_files, 0));
-                    }
-                };
-                drop(db_lock);
-                hashes
-            } else {
-                return Ok((all_files, 0));
-            }
-        } else {
-            return Ok((all_files, 0));
         };
 
         debug!(
@@ -171,7 +82,8 @@ impl ManageWorkspaceTool {
             // Convert to relative Unix-style path for database lookup
             // Database stores paths as relative Unix-style per CLAUDE.md Path Handling Contract
             let file_path_relative =
-                match crate::utils::paths::to_relative_unix_style(file_path, workspace_path) {
+                match crate::utils::paths::to_relative_unix_style(file_path, &route.workspace_root)
+                {
                     Ok(rel) => rel,
                     Err(e) => {
                         warn!(
@@ -224,13 +136,7 @@ impl ManageWorkspaceTool {
 
         // 🧹 ORPHAN CLEANUP: Remove database entries for files that no longer exist
         let orphaned_count = self
-            .clean_orphaned_files(
-                handler,
-                &existing_file_hashes,
-                &all_files,
-                &workspace_id,
-                workspace_path,
-            )
+            .clean_orphaned_files(handler, &existing_file_hashes, &all_files, route)
             .await?;
 
         if orphaned_count > 0 {
@@ -251,8 +157,7 @@ impl ManageWorkspaceTool {
         handler: &JulieServerHandler,
         existing_file_hashes: &HashMap<String, String>,
         current_disk_files: &[PathBuf],
-        _workspace_id: &str,
-        workspace_root: &Path, // NEW: needed to convert absolute paths to relative
+        route: &IndexRoute,
     ) -> Result<usize> {
         // Build set of current disk file paths for fast lookup
         // 🔥 CRITICAL FIX: Convert to relative Unix-style paths to match database format
@@ -261,7 +166,7 @@ impl ManageWorkspaceTool {
             .iter()
             .filter_map(|p| {
                 if p.is_absolute() {
-                    crate::utils::paths::to_relative_unix_style(p, workspace_root).ok()
+                    crate::utils::paths::to_relative_unix_style(p, &route.workspace_root).ok()
                 } else {
                     Some(p.to_string_lossy().replace('\\', "/"))
                 }
@@ -281,61 +186,10 @@ impl ManageWorkspaceTool {
 
         debug!("Found {} orphaned files to clean up", orphaned_files.len());
 
-        // 🔥 CRITICAL FIX: Get the CORRECT database based on workspace_id
-        // This function was using handler.get_workspace().db which is ALWAYS the primary workspace
-        // causing reference workspace indexing to delete primary workspace files!
-        let primary_workspace = match handler.get_workspace().await? {
-            Some(ws) => ws,
-            None => return Ok(0),
-        };
+        let search_index = route.search_index_for_write().await?;
 
-        // Check if this is the primary workspace by comparing workspace IDs
-        let primary_workspace_id = match crate::workspace::registry::generate_workspace_id(
-            primary_workspace.root.to_string_lossy().as_ref(),
-        ) {
-            Ok(id) => id,
-            Err(_) => {
-                warn!("Failed to generate primary workspace ID");
-                return Ok(0);
-            }
-        };
-
-        let is_primary = _workspace_id == primary_workspace_id;
-
-        // Fix C part b: get the search index for Tantivy orphan cleanup.
-        // For primary, use the workspace's already-open index.
-        // For reference, open via the handler's workspace-aware helper.
-        let search_index = if is_primary {
-            primary_workspace.search_index.clone()
-        } else {
-            handler
-                .get_search_index_for_workspace(_workspace_id)
-                .await
-                .ok()
-                .flatten()
-        };
-
-        // Get the correct database based on workspace type.
-        // For reference workspaces, route through the handler's cached connection
-        // instead of opening a separate database connection ([I-H4]).
-        let db = if is_primary {
-            // Primary workspace - use handler's database connection
-            match &primary_workspace.db {
-                Some(db_arc) => db_arc.clone(),
-                None => return Ok(0),
-            }
-        } else {
-            // Reference workspace - use handler's cached connection pool
-            match handler.get_database_for_workspace(_workspace_id).await {
-                Ok(db) => db,
-                Err(e) => {
-                    debug!(
-                        "Reference workspace DB not available for orphan cleanup ({}), skipping",
-                        e
-                    );
-                    return Ok(0);
-                }
-            }
+        let Some(db) = route.database_for_write(handler).await? else {
+            return Ok(0);
         };
 
         // Batch all deletions in ONE transaction for efficiency and consistency.
@@ -436,10 +290,10 @@ impl ManageWorkspaceTool {
             }
         }
 
-        if cleaned_count > 0 && !is_primary {
+        if cleaned_count > 0 && !route.is_primary {
             debug!(
                 "✅ Reference workspace orphan cleanup: {} files removed from workspace {}",
-                cleaned_count, _workspace_id
+                cleaned_count, route.workspace_id
             );
         }
 

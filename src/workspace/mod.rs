@@ -11,6 +11,7 @@
 pub mod registry;
 pub mod startup_hint;
 
+use crate::health::{EmbeddingState, ProjectionState, WatcherState};
 use anyhow::{Context, Result, anyhow};
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -58,6 +59,9 @@ pub struct JulieWorkspace {
     /// When set, `indexes_root_path()` returns this instead of `{julie_dir}/indexes`.
     /// Used by the daemon's WorkspacePool to redirect indexes to a shared location.
     pub index_root_override: Option<PathBuf>,
+
+    /// Shared runtime indexing state used by health reporting and the dashboard.
+    pub(crate) indexing_runtime: crate::tools::workspace::indexing::state::SharedIndexingRuntime,
 }
 
 /// Configuration for a Julie workspace
@@ -152,6 +156,7 @@ impl Clone for JulieWorkspace {
             embedding_runtime_status: self.embedding_runtime_status.clone(),
             config: self.config.clone(),
             index_root_override: self.index_root_override.clone(),
+            indexing_runtime: Arc::clone(&self.indexing_runtime),
         }
     }
 }
@@ -212,6 +217,8 @@ impl JulieWorkspace {
             embedding_runtime_status: None,
             config,
             index_root_override: None,
+            indexing_runtime:
+                crate::tools::workspace::indexing::state::IndexingRuntimeState::shared(),
         };
 
         // Initialize persistent components
@@ -258,6 +265,8 @@ impl JulieWorkspace {
                     embedding_runtime_status: None,
                     config,
                     index_root_override: None,
+                    indexing_runtime:
+                        crate::tools::workspace::indexing::state::IndexingRuntimeState::shared(),
                 };
 
                 // Validate workspace structure
@@ -480,11 +489,28 @@ impl JulieWorkspace {
         // Check permissions
         health.check_permissions(&self.julie_dir)?;
 
-        // ✅ Comprehensive health checks implemented in ManageWorkspaceTool::health_command()
-        // See src/tools/workspace/commands/registry.rs:
-        // - check_database_health() - SQLite statistics and integrity
-        // - check_search_engine_health() - Tantivy search status
-        // This basic check only validates directory permissions.
+        health.watcher_state = if self.watcher.is_some() {
+            WatcherState::Local
+        } else {
+            WatcherState::Unavailable
+        };
+        health.search_projection_state = if self.search_index.is_some() {
+            ProjectionState::Ready
+        } else {
+            ProjectionState::Missing
+        };
+        health.embedding_state = match (
+            self.embedding_runtime_status.as_ref(),
+            self.embedding_provider.as_ref(),
+        ) {
+            (Some(runtime), Some(_)) if runtime.degraded_reason.is_some() => {
+                EmbeddingState::Degraded
+            }
+            (Some(_), Some(_)) => EmbeddingState::Initialized,
+            (Some(_), None) => EmbeddingState::Unavailable,
+            (None, Some(_)) => EmbeddingState::NotInitialized,
+            (None, None) => EmbeddingState::NotInitialized,
+        };
 
         if health.errors.is_empty() {
             info!("Workspace health check passed");
@@ -688,6 +714,7 @@ impl JulieWorkspace {
             extractor_manager,
             self.search_index.clone(),
             shared_provider,
+            Arc::clone(&self.indexing_runtime),
         )?;
 
         self.watcher = Some(file_watcher);
@@ -775,6 +802,9 @@ pub struct WorkspaceHealth {
     pub structure_valid: bool,
     pub disk_space_mb: u64,
     pub has_write_permissions: bool,
+    pub watcher_state: WatcherState,
+    pub search_projection_state: ProjectionState,
+    pub embedding_state: EmbeddingState,
     pub errors: Vec<String>,
     pub warnings: Vec<String>,
 }
@@ -785,6 +815,9 @@ impl WorkspaceHealth {
             structure_valid: false,
             disk_space_mb: 0,
             has_write_permissions: false,
+            watcher_state: WatcherState::Unavailable,
+            search_projection_state: ProjectionState::Missing,
+            embedding_state: EmbeddingState::NotInitialized,
             errors: Vec::new(),
             warnings: Vec::new(),
         }

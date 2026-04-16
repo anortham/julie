@@ -1,37 +1,31 @@
 decisions:
-  - "2026-03-29 | Dashboard intelligence layer: server-side SVG donut via stroke-dasharray, no JS charting lib. Direct DB file open for inactive workspaces (bypasses WorkspacePool session side-effects)."
-  - "2026-03-31 | Token efficiency: vetoed batch deep_dive (complexity not justified), changed_symbols (git diff + Julie tools sufficient), path aliases (might hurt LLM accuracy). return_format=locations for definition search. deep_dive caps: overview=300, context=800, full=1800 tokens. Compact mode neighbor budget 2400 chars."
-  - "2026-03-31 | Standardized on Python sidecar as sole embedding backend, removed ORT/fastembed entirely (net -2,601 lines). Sidecar handles CPU fallback fine."
-  - "2026-04-03 | Dead code metric narrowed to functions/methods only (types too noisy due to implicit usage). Fixture/example/docs directories excluded. Undocumented symbols ranked by centrality."
-  - "2026-04-03 | Embedding enrichment approach: behavioral embeddings (file path, implementor names, field signatures) + query classification heuristic for dynamic keyword/semantic weighting. No model change (CodeRankEmbed stays, sqlite-vec stays)."
-  - "2026-04-03 | Julie's core value proposition is intelligence-per-token: minimizing tokens an agent needs to acquire understanding for a task. All features evaluated through this lens."
-  - "2026-04-04 | edit_file (DMP fuzzy replace) and edit_symbol (symbol-aware editing) added as MCP tools. Progressive rollout: Phase 1 = these two, Phase 2 = read_file replacement and hook escalation. Four-layer adoption: tool descriptions, SessionStart hook, PreToolUse nudge, editing skill. Rejected single multi-purpose edit tool and full Serena-style suite upfront."
-  - "2026-04-04 | Bracket validation changed from absolute check to delta-based (compare before vs after). Absolute check false-rejected edits where string literals contained intentionally unbalanced brackets."
-  - "2026-04-04 | Trimmed-line fuzzy matching added as Phase 2 between exact and DMP bitap. Handles tabs-vs-spaces and indent width mismatches. MatchSpan struct carries start+end so fuzzy matches (different length than old_text) splice correctly. Rejects all-blank-line patterns as too ambiguous."
-  - "2026-04-04 | Web-research implemented as a skill orchestrating browser39 + filewatcher + Julie tools, not as a native MCP tool. Zero Rust code. Rejected native reqwest+html-to-markdown-rs (unnecessary when pipeline exists) and hybrid backend (over-engineered)."
-  - "2026-04-05 | Code review validation pattern: external model review finds issues, subagent-driven development fixes them, Codex (GPT-5.4 xhigh reasoning) cross-reviews the fixes. Caught 3 additional bugs the initial fixes introduced (busy-spin, wrong cancel target, self-invalidation)."
-  - "2026-04-05 | Bracket balance downgraded from hard reject to advisory warning. String/comment awareness not implemented; the simpler fix is to not block edits on a heuristic that has known false positives."
-  - "2026-04-05 | TOCTOU between freshness hash check and file write accepted as low risk: millisecond window, MCP server processes one tool call at a time, guard targets minutes/hours of staleness not nanosecond races."
+  - '2026-03-31 | Standardized the embedding pipeline on the Python sidecar alone, removing ORT and fastembed to eliminate dual-pipeline complexity.'
+  - '2026-04-03 | Core value is intelligence per token, so features are judged by how much understanding they add per token spent.'
+  - '2026-04-03 | Dead code metrics were narrowed to functions and methods only, with fixture, example, and docs paths excluded because types were too noisy.'
+  - '2026-04-03 | Embedding enrichment uses behavioral metadata plus query classification for dynamic weighting, while CodeRankEmbed and sqlite-vec stay in place.'
+  - '2026-04-04 | edit_file and edit_symbol were added as token-saving edit tools with phased rollout, not one all-purpose edit tool.'
+  - '2026-04-05 | Bracket validation moved from hard reject to advisory warning because the heuristic had known false positives.'
+  - '2026-04-05 | Edit tool enforcement uses three layers, SessionStart guidance, a lean PreToolUse nudge, and a rewritten editing skill, instead of a Read hook or hard block.'
+  - '2026-04-08 | Subagent Julie tool awareness is handled in the Julie plugin with hooks, not by keeping a separate workflow plugin fork.'
+  - '2026-04-08 | Daemon lifecycle uses an explicit daemon.state file with starting, ready, and stopping phases, and readiness checks hold the daemon lock through confirmation.'
+  - '2026-04-09 | Daemon cold-start failures are handled by lazy EmbeddingService init plus a watch state machine so first MCP connects stop timing out.'
 
 open_questions:
-  - "2026-03-31 | Sidecar venv CUDA torch swap fragility: if bootstrap recreates venv, it reinstalls CPU torch from PyPI. detect_nvidia_cuda() should handle this but needs testing on fresh machine."
-  - "2026-04-03 | Known language extractor limitations (4 remaining): C++ header-only templates, Lua metatables, HTML/CSS structural relationships, JS CommonJS require() resolution."
+  - '2026-03-31 | Sidecar venv CUDA torch swap is fragile if bootstrap recreates the venv, so a fresh-machine test is still needed.'
+  - '2026-04-03 | NL query vocabulary still misses synonym gaps, so query expansion or a dual-model approach may be needed.'
 
 deferred_work:
-  - "2026-04-05 | edit_symbol is line-granular only (no byte/column precision for same-line symbols). Affects languages with multiple symbols on one line. No fix planned; documented in tool description."
-  - "2026-04-05 | Dry-run diff truncation needed for very large edits. Currently dry-run output can be arbitrarily long."
+  - '2026-04-04 | The DMP fuzzy path still has a length-mismatch splice bug when the match length differs from old_text.'
+  - '2026-04-05 | edit_symbol stays line-granular, so same-line symbols do not get byte or column precise edits.'
 
 gotchas:
-  - "2026-03-31 | SidecarLaunchConfig.env was empty (no env vars passed to sidecar). Had to be extended to pass JULIE_EMBEDDING_DEVICE_PREFERENCE for CUDA support."
-  - "2026-04-03 | Dart 3 modifier classes (sealed/base/final/interface/mixin class) require AST recovery patterns because tree-sitter grammar doesn't support Dart 3 syntax natively."
-  - "2026-04-03 | PHP relationships were same-file-only by design. PSR-4 autoloading means classes are almost always cross-file; fixed to use PendingRelationship for new/extends/implements."
-  - "2026-04-03 | sqlite-vec vec0 tables default to L2 distance, NOT cosine. Must specify distance_metric=cosine in CREATE TABLE. Without it, 768-dim cosine similarity formula produces garbage (negative values). Requires force re-index to fix."
-  - "2026-04-03 | deep_dive similar symbols section must be reserved separately (150 tokens) before main body truncation. Appending last then truncating from end guarantees it gets cut at context depth."
-  - "2026-04-03 | search_target='definitions' is required for conceptual queries to benefit from semantic/embedding search. Default 'content' mode is Tantivy-only and won't use embeddings."
-  - "2026-04-04 | DMP bitap has a 32-character pattern limit. edit_file uses exact substring search first with DMP fuzzy fallback only when exact match fails."
-  - "2026-04-04 | initialize_embedding_provider() propagation in workspace/mod.rs is dead code: always called on workspace clones (which have watcher: None). Propagation must happen at actual write-back sites in embeddings.rs and nl_embeddings.rs."
-  - "2026-04-04 | DMP bitap length mismatch: compute_fuzzy_end (using diff_main) corrects the splice width, but only after the MatchSpan refactor. Without MatchSpan, fuzzy-matched content of different length than old_text garbles the result."
-  - "2026-04-04 | ignore crate converts bare * to **/* at parse time via GitignoreBuilder::add(). Julie's collect_gitignore_files() flattens nested .gitignore files into a single root-scoped builder, so cache dir patterns (.ruff_cache, .pytest_cache, .venv containing *) leak globally and reject all source files. Fix: skip hidden directories when collecting .gitignore files."
-  - "2026-04-05 | edit_symbol and edit_file must call db.update_file_hash() after successful write. Without this, the freshness guard (blake3 hash comparison) rejects back-to-back edits on the same file because the index hash is stale."
-  - "2026-04-05 | Watcher dedup re-queue must use break (not continue) after re-queuing an event. continue stays in the inner while-let loop and hot-spins; break returns to tick.tick().await for the actual delay."
-  - "2026-04-05 | Force-index embedding cancellation must compute target workspace_id from the path being force-reindexed (via generate_workspace_id), not use handler.workspace_id which is always the primary workspace."
+  - '2026-03-31 | SidecarLaunchConfig.env was empty, so CUDA support had to pass JULIE_EMBEDDING_DEVICE_PREFERENCE into the sidecar.'
+  - '2026-04-03 | sqlite-vec vec0 defaults to L2 distance, so cosine must be set explicitly when storing embedding vectors.'
+  - '2026-04-03 | deep_dive similar symbols need reserved token budget, or they get truncated off the end of the response.'
+  - '2026-04-03 | search_target=definitions is required for conceptual queries to benefit from semantic search.'
+  - '2026-04-03 | Four extractor gaps kept showing up in practice: C++ header-only templates, Lua metatables, HTML and CSS structural links, and JS CommonJS resolution.'
+  - '2026-04-04 | DMP bitap has a 32 character pattern limit, so exact substring matching has to run before fuzzy fallback.'
+  - '2026-04-04 | Nested hidden .gitignore files can leak a bare * pattern globally when they are flattened into one root GitignoreBuilder.'
+  - '2026-04-04 | update_file_hash has to run after a successful edit, or the freshness guard blocks back to back edits on the same file.'
+  - '2026-04-05 | Watcher dedup requeue must break out of the inner loop, or it hot spins instead of sleeping.'
+  - '2026-04-05 | forward_bytes must not use tokio::select! in a way that cancels daemon to stdout draining when stdin ends.'

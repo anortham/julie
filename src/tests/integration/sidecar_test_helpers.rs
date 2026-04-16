@@ -39,12 +39,21 @@ pub fn test_python_interpreter() -> String {
 
 #[cfg(feature = "embeddings-sidecar")]
 pub fn create_test_sidecar_provider() -> SidecarEmbeddingProvider {
+    create_test_sidecar_provider_with_health_result(
+        r#"{"ready": true, "runtime": "fake-sidecar", "device": "cpu", "dims": 384}"#,
+    )
+}
+
+#[cfg(feature = "embeddings-sidecar")]
+pub fn create_test_sidecar_provider_with_health_result(
+    health_result_json: &str,
+) -> SidecarEmbeddingProvider {
     let temp_dir = tempfile::tempdir().expect("temp dir for fake sidecar");
     let script_path = temp_dir.path().join("fake_sidecar.py");
-    std::fs::write(
-        &script_path,
-        r#"import json
+    let script = r#"import json
 import sys
+
+HEALTH_RESULT = json.loads(r'''__HEALTH_RESULT__''')
 
 while True:
     line = sys.stdin.readline()
@@ -55,7 +64,7 @@ while True:
     method = req.get("method")
 
     if method == "health":
-        result = {"ready": True, "runtime": "fake-sidecar", "device": "cpu", "dims": 384}
+        result = HEALTH_RESULT
     elif method == "embed_query":
         result = {"dims": 384, "vector": [0.1] * 384}
     elif method == "embed_batch":
@@ -77,9 +86,9 @@ while True:
 
     if method == "shutdown":
         break
-"#,
-    )
-    .expect("fake sidecar script should be written");
+"#
+    .replace("__HEALTH_RESULT__", health_result_json);
+    std::fs::write(&script_path, script).expect("fake sidecar script should be written");
 
     let provider = SidecarEmbeddingProvider::try_new_for_command(
         test_python_interpreter(),

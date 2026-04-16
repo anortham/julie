@@ -1092,6 +1092,7 @@ fn test_workspace_paths_differ_per_workspace_id_with_override() {
         embedding_runtime_status: None,
         config: Default::default(),
         index_root_override: Some(override_path.clone()),
+        indexing_runtime: crate::tools::workspace::indexing::state::IndexingRuntimeState::shared(),
     };
 
     let primary_db = workspace.workspace_db_path(primary_id);

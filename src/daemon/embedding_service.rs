@@ -67,10 +67,16 @@ pub enum EmbeddingServiceState {
 /// The outcome of waiting for the service to settle out of `Initializing`.
 pub enum EmbeddingServiceSettled {
     /// Service published `Ready`; the provider is available.
-    Ready(Arc<dyn EmbeddingProvider>),
+    Ready {
+        provider: Arc<dyn EmbeddingProvider>,
+        runtime_status: EmbeddingRuntimeStatus,
+    },
     /// Service published `Unavailable`; the reason is carried here. Callers
     /// that need the runtime status can query `EmbeddingService::runtime_status`.
-    Unavailable(String),
+    Unavailable {
+        reason: String,
+        runtime_status: Option<EmbeddingRuntimeStatus>,
+    },
     /// Deadline elapsed while the service was still `Initializing`.
     Timeout,
 }
@@ -221,9 +227,10 @@ impl EmbeddingService {
                 if rx.changed().await.is_err() {
                     // Sender dropped — the service is gone. Treat as Unavailable
                     // so callers fall back to keyword-only cleanly.
-                    return EmbeddingServiceSettled::Unavailable(
-                        "EmbeddingService dropped before settling".to_string(),
-                    );
+                    return EmbeddingServiceSettled::Unavailable {
+                        reason: "EmbeddingService dropped before settling".to_string(),
+                        runtime_status: None,
+                    };
                 }
                 if let Some(settled) = Self::state_to_settled(&rx.borrow()) {
                     return settled;
@@ -256,12 +263,20 @@ impl EmbeddingService {
     fn state_to_settled(state: &EmbeddingServiceState) -> Option<EmbeddingServiceSettled> {
         match state {
             EmbeddingServiceState::Initializing => None,
-            EmbeddingServiceState::Ready { provider, .. } => {
-                Some(EmbeddingServiceSettled::Ready(Arc::clone(provider)))
-            }
-            EmbeddingServiceState::Unavailable { reason, .. } => {
-                Some(EmbeddingServiceSettled::Unavailable(reason.clone()))
-            }
+            EmbeddingServiceState::Ready {
+                provider,
+                runtime_status,
+            } => Some(EmbeddingServiceSettled::Ready {
+                provider: Arc::clone(provider),
+                runtime_status: runtime_status.clone(),
+            }),
+            EmbeddingServiceState::Unavailable {
+                reason,
+                runtime_status,
+            } => Some(EmbeddingServiceSettled::Unavailable {
+                reason: reason.clone(),
+                runtime_status: runtime_status.clone(),
+            }),
         }
     }
 
@@ -339,7 +354,7 @@ mod tests {
         service.publish_ready(fake_provider, status);
 
         let outcome = service.wait_until_settled(Duration::from_millis(100)).await;
-        assert!(matches!(outcome, EmbeddingServiceSettled::Ready(_)));
+        assert!(matches!(outcome, EmbeddingServiceSettled::Ready { .. }));
     }
 
     /// `wait_until_settled` returns `Unavailable` immediately when the service
@@ -351,7 +366,7 @@ mod tests {
 
         let outcome = service.wait_until_settled(Duration::from_millis(100)).await;
         match outcome {
-            EmbeddingServiceSettled::Unavailable(reason) => assert_eq!(reason, "boom"),
+            EmbeddingServiceSettled::Unavailable { reason, .. } => assert_eq!(reason, "boom"),
             _ => panic!("expected Unavailable"),
         }
     }
@@ -374,7 +389,7 @@ mod tests {
         let outcome = service.wait_until_settled(Duration::from_millis(500)).await;
         publisher.await.unwrap();
         assert!(
-            matches!(outcome, EmbeddingServiceSettled::Ready(_)),
+            matches!(outcome, EmbeddingServiceSettled::Ready { .. }),
             "waiter should observe Ready published during the wait"
         );
     }
@@ -408,7 +423,7 @@ mod tests {
         for handle in handles {
             let outcome = handle.await.unwrap();
             match outcome {
-                EmbeddingServiceSettled::Unavailable(reason) => {
+                EmbeddingServiceSettled::Unavailable { reason, .. } => {
                     assert_eq!(reason, "shared reason")
                 }
                 _ => panic!("expected all waiters to observe Unavailable"),

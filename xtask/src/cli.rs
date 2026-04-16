@@ -2,6 +2,8 @@ use anyhow::{Result, bail};
 
 use crate::manifest::TestManifest;
 
+const PROGRAM_TIERS: &[&str] = &["reliability", "benchmark"];
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TestCommand {
     List,
@@ -70,7 +72,7 @@ pub fn validate_test_command(manifest: &TestManifest, command: TestCommand) -> R
             timeout_multiplier,
             coverage,
         } => {
-            if manifest.tiers.contains_key(&name) {
+            if manifest.tiers.contains_key(&name) || is_program_tier(&name) {
                 Ok(TestCommand::Tier {
                     name,
                     timeout_multiplier,
@@ -124,4 +126,58 @@ fn ensure_no_extra_args(args: Vec<String>) -> Result<()> {
     }
 
     bail!("unexpected extra arguments: {}", args.join(" "))
+}
+
+fn is_program_tier(name: &str) -> bool {
+    PROGRAM_TIERS.contains(&name)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_manifest() -> TestManifest {
+        TestManifest::from_str(
+            r#"
+[tiers]
+smoke = ["cli"]
+
+[buckets.cli]
+expected_seconds = 1
+timeout_seconds = 2
+commands = ["cargo test --lib tests::cli_tests"]
+"#,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn cli_tests_validate_reliability_program_tier() {
+        let parsed = parse_test_command(["xtask", "test", "reliability"]).unwrap();
+        let validated = validate_test_command(&sample_manifest(), parsed).unwrap();
+
+        assert!(matches!(
+            validated,
+            TestCommand::Tier {
+                name,
+                timeout_multiplier: 1,
+                coverage: false,
+            } if name == "reliability"
+        ));
+    }
+
+    #[test]
+    fn cli_tests_validate_benchmark_program_tier() {
+        let parsed = parse_test_command(["xtask", "test", "benchmark"]).unwrap();
+        let validated = validate_test_command(&sample_manifest(), parsed).unwrap();
+
+        assert!(matches!(
+            validated,
+            TestCommand::Tier {
+                name,
+                timeout_multiplier: 1,
+                coverage: false,
+            } if name == "benchmark"
+        ));
+    }
 }

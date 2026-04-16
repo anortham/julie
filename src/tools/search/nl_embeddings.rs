@@ -67,7 +67,7 @@ pub(super) async fn maybe_initialize_embeddings_for_nl_definitions(
             .wait_until_settled(std::time::Duration::from_secs(3))
             .await
         {
-            EmbeddingServiceSettled::Ready(_) => {
+            EmbeddingServiceSettled::Ready { .. } => {
                 // Provider is now published; the caller's next
                 // handler.embedding_provider() will see it. Return without
                 // running the stdio lazy-init path.
@@ -76,7 +76,7 @@ pub(super) async fn maybe_initialize_embeddings_for_nl_definitions(
                 );
                 return;
             }
-            EmbeddingServiceSettled::Unavailable(reason) => {
+            EmbeddingServiceSettled::Unavailable { reason, .. } => {
                 debug!(
                     %reason,
                     "Daemon embedding service Unavailable; NL query falls back to keyword-only"

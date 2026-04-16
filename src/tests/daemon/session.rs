@@ -1,6 +1,6 @@
 //! Tests for SessionTracker (daemon idle detection).
 
-use crate::daemon::session::SessionTracker;
+use crate::daemon::session::{SessionLifecyclePhase, SessionTracker};
 
 #[test]
 fn test_new_session_increments_count() {
@@ -68,4 +68,40 @@ fn test_session_ids_are_unique() {
     assert_ne!(id1, id2);
     assert_ne!(id2, id3);
     assert_ne!(id1, id3);
+}
+
+#[test]
+fn test_new_session_starts_in_connecting_phase() {
+    let tracker = SessionTracker::new();
+
+    let session_id = tracker.add_session();
+
+    assert_eq!(
+        tracker.session_phase(&session_id),
+        Some(SessionLifecyclePhase::Connecting)
+    );
+}
+
+#[test]
+fn test_session_phase_counts_follow_transitions() {
+    let tracker = SessionTracker::new();
+    let first_session = tracker.add_session();
+    let second_session = tracker.add_session();
+
+    tracker.set_phase(&first_session, SessionLifecyclePhase::Bound);
+    tracker.set_phase(&second_session, SessionLifecyclePhase::Serving);
+
+    let counts = tracker.phase_counts();
+    assert_eq!(counts.connecting, 0);
+    assert_eq!(counts.bound, 1);
+    assert_eq!(counts.serving, 1);
+    assert_eq!(counts.closing, 0);
+
+    tracker.set_phase(&first_session, SessionLifecyclePhase::Closing);
+
+    let counts = tracker.phase_counts();
+    assert_eq!(counts.connecting, 0);
+    assert_eq!(counts.bound, 0);
+    assert_eq!(counts.serving, 1);
+    assert_eq!(counts.closing, 1);
 }

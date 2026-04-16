@@ -13,6 +13,9 @@ use std::fs;
 use std::sync::Arc;
 use tempfile::TempDir;
 
+use crate::tools::workspace::indexing::route::{IndexRoute, IndexRouteRepairReason};
+use crate::tools::workspace::indexing::state::IndexingRepairReason;
+
 /// Test 1: Fresh index - no indexing needed
 /// Given: Database is up-to-date with all files
 /// When: check_if_indexing_needed() is called
@@ -140,6 +143,34 @@ async fn test_stale_index_file_modified_after_db() -> Result<()> {
     Ok(())
 }
 
+#[tokio::test]
+async fn test_primary_workspace_repair_plan_reports_stale_files_reason() -> Result<()> {
+    let temp_dir = TempDir::new()?;
+    let workspace_path = temp_dir.path();
+
+    let test_file = workspace_path.join("test.rs");
+    fs::write(&test_file, "fn hello() {}")?;
+
+    let handler = create_test_handler(workspace_path).await?;
+    index_workspace(&handler, workspace_path).await?;
+
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    fs::write(&test_file, "fn hello() { println!(\"world\"); }")?;
+
+    let repair_plan = crate::startup::plan_primary_workspace_repair(&handler)
+        .await?
+        .expect("stale workspace should produce a repair plan");
+
+    assert!(
+        repair_plan
+            .reasons
+            .contains(&IndexingRepairReason::StaleFiles),
+        "stale workspace should surface the stale-files repair reason"
+    );
+
+    Ok(())
+}
+
 /// Test 3: New file added that isn't in database
 /// Given: A new file exists that wasn't indexed
 /// When: check_if_indexing_needed() is called
@@ -163,6 +194,72 @@ async fn test_new_file_not_in_database() -> Result<()> {
     // Verify: Indexing IS needed (new file detected)
     let needs_indexing = crate::startup::check_if_indexing_needed(&handler).await?;
     assert!(needs_indexing, "New file should trigger re-indexing");
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_primary_workspace_repair_plan_reports_new_files_reason() -> Result<()> {
+    let temp_dir = TempDir::new()?;
+    let workspace_path = temp_dir.path();
+
+    let first_file = workspace_path.join("first.rs");
+    fs::write(&first_file, "fn first() {}")?;
+
+    let handler = create_test_handler(workspace_path).await?;
+    index_workspace(&handler, workspace_path).await?;
+
+    let new_file = workspace_path.join("second.rs");
+    fs::write(&new_file, "fn second() {}")?;
+
+    let repair_plan = crate::startup::plan_primary_workspace_repair(&handler)
+        .await?
+        .expect("new file should produce a repair plan");
+
+    assert!(
+        repair_plan
+            .reasons
+            .contains(&IndexingRepairReason::NewFiles),
+        "repair plan should report new files explicitly"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_primary_workspace_repair_plan_reports_extractor_failure_reason() -> Result<()> {
+    let temp_dir = TempDir::new()?;
+    let workspace_path = temp_dir.path();
+
+    let test_file = workspace_path.join("test.rs");
+    fs::write(&test_file, "fn hello() {}\n")?;
+
+    let handler = create_test_handler(workspace_path).await?;
+    index_workspace(&handler, workspace_path).await?;
+
+    let snapshot = handler.primary_workspace_snapshot().await?;
+    {
+        let db_lock = snapshot
+            .database
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        db_lock.conn.execute(
+            "INSERT INTO indexing_repairs (path, reason, detail, updated_at)
+             VALUES (?1, ?2, ?3, 0)",
+            rusqlite::params!["test.rs", "extractor_failure", "seeded startup repair"],
+        )?;
+    }
+
+    let repair_plan = crate::startup::plan_primary_workspace_repair(&handler)
+        .await?
+        .expect("persisted extractor repair should produce a repair plan");
+
+    assert!(
+        repair_plan
+            .reasons
+            .contains(&IndexingRepairReason::ExtractorFailure),
+        "repair plan should surface persisted extractor-failure state"
+    );
 
     Ok(())
 }
@@ -582,6 +679,109 @@ async fn test_check_if_indexing_needed_uses_rebound_current_primary_snapshot() -
     assert!(
         !needs_indexing,
         "freshness check should use the rebound current-primary snapshot, not the stale loaded workspace"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_current_primary_index_route_uses_rebound_current_primary_snapshot() -> Result<()> {
+    use crate::daemon::database::DaemonDatabase;
+    use crate::daemon::workspace_pool::WorkspacePool;
+    use crate::workspace::registry::generate_workspace_id;
+
+    let temp_dir = TempDir::new()?;
+    let indexes_dir = temp_dir.path().join("daemon-indexes");
+    fs::create_dir_all(&indexes_dir)?;
+
+    let loaded_root = temp_dir.path().join("loaded-primary");
+    let rebound_root = temp_dir.path().join("rebound-primary");
+    fs::create_dir_all(loaded_root.join("src"))?;
+    fs::create_dir_all(rebound_root.join("src"))?;
+    fs::write(
+        loaded_root.join("src").join("loaded.rs"),
+        "fn loaded() {}\n",
+    )?;
+    fs::write(
+        rebound_root.join("src").join("rebound.rs"),
+        "fn rebound() {}\n",
+    )?;
+
+    let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db"))?);
+    let pool = Arc::new(WorkspacePool::new(
+        indexes_dir.clone(),
+        Some(Arc::clone(&daemon_db)),
+        None,
+        None,
+    ));
+
+    let loaded_path = loaded_root.canonicalize()?;
+    let loaded_path_str = loaded_path.to_string_lossy().to_string();
+    let loaded_id = generate_workspace_id(&loaded_path_str)?;
+    let loaded_ws = pool.get_or_init(&loaded_id, loaded_path.clone()).await?;
+    daemon_db.upsert_workspace(&loaded_id, &loaded_path_str, "ready")?;
+
+    let handler = JulieServerHandler::new_with_shared_workspace(
+        loaded_ws,
+        loaded_path,
+        Some(Arc::clone(&daemon_db)),
+        Some(loaded_id),
+        None,
+        None,
+        None,
+        None,
+        Some(pool),
+    )
+    .await?;
+
+    let rebound_path = rebound_root.canonicalize()?;
+    let rebound_path_str = rebound_path.to_string_lossy().to_string();
+    let rebound_id = generate_workspace_id(&rebound_path_str)?;
+    let _rebound_ws = handler
+        .workspace_pool
+        .as_ref()
+        .expect("pool should be present")
+        .get_or_init(&rebound_id, rebound_path.clone())
+        .await?;
+    daemon_db.upsert_workspace(&rebound_id, &rebound_path_str, "ready")?;
+    handler.set_current_primary_binding(rebound_id.clone(), rebound_path.clone());
+
+    let route = IndexRoute::for_current_primary(&handler).await?;
+
+    assert!(route.is_primary);
+    assert_eq!(route.workspace_id, rebound_id);
+    assert_eq!(route.workspace_root, rebound_path);
+    assert_eq!(
+        route.db_path,
+        indexes_dir
+            .join(&route.workspace_id)
+            .join("db")
+            .join("symbols.db")
+    );
+    assert_eq!(
+        route.tantivy_path,
+        indexes_dir.join(&route.workspace_id).join("tantivy")
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_current_primary_index_route_reports_binding_unavailable_reason() -> Result<()> {
+    let temp_dir = TempDir::new()?;
+    let handler = JulieServerHandler::new(temp_dir.path().to_path_buf()).await?;
+
+    let err = IndexRoute::for_current_primary(&handler)
+        .await
+        .expect_err("route resolution should fail without a bound primary");
+
+    assert_eq!(
+        err.reason,
+        IndexRouteRepairReason::PrimaryBindingUnavailable
+    );
+    assert!(
+        err.to_string().contains("primary binding"),
+        "repair reason should stay visible in the route error: {err}"
     );
 
     Ok(())

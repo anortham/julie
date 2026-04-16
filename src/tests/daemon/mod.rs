@@ -14,5 +14,6 @@ pub mod session_workspace;
 #[cfg(windows)]
 pub mod shutdown_event;
 pub mod state;
+pub mod transport;
 pub mod watcher_pool;
 pub mod workspace_pool;

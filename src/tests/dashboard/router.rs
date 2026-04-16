@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::sync::RwLock;
 use std::sync::atomic::AtomicBool;
 use std::time::Instant;
 
@@ -6,6 +7,7 @@ use axum::body::Body;
 use axum::http::Request;
 use tower::ServiceExt;
 
+use crate::daemon::lifecycle::LifecyclePhase;
 use crate::daemon::session::SessionTracker;
 use crate::dashboard::state::DashboardState;
 use crate::dashboard::{DashboardConfig, create_router};
@@ -15,6 +17,7 @@ fn test_state() -> DashboardState {
         Arc::new(SessionTracker::new()),
         None,
         Arc::new(AtomicBool::new(false)),
+        Arc::new(RwLock::new(LifecyclePhase::Ready)),
         Instant::now(),
         None, // no embedding service in tests
         None,

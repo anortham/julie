@@ -27,6 +27,68 @@ def test_health_returns_ready_runtime_metadata() -> None:
     assert out["runtime"] == "fake-runtime"
     assert out["device"] == "cpu"
     assert out["dims"] == 384
+    assert out["resolved_backend"] == "sidecar"
+    assert out["accelerated"] is False
+    assert out["degraded_reason"] is None
+    assert out["capabilities"] == {
+        "cpu": {"available": True},
+        "cuda": {"available": False},
+        "directml": {"available": False},
+        "mps": {"available": False},
+    }
+    assert out["load_policy"] == {
+        "requested_device_backend": "cpu",
+        "resolved_device_backend": "cpu",
+        "accelerated": False,
+        "degraded_reason": None,
+    }
+
+
+def test_health_returns_degraded_runtime_metadata() -> None:
+    runtime = FakeRuntime(
+        runtime_name="fake-runtime",
+        device="cpu",
+        dims=384,
+        ready=False,
+        resolved_backend="sidecar",
+        accelerated=False,
+        degraded_reason="DirectML unavailable, fell back to CPU",
+        requested_device_backend="directml",
+        resolved_device_backend="cpu",
+        directml_available=True,
+    )
+    out: dict[str, Any] = handle_health(runtime)
+
+    assert out["ready"] is False
+    assert out["resolved_backend"] == "sidecar"
+    assert out["accelerated"] is False
+    assert out["degraded_reason"] == "DirectML unavailable, fell back to CPU"
+    assert out["load_policy"]["requested_device_backend"] == "directml"
+    assert out["load_policy"]["resolved_device_backend"] == "cpu"
+    assert out["load_policy"]["degraded_reason"] == "DirectML unavailable, fell back to CPU"
+
+
+def test_health_rejects_inconsistent_runtime_metadata() -> None:
+    class InconsistentRuntime(FakeRuntime):
+        def metadata(self) -> dict[str, object]:
+            data = super().metadata()
+            data["load_policy"] = {
+                "requested_device_backend": "cpu",
+                "resolved_device_backend": "mps",
+                "accelerated": True,
+                "degraded_reason": None,
+            }
+            return data
+
+    runtime = InconsistentRuntime()
+
+    try:
+        handle_health(runtime)
+    except ValueError as exc:
+        assert "load_policy" in str(exc)
+        assert "accelerated" in str(exc)
+    else:
+        raise AssertionError("expected inconsistent health metadata to be rejected")
 
 
 def test_embed_batch_preserves_count_and_dims() -> None:

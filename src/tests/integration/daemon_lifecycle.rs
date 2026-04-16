@@ -14,6 +14,7 @@ mod tests {
 
     use crate::daemon::ipc::{IpcConnector, IpcListener};
     use crate::daemon::lifecycle::stop_daemon;
+    use crate::daemon::transport::TransportEndpoint;
     use crate::daemon::workspace_pool::WorkspacePool;
     use crate::handler::JulieServerHandler;
     use crate::migration::run_migration_for_workspace;
@@ -44,7 +45,8 @@ mod tests {
     ) -> anyhow::Result<()> {
         let deadline = tokio::time::Instant::now() + timeout;
         let state_path = paths.daemon_state();
-        let ipc_addr = paths.daemon_ipc_addr();
+        let transport = TransportEndpoint::new(paths.daemon_ipc_addr());
+        let ipc_addr = transport.path().to_path_buf();
 
         loop {
             if daemon_handle.is_finished() {
@@ -71,7 +73,7 @@ mod tests {
                 .map(|contents| contents.trim() == "ready")
                 .unwrap_or(false);
 
-            if ready_state || IpcConnector::connect(&ipc_addr).await.is_ok() {
+            if ready_state || transport.connect().await.is_ok() {
                 return Ok(());
             }
 

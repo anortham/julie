@@ -9,6 +9,7 @@ pub mod expansion;
 pub mod hybrid;
 pub mod index;
 pub mod language_config;
+pub mod projection;
 pub mod query;
 pub mod schema;
 pub mod scoring;
@@ -22,5 +23,6 @@ pub use index::{
     SymbolDocument, SymbolSearchResult, SymbolSearchResults,
 };
 pub use language_config::LanguageConfigs;
+pub use projection::SearchProjection;
 pub use schema::{SchemaFields, create_schema};
 pub use tokenizer::CodeTokenizer;

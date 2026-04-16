@@ -84,7 +84,12 @@ async fn test_handler_daemon_mode_wait_until_settled_publishes_ready() {
     publisher.await.expect("publisher task should not panic");
 
     match outcome {
-        EmbeddingServiceSettled::Ready(_) => {
+        EmbeddingServiceSettled::Ready { runtime_status, .. } => {
+            assert_eq!(
+                runtime_status.resolved_backend.as_str(),
+                "unresolved",
+                "ready state should preserve runtime metadata"
+            );
             // Verify the provider is now visible through handler.embedding_provider()
             let provider = handler.embedding_provider().await;
             assert!(
@@ -124,8 +129,15 @@ async fn test_handler_daemon_mode_wait_until_settled_publishes_unavailable() {
     publisher.await.expect("publisher task should not panic");
 
     match outcome {
-        EmbeddingServiceSettled::Unavailable(reason) => {
+        EmbeddingServiceSettled::Unavailable {
+            reason,
+            runtime_status,
+        } => {
             assert_eq!(reason, "test: model load failed");
+            assert!(
+                runtime_status.is_none(),
+                "unavailable state should preserve optional runtime metadata"
+            );
             // Provider remains None after Unavailable
             assert!(
                 handler.embedding_provider().await.is_none(),
@@ -136,12 +148,65 @@ async fn test_handler_daemon_mode_wait_until_settled_publishes_unavailable() {
     }
 }
 
+#[tokio::test]
+async fn test_handler_daemon_mode_wait_until_settled_preserves_unavailable_runtime_status() {
+    let mut handler = JulieServerHandler::new_for_test()
+        .await
+        .expect("new_for_test should succeed");
+
+    let service = Arc::new(EmbeddingService::initializing());
+    handler.embedding_service = Some(Arc::clone(&service));
+
+    let publisher_service = Arc::clone(&service);
+    let publisher = tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        publisher_service.publish_unavailable(
+            "test: strict acceleration disabled CPU runtime".to_string(),
+            Some(crate::embeddings::EmbeddingRuntimeStatus {
+                requested_backend: crate::embeddings::EmbeddingBackend::Auto,
+                resolved_backend: crate::embeddings::EmbeddingBackend::Sidecar,
+                accelerated: false,
+                degraded_reason: Some("Embedding disabled by strict acceleration mode".to_string()),
+            }),
+        );
+    });
+
+    let svc = handler
+        .embedding_service
+        .as_ref()
+        .expect("handler should have embedding_service set")
+        .clone();
+    let outcome = svc.wait_until_settled(Duration::from_secs(1)).await;
+    publisher.await.expect("publisher task should not panic");
+
+    match outcome {
+        EmbeddingServiceSettled::Unavailable {
+            reason,
+            runtime_status,
+        } => {
+            assert_eq!(reason, "test: strict acceleration disabled CPU runtime");
+            let runtime_status = runtime_status.expect("runtime status should be preserved");
+            assert_eq!(runtime_status.requested_backend.as_str(), "auto");
+            assert_eq!(runtime_status.resolved_backend.as_str(), "sidecar");
+            assert!(!runtime_status.accelerated);
+            assert!(
+                runtime_status
+                    .degraded_reason
+                    .as_deref()
+                    .is_some_and(|reason| reason.contains("strict acceleration")),
+                "unavailable state should preserve degraded reason"
+            );
+        }
+        other => panic!("expected Unavailable, got: {}", describe_settled(&other)),
+    }
+}
+
 // ---- test helpers ----
 
 fn describe_settled(s: &EmbeddingServiceSettled) -> &'static str {
     match s {
-        EmbeddingServiceSettled::Ready(_) => "Ready",
-        EmbeddingServiceSettled::Unavailable(_) => "Unavailable",
+        EmbeddingServiceSettled::Ready { .. } => "Ready",
+        EmbeddingServiceSettled::Unavailable { .. } => "Unavailable",
         EmbeddingServiceSettled::Timeout => "Timeout",
     }
 }

@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 use std::path::PathBuf;
 
+use crate::daemon::session::SessionLifecyclePhase;
 use crate::handler::session_workspace::SessionWorkspaceState;
 use crate::workspace::startup_hint::{WorkspaceStartupHint, WorkspaceStartupSource};
 
@@ -147,4 +148,34 @@ fn test_session_workspace_state_apply_root_snapshot_replaces_secondary_workspace
     assert!(state.has_secondary_workspace("secondary_c"));
     assert!(!state.has_secondary_workspace("secondary_a"));
     assert!(!state.has_secondary_workspace("secondary_b"));
+}
+
+#[test]
+fn test_session_workspace_state_tracks_lifecycle_phase_across_binding_and_swap() {
+    let startup_hint = WorkspaceStartupHint {
+        path: PathBuf::from("/tmp/startup-root"),
+        source: Some(WorkspaceStartupSource::Cli),
+    };
+
+    let mut state = SessionWorkspaceState::new(startup_hint);
+    assert_eq!(state.lifecycle_phase(), SessionLifecyclePhase::Connecting);
+
+    state.bind_primary("primary_ws", PathBuf::from("/tmp/primary-root"));
+    assert_eq!(state.lifecycle_phase(), SessionLifecyclePhase::Bound);
+
+    state.mark_serving();
+    assert_eq!(state.lifecycle_phase(), SessionLifecyclePhase::Serving);
+
+    state.begin_primary_swap();
+    assert_eq!(state.lifecycle_phase(), SessionLifecyclePhase::Connecting);
+
+    state.bind_primary("replacement_ws", PathBuf::from("/tmp/replacement-root"));
+    state.complete_primary_swap();
+    assert_eq!(state.lifecycle_phase(), SessionLifecyclePhase::Serving);
+
+    state.clear_primary_binding();
+    assert_eq!(state.lifecycle_phase(), SessionLifecyclePhase::Connecting);
+
+    state.mark_closing();
+    assert_eq!(state.lifecycle_phase(), SessionLifecyclePhase::Closing);
 }

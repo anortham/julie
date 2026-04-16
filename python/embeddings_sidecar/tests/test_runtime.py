@@ -276,6 +276,65 @@ def test_directml_patch_is_active_when_model_factory_runs() -> None:
     assert hasattr(_torch, "_original_inference_mode")
 
 
+def test_build_runtime_surfaces_fallback_in_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _FallbackModel:
+        def __init__(self, *, device: str) -> None:
+            self.device = device
+            self.calls = 0
+
+        def get_sentence_embedding_dimension(self) -> int:
+            return 384
+
+        def encode(self, texts, **_kwargs):
+            self.calls += 1
+            if self.device != "cpu":
+                raise RuntimeError("DirectML probe failed")
+            return [[0.01] * 384 for _ in texts]
+
+    created_devices: list[str] = []
+
+    class _SentenceTransformersModule:
+        def SentenceTransformer(
+            self, model_id, *, device, trust_remote_code, model_kwargs=None
+        ):
+            created_devices.append(device)
+            return _FallbackModel(device=device)
+
+    from sidecar import runtime as runtime_module
+
+    monkeypatch.setattr(
+        runtime_module,
+        "_import_module",
+        lambda name: _SentenceTransformersModule()
+        if name == "sentence_transformers"
+        else (_ for _ in ()).throw(AssertionError(f"unexpected import: {name}")),
+    )
+
+    rt = build_runtime(
+        torch_module=_torch_stub(cuda=False, mps=False),
+        dml_module=_dml_stub(available=True),
+    )
+
+    metadata = rt.metadata()
+
+    assert created_devices == ["privateuseone:0", "cpu"]
+    assert metadata["capabilities"] == {
+        "cpu": {"available": True},
+        "cuda": {"available": False},
+        "directml": {"available": True},
+        "mps": {"available": False},
+    }
+    assert metadata["load_policy"] == {
+        "requested_device_backend": "directml:0",
+        "resolved_device_backend": "cpu",
+        "accelerated": False,
+        "degraded_reason": "probe encode failed on directml:0, fell back to CPU",
+    }
+    assert metadata["resolved_backend"] == "sidecar"
+    assert metadata["accelerated"] is False
+    assert metadata["degraded_reason"] == "probe encode failed on directml:0, fell back to CPU"
+
+
 # =========================================================================
 # Text sanitization — defensive coding for 30+ language inputs
 # =========================================================================

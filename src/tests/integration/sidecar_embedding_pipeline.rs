@@ -9,9 +9,12 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use crate::database::SymbolDatabase;
+    use crate::embeddings::EmbeddingProvider;
     use crate::embeddings::pipeline::run_embedding_pipeline;
     use crate::extractors::SymbolKind;
-    use crate::tests::integration::sidecar_test_helpers::create_test_sidecar_provider;
+    use crate::tests::integration::sidecar_test_helpers::{
+        create_test_sidecar_provider, create_test_sidecar_provider_with_health_result,
+    };
 
     /// Helper: create a test database with symbols.
     fn setup_db_with_symbols(symbols: &[(&str, &str, SymbolKind)]) -> Arc<Mutex<SymbolDatabase>> {
@@ -177,5 +180,68 @@ mod tests {
         let (model, dims, _fmt_ver) = db_guard.get_embedding_config().unwrap();
         assert_eq!(dims, 384);
         assert_ne!(model, "fake-old-model/v1", "Model name should be updated");
+    }
+
+    #[test]
+    fn test_sidecar_provider_health_probe_accepts_structured_capability_payload() {
+        let provider = create_test_sidecar_provider_with_health_result(
+            r#"{
+                "ready": true,
+                "runtime": "fake-sidecar",
+                "device": "cpu",
+                "dims": 384,
+                "resolved_backend": "sidecar",
+                "accelerated": false,
+                "degraded_reason": null,
+                "capabilities": {
+                    "cpu": {"available": true},
+                    "cuda": {"available": false},
+                    "directml": {"available": true},
+                    "mps": {"available": false}
+                },
+                "load_policy": {
+                    "requested_device_backend": "cpu",
+                    "resolved_device_backend": "cpu"
+                }
+            }"#,
+        );
+
+        assert_eq!(provider.dimensions(), 384);
+        assert_eq!(provider.device_info().device, "cpu");
+        assert_eq!(provider.accelerated(), Some(false));
+    }
+
+    #[test]
+    fn test_sidecar_provider_health_probe_preserves_degraded_runtime_reason() {
+        let provider = create_test_sidecar_provider_with_health_result(
+            r#"{
+                "ready": true,
+                "runtime": "fake-sidecar",
+                "device": "cpu",
+                "dims": 384,
+                "resolved_backend": "sidecar",
+                "accelerated": false,
+                "degraded_reason": "probe encode failed on directml, fell back to CPU",
+                "capabilities": {
+                    "cpu": {"available": true},
+                    "cuda": {"available": false},
+                    "directml": {"available": true},
+                    "mps": {"available": false}
+                },
+                "load_policy": {
+                    "requested_device_backend": "directml",
+                    "resolved_device_backend": "cpu"
+                }
+            }"#,
+        );
+
+        assert_eq!(
+            provider.degraded_reason().as_deref(),
+            Some("probe encode failed on directml, fell back to CPU")
+        );
+        assert_eq!(
+            provider.device_info().runtime,
+            "python-sidecar (fake-sidecar)"
+        );
     }
 }

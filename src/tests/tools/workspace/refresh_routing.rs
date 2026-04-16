@@ -12,6 +12,7 @@ use crate::daemon::workspace_pool::WorkspacePool;
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::CallToolResult;
 use crate::tools::workspace::ManageWorkspaceTool;
+use crate::tools::workspace::indexing::route::IndexRoute;
 use crate::workspace::registry::generate_workspace_id;
 
 fn extract_text_from_result(result: &CallToolResult) -> String {
@@ -454,6 +455,98 @@ async fn test_manage_workspace_refresh_force_reference_keeps_reference_snapshot_
     assert!(
         rebound_snapshot.is_none(),
         "reference refresh should not attribute snapshot to current primary"
+    );
+}
+
+#[tokio::test]
+async fn test_workspace_index_route_for_reference_keeps_reference_storage_under_rebound_primary() {
+    let temp_dir = tempfile::TempDir::new().unwrap();
+    let indexes_dir = temp_dir.path().join("indexes");
+    fs::create_dir_all(&indexes_dir).unwrap();
+
+    let loaded_primary_root = temp_dir.path().join("loaded-primary");
+    let rebound_primary_root = temp_dir.path().join("rebound-primary");
+    let reference_root = temp_dir.path().join("reference");
+    fs::create_dir_all(&loaded_primary_root).unwrap();
+    fs::create_dir_all(&rebound_primary_root).unwrap();
+    fs::create_dir_all(&reference_root).unwrap();
+    fs::write(
+        loaded_primary_root.join("main.rs"),
+        "fn loaded_primary() {}\n",
+    )
+    .unwrap();
+    fs::write(
+        rebound_primary_root.join("lib.rs"),
+        "fn rebound_primary() {}\n",
+    )
+    .unwrap();
+    fs::write(
+        reference_root.join("ref.rs"),
+        "fn reference_workspace() {}\n",
+    )
+    .unwrap();
+
+    let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).unwrap());
+    let pool = Arc::new(WorkspacePool::new(
+        indexes_dir.clone(),
+        Some(Arc::clone(&daemon_db)),
+        None,
+        None,
+    ));
+
+    let loaded_primary_path = loaded_primary_root.canonicalize().unwrap();
+    let loaded_primary_path_str = loaded_primary_path.to_string_lossy().to_string();
+    let loaded_primary_id = generate_workspace_id(&loaded_primary_path_str).unwrap();
+    let loaded_primary_ws = pool
+        .get_or_init(&loaded_primary_id, loaded_primary_path.clone())
+        .await
+        .expect("loaded primary workspace should initialize");
+
+    let handler = JulieServerHandler::new_with_shared_workspace(
+        loaded_primary_ws,
+        loaded_primary_path,
+        Some(Arc::clone(&daemon_db)),
+        Some(loaded_primary_id.clone()),
+        None,
+        None,
+        None,
+        None,
+        Some(pool),
+    )
+    .await
+    .expect("handler should initialize");
+
+    let rebound_primary_path = rebound_primary_root.canonicalize().unwrap();
+    let rebound_primary_path_str = rebound_primary_path.to_string_lossy().to_string();
+    let rebound_primary_id = generate_workspace_id(&rebound_primary_path_str).unwrap();
+    daemon_db
+        .upsert_workspace(&loaded_primary_id, &loaded_primary_path_str, "ready")
+        .unwrap();
+    daemon_db
+        .upsert_workspace(&rebound_primary_id, &rebound_primary_path_str, "ready")
+        .unwrap();
+    handler.set_current_primary_binding(rebound_primary_id, rebound_primary_path);
+
+    let reference_path = reference_root.canonicalize().unwrap();
+    let reference_id = generate_workspace_id(&reference_path.to_string_lossy()).unwrap();
+
+    let route = IndexRoute::for_workspace_path(&handler, &reference_path)
+        .await
+        .expect("reference route should resolve");
+
+    assert!(!route.is_primary);
+    assert_eq!(route.workspace_id, reference_id);
+    assert_eq!(route.workspace_root, reference_path);
+    assert_eq!(
+        route.db_path,
+        indexes_dir
+            .join(&route.workspace_id)
+            .join("db")
+            .join("symbols.db")
+    );
+    assert_eq!(
+        route.tantivy_path,
+        indexes_dir.join(&route.workspace_id).join("tantivy")
     );
 }
 

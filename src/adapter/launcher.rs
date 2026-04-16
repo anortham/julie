@@ -2,7 +2,7 @@
 //!
 //! The launcher checks for a running daemon via PID file, acquires an advisory
 //! lock to prevent races between multiple adapters, spawns the daemon as a
-//! detached background process, and waits for the IPC socket to appear.
+//! detached background process, and waits for the IPC endpoint to become ready.
 
 use std::io;
 use std::time::{Duration, Instant};
@@ -11,6 +11,7 @@ use fs2::FileExt;
 use tracing::{debug, info};
 
 use crate::daemon::pid::PidFile;
+use crate::daemon::transport::TransportEndpoint;
 use crate::paths::DaemonPaths;
 
 /// Manages daemon lifecycle from the adapter's perspective: detect, launch, wait.
@@ -52,16 +53,14 @@ impl DaemonLauncher {
         PidFile::check_running(&self.paths.daemon_pid()).is_some()
     }
 
+    fn transport_endpoint(&self) -> TransportEndpoint {
+        TransportEndpoint::new(self.paths.daemon_ipc_addr())
+    }
+
     /// Probe the IPC endpoint to check if the daemon is accepting connections.
     /// Used as a fallback when the state file is missing (old binary, write failure).
     fn probe_ipc_endpoint(&self) -> bool {
-        let ipc_addr = self.paths.daemon_ipc_addr();
-
-        #[cfg(unix)]
-        return std::os::unix::net::UnixStream::connect(&ipc_addr).is_ok();
-
-        #[cfg(windows)]
-        return win_pipe_exists(&ipc_addr);
+        self.transport_endpoint().probe_readiness().is_ready()
     }
 
     /// Assess the daemon's lifecycle phase from PID + state file.
@@ -81,8 +80,8 @@ impl DaemonLauncher {
                     Ok(s) if s.trim() == "stopping" => DaemonReadiness::Stopping,
                     _ => {
                         // State file missing or unreadable (old binary, write failure).
-                        // Fall back to IPC probe: if the socket accepts connections,
-                        // the daemon is ready regardless of state file.
+                        // Fall back to transport probing: if the endpoint is
+                        // reachable, the daemon is ready regardless of state file.
                         if self.probe_ipc_endpoint() {
                             DaemonReadiness::Ready
                         } else {
@@ -284,82 +283,11 @@ impl DaemonLauncher {
         Ok(())
     }
 
-    /// Poll for the IPC socket file to appear, with exponential backoff.
+    /// Poll for the IPC endpoint to become reachable, with exponential backoff.
     ///
     /// Steps: 50ms, 100ms, 200ms, 400ms, 500ms (capped), 500ms, ...
-    /// Returns `Err` if the total timeout elapses before the socket appears.
+    /// Returns `Err` if the total timeout elapses before the endpoint is ready.
     pub fn wait_for_socket(&self, timeout: Duration) -> io::Result<()> {
-        let start = Instant::now();
-        let mut delay = Duration::from_millis(50);
-        let max_delay = Duration::from_millis(500);
-        let ipc_addr = self.paths.daemon_ipc_addr();
-
-        loop {
-            // Probe the IPC endpoint to check if the daemon is listening
-            #[cfg(unix)]
-            if std::os::unix::net::UnixStream::connect(&ipc_addr).is_ok() {
-                return Ok(());
-            }
-
-            // On Windows, use WaitNamedPipeW to check if the pipe exists without
-            // connecting. OpenOptions::open() actually CONNECTS to the pipe,
-            // consuming a pipe instance. If the daemon hasn't entered its accept
-            // loop yet, this probe eats the only instance and the real connection
-            // gets ERROR_PIPE_BUSY (231). WaitNamedPipeW checks existence without
-            // consuming any instance.
-            #[cfg(windows)]
-            if win_pipe_exists(&ipc_addr) {
-                return Ok(());
-            }
-
-            if start.elapsed() >= timeout {
-                return Err(io::Error::new(
-                    io::ErrorKind::TimedOut,
-                    format!(
-                        "Daemon IPC endpoint did not appear within {}ms",
-                        timeout.as_millis()
-                    ),
-                ));
-            }
-
-            std::thread::sleep(delay);
-            delay = (delay * 2).min(max_delay);
-        }
+        self.transport_endpoint().wait_for_readiness(timeout)
     }
-}
-
-/// Check if a Windows named pipe exists without connecting to it.
-///
-/// Uses `WaitNamedPipeW` with a 1ms timeout. This probes the pipe namespace
-/// without consuming a pipe instance (unlike `OpenOptions::open`, which
-/// actually connects and eats an instance).
-///
-/// Returns `true` if the pipe exists (regardless of whether instances are
-/// currently available), `false` if the pipe hasn't been created yet.
-#[cfg(windows)]
-fn win_pipe_exists(pipe_path: &std::path::Path) -> bool {
-    use std::ffi::OsStr;
-    use std::os::windows::ffi::OsStrExt;
-
-    unsafe extern "system" {
-        fn WaitNamedPipeW(lpNamedPipeName: *const u16, nTimeOut: u32) -> i32;
-    }
-
-    let wide: Vec<u16> = OsStr::new(pipe_path)
-        .encode_wide()
-        .chain(std::iter::once(0))
-        .collect();
-
-    // Timeout of 1ms: we don't want to wait, just check existence.
-    let result = unsafe { WaitNamedPipeW(wide.as_ptr(), 1) };
-    if result != 0 {
-        // Pipe exists and has an available instance.
-        return true;
-    }
-
-    // WaitNamedPipeW failed. Check why:
-    // - ERROR_FILE_NOT_FOUND (2): pipe doesn't exist yet
-    // - ERROR_SEM_TIMEOUT (121): pipe exists, all instances busy (still means daemon is up)
-    let err = io::Error::last_os_error();
-    err.raw_os_error() == Some(121)
 }

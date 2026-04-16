@@ -1,4 +1,7 @@
 use crate::tools::workspace::ManageWorkspaceTool;
+use crate::tools::workspace::indexing::state::{
+    IndexedFileDisposition, IndexingBatchState, IndexingStage,
+};
 use std::fs;
 use tempfile::TempDir;
 
@@ -11,6 +14,49 @@ fn workspace_tool() -> ManageWorkspaceTool {
         workspace_id: None,
         detailed: None,
     }
+}
+
+#[test]
+fn test_indexing_batch_state_tracks_stage_history_without_duplicates() {
+    let mut state = IndexingBatchState::new("workspace-123");
+
+    state.transition_to(IndexingStage::Grouped);
+    state.transition_to(IndexingStage::Grouped);
+    state.transition_to(IndexingStage::Extracting);
+    state.transition_to(IndexingStage::Completed);
+
+    assert_eq!(
+        state.stage_history,
+        vec![
+            IndexingStage::Queued,
+            IndexingStage::Grouped,
+            IndexingStage::Extracting,
+            IndexingStage::Completed,
+        ],
+        "duplicate stage transitions should not pollute history"
+    );
+}
+
+#[test]
+fn test_indexing_batch_state_marks_repair_needed_files() {
+    let mut state = IndexingBatchState::new("workspace-123");
+
+    state.record_file(
+        "missing.rs",
+        "rust",
+        IndexedFileDisposition::RepairNeeded,
+        Some("failed to read file".to_string()),
+    );
+
+    assert!(
+        state.repair_needed(),
+        "repair-needed files must be surfaced"
+    );
+    assert_eq!(
+        state.repair_file_count(),
+        1,
+        "repair-needed files should be counted explicitly"
+    );
 }
 
 #[tokio::test]

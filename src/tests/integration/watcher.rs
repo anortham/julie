@@ -133,6 +133,7 @@ async fn test_real_time_file_watcher_indexing() {
         extractor_manager.clone(),
         None,
         shared_provider, // No embedding provider in test
+        crate::tools::workspace::indexing::state::IndexingRuntimeState::shared(),
     )
     .unwrap();
 
@@ -190,6 +191,150 @@ async fn test_real_time_file_watcher_indexing() {
     // CLEANUP: Atomic cleanup AFTER test
     atomic_cleanup_julie_dir(&workspace_root).ok(); // Ignore errors if already removed
     fs::remove_dir_all(&workspace_root).ok(); // Clean up parent directory too
+}
+
+#[tokio::test]
+async fn test_process_pending_changes_runs_rescan_repair_for_stale_and_new_files() {
+    use crate::database::SymbolDatabase;
+    use crate::extractors::ExtractorManager;
+    use crate::watcher::handlers::handle_file_created_or_modified_static;
+    use std::sync::{Arc, Mutex, atomic::Ordering};
+
+    let temp_dir = crate::tests::helpers::unique_temp_dir("watcher_rescan_repair");
+    let workspace_root = temp_dir.path().canonicalize().unwrap();
+
+    let tracked_file = workspace_root.join("tracked.rs");
+    fs::write(&tracked_file, "fn before_rescan() {}\n").unwrap();
+
+    let db_path = workspace_root.join("test.db");
+    let db = Arc::new(Mutex::new(SymbolDatabase::new(&db_path).unwrap()));
+    let extractor_manager = Arc::new(ExtractorManager::new());
+    let shared_provider = Arc::new(std::sync::RwLock::new(None));
+
+    let indexer = IncrementalIndexer::new(
+        workspace_root.clone(),
+        db.clone(),
+        extractor_manager.clone(),
+        None,
+        shared_provider,
+        crate::tools::workspace::indexing::state::IndexingRuntimeState::shared(),
+    )
+    .unwrap();
+
+    handle_file_created_or_modified_static(
+        tracked_file.canonicalize().unwrap(),
+        &db,
+        &extractor_manager,
+        &workspace_root,
+        None,
+    )
+    .await
+    .expect("initial indexing should succeed");
+
+    fs::write(&tracked_file, "fn after_rescan() {}\n").unwrap();
+    let new_file = workspace_root.join("fresh.rs");
+    fs::write(&new_file, "fn discovered_during_rescan() {}\n").unwrap();
+
+    indexer.needs_rescan.store(true, Ordering::Release);
+
+    indexer
+        .process_pending_changes()
+        .await
+        .expect("manual queue drain should run repair rescan too");
+
+    assert!(
+        !indexer.needs_rescan.load(Ordering::Acquire),
+        "repair rescan should clear the overflow flag once it completes"
+    );
+
+    let db_lock = db.lock().unwrap();
+
+    let tracked_symbols = db_lock.get_symbols_for_file("tracked.rs").unwrap();
+    assert!(
+        tracked_symbols
+            .iter()
+            .any(|symbol| symbol.name == "after_rescan"),
+        "stale tracked file should be re-indexed during repair rescan"
+    );
+    assert!(
+        tracked_symbols
+            .iter()
+            .all(|symbol| symbol.name != "before_rescan"),
+        "repair rescan should replace stale tracked-file symbols"
+    );
+
+    let fresh_symbols = db_lock.get_symbols_for_file("fresh.rs").unwrap();
+    assert!(
+        fresh_symbols
+            .iter()
+            .any(|symbol| symbol.name == "discovered_during_rescan"),
+        "repair rescan should discover files created while the watcher was behind"
+    );
+}
+
+#[tokio::test]
+async fn test_process_pending_changes_retries_persisted_extractor_failure() {
+    use crate::database::SymbolDatabase;
+    use crate::extractors::ExtractorManager;
+    use std::sync::{Arc, Mutex};
+
+    let temp_dir = crate::tests::helpers::unique_temp_dir("watcher_retry_persisted_repair");
+    let workspace_root = temp_dir.path().canonicalize().unwrap();
+
+    let retry_file = workspace_root.join("retry.rs");
+    fs::write(&retry_file, "fn retried_symbol() {}\n").unwrap();
+
+    let db_path = workspace_root.join("test.db");
+    let db = Arc::new(Mutex::new(SymbolDatabase::new(&db_path).unwrap()));
+    let extractor_manager = Arc::new(ExtractorManager::new());
+    let shared_provider = Arc::new(std::sync::RwLock::new(None));
+
+    {
+        let db_lock = db.lock().unwrap();
+        db_lock
+            .conn
+            .execute(
+                "INSERT INTO indexing_repairs (path, reason, detail, updated_at)
+                 VALUES (?1, ?2, ?3, 0)",
+                rusqlite::params!["retry.rs", "extractor_failure", "seeded retry"],
+            )
+            .expect("repair row should seed successfully");
+    }
+
+    let indexer = IncrementalIndexer::new(
+        workspace_root.clone(),
+        db.clone(),
+        extractor_manager,
+        None,
+        shared_provider,
+        crate::tools::workspace::indexing::state::IndexingRuntimeState::shared(),
+    )
+    .unwrap();
+
+    indexer
+        .process_pending_changes()
+        .await
+        .expect("manual queue drain should retry persisted repairs");
+
+    let db_lock = db.lock().unwrap();
+    let symbols = db_lock.get_symbols_for_file("retry.rs").unwrap();
+    assert!(
+        symbols.iter().any(|symbol| symbol.name == "retried_symbol"),
+        "persisted extractor repair should trigger a retry index pass"
+    );
+
+    let remaining_repairs: i64 = db_lock
+        .conn
+        .query_row(
+            "SELECT COUNT(*) FROM indexing_repairs WHERE path = ?1",
+            rusqlite::params!["retry.rs"],
+            |row| row.get(0),
+        )
+        .expect("repair count query should succeed");
+    assert_eq!(
+        remaining_repairs, 0,
+        "successful retry should clear the persisted repair entry"
+    );
 }
 
 /// Fix G: Real blake3 change detection test replacing the stub.

@@ -128,9 +128,11 @@ pub use factory::{
 pub use init::create_embedding_provider;
 #[cfg(feature = "embeddings-sidecar")]
 pub use sidecar_protocol::{
-    EmbedBatchRequest, EmbedBatchResult, EmbedQueryRequest, EmbedQueryResult, ProtocolError,
+    DeviceBackendCapabilities, DeviceBackendCapability, DeviceLoadPolicy, EmbedBatchRequest,
+    EmbedBatchResult, EmbedQueryRequest, EmbedQueryResult, HealthResult, ProtocolError,
     RequestEnvelope, ResponseEnvelope, SIDECAR_PROTOCOL_SCHEMA, SIDECAR_PROTOCOL_VERSION,
-    validate_batch_response, validate_query_response, validate_response_envelope,
+    validate_batch_response, validate_health_response, validate_query_response,
+    validate_response_envelope,
 };
 #[cfg(feature = "embeddings-sidecar")]
 pub use sidecar_provider::SidecarEmbeddingProvider;

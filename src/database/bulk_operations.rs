@@ -1,5 +1,6 @@
 // Bulk operations with index optimization
 
+use super::revisions::record_canonical_revision_tx;
 use super::*;
 use anyhow::{Result, anyhow};
 use rusqlite::params;
@@ -601,7 +602,7 @@ impl SymbolDatabase {
         new_relationships: &[Relationship],
         new_identifiers: &[crate::extractors::Identifier],
         new_types: &[crate::extractors::base::TypeInfo],
-        _workspace_id: &str,
+        workspace_id: &str,
     ) -> Result<()> {
         let start_time = std::time::Instant::now();
         info!(
@@ -629,6 +630,11 @@ impl SymbolDatabase {
             // 🔥 CRITICAL: ONE outer transaction wraps EVERYTHING
             debug!("🔐 Starting atomic transaction for incremental update");
             let outer_tx = self.conn.transaction()?;
+            let mut inserted_file_count = 0i64;
+            let mut inserted_symbol_count = 0i64;
+            let mut inserted_relationship_count = 0i64;
+            let mut inserted_identifier_count = 0i64;
+            let mut inserted_type_count = 0i64;
 
             // STEP 1: Clean up old data for modified files (WITHIN TRANSACTION)
             if !files_to_clean.is_empty() {
@@ -699,6 +705,7 @@ impl SymbolDatabase {
                         file.content.as_deref().unwrap_or(""),
                         file.line_count
                     ])?;
+                    inserted_file_count += 1;
                 }
                 drop(stmt);
             }
@@ -750,6 +757,7 @@ impl SymbolDatabase {
                         symbol.confidence,
                         symbol.content_type
                     ])?;
+                    inserted_symbol_count += 1;
                 }
                 drop(stmt);
             }
@@ -793,6 +801,7 @@ impl SymbolDatabase {
                         rel.confidence,
                         metadata_json
                     ])?;
+                    inserted_relationship_count += 1;
                 }
                 drop(symbol_exists_stmt);
                 drop(stmt);
@@ -857,6 +866,7 @@ impl SymbolDatabase {
                         identifier.confidence,
                         identifier.code_context
                     ])?;
+                    inserted_identifier_count += 1;
                 }
                 drop(symbol_exists_stmt);
                 drop(stmt);
@@ -909,9 +919,33 @@ impl SymbolDatabase {
                         metadata_json,
                         now
                     ])?;
+                    inserted_type_count += 1;
                 }
                 drop(symbol_exists_stmt);
                 drop(stmt);
+            }
+
+            let has_canonical_change = !files_to_clean.is_empty()
+                || inserted_file_count > 0
+                || inserted_symbol_count > 0
+                || inserted_relationship_count > 0
+                || inserted_identifier_count > 0
+                || inserted_type_count > 0;
+
+            if has_canonical_change {
+                record_canonical_revision_tx(
+                    &outer_tx,
+                    workspace_id,
+                    CanonicalRevisionKind::Incremental,
+                    files_to_clean.len() as i64,
+                    inserted_file_count,
+                    inserted_symbol_count,
+                    inserted_relationship_count,
+                    inserted_identifier_count,
+                    inserted_type_count,
+                )?;
+            } else {
+                debug!("Skipping canonical revision record for no-op incremental update");
             }
 
             // STEP 5: Commit ENTIRE incremental update atomically
@@ -963,7 +997,7 @@ impl SymbolDatabase {
         relationships: &[crate::extractors::Relationship],
         identifiers: &[crate::extractors::Identifier],
         types: &[crate::extractors::base::TypeInfo],
-        _workspace_id: &str,
+        workspace_id: &str,
     ) -> Result<()> {
         let start_time = std::time::Instant::now();
         info!(
@@ -995,6 +1029,11 @@ impl SymbolDatabase {
 
         let result: Result<()> = (|| -> Result<()> {
             let mut outer_tx = self.conn.transaction()?;
+            let mut inserted_file_count = 0i64;
+            let mut inserted_symbol_count = 0i64;
+            let mut inserted_relationship_count = 0i64;
+            let mut inserted_identifier_count = 0i64;
+            let mut inserted_type_count = 0i64;
 
             // Drop ALL indexes across all 5 tables (WITHIN TRANSACTION — crash-safe)
             debug!("🗑️ Dropping all table indexes for atomic fresh bulk insert");
@@ -1047,6 +1086,7 @@ impl SymbolDatabase {
                         file.content.as_deref().unwrap_or(""),
                         file.line_count
                     ])?;
+                    inserted_file_count += 1;
                 }
                 drop(stmt);
                 sp.commit()?;
@@ -1138,6 +1178,7 @@ impl SymbolDatabase {
                         symbol.confidence,
                         symbol.content_type
                     ])?;
+                    inserted_symbol_count += 1;
                 }
                 drop(stmt);
                 sp.commit()?;
@@ -1179,6 +1220,7 @@ impl SymbolDatabase {
                         rel.confidence,
                         metadata_json
                     ])?;
+                    inserted_relationship_count += 1;
                 }
                 drop(symbol_exists_stmt);
                 drop(stmt);
@@ -1243,6 +1285,7 @@ impl SymbolDatabase {
                         id.confidence,
                         id.code_context
                     ])?;
+                    inserted_identifier_count += 1;
                 }
                 drop(symbol_exists_stmt);
                 drop(stmt);
@@ -1289,6 +1332,7 @@ impl SymbolDatabase {
                         md_json,
                         now
                     ])?;
+                    inserted_type_count += 1;
                 }
                 drop(symbol_exists_stmt);
                 drop(stmt);
@@ -1319,6 +1363,28 @@ impl SymbolDatabase {
                 "CREATE INDEX IF NOT EXISTS idx_types_inferred ON types(is_inferred)",
             ] {
                 outer_tx.execute(sql, [])?;
+            }
+
+            let has_canonical_change = inserted_file_count > 0
+                || inserted_symbol_count > 0
+                || inserted_relationship_count > 0
+                || inserted_identifier_count > 0
+                || inserted_type_count > 0;
+
+            if has_canonical_change {
+                record_canonical_revision_tx(
+                    &outer_tx,
+                    workspace_id,
+                    CanonicalRevisionKind::Fresh,
+                    0,
+                    inserted_file_count,
+                    inserted_symbol_count,
+                    inserted_relationship_count,
+                    inserted_identifier_count,
+                    inserted_type_count,
+                )?;
+            } else {
+                debug!("Skipping canonical revision record for no-op fresh update");
             }
 
             debug!("💾 Committing atomic fresh bulk storage");

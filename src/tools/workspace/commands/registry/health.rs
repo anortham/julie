@@ -3,11 +3,10 @@ use crate::handler::JulieServerHandler;
 use crate::health::{HealthChecker, PrimaryWorkspaceHealth};
 use crate::mcp_compat::{CallToolResult, CallToolResultExt, Content};
 use anyhow::Result;
-use std::sync::{Arc, Mutex};
-use tracing::{info, warn};
+use tracing::info;
 
 impl ManageWorkspaceTool {
-    /// Handle health command - comprehensive system status check
+    /// Handle health command with the shared health snapshot model.
     pub(crate) async fn handle_health_command(
         &self,
         handler: &JulieServerHandler,
@@ -18,246 +17,19 @@ impl ManageWorkspaceTool {
             detailed
         );
 
-        let (database, search_index_ready) = match HealthChecker::primary_workspace_health(handler)
+        if matches!(
+            HealthChecker::primary_workspace_health(handler).await?,
+            PrimaryWorkspaceHealth::ColdStart
+        ) {
+            let message =
+                "No workspace initialized. Run manage_workspace(operation=\"index\") first.";
+            return Ok(CallToolResult::text_content(vec![Content::text(message)]));
+        }
+
+        let report = HealthChecker::system_snapshot(handler)
             .await?
-        {
-            PrimaryWorkspaceHealth::ColdStart => {
-                let message =
-                    "No workspace initialized. Run manage_workspace(operation=\"index\") first.";
-                return Ok(CallToolResult::text_content(vec![Content::text(message)]));
-            }
-            PrimaryWorkspaceHealth::Ready {
-                database,
-                search_index_ready,
-            } => (database, search_index_ready),
-        };
+            .render_report(detailed);
 
-        let mut health_report = String::from("JULIE SYSTEM HEALTH REPORT\n\n");
-
-        // PHASE 1: SQLite Database Health
-        health_report.push_str("SQLite Database (Source of Truth)\n");
-        let db_status = self.check_database_health(database.as_ref()).await?;
-        health_report.push_str(&db_status);
-        health_report.push('\n');
-
-        // PHASE 2: Search Engine Health
-        health_report.push_str("Search Engine (Tantivy)\n");
-        let search_status = self
-            .check_search_engine_health(database.is_some(), search_index_ready)
-            .await?;
-        health_report.push_str(&search_status);
-        health_report.push('\n');
-
-        // PHASE 3: Embedding Runtime Health
-        health_report.push_str("Embedding Runtime\n");
-        let embedding_status = self.check_embedding_runtime_health(handler).await?;
-        health_report.push_str(&embedding_status);
-        health_report.push('\n');
-
-        // PHASE 4: Daemon Binary Status
-        if let Some(ref restart_flag) = handler.restart_pending {
-            health_report.push_str("Daemon Binary\n");
-            if restart_flag.load(std::sync::atomic::Ordering::Relaxed) {
-                health_report.push_str(
-                    "Binary Status: STALE (rebuilt since daemon started)\n\
-                     Action: Daemon will auto-restart when all sessions disconnect\n\n",
-                );
-            } else {
-                health_report.push_str("Binary Status: CURRENT\n\n");
-            }
-        }
-
-        // PHASE 5: Overall System Assessment
-        health_report.push_str("Overall System Assessment\n");
-        let overall_status = self
-            .assess_overall_health(database.is_some(), search_index_ready)
-            .await?;
-        health_report.push_str(&overall_status);
-
-        Ok(CallToolResult::text_content(vec![Content::text(
-            health_report,
-        )]))
-    }
-
-    /// Check SQLite database health and statistics
-    async fn check_database_health(
-        &self,
-        db_arc: Option<&Arc<Mutex<crate::database::SymbolDatabase>>>,
-    ) -> Result<String> {
-        let mut status = String::new();
-
-        match db_arc {
-            Some(db_arc) => {
-                let db = match db_arc.lock() {
-                    Ok(guard) => guard,
-                    Err(poisoned) => {
-                        warn!(
-                            "Database mutex poisoned in check_database_health, recovering: {}",
-                            poisoned
-                        );
-                        poisoned.into_inner()
-                    }
-                };
-
-                // Get database statistics
-                match db.get_stats() {
-                    Ok(stats) => {
-                        let symbols_per_file = if stats.total_files > 0 {
-                            stats.total_symbols as f64 / stats.total_files as f64
-                        } else {
-                            0.0
-                        };
-
-                        status.push_str(&format!(
-                            "SQLite Status: HEALTHY\n\
-                            Data Summary:\n\
-                            • {} symbols across {} files\n\
-                            • {} relationships tracked\n\
-                            • {} languages supported: {}\n\
-                            • {:.1} symbols per file average\n\
-                            Storage: {:.2} MB on disk\n",
-                            stats.total_symbols,
-                            stats.total_files,
-                            stats.total_relationships,
-                            stats.languages.len(),
-                            stats.languages.join(", "),
-                            symbols_per_file,
-                            stats.db_size_mb
-                        ));
-
-                        if stats.embedding_count > 0 {
-                            status.push_str(&format!(
-                                "Embeddings: {} vectors\n",
-                                stats.embedding_count
-                            ));
-                        } else {
-                            status.push_str("Embeddings: None\n");
-                        }
-                    }
-                    Err(e) => {
-                        status.push_str(&format!("SQLite Status: ERROR\n{}\n", e));
-                    }
-                }
-            }
-            None => {
-                status.push_str("SQLite Status: NOT CONNECTED\nDatabase not initialized\n");
-            }
-        }
-
-        Ok(status)
-    }
-
-    /// Check Tantivy search engine health
-    async fn check_search_engine_health(
-        &self,
-        db_ready: bool,
-        search_index_ready: bool,
-    ) -> Result<String> {
-        let mut status = String::new();
-
-        if db_ready && search_index_ready {
-            status.push_str("Tantivy Status: READY\n");
-        } else if db_ready {
-            status.push_str("Tantivy Status: NOT AVAILABLE (search index not initialized)\n");
-        } else {
-            status.push_str("Tantivy Status: NOT AVAILABLE (database not initialized)\n");
-        }
-
-        Ok(status)
-    }
-
-    /// Check embedding runtime health and fallback/degradation status.
-    async fn check_embedding_runtime_health(&self, handler: &JulieServerHandler) -> Result<String> {
-        let mut status = String::new();
-
-        let runtime_status = handler.embedding_runtime_status().await;
-        let embedding_provider = handler.embedding_provider().await;
-
-        match &runtime_status {
-            Some(runtime) => match embedding_provider.as_ref() {
-                Some(provider) => {
-                    let device_info = provider.device_info();
-                    let runtime_state = if runtime.degraded_reason.is_some() {
-                        "DEGRADED"
-                    } else {
-                        "INITIALIZED"
-                    };
-
-                    status.push_str(&format!(
-                        "Embedding Status: {}\n\
-                            Runtime: {}\n\
-                            Backend: {}\n\
-                            Device: {}\n\
-                            Accelerated: {}\n\
-                            Degraded: {}\n",
-                        runtime_state,
-                        device_info.runtime,
-                        runtime.resolved_backend.as_str(),
-                        device_info.device,
-                        runtime.accelerated,
-                        runtime.degraded_reason.as_deref().unwrap_or("none")
-                    ));
-                }
-                None => {
-                    let reason = runtime
-                        .degraded_reason
-                        .as_deref()
-                        .unwrap_or("embedding runtime metadata exists but provider is missing");
-
-                    status.push_str(&format!(
-                        "Embedding Status: UNAVAILABLE\n\
-                            Runtime: unavailable\n\
-                            Backend: {}\n\
-                            Device: unavailable\n\
-                            Accelerated: {}\n\
-                            Degraded: {}\n",
-                        runtime.resolved_backend.as_str(),
-                        runtime.accelerated,
-                        reason
-                    ));
-                }
-            },
-            None => {
-                status.push_str("Embedding Status: NOT INITIALIZED\n");
-                status.push_str("Runtime: unavailable\n");
-                status.push_str("Backend: unresolved\n");
-                status.push_str("Device: unavailable\n");
-                status.push_str("Accelerated: false\n");
-                status.push_str("Degraded: none\n");
-            }
-        }
-
-        Ok(status)
-    }
-
-    /// Assess overall system health and readiness
-    async fn assess_overall_health(
-        &self,
-        db_ready: bool,
-        search_index_ready: bool,
-    ) -> Result<String> {
-        let status = if db_ready && search_index_ready {
-            "FULLY OPERATIONAL - All systems ready!"
-        } else {
-            "INITIALIZING - Please wait for indexing to complete"
-        };
-
-        let mut assessment = format!("{}\n", status);
-
-        assessment.push_str(&format!(
-            "System Readiness:\n\
-            • SQLite Database (with Tantivy search): {}\n\n",
-            if db_ready && search_index_ready {
-                "READY"
-            } else {
-                "BUILDING"
-            },
-        ));
-
-        if !db_ready || !search_index_ready {
-            assessment.push_str("Action: Run 'manage_workspace index' to initialize database\n");
-        }
-
-        Ok(assessment)
+        Ok(CallToolResult::text_content(vec![Content::text(report)]))
     }
 }

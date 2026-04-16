@@ -1,5 +1,7 @@
+use std::path::PathBuf;
 use std::sync::Arc;
 
+use crate::daemon::session::SessionLifecyclePhase;
 use crate::daemon::workspace_pool::WorkspacePool;
 use crate::handler::JulieServerHandler;
 use crate::workspace::startup_hint::{WorkspaceStartupHint, WorkspaceStartupSource};
@@ -250,6 +252,40 @@ async fn test_handler_is_indexed_when_workspace_has_symbols() {
     assert!(
         *indexed,
         "is_indexed should be true when workspace has symbols"
+    );
+}
+
+#[tokio::test]
+async fn test_handler_primary_binding_paths_update_session_lifecycle_phase() {
+    let workspace_root = temp_workspace_root();
+    let handler = JulieServerHandler::new(workspace_root.path().to_path_buf())
+        .await
+        .expect("new should succeed");
+
+    assert_eq!(
+        handler.session_lifecycle_phase_for_test(),
+        SessionLifecyclePhase::Connecting
+    );
+
+    handler.set_current_primary_binding(
+        "primary_ws",
+        PathBuf::from(workspace_root.path()).join("primary"),
+    );
+    assert_eq!(
+        handler.session_lifecycle_phase_for_test(),
+        SessionLifecyclePhase::Bound
+    );
+
+    handler.mark_session_serving_for_test();
+    assert_eq!(
+        handler.session_lifecycle_phase_for_test(),
+        SessionLifecyclePhase::Serving
+    );
+
+    handler.publish_loaded_workspace_swap_intent_for_test();
+    assert_eq!(
+        handler.session_lifecycle_phase_for_test(),
+        SessionLifecyclePhase::Connecting
     );
 }
 

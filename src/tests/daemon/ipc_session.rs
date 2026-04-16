@@ -183,6 +183,7 @@ mod tests {
                         None,
                         startup_hint,
                         None,
+                        None,
                     )
                     .await
                 }
@@ -263,6 +264,7 @@ mod tests {
                     &restart_pending,
                     None,
                     startup_hint,
+                    None,
                     None,
                 )
                 .await
@@ -382,6 +384,7 @@ mod tests {
                     &restart_pending,
                     None,
                     startup_hint,
+                    None,
                     None,
                 )
                 .await
@@ -910,32 +913,35 @@ mod tests {
     // version compatibility check must reject a mismatched adapter session when
     // there are active sessions, not just flag restart_pending and fall through.
     mod version_gate {
-        use crate::daemon::ipc_session::{VersionGateOutcome, evaluate_version_gate};
+        use crate::daemon::lifecycle::{IncomingSessionAction, RestartReason, version_gate_action};
 
         #[test]
         fn matching_versions_proceed() {
-            let outcome = evaluate_version_gate(Some("1.2.3"), "1.2.3", 0);
-            assert_eq!(outcome, VersionGateOutcome::Proceed);
+            let outcome = version_gate_action(Some("1.2.3"), "1.2.3", 0);
+            assert_eq!(outcome, IncomingSessionAction::Accept);
 
-            let outcome = evaluate_version_gate(Some("1.2.3"), "1.2.3", 5);
-            assert_eq!(outcome, VersionGateOutcome::Proceed);
+            let outcome = version_gate_action(Some("1.2.3"), "1.2.3", 5);
+            assert_eq!(outcome, IncomingSessionAction::Accept);
         }
 
         #[test]
         fn legacy_adapter_without_version_header_proceeds() {
             // Pre-v6.5.3 adapters don't send VERSION. The gate must not reject
             // them — they've been working fine and we keep backwards compat.
-            let outcome = evaluate_version_gate(None, "6.7.0", 0);
-            assert_eq!(outcome, VersionGateOutcome::Proceed);
+            let outcome = version_gate_action(None, "6.7.0", 0);
+            assert_eq!(outcome, IncomingSessionAction::Accept);
 
-            let outcome = evaluate_version_gate(None, "6.7.0", 3);
-            assert_eq!(outcome, VersionGateOutcome::Proceed);
+            let outcome = version_gate_action(None, "6.7.0", 3);
+            assert_eq!(outcome, IncomingSessionAction::Accept);
         }
 
         #[test]
         fn mismatch_with_no_active_sessions_shuts_down_immediately() {
-            let outcome = evaluate_version_gate(Some("6.8.0"), "6.7.0", 0);
-            assert_eq!(outcome, VersionGateOutcome::ShutdownImmediately);
+            let outcome = version_gate_action(Some("6.8.0"), "6.7.0", 0);
+            assert_eq!(
+                outcome,
+                IncomingSessionAction::ShutdownForRestart(RestartReason::VersionMismatch)
+            );
         }
 
         #[test]
@@ -943,22 +949,34 @@ mod tests {
             // THE BUG: before the fix, this branch set restart_pending and fell
             // through to serve the mismatched session. The fix is to reject the
             // new adapter cleanly so it retries once the old daemon drains.
-            let outcome = evaluate_version_gate(Some("6.8.0"), "6.7.0", 1);
-            assert_eq!(outcome, VersionGateOutcome::RejectAndFlagForRestart);
+            let outcome = version_gate_action(Some("6.8.0"), "6.7.0", 1);
+            assert_eq!(
+                outcome,
+                IncomingSessionAction::RejectForRestart(RestartReason::VersionMismatch)
+            );
 
-            let outcome = evaluate_version_gate(Some("6.8.0"), "6.7.0", 42);
-            assert_eq!(outcome, VersionGateOutcome::RejectAndFlagForRestart);
+            let outcome = version_gate_action(Some("6.8.0"), "6.7.0", 42);
+            assert_eq!(
+                outcome,
+                IncomingSessionAction::RejectForRestart(RestartReason::VersionMismatch)
+            );
         }
 
         #[test]
         fn older_adapter_vs_newer_daemon_is_also_a_mismatch() {
             // Both directions trigger the gate. A newer daemon still shouldn't
             // serve an older adapter because they disagree on the protocol.
-            let outcome = evaluate_version_gate(Some("6.6.0"), "6.7.0", 0);
-            assert_eq!(outcome, VersionGateOutcome::ShutdownImmediately);
+            let outcome = version_gate_action(Some("6.6.0"), "6.7.0", 0);
+            assert_eq!(
+                outcome,
+                IncomingSessionAction::ShutdownForRestart(RestartReason::VersionMismatch)
+            );
 
-            let outcome = evaluate_version_gate(Some("6.6.0"), "6.7.0", 1);
-            assert_eq!(outcome, VersionGateOutcome::RejectAndFlagForRestart);
+            let outcome = version_gate_action(Some("6.6.0"), "6.7.0", 1);
+            assert_eq!(
+                outcome,
+                IncomingSessionAction::RejectForRestart(RestartReason::VersionMismatch)
+            );
         }
     }
 }

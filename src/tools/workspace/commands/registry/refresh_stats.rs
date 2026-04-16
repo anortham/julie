@@ -100,13 +100,17 @@ impl ManageWorkspaceTool {
                             0
                         };
 
-                        let status = if result.files_processed == 0 {
+                        let mut status = if result.files_processed == 0 {
                             "Already up-to-date.".to_string()
                         } else if force {
                             format!("Full re-index: {} files processed.", result.files_processed)
                         } else {
                             format!("{} changed files re-indexed.", result.files_processed)
                         };
+                        if let Some(canonical_revision) = result.canonical_revision {
+                            status
+                                .push_str(&format!(" Canonical revision: {}.", canonical_revision));
+                        }
 
                         Ok(RefreshWorkspaceOutcome::Success(RefreshWorkspaceSuccess {
                             workspace_id: workspace_id.to_string(),

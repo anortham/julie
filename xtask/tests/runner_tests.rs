@@ -249,7 +249,9 @@ fn runner_tests_failed_bucket_writes_captured_output_between_markers() {
                 elapsed: Duration::from_millis(700),
                 exit_code: Some(1),
             },
-            captured: "test tests::tools::search::test_foo ... FAILED\nassertion failed: left == right\n".to_string(),
+            captured:
+                "test tests::tools::search::test_foo ... FAILED\nassertion failed: left == right\n"
+                    .to_string(),
         },
     )]);
     let mut output = Vec::new();
@@ -258,10 +260,18 @@ fn runner_tests_failed_bucket_writes_captured_output_between_markers() {
     let rendered = String::from_utf8(output).unwrap();
 
     let start_idx = rendered.find("START tools-search").expect("missing START");
-    let captured_idx = rendered.find("test_foo ... FAILED").expect("missing captured output");
+    let captured_idx = rendered
+        .find("test_foo ... FAILED")
+        .expect("missing captured output");
     let end_idx = rendered.find("END tools-search FAIL").expect("missing END");
-    assert!(start_idx < captured_idx, "captured output should come after START");
-    assert!(captured_idx < end_idx, "captured output should come before END");
+    assert!(
+        start_idx < captured_idx,
+        "captured output should come after START"
+    );
+    assert!(
+        captured_idx < end_idx,
+        "captured output should come before END"
+    );
     assert!(rendered.contains("assertion failed: left == right"));
 }
 

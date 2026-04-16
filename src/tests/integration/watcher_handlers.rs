@@ -5,6 +5,7 @@
 
 use crate::database::SymbolDatabase;
 use crate::extractors::ExtractorManager;
+use crate::tools::workspace::indexing::state::IndexingRepairReason;
 use crate::watcher::handlers::{
     handle_file_created_or_modified_static, handle_file_deleted_static, handle_file_renamed_static,
 };
@@ -522,6 +523,197 @@ async fn test_file_rename_absolute_paths() {
     }
 }
 
+/// Rename safety regression: if the destination re-index fails, the source
+/// path must stay indexed instead of being deleted first.
+#[tokio::test]
+async fn test_file_rename_keeps_source_indexed_when_destination_reindex_fails() {
+    let temp_dir = crate::tests::helpers::unique_temp_dir("file_rename_destination_failure");
+    let workspace_root = temp_dir.path().canonicalize().unwrap();
+
+    let old_file = workspace_root.join("old_name.rs");
+    fs::write(&old_file, "fn old_function() {}").unwrap();
+    let old_absolute = old_file.canonicalize().unwrap();
+
+    let db_path = workspace_root.join("test.db");
+    let db = Arc::new(Mutex::new(
+        SymbolDatabase::new(&db_path).expect("Failed to create test database"),
+    ));
+    let extractor_manager = Arc::new(ExtractorManager::new());
+
+    handle_file_created_or_modified_static(
+        old_absolute.clone(),
+        &db,
+        &extractor_manager,
+        &workspace_root,
+        None,
+    )
+    .await
+    .expect("Initial indexing should succeed");
+
+    let new_file = workspace_root.join("new_name.txt");
+    fs::rename(&old_file, &new_file).unwrap();
+    let new_absolute = new_file.canonicalize().unwrap();
+
+    handle_file_renamed_static(
+        old_absolute,
+        new_absolute,
+        &db,
+        &extractor_manager,
+        &workspace_root,
+        None,
+    )
+    .await
+    .expect("Rename handler should report the destination failure without panicking");
+
+    let db_lock = db.lock().unwrap();
+    let old_symbols = db_lock.get_symbols_for_file("old_name.rs").unwrap();
+    assert_eq!(
+        old_symbols.len(),
+        1,
+        "source path should remain indexed when destination reindex fails"
+    );
+    assert_eq!(old_symbols[0].name, "old_function");
+
+    let new_symbols = db_lock.get_symbols_for_file("new_name.txt").unwrap();
+    assert!(
+        new_symbols.is_empty(),
+        "failed destination should not replace the source index"
+    );
+}
+
+#[tokio::test]
+async fn test_file_rename_persists_repair_when_source_retirement_fails() {
+    let temp_dir = crate::tests::helpers::unique_temp_dir("file_rename_source_retirement_failure");
+    let workspace_root = temp_dir.path().canonicalize().unwrap();
+
+    let old_file = workspace_root.join("old_name.rs");
+    fs::write(&old_file, "fn old_function() {}\n").unwrap();
+    let old_absolute = old_file.canonicalize().unwrap();
+
+    let db_path = workspace_root.join("test.db");
+    let db = Arc::new(Mutex::new(
+        SymbolDatabase::new(&db_path).expect("Failed to create test database"),
+    ));
+    let extractor_manager = Arc::new(ExtractorManager::new());
+
+    handle_file_created_or_modified_static(
+        old_absolute.clone(),
+        &db,
+        &extractor_manager,
+        &workspace_root,
+        None,
+    )
+    .await
+    .expect("Initial indexing should succeed");
+
+    let new_file = workspace_root.join("new_name.rs");
+    fs::rename(&old_file, &new_file).unwrap();
+    let new_absolute = new_file.canonicalize().unwrap();
+
+    {
+        let db_lock = db.lock().unwrap();
+        db_lock
+            .conn
+            .execute_batch(
+                "CREATE TRIGGER fail_old_file_delete
+                 BEFORE DELETE ON files
+                 WHEN OLD.path = 'old_name.rs'
+                 BEGIN
+                   SELECT RAISE(FAIL, 'forced delete failure');
+                 END;",
+            )
+            .expect("delete failure trigger should install");
+    }
+
+    let err = handle_file_renamed_static(
+        old_absolute,
+        new_absolute,
+        &db,
+        &extractor_manager,
+        &workspace_root,
+        None,
+    )
+    .await
+    .expect_err("source retirement failure should bubble up");
+
+    assert!(
+        err.to_string().contains("forced delete failure"),
+        "rename failure should preserve the source delete error"
+    );
+
+    let db_lock = db.lock().unwrap();
+    let new_symbols = db_lock.get_symbols_for_file("new_name.rs").unwrap();
+    assert_eq!(
+        new_symbols.len(),
+        1,
+        "destination index should still exist after source retirement failure"
+    );
+
+    let persisted = db_lock
+        .conn
+        .query_row(
+            "SELECT reason FROM indexing_repairs WHERE path = ?1",
+            rusqlite::params!["old_name.rs"],
+            |row| row.get::<_, String>(0),
+        )
+        .expect("source retirement failure should persist a repair record");
+    assert_eq!(persisted, "deleted_files");
+}
+
+#[tokio::test]
+async fn test_extractor_failure_is_persisted_durably() {
+    let temp_dir = crate::tests::helpers::unique_temp_dir("watcher_extractor_failure_repair");
+    let workspace_root = temp_dir.path().canonicalize().unwrap();
+
+    let test_file = workspace_root.join("broken.txt");
+    fs::write(&test_file, "plain text without a supported extractor\n").unwrap();
+    let absolute_path = test_file.canonicalize().unwrap();
+
+    let db_path = workspace_root.join("test.db");
+    let db = Arc::new(Mutex::new(
+        SymbolDatabase::new(&db_path).expect("Failed to create test database"),
+    ));
+    let extractor_manager = Arc::new(ExtractorManager::new());
+
+    let outcome = handle_file_created_or_modified_static(
+        absolute_path,
+        &db,
+        &extractor_manager,
+        &workspace_root,
+        None,
+    )
+    .await
+    .expect("Extractor failure should surface as repair-needed, not a hard error");
+
+    assert_eq!(
+        outcome.repair_reason,
+        Some(IndexingRepairReason::ExtractorFailure),
+        "unsupported extractor path should use the extractor-failure repair reason"
+    );
+
+    drop(db);
+
+    let reopened = SymbolDatabase::new(&db_path).expect("Failed to reopen database");
+    let persisted = reopened
+        .conn
+        .query_row(
+            "SELECT reason, detail FROM indexing_repairs WHERE path = ?1",
+            rusqlite::params!["broken.txt"],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?)),
+        )
+        .expect("repair state should persist across database reopen");
+
+    assert_eq!(persisted.0, "extractor_failure");
+    assert!(
+        persisted
+            .1
+            .as_deref()
+            .unwrap_or_default()
+            .contains("Unsupported file extension"),
+        "repair detail should preserve the extractor failure context"
+    );
+}
+
 // test_transaction_leak_on_error was removed: the raw begin_transaction /
 // rollback_transaction helpers were deleted in favour of conn.transaction()
 // (RAII). Transaction leaks from that pattern are structurally impossible now.
@@ -736,4 +928,53 @@ fn render_rich_text_field() {
             "Symbol search should still find 'render_rich_text_field' after incremental update"
         );
     }
+}
+
+#[tokio::test]
+async fn test_incremental_indexing_projection_failure_reports_repair_reason() {
+    use crate::search::index::SearchIndex;
+
+    let temp_dir = crate::tests::helpers::unique_temp_dir("watcher_projection_repair");
+    let workspace_root = temp_dir.path().canonicalize().unwrap();
+
+    let test_file = workspace_root.join("projection_failure.rs");
+    fs::write(&test_file, "fn projection_failure() {}\n").unwrap();
+    let absolute_path = test_file.canonicalize().unwrap();
+
+    let db_path = workspace_root.join("test.db");
+    let db = Arc::new(Mutex::new(
+        SymbolDatabase::new(&db_path).expect("Failed to create test database"),
+    ));
+    let extractor_manager = Arc::new(ExtractorManager::new());
+
+    let tantivy_dir = workspace_root.join("tantivy");
+    fs::create_dir_all(&tantivy_dir).unwrap();
+    let search_index = Arc::new(Mutex::new(
+        SearchIndex::create(&tantivy_dir).expect("Failed to create search index"),
+    ));
+    {
+        let idx = search_index.lock().unwrap();
+        idx.shutdown()
+            .expect("search index should shut down cleanly");
+    }
+
+    let outcome = handle_file_created_or_modified_static(
+        absolute_path,
+        &db,
+        &extractor_manager,
+        &workspace_root,
+        Some(&search_index),
+    )
+    .await
+    .expect("SQLite update should still succeed when projection fails");
+
+    assert!(
+        !outcome.tantivy_ok,
+        "projection failure should surface a failed Tantivy status"
+    );
+    assert_eq!(
+        outcome.repair_reason,
+        Some(IndexingRepairReason::ProjectionFailure),
+        "projection failure should use the shared repair vocabulary"
+    );
 }

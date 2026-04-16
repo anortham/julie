@@ -8,9 +8,15 @@
   <div class="columns">
     <div class="column">
       <div class="julie-card" style="text-align: center;">
-        <p class="label-text">Status</p>
-        <p class="value-text" style="color: var(--julie-success);">
-          <span class="status-dot is-healthy"></span> Healthy
+        <p class="label-text">Overall Health</p>
+        <p class="value-text" id="stat-overall">
+          {% if health.overall == "ready" %}
+            <span class="status-dot is-healthy"></span> READY
+          {% elif health.overall == "degraded" %}
+            <span class="status-dot is-warning"></span> DEGRADED
+          {% else %}
+            <span class="status-dot is-muted"></span> UNAVAILABLE
+          {% endif %}
         </p>
       </div>
     </div>
@@ -45,25 +51,139 @@
   </div>
 
 <script>
+const statusMarkup = (level) => {
+  switch (level) {
+    case 'ready':
+      return '<span class="status-dot is-healthy"></span> READY';
+    case 'degraded':
+      return '<span class="status-dot is-warning"></span> DEGRADED';
+    default:
+      return '<span class="status-dot is-muted"></span> UNAVAILABLE';
+  }
+};
+
+const formatUpperValue = (value, fallback = 'NONE') => (
+  value ? value.replaceAll('_', ' ').toUpperCase() : fallback
+);
+
+const formatBool = (value) => (value ? 'Yes' : 'No');
+
+const formatRepairReasons = (reasons) => (
+  reasons && reasons.length > 0
+    ? reasons.map((reason) => formatUpperValue(reason)).join(', ')
+    : 'NONE'
+);
+
+const formatOptionalValue = (value, fallback = 'UNKNOWN') => (
+  value === null || value === undefined ? fallback : String(value)
+);
+
+const setPlaneStatus = (prefix, level, detail) => {
+  const levelEl = document.getElementById(`${prefix}-level`);
+  const detailEl = document.getElementById(`${prefix}-detail`);
+  if (levelEl) levelEl.innerHTML = statusMarkup(level);
+  if (detailEl) detailEl.textContent = detail;
+};
+
 setInterval(async () => {
   try {
     const resp = await fetch('/status/live');
     if (!resp.ok) return;
     const d = await resp.json();
     const el = (id) => document.getElementById(id);
+    if (el('stat-overall')) el('stat-overall').innerHTML = statusMarkup(d.health.overall);
     if (el('stat-uptime')) el('stat-uptime').textContent = d.uptime;
     if (el('stat-sessions')) el('stat-sessions').textContent = d.active_sessions;
     if (el('stat-workspaces')) el('stat-workspaces').textContent = d.workspace_count;
-    const emb = el('embedding-status');
-    if (emb) {
-      if (d.embedding_available) {
-        emb.innerHTML = '<span class="status-dot is-healthy"></span> Available';
-      } else if (d.embedding_initializing) {
-        emb.innerHTML = '<span class="status-dot is-warning"></span> <span style="color: var(--julie-warning);">Initializing</span>';
-      } else {
-        emb.innerHTML = '<span class="status-dot is-muted"></span> <span style="color: var(--julie-text-muted);">Not configured</span>';
-      }
+    setPlaneStatus('control-plane', d.health.control_plane.level, d.health.control_plane.detail);
+    setPlaneStatus('data-plane', d.health.data_plane.level, d.health.data_plane.detail);
+    setPlaneStatus('runtime-plane', d.health.runtime_plane.level, d.health.runtime_plane.detail);
+
+    if (el('control-plane-sessions')) el('control-plane-sessions').textContent = d.health.control_plane.active_sessions;
+    if (el('control-plane-phase')) {
+      el('control-plane-phase').textContent = formatUpperValue(d.health.control_plane.daemon_phase);
     }
+    if (el('control-plane-shutdown-cause')) {
+      el('control-plane-shutdown-cause').textContent = formatUpperValue(d.health.control_plane.shutdown_cause);
+    }
+    if (el('control-plane-restart')) {
+      el('control-plane-restart').textContent = formatBool(d.health.control_plane.restart_pending);
+    }
+    if (el('control-plane-connecting')) el('control-plane-connecting').textContent = d.health.control_plane.session_phases.connecting;
+    if (el('control-plane-bound')) el('control-plane-bound').textContent = d.health.control_plane.session_phases.bound;
+    if (el('control-plane-serving')) el('control-plane-serving').textContent = d.health.control_plane.session_phases.serving;
+    if (el('control-plane-closing')) el('control-plane-closing').textContent = d.health.control_plane.session_phases.closing;
+    if (el('control-plane-workspace-pool')) {
+      el('control-plane-workspace-pool').textContent = d.health.control_plane.workspace_pool_connected ? 'Attached' : 'Detached';
+    }
+
+    if (el('data-plane-workspaces')) el('data-plane-workspaces').textContent = d.health.data_plane.workspace_count;
+    if (el('data-plane-active-workspaces')) el('data-plane-active-workspaces').textContent = d.health.data_plane.active_workspace_count;
+    if (el('data-plane-sessions')) el('data-plane-sessions').textContent = d.health.data_plane.session_count;
+    if (el('data-plane-ready')) el('data-plane-ready').textContent = d.health.data_plane.ready_workspace_count;
+    if (el('data-plane-pending')) el('data-plane-pending').textContent = d.health.data_plane.pending_workspace_count;
+    if (el('data-plane-other')) el('data-plane-other').textContent = d.health.data_plane.other_workspace_count;
+    if (el('data-plane-symbols')) el('data-plane-symbols').textContent = d.health.data_plane.symbol_count;
+    if (el('data-plane-files')) el('data-plane-files').textContent = d.health.data_plane.file_count;
+    if (el('data-plane-projection-workspace')) {
+      el('data-plane-projection-workspace').textContent = d.health.data_plane.search_projection.workspace_id || 'NONE';
+    }
+    if (el('data-plane-projection-status')) {
+      el('data-plane-projection-status').textContent = formatUpperValue(d.health.data_plane.search_projection.state);
+    }
+    if (el('data-plane-projection-freshness')) {
+      el('data-plane-projection-freshness').textContent = formatUpperValue(d.health.data_plane.search_projection.freshness);
+    }
+    if (el('data-plane-projection-revisions')) {
+      el('data-plane-projection-revisions').textContent = `${formatOptionalValue(d.health.data_plane.search_projection.canonical_revision, 'NONE')} / ${formatOptionalValue(d.health.data_plane.search_projection.projected_revision)}`;
+    }
+    if (el('data-plane-projection-lag')) {
+      el('data-plane-projection-lag').textContent = formatOptionalValue(d.health.data_plane.search_projection.revision_lag);
+    }
+    if (el('data-plane-projection-repair-needed')) {
+      el('data-plane-projection-repair-needed').textContent = formatBool(d.health.data_plane.search_projection.repair_needed);
+    }
+    if (el('data-plane-projection-detail')) {
+      el('data-plane-projection-detail').textContent = d.health.data_plane.search_projection.detail;
+    }
+    if (el('data-plane-indexing-operation')) {
+      el('data-plane-indexing-operation').textContent = formatUpperValue(d.health.data_plane.indexing.active_operation);
+    }
+    if (el('data-plane-indexing-stage')) {
+      el('data-plane-indexing-stage').textContent = formatUpperValue(d.health.data_plane.indexing.stage);
+    }
+    if (el('data-plane-catchup-active')) {
+      el('data-plane-catchup-active').textContent = formatBool(d.health.data_plane.indexing.catchup_active);
+    }
+    if (el('data-plane-watcher-paused')) {
+      el('data-plane-watcher-paused').textContent = formatBool(d.health.data_plane.indexing.watcher_paused);
+    }
+    if (el('data-plane-watcher-rescan-pending')) {
+      el('data-plane-watcher-rescan-pending').textContent = formatBool(d.health.data_plane.indexing.watcher_rescan_pending);
+    }
+    if (el('data-plane-dirty-projection-count')) {
+      el('data-plane-dirty-projection-count').textContent = d.health.data_plane.indexing.dirty_projection_count;
+    }
+    if (el('data-plane-repair-needed')) {
+      el('data-plane-repair-needed').textContent = formatBool(d.health.data_plane.indexing.repair_needed);
+    }
+    if (el('data-plane-repair-issue-count')) {
+      el('data-plane-repair-issue-count').textContent = d.health.data_plane.indexing.repair_issue_count;
+    }
+    if (el('data-plane-repair-reasons')) {
+      el('data-plane-repair-reasons').textContent = formatRepairReasons(d.health.data_plane.indexing.repair_reasons);
+    }
+    if (el('runtime-configured')) el('runtime-configured').textContent = formatBool(d.health.runtime_plane.configured);
+    if (el('runtime-available')) el('runtime-available').textContent = formatBool(d.health.runtime_plane.embedding_available);
+    if (el('runtime-initializing')) el('runtime-initializing').textContent = formatBool(d.health.runtime_plane.embedding_initializing);
+    if (el('runtime-state')) el('runtime-state').textContent = formatUpper(d.health.runtime_plane.embeddings.state);
+    if (el('runtime-name')) el('runtime-name').textContent = d.health.runtime_plane.embeddings.runtime;
+    if (el('runtime-requested-backend')) el('runtime-requested-backend').textContent = d.health.runtime_plane.embeddings.requested_backend;
+    if (el('runtime-backend')) el('runtime-backend').textContent = d.health.runtime_plane.embeddings.backend;
+    if (el('runtime-device')) el('runtime-device').textContent = d.health.runtime_plane.embeddings.device;
+    if (el('runtime-accelerated')) el('runtime-accelerated').textContent = formatBool(d.health.runtime_plane.embeddings.accelerated);
+    if (el('runtime-degraded-reason')) el('runtime-degraded-reason').textContent = d.health.runtime_plane.embeddings.detail;
+    if (el('runtime-query-fallback')) el('runtime-query-fallback').textContent = d.health.runtime_plane.embeddings.query_fallback;
   } catch (_) {}
 }, 5000);
 </script>

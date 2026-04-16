@@ -1,5 +1,7 @@
 //! Tests for `workspace::JulieWorkspace` extracted from the implementation module.
 
+#[cfg(feature = "embeddings-sidecar")]
+use crate::daemon::embedding_service::EmbeddingService;
 use crate::embeddings::{DeviceInfo, EmbeddingBackend, EmbeddingProvider, EmbeddingRuntimeStatus};
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::CallToolResult;
@@ -336,6 +338,184 @@ async fn test_spawn_workspace_embedding_does_not_hold_write_lock_during_provider
     let _ = init_task.await;
 }
 
+#[cfg(feature = "embeddings-sidecar")]
+#[tokio::test]
+#[serial(embedding_env)]
+async fn test_spawn_workspace_embedding_skips_stdio_reinit_when_runtime_status_already_set() {
+    let temp_dir = TempDir::new().unwrap();
+    let marker_path = temp_dir.path().join("health.marker");
+    let sidecar_script = write_slow_health_sidecar_script(&temp_dir, &marker_path);
+
+    let mut env_guard = EnvVarGuard::new();
+    env_guard.set("JULIE_EMBEDDING_PROVIDER", "sidecar");
+    env_guard.set("JULIE_EMBEDDING_SIDECAR_PROGRAM", test_python_interpreter());
+    env_guard.set(
+        "JULIE_EMBEDDING_SIDECAR_SCRIPT",
+        sidecar_script.to_string_lossy().to_string(),
+    );
+    env_guard.set("JULIE_EMBEDDING_SIDECAR_INIT_TIMEOUT_MS", "5000");
+    env_guard.set("JULIE_SKIP_EMBEDDINGS", "1");
+    env_guard.set("JULIE_SKIP_SEARCH_INDEX", "1");
+
+    let mut workspace = JulieWorkspace::initialize(temp_dir.path().to_path_buf())
+        .await
+        .expect("workspace initialization should succeed");
+    workspace.embedding_runtime_status = Some(EmbeddingRuntimeStatus {
+        requested_backend: EmbeddingBackend::Sidecar,
+        resolved_backend: EmbeddingBackend::Sidecar,
+        accelerated: false,
+        degraded_reason: Some("prior init failed; stay in keyword-only mode".to_string()),
+    });
+
+    let handler = JulieServerHandler::new_for_test().await.unwrap();
+    {
+        let mut ws_guard = handler.workspace.write().await;
+        *ws_guard = Some(workspace);
+    }
+
+    env_guard.remove("JULIE_SKIP_EMBEDDINGS");
+    assert!(
+        !marker_path.exists(),
+        "slow sidecar marker should not exist before spawn_workspace_embedding runs"
+    );
+
+    let embedded_count =
+        spawn_workspace_embedding(&handler, "missing-workspace-id".to_string()).await;
+
+    assert_eq!(
+        embedded_count, 0,
+        "embedding should be skipped when runtime status already records an unavailable provider"
+    );
+    assert!(
+        !marker_path.exists(),
+        "spawn_workspace_embedding should not retry stdio provider init when runtime status is already set"
+    );
+
+    let ws_guard = handler.workspace.read().await;
+    let active = ws_guard
+        .as_ref()
+        .expect("active workspace should remain set");
+    assert!(
+        active.embedding_provider.is_none(),
+        "workspace should remain without a provider after the bounded degraded outcome"
+    );
+    assert!(
+        active
+            .embedding_runtime_status
+            .as_ref()
+            .and_then(|status| status.degraded_reason.as_deref())
+            .is_some_and(|reason| reason.contains("keyword-only")),
+        "runtime status should remain intact after spawn_workspace_embedding skips reinit"
+    );
+}
+
+#[cfg(feature = "embeddings-sidecar")]
+#[tokio::test]
+#[serial(embedding_env)]
+async fn test_spawn_workspace_embedding_skips_when_daemon_service_is_unavailable() {
+    let temp_dir = TempDir::new().unwrap();
+    let marker_path = temp_dir.path().join("health.marker");
+    let sidecar_script = write_slow_health_sidecar_script(&temp_dir, &marker_path);
+
+    let mut env_guard = EnvVarGuard::new();
+    env_guard.set("JULIE_EMBEDDING_PROVIDER", "sidecar");
+    env_guard.set("JULIE_EMBEDDING_SIDECAR_PROGRAM", test_python_interpreter());
+    env_guard.set(
+        "JULIE_EMBEDDING_SIDECAR_SCRIPT",
+        sidecar_script.to_string_lossy().to_string(),
+    );
+    env_guard.set("JULIE_EMBEDDING_SIDECAR_INIT_TIMEOUT_MS", "5000");
+    env_guard.set("JULIE_SKIP_EMBEDDINGS", "1");
+    env_guard.set("JULIE_SKIP_SEARCH_INDEX", "1");
+
+    let workspace = JulieWorkspace::initialize(temp_dir.path().to_path_buf())
+        .await
+        .expect("workspace initialization should succeed");
+
+    let mut handler = JulieServerHandler::new_for_test().await.unwrap();
+    handler.embedding_service = Some(Arc::new(EmbeddingService::initializing()));
+    handler
+        .embedding_service
+        .as_ref()
+        .expect("embedding service should be set")
+        .publish_unavailable(
+            "test: shared daemon embedding unavailable".to_string(),
+            Some(EmbeddingRuntimeStatus {
+                requested_backend: EmbeddingBackend::Auto,
+                resolved_backend: EmbeddingBackend::Sidecar,
+                accelerated: false,
+                degraded_reason: Some("shared daemon embedding unavailable".to_string()),
+            }),
+        );
+    {
+        let mut ws_guard = handler.workspace.write().await;
+        *ws_guard = Some(workspace);
+    }
+
+    env_guard.remove("JULIE_SKIP_EMBEDDINGS");
+    let embedded_count =
+        spawn_workspace_embedding(&handler, "missing-workspace-id".to_string()).await;
+
+    assert_eq!(
+        embedded_count, 0,
+        "embedding should be skipped when daemon service is unavailable"
+    );
+    assert!(
+        !marker_path.exists(),
+        "daemon-mode spawn_workspace_embedding should not fall through to stdio provider init after shared service failure"
+    );
+}
+
+#[cfg(feature = "embeddings-sidecar")]
+#[tokio::test(start_paused = true)]
+#[serial(embedding_env)]
+async fn test_spawn_workspace_embedding_skips_when_daemon_service_times_out() {
+    let temp_dir = TempDir::new().unwrap();
+    let marker_path = temp_dir.path().join("health.marker");
+    let sidecar_script = write_slow_health_sidecar_script(&temp_dir, &marker_path);
+
+    let mut env_guard = EnvVarGuard::new();
+    env_guard.set("JULIE_EMBEDDING_PROVIDER", "sidecar");
+    env_guard.set("JULIE_EMBEDDING_SIDECAR_PROGRAM", test_python_interpreter());
+    env_guard.set(
+        "JULIE_EMBEDDING_SIDECAR_SCRIPT",
+        sidecar_script.to_string_lossy().to_string(),
+    );
+    env_guard.set("JULIE_EMBEDDING_SIDECAR_INIT_TIMEOUT_MS", "5000");
+    env_guard.set("JULIE_SKIP_EMBEDDINGS", "1");
+    env_guard.set("JULIE_SKIP_SEARCH_INDEX", "1");
+
+    let workspace = JulieWorkspace::initialize(temp_dir.path().to_path_buf())
+        .await
+        .expect("workspace initialization should succeed");
+
+    let mut handler = JulieServerHandler::new_for_test().await.unwrap();
+    handler.embedding_service = Some(Arc::new(EmbeddingService::initializing()));
+    {
+        let mut ws_guard = handler.workspace.write().await;
+        *ws_guard = Some(workspace);
+    }
+
+    env_guard.remove("JULIE_SKIP_EMBEDDINGS");
+    let task = tokio::spawn(async move {
+        spawn_workspace_embedding(&handler, "missing-workspace-id".to_string()).await
+    });
+
+    tokio::time::advance(Duration::from_secs(121)).await;
+
+    let embedded_count = task
+        .await
+        .expect("spawn_workspace_embedding task should not panic");
+    assert_eq!(
+        embedded_count, 0,
+        "embedding should be skipped after daemon wait timeout"
+    );
+    assert!(
+        !marker_path.exists(),
+        "daemon-mode spawn_workspace_embedding should not fall through to stdio init after shared service timeout"
+    );
+}
+
 #[tokio::test]
 async fn test_workspace_initialization() {
     unsafe {
@@ -429,6 +609,236 @@ async fn test_health_check() {
 }
 
 #[tokio::test]
+async fn test_health_snapshot_classifies_plane_states_for_local_workspace() {
+    use crate::health::{
+        DaemonLifecycleState, EmbeddingState, HealthChecker, HealthLevel, ProjectionFreshness,
+        ProjectionState, WatcherState,
+    };
+    use crate::tools::workspace::indexing::state::{
+        IndexingOperation, IndexingRepairReason, IndexingStage,
+    };
+
+    unsafe {
+        std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+    }
+    unsafe {
+        std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "1");
+    }
+
+    let temp_dir = TempDir::new().unwrap();
+    let workspace_path = temp_dir.path().to_path_buf();
+    fs::create_dir_all(workspace_path.join("src")).unwrap();
+    fs::write(
+        workspace_path.join("src").join("main.rs"),
+        "fn plane_snapshot_target() {}\n",
+    )
+    .unwrap();
+
+    let handler = JulieServerHandler::new_for_test().await.unwrap();
+    handler
+        .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
+        .await
+        .unwrap();
+
+    ManageWorkspaceTool {
+        operation: "index".to_string(),
+        path: Some(workspace_path.to_string_lossy().to_string()),
+        force: Some(false),
+        name: None,
+        workspace_id: None,
+        detailed: None,
+    }
+    .call_tool(&handler)
+    .await
+    .unwrap();
+
+    let workspace_id =
+        crate::workspace::registry::generate_workspace_id(&workspace_path.to_string_lossy())
+            .unwrap();
+    let tantivy_dir = handler
+        .workspace_tantivy_dir_for(&workspace_id)
+        .await
+        .unwrap();
+    let meta_path = tantivy_dir.join("meta.json");
+    if meta_path.exists() {
+        fs::remove_file(meta_path).unwrap();
+    }
+
+    {
+        let mut ws_guard = handler.workspace.write().await;
+        let ws = ws_guard.as_mut().expect("workspace should be initialized");
+        ws.search_index = None;
+        ws.embedding_provider = None;
+        ws.embedding_runtime_status = None;
+        let mut indexing = ws.indexing_runtime.write().unwrap();
+        indexing.begin_operation(IndexingOperation::Incremental);
+        indexing.transition_stage(IndexingStage::Projecting);
+        indexing.set_catchup_active(true);
+        indexing.set_watcher_paused(true);
+        indexing.set_dirty_projection_count(2);
+        indexing.record_repair_reason(IndexingRepairReason::ProjectionFailure);
+    }
+
+    let snapshot = HealthChecker::system_snapshot(&handler).await.unwrap();
+
+    assert_eq!(snapshot.overall, HealthLevel::Degraded);
+    assert_eq!(
+        snapshot.control_plane.daemon_state,
+        DaemonLifecycleState::Direct
+    );
+    assert_eq!(snapshot.control_plane.watcher_state, WatcherState::Local);
+    assert_eq!(
+        snapshot.data_plane.canonical_store.level,
+        HealthLevel::Ready
+    );
+    assert_eq!(
+        snapshot.data_plane.search_projection.state,
+        ProjectionState::Missing
+    );
+    assert_eq!(
+        snapshot.data_plane.search_projection.freshness,
+        ProjectionFreshness::RebuildRequired
+    );
+    assert_eq!(
+        snapshot.data_plane.search_projection.level,
+        HealthLevel::Degraded
+    );
+    assert_eq!(snapshot.data_plane.indexing.level, HealthLevel::Degraded);
+    assert_eq!(
+        snapshot.data_plane.indexing.active_operation.as_deref(),
+        Some("catch_up")
+    );
+    assert_eq!(
+        snapshot.data_plane.indexing.stage.as_deref(),
+        Some("projecting")
+    );
+    assert!(snapshot.data_plane.indexing.catchup_active);
+    assert!(snapshot.data_plane.indexing.watcher_paused);
+    assert_eq!(snapshot.data_plane.indexing.dirty_projection_count, 2);
+    assert!(snapshot.data_plane.indexing.repair_needed);
+    assert!(
+        snapshot
+            .data_plane
+            .indexing
+            .repair_reasons
+            .contains(&"projection_failure".to_string())
+    );
+    assert_eq!(
+        snapshot.runtime_plane.embeddings.state,
+        EmbeddingState::NotInitialized
+    );
+}
+
+#[tokio::test]
+async fn test_manage_workspace_health_reports_control_data_and_runtime_planes() {
+    use crate::tools::workspace::indexing::state::{
+        IndexingOperation, IndexingRepairReason, IndexingStage,
+    };
+
+    unsafe {
+        std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+    }
+    unsafe {
+        std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "1");
+    }
+
+    let temp_dir = TempDir::new().unwrap();
+    let workspace_path = temp_dir.path().to_path_buf();
+    fs::create_dir_all(workspace_path.join("src")).unwrap();
+    fs::write(
+        workspace_path.join("src").join("main.rs"),
+        "fn plane_report_target() {}\n",
+    )
+    .unwrap();
+
+    let handler = JulieServerHandler::new_for_test().await.unwrap();
+    handler
+        .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
+        .await
+        .unwrap();
+
+    ManageWorkspaceTool {
+        operation: "index".to_string(),
+        path: Some(workspace_path.to_string_lossy().to_string()),
+        force: Some(false),
+        name: None,
+        workspace_id: None,
+        detailed: None,
+    }
+    .call_tool(&handler)
+    .await
+    .unwrap();
+
+    let workspace_id =
+        crate::workspace::registry::generate_workspace_id(&workspace_path.to_string_lossy())
+            .unwrap();
+    let tantivy_dir = handler
+        .workspace_tantivy_dir_for(&workspace_id)
+        .await
+        .unwrap();
+    let meta_path = tantivy_dir.join("meta.json");
+    if meta_path.exists() {
+        fs::remove_file(meta_path).unwrap();
+    }
+
+    {
+        let mut ws_guard = handler.workspace.write().await;
+        let ws = ws_guard.as_mut().expect("workspace should be initialized");
+        ws.search_index = None;
+        ws.embedding_provider = None;
+        ws.embedding_runtime_status = None;
+        let mut indexing = ws.indexing_runtime.write().unwrap();
+        indexing.begin_operation(IndexingOperation::Incremental);
+        indexing.transition_stage(IndexingStage::Projecting);
+        indexing.set_catchup_active(true);
+        indexing.set_watcher_paused(true);
+        indexing.set_dirty_projection_count(2);
+        indexing.record_repair_reason(IndexingRepairReason::ProjectionFailure);
+    }
+
+    let result = ManageWorkspaceTool {
+        operation: "health".to_string(),
+        path: None,
+        force: None,
+        name: None,
+        workspace_id: None,
+        detailed: Some(false),
+    }
+    .call_tool(&handler)
+    .await
+    .unwrap();
+    let health = extract_text_from_result(&result);
+
+    assert!(health.contains("Control Plane"), "{health}");
+    assert!(health.contains("Data Plane"), "{health}");
+    assert!(health.contains("Runtime Plane"), "{health}");
+    assert!(health.contains("Daemon Status: DIRECT"), "{health}");
+    assert!(health.contains("Watcher Status: LOCAL"), "{health}");
+    assert!(health.contains("Projection Status: MISSING"), "{health}");
+    assert!(
+        health.contains("Projection Freshness: REBUILD REQUIRED"),
+        "{health}"
+    );
+    assert!(
+        health.contains("Projection Repair Needed: true"),
+        "{health}"
+    );
+    assert!(health.contains("Indexing Operation: CATCH_UP"), "{health}");
+    assert!(health.contains("Indexing Stage: PROJECTING"), "{health}");
+    assert!(health.contains("Catch-Up Active: true"), "{health}");
+    assert!(health.contains("Watcher Paused: true"), "{health}");
+    assert!(health.contains("Dirty Projection Entries: 2"), "{health}");
+    assert!(
+        health.contains("Repair Reasons: projection_failure"),
+        "{health}"
+    );
+    assert!(
+        health.contains("Embedding Status: NOT INITIALIZED"),
+        "{health}"
+    );
+}
+
+#[tokio::test]
 async fn test_manage_workspace_health_surfaces_embedding_runtime_status() {
     unsafe {
         std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
@@ -497,6 +907,10 @@ async fn test_manage_workspace_health_surfaces_embedding_runtime_status() {
         health_lower.contains("degraded") && health.contains("CPU only"),
         "health output should include degraded reason: {health}"
     );
+    assert!(
+        health.contains("Query Fallback: semantic"),
+        "health output should describe the query fallback mode when embeddings are available: {health}"
+    );
 }
 
 #[tokio::test]
@@ -552,6 +966,10 @@ async fn test_manage_workspace_health_reports_unavailable_when_provider_missing(
         "health output should include standardized degraded field when provider is missing: {health}"
     );
     assert!(
+        health.contains("Query Fallback: keyword-only"),
+        "health output should describe keyword-only fallback when embeddings are unavailable: {health}"
+    );
+    assert!(
         health.contains("provider") || health.contains("Provider"),
         "health output should explain provider is missing: {health}"
     );
@@ -576,7 +994,7 @@ async fn test_manage_workspace_health_reports_not_initialized_when_runtime_statu
     {
         let mut ws_guard = handler.workspace.write().await;
         let ws = ws_guard.as_mut().expect("workspace should be initialized");
-        ws.embedding_provider = Some(Arc::new(NoopEmbeddingProvider));
+        ws.embedding_provider = None;
         ws.embedding_runtime_status = None;
     }
 
@@ -602,6 +1020,7 @@ async fn test_manage_workspace_health_reports_not_initialized_when_runtime_statu
     assert!(health.contains("Device: unavailable"), "{health}");
     assert!(health.contains("Accelerated: false"), "{health}");
     assert!(health.contains("Degraded: none"), "{health}");
+    assert!(health.contains("Query Fallback: keyword-only"), "{health}");
 }
 
 #[tokio::test]
@@ -651,6 +1070,7 @@ async fn test_manage_workspace_health_reports_initialized_when_not_degraded() {
     assert!(health.contains("Device: cpu"), "{health}");
     assert!(health.contains("Accelerated: false"), "{health}");
     assert!(health.contains("Degraded: none"), "{health}");
+    assert!(health.contains("Query Fallback: semantic"), "{health}");
 }
 
 #[tokio::test]
@@ -1078,8 +1498,9 @@ async fn test_manage_workspace_health_detailed_uses_rebound_session_primary() {
         "detailed health should use rebound current-primary stats, not the stale loaded workspace: {report}"
     );
     assert!(
-        report.contains("✅ Tantivy search ready"),
-        "detailed health should use rebound current-primary search readiness instead of stale loaded workspace state: {report}"
+        report.contains("Projection Workspace: rebound-primary-detailed_")
+            && report.contains("Projection Freshness: REBUILD REQUIRED"),
+        "detailed health should use rebound current-primary projection state instead of stale loaded workspace state: {report}"
     );
 }
 

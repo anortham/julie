@@ -9,13 +9,14 @@ use std::thread;
 use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow, bail};
+use serde::Serialize;
 use serde::de::DeserializeOwned;
-use serde::{Deserialize, Serialize};
 
 use super::sidecar_protocol::{
-    EmbedBatchRequest, EmbedBatchResult, EmbedQueryRequest, EmbedQueryResult, RequestEnvelope,
-    ResponseEnvelope, SIDECAR_PROTOCOL_SCHEMA, SIDECAR_PROTOCOL_VERSION, validate_batch_response,
-    validate_query_response, validate_response_envelope,
+    EmbedBatchRequest, EmbedBatchResult, EmbedQueryRequest, EmbedQueryResult, HealthResult,
+    RequestEnvelope, ResponseEnvelope, SIDECAR_PROTOCOL_SCHEMA, SIDECAR_PROTOCOL_VERSION,
+    validate_batch_response, validate_health_response, validate_query_response,
+    validate_response_envelope,
 };
 use super::sidecar_supervisor::{SidecarLaunchConfig, build_sidecar_launch_config};
 use super::{DeviceInfo, EmbeddingProvider};
@@ -28,6 +29,8 @@ pub struct SidecarEmbeddingProvider {
     sidecar_runtime: String,
     model_id: String,
     expected_dims: usize,
+    accelerated: bool,
+    degraded_reason: Option<String>,
     /// Count of consecutive fatal failures across all respawn attempts.
     /// Resets to 0 on the first successful request. Once it reaches
     /// FATAL_THRESHOLD the provider is permanently disabled and stops
@@ -56,19 +59,6 @@ struct SidecarProcess {
 const DEFAULT_SIDECAR_TIMEOUT_MS: u64 = 30_000;
 const DEFAULT_SIDECAR_INIT_TIMEOUT_MS: u64 = 120_000;
 const SHUTDOWN_TIMEOUT_MS: u64 = 500;
-
-#[derive(Debug, Deserialize)]
-struct HealthResult {
-    ready: bool,
-    #[serde(default)]
-    dims: Option<usize>,
-    #[serde(default)]
-    device: Option<String>,
-    #[serde(default)]
-    runtime: Option<String>,
-    #[serde(default)]
-    model_id: Option<String>,
-}
 
 impl SidecarEmbeddingProvider {
     pub fn try_new() -> Result<Self> {
@@ -115,6 +105,8 @@ impl SidecarEmbeddingProvider {
                 .model_id
                 .unwrap_or_else(|| "BAAI/bge-small-en-v1.5".to_string()),
             expected_dims,
+            accelerated: health.accelerated.unwrap_or(false),
+            degraded_reason: health.degraded_reason,
             consecutive_fatal_failures: AtomicU32::new(0),
         })
     }
@@ -276,6 +268,14 @@ impl EmbeddingProvider for SidecarEmbeddingProvider {
         }
     }
 
+    fn accelerated(&self) -> Option<bool> {
+        Some(self.accelerated)
+    }
+
+    fn degraded_reason(&self) -> Option<String> {
+        self.degraded_reason.clone()
+    }
+
     fn shutdown(&self) {
         match self.process.lock() {
             Ok(mut process) => process.shutdown_and_terminate(),
@@ -422,6 +422,7 @@ impl SidecarProcess {
         let init_timeout = read_init_timeout();
         let health: HealthResult =
             self.send_request_with_timeout("health", serde_json::json!({}), init_timeout)?;
+        validate_health_response(&health)?;
         if !health.ready {
             bail!("sidecar reported not ready in health probe");
         }

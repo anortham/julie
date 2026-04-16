@@ -1,41 +1,248 @@
 <div class="julie-card">
-  <p class="label-text" style="margin-bottom: 0.75rem;">Services</p>
+  <p class="label-text" style="margin-bottom: 0.75rem;">Health Planes</p>
   <table class="table is-fullwidth" style="background: transparent;">
     <thead>
       <tr>
-        <th style="background: transparent;">Service</th>
+        <th style="background: transparent;">Plane</th>
         <th style="background: transparent;">Status</th>
+        <th style="background: transparent;">Detail</th>
       </tr>
     </thead>
     <tbody>
       <tr>
-        <td>Search Engine (Tantivy)</td>
-        <td><span class="status-dot is-healthy"></span> Running</td>
-      </tr>
-      <tr>
-        <td>Embedding Service</td>
-        <td id="embedding-status">
-          {% if embedding_available %}
-            <span class="status-dot is-healthy"></span> Available
-          {% elif embedding_initializing %}
-            <span class="status-dot is-warning"></span>
-            <span style="color: var(--julie-warning);">Initializing</span>
+        <td>Control Plane</td>
+        <td id="control-plane-level">
+          {% if health.control_plane.level == "ready" %}
+            <span class="status-dot is-healthy"></span> READY
+          {% elif health.control_plane.level == "degraded" %}
+            <span class="status-dot is-warning"></span> DEGRADED
           {% else %}
-            <span class="status-dot is-muted"></span>
-            <span style="color: var(--julie-text-muted);">Not configured</span>
+            <span class="status-dot is-muted"></span> UNAVAILABLE
           {% endif %}
         </td>
+        <td id="control-plane-detail">{{ health.control_plane.detail }}</td>
       </tr>
       <tr>
-        <td>Binary Status</td>
+        <td>Data Plane</td>
+        <td id="data-plane-level">
+          {% if health.data_plane.level == "ready" %}
+            <span class="status-dot is-healthy"></span> READY
+          {% elif health.data_plane.level == "degraded" %}
+            <span class="status-dot is-warning"></span> DEGRADED
+          {% else %}
+            <span class="status-dot is-muted"></span> UNAVAILABLE
+          {% endif %}
+        </td>
+        <td id="data-plane-detail">{{ health.data_plane.detail }}</td>
+      </tr>
+      <tr>
+        <td>Runtime Plane</td>
+        <td id="runtime-plane-level">
+          {% if health.runtime_plane.level == "ready" %}
+            <span class="status-dot is-healthy"></span> READY
+          {% elif health.runtime_plane.level == "degraded" %}
+            <span class="status-dot is-warning"></span> DEGRADED
+          {% else %}
+            <span class="status-dot is-muted"></span> UNAVAILABLE
+          {% endif %}
+        </td>
+        <td id="runtime-plane-detail">{{ health.runtime_plane.detail }}</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <table class="table is-fullwidth" style="background: transparent; margin-top: 1rem;">
+    <thead>
+      <tr>
+        <th style="background: transparent;">Signal</th>
+        <th style="background: transparent;">Value</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Daemon Phase</td>
+        <td id="control-plane-phase">{{ health.control_plane.daemon_phase | upper }}</td>
+      </tr>
+      <tr>
+        <td>Shutdown Cause</td>
+        <td id="control-plane-shutdown-cause">{% if health.control_plane.shutdown_cause %}{{ health.control_plane.shutdown_cause | upper | replace(from="_", to=" ") }}{% else %}NONE{% endif %}</td>
+      </tr>
+      <tr>
+        <td>Active Sessions</td>
+        <td id="control-plane-sessions">{{ health.control_plane.active_sessions }}</td>
+      </tr>
+      <tr>
+        <td>Restart Required</td>
+        <td id="control-plane-restart">{% if health.control_plane.restart_pending %}Yes{% else %}No{% endif %}</td>
+      </tr>
+      <tr>
+        <td>Session Phases</td>
         <td>
-          {% if restart_pending %}
-            <span class="status-dot is-warning"></span>
-            <span style="color: var(--julie-warning);">Restart Pending</span>
+          <span id="control-plane-connecting">{{ health.control_plane.session_phases.connecting }}</span> /
+          <span id="control-plane-bound">{{ health.control_plane.session_phases.bound }}</span> /
+          <span id="control-plane-serving">{{ health.control_plane.session_phases.serving }}</span> /
+          <span id="control-plane-closing">{{ health.control_plane.session_phases.closing }}</span>
+        </td>
+      </tr>
+      <tr>
+        <td>Workspace Pool</td>
+        <td id="control-plane-workspace-pool">{% if health.control_plane.workspace_pool_connected %}Attached{% else %}Detached{% endif %}</td>
+      </tr>
+      <tr>
+        <td>Workspaces</td>
+        <td id="data-plane-workspaces">{{ health.data_plane.workspace_count }}</td>
+      </tr>
+      <tr>
+        <td>Active Workspaces</td>
+        <td id="data-plane-active-workspaces">{{ health.data_plane.active_workspace_count }}</td>
+      </tr>
+      <tr>
+        <td>Workspace Sessions</td>
+        <td id="data-plane-sessions">{{ health.data_plane.session_count }}</td>
+      </tr>
+      <tr>
+        <td>Ready / Pending / Other</td>
+        <td>
+          <span id="data-plane-ready">{{ health.data_plane.ready_workspace_count }}</span> /
+          <span id="data-plane-pending">{{ health.data_plane.pending_workspace_count }}</span> /
+          <span id="data-plane-other">{{ health.data_plane.other_workspace_count }}</span>
+        </td>
+      </tr>
+      <tr>
+        <td>Symbols / Files</td>
+        <td>
+          <span id="data-plane-symbols">{{ health.data_plane.symbol_count }}</span> /
+          <span id="data-plane-files">{{ health.data_plane.file_count }}</span>
+        </td>
+      </tr>
+      <tr>
+        <td>Projection Workspace</td>
+        <td id="data-plane-projection-workspace">{{ health.data_plane.search_projection.workspace_id | default(value="NONE") }}</td>
+      </tr>
+      <tr>
+        <td>Projection Status</td>
+        <td id="data-plane-projection-status">{{ health.data_plane.search_projection.state | upper }}</td>
+      </tr>
+      <tr>
+        <td>Projection Freshness</td>
+        <td id="data-plane-projection-freshness">{{ health.data_plane.search_projection.freshness | upper | replace(from="_", to=" ") }}</td>
+      </tr>
+      <tr>
+        <td>Canonical / Projected Revision</td>
+        <td id="data-plane-projection-revisions">
+          {{ health.data_plane.search_projection.canonical_revision | default(value="NONE") }} /
+          {{ health.data_plane.search_projection.projected_revision | default(value="UNKNOWN") }}
+        </td>
+      </tr>
+      <tr>
+        <td>Projection Revision Lag</td>
+        <td id="data-plane-projection-lag">{{ health.data_plane.search_projection.revision_lag | default(value="UNKNOWN") }}</td>
+      </tr>
+      <tr>
+        <td>Projection Repair Needed</td>
+        <td id="data-plane-projection-repair-needed">{% if health.data_plane.search_projection.repair_needed %}Yes{% else %}No{% endif %}</td>
+      </tr>
+      <tr>
+        <td>Projection Detail</td>
+        <td id="data-plane-projection-detail">{{ health.data_plane.search_projection.detail }}</td>
+      </tr>
+      <tr>
+        <td>Indexing Operation</td>
+        <td id="data-plane-indexing-operation">
+          {% if health.data_plane.indexing.active_operation %}
+            {{ health.data_plane.indexing.active_operation | upper | replace(from="_", to=" ") }}
           {% else %}
-            <span class="status-dot is-healthy"></span> Current
+            NONE
           {% endif %}
         </td>
+      </tr>
+      <tr>
+        <td>Indexing Stage</td>
+        <td id="data-plane-indexing-stage">
+          {% if health.data_plane.indexing.stage %}
+            {{ health.data_plane.indexing.stage | upper | replace(from="_", to=" ") }}
+          {% else %}
+            NONE
+          {% endif %}
+        </td>
+      </tr>
+      <tr>
+        <td>Catch-Up Active</td>
+        <td id="data-plane-catchup-active">{% if health.data_plane.indexing.catchup_active %}Yes{% else %}No{% endif %}</td>
+      </tr>
+      <tr>
+        <td>Watcher Paused</td>
+        <td id="data-plane-watcher-paused">{% if health.data_plane.indexing.watcher_paused %}Yes{% else %}No{% endif %}</td>
+      </tr>
+      <tr>
+        <td>Watcher Rescan Pending</td>
+        <td id="data-plane-watcher-rescan-pending">{% if health.data_plane.indexing.watcher_rescan_pending %}Yes{% else %}No{% endif %}</td>
+      </tr>
+      <tr>
+        <td>Dirty Projection Entries</td>
+        <td id="data-plane-dirty-projection-count">{{ health.data_plane.indexing.dirty_projection_count }}</td>
+      </tr>
+      <tr>
+        <td>Repair Needed</td>
+        <td id="data-plane-repair-needed">{% if health.data_plane.indexing.repair_needed %}Yes{% else %}No{% endif %}</td>
+      </tr>
+      <tr>
+        <td>Repair Issue Count</td>
+        <td id="data-plane-repair-issue-count">{{ health.data_plane.indexing.repair_issue_count }}</td>
+      </tr>
+      <tr>
+        <td>Repair Reasons</td>
+        <td id="data-plane-repair-reasons">
+          {% if health.data_plane.indexing.repair_reasons | length > 0 %}
+            {{ health.data_plane.indexing.repair_reasons | join(sep=", ") | upper | replace(from="_", to=" ") }}
+          {% else %}
+            NONE
+          {% endif %}
+        </td>
+      </tr>
+      <tr>
+        <td>Embedding Configured</td>
+        <td id="runtime-configured">{% if health.runtime_plane.configured %}Yes{% else %}No{% endif %}</td>
+      </tr>
+      <tr>
+        <td>Embedding Available</td>
+        <td id="runtime-available">{% if health.runtime_plane.embedding_available %}Yes{% else %}No{% endif %}</td>
+      </tr>
+      <tr>
+        <td>Embedding Initializing</td>
+        <td id="runtime-initializing">{% if health.runtime_plane.embedding_initializing %}Yes{% else %}No{% endif %}</td>
+      </tr>
+      <tr>
+        <td>Embedding State</td>
+        <td id="runtime-state">{{ health.runtime_plane.embeddings.state | upper | replace(from="_", to=" ") }}</td>
+      </tr>
+      <tr>
+        <td>Embedding Runtime</td>
+        <td id="runtime-name">{{ health.runtime_plane.embeddings.runtime }}</td>
+      </tr>
+      <tr>
+        <td>Requested Backend</td>
+        <td id="runtime-requested-backend">{{ health.runtime_plane.embeddings.requested_backend }}</td>
+      </tr>
+      <tr>
+        <td>Resolved Backend</td>
+        <td id="runtime-backend">{{ health.runtime_plane.embeddings.backend }}</td>
+      </tr>
+      <tr>
+        <td>Embedding Device</td>
+        <td id="runtime-device">{{ health.runtime_plane.embeddings.device }}</td>
+      </tr>
+      <tr>
+        <td>Embedding Accelerated</td>
+        <td id="runtime-accelerated">{% if health.runtime_plane.embeddings.accelerated %}Yes{% else %}No{% endif %}</td>
+      </tr>
+      <tr>
+        <td>Degraded Reason</td>
+        <td id="runtime-degraded-reason">{{ health.runtime_plane.embeddings.detail }}</td>
+      </tr>
+      <tr>
+        <td>Query Fallback</td>
+        <td id="runtime-query-fallback">{{ health.runtime_plane.embeddings.query_fallback }}</td>
       </tr>
     </tbody>
   </table>

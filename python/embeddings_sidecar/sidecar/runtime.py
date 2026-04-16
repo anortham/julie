@@ -184,6 +184,37 @@ def _detect_gpu_vram_bytes(telemetry_device: str, torch_module: Any) -> int | No
     return None
 
 
+def _probe_backend_capabilities(torch_module: Any, dml_module: Any = None) -> dict[str, object]:
+    cuda = getattr(torch_module, "cuda", None)
+    cuda_probe = getattr(cuda, "is_available", None)
+
+    mps = getattr(getattr(torch_module, "backends", None), "mps", None)
+    mps_probe = getattr(mps, "is_available", None)
+
+    dml_probe = getattr(dml_module, "is_available", None) if dml_module is not None else None
+
+    return {
+        "cpu": {"available": True},
+        "cuda": {"available": bool(callable(cuda_probe) and cuda_probe())},
+        "directml": {"available": bool(callable(dml_probe) and dml_probe())},
+        "mps": {"available": bool(callable(mps_probe) and mps_probe())},
+    }
+
+
+def _build_load_policy(
+    *,
+    requested_device_backend: str,
+    resolved_device_backend: str,
+    degraded_reason: str | None,
+) -> dict[str, object]:
+    return {
+        "requested_device_backend": requested_device_backend,
+        "resolved_device_backend": resolved_device_backend,
+        "accelerated": resolved_device_backend != "cpu",
+        "degraded_reason": degraded_reason,
+    }
+
+
 def _calculate_batch_size_from_vram(vram_bytes: int) -> int:
     """Compute GPU batch size from VRAM using Miller's DirectML-safe formula.
 
@@ -247,12 +278,36 @@ class SentenceTransformerRuntime:
         model_id: str,
         device: str,
         batch_size: int,
+        resolved_backend: str = "sidecar",
+        accelerated: bool | None = None,
+        degraded_reason: str | None = None,
+        capabilities: dict[str, object] | None = None,
+        load_policy: dict[str, object] | None = None,
         torch_module: Any = None,
     ) -> None:
         self._model = model
         self._model_id = model_id
         self.device = device
         self._batch_size = batch_size
+        self._resolved_backend = resolved_backend
+        self._accelerated = (
+            _normalize_device_telemetry(device) != "cpu"
+            if accelerated is None
+            else accelerated
+        )
+        self._degraded_reason = degraded_reason
+        self._capabilities = capabilities or {
+            "cpu": {"available": True},
+            "cuda": {"available": False},
+            "directml": {"available": False},
+            "mps": {"available": False},
+        }
+        self._load_policy = load_policy or {
+            "requested_device_backend": _normalize_device_telemetry(device),
+            "resolved_device_backend": _normalize_device_telemetry(device),
+            "accelerated": self._accelerated,
+            "degraded_reason": degraded_reason,
+        }
         self._torch = torch_module
         self.ready = True
         self.dims = self._resolve_declared_dims()
@@ -268,6 +323,11 @@ class SentenceTransformerRuntime:
             "device": self.device,
             "dims": self.dims,
             "model_id": self._model_id,
+            "resolved_backend": self._resolved_backend,
+            "accelerated": self._accelerated,
+            "degraded_reason": self._degraded_reason,
+            "capabilities": self._capabilities,
+            "load_policy": self._load_policy,
         }
 
     def _empty_device_cache(self) -> None:
@@ -390,6 +450,10 @@ def build_runtime(
 
     backend_device = _select_device(torch, dml_module)
     telemetry_device = _normalize_device_telemetry(backend_device)
+    degraded_reason: str | None = None
+    capabilities = _probe_backend_capabilities(torch, dml_module)
+    requested_device_backend = telemetry_device
+    resolved_device_backend = telemetry_device
 
     # Auto-detect GPU batch size when caller didn't specify one.
     if batch_size is None:
@@ -487,6 +551,10 @@ def build_runtime(
                     f"[sidecar] falling back to CPU for model {model_id}",
                     file=_sys.stderr,
                 )
+                degraded_reason = (
+                    f"probe encode failed on {telemetry_device}, fell back to CPU"
+                )
+                resolved_device_backend = "cpu"
                 del model
                 gc.collect()
                 # Release GPU buffers held by the caching allocator
@@ -524,5 +592,12 @@ def build_runtime(
         model_id=model_id,
         device=telemetry_device,
         batch_size=batch_size,
+        degraded_reason=degraded_reason,
+        capabilities=capabilities,
+        load_policy=_build_load_policy(
+            requested_device_backend=requested_device_backend,
+            resolved_device_backend=resolved_device_backend,
+            degraded_reason=degraded_reason,
+        ),
         torch_module=torch,
     )

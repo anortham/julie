@@ -391,6 +391,7 @@ incremental_updates = true
         embedding_runtime_status: None,
         config: crate::workspace::WorkspaceConfig::default(),
         index_root_override: None,
+        indexing_runtime: crate::tools::workspace::indexing::state::IndexingRuntimeState::shared(),
     };
 
     // Store the workspace in the handler

@@ -19,7 +19,10 @@ mod helpers;
 mod identifiers;
 mod memory_vectors;
 mod migrations;
+mod projections;
 mod relationships;
+mod repairs;
+mod revisions;
 mod schema;
 mod symbols;
 mod tool_calls;
@@ -28,6 +31,8 @@ pub mod types;
 pub mod vectors;
 mod workspace;
 pub use analytics::*;
+pub use projections::{ProjectionState, ProjectionStatus};
+pub use revisions::{CanonicalRevision, CanonicalRevisionKind};
 pub use tool_calls::{HistorySummary, ToolCallSummary};
 
 /// Register sqlite-vec extension as a global auto-extension (once per process).

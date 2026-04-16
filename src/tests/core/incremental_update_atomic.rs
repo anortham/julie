@@ -369,6 +369,12 @@ fn test_incremental_update_atomic_empty_inputs() {
 
     assert_eq!(count_rows(&db, "files"), 0);
     assert_eq!(count_rows(&db, "symbols"), 0);
+    assert_eq!(
+        db.get_latest_canonical_revision("ws_test")
+            .expect("revision lookup should succeed"),
+        None,
+        "no-op incremental writes must not advance canonical revision"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -442,6 +448,15 @@ fn test_incremental_update_atomic_skips_relationships_with_missing_symbols() {
         )
         .unwrap();
     assert_eq!(dangling_count, 0, "must not persist dangling relationship");
+
+    let revision = db
+        .get_latest_canonical_revision("ws_test")
+        .expect("revision lookup should succeed")
+        .expect("revision should be recorded for non-empty writes");
+    assert_eq!(
+        revision.relationship_count, 1,
+        "revision counts must reflect persisted relationships, not skipped ones"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -522,4 +537,141 @@ fn test_incremental_update_atomic_skips_types_with_missing_symbols() {
         )
         .unwrap();
     assert_eq!(missing_count, 0, "must not persist dangling type rows");
+
+    let revision = db
+        .get_latest_canonical_revision("ws_test")
+        .expect("revision lookup should succeed")
+        .expect("revision should be recorded for non-empty writes");
+    assert_eq!(
+        revision.type_count, 1,
+        "revision counts must reflect persisted types, not skipped ones"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Test 12: Empty fresh writes should not record a canonical revision
+// ---------------------------------------------------------------------------
+#[test]
+fn test_bulk_store_fresh_atomic_empty_inputs_do_not_record_canonical_revision() {
+    let tmp = TempDir::new().unwrap();
+    let db_path = tmp.path().join("test.db");
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
+
+    db.bulk_store_fresh_atomic(&[], &[], &[], &[], &[], "ws_test")
+        .expect("empty bulk_store_fresh_atomic should succeed");
+
+    assert_eq!(
+        db.get_latest_canonical_revision("ws_test")
+            .expect("revision lookup should succeed"),
+        None,
+        "no-op fresh writes must not advance canonical revision"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Test 9: Canonical revision should advance on incremental writes
+// ---------------------------------------------------------------------------
+#[test]
+fn test_incremental_update_atomic_records_canonical_revision() {
+    let tmp = TempDir::new().unwrap();
+    let db_path = tmp.path().join("test.db");
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
+
+    db.incremental_update_atomic(
+        &[],
+        &[make_file("src/main.rs")],
+        &[make_symbol("sym_a", "do_stuff", "src/main.rs")],
+        &[],
+        &[],
+        &[],
+        "ws_test",
+    )
+    .expect("incremental_update_atomic should succeed");
+
+    let revision = db
+        .get_latest_canonical_revision("ws_test")
+        .expect("revision lookup should succeed")
+        .expect("incremental write should record a revision");
+
+    assert_eq!(revision.workspace_id, "ws_test");
+    assert_eq!(revision.revision, 1);
+    assert_eq!(revision.kind.as_str(), "incremental");
+    assert_eq!(revision.file_count, 1);
+    assert_eq!(revision.symbol_count, 1);
+
+    let usage = db
+        .get_workspace_usage_stats("ws_test")
+        .expect("workspace usage stats should succeed");
+    assert_eq!(usage.canonical_revision, Some(1));
+}
+
+// ---------------------------------------------------------------------------
+// Test 10: Canonical revision should advance on fresh writes
+// ---------------------------------------------------------------------------
+#[test]
+fn test_bulk_store_fresh_atomic_records_canonical_revision() {
+    let tmp = TempDir::new().unwrap();
+    let db_path = tmp.path().join("test.db");
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
+
+    db.bulk_store_fresh_atomic(
+        &[make_file("src/lib.rs")],
+        &[make_symbol("sym_a", "fresh_symbol", "src/lib.rs")],
+        &[],
+        &[],
+        &[],
+        "ws_test",
+    )
+    .expect("bulk_store_fresh_atomic should succeed");
+
+    let revision = db
+        .get_latest_canonical_revision("ws_test")
+        .expect("revision lookup should succeed")
+        .expect("fresh write should record a revision");
+
+    assert_eq!(revision.revision, 1);
+    assert_eq!(revision.kind.as_str(), "fresh");
+    assert_eq!(revision.file_count, 1);
+    assert_eq!(revision.symbol_count, 1);
+}
+
+// ---------------------------------------------------------------------------
+// Test 11: Workspace cleanup should clear canonical revision metadata
+// ---------------------------------------------------------------------------
+#[test]
+fn test_delete_workspace_data_clears_canonical_revisions() {
+    let tmp = TempDir::new().unwrap();
+    let db_path = tmp.path().join("test.db");
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
+
+    db.incremental_update_atomic(
+        &[],
+        &[make_file("src/main.rs")],
+        &[make_symbol("sym_a", "do_stuff", "src/main.rs")],
+        &[],
+        &[],
+        &[],
+        "ws_test",
+    )
+    .expect("incremental_update_atomic should succeed");
+
+    let cleanup = db
+        .delete_workspace_data()
+        .expect("workspace cleanup should succeed");
+
+    assert_eq!(cleanup.files_deleted, 1);
+    assert_eq!(cleanup.symbols_deleted, 1);
+    assert_eq!(cleanup.revisions_deleted, 1);
+    assert_eq!(
+        db.get_latest_canonical_revision("ws_test")
+            .expect("revision lookup should succeed"),
+        None
+    );
+
+    let usage = db
+        .get_workspace_usage_stats("ws_test")
+        .expect("workspace usage stats should succeed");
+    assert_eq!(usage.symbol_count, 0);
+    assert_eq!(usage.file_count, 0);
+    assert_eq!(usage.canonical_revision, None);
 }

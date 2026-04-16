@@ -262,6 +262,51 @@ impl WorkspacePool {
         guard.len()
     }
 
+    pub(crate) async fn indexing_snapshots(
+        &self,
+    ) -> Vec<(
+        String,
+        crate::tools::workspace::indexing::state::IndexingRuntimeSnapshot,
+    )> {
+        let guard = self.workspaces.read().await;
+        guard
+            .iter()
+            .map(|(workspace_id, entry)| {
+                let snapshot = entry
+                    .workspace
+                    .indexing_runtime
+                    .read()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner())
+                    .snapshot();
+                (workspace_id.clone(), snapshot)
+            })
+            .collect()
+    }
+
+    pub(crate) async fn projection_inputs(
+        &self,
+    ) -> Vec<(
+        String,
+        Arc<std::sync::Mutex<crate::database::SymbolDatabase>>,
+        bool,
+    )> {
+        let guard = self.workspaces.read().await;
+        let mut inputs: Vec<_> = guard
+            .iter()
+            .filter_map(|(workspace_id, entry)| {
+                entry.workspace.db.as_ref().map(|db| {
+                    (
+                        workspace_id.clone(),
+                        Arc::clone(db),
+                        entry.workspace.search_index.is_some(),
+                    )
+                })
+            })
+            .collect();
+        inputs.sort_by(|left, right| left.0.cmp(&right.0));
+        inputs
+    }
+
     /// Extract the shared embedding provider from the service (if available).
     ///
     /// Returns `None` when no embedding service is configured or when the
@@ -299,6 +344,8 @@ impl WorkspacePool {
             embedding_runtime_status: None,
             config: Default::default(),
             index_root_override: Some(index_root),
+            indexing_runtime:
+                crate::tools::workspace::indexing::state::IndexingRuntimeState::shared(),
         };
 
         // Initialize database and search index (they use indexes_root_path(),

@@ -4,16 +4,22 @@
 //! and automatic indexing on server startup.
 
 use crate::handler::JulieServerHandler;
+use crate::tools::workspace::ManageWorkspaceTool;
+use crate::tools::workspace::indexing::state::IndexingRepairReason;
 use crate::workspace::startup_hint::WorkspaceStartupSource;
 use anyhow::{Context, Result};
 use std::collections::HashSet;
 use std::path::Path;
-use std::sync::Arc;
 use std::time::SystemTime;
 use tracing::{debug, info, warn};
 
 pub(crate) fn startup_source_prefers_request_roots(source: Option<WorkspaceStartupSource>) -> bool {
     matches!(source, Some(WorkspaceStartupSource::Cwd))
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct PrimaryWorkspaceRepairPlan {
+    pub reasons: Vec<IndexingRepairReason>,
 }
 
 /// Checkpoint the active workspace database WAL if a workspace is initialized.
@@ -53,33 +59,125 @@ pub async fn checkpoint_active_workspace_wal(
 /// 2. If files have been modified since last index (staleness)
 /// 3. If new files exist that aren't in the database
 pub async fn check_if_indexing_needed(handler: &JulieServerHandler) -> Result<bool> {
-    let primary_snapshot = match handler.primary_workspace_snapshot().await {
-        Ok(snapshot) => snapshot,
-        Err(err) => {
-            if handler.is_primary_workspace_swap_in_progress() {
-                return Err(err);
-            }
+    Ok(plan_primary_workspace_repair(handler).await?.is_some())
+}
 
-            if handler.get_workspace().await?.is_none() {
-                debug!("No workspace found - indexing needed");
-                return Ok(true);
-            }
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum PrimaryWatcherPauseTarget {
+    LocalWatcher,
+    WatcherPool(String),
+    None,
+}
 
-            return Err(err);
+pub(crate) async fn run_primary_workspace_repair(
+    handler: &JulieServerHandler,
+) -> Result<Option<PrimaryWorkspaceRepairPlan>> {
+    let pause_target = pause_primary_workspace_updates(handler).await;
+    let indexing_runtime = handler
+        .primary_workspace_snapshot()
+        .await
+        .ok()
+        .and_then(|snapshot| snapshot.indexing_runtime);
+
+    if let Some(runtime) = indexing_runtime.as_ref() {
+        let mut runtime = runtime
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        runtime.set_catchup_active(true);
+        runtime.set_watcher_paused(true);
+    }
+
+    let repair_result = async {
+        match plan_primary_workspace_repair(handler).await? {
+            Some(plan) => {
+                let reasons = plan
+                    .reasons
+                    .iter()
+                    .map(std::string::ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                info!(%reasons, "📚 Workspace needs indexing, starting repair run");
+                if let Some(runtime) = indexing_runtime.as_ref() {
+                    let mut runtime = runtime
+                        .write()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner());
+                    for reason in &plan.reasons {
+                        runtime.record_repair_reason(*reason);
+                    }
+                }
+
+                let index_tool = ManageWorkspaceTool {
+                    operation: "index".to_string(),
+                    path: None,
+                    name: None,
+                    workspace_id: None,
+                    force: Some(false),
+                    detailed: None,
+                };
+
+                index_tool.call_tool_with_options(handler, false).await?;
+                if let Some(runtime) = indexing_runtime.as_ref() {
+                    let mut runtime = runtime
+                        .write()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner());
+                    for reason in &plan.reasons {
+                        runtime.clear_repair_reason(*reason);
+                    }
+                }
+                Ok(Some(plan))
+            }
+            None => Ok(None),
         }
-    };
+    }
+    .await;
 
-    let current_primary_root = primary_snapshot.binding.workspace_root.clone();
-    let db_path = crate::handler::metrics_db_path_for_workspace(
-        primary_snapshot.index_root_override.as_deref(),
-        &current_primary_root,
-        &primary_snapshot.binding.workspace_id,
-    );
-    let db_arc = Arc::clone(&primary_snapshot.database);
+    if let Some(runtime) = indexing_runtime.as_ref() {
+        let mut runtime = runtime
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        runtime.set_catchup_active(false);
+        runtime.set_watcher_paused(false);
+    }
+    resume_primary_workspace_updates(handler, pause_target).await;
+    repair_result
+}
+
+pub(crate) async fn plan_primary_workspace_repair(
+    handler: &JulieServerHandler,
+) -> Result<Option<PrimaryWorkspaceRepairPlan>> {
+    let route =
+        match crate::tools::workspace::indexing::route::IndexRoute::for_current_primary(handler)
+            .await
+        {
+            Ok(route) => route,
+            Err(err) => {
+                if handler.is_primary_workspace_swap_in_progress() {
+                    return Err(anyhow::Error::new(err));
+                }
+
+                if handler.get_workspace().await?.is_none() {
+                    debug!("No workspace found - indexing needed");
+                    return Ok(Some(PrimaryWorkspaceRepairPlan {
+                        reasons: vec![IndexingRepairReason::EmptyDatabase],
+                    }));
+                }
+
+                return Err(anyhow::Error::new(err));
+            }
+        };
+
+    let current_primary_root = route.workspace_root.clone();
+    let db_path = route.db_path.clone();
+    let db_arc = route
+        .database_for_read(handler)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("No database connection - indexing needed"))?;
 
     if !db_path.exists() {
         debug!("No database connection - indexing needed");
-        return Ok(true);
+        return Ok(Some(PrimaryWorkspaceRepairPlan {
+            reasons: vec![IndexingRepairReason::EmptyDatabase],
+        }));
     }
 
     // Now lock database (no await while holding this lock)
@@ -98,8 +196,18 @@ pub async fn check_if_indexing_needed(handler: &JulieServerHandler) -> Result<bo
         Ok(has_symbols) => {
             if !has_symbols {
                 info!("📊 Database is empty - indexing needed");
-                return Ok(true);
+                let mut reasons = vec![IndexingRepairReason::EmptyDatabase];
+                for repair in db.list_indexing_repairs()? {
+                    if let Some(reason) = IndexingRepairReason::from_str(&repair.reason) {
+                        if !reasons.contains(&reason) {
+                            reasons.push(reason);
+                        }
+                    }
+                }
+                return Ok(Some(PrimaryWorkspaceRepairPlan { reasons }));
             }
+
+            let mut reasons = Vec::new();
 
             // ✅ NEW: Check if index is stale
             // Compare file modification times with database timestamp
@@ -115,7 +223,7 @@ pub async fn check_if_indexing_needed(handler: &JulieServerHandler) -> Result<bo
 
             if max_file_mtime > db_mtime {
                 info!("📊 Database is stale (files modified after last index) - indexing needed");
-                return Ok(true);
+                reasons.push(IndexingRepairReason::StaleFiles);
             }
 
             // ✅ NEW: Check for new files not in database
@@ -141,7 +249,7 @@ pub async fn check_if_indexing_needed(handler: &JulieServerHandler) -> Result<bo
                     new_files.len()
                 );
                 debug!("New files: {:?}", new_files);
-                return Ok(true);
+                reasons.push(IndexingRepairReason::NewFiles);
             }
 
             // Check for deleted files (indexed but no longer on disk)
@@ -153,22 +261,64 @@ pub async fn check_if_indexing_needed(handler: &JulieServerHandler) -> Result<bo
                     deleted_files.len()
                 );
                 debug!("Deleted files: {:?}", deleted_files);
-                // Note: returning true triggers index_workspace_files, which calls
-                // filter_changed_files -> clean_orphaned_files. This cleans up the
-                // deleted files' symbols and DB records.
-                return Ok(true);
+                reasons.push(IndexingRepairReason::DeletedFiles);
             }
 
-            info!("✅ Index is up-to-date - no indexing needed");
-            Ok(false)
+            for repair in db.list_indexing_repairs()? {
+                if let Some(reason) = IndexingRepairReason::from_str(&repair.reason) {
+                    if !reasons.contains(&reason) {
+                        reasons.push(reason);
+                    }
+                }
+            }
+
+            if reasons.is_empty() {
+                info!("✅ Index is up-to-date - no indexing needed");
+                Ok(None)
+            } else {
+                Ok(Some(PrimaryWorkspaceRepairPlan { reasons }))
+            }
         }
         Err(e) => {
             debug!(
                 "Error checking database symbols: {} - assuming indexing needed",
                 e
             );
-            Ok(true)
+            Ok(Some(PrimaryWorkspaceRepairPlan {
+                reasons: vec![IndexingRepairReason::EmptyDatabase],
+            }))
         }
+    }
+}
+
+async fn pause_primary_workspace_updates(
+    handler: &JulieServerHandler,
+) -> PrimaryWatcherPauseTarget {
+    if let Some(pool) = &handler.watcher_pool {
+        if let Some(workspace_id) = handler.current_workspace_id() {
+            pool.pause_workspace(&workspace_id).await;
+            return PrimaryWatcherPauseTarget::WatcherPool(workspace_id);
+        }
+
+        return PrimaryWatcherPauseTarget::None;
+    }
+
+    handler.pause_watcher().await;
+    PrimaryWatcherPauseTarget::LocalWatcher
+}
+
+async fn resume_primary_workspace_updates(
+    handler: &JulieServerHandler,
+    pause_target: PrimaryWatcherPauseTarget,
+) {
+    match pause_target {
+        PrimaryWatcherPauseTarget::LocalWatcher => handler.resume_watcher().await,
+        PrimaryWatcherPauseTarget::WatcherPool(workspace_id) => {
+            if let Some(pool) = &handler.watcher_pool {
+                pool.resume_workspace(&workspace_id).await;
+            }
+        }
+        PrimaryWatcherPauseTarget::None => {}
     }
 }
 

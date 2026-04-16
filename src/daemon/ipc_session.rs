@@ -8,6 +8,7 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, ReadBuf};
 use tokio::sync::broadcast;
 use tracing::{info, warn};
 
+use crate::daemon::session::SessionLifecycleHandle;
 use crate::dashboard::state::DashboardEvent;
 use crate::handler::JulieServerHandler;
 use crate::workspace::registry::generate_workspace_id;
@@ -18,47 +19,6 @@ use super::embedding_service::EmbeddingService;
 use super::ipc::IpcStream;
 use super::watcher_pool::WatcherPool;
 use super::workspace_pool::WorkspacePool;
-
-/// Outcome of the adapter ↔ daemon version compatibility check at session accept.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum VersionGateOutcome {
-    /// Versions match (or adapter is pre-VERSION-header). Serve normally.
-    Proceed,
-    /// Mismatch and the daemon has no active sessions. The daemon should set
-    /// `restart_pending`, notify, drop the stream, and exit. The adapter's
-    /// retry loop will respawn a fresh daemon from its own binary.
-    ShutdownImmediately,
-    /// Mismatch with active sessions. The daemon should set `restart_pending`,
-    /// log once, and **reject this new session cleanly** so the adapter retries
-    /// after existing sessions drain. Previously fell through and served the
-    /// mismatched session — see Finding #1 in ROOTS_IMPL_REVIEW_NOTES.md.
-    RejectAndFlagForRestart,
-}
-
-/// Decide what to do with an incoming adapter session based on version headers.
-///
-/// This is a pure function so it's trivially testable. The accept loop handles
-/// the side effects (setting `restart_pending`, notifying, closing the stream).
-pub fn evaluate_version_gate(
-    adapter_version: Option<&str>,
-    daemon_version: &str,
-    active_sessions: usize,
-) -> VersionGateOutcome {
-    let Some(adapter_version) = adapter_version else {
-        // Pre-v6.5.3 adapters don't send VERSION. Preserve backwards compat.
-        return VersionGateOutcome::Proceed;
-    };
-
-    if adapter_version == daemon_version {
-        return VersionGateOutcome::Proceed;
-    }
-
-    if active_sessions == 0 {
-        VersionGateOutcome::ShutdownImmediately
-    } else {
-        VersionGateOutcome::RejectAndFlagForRestart
-    }
-}
 
 pub(crate) fn workspace_ids_to_disconnect(
     startup_workspace_id: &str,
@@ -291,6 +251,7 @@ pub(crate) async fn handle_ipc_session(
     restart_pending: &Arc<AtomicBool>,
     dashboard_tx: Option<broadcast::Sender<DashboardEvent>>,
     workspace_startup_hint: WorkspaceStartupHint,
+    session_lifecycle: Option<SessionLifecycleHandle>,
     watcher_pool: Option<Arc<WatcherPool>>,
 ) -> Result<()> {
     let workspace_path = workspace_startup_hint.path.clone();
@@ -319,7 +280,7 @@ pub(crate) async fn handle_ipc_session(
     );
 
     let session_result: Result<(Vec<String>, Result<(), anyhow::Error>)> = async {
-        let handler = if defer_startup_workspace_attach {
+        let mut handler = if defer_startup_workspace_attach {
             JulieServerHandler::new_deferred_daemon_startup_hint(
                 workspace_startup_hint,
                 daemon_db.clone(),
@@ -350,12 +311,17 @@ pub(crate) async fn handle_ipc_session(
         }
         .context("Failed to create handler for IPC session")?;
 
+        if let Some(session_lifecycle) = session_lifecycle {
+            handler.attach_session_lifecycle(session_lifecycle);
+        }
+
         let project_log = handler.project_log.clone();
 
         if let Some(ref log) = project_log {
             log.session_start(session_id);
         }
 
+        handler.mark_session_serving();
         let service_result = match handler.clone().serve(stream).await {
             Ok(service) => match service.waiting().await {
                 Ok(_reason) => {
@@ -372,6 +338,8 @@ pub(crate) async fn handle_ipc_session(
                 Err(anyhow::anyhow!("MCP serve failed: {}", e))
             }
         };
+
+        handler.mark_session_closing();
 
         if let Some(ref log) = project_log {
             log.session_end(session_id);

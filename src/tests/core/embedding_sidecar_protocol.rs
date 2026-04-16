@@ -4,8 +4,9 @@
 #[cfg(feature = "embeddings-sidecar")]
 mod tests {
     use crate::embeddings::sidecar_protocol::{
-        EmbedBatchResult, EmbedQueryResult, ProtocolError, ResponseEnvelope,
-        SIDECAR_PROTOCOL_SCHEMA, SIDECAR_PROTOCOL_VERSION, validate_batch_response,
+        DeviceBackendCapabilities, DeviceBackendCapability, DeviceLoadPolicy, EmbedBatchResult,
+        EmbedQueryResult, HealthResult, ProtocolError, ResponseEnvelope, SIDECAR_PROTOCOL_SCHEMA,
+        SIDECAR_PROTOCOL_VERSION, validate_batch_response, validate_health_response,
         validate_query_response, validate_response_envelope,
     };
 
@@ -23,6 +24,29 @@ mod tests {
         EmbedBatchResult {
             dims: TEST_DIMS,
             vectors: vec![vec![0.0; TEST_DIMS]; count],
+        }
+    }
+
+    fn ok_health() -> HealthResult {
+        HealthResult {
+            ready: true,
+            dims: Some(TEST_DIMS),
+            device: Some("cpu".to_string()),
+            runtime: Some("fake-runtime".to_string()),
+            model_id: Some("fake-model".to_string()),
+            resolved_backend: Some("sidecar".to_string()),
+            accelerated: Some(false),
+            degraded_reason: None,
+            capabilities: Some(DeviceBackendCapabilities {
+                cpu: DeviceBackendCapability { available: true },
+                cuda: DeviceBackendCapability { available: false },
+                directml: DeviceBackendCapability { available: false },
+                mps: DeviceBackendCapability { available: false },
+            }),
+            load_policy: Some(DeviceLoadPolicy {
+                requested_device_backend: "cpu".to_string(),
+                resolved_device_backend: "cpu".to_string(),
+            }),
         }
     }
 
@@ -120,6 +144,98 @@ mod tests {
         assert!(
             message.contains("vector length mismatch") && message.contains("index 0"),
             "expected useful batch vector-length mismatch message, got: {message}"
+        );
+    }
+
+    #[test]
+    fn test_validate_health_response_accepts_ready_runtime_metadata() {
+        let resp = ok_health();
+        assert!(validate_health_response(&resp).is_ok());
+    }
+
+    #[test]
+    fn test_validate_health_response_rejects_ready_health_without_dims() {
+        let resp = HealthResult {
+            dims: None,
+            ..ok_health()
+        };
+
+        let err = validate_health_response(&resp).unwrap_err();
+        let message = err.to_string();
+        assert!(
+            message.contains("dims") && message.contains("ready"),
+            "expected clear health validation error, got: {message}"
+        );
+    }
+
+    #[test]
+    fn test_validate_health_response_accepts_degraded_runtime_with_reason() {
+        let resp = HealthResult {
+            ready: false,
+            dims: Some(TEST_DIMS),
+            degraded_reason: Some("DirectML unavailable, fell back to CPU".to_string()),
+            ..ok_health()
+        };
+
+        assert!(validate_health_response(&resp).is_ok());
+    }
+
+    #[test]
+    fn test_validate_health_response_accepts_structured_capabilities_and_load_policy() {
+        let resp = HealthResult {
+            capabilities: Some(DeviceBackendCapabilities {
+                cpu: DeviceBackendCapability { available: true },
+                cuda: DeviceBackendCapability { available: true },
+                directml: DeviceBackendCapability { available: true },
+                mps: DeviceBackendCapability { available: false },
+            }),
+            load_policy: Some(DeviceLoadPolicy {
+                requested_device_backend: "directml".to_string(),
+                resolved_device_backend: "cpu".to_string(),
+            }),
+            degraded_reason: Some("probe encode failed on directml, fell back to CPU".to_string()),
+            ..ok_health()
+        };
+
+        assert!(validate_health_response(&resp).is_ok());
+    }
+
+    #[test]
+    fn test_validate_health_response_rejects_device_backend_fallback_without_reason() {
+        let resp = HealthResult {
+            load_policy: Some(DeviceLoadPolicy {
+                requested_device_backend: "directml".to_string(),
+                resolved_device_backend: "cpu".to_string(),
+            }),
+            degraded_reason: None,
+            ..ok_health()
+        };
+
+        let err = validate_health_response(&resp).unwrap_err();
+        let message = err.to_string();
+        assert!(
+            message.contains("degraded_reason")
+                && message.contains("requested_device_backend")
+                && message.contains("resolved_device_backend"),
+            "expected clear load-policy validation error, got: {message}"
+        );
+    }
+
+    #[test]
+    fn test_validate_health_response_rejects_blank_requested_device_backend() {
+        let resp = HealthResult {
+            load_policy: Some(DeviceLoadPolicy {
+                requested_device_backend: "".to_string(),
+                resolved_device_backend: "cpu".to_string(),
+            }),
+            ..ok_health()
+        };
+
+        let err = validate_health_response(&resp).unwrap_err();
+        let message = err.to_string();
+        assert!(
+            message.contains("requested_device_backend"),
+            "expected clear requested-backend validation error, got: {message}"
         );
     }
 

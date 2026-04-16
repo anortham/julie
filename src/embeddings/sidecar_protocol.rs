@@ -54,6 +54,53 @@ pub struct EmbedBatchResult {
     pub vectors: Vec<Vec<f32>>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct HealthResult {
+    pub ready: bool,
+    #[serde(default)]
+    pub dims: Option<usize>,
+    #[serde(default)]
+    pub device: Option<String>,
+    #[serde(default)]
+    pub runtime: Option<String>,
+    #[serde(default)]
+    pub model_id: Option<String>,
+    #[serde(default)]
+    pub resolved_backend: Option<String>,
+    #[serde(default)]
+    pub accelerated: Option<bool>,
+    #[serde(default)]
+    pub degraded_reason: Option<String>,
+    #[serde(default)]
+    pub capabilities: Option<DeviceBackendCapabilities>,
+    #[serde(default)]
+    pub load_policy: Option<DeviceLoadPolicy>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct DeviceBackendCapability {
+    #[serde(default)]
+    pub available: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DeviceBackendCapabilities {
+    #[serde(default)]
+    pub cpu: DeviceBackendCapability,
+    #[serde(default)]
+    pub cuda: DeviceBackendCapability,
+    #[serde(default)]
+    pub directml: DeviceBackendCapability,
+    #[serde(default)]
+    pub mps: DeviceBackendCapability,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DeviceLoadPolicy {
+    pub requested_device_backend: String,
+    pub resolved_device_backend: String,
+}
+
 pub fn validate_response_envelope<T>(
     env: &ResponseEnvelope<T>,
     expected_request_id: &str,
@@ -108,6 +155,38 @@ pub fn validate_query_response(resp: &EmbedQueryResult, expected_dims: usize) ->
             expected_dims,
             resp.vector.len()
         );
+    }
+
+    Ok(())
+}
+
+pub fn validate_health_response(resp: &HealthResult) -> Result<()> {
+    if resp.ready && resp.dims.is_none() {
+        bail!("sidecar health response invariant violation: ready response must include dims");
+    }
+
+    if let Some(load_policy) = &resp.load_policy {
+        if load_policy.requested_device_backend.trim().is_empty() {
+            bail!(
+                "sidecar health response invariant violation: load_policy.requested_device_backend must be non-empty"
+            );
+        }
+
+        if load_policy.resolved_device_backend.trim().is_empty() {
+            bail!(
+                "sidecar health response invariant violation: load_policy.resolved_device_backend must be non-empty"
+            );
+        }
+
+        if load_policy.requested_device_backend != load_policy.resolved_device_backend
+            && resp.degraded_reason.is_none()
+        {
+            bail!(
+                "sidecar health response invariant violation: degraded_reason required when load_policy.requested_device_backend ('{}') differs from load_policy.resolved_device_backend ('{}')",
+                load_policy.requested_device_backend,
+                load_policy.resolved_device_backend
+            );
+        }
     }
 
     Ok(())

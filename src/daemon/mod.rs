@@ -14,12 +14,14 @@ pub mod project_log;
 pub mod session;
 #[cfg(windows)]
 pub mod shutdown_event;
+pub mod transport;
 pub mod watcher_pool;
 pub mod workspace_pool;
 
 use std::io;
 use std::path::Path;
 use std::sync::Arc;
+use std::sync::RwLock as StdRwLock;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, SystemTime};
 
@@ -41,8 +43,14 @@ use self::ipc::IpcListener;
 pub(crate) use self::ipc_session::{
     PrefixedIpcStream, handle_ipc_session, parse_ipc_headers_block, read_ipc_headers,
 };
+use self::lifecycle::{
+    DisconnectLifecycleAction, IncomingSessionAction, LifecycleEvent, LifecyclePhase,
+    ShutdownCause, flag_restart_pending_for_restart, publish_phase, stale_binary_accept_action,
+    stale_binary_disconnect_action, store_phase, transition, version_gate_action,
+};
 use self::pid::PidFile;
 use self::session::SessionTracker;
+use self::transport::TransportEndpoint;
 use self::watcher_pool::WatcherPool;
 use self::workspace_pool::WorkspacePool;
 
@@ -106,34 +114,6 @@ fn binary_mtime() -> Option<SystemTime> {
         .ok()
         .and_then(|p| std::fs::metadata(p).ok())
         .and_then(|m| m.modified().ok())
-}
-
-/// Write the daemon lifecycle state to the state file.
-/// Best-effort: logs a warning if the write fails but does not propagate the error.
-/// The state file is advisory; failure to write should not crash the daemon.
-/// Record the restart-pending signal from a version-mismatch rejection and
-/// transition `daemon_state` to "stopping" on the first rejection so adapters
-/// can wait for PID exit instead of burning their retry budget.
-///
-/// Returns `true` if this is the first rejection in the current daemon run
-/// (the caller uses this to decide whether to log the verbose first-time
-/// message vs the quieter follow-up).
-pub(crate) fn flag_restart_pending_after_version_reject(
-    restart_pending: &AtomicBool,
-    daemon_state_path: &std::path::Path,
-) -> bool {
-    let first = !restart_pending.load(Ordering::Relaxed);
-    restart_pending.store(true, Ordering::Relaxed);
-    if first {
-        write_daemon_state(daemon_state_path, "stopping");
-    }
-    first
-}
-
-pub(crate) fn write_daemon_state(path: &std::path::Path, state: &str) {
-    if let Err(e) = std::fs::write(path, state) {
-        warn!("Failed to write daemon state '{}': {}", state, e);
-    }
 }
 
 /// Backfill vector_count in daemon.db for all workspaces with embeddings on disk.
@@ -297,6 +277,7 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
     paths
         .ensure_dirs()
         .context("Failed to create daemon directories")?;
+    let daemon_state_path = paths.daemon_state();
 
     // Atomically check-and-create the PID file. create_exclusive uses O_CREAT|O_EXCL
     // internally, eliminating the TOCTOU window between check_running and create
@@ -304,7 +285,9 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
     let pid_file =
         PidFile::create_exclusive(&paths.daemon_pid()).context("Failed to start daemon")?;
     info!(pid = std::process::id(), "Daemon PID file created");
-    write_daemon_state(&paths.daemon_state(), "starting");
+    let mut phase = LifecyclePhase::Starting;
+    let daemon_phase = Arc::new(StdRwLock::new(phase));
+    publish_phase(daemon_phase.as_ref(), &daemon_state_path, phase);
 
     // Open persistent daemon database, resetting stale session counts from
     // any previous run (crash recovery) and pruning old tool call records.
@@ -428,6 +411,7 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
         Arc::clone(&sessions),
         daemon_db.clone(),
         Arc::clone(&restart_pending),
+        Arc::clone(&daemon_phase),
         std::time::Instant::now(),
         Some(Arc::clone(&embedding_service)),
         Some(Arc::clone(&pool)),
@@ -490,7 +474,9 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
     // consumes a pipe instance. If the pipe is bound before the accept loop
     // starts (e.g., during the 8+ second embedding model load), the probe eats
     // the only instance and the real connection gets ERROR_PIPE_BUSY (231).
-    let listener = IpcListener::bind(&paths.daemon_ipc_addr())
+    let transport = TransportEndpoint::new(paths.daemon_ipc_addr());
+    let listener = transport
+        .bind_listener()
         .await
         .context("Failed to bind IPC endpoint")?;
 
@@ -498,7 +484,8 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
         endpoint = %paths.daemon_ipc_addr().display(),
         "Daemon listening for IPC connections"
     );
-    write_daemon_state(&paths.daemon_state(), "ready");
+    phase = transition(phase, LifecycleEvent::StartupComplete);
+    publish_phase(daemon_phase.as_ref(), &daemon_state_path, phase);
 
     // Spawn the background embedding provider initialization task. This runs
     // concurrently with the accept loop so the daemon becomes IPC-ready in
@@ -625,34 +612,45 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
     }
 
     // Accept loop with graceful shutdown
-    let daemon_state_path = paths.daemon_state();
-    let result = tokio::select! {
-        res = accept_loop(&listener, &pool, &sessions, &daemon_db, &embedding_service, startup_binary_mtime, &restart_pending, &restart_notify, dashboard_tx, watcher_pool_for_handlers, &daemon_state_path) => res,
+    let (result, shutdown_cause) = tokio::select! {
+        res = accept_loop(&listener, &pool, &sessions, &daemon_db, &embedding_service, startup_binary_mtime, &restart_pending, &restart_notify, dashboard_tx, watcher_pool_for_handlers, &daemon_phase, &daemon_state_path) => {
+            let cause = if restart_pending.load(Ordering::Relaxed) {
+                ShutdownCause::RestartRequired
+            } else {
+                ShutdownCause::Signal
+            };
+            (res, cause)
+        },
         res = shutdown_signal() => {
             if let Err(e) = res {
                 warn!("Signal handler setup failed: {}", e);
             }
             info!("Shutdown signal received, stopping daemon");
-            Ok(())
+            (Ok(()), ShutdownCause::Signal)
         }
         _ = restart_notify.notified() => {
             info!("Stale binary restart triggered, stopping daemon");
-            Ok(())
+            (Ok(()), ShutdownCause::RestartRequired)
         }
         _ = stop_notify.notified() => {
             info!("Shutdown event received from `julie stop`, stopping daemon");
-            Ok(())
+            (Ok(()), ShutdownCause::StopCommand)
         }
     };
-
-    // Signal to adapters that we are shutting down before any cleanup begins.
-    write_daemon_state(&paths.daemon_state(), "stopping");
 
     // Give active sessions time to finish before tearing down shared resources.
     // Without this drain, sessions that are mid-request get dropped immediately
     // on SIGTERM, which can corrupt in-flight writes or leave daemon.db in an
     // inconsistent state.
     let remaining = sessions.active_count();
+    phase = transition(
+        phase,
+        LifecycleEvent::ShutdownRequested {
+            cause: shutdown_cause,
+            active_sessions: remaining,
+        },
+    );
+    publish_phase(daemon_phase.as_ref(), &daemon_state_path, phase);
     if remaining > 0 {
         info!(
             active_sessions = remaining,
@@ -667,6 +665,10 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
                 "Session drain timeout exceeded, forcing shutdown"
             );
         }
+    }
+    if let LifecyclePhase::Draining { cause } = phase {
+        phase = LifecyclePhase::Stopping { cause };
+        publish_phase(daemon_phase.as_ref(), &daemon_state_path, phase);
     }
 
     info!(
@@ -685,7 +687,7 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
     if let Err(e) = pid_file.cleanup() {
         warn!("Failed to clean up PID file: {}", e);
     }
-    let _ = std::fs::remove_file(paths.daemon_state());
+    let _ = std::fs::remove_file(&daemon_state_path);
 
     info!("Daemon stopped");
     result
@@ -707,6 +709,7 @@ async fn accept_loop(
     restart_notify: &Arc<Notify>,
     dashboard_tx: broadcast::Sender<DashboardEvent>,
     watcher_pool: Arc<WatcherPool>,
+    daemon_phase: &Arc<StdRwLock<LifecyclePhase>>,
     daemon_state_path: &std::path::Path,
 ) -> Result<()> {
     loop {
@@ -738,29 +741,61 @@ async fn accept_loop(
         let restart_pending = Arc::clone(restart_pending);
         let restart_notify = Arc::clone(restart_notify);
         let dashboard_tx = dashboard_tx.clone();
-        // Check for stale binary BEFORE accepting the session. If the daemon
-        // was idle (0 sessions) and the binary changed, shut down immediately
-        // so the adapter restarts with the new binary. Without this, the daemon
-        // accepts the session, runs the old binary for the whole session, and
-        // can only restart after the session ends.
-        if let Some(startup_mtime) = startup_binary_mtime {
-            if let Some(current_mtime) = binary_mtime() {
-                if current_mtime > startup_mtime {
-                    if sessions.active_count() == 0 {
-                        warn!("Binary is stale and no active sessions. Shutting down for restart.");
-                        restart_pending.store(true, Ordering::Relaxed);
-                        restart_notify.notify_one();
-                        // Drop the stream; the adapter will reconnect to the new daemon.
-                        drop(stream);
-                        return Ok(());
-                    } else if !restart_pending.load(Ordering::Relaxed) {
-                        restart_pending.store(true, Ordering::Relaxed);
-                        warn!(
-                            "Binary has been rebuilt since daemon started. \
-                             Daemon will restart when all sessions disconnect."
-                        );
-                    }
+        let daemon_phase = Arc::clone(daemon_phase);
+        let active_sessions = sessions.active_count();
+        let binary_is_stale = startup_binary_mtime
+            .zip(binary_mtime())
+            .is_some_and(|(startup_mtime, current_mtime)| current_mtime > startup_mtime);
+        match stale_binary_accept_action(
+            binary_is_stale,
+            active_sessions,
+            restart_pending.load(Ordering::Relaxed),
+        ) {
+            IncomingSessionAction::Accept => {}
+            IncomingSessionAction::AcceptWithRestartPending(reason) => {
+                let transition = flag_restart_pending_for_restart(
+                    &restart_pending,
+                    daemon_state_path,
+                    active_sessions,
+                    ShutdownCause::RestartRequired,
+                );
+                store_phase(daemon_phase.as_ref(), transition.next_phase);
+                if transition.first_request {
+                    warn!(
+                        ?reason,
+                        active_sessions,
+                        "Binary has been rebuilt since daemon started. Daemon will restart when all sessions disconnect."
+                    );
                 }
+            }
+            IncomingSessionAction::ShutdownForRestart(reason) => {
+                let _ = flag_restart_pending_for_restart(
+                    &restart_pending,
+                    daemon_state_path,
+                    active_sessions,
+                    ShutdownCause::RestartRequired,
+                );
+                store_phase(
+                    daemon_phase.as_ref(),
+                    LifecyclePhase::Stopping {
+                        cause: ShutdownCause::RestartRequired,
+                    },
+                );
+                warn!(
+                    ?reason,
+                    "Binary is stale and no active sessions. Shutting down for restart."
+                );
+                restart_notify.notify_one();
+                drop(stream);
+                return Ok(());
+            }
+            IncomingSessionAction::RejectForRestart(reason) => {
+                warn!(
+                    ?reason,
+                    "Rejecting new session while daemon prepares to restart."
+                );
+                drop(stream);
+                continue;
             }
         }
 
@@ -791,51 +826,73 @@ async fn accept_loop(
         // plugin updates where the binary mtime didn't change (e.g. Windows
         // file lock prevented re-extraction over the running executable).
         let daemon_version = env!("CARGO_PKG_VERSION");
-        match crate::daemon::ipc_session::evaluate_version_gate(
-            headers.version.as_deref(),
-            daemon_version,
-            sessions.active_count(),
-        ) {
-            crate::daemon::ipc_session::VersionGateOutcome::Proceed => {}
-            crate::daemon::ipc_session::VersionGateOutcome::ShutdownImmediately => {
+        let active_sessions = sessions.active_count();
+        match version_gate_action(headers.version.as_deref(), daemon_version, active_sessions) {
+            IncomingSessionAction::Accept => {}
+            IncomingSessionAction::ShutdownForRestart(reason) => {
                 warn!(
                     adapter_version = headers.version.as_deref().unwrap_or("<none>"),
                     daemon_version,
-                    "Version mismatch with no active sessions. \
-                     Shutting down for restart."
+                    ?reason,
+                    "Version mismatch with no active sessions. Shutting down for restart."
                 );
-                restart_pending.store(true, Ordering::Relaxed);
+                let _ = flag_restart_pending_for_restart(
+                    &restart_pending,
+                    daemon_state_path,
+                    active_sessions,
+                    ShutdownCause::RestartRequired,
+                );
+                store_phase(
+                    daemon_phase.as_ref(),
+                    LifecyclePhase::Stopping {
+                        cause: ShutdownCause::RestartRequired,
+                    },
+                );
                 restart_notify.notify_one();
                 drop(stream);
                 return Ok(());
             }
-            crate::daemon::ipc_session::VersionGateOutcome::RejectAndFlagForRestart => {
-                // Reject this new session cleanly. On the FIRST rejection we
-                // also flip daemon_state to "stopping" (via
-                // `flag_restart_pending_after_version_reject`) so the
-                // adapter's `ensure_daemon_ready` path waits for this daemon
-                // to exit via `wait_for_pid_exit` (up to 60s) and respawns a
-                // fresh daemon, instead of blindly burning its 3-retry budget
-                // against a daemon still advertising "ready". Without the
-                // state transition, new adapters fail within ~4s while any
-                // old session is still alive — exactly the upgrade window
-                // this fix is supposed to cover. See Finding #1 in
-                // ROOTS_IMPL_REVIEW_NOTES.md and Codex's follow-up review.
-                let first_rejection =
-                    flag_restart_pending_after_version_reject(&restart_pending, daemon_state_path);
-                if first_rejection {
+            IncomingSessionAction::RejectForRestart(reason) => {
+                let transition = flag_restart_pending_for_restart(
+                    &restart_pending,
+                    daemon_state_path,
+                    active_sessions,
+                    ShutdownCause::RestartRequired,
+                );
+                store_phase(daemon_phase.as_ref(), transition.next_phase);
+                if transition.first_request {
                     warn!(
                         adapter_version = headers.version.as_deref().unwrap_or("<none>"),
                         daemon_version,
-                        "Adapter/daemon version mismatch. Rejecting new session; \
-                         daemon will restart when current sessions disconnect."
+                        ?reason,
+                        "Adapter/daemon version mismatch. Rejecting new session; daemon will restart when current sessions disconnect."
                     );
                 } else {
                     warn!(
                         adapter_version = headers.version.as_deref().unwrap_or("<none>"),
-                        daemon_version, "Rejecting adapter session while daemon waits to restart."
+                        daemon_version,
+                        ?reason,
+                        "Rejecting adapter session while daemon waits to restart."
                     );
                 }
+                drop(stream);
+                continue;
+            }
+            IncomingSessionAction::AcceptWithRestartPending(reason) => {
+                let transition = flag_restart_pending_for_restart(
+                    &restart_pending,
+                    daemon_state_path,
+                    active_sessions,
+                    ShutdownCause::RestartRequired,
+                );
+                store_phase(daemon_phase.as_ref(), transition.next_phase);
+                warn!(
+                    adapter_version = headers.version.as_deref().unwrap_or("<none>"),
+                    daemon_version,
+                    ?reason,
+                    first_request = transition.first_request,
+                    "Unexpected version-gate lifecycle action; rejecting session."
+                );
                 drop(stream);
                 continue;
             }
@@ -844,6 +901,7 @@ async fn accept_loop(
         let session_stream = PrefixedIpcStream::new(stream, parsed_headers.buffered_bytes);
 
         let session_id = sessions.add_session();
+        let session_lifecycle = sessions.lifecycle_handle(&session_id);
         let _ = dashboard_tx.send(DashboardEvent::SessionChange {
             active_count: sessions.active_count(),
         });
@@ -855,6 +913,7 @@ async fn accept_loop(
         );
 
         let watcher_pool_for_session = Arc::clone(&watcher_pool);
+        let daemon_state_path = daemon_state_path.to_path_buf();
         tokio::spawn(async move {
             let dashboard_tx_disconnect = dashboard_tx.clone();
             if let Err(e) = handle_ipc_session(
@@ -866,6 +925,7 @@ async fn accept_loop(
                 &restart_pending,
                 Some(dashboard_tx),
                 workspace_startup_hint,
+                Some(session_lifecycle),
                 Some(watcher_pool_for_session),
             )
             .await
@@ -884,26 +944,43 @@ async fn accept_loop(
                 "IPC session ended"
             );
 
-            // Check for stale binary at disconnect time too (not just on new
-            // connections). Without this, a rebuild during an active session
-            // is missed: the session disconnects, restart_pending is still
-            // false, and a new session connects before the daemon can exit.
-            if let Some(startup_mtime) = startup_binary_mtime {
-                if let Some(current_mtime) = binary_mtime() {
-                    if current_mtime > startup_mtime && !restart_pending.load(Ordering::Relaxed) {
-                        restart_pending.store(true, Ordering::Relaxed);
-                        warn!("Binary rebuild detected at session disconnect.");
+            let binary_is_stale = startup_binary_mtime
+                .zip(binary_mtime())
+                .is_some_and(|(startup_mtime, current_mtime)| current_mtime > startup_mtime);
+            match stale_binary_disconnect_action(
+                binary_is_stale,
+                restart_pending.load(Ordering::Relaxed),
+                remaining,
+            ) {
+                DisconnectLifecycleAction::None => {}
+                DisconnectLifecycleAction::MarkRestartPending(reason) => {
+                    let transition = flag_restart_pending_for_restart(
+                        &restart_pending,
+                        &daemon_state_path,
+                        remaining,
+                        ShutdownCause::RestartRequired,
+                    );
+                    store_phase(daemon_phase.as_ref(), transition.next_phase);
+                    if transition.first_request {
+                        warn!(?reason, "Binary rebuild detected at session disconnect.");
                     }
+                }
+                DisconnectLifecycleAction::TriggerShutdown(cause) => {
+                    let transition = flag_restart_pending_for_restart(
+                        &restart_pending,
+                        &daemon_state_path,
+                        remaining,
+                        cause,
+                    );
+                    store_phase(daemon_phase.as_ref(), transition.next_phase);
                 }
             }
 
-            // If the binary has been rebuilt and this was the last session,
-            // signal the daemon to exit. The adapter will auto-start a fresh
-            // daemon with the new binary on the next connection.
+            // Version mismatches and stale-binary detection both flow through
+            // restart_pending. Once the last session disconnects, exit through
+            // the normal cleanup path so the adapter can spawn a fresh daemon.
             if remaining == 0 && restart_pending.load(Ordering::Relaxed) {
-                info!("Last session disconnected and binary is stale. Triggering restart.");
-                // Wake the select! in run_daemon so it exits through the
-                // normal cleanup path (drain, embedding shutdown, PID cleanup).
+                info!("Last session disconnected and restart is pending. Triggering restart.");
                 restart_notify.notify_one();
             }
         });

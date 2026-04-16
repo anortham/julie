@@ -20,6 +20,7 @@ use std::sync::{Arc, RwLock as StdRwLock};
 use tokio::sync::broadcast;
 use tracing::{debug, info, warn};
 
+use crate::daemon::session::{SessionLifecycleHandle, SessionLifecyclePhase};
 use crate::dashboard::state::DashboardEvent;
 
 use self::session_workspace::{PrimaryWorkspaceBinding, SessionWorkspaceState};
@@ -61,7 +62,7 @@ pub(crate) struct PrimaryWorkspaceSnapshot {
     pub binding: PrimaryWorkspaceBinding,
     pub database: Arc<std::sync::Mutex<SymbolDatabase>>,
     pub search_index: Option<Arc<std::sync::Mutex<SearchIndex>>>,
-    pub index_root_override: Option<PathBuf>,
+    pub indexing_runtime: Option<crate::tools::workspace::indexing::state::SharedIndexingRuntime>,
 }
 
 #[derive(Clone)]
@@ -126,10 +127,15 @@ impl PrimarySwapRollback {
 
         *handler.workspace.write().await = restored_workspace;
         handler.set_loaded_workspace_id(self.loaded_workspace_id);
-        *handler
-            .session_workspace
-            .write()
-            .unwrap_or_else(|p| p.into_inner()) = self.session_workspace;
+        let phase = {
+            let mut session_workspace = handler
+                .session_workspace
+                .write()
+                .unwrap_or_else(|p| p.into_inner());
+            *session_workspace = self.session_workspace;
+            session_workspace.lifecycle_phase()
+        };
+        handler.publish_session_lifecycle_phase(phase);
         Ok(())
     }
 }
@@ -383,6 +389,9 @@ pub struct JulieServerHandler {
     /// Set when on_initialized defers auto-indexing until the primary workspace
     /// is resolved from client roots. Consumed by the first successful bind.
     deferred_auto_index_pending: Arc<AtomicBool>,
+    /// Optional daemon session lifecycle handle. Present when this handler is
+    /// serving an IPC session through the daemon.
+    session_lifecycle: Option<SessionLifecycleHandle>,
     /// Fix C part c: shared watcher pool for pausing reference workspace watchers
     /// during force reindex. None in stdio mode.
     pub(crate) watcher_pool: Option<Arc<crate::daemon::watcher_pool::WatcherPool>>,
@@ -610,10 +619,9 @@ impl JulieServerHandler {
             secondary_workspace_ids.insert(binding.workspace_id);
         }
 
-        self.session_workspace
-            .write()
-            .unwrap_or_else(|p| p.into_inner())
-            .apply_root_snapshot(primary_binding, secondary_workspace_ids, roots);
+        self.update_session_workspace(move |state| {
+            state.apply_root_snapshot(primary_binding, secondary_workspace_ids, roots);
+        });
         Ok(true)
     }
 
@@ -633,10 +641,9 @@ impl JulieServerHandler {
                 .filter(|workspace_id| Some(workspace_id.as_str()) != current_primary_id.as_deref())
                 .collect()
         };
-        self.session_workspace
-            .write()
-            .unwrap_or_else(|p| p.into_inner())
-            .apply_root_snapshot(startup_binding, secondary_workspace_ids, Vec::new());
+        self.update_session_workspace(move |state| {
+            state.apply_root_snapshot(startup_binding, secondary_workspace_ids, Vec::new());
+        });
         Ok(())
     }
 
@@ -840,6 +847,7 @@ impl JulieServerHandler {
             restart_pending: None,
             catchup_in_progress: Arc::new(AtomicBool::new(false)),
             deferred_auto_index_pending: Arc::new(AtomicBool::new(false)),
+            session_lifecycle: None,
             watcher_pool: None,
             metrics_tx,
             ref_db_cache: Arc::new(RwLock::new(HashMap::new())),
@@ -952,6 +960,7 @@ impl JulieServerHandler {
             restart_pending,
             catchup_in_progress: Arc::new(AtomicBool::new(false)),
             deferred_auto_index_pending: Arc::new(AtomicBool::new(false)),
+            session_lifecycle: None,
             watcher_pool,
             metrics_tx,
             ref_db_cache: Arc::new(RwLock::new(HashMap::new())),
@@ -998,6 +1007,7 @@ impl JulieServerHandler {
             restart_pending,
             catchup_in_progress: Arc::new(AtomicBool::new(false)),
             deferred_auto_index_pending: Arc::new(AtomicBool::new(false)),
+            session_lifecycle: None,
             watcher_pool,
             metrics_tx,
             ref_db_cache: Arc::new(RwLock::new(HashMap::new())),
@@ -1014,6 +1024,50 @@ impl JulieServerHandler {
     pub async fn new_for_test() -> Result<Self> {
         let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         Self::new(cwd).await
+    }
+
+    pub(crate) fn attach_session_lifecycle(&mut self, session_lifecycle: SessionLifecycleHandle) {
+        let phase = self.current_session_lifecycle_phase();
+        session_lifecycle.set_phase(phase);
+        self.session_lifecycle = Some(session_lifecycle);
+    }
+
+    fn current_session_lifecycle_phase(&self) -> SessionLifecyclePhase {
+        self.session_workspace
+            .read()
+            .unwrap_or_else(|p| p.into_inner())
+            .lifecycle_phase()
+    }
+
+    fn publish_session_lifecycle_phase(&self, phase: SessionLifecyclePhase) {
+        if let Some(session_lifecycle) = &self.session_lifecycle {
+            session_lifecycle.set_phase(phase);
+        }
+    }
+
+    fn update_session_workspace<R>(
+        &self,
+        update: impl FnOnce(&mut SessionWorkspaceState) -> R,
+    ) -> R {
+        let (result, phase) = {
+            let mut state = self
+                .session_workspace
+                .write()
+                .unwrap_or_else(|p| p.into_inner());
+            let result = update(&mut state);
+            let phase = state.lifecycle_phase();
+            (result, phase)
+        };
+        self.publish_session_lifecycle_phase(phase);
+        result
+    }
+
+    pub(crate) fn mark_session_serving(&self) {
+        self.update_session_workspace(|state| state.mark_serving());
+    }
+
+    pub(crate) fn mark_session_closing(&self) {
+        self.update_session_workspace(|state| state.mark_closing());
     }
 
     pub fn workspace_startup_hint(&self) -> WorkspaceStartupHint {
@@ -1121,28 +1175,18 @@ impl JulieServerHandler {
     }
 
     fn rebind_current_primary(&self, workspace_id: impl Into<String>, workspace_root: PathBuf) {
-        let mut session_workspace = self
-            .session_workspace
-            .write()
-            .unwrap_or_else(|p| p.into_inner());
-        session_workspace.bind_primary(workspace_id, workspace_root);
-    }
-
-    fn clear_current_primary_binding(&self) {
-        let mut session_workspace = self
-            .session_workspace
-            .write()
-            .unwrap_or_else(|p| p.into_inner());
-        session_workspace.clear_primary_binding();
+        let workspace_id = workspace_id.into();
+        self.update_session_workspace(move |session_workspace| {
+            session_workspace.bind_primary(workspace_id, workspace_root);
+        });
     }
 
     fn publish_loaded_workspace_swap_intent(&self) {
-        self.session_workspace
-            .write()
-            .unwrap_or_else(|p| p.into_inner())
-            .begin_primary_swap();
+        self.update_session_workspace(|session_workspace| {
+            session_workspace.begin_primary_swap();
+            session_workspace.clear_primary_binding();
+        });
         self.set_loaded_workspace_id(None);
-        self.clear_current_primary_binding();
     }
 
     async fn publish_loaded_workspace_swap(
@@ -1157,19 +1201,16 @@ impl JulieServerHandler {
 
         *self.workspace_id.write().unwrap_or_else(|p| p.into_inner()) = workspace_id.clone();
 
-        let mut session_workspace = self
-            .session_workspace
-            .write()
-            .unwrap_or_else(|p| p.into_inner());
-
-        if let Some(workspace_id) = workspace_id {
-            session_workspace.bind_primary(workspace_id.clone(), workspace_root);
-            if mark_attached {
-                session_workspace.mark_workspace_attached(workspace_id);
+        self.update_session_workspace(move |session_workspace| {
+            if let Some(workspace_id) = workspace_id {
+                session_workspace.bind_primary(workspace_id.clone(), workspace_root);
+                if mark_attached {
+                    session_workspace.mark_workspace_attached(workspace_id);
+                }
             }
-        }
 
-        session_workspace.complete_primary_swap();
+            session_workspace.complete_primary_swap();
+        });
     }
 
     async fn acquire_pooled_workspace_for_rebind(
@@ -1211,6 +1252,16 @@ impl JulieServerHandler {
     #[cfg(test)]
     pub fn publish_loaded_workspace_swap_intent_for_test(&self) {
         self.publish_loaded_workspace_swap_intent();
+    }
+
+    #[cfg(test)]
+    pub fn session_lifecycle_phase_for_test(&self) -> SessionLifecyclePhase {
+        self.current_session_lifecycle_phase()
+    }
+
+    #[cfg(test)]
+    pub fn mark_session_serving_for_test(&self) {
+        self.mark_session_serving();
     }
 
     #[cfg(test)]
@@ -1650,7 +1701,7 @@ impl JulieServerHandler {
 
     /// Run auto-indexing in background (called after MCP handshake)
     async fn run_auto_indexing(&self) {
-        use crate::startup::check_if_indexing_needed;
+        use crate::startup::run_primary_workspace_repair;
         use std::sync::atomic::Ordering;
 
         // Fix G: prevent concurrent catch-up scans (e.g. two sessions connecting simultaneously).
@@ -1666,25 +1717,15 @@ impl JulieServerHandler {
 
         info!("🔍 Starting background auto-indexing check...");
 
-        // Fix C part a: pause the watcher while we run the staleness scan.
-        // Without this, the watcher can dispatch Create/Delete events for files
-        // that the catch-up scan is concurrently processing, leading to double
-        // re-indexing and transient orphan cleanup on the same file.
-        //
-        // In daemon mode, workspace.watcher is None (watchers live in WatcherPool),
-        // so pause_watcher() is a no-op. Use the shared WatcherPool instead.
-        if let Some(ref pool) = self.watcher_pool {
-            if let Some(ws_id) = self.current_workspace_id() {
-                pool.pause_workspace(&ws_id).await;
-            }
-        } else {
-            self.pause_watcher().await;
-        }
-
-        // Check if indexing is needed
-        match check_if_indexing_needed(self).await {
-            Ok(true) => {
-                info!("📚 Workspace needs indexing - starting auto-indexing...");
+        match run_primary_workspace_repair(self).await {
+            Ok(Some(plan)) => {
+                let reasons = plan
+                    .reasons
+                    .iter()
+                    .map(std::string::ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                info!(%reasons, "📚 Workspace needs indexing - starting auto-indexing");
 
                 let index_tool = ManageWorkspaceTool {
                     operation: "index".to_string(),
@@ -1704,23 +1745,12 @@ impl JulieServerHandler {
                     info!("✅ Background auto-indexing completed successfully");
                 }
             }
-            Ok(false) => {
+            Ok(None) => {
                 info!("✅ Workspace already indexed - skipping auto-indexing");
             }
             Err(e) => {
                 warn!("⚠️ Failed to check indexing status: {}", e);
             }
-        }
-
-        // Fix C part a: resume the watcher now that the catch-up scan is done.
-        // Any events that arrived while paused are still in the queue and will
-        // be dispatched on the next queue processor tick.
-        if let Some(ref pool) = self.watcher_pool {
-            if let Some(ws_id) = self.current_workspace_id() {
-                pool.resume_workspace(&ws_id).await;
-            }
-        } else {
-            self.resume_watcher().await;
         }
 
         // Fix G: release the dedup flag so the next catch-up can proceed.
@@ -1777,7 +1807,7 @@ impl JulieServerHandler {
             binding: binding.clone(),
             database,
             search_index: workspace.search_index.as_ref().cloned(),
-            index_root_override: workspace.index_root_override.clone(),
+            indexing_runtime: Some(Arc::clone(&workspace.indexing_runtime)),
         }))
     }
 
@@ -1801,7 +1831,7 @@ impl JulieServerHandler {
             binding: binding.clone(),
             database,
             search_index: workspace.search_index.as_ref().cloned(),
-            index_root_override: workspace.index_root_override.clone(),
+            indexing_runtime: Some(Arc::clone(&workspace.indexing_runtime)),
         }))
     }
 
@@ -1862,7 +1892,7 @@ impl JulieServerHandler {
             binding: binding.clone(),
             database,
             search_index,
-            index_root_override: None,
+            indexing_runtime: None,
         })
     }
 

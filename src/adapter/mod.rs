@@ -8,10 +8,12 @@
 pub mod launcher;
 
 use anyhow::{Context, Result};
+use std::future::Future;
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt, copy};
 use tracing::{error, info};
 
 use crate::daemon::ipc::{IpcClientStream, IpcConnector};
+use crate::daemon::lifecycle::{RestartHandoffAction, RestartReason, restart_handoff_action};
 use crate::paths::DaemonPaths;
 use crate::workspace::startup_hint::WorkspaceStartupHint;
 
@@ -43,52 +45,97 @@ pub async fn run_adapter(startup_hint: WorkspaceStartupHint) -> Result<()> {
     let paths = DaemonPaths::new();
     let launcher = DaemonLauncher::new(paths.clone());
 
+    run_adapter_with(
+        || {
+            tokio::task::block_in_place(|| launcher.ensure_daemon_ready())
+                .context("Failed to ensure daemon is ready")
+        },
+        || connect_and_handshake(&paths, &startup_hint),
+        forward_bytes,
+    )
+    .await
+}
+
+pub(crate) async fn run_adapter_with<
+    EnsureReady,
+    Connect,
+    ConnectFuture,
+    Forward,
+    ForwardFuture,
+    Stream,
+>(
+    mut ensure_ready: EnsureReady,
+    mut connect_and_handshake: Connect,
+    mut forward: Forward,
+) -> Result<()>
+where
+    EnsureReady: FnMut() -> Result<()>,
+    Connect: FnMut() -> ConnectFuture,
+    ConnectFuture: Future<Output = Result<Stream>>,
+    Forward: FnMut(Stream) -> ForwardFuture,
+    ForwardFuture: Future<Output = Result<ForwardOutcome>>,
+{
     // Retry loop for initial connection and immediate restart handoffs. The
     // daemon may reject our connection before handshake, or it may accept the
     // connection, read our headers, decide it is stale, and close immediately
     // so a fresh daemon can be spawned from this binary.
     const MAX_RETRIES: u32 = 2;
     for attempt in 0..=MAX_RETRIES {
-        tokio::task::block_in_place(|| launcher.ensure_daemon_ready())
-            .context("Failed to ensure daemon is ready")?;
+        ensure_ready()?;
 
-        let stream = match connect_and_handshake(&paths, &startup_hint).await {
+        let stream = match connect_and_handshake().await {
             Ok(s) => s,
             Err(e) => {
-                if attempt < MAX_RETRIES {
-                    info!(
-                        "Connection attempt {} failed ({}), retrying after daemon restart...",
-                        attempt + 1,
-                        e
-                    );
-                    // Give the old daemon time to fully shut down and release
-                    // the socket before we try to spawn a new one.
-                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-                    continue;
-                } else {
-                    return Err(e).context("Failed to connect to daemon after retries");
+                match restart_handoff_action(
+                    attempt,
+                    MAX_RETRIES,
+                    RestartReason::TransportUnavailable,
+                ) {
+                    RestartHandoffAction::Retry { reason } => {
+                        info!(
+                            ?reason,
+                            attempt = attempt + 1,
+                            error = %e,
+                            "Connection attempt failed during daemon restart handoff, retrying"
+                        );
+                        continue;
+                    }
+                    RestartHandoffAction::Exhausted { .. } => {
+                        return Err(e).context("Failed to connect to daemon after retries");
+                    }
                 }
             }
         };
 
         info!("Adapter connected to daemon, forwarding bytes");
 
-        match forward_bytes(stream).await {
+        match forward(stream).await {
             Ok(ForwardOutcome::SessionEnded) => {
                 info!("Adapter session ended normally");
                 return Ok(());
             }
             Ok(ForwardOutcome::ImmediateDaemonDisconnect) => {
-                if attempt < MAX_RETRIES {
-                    info!("Daemon closed immediately after handshake, retrying after restart...");
-                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-                    continue;
+                match restart_handoff_action(
+                    attempt,
+                    MAX_RETRIES,
+                    RestartReason::ImmediateDisconnect,
+                ) {
+                    RestartHandoffAction::Retry { reason } => {
+                        info!(
+                            ?reason,
+                            attempt = attempt + 1,
+                            "Daemon closed immediately after handshake, retrying"
+                        );
+                        continue;
+                    }
+                    RestartHandoffAction::Exhausted { reason } => {
+                        anyhow::bail!(
+                            "Daemon closed immediately after handshake after {} attempts ({:?})",
+                            MAX_RETRIES + 1,
+                            reason
+                        );
+                    }
                 }
-
-                anyhow::bail!(
-                    "Daemon closed immediately after handshake after {} attempts",
-                    MAX_RETRIES + 1
-                );
             }
             Err(e) => {
                 error!("Adapter connection lost: {}", e);

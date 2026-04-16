@@ -147,6 +147,7 @@ impl WatcherPool {
                     extractor_mgr,
                     Some(search_index.clone()),
                     shared_provider,
+                    Arc::clone(&workspace.indexing_runtime),
                 )?;
                 indexer.start_watching().await?;
                 entry.watcher = Some(indexer);

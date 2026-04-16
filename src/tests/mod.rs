@@ -147,7 +147,9 @@ pub mod integration {
     pub mod bulk_storage_atomicity; // Bulk storage atomicity tests (TDD) - verify transaction safety
     pub mod daemon_lifecycle;
     pub mod documentation_indexing; // Documentation indexing E2E tests (RAG POC)
+    pub mod indexing_pipeline;
     pub mod lock_contention; // Lock contention regression tests
+    pub mod projection_repair;
     pub mod query_preprocessor_tests; // Query preprocessor comprehensive test suite (TDD)
     pub mod real_world_validation; // Real-world code validation tests
     pub mod reference_workspace; // Reference workspace tests
@@ -158,6 +160,7 @@ pub mod integration {
     pub mod sidecar_embedding_pipeline; // Sidecar equivalents of embedding_pipeline tests
     pub mod sidecar_test_helpers; // Shared fake-sidecar helpers for integration tests
     pub mod stale_index_detection; // Stale index detection tests
+    pub mod system_health;
     pub mod tracing;
     pub mod watcher; // File watcher tests
     pub mod watcher_handlers; // File watcher handler tests (incremental indexing)

@@ -9,6 +9,7 @@ use crate::dashboard::AppState;
 use crate::dashboard::render_template;
 
 pub async fn index(State(state): State<AppState>) -> Result<Html<String>, StatusCode> {
+    let health = state.dashboard.health_snapshot().await;
     let uptime = state.dashboard.uptime();
     let uptime_secs = uptime.as_secs();
     let hours = uptime_secs / 3600;
@@ -19,18 +20,10 @@ pub async fn index(State(state): State<AppState>) -> Result<Html<String>, Status
         format!("{}m", minutes)
     };
 
-    let active_sessions = state.dashboard.sessions().active_count();
-    let restart_pending = state.dashboard.is_restart_pending();
+    let active_sessions = health.control_plane.active_sessions;
+    let restart_pending = health.control_plane.restart_pending;
     let errors = state.dashboard.error_entries();
-    let embedding_available = state.dashboard.embedding_available();
-    let embedding_initializing = state.dashboard.embedding_initializing();
-
-    let workspace_count = state
-        .dashboard
-        .daemon_db()
-        .and_then(|db| db.list_workspaces().ok())
-        .map(|ws| ws.len())
-        .unwrap_or(0);
+    let workspace_count = health.data_plane.workspace_count;
 
     let mut context = Context::new();
     context.insert("active_page", "status");
@@ -38,8 +31,15 @@ pub async fn index(State(state): State<AppState>) -> Result<Html<String>, Status
     context.insert("active_sessions", &active_sessions);
     context.insert("workspace_count", &workspace_count);
     context.insert("restart_pending", &restart_pending);
-    context.insert("embedding_available", &embedding_available);
-    context.insert("embedding_initializing", &embedding_initializing);
+    context.insert(
+        "embedding_available",
+        &health.runtime_plane.embedding_available,
+    );
+    context.insert(
+        "embedding_initializing",
+        &health.runtime_plane.embedding_initializing,
+    );
+    context.insert("health", &health);
     context.insert("errors", &errors);
 
     render_template(&state, "status.html", context).await
@@ -47,6 +47,7 @@ pub async fn index(State(state): State<AppState>) -> Result<Html<String>, Status
 
 /// Returns live status values as JSON for polling.
 pub async fn live(State(state): State<AppState>) -> Result<impl IntoResponse, StatusCode> {
+    let health = state.dashboard.health_snapshot().await;
     let uptime = state.dashboard.uptime();
     let uptime_secs = uptime.as_secs();
     let hours = uptime_secs / 3600;
@@ -57,26 +58,17 @@ pub async fn live(State(state): State<AppState>) -> Result<impl IntoResponse, St
         format!("{}m", minutes)
     };
 
-    let active_sessions = state.dashboard.sessions().active_count();
-    let workspace_count = state
-        .dashboard
-        .daemon_db()
-        .and_then(|db| db.list_workspaces().ok())
-        .map(|ws| ws.len())
-        .unwrap_or(0);
+    let active_sessions = health.control_plane.active_sessions;
+    let workspace_count = health.data_plane.workspace_count;
 
     let body = serde_json::json!({
         "uptime": uptime_str,
         "active_sessions": active_sessions,
         "workspace_count": workspace_count,
-        "restart_pending": state.dashboard.is_restart_pending(),
-        // Surfaced in the live polling response so the dashboard reflects
-        // the embedding service transitioning from Initializing -> Ready
-        // (or Unavailable) without requiring a manual page refresh. With
-        // the daemon's lazy-init lifecycle this flips ~36-39s after cold
-        // start.
-        "embedding_available": state.dashboard.embedding_available(),
-        "embedding_initializing": state.dashboard.embedding_initializing(),
+        "restart_pending": health.control_plane.restart_pending,
+        "embedding_available": health.runtime_plane.embedding_available,
+        "embedding_initializing": health.runtime_plane.embedding_initializing,
+        "health": health,
     })
     .to_string();
 

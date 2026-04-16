@@ -327,6 +327,9 @@ impl ManageWorkspaceTool {
                     "Workspace indexing complete: {} files, {} symbols, {} relationships\nReady for search and navigation",
                     files_total, symbols_total, relationships_total
                 );
+                if let Some(canonical_revision) = result.canonical_revision {
+                    message.push_str(&format!("\nCanonical revision: {}", canonical_revision));
+                }
                 if let Some(ws_id) = indexed_workspace_id {
                     if skip_embeddings {
                         info!(

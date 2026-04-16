@@ -1,4 +1,9 @@
-use crate::daemon::lifecycle::{DaemonStatus, check_status, stop_daemon};
+use crate::daemon::lifecycle::{
+    DaemonStatus, DisconnectLifecycleAction, IncomingSessionAction, LifecycleEvent, LifecyclePhase,
+    RestartHandoffAction, RestartReason, ShutdownCause, check_status, restart_handoff_action,
+    stale_binary_accept_action, stale_binary_disconnect_action, stop_daemon, transition,
+    version_gate_action,
+};
 use crate::daemon::pid::PidFile;
 use crate::paths::DaemonPaths;
 #[cfg(unix)]
@@ -96,5 +101,102 @@ fn test_stop_daemon_does_not_delete_files_while_process_alive() {
     assert!(
         paths.daemon_pid().exists(),
         "PID file should not be deleted while process is alive"
+    );
+}
+
+#[test]
+fn test_transition_startup_complete_enters_ready() {
+    let phase = transition(LifecyclePhase::Starting, LifecycleEvent::StartupComplete);
+    assert_eq!(phase, LifecyclePhase::Ready);
+}
+
+#[test]
+fn test_transition_shutdown_with_active_sessions_enters_draining() {
+    let phase = transition(
+        LifecyclePhase::Ready,
+        LifecycleEvent::ShutdownRequested {
+            cause: ShutdownCause::RestartRequired,
+            active_sessions: 2,
+        },
+    );
+
+    assert_eq!(
+        phase,
+        LifecyclePhase::Draining {
+            cause: ShutdownCause::RestartRequired,
+        }
+    );
+}
+
+#[test]
+fn test_transition_draining_to_stopping_after_sessions_drain() {
+    let phase = transition(
+        LifecyclePhase::Draining {
+            cause: ShutdownCause::RestartRequired,
+        },
+        LifecycleEvent::SessionsDrained,
+    );
+
+    assert_eq!(
+        phase,
+        LifecyclePhase::Stopping {
+            cause: ShutdownCause::RestartRequired,
+        }
+    );
+}
+
+#[test]
+fn test_version_gate_action_reports_lifecycle_restart_outcomes() {
+    assert_eq!(
+        version_gate_action(Some("6.8.0"), "6.7.0", 0),
+        IncomingSessionAction::ShutdownForRestart(RestartReason::VersionMismatch)
+    );
+    assert_eq!(
+        version_gate_action(Some("6.8.0"), "6.7.0", 3),
+        IncomingSessionAction::RejectForRestart(RestartReason::VersionMismatch)
+    );
+}
+
+#[test]
+fn test_stale_binary_accept_action_marks_restart_pending_when_busy() {
+    assert_eq!(
+        stale_binary_accept_action(true, 2, false),
+        IncomingSessionAction::AcceptWithRestartPending(RestartReason::StaleBinary)
+    );
+}
+
+#[test]
+fn test_stale_binary_disconnect_action_marks_restart_pending_with_sessions_remaining() {
+    assert_eq!(
+        stale_binary_disconnect_action(true, false, 2),
+        DisconnectLifecycleAction::MarkRestartPending(RestartReason::StaleBinary)
+    );
+}
+
+#[test]
+fn test_stale_binary_disconnect_action_triggers_shutdown_for_last_session() {
+    assert_eq!(
+        stale_binary_disconnect_action(true, true, 0),
+        DisconnectLifecycleAction::TriggerShutdown(ShutdownCause::RestartRequired)
+    );
+}
+
+#[test]
+fn test_restart_handoff_action_retries_before_last_attempt() {
+    assert_eq!(
+        restart_handoff_action(0, 2, RestartReason::TransportUnavailable),
+        RestartHandoffAction::Retry {
+            reason: RestartReason::TransportUnavailable,
+        }
+    );
+}
+
+#[test]
+fn test_restart_handoff_action_exhausts_on_last_attempt() {
+    assert_eq!(
+        restart_handoff_action(2, 2, RestartReason::ImmediateDisconnect),
+        RestartHandoffAction::Exhausted {
+            reason: RestartReason::ImmediateDisconnect,
+        }
     );
 }
