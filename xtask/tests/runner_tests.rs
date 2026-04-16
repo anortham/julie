@@ -8,9 +8,9 @@ use anyhow::Result;
 use xtask::cli::{TestCommand, parse_test_command, validate_test_command};
 use xtask::manifest::TestManifest;
 use xtask::runner::{
-    BucketResult, BucketStatus, CommandExecutor, CommandOutcome, ProcessCommandExecutor,
-    RunSummary, render_bucket_result, render_manifest_listing, render_summary, run_bucket,
-    run_tier, transform_command_for_coverage,
+    BucketResult, BucketStatus, CommandExecutor, CommandOutcome, CommandResult,
+    ProcessCommandExecutor, RunSummary, render_bucket_result, render_manifest_listing,
+    render_summary, run_bucket, run_tier, transform_command_for_coverage,
 };
 
 #[test]
@@ -240,6 +240,92 @@ fn runner_tests_cli_rejects_zero_timeout_multiplier() {
 }
 
 #[test]
+fn runner_tests_failed_bucket_writes_captured_output_between_markers() {
+    let manifest = sample_manifest();
+    let executor = FakeExecutor::with_results([(
+        "cargo test --lib tests::tools::search",
+        CommandResult {
+            outcome: CommandOutcome::Failed {
+                elapsed: Duration::from_millis(700),
+                exit_code: Some(1),
+            },
+            captured: "test tests::tools::search::test_foo ... FAILED\nassertion failed: left == right\n".to_string(),
+        },
+    )]);
+    let mut output = Vec::new();
+
+    run_bucket(&manifest, "tools-search", 1, false, &executor, &mut output).unwrap_err();
+    let rendered = String::from_utf8(output).unwrap();
+
+    let start_idx = rendered.find("START tools-search").expect("missing START");
+    let captured_idx = rendered.find("test_foo ... FAILED").expect("missing captured output");
+    let end_idx = rendered.find("END tools-search FAIL").expect("missing END");
+    assert!(start_idx < captured_idx, "captured output should come after START");
+    assert!(captured_idx < end_idx, "captured output should come before END");
+    assert!(rendered.contains("assertion failed: left == right"));
+}
+
+#[test]
+fn runner_tests_timed_out_bucket_writes_captured_output_between_markers() {
+    let manifest = sample_manifest();
+    let executor = FakeExecutor::with_results([(
+        "cargo test --lib tests::core::workspace_init",
+        CommandResult {
+            outcome: CommandOutcome::TimedOut {
+                elapsed: Duration::from_secs(61),
+            },
+            captured: "running 3 tests\ntest tests::core::workspace_init::slow_one has been running for over 60 seconds\n".to_string(),
+        },
+    )]);
+    let mut output = Vec::new();
+
+    run_bucket(
+        &manifest,
+        "workspace-init",
+        2,
+        false,
+        &executor,
+        &mut output,
+    )
+    .unwrap_err();
+    let rendered = String::from_utf8(output).unwrap();
+
+    assert!(rendered.contains("START workspace-init"));
+    assert!(rendered.contains("has been running for over 60 seconds"));
+    assert!(rendered.contains("END workspace-init TIMEOUT"));
+}
+
+#[test]
+fn runner_tests_passed_bucket_discards_captured_output() {
+    let manifest = sample_manifest();
+    let executor = FakeExecutor::with_results([(
+        "cargo test --lib tests::cli_tests",
+        CommandResult {
+            outcome: CommandOutcome::Passed {
+                elapsed: Duration::from_millis(500),
+            },
+            captured: "Compiling julie v6.8.0\nrunning 50 tests\ntest result: ok. 50 passed\n"
+                .to_string(),
+        },
+    )]);
+    let mut output = Vec::new();
+
+    run_bucket(&manifest, "cli", 1, false, &executor, &mut output).unwrap();
+    let rendered = String::from_utf8(output).unwrap();
+
+    assert!(rendered.contains("START cli"));
+    assert!(rendered.contains("END cli PASS"));
+    assert!(
+        !rendered.contains("Compiling julie"),
+        "compile noise should not leak on pass: {rendered}"
+    );
+    assert!(
+        !rendered.contains("running 50 tests"),
+        "cargo banner should not leak on pass: {rendered}"
+    );
+}
+
+#[test]
 fn runner_tests_run_bucket_emits_fail_marker_through_execution_path() {
     let manifest = sample_manifest();
     let executor = FakeExecutor::with_outcomes([(
@@ -374,11 +460,11 @@ fn runner_tests_process_executor_kills_timed_out_command_tree() {
     );
     let executor = ProcessCommandExecutor;
 
-    let outcome = executor
+    let result = executor
         .run("process-tree", &command, Duration::from_millis(100))
         .unwrap();
 
-    assert!(matches!(outcome, CommandOutcome::TimedOut { .. }));
+    assert!(matches!(result.outcome, CommandOutcome::TimedOut { .. }));
 
     let child_pid = read_child_pid(&pid_file);
     let child_still_alive = process_is_alive(child_pid);
@@ -450,6 +536,7 @@ commands = [
 
 struct FakeExecutor {
     outcomes: Rc<RefCell<HashMap<String, VecDeque<CommandOutcome>>>>,
+    captured: Rc<RefCell<HashMap<String, VecDeque<String>>>>,
     calls: Rc<RefCell<Vec<String>>>,
     commands: Rc<RefCell<Vec<String>>>,
     timeouts: Rc<RefCell<HashMap<String, Vec<Duration>>>>,
@@ -459,6 +546,7 @@ impl FakeExecutor {
     fn successful() -> Self {
         Self {
             outcomes: Rc::new(RefCell::new(HashMap::new())),
+            captured: Rc::new(RefCell::new(HashMap::new())),
             calls: Rc::new(RefCell::new(Vec::new())),
             commands: Rc::new(RefCell::new(Vec::new())),
             timeouts: Rc::new(RefCell::new(HashMap::new())),
@@ -473,6 +561,7 @@ impl FakeExecutor {
 
         Self {
             outcomes: Rc::new(RefCell::new(outcomes)),
+            captured: Rc::new(RefCell::new(HashMap::new())),
             calls: Rc::new(RefCell::new(Vec::new())),
             commands: Rc::new(RefCell::new(Vec::new())),
             timeouts: Rc::new(RefCell::new(HashMap::new())),
@@ -496,8 +585,33 @@ impl FakeExecutor {
     }
 }
 
+impl FakeExecutor {
+    fn with_results<const N: usize>(entries: [(&str, CommandResult); N]) -> Self {
+        let mut outcomes: HashMap<String, VecDeque<CommandOutcome>> = HashMap::new();
+        let mut captured: HashMap<String, VecDeque<String>> = HashMap::new();
+        for (command, result) in entries {
+            outcomes
+                .entry(command.to_string())
+                .or_default()
+                .push_back(result.outcome);
+            captured
+                .entry(command.to_string())
+                .or_default()
+                .push_back(result.captured);
+        }
+
+        Self {
+            outcomes: Rc::new(RefCell::new(outcomes)),
+            captured: Rc::new(RefCell::new(captured)),
+            calls: Rc::new(RefCell::new(Vec::new())),
+            commands: Rc::new(RefCell::new(Vec::new())),
+            timeouts: Rc::new(RefCell::new(HashMap::new())),
+        }
+    }
+}
+
 impl CommandExecutor for FakeExecutor {
-    fn run(&self, bucket: &str, command: &str, timeout: Duration) -> Result<CommandOutcome> {
+    fn run(&self, bucket: &str, command: &str, timeout: Duration) -> Result<CommandResult> {
         self.calls.borrow_mut().push(bucket.to_string());
         self.commands.borrow_mut().push(command.to_string());
         self.timeouts
@@ -515,7 +629,14 @@ impl CommandExecutor for FakeExecutor {
                 elapsed: Duration::from_secs(1),
             });
 
-        Ok(outcome)
+        let captured = self
+            .captured
+            .borrow_mut()
+            .get_mut(command)
+            .and_then(|queue| queue.pop_front())
+            .unwrap_or_default();
+
+        Ok(CommandResult { outcome, captured })
     }
 }
 

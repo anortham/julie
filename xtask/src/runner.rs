@@ -1,6 +1,6 @@
 use std::fmt;
-use std::io::Write;
-use std::process::{Child, Command};
+use std::io::{Read, Write};
+use std::process::{Child, Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -12,7 +12,7 @@ use crate::manifest::{BucketConfig, TestManifest};
 use std::os::unix::process::CommandExt;
 
 pub trait CommandExecutor {
-    fn run(&self, bucket: &str, command: &str, timeout: Duration) -> Result<CommandOutcome>;
+    fn run(&self, bucket: &str, command: &str, timeout: Duration) -> Result<CommandResult>;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -27,6 +27,17 @@ pub enum CommandOutcome {
     TimedOut {
         elapsed: Duration,
     },
+}
+
+/// Outcome of a single command plus its merged stdout/stderr output.
+///
+/// Passing commands: callers should discard `captured` to keep the context clean.
+/// Failing/timed-out commands: callers should emit `captured` so the failing
+/// test output reaches the user.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CommandResult {
+    pub outcome: CommandOutcome,
+    pub captured: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -75,38 +86,62 @@ struct BucketFailure {
 pub struct ProcessCommandExecutor;
 
 impl CommandExecutor for ProcessCommandExecutor {
-    fn run(&self, _bucket: &str, command: &str, timeout: Duration) -> Result<CommandOutcome> {
+    fn run(&self, _bucket: &str, command: &str, timeout: Duration) -> Result<CommandResult> {
         let start = Instant::now();
         let deadline = start + timeout;
         let mut process = shell_command(command);
+        process.stdout(Stdio::piped()).stderr(Stdio::piped());
         configure_command_for_termination(&mut process);
         let mut child = process.spawn()?;
 
-        loop {
+        // Drain both pipes on background threads so the child never blocks on
+        // a full pipe buffer (~64KB on most systems). Without this, a noisy
+        // test run would deadlock the try_wait loop.
+        let stdout_pipe = child.stdout.take().expect("stdout should be piped");
+        let stderr_pipe = child.stderr.take().expect("stderr should be piped");
+        let stdout_reader = thread::spawn(move || read_all(stdout_pipe));
+        let stderr_reader = thread::spawn(move || read_all(stderr_pipe));
+
+        let outcome = loop {
             if let Some(status) = child.try_wait()? {
                 let elapsed = start.elapsed();
-                return Ok(if status.success() {
+                break if status.success() {
                     CommandOutcome::Passed { elapsed }
                 } else {
                     CommandOutcome::Failed {
                         elapsed,
                         exit_code: status.code(),
                     }
-                });
+                };
             }
 
             let now = Instant::now();
             if now >= deadline {
                 let _ = terminate_child_on_timeout(&mut child);
-                return Ok(CommandOutcome::TimedOut {
+                break CommandOutcome::TimedOut {
                     elapsed: start.elapsed(),
-                });
+                };
             }
 
             let remaining = deadline.saturating_duration_since(now);
             thread::sleep(remaining.min(Duration::from_millis(10)));
+        };
+
+        let stdout_bytes = stdout_reader.join().unwrap_or_default();
+        let stderr_bytes = stderr_reader.join().unwrap_or_default();
+        let mut captured = String::from_utf8_lossy(&stdout_bytes).into_owned();
+        if !stderr_bytes.is_empty() {
+            captured.push_str(&String::from_utf8_lossy(&stderr_bytes));
         }
+
+        Ok(CommandResult { outcome, captured })
     }
+}
+
+fn read_all<R: Read>(mut reader: R) -> Vec<u8> {
+    let mut buf = Vec::new();
+    let _ = reader.read_to_end(&mut buf);
+    buf
 }
 
 fn configure_command_for_termination(_command: &mut Command) {
@@ -367,7 +402,7 @@ where
             });
         }
 
-        let outcome = executor
+        let CommandResult { outcome, captured } = executor
             .run(bucket_name, command, remaining_timeout)
             .map_err(|error| BucketFailure {
                 result: build_bucket_result(bucket_name, BucketStatus::Failed, elapsed, bucket),
@@ -380,6 +415,7 @@ where
             } => {
                 elapsed = bucket_started.elapsed().max(elapsed + command_elapsed);
                 if elapsed >= timeout {
+                    write_captured_on_failure(writer, &captured)?;
                     let result =
                         build_bucket_result(bucket_name, BucketStatus::TimedOut, elapsed, bucket);
                     write_bucket_end(writer, &result)?;
@@ -394,6 +430,7 @@ where
                 exit_code,
             } => {
                 elapsed = bucket_started.elapsed().max(elapsed + command_elapsed);
+                write_captured_on_failure(writer, &captured)?;
                 let result =
                     build_bucket_result(bucket_name, BucketStatus::Failed, elapsed, bucket);
                 write_bucket_end(writer, &result)?;
@@ -410,6 +447,7 @@ where
                 elapsed: command_elapsed,
             } => {
                 elapsed = bucket_started.elapsed().max(elapsed + command_elapsed);
+                write_captured_on_failure(writer, &captured)?;
                 let result =
                     build_bucket_result(bucket_name, BucketStatus::TimedOut, elapsed, bucket);
                 write_bucket_end(writer, &result)?;
@@ -438,6 +476,40 @@ fn build_bucket_result(
         elapsed,
         command_count: bucket.commands.len(),
     }
+}
+
+fn write_captured_on_failure<W: Write>(
+    writer: &mut W,
+    captured: &str,
+) -> std::result::Result<(), BucketFailure> {
+    if captured.is_empty() {
+        return Ok(());
+    }
+    writer
+        .write_all(captured.as_bytes())
+        .map_err(|error| BucketFailure {
+            result: BucketResult {
+                bucket_name: String::new(),
+                status: BucketStatus::Failed,
+                elapsed: Duration::ZERO,
+                command_count: 0,
+            },
+            message: error.to_string(),
+        })?;
+    if !captured.ends_with('\n') {
+        writer
+            .write_all(b"\n")
+            .map_err(|error| BucketFailure {
+                result: BucketResult {
+                    bucket_name: String::new(),
+                    status: BucketStatus::Failed,
+                    elapsed: Duration::ZERO,
+                    command_count: 0,
+                },
+                message: error.to_string(),
+            })?;
+    }
+    Ok(())
 }
 
 fn write_bucket_end<W: Write>(
