@@ -1,6 +1,6 @@
 [package]
 name = "julie-extractors"
-version = "1.21.0"
+version = "1.22.0"
 edition = "2024"
 authors = ["Alan"]
 description = "Cross-platform code intelligence extractors for 33 programming languages"
