@@ -5,16 +5,78 @@ use anyhow::Result;
 use tracing::info;
 
 impl SymbolDatabase {
-    pub fn delete_workspace_data(&mut self) -> Result<WorkspaceCleanupStats> {
+    pub fn delete_orphaned_files_atomic(
+        &mut self,
+        workspace_id: &str,
+        orphaned_files: &[String],
+    ) -> Result<Option<i64>> {
+        if orphaned_files.is_empty() {
+            return Ok(None);
+        }
+
         let tx = self.conn.transaction()?;
 
-        // Count data before deletion for reporting
+        for file_path in orphaned_files {
+            tx.execute(
+                "DELETE FROM symbol_vectors WHERE symbol_id IN (
+                    SELECT id FROM symbols WHERE file_path = ?1
+                )",
+                rusqlite::params![file_path],
+            )?;
+            tx.execute(
+                "DELETE FROM relationships
+                 WHERE from_symbol_id IN (SELECT id FROM symbols WHERE file_path = ?1)
+                    OR to_symbol_id IN (SELECT id FROM symbols WHERE file_path = ?1)",
+                rusqlite::params![file_path],
+            )?;
+            tx.execute(
+                "DELETE FROM identifiers
+                 WHERE file_path = ?1
+                    OR containing_symbol_id IN (SELECT id FROM symbols WHERE file_path = ?1)",
+                rusqlite::params![file_path],
+            )?;
+            tx.execute(
+                "DELETE FROM types WHERE symbol_id IN (SELECT id FROM symbols WHERE file_path = ?1)",
+                rusqlite::params![file_path],
+            )?;
+            tx.execute(
+                "DELETE FROM indexing_repairs WHERE path = ?1",
+                rusqlite::params![file_path],
+            )?;
+            tx.execute(
+                "DELETE FROM symbols WHERE file_path = ?1",
+                rusqlite::params![file_path],
+            )?;
+            tx.execute(
+                "DELETE FROM files WHERE path = ?1",
+                rusqlite::params![file_path],
+            )?;
+        }
+
+        let revision = super::revisions::record_canonical_revision_tx(
+            &tx,
+            workspace_id,
+            CanonicalRevisionKind::Incremental,
+            orphaned_files.len() as i64,
+            0,
+            0,
+            0,
+            0,
+            0,
+        )?;
+
+        tx.commit()?;
+        Ok(Some(revision))
+    }
+
+    pub fn delete_workspace_data(&mut self) -> Result<WorkspaceCleanupStats> {
+        self.conn.execute_batch("PRAGMA foreign_keys = ON")?;
+        let tx = self.conn.transaction()?;
+
         let symbols_count: i64 =
             tx.query_row("SELECT COUNT(*) FROM symbols", [], |row| row.get(0))?;
-
         let relationships_count: i64 =
             tx.query_row("SELECT COUNT(*) FROM relationships", [], |row| row.get(0))?;
-
         let files_count: i64 = tx.query_row("SELECT COUNT(*) FROM files", [], |row| row.get(0))?;
         let revisions_count: i64 =
             tx.query_row("SELECT COUNT(*) FROM canonical_revisions", [], |row| {
@@ -25,10 +87,15 @@ impl SymbolDatabase {
                 row.get(0)
             })?;
 
-        // Delete all workspace data in proper order (relationships first due to foreign keys)
+        // Explicit deletes for every workspace-owned table — don't trust FK cascade alone
+        // because foreign_keys pragma state is per-connection. Order is dependent-first.
+        tx.execute("DELETE FROM symbol_vectors", [])?;
+        tx.execute("DELETE FROM identifiers", [])?;
+        tx.execute("DELETE FROM types", [])?;
         tx.execute("DELETE FROM relationships", [])?;
         tx.execute("DELETE FROM symbols", [])?;
         tx.execute("DELETE FROM files", [])?;
+        tx.execute("DELETE FROM indexing_repairs", [])?;
         tx.execute("DELETE FROM canonical_revisions", [])?;
         tx.execute("DELETE FROM projection_states", [])?;
 

@@ -317,4 +317,39 @@ mod tests {
 
         Ok(())
     }
+
+    #[serial(embedding_env)]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_system_health_ignores_unconfigured_runtime_plane_for_overall_level() -> Result<()>
+    {
+        let (_guard, _temp_dir, handler, _workspace_path, _workspace_id) =
+            prepare_indexed_workspace().await?;
+
+        {
+            let mut workspace = handler.workspace.write().await;
+            let workspace = workspace.as_mut().expect("workspace should be initialized");
+            workspace.embedding_provider = None;
+            workspace.embedding_runtime_status = None;
+        }
+
+        let snapshot = HealthChecker::system_snapshot(&handler).await?;
+
+        assert_eq!(
+            snapshot.data_plane.level,
+            HealthLevel::Ready,
+            "indexed workspace should report a healthy data plane"
+        );
+        assert_eq!(
+            snapshot.runtime_plane.level,
+            HealthLevel::Unavailable,
+            "embedding runtime is intentionally unconfigured in this harness"
+        );
+        assert_eq!(
+            snapshot.overall,
+            HealthLevel::Ready,
+            "unconfigured runtime should not downgrade an otherwise healthy system"
+        );
+
+        Ok(())
+    }
 }

@@ -364,3 +364,51 @@ async fn test_watcher_pool_detached_on_disconnect() {
     // ref_count hit 0, grace deadline should now be set
     assert!(watcher_pool.has_grace_deadline("test_ws").await);
 }
+
+#[tokio::test]
+async fn test_get_does_not_block_on_unrelated_session_count_update() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let daemon_db_path = tmp.path().join("daemon.db");
+    let daemon_db = Arc::new(DaemonDatabase::open(&daemon_db_path).unwrap());
+    let indexes_dir = tmp.path().join("indexes");
+    std::fs::create_dir_all(&indexes_dir).unwrap();
+
+    let pool = Arc::new(WorkspacePool::new(
+        indexes_dir,
+        Some(Arc::clone(&daemon_db)),
+        None,
+        None,
+    ));
+    let root1 = temp_workspace_root();
+    pool.get_or_init("ws1", root1.path().to_path_buf())
+        .await
+        .expect("initial workspace should load");
+
+    let blocking_conn = rusqlite::Connection::open(&daemon_db_path).unwrap();
+    blocking_conn.execute_batch("BEGIN EXCLUSIVE;").unwrap();
+
+    let root2 = temp_workspace_root();
+    let pool_for_task = Arc::clone(&pool);
+    let root2_path = root2.path().to_path_buf();
+    let blocked_task =
+        tokio::spawn(async move { pool_for_task.get_or_init("ws2", root2_path).await });
+
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+    let existing =
+        tokio::time::timeout(std::time::Duration::from_millis(200), pool.get("ws1")).await;
+    assert!(
+        existing.is_ok(),
+        "existing workspace reads should stay available while a different workspace waits on daemon.db"
+    );
+    assert!(
+        existing.unwrap().is_some(),
+        "existing workspace should remain visible during concurrent init"
+    );
+
+    blocking_conn.execute_batch("ROLLBACK;").unwrap();
+    blocked_task
+        .await
+        .expect("background init task should not panic")
+        .expect("blocked init should complete once daemon.db lock is released");
+}

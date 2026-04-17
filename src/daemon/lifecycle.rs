@@ -149,13 +149,16 @@ pub fn transition(current: LifecyclePhase, event: LifecycleEvent) -> LifecyclePh
         LifecycleEvent::ShutdownRequested {
             cause,
             active_sessions,
-        } => {
-            if active_sessions > 0 {
-                LifecyclePhase::Draining { cause }
-            } else {
-                LifecyclePhase::Stopping { cause }
+        } => match current {
+            LifecyclePhase::Draining { .. } | LifecyclePhase::Stopping { .. } => current,
+            LifecyclePhase::Starting | LifecyclePhase::Ready => {
+                if active_sessions > 0 {
+                    LifecyclePhase::Draining { cause }
+                } else {
+                    LifecyclePhase::Stopping { cause }
+                }
             }
-        }
+        },
         LifecycleEvent::SessionsDrained => match current {
             LifecyclePhase::Draining { cause } => LifecyclePhase::Stopping { cause },
             other => other,
@@ -258,13 +261,14 @@ pub fn publish_phase(target: &RwLock<LifecyclePhase>, path: &Path, phase: Lifecy
 pub fn flag_restart_pending_for_restart(
     restart_pending: &AtomicBool,
     daemon_state_path: &Path,
+    current_phase: LifecyclePhase,
     active_sessions: usize,
     cause: ShutdownCause,
 ) -> RestartPendingTransition {
     let first_request = !restart_pending.load(Ordering::Relaxed);
     restart_pending.store(true, Ordering::Relaxed);
     let next_phase = transition(
-        LifecyclePhase::Ready,
+        current_phase,
         LifecycleEvent::ShutdownRequested {
             cause,
             active_sessions,

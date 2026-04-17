@@ -1,20 +1,19 @@
 use super::{DataPlaneHealth, HealthLevel, ProjectionState, SystemStatus};
 
-pub(super) fn overall_from_planes(
+pub(crate) fn overall_from_planes(
     control_level: HealthLevel,
     data_level: HealthLevel,
     runtime_level: HealthLevel,
+    runtime_configured: bool,
 ) -> HealthLevel {
-    if data_level == HealthLevel::Unavailable {
-        HealthLevel::Unavailable
-    } else if control_level == HealthLevel::Ready && runtime_level == HealthLevel::Ready {
-        data_level
-    } else {
-        HealthLevel::Degraded
+    let mut levels = vec![control_level, data_level];
+    if runtime_configured || runtime_level != HealthLevel::Unavailable {
+        levels.push(runtime_level);
     }
+    overall_from_levels(&levels)
 }
 
-pub(super) fn overall_from_levels(levels: &[HealthLevel]) -> HealthLevel {
+pub(crate) fn overall_from_levels(levels: &[HealthLevel]) -> HealthLevel {
     if levels.contains(&HealthLevel::Unavailable) {
         HealthLevel::Unavailable
     } else if levels.contains(&HealthLevel::Degraded) {

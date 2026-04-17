@@ -82,3 +82,37 @@ impl TestManifest {
         Ok(self)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::TestManifest;
+    use std::path::PathBuf;
+
+    fn manifest_path() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test_tiers.toml")
+    }
+
+    #[test]
+    fn manifest_tests_dev_and_full_include_dashboard_bucket() {
+        let manifest = TestManifest::load(manifest_path()).expect("load manifest");
+
+        assert!(
+            manifest.buckets.contains_key("dashboard"),
+            "manifest should define a dashboard bucket"
+        );
+        assert!(
+            manifest
+                .tiers
+                .get("dev")
+                .is_some_and(|buckets| buckets.iter().any(|bucket| bucket == "dashboard")),
+            "dev tier should run dashboard tests"
+        );
+        assert!(
+            manifest
+                .tiers
+                .get("full")
+                .is_some_and(|buckets| buckets.iter().any(|bucket| bucket == "dashboard")),
+            "full tier should run dashboard tests"
+        );
+    }
+}

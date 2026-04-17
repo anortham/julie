@@ -9,6 +9,7 @@ mod tests {
         SIDECAR_PROTOCOL_VERSION, validate_batch_response, validate_health_response,
         validate_query_response, validate_response_envelope,
     };
+    use serde_json::json;
 
     /// Test dimension value — matches BGE-small default but is just a test constant.
     const TEST_DIMS: usize = 384;
@@ -46,6 +47,8 @@ mod tests {
             load_policy: Some(DeviceLoadPolicy {
                 requested_device_backend: "cpu".to_string(),
                 resolved_device_backend: "cpu".to_string(),
+                accelerated: Some(false),
+                degraded_reason: None,
             }),
         }
     }
@@ -173,6 +176,12 @@ mod tests {
         let resp = HealthResult {
             ready: false,
             dims: Some(TEST_DIMS),
+            load_policy: Some(DeviceLoadPolicy {
+                requested_device_backend: "cpu".to_string(),
+                resolved_device_backend: "cpu".to_string(),
+                accelerated: Some(false),
+                degraded_reason: Some("DirectML unavailable, fell back to CPU".to_string()),
+            }),
             degraded_reason: Some("DirectML unavailable, fell back to CPU".to_string()),
             ..ok_health()
         };
@@ -192,6 +201,10 @@ mod tests {
             load_policy: Some(DeviceLoadPolicy {
                 requested_device_backend: "directml".to_string(),
                 resolved_device_backend: "cpu".to_string(),
+                accelerated: Some(false),
+                degraded_reason: Some(
+                    "probe encode failed on directml, fell back to CPU".to_string(),
+                ),
             }),
             degraded_reason: Some("probe encode failed on directml, fell back to CPU".to_string()),
             ..ok_health()
@@ -206,6 +219,8 @@ mod tests {
             load_policy: Some(DeviceLoadPolicy {
                 requested_device_backend: "directml".to_string(),
                 resolved_device_backend: "cpu".to_string(),
+                accelerated: Some(false),
+                degraded_reason: None,
             }),
             degraded_reason: None,
             ..ok_health()
@@ -227,6 +242,8 @@ mod tests {
             load_policy: Some(DeviceLoadPolicy {
                 requested_device_backend: "".to_string(),
                 resolved_device_backend: "cpu".to_string(),
+                accelerated: Some(false),
+                degraded_reason: None,
             }),
             ..ok_health()
         };
@@ -236,6 +253,75 @@ mod tests {
         assert!(
             message.contains("requested_device_backend"),
             "expected clear requested-backend validation error, got: {message}"
+        );
+    }
+
+    #[test]
+    fn test_validate_health_response_rejects_load_policy_accelerated_mismatch_from_wire_payload() {
+        let resp: HealthResult = serde_json::from_value(json!({
+            "ready": true,
+            "dims": TEST_DIMS,
+            "device": "cpu",
+            "runtime": "fake-runtime",
+            "model_id": "fake-model",
+            "resolved_backend": "sidecar",
+            "accelerated": false,
+            "degraded_reason": null,
+            "capabilities": {
+                "cpu": {"available": true},
+                "cuda": {"available": false},
+                "directml": {"available": false},
+                "mps": {"available": false}
+            },
+            "load_policy": {
+                "requested_device_backend": "cpu",
+                "resolved_device_backend": "cpu",
+                "accelerated": true,
+                "degraded_reason": null
+            }
+        }))
+        .expect("wire payload should deserialize");
+
+        let err = validate_health_response(&resp).unwrap_err();
+        let message = err.to_string();
+        assert!(
+            message.contains("load_policy") && message.contains("accelerated"),
+            "expected clear accelerated mismatch error, got: {message}"
+        );
+    }
+
+    #[test]
+    fn test_validate_health_response_rejects_load_policy_degraded_reason_mismatch_from_wire_payload()
+     {
+        let resp: HealthResult = serde_json::from_value(json!({
+            "ready": false,
+            "dims": TEST_DIMS,
+            "device": "cpu",
+            "runtime": "fake-runtime",
+            "model_id": "fake-model",
+            "resolved_backend": "sidecar",
+            "accelerated": false,
+            "degraded_reason": "top-level reason",
+            "capabilities": {
+                "cpu": {"available": true},
+                "cuda": {"available": false},
+                "directml": {"available": false},
+                "mps": {"available": false}
+            },
+            "load_policy": {
+                "requested_device_backend": "cpu",
+                "resolved_device_backend": "cpu",
+                "accelerated": false,
+                "degraded_reason": "nested reason"
+            }
+        }))
+        .expect("wire payload should deserialize");
+
+        let err = validate_health_response(&resp).unwrap_err();
+        let message = err.to_string();
+        assert!(
+            message.contains("load_policy") && message.contains("degraded_reason"),
+            "expected clear degraded_reason mismatch error, got: {message}"
         );
     }
 

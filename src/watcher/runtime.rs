@@ -280,6 +280,15 @@ impl QueueRuntime {
             return;
         }
 
+        let Some(search_index) = self.search_index.as_ref() else {
+            warn!(
+                reason = %IndexingRepairReason::TantivyDirty,
+                dirty_files = dirty_paths.len(),
+                "Skipping dirty Tantivy retry because no search index is attached"
+            );
+            return;
+        };
+
         self.indexing_runtime
             .write()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -290,10 +299,6 @@ impl QueueRuntime {
             dirty_files = dirty_paths.len(),
             "Retrying dirty Tantivy projection entries"
         );
-
-        let Some(search_index) = self.search_index.as_ref() else {
-            return;
-        };
 
         for rel_path in dirty_paths {
             let (symbol_docs, file_doc) = {

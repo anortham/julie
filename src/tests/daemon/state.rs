@@ -4,7 +4,7 @@
 mod tests {
     use crate::daemon::lifecycle::{
         LifecyclePhase, RestartPendingTransition, ShutdownCause, flag_restart_pending_for_restart,
-        write_daemon_phase, write_daemon_state,
+        store_phase, write_daemon_phase, write_daemon_state,
     };
 
     #[test]
@@ -66,6 +66,7 @@ mod tests {
         } = flag_restart_pending_for_restart(
             &restart_pending,
             &state_path,
+            LifecyclePhase::Ready,
             1,
             ShutdownCause::RestartRequired,
         );
@@ -100,6 +101,7 @@ mod tests {
         let _ = flag_restart_pending_for_restart(
             &restart_pending,
             &state_path,
+            LifecyclePhase::Ready,
             1,
             ShutdownCause::RestartRequired,
         );
@@ -113,6 +115,7 @@ mod tests {
         let RestartPendingTransition { first_request, .. } = flag_restart_pending_for_restart(
             &restart_pending,
             &state_path,
+            LifecyclePhase::Ready,
             1,
             ShutdownCause::RestartRequired,
         );
@@ -126,6 +129,38 @@ mod tests {
             std::fs::read_to_string(&state_path).unwrap(),
             "custom-marker",
             "subsequent rejections must not re-write daemon_state"
+        );
+    }
+
+    #[test]
+    fn test_flag_restart_pending_preserves_existing_shutdown_phase() {
+        use std::sync::RwLock;
+        use std::sync::atomic::AtomicBool;
+
+        let dir = tempfile::TempDir::new().unwrap();
+        let state_path = dir.path().join("daemon.state");
+        write_daemon_state(&state_path, "stopping");
+
+        let daemon_phase = RwLock::new(LifecyclePhase::Stopping {
+            cause: ShutdownCause::Signal,
+        });
+        let restart_pending = AtomicBool::new(true);
+
+        let transition = flag_restart_pending_for_restart(
+            &restart_pending,
+            &state_path,
+            *daemon_phase.read().unwrap(),
+            2,
+            ShutdownCause::RestartRequired,
+        );
+        store_phase(&daemon_phase, transition.next_phase);
+
+        assert_eq!(
+            *daemon_phase.read().unwrap(),
+            LifecyclePhase::Stopping {
+                cause: ShutdownCause::Signal,
+            },
+            "follow-on restart requests must not clobber a richer shutdown phase"
         );
     }
 }

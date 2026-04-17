@@ -40,9 +40,9 @@ use crate::workspace::registry::generate_workspace_id;
 use self::database::DaemonDatabase;
 use self::embedding_service::EmbeddingService;
 use self::ipc::IpcListener;
-pub(crate) use self::ipc_session::{
-    PrefixedIpcStream, handle_ipc_session, parse_ipc_headers_block, read_ipc_headers,
-};
+pub(crate) use self::ipc_session::{PrefixedIpcStream, handle_ipc_session, read_ipc_headers};
+#[cfg(test)]
+pub(crate) use self::ipc_session::parse_ipc_headers_block;
 use self::lifecycle::{
     DisconnectLifecycleAction, IncomingSessionAction, LifecycleEvent, LifecyclePhase,
     ShutdownCause, flag_restart_pending_for_restart, publish_phase, stale_binary_accept_action,
@@ -756,6 +756,7 @@ async fn accept_loop(
                 let transition = flag_restart_pending_for_restart(
                     &restart_pending,
                     daemon_state_path,
+                    *daemon_phase.read().unwrap_or_else(|p| p.into_inner()),
                     active_sessions,
                     ShutdownCause::RestartRequired,
                 );
@@ -772,6 +773,7 @@ async fn accept_loop(
                 let _ = flag_restart_pending_for_restart(
                     &restart_pending,
                     daemon_state_path,
+                    *daemon_phase.read().unwrap_or_else(|p| p.into_inner()),
                     active_sessions,
                     ShutdownCause::RestartRequired,
                 );
@@ -839,6 +841,7 @@ async fn accept_loop(
                 let _ = flag_restart_pending_for_restart(
                     &restart_pending,
                     daemon_state_path,
+                    *daemon_phase.read().unwrap_or_else(|p| p.into_inner()),
                     active_sessions,
                     ShutdownCause::RestartRequired,
                 );
@@ -856,6 +859,7 @@ async fn accept_loop(
                 let transition = flag_restart_pending_for_restart(
                     &restart_pending,
                     daemon_state_path,
+                    *daemon_phase.read().unwrap_or_else(|p| p.into_inner()),
                     active_sessions,
                     ShutdownCause::RestartRequired,
                 );
@@ -882,6 +886,7 @@ async fn accept_loop(
                 let transition = flag_restart_pending_for_restart(
                     &restart_pending,
                     daemon_state_path,
+                    *daemon_phase.read().unwrap_or_else(|p| p.into_inner()),
                     active_sessions,
                     ShutdownCause::RestartRequired,
                 );
@@ -957,6 +962,7 @@ async fn accept_loop(
                     let transition = flag_restart_pending_for_restart(
                         &restart_pending,
                         &daemon_state_path,
+                        *daemon_phase.read().unwrap_or_else(|p| p.into_inner()),
                         remaining,
                         ShutdownCause::RestartRequired,
                     );
@@ -969,6 +975,7 @@ async fn accept_loop(
                     let transition = flag_restart_pending_for_restart(
                         &restart_pending,
                         &daemon_state_path,
+                        *daemon_phase.read().unwrap_or_else(|p| p.into_inner()),
                         remaining,
                         cause,
                     );

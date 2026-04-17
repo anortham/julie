@@ -104,7 +104,7 @@ mod tests {
     /// happens late in the wait window.
     #[tokio::test]
     async fn test_read_daemon_ready_returns_eof_when_daemon_drops_after_delay() {
-        let (mut client, mut daemon) = tokio::io::duplex(64);
+        let (mut client, daemon) = tokio::io::duplex(64);
 
         let daemon_task = tokio::spawn(async move {
             // Simulate slow pre-serve work (e.g. cold workspace init) that

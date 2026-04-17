@@ -331,10 +331,12 @@ impl IndexingBatchState {
         &self.repair_issues
     }
 
+    #[cfg(test)]
     pub(crate) fn parsed_file_count(&self) -> usize {
         self.count_files(IndexedFileDisposition::Parsed)
     }
 
+    #[cfg(test)]
     pub(crate) fn text_only_file_count(&self) -> usize {
         self.count_files(IndexedFileDisposition::TextOnly)
     }

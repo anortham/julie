@@ -201,7 +201,9 @@ mod tests {
                 },
                 "load_policy": {
                     "requested_device_backend": "cpu",
-                    "resolved_device_backend": "cpu"
+                    "resolved_device_backend": "cpu",
+                    "accelerated": false,
+                    "degraded_reason": null
                 }
             }"#,
         );
@@ -230,7 +232,9 @@ mod tests {
                 },
                 "load_policy": {
                     "requested_device_backend": "directml",
-                    "resolved_device_backend": "cpu"
+                    "resolved_device_backend": "cpu",
+                    "accelerated": false,
+                    "degraded_reason": "probe encode failed on directml, fell back to CPU"
                 }
             }"#,
         );

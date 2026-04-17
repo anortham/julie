@@ -18,7 +18,8 @@ use crate::embeddings::EmbeddingBackend;
 use crate::embeddings::EmbeddingRuntimeStatus;
 use crate::health::{
     EmbeddingRuntimeHealth, HealthLevel, ProjectionFreshness, ProjectionState,
-    SearchProjectionHealth, SystemStatus, project_embedding_runtime,
+    SearchProjectionHealth, SystemStatus, overall_from_planes, project_embedding_runtime,
+    search_projection_health_for_workspace,
 };
 
 // ---------------------------------------------------------------------------
@@ -305,7 +306,7 @@ impl DashboardState {
         let indexing = self.indexing_health().await;
 
         let data_plane = DashboardDataPlaneHealth {
-            level: overall_health_level(
+            level: overall_from_planes(
                 data_plane_level,
                 indexing.level,
                 if self.workspace_pool.is_some() {
@@ -384,7 +385,7 @@ impl DashboardState {
             runtime_status: runtime_status_snapshot,
         };
 
-        let overall = overall_health_level(
+        let overall = overall_from_planes(
             control_plane.level,
             data_plane.level,
             runtime_plane.level,
@@ -587,7 +588,7 @@ impl DashboardState {
             let projection = match db.lock() {
                 Ok(db_lock) => {
                     let symbol_count = db_lock.get_symbol_count_for_workspace().unwrap_or(0);
-                    crate::health::HealthChecker::search_projection_health_for_workspace(
+                    search_projection_health_for_workspace(
                         &workspace_id,
                         &db_lock,
                         symbol_count,
@@ -646,26 +647,6 @@ impl DashboardState {
             repair_needed: false,
             detail: "no active workspace projections are visible to the dashboard".to_string(),
         })
-    }
-}
-
-fn overall_health_level(
-    control_level: HealthLevel,
-    data_level: HealthLevel,
-    runtime_level: HealthLevel,
-    runtime_configured: bool,
-) -> HealthLevel {
-    let mut levels = vec![control_level, data_level];
-    if runtime_configured || runtime_level != HealthLevel::Unavailable {
-        levels.push(runtime_level);
-    }
-
-    if levels.contains(&HealthLevel::Unavailable) {
-        HealthLevel::Unavailable
-    } else if levels.contains(&HealthLevel::Degraded) {
-        HealthLevel::Degraded
-    } else {
-        HealthLevel::Ready
     }
 }
 

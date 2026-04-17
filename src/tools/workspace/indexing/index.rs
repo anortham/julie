@@ -145,6 +145,7 @@ impl ManageWorkspaceTool {
             let database = route.database_for_read(handler).await?;
             let search_index = route.search_index_for_write().await?;
             self.backfill_tantivy_if_needed(
+                handler,
                 &route.workspace_id,
                 database.as_ref(),
                 search_index.as_ref(),
@@ -242,6 +243,7 @@ impl ManageWorkspaceTool {
     /// without requiring a daemon restart or a full tree-sitter re-extract.
     async fn backfill_tantivy_if_needed(
         &self,
+        handler: &JulieServerHandler,
         workspace_id: &str,
         database: Option<&Arc<std::sync::Mutex<crate::database::SymbolDatabase>>>,
         search_index: Option<&Arc<std::sync::Mutex<crate::search::SearchIndex>>>,
@@ -256,11 +258,12 @@ impl ManageWorkspaceTool {
         };
 
         let workspace_id = workspace_id.to_string();
+        let indexing_status = Arc::clone(&handler.indexing_status);
         tokio::task::spawn_blocking(move || {
             let mut db_lock = db.lock().unwrap_or_else(|p| p.into_inner());
             let idx = search_index.lock().unwrap_or_else(|p| p.into_inner());
             let projection = crate::search::SearchProjection::tantivy(workspace_id);
-            projection.ensure_current_from_database(&mut db_lock, &idx)
+            projection.ensure_current_with_gate(&mut db_lock, &idx, &indexing_status.search_ready)
         })
         .await
         .map_err(|e| anyhow::anyhow!("Tantivy projection sync task panicked: {}", e))??;

@@ -79,6 +79,8 @@ See: **docs/TESTING_GUIDE.md** for comprehensive testing standards and SOURCE/CO
 | **System** | `cargo xtask test system` | `workspace_init` + integration buckets | Use when touching startup/workspace/system behavior |
 | **Dogfood** | `cargo xtask test dogfood` | `search_quality` bucket | Use after search/scoring/tokenization changes |
 | **Full** | `cargo xtask test full` | Dev + system + dogfood buckets | Use for broad branch-level confidence |
+| **Reliability** | `cargo xtask test reliability` | Daemon + workspace init + integration buckets | Use when hardening lifecycle, watcher, or daemon restart flows |
+| **Benchmark** | `cargo xtask test benchmark` | Focused `system_health` integration bucket | Use when iterating on health-report latency or a narrow benchmark harness |
 
 ### Default Workflow
 

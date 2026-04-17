@@ -3,12 +3,12 @@
 [tiers]
 # Smoke: keep this tiny for frequent local runs.
 smoke = ["cli", "core-database", "core-embeddings", "tools-get-context"]
-dev = ["cli", "core-database", "core-embeddings", "tools-get-context", "tools-search", "tools-workspace", "tools-misc", "core-fast", "daemon"]
+dev = ["cli", "core-database", "core-embeddings", "tools-get-context", "tools-search", "tools-workspace", "tools-misc", "core-fast", "daemon", "dashboard"]
 # System coverage kept separate from fast local buckets.
 system = ["workspace-init", "integration"]
 # Dogfood stays isolated because it is the long pole.
 dogfood = ["search-quality"]
-full = ["cli", "core-database", "core-embeddings", "tools-get-context", "tools-search", "tools-workspace", "tools-misc", "core-fast", "daemon", "workspace-init", "integration", "search-quality"]
+full = ["cli", "core-database", "core-embeddings", "tools-get-context", "tools-search", "tools-workspace", "tools-misc", "core-fast", "daemon", "dashboard", "workspace-init", "integration", "search-quality"]
 
 [blocked_tiers]
 
@@ -124,6 +124,12 @@ expected_seconds = 12
 timeout_seconds = 60
 commands = ["cargo test --lib tests::daemon -- --skip search_quality"]
 
+[buckets.dashboard]
+# Dashboard routes, templates, and state snapshots must stay in fast local coverage.
+expected_seconds = 12
+timeout_seconds = 60
+commands = ["cargo test --lib tests::dashboard -- --skip search_quality"]
+
 [buckets.workspace-init]
 # System setup path; currently pathological enough that it needs investigation, not a pretend-fast budget.
 expected_seconds = 360
@@ -131,9 +137,10 @@ timeout_seconds = 480
 commands = ["cargo test --lib tests::core::workspace_init -- --skip search_quality"]
 
 [buckets.integration]
-# Cross-cutting integration coverage; not part of the fast local dev tier.
-expected_seconds = 30
-timeout_seconds = 120
+# Cross-cutting integration coverage; reference-workspace and sidecar paths pushed
+# this into system-tier-only territory, so budget it honestly.
+expected_seconds = 130
+timeout_seconds = 240
 commands = ["cargo test --lib tests::integration -- --skip search_quality"]
 
 [buckets.search-quality]

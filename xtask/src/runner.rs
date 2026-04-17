@@ -91,10 +91,7 @@ struct BucketPlan {
 }
 
 const PROGRAM_TIERS: &[(&str, &[&str])] = &[
-    (
-        "reliability",
-        &["daemon", "workspace-init", "integration", "system-health"],
-    ),
+    ("reliability", &["daemon", "workspace-init", "integration"]),
     ("benchmark", &["system-health"]),
 ];
 
@@ -765,12 +762,6 @@ commands = ["integration cmd"]
                     elapsed: Duration::from_millis(20),
                 },
             ),
-            (
-                "cargo test --lib tests::integration::system_health",
-                CommandOutcome::Passed {
-                    elapsed: Duration::from_millis(25),
-                },
-            ),
         ]);
         let mut output = Vec::new();
 
@@ -782,7 +773,6 @@ commands = ["integration cmd"]
                 "daemon".to_string(),
                 "workspace-init".to_string(),
                 "integration".to_string(),
-                "system-health".to_string(),
             ]
         );
         assert_eq!(
@@ -791,13 +781,7 @@ commands = ["integration cmd"]
                 "daemon cmd".to_string(),
                 "workspace init cmd".to_string(),
                 "integration cmd".to_string(),
-                "cargo test --lib tests::integration::system_health".to_string(),
             ]
-        );
-        assert!(
-            String::from_utf8(output)
-                .unwrap()
-                .contains("START system-health")
         );
     }
 

@@ -160,7 +160,6 @@
     "ask": []
   },
   "enabledPlugins": {
-    "julie@julie-plugin": true,
     "playwright@claude-plugins-official": true
   },
   "outputStyle": "Explanatory"

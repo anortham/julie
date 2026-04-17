@@ -8,7 +8,9 @@
 
 #[cfg(test)]
 mod reference_workspace_tests {
+    use crate::database::ProjectionStatus;
     use crate::handler::JulieServerHandler;
+    use crate::search::projection::TANTIVY_PROJECTION_NAME;
     use crate::tests::helpers::workspace::get_fixture_path;
     use crate::tools::search::FastSearchTool;
     use crate::tools::workspace::ManageWorkspaceTool;
@@ -383,6 +385,15 @@ mod reference_workspace_tests {
             initial_response
         );
 
+        let reference_db = handler.get_database_for_workspace(&reference_id).await?;
+        let (canonical_before_cleanup, projection_before_cleanup) = {
+            let db = reference_db.lock().unwrap();
+            (
+                db.get_current_canonical_revision(&reference_id)?,
+                db.get_projection_state(TANTIVY_PROJECTION_NAME, &reference_id)?,
+            )
+        };
+
         // Now simulate file deletion: Delete helper.rs from the reference workspace fixture
         let reference_path = get_fixture_path("tiny-reference");
         let helper_file_path = reference_path.join("src").join("helper.rs");
@@ -434,6 +445,44 @@ mod reference_workspace_tests {
             !deleted_response.contains("helper.rs") || deleted_response.contains("No lines found"),
             "Orphaned file helper.rs should have been cleaned up from reference workspace database, but was still found: {}",
             deleted_response
+        );
+
+        let (canonical_after_cleanup, projection_after_cleanup) = {
+            let db = reference_db.lock().unwrap();
+            (
+                db.get_current_canonical_revision(&reference_id)?,
+                db.get_projection_state(TANTIVY_PROJECTION_NAME, &reference_id)?,
+            )
+        };
+
+        assert!(
+            canonical_before_cleanup.is_some(),
+            "reference workspace should have a canonical revision before orphan cleanup"
+        );
+        assert!(
+            canonical_after_cleanup > canonical_before_cleanup,
+            "orphan cleanup should advance the canonical revision"
+        );
+        let projection_after_cleanup = projection_after_cleanup
+            .expect("reference workspace should keep Tantivy projection state");
+        assert_eq!(
+            projection_after_cleanup.status,
+            ProjectionStatus::Ready,
+            "projection state should return to ready after orphan cleanup"
+        );
+        assert_eq!(
+            projection_after_cleanup.canonical_revision, canonical_after_cleanup,
+            "projection state should track the new orphan-cleanup revision"
+        );
+        assert_eq!(
+            projection_after_cleanup.projected_revision, canonical_after_cleanup,
+            "projection state should be marked current after Tantivy cleanup commits"
+        );
+        assert!(
+            projection_before_cleanup
+                .as_ref()
+                .is_some_and(|state| state.status == ProjectionStatus::Ready),
+            "reference workspace should start from a ready projection state"
         );
 
         Ok(())

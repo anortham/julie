@@ -99,6 +99,10 @@ pub struct DeviceBackendCapabilities {
 pub struct DeviceLoadPolicy {
     pub requested_device_backend: String,
     pub resolved_device_backend: String,
+    #[serde(default)]
+    pub accelerated: Option<bool>,
+    #[serde(default)]
+    pub degraded_reason: Option<String>,
 }
 
 pub fn validate_response_envelope<T>(
@@ -185,6 +189,18 @@ pub fn validate_health_response(resp: &HealthResult) -> Result<()> {
                 "sidecar health response invariant violation: degraded_reason required when load_policy.requested_device_backend ('{}') differs from load_policy.resolved_device_backend ('{}')",
                 load_policy.requested_device_backend,
                 load_policy.resolved_device_backend
+            );
+        }
+
+        if load_policy.accelerated != resp.accelerated {
+            bail!(
+                "sidecar health response invariant violation: load_policy.accelerated must match top-level accelerated"
+            );
+        }
+
+        if load_policy.degraded_reason != resp.degraded_reason {
+            bail!(
+                "sidecar health response invariant violation: load_policy.degraded_reason must match top-level degraded_reason"
             );
         }
     }

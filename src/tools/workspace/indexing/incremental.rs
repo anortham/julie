@@ -3,7 +3,9 @@
 //! Removes database entries for deleted files
 
 use super::route::IndexRoute;
+use crate::database::ProjectionStatus;
 use crate::handler::JulieServerHandler;
+use crate::search::projection::TANTIVY_PROJECTION_NAME;
 use crate::tools::workspace::commands::ManageWorkspaceTool;
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
@@ -192,10 +194,7 @@ impl ManageWorkspaceTool {
             return Ok(0);
         };
 
-        // Batch all deletions in ONE transaction for efficiency and consistency.
-        // The transaction auto-rolls back on drop if not committed.
-        let mut cleaned_count = 0;
-        {
+        let (cleaned_count, canonical_revision) = {
             let mut db_lock = match db.lock() {
                 Ok(guard) => guard,
                 Err(poisoned) => {
@@ -207,86 +206,85 @@ impl ManageWorkspaceTool {
                 }
             };
 
-            let tx = db_lock.conn.transaction()?;
+            let projected_revision = db_lock
+                .get_projection_state(TANTIVY_PROJECTION_NAME, &route.workspace_id)?
+                .and_then(|state| {
+                    state.projected_revision.or_else(|| {
+                        if state.status == ProjectionStatus::Ready {
+                            state.canonical_revision
+                        } else {
+                            None
+                        }
+                    })
+                });
 
-            for file_path in &orphaned_files {
-                // Fix C part b: delete embeddings BEFORE symbols.
-                // The embedding DELETE uses a subquery join on symbols; if symbols are
-                // deleted first the join returns nothing and embeddings become orphaned.
-                if let Err(e) = tx.execute(
-                    "DELETE FROM symbol_vectors WHERE symbol_id IN (
-                        SELECT id FROM symbols WHERE file_path = ?1
-                    )",
-                    rusqlite::params![file_path],
-                ) {
-                    warn!(
-                        "Failed to delete embeddings for orphaned file {}: {}",
-                        file_path, e
-                    );
-                    // Non-fatal: continue so the symbol/file records are still cleaned up.
-                }
+            let canonical_revision =
+                db_lock.delete_orphaned_files_atomic(&route.workspace_id, &orphaned_files)?;
+            let cleaned_count = orphaned_files.len();
 
-                // Delete relationships first (referential integrity)
-                if let Err(e) = tx.execute(
-                    "DELETE FROM relationships WHERE from_symbol_id IN (SELECT id FROM symbols WHERE file_path = ?1)
-                     OR to_symbol_id IN (SELECT id FROM symbols WHERE file_path = ?1)",
-                    rusqlite::params![file_path],
-                ) {
-                    warn!("Failed to delete relationships for orphaned file {}: {}", file_path, e);
-                    return Ok(0); // tx drops here, auto-rollback
-                }
-
-                if let Err(e) = tx.execute(
-                    "DELETE FROM symbols WHERE file_path = ?1",
-                    rusqlite::params![file_path],
-                ) {
-                    warn!(
-                        "Failed to delete symbols for orphaned file {}: {}",
-                        file_path, e
-                    );
-                    return Ok(0);
-                }
-
-                if let Err(e) = tx.execute(
-                    "DELETE FROM files WHERE path = ?1",
-                    rusqlite::params![file_path],
-                ) {
-                    warn!(
-                        "Failed to delete file record for orphaned file {}: {}",
-                        file_path, e
-                    );
-                    return Ok(0);
-                }
-
-                cleaned_count += 1;
-                trace!("Cleaned up orphaned file: {}", file_path);
+            if let Some(revision) = canonical_revision {
+                db_lock.upsert_projection_state(
+                    TANTIVY_PROJECTION_NAME,
+                    &route.workspace_id,
+                    ProjectionStatus::Stale,
+                    Some(revision),
+                    projected_revision,
+                    Some("orphan cleanup committed to SQLite; Tantivy cleanup pending"),
+                )?;
             }
 
-            tx.commit()?;
-        }
+            for file_path in &orphaned_files {
+                trace!("Cleaned up orphaned file: {}", file_path);
+            }
+            (cleaned_count, canonical_revision)
+        };
 
-        // Fix C part b: remove Tantivy documents for orphaned files.
-        // Done after the SQLite commit since Tantivy is not part of the transaction.
-        // Non-fatal: a re-index would re-add correct docs; stale Tantivy docs only
-        // cause phantom search results, not data corruption.
+        let mut tantivy_synced = false;
         if let Some(ref search_idx) = search_index {
             match search_idx.lock() {
                 Ok(idx) => {
+                    let mut remove_failed = false;
                     for file_path in &orphaned_files {
                         if let Err(e) = idx.remove_by_file_path(file_path) {
                             warn!(
                                 "Failed to remove Tantivy docs for orphaned file {}: {}",
                                 file_path, e
                             );
+                            remove_failed = true;
                         }
                     }
                     if let Err(e) = idx.commit() {
                         warn!("Failed to commit Tantivy after orphan cleanup: {}", e);
+                    } else {
+                        tantivy_synced = !remove_failed;
                     }
                 }
                 Err(e) => {
                     warn!("Tantivy index mutex poisoned during orphan cleanup: {}", e);
                 }
+            }
+        }
+
+        if tantivy_synced {
+            if let Some(revision) = canonical_revision {
+                let db_lock = match db.lock() {
+                    Ok(guard) => guard,
+                    Err(poisoned) => {
+                        warn!(
+                            "Database mutex poisoned while finalizing orphan cleanup state: {}",
+                            poisoned
+                        );
+                        poisoned.into_inner()
+                    }
+                };
+                db_lock.upsert_projection_state(
+                    TANTIVY_PROJECTION_NAME,
+                    &route.workspace_id,
+                    ProjectionStatus::Ready,
+                    Some(revision),
+                    Some(revision),
+                    None,
+                )?;
             }
         }
 

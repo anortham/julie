@@ -21,6 +21,7 @@ use anyhow::{Context, Result};
 use ignore::gitignore::Gitignore;
 use notify::Watcher;
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::future::Future;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
@@ -40,6 +41,23 @@ pub use types::{FileChangeEvent, FileChangeType, IndexingStats};
 /// background tasks see it on their next read-lock.
 pub(crate) type SharedEmbeddingProvider =
     Arc<std::sync::RwLock<Option<Arc<dyn crate::embeddings::EmbeddingProvider>>>>;
+
+pub(crate) async fn run_guarded_task_step<F>(task_name: &'static str, step: F) -> bool
+where
+    F: Future<Output = ()> + Send + 'static,
+{
+    match tokio::spawn(step).await {
+        Ok(()) => true,
+        Err(err) => {
+            if err.is_panic() {
+                error!(task = task_name, error = %err, "Watcher background step panicked");
+            } else {
+                warn!(task = task_name, error = %err, "Watcher background step stopped");
+            }
+            false
+        }
+    }
+}
 
 /// Manages incremental indexing with real-time file watching
 pub struct IncrementalIndexer {
@@ -344,6 +362,14 @@ impl IncrementalIndexer {
         *guard = provider;
     }
 
+    #[cfg(test)]
+    pub(crate) fn mark_tantivy_dirty_for_test(&self, rel_path: &str) {
+        self.tantivy_dirty
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .insert(rel_path.to_string());
+    }
+
     /// Start watching the workspace for file changes
     pub async fn start_watching(&mut self) -> Result<()> {
         info!(
@@ -378,26 +404,35 @@ impl IncrementalIndexer {
         let event_handle = tokio::spawn(async move {
             info!("File system event detector started");
             while let Some(event_result) = rx.recv().await {
-                match event_result {
-                    Ok(event) => {
-                        debug!("File system event detected: {:?}", event);
-                        if let Err(e) = events::process_file_system_event(
-                            &supported_extensions,
-                            &gitignore,
-                            &workspace_root_for_events,
-                            index_queue.clone(),
-                            event,
-                            &needs_rescan_for_events,
-                        )
-                        .await
-                        {
-                            error!("Error processing file system event: {}", e);
+                let supported_extensions = supported_extensions.clone();
+                let gitignore = gitignore.clone();
+                let workspace_root_for_events = workspace_root_for_events.clone();
+                let index_queue = index_queue.clone();
+                let needs_rescan_for_events = needs_rescan_for_events.clone();
+
+                let _ = run_guarded_task_step("event-detector", async move {
+                    match event_result {
+                        Ok(event) => {
+                            debug!("File system event detected: {:?}", event);
+                            if let Err(e) = events::process_file_system_event(
+                                &supported_extensions,
+                                &gitignore,
+                                &workspace_root_for_events,
+                                index_queue,
+                                event,
+                                &needs_rescan_for_events,
+                            )
+                            .await
+                            {
+                                error!("Error processing file system event: {}", e);
+                            }
+                        }
+                        Err(e) => {
+                            warn!("File watcher error: {}", e);
                         }
                     }
-                    Err(e) => {
-                        warn!("File watcher error: {}", e);
-                    }
-                }
+                })
+                .await;
             }
         });
         self.event_task = Some(event_handle);
@@ -435,7 +470,11 @@ impl IncrementalIndexer {
                     break;
                 }
 
-                queue_runtime.run_cycle().await;
+                let queue_runtime = queue_runtime.clone();
+                let _ = run_guarded_task_step("queue-processor", async move {
+                    queue_runtime.run_cycle().await;
+                })
+                .await;
             }
         });
         self.queue_task = Some(queue_handle);

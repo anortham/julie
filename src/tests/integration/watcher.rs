@@ -337,6 +337,84 @@ async fn test_process_pending_changes_retries_persisted_extractor_failure() {
     );
 }
 
+#[tokio::test]
+async fn test_process_pending_changes_does_not_leave_watcher_repair_active_without_search_index() {
+    use crate::database::SymbolDatabase;
+    use crate::extractors::ExtractorManager;
+    use crate::tools::workspace::indexing::state::{IndexingOperation, IndexingRuntimeState};
+    use std::sync::{Arc, Mutex};
+
+    let temp_dir = crate::tests::helpers::unique_temp_dir("watcher_dirty_without_search_index");
+    let workspace_root = temp_dir.path().canonicalize().unwrap();
+
+    let db_path = workspace_root.join("test.db");
+    let db = Arc::new(Mutex::new(SymbolDatabase::new(&db_path).unwrap()));
+    let extractor_manager = Arc::new(ExtractorManager::new());
+    let shared_provider = Arc::new(std::sync::RwLock::new(None));
+    let indexing_runtime = IndexingRuntimeState::shared();
+
+    let indexer = IncrementalIndexer::new(
+        workspace_root,
+        db,
+        extractor_manager,
+        None,
+        shared_provider,
+        Arc::clone(&indexing_runtime),
+    )
+    .unwrap();
+
+    indexer.mark_tantivy_dirty_for_test("src/stale.rs");
+
+    indexer
+        .process_pending_changes()
+        .await
+        .expect("queue drain should tolerate dirty Tantivy state without search index");
+
+    let snapshot = indexing_runtime.read().unwrap().snapshot();
+    assert_eq!(
+        snapshot.active_operation, None,
+        "missing search index must not leave watcher repair stuck active"
+    );
+    assert_eq!(
+        snapshot.dirty_projection_count, 1,
+        "dirty projection count should remain until Tantivy is available again"
+    );
+    assert!(
+        snapshot.repair_reasons.contains(
+            &crate::tools::workspace::indexing::state::IndexingRepairReason::TantivyDirty
+        ),
+        "dirty projection reason should stay visible for later repair"
+    );
+    assert_ne!(
+        snapshot.active_operation,
+        Some(IndexingOperation::WatcherRepair),
+        "missing search index should not strand the runtime in watcher repair"
+    );
+}
+
+#[tokio::test]
+async fn test_run_guarded_task_step_returns_false_after_panic() {
+    let completed = crate::watcher::run_guarded_task_step("panic-test", async move {
+        panic!("boom");
+    })
+    .await;
+
+    assert!(
+        !completed,
+        "guarded watcher steps should swallow panics and report failure"
+    );
+}
+
+#[tokio::test]
+async fn test_run_guarded_task_step_returns_true_after_success() {
+    let completed = crate::watcher::run_guarded_task_step("success-test", async move {}).await;
+
+    assert!(
+        completed,
+        "guarded watcher steps should report success when the step completes"
+    );
+}
+
 /// Fix G: Real blake3 change detection test replacing the stub.
 ///
 /// Verifies that handle_file_created_or_modified_static uses blake3 hashing

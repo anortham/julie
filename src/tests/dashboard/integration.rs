@@ -544,4 +544,9 @@ async fn test_status_page_renders_health_sections() {
     assert!(html.contains("Indexing Operation"));
     assert!(html.contains("Dirty Projection Entries"));
     assert!(html.contains("Repair Reasons"));
+    assert!(html.contains("formatUpperValue(d.health.runtime_plane.embeddings.state)"));
+    assert!(
+        !html.contains("formatUpper(d.health.runtime_plane.embeddings.state)"),
+        "runtime state poller should call the defined formatter helper"
+    );
 }

@@ -150,9 +150,6 @@ impl WorkspacePool {
             .await
             .with_context(|| format!("Failed to initialize workspace '{workspace_id}' in pool"))?;
 
-        // Increment only after successful init — safe to count now.
-        self.update_session_count(workspace_id, true).await;
-
         let ws = Arc::new(workspace);
         guard.insert(
             workspace_id.to_string(),
@@ -161,7 +158,10 @@ impl WorkspacePool {
                 indexed: false,
             },
         );
-        drop(guard); // release write lock before async watcher attach
+        drop(guard); // release write lock before any async follow-up work
+
+        // Increment only after successful init — safe to count now.
+        self.update_session_count(workspace_id, true).await;
 
         if let Some(ref wp) = self.watcher_pool {
             let provider = self.shared_embedding_provider();

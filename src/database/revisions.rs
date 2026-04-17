@@ -156,4 +156,64 @@ impl SymbolDatabase {
             .get_latest_canonical_revision(workspace_id)?
             .map(|revision| revision.revision))
     }
+
+    pub fn ensure_canonical_revision(
+        &mut self,
+        workspace_id: &str,
+    ) -> Result<Option<CanonicalRevision>> {
+        if let Some(existing) = self.get_latest_canonical_revision(workspace_id)? {
+            return Ok(Some(existing));
+        }
+
+        let file_count: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM files", [], |row| row.get(0))?;
+        let symbol_count: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM symbols", [], |row| row.get(0))?;
+        let relationship_count: i64 =
+            self.conn
+                .query_row("SELECT COUNT(*) FROM relationships", [], |row| row.get(0))?;
+        let identifier_count: i64 =
+            self.conn
+                .query_row("SELECT COUNT(*) FROM identifiers", [], |row| row.get(0))?;
+        let type_count: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM types", [], |row| row.get(0))?;
+
+        if file_count == 0
+            && symbol_count == 0
+            && relationship_count == 0
+            && identifier_count == 0
+            && type_count == 0
+        {
+            return Ok(None);
+        }
+
+        let tx = self.conn.transaction()?;
+        record_canonical_revision_tx(
+            &tx,
+            workspace_id,
+            CanonicalRevisionKind::Fresh,
+            0,
+            file_count,
+            symbol_count,
+            relationship_count,
+            identifier_count,
+            type_count,
+        )?;
+        tx.commit()?;
+
+        self.get_latest_canonical_revision(workspace_id)
+    }
+
+    pub fn count_projection_source_docs(&self) -> Result<i64> {
+        let file_count: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM files", [], |row| row.get(0))?;
+        let symbol_count: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM symbols", [], |row| row.get(0))?;
+        Ok(file_count + symbol_count)
+    }
 }

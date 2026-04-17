@@ -675,3 +675,62 @@ fn test_delete_workspace_data_clears_canonical_revisions() {
     assert_eq!(usage.file_count, 0);
     assert_eq!(usage.canonical_revision, None);
 }
+
+// ---------------------------------------------------------------------------
+// Test 12 (B-I3): delete_workspace_data must clear every owned table,
+// not just symbols/files/revisions. Orphan rows in symbol_vectors, identifiers,
+// types, and indexing_repairs were previously left behind.
+// ---------------------------------------------------------------------------
+#[test]
+fn test_delete_workspace_data_clears_all_owned_tables() {
+    let tmp = TempDir::new().unwrap();
+    let db_path = tmp.path().join("test.db");
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
+
+    let files = vec![make_file("src/lib.rs")];
+    let symbols = vec![
+        make_symbol("sym_a", "do_stuff", "src/lib.rs"),
+        make_symbol("sym_b", "helper", "src/lib.rs"),
+    ];
+    let relationships = vec![make_relationship("rel_1", "sym_a", "sym_b", "src/lib.rs")];
+    let identifiers = vec![make_identifier("ident_1", "helper", "src/lib.rs")];
+    let types = vec![make_type_info("sym_a", "Result<(), Error>")];
+
+    db.incremental_update_atomic(
+        &[],
+        &files,
+        &symbols,
+        &relationships,
+        &identifiers,
+        &types,
+        "ws_test",
+    )
+    .expect("incremental_update_atomic should succeed");
+
+    db.store_embeddings(&[("sym_a".to_string(), vec![0.1f32; 384])])
+        .expect("store_embeddings should succeed");
+
+    db.record_indexing_repair("src/lib.rs", "tantivy_dirty", Some("test"))
+        .expect("record_indexing_repair should succeed");
+
+    assert!(count_rows(&db, "symbols") > 0, "precondition: symbols");
+    assert!(count_rows(&db, "files") > 0, "precondition: files");
+    assert!(count_rows(&db, "identifiers") > 0, "precondition: identifiers");
+    assert!(count_rows(&db, "types") > 0, "precondition: types");
+    assert!(count_rows(&db, "symbol_vectors") > 0, "precondition: symbol_vectors");
+    assert!(count_rows(&db, "indexing_repairs") > 0, "precondition: indexing_repairs");
+    assert!(count_rows(&db, "canonical_revisions") > 0, "precondition: canonical_revisions");
+
+    db.delete_workspace_data()
+        .expect("workspace cleanup should succeed");
+
+    assert_eq!(count_rows(&db, "symbols"), 0, "symbols must be cleared");
+    assert_eq!(count_rows(&db, "files"), 0, "files must be cleared");
+    assert_eq!(count_rows(&db, "relationships"), 0, "relationships must be cleared");
+    assert_eq!(count_rows(&db, "identifiers"), 0, "identifiers must be cleared");
+    assert_eq!(count_rows(&db, "types"), 0, "types must be cleared");
+    assert_eq!(count_rows(&db, "symbol_vectors"), 0, "symbol_vectors must be cleared");
+    assert_eq!(count_rows(&db, "indexing_repairs"), 0, "indexing_repairs must be cleared");
+    assert_eq!(count_rows(&db, "canonical_revisions"), 0, "canonical_revisions must be cleared");
+    assert_eq!(count_rows(&db, "projection_states"), 0, "projection_states must be cleared");
+}
