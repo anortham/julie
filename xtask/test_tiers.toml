@@ -16,26 +16,26 @@ full = ["cli", "core-database", "core-embeddings", "tools-get-context", "tools-s
 # Single focused CLI module; use as the floor for quick sanity checks.
 expected_seconds = 30
 timeout_seconds = 90
-commands = ["cargo test --lib tests::cli_tests", "cargo test -p xtask"]
+commands = ["cargo nextest run --lib tests::cli_tests", "cargo test -p xtask"]
 
 [buckets.core-database]
 # Core database path; modest runtime but commonly exercised.
 expected_seconds = 5
 timeout_seconds = 30
-commands = ["cargo test --lib tests::core::database -- --skip search_quality"]
+commands = ["cargo nextest run --lib tests::core::database -- --skip search_quality"]
 
 [buckets.core-embeddings]
 # Embedding/provider cluster; multiple modules that often move together.
 expected_seconds = 15
 timeout_seconds = 60
 commands = [
-  "cargo test --lib tests::core::embedding_provider -- --skip search_quality",
-  "cargo test --lib tests::core::embedding_metadata -- --skip search_quality",
-  "cargo test --lib tests::core::embedding_deps -- --skip search_quality",
-  "cargo test --lib tests::core::embedding_sidecar_protocol -- --skip search_quality",
-  "cargo test --lib tests::core::embedding_sidecar_provider -- --skip search_quality",
-  "cargo test --lib tests::core::sidecar_supervisor_tests -- --skip search_quality",
-  "cargo test --lib tests::core::sidecar_embedding_tests -- --skip search_quality",
+  "cargo nextest run --lib tests::core::embedding_provider -- --skip search_quality",
+  "cargo nextest run --lib tests::core::embedding_metadata -- --skip search_quality",
+  "cargo nextest run --lib tests::core::embedding_deps -- --skip search_quality",
+  "cargo nextest run --lib tests::core::embedding_sidecar_protocol -- --skip search_quality",
+  "cargo nextest run --lib tests::core::embedding_sidecar_provider -- --skip search_quality",
+  "cargo nextest run --lib tests::core::sidecar_supervisor_tests -- --skip search_quality",
+  "cargo nextest run --lib tests::core::sidecar_embedding_tests -- --skip search_quality",
 ]
 
 [buckets.tools-get-context]
@@ -43,16 +43,16 @@ commands = [
 expected_seconds = 10
 timeout_seconds = 45
 commands = [
-  "cargo test --lib tests::tools::get_context_allocation_tests -- --skip search_quality",
-  "cargo test --lib tests::tools::get_context_formatting_tests -- --skip search_quality",
-  "cargo test --lib tests::tools::get_context_graph_expansion_tests -- --skip search_quality",
-  "cargo test --lib tests::tools::get_context_pipeline_relevance_tests -- --skip search_quality",
-  "cargo test --lib tests::tools::get_context_pipeline_tests -- --skip search_quality",
-  "cargo test --lib tests::tools::get_context_quality_tests -- --skip search_quality",
-  "cargo test --lib tests::tools::get_context_relevance_tests -- --skip search_quality",
-  "cargo test --lib tests::tools::get_context_scoring_tests -- --skip search_quality",
-  "cargo test --lib tests::tools::get_context_tests -- --skip search_quality",
-  "cargo test --lib tests::tools::get_context_token_budget_tests -- --skip search_quality",
+  "cargo nextest run --lib tests::tools::get_context_allocation_tests -- --skip search_quality",
+  "cargo nextest run --lib tests::tools::get_context_formatting_tests -- --skip search_quality",
+  "cargo nextest run --lib tests::tools::get_context_graph_expansion_tests -- --skip search_quality",
+  "cargo nextest run --lib tests::tools::get_context_pipeline_relevance_tests -- --skip search_quality",
+  "cargo nextest run --lib tests::tools::get_context_pipeline_tests -- --skip search_quality",
+  "cargo nextest run --lib tests::tools::get_context_quality_tests -- --skip search_quality",
+  "cargo nextest run --lib tests::tools::get_context_relevance_tests -- --skip search_quality",
+  "cargo nextest run --lib tests::tools::get_context_scoring_tests -- --skip search_quality",
+  "cargo nextest run --lib tests::tools::get_context_tests -- --skip search_quality",
+  "cargo nextest run --lib tests::tools::get_context_token_budget_tests -- --skip search_quality",
 ]
 
 [buckets.tools-search]
@@ -60,17 +60,17 @@ commands = [
 expected_seconds = 25
 timeout_seconds = 90
 commands = [
-  "cargo test --lib tests::tools::search -- --skip search_quality",
-  "cargo test --lib tests::tools::search_context_lines -- --skip search_quality",
-  "cargo test --lib tests::tools::text_search_tantivy -- --skip search_quality",
-  "cargo test --lib tests::tools::hybrid_search_tests -- --skip search_quality",
+  "cargo nextest run --lib tests::tools::search -- --skip search_quality",
+  "cargo nextest run --lib tests::tools::search_context_lines -- --skip search_quality",
+  "cargo nextest run --lib tests::tools::text_search_tantivy -- --skip search_quality",
+  "cargo nextest run --lib tests::tools::hybrid_search_tests -- --skip search_quality",
 ]
 
 [buckets.tools-workspace]
 # Workspace management stays isolated because failures are usually easy to localize.
 expected_seconds = 40
 timeout_seconds = 120
-commands = ["cargo test --lib tests::tools::workspace -- --skip search_quality"]
+commands = ["cargo nextest run --lib tests::tools::workspace -- --skip search_quality"]
 
 [buckets.tools-misc]
 # Remaining tool tests with enough shared setup to keep together for the first pass.
@@ -79,21 +79,21 @@ commands = ["cargo test --lib tests::tools::workspace -- --skip search_quality"]
 expected_seconds = 200
 timeout_seconds = 450
 commands = [
-  "cargo test --lib tests::tools::get_symbols -- --skip search_quality",
-  "cargo test --lib tests::tools::get_symbols_reference_workspace -- --skip search_quality",
-  "cargo test --lib tests::tools::get_symbols_relative_paths -- --skip search_quality",
-  "cargo test --lib tests::tools::get_symbols_smart_read -- --skip search_quality",
-  "cargo test --lib tests::tools::get_symbols_target_filtering -- --skip search_quality",
-  "cargo test --lib tests::tools::get_symbols_token -- --skip search_quality",
-  "cargo test --lib tests::tools::smart_read -- --skip search_quality",
-  "cargo test --lib tests::tools::editing -- --skip search_quality",
-  "cargo test --lib tests::tools::deep_dive_tests -- --skip search_quality",
-  "cargo test --lib tests::tools::refactoring -- --skip search_quality",
-  "cargo test --lib tests::tools::filtering_tests -- --skip search_quality",
-  "cargo test --lib tests::tools::formatting_tests -- --skip search_quality",
-  "cargo test --lib tests::tools::reference_workspace_fast_refs_tests -- --skip search_quality",
-  "cargo test --lib tools::search::query_preprocessor::tests -- --skip search_quality",
-  "cargo test --lib tests::tools::metrics -- --skip search_quality",
+  "cargo nextest run --lib tests::tools::get_symbols -- --skip search_quality",
+  "cargo nextest run --lib tests::tools::get_symbols_reference_workspace -- --skip search_quality",
+  "cargo nextest run --lib tests::tools::get_symbols_relative_paths -- --skip search_quality",
+  "cargo nextest run --lib tests::tools::get_symbols_smart_read -- --skip search_quality",
+  "cargo nextest run --lib tests::tools::get_symbols_target_filtering -- --skip search_quality",
+  "cargo nextest run --lib tests::tools::get_symbols_token -- --skip search_quality",
+  "cargo nextest run --lib tests::tools::smart_read -- --skip search_quality",
+  "cargo nextest run --lib tests::tools::editing -- --skip search_quality",
+  "cargo nextest run --lib tests::tools::deep_dive_tests -- --skip search_quality",
+  "cargo nextest run --lib tests::tools::refactoring -- --skip search_quality",
+  "cargo nextest run --lib tests::tools::filtering_tests -- --skip search_quality",
+  "cargo nextest run --lib tests::tools::formatting_tests -- --skip search_quality",
+  "cargo nextest run --lib tests::tools::reference_workspace_fast_refs_tests -- --skip search_quality",
+  "cargo nextest run --lib tools::search::query_preprocessor::tests -- --skip search_quality",
+  "cargo nextest run --lib tests::tools::metrics -- --skip search_quality",
 ]
 
 [buckets.core-fast]
@@ -101,19 +101,19 @@ commands = [
 expected_seconds = 10
 timeout_seconds = 45
 commands = [
-  "cargo test --lib tests::main_error_handling -- --skip search_quality",
-  "cargo test --lib tests::regression_prevention_tests -- --skip search_quality",
-  "cargo test --lib utils::paths::tests -- --skip search_quality",
-  "cargo test --lib utils::string_similarity::tests -- --skip search_quality",
-  "cargo test --lib watcher::filtering::tests -- --skip search_quality",
-  "cargo test --lib watcher::tests -- --skip search_quality",
-  "cargo test --lib tests::core::database_lightweight_query -- --skip search_quality",
-  "cargo test --lib tests::core::handler -- --skip search_quality",
-  "cargo test --lib tests::core::language -- --skip search_quality",
-  "cargo test --lib tests::core::memory_vectors -- --skip search_quality",
-  "cargo test --lib tests::core::paths -- --skip search_quality",
-  "cargo test --lib tests::core::tracing -- --skip search_quality",
-  "cargo test --lib tests::core::vector_storage -- --skip search_quality",
+  "cargo nextest run --lib tests::main_error_handling -- --skip search_quality",
+  "cargo nextest run --lib tests::regression_prevention_tests -- --skip search_quality",
+  "cargo nextest run --lib utils::paths::tests -- --skip search_quality",
+  "cargo nextest run --lib utils::string_similarity::tests -- --skip search_quality",
+  "cargo nextest run --lib watcher::filtering::tests -- --skip search_quality",
+  "cargo nextest run --lib watcher::tests -- --skip search_quality",
+  "cargo nextest run --lib tests::core::database_lightweight_query -- --skip search_quality",
+  "cargo nextest run --lib tests::core::handler -- --skip search_quality",
+  "cargo nextest run --lib tests::core::language -- --skip search_quality",
+  "cargo nextest run --lib tests::core::memory_vectors -- --skip search_quality",
+  "cargo nextest run --lib tests::core::paths -- --skip search_quality",
+  "cargo nextest run --lib tests::core::tracing -- --skip search_quality",
+  "cargo nextest run --lib tests::core::vector_storage -- --skip search_quality",
 ]
 
 [buckets.daemon]
@@ -122,29 +122,29 @@ commands = [
 # coverage of the protocol; needs to run in CI to defend the rebind machinery.
 expected_seconds = 12
 timeout_seconds = 60
-commands = ["cargo test --lib tests::daemon -- --skip search_quality"]
+commands = ["cargo nextest run --lib tests::daemon -- --skip search_quality"]
 
 [buckets.dashboard]
 # Dashboard routes, templates, and state snapshots must stay in fast local coverage.
 expected_seconds = 12
 timeout_seconds = 60
-commands = ["cargo test --lib tests::dashboard -- --skip search_quality"]
+commands = ["cargo nextest run --lib tests::dashboard -- --skip search_quality"]
 
 [buckets.workspace-init]
 # System setup path; currently pathological enough that it needs investigation, not a pretend-fast budget.
 expected_seconds = 360
 timeout_seconds = 480
-commands = ["cargo test --lib tests::core::workspace_init -- --skip search_quality"]
+commands = ["cargo nextest run --lib tests::core::workspace_init -- --skip search_quality"]
 
 [buckets.integration]
 # Cross-cutting integration coverage; reference-workspace and sidecar paths pushed
 # this into system-tier-only territory, so budget it honestly.
 expected_seconds = 130
 timeout_seconds = 240
-commands = ["cargo test --lib tests::integration -- --skip search_quality"]
+commands = ["cargo nextest run --lib tests::integration -- --skip search_quality"]
 
 [buckets.search-quality]
 # Heavy dogfood search-quality suite backed by the large fixture/index path.
 expected_seconds = 390
 timeout_seconds = 480
-commands = ["cargo test --lib search_quality"]
+commands = ["cargo nextest run --lib search_quality"]

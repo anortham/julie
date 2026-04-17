@@ -99,7 +99,7 @@ const SPECIAL_BUCKETS: &[(&str, u64, u64, &[&str])] = &[(
     "system-health",
     30,
     120,
-    &["cargo test --lib tests::integration::system_health"],
+    &["cargo nextest run --lib tests::integration::system_health"],
 )];
 
 pub struct ProcessCommandExecutor;
@@ -816,7 +816,7 @@ commands = ["integration cmd"]
     fn runner_tests_benchmark_bucket_runs_system_health_command() {
         let manifest = manifest_with_program_buckets();
         let executor = FakeExecutor::with_outcomes(&[(
-            "cargo test --lib tests::integration::system_health",
+            "cargo nextest run --lib tests::integration::system_health",
             CommandOutcome::Passed {
                 elapsed: Duration::from_millis(25),
             },
@@ -829,7 +829,7 @@ commands = ["integration cmd"]
         assert_eq!(summary.bucket_names, vec!["system-health".to_string()]);
         assert_eq!(
             executor.calls(),
-            vec!["cargo test --lib tests::integration::system_health".to_string()]
+            vec!["cargo nextest run --lib tests::integration::system_health".to_string()]
         );
         assert!(
             String::from_utf8(output)
