@@ -1,2 +1,5 @@
 [alias]
 xtask = "run -q -p xtask --"
+
+[target.'cfg(target_os = "macos")']
+rustflags = ["-C", "link-arg=-fuse-ld=lld"]
