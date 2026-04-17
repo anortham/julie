@@ -6,7 +6,8 @@ mod type_inference;
 mod types;
 
 use crate::base::{
-    BaseExtractor, Identifier, PendingRelationship, Relationship, Symbol,
+    BaseExtractor, Identifier, PendingRelationship, Relationship, StructuredPendingRelationship,
+    Symbol,
 };
 use std::collections::HashMap;
 use tree_sitter::Tree;
@@ -14,6 +15,7 @@ use tree_sitter::Tree;
 pub struct VbNetExtractor {
     base: BaseExtractor,
     pending_relationships: Vec<PendingRelationship>,
+    structured_pending_relationships: Vec<StructuredPendingRelationship>,
 }
 
 impl VbNetExtractor {
@@ -26,6 +28,7 @@ impl VbNetExtractor {
         Self {
             base: BaseExtractor::new(language, file_path, content, workspace_root),
             pending_relationships: Vec::new(),
+            structured_pending_relationships: Vec::new(),
         }
     }
 
@@ -35,6 +38,15 @@ impl VbNetExtractor {
 
     pub fn add_pending_relationship(&mut self, pending: PendingRelationship) {
         self.pending_relationships.push(pending);
+    }
+
+    pub fn add_structured_pending_relationship(&mut self, pending: StructuredPendingRelationship) {
+        self.pending_relationships.push(pending.pending.clone());
+        self.structured_pending_relationships.push(pending);
+    }
+
+    pub fn get_structured_pending_relationships(&self) -> Vec<StructuredPendingRelationship> {
+        self.structured_pending_relationships.clone()
     }
 
     pub(crate) fn get_base(&self) -> &BaseExtractor {

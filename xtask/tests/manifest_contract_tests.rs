@@ -142,7 +142,10 @@ fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
             ExpectedBucket {
                 expected_seconds: 30,
                 timeout_seconds: 90,
-                commands: &["cargo nextest run --lib tests::cli_tests", "cargo test -p xtask"],
+                commands: &[
+                    "cargo nextest run --lib tests::cli_tests",
+                    "cargo test -p xtask",
+                ],
             },
         ),
         (
@@ -150,7 +153,9 @@ fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
             ExpectedBucket {
                 expected_seconds: 5,
                 timeout_seconds: 30,
-                commands: &["cargo nextest run --lib tests::core::database -- --skip search_quality"],
+                commands: &[
+                    "cargo nextest run --lib tests::core::database -- --skip search_quality",
+                ],
             },
         ),
         (
@@ -226,7 +231,9 @@ fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
             ExpectedBucket {
                 expected_seconds: 200,
                 timeout_seconds: 450,
-                commands: &["cargo nextest run --lib tests::tools::get_symbols_target_filtering_dogfood -- --skip search_quality"],
+                commands: &[
+                    "cargo nextest run --lib tests::tools::get_symbols_target_filtering_dogfood -- --skip search_quality",
+                ],
             },
         ),
         (
@@ -289,7 +296,9 @@ fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
             ExpectedBucket {
                 expected_seconds: 40,
                 timeout_seconds: 120,
-                commands: &["cargo nextest run --lib tests::tools::workspace -- --skip search_quality"],
+                commands: &[
+                    "cargo nextest run --lib tests::tools::workspace -- --skip search_quality",
+                ],
             },
         ),
         (

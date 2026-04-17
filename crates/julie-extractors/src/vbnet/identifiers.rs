@@ -48,10 +48,8 @@ fn extract_identifier_from_node(
                 {
                     let mut mc = child.walk();
                     let children: Vec<_> = child.children(&mut mc).collect();
-                    if let Some(name_node) = children
-                        .iter()
-                        .rev()
-                        .find(|c| c.kind() == "identifier")
+                    if let Some(name_node) =
+                        children.iter().rev().find(|c| c.kind() == "identifier")
                     {
                         let name = base.get_node_text(name_node);
                         let containing_symbol_id =
@@ -69,20 +67,14 @@ fn extract_identifier_from_node(
         }
         "member_access_expression" | "member_access" => {
             if let Some(parent) = node.parent() {
-                if parent.kind() == "invocation_expression"
-                    || parent.kind() == "invocation"
-                {
+                if parent.kind() == "invocation_expression" || parent.kind() == "invocation" {
                     return;
                 }
             }
 
             let mut cursor = node.walk();
             let children: Vec<_> = node.children(&mut cursor).collect();
-            if let Some(name_node) = children
-                .iter()
-                .rev()
-                .find(|c| c.kind() == "identifier")
-            {
+            if let Some(name_node) = children.iter().rev().find(|c| c.kind() == "identifier") {
                 let name = base.get_node_text(name_node);
                 let containing_symbol_id = find_containing_symbol_id(base, node, symbol_map);
                 base.create_identifier(

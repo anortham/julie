@@ -854,8 +854,7 @@ fn runner_tests_prebuild_runs_before_bucket_commands() {
 
     let calls = executor.command_calls();
     assert_eq!(
-        calls[0],
-        "cargo nextest run --no-run --lib",
+        calls[0], "cargo nextest run --no-run --lib",
         "first command should be prebuild, got: {calls:?}"
     );
     assert_eq!(
@@ -890,7 +889,11 @@ fn runner_tests_prebuild_failure_aborts_before_any_bucket() {
         "no bucket results should exist when prebuild fails"
     );
     let calls = executor.command_calls();
-    assert_eq!(calls.len(), 1, "only prebuild should have run, got: {calls:?}");
+    assert_eq!(
+        calls.len(),
+        1,
+        "only prebuild should have run, got: {calls:?}"
+    );
     assert_eq!(calls[0], "cargo nextest run --no-run --lib");
 }
 
@@ -904,8 +907,7 @@ fn runner_tests_prebuild_coverage_mode_transforms_command() {
 
     let calls = executor.command_calls();
     assert_eq!(
-        calls[0],
-        "cargo llvm-cov --no-report nextest --no-run --lib",
+        calls[0], "cargo llvm-cov --no-report nextest --no-run --lib",
         "coverage mode should transform the prebuild command, got: {calls:?}"
     );
 }

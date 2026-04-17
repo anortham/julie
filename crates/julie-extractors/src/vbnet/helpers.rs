@@ -1,4 +1,6 @@
 use crate::base::{BaseExtractor, Visibility};
+use serde_json::Value;
+use std::collections::HashMap;
 use tree_sitter::Node;
 
 pub fn extract_modifiers(base: &BaseExtractor, node: &Node) -> Vec<String> {
@@ -15,27 +17,56 @@ pub fn extract_modifiers(base: &BaseExtractor, node: &Node) -> Vec<String> {
         .collect()
 }
 
-pub fn determine_visibility(modifiers: &[String]) -> Visibility {
-    for m in modifiers {
-        match m.as_str() {
-            "public" => return Visibility::Public,
-            "private" => return Visibility::Private,
-            "protected" => return Visibility::Protected,
-            "friend" => return Visibility::Private,
-            _ => {}
-        }
+pub fn determine_visibility(modifiers: &[String], default_visibility: &str) -> Visibility {
+    match get_vb_visibility_string(modifiers, default_visibility).as_str() {
+        "public" => Visibility::Public,
+        "protected" | "protected friend" => Visibility::Protected,
+        "friend" | "private" | "private protected" => Visibility::Private,
+        _ => Visibility::Private,
     }
-    Visibility::Private
 }
 
-pub fn get_vb_visibility_string(modifiers: &[String]) -> String {
-    for m in modifiers {
-        match m.as_str() {
-            "public" | "private" | "protected" | "friend" => return m.clone(),
-            _ => {}
-        }
+pub fn get_vb_visibility_string(modifiers: &[String], default_visibility: &str) -> String {
+    let has_public = modifiers.iter().any(|m| m == "public");
+    let has_private = modifiers.iter().any(|m| m == "private");
+    let has_protected = modifiers.iter().any(|m| m == "protected");
+    let has_friend = modifiers.iter().any(|m| m == "friend");
+
+    if has_public {
+        "public".to_string()
+    } else if has_private && has_protected {
+        "private protected".to_string()
+    } else if has_protected && has_friend {
+        "protected friend".to_string()
+    } else if has_private {
+        "private".to_string()
+    } else if has_protected {
+        "protected".to_string()
+    } else if has_friend {
+        "friend".to_string()
+    } else {
+        default_visibility.to_string()
     }
-    "private".to_string()
+}
+
+pub fn vb_visibility_metadata(
+    modifiers: &[String],
+    default_visibility: &str,
+) -> HashMap<String, Value> {
+    let mut metadata = HashMap::new();
+    metadata.insert(
+        "vb_visibility".to_string(),
+        Value::String(get_vb_visibility_string(modifiers, default_visibility)),
+    );
+    metadata
+}
+
+pub fn default_type_visibility(parent_id: Option<&String>) -> &'static str {
+    if parent_id.is_some() {
+        "public"
+    } else {
+        "friend"
+    }
 }
 
 pub fn extract_return_type(base: &BaseExtractor, node: &Node) -> Option<String> {
@@ -87,9 +118,7 @@ pub fn extract_implements(base: &BaseExtractor, node: &Node) -> Vec<String> {
             let mut inner_cursor = child.walk();
             for inner in child.children(&mut inner_cursor) {
                 let text = base.get_node_text(&inner);
-                if inner.kind() != ","
-                    && !text.eq_ignore_ascii_case("Implements")
-                {
+                if inner.kind() != "," && !text.eq_ignore_ascii_case("Implements") {
                     result.push(text);
                 }
             }
@@ -121,5 +150,70 @@ pub fn modifier_prefix(modifiers: &[String]) -> String {
         String::new()
     } else {
         format!("{} ", modifiers.join(" "))
+    }
+}
+
+pub fn unresolved_type_target(type_name: &str) -> Option<crate::base::UnresolvedTarget> {
+    let normalized = normalize_type_name(type_name)?;
+    let parts: Vec<String> = normalized
+        .split('.')
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .map(ToString::to_string)
+        .collect();
+
+    if parts.is_empty() {
+        return None;
+    }
+
+    let terminal_name = parts.last().cloned()?;
+    let namespace_path = if parts.len() > 1 {
+        parts[..parts.len() - 1].to_vec()
+    } else {
+        Vec::new()
+    };
+
+    Some(crate::base::UnresolvedTarget {
+        display_name: parts.join("."),
+        terminal_name,
+        receiver: None,
+        namespace_path,
+        import_context: None,
+    })
+}
+
+fn normalize_type_name(type_name: &str) -> Option<String> {
+    let mut normalized = type_name.trim().to_string();
+    if normalized.is_empty() {
+        return None;
+    }
+
+    while let Some(stripped) = normalized.strip_suffix("()") {
+        normalized = stripped.trim_end().to_string();
+    }
+
+    if let Some(generic_start) = normalized.find("(Of") {
+        normalized.truncate(generic_start);
+        normalized = normalized.trim_end().to_string();
+    }
+
+    if let Some(generic_start) = normalized.find("(of") {
+        normalized.truncate(generic_start);
+        normalized = normalized.trim_end().to_string();
+    }
+
+    let predefined = [
+        "boolean", "byte", "sbyte", "short", "ushort", "integer", "uinteger", "long", "ulong",
+        "single", "double", "decimal", "char", "string", "date", "object",
+    ];
+
+    if predefined.contains(&normalized.to_ascii_lowercase().as_str()) {
+        return None;
+    }
+
+    if normalized.is_empty() {
+        None
+    } else {
+        Some(normalized)
     }
 }

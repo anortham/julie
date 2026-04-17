@@ -31,10 +31,7 @@ End Class
         let identifiers = extractor.extract_identifiers(&tree, &symbols);
 
         let call_id = identifiers.iter().find(|id| id.name == "DoWork");
-        assert!(
-            call_id.is_some(),
-            "Should extract 'DoWork' call identifier"
-        );
+        assert!(call_id.is_some(), "Should extract 'DoWork' call identifier");
         assert_eq!(call_id.unwrap().kind, IdentifierKind::Call);
     }
 
@@ -178,13 +175,7 @@ End Class
             call_names.contains(&"Initialize"),
             "Should find Initialize call"
         );
-        assert!(
-            call_names.contains(&"Process"),
-            "Should find Process call"
-        );
-        assert!(
-            call_names.contains(&"Cleanup"),
-            "Should find Cleanup call"
-        );
+        assert!(call_names.contains(&"Process"), "Should find Process call");
+        assert!(call_names.contains(&"Cleanup"), "Should find Cleanup call");
     }
 }

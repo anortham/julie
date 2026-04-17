@@ -1,7 +1,6 @@
 use super::helpers;
 use crate::base::{BaseExtractor, Symbol, SymbolKind, SymbolOptions};
 use crate::test_detection::is_test_symbol;
-use std::collections::HashMap;
 use tree_sitter::Node;
 
 pub fn extract_method(
@@ -12,13 +11,12 @@ pub fn extract_method(
     let name_node = node.child_by_field_name("name")?;
     let name = base.get_node_text(&name_node);
     let modifiers = helpers::extract_modifiers(base, &node);
-    let visibility = helpers::determine_visibility(&modifiers);
+    let visibility = helpers::determine_visibility(&modifiers, "public");
 
     let is_function = node.child_by_field_name("return_type").is_some();
     let keyword = if is_function { "Function" } else { "Sub" };
     let params = helpers::extract_parameters(base, &node);
-    let type_params = helpers::extract_type_parameters(base, &node)
-        .unwrap_or_default();
+    let type_params = helpers::extract_type_parameters(base, &node).unwrap_or_default();
 
     let mut signature = format!(
         "{}{} {}{}{}",
@@ -38,12 +36,12 @@ pub fn extract_method(
     let doc_comment = base.find_doc_comment(&node);
     let attributes = helpers::extract_attributes(base, &node);
 
-    let mut metadata = HashMap::new();
+    let mut metadata = helpers::vb_visibility_metadata(&modifiers, "public");
     if is_test_symbol(
         "vbnet",
         &name,
         &base.file_path,
-        &SymbolKind::Function,
+        &SymbolKind::Method,
         &[],
         &attributes,
         doc_comment.as_deref(),
@@ -63,7 +61,7 @@ pub fn extract_method(
         },
     };
 
-    Some(base.create_symbol(&node, name, SymbolKind::Function, options))
+    Some(base.create_symbol(&node, name, SymbolKind::Method, options))
 }
 
 pub fn extract_abstract_method(
@@ -81,16 +79,18 @@ pub fn extract_constructor(
 ) -> Option<Symbol> {
     let name = "New".to_string();
     let modifiers = helpers::extract_modifiers(base, &node);
-    let visibility = helpers::determine_visibility(&modifiers);
+    let visibility = helpers::determine_visibility(&modifiers, "public");
     let params = helpers::extract_parameters(base, &node);
 
     let signature = format!("{}Sub New{}", helpers::modifier_prefix(&modifiers), params);
     let doc_comment = base.find_doc_comment(&node);
+    let metadata = helpers::vb_visibility_metadata(&modifiers, "public");
 
     let options = SymbolOptions {
         signature: Some(signature),
         visibility: Some(visibility),
         parent_id,
+        metadata: Some(metadata),
         doc_comment,
         ..Default::default()
     };
@@ -106,17 +106,13 @@ pub fn extract_property(
     let name_node = node.child_by_field_name("name")?;
     let name = base.get_node_text(&name_node);
     let modifiers = helpers::extract_modifiers(base, &node);
-    let visibility = helpers::determine_visibility(&modifiers);
+    let visibility = helpers::determine_visibility(&modifiers, "public");
 
     let indexed_params = node
         .child_by_field_name("parameters")
         .map(|p| base.get_node_text(&p));
 
-    let mut signature = format!(
-        "{}Property {}",
-        helpers::modifier_prefix(&modifiers),
-        name
-    );
+    let mut signature = format!("{}Property {}", helpers::modifier_prefix(&modifiers), name);
 
     if let Some(params) = indexed_params {
         signature.push_str(&params);
@@ -127,11 +123,13 @@ pub fn extract_property(
     }
 
     let doc_comment = base.find_doc_comment(&node);
+    let metadata = helpers::vb_visibility_metadata(&modifiers, "public");
 
     let options = SymbolOptions {
         signature: Some(signature),
         visibility: Some(visibility),
         parent_id,
+        metadata: Some(metadata),
         doc_comment,
         ..Default::default()
     };
@@ -145,7 +143,7 @@ pub fn extract_field(
     parent_id: Option<String>,
 ) -> Option<Symbol> {
     let modifiers = helpers::extract_modifiers(base, &node);
-    let visibility = helpers::determine_visibility(&modifiers);
+    let visibility = helpers::determine_visibility(&modifiers, "private");
 
     let mut cursor = node.walk();
     let declarator = node
@@ -155,11 +153,7 @@ pub fn extract_field(
     let name_node = declarator.child_by_field_name("name")?;
     let name = base.get_node_text(&name_node);
 
-    let mut signature = format!(
-        "{}Dim {}",
-        helpers::modifier_prefix(&modifiers),
-        name
-    );
+    let mut signature = format!("{}Dim {}", helpers::modifier_prefix(&modifiers), name);
 
     let mut decl_cursor = declarator.walk();
     let as_clause = declarator
@@ -172,11 +166,13 @@ pub fn extract_field(
     }
 
     let doc_comment = base.find_doc_comment(&node);
+    let metadata = helpers::vb_visibility_metadata(&modifiers, "private");
 
     let options = SymbolOptions {
         signature: Some(signature),
         visibility: Some(visibility),
         parent_id,
+        metadata: Some(metadata),
         doc_comment,
         ..Default::default()
     };
@@ -192,24 +188,22 @@ pub fn extract_event(
     let name_node = node.child_by_field_name("name")?;
     let name = base.get_node_text(&name_node);
     let modifiers = helpers::extract_modifiers(base, &node);
-    let visibility = helpers::determine_visibility(&modifiers);
+    let visibility = helpers::determine_visibility(&modifiers, "public");
 
-    let mut signature = format!(
-        "{}Event {}",
-        helpers::modifier_prefix(&modifiers),
-        name
-    );
+    let mut signature = format!("{}Event {}", helpers::modifier_prefix(&modifiers), name);
 
     if let Some(event_type) = helpers::extract_as_clause_type(base, &node) {
         signature.push_str(&format!(" As {}", event_type));
     }
 
     let doc_comment = base.find_doc_comment(&node);
+    let metadata = helpers::vb_visibility_metadata(&modifiers, "public");
 
     let options = SymbolOptions {
         signature: Some(signature),
         visibility: Some(visibility),
         parent_id,
+        metadata: Some(metadata),
         doc_comment,
         ..Default::default()
     };
@@ -226,7 +220,7 @@ pub fn extract_operator(
     let op = base.get_node_text(&op_node);
     let name = format!("operator {}", op);
     let modifiers = helpers::extract_modifiers(base, &node);
-    let visibility = helpers::determine_visibility(&modifiers);
+    let visibility = helpers::determine_visibility(&modifiers, "public");
     let params = helpers::extract_parameters(base, &node);
 
     let mut signature = format!(
@@ -241,11 +235,13 @@ pub fn extract_operator(
     }
 
     let doc_comment = base.find_doc_comment(&node);
+    let metadata = helpers::vb_visibility_metadata(&modifiers, "public");
 
     let options = SymbolOptions {
         signature: Some(signature),
         visibility: Some(visibility),
         parent_id,
+        metadata: Some(metadata),
         doc_comment,
         ..Default::default()
     };
@@ -261,18 +257,12 @@ pub fn extract_const(
     let name_node = node.child_by_field_name("name")?;
     let name = base.get_node_text(&name_node);
     let modifiers = helpers::extract_modifiers(base, &node);
-    let visibility = helpers::determine_visibility(&modifiers);
+    let visibility = helpers::determine_visibility(&modifiers, "public");
 
-    let mut signature = format!(
-        "{}Const {}",
-        helpers::modifier_prefix(&modifiers),
-        name
-    );
+    let mut signature = format!("{}Const {}", helpers::modifier_prefix(&modifiers), name);
 
     let mut cursor = node.walk();
-    let as_clause = node
-        .children(&mut cursor)
-        .find(|c| c.kind() == "as_clause");
+    let as_clause = node.children(&mut cursor).find(|c| c.kind() == "as_clause");
     if let Some(as_clause) = as_clause {
         if let Some(type_node) = as_clause.child_by_field_name("type") {
             signature.push_str(&format!(" As {}", base.get_node_text(&type_node)));
@@ -280,11 +270,13 @@ pub fn extract_const(
     }
 
     let doc_comment = base.find_doc_comment(&node);
+    let metadata = helpers::vb_visibility_metadata(&modifiers, "public");
 
     let options = SymbolOptions {
         signature: Some(signature),
         visibility: Some(visibility),
         parent_id,
+        metadata: Some(metadata),
         doc_comment,
         ..Default::default()
     };
@@ -300,7 +292,12 @@ pub fn extract_declare(
     let name_node = node.child_by_field_name("name")?;
     let name = base.get_node_text(&name_node);
     let modifiers = helpers::extract_modifiers(base, &node);
-    let visibility = helpers::determine_visibility(&modifiers);
+    let default_visibility = if parent_id.is_some() {
+        "public"
+    } else {
+        "friend"
+    };
+    let visibility = helpers::determine_visibility(&modifiers, default_visibility);
 
     let is_function = node.child_by_field_name("return_type").is_some();
     let keyword = if is_function { "Function" } else { "Sub" };
@@ -327,11 +324,13 @@ pub fn extract_declare(
     }
 
     let doc_comment = base.find_doc_comment(&node);
+    let metadata = helpers::vb_visibility_metadata(&modifiers, default_visibility);
 
     let options = SymbolOptions {
         signature: Some(signature),
         visibility: Some(visibility),
         parent_id,
+        metadata: Some(metadata),
         doc_comment,
         ..Default::default()
     };

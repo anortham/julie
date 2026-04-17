@@ -223,10 +223,7 @@ macro_rules! define_data_only_extractors {
     };
 }
 
-define_full_language_extractors![
-    (extract_elixir, "elixir", crate::elixir::ElixirExtractor),
-    (extract_vbnet, "vbnet", crate::vbnet::VbNetExtractor)
-];
+define_full_language_extractors![(extract_elixir, "elixir", crate::elixir::ElixirExtractor)];
 
 define_structured_full_language_extractors![
     (extract_rust, "rust", crate::rust::RustExtractor),
@@ -234,6 +231,7 @@ define_structured_full_language_extractors![
     (extract_go, "go", crate::go::GoExtractor),
     (extract_c, "c", crate::c::CExtractor),
     (extract_zig, "zig", crate::zig::ZigExtractor),
+    (extract_vbnet, "vbnet", crate::vbnet::VbNetExtractor),
     (
         extract_gdscript,
         "gdscript",

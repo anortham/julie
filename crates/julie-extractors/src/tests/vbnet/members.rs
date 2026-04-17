@@ -27,10 +27,14 @@ End Class
         let method = symbols.iter().find(|s| s.name == "DoWork");
         assert!(method.is_some(), "Should find method DoWork");
         let method = method.unwrap();
-        assert_eq!(method.kind, SymbolKind::Function);
+        assert_eq!(method.kind, SymbolKind::Method);
         assert_eq!(method.visibility, Some(Visibility::Public));
         let sig = method.signature.as_ref().unwrap();
-        assert!(sig.contains("Sub DoWork"), "Signature should contain 'Sub DoWork': {}", sig);
+        assert!(
+            sig.contains("Sub DoWork"),
+            "Signature should contain 'Sub DoWork': {}",
+            sig
+        );
     }
 
     #[test]
@@ -56,11 +60,62 @@ End Class
         let method = symbols.iter().find(|s| s.name == "Add");
         assert!(method.is_some(), "Should find method Add");
         let method = method.unwrap();
-        assert_eq!(method.kind, SymbolKind::Function);
+        assert_eq!(method.kind, SymbolKind::Method);
         let sig = method.signature.as_ref().unwrap();
-        assert!(sig.contains("Function Add"), "Signature should contain 'Function Add': {}", sig);
-        assert!(sig.contains("As Integer"), "Signature should contain return type: {}", sig);
-        assert!(sig.contains("a As Integer"), "Signature should contain params: {}", sig);
+        assert!(
+            sig.contains("Function Add"),
+            "Signature should contain 'Function Add': {}",
+            sig
+        );
+        assert!(
+            sig.contains("As Integer"),
+            "Signature should contain return type: {}",
+            sig
+        );
+        assert!(
+            sig.contains("a As Integer"),
+            "Signature should contain params: {}",
+            sig
+        );
+    }
+
+    #[test]
+    fn test_default_member_visibility_follows_vb_rules() {
+        let code = r#"
+Class Service
+    Sub Run()
+    End Sub
+
+    Property Name As String
+
+    Dim _state As Integer
+End Class
+"#;
+        let mut parser = init_parser();
+        let tree = parser.parse(code, None).unwrap();
+        let workspace_root = PathBuf::from("/tmp/test");
+        let mut extractor = VbNetExtractor::new(
+            "vbnet".to_string(),
+            "test.vb".to_string(),
+            code.to_string(),
+            &workspace_root,
+        );
+        let symbols = extractor.extract_symbols(&tree);
+
+        let run = symbols.iter().find(|s| s.name == "Run").unwrap();
+        assert_eq!(get_vb_visibility(run), "public");
+
+        let name = symbols
+            .iter()
+            .find(|s| s.name == "Name" && s.kind == SymbolKind::Property)
+            .unwrap();
+        assert_eq!(get_vb_visibility(name), "public");
+
+        let state = symbols
+            .iter()
+            .find(|s| s.name == "_state" && s.kind == SymbolKind::Field)
+            .unwrap();
+        assert_eq!(get_vb_visibility(state), "private");
     }
 
     #[test]
@@ -86,7 +141,11 @@ End Class
         let method = symbols.iter().find(|s| s.name == "Square");
         assert!(method.is_some(), "Should find method Square");
         let sig = method.unwrap().signature.as_ref().unwrap();
-        assert!(sig.contains("shared"), "Signature should contain 'shared': {}", sig);
+        assert!(
+            sig.contains("shared"),
+            "Signature should contain 'shared': {}",
+            sig
+        );
     }
 
     #[test]
@@ -114,8 +173,16 @@ End Class
         assert_eq!(ctor.name, "New");
         assert_eq!(ctor.visibility, Some(Visibility::Public));
         let sig = ctor.signature.as_ref().unwrap();
-        assert!(sig.contains("Sub New"), "Signature should contain 'Sub New': {}", sig);
-        assert!(sig.contains("name As String"), "Signature should contain params: {}", sig);
+        assert!(
+            sig.contains("Sub New"),
+            "Signature should contain 'Sub New': {}",
+            sig
+        );
+        assert!(
+            sig.contains("name As String"),
+            "Signature should contain params: {}",
+            sig
+        );
     }
 
     #[test]
@@ -143,12 +210,15 @@ End Class
         );
         let symbols = extractor.extract_symbols(&tree);
 
-        let ctors: Vec<&Symbol> = symbols.iter()
+        let ctors: Vec<&Symbol> = symbols
+            .iter()
             .filter(|s| s.kind == SymbolKind::Constructor)
             .collect();
         assert_eq!(ctors.len(), 3, "Should have 3 constructors");
 
-        let private_ctor = ctors.iter().find(|s| s.visibility == Some(Visibility::Private));
+        let private_ctor = ctors
+            .iter()
+            .find(|s| s.visibility == Some(Visibility::Private));
         assert!(private_ctor.is_some(), "Should find private constructor");
     }
 
@@ -171,13 +241,21 @@ End Class
         );
         let symbols = extractor.extract_symbols(&tree);
 
-        let name_prop = symbols.iter().find(|s| s.name == "Name" && s.kind == SymbolKind::Property);
+        let name_prop = symbols
+            .iter()
+            .find(|s| s.name == "Name" && s.kind == SymbolKind::Property);
         assert!(name_prop.is_some(), "Should find property Name");
         let sig = name_prop.unwrap().signature.as_ref().unwrap();
         assert!(sig.contains("Property Name"), "Signature: {}", sig);
-        assert!(sig.contains("As String"), "Signature should contain type: {}", sig);
+        assert!(
+            sig.contains("As String"),
+            "Signature should contain type: {}",
+            sig
+        );
 
-        let age_prop = symbols.iter().find(|s| s.name == "Age" && s.kind == SymbolKind::Property);
+        let age_prop = symbols
+            .iter()
+            .find(|s| s.name == "Age" && s.kind == SymbolKind::Property);
         assert!(age_prop.is_some(), "Should find property Age");
     }
 
@@ -203,11 +281,21 @@ End Class
         );
         let symbols = extractor.extract_symbols(&tree);
 
-        let prop = symbols.iter().find(|s| s.name == "IsEmpty" && s.kind == SymbolKind::Property);
+        let prop = symbols
+            .iter()
+            .find(|s| s.name == "IsEmpty" && s.kind == SymbolKind::Property);
         assert!(prop.is_some(), "Should find property IsEmpty");
         let sig = prop.unwrap().signature.as_ref().unwrap();
-        assert!(sig.contains("readonly"), "Signature should contain 'readonly': {}", sig);
-        assert!(sig.contains("As Boolean"), "Signature should contain type: {}", sig);
+        assert!(
+            sig.contains("readonly"),
+            "Signature should contain 'readonly': {}",
+            sig
+        );
+        assert!(
+            sig.contains("As Boolean"),
+            "Signature should contain type: {}",
+            sig
+        );
     }
 
     #[test]
@@ -235,10 +323,16 @@ End Class
         );
         let symbols = extractor.extract_symbols(&tree);
 
-        let prop = symbols.iter().find(|s| s.name == "Item" && s.kind == SymbolKind::Property);
+        let prop = symbols
+            .iter()
+            .find(|s| s.name == "Item" && s.kind == SymbolKind::Property);
         assert!(prop.is_some(), "Should find indexed property Item");
         let sig = prop.unwrap().signature.as_ref().unwrap();
-        assert!(sig.contains("index As Integer"), "Signature should contain index param: {}", sig);
+        assert!(
+            sig.contains("index As Integer"),
+            "Signature should contain index param: {}",
+            sig
+        );
     }
 
     #[test]
@@ -260,14 +354,22 @@ End Class
         );
         let symbols = extractor.extract_symbols(&tree);
 
-        let name_field = symbols.iter().find(|s| s.name == "_name" && s.kind == SymbolKind::Field);
+        let name_field = symbols
+            .iter()
+            .find(|s| s.name == "_name" && s.kind == SymbolKind::Field);
         assert!(name_field.is_some(), "Should find field _name");
         let name_field = name_field.unwrap();
         assert_eq!(name_field.visibility, Some(Visibility::Private));
         let sig = name_field.signature.as_ref().unwrap();
-        assert!(sig.contains("As String"), "Field signature should contain type: {}", sig);
+        assert!(
+            sig.contains("As String"),
+            "Field signature should contain type: {}",
+            sig
+        );
 
-        let age_field = symbols.iter().find(|s| s.name == "Age" && s.kind == SymbolKind::Field);
+        let age_field = symbols
+            .iter()
+            .find(|s| s.name == "Age" && s.kind == SymbolKind::Field);
         assert!(age_field.is_some(), "Should find field Age");
         assert_eq!(age_field.unwrap().visibility, Some(Visibility::Public));
     }
@@ -290,10 +392,16 @@ End Class
         );
         let symbols = extractor.extract_symbols(&tree);
 
-        let field = symbols.iter().find(|s| s.name == "Count" && s.kind == SymbolKind::Field);
+        let field = symbols
+            .iter()
+            .find(|s| s.name == "Count" && s.kind == SymbolKind::Field);
         assert!(field.is_some(), "Should find shared field Count");
         let sig = field.unwrap().signature.as_ref().unwrap();
-        assert!(sig.contains("shared"), "Signature should contain 'shared': {}", sig);
+        assert!(
+            sig.contains("shared"),
+            "Signature should contain 'shared': {}",
+            sig
+        );
     }
 
     #[test]
@@ -314,11 +422,24 @@ End Class
         );
         let symbols = extractor.extract_symbols(&tree);
 
-        let field = symbols.iter().find(|s| s.name == "_value" && s.kind == SymbolKind::Field);
-        assert!(field.is_some(), "Should find field _value declared with Dim");
+        let field = symbols
+            .iter()
+            .find(|s| s.name == "_value" && s.kind == SymbolKind::Field);
+        assert!(
+            field.is_some(),
+            "Should find field _value declared with Dim"
+        );
         let sig = field.unwrap().signature.as_ref().unwrap();
-        assert!(sig.contains("Dim _value"), "Signature should contain 'Dim _value': {}", sig);
-        assert!(sig.contains("As Integer"), "Signature should contain type: {}", sig);
+        assert!(
+            sig.contains("Dim _value"),
+            "Signature should contain 'Dim _value': {}",
+            sig
+        );
+        assert!(
+            sig.contains("As Integer"),
+            "Signature should contain type: {}",
+            sig
+        );
     }
 
     #[test]
@@ -339,13 +460,19 @@ End Class
         );
         let symbols = extractor.extract_symbols(&tree);
 
-        let event = symbols.iter().find(|s| s.name == "Click" && s.kind == SymbolKind::Event);
+        let event = symbols
+            .iter()
+            .find(|s| s.name == "Click" && s.kind == SymbolKind::Event);
         assert!(event.is_some(), "Should find event Click");
         let event = event.unwrap();
         assert_eq!(event.visibility, Some(Visibility::Public));
         let sig = event.signature.as_ref().unwrap();
         assert!(sig.contains("Event Click"), "Signature: {}", sig);
-        assert!(sig.contains("As EventHandler"), "Signature should contain type: {}", sig);
+        assert!(
+            sig.contains("As EventHandler"),
+            "Signature should contain type: {}",
+            sig
+        );
     }
 
     #[test]
@@ -366,7 +493,9 @@ End Class
         );
         let symbols = extractor.extract_symbols(&tree);
 
-        let event = symbols.iter().find(|s| s.name == "ValueChanged" && s.kind == SymbolKind::Event);
+        let event = symbols
+            .iter()
+            .find(|s| s.name == "ValueChanged" && s.kind == SymbolKind::Event);
         assert!(event.is_some(), "Should find event ValueChanged");
         let sig = event.unwrap().signature.as_ref().unwrap();
         assert!(sig.contains("Event ValueChanged"), "Signature: {}", sig);
@@ -395,10 +524,18 @@ End Class
         let op = symbols.iter().find(|s| s.kind == SymbolKind::Operator);
         assert!(op.is_some(), "Should find operator +");
         let op = op.unwrap();
-        assert!(op.name.contains("+"), "Operator name should contain '+': {}", op.name);
+        assert!(
+            op.name.contains("+"),
+            "Operator name should contain '+': {}",
+            op.name
+        );
         let sig = op.signature.as_ref().unwrap();
         assert!(sig.contains("Operator +"), "Signature: {}", sig);
-        assert!(sig.contains("As Vector"), "Signature should contain return type: {}", sig);
+        assert!(
+            sig.contains("As Vector"),
+            "Signature should contain return type: {}",
+            sig
+        );
     }
 
     #[test]
@@ -420,15 +557,23 @@ End Class
         );
         let symbols = extractor.extract_symbols(&tree);
 
-        let max_size = symbols.iter().find(|s| s.name == "MaxSize" && s.kind == SymbolKind::Constant);
+        let max_size = symbols
+            .iter()
+            .find(|s| s.name == "MaxSize" && s.kind == SymbolKind::Constant);
         assert!(max_size.is_some(), "Should find constant MaxSize");
         let max_size = max_size.unwrap();
         assert_eq!(max_size.visibility, Some(Visibility::Public));
         let sig = max_size.signature.as_ref().unwrap();
         assert!(sig.contains("Const MaxSize"), "Signature: {}", sig);
-        assert!(sig.contains("As Integer"), "Signature should contain type: {}", sig);
+        assert!(
+            sig.contains("As Integer"),
+            "Signature should contain type: {}",
+            sig
+        );
 
-        let default_name = symbols.iter().find(|s| s.name == "DefaultName" && s.kind == SymbolKind::Constant);
+        let default_name = symbols
+            .iter()
+            .find(|s| s.name == "DefaultName" && s.kind == SymbolKind::Constant);
         assert!(default_name.is_some(), "Should find constant DefaultName");
         assert_eq!(default_name.unwrap().visibility, Some(Visibility::Private));
     }
@@ -456,7 +601,9 @@ End Class
         );
         let symbols = extractor.extract_symbols(&tree);
 
-        let class = symbols.iter().find(|s| s.name == "MyService" && s.kind == SymbolKind::Class);
+        let class = symbols
+            .iter()
+            .find(|s| s.name == "MyService" && s.kind == SymbolKind::Class);
         assert!(class.is_some(), "Should find class MyService");
         let class_id = &class.unwrap().id;
 
@@ -488,13 +635,21 @@ End Interface
         );
         let symbols = extractor.extract_symbols(&tree);
 
-        let area = symbols.iter().find(|s| s.name == "Area" && s.kind == SymbolKind::Function);
+        let area = symbols
+            .iter()
+            .find(|s| s.name == "Area" && s.kind == SymbolKind::Method);
         assert!(area.is_some(), "Should find abstract method Area");
         let sig = area.unwrap().signature.as_ref().unwrap();
         assert!(sig.contains("Function Area"), "Signature: {}", sig);
-        assert!(sig.contains("As Double"), "Signature should contain return type: {}", sig);
+        assert!(
+            sig.contains("As Double"),
+            "Signature should contain return type: {}",
+            sig
+        );
 
-        let draw = symbols.iter().find(|s| s.name == "Draw" && s.kind == SymbolKind::Function);
+        let draw = symbols
+            .iter()
+            .find(|s| s.name == "Draw" && s.kind == SymbolKind::Method);
         assert!(draw.is_some(), "Should find abstract method Draw");
         let sig = draw.unwrap().signature.as_ref().unwrap();
         assert!(sig.contains("Sub Draw"), "Signature: {}", sig);

@@ -104,10 +104,7 @@ fn changed_tests_dogfood_repo_index_file_routes_to_new_bucket() {
     );
 
     assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
-    assert_eq!(
-        selection.bucket_names,
-        vec!["tools-dogfood-repo-index"]
-    );
+    assert_eq!(selection.bucket_names, vec!["tools-dogfood-repo-index"]);
 }
 
 fn sample_manifest() -> TestManifest {

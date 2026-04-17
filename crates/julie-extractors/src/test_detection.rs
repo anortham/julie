@@ -168,8 +168,14 @@ fn detect_csharp(attributes: &[String]) -> bool {
     attributes.iter().any(|a| {
         // C# extractors may produce bracketed attributes like "[Fact]" or bare "Fact".
         // Strip surrounding brackets before matching.
-        let stripped = a.strip_prefix('[').or_else(|| a.strip_prefix('<')).unwrap_or(a);
-        let stripped = stripped.strip_suffix(']').or_else(|| stripped.strip_suffix('>')).unwrap_or(stripped);
+        let stripped = a
+            .strip_prefix('[')
+            .or_else(|| a.strip_prefix('<'))
+            .unwrap_or(a);
+        let stripped = stripped
+            .strip_suffix(']')
+            .or_else(|| stripped.strip_suffix('>'))
+            .unwrap_or(stripped);
         test_attrs.contains(&stripped)
     })
 }

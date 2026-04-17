@@ -189,10 +189,7 @@ End Class
         let symbols = extractor.extract_symbols(&tree);
         let types = extractor.infer_types(&symbols);
 
-        let calc = symbols
-            .iter()
-            .find(|s| s.name == "CalculateArea")
-            .unwrap();
+        let calc = symbols.iter().find(|s| s.name == "CalculateArea").unwrap();
         let inferred = types.get(&calc.id);
         assert!(
             inferred.is_some(),
@@ -226,10 +223,7 @@ End Class
             .find(|s| s.name == "MaxSize" && s.kind == SymbolKind::Constant)
             .unwrap();
         let max_type = types.get(&max_size.id);
-        assert!(
-            max_type.is_some(),
-            "Should infer type for Const MaxSize"
-        );
+        assert!(max_type.is_some(), "Should infer type for Const MaxSize");
         assert_eq!(max_type.unwrap(), "Integer");
 
         let app_name = symbols
@@ -237,10 +231,7 @@ End Class
             .find(|s| s.name == "AppName" && s.kind == SymbolKind::Constant)
             .unwrap();
         let app_type = types.get(&app_name.id);
-        assert!(
-            app_type.is_some(),
-            "Should infer type for Const AppName"
-        );
+        assert!(app_type.is_some(), "Should infer type for Const AppName");
         assert_eq!(app_type.unwrap(), "String");
     }
 }
