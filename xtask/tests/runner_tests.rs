@@ -820,6 +820,24 @@ fn runner_tests_non_coverage_mode_leaves_commands_unchanged() {
 }
 
 #[test]
+fn runner_tests_transform_nextest_to_llvm_cov() {
+    assert_eq!(
+        transform_command_for_coverage("cargo nextest run --lib tests::cli_tests"),
+        "cargo llvm-cov --no-report nextest --lib tests::cli_tests"
+    );
+}
+
+#[test]
+fn runner_tests_transform_nextest_preserves_skip_args() {
+    assert_eq!(
+        transform_command_for_coverage(
+            "cargo nextest run --lib tests::core::database -- --skip search_quality"
+        ),
+        "cargo llvm-cov --no-report nextest --lib tests::core::database -- --skip search_quality"
+    );
+}
+
+#[test]
 fn runner_tests_transform_leaves_non_cargo_test_unchanged() {
     assert_eq!(transform_command_for_coverage("echo hello"), "echo hello");
 }

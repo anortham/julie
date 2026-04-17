@@ -217,6 +217,8 @@ unsafe extern "C" {
 pub fn transform_command_for_coverage(command: &str) -> String {
     if let Some(rest) = command.strip_prefix("cargo test") {
         format!("cargo llvm-cov --no-report test{rest}")
+    } else if let Some(rest) = command.strip_prefix("cargo nextest run") {
+        format!("cargo llvm-cov --no-report nextest{rest}")
     } else {
         command.to_string()
     }
