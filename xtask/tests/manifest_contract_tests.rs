@@ -185,7 +185,6 @@ fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
                     "cargo nextest run --lib tests::core::language -- --skip search_quality",
                     "cargo nextest run --lib tests::core::memory_vectors -- --skip search_quality",
                     "cargo nextest run --lib tests::core::paths -- --skip search_quality",
-                    "cargo nextest run --lib tests::core::tracing -- --skip search_quality",
                     "cargo nextest run --lib tests::core::vector_storage -- --skip search_quality",
                 ],
             },
