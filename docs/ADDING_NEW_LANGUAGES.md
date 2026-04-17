@@ -2,7 +2,7 @@
 
 This document describes all the locations that must be updated when adding a new programming language to Julie's extractors.
 
-Julie currently supports 33 languages via tree-sitter. All extractor code lives in the `crates/julie-extractors/` workspace crate.
+Julie currently supports 34 languages via tree-sitter. All extractor code lives in the `crates/julie-extractors/` workspace crate.
 
 ## Quick Checklist
 

@@ -1,6 +1,6 @@
 # Julie
 
-**[Website](https://anortham.github.io/julie/)** · **[Installation](#installation)** · **[Tools](#tools-8)** · **[Skills](#skills)** · **[33 Languages](#supported-languages-33)**
+**[Website](https://anortham.github.io/julie/)** · **[Installation](#installation)** · **[Tools](#tools-8)** · **[Skills](#skills)** · **[34 Languages](#supported-languages-34)**
 
 A cross-platform code intelligence server built in Rust, providing LSP-quality features across 33 programming languages via the Model Context Protocol (MCP).
 
@@ -22,8 +22,8 @@ The key difference from simpler code indexing tools: Julie doesn't just extract 
 ## Features
 
 - **Fast symbol search** with code-aware tokenization (CamelCase/snake_case splitting, stemming, <5ms)
-- **Cross-language code navigation** (go-to-definition, find-references) across 33 languages
-- **Test intelligence** — automatic test detection, test quality metrics, and test-to-code linkage across all 33 languages
+- **Cross-language code navigation** (go-to-definition, find-references) across 34 languages
+- **Test intelligence** — automatic test detection, test quality metrics, and test-to-code linkage across all 34 languages
 - **AST-aware refactoring** with workspace-wide rename and dry-run preview
 - **Operational metrics** — per-tool timing, context efficiency tracking, "bytes NOT injected" headline metric
 - **Multi-workspace support** for indexing and searching related codebases
@@ -90,9 +90,9 @@ Python 3.12 is used because it has the best PyTorch hardware acceleration compat
 - `JULIE_EMBEDDING_SIDECAR_MODEL_ID`: any HuggingFace model ID (default: `nomic-ai/CodeRankEmbed`, 768d code-optimized). Changing models automatically wipes and re-embeds all vectors on the next indexing run.
 - See `docs/operations/embedding-sidecar.md` for all environment variables and troubleshooting
 
-## Supported Languages (33)
+## Supported Languages (34)
 
-**Core:** Rust, TypeScript, JavaScript, Python, Java, C#, PHP, Ruby, Swift, Kotlin, Scala
+**Core:** Rust, TypeScript, JavaScript, Python, Java, C#, VB.NET, PHP, Ruby, Swift, Kotlin, Scala
 
 **Systems:** C, C++, Go, Lua, Zig
 
@@ -324,7 +324,7 @@ Patterns use glob syntax (`**/` for recursive, `*` for wildcard). Default patter
 
 ## Test Intelligence
 
-Julie automatically detects and analyzes tests during indexing across all 33 languages, with no configuration required.
+Julie automatically detects and analyzes tests during indexing across all 34 languages, with no configuration required.
 
 - **Test detection** — recognizes `#[test]`, `@Test`, `pytest`, `describe`/`it`, and language-specific test patterns
 - **Test quality metrics** — assertion density, mock usage, error path coverage, classified as thorough/adequate/thin/stub
@@ -489,7 +489,7 @@ src/
 ├── adapter/         # Thin stdio adapter: auto-starts daemon, forwards bytes via IPC
 ├── daemon/          # Background daemon: shared indexes, IPC server, lifecycle management
 ├── dashboard/       # Web dashboard (htmx + Tera templates, served by daemon)
-├── extractors/      # Language-specific symbol extraction (33 languages)
+├── extractors/      # Language-specific symbol extraction (34 languages)
 ├── analysis/        # Post-indexing analysis (test quality metrics, risk scoring)
 ├── database/        # SQLite structured storage
 ├── search/          # Tantivy search engine and tokenizer

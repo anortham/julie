@@ -11,7 +11,7 @@
 **Question**: *"Why spend months and hundreds of thousands of dollars building Julie when Codesearch already exists?"*
 
 **Answer**: **THIS.** The Julie Intelligence Layer is what makes Julie more than just another code search tool. It's the convergence of everything we built:
-- 33 tree-sitter extractors → **Structural Understanding**
+- 34 tree-sitter extractors → **Structural Understanding**
 - Tantivy full-text search → **Fast Intelligence**
 - Code-aware tokenization → **Cross-language Discovery**
 - Graph centrality ranking → **Importance-Aware Results**
@@ -50,7 +50,7 @@ Traditional tools fail miserably here:
 
 ### 1. Structural Intelligence (Tree-sitter)
 
-**What it is**: Understanding code structure across 33 languages, not just text.
+**What it is**: Understanding code structure across 34 languages, not just text.
 
 **How it works**:
 - Tree-sitter parsers extract semantic meaning

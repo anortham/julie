@@ -1,6 +1,6 @@
 // Tests for test_detection module — is_test_symbol() function
 //
-// Covers all 33 languages via language-specific rules + generic fallback.
+// Covers all 34 languages via language-specific rules + generic fallback.
 
 use crate::base::SymbolKind;
 use crate::test_detection::is_test_symbol;

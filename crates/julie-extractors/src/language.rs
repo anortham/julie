@@ -157,7 +157,7 @@ pub fn supported_extensions() -> &'static [&'static str] {
     ]
 }
 
-/// All language names Julie supports (33 languages).
+/// All language names Julie supports (34 languages).
 ///
 /// **SINGLE SOURCE OF TRUTH** — `ExtractorManager::supported_languages()` must
 /// delegate to this, not maintain its own list.
