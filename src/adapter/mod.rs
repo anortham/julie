@@ -9,15 +9,52 @@ pub mod launcher;
 
 use anyhow::{Context, Result};
 use std::future::Future;
-use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt, copy};
-use tracing::{error, info};
+use std::time::Duration;
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, copy};
+use tracing::{error, info, warn};
 
-use crate::daemon::ipc::{IpcClientStream, IpcConnector};
+use crate::daemon::ipc::{DAEMON_READY_LINE, IpcClientStream, IpcConnector};
 use crate::daemon::lifecycle::{RestartHandoffAction, RestartReason, restart_handoff_action};
 use crate::paths::DaemonPaths;
 use crate::workspace::startup_hint::WorkspaceStartupHint;
 
 use self::launcher::DaemonLauncher;
+
+/// How long the adapter waits for the daemon's ready signal after sending
+/// headers. The daemon writes the signal after clearing all accept-path
+/// gates but before calling rmcp's `serve`, which for a non-deferred
+/// startup hint sits behind `WorkspacePool::get_or_init` — i.e. DB open,
+/// file scan, and (cold) index build. On a large workspace that work can
+/// take tens of seconds, so the budget has to be generous. 30 s matches
+/// the MCP client's typical `initialize` timeout: if the daemon can't
+/// produce READY inside that window, the client is going to give up on
+/// the session anyway, so treating it as a hard failure here is correct.
+const READY_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Safety cap on the length of a single protocol line the adapter will buffer
+/// while waiting for the ready signal. The real signal is 13 bytes; 64 gives
+/// room for future signals without exposing the adapter to runaway allocation
+/// if the daemon misbehaves.
+const READY_LINE_MAX: usize = 64;
+
+/// Outcome of attempting to read the daemon's ready signal.
+#[derive(Debug)]
+pub(crate) enum ReadyOutcome {
+    /// Daemon wrote `DAEMON_READY\n`. Safe to start forwarding.
+    Ready,
+    /// Daemon closed the stream before sending the ready signal. The caller
+    /// should treat this like an immediate disconnect and retry.
+    Eof,
+    /// Timed out waiting for any newline-terminated line. Most likely a
+    /// legacy daemon that predates the handshake protocol. The caller should
+    /// log a warning and fall back to legacy forwarding.
+    Timeout,
+    /// A complete line arrived that wasn't the ready signal. The caller
+    /// should treat this as a protocol error and retry.
+    Unexpected(Vec<u8>),
+    /// Underlying I/O error while reading.
+    IoError(std::io::Error),
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ForwardOutcome {
@@ -148,7 +185,13 @@ where
     unreachable!("retry loop either returns success or exits with an error")
 }
 
-/// Connect to the daemon IPC endpoint and send the workspace header.
+/// Connect to the daemon IPC endpoint, send the workspace header, and wait
+/// for the daemon's ready signal before returning.
+///
+/// The ready signal closes a byte-loss race that could otherwise happen when
+/// the daemon decides to drop the connection at an accept-path gate (stale
+/// binary, version mismatch): without this ordering, the adapter's forwarder
+/// might read and discard client stdin before the retry reconnects.
 async fn connect_and_handshake(
     paths: &DaemonPaths,
     startup_hint: &WorkspaceStartupHint,
@@ -167,7 +210,77 @@ async fn connect_and_handshake(
         .await
         .context("Failed to send IPC headers")?;
 
-    Ok(stream)
+    // All non-Ready outcomes are retryable transport failures: the stream is
+    // dropped, run_adapter_with's retry loop reconnects, and client stdin is
+    // still untouched (this is the whole point of the handshake). There is no
+    // "legacy fallback" — an older daemon that doesn't know the READY
+    // protocol will look like a timeout or unexpected-line, which is
+    // symptomatically correct: the client sees a failed attempt, the adapter
+    // bumps the retry counter, and when the retry either reaches a new
+    // daemon or exhausts, the user gets an actionable failure instead of a
+    // silent byte-loss race.
+    match read_daemon_ready(&mut stream, READY_TIMEOUT).await {
+        ReadyOutcome::Ready => Ok(stream),
+        ReadyOutcome::Eof => anyhow::bail!(
+            "Daemon closed connection before sending ready signal (accept-path rejection or pre-serve failure)"
+        ),
+        ReadyOutcome::Timeout => {
+            warn!(
+                "Daemon did not send ready signal within {:?}; treating as transport failure",
+                READY_TIMEOUT
+            );
+            anyhow::bail!(
+                "Daemon did not send ready signal within {:?}",
+                READY_TIMEOUT
+            )
+        }
+        ReadyOutcome::Unexpected(line) => anyhow::bail!(
+            "Daemon sent unexpected pre-serve line: {:?}",
+            String::from_utf8_lossy(&line)
+        ),
+        ReadyOutcome::IoError(e) => Err(anyhow::Error::from(e))
+            .context("I/O error while waiting for daemon ready signal"),
+    }
+}
+
+/// Read the daemon's single-line ready signal from the stream.
+///
+/// The caller promises to drive this BEFORE any stdin forwarding starts.
+/// Reads one byte at a time so that bytes following the terminating `\n`
+/// (e.g. the daemon's first MCP response) remain in the stream for the
+/// downstream byte-forwarder to pick up.
+pub(crate) async fn read_daemon_ready<S>(stream: &mut S, timeout: Duration) -> ReadyOutcome
+where
+    S: AsyncRead + Unpin,
+{
+    let mut buf: Vec<u8> = Vec::with_capacity(DAEMON_READY_LINE.len());
+    let mut byte = [0u8; 1];
+
+    let read_line = async {
+        loop {
+            match stream.read(&mut byte).await {
+                Ok(0) => return ReadyOutcome::Eof,
+                Ok(_) => {
+                    buf.push(byte[0]);
+                    if byte[0] == b'\n' {
+                        if buf == DAEMON_READY_LINE {
+                            return ReadyOutcome::Ready;
+                        }
+                        return ReadyOutcome::Unexpected(std::mem::take(&mut buf));
+                    }
+                    if buf.len() >= READY_LINE_MAX {
+                        return ReadyOutcome::Unexpected(std::mem::take(&mut buf));
+                    }
+                }
+                Err(e) => return ReadyOutcome::IoError(e),
+            }
+        }
+    };
+
+    match tokio::time::timeout(timeout, read_line).await {
+        Ok(outcome) => outcome,
+        Err(_) => ReadyOutcome::Timeout,
+    }
 }
 
 pub(crate) fn build_ipc_header(startup_hint: &WorkspaceStartupHint) -> String {

@@ -234,3 +234,18 @@ mod windows {
 
 #[cfg(windows)]
 pub use windows::{IpcClientStream, IpcConnector, IpcListener, IpcStream};
+
+/// Protocol signal written by the daemon after a session has cleared all
+/// accept-path gates (stale-binary check, header parse, version gate) and
+/// the handler has been constructed, immediately before rmcp serves the
+/// stream.
+///
+/// The adapter waits for this line before forwarding client stdin. That
+/// ordering makes it safe for the daemon to drop a connection at any earlier
+/// gate (e.g. ShutdownForRestart, RejectForRestart): the adapter will see
+/// EOF with stdin untouched and retry via the existing run_adapter_with
+/// retry loop. Without this handshake, tokio::select! in the adapter's
+/// byte-forwarder could consume initialize bytes from stdin, try to write
+/// them to a now-closed socket, and lose them — the bug documented in the
+/// checkpoint at .memories/2026-04-16/*.
+pub const DAEMON_READY_LINE: &[u8] = b"DAEMON_READY\n";

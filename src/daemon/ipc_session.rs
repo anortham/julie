@@ -4,7 +4,7 @@ use std::sync::atomic::AtomicBool;
 
 use anyhow::{Context, Result};
 use rmcp::ServiceExt;
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, ReadBuf};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadBuf};
 use tokio::sync::broadcast;
 use tracing::{info, warn};
 
@@ -16,7 +16,7 @@ use crate::workspace::startup_hint::{WorkspaceStartupHint, WorkspaceStartupSourc
 
 use super::database::DaemonDatabase;
 use super::embedding_service::EmbeddingService;
-use super::ipc::IpcStream;
+use super::ipc::{DAEMON_READY_LINE, IpcStream};
 use super::watcher_pool::WatcherPool;
 use super::workspace_pool::WorkspacePool;
 
@@ -322,22 +322,46 @@ pub(crate) async fn handle_ipc_session(
         }
 
         handler.mark_session_serving();
-        let service_result = match handler.clone().serve(stream).await {
-            Ok(service) => match service.waiting().await {
-                Ok(_reason) => {
-                    info!(session_id = %session_id, "MCP session completed normally");
-                    Ok(())
-                }
+
+        // Handshake: tell the adapter the session is live so it's safe to
+        // forward client stdin. The adapter blocks on this line and only
+        // starts pulling from stdin after it arrives. If the daemon had
+        // dropped the connection at any earlier gate (stale-binary,
+        // header-read, version-mismatch) this line would never be written,
+        // the adapter would see EOF, and it would retry with stdin intact.
+        let mut stream = stream;
+        let service_result: Result<(), anyhow::Error> = async {
+            stream
+                .write_all(DAEMON_READY_LINE)
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to write daemon ready signal: {}", e))?;
+            stream
+                .flush()
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to flush daemon ready signal: {}", e))?;
+
+            match handler.clone().serve(stream).await {
+                Ok(service) => match service.waiting().await {
+                    Ok(_reason) => {
+                        info!(session_id = %session_id, "MCP session completed normally");
+                        Ok(())
+                    }
+                    Err(e) => {
+                        warn!(session_id = %session_id, "MCP session ended with error: {}", e);
+                        Err(anyhow::anyhow!("MCP session error: {}", e))
+                    }
+                },
                 Err(e) => {
-                    warn!(session_id = %session_id, "MCP session ended with error: {}", e);
-                    Err(anyhow::anyhow!("MCP session error: {}", e))
+                    warn!(session_id = %session_id, "MCP serve failed: {}", e);
+                    Err(anyhow::anyhow!("MCP serve failed: {}", e))
                 }
-            },
-            Err(e) => {
-                warn!(session_id = %session_id, "MCP serve failed: {}", e);
-                Err(anyhow::anyhow!("MCP serve failed: {}", e))
             }
-        };
+        }
+        .await;
+
+        if let Err(ref e) = service_result {
+            warn!(session_id = %session_id, "Session terminated before/within serve: {}", e);
+        }
 
         handler.mark_session_closing();
 
