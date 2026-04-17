@@ -7,7 +7,7 @@ description: >-
   Trigger on: fix, change, update, modify, refactor, rename, replace, add,
   remove, move, or any task involving changes to existing files. Even one-line
   changes. Even non-code files.
-allowed-tools: mcp__julie__edit_file, mcp__julie__edit_symbol, mcp__julie__get_symbols, mcp__julie__deep_dive, mcp__julie__fast_search
+allowed-tools: mcp__julie__edit_file, mcp__julie__edit_symbol, mcp__julie__rename_symbol, mcp__julie__get_symbols, mcp__julie__deep_dive, mcp__julie__fast_search
 ---
 
 # Editing Files with Julie
@@ -18,6 +18,7 @@ path for all file modifications.
 ## Which tool do I use?
 
 - **Creating a new file?** Use the Write tool. This skill doesn't apply.
+- **Renaming a symbol across the workspace?** Use `rename_symbol` — it's the semantic path (understands scope, handles all references, surfaces conflicts). See below.
 - **Changing a symbol (function, struct, class, method)?** Use `deep_dive` to understand it, then `edit_symbol` to change it.
 - **Changing arbitrary text in a file?** Use `edit_file` with `old_text` and `new_text`.
 - **Need to understand the file first?** Use `get_symbols` (structure) or `deep_dive` (full context), then use `edit_symbol`. Not Read.
@@ -44,6 +45,19 @@ If you catch yourself thinking any of these, you're about to waste tokens:
 - `operation: "replace"` -- swap an entire function/struct/class definition
 - `operation: "insert_after"` -- add code after a symbol
 - `operation: "insert_before"` -- add code before a symbol
+- `file_path` -- use to disambiguate when multiple symbols share a name
+
+**Caveat:** `edit_symbol` operates at line granularity. If multiple symbols share a single source line (terse one-liners), manual adjustment may be needed — fall back to `edit_file` in that case.
+
+### rename_symbol (for semantic workspace-wide renames)
+
+Renames a symbol across the workspace and updates all call sites. Prefer this over `edit_file` for renaming functions, structs, classes, methods, or variables.
+
+```
+rename_symbol(old_name="getUserData", new_name="fetchUser", dry_run=true)
+```
+
+Use `scope` to narrow the rename when multiple symbols share a name. Valid values: `"workspace"` (default), `"all"`, or `"file:<path>"` (e.g., `scope="file:src/tools/foo.rs"`). Preview with `dry_run=true`, then apply with `dry_run=false`. Reach for `edit_file` only for text-replacement renames (e.g., renaming a config key, a markdown heading).
 
 ### edit_file (for any text)
 

@@ -58,7 +58,7 @@ deep_dive(symbol="<expected_symbol>", depth="context")
 Check:
 - **Centrality**: Low-centrality symbols get less boost in search results. Symbols with no references won't benefit from centrality boosting. Use `get_context` to see the centrality label (low/medium/high).
 - **Symbol kind**: Is it a function, struct, variable? Variables and constants may score differently.
-- **File path**: Is it in a test/docs/fixture path? These get a mild penalty from `NL_PATH_PENALTY` (0.95x).
+- **File path**: Is it in a test/docs/fixture path? Docs/tests get `NL_PATH_PENALTY_DOCS` / `NL_PATH_PENALTY_TESTS` (0.95x); fixture paths get a steeper `NL_PATH_PENALTY_FIXTURES` (0.75x).
 - **Visibility**: Public symbols with important patterns (e.g., `pub fn`) get a 1.5x boost from `IMPORTANT_PATTERN_BOOST`.
 
 ### Step 5: Analyze Scoring Factors
@@ -102,7 +102,7 @@ Diagnosis:
 
 Scoring Factors at Play:
   - Centrality boost: <applies/doesn't apply>
-  - Important pattern boost: <1.5x/none>
+  - Important pattern boost: <not exposed in debug output; always 1.0 currently — compute_pattern_boost is a TODO in src/search/debug.rs>
   - NL path prior: <boost/penalty/neutral>
   - Tokenization: query "<query>" → tokens [<tokens>], symbol "<name>" → tokens [<tokens>]
 

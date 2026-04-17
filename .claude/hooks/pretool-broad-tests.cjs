@@ -34,7 +34,7 @@ process.stdin.on("end", () => {
   }
 
   const broadTier =
-    /\bcargo\s+xtask\s+test\s+(dev|full|system|dogfood|reliability|benchmark)\b/.test(
+    /\bcargo(?:\.exe)?\s+xtask\s+test\s+(dev|full|system|dogfood|reliability|benchmark)\b/.test(
       cmd,
     );
 
@@ -42,7 +42,7 @@ process.stdin.on("end", () => {
   // identifier-like test name (blocks `--lib`, `--lib -- --skip foo`,
   // `--lib 2>&1`, etc.; allows `--lib test_foo`, `--lib tests::tools::x`).
   const unfilteredLib =
-    /\bcargo\s+(?:nextest\s+run|test)\s+--lib(?!\s+[A-Za-z_:])/.test(cmd);
+    /\bcargo(?:\.exe)?\s+(?:nextest\s+run|test)\s+--lib(?!\s+[A-Za-z_:])/.test(cmd);
 
   if (broadTier || unfilteredLib) {
     console.error(

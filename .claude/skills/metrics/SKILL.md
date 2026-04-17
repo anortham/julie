@@ -16,6 +16,15 @@ Show the user how Julie is performing and how much context it's saving them.
 2. Present the results. Lead with the "NOT injected into context" headline number -- this is the key value metric.
 3. If the user asks for history or trends, also call `query_metrics` with `category: "history"` and present both.
 
+### Other Categories
+
+`query_metrics` supports these additional categories (call explicitly when the user asks):
+
+- **`doc_coverage`** — coverage summary, per-language breakdown, and the highest-impact undocumented public symbols (ranked by centrality). Use when the user asks "what's undocumented?" or "show me doc coverage."
+- **`dead_code`** — public functions and methods with zero references (potential dead code, grouped by symbol kind). Use when the user asks about unused code or wants a dead-code report.
+
+Example: `query_metrics(category: "doc_coverage")`.
+
 ## Arguments
 
 `$ARGUMENTS` is optional. If the user says "history" or "trends", include the history call. Otherwise, show session only.

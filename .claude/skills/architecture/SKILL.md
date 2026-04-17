@@ -3,7 +3,7 @@ name: architecture
 description: Generate an architecture overview — key entry points, module map, dependency flow, and suggested reading order. Use when the user is new to a codebase, asks "how does this work?", wants an architecture overview, or needs onboarding documentation.
 user-invocable: true
 disable-model-invocation: true
-allowed-tools: mcp__julie__deep_dive, mcp__julie__get_context, mcp__julie__get_symbols, mcp__julie__fast_search
+allowed-tools: mcp__julie__deep_dive, mcp__julie__get_context, mcp__julie__get_symbols, mcp__julie__fast_search, mcp__julie__manage_workspace
 ---
 
 # Architecture Overview
@@ -106,3 +106,4 @@ External input -> [Entry Point A] -> [Module B] -> [Database Layer]
 - Group files by what they DO, not by what they ARE (group by "authentication" not by "structs vs functions")
 - The suggested reading order should form a narrative: start with the big picture, then drill into specifics
 - If the codebase is small (<20 files), show everything. If large, focus on the highest-centrality modules
+- **Cross-workspace**: Call `manage_workspace(operation="open", path="<path>")` first, then pass the returned `workspace_id` to all tool calls

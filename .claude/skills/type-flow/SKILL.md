@@ -3,7 +3,7 @@ name: type-flow
 description: Trace how types flow through a function — parameters, transformations, and return types. Use when the user asks what types a function accepts or returns, how data transforms through a pipeline, or wants to understand type conversions in a code path.
 user-invocable: true
 arguments: "<function_name>"
-allowed-tools: mcp__julie__deep_dive, mcp__julie__fast_refs, mcp__julie__fast_search
+allowed-tools: mcp__julie__deep_dive, mcp__julie__fast_refs, mcp__julie__fast_search, mcp__julie__manage_workspace
 ---
 
 # Type Flow
