@@ -1,3 +1,4 @@
+pub mod changed;
 pub mod cli;
 pub mod manifest;
 pub mod runner;

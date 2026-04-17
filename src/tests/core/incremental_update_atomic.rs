@@ -715,22 +715,58 @@ fn test_delete_workspace_data_clears_all_owned_tables() {
 
     assert!(count_rows(&db, "symbols") > 0, "precondition: symbols");
     assert!(count_rows(&db, "files") > 0, "precondition: files");
-    assert!(count_rows(&db, "identifiers") > 0, "precondition: identifiers");
+    assert!(
+        count_rows(&db, "identifiers") > 0,
+        "precondition: identifiers"
+    );
     assert!(count_rows(&db, "types") > 0, "precondition: types");
-    assert!(count_rows(&db, "symbol_vectors") > 0, "precondition: symbol_vectors");
-    assert!(count_rows(&db, "indexing_repairs") > 0, "precondition: indexing_repairs");
-    assert!(count_rows(&db, "canonical_revisions") > 0, "precondition: canonical_revisions");
+    assert!(
+        count_rows(&db, "symbol_vectors") > 0,
+        "precondition: symbol_vectors"
+    );
+    assert!(
+        count_rows(&db, "indexing_repairs") > 0,
+        "precondition: indexing_repairs"
+    );
+    assert!(
+        count_rows(&db, "canonical_revisions") > 0,
+        "precondition: canonical_revisions"
+    );
 
     db.delete_workspace_data()
         .expect("workspace cleanup should succeed");
 
     assert_eq!(count_rows(&db, "symbols"), 0, "symbols must be cleared");
     assert_eq!(count_rows(&db, "files"), 0, "files must be cleared");
-    assert_eq!(count_rows(&db, "relationships"), 0, "relationships must be cleared");
-    assert_eq!(count_rows(&db, "identifiers"), 0, "identifiers must be cleared");
+    assert_eq!(
+        count_rows(&db, "relationships"),
+        0,
+        "relationships must be cleared"
+    );
+    assert_eq!(
+        count_rows(&db, "identifiers"),
+        0,
+        "identifiers must be cleared"
+    );
     assert_eq!(count_rows(&db, "types"), 0, "types must be cleared");
-    assert_eq!(count_rows(&db, "symbol_vectors"), 0, "symbol_vectors must be cleared");
-    assert_eq!(count_rows(&db, "indexing_repairs"), 0, "indexing_repairs must be cleared");
-    assert_eq!(count_rows(&db, "canonical_revisions"), 0, "canonical_revisions must be cleared");
-    assert_eq!(count_rows(&db, "projection_states"), 0, "projection_states must be cleared");
+    assert_eq!(
+        count_rows(&db, "symbol_vectors"),
+        0,
+        "symbol_vectors must be cleared"
+    );
+    assert_eq!(
+        count_rows(&db, "indexing_repairs"),
+        0,
+        "indexing_repairs must be cleared"
+    );
+    assert_eq!(
+        count_rows(&db, "canonical_revisions"),
+        0,
+        "canonical_revisions must be cleared"
+    );
+    assert_eq!(
+        count_rows(&db, "projection_states"),
+        0,
+        "projection_states must be cleared"
+    );
 }

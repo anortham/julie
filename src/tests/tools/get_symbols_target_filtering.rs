@@ -9,10 +9,14 @@
 mod tests {
     #![allow(unused_imports)]
 
-    use crate::handler::JulieServerHandler;
     use crate::mcp_compat::{CallToolResult, CallToolResultExt};
+    use crate::tests::helpers::workspace::create_isolated_storage_handler;
     use crate::tools::{GetSymbolsTool, ManageWorkspaceTool};
     use anyhow::Result;
+
+    async fn repo_handler() -> Result<crate::tests::helpers::workspace::IsolatedStorageHandler> {
+        create_isolated_storage_handler(std::env::current_dir()?).await
+    }
 
     #[tokio::test]
     #[ignore] // SLOW/HANGS: Indexes entire workspace (300+ files) - not critical for CLI tools
@@ -21,7 +25,7 @@ mod tests {
         // WHEN: Target filtering for a method name (child symbol)
         // THEN: Should show the parent struct WITH that method visible
 
-        let handler = JulieServerHandler::new_for_test().await.unwrap();
+        let handler = repo_handler().await?;
 
         // Index the symbols.rs file itself (has GetSymbolsTool with methods)
         let index_tool = ManageWorkspaceTool {
@@ -90,7 +94,7 @@ mod tests {
         // WHEN: Target filtering for a top-level symbol name
         // THEN: Should show that symbol (existing behavior should still work)
 
-        let handler = JulieServerHandler::new_for_test().await.unwrap();
+        let handler = repo_handler().await?;
 
         let index_tool = ManageWorkspaceTool {
             operation: "index".to_string(),
@@ -150,7 +154,7 @@ mod tests {
         // WHEN: Target filtering with different case
         // THEN: Should match case-insensitively
 
-        let handler = JulieServerHandler::new_for_test().await.unwrap();
+        let handler = repo_handler().await?;
 
         let index_tool = ManageWorkspaceTool {
             operation: "index".to_string(),
@@ -202,7 +206,7 @@ mod tests {
         // WHEN: Target filtering with partial name
         // THEN: Should match substring
 
-        let handler = JulieServerHandler::new_for_test().await.unwrap();
+        let handler = repo_handler().await?;
 
         let index_tool = ManageWorkspaceTool {
             operation: "index".to_string(),
@@ -253,7 +257,7 @@ mod tests {
         // get their body stripped because parent_id.is_none() == false.
         // The fix: when target is set, all matched symbols should get bodies.
 
-        let handler = JulieServerHandler::new_for_test().await.unwrap();
+        let handler = repo_handler().await?;
 
         let index_tool = ManageWorkspaceTool {
             operation: "index".to_string(),

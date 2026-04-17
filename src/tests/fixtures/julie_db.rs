@@ -35,7 +35,7 @@ pub struct FixtureMetadata {
 impl JulieTestFixture {
     /// Build fixture database (run once manually, checked into git)
     pub async fn build() -> Result<Self> {
-        use crate::handler::JulieServerHandler;
+        use crate::tests::helpers::workspace::create_isolated_storage_handler;
         use crate::tools::workspace::ManageWorkspaceTool;
 
         let fixture_dir =
@@ -49,8 +49,10 @@ impl JulieTestFixture {
 
         println!("🔨 Building Julie test fixture...");
 
-        // Create handler and index Julie's codebase (matches dogfooding tests)
-        let handler = JulieServerHandler::new_for_test().await?;
+        // Index Julie into temp-backed storage so fixture generation does not
+        // repopulate the repo's own .julie/indexes tree.
+        let julie_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let handler = create_isolated_storage_handler(julie_root.clone()).await?;
 
         // Use ManageWorkspaceTool to index (this handles workspace initialization)
         let index_tool = ManageWorkspaceTool {
@@ -71,34 +73,18 @@ impl JulieTestFixture {
 
         println!("✅ Indexing complete, extracting database...");
 
-        // Find the database (workspace ID is deterministic based on path)
-        let julie_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(".julie");
-        let indexes_dir = julie_dir.join("indexes");
-
-        // Find the workspace directory (should be only one for primary workspace)
-        let workspace_dirs: Vec<_> = fs::read_dir(&indexes_dir)?
-            .filter_map(|e| e.ok())
-            .filter(|e| e.path().is_dir())
-            .collect();
-
-        if workspace_dirs.is_empty() {
-            bail!("No workspace directory found in .julie/indexes/");
-        }
-
         // For Julie, we want the primary workspace (not reference workspaces)
         // The primary workspace ID is generated from the Julie root path
         use crate::workspace::registry::generate_workspace_id;
-        let julie_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let expected_workspace_id = generate_workspace_id(&julie_root.to_string_lossy())?;
-
-        let workspace_dir = indexes_dir.join(&expected_workspace_id);
+        let workspace_dir = handler.workspace_index_dir(&expected_workspace_id);
         if !workspace_dir.exists() {
             bail!(
                 "Primary workspace directory not found. Expected: {}, Available: {:?}",
                 &expected_workspace_id,
-                workspace_dirs
-                    .iter()
-                    .map(|d| d.file_name())
+                fs::read_dir(handler.indexes_dir())?
+                    .filter_map(|entry| entry.ok())
+                    .map(|entry| entry.file_name())
                     .collect::<Vec<_>>()
             );
         }

@@ -40,9 +40,9 @@ use crate::workspace::registry::generate_workspace_id;
 use self::database::DaemonDatabase;
 use self::embedding_service::EmbeddingService;
 use self::ipc::IpcListener;
-pub(crate) use self::ipc_session::{PrefixedIpcStream, handle_ipc_session, read_ipc_headers};
 #[cfg(test)]
 pub(crate) use self::ipc_session::parse_ipc_headers_block;
+pub(crate) use self::ipc_session::{PrefixedIpcStream, handle_ipc_session, read_ipc_headers};
 use self::lifecycle::{
     DisconnectLifecycleAction, IncomingSessionAction, LifecycleEvent, LifecyclePhase,
     ShutdownCause, flag_restart_pending_for_restart, publish_phase, stale_binary_accept_action,

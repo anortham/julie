@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use crate::daemon::database::DaemonDatabase;
 use crate::daemon::workspace_pool::WorkspacePool;
+use crate::workspace::registry::generate_workspace_id;
 
 fn temp_indexes_dir() -> tempfile::TempDir {
     tempfile::tempdir().expect("Failed to create temp dir")
@@ -200,6 +201,48 @@ async fn test_workspace_pool_accepts_daemon_db() {
     // Constructor must accept daemon_db -- pool starts empty
     let pool = WorkspacePool::new(indexes_dir.clone(), Some(daemon_db.clone()), None, None);
     assert_eq!(pool.active_count().await, 0);
+}
+
+#[tokio::test]
+async fn test_get_or_init_migrates_project_local_index_to_shared_indexes() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let daemon_db = Arc::new(DaemonDatabase::open(&tmp.path().join("daemon.db")).unwrap());
+    let indexes_dir = tmp.path().join("indexes");
+    std::fs::create_dir_all(&indexes_dir).unwrap();
+
+    let workspace_root = temp_workspace_root();
+    crate::workspace::JulieWorkspace::initialize(workspace_root.path().to_path_buf())
+        .await
+        .unwrap();
+    let workspace_id = generate_workspace_id(&workspace_root.path().to_string_lossy()).unwrap();
+    let project_index = workspace_root
+        .path()
+        .join(".julie")
+        .join("indexes")
+        .join(&workspace_id);
+
+    let pool = WorkspacePool::new(
+        indexes_dir.clone(),
+        Some(Arc::clone(&daemon_db)),
+        None,
+        None,
+    );
+
+    pool.get_or_init(&workspace_id, workspace_root.path().to_path_buf())
+        .await
+        .expect("workspace init should reconcile per-project index");
+
+    assert!(
+        indexes_dir
+            .join(&workspace_id)
+            .join("db/symbols.db")
+            .exists(),
+        "shared index should exist after migration"
+    );
+    assert!(
+        !project_index.exists(),
+        "per-project duplicate should be removed after migration"
+    );
 }
 
 #[test]

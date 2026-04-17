@@ -15,12 +15,14 @@ fn docs_contract_tests_claude_md_uses_xtask_runner_as_canonical_workflow() {
 }
 
 #[test]
-fn docs_contract_tests_agents_md_defaults_to_xtask_dev_tier() {
+fn docs_contract_tests_agents_md_promotes_changed_scope_first() {
     let contents = read_repo_file("AGENTS.md");
 
+    assert!(contents.contains("cargo xtask test changed"));
     assert!(contents.contains("cargo xtask test dev"));
     assert!(contents.contains("Use raw cargo filters only to narrow failures"));
     assert!(!contents.contains("cargo test --lib -- --skip search_quality"));
+    assert!(!contents.contains("This is the ONLY default. No exceptions."));
 }
 
 #[test]
@@ -41,6 +43,7 @@ fn docs_contract_tests_readme_lists_public_xtask_commands() {
 
 fn assert_contains_public_commands(contents: &str) {
     for command in [
+        "cargo xtask test changed",
         "cargo xtask test smoke",
         "cargo xtask test dev",
         "cargo xtask test system",

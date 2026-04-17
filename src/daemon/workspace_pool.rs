@@ -131,6 +131,27 @@ impl WorkspacePool {
             "Initializing workspace in pool"
         );
 
+        if let Some(julie_home) = self.indexes_dir.parent() {
+            let daemon_paths = crate::paths::DaemonPaths::with_home(julie_home.to_path_buf());
+            if let Err(e) = crate::migration::run_migration_for_workspace(
+                &daemon_paths,
+                &workspace_root,
+                self.daemon_db.clone(),
+            ) {
+                warn!(
+                    workspace_id,
+                    root = %workspace_root.display(),
+                    "Failed to reconcile per-project indexes before pool init: {e:#}"
+                );
+            }
+        } else {
+            warn!(
+                workspace_id,
+                indexes_dir = %self.indexes_dir.display(),
+                "WorkspacePool indexes_dir has no julie_home parent, skipping migration pass"
+            );
+        }
+
         // Register as pending so the workspace is visible in daemon.db even while
         // initializing. The session count is incremented AFTER a successful init
         // to avoid a permanently-leaked count if init_workspace fails.

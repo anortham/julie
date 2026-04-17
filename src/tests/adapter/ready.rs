@@ -136,7 +136,10 @@ mod tests {
                 .write_all(DAEMON_READY_LINE)
                 .await
                 .expect("daemon ready write");
-            daemon.write_all(payload).await.expect("daemon payload write");
+            daemon
+                .write_all(payload)
+                .await
+                .expect("daemon payload write");
             daemon.shutdown().await.expect("daemon shutdown");
         });
 

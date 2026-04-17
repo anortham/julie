@@ -2,8 +2,8 @@ use anyhow::Result;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tempfile::TempDir;
 
-use crate::database::{ProjectionStatus, SymbolDatabase};
 use crate::database::types::FileInfo;
+use crate::database::{ProjectionStatus, SymbolDatabase};
 use crate::extractors::{Symbol, SymbolKind};
 use crate::search::{FileDocument, SearchIndex, SearchProjection, SymbolDocument};
 

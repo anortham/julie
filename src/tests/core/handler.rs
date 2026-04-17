@@ -14,8 +14,26 @@ use tokio::sync::broadcast;
 #[tokio::test(flavor = "multi_thread")]
 async fn handler_construction_sets_workspace_root() -> Result<()> {
     let handler = JulieServerHandler::new_for_test().await?;
-    // workspace_root should be set to cwd (the default for new_for_test)
-    assert!(handler.workspace_root.is_absolute() || handler.workspace_root.as_os_str() == ".");
+    let handler_root = handler
+        .current_workspace_root()
+        .canonicalize()
+        .unwrap_or_else(|_| handler.current_workspace_root());
+    let cwd = std::env::current_dir()?
+        .canonicalize()
+        .unwrap_or_else(|_| std::env::current_dir().unwrap());
+    let temp_root = std::env::temp_dir()
+        .canonicalize()
+        .unwrap_or_else(|_| std::env::temp_dir());
+
+    assert!(
+        handler_root.starts_with(&temp_root),
+        "new_for_test should use isolated temp storage, got {}",
+        handler_root.display()
+    );
+    assert_ne!(
+        handler_root, cwd,
+        "new_for_test should not anchor handlers in the repo cwd"
+    );
     assert_eq!(handler.current_workspace_root(), handler.workspace_root);
     assert_eq!(handler.current_workspace_id(), None);
     // workspace should start as None (lazy init)

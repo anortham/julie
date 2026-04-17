@@ -207,13 +207,6 @@ async fn test_spawn_workspace_embedding_discards_init_result_after_workspace_swi
     let temp_dir_b = TempDir::new().unwrap();
 
     let mut env_guard = EnvVarGuard::new();
-    env_guard.set("JULIE_EMBEDDING_PROVIDER", "sidecar");
-    env_guard.set("JULIE_EMBEDDING_SIDECAR_PROGRAM", test_python_interpreter());
-    env_guard.set(
-        "JULIE_EMBEDDING_SIDECAR_SCRIPT",
-        sidecar_script.to_string_lossy().to_string(),
-    );
-    env_guard.set("JULIE_EMBEDDING_SIDECAR_INIT_TIMEOUT_MS", "5000");
     env_guard.set("JULIE_SKIP_EMBEDDINGS", "1");
     env_guard.set("JULIE_SKIP_SEARCH_INDEX", "1");
 
@@ -231,11 +224,18 @@ async fn test_spawn_workspace_embedding_discards_init_result_after_workspace_swi
         *ws_guard = Some(workspace_a);
     }
 
-    env_guard.remove("JULIE_SKIP_EMBEDDINGS");
     assert!(
         !marker_path.exists(),
         "slow sidecar marker should not exist before deferred init starts"
     );
+    env_guard.set("JULIE_EMBEDDING_PROVIDER", "sidecar");
+    env_guard.set("JULIE_EMBEDDING_SIDECAR_PROGRAM", test_python_interpreter());
+    env_guard.set(
+        "JULIE_EMBEDDING_SIDECAR_SCRIPT",
+        sidecar_script.to_string_lossy().to_string(),
+    );
+    env_guard.set("JULIE_EMBEDDING_SIDECAR_INIT_TIMEOUT_MS", "5000");
+    env_guard.remove("JULIE_SKIP_EMBEDDINGS");
 
     let handler_for_init = handler.clone();
     let init_task = tokio::spawn(async move {
@@ -251,6 +251,10 @@ async fn test_spawn_workspace_embedding_discards_init_result_after_workspace_swi
         }
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
+    env_guard.remove("JULIE_EMBEDDING_PROVIDER");
+    env_guard.remove("JULIE_EMBEDDING_SIDECAR_PROGRAM");
+    env_guard.remove("JULIE_EMBEDDING_SIDECAR_SCRIPT");
+    env_guard.remove("JULIE_EMBEDDING_SIDECAR_INIT_TIMEOUT_MS");
 
     {
         let mut ws_guard = handler.workspace.write().await;
@@ -286,13 +290,6 @@ async fn test_spawn_workspace_embedding_does_not_hold_write_lock_during_provider
     let sidecar_script = write_slow_health_sidecar_script(&temp_dir, &marker_path);
 
     let mut env_guard = EnvVarGuard::new();
-    env_guard.set("JULIE_EMBEDDING_PROVIDER", "sidecar");
-    env_guard.set("JULIE_EMBEDDING_SIDECAR_PROGRAM", test_python_interpreter());
-    env_guard.set(
-        "JULIE_EMBEDDING_SIDECAR_SCRIPT",
-        sidecar_script.to_string_lossy().to_string(),
-    );
-    env_guard.set("JULIE_EMBEDDING_SIDECAR_INIT_TIMEOUT_MS", "5000");
     env_guard.set("JULIE_SKIP_EMBEDDINGS", "1");
     env_guard.set("JULIE_SKIP_SEARCH_INDEX", "1");
 
@@ -306,11 +303,18 @@ async fn test_spawn_workspace_embedding_does_not_hold_write_lock_during_provider
         *ws_guard = Some(workspace);
     }
 
-    env_guard.remove("JULIE_SKIP_EMBEDDINGS");
     assert!(
         !marker_path.exists(),
         "slow sidecar marker should not exist before deferred init starts"
     );
+    env_guard.set("JULIE_EMBEDDING_PROVIDER", "sidecar");
+    env_guard.set("JULIE_EMBEDDING_SIDECAR_PROGRAM", test_python_interpreter());
+    env_guard.set(
+        "JULIE_EMBEDDING_SIDECAR_SCRIPT",
+        sidecar_script.to_string_lossy().to_string(),
+    );
+    env_guard.set("JULIE_EMBEDDING_SIDECAR_INIT_TIMEOUT_MS", "5000");
+    env_guard.remove("JULIE_SKIP_EMBEDDINGS");
 
     let handler_for_init = handler.clone();
     let init_task = tokio::spawn(async move {
@@ -326,6 +330,10 @@ async fn test_spawn_workspace_embedding_does_not_hold_write_lock_during_provider
         }
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
+    env_guard.remove("JULIE_EMBEDDING_PROVIDER");
+    env_guard.remove("JULIE_EMBEDDING_SIDECAR_PROGRAM");
+    env_guard.remove("JULIE_EMBEDDING_SIDECAR_SCRIPT");
+    env_guard.remove("JULIE_EMBEDDING_SIDECAR_INIT_TIMEOUT_MS");
 
     let read_lock_result =
         tokio::time::timeout(Duration::from_millis(75), handler.workspace.read()).await;
@@ -347,13 +355,6 @@ async fn test_spawn_workspace_embedding_skips_stdio_reinit_when_runtime_status_a
     let sidecar_script = write_slow_health_sidecar_script(&temp_dir, &marker_path);
 
     let mut env_guard = EnvVarGuard::new();
-    env_guard.set("JULIE_EMBEDDING_PROVIDER", "sidecar");
-    env_guard.set("JULIE_EMBEDDING_SIDECAR_PROGRAM", test_python_interpreter());
-    env_guard.set(
-        "JULIE_EMBEDDING_SIDECAR_SCRIPT",
-        sidecar_script.to_string_lossy().to_string(),
-    );
-    env_guard.set("JULIE_EMBEDDING_SIDECAR_INIT_TIMEOUT_MS", "5000");
     env_guard.set("JULIE_SKIP_EMBEDDINGS", "1");
     env_guard.set("JULIE_SKIP_SEARCH_INDEX", "1");
 
@@ -373,11 +374,18 @@ async fn test_spawn_workspace_embedding_skips_stdio_reinit_when_runtime_status_a
         *ws_guard = Some(workspace);
     }
 
-    env_guard.remove("JULIE_SKIP_EMBEDDINGS");
     assert!(
         !marker_path.exists(),
         "slow sidecar marker should not exist before spawn_workspace_embedding runs"
     );
+    env_guard.set("JULIE_EMBEDDING_PROVIDER", "sidecar");
+    env_guard.set("JULIE_EMBEDDING_SIDECAR_PROGRAM", test_python_interpreter());
+    env_guard.set(
+        "JULIE_EMBEDDING_SIDECAR_SCRIPT",
+        sidecar_script.to_string_lossy().to_string(),
+    );
+    env_guard.set("JULIE_EMBEDDING_SIDECAR_INIT_TIMEOUT_MS", "5000");
+    env_guard.remove("JULIE_SKIP_EMBEDDINGS");
 
     let embedded_count =
         spawn_workspace_embedding(&handler, "missing-workspace-id".to_string()).await;
@@ -415,16 +423,8 @@ async fn test_spawn_workspace_embedding_skips_stdio_reinit_when_runtime_status_a
 async fn test_spawn_workspace_embedding_skips_when_daemon_service_is_unavailable() {
     let temp_dir = TempDir::new().unwrap();
     let marker_path = temp_dir.path().join("health.marker");
-    let sidecar_script = write_slow_health_sidecar_script(&temp_dir, &marker_path);
 
     let mut env_guard = EnvVarGuard::new();
-    env_guard.set("JULIE_EMBEDDING_PROVIDER", "sidecar");
-    env_guard.set("JULIE_EMBEDDING_SIDECAR_PROGRAM", test_python_interpreter());
-    env_guard.set(
-        "JULIE_EMBEDDING_SIDECAR_SCRIPT",
-        sidecar_script.to_string_lossy().to_string(),
-    );
-    env_guard.set("JULIE_EMBEDDING_SIDECAR_INIT_TIMEOUT_MS", "5000");
     env_guard.set("JULIE_SKIP_EMBEDDINGS", "1");
     env_guard.set("JULIE_SKIP_SEARCH_INDEX", "1");
 
@@ -452,7 +452,6 @@ async fn test_spawn_workspace_embedding_skips_when_daemon_service_is_unavailable
         *ws_guard = Some(workspace);
     }
 
-    env_guard.remove("JULIE_SKIP_EMBEDDINGS");
     let embedded_count =
         spawn_workspace_embedding(&handler, "missing-workspace-id".to_string()).await;
 
@@ -472,16 +471,8 @@ async fn test_spawn_workspace_embedding_skips_when_daemon_service_is_unavailable
 async fn test_spawn_workspace_embedding_skips_when_daemon_service_times_out() {
     let temp_dir = TempDir::new().unwrap();
     let marker_path = temp_dir.path().join("health.marker");
-    let sidecar_script = write_slow_health_sidecar_script(&temp_dir, &marker_path);
 
     let mut env_guard = EnvVarGuard::new();
-    env_guard.set("JULIE_EMBEDDING_PROVIDER", "sidecar");
-    env_guard.set("JULIE_EMBEDDING_SIDECAR_PROGRAM", test_python_interpreter());
-    env_guard.set(
-        "JULIE_EMBEDDING_SIDECAR_SCRIPT",
-        sidecar_script.to_string_lossy().to_string(),
-    );
-    env_guard.set("JULIE_EMBEDDING_SIDECAR_INIT_TIMEOUT_MS", "5000");
     env_guard.set("JULIE_SKIP_EMBEDDINGS", "1");
     env_guard.set("JULIE_SKIP_SEARCH_INDEX", "1");
 
@@ -496,7 +487,6 @@ async fn test_spawn_workspace_embedding_skips_when_daemon_service_times_out() {
         *ws_guard = Some(workspace);
     }
 
-    env_guard.remove("JULIE_SKIP_EMBEDDINGS");
     let task = tokio::spawn(async move {
         spawn_workspace_embedding(&handler, "missing-workspace-id".to_string()).await
     });

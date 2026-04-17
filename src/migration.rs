@@ -115,22 +115,45 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
 /// 3. Validate: check db/symbols.db and tantivy/meta.json exist in destination
 /// 4. On successful validation: delete source directory
 /// 5. On validation failure: delete incomplete destination, return error
+fn index_dir_is_complete(index_dir: &Path) -> bool {
+    index_dir.join("db").join("symbols.db").exists()
+        && index_dir.join("tantivy").join("meta.json").exists()
+}
+
 pub fn migrate_workspace_index(
     workspace_id: &str,
     source: &Path,
     destination: &Path,
 ) -> Result<()> {
-    // Step 1: skip if destination already exists
     if destination.exists() {
-        tracing::info!(
+        if index_dir_is_complete(destination) {
+            fs::remove_dir_all(source).with_context(|| {
+                format!(
+                    "Failed to delete stale per-project index at {}",
+                    source.display()
+                )
+            })?;
+            tracing::info!(
+                workspace_id,
+                "Deleted stale per-project duplicate after confirming destination at {}",
+                destination.display()
+            );
+            return Ok(());
+        }
+
+        tracing::warn!(
             workspace_id,
-            "Skipping migration: destination already exists at {}",
-            destination.display()
+            "Destination exists but is incomplete, rebuilding from {}",
+            source.display()
         );
-        return Ok(());
+        fs::remove_dir_all(destination).with_context(|| {
+            format!(
+                "Failed to delete incomplete destination index at {}",
+                destination.display()
+            )
+        })?;
     }
 
-    // Step 2: copy source to destination
     tracing::info!(
         workspace_id,
         "Migrating index from {} to {}",
@@ -140,10 +163,7 @@ pub fn migrate_workspace_index(
     copy_dir_recursive(source, destination)?;
 
     // Step 3: validate the copy
-    let db_path = destination.join("db").join("symbols.db");
-    let meta_path = destination.join("tantivy").join("meta.json");
-
-    if db_path.exists() && meta_path.exists() {
+    if index_dir_is_complete(destination) {
         // Step 4: validation passed, delete source
         fs::remove_dir_all(source)
             .with_context(|| format!("Failed to delete migrated source at {}", source.display()))?;
@@ -155,12 +175,12 @@ pub fn migrate_workspace_index(
         anyhow::bail!(
             "Migration validation failed for workspace '{}': missing {} {}",
             workspace_id,
-            if !db_path.exists() {
+            if !destination.join("db").join("symbols.db").exists() {
                 "db/symbols.db"
             } else {
                 ""
             },
-            if !meta_path.exists() {
+            if !destination.join("tantivy").join("meta.json").exists() {
                 "tantivy/meta.json"
             } else {
                 ""
@@ -240,8 +260,10 @@ pub fn run_migration_for_workspace(
 
     for (workspace_id, source_path) in &indexes {
         if state.is_migrated(workspace_id) {
-            tracing::debug!(workspace_id, "Already migrated, skipping");
-            continue;
+            tracing::info!(
+                workspace_id,
+                "Workspace was marked migrated but per-project index still exists, reconciling"
+            );
         }
 
         let destination = daemon_paths.workspace_index_dir(workspace_id);

@@ -238,8 +238,9 @@ async fn connect_and_handshake(
             "Daemon sent unexpected pre-serve line: {:?}",
             String::from_utf8_lossy(&line)
         ),
-        ReadyOutcome::IoError(e) => Err(anyhow::Error::from(e))
-            .context("I/O error while waiting for daemon ready signal"),
+        ReadyOutcome::IoError(e) => {
+            Err(anyhow::Error::from(e)).context("I/O error while waiting for daemon ready signal")
+        }
     }
 }
 

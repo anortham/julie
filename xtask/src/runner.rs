@@ -246,6 +246,9 @@ pub fn render_manifest_listing(manifest: &TestManifest) -> String {
         output.push_str(&format!("- {tier_name}: {}\n", buckets.join(", ")));
     }
 
+    output.push_str("\nWORKFLOWS\n");
+    output.push_str("- changed: infer buckets from the current git diff\n");
+
     output
 }
 
@@ -270,6 +273,30 @@ where
             summary: empty_summary(Vec::new()),
             message: format!("unknown test tier `{tier_name}`"),
         })?;
+
+    run_named_buckets(
+        manifest,
+        &bucket_names,
+        timeout_multiplier,
+        coverage,
+        executor,
+        writer,
+    )
+}
+
+pub fn run_named_buckets<E, W>(
+    manifest: &TestManifest,
+    bucket_names: &[String],
+    timeout_multiplier: u64,
+    coverage: bool,
+    executor: &E,
+    writer: &mut W,
+) -> std::result::Result<RunSummary, RunFailure>
+where
+    E: CommandExecutor,
+    W: Write,
+{
+    let bucket_names = bucket_names.to_vec();
 
     let mut total_elapsed = Duration::ZERO;
     let mut bucket_results = Vec::with_capacity(bucket_names.len());

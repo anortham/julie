@@ -407,6 +407,9 @@ pub struct JulieServerHandler {
     pub(crate) workspace_pool: Option<Arc<crate::daemon::workspace_pool::WorkspacePool>>,
     /// Broadcast sender for dashboard live-feed events. None in stdio/test mode.
     dashboard_tx: Option<broadcast::Sender<DashboardEvent>>,
+    /// Keeps isolated temp roots alive for test-only handlers.
+    #[cfg(test)]
+    test_temp_guard: Option<Arc<tempfile::TempDir>>,
 }
 
 impl JulieServerHandler {
@@ -853,6 +856,8 @@ impl JulieServerHandler {
             ref_db_cache: Arc::new(RwLock::new(HashMap::new())),
             workspace_pool: None,
             dashboard_tx: None,
+            #[cfg(test)]
+            test_temp_guard: None,
         })
     }
 
@@ -966,6 +971,8 @@ impl JulieServerHandler {
             ref_db_cache: Arc::new(RwLock::new(HashMap::new())),
             workspace_pool,
             dashboard_tx,
+            #[cfg(test)]
+            test_temp_guard: None,
         })
     }
 
@@ -1013,17 +1020,26 @@ impl JulieServerHandler {
             ref_db_cache: Arc::new(RwLock::new(HashMap::new())),
             workspace_pool,
             dashboard_tx,
+            #[cfg(test)]
+            test_temp_guard: None,
         })
     }
 
-    /// Test-only convenience: create handler using current_dir() as workspace root.
+    /// Test-only convenience: create a handler rooted in an isolated temp dir.
     ///
-    /// Tests that explicitly call `initialize_workspace_with_force(Some(path), ...)`
-    /// override the workspace root anyway, so this is safe for existing test patterns.
+    /// Using `current_dir()` here lets tests spray `.julie/indexes` under the
+    /// repo when they forget to bind a temp workspace first. Keep the anchor in
+    /// temp storage so path=None stays isolated by default.
     #[cfg(test)]
     pub async fn new_for_test() -> Result<Self> {
-        let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-        Self::new(cwd).await
+        let temp_root = Arc::new(
+            tempfile::Builder::new()
+                .prefix("julie_handler_root_")
+                .tempdir()?,
+        );
+        let mut handler = Self::new(temp_root.path().to_path_buf()).await?;
+        handler.test_temp_guard = Some(temp_root);
+        Ok(handler)
     }
 
     pub(crate) fn attach_session_lifecycle(&mut self, session_lifecycle: SessionLifecycleHandle) {

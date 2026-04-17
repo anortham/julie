@@ -2,10 +2,14 @@ use std::io::{self, Write};
 use std::process::Command;
 
 use anyhow::anyhow;
+use xtask::changed::{
+    ChangedSelectionMode, collect_changed_paths, render_changed_selection, select_changed_buckets,
+};
 use xtask::cli::{TestCommand, parse_test_command, validate_test_command};
 use xtask::manifest::TestManifest;
 use xtask::runner::{
-    ProcessCommandExecutor, render_manifest_listing, render_summary, run_bucket, run_tier,
+    ProcessCommandExecutor, render_manifest_listing, render_summary, run_bucket, run_named_buckets,
+    run_tier,
 };
 use xtask::workspace_root;
 
@@ -32,6 +36,33 @@ fn main() -> anyhow::Result<()> {
     }
 
     match command {
+        TestCommand::Changed {
+            timeout_multiplier,
+            coverage,
+        } => {
+            let changed_paths = collect_changed_paths(&workspace_root())?;
+            let selection = select_changed_buckets(&manifest, &changed_paths);
+            stdout.write_all(render_changed_selection(&selection).as_bytes())?;
+
+            if selection.mode == ChangedSelectionMode::NoChanges {
+                return Ok(());
+            }
+
+            match run_named_buckets(
+                &manifest,
+                &selection.bucket_names,
+                timeout_multiplier,
+                coverage,
+                &executor,
+                &mut stdout,
+            ) {
+                Ok(summary) => stdout.write_all(render_summary(&summary).as_bytes())?,
+                Err(error) => {
+                    stdout.write_all(render_summary(&error.summary).as_bytes())?;
+                    return Err(anyhow!(error));
+                }
+            }
+        }
         TestCommand::List => {
             stdout.write_all(render_manifest_listing(&manifest).as_bytes())?;
         }

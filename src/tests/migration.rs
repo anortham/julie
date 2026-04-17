@@ -60,7 +60,7 @@ mod tests {
     }
 
     #[test]
-    fn test_skip_already_migrated_destination_exists() {
+    fn test_duplicate_source_is_deleted_when_destination_exists() {
         let tmp = TempDir::new().unwrap();
         let source_base = tmp.path().join("project/.julie/indexes");
         let dest_base = tmp.path().join("central/indexes");
@@ -72,11 +72,12 @@ mod tests {
         let source = source_base.join(ws_id);
         let dest = dest_base.join(ws_id);
 
-        // Should skip without error (destination already exists)
+        // Destination already exists, so migration should treat the source as
+        // a stale duplicate and delete it.
         migrate_workspace_index(ws_id, &source, &dest).unwrap();
 
-        // Source should still exist (we didn't touch it since destination was already there)
-        assert!(source.exists());
+        // Source should be deleted because the centralized index already exists
+        assert!(!source.exists());
         // Destination should still exist untouched
         assert!(dest.join("db/symbols.db").exists());
     }
@@ -169,6 +170,36 @@ mod tests {
         // Migration state should be persisted
         let state = MigrationState::load(&daemon_paths.migration_state()).unwrap();
         assert!(state.is_migrated("myproject_abcd1234"));
+    }
+
+    #[test]
+    fn test_run_migration_cleans_stale_source_even_if_state_marked_migrated() {
+        let tmp = TempDir::new().unwrap();
+        let julie_home = tmp.path().join("julie_home");
+        let project_root = tmp.path().join("myproject");
+        let daemon_paths = DaemonPaths::with_home(julie_home.clone());
+        daemon_paths.ensure_dirs().unwrap();
+
+        let ws_id = "myproject_abcd1234";
+        let project_indexes = project_root.join(".julie/indexes");
+        let central_indexes = julie_home.join("indexes");
+        create_fake_index(&project_indexes, ws_id);
+        create_fake_index(&central_indexes, ws_id);
+
+        let mut state = MigrationState::new(&daemon_paths.migration_state());
+        state.mark_migrated(ws_id);
+        state.save().unwrap();
+
+        run_migration_for_workspace(&daemon_paths, &project_root, None).unwrap();
+
+        assert!(
+            !project_indexes.join(ws_id).exists(),
+            "stale per-project duplicate should be cleaned even when state said migrated"
+        );
+        assert!(
+            central_indexes.join(ws_id).join("db/symbols.db").exists(),
+            "centralized index should remain intact"
+        );
     }
 
     #[test]

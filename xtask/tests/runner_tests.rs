@@ -22,6 +22,7 @@ fn runner_tests_list_command_shows_tiers_buckets_and_timeouts() {
     assert!(output.contains("smoke"));
     assert!(output.contains("workspace-init"));
     assert!(output.contains("timeout_seconds"));
+    assert!(output.contains("changed"));
 }
 
 #[test]

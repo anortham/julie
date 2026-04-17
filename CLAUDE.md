@@ -31,7 +31,8 @@ All AI coding agents (Claude Code, Copilot, Cursor, Windsurf, Cody, Gemini CLI, 
 ```bash
 cargo build                    # Debug build (fast iteration)
 cargo build --release          # Release build (for live MCP testing)
-cargo xtask test dev           # Default test tier — run after every change
+cargo xtask test changed       # Default local loop from the current diff
+cargo xtask test dev           # Batch-level regression gate before handoff
 cargo fmt                      # Format code
 cargo clippy                   # Lint
 ```
@@ -60,7 +61,7 @@ This project **MUST** follow Test-Driven Development:
 3. **Verify the test fails** — run ONLY your specific test: `cargo test --lib <test_name> 2>&1 | tail -10`
 4. **Fix the bug** with minimal changes
 5. **Verify the test passes** — same narrow command as step 3
-6. **Ensure no regressions** — if you're the main session, run `cargo xtask test dev`. **If you're a subagent, SKIP this step** — the orchestrator handles it
+6. **Ensure no regressions**: if you're the main session, use `cargo xtask test changed` during the local loop, then run `cargo xtask test dev` once per completed batch. **If you're a subagent, SKIP this step**; the orchestrator handles it
 
 See: **docs/TESTING_GUIDE.md** for comprehensive testing standards and SOURCE/CONTROL methodology.
 
@@ -70,12 +71,18 @@ See: **docs/TESTING_GUIDE.md** for comprehensive testing standards and SOURCE/CO
 
 **The full suite is still too expensive to run after every small change.** Use the xtask runner as the canonical interface so the same calibrated buckets show up everywhere.
 
+### Workflow Helper
+
+| Command | What it does | When to use |
+|---------|--------------|-------------|
+| `cargo xtask test changed` | Maps the current git diff to the smallest matching bucket set, then falls back to `dev` if shared infrastructure moved | Default local loop after a small change |
+
 ### Canonical Test Tiers
 
 | Tier | Command | What it covers | When to use |
 |------|---------|----------------|-------------|
 | **Smoke** | `cargo xtask test smoke` | Small confidence slice of the fastest buckets | Quick sanity check when you want a tiny run |
-| **Dev** | `cargo xtask test dev` | Default local tier for normal code changes | After the usual change-set |
+| **Dev** | `cargo xtask test dev` | Batch-level regression tier for ordinary code changes | Once per completed batch, before handoff |
 | **System** | `cargo xtask test system` | `workspace_init` + integration buckets | Use when touching startup/workspace/system behavior |
 | **Dogfood** | `cargo xtask test dogfood` | `search_quality` bucket | Use after search/scoring/tokenization changes |
 | **Full** | `cargo xtask test full` | Dev + system + dogfood buckets | Use for broad branch-level confidence |
@@ -84,11 +91,13 @@ See: **docs/TESTING_GUIDE.md** for comprehensive testing standards and SOURCE/CO
 
 ### Default Workflow
 
-1. **After normal changes**: run `cargo xtask test dev`
-2. **If you changed startup/workspace/system flows**: add `cargo xtask test system`
-3. **If you changed search/scoring/tokenization**: add `cargo xtask test dogfood`
-4. **For a broad pre-merge pass**: run `cargo xtask test full`
-5. **To inspect the calibrated buckets**: run `cargo xtask test list`
+1. **During the local loop**: run `cargo xtask test changed`
+2. **If `changed` falls back to `dev`**: accept it, that means shared infrastructure moved
+3. **After a completed batch or before handoff**: run `cargo xtask test dev` once
+4. **If you changed startup/workspace/system flows**: add `cargo xtask test system`
+5. **If you changed search/scoring/tokenization**: add `cargo xtask test dogfood`
+6. **For a broad pre-merge pass**: run `cargo xtask test full`
+7. **To inspect the calibrated buckets**: run `cargo xtask test list`
 
 ### Known Pre-Existing Failures
 
@@ -102,11 +111,12 @@ The `search_quality` bucket loads a **100MB SQLite fixture**, backfills a Tantiv
 
 ### The Rules
 
-1. **Default to `cargo xtask test dev` after normal changes.** This is the ONLY default. No exceptions.
-2. **Escalate with xtask tiers instead of inventing ad hoc canonical commands.**
-3. **Use raw cargo filters only to narrow failures** after an xtask tier reports a *new* failure. Not as a shortcut to avoid running xtask.
-4. **Do not casually run `cargo test --lib` as the default workflow.** Even if you "know" which tests are affected — run xtask first, then narrow if needed.
-5. **Run one test command at a time.** On Windows, parallel `cargo test` invocations fight over the same output binary (`LNK1104` linker lock error). Never launch multiple test runs concurrently.
+1. **Default to `cargo xtask test changed` during local iteration.**
+2. **Run `cargo xtask test dev` once per completed batch, not after every file edit.**
+3. **Escalate with xtask tiers instead of inventing ad hoc canonical commands.**
+4. **Use raw cargo filters only to narrow failures** after `changed` or an xtask tier reports a *new* failure. Not as a shortcut to avoid the runner.
+5. **Do not casually run `cargo test --lib` as the default workflow.** During RED/GREEN, an exact test name is the ceiling for workers; `changed` is the ceiling for the main session.
+6. **Run one test command at a time.** On Windows, parallel `cargo test` invocations fight over the same output binary (`LNK1104` linker lock error). Never launch multiple test runs concurrently.
 
 ### 🚨 Subagent & Worker Agent Test Rules (CRITICAL)
 
@@ -118,15 +128,16 @@ The `search_quality` bucket loads a **100MB SQLite fixture**, backfills a Tantiv
 - Limit yourself to **2 test runs per fix**: once to verify RED, once to verify GREEN
 
 **YOU MUST NOT:**
-- ❌ Run `cargo xtask test dev` or any xtask tier — **the orchestrating session handles regression checks**
+- ❌ Run `cargo xtask test changed`; the main session handles bucket selection
+- ❌ Run `cargo xtask test dev` or any xtask tier; **the orchestrating session handles regression checks**
 - ❌ Run `cargo test --lib` without a specific test filter — this runs the ENTIRE suite
 - ❌ Run `cargo test` with broad module filters when a specific test name will do
 - ❌ Sleep, poll, or retry test commands — if a test fails, diagnose and fix or report back
 - ❌ Run tests more than twice per change cycle (red → green, done)
 
-**Why this exists:** Multiple subagents each running the full suite creates 6+ parallel compilation/test processes that grind the machine to a halt. A targeted test takes ~3 seconds. `cargo xtask test dev` takes ~90 seconds. Six of them in parallel = unusable system for 10+ minutes.
+**Why this exists:** Multiple subagents each running broad suites creates 6+ parallel compilation/test processes that grind the machine to a halt. A targeted test takes seconds. `cargo xtask test dev` is a multi-minute batch gate. Six of them in parallel turns the machine into soup.
 
-**The contract:** Subagents run narrow targeted tests. The orchestrating session runs `cargo xtask test dev` once per batch of completed changes. This is not optional.
+**The contract:** Subagents run narrow targeted tests. The orchestrating session uses `cargo xtask test changed` during the local loop, then runs `cargo xtask test dev` once per batch of completed changes. This is not optional.
 
 ### Narrowing Failures With Raw Cargo Filters
 

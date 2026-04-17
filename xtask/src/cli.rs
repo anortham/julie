@@ -6,6 +6,10 @@ const PROGRAM_TIERS: &[&str] = &["reliability", "benchmark"];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TestCommand {
+    Changed {
+        timeout_multiplier: u64,
+        coverage: bool,
+    },
     List,
     Tier {
         name: String,
@@ -30,7 +34,7 @@ where
         .collect::<Vec<_>>();
 
     if args.len() < 2 || args[1] != "test" {
-        bail!("expected `cargo xtask test <tier|list|bucket>`");
+        bail!("expected `cargo xtask test <changed|tier|list|bucket>`");
     }
 
     let mut tail = args.into_iter().skip(2);
@@ -39,6 +43,13 @@ where
     };
 
     match kind.as_str() {
+        "changed" => {
+            let options = parse_options(tail.collect())?;
+            Ok(TestCommand::Changed {
+                timeout_multiplier: options.timeout_multiplier,
+                coverage: options.coverage,
+            })
+        }
         "list" => {
             ensure_no_extra_args(tail.collect())?;
             Ok(TestCommand::List)
@@ -67,6 +78,7 @@ where
 
 pub fn validate_test_command(manifest: &TestManifest, command: TestCommand) -> Result<TestCommand> {
     match command {
+        TestCommand::Changed { .. } => Ok(command),
         TestCommand::Tier {
             name,
             timeout_multiplier,
@@ -178,6 +190,19 @@ commands = ["cargo test --lib tests::cli_tests"]
                 timeout_multiplier: 1,
                 coverage: false,
             } if name == "benchmark"
+        ));
+    }
+
+    #[test]
+    fn cli_tests_parse_changed_command() {
+        let parsed = parse_test_command(["xtask", "test", "changed"]).unwrap();
+
+        assert!(matches!(
+            parsed,
+            TestCommand::Changed {
+                timeout_multiplier: 1,
+                coverage: false,
+            }
         ));
     }
 }

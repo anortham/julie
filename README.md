@@ -450,10 +450,13 @@ julie-server dashboard   # Open the web dashboard in your browser
 Julie has a tiered xtask runner so the documented commands stay aligned with the checked-in manifest:
 
 ```bash
+# Default local loop from the current diff
+cargo xtask test changed
+
 # Tiny smoke pass
 cargo xtask test smoke
 
-# Default local development tier
+# Batch-level regression gate
 cargo xtask test dev
 
 # System / startup coverage
@@ -469,7 +472,9 @@ cargo xtask test full
 cargo xtask test list
 ```
 
-Use raw `cargo test --lib <filter>` only when narrowing a failure after an xtask tier points you at the right area. The dogfood tier is intentionally heavier because it loads the large search-quality fixture and runs real searches.
+Use `cargo xtask test changed` for the local loop. It maps the current git diff to the smallest matching bucket set, then falls back to `dev` if shared infrastructure moved. Run `cargo xtask test dev` once per completed batch, not after every edit.
+
+Use raw `cargo test --lib <filter>` only when narrowing a failure after `changed` or an xtask tier points you at the right area. The dogfood tier is intentionally heavier because it loads the large search-quality fixture and runs real searches.
 
 All tiers are currently green. If a test fails, it is a real regression — investigate it.
 
