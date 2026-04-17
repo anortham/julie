@@ -128,9 +128,9 @@ timeout_seconds = 60
 commands = ["cargo nextest run --lib tests::dashboard -- --skip search_quality"]
 
 [buckets.workspace-init]
-# System setup path; currently pathological enough that it needs investigation, not a pretend-fast budget.
-expected_seconds = 360
-timeout_seconds = 480
+# System setup path; investigated and confirmed fast (~1.3s local). Budget updated from stale 360s.
+expected_seconds = 5
+timeout_seconds = 30
 commands = ["cargo nextest run --lib tests::core::workspace_init -- --skip search_quality"]
 
 [buckets.integration]
