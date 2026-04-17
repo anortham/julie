@@ -18,6 +18,15 @@
             "command": "node .claude/hooks/pretool-agent.cjs"
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/pretool-broad-tests.cjs"
+          }
+        ]
       }
     ]
   }
