@@ -38,6 +38,50 @@ cargo build --target x86_64-unknown-linux-gnu --release
 cargo bloat --release
 ```
 
+## Fast linker setup (macOS)
+
+lld links significantly faster than the default macOS linker on large Rust projects.
+
+**One-time setup:**
+
+```bash
+brew install lld
+```
+
+`ld64.lld` lands in `/opt/homebrew/bin/` which is on the standard Homebrew PATH. The `rustflags` block in `.cargo/config.toml` activates it automatically for macOS targets; no further steps needed.
+
+**Fallback:** if the linker causes issues, remove the `[target.'cfg(target_os = "macos")']` block from `.cargo/config.toml` to restore the default linker.
+
+## Build cache (sccache)
+
+sccache gives cross-branch build caching. Because incremental compilation conflicts with sccache, we disable incremental and gain cache hits across branch switches instead.
+
+**One-time setup:**
+
+```bash
+cargo install sccache --locked
+```
+
+**Per-shell environment:**
+
+```bash
+export RUSTC_WRAPPER=sccache
+export SCCACHE_DIR=$HOME/.cache/sccache
+export CARGO_INCREMENTAL=0
+```
+
+Add these to your shell init (`~/.zshrc` or `~/.bashrc`).
+
+**Verify cache hits:**
+
+```bash
+sccache --show-stats
+```
+
+**Reclaim stale artifacts:**
+
+If `target/` has grown large (tens of GB) from cruft across branches, reclaim it with `cargo clean`. sccache will repopulate on next build from its external cache.
+
 ## Debugging
 
 ```bash
