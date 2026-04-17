@@ -149,6 +149,7 @@ commands = ["cargo nextest run --lib tests::tools::get_symbols_target_filtering_
 
 [buckets.search-quality]
 # Heavy dogfood search-quality suite backed by the large fixture/index path.
-expected_seconds = 390
-timeout_seconds = 480
+# OnceCell-shared handler: fixture loads once per binary, not per test (151s on dev).
+expected_seconds = 180
+timeout_seconds = 300
 commands = ["cargo nextest run --lib search_quality"]

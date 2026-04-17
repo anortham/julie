@@ -6,6 +6,7 @@
 use crate::extractors::Symbol;
 use crate::handler::JulieServerHandler;
 use anyhow::Result;
+use std::sync::Arc;
 
 /// Search Julie's codebase (file content search)
 pub async fn search_content(
@@ -172,7 +173,21 @@ fn format_results(results: &[Symbol]) -> String {
 /// 4. Mark indexing as complete to enable searches
 ///
 /// This eliminates live indexing entirely - all 16 tests run in <1s total!
-pub async fn setup_handler_with_fixture() -> JulieServerHandler {
+/// Returns a shared handler backed by the Julie fixture, initialized once per test binary.
+///
+/// The Tantivy backfill (reading ~100k symbols from the 100MB SQLite and building the
+/// search index) runs exactly once regardless of how many tests call this function.
+/// Subsequent calls clone the Arc and return in microseconds.
+pub async fn setup_handler_with_fixture() -> Arc<JulieServerHandler> {
+    static HANDLER: tokio::sync::OnceCell<Arc<JulieServerHandler>> =
+        tokio::sync::OnceCell::const_new();
+    HANDLER
+        .get_or_init(|| async { Arc::new(setup_handler_inner().await) })
+        .await
+        .clone()
+}
+
+async fn setup_handler_inner() -> JulieServerHandler {
     use crate::handler::JulieServerHandler;
     use crate::tests::fixtures::julie_db::JulieTestFixture;
     use std::fs;
