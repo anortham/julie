@@ -10,8 +10,11 @@ Daily commands and workflows for Julie development.
 # Fast iteration (debug build)
 cargo build
 
-# Default test tier -- run after EVERY change
-cargo xtask test dev
+# Narrow test during iteration (default)
+cargo nextest run --lib <exact_test_name>
+
+# Diff-scoped coverage after a localized change
+cargo xtask test changed
 
 # Run specific tests during development (narrow filter, not full suite)
 cargo test -p julie-extractors typescript_extractor -- --nocapture
