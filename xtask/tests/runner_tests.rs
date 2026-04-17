@@ -39,7 +39,7 @@ fn runner_tests_run_tier_executes_buckets_in_manifest_order() {
     );
     assert_eq!(
         executor.bucket_calls(),
-        vec!["cli", "core-database", "tools-search"]
+        vec!["prebuild", "cli", "core-database", "tools-search"]
     );
 }
 
@@ -814,8 +814,8 @@ fn runner_tests_non_coverage_mode_leaves_commands_unchanged() {
 
     let calls = executor.command_calls();
     assert!(
-        calls.iter().all(|c| c.starts_with("cargo test")),
-        "expected original commands, got: {calls:?}"
+        calls.iter().all(|c| !c.starts_with("cargo llvm-cov")),
+        "expected no coverage transformation in non-coverage mode, got: {calls:?}"
     );
 }
 
@@ -840,4 +840,72 @@ fn runner_tests_transform_nextest_preserves_skip_args() {
 #[test]
 fn runner_tests_transform_leaves_non_cargo_test_unchanged() {
     assert_eq!(transform_command_for_coverage("echo hello"), "echo hello");
+}
+
+// --- Prebuild tests ---
+
+#[test]
+fn runner_tests_prebuild_runs_before_bucket_commands() {
+    let manifest = sample_manifest();
+    let executor = FakeExecutor::successful();
+    let mut output = Vec::new();
+
+    run_tier(&manifest, "smoke", 1, false, &executor, &mut output).unwrap();
+
+    let calls = executor.command_calls();
+    assert_eq!(
+        calls[0],
+        "cargo nextest run --no-run --lib",
+        "first command should be prebuild, got: {calls:?}"
+    );
+    assert_eq!(
+        calls.iter().filter(|c| c.contains("--no-run")).count(),
+        1,
+        "prebuild should run exactly once, got: {calls:?}"
+    );
+}
+
+#[test]
+fn runner_tests_prebuild_failure_aborts_before_any_bucket() {
+    let manifest = sample_manifest();
+    let executor = FakeExecutor::with_outcomes([(
+        "cargo nextest run --no-run --lib",
+        CommandOutcome::Failed {
+            elapsed: Duration::from_secs(5),
+            exit_code: Some(1),
+        },
+    )]);
+    let mut output = Vec::new();
+
+    let error = run_tier(&manifest, "smoke", 1, false, &executor, &mut output).unwrap_err();
+
+    assert!(
+        error.to_string().contains("prebuild"),
+        "error should mention prebuild, got: {}",
+        error
+    );
+    assert_eq!(
+        error.summary.bucket_results.len(),
+        0,
+        "no bucket results should exist when prebuild fails"
+    );
+    let calls = executor.command_calls();
+    assert_eq!(calls.len(), 1, "only prebuild should have run, got: {calls:?}");
+    assert_eq!(calls[0], "cargo nextest run --no-run --lib");
+}
+
+#[test]
+fn runner_tests_prebuild_coverage_mode_transforms_command() {
+    let manifest = sample_manifest();
+    let executor = FakeExecutor::successful();
+    let mut output = Vec::new();
+
+    run_tier(&manifest, "smoke", 1, true, &executor, &mut output).unwrap();
+
+    let calls = executor.command_calls();
+    assert_eq!(
+        calls[0],
+        "cargo llvm-cov --no-report nextest --no-run --lib",
+        "coverage mode should transform the prebuild command, got: {calls:?}"
+    );
 }

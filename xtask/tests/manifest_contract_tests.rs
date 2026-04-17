@@ -218,8 +218,8 @@ fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
         (
             "search-quality",
             ExpectedBucket {
-                expected_seconds: 390,
-                timeout_seconds: 480,
+                expected_seconds: 180,
+                timeout_seconds: 300,
                 commands: &["cargo nextest run --lib search_quality"],
             },
         ),
@@ -297,8 +297,8 @@ fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
         (
             "workspace-init",
             ExpectedBucket {
-                expected_seconds: 360,
-                timeout_seconds: 480,
+                expected_seconds: 5,
+                timeout_seconds: 30,
                 commands: &[
                     "cargo nextest run --lib tests::core::workspace_init -- --skip search_quality",
                 ],

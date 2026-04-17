@@ -300,6 +300,13 @@ where
 {
     let bucket_names = bucket_names.to_vec();
 
+    if let Err(message) = prebuild_test_binary(coverage, executor) {
+        return Err(RunFailure {
+            summary: empty_summary(bucket_names),
+            message,
+        });
+    }
+
     let mut total_elapsed = Duration::ZERO;
     let mut bucket_results = Vec::with_capacity(bucket_names.len());
 
@@ -358,6 +365,13 @@ where
     E: CommandExecutor,
     W: Write,
 {
+    if let Err(message) = prebuild_test_binary(coverage, executor) {
+        return Err(RunFailure {
+            summary: empty_summary(vec![bucket_name.to_string()]),
+            message,
+        });
+    }
+
     match execute_bucket(
         manifest,
         bucket_name,
@@ -400,6 +414,32 @@ pub fn render_bucket_result(result: &BucketResult) -> String {
         status_label(result.status),
         format_duration(result.elapsed)
     )
+}
+
+fn prebuild_test_binary<E: CommandExecutor>(coverage: bool, executor: &E) -> Result<(), String> {
+    const COMMAND: &str = "cargo nextest run --no-run --lib";
+    const TIMEOUT_SECS: u64 = 600;
+
+    let command = if coverage {
+        transform_command_for_coverage(COMMAND)
+    } else {
+        COMMAND.to_string()
+    };
+
+    let result = executor
+        .run("prebuild", &command, Duration::from_secs(TIMEOUT_SECS))
+        .map_err(|e| format!("prebuild failed to launch: {e}"))?;
+
+    match result.outcome {
+        CommandOutcome::Passed { .. } => Ok(()),
+        CommandOutcome::Failed { exit_code, .. } => Err(format!(
+            "prebuild `{command}` failed (exit code: {})",
+            exit_code.map_or_else(|| "unknown".to_string(), |c| c.to_string())
+        )),
+        CommandOutcome::TimedOut { .. } => Err(format!(
+            "prebuild `{command}` timed out after {TIMEOUT_SECS}s"
+        )),
+    }
 }
 
 fn execute_bucket<E, W>(
@@ -774,6 +814,12 @@ commands = ["integration cmd"]
         let manifest = manifest_with_program_buckets();
         let executor = FakeExecutor::with_outcomes(&[
             (
+                "cargo nextest run --no-run --lib",
+                CommandOutcome::Passed {
+                    elapsed: Duration::from_millis(5),
+                },
+            ),
+            (
                 "daemon cmd",
                 CommandOutcome::Passed {
                     elapsed: Duration::from_millis(10),
@@ -807,6 +853,7 @@ commands = ["integration cmd"]
         assert_eq!(
             executor.calls(),
             vec![
+                "cargo nextest run --no-run --lib".to_string(),
                 "daemon cmd".to_string(),
                 "workspace init cmd".to_string(),
                 "integration cmd".to_string(),
@@ -817,12 +864,20 @@ commands = ["integration cmd"]
     #[test]
     fn runner_tests_benchmark_bucket_runs_system_health_command() {
         let manifest = manifest_with_program_buckets();
-        let executor = FakeExecutor::with_outcomes(&[(
-            "cargo nextest run --lib tests::integration::system_health",
-            CommandOutcome::Passed {
-                elapsed: Duration::from_millis(25),
-            },
-        )]);
+        let executor = FakeExecutor::with_outcomes(&[
+            (
+                "cargo nextest run --no-run --lib",
+                CommandOutcome::Passed {
+                    elapsed: Duration::from_millis(5),
+                },
+            ),
+            (
+                "cargo nextest run --lib tests::integration::system_health",
+                CommandOutcome::Passed {
+                    elapsed: Duration::from_millis(25),
+                },
+            ),
+        ]);
         let mut output = Vec::new();
 
         let summary =
@@ -831,7 +886,10 @@ commands = ["integration cmd"]
         assert_eq!(summary.bucket_names, vec!["system-health".to_string()]);
         assert_eq!(
             executor.calls(),
-            vec!["cargo nextest run --lib tests::integration::system_health".to_string()]
+            vec![
+                "cargo nextest run --no-run --lib".to_string(),
+                "cargo nextest run --lib tests::integration::system_health".to_string(),
+            ]
         );
         assert!(
             String::from_utf8(output)
