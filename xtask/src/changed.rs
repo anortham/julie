@@ -287,6 +287,13 @@ fn buckets_for_path(path: &str) -> &'static [&'static str] {
         return &["tools-search", "search-quality"];
     }
 
+    if matches_exact(
+        path,
+        &["src/tests/tools/get_symbols_target_filtering_dogfood.rs"],
+    ) {
+        return &["tools-dogfood-repo-index"];
+    }
+
     if matches_prefix(path, &["src/tools/deep_dive/", "src/tools/editing/"])
         || matches_prefix(path, &["src/tools/metrics/", "src/tools/navigation/"])
         || matches_prefix(path, &["src/tools/refactoring/", "src/tools/symbols/"])
@@ -383,6 +390,7 @@ fn sort_bucket_names(bucket_names: Vec<String>) -> Vec<String> {
         "core-fast",
         "daemon",
         "dashboard",
+        "tools-dogfood-repo-index",
         "workspace-init",
         "integration",
         "search-quality",

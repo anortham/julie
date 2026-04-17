@@ -68,6 +68,7 @@ pub mod tools {
     pub mod get_symbols_relative_paths; // GetSymbolsTool Phase 2 relative path tests (TDD)
     pub mod get_symbols_smart_read; // GetSymbolsTool Phase 2 - Smart Read with code bodies
     pub mod get_symbols_target_filtering; // GetSymbolsTool target filtering tests
+    pub mod get_symbols_target_filtering_dogfood; // GetSymbolsTool dogfood test: indexes full repo (~164s)
     pub mod get_symbols_token; // GetSymbolsTool token optimization tests
     pub mod smart_read; // Smart Read token optimization tests
     // syntax_validation removed - abandoned AutoFixSyntax feature (Oct 2025)

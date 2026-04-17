@@ -89,7 +89,13 @@ fn expected_tiers() -> BTreeMap<String, Vec<String>> {
                 "dashboard".to_string(),
             ],
         ),
-        ("dogfood".to_string(), vec!["search-quality".to_string()]),
+        (
+            "dogfood".to_string(),
+            vec![
+                "tools-dogfood-repo-index".to_string(),
+                "search-quality".to_string(),
+            ],
+        ),
         (
             "full".to_string(),
             vec![
@@ -105,6 +111,7 @@ fn expected_tiers() -> BTreeMap<String, Vec<String>> {
                 "dashboard".to_string(),
                 "workspace-init".to_string(),
                 "integration".to_string(),
+                "tools-dogfood-repo-index".to_string(),
                 "search-quality".to_string(),
             ],
         ),
@@ -217,6 +224,14 @@ fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
             },
         ),
         (
+            "tools-dogfood-repo-index",
+            ExpectedBucket {
+                expected_seconds: 200,
+                timeout_seconds: 450,
+                commands: &["cargo nextest run --lib tests::tools::get_symbols_target_filtering_dogfood -- --skip search_quality"],
+            },
+        ),
+        (
             "tools-get-context",
             ExpectedBucket {
                 expected_seconds: 10,
@@ -238,14 +253,13 @@ fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
         (
             "tools-misc",
             ExpectedBucket {
-                expected_seconds: 200,
-                timeout_seconds: 450,
+                expected_seconds: 40,
+                timeout_seconds: 120,
                 commands: &[
                     "cargo nextest run --lib tests::tools::get_symbols -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::get_symbols_reference_workspace -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::get_symbols_relative_paths -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::get_symbols_smart_read -- --skip search_quality",
-                    "cargo nextest run --lib tests::tools::get_symbols_target_filtering -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::get_symbols_token -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::smart_read -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::editing -- --skip search_quality",

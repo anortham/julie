@@ -94,11 +94,28 @@ fn changed_tests_selects_search_and_dogfood_for_search_core_changes() {
     );
 }
 
+#[test]
+fn changed_tests_dogfood_repo_index_file_routes_to_new_bucket() {
+    let manifest = sample_manifest();
+
+    let selection = select_changed_buckets(
+        &manifest,
+        &["src/tests/tools/get_symbols_target_filtering_dogfood.rs".to_string()],
+    );
+
+    assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
+    assert_eq!(
+        selection.bucket_names,
+        vec!["tools-dogfood-repo-index"]
+    );
+}
+
 fn sample_manifest() -> TestManifest {
     TestManifest::from_str(
         r#"
 [tiers]
 dev = ["cli", "tools-workspace", "workspace-init", "tools-search", "search-quality"]
+dogfood = ["tools-dogfood-repo-index", "search-quality"]
 
 [buckets.cli]
 expected_seconds = 5
@@ -124,6 +141,11 @@ commands = ["cargo test --lib tests::tools::search"]
 expected_seconds = 60
 timeout_seconds = 120
 commands = ["cargo test --lib search_quality"]
+
+[buckets.tools-dogfood-repo-index]
+expected_seconds = 200
+timeout_seconds = 450
+commands = ["cargo nextest run --lib tests::tools::get_symbols_target_filtering_dogfood -- --skip search_quality"]
 "#,
     )
     .unwrap()

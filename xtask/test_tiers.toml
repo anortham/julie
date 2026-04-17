@@ -7,8 +7,8 @@ dev = ["cli", "core-database", "core-embeddings", "tools-get-context", "tools-se
 # System coverage kept separate from fast local buckets.
 system = ["workspace-init", "integration"]
 # Dogfood stays isolated because it is the long pole.
-dogfood = ["search-quality"]
-full = ["cli", "core-database", "core-embeddings", "tools-get-context", "tools-search", "tools-workspace", "tools-misc", "core-fast", "daemon", "dashboard", "workspace-init", "integration", "search-quality"]
+dogfood = ["tools-dogfood-repo-index", "search-quality"]
+full = ["cli", "core-database", "core-embeddings", "tools-get-context", "tools-search", "tools-workspace", "tools-misc", "core-fast", "daemon", "dashboard", "workspace-init", "integration", "tools-dogfood-repo-index", "search-quality"]
 
 [blocked_tiers]
 
@@ -74,16 +74,13 @@ commands = ["cargo nextest run --lib tests::tools::workspace -- --skip search_qu
 
 [buckets.tools-misc]
 # Remaining tool tests with enough shared setup to keep together for the first pass.
-# Note: get_symbols_target_filtering includes a dogfood test that indexes the full repo (~164s),
-# which is why expected_seconds and timeout_seconds are elevated.
-expected_seconds = 200
-timeout_seconds = 450
+expected_seconds = 40
+timeout_seconds = 120
 commands = [
   "cargo nextest run --lib tests::tools::get_symbols -- --skip search_quality",
   "cargo nextest run --lib tests::tools::get_symbols_reference_workspace -- --skip search_quality",
   "cargo nextest run --lib tests::tools::get_symbols_relative_paths -- --skip search_quality",
   "cargo nextest run --lib tests::tools::get_symbols_smart_read -- --skip search_quality",
-  "cargo nextest run --lib tests::tools::get_symbols_target_filtering -- --skip search_quality",
   "cargo nextest run --lib tests::tools::get_symbols_token -- --skip search_quality",
   "cargo nextest run --lib tests::tools::smart_read -- --skip search_quality",
   "cargo nextest run --lib tests::tools::editing -- --skip search_quality",
@@ -142,6 +139,13 @@ commands = ["cargo nextest run --lib tests::core::workspace_init -- --skip searc
 expected_seconds = 130
 timeout_seconds = 240
 commands = ["cargo nextest run --lib tests::integration -- --skip search_quality"]
+
+[buckets.tools-dogfood-repo-index]
+# Dogfood test that indexes the full julie repo (~164s). Isolated from tools-misc
+# so that bucket stays fast.
+expected_seconds = 200
+timeout_seconds = 450
+commands = ["cargo nextest run --lib tests::tools::get_symbols_target_filtering_dogfood -- --skip search_quality"]
 
 [buckets.search-quality]
 # Heavy dogfood search-quality suite backed by the large fixture/index path.
