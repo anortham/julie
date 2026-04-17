@@ -6,7 +6,7 @@ All AI coding agents (Claude Code, Copilot, Cursor, Windsurf, Cody, Gemini CLI, 
 
 ## Project Overview
 
-**Julie** is a cross-platform code intelligence server built in Rust. LSP-quality features across 33 languages via tree-sitter, Tantivy full-text search, and instant search availability.
+**Julie** is a cross-platform code intelligence server built in Rust. LSP-quality features across 34 languages via tree-sitter, Tantivy full-text search, and instant search availability.
 
 ### Key Project Facts
 - **Language**: Rust (native performance, cross-platform)
@@ -14,11 +14,11 @@ All AI coding agents (Claude Code, Copilot, Cursor, Windsurf, Cody, Gemini CLI, 
 - **Architecture**: Tantivy full-text search + SQLite structured storage + KNN vector search (embeddings)
 - **Mode**: Stdio MCP server (JSON-RPC over stdin/stdout) + optional background daemon for shared workspaces
 - **Origin**: Native Rust implementation for true cross-platform compatibility
-- **Crown Jewels**: 33 tree-sitter extractors with comprehensive test suites
+- **Crown Jewels**: 34 tree-sitter extractors with comprehensive test suites
 
-### 🏆 Current Language Support (33 - Complete)
+### 🏆 Current Language Support (34 - Complete)
 
-**Core Languages:** Rust, TypeScript, JavaScript, Python, Java, C#, PHP, Ruby, Swift, Kotlin, Scala
+**Core Languages:** Rust, TypeScript, JavaScript, Python, Java, C#, VB.NET, PHP, Ruby, Swift, Kotlin, Scala
 **Systems Languages:** C, C++, Go, Lua, Zig
 **Functional:** Elixir
 **Specialized:** GDScript, Vue, Razor, QML, R, SQL, HTML, CSS, Regex, Bash, PowerShell, Dart
@@ -334,7 +334,7 @@ See: **docs/WORKSPACE_ARCHITECTURE.md** for complete details.
 
 ### 🔴 CRITICAL: Language-Agnostic Design (Non-Negotiable)
 
-**Julie supports 33 languages and indexes ANY codebase.** All scoring, ranking, filtering, path analysis, and heuristics MUST work across all project layouts — not just Rust or Julie's own directory structure.
+**Julie supports 34 languages and indexes ANY codebase.** All scoring, ranking, filtering, path analysis, and heuristics MUST work across all project layouts — not just Rust or Julie's own directory structure.
 
 **The rule is simple: if you're writing code that checks a file path, symbol kind, project structure, or naming convention, it MUST work for ALL of these:**
 

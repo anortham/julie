@@ -78,7 +78,7 @@ pub fn is_test_symbol(
         "java" | "kotlin" => detect_java_kotlin(decorators, attributes),
         "scala" => detect_scala(name, file_path, decorators, attributes),
         "elixir" => detect_elixir(name, file_path),
-        "csharp" | "razor" => detect_csharp(attributes),
+        "csharp" | "vbnet" | "razor" => detect_csharp(attributes),
         "go" => detect_go(name, file_path),
         "javascript" | "typescript" => detect_js_ts(name, file_path),
         "php" => detect_php(name, file_path, doc_comment),
@@ -168,8 +168,8 @@ fn detect_csharp(attributes: &[String]) -> bool {
     attributes.iter().any(|a| {
         // C# extractors may produce bracketed attributes like "[Fact]" or bare "Fact".
         // Strip surrounding brackets before matching.
-        let stripped = a.strip_prefix('[').unwrap_or(a);
-        let stripped = stripped.strip_suffix(']').unwrap_or(stripped);
+        let stripped = a.strip_prefix('[').or_else(|| a.strip_prefix('<')).unwrap_or(a);
+        let stripped = stripped.strip_suffix(']').or_else(|| stripped.strip_suffix('>')).unwrap_or(stripped);
         test_attrs.contains(&stripped)
     })
 }

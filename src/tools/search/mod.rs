@@ -46,7 +46,7 @@ pub struct FastSearchTool {
     /// Search target: "content" (default, line-level text search) or "definitions" (promotes exact symbol name matches to top, best for jumping to where a symbol is defined). Use "definitions" for conceptual queries too (e.g., "error handling retry logic") as it leverages semantic search
     #[serde(default = "default_search_target")]
     pub search_target: String,
-    /// Language filter: "rust", "typescript", "javascript", "python", "java", "csharp", "php", "ruby", "swift", "kotlin", "scala", "go", "c", "cpp", "lua", "qml", "r", "sql", "html", "css", "vue", "bash", "gdscript", "dart", "zig"
+    /// Language filter: "rust", "typescript", "javascript", "python", "java", "csharp", "vbnet", "php", "ruby", "swift", "kotlin", "scala", "go", "c", "cpp", "lua", "qml", "r", "sql", "html", "css", "vue", "bash", "gdscript", "dart", "zig"
     #[serde(default)]
     pub language: Option<String>,
     /// File pattern filter (glob syntax)

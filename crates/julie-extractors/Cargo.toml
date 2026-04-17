@@ -3,7 +3,7 @@ name = "julie-extractors"
 version = "1.22.0"
 edition = "2024"
 authors = ["Alan"]
-description = "Cross-platform code intelligence extractors for 33 programming languages"
+description = "Cross-platform code intelligence extractors for 34 programming languages"
 license = "MIT"
 repository = "https://github.com/your-org/julie"
 keywords = ["tree-sitter", "code-intelligence", "parsing", "extractors"]
@@ -57,6 +57,7 @@ tree-sitter-md = "0.5.1"
 tree-sitter-json = "0.24.8"
 tree-sitter-toml-ng = "0.7.0"
 tree-sitter-yaml = "0.7"
+tree-sitter-vb-dotnet = { path = "../../../tree-sitter-vb-dotnet" }
 
 # Serialization (for Symbol, Identifier, Relationship types)
 serde = { version = "1.0", features = ["derive"] }

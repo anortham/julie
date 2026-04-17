@@ -1,6 +1,6 @@
 //! Julie's Language Extractors Library
 //!
-//! Cross-platform code intelligence extractors for 33 languages, plus JSX and TSX aliases.
+//! Cross-platform code intelligence extractors for 34 languages, plus JSX and TSX aliases.
 //! Each extractor is responsible for parsing source code and extracting symbols, relationships,
 //! and type information using tree-sitter parsers.
 //!
@@ -72,6 +72,7 @@ pub mod sql;
 pub mod swift;
 pub mod toml;
 pub mod typescript;
+pub mod vbnet;
 pub mod vue;
 pub mod yaml;
 pub mod zig;

@@ -40,6 +40,7 @@ pub fn get_tree_sitter_language(language: &str) -> Result<tree_sitter::Language>
         "python" => Ok(tree_sitter_python::LANGUAGE.into()),
         "java" => Ok(tree_sitter_java::LANGUAGE.into()),
         "csharp" => Ok(tree_sitter_c_sharp::LANGUAGE.into()),
+        "vbnet" => Ok(tree_sitter_vb_dotnet::LANGUAGE.into()),
         "php" => Ok(tree_sitter_php::LANGUAGE_PHP.into()),
         "ruby" => Ok(tree_sitter_ruby::LANGUAGE.into()),
         "swift" => Ok(tree_sitter_swift::LANGUAGE.into()),
@@ -102,6 +103,7 @@ pub fn detect_language_from_extension(extension: &str) -> Option<&'static str> {
         "py" | "pyi" | "pyw" => Some("python"),
         "java" => Some("java"),
         "cs" => Some("csharp"),
+        "vb" => Some("vbnet"),
         "php" | "phtml" => Some("php"),
         "rb" | "rbw" => Some("ruby"),
         "swift" => Some("swift"),
@@ -147,7 +149,7 @@ pub fn supported_extensions() -> &'static [&'static str] {
         "ts", "mts", "cts", "tsx", "js", "jsx", "mjs", "cjs", "html", "htm", "css", "vue",
         // Backend
         "py", "pyi", "pyw", "java", "cs", "php", "phtml", "rb", "rbw", "swift", "kt", "kts",
-        "scala", "sc", "dart", // Functional
+        "scala", "sc", "dart", "vb", // Functional
         "ex", "exs", // Scripting
         "lua", "qml", "r", "R", "sh", "bash", "ps1", "psm1", "psd1", // Specialized
         "gd", "razor", "cshtml", "sql", "regex", // Documentation and config
@@ -184,6 +186,7 @@ pub fn supported_languages() -> &'static [&'static str] {
         "kotlin",
         "scala",
         "dart",
+        "vbnet",
         // Functional
         "elixir",
         // Scripting
@@ -224,6 +227,7 @@ pub fn get_function_node_kinds(language: &str) -> Vec<&'static str> {
         "cpp" | "c" => vec!["function_definition"],
         "go" => vec!["function_declaration", "method_declaration"],
         "csharp" => vec!["method_declaration"],
+        "vbnet" => vec!["method_declaration", "abstract_method_declaration"],
         "php" => vec!["function_definition", "method_declaration"],
         "ruby" => vec!["method", "singleton_method"],
         "swift" => vec!["function_declaration"],
@@ -249,6 +253,7 @@ pub fn get_import_node_kinds(language: &str) -> Vec<&'static str> {
         "java" => vec!["import_declaration"],
         "go" => vec!["import_declaration"],
         "csharp" => vec!["using_directive"],
+        "vbnet" => vec!["imports_statement"],
         "php" => vec!["namespace_use_declaration"],
         "ruby" => vec!["call"], // require/require_relative are function calls
         "swift" => vec!["import_declaration"],
@@ -307,6 +312,15 @@ pub fn get_symbol_node_kinds(language: &str) -> Vec<&'static str> {
             "struct_declaration",
             "enum_declaration",
         ],
+        "vbnet" => vec![
+            "method_declaration",
+            "abstract_method_declaration",
+            "class_block",
+            "module_block",
+            "structure_block",
+            "interface_block",
+            "enum_block",
+        ],
         "php" => vec![
             "function_definition",
             "method_declaration",
@@ -350,8 +364,8 @@ pub fn get_symbol_node_kinds(language: &str) -> Vec<&'static str> {
 pub fn get_symbol_name_field(language: &str) -> &'static str {
     match language {
         "rust" | "typescript" | "tsx" | "javascript" | "python" | "java" | "go" | "csharp"
-        | "php" | "ruby" | "swift" | "kotlin" | "scala" | "elixir" | "dart" | "lua" | "bash"
-        | "powershell" => "name",
+        | "vbnet" | "php" | "ruby" | "swift" | "kotlin" | "scala" | "elixir" | "dart" | "lua"
+        | "bash" | "powershell" => "name",
         "cpp" | "c" => "declarator", // C/C++ use nested declarator nodes
         _ => "name",                 // Generic fallback
     }
