@@ -290,7 +290,7 @@ impl ManageWorkspaceTool {
 
         if cleaned_count > 0 && !route.is_primary {
             debug!(
-                "✅ Reference workspace orphan cleanup: {} files removed from workspace {}",
+                "✅ Target workspace orphan cleanup: {} files removed from workspace {}",
                 cleaned_count, route.workspace_id
             );
         }

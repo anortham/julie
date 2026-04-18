@@ -1,6 +1,6 @@
 {% if workspaces | length == 0 %}
   <div class="julie-card" style="text-align: center; padding: 2rem; color: var(--julie-text-muted);">
-    No workspaces indexed yet. Start the daemon and index a project to see it here.
+    No workspaces indexed yet. Start the daemon and add a project or worktree to see it here.
   </div>
 {% else %}
   <div class="julie-card" style="padding: 0; overflow: hidden;">
@@ -10,12 +10,13 @@
           <th style="width: 2rem; background: var(--julie-bg-inset);"></th>
           <th style="background: var(--julie-bg-inset);">Project</th>
           <th style="background: var(--julie-bg-inset);">Path</th>
+          <th style="background: var(--julie-bg-inset);">Session</th>
+          <th style="background: var(--julie-bg-inset);">Status</th>
           <th style="background: var(--julie-bg-inset); text-align: right;"
               title="All extracted symbols (functions, classes, imports, exports, docs)">Symbols</th>
           <th style="background: var(--julie-bg-inset); text-align: right;">Files</th>
           <th style="background: var(--julie-bg-inset); text-align: right;">Vectors</th>
-          <th style="background: var(--julie-bg-inset);">Status</th>
-          <th style="background: var(--julie-bg-inset); color: var(--julie-text-muted);">Top Symbol</th>
+          <th style="background: var(--julie-bg-inset); text-align: right;">Actions</th>
         </tr>
       </thead>
       {% for ws in workspaces %}

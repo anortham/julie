@@ -358,8 +358,9 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
     let watcher_pool = Arc::new(WatcherPool::new(Duration::from_secs(300)));
     let reaper_handle = watcher_pool.spawn_reaper(Duration::from_secs(60));
     info!("WatcherPool started (grace=300s, reaper=60s)");
-    // Keep a clone so per-session handlers can pause/resume reference workspace watchers.
+    // Keep a clone so per-session handlers can pause/resume non-primary workspace watchers.
     let watcher_pool_for_handlers = Arc::clone(&watcher_pool);
+    let watcher_pool_for_cleanup = Arc::clone(&watcher_pool);
 
     let pool = Arc::new(WorkspacePool::new(
         paths.indexes_dir(),
@@ -367,7 +368,41 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
         Some(watcher_pool),
         Some(Arc::clone(&embedding_service)),
     ));
+    let cleanup_pool = Arc::clone(&pool);
     let sessions = Arc::new(SessionTracker::new());
+
+    let cleanup_sweep_handle = daemon_db.as_ref().map(|daemon_db| {
+        let daemon_db = Arc::clone(daemon_db);
+        tokio::spawn(async move {
+            let mut tick = tokio::time::interval(Duration::from_secs(600));
+            loop {
+                tick.tick().await;
+                match crate::tools::workspace::commands::registry::cleanup::run_cleanup_sweep(
+                    &daemon_db,
+                    Some(&cleanup_pool),
+                    Some(&watcher_pool_for_cleanup),
+                )
+                .await
+                {
+                    Ok(summary) => {
+                        if !summary.pruned_workspaces.is_empty()
+                            || !summary.pruned_orphan_dirs.is_empty()
+                        {
+                            info!(
+                                pruned_workspaces = summary.pruned_workspaces.len(),
+                                pruned_orphan_dirs = summary.pruned_orphan_dirs.len(),
+                                blocked_workspaces = summary.blocked_workspaces.len(),
+                                "Background workspace cleanup sweep removed stale entries"
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        warn!("Background workspace cleanup sweep failed: {}", e);
+                    }
+                }
+            }
+        })
+    });
 
     // Notify used by the accept loop to trigger graceful shutdown when the
     // last session disconnects and the binary is stale. This replaces the
@@ -407,13 +442,14 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
     // state live. With lazy init, the service starts in Initializing and
     // transitions to Ready (or Unavailable) once the background task
     // finishes — the dashboard reflects this without a restart.
-    let dashboard_state = crate::dashboard::state::DashboardState::new(
+    let dashboard_state = crate::dashboard::state::DashboardState::new_with_watcher_pool(
         Arc::clone(&sessions),
         daemon_db.clone(),
         Arc::clone(&restart_pending),
         Arc::clone(&daemon_phase),
         std::time::Instant::now(),
         Some(Arc::clone(&embedding_service)),
+        Some(Arc::clone(&watcher_pool_for_handlers)),
         Some(Arc::clone(&pool)),
         50, // error buffer capacity
     );
@@ -677,6 +713,9 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
     );
 
     reaper_handle.abort();
+    if let Some(cleanup_sweep_handle) = cleanup_sweep_handle {
+        cleanup_sweep_handle.abort();
+    }
 
     embedding_service.shutdown();
     info!("Embedding service shut down");

@@ -4,28 +4,60 @@
 
 <h1 class="title" style="margin-bottom: 1rem;">Projects</h1>
 
+<div class="julie-card" style="margin-bottom: 1rem;">
+  <form method="post" action="/projects/register" style="display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: end;">
+    <div style="flex: 1 1 28rem;">
+      <label class="label-text" for="workspace-path" style="display: block; margin-bottom: 0.35rem;">Add Workspace</label>
+      <input id="workspace-path"
+             class="input mono"
+             type="text"
+             name="path"
+             placeholder="/path/to/project-or-worktree"
+             style="width: 100%;">
+      <p style="margin-top: 0.4rem; color: var(--julie-text-muted); font-size: 0.85rem;">
+        Register and index a workspace without activating it for any session.
+      </p>
+    </div>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button type="submit" class="button is-dark">Add Workspace</button>
+  </form>
+</div>
+
+{% if notice %}
+  <div class="julie-card"
+       style="margin-bottom: 1rem; border: 1px solid {% if notice.kind == 'danger' %}rgba(212, 70, 88, 0.35){% else %}rgba(113, 126, 211, 0.25){% endif %};">
+    <p style="font-weight: 600; margin-bottom: {% if notice.lines | length > 0 %}0.45rem{% else %}0{% endif %};">
+      {{ notice.title }}
+    </p>
+    {% for line in notice.lines %}
+      <p style="color: var(--julie-text-muted); font-size: 0.9rem;">{{ line }}</p>
+    {% endfor %}
+  </div>
+{% endif %}
+
 <div id="project-summary" style="margin-bottom: 1.5rem; color: var(--julie-text-muted); font-size: 0.9rem;">
   {% include "partials/project_summary.html" %}
 </div>
 
 {% include "partials/project_table.html" %}
+{% include "partials/project_cleanup_log.html" %}
 
 <script>
-// Poll workspace statuses every 5s and update badges + stats in place.
-// This avoids replacing the table DOM, which would reset Alpine expand state.
 setInterval(async () => {
   try {
     const resp = await fetch('/projects/statuses');
     if (!resp.ok) return;
     const data = await resp.json();
 
-    // Update summary bar
     const summary = document.getElementById('project-summary');
     if (summary && data._summary) summary.innerHTML = data._summary;
 
-    // Update each workspace row
     for (const [id, ws] of Object.entries(data)) {
       if (id === '_summary') continue;
+      const sessionState = document.getElementById('session-state-' + id);
+      if (sessionState && ws.session_state !== undefined) {
+        sessionState.innerHTML = ws.session_state;
+      }
       const badge = document.getElementById('status-' + id);
       if (badge) badge.innerHTML = ws.badge;
       const sym = document.getElementById('symbols-' + id);
@@ -38,10 +70,6 @@ setInterval(async () => {
       if (lb && ws.lang_bar !== undefined) {
         lb.innerHTML = ws.lang_bar;
         lb.style.display = ws.lang_bar ? '' : 'none';
-      }
-      const topSym = document.getElementById('topsym-val-' + id);
-      if (topSym && ws.top_symbol !== undefined) {
-        topSym.textContent = ws.top_symbol;
       }
     }
   } catch (_) {}

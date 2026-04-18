@@ -36,7 +36,7 @@ pub struct GetContextTool {
     )]
     pub max_tokens: Option<u32>,
 
-    /// Workspace filter: "primary" (default) or a reference workspace ID
+    /// Workspace filter: "primary" (default) or a workspace ID
     #[serde(default = "default_workspace")]
     pub workspace: Option<String>,
 

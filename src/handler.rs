@@ -135,7 +135,7 @@ impl PrimarySwapRollback {
             *session_workspace = self.session_workspace;
             session_workspace.lifecycle_phase()
         };
-        handler.publish_session_lifecycle_phase(phase);
+        handler.publish_session_lifecycle_snapshot(phase, handler.current_workspace_id());
         Ok(())
     }
 }
@@ -392,14 +392,14 @@ pub struct JulieServerHandler {
     /// Optional daemon session lifecycle handle. Present when this handler is
     /// serving an IPC session through the daemon.
     session_lifecycle: Option<SessionLifecycleHandle>,
-    /// Fix C part c: shared watcher pool for pausing reference workspace watchers
+    /// Fix C part c: shared watcher pool for pausing non-primary workspace watchers
     /// during force reindex. None in stdio mode.
     pub(crate) watcher_pool: Option<Arc<crate::daemon::watcher_pool::WatcherPool>>,
     /// Bounded channel sender for background metrics writes (M03).
     /// A single background task drains this; try_send drops on backpressure
     /// rather than spawning unbounded tasks.
     metrics_tx: tokio::sync::mpsc::Sender<MetricsTask>,
-    /// Cache for reference workspace DB connections, keyed by workspace_id with
+    /// Cache for non-primary workspace DB connections, keyed by workspace_id with
     /// the resolved physical db path so root-anchor changes in stdio do not reuse
     /// stale handles across different `.julie/indexes/...` trees.
     ref_db_cache: Arc<RwLock<HashMap<String, (PathBuf, Arc<std::sync::Mutex<SymbolDatabase>>)>>>,
@@ -726,11 +726,10 @@ impl JulieServerHandler {
             .and_then(serde_json::Value::as_str)
             .unwrap_or_default();
         match operation {
-            // `add` is intentionally excluded: it needs a primary to pair
-            // against, but we refuse to silently bind the startup-hint/CWD as
-            // primary on the user's behalf. The tool body hard-fails with an
-            // actionable message that points at `open` or client roots.
-            // See Finding #2 in docs/ROOTS_IMPL_REVIEW_NOTES.md.
+            // `register` is intentionally excluded: it must not silently bind
+            // the startup-hint/CWD as primary on the user's behalf. The tool
+            // body resolves the target path without treating the request as a
+            // primary-targeting operation.
             "list" | "remove" | "health" => true,
             "stats" => arguments
                 .get("workspace_id")
@@ -1030,6 +1029,7 @@ impl JulieServerHandler {
     pub(crate) fn attach_session_lifecycle(&mut self, session_lifecycle: SessionLifecycleHandle) {
         let phase = self.current_session_lifecycle_phase();
         session_lifecycle.set_phase(phase);
+        session_lifecycle.set_current_workspace(self.current_workspace_id());
         self.session_lifecycle = Some(session_lifecycle);
     }
 
@@ -1040,9 +1040,14 @@ impl JulieServerHandler {
             .lifecycle_phase()
     }
 
-    fn publish_session_lifecycle_phase(&self, phase: SessionLifecyclePhase) {
+    fn publish_session_lifecycle_snapshot(
+        &self,
+        phase: SessionLifecyclePhase,
+        current_workspace_id: Option<String>,
+    ) {
         if let Some(session_lifecycle) = &self.session_lifecycle {
             session_lifecycle.set_phase(phase);
+            session_lifecycle.set_current_workspace(current_workspace_id);
         }
     }
 
@@ -1050,16 +1055,17 @@ impl JulieServerHandler {
         &self,
         update: impl FnOnce(&mut SessionWorkspaceState) -> R,
     ) -> R {
-        let (result, phase) = {
+        let (result, phase, current_workspace_id) = {
             let mut state = self
                 .session_workspace
                 .write()
                 .unwrap_or_else(|p| p.into_inner());
             let result = update(&mut state);
             let phase = state.lifecycle_phase();
-            (result, phase)
+            let current_workspace_id = state.current_workspace_id();
+            (result, phase, current_workspace_id)
         };
-        self.publish_session_lifecycle_phase(phase);
+        self.publish_session_lifecycle_snapshot(phase, current_workspace_id);
         result
     }
 
@@ -1403,7 +1409,7 @@ impl JulieServerHandler {
                     );
 
                     // 🔴 CRITICAL FIX: Only clear the PRIMARY workspace's index, NOT all workspaces!
-                    // Reference workspaces must be preserved during force reindex
+                    // Non-primary workspace indexes must be preserved during force reindex.
 
                     // Determine the primary workspace ID so we only clear its directory
                     use crate::workspace::registry::generate_workspace_id;
@@ -1437,7 +1443,7 @@ impl JulieServerHandler {
                                     primary_index_dir.display()
                                 );
                                 info!(
-                                    "✅ Reference workspaces preserved (workspace isolation maintained)"
+                                    "✅ Non-primary workspace indexes preserved (workspace isolation maintained)"
                                 );
                             }
                         }
@@ -2031,7 +2037,7 @@ impl JulieServerHandler {
                 }
 
                 // Path computation stays lenient when the rebound primary isn't
-                // pool-resident yet — operations like manage_workspace(add) and
+                // pool-resident yet. Operations like manage_workspace(register) and
                 // refresh routing need to compute target paths even before the
                 // pool catches up. Strict pool-membership enforcement happens in
                 // the connection-opening helpers (get_database_for_workspace and
@@ -2099,7 +2105,7 @@ impl JulieServerHandler {
     /// Daemon-mode invariant guard: when accessing the *current primary*
     /// workspace's storage, the workspace must be attached in the workspace
     /// pool. Path computation stays lenient (see `workspace_storage_anchor`)
-    /// because operations like `manage_workspace(add)` need to compute target
+    /// because operations like `manage_workspace(register)` need to compute target
     /// paths before the pool catches up — but actually opening the DB or
     /// search index against a non-pool-resident primary indicates a rebind
     /// that bypassed `attach_daemon_primary_binding_if_needed` (see Findings
@@ -2202,7 +2208,7 @@ impl JulieServerHandler {
         }
 
         // In daemon mode, index_root_override points to ~/.julie/indexes/{primary_id}.
-        // Reference workspaces are siblings: ~/.julie/indexes/{ref_id}/, not nested.
+        // Non-primary workspace indexes are siblings: ~/.julie/indexes/{target_id}/, not nested.
         if !db_path.exists() {
             return Err(anyhow::anyhow!(
                 "Database not found for workspace '{}' at {}",
@@ -2267,7 +2273,7 @@ impl JulieServerHandler {
         let primary = self.require_primary_binding()?;
 
         // Stdio mode: a rebound current primary may be queried through the non-primary path,
-        // and reference workspaces resolve through workspace_registry.json rooted at the
+        // and secondary workspaces resolve through workspace_registry.json rooted at the
         // current primary workspace.
         if primary.workspace_id == workspace_id {
             Ok(primary.workspace_root)
@@ -2280,7 +2286,7 @@ impl JulieServerHandler {
                 let registry_text = std::fs::read_to_string(&registry_path)?;
                 let registry: crate::workspace::registry::WorkspaceRegistry =
                     serde_json::from_str(&registry_text)?;
-                if let Some(entry) = registry.reference_workspaces.get(workspace_id) {
+                if let Some(entry) = registry.known_workspaces.get(workspace_id) {
                     return Ok(PathBuf::from(&entry.original_path));
                 }
             }

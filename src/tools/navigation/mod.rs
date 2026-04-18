@@ -12,8 +12,8 @@
 pub(crate) mod call_path;
 mod fast_refs;
 pub(crate) mod formatting;
-pub(crate) mod reference_workspace;
-pub mod resolution; // Public for use by other tools
+pub mod resolution;
+pub(crate) mod target_workspace; // Public for use by other tools
 
 // Re-export public APIs
 pub use call_path::CallPathTool;

@@ -1,13 +1,13 @@
-//! Reference Workspace Tests
+//! Target Workspace Tests
 //!
-//! Tests the complete reference workspace functionality:
-//! - Adding reference workspaces
-//! - Indexing reference workspaces with isolated databases
-//! - Searching reference workspaces by workspace_id
-//! - Proper isolation between primary and reference workspaces
+//! Tests the complete target-workspace functionality:
+//! - Registering non-primary workspaces
+//! - Indexing target workspaces with isolated databases
+//! - Searching target workspaces by workspace ID
+//! - Proper isolation between primary and target workspaces
 
 #[cfg(test)]
-mod reference_workspace_tests {
+mod target_workspace_tests {
     use crate::database::ProjectionStatus;
     use crate::handler::JulieServerHandler;
     use crate::search::projection::TANTIVY_PROJECTION_NAME;
@@ -40,11 +40,11 @@ mod reference_workspace_tests {
         *handler.is_indexed.write().await = true;
     }
 
-    /// Setup test workspaces using fixtures
-    /// Returns (primary_workspace_id, reference_workspace_id)
+    /// Setup test workspaces using fixtures.
+    /// Returns `(primary_workspace_id, target_workspace_id)`.
     async fn setup_test_workspaces(handler: &JulieServerHandler) -> Result<(String, String)> {
         let primary_path = get_fixture_path("tiny-primary");
-        let reference_path = get_fixture_path("tiny-reference");
+        let target_path = get_fixture_path("tiny-reference");
 
         // Index primary workspace
         let index_primary = ManageWorkspaceTool {
@@ -66,24 +66,24 @@ mod reference_workspace_tests {
             return Err(anyhow::anyhow!("Failed to get workspace from handler"));
         };
 
-        // Index reference workspace and compute its ID deterministically
+        // Index target workspace and compute its ID deterministically.
         {
-            let index_reference = ManageWorkspaceTool {
+            let index_target = ManageWorkspaceTool {
                 operation: "index".to_string(),
-                path: Some(reference_path.to_string_lossy().to_string()),
+                path: Some(target_path.to_string_lossy().to_string()),
                 force: Some(true),
                 name: None,
                 workspace_id: None,
                 detailed: None,
             };
-            index_reference.call_tool(handler).await?;
+            index_target.call_tool(handler).await?;
             mark_index_ready(handler).await;
         }
-        let reference_id =
-            crate::workspace::registry::generate_workspace_id(&reference_path.to_string_lossy())
-                .map_err(|e| anyhow::anyhow!("Failed to compute reference workspace ID: {}", e))?;
+        let target_id =
+            crate::workspace::registry::generate_workspace_id(&target_path.to_string_lossy())
+                .map_err(|e| anyhow::anyhow!("Failed to compute target workspace ID: {}", e))?;
 
-        Ok((primary_id, reference_id))
+        Ok((primary_id, target_id))
     }
 
     /// ✅ FIXED: FTS5 CORRUPTION BUG - Bug was in filter_changed_files and clean_orphaned_files
@@ -92,19 +92,19 @@ mod reference_workspace_tests {
     ///
     /// Fix: Both functions now check workspace_id and query the correct database:
     /// - Primary workspace: use handler.get_workspace().db
-    /// - Reference workspace: open separate DB at indexes/{workspace_id}/db/symbols.db
+    /// - Target workspace: open a separate DB at indexes/{workspace_id}/db/symbols.db
     ///
     /// REFACTORING STATUS: Complete - uses fixture setup, bug fixed, test passing
     #[tokio::test(flavor = "multi_thread")]
-    #[serial_test::serial] // Reference workspace tests need serialization (shared fixtures)
-    async fn test_reference_workspace_end_to_end() -> Result<()> {
+    #[serial_test::file_serial(target_workspace_fixtures)] // Shared fixture roots require one cross-process lane.
+    async fn test_target_workspace_end_to_end() -> Result<()> {
         use crate::tests::helpers::cleanup::atomic_cleanup_julie_dir;
 
         // CLEANUP: Atomic cleanup of .julie directories from previous test runs
         let primary_path = get_fixture_path("tiny-primary");
-        let reference_path = get_fixture_path("tiny-reference");
+        let target_path = get_fixture_path("tiny-reference");
         atomic_cleanup_julie_dir(&primary_path)?;
-        atomic_cleanup_julie_dir(&reference_path)?;
+        atomic_cleanup_julie_dir(&target_path)?;
 
         // Initialize handler with primary fixture
         let handler = JulieServerHandler::new_for_test().await?;
@@ -114,7 +114,7 @@ mod reference_workspace_tests {
             .await?;
 
         // Setup both workspaces using fixtures
-        let (primary_id, reference_id) = setup_test_workspaces(&handler).await?;
+        let (primary_id, target_id) = setup_test_workspaces(&handler).await?;
 
         // Search primary workspace - should find PRIMARY_WORKSPACE_MARKER
         let search_primary = FastSearchTool {
@@ -138,16 +138,16 @@ mod reference_workspace_tests {
         );
         assert!(
             !primary_response.contains("REFERENCE_WORKSPACE_MARKER"),
-            "Primary workspace search should NOT find reference workspace content"
+            "Primary workspace search should NOT find target-workspace content"
         );
 
-        // Search reference workspace by ID - should find REFERENCE_WORKSPACE_MARKER
+        // Search target workspace by ID. It should find REFERENCE_WORKSPACE_MARKER.
         let search_reference = FastSearchTool {
             query: "REFERENCE_WORKSPACE_MARKER".to_string(),
             language: None,
             file_pattern: None,
             limit: 10,
-            workspace: Some(reference_id.clone()),
+            workspace: Some(target_id.clone()),
             search_target: "content".to_string(),
             context_lines: None,
             exclude_tests: None,
@@ -159,15 +159,15 @@ mod reference_workspace_tests {
 
         assert!(
             reference_response.contains("REFERENCE_WORKSPACE_MARKER"),
-            "Reference workspace search should find REFERENCE_WORKSPACE_MARKER: {}",
+            "Target workspace search should find REFERENCE_WORKSPACE_MARKER: {}",
             reference_response
         );
         assert!(
             !reference_response.contains("PRIMARY_WORKSPACE_MARKER"),
-            "Reference workspace search should NOT find primary workspace content"
+            "Target workspace search should NOT find primary workspace content"
         );
 
-        // Verify workspace isolation: search primary for reference content should find nothing
+        // Verify workspace isolation: search primary for target content should find nothing.
         let cross_search = FastSearchTool {
             query: "REFERENCE_WORKSPACE_MARKER".to_string(),
             language: None,
@@ -188,7 +188,7 @@ mod reference_workspace_tests {
         // but there should be no actual line content with the marker
         assert!(
             cross_response.contains("No lines found") || !cross_response.contains(".rs:"),
-            "Primary workspace should NOT contain reference workspace content (isolation verification): {}",
+            "Primary workspace should NOT contain target-workspace content (isolation verification): {}",
             cross_response
         );
 
@@ -199,8 +199,8 @@ mod reference_workspace_tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    #[serial_test::serial] // Reference workspace tests need serialization (shared fixtures)
-    async fn test_invalid_reference_workspace_id_error() -> Result<()> {
+    #[serial_test::file_serial(target_workspace_fixtures)] // Shared fixture roots require one cross-process lane.
+    async fn test_invalid_target_workspace_id_error() -> Result<()> {
         use crate::tests::helpers::cleanup::atomic_cleanup_julie_dir;
 
         unsafe {
@@ -255,9 +255,8 @@ mod reference_workspace_tests {
     /// Test that workspace filtering works correctly for searches
     /// Refactored from semantic search test to use text search (faster, no embeddings needed)
     ///
-    /// NOTE: This test has isolation issues when run with other reference_workspace tests
-    /// (works fine when run alone, fails when run after test_reference_workspace_end_to_end).
-    /// The main functionality is already covered by test_reference_workspace_end_to_end.
+    /// NOTE: This test has isolation issues when run with the other target-workspace tests.
+    /// It works on its own and has overlapping coverage with `test_target_workspace_end_to_end`.
     /// TODO: Fix test isolation by using completely separate fixture directories per test.
     #[tokio::test(flavor = "multi_thread")]
     #[ignore = "Test isolation issue - passes alone, fails when run with other tests"]
@@ -284,7 +283,7 @@ mod reference_workspace_tests {
         index_primary.call_tool(&handler).await?;
         mark_index_ready(&handler).await;
 
-        // Index reference workspace and compute its ID deterministically
+        // Index target workspace and compute its ID deterministically.
         {
             let index_reference = ManageWorkspaceTool {
                 operation: "index".to_string(),
@@ -299,11 +298,11 @@ mod reference_workspace_tests {
         }
         let reference_id =
             crate::workspace::registry::generate_workspace_id(&reference_path.to_string_lossy())
-                .map_err(|e| anyhow::anyhow!("Failed to compute reference workspace ID: {}", e))?;
+                .map_err(|e| anyhow::anyhow!("Failed to compute target workspace ID: {}", e))?;
 
-        // Search reference workspace for reference-specific symbol
+        // Search target workspace for target-specific symbol.
         let search_reference = FastSearchTool {
-            query: "calculate_product".to_string(), // Function only in reference workspace
+            query: "calculate_product".to_string(), // Function only in the target workspace
             language: Some("rust".to_string()),
             file_pattern: None,
             limit: 10,
@@ -317,15 +316,12 @@ mod reference_workspace_tests {
         let reference_result = search_reference.call_tool(&handler).await?;
         let reference_response = extract_text_from_result(&reference_result);
 
-        println!(
-            "Reference workspace search results:\n{}",
-            reference_response
-        );
+        println!("Target workspace search results:\n{}", reference_response);
 
-        // Should find reference workspace function
+        // Should find the target workspace function.
         assert!(
             reference_response.contains("calculate_product"),
-            "Reference workspace search should find calculate_product function.\n\
+            "Target workspace search should find calculate_product function.\n\
              Instead got: {}",
             reference_response
         );
@@ -333,7 +329,7 @@ mod reference_workspace_tests {
         // Should NOT find primary workspace functions
         assert!(
             !reference_response.contains("calculate_sum"),
-            "Reference workspace search should NOT find primary workspace functions.\n\
+            "Target workspace search should NOT find primary workspace functions.\n\
              Got: {}",
             reference_response
         );
@@ -341,18 +337,18 @@ mod reference_workspace_tests {
         Ok(())
     }
 
-    /// Test that orphaned files are cleaned up from reference workspace database
+    /// Test that orphaned files are cleaned up from the target workspace database.
     ///
     /// This verifies the fix for INCOMPLETE_IMPLEMENTATIONS.md Issue #2:
-    /// Reference workspace orphan cleanup must open the correct database to clean up deleted files.
+    /// Target-workspace orphan cleanup must open the correct database to clean up deleted files.
     #[tokio::test(flavor = "multi_thread")]
-    #[serial_test::serial] // Reference workspace tests need serialization (shared fixtures)
-    async fn test_reference_workspace_orphan_cleanup() -> Result<()> {
+    #[serial_test::file_serial(target_workspace_fixtures)] // Shared fixture roots require one cross-process lane.
+    async fn test_target_workspace_orphan_cleanup() -> Result<()> {
         // CLEANUP: Remove any stale .julie directories from previous test runs to prevent FTS5 corruption
         let primary_path = get_fixture_path("tiny-primary");
-        let reference_path = get_fixture_path("tiny-reference");
+        let target_path = get_fixture_path("tiny-reference");
         let _ = std::fs::remove_dir_all(primary_path.join(".julie"));
-        let _ = std::fs::remove_dir_all(reference_path.join(".julie"));
+        let _ = std::fs::remove_dir_all(target_path.join(".julie"));
 
         // Initialize handler with primary fixture
         let handler = JulieServerHandler::new_for_test().await?;
@@ -363,7 +359,7 @@ mod reference_workspace_tests {
         // Setup both workspaces using fixtures
         let (_primary_id, reference_id) = setup_test_workspaces(&handler).await?;
 
-        // Verify initial files are indexed in reference workspace
+        // Verify initial files are indexed in the target workspace.
         let initial_search = FastSearchTool {
             query: "helper".to_string(),
             language: None,
@@ -394,7 +390,7 @@ mod reference_workspace_tests {
             )
         };
 
-        // Now simulate file deletion: Delete helper.rs from the reference workspace fixture
+        // Now simulate file deletion: delete helper.rs from the target workspace fixture.
         let reference_path = get_fixture_path("tiny-reference");
         let helper_file_path = reference_path.join("src").join("helper.rs");
 
@@ -402,7 +398,7 @@ mod reference_workspace_tests {
         let backup_content = std::fs::read_to_string(&helper_file_path)?;
         std::fs::remove_file(&helper_file_path)?;
 
-        // Re-index the reference workspace to trigger orphan cleanup
+        // Re-index the target workspace to trigger orphan cleanup.
         let reindex_tool = ManageWorkspaceTool {
             operation: "index".to_string(),
             path: Some(reference_path.to_string_lossy().to_string()),
@@ -417,7 +413,7 @@ mod reference_workspace_tests {
 
         assert!(
             !reindex_response.contains("Error") && !reindex_response.contains("Failed"),
-            "Reference workspace reindex should succeed before cleanup assertion: {}",
+            "Target workspace reindex should succeed before cleanup assertion: {}",
             reindex_response
         );
 
@@ -443,7 +439,7 @@ mod reference_workspace_tests {
         // Verify orphaned file was cleaned up from database
         assert!(
             !deleted_response.contains("helper.rs") || deleted_response.contains("No lines found"),
-            "Orphaned file helper.rs should have been cleaned up from reference workspace database, but was still found: {}",
+            "Orphaned file helper.rs should have been cleaned up from the target workspace database, but was still found: {}",
             deleted_response
         );
 
@@ -457,14 +453,14 @@ mod reference_workspace_tests {
 
         assert!(
             canonical_before_cleanup.is_some(),
-            "reference workspace should have a canonical revision before orphan cleanup"
+            "target workspace should have a canonical revision before orphan cleanup"
         );
         assert!(
             canonical_after_cleanup > canonical_before_cleanup,
             "orphan cleanup should advance the canonical revision"
         );
         let projection_after_cleanup = projection_after_cleanup
-            .expect("reference workspace should keep Tantivy projection state");
+            .expect("target workspace should keep Tantivy projection state");
         assert_eq!(
             projection_after_cleanup.status,
             ProjectionStatus::Ready,
@@ -482,9 +478,39 @@ mod reference_workspace_tests {
             projection_before_cleanup
                 .as_ref()
                 .is_some_and(|state| state.status == ProjectionStatus::Ready),
-            "reference workspace should start from a ready projection state"
+            "target workspace should start from a ready projection state"
         );
 
         Ok(())
+    }
+
+    #[test]
+    fn test_live_workspace_surface_has_no_legacy_workspace_language() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let files = [
+            "docs/WORKSPACE_ARCHITECTURE.md",
+            "src/tools/navigation/mod.rs",
+            "src/tools/navigation/resolution.rs",
+            "src/tools/navigation/fast_refs.rs",
+            "src/tools/navigation/target_workspace.rs",
+            "src/tools/symbols/mod.rs",
+            "src/tools/symbols/target_workspace.rs",
+            "src/tools/get_context/mod.rs",
+            "src/tools/get_context/pipeline.rs",
+            "src/tools/search/mod.rs",
+            "src/tools/search/text_search.rs",
+            "src/tools/refactoring/mod.rs",
+        ];
+
+        for relative_path in files {
+            let path = root.join(relative_path);
+            let text = std::fs::read_to_string(&path)
+                .unwrap_or_else(|error| panic!("failed to read {}: {}", path.display(), error));
+            assert!(
+                !text.contains("reference workspace") && !text.contains("Reference workspace"),
+                "live workspace surface regressed in {}",
+                relative_path
+            );
+        }
     }
 }

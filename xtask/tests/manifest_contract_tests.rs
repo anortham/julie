@@ -262,7 +262,7 @@ fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
                 timeout_seconds: 120,
                 commands: &[
                     "cargo nextest run --lib tests::tools::get_symbols -- --skip search_quality",
-                    "cargo nextest run --lib tests::tools::get_symbols_reference_workspace -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::get_symbols_target_workspace -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::get_symbols_relative_paths -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::get_symbols_smart_read -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::get_symbols_token -- --skip search_quality",
@@ -272,7 +272,7 @@ fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
                     "cargo nextest run --lib tests::tools::refactoring -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::filtering_tests -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::formatting_tests -- --skip search_quality",
-                    "cargo nextest run --lib tests::tools::reference_workspace_fast_refs_tests -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::target_workspace_fast_refs_tests -- --skip search_quality",
                     "cargo nextest run --lib tools::search::query_preprocessor::tests -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::metrics -- --skip search_quality",
                 ],

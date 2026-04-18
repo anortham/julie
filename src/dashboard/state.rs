@@ -12,6 +12,7 @@ use crate::daemon::database::DaemonDatabase;
 use crate::daemon::embedding_service::EmbeddingService;
 use crate::daemon::lifecycle::{LifecyclePhase, LifecyclePhaseKind, ShutdownCause};
 use crate::daemon::session::{SessionPhaseCounts, SessionTracker};
+use crate::daemon::watcher_pool::WatcherPool;
 use crate::daemon::workspace_pool::WorkspacePool;
 use crate::dashboard::error_buffer::{ErrorBuffer, LogEntry};
 use crate::embeddings::EmbeddingBackend;
@@ -128,6 +129,7 @@ pub struct DashboardEmbeddingRuntimeStatus {
 pub struct DashboardState {
     sessions: Arc<SessionTracker>,
     daemon_db: Option<Arc<DaemonDatabase>>,
+    action_csrf_token: Arc<String>,
     restart_pending: Arc<AtomicBool>,
     daemon_phase: Arc<RwLock<LifecyclePhase>>,
     start_time: Instant,
@@ -139,6 +141,7 @@ pub struct DashboardState {
     /// `None` in test contexts that don't wire up a service; the
     /// `embedding_available` accessor returns `false` in that case.
     embedding_service: Option<Arc<EmbeddingService>>,
+    watcher_pool: Option<Arc<WatcherPool>>,
     workspace_pool: Option<Arc<WorkspacePool>>,
     tx: broadcast::Sender<DashboardEvent>,
 }
@@ -158,16 +161,42 @@ impl DashboardState {
         workspace_pool: Option<Arc<WorkspacePool>>,
         error_buffer_capacity: usize,
     ) -> Self {
-        let error_buffer = ErrorBuffer::new(error_buffer_capacity);
-        let (tx, _rx) = broadcast::channel(256);
-        Self {
+        Self::new_with_watcher_pool(
             sessions,
             daemon_db,
             restart_pending,
             daemon_phase,
             start_time,
+            embedding_service,
+            None,
+            workspace_pool,
+            error_buffer_capacity,
+        )
+    }
+
+    pub fn new_with_watcher_pool(
+        sessions: Arc<SessionTracker>,
+        daemon_db: Option<Arc<DaemonDatabase>>,
+        restart_pending: Arc<AtomicBool>,
+        daemon_phase: Arc<RwLock<LifecyclePhase>>,
+        start_time: Instant,
+        embedding_service: Option<Arc<EmbeddingService>>,
+        watcher_pool: Option<Arc<WatcherPool>>,
+        workspace_pool: Option<Arc<WorkspacePool>>,
+        error_buffer_capacity: usize,
+    ) -> Self {
+        let error_buffer = ErrorBuffer::new(error_buffer_capacity);
+        let (tx, _rx) = broadcast::channel(256);
+        Self {
+            sessions,
+            daemon_db,
+            action_csrf_token: Arc::new(uuid::Uuid::new_v4().to_string()),
+            restart_pending,
+            daemon_phase,
+            start_time,
             error_buffer,
             embedding_service,
+            watcher_pool,
             workspace_pool,
             tx,
         }
@@ -181,6 +210,10 @@ impl DashboardState {
     /// Reference to the daemon database, if available.
     pub fn daemon_db(&self) -> Option<&Arc<DaemonDatabase>> {
         self.daemon_db.as_ref()
+    }
+
+    pub fn action_csrf_token(&self) -> &str {
+        self.action_csrf_token.as_str()
     }
 
     /// Whether a daemon restart is pending.
@@ -432,6 +465,11 @@ impl DashboardState {
     /// Reference to the workspace pool, if available.
     pub fn workspace_pool(&self) -> Option<&Arc<WorkspacePool>> {
         self.workspace_pool.as_ref()
+    }
+
+    /// Reference to the watcher pool, if available.
+    pub fn watcher_pool(&self) -> Option<&Arc<WatcherPool>> {
+        self.watcher_pool.as_ref()
     }
 
     /// Subscribe to the broadcast channel. Each call returns an independent receiver.

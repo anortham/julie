@@ -8,7 +8,7 @@
 //! Key features:
 //! - JSON-based registry with atomic operations
 //! - Workspace ID generation using SHA256 hashing
-//! - TTL-based expiration for reference workspaces
+//! - TTL-based expiration for known secondary workspaces
 //! - Orphan detection and cleanup
 //! - Memory caching for performance
 
@@ -31,8 +31,9 @@ pub struct WorkspaceRegistry {
     /// The primary workspace where Julie was started
     pub primary_workspace: Option<WorkspaceEntry>,
 
-    /// All reference workspaces indexed for cross-project search
-    pub reference_workspaces: HashMap<String, WorkspaceEntry>,
+    /// All known secondary workspaces indexed for cross-project search.
+    #[serde(alias = "reference_workspaces")]
+    pub known_workspaces: HashMap<String, WorkspaceEntry>,
 
     /// Orphaned indexes that need cleanup
     pub orphaned_indexes: HashMap<String, OrphanedIndex>,
@@ -47,7 +48,7 @@ pub struct WorkspaceRegistry {
 /// Configuration for workspace management
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RegistryConfig {
-    /// Default TTL for reference workspaces (in seconds)
+    /// Default TTL for secondary workspaces (in seconds)
     pub default_ttl_seconds: u64,
 
     /// Maximum total index size across all workspaces (in bytes)
@@ -74,7 +75,7 @@ impl Default for RegistryConfig {
 /// Statistics about the registry
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RegistryStatistics {
-    /// Total number of workspaces (primary + reference)
+    /// Total number of workspaces (primary + secondary)
     pub total_workspaces: usize,
 
     /// Total number of orphaned indexes
@@ -157,8 +158,9 @@ pub enum WorkspaceType {
     /// Primary workspace where Julie was started (file watching enabled, never expires)
     Primary,
 
-    /// Reference workspace for cross-project search (no file watching, can expire)
-    Reference,
+    /// Known secondary workspace for cross-project search (no file watching, can expire)
+    #[serde(alias = "Reference")]
+    Known,
 
     /// Session-only workspace (cleared on restart)
     Session,
@@ -233,7 +235,7 @@ impl Default for WorkspaceRegistry {
             version: "1.0".to_string(),
             last_updated: current_timestamp(),
             primary_workspace: None,
-            reference_workspaces: HashMap::new(),
+            known_workspaces: HashMap::new(),
             orphaned_indexes: HashMap::new(),
             config: RegistryConfig::default(),
             statistics: RegistryStatistics::default(),
@@ -254,7 +256,7 @@ impl WorkspaceEntry {
 
         let expires_at = match workspace_type {
             WorkspaceType::Primary => None, // Never expires
-            WorkspaceType::Reference => Some(current_timestamp() + config.default_ttl_seconds),
+            WorkspaceType::Known => Some(current_timestamp() + config.default_ttl_seconds),
             WorkspaceType::Session => {
                 Some(current_timestamp() + 24 * 60 * 60) // 24 hours
             }

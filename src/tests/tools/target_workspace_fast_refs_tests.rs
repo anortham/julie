@@ -1,6 +1,6 @@
-//! Tests for reference workspace fast_refs parity (Task 1)
+//! Tests for target-workspace `fast_refs` parity (Task 1).
 //!
-//! Verifies that `find_references_in_reference_workspace` correctly:
+//! Verifies that `find_references_in_target_workspace` correctly:
 //! - Accepts and applies `limit` parameter (truncation after sorting)
 //! - Accepts and applies `reference_kind` filter (on relationships + identifiers)
 //! - Includes identifier-based reference discovery (Strategy 4)
@@ -120,10 +120,10 @@ mod tests {
             .unwrap();
     }
 
-    /// The function under test -- calls directly into the reference workspace logic
+    /// The function under test calls into the target-workspace logic
     /// with a raw SymbolDatabase, bypassing the handler/workspace machinery.
     ///
-    /// This mirrors what `find_references_in_reference_workspace` does internally
+    /// This mirrors what `find_references_in_target_workspace` does internally
     /// inside the `spawn_blocking` block, but extracted so we can unit-test it.
     fn find_refs_in_db(
         db: &SymbolDatabase,
@@ -242,7 +242,7 @@ mod tests {
     // =========================================================================
 
     #[test]
-    fn test_reference_workspace_limit_truncates_references() {
+    fn test_target_workspace_limit_truncates_references() {
         let files = &[
             "src/lib.rs",
             "src/a.rs",
@@ -301,7 +301,7 @@ mod tests {
     }
 
     #[test]
-    fn test_reference_workspace_limit_applied_after_sorting() {
+    fn test_target_workspace_limit_applied_after_sorting() {
         let files = &["src/lib.rs", "src/a.rs", "src/b.rs", "src/c.rs"];
         let (_tmp, mut db) = setup_db(files);
 
@@ -366,7 +366,7 @@ mod tests {
     // =========================================================================
 
     #[test]
-    fn test_reference_workspace_reference_kind_filters_relationships() {
+    fn test_target_workspace_reference_kind_filters_relationships() {
         let files = &["src/lib.rs", "src/caller.rs", "src/importer.rs"];
         let (_tmp, mut db) = setup_db(files);
 
@@ -436,7 +436,7 @@ mod tests {
     }
 
     #[test]
-    fn test_reference_workspace_reference_kind_filters_identifiers() {
+    fn test_target_workspace_reference_kind_filters_identifiers() {
         let files = &["src/lib.rs", "src/user.rs", "src/types.rs"];
         let (_tmp, mut db) = setup_db(files);
 
@@ -480,7 +480,7 @@ mod tests {
     // =========================================================================
 
     #[test]
-    fn test_reference_workspace_includes_identifier_refs() {
+    fn test_target_workspace_includes_identifier_refs() {
         let files = &["src/lib.rs", "src/main.rs", "src/handler.rs"];
         let (_tmp, mut db) = setup_db(files);
 
@@ -507,7 +507,7 @@ mod tests {
     }
 
     #[test]
-    fn test_reference_workspace_identifier_dedup_against_relationships() {
+    fn test_target_workspace_identifier_dedup_against_relationships() {
         let files = &["src/lib.rs", "src/caller.rs"];
         let (_tmp, mut db) = setup_db(files);
 
@@ -550,7 +550,7 @@ mod tests {
     }
 
     #[test]
-    fn test_reference_workspace_identifier_dedup_against_definitions() {
+    fn test_target_workspace_identifier_dedup_against_definitions() {
         let files = &["src/lib.rs", "src/other.rs"];
         let (_tmp, mut db) = setup_db(files);
 
@@ -574,7 +574,7 @@ mod tests {
     }
 
     #[test]
-    fn test_reference_workspace_identifier_kind_conversion() {
+    fn test_target_workspace_identifier_kind_conversion() {
         let files = &["src/lib.rs", "src/a.rs", "src/b.rs", "src/c.rs"];
         let (_tmp, mut db) = setup_db(files);
 
@@ -604,7 +604,7 @@ mod tests {
     // =========================================================================
 
     #[test]
-    fn test_reference_workspace_combined_limit_and_kind_filter() {
+    fn test_target_workspace_combined_limit_and_kind_filter() {
         let files = &["src/lib.rs", "src/a.rs", "src/b.rs", "src/c.rs", "src/d.rs"];
         let (_tmp, mut db) = setup_db(files);
 
@@ -636,12 +636,12 @@ mod tests {
     // Tests: the actual async function signature change compiles and works
     // =========================================================================
 
-    /// Test that `find_references_in_reference_workspace` accepts the new params.
+    /// Test that `find_references_in_target_workspace` accepts the new params.
     /// This is a compile-time check + basic integration test using a real handler.
     #[tokio::test(flavor = "multi_thread")]
-    async fn test_find_references_in_reference_workspace_accepts_limit_and_kind() {
+    async fn test_find_references_in_target_workspace_accepts_limit_and_kind() {
         use crate::handler::JulieServerHandler;
-        use crate::tools::navigation::reference_workspace;
+        use crate::tools::navigation::target_workspace;
         use std::fs;
 
         // Create primary workspace
@@ -651,7 +651,7 @@ mod tests {
         fs::create_dir_all(&primary_src).unwrap();
         fs::write(primary_src.join("primary.rs"), "pub struct Primary {}").unwrap();
 
-        // Create reference workspace
+        // Create target workspace
         let reference_dir = TempDir::new().unwrap();
         let reference_path = reference_dir.path().to_path_buf();
         let reference_src = reference_path.join("src");
@@ -683,13 +683,13 @@ pub fn caller_two() {
             .await
             .unwrap();
 
-        // Compute reference workspace ID and manually populate its database
+        // Compute target workspace ID and manually populate its database
         // (live indexing via manage_workspace would trigger expensive analysis;
         //  this test only needs specific symbols present to verify query behavior)
         let workspace = handler.get_workspace().await.unwrap().unwrap();
         let workspace_id =
             crate::workspace::registry::generate_workspace_id(&reference_path.to_string_lossy())
-                .expect("Should compute workspace ID from reference path");
+                .expect("Should compute workspace ID from target path");
 
         let ref_db_path = workspace.workspace_db_path(&workspace_id);
         fs::create_dir_all(ref_db_path.parent().unwrap()).unwrap();
@@ -724,10 +724,10 @@ pub fn caller_two() {
                 .unwrap();
         }
 
-        // Call find_references_in_reference_workspace with the new params
+        // Call find_references_in_target_workspace with the new params.
         // This test validates that the function signature compiles with limit + reference_kind
         let result: Result<(Vec<Symbol>, Vec<Relationship>), anyhow::Error> =
-            reference_workspace::find_references_in_reference_workspace(
+            target_workspace::find_references_in_target_workspace(
                 &handler,
                 workspace_id,
                 "compute",

@@ -1,7 +1,7 @@
 //! Symbol filtering logic - Extract symbols by depth, target, and limit
 //!
 //! This module contains reusable functions for filtering symbols that are used
-//! by both primary and reference workspace symbol retrieval. The filtering
+//! by both primary and explicit-workspace symbol retrieval. The filtering
 //! happens in three stages: depth filtering, target filtering, and limit filtering.
 //!
 //! Internally, all filter stages operate on `Vec<usize>` indices into the original

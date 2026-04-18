@@ -1,0 +1,27 @@
+<div class="julie-card" style="margin-top: 1rem;">
+  <div style="display: flex; justify-content: space-between; gap: 0.75rem; align-items: baseline; margin-bottom: 0.75rem; flex-wrap: wrap;">
+    <p class="label-text" style="margin: 0;">Recent Cleanup</p>
+    <span style="color: var(--julie-text-muted); font-size: 0.8rem;">Newest 5 events</span>
+  </div>
+
+  {% if cleanup_events | length == 0 %}
+    <p style="color: var(--julie-text-muted); font-size: 0.9rem;">No recent cleanup activity.</p>
+  {% else %}
+    <div style="display: grid; gap: 0.75rem;">
+      {% for event in cleanup_events %}
+        <div style="padding-top: {% if loop.first %}0{% else %}0.75rem{% endif %}; border-top: {% if loop.first %}none{% else %}1px solid rgba(255, 255, 255, 0.06){% endif %};">
+          <div style="display: flex; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap; align-items: baseline;">
+            <span class="mono" style="font-weight: 600;">{{ event.workspace_id }}</span>
+            <span class="mono" style="color: var(--julie-text-muted); font-size: 0.8rem;">{{ event.timestamp_display }}</span>
+          </div>
+          <div style="margin-top: 0.2rem; color: var(--julie-text); font-size: 0.9rem;">
+            {{ event.action }} &middot; {{ event.reason }}
+          </div>
+          <div class="mono" style="margin-top: 0.2rem; color: var(--julie-text-muted); font-size: 0.8rem; word-break: break-all;">
+            {{ event.path }}
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+</div>

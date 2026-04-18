@@ -1,6 +1,6 @@
-//! Reference workspace symbol retrieval
+//! Target workspace symbol retrieval.
 //!
-//! Handles getting symbols from reference (non-primary) workspaces.
+//! Handles getting symbols from explicit non-primary workspaces.
 
 use crate::mcp_compat::{CallToolResult, CallToolResultExt, Content};
 use anyhow::Result;
@@ -11,25 +11,25 @@ use super::filtering::apply_all_filters;
 use super::formatting::format_symbol_response;
 use crate::handler::JulieServerHandler;
 
-/// Get symbols from a reference workspace
-pub async fn get_symbols_from_reference(
+/// Get symbols from a target workspace.
+pub async fn get_symbols_from_target_workspace(
     handler: &JulieServerHandler,
     file_path: &str,
     max_depth: u32,
     target: Option<&str>,
     limit: Option<u32>,
     mode: &str,
-    ref_workspace_id: String,
+    target_workspace_id: String,
 ) -> Result<CallToolResult> {
     info!(
-        "📋 Getting symbols from reference workspace: {} in file: {} (depth: {})",
-        ref_workspace_id, file_path, max_depth
+        "📋 Getting symbols from workspace: {} in file: {} (depth: {})",
+        target_workspace_id, file_path, max_depth
     );
 
-    // Use handler helpers for DB access. Reference root lookup is only needed
-    // when we must normalize relative paths against the reference workspace.
+    // Use handler helpers for DB access. Workspace root lookup is only needed
+    // when we must normalize relative paths against the target workspace.
     let db_arc = handler
-        .get_database_for_workspace(&ref_workspace_id)
+        .get_database_for_workspace(&target_workspace_id)
         .await?;
 
     let (query_path, absolute_path) = if std::path::Path::new(file_path).is_absolute() {
@@ -39,11 +39,11 @@ pub async fn get_symbols_from_reference(
             .unwrap_or_else(|_| std::path::PathBuf::from(file_path));
 
         let query_path = match handler
-            .get_workspace_root_for_target(&ref_workspace_id)
+            .get_workspace_root_for_target(&target_workspace_id)
             .await
         {
-            Ok(ref_workspace_root) => {
-                crate::utils::paths::to_relative_unix_style(&canonical, &ref_workspace_root)
+            Ok(target_workspace_root) => {
+                crate::utils::paths::to_relative_unix_style(&canonical, &target_workspace_root)
                     .unwrap_or_else(|_| file_path.to_string())
             }
             Err(_) => file_path.to_string(),
@@ -51,24 +51,24 @@ pub async fn get_symbols_from_reference(
 
         (query_path, canonical.to_string_lossy().to_string())
     } else {
-        let ref_workspace_root = handler
-            .get_workspace_root_for_target(&ref_workspace_id)
+        let target_workspace_root = handler
+            .get_workspace_root_for_target(&target_workspace_id)
             .await?;
 
         debug!(
-            "🗄️ Reference workspace DB via handler helper, root: {}",
-            ref_workspace_root.display()
+            "🗄️ Target workspace DB via handler helper, root: {}",
+            target_workspace_root.display()
         );
 
-        // Relative path input - normalize (handle ./ and ../) against the reference root,
+        // Relative path input - normalize (handle ./ and ../) against the target root,
         // then convert back to relative Unix-style for the SQLite query.
-        let absolute = ref_workspace_root
+        let absolute = target_workspace_root
             .join(file_path)
             .canonicalize()
-            .unwrap_or_else(|_| ref_workspace_root.join(file_path));
+            .unwrap_or_else(|_| target_workspace_root.join(file_path));
 
         let relative_unix =
-            crate::utils::paths::to_relative_unix_style(&absolute, &ref_workspace_root)
+            crate::utils::paths::to_relative_unix_style(&absolute, &target_workspace_root)
                 .unwrap_or_else(|_| {
                     warn!("Failed to convert path to relative: {}", file_path);
                     file_path.replace('\\', "/")
@@ -78,8 +78,8 @@ pub async fn get_symbols_from_reference(
     };
 
     debug!(
-        "🔍 Path normalization: '{}' -> query='{}', absolute='{}' (ref workspace: {})",
-        file_path, query_path, absolute_path, ref_workspace_id
+        "🔍 Path normalization: '{}' -> query='{}', absolute='{}' (workspace: {})",
+        file_path, query_path, absolute_path, target_workspace_id
     );
 
     // Check if file exists before querying database

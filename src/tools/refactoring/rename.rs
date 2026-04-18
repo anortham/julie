@@ -74,7 +74,7 @@ impl SmartRefactorTool {
             crate::tools::navigation::resolution::WorkspaceTarget::Primary => {
                 Some(handler.primary_database().await?)
             }
-            crate::tools::navigation::resolution::WorkspaceTarget::Reference(_) => None,
+            crate::tools::navigation::resolution::WorkspaceTarget::Target(_) => None,
         };
         let (definitions, references) = refs_tool
             .find_references_and_definitions(handler, workspace_target, primary_db)

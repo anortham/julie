@@ -72,7 +72,7 @@ pub struct FastSearchTool {
         deserialize_with = "crate::utils::serde_lenient::deserialize_option_bool_lenient"
     )]
     pub exclude_tests: Option<bool>,
-    /// Workspace filter: "primary" (default) or a reference workspace ID
+    /// Workspace filter: "primary" (default) or a workspace ID
     #[serde(default = "default_workspace")]
     pub workspace: Option<String>,
     /// Return format: "full" (default, code context included) or "locations" (file:line only, 70-90% fewer tokens)
@@ -124,7 +124,7 @@ impl FastSearchTool {
 
         // Extract workspace ID for health check
         let target_workspace_id = match &workspace_target {
-            WorkspaceTarget::Reference(id) => Some(id.clone()),
+            WorkspaceTarget::Target(id) => Some(id.clone()),
             _ => None,
         };
 
@@ -223,7 +223,7 @@ impl FastSearchTool {
                         return Ok(CallToolResult::text_content(vec![Content::text(message)]));
                     }
                 }
-                WorkspaceTarget::Reference(id) => {
+                WorkspaceTarget::Target(id) => {
                     handler.get_database_for_workspace(id).await?;
                     if handler.get_search_index_for_workspace(id).await?.is_none() {
                         let message = format!(
@@ -260,7 +260,7 @@ impl FastSearchTool {
                     return Ok(CallToolResult::text_content(vec![Content::text(message)]));
                 }
             }
-            WorkspaceTarget::Reference(id) => {
+            WorkspaceTarget::Target(id) => {
                 handler.get_database_for_workspace(id).await?;
                 if handler.get_search_index_for_workspace(id).await?.is_none() {
                     let message = format!(
@@ -293,7 +293,7 @@ impl FastSearchTool {
         // Convert WorkspaceTarget to Option<Vec<String>> for text_search_impl
         let workspace_ids = match workspace_target {
             WorkspaceTarget::Primary => Some(vec![handler.require_primary_workspace_identity()?]),
-            WorkspaceTarget::Reference(id) => Some(vec![id]),
+            WorkspaceTarget::Target(id) => Some(vec![id]),
         };
         let (symbols, relaxed, pre_trunc_total) = text_search::text_search_impl(
             &self.query,

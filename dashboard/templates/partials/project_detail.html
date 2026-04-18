@@ -1,6 +1,5 @@
 <div class="columns" style="margin: 0;">
 
-  <!-- Column 1: Index Stats -->
   <div class="column">
     <p class="label-text" style="margin-bottom: 0.5rem;">Index Stats</p>
     <table class="table is-fullwidth is-narrow" style="background: transparent; font-size: 0.85rem;">
@@ -35,13 +34,41 @@
         {% endif %}
         <tr>
           <td style="color: var(--julie-text-muted); border: none; padding: 0.25rem 0.5rem 0.25rem 0;">Sessions</td>
-          <td style="border: none; padding: 0.25rem 0;">{{ workspace.session_count }}</td>
+          <td style="border: none; padding: 0.25rem 0;">{{ workspace.session_state.active_session_count }}</td>
         </tr>
       </tbody>
     </table>
   </div>
 
-  <!-- Column 2: Symbol Stats -->
+  <div class="column">
+    <p class="label-text" style="margin-bottom: 0.5rem;">Workspace State</p>
+    <table class="table is-fullwidth is-narrow" style="background: transparent; font-size: 0.85rem;">
+      <tbody>
+        <tr>
+          <td style="color: var(--julie-text-muted); border: none; padding: 0.25rem 0.5rem 0.25rem 0;">Session state</td>
+          <td style="border: none; padding: 0.25rem 0;">{{ workspace.session_state.badge_html | safe }}</td>
+        </tr>
+        <tr>
+          <td style="color: var(--julie-text-muted); border: none; padding: 0.25rem 0.5rem 0.25rem 0;">Current primaries</td>
+          <td style="border: none; padding: 0.25rem 0;">{{ workspace.session_state.current_session_count }}</td>
+        </tr>
+        <tr>
+          <td style="color: var(--julie-text-muted); border: none; padding: 0.25rem 0.5rem 0.25rem 0;">Path health</td>
+          <td style="border: none; padding: 0.25rem 0;">
+            {% if workspace.session_state.path_missing %}
+              <span class="badge-error">Missing</span>
+            {% else %}
+              <span class="badge-ready">Present</span>
+            {% endif %}
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <p style="margin-top: 0.35rem; color: var(--julie-text-muted); font-size: 0.85rem;">
+      {{ workspace.session_state.detail }}
+    </p>
+  </div>
+
   {% if health %}
   <div class="column">
     <p class="label-text" style="margin-bottom: 0.5rem;">Symbol Stats</p>
@@ -61,26 +88,10 @@
   </div>
   {% endif %}
 
-  <!-- Column 3: References -->
-  <div class="column">
-    <p class="label-text" style="margin-bottom: 0.5rem;">Reference Workspaces</p>
-    {% if references | length > 0 %}
-      <div class="tags">
-        {% for ref in references %}
-          <span class="tag is-dark mono">{{ ref.workspace_id }}</span>
-        {% endfor %}
-      </div>
-    {% else %}
-      <span style="color: var(--julie-text-muted); font-size: 0.85rem;">None configured</span>
-    {% endif %}
-  </div>
-
 </div>
 
-<!-- Language distribution -->
 {% include "partials/language_detail.html" %}
 
-<!-- Symbol kind breakdown -->
 {% if kind_bar_html %}
 <div style="margin-top: 0.75rem;">
   <p class="label-text" style="margin-bottom: 0.3rem; font-size: 0.8rem;">Symbol Kinds</p>
@@ -88,14 +99,40 @@
 </div>
 {% endif %}
 
-<!-- Action buttons -->
-<div style="margin-top: 0.75rem; display: flex; gap: 0.5rem;">
-  <a href="/metrics?workspace={{ workspace_id }}"
+<div style="margin-top: 0.75rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
+  <form method="post"
+        action="/projects/{{ workspace.workspace_id }}/open"
+        {% if workspace.session_state.path_missing %}onsubmit="return confirm('Prune the stale workspace row and delete its index?');"{% endif %}>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button type="submit" class="button is-dark is-small" style="font-size: 0.78rem;">
+      {% if workspace.session_state.path_missing %}Prune{% else %}Open{% endif %}
+    </button>
+  </form>
+  <form method="post" action="/projects/{{ workspace.workspace_id }}/refresh">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button type="submit"
+            class="button is-dark is-small"
+            style="font-size: 0.78rem;"
+            {% if workspace.session_state.path_missing %}disabled{% endif %}>
+      Refresh
+    </button>
+  </form>
+  <form method="post"
+        action="/projects/{{ workspace.workspace_id }}/delete"
+        onsubmit="return confirm('Delete this workspace index and registry row?');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button type="submit"
+            class="button is-small"
+            style="font-size: 0.78rem; background: rgba(212, 70, 88, 0.15); color: var(--julie-danger); border-color: rgba(212, 70, 88, 0.25);">
+      Delete
+    </button>
+  </form>
+  <a href="/metrics?workspace={{ workspace.workspace_id }}"
      class="button is-dark is-small"
      style="font-size: 0.78rem;">
     View Metrics &rarr;
   </a>
-  <a href="/intelligence/{{ workspace_id }}"
+  <a href="/intelligence/{{ workspace.workspace_id }}"
      class="button is-dark is-small"
      style="font-size: 0.78rem;">
     Intelligence &rarr;

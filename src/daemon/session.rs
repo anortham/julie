@@ -48,6 +48,17 @@ impl SessionLifecycleHandle {
     pub fn set_phase(&self, phase: SessionLifecyclePhase) {
         self.tracker.set_phase(&self.session_id, phase);
     }
+
+    pub fn set_current_workspace(&self, workspace_id: Option<String>) {
+        self.tracker
+            .set_current_workspace(&self.session_id, workspace_id);
+    }
+}
+
+#[derive(Debug, Clone)]
+struct SessionRecord {
+    phase: SessionLifecyclePhase,
+    current_workspace_id: Option<String>,
 }
 
 /// Tracks active IPC sessions connected to the daemon.
@@ -56,7 +67,7 @@ impl SessionLifecycleHandle {
 /// the UUID is removed when the session ends (normally or on error).
 /// A `Notify` wakes any `drain_sessions` waiter whenever the count drops.
 pub struct SessionTracker {
-    sessions: RwLock<HashMap<String, SessionLifecyclePhase>>,
+    sessions: RwLock<HashMap<String, SessionRecord>>,
     notify: Arc<Notify>,
 }
 
@@ -73,7 +84,13 @@ impl SessionTracker {
     pub fn add_session(&self) -> String {
         let id = uuid::Uuid::new_v4().to_string();
         let mut sessions = self.sessions.write().unwrap_or_else(|p| p.into_inner());
-        sessions.insert(id.clone(), SessionLifecyclePhase::Connecting);
+        sessions.insert(
+            id.clone(),
+            SessionRecord {
+                phase: SessionLifecyclePhase::Connecting,
+                current_workspace_id: None,
+            },
+        );
         id
     }
 
@@ -81,7 +98,18 @@ impl SessionTracker {
         let mut sessions = self.sessions.write().unwrap_or_else(|p| p.into_inner());
         match sessions.get_mut(id) {
             Some(current) => {
-                *current = phase;
+                current.phase = phase;
+                true
+            }
+            None => false,
+        }
+    }
+
+    pub fn set_current_workspace(&self, id: &str, workspace_id: Option<String>) -> bool {
+        let mut sessions = self.sessions.write().unwrap_or_else(|p| p.into_inner());
+        match sessions.get_mut(id) {
+            Some(current) => {
+                current.current_workspace_id = workspace_id;
                 true
             }
             None => false,
@@ -93,15 +121,15 @@ impl SessionTracker {
             .read()
             .unwrap_or_else(|p| p.into_inner())
             .get(id)
-            .copied()
+            .map(|record| record.phase)
     }
 
     pub fn phase_counts(&self) -> SessionPhaseCounts {
         let sessions = self.sessions.read().unwrap_or_else(|p| p.into_inner());
         let mut counts = SessionPhaseCounts::default();
 
-        for phase in sessions.values().copied() {
-            match phase {
+        for record in sessions.values() {
+            match record.phase {
                 SessionLifecyclePhase::Connecting => counts.connecting += 1,
                 SessionLifecyclePhase::Bound => counts.bound += 1,
                 SessionLifecyclePhase::Serving => counts.serving += 1,
@@ -117,6 +145,17 @@ impl SessionTracker {
             tracker: Arc::clone(self),
             session_id: id.to_string(),
         }
+    }
+
+    pub fn current_workspace_counts(&self) -> HashMap<String, usize> {
+        let sessions = self.sessions.read().unwrap_or_else(|p| p.into_inner());
+        let mut counts = HashMap::new();
+        for record in sessions.values() {
+            if let Some(workspace_id) = record.current_workspace_id.as_ref() {
+                *counts.entry(workspace_id.clone()).or_insert(0) += 1;
+            }
+        }
+        counts
     }
 
     /// Remove a session by ID. No-op if the ID doesn't exist.

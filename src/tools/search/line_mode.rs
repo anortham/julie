@@ -37,7 +37,7 @@ pub async fn line_mode_search(
     // Display label for search result headers
     let workspace_label = match workspace_target {
         WorkspaceTarget::Primary => "primary".to_string(),
-        WorkspaceTarget::Reference(id) => id.clone(),
+        WorkspaceTarget::Target(id) => id.clone(),
     };
 
     let match_strategy = line_match_strategy(query);
@@ -135,11 +135,11 @@ pub async fn line_mode_search(
             })
             .await??
         }
-        WorkspaceTarget::Reference(ref_id) => {
-            // Search reference workspace using handler helpers for DB + SearchIndex access
-            let db_arc = handler.get_database_for_workspace(ref_id).await?;
-            let si_arc = handler.get_search_index_for_workspace(ref_id).await?;
-            let ref_workspace_id = ref_id.clone();
+        WorkspaceTarget::Target(workspace_id) => {
+            // Search the explicit workspace using handler helpers for DB + SearchIndex access.
+            let db_arc = handler.get_database_for_workspace(workspace_id).await?;
+            let si_arc = handler.get_search_index_for_workspace(workspace_id).await?;
+            let target_workspace_id = workspace_id.clone();
 
             let query_clone = query.to_string();
             let strategy = match_strategy.clone();
@@ -152,8 +152,8 @@ pub async fn line_mode_search(
                     None => {
                         return Err(anyhow::anyhow!(
                             "Line-level content search requires a Tantivy index for workspace '{}'. Run manage_workspace(operation=\"refresh\", workspace_id=\"{}\") first.",
-                            ref_workspace_id,
-                            ref_workspace_id
+                            target_workspace_id,
+                            target_workspace_id
                         ));
                     }
                 };
@@ -219,7 +219,7 @@ pub async fn line_mode_search(
                 Ok(matches)
             })
             .await
-            .map_err(|e| anyhow::anyhow!("Failed to spawn reference workspace search: {}", e))??
+            .map_err(|e| anyhow::anyhow!("Failed to spawn target workspace search: {}", e))??
         }
     };
 

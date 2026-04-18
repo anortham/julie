@@ -1,6 +1,6 @@
-//! Reference workspace database utilities
+//! Target workspace database utilities.
 //!
-//! This module handles database operations for reference workspaces
+//! This module handles database operations for explicit workspace targets
 //! (workspaces other than the primary one).
 
 use anyhow::Result;
@@ -11,7 +11,7 @@ use crate::extractors::{Relationship, RelationshipKind, Symbol};
 use crate::handler::JulieServerHandler;
 use crate::utils::cross_language_intelligence::generate_naming_variants;
 
-/// Find references in a reference workspace using handler helpers for DB access.
+/// Find references in a target workspace using handler helpers for DB access.
 ///
 /// Supports the same strategies as the primary workspace path:
 /// 1. Exact name lookup
@@ -20,21 +20,21 @@ use crate::utils::cross_language_intelligence::generate_naming_variants;
 /// 4. Identifier-based refs (optionally filtered by `reference_kind`)
 ///
 /// Results are sorted by confidence (descending) then truncated to `limit`.
-pub async fn find_references_in_reference_workspace(
+pub async fn find_references_in_target_workspace(
     handler: &JulieServerHandler,
-    ref_workspace_id: String,
+    target_workspace_id: String,
     symbol: &str,
     limit: u32,
     reference_kind: Option<&str>,
 ) -> Result<(Vec<Symbol>, Vec<Relationship>)> {
     // Use handler helper for DB access
     let db_arc = handler
-        .get_database_for_workspace(&ref_workspace_id)
+        .get_database_for_workspace(&target_workspace_id)
         .await?;
 
     debug!(
-        "Querying reference workspace DB via handler helper: {}",
-        ref_workspace_id
+        "Querying target workspace DB via handler helper: {}",
+        target_workspace_id
     );
 
     let symbol_owned = symbol.to_string();
@@ -49,10 +49,7 @@ pub async fn find_references_in_reference_workspace(
         // Strategy 1: Find exact matches by name
         let mut defs = ref_db.get_symbols_by_name(&symbol_owned)?;
 
-        debug!(
-            "Reference workspace search found {} exact matches",
-            defs.len()
-        );
+        debug!("Target workspace search found {} exact matches", defs.len());
 
         // Strategy 2: Cross-language Intelligence Layer - naming convention variants
         let variants = generate_naming_variants(&symbol_owned);
@@ -184,7 +181,7 @@ pub async fn find_references_in_reference_workspace(
     references.truncate(limit as usize);
 
     debug!(
-        "Reference workspace search: {} definitions, {} references (limit: {})",
+        "Target workspace search: {} definitions, {} references (limit: {})",
         definitions.len(),
         references.len(),
         limit
@@ -193,4 +190,4 @@ pub async fn find_references_in_reference_workspace(
     Ok((definitions, references))
 }
 
-// find_definitions_in_reference_workspace removed — fast_goto cut in toolset redesign
+// find_definitions_in_target_workspace removed; fast_goto left the toolset earlier.

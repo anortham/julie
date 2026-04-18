@@ -13,7 +13,7 @@ mod body_extraction;
 pub(crate) mod filtering;
 pub(crate) mod formatting;
 mod primary;
-mod reference;
+mod target_workspace;
 
 use crate::mcp_compat::CallToolResult;
 use anyhow::Result;
@@ -73,20 +73,20 @@ pub struct GetSymbolsTool {
 
 impl GetSymbolsTool {
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
-        // Resolve workspace parameter (primary vs reference workspace)
+        // Resolve workspace parameter (primary vs explicit workspace)
         let workspace_target = resolve_workspace_filter(self.workspace.as_deref(), handler).await?;
 
         match workspace_target {
-            WorkspaceTarget::Reference(ref_workspace_id) => {
-                debug!("🎯 Querying reference workspace: {}", ref_workspace_id);
-                reference::get_symbols_from_reference(
+            WorkspaceTarget::Target(target_workspace_id) => {
+                debug!("🎯 Querying workspace: {}", target_workspace_id);
+                target_workspace::get_symbols_from_target_workspace(
                     handler,
                     &self.file_path,
                     self.max_depth,
                     self.target.as_deref(),
                     self.limit,
                     self.mode.as_deref().unwrap_or("structure"),
-                    ref_workspace_id,
+                    target_workspace_id,
                 )
                 .await
             }

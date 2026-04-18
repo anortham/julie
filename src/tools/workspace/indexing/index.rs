@@ -63,7 +63,7 @@ impl ManageWorkspaceTool {
             debug!("Clearing primary workspace for force reindex");
             // Database will be cleared during workspace initialization
         } else if force_reindex {
-            debug!("Force reindexing reference workspace");
+            debug!("Force reindexing target workspace");
         }
 
         // Use blacklist-based file discovery
@@ -191,8 +191,8 @@ impl ManageWorkspaceTool {
         debug!("🐛 [INDEX TRACE T] run_indexing_pipeline completed");
 
         // 🚀 NEW ARCHITECTURE: Get final counts from DATABASE, not memory!
-        // 🔴 CRITICAL FIX: Query the CORRECT database for reference vs primary workspaces!
-        // Reference workspaces have their own separate databases at indexes/{workspace_id}/db/symbols.db
+        // 🔴 CRITICAL FIX: Query the correct database for target vs primary workspaces.
+        // Target workspaces have their own separate databases at indexes/{workspace_id}/db/symbols.db
         let (total_symbols, total_files_in_db, total_relationships) = {
             let db_to_query = route.database_for_read(handler).await?;
 

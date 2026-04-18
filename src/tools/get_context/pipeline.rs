@@ -531,7 +531,7 @@ fn build_neighbor_entries(
 }
 
 /// Handler entry point: extracts DB and SearchIndex from handler, delegates to run_pipeline.
-/// Supports both primary and reference workspaces.
+/// Supports both the primary workspace and explicit workspace targets.
 pub async fn run(tool: &GetContextTool, handler: &JulieServerHandler) -> Result<String> {
     let workspace_target = resolve_workspace_filter(tool.workspace.as_deref(), handler).await?;
 
@@ -542,26 +542,25 @@ pub async fn run(tool: &GetContextTool, handler: &JulieServerHandler) -> Result<
     let format = tool.format.clone();
 
     match workspace_target {
-        WorkspaceTarget::Reference(ref_workspace_id) => {
-            // Reference workspace: use handler helpers for DB + SearchIndex access
-            debug!(
-                "get_context: using reference workspace {}",
-                ref_workspace_id
-            );
+        WorkspaceTarget::Target(target_workspace_id) => {
+            // Target workspace: use handler helpers for DB + SearchIndex access.
+            debug!("get_context: using workspace {}", target_workspace_id);
 
-            // Get Arcs for reference workspace DB and search index
+            // Get Arcs for target workspace DB and search index.
             let db_arc = handler
-                .get_database_for_workspace(&ref_workspace_id)
+                .get_database_for_workspace(&target_workspace_id)
                 .await?;
             let si_arc = handler
-                .get_search_index_for_workspace(&ref_workspace_id)
+                .get_search_index_for_workspace(&target_workspace_id)
                 .await?;
 
             let embedding_provider = handler.embedding_provider().await;
 
             let result = tokio::task::spawn_blocking(move || -> Result<String> {
                 let si = si_arc.ok_or_else(|| {
-                    anyhow::anyhow!("No search index for reference workspace. Run manage_workspace(operation=\"refresh\") first.")
+                    anyhow::anyhow!(
+                        "No search index for workspace. Run manage_workspace(operation=\"refresh\") first."
+                    )
                 })?;
                 // Lock order: SearchIndex first, then DB (matches text_search.rs and Primary arm)
                 let index = si

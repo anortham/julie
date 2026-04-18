@@ -4,6 +4,10 @@ use anyhow::{Result, anyhow};
 use tracing::info;
 
 use super::ManageWorkspaceTool;
+use super::cleanup::{
+    CLEANUP_ACTION_AUTO_PRUNE, CLEANUP_REASON_MISSING_PATH, MISSING_PATH_RECHECK_DELAY,
+    WorkspaceDeleteOutcome, delete_workspace_if_allowed, path_missing_after_grace,
+};
 use super::refresh_stats::RefreshWorkspaceOutcome;
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::{CallToolResult, CallToolResultExt, Content};
@@ -86,6 +90,40 @@ impl ManageWorkspaceTool {
             let row = db
                 .get_workspace(workspace_id)?
                 .ok_or_else(|| anyhow!("Workspace not found: {workspace_id}"))?;
+            let row_path = PathBuf::from(&row.path);
+            if path_missing_after_grace(&row_path, MISSING_PATH_RECHECK_DELAY).await? {
+                let cleanup_result = delete_workspace_if_allowed(
+                    db,
+                    handler.workspace_pool.as_ref(),
+                    handler.watcher_pool.as_ref(),
+                    workspace_id,
+                    CLEANUP_ACTION_AUTO_PRUNE,
+                    CLEANUP_REASON_MISSING_PATH,
+                )
+                .await?;
+                return Ok(match cleanup_result {
+                    WorkspaceDeleteOutcome::Deleted { workspace_id, path } => {
+                        CallToolResult::text_content(vec![Content::text(format!(
+                            "Workspace Pruned\nWorkspace ID: {}\nPath: {}\nThe workspace path is gone, so the registry row and index were removed.",
+                            workspace_id, path
+                        ))])
+                    }
+                    WorkspaceDeleteOutcome::Blocked {
+                        workspace_id,
+                        path,
+                        reason,
+                    } => CallToolResult::text_content(vec![Content::text(format!(
+                        "Workspace Missing But Still Active\nWorkspace ID: {}\nPath: {}\nCleanup blocked: {}",
+                        workspace_id, path, reason
+                    ))]),
+                    WorkspaceDeleteOutcome::NotFound { workspace_id } => {
+                        CallToolResult::text_content(vec![Content::text(format!(
+                            "Workspace not found: {}",
+                            workspace_id
+                        ))])
+                    }
+                });
+            }
             let workspace_id = row.workspace_id;
             let row_path = row.path;
             let status = row.status;

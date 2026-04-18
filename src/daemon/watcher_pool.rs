@@ -101,6 +101,31 @@ impl WatcherPool {
         guard.get(workspace_id).map(|e| e.ref_count).unwrap_or(0)
     }
 
+    /// Remove a watcher entry immediately when it is inactive.
+    ///
+    /// Returns `Ok(true)` when the entry was removed or did not exist.
+    /// Returns `Ok(false)` when the watcher is still in use.
+    pub async fn remove_if_inactive(&self, workspace_id: &str) -> anyhow::Result<bool> {
+        let mut guard = self.entries.write().await;
+        let Some(entry) = guard.get(workspace_id) else {
+            return Ok(true);
+        };
+        if entry.ref_count > 0 {
+            return Ok(false);
+        }
+
+        let mut watcher = guard
+            .remove(workspace_id)
+            .and_then(|mut entry| entry.watcher.take());
+        drop(guard);
+
+        if let Some(watcher) = watcher.as_mut() {
+            watcher.stop().await?;
+        }
+
+        Ok(true)
+    }
+
     /// Returns whether a grace deadline is currently set for this workspace.
     pub async fn has_grace_deadline(&self, workspace_id: &str) -> bool {
         let guard = self.entries.read().await;
@@ -243,7 +268,7 @@ impl WatcherPool {
 
     /// Pause event dispatch for a workspace's watcher (Fix C part c).
     ///
-    /// Used during force reindex of a reference workspace to prevent the watcher
+    /// Used during force reindex of a non-primary workspace to prevent the watcher
     /// from dispatching concurrent incremental updates to the same DB.
     pub async fn pause_workspace(&self, workspace_id: &str) {
         let guard = self.entries.read().await;

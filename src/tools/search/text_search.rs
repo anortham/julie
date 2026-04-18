@@ -43,8 +43,8 @@ pub async fn text_search_impl(
     let current_primary_id = handler.current_workspace_id();
     let loaded_workspace_id = handler.loaded_workspace_id();
 
-    // Determine if we're targeting a reference workspace
-    let ref_workspace_id = if let Some(ref ids) = workspace_ids {
+    // Determine if we're targeting an explicit non-primary workspace.
+    let target_workspace_id = if let Some(ref ids) = workspace_ids {
         if let Some(id) = ids.first() {
             let loaded_startup_without_primary =
                 current_primary_id.is_none() && loaded_workspace_id.as_ref() == Some(id);
@@ -62,8 +62,8 @@ pub async fn text_search_impl(
     };
 
     debug!(
-        "🔍 Tantivy text search: '{}' (target: {}, ref_workspace: {:?})",
-        query, search_target, ref_workspace_id
+        "🔍 Tantivy text search: '{}' (target: {}, workspace: {:?})",
+        query, search_target, target_workspace_id
     );
 
     // Resolve exclude_tests smart default
@@ -83,17 +83,17 @@ pub async fn text_search_impl(
     let limit_usize = limit as usize;
     let search_target_clone = search_target.to_string();
 
-    // Reference workspace: use handler helpers for DB + SearchIndex access
-    if let Some(ref_id) = ref_workspace_id {
-        let ref_embedding_provider = handler.embedding_provider().await;
-        let db_arc = handler.get_database_for_workspace(&ref_id).await?;
-        let si_arc = handler.get_search_index_for_workspace(&ref_id).await?;
+    // Target workspace: use handler helpers for DB + SearchIndex access.
+    if let Some(target_id) = target_workspace_id {
+        let target_embedding_provider = handler.embedding_provider().await;
+        let db_arc = handler.get_database_for_workspace(&target_id).await?;
+        let si_arc = handler.get_search_index_for_workspace(&target_id).await?;
 
         let results = tokio::task::spawn_blocking(move || -> Result<(Vec<Symbol>, bool, usize)> {
             let si_arc = match si_arc {
                 Some(si) => si,
                 None => {
-                    debug!("No search index for reference workspace, returning empty");
+                    debug!("No search index for target workspace, returning empty");
                     return Ok((Vec::new(), false, 0));
                 }
             };
@@ -111,7 +111,7 @@ pub async fn text_search_impl(
                     limit_usize,
                     &index,
                     Some(&db_lock),
-                    ref_embedding_provider.as_deref(),
+                    target_embedding_provider.as_deref(),
                 )
             } else {
                 content_search_with_index(
@@ -128,7 +128,7 @@ pub async fn text_search_impl(
         return Ok(post_filter_results(
             results,
             file_pattern,
-            "Reference workspace",
+            "Target workspace",
         ));
     }
 
@@ -188,7 +188,7 @@ fn post_filter_results(
 }
 
 // ---------------------------------------------------------------------------
-// Shared search helpers (used by both reference and primary workspace paths)
+// Shared search helpers (used by both explicit-workspace and primary paths)
 // ---------------------------------------------------------------------------
 
 /// Remove test symbols when `exclude` is `true`.

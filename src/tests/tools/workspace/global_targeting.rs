@@ -127,7 +127,7 @@ async fn setup_known_reference_search_workspace() -> (tempfile::TempDir, JulieSe
     let target_id = generate_workspace_id(&target_path_str).unwrap();
     daemon_db
         .upsert_workspace(&target_id, &target_path_str, "ready")
-        .expect("reference workspace should be registered in daemon db");
+        .expect("target workspace should be registered in daemon db");
     ManageWorkspaceTool {
         operation: "index".to_string(),
         path: Some(target_path_str),
@@ -138,7 +138,7 @@ async fn setup_known_reference_search_workspace() -> (tempfile::TempDir, JulieSe
     }
     .call_tool(&seed_handler)
     .await
-    .expect("reference workspace should index");
+    .expect("target workspace should index");
     mark_index_ready(&seed_handler).await;
 
     let handler = JulieServerHandler::new_with_shared_workspace(
@@ -164,7 +164,7 @@ async fn test_known_ready_workspace_auto_activates_for_fast_search() {
 
     assert!(
         !handler.is_workspace_active(&target_id).await,
-        "fresh session should start with inactive reference workspace"
+        "fresh session should start with an inactive target workspace"
     );
 
     let result = FastSearchTool {
@@ -185,7 +185,7 @@ async fn test_known_ready_workspace_auto_activates_for_fast_search() {
     );
     assert!(
         handler.is_workspace_active(&target_id).await,
-        "reference workspace should be active after first targeted query"
+        "target workspace should be active after first targeted query"
     );
 }
 
@@ -225,7 +225,7 @@ async fn test_known_pending_workspace_requires_open_before_fast_search() {
 }
 
 #[tokio::test]
-async fn test_persisted_pairing_metadata_does_not_preactivate_known_workspace() {
+async fn test_known_workspace_row_does_not_preactivate_on_new_session() {
     let (temp_dir, handler, target_id) = setup_known_reference_search_workspace().await;
     let daemon_db = handler
         .daemon_db
@@ -235,10 +235,6 @@ async fn test_persisted_pairing_metadata_does_not_preactivate_known_workspace() 
     let primary_id = handler
         .loaded_workspace_id()
         .expect("test handler should expose primary workspace id");
-
-    daemon_db
-        .add_reference(&primary_id, &target_id)
-        .expect("persisted pairing should be recorded");
 
     let primary_root = temp_dir.path().join("primary").canonicalize().unwrap();
     let primary_ws = handler
@@ -265,7 +261,7 @@ async fn test_persisted_pairing_metadata_does_not_preactivate_known_workspace() 
 
     assert!(
         !fresh_handler.is_workspace_active(&target_id).await,
-        "persisted pairing should not pre-activate on a new session"
+        "known workspace rows should not pre-activate on a new session"
     );
 
     let result = FastSearchTool {
@@ -277,33 +273,33 @@ async fn test_persisted_pairing_metadata_does_not_preactivate_known_workspace() 
     }
     .call_tool(&fresh_handler)
     .await
-    .expect("first query should lazily activate the paired workspace");
+    .expect("first query should lazily activate the known workspace");
 
     let message = extract_text_from_result(&result);
     assert!(
         message.contains("target_search_marker"),
-        "search should return data from paired workspace after lazy activation: {message}"
+        "search should return data from the known workspace after lazy activation: {message}"
     );
     assert!(
         fresh_handler.is_workspace_active(&target_id).await,
-        "paired workspace should become active after first targeted query"
+        "known workspace should become active after first targeted query"
     );
 }
 
 #[tokio::test]
-async fn test_manage_workspace_list_includes_unpaired_known_workspace() {
+async fn test_manage_workspace_list_labels_current_active_and_known_workspaces() {
     let temp_dir = tempfile::TempDir::new().unwrap();
     let indexes_dir = temp_dir.path().join("indexes");
     fs::create_dir_all(&indexes_dir).unwrap();
 
     let primary_root = temp_dir.path().join("primary");
-    let paired_root = temp_dir.path().join("paired");
+    let active_root = temp_dir.path().join("active");
     let known_root = temp_dir.path().join("known");
     fs::create_dir_all(&primary_root).unwrap();
-    fs::create_dir_all(&paired_root).unwrap();
+    fs::create_dir_all(&active_root).unwrap();
     fs::create_dir_all(&known_root).unwrap();
     fs::write(primary_root.join("main.rs"), "fn primary() {}\n").unwrap();
-    fs::write(paired_root.join("lib.rs"), "fn paired() {}\n").unwrap();
+    fs::write(active_root.join("lib.rs"), "fn active() {}\n").unwrap();
     fs::write(known_root.join("lib.rs"), "fn known() {}\n").unwrap();
 
     let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).unwrap());
@@ -339,13 +335,16 @@ async fn test_manage_workspace_list_includes_unpaired_known_workspace() {
     .await
     .expect("handler should initialize");
 
-    let paired_path = paired_root.canonicalize().unwrap();
-    let paired_path_str = paired_path.to_string_lossy().to_string();
-    let paired_id = generate_workspace_id(&paired_path_str).unwrap();
+    let active_path = active_root.canonicalize().unwrap();
+    let active_path_str = active_path.to_string_lossy().to_string();
+    let active_id = generate_workspace_id(&active_path_str).unwrap();
     daemon_db
-        .upsert_workspace(&paired_id, &paired_path_str, "ready")
+        .upsert_workspace(&active_id, &active_path_str, "ready")
         .unwrap();
-    daemon_db.add_reference(&primary_id, &paired_id).unwrap();
+    handler
+        .activate_workspace_with_root(&active_id, active_path.clone())
+        .await
+        .expect("known workspace should activate for the session");
 
     let known_path = known_root.canonicalize().unwrap();
     let known_path_str = known_path.to_string_lossy().to_string();
@@ -372,39 +371,39 @@ async fn test_manage_workspace_list_includes_unpaired_known_workspace() {
         "list should include current workspace: {text}"
     );
     assert!(
-        text.contains(&paired_id),
-        "list should include paired workspace: {text}"
+        text.contains(&active_id),
+        "list should include active workspace: {text}"
     );
     assert!(
         text.contains(&known_id),
-        "list should include unpaired known workspace: {text}"
+        "list should include known workspace: {text}"
     );
     assert!(
         text.contains("CURRENT"),
         "list should annotate current workspace: {text}"
     );
     assert!(
-        text.contains("PAIRED"),
-        "list should annotate paired workspace: {text}"
+        text.contains("ACTIVE"),
+        "list should annotate active workspace: {text}"
     );
     assert!(
         text.contains("KNOWN"),
-        "list should annotate unpaired known workspace: {text}"
+        "list should annotate inactive known workspace: {text}"
     );
 }
 
 #[tokio::test]
-async fn test_manage_workspace_list_uses_session_primary_binding_over_legacy_workspace_id() {
+async fn test_manage_workspace_list_uses_session_primary_binding_for_current_label() {
     let temp_dir = tempfile::TempDir::new().unwrap();
     let indexes_dir = temp_dir.path().join("indexes");
     fs::create_dir_all(&indexes_dir).unwrap();
 
     let legacy_primary_root = temp_dir.path().join("legacy-primary");
     let rebound_primary_root = temp_dir.path().join("rebound-primary");
-    let paired_root = temp_dir.path().join("paired");
+    let active_root = temp_dir.path().join("active");
     fs::create_dir_all(&legacy_primary_root).unwrap();
     fs::create_dir_all(&rebound_primary_root).unwrap();
-    fs::create_dir_all(&paired_root).unwrap();
+    fs::create_dir_all(&active_root).unwrap();
     fs::write(
         legacy_primary_root.join("main.rs"),
         "fn legacy_primary() {}\n",
@@ -415,7 +414,7 @@ async fn test_manage_workspace_list_uses_session_primary_binding_over_legacy_wor
         "fn rebound_primary() {}\n",
     )
     .unwrap();
-    fs::write(paired_root.join("lib.rs"), "fn paired() {}\n").unwrap();
+    fs::write(active_root.join("lib.rs"), "fn active() {}\n").unwrap();
 
     let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).unwrap());
     let pool = Arc::new(WorkspacePool::new(
@@ -457,17 +456,18 @@ async fn test_manage_workspace_list_uses_session_primary_binding_over_legacy_wor
         .upsert_workspace(&rebound_primary_id, &rebound_primary_path_str, "ready")
         .unwrap();
 
-    let paired_path = paired_root.canonicalize().unwrap();
-    let paired_path_str = paired_path.to_string_lossy().to_string();
-    let paired_id = generate_workspace_id(&paired_path_str).unwrap();
+    let active_path = active_root.canonicalize().unwrap();
+    let active_path_str = active_path.to_string_lossy().to_string();
+    let active_id = generate_workspace_id(&active_path_str).unwrap();
     daemon_db
-        .upsert_workspace(&paired_id, &paired_path_str, "ready")
-        .unwrap();
-    daemon_db
-        .add_reference(&rebound_primary_id, &paired_id)
+        .upsert_workspace(&active_id, &active_path_str, "ready")
         .unwrap();
 
     handler.set_current_primary_binding(rebound_primary_id.clone(), rebound_primary_path);
+    handler
+        .activate_workspace_with_root(&active_id, active_path.clone())
+        .await
+        .expect("known workspace should activate for the session");
 
     let result = ManageWorkspaceTool {
         operation: "list".to_string(),
@@ -487,8 +487,8 @@ async fn test_manage_workspace_list_uses_session_primary_binding_over_legacy_wor
         "list should mark rebound session primary as CURRENT: {text}"
     );
     assert!(
-        text.contains(&format!("({}) [PAIRED]", paired_id)),
-        "list should load pairings from rebound session primary: {text}"
+        text.contains(&format!("({}) [ACTIVE]", active_id)),
+        "list should mark the secondary active workspace as ACTIVE: {text}"
     );
     assert!(
         text.contains(&format!("({}) [KNOWN]", legacy_primary_id)),
@@ -618,13 +618,13 @@ async fn test_manage_workspace_stats_include_all_known_workspaces() {
     fs::create_dir_all(&indexes_dir).unwrap();
 
     let primary_root = temp_dir.path().join("primary");
-    let paired_root = temp_dir.path().join("paired");
+    let active_root = temp_dir.path().join("active");
     let known_root = temp_dir.path().join("known");
     fs::create_dir_all(&primary_root).unwrap();
-    fs::create_dir_all(&paired_root).unwrap();
+    fs::create_dir_all(&active_root).unwrap();
     fs::create_dir_all(&known_root).unwrap();
     fs::write(primary_root.join("main.rs"), "fn primary() {}\n").unwrap();
-    fs::write(paired_root.join("lib.rs"), "fn paired() {}\n").unwrap();
+    fs::write(active_root.join("lib.rs"), "fn active() {}\n").unwrap();
     fs::write(known_root.join("lib.rs"), "fn known() {}\n").unwrap();
 
     let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).unwrap());
@@ -663,16 +663,19 @@ async fn test_manage_workspace_stats_include_all_known_workspaces() {
     .await
     .expect("handler should initialize");
 
-    let paired_path = paired_root.canonicalize().unwrap();
-    let paired_path_str = paired_path.to_string_lossy().to_string();
-    let paired_id = generate_workspace_id(&paired_path_str).unwrap();
+    let active_path = active_root.canonicalize().unwrap();
+    let active_path_str = active_path.to_string_lossy().to_string();
+    let active_id = generate_workspace_id(&active_path_str).unwrap();
     daemon_db
-        .upsert_workspace(&paired_id, &paired_path_str, "ready")
+        .upsert_workspace(&active_id, &active_path_str, "ready")
         .unwrap();
     daemon_db
-        .update_workspace_stats(&paired_id, 20, 3, None, None, None)
+        .update_workspace_stats(&active_id, 20, 3, None, None, None)
         .unwrap();
-    daemon_db.add_reference(&primary_id, &paired_id).unwrap();
+    handler
+        .activate_workspace_with_root(&active_id, active_path.clone())
+        .await
+        .expect("known workspace should activate for the session");
 
     let known_path = known_root.canonicalize().unwrap();
     let known_path_str = known_path.to_string_lossy().to_string();
@@ -697,13 +700,17 @@ async fn test_manage_workspace_stats_include_all_known_workspaces() {
     .expect("stats should succeed");
 
     let text = extract_text_from_result(&result);
+    let active_workspace_count = handler.active_workspace_ids().await.len();
     assert!(
         text.contains("Known Workspaces: 3"),
         "stats should count all known workspaces: {text}"
     );
     assert!(
-        text.contains("Current Workspace Pairings: 1"),
-        "stats should label pairings accurately: {text}"
+        text.contains(&format!(
+            "Active Workspaces In Session: {}",
+            active_workspace_count
+        )),
+        "stats should report the session's active workspace count: {text}"
     );
     assert!(
         text.contains("Total Files: 10"),
@@ -716,7 +723,8 @@ async fn test_manage_workspace_stats_include_all_known_workspaces() {
 }
 
 #[tokio::test]
-async fn test_manage_workspace_stats_rejects_neutral_gap_without_primary_identity() {
+async fn test_manage_workspace_stats_neutral_gap_returns_registry_summary_without_primary_identity()
+{
     let temp_dir = tempfile::TempDir::new().unwrap();
     let indexes_dir = temp_dir.path().join("indexes");
     fs::create_dir_all(&indexes_dir).unwrap();
@@ -760,7 +768,7 @@ async fn test_manage_workspace_stats_rejects_neutral_gap_without_primary_identit
 
     handler.publish_loaded_workspace_swap_intent_for_test();
 
-    let err = ManageWorkspaceTool {
+    let result = ManageWorkspaceTool {
         operation: "stats".to_string(),
         path: None,
         force: Some(false),
@@ -770,12 +778,16 @@ async fn test_manage_workspace_stats_rejects_neutral_gap_without_primary_identit
     }
     .call_tool(&handler)
     .await
-    .expect_err("neutral gap should reject workspace stats requests");
+    .expect("neutral gap should still return registry stats");
 
+    let text = extract_text_from_result(&result);
     assert!(
-        err.to_string()
-            .contains("Primary workspace identity unavailable during swap"),
-        "unexpected error: {err:#}"
+        text.contains("Current Workspace: none"),
+        "stats should report an unbound current workspace during the swap gap: {text}"
+    );
+    assert!(
+        text.contains("Known Workspaces: 1"),
+        "stats should still report registry counts during the swap gap: {text}"
     );
 }
 
@@ -1028,8 +1040,6 @@ async fn test_manage_workspace_open_by_workspace_id_succeeds_without_bound_prima
 async fn test_remove_workspace_uses_global_index_dir_shape() {
     let temp_dir = tempfile::TempDir::new().unwrap();
     let fake_home = tempfile::TempDir::new().unwrap();
-    let indexes_dir = temp_dir.path().join("indexes");
-    fs::create_dir_all(&indexes_dir).unwrap();
 
     let original_home = std::env::var("HOME").ok();
     #[cfg(windows)]
@@ -1040,6 +1050,10 @@ async fn test_remove_workspace_uses_global_index_dir_shape() {
         #[cfg(windows)]
         std::env::set_var("USERPROFILE", fake_home.path());
     }
+
+    let daemon_paths = DaemonPaths::new();
+    let indexes_dir = daemon_paths.indexes_dir();
+    fs::create_dir_all(&indexes_dir).unwrap();
 
     let primary_root = temp_dir.path().join("primary");
     let target_root = temp_dir.path().join("target");
@@ -1087,9 +1101,7 @@ async fn test_remove_workspace_uses_global_index_dir_shape() {
     daemon_db
         .upsert_workspace(&target_id, &target_path_str, "ready")
         .unwrap();
-    daemon_db.add_reference(&primary_id, &target_id).unwrap();
 
-    let daemon_paths = DaemonPaths::new();
     let global_index_dir = daemon_paths.workspace_index_dir(&target_id);
     fs::create_dir_all(global_index_dir.join("db")).unwrap();
     fs::write(global_index_dir.join("db").join("symbols.db"), "target-db").unwrap();
@@ -1118,6 +1130,13 @@ async fn test_remove_workspace_uses_global_index_dir_shape() {
     assert!(
         !global_index_dir.exists(),
         "remove should delete the global daemon index directory shape"
+    );
+    let cleanup_events = daemon_db.list_cleanup_events(10).unwrap();
+    assert!(
+        cleanup_events
+            .iter()
+            .any(|event| event.workspace_id == target_id && event.action == "manual_delete"),
+        "remove should record a manual-delete cleanup event"
     );
     assert!(
         legacy_nested_dir.exists(),
@@ -1204,7 +1223,7 @@ async fn test_opened_workspace_routes_fast_search_by_workspace_id() {
     let text = extract_text_from_result(&result);
     assert!(
         text.contains("target_search_marker"),
-        "search should route to the opened reference workspace: {text}"
+        "search should route to the opened target workspace: {text}"
     );
 }
 
@@ -1288,7 +1307,7 @@ async fn test_manage_workspace_open_registers_missing_workspace_and_returns_work
 }
 
 #[tokio::test]
-async fn test_manage_workspace_add_uses_session_primary_binding_over_legacy_workspace_id() {
+async fn test_manage_workspace_register_does_not_mutate_primary_binding_during_rebound_session() {
     let temp_dir = tempfile::TempDir::new().unwrap();
     let indexes_dir = temp_dir.path().join("indexes");
     fs::create_dir_all(&indexes_dir).unwrap();
@@ -1361,7 +1380,7 @@ async fn test_manage_workspace_add_uses_session_primary_binding_over_legacy_work
     let reference_id = generate_workspace_id(&reference_path_str).unwrap();
 
     let result = ManageWorkspaceTool {
-        operation: "add".to_string(),
+        operation: "register".to_string(),
         path: Some(reference_path_str.clone()),
         force: Some(false),
         name: None,
@@ -1370,31 +1389,28 @@ async fn test_manage_workspace_add_uses_session_primary_binding_over_legacy_work
     }
     .call_tool(&handler)
     .await
-    .expect("add should succeed");
+    .expect("register should succeed");
 
     let text = extract_text_from_result(&result);
     assert!(
         text.contains(&reference_id),
-        "add output should include reference workspace id: {text}"
+        "register output should include workspace id: {text}"
+    );
+    assert!(
+        handler.current_workspace_id().as_deref() == Some(rebound_primary_id.as_str()),
+        "register should leave the rebound primary binding untouched"
+    );
+    assert!(
+        !handler.active_workspace_ids().await.contains(&reference_id),
+        "register should not activate the known workspace in the session"
     );
 
-    let rebound_refs = daemon_db
-        .list_references(&rebound_primary_id)
-        .expect("rebound session primary references should load");
-    assert!(
-        rebound_refs
-            .iter()
-            .any(|ws| ws.workspace_id == reference_id),
-        "reference should be paired to rebound session primary"
-    );
-
-    let legacy_refs = daemon_db
-        .list_references(&legacy_primary_id)
-        .expect("legacy primary references should load");
-    assert!(
-        legacy_refs.iter().all(|ws| ws.workspace_id != reference_id),
-        "stale workspace_id should not receive the new pairing"
-    );
+    let row = daemon_db
+        .get_workspace(&reference_id)
+        .unwrap()
+        .expect("workspace should be registered in daemon db");
+    assert_eq!(row.path, reference_path_str);
+    assert_eq!(row.status, "ready");
 }
 
 #[tokio::test]
@@ -1532,8 +1548,8 @@ async fn test_manage_workspace_open_does_not_activate_workspace_when_refresh_fai
     let text = extract_text_from_result(&result);
 
     assert!(
-        text.contains("Workspace Refresh Failed") || text.contains("Failed"),
-        "open should surface refresh failure text: {text}"
+        text.contains("Workspace Pruned"),
+        "open should surface prune text when the path is gone: {text}"
     );
     assert!(
         !handler.is_workspace_active(&target_id).await,
@@ -1689,12 +1705,12 @@ async fn test_manage_workspace_open_short_circuits_when_active() {
     let second = tool.call_tool(&handler).await.unwrap();
     let second_text = extract_text_from_result(&second);
     assert!(
-        second_text.contains("Workspace Opened"),
-        "active workspace reopen should short-circuit before refresh: {second_text}"
+        second_text.contains("Workspace Missing But Still Active"),
+        "active workspace reopen should report blocked cleanup when the path is gone: {second_text}"
     );
     assert!(
         handler.is_workspace_active(&target_id).await,
-        "workspace should remain active after short-circuited reopen"
+        "workspace should remain active after blocked cleanup"
     );
 }
 
@@ -1776,8 +1792,8 @@ async fn test_manage_workspace_open_force_active_workspace_runs_refresh() {
     let forced = force_open_tool.call_tool(&handler).await.unwrap();
     let forced_text = extract_text_from_result(&forced);
     assert!(
-        forced_text.contains("Workspace Refresh Failed") || forced_text.contains("Failed"),
-        "force open should surface refresh failure text: {forced_text}"
+        forced_text.contains("Workspace Missing But Still Active"),
+        "force open should surface blocked-cleanup text: {forced_text}"
     );
     assert!(
         handler.is_workspace_active(&target_id).await,
@@ -1866,12 +1882,12 @@ async fn test_manage_workspace_open_uses_session_primary_binding_over_legacy_wor
     let open_result = open_tool.call_tool(&handler).await.unwrap();
     let open_text = extract_text_from_result(&open_result);
     assert!(
-        open_text.contains("Workspace Opened"),
-        "open should treat rebound session primary as primary: {open_text}"
+        open_text.contains("Workspace Pruned"),
+        "open should prune a rebound current workspace when its path is gone: {open_text}"
     );
     assert!(
         !open_text.contains("Workspace Refresh Failed"),
-        "open should not refresh a rebound session primary: {open_text}"
+        "open should not fall back to the old refresh failure text: {open_text}"
     );
 }
 
@@ -2323,8 +2339,8 @@ async fn test_manage_workspace_open_rebound_primary_still_attaches_pool() {
 
 // Finding #27: list/remove should not hard-fail with the misleading "run
 // index" error when no primary is bound (e.g., a deferred Cwd session before
-// the client has advertised roots). add legitimately needs a primary, but
-// should at least say so clearly instead of pointing at the wrong fix.
+// the client has advertised roots). `register` now works without a primary,
+// while legacy `add` should fail fast as an unknown operation.
 
 fn make_deferred_handler_no_primary(
     indexes_dir: &std::path::Path,
@@ -2493,7 +2509,75 @@ async fn test_manage_workspace_remove_succeeds_in_deferred_session_without_prima
 }
 
 #[tokio::test]
-async fn test_manage_workspace_add_returns_actionable_error_without_primary() {
+async fn test_manage_workspace_register_succeeds_in_deferred_session_without_primary_and_keeps_workspace_inactive()
+ {
+    let temp_dir = tempfile::TempDir::new().unwrap();
+    let indexes_dir = temp_dir.path().join("indexes");
+    fs::create_dir_all(&indexes_dir).unwrap();
+    let startup_root = temp_dir.path().join("startup");
+    let candidate_root = temp_dir.path().join("candidate");
+    fs::create_dir_all(&startup_root).unwrap();
+    fs::create_dir_all(candidate_root.join("src")).unwrap();
+    fs::write(
+        candidate_root.join("src/lib.rs"),
+        "pub fn candidate_marker() {}\n",
+    )
+    .unwrap();
+
+    let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).unwrap());
+    let pool = Arc::new(WorkspacePool::new(
+        indexes_dir.clone(),
+        Some(Arc::clone(&daemon_db)),
+        None,
+        None,
+    ));
+
+    let handler = make_deferred_handler_no_primary(
+        &indexes_dir,
+        Arc::clone(&daemon_db),
+        Arc::clone(&pool),
+        &startup_root,
+    )
+    .await;
+
+    let candidate_path = candidate_root.canonicalize().unwrap();
+    let candidate_path_str = candidate_path.to_string_lossy().to_string();
+    let candidate_id = generate_workspace_id(&candidate_path_str).unwrap();
+
+    let result = ManageWorkspaceTool {
+        operation: "register".to_string(),
+        path: Some(candidate_path_str),
+        force: Some(false),
+        name: None,
+        workspace_id: None,
+        detailed: None,
+    }
+    .call_tool(&handler)
+    .await
+    .expect("register should succeed without a bound primary");
+
+    let text = extract_text_from_result(&result);
+    assert!(
+        text.contains(&candidate_id),
+        "register output should include the workspace id: {text}"
+    );
+    assert!(
+        daemon_db.get_workspace(&candidate_id).unwrap().is_some(),
+        "register should persist the workspace row"
+    );
+    assert!(
+        !handler.is_workspace_active(&candidate_id).await,
+        "register should not activate the workspace for the session"
+    );
+    assert_eq!(
+        handler.current_workspace_id(),
+        None,
+        "register should not bind a deferred session to a primary workspace"
+    );
+}
+
+#[tokio::test]
+async fn test_manage_workspace_add_is_rejected_as_unknown_operation() {
     let temp_dir = tempfile::TempDir::new().unwrap();
     let indexes_dir = temp_dir.path().join("indexes");
     fs::create_dir_all(&indexes_dir).unwrap();
@@ -2534,19 +2618,15 @@ async fn test_manage_workspace_add_returns_actionable_error_without_primary() {
     .call_tool(&handler)
     .await;
 
-    let err = result.expect_err("add should fail when no primary is bound");
+    let err = result.expect_err("add should be rejected");
     let message = err.to_string();
     assert!(
-        !message.contains("Run manage_workspace(operation=\"index\")"),
-        "add should not point at the index operation when the real fix is opening a primary: {message}"
+        message.contains("Unknown operation"),
+        "add should fail as an unknown operation: {message}"
     );
     assert!(
-        message.contains("primary"),
-        "add error should mention the missing primary: {message}"
-    );
-    assert!(
-        message.contains("open") || message.contains("roots"),
-        "add error should suggest opening a primary or relying on client roots: {message}"
+        message.contains("register"),
+        "add error should point at the supported command surface: {message}"
     );
 }
 
@@ -2678,16 +2758,14 @@ async fn test_manage_workspace_refresh_refuses_primary_mutation_while_swap_in_pr
 }
 
 /// Finding #2 regression: on the real RMCP `ServerHandler::call_tool` path,
-/// `manage_workspace(add)` in a deferred Cwd session without client-provided
-/// roots must NOT silently pair the new reference against the CWD fallback.
+/// `manage_workspace(register)` in a deferred Cwd session without client-provided
+/// roots must not silently bind the startup-hint workspace as primary.
 ///
 /// Before this fix, `add` was classified as primary-targeting by
 /// `manage_workspace_request_targets_primary`, so the request-time preflight
-/// bound the startup-hint workspace as primary before the tool body ran —
-/// which silently paired the reference with CWD and bypassed the
-/// actionable "open a primary first" error that exists in `handle_add_command`.
+/// bound the startup-hint workspace as primary before the tool body ran.
 #[tokio::test]
-async fn test_manage_workspace_add_in_deferred_cwd_session_via_server_handler_rejects_without_primary_binding()
+async fn test_manage_workspace_register_in_deferred_cwd_session_via_server_handler_keeps_primary_unbound()
  {
     let temp_dir = tempfile::TempDir::new().unwrap();
     let indexes_dir = temp_dir.path().join("indexes");
@@ -2738,9 +2816,8 @@ async fn test_manage_workspace_add_in_deferred_cwd_session_via_server_handler_re
     .await
     .expect("handler should initialize");
 
-    // Client did NOT declare roots support. Under the *old* classification
-    // this still triggered the primary-binding fallback in the preflight
-    // (startup-hint → CWD), silently giving `add` a primary to pair against.
+    // Client did NOT declare roots support. Under the old classification this
+    // still triggered the primary-binding fallback in the preflight.
     assert_eq!(
         handler.current_workspace_id(),
         None,
@@ -2762,38 +2839,40 @@ async fn test_manage_workspace_add_in_deferred_cwd_session_via_server_handler_re
         &handler,
         CallToolRequestParams::new("manage_workspace").with_arguments(
             serde_json::json!({
-                "operation": "add",
+                "operation": "register",
                 "path": candidate_path_str,
             })
             .as_object()
-            .expect("manage_workspace add args")
+            .expect("manage_workspace register args")
             .clone(),
         ),
         RequestContext::new(NumberOrString::Number(1), service.peer().clone()),
     )
-    .await;
+    .await
+    .expect("register via ServerHandler should succeed");
 
-    let err = result.expect_err(
-        "add via ServerHandler in a deferred Cwd session must refuse to silently pair against the CWD fallback",
-    );
-    let message = err.to_string();
+    let message = extract_text_from_result(&result);
+    let candidate_id = generate_workspace_id(&candidate_path_str).unwrap();
     assert!(
-        message.to_lowercase().contains("primary"),
-        "add error should name the missing primary: {message}"
-    );
-    assert!(
-        message.contains("open") || message.contains("roots"),
-        "add error should point at `open` or client roots: {message}"
+        message.contains(&candidate_id),
+        "register output should include the workspace id: {message}"
     );
 
     assert_eq!(
         handler.current_workspace_id(),
         None,
-        "add via deferred Cwd session must NOT silently bind the startup-hint as primary"
+        "register via deferred Cwd session must not silently bind the startup-hint as primary"
     );
     assert_eq!(
         handler.loaded_workspace_id(),
         Some(startup_id),
         "the loaded-workspace handle stays on the startup workspace; nothing should have swapped primary binding"
     );
+
+    let row = daemon_db
+        .get_workspace(&candidate_id)
+        .unwrap()
+        .expect("registered workspace row should exist");
+    assert_eq!(row.path, candidate_path_str);
+    assert_eq!(row.status, "ready");
 }

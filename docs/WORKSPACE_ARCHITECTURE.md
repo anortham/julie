@@ -1,7 +1,7 @@
 # Workspace Architecture
 
-**Last Updated:** 2026-04-12
-**Status:** Production (v6, stdio + daemon modes)
+**Last Updated:** 2026-04-18
+**Status:** Production (v7.1, stdio + daemon modes)
 
 This document provides detailed information about Julie's workspace architecture, routing, and storage.
 
@@ -30,7 +30,7 @@ A background process shares indexes across all MCP sessions. Workspace indexes l
 
 ```
 ~/.julie/
-├── daemon.db                    ← Registry: workspaces, references, snapshots, tool calls
+├── daemon.db                    ← Registry: workspaces, cleanup events, snapshots, tool calls
 └── indexes/
     ├── julie_316c0b08/
     │   ├── db/symbols.db
@@ -42,7 +42,7 @@ A background process shares indexes across all MCP sessions. Workspace indexes l
 
 `daemon.db` is the authoritative registry (replaces the old `registry.json`). It tracks:
 - All known workspaces (ID, path, status, file/symbol counts)
-- Pairing metadata and other convenience metadata
+- Recent cleanup events for deleted or pruned workspaces
 - Per-session codehealth snapshots
 - Tool call history (retained 7 days)
 
@@ -61,7 +61,7 @@ In daemon mode, cross-workspace work goes through one front door:
 2. Julie resolves the workspace, indexes or refreshes it as needed, then activates it for the current session.
 3. Search, navigation, and editing tools route by the resulting `workspace_id`.
 
-`manage_workspace(operation="add", ...)` still records a pairing or registers a workspace, but that metadata does not activate the workspace and does not grant routing authority.
+`manage_workspace(operation="register", ...)` indexes or refreshes a known workspace without activating it for the current session.
 
 Outside daemon mode, Julie does not have the same registry-backed activation model. Stdio still accepts explicit non-`primary` workspace IDs and can index another path, but that behavior is permissive compatibility behavior, not the supported global-workspace flow.
 
@@ -93,16 +93,11 @@ Each workspace has its own PHYSICAL database and Tantivy index files. Workspace 
 
 **Tool-level `workspace` parameters are essential**. They route to the correct workspace database. In daemon mode the target workspace must already be active for the current session. In stdio mode non-`primary` IDs are still accepted without daemon registry validation.
 
-## Pairings And Watchers
-
-Persistent pairings are convenience metadata.
-
-- They can help Julie suggest or recall related workspaces.
-- They do not activate a workspace.
-- They do not decide routing.
-- They do not bypass freshness checks.
+## Watchers And Cleanup
 
 Watcher coverage follows active workspaces, not every known workspace in `daemon.db`. If a workspace is known but not active in the current session, Julie does not keep a live watcher attached to it for that session.
+
+When a workspace path disappears, Julie can prune it from the registry and remove its index once it is inactive. This is the intended cleanup path for deleted worktrees and other temporary clones.
 
 ## Storage Location Summary
 

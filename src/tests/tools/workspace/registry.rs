@@ -3,7 +3,7 @@
 //! These tests verify core registry functionality:
 //! - Workspace ID generation with consistent hashing
 //! - Name sanitization for filesystem compatibility
-//! - Expiration logic for primary vs reference workspaces
+//! - Expiration logic for primary vs known secondary workspaces
 
 use crate::workspace::registry::*;
 
@@ -37,15 +37,11 @@ fn test_workspace_entry_expiration() {
     assert!(!primary.is_expired());
     assert!(primary.expires_at.is_none());
 
-    // Reference workspace should have expiration
-    let reference = WorkspaceEntry::new(
-        "/test/reference".to_string(),
-        WorkspaceType::Reference,
-        &config,
-    )
-    .unwrap();
-    assert!(!reference.is_expired()); // Should not be expired immediately
-    assert!(reference.expires_at.is_some());
+    // Known non-primary workspace should have expiration
+    let known =
+        WorkspaceEntry::new("/test/known".to_string(), WorkspaceType::Known, &config).unwrap();
+    assert!(!known.is_expired()); // Should not be expired immediately
+    assert!(known.expires_at.is_some());
 }
 
 #[test]

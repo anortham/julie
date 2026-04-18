@@ -63,7 +63,7 @@ impl ManageWorkspaceTool {
         });
         let bound_primary_id = handler.current_workspace_id();
 
-        // Get original path for reference workspace check BEFORE resolution.
+        // Get the original path before deciding whether this targets a non-primary workspace.
         // Uses the session-owned current primary root as the authoritative fallback.
         // resolved in main.rs from CLI --workspace > JULIE_WORKSPACE env > current_dir.
         let original_path = match path {
@@ -74,11 +74,11 @@ impl ManageWorkspaceTool {
             None => current_primary_root.clone(),
         };
 
-        // 🔥 CRITICAL FIX: Check if this is a reference workspace FIRST before calling find_workspace_root
-        // Reference workspaces don't have .julie/ directories, so find_workspace_root will walk up
+        // 🔥 CRITICAL FIX: Check if this targets a non-primary workspace FIRST before calling find_workspace_root.
+        // Those workspaces do not have .julie/ directories, so find_workspace_root will walk up
         // to the primary workspace and return the wrong path!
-        let is_reference_check = if let Some(ref db) = handler.daemon_db {
-            // Daemon mode: registered but not the primary workspace → treat as reference
+        let is_non_primary_target = if let Some(ref db) = handler.daemon_db {
+            // Daemon mode: registered but not the primary workspace.
             if let Some(ref primary_id) = bound_primary_id {
                 db.get_workspace_by_path(original_path.to_string_lossy().as_ref())
                     .ok()
@@ -90,9 +90,9 @@ impl ManageWorkspaceTool {
             }
         } else {
             // Stdio mode: if workspace is already loaded and the requested path
-            // is outside the current primary root, treat as reference. Without this,
+            // is outside the current primary root, treat it as non-primary. Without this,
             // resolve_workspace_path walks up to the primary's markers (e.g. .git)
-            // and conflates the reference path with the primary workspace.
+            // and conflates the target path with the primary workspace.
             let primary_canonical = current_primary_root
                 .canonicalize()
                 .unwrap_or_else(|_| current_primary_root.clone());
@@ -103,10 +103,10 @@ impl ManageWorkspaceTool {
                 && !request_canonical.starts_with(&primary_canonical)
         };
 
-        // For reference workspaces, use the original path directly (no workspace root resolution)
+        // For non-primary targets, use the original path directly (no workspace root resolution)
         // For primary workspaces, resolve to workspace root using markers
-        let workspace_path = if is_reference_check {
-            debug!("Reference workspace detected - using original path directly");
+        let workspace_path = if is_non_primary_target {
+            debug!("Non-primary workspace target detected, using original path directly");
             original_path.clone()
         } else {
             self.resolve_workspace_path(path, Some(&current_primary_root))?
@@ -130,8 +130,7 @@ impl ManageWorkspaceTool {
             // Cancel any running embedding pipeline FIRST, before touching the DB.
             // This prevents GPU errors from concurrent DB access and avoids the
             // race where a running pipeline writes embeddings back after we clear.
-            // Use the TARGET workspace_id (may differ from primary when force-reindexing
-            // a reference workspace).
+            // Use the target workspace_id, which may differ from the primary during force reindex.
             let cancel_ws_id =
                 crate::workspace::registry::generate_workspace_id(&original_path.to_string_lossy())
                     .ok()
@@ -149,8 +148,8 @@ impl ManageWorkspaceTool {
             // Database will be cleared by initialize_workspace_with_force
         }
 
-        // 🔥 CRITICAL FIX: Only initialize workspace if it's the PRIMARY workspace being indexed
-        // Reference workspaces should NEVER reinitialize the handler's workspace!
+        // 🔥 CRITICAL FIX: Only initialize the handler when indexing the primary workspace.
+        // Non-primary workspace targets should never reinitialize handler.workspace.
         // They are indexed into the primary workspace's indexes/{workspace_id}/ directory
         let workspace_already_loaded = loaded_workspace.is_some();
         let loaded_workspace_matches_target =
@@ -162,15 +161,15 @@ impl ManageWorkspaceTool {
                 loaded_root == canonical_path
             });
 
-        let is_reference_workspace = is_reference_check;
+        let is_non_primary_workspace_target = is_non_primary_target;
 
         // Only initialize if:
         // 1. Workspace not loaded yet, OR
         // 2. Current primary target differs from the loaded workspace, OR
-        // 3. Forcing reindex AND this is NOT a reference workspace
+        // 3. Forcing reindex AND this is NOT a non-primary workspace target
         if !workspace_already_loaded
-            || (!is_reference_workspace && !loaded_workspace_matches_target)
-            || (force_reindex && !is_reference_workspace)
+            || (!is_non_primary_workspace_target && !loaded_workspace_matches_target)
+            || (force_reindex && !is_non_primary_workspace_target)
         {
             handler
                 .initialize_workspace_with_force(
@@ -178,16 +177,16 @@ impl ManageWorkspaceTool {
                     force_reindex,
                 )
                 .await?;
-        } else if is_reference_workspace {
-            info!("🔒 Reference workspace detected - keeping handler workspace unchanged");
+        } else if is_non_primary_workspace_target {
+            info!("🔒 Non-primary workspace target detected, keeping handler workspace unchanged");
         }
 
         // Check if already indexed and not forcing reindex
-        // 🔴 CRITICAL FIX: Skip this guard for reference workspaces!
+        // 🔴 CRITICAL FIX: Skip this guard for non-primary workspace targets.
         // The is_indexed flag and symbol count belong to the PRIMARY workspace.
-        // Without this check, calling index on a reference workspace path returns
+        // Without this check, calling index on a non-primary workspace path returns
         // "Workspace already indexed: {primary_symbol_count} symbols" — a silent lie.
-        if !force_reindex && !is_reference_workspace {
+        if !force_reindex && !is_non_primary_workspace_target {
             let is_indexed = *handler.is_indexed.read().await;
             if is_indexed {
                 // Get symbol count from database using efficient COUNT(*) query
@@ -249,16 +248,17 @@ impl ManageWorkspaceTool {
             }
         }
 
-        // Fix C part c: pause the reference workspace's watcher during force reindex
+        // Fix C part c: pause the target workspace's watcher during force reindex
         // to prevent the watcher from dispatching concurrent incremental updates to
-        // the same reference DB while the full reindex is running.
-        let ref_watcher_id: Option<String> = if is_reference_workspace && force_reindex {
+        // the same target DB while the full reindex is running.
+        let target_watcher_id: Option<String> = if is_non_primary_workspace_target && force_reindex
+        {
             let path_str = canonical_path.to_string_lossy().to_string();
             crate::workspace::registry::generate_workspace_id(&path_str).ok()
         } else {
             None
         };
-        if let (Some(id), Some(pool)) = (&ref_watcher_id, &handler.watcher_pool) {
+        if let (Some(id), Some(pool)) = (&target_watcher_id, &handler.watcher_pool) {
             pool.pause_workspace(id).await;
         }
 
@@ -267,8 +267,8 @@ impl ManageWorkspaceTool {
             .index_workspace_files(handler, &canonical_path, force_reindex)
             .await;
 
-        // Resume reference watcher before handling the result (whether Ok or Err).
-        if let (Some(id), Some(pool)) = (&ref_watcher_id, &handler.watcher_pool) {
+        // Resume the target watcher before handling the result, whether Ok or Err.
+        if let (Some(id), Some(pool)) = (&target_watcher_id, &handler.watcher_pool) {
             pool.resume_workspace(id).await;
         }
 
@@ -292,9 +292,9 @@ impl ManageWorkspaceTool {
                         handler.require_primary_workspace_identity()?
                     };
                     // Daemon mode: persist stats to daemon.db.
-                    // Fix A: reference workspaces must derive workspace_id from their own path,
+                    // Fix A: non-primary workspaces must derive workspace_id from their own path,
                     // NOT from handler.workspace_id (which belongs to the primary workspace).
-                    let workspace_id = if is_reference_workspace {
+                    let workspace_id = if is_non_primary_workspace_target {
                         crate::workspace::registry::generate_workspace_id(&canonical_path_str)
                             .unwrap_or_default()
                     } else {
@@ -347,35 +347,35 @@ impl ManageWorkspaceTool {
                             //
                             // Bug fix: route the clear to the CORRECT workspace DB.
                             // handler.get_workspace().db always points to the PRIMARY
-                            // workspace. For reference workspaces we must open the
-                            // reference DB via workspace_db_path() instead.
+                            // workspace. For non-primary targets we must open the
+                            // target DB via workspace_db_path() instead.
                             if force {
-                                if is_reference_workspace {
-                                    let ref_db_path =
+                                if is_non_primary_workspace_target {
+                                    let target_db_path =
                                         handler.workspace_db_file_path_for(&ws_id).await?;
-                                    if ref_db_path.exists() {
-                                        let path = ref_db_path;
+                                    if target_db_path.exists() {
+                                        let path = target_db_path;
                                         let clear_result = tokio::task::spawn_blocking(move || {
-                                            let mut ref_db =
+                                            let mut target_db =
                                                 crate::database::SymbolDatabase::new(path)?;
-                                            ref_db.clear_all_embeddings()
+                                            target_db.clear_all_embeddings()
                                         })
                                         .await;
                                         match clear_result {
                                             Ok(Ok(())) => info!(
-                                                "🗑️ Cleared reference workspace embeddings for force re-embed"
+                                                "🗑️ Cleared target workspace embeddings for force re-embed"
                                             ),
                                             Ok(Err(e)) => tracing::warn!(
-                                                "Failed to clear reference embeddings: {e}"
+                                                "Failed to clear target-workspace embeddings: {e}"
                                             ),
                                             Err(e) => tracing::warn!(
-                                                "Reference embedding clear task panicked: {e}"
+                                                "Target-workspace embedding clear task panicked: {e}"
                                             ),
                                         }
                                     } else {
                                         debug!(
-                                            "Reference DB does not exist at {}, nothing to clear",
-                                            ref_db_path.display()
+                                            "Target DB does not exist at {}, nothing to clear",
+                                            target_db_path.display()
                                         );
                                     }
                                 } else if let Ok(Some(workspace)) = handler.get_workspace().await {

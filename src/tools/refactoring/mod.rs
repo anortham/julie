@@ -104,7 +104,7 @@ fn default_empty_json() -> String {
 }
 
 /// Resolve the filesystem root path for a workspace.
-/// Returns primary workspace root for "primary"/None, or the reference workspace's original_path.
+/// Returns the primary workspace root for "primary"/None, or the explicit workspace path.
 pub(crate) async fn resolve_workspace_root(
     workspace_param: Option<&str>,
     handler: &JulieServerHandler,
@@ -115,16 +115,16 @@ pub(crate) async fn resolve_workspace_root(
         return handler.require_primary_workspace_root();
     }
 
-    // Reference workspace — look up path from DaemonDatabase
+    // Explicit workspace lookup through the daemon registry.
     if let Some(ref db) = handler.daemon_db {
         let row = db
             .get_workspace(workspace_param)?
-            .ok_or_else(|| anyhow::anyhow!("Reference workspace not found: {}", workspace_param))?;
+            .ok_or_else(|| anyhow::anyhow!("Workspace not found: {}", workspace_param))?;
         return Ok(PathBuf::from(&row.path));
     }
 
     Err(anyhow::anyhow!(
-        "Reference workspace '{}' not found: daemon mode required for workspace routing",
+        "Workspace '{}' not found: daemon mode is required for workspace routing",
         workspace_param
     ))
 }

@@ -311,7 +311,7 @@ fn buckets_for_path(path: &str) -> &'static [&'static str] {
                 "src/tests/tools/filtering_tests.rs",
                 "src/tests/tools/formatting_tests.rs",
                 "src/tests/tools/query_classification_tests.rs",
-                "src/tests/tools/reference_workspace_fast_refs_tests.rs",
+                "src/tests/tools/target_workspace_fast_refs_tests.rs",
                 "src/tests/tools/smart_read.rs",
             ],
         )

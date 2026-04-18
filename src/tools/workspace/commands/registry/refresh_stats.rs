@@ -274,7 +274,6 @@ impl ManageWorkspaceTool {
                     }
                 },
                 None => {
-                    let primary_workspace_id = handler.require_primary_workspace_identity()?;
                     let all_workspaces = match db.list_workspaces() {
                         Ok(workspaces) => workspaces,
                         Err(e) => {
@@ -282,13 +281,8 @@ impl ManageWorkspaceTool {
                             return Ok(CallToolResult::text_content(vec![Content::text(message)]));
                         }
                     };
-                    let pair_count = match db.list_references(&primary_workspace_id) {
-                        Ok(references) => references.len(),
-                        Err(e) => {
-                            let message = format!("Failed to list workspace pairings: {}", e);
-                            return Ok(CallToolResult::text_content(vec![Content::text(message)]));
-                        }
-                    };
+                    let current_workspace_id = handler.current_workspace_id();
+                    let active_workspace_count = handler.active_workspace_ids().await.len();
 
                     let total_files: i64 = all_workspaces
                         .iter()
@@ -304,13 +298,13 @@ impl ManageWorkspaceTool {
                         Registry Status\n\
                         Current Workspace: {}\n\
                         Known Workspaces: {}\n\
-                        Current Workspace Pairings: {}\n\n\
+                        Active Workspaces In Session: {}\n\n\
                         Storage Usage\n\
                         Total Files: {}\n\
                         Total Symbols: {}",
-                        primary_workspace_id,
+                        current_workspace_id.unwrap_or_else(|| "none".to_string()),
                         all_workspaces.len(),
-                        pair_count,
+                        active_workspace_count,
                         total_files,
                         total_symbols,
                     );

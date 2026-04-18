@@ -76,6 +76,9 @@ impl DaemonDatabase {
         if current < 2 {
             Self::migration_002_add_index_duration(conn)?;
         }
+        if current < 3 {
+            Self::migration_003_cleanup_events_and_drop_workspace_references(conn)?;
+        }
 
         Ok(())
     }
@@ -97,13 +100,6 @@ impl DaemonDatabase {
                 vector_count    INTEGER,
                 created_at      INTEGER NOT NULL,
                 updated_at      INTEGER NOT NULL
-            );
-
-            CREATE TABLE workspace_references (
-                primary_workspace_id    TEXT NOT NULL REFERENCES workspaces(workspace_id) ON DELETE CASCADE,
-                reference_workspace_id  TEXT NOT NULL REFERENCES workspaces(workspace_id) ON DELETE CASCADE,
-                added_at                INTEGER NOT NULL,
-                PRIMARY KEY (primary_workspace_id, reference_workspace_id)
             );
 
             CREATE TABLE codehealth_snapshots (
@@ -163,6 +159,31 @@ impl DaemonDatabase {
         )?;
         tx.commit()?;
         info!("daemon.db migration 002 complete");
+        Ok(())
+    }
+
+    fn migration_003_cleanup_events_and_drop_workspace_references(
+        conn: &mut Connection,
+    ) -> Result<()> {
+        info!("daemon.db migration 003: add cleanup-event log and drop workspace pairings");
+        let tx = conn.transaction()?;
+        tx.execute_batch(
+            "CREATE TABLE IF NOT EXISTS workspace_cleanup_events (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                workspace_id  TEXT NOT NULL,
+                path          TEXT NOT NULL,
+                action        TEXT NOT NULL,
+                reason        TEXT NOT NULL,
+                timestamp     INTEGER NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_workspace_cleanup_events_timestamp
+                ON workspace_cleanup_events(timestamp DESC, id DESC);
+            DROP TABLE IF EXISTS workspace_references;
+            INSERT OR REPLACE INTO schema_version (version, applied_at)
+            VALUES (3, unixepoch());",
+        )?;
+        tx.commit()?;
+        info!("daemon.db migration 003 complete");
         Ok(())
     }
 
@@ -405,8 +426,7 @@ impl DaemonDatabase {
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
-    /// Delete a workspace row. Cascades to `workspace_references` and
-    /// `codehealth_snapshots` (via `ON DELETE CASCADE`).
+    /// Delete a workspace row. Cascades to `codehealth_snapshots` (via `ON DELETE CASCADE`).
     pub fn delete_workspace(&self, workspace_id: &str) -> Result<()> {
         let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
         conn.execute(
@@ -416,32 +436,53 @@ impl DaemonDatabase {
         Ok(())
     }
 
-    // -------------------------------------------------------------------------
-    // Workspace References CRUD
-    // -------------------------------------------------------------------------
-
-    /// Record that `primary_id` uses `reference_id` as a reference workspace.
-    /// Silently ignores duplicate inserts.
-    pub fn add_reference(&self, primary_id: &str, reference_id: &str) -> Result<()> {
+    /// Record a workspace cleanup event and trim the log to the newest 50 rows.
+    pub fn insert_cleanup_event(
+        &self,
+        workspace_id: &str,
+        path: &str,
+        action: &str,
+        reason: &str,
+    ) -> Result<()> {
         let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
         conn.execute(
-            "INSERT OR IGNORE INTO workspace_references
-                (primary_workspace_id, reference_workspace_id, added_at)
-             VALUES (?1, ?2, ?3)",
-            params![primary_id, reference_id, now_unix()],
+            "INSERT INTO workspace_cleanup_events (workspace_id, path, action, reason, timestamp)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![workspace_id, path, action, reason, now_unix()],
+        )?;
+        conn.execute(
+            "DELETE FROM workspace_cleanup_events
+             WHERE id NOT IN (
+                 SELECT id
+                 FROM workspace_cleanup_events
+                 ORDER BY timestamp DESC, id DESC
+                 LIMIT 50
+             )",
+            [],
         )?;
         Ok(())
     }
 
-    /// Remove a reference relationship.
-    pub fn remove_reference(&self, primary_id: &str, reference_id: &str) -> Result<()> {
+    /// Return recent workspace cleanup events, newest first.
+    pub fn list_cleanup_events(&self, limit: u32) -> Result<Vec<WorkspaceCleanupEventRow>> {
         let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
-        conn.execute(
-            "DELETE FROM workspace_references
-             WHERE primary_workspace_id = ?1 AND reference_workspace_id = ?2",
-            params![primary_id, reference_id],
+        let mut stmt = conn.prepare_cached(
+            "SELECT id, workspace_id, path, action, reason, timestamp
+             FROM workspace_cleanup_events
+             ORDER BY timestamp DESC, id DESC
+             LIMIT ?1",
         )?;
-        Ok(())
+        let rows = stmt.query_map(params![limit as i64], |row| {
+            Ok(WorkspaceCleanupEventRow {
+                id: row.get(0)?,
+                workspace_id: row.get(1)?,
+                path: row.get(2)?,
+                action: row.get(3)?,
+                reason: row.get(4)?,
+                timestamp: row.get(5)?,
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
     // -------------------------------------------------------------------------
@@ -593,27 +634,6 @@ impl DaemonDatabase {
     }
 
     // -------------------------------------------------------------------------
-    // Workspace References CRUD (continued below)
-    // -------------------------------------------------------------------------
-
-    /// List all reference workspaces for a given primary workspace, returning
-    /// their full `WorkspaceRow` data (JOIN with workspaces table).
-    pub fn list_references(&self, primary_id: &str) -> Result<Vec<WorkspaceRow>> {
-        let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
-        let mut stmt = conn.prepare_cached(
-            "SELECT w.workspace_id, w.path, w.status, w.session_count, w.last_indexed,
-                    w.symbol_count, w.file_count, w.embedding_model, w.vector_count,
-                    w.created_at, w.updated_at, w.last_index_duration_ms
-             FROM workspace_references r
-             JOIN workspaces w ON w.workspace_id = r.reference_workspace_id
-             WHERE r.primary_workspace_id = ?1
-             ORDER BY r.added_at",
-        )?;
-        let rows = stmt.query_map(params![primary_id], |row| WorkspaceRow::from_row(row))?;
-        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
-    }
-
-    // -------------------------------------------------------------------------
     // Codehealth Snapshots
     // -------------------------------------------------------------------------
 
@@ -712,7 +732,7 @@ impl DaemonDatabase {
 
     /// Batch-migrate workspace IDs across all tables.
     ///
-    /// Given a map of old_id -> new_id, updates workspace_references,
+    /// Given a map of old_id -> new_id, updates workspace_cleanup_events,
     /// codehealth_snapshots, tool_calls, and workspaces in a single transaction.
     /// FK checks are temporarily disabled to allow PK updates.
     pub fn migrate_workspace_ids(
@@ -735,13 +755,8 @@ impl DaemonDatabase {
             for (old_id, new_id) in id_map {
                 // Update child tables first
                 tx.execute(
-                    "UPDATE workspace_references SET primary_workspace_id = ?1
-                     WHERE primary_workspace_id = ?2",
-                    params![new_id, old_id],
-                )?;
-                tx.execute(
-                    "UPDATE workspace_references SET reference_workspace_id = ?1
-                     WHERE reference_workspace_id = ?2",
+                    "UPDATE workspace_cleanup_events SET workspace_id = ?1
+                     WHERE workspace_id = ?2",
                     params![new_id, old_id],
                 )?;
                 tx.execute(
@@ -803,6 +818,16 @@ pub struct WorkspaceRow {
     pub created_at: i64,
     pub updated_at: i64,
     pub last_index_duration_ms: Option<i64>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct WorkspaceCleanupEventRow {
+    pub id: i64,
+    pub workspace_id: String,
+    pub path: String,
+    pub action: String,
+    pub reason: String,
+    pub timestamp: i64,
 }
 
 impl WorkspaceRow {

@@ -1,7 +1,7 @@
-//! Test for GetSymbolsTool bug with reference workspaces
+//! Tests for the GetSymbolsTool target-workspace path.
 //!
 //! BUG: GetSymbolsTool is missing workspace parameter, always queries primary workspace
-//! SYMPTOM: Returns "No symbols found" for reference workspace files even though symbols exist
+//! SYMPTOM: Returns "No symbols found" for target-workspace files even though symbols exist
 //! ROOT CAUSE: GetSymbolsTool struct doesn't have workspace: Option<String> field
 
 use anyhow::Result;
@@ -34,11 +34,11 @@ fn extract_text_from_result(result: &CallToolResult) -> String {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn test_get_symbols_reference_workspace() -> Result<()> {
+async fn test_get_symbols_target_workspace() -> Result<()> {
     // BUG REPRODUCTION:
     // - Primary workspace indexed with symbols
-    // - Reference workspace added and indexed with different symbols
-    // - get_symbols(file_from_reference_workspace) returns "No symbols found"
+    // - Target workspace added and indexed with different symbols
+    // - get_symbols(file_from_target_workspace) returns "No symbols found"
     // - fast_search finds those same symbols just fine
     //
     // ROOT CAUSE: GetSymbolsTool missing workspace parameter, always queries primary DB
@@ -54,7 +54,7 @@ async fn test_get_symbols_reference_workspace() -> Result<()> {
         "pub struct PrimaryStruct { pub field: String }\n",
     )?;
 
-    // Create reference workspace
+    // Create target workspace
     let reference_dir = TempDir::new()?;
     let reference_path = reference_dir.path().to_path_buf();
     let reference_src = reference_path.join("src");
@@ -83,7 +83,7 @@ async fn test_get_symbols_reference_workspace() -> Result<()> {
     index_tool.call_tool(&handler).await?;
 
     // In stdio mode, ManageWorkspaceTool::add requires daemon mode, so we manually
-    // create the reference workspace database at the expected path.
+    // create the target-workspace database at the expected path.
     // (This mirrors what add+index does in daemon mode.)
     let workspace = handler.get_workspace().await?.unwrap();
     let workspace_id =
@@ -162,7 +162,7 @@ async fn test_get_symbols_reference_workspace() -> Result<()> {
 
     assert!(
         !result_text.contains("No symbols found"),
-        "BUG REPRODUCED: get_symbols returned 'No symbols found' for reference workspace file.\n\
+        "BUG REPRODUCED: get_symbols returned 'No symbols found' for target-workspace file.\n\
          File: {}\n\
          Workspace: {}\n\
          Response: {}",
@@ -180,17 +180,17 @@ async fn test_get_symbols_reference_workspace() -> Result<()> {
     Ok(())
 }
 
-/// Test that filtering parameters (max_depth, target, limit) work in reference workspace
+/// Test that filtering parameters (max_depth, target, limit) work in a target workspace
 ///
-/// BUG: The get_symbols_from_reference method ignores ALL filtering logic
+/// BUG: The target-workspace get_symbols path ignores ALL filtering logic
 /// that exists in the primary workspace code path
 ///
-/// This test creates a reference workspace with nested symbols and verifies that:
+/// This test creates a target workspace with nested symbols and verifies that:
 /// - max_depth parameter limits the symbol depth
 /// - target parameter filters to matching symbols + their descendants
 /// - limit parameter restricts top-level symbols while including all children
 #[tokio::test(flavor = "multi_thread")]
-async fn test_get_symbols_reference_workspace_filtering() -> Result<()> {
+async fn test_get_symbols_target_workspace_filtering() -> Result<()> {
     // Create primary workspace
     let primary_dir = TempDir::new()?;
     let primary_path = primary_dir.path().to_path_buf();
@@ -202,7 +202,7 @@ async fn test_get_symbols_reference_workspace_filtering() -> Result<()> {
         "pub struct PrimaryStruct { pub field: String }\n",
     )?;
 
-    // Create reference workspace with nested symbols
+    // Create target workspace with nested symbols
     let reference_dir = TempDir::new()?;
     let reference_path = reference_dir.path().to_path_buf();
     let reference_src = reference_path.join("src");
@@ -237,7 +237,7 @@ pub struct Another { pub field: String }
     };
     index_tool.call_tool(&handler).await?;
 
-    // Manually create the reference workspace database (daemon required for add in stdio mode)
+    // Manually create the target-workspace database (daemon required for add in stdio mode)
     let workspace = handler.get_workspace().await?.unwrap();
     let workspace_id =
         crate::workspace::registry::generate_workspace_id(&reference_path.to_string_lossy())?;
@@ -384,17 +384,17 @@ pub struct Another { pub field: String }
 
     assert!(
         text_all.contains("Outer"),
-        "Should find Outer struct in reference workspace: {}",
+        "Should find Outer struct in target workspace: {}",
         text_all
     );
     assert!(
         text_all.contains("outer_function"),
-        "Should find outer_function in reference workspace: {}",
+        "Should find outer_function in target workspace: {}",
         text_all
     );
     assert!(
         text_all.contains("Another"),
-        "Should find Another struct in reference workspace: {}",
+        "Should find Another struct in target workspace: {}",
         text_all
     );
 
@@ -460,7 +460,7 @@ pub struct Another { pub field: String }
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn test_get_symbols_reference_workspace_relative_paths_after_primary_rebind() -> Result<()> {
+async fn test_get_symbols_target_workspace_relative_paths_after_primary_rebind() -> Result<()> {
     let first_primary_dir = TempDir::new()?;
     let rebound_primary_dir = TempDir::new()?;
     let reference_dir = TempDir::new()?;
@@ -501,12 +501,12 @@ async fn test_get_symbols_reference_workspace_relative_paths_after_primary_rebin
         )
         .await?;
 
-    let reference_workspace_id =
+    let target_workspace_id =
         crate::workspace::registry::generate_workspace_id(&reference_path.to_string_lossy())?;
     let ref_db_path = rebound_primary_path
         .join(".julie")
         .join("indexes")
-        .join(&reference_workspace_id)
+        .join(&target_workspace_id)
         .join("db")
         .join("symbols.db");
     fs::create_dir_all(ref_db_path.parent().unwrap())?;
@@ -553,20 +553,20 @@ async fn test_get_symbols_reference_workspace_relative_paths_after_primary_rebin
             &[],
             &[],
             &[],
-            &reference_workspace_id,
+            &target_workspace_id,
         )?;
     }
 
     let config = RegistryConfig::default();
     let reference_entry = WorkspaceEntry::new(
         reference_path.to_string_lossy().to_string(),
-        WorkspaceType::Reference,
+        WorkspaceType::Known,
         &config,
     )?;
     let mut registry = WorkspaceRegistry::default();
     registry
-        .reference_workspaces
-        .insert(reference_workspace_id.clone(), reference_entry);
+        .known_workspaces
+        .insert(target_workspace_id.clone(), reference_entry);
     let registry_path = rebound_primary_path
         .join(".julie")
         .join("workspace_registry.json");
@@ -579,7 +579,7 @@ async fn test_get_symbols_reference_workspace_relative_paths_after_primary_rebin
         target: None,
         limit: None,
         mode: Some("full".to_string()),
-        workspace: Some(reference_workspace_id.clone()),
+        workspace: Some(target_workspace_id.clone()),
     };
 
     let result = get_symbols_tool.call_tool(&handler).await?;
@@ -603,7 +603,7 @@ async fn test_get_symbols_reference_workspace_relative_paths_after_primary_rebin
             target: None,
             limit: None,
             mode: Some("full".to_string()),
-            workspace: Some(reference_workspace_id.clone()),
+            workspace: Some(target_workspace_id.clone()),
         };
 
         let result = get_symbols_tool.call_tool(&handler).await?;
@@ -648,12 +648,12 @@ async fn test_get_workspace_root_for_target_rejects_swap_gap_root_resolution() -
         .initialize_workspace_with_force(Some(primary_path.to_string_lossy().to_string()), true)
         .await?;
 
-    let reference_workspace_id =
+    let target_workspace_id =
         crate::workspace::registry::generate_workspace_id(&reference_path.to_string_lossy())?;
     let ref_db_path = primary_path
         .join(".julie")
         .join("indexes")
-        .join(&reference_workspace_id)
+        .join(&target_workspace_id)
         .join("db")
         .join("symbols.db");
     fs::create_dir_all(ref_db_path.parent().unwrap())?;
@@ -697,20 +697,20 @@ async fn test_get_workspace_root_for_target_rejects_swap_gap_root_resolution() -
             &[],
             &[],
             &[],
-            &reference_workspace_id,
+            &target_workspace_id,
         )?;
     }
 
     let config = RegistryConfig::default();
     let reference_entry = WorkspaceEntry::new(
         reference_path.to_string_lossy().to_string(),
-        WorkspaceType::Reference,
+        WorkspaceType::Known,
         &config,
     )?;
     let mut registry = WorkspaceRegistry::default();
     registry
-        .reference_workspaces
-        .insert(reference_workspace_id.clone(), reference_entry);
+        .known_workspaces
+        .insert(target_workspace_id.clone(), reference_entry);
     let registry_path = primary_path.join(".julie").join("workspace_registry.json");
     fs::create_dir_all(registry_path.parent().unwrap())?;
     fs::write(&registry_path, serde_json::to_string_pretty(&registry)?)?;
@@ -718,7 +718,7 @@ async fn test_get_workspace_root_for_target_rejects_swap_gap_root_resolution() -
     handler.publish_loaded_workspace_swap_intent_for_test();
 
     let err = handler
-        .get_workspace_root_for_target(&reference_workspace_id)
+        .get_workspace_root_for_target(&target_workspace_id)
         .await
         .expect_err("swap gap should reject reference-target root resolution");
 

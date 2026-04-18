@@ -13,8 +13,8 @@ use serde::{Deserialize, Serialize};
 use tracing::debug;
 
 use super::formatting::format_lean_refs_results;
-use super::reference_workspace;
 use super::resolution::{WorkspaceTarget, parse_qualified_name, resolve_workspace_filter};
+use super::target_workspace;
 use crate::extractors::{Relationship, RelationshipKind, Symbol, SymbolKind};
 use crate::handler::JulieServerHandler;
 use crate::utils::cross_language_intelligence::generate_naming_variants;
@@ -49,7 +49,7 @@ pub struct FastRefsTool {
         deserialize_with = "crate::utils::serde_lenient::deserialize_u32_lenient"
     )]
     pub limit: u32,
-    /// Workspace filter: "primary" (default) or a reference workspace ID
+    /// Workspace filter: "primary" (default) or a workspace ID
     #[serde(default = "default_workspace")]
     pub workspace: Option<String>,
     /// Narrow by reference kind: "call", "variable_ref", "type_usage", "member_access", "import". Omit to see all reference types
@@ -75,7 +75,7 @@ impl FastRefsTool {
     /// When zero references are found, try semantic similarity as a fallback.
     /// Embeds the symbol name on the fly and finds similar symbols by vector distance.
     /// Returns formatted semantic results or empty string.
-    /// Skips for reference workspace queries (may lack embeddings).
+    /// Skips for some explicit workspace queries when embeddings are unavailable.
     async fn try_semantic_fallback(
         &self,
         handler: &JulieServerHandler,
@@ -103,17 +103,17 @@ impl FastRefsTool {
         const QUERY_SIMILARITY_THRESHOLD: f32 = 0.2;
 
         let db_arc = match workspace_target {
-            WorkspaceTarget::Reference(ref_workspace_id) => {
-                debug!(
-                    "Semantic fallback: reference workspace '{}'",
-                    ref_workspace_id
-                );
-                match handler.get_database_for_workspace(ref_workspace_id).await {
+            WorkspaceTarget::Target(target_workspace_id) => {
+                debug!("Semantic fallback: workspace '{}'", target_workspace_id);
+                match handler
+                    .get_database_for_workspace(target_workspace_id)
+                    .await
+                {
                     Ok(db) => db,
                     Err(e) => {
                         debug!(
                             "Semantic fallback: DB error for '{}': {}",
-                            ref_workspace_id, e
+                            target_workspace_id, e
                         );
                         return String::new();
                     }
@@ -146,11 +146,11 @@ impl FastRefsTool {
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
         debug!("Finding references for: {}", self.symbol);
 
-        // Resolve workspace target (primary or reference workspace)
+        // Resolve workspace target (primary or explicit workspace)
         let workspace_target = resolve_workspace_filter(self.workspace.as_deref(), handler).await?;
         let primary_db = match &workspace_target {
             WorkspaceTarget::Primary => Some(handler.primary_database().await?),
-            WorkspaceTarget::Reference(_) => None,
+            WorkspaceTarget::Target(_) => None,
         };
 
         // Find references (workspace resolution is handled by workspace_target)
@@ -159,7 +159,7 @@ impl FastRefsTool {
             .await?;
 
         if definitions.is_empty() && references.is_empty() {
-            // Attempt semantic fallback (works for both primary and reference workspaces)
+            // Attempt semantic fallback (works for both primary and explicit workspaces)
             let semantic_section = self
                 .try_semantic_fallback(handler, &workspace_target, primary_db.clone())
                 .await;
@@ -190,7 +190,7 @@ impl FastRefsTool {
 
     /// Batch-resolve from_symbol_id values to symbol names for reference display.
     ///
-    /// Routes to the correct workspace DB: reference workspaces use
+    /// Routes to the correct workspace DB: explicit workspaces use
     /// `get_database_for_workspace`; primary uses `get_workspace().db`.
     async fn resolve_source_names(
         &self,
@@ -211,8 +211,11 @@ impl FastRefsTool {
         }
 
         match workspace_target {
-            WorkspaceTarget::Reference(ref_workspace_id) => {
-                let db_arc = match handler.get_database_for_workspace(ref_workspace_id).await {
+            WorkspaceTarget::Target(target_workspace_id) => {
+                let db_arc = match handler
+                    .get_database_for_workspace(target_workspace_id)
+                    .await
+                {
                     Ok(db) => db,
                     Err(_) => return HashMap::new(),
                 };
@@ -264,10 +267,10 @@ impl FastRefsTool {
         );
 
         match workspace_target {
-            WorkspaceTarget::Reference(ref_workspace_id) => {
-                debug!("Searching reference workspace: {}", ref_workspace_id);
+            WorkspaceTarget::Target(target_workspace_id) => {
+                debug!("Searching target workspace: {}", target_workspace_id);
                 return self
-                    .database_find_references_in_reference(handler, ref_workspace_id)
+                    .database_find_references_in_target_workspace(handler, target_workspace_id)
                     .await;
             }
             WorkspaceTarget::Primary => {
@@ -559,15 +562,15 @@ impl FastRefsTool {
         Ok((definitions, references))
     }
 
-    /// Find references in a reference workspace by delegating to the reference_workspace module
-    async fn database_find_references_in_reference(
+    /// Find references in a target workspace by delegating to the target_workspace module.
+    async fn database_find_references_in_target_workspace(
         &self,
         handler: &JulieServerHandler,
-        ref_workspace_id: String,
+        target_workspace_id: String,
     ) -> Result<(Vec<Symbol>, Vec<Relationship>)> {
-        reference_workspace::find_references_in_reference_workspace(
+        target_workspace::find_references_in_target_workspace(
             handler,
-            ref_workspace_id,
+            target_workspace_id,
             &self.symbol,
             self.limit,
             self.reference_kind.as_deref(),

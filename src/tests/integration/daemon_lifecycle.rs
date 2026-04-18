@@ -567,23 +567,30 @@ mod tests {
         );
         assert_eq!(ws_row.session_count, 2, "two sessions should be counted");
 
-        // Step 5: Add a reference workspace and record the relationship
+        // Step 5: Record a cleanup event for a secondary workspace
         let ref_root = tempfile::tempdir()?;
         let ref_id = "mylib_cafebabe";
         daemon_db.upsert_workspace(ref_id, ref_root.path().to_str().unwrap(), "ready")?;
-        daemon_db.add_reference(primary_id, ref_id)?;
-
-        // Reference should be retrievable
-        let refs = daemon_db.list_references(primary_id)?;
-        assert_eq!(refs.len(), 1, "should have one reference workspace");
-        assert_eq!(refs[0].workspace_id, ref_id);
-
-        // Duplicate add_reference should be silently ignored
-        daemon_db.add_reference(primary_id, ref_id)?;
+        daemon_db.insert_cleanup_event(
+            ref_id,
+            ref_root.path().to_str().unwrap(),
+            "auto_prune",
+            "missing_path",
+        )?;
+        daemon_db.insert_cleanup_event(
+            ref_id,
+            ref_root.path().to_str().unwrap(),
+            "manual_delete",
+            "user_request",
+        )?;
+        let cleanup_events = daemon_db.list_cleanup_events(10)?;
         assert_eq!(
-            daemon_db.list_references(primary_id)?.len(),
-            1,
-            "duplicate reference should be ignored"
+            cleanup_events
+                .iter()
+                .filter(|event| event.workspace_id == ref_id)
+                .count(),
+            2,
+            "cleanup events should be queryable for known secondary workspaces"
         );
 
         // Step 6: Capture codehealth snapshot from the workspace's SymbolDatabase

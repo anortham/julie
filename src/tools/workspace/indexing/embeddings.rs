@@ -143,7 +143,7 @@ pub(crate) async fn spawn_workspace_embedding(
         }
     };
     if !db_path.exists() {
-        warn!("Reference workspace DB not found at {}", db_path.display());
+        warn!("Target workspace DB not found at {}", db_path.display());
         return 0;
     }
 
@@ -267,7 +267,7 @@ pub(crate) async fn spawn_workspace_embedding(
 }
 
 /// Backward-compatible wrapper kept for call sites that are reference-specific.
-pub(crate) async fn spawn_reference_embedding(
+pub(crate) async fn spawn_target_workspace_embedding(
     handler: &JulieServerHandler,
     workspace_id: String,
 ) -> usize {

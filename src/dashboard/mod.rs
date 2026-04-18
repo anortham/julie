@@ -135,9 +135,22 @@ pub fn create_router(
         .route("/", get(routes::status::index))
         .route("/status/live", get(routes::status::live))
         .route("/projects", get(routes::projects::index))
+        .route(
+            "/projects/register",
+            post(routes::projects_actions::register),
+        )
         .route("/projects/statuses", get(routes::projects::statuses))
         .route("/projects/table", get(routes::projects::table))
         .route("/projects/{id}/detail", get(routes::projects::detail))
+        .route("/projects/{id}/open", post(routes::projects_actions::open))
+        .route(
+            "/projects/{id}/refresh",
+            post(routes::projects_actions::refresh),
+        )
+        .route(
+            "/projects/{id}/delete",
+            post(routes::projects_actions::delete),
+        )
         .route("/metrics", get(routes::metrics::index))
         .route("/metrics/table", get(routes::metrics::table))
         .route("/metrics/summary", get(routes::metrics::summary))
@@ -172,6 +185,7 @@ pub async fn render_template(
     mut context: tera::Context,
 ) -> Result<Html<String>, StatusCode> {
     context.insert("version", env!("CARGO_PKG_VERSION"));
+    context.insert("csrf_token", state.dashboard.action_csrf_token());
 
     if state.config.dev_mode {
         let mut tera = state.tera.write().await;

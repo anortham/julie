@@ -101,7 +101,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_handle_ipc_session_cleans_up_references_on_serve_error() {
+    async fn test_handle_ipc_session_cleans_up_secondary_workspaces_on_serve_error() {
         let indexes_dir = tempfile::tempdir().expect("temporary index directory");
         let primary_workspace_root = tempfile::tempdir().expect("primary workspace root");
         let reference_workspace_root = tempfile::tempdir().expect("reference workspace root");
@@ -134,9 +134,6 @@ mod tests {
         daemon_db
             .upsert_workspace(&reference_id, &reference_path.to_string_lossy(), "ready")
             .expect("insert reference workspace row");
-        daemon_db
-            .add_reference(&primary_id, &reference_id)
-            .expect("add workspace reference row");
 
         let embedding_service = Arc::new(EmbeddingService::initializing());
         let daemon_db_for_pool = Arc::clone(&daemon_db);
@@ -305,7 +302,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_paired_workspace_is_not_auto_activated_on_new_session() {
+    async fn test_known_workspace_is_not_auto_activated_on_new_session() {
         let indexes_dir = tempfile::tempdir().expect("temporary index directory");
         let primary_workspace_root = tempfile::tempdir().expect("primary workspace root");
         let reference_workspace_root = tempfile::tempdir().expect("reference workspace root");
@@ -338,9 +335,6 @@ mod tests {
         daemon_db
             .upsert_workspace(&reference_id, &reference_path.to_string_lossy(), "ready")
             .expect("insert reference workspace row");
-        daemon_db
-            .add_reference(&primary_id, &reference_id)
-            .expect("persist reference pairing");
 
         let embedding_service = Arc::new(EmbeddingService::initializing());
         let pool = Arc::new(WorkspacePool::new(
@@ -398,7 +392,7 @@ mod tests {
             .expect("reference workspace row should exist");
         assert_eq!(
             reference_row.session_count, 0,
-            "persisted pairing metadata must not auto-activate the reference workspace"
+            "known workspace rows must not auto-activate the secondary workspace"
         );
 
         drop(client_stream);

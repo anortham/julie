@@ -161,7 +161,9 @@ fn bfs_shortest_path(
         relationships.retain(|rel| {
             matches!(
                 rel.kind,
-                RelationshipKind::Calls | RelationshipKind::Instantiates | RelationshipKind::Overrides
+                RelationshipKind::Calls
+                    | RelationshipKind::Instantiates
+                    | RelationshipKind::Overrides
             )
         });
         relationships.sort_by(|left, right| {
@@ -169,7 +171,8 @@ fn bfs_shortest_path(
             if source_cmp != std::cmp::Ordering::Equal {
                 return source_cmp;
             }
-            let kind_cmp = relationship_priority(&left.kind).cmp(&relationship_priority(&right.kind));
+            let kind_cmp =
+                relationship_priority(&left.kind).cmp(&relationship_priority(&right.kind));
             if kind_cmp != std::cmp::Ordering::Equal {
                 return kind_cmp;
             }
@@ -260,7 +263,10 @@ fn build_hops(
 }
 
 impl CallPathTool {
-    async fn resolve_workspace_target(&self, handler: &JulieServerHandler) -> Result<WorkspaceQueryTarget> {
+    async fn resolve_workspace_target(
+        &self,
+        handler: &JulieServerHandler,
+    ) -> Result<WorkspaceQueryTarget> {
         match resolve_workspace_filter(self.workspace.as_deref(), handler).await? {
             WorkspaceTarget::Primary => {
                 let snapshot = handler.primary_workspace_snapshot().await?;
@@ -268,7 +274,7 @@ impl CallPathTool {
                     db: snapshot.database.clone(),
                 })
             }
-            WorkspaceTarget::Reference(workspace_id) => Ok(WorkspaceQueryTarget {
+            WorkspaceTarget::Target(workspace_id) => Ok(WorkspaceQueryTarget {
                 db: handler.get_database_for_workspace(&workspace_id).await?,
             }),
         }

@@ -11,14 +11,8 @@
       <span class="mono" style="color: var(--julie-text-muted);">{{ ws.path }}</span>
       <div class="lang-bar-track" id="langbar-{{ ws.workspace_id }}" style="margin-top: 0.3rem; display: none;"></div>
     </td>
-    <td style="text-align: right;" id="symbols-{{ ws.workspace_id }}">
-      {{ ws.symbol_count | default(value="—") }}
-    </td>
-    <td style="text-align: right;" id="files-{{ ws.workspace_id }}">
-      {{ ws.file_count | default(value="—") }}
-    </td>
-    <td style="text-align: right;" id="vectors-{{ ws.workspace_id }}">
-      {{ ws.vector_count | default(value="—") }}
+    <td id="session-state-{{ ws.workspace_id }}">
+      {{ ws.session_state.badge_html | safe }}
     </td>
     <td id="status-{{ ws.workspace_id }}">
       {% if ws.status == "ready" %}
@@ -31,13 +25,53 @@
         <span style="color: var(--julie-text-muted); font-size: 0.8rem;">{{ ws.status }}</span>
       {% endif %}
     </td>
-    <td id="topsym-{{ ws.workspace_id }}" style="max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-      <span class="mono" style="color: var(--julie-text-muted); font-size: 0.78rem;"
-            id="topsym-val-{{ ws.workspace_id }}"></span>
+    <td style="text-align: right;" id="symbols-{{ ws.workspace_id }}">
+      {{ ws.symbol_count | default(value="—") }}
+    </td>
+    <td style="text-align: right;" id="files-{{ ws.workspace_id }}">
+      {{ ws.file_count | default(value="—") }}
+    </td>
+    <td style="text-align: right;" id="vectors-{{ ws.workspace_id }}">
+      {{ ws.vector_count | default(value="—") }}
+    </td>
+    <td style="text-align: right; white-space: nowrap;" @click.stop>
+      <div style="display: inline-flex; gap: 0.35rem; flex-wrap: wrap; justify-content: flex-end;">
+        <form method="post"
+              action="/projects/{{ ws.workspace_id }}/open"
+              @click.stop
+              {% if ws.session_state.path_missing %}onsubmit="return confirm('Prune the stale workspace row and delete its index?');"{% endif %}>
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button type="submit"
+                  class="button is-dark is-small"
+                  style="font-size: 0.75rem;">
+            {% if ws.session_state.path_missing %}Prune{% else %}Open{% endif %}
+          </button>
+        </form>
+        <form method="post" action="/projects/{{ ws.workspace_id }}/refresh" @click.stop>
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button type="submit"
+                  class="button is-dark is-small"
+                  style="font-size: 0.75rem;"
+                  {% if ws.session_state.path_missing %}disabled{% endif %}>
+            Refresh
+          </button>
+        </form>
+        <form method="post"
+              action="/projects/{{ ws.workspace_id }}/delete"
+              @click.stop
+              onsubmit="return confirm('Delete this workspace index and registry row?');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button type="submit"
+                  class="button is-small"
+                  style="font-size: 0.75rem; background: rgba(212, 70, 88, 0.15); color: var(--julie-danger); border-color: rgba(212, 70, 88, 0.25);">
+            Delete
+          </button>
+        </form>
+      </div>
     </td>
   </tr>
   <tr x-show="expanded" x-cloak>
-    <td colspan="8" style="padding: 0; border-top: none;">
+    <td colspan="9" style="padding: 0; border-top: none;">
       <div style="padding: 1rem; background: var(--julie-bg-inset);"
            x-effect="if (expanded) htmx.trigger($el, 'load-detail')"
            hx-get="/projects/{{ ws.workspace_id }}/detail"

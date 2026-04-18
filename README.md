@@ -295,8 +295,8 @@ Julie indexes your workspace automatically on first connection (~2-5s for most p
 
 ### Workspace Management
 
-- `manage_workspace` - Index, open, register, refresh, list, stat, clean, and health-check workspaces
-  - Operations: `index`, `open`, `add`, `remove`, `list`, `refresh`, `stats`, `clean`, `health`
+- `manage_workspace` - Index, register, open, remove, refresh, list, stat, clean, and health-check workspaces
+  - Operations: `index`, `register`, `open`, `remove`, `list`, `refresh`, `stats`, `clean`, `health`
   - Cross-workspace work: call `open` first, then pass the returned `workspace_id` to other tools
 
 > Operational and session metrics are surfaced through the dashboard (`julie-server dashboard`) rather than an MCP tool — see the **bytes NOT injected** headline metric on the Metrics page.

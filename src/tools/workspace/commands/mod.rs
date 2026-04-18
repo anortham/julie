@@ -7,7 +7,7 @@ use tracing::info;
 use crate::handler::JulieServerHandler;
 
 mod index;
-mod registry;
+pub(crate) mod registry;
 
 //******************//
 // Workspace Management Commands //
@@ -23,9 +23,9 @@ pub enum WorkspaceCommand {
         /// Force complete re-indexing even if cache exists
         force: bool,
     },
-    /// Register workspace metadata or save a pairing for later selection
-    Add {
-        /// Path to the workspace to add
+    /// Register a known workspace and build its index without activating it
+    Register {
+        /// Path to the workspace to register
         path: String,
         /// Optional display name for the workspace
         name: Option<String>,
@@ -65,13 +65,13 @@ pub enum WorkspaceCommand {
 
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct ManageWorkspaceTool {
-    /// Operation to perform: "index", "list", "add", "remove", "stats", "clean", "refresh", "open", "health"
+    /// Operation to perform: "index", "list", "register", "remove", "stats", "clean", "refresh", "open", "health"
     ///
     /// EXAMPLES:
     /// Index workspace:      {"operation": "index", "path": null, "force": false}
     /// List workspaces:      {"operation": "list"}
     /// Show stats:           {"operation": "stats", "workspace_id": null}
-    /// Register workspace:   {"operation": "add", "path": "/path/to/project", "name": "My Project"}
+    /// Register workspace:   {"operation": "register", "path": "/path/to/project", "name": "My Project"}
     /// Open workspace:       {"operation": "open", "workspace_id": "workspace-id"}
     /// Open by path:         {"operation": "open", "path": "/path/to/project"}
     /// Clean workspaces:     {"operation": "clean"}
@@ -81,7 +81,7 @@ pub struct ManageWorkspaceTool {
     pub operation: String,
 
     // Optional parameters used by various operations
-    /// Path to workspace (used by: index, add, open)
+    /// Path to workspace (used by: index, register, open)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
 
@@ -93,7 +93,7 @@ pub struct ManageWorkspaceTool {
     )]
     pub force: Option<bool>,
 
-    /// Display name for workspace metadata (used by: add)
+    /// Display name for workspace metadata (used by: register)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
 
@@ -145,11 +145,11 @@ impl ManageWorkspaceTool {
                 )
                 .await
             }
-            "add" => {
+            "register" => {
                 let path = self.path.as_ref().ok_or_else(|| {
-                    anyhow::anyhow!("'path' parameter required for 'add' operation")
+                    anyhow::anyhow!("'path' parameter required for 'register' operation")
                 })?;
-                self.handle_add_command(handler, path, self.name.clone())
+                self.handle_register_command(handler, path, self.name.clone())
                     .await
             }
             "remove" => {
@@ -176,7 +176,7 @@ impl ManageWorkspaceTool {
                     .await
             }
             _ => Err(anyhow::anyhow!(
-                "Unknown operation: '{}'. Valid operations: index, list, add, remove, stats, clean, refresh, open, health",
+                "Unknown operation: '{}'. Valid operations: index, list, register, remove, stats, clean, refresh, open, health",
                 self.operation
             )),
         }

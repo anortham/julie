@@ -11,10 +11,6 @@ use std::env;
 use std::path::{Path, PathBuf};
 use tracing::{debug, info};
 
-pub(crate) fn daemon_workspace_index_dir(workspace_id: &str) -> Result<PathBuf> {
-    Ok(crate::paths::DaemonPaths::try_new()?.workspace_index_dir(workspace_id))
-}
-
 impl ManageWorkspaceTool {
     /// Resolve the workspace path from an explicit path, handler root, env var, or cwd.
     ///

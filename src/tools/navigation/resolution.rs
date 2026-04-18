@@ -39,8 +39,8 @@ pub fn parse_qualified_name(symbol: &str) -> Option<(&str, &str)> {
 pub enum WorkspaceTarget {
     /// Use the primary workspace (handler.get_workspace().db)
     Primary,
-    /// Use a specific reference workspace by ID
-    Reference(String),
+    /// Use a specific non-primary workspace by ID
+    Target(String),
 }
 
 /// Given an invalid workspace ID and a list of known workspace IDs,
@@ -71,7 +71,7 @@ fn suggest_closest_workspace(workspace_id: &str, known_ids: &[&str]) -> Result<W
 ///
 /// - `None` or `"primary"` → `WorkspaceTarget::Primary`
 /// - Any other string in daemon mode → must be a known workspace ID that is active in the current session
-/// - Any other string in stdio mode → accepted permissively as `WorkspaceTarget::Reference(id)`
+/// - Any other string in stdio mode → accepted permissively as `WorkspaceTarget::Target(id)`
 ///
 /// Daemon mode validates against the daemon registry, then enforces the active-session gate.
 pub async fn resolve_workspace_filter(
@@ -96,7 +96,7 @@ pub async fn resolve_workspace_filter(
                         if handler.is_workspace_active(workspace_id).await
                             || startup_workspace_loaded_for_session
                         {
-                            Ok(WorkspaceTarget::Reference(workspace_id.to_string()))
+                            Ok(WorkspaceTarget::Target(workspace_id.to_string()))
                         } else if workspace_row.status != "ready" {
                             Err(anyhow::anyhow!(
                                 "Workspace '{}' is known but has status '{}' (not ready). Run manage_workspace(operation=\"open\", workspace_id=\"{}\") first.",
@@ -114,7 +114,7 @@ pub async fn resolve_workspace_filter(
                                 .activate_workspace_with_root(workspace_id, workspace_root)
                                 .await
                             {
-                                Ok(_) => Ok(WorkspaceTarget::Reference(workspace_id.to_string())),
+                                Ok(_) => Ok(WorkspaceTarget::Target(workspace_id.to_string())),
                                 Err(error) => Err(anyhow::anyhow!(
                                     "Workspace '{}' is known but auto-activation failed: {}. Run manage_workspace(operation=\"open\", workspace_id=\"{}\") first.",
                                     workspace_id,
@@ -136,7 +136,7 @@ pub async fn resolve_workspace_filter(
             }
 
             // Stdio mode: no registry available, accept without validation
-            Ok(WorkspaceTarget::Reference(workspace_id.to_string()))
+            Ok(WorkspaceTarget::Target(workspace_id.to_string()))
         }
     }
 }

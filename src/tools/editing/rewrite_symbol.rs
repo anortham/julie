@@ -138,7 +138,9 @@ fn insert_before_line(source: &str, byte_index: usize, new_content: &str) -> Res
     }
 
     let eol = detect_line_ending(source);
-    let insert_at = source[..byte_index].rfind('\n').map_or(0, |index| index + 1);
+    let insert_at = source[..byte_index]
+        .rfind('\n')
+        .map_or(0, |index| index + 1);
     let mut result = String::with_capacity(source.len() + new_content.len() + eol.len());
     result.push_str(&source[..insert_at]);
     result.push_str(new_content);
@@ -207,9 +209,7 @@ fn find_exact_span_node(node: Node<'_>, start: usize, end: usize) -> Option<Node
 
 fn trim_trailing_ascii_whitespace(source: &str, start: usize, end: usize) -> usize {
     let mut trimmed_end = end;
-    while trimmed_end > start
-        && source.as_bytes()[trimmed_end - 1].is_ascii_whitespace()
-    {
+    while trimmed_end > start && source.as_bytes()[trimmed_end - 1].is_ascii_whitespace() {
         trimmed_end -= 1;
     }
     trimmed_end
@@ -279,7 +279,12 @@ fn span_for_operation(
                 live_symbol.start_byte as usize,
                 live_symbol.end_byte as usize,
             )
-            .ok_or_else(|| anyhow!("Could not locate live syntax node for '{}'", live_symbol.name))?;
+            .ok_or_else(|| {
+                anyhow!(
+                    "Could not locate live syntax node for '{}'",
+                    live_symbol.name
+                )
+            })?;
             let body = node.child_by_field_name("body").ok_or_else(|| {
                 anyhow!(
                     "Operation 'replace_body' is not supported for symbol '{}' ({:?})",
@@ -298,7 +303,12 @@ fn span_for_operation(
                 live_symbol.start_byte as usize,
                 live_symbol.end_byte as usize,
             )
-            .ok_or_else(|| anyhow!("Could not locate live syntax node for '{}'", live_symbol.name))?;
+            .ok_or_else(|| {
+                anyhow!(
+                    "Could not locate live syntax node for '{}'",
+                    live_symbol.name
+                )
+            })?;
             if let Some(body) = node.child_by_field_name("body") {
                 Ok(Some(ByteRange {
                     start: live_symbol.start_byte as usize,
@@ -318,7 +328,10 @@ fn span_for_operation(
 }
 
 impl RewriteSymbolTool {
-    async fn resolve_workspace_target(&self, handler: &JulieServerHandler) -> Result<WorkspaceEditTarget> {
+    async fn resolve_workspace_target(
+        &self,
+        handler: &JulieServerHandler,
+    ) -> Result<WorkspaceEditTarget> {
         match resolve_workspace_filter(self.workspace.as_deref(), handler).await? {
             WorkspaceTarget::Primary => {
                 let primary_snapshot = handler.primary_workspace_snapshot().await?;
@@ -327,7 +340,7 @@ impl RewriteSymbolTool {
                     workspace_root: primary_snapshot.binding.workspace_root,
                 })
             }
-            WorkspaceTarget::Reference(workspace_id) => Ok(WorkspaceEditTarget {
+            WorkspaceTarget::Target(workspace_id) => Ok(WorkspaceEditTarget {
                 db: handler.get_database_for_workspace(&workspace_id).await?,
                 workspace_root: handler.get_workspace_root_for_target(&workspace_id).await?,
             }),
@@ -416,14 +429,17 @@ impl RewriteSymbolTool {
             secure_path_resolution(&indexed_symbol.file_path, &target.workspace_root)?;
         let resolved_str = resolved_path.to_string_lossy().to_string();
 
-        let current_hash = crate::database::calculate_file_hash(&resolved_path)
-            .map_err(|error| anyhow!("Cannot hash file '{}': {}", indexed_symbol.file_path, error))?;
+        let current_hash =
+            crate::database::calculate_file_hash(&resolved_path).map_err(|error| {
+                anyhow!("Cannot hash file '{}': {}", indexed_symbol.file_path, error)
+            })?;
         {
             let db = target
                 .db
                 .lock()
                 .map_err(|error| anyhow!("Database lock error: {}", error))?;
-            if let Err(error) = check_file_freshness(&db, &indexed_symbol.file_path, &current_hash) {
+            if let Err(error) = check_file_freshness(&db, &indexed_symbol.file_path, &current_hash)
+            {
                 return Ok(CallToolResult::text_content(vec![Content::text(format!(
                     "Error: {}",
                     error
@@ -431,8 +447,9 @@ impl RewriteSymbolTool {
             }
         }
 
-        let original_content = std::fs::read_to_string(&resolved_path)
-            .map_err(|error| anyhow!("Cannot read file '{}': {}", indexed_symbol.file_path, error))?;
+        let original_content = std::fs::read_to_string(&resolved_path).map_err(|error| {
+            anyhow!("Cannot read file '{}': {}", indexed_symbol.file_path, error)
+        })?;
         let live = live_symbol_context(
             &indexed_symbol,
             &indexed_symbol.file_path,
@@ -448,7 +465,12 @@ impl RewriteSymbolTool {
                     &live.live_symbol,
                     &live.tree,
                 )?
-                .ok_or_else(|| anyhow!("Operation '{}' did not resolve a byte range", self.operation))?;
+                .ok_or_else(|| {
+                    anyhow!(
+                        "Operation '{}' did not resolve a byte range",
+                        self.operation
+                    )
+                })?;
                 replace_byte_range(&original_content, range, &self.content)?
             }
             "insert_before" | "add_doc" => {
@@ -489,8 +511,7 @@ impl RewriteSymbolTool {
                 "rewrite_symbol dry_run for {} in {}",
                 self.symbol, indexed_symbol.file_path
             );
-            let mut message =
-                format!("Dry run preview (set dry_run=false to apply):\n\n{}", diff);
+            let mut message = format!("Dry run preview (set dry_run=false to apply):\n\n{}", diff);
             if let Some(ref warning) = balance_warning {
                 message.push_str(&format!("\n\n{}", warning));
             }

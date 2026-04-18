@@ -21,9 +21,62 @@ mod tests {
         let db = DaemonDatabase::open(&db_path).unwrap();
 
         assert!(db.table_exists("workspaces"));
-        assert!(db.table_exists("workspace_references"));
+        assert!(db.table_exists("workspace_cleanup_events"));
+        assert!(!db.table_exists("workspace_references"));
         assert!(db.table_exists("codehealth_snapshots"));
         assert!(db.table_exists("tool_calls"));
+    }
+
+    #[test]
+    fn test_migration_003_drops_legacy_pairings_and_preserves_workspaces() {
+        let tmp = TempDir::new().unwrap();
+        let db_path = tmp.path().join("daemon.db");
+
+        {
+            let conn = rusqlite::Connection::open(&db_path).unwrap();
+            conn.execute_batch(
+                "PRAGMA foreign_keys=ON;
+                 CREATE TABLE schema_version (
+                     version    INTEGER PRIMARY KEY,
+                     applied_at INTEGER NOT NULL
+                 );
+                 CREATE TABLE workspaces (
+                     workspace_id    TEXT PRIMARY KEY,
+                     path            TEXT NOT NULL UNIQUE,
+                     status          TEXT NOT NULL DEFAULT 'pending',
+                     session_count   INTEGER NOT NULL DEFAULT 0,
+                     last_indexed    INTEGER,
+                     symbol_count    INTEGER,
+                     file_count      INTEGER,
+                     embedding_model TEXT,
+                     vector_count    INTEGER,
+                     created_at      INTEGER NOT NULL,
+                     updated_at      INTEGER NOT NULL,
+                     last_index_duration_ms INTEGER
+                 );
+                 CREATE TABLE workspace_references (
+                     primary_workspace_id    TEXT NOT NULL REFERENCES workspaces(workspace_id) ON DELETE CASCADE,
+                     reference_workspace_id  TEXT NOT NULL REFERENCES workspaces(workspace_id) ON DELETE CASCADE,
+                     added_at                INTEGER NOT NULL,
+                     PRIMARY KEY (primary_workspace_id, reference_workspace_id)
+                 );
+                 INSERT INTO workspaces (workspace_id, path, status, created_at, updated_at)
+                 VALUES ('ws_old', '/tmp/ws_old', 'ready', unixepoch(), unixepoch());
+                 INSERT INTO schema_version (version, applied_at)
+                 VALUES (2, unixepoch());",
+            )
+            .unwrap();
+        }
+
+        let db = DaemonDatabase::open(&db_path).unwrap();
+
+        assert!(db.table_exists("workspace_cleanup_events"));
+        assert!(!db.table_exists("workspace_references"));
+        let row = db
+            .get_workspace("ws_old")
+            .unwrap()
+            .expect("workspace row should survive migration");
+        assert_eq!(row.path, "/tmp/ws_old");
     }
 
     #[test]
@@ -136,83 +189,48 @@ mod tests {
     }
 
     // -------------------------------------------------------------------------
-    // A3: Workspace References CRUD
+    // A3: Cleanup Event Storage
     // -------------------------------------------------------------------------
 
     #[test]
-    fn test_add_and_list_references() {
-        let (db, _tmp) = create_test_db();
-        db.upsert_workspace("primary1", "/proj", "ready").unwrap();
-        db.upsert_workspace("ref1", "/lib1", "ready").unwrap();
-        db.upsert_workspace("ref2", "/lib2", "ready").unwrap();
-
-        db.add_reference("primary1", "ref1").unwrap();
-        db.add_reference("primary1", "ref2").unwrap();
-
-        let refs = db.list_references("primary1").unwrap();
-        assert_eq!(refs.len(), 2);
-    }
-
-    #[test]
-    fn test_remove_reference() {
-        let (db, _tmp) = create_test_db();
-        db.upsert_workspace("p1", "/proj", "ready").unwrap();
-        db.upsert_workspace("r1", "/lib", "ready").unwrap();
-        db.add_reference("p1", "r1").unwrap();
-
-        db.remove_reference("p1", "r1").unwrap();
-        assert_eq!(db.list_references("p1").unwrap().len(), 0);
-    }
-
-    #[test]
-    fn test_cascade_delete_removes_references() {
-        let (db, _tmp) = create_test_db();
-        db.upsert_workspace("p1", "/proj", "ready").unwrap();
-        db.upsert_workspace("r1", "/lib", "ready").unwrap();
-        db.add_reference("p1", "r1").unwrap();
-
-        db.delete_workspace("r1").unwrap();
-        assert_eq!(db.list_references("p1").unwrap().len(), 0);
-    }
-
-    #[test]
-    fn test_add_reference_duplicate_is_ignored() {
-        let (db, _tmp) = create_test_db();
-        db.upsert_workspace("p1", "/proj", "ready").unwrap();
-        db.upsert_workspace("r1", "/lib", "ready").unwrap();
-
-        db.add_reference("p1", "r1").unwrap();
-        db.add_reference("p1", "r1").unwrap(); // duplicate -- should not error
-
-        assert_eq!(db.list_references("p1").unwrap().len(), 1);
-    }
-
-    #[test]
-    fn test_session_inherits_references() {
-        // Verifies the lookup the daemon uses when auto-attaching references on connect.
+    fn test_insert_and_list_cleanup_events() {
         let (db, _tmp) = create_test_db();
 
-        db.upsert_workspace("primary_abc", "/proj", "ready")
+        db.insert_cleanup_event("ws1", "/tmp/ws1", "auto_prune", "missing_path")
             .unwrap();
-        db.upsert_workspace("ref_xyz", "/lib", "ready").unwrap();
-        db.add_reference("primary_abc", "ref_xyz").unwrap();
+        db.insert_cleanup_event("ws2", "/tmp/ws2", "manual_delete", "user_request")
+            .unwrap();
 
-        let refs = db.list_references("primary_abc").unwrap();
-        assert_eq!(refs.len(), 1);
-        assert_eq!(refs[0].workspace_id, "ref_xyz");
+        let events = db.list_cleanup_events(10).unwrap();
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].workspace_id, "ws2");
+        assert_eq!(events[0].action, "manual_delete");
+        assert_eq!(events[1].workspace_id, "ws1");
+        assert_eq!(events[1].reason, "missing_path");
     }
 
     #[test]
-    fn test_list_references_returns_workspace_row_data() {
+    fn test_cleanup_event_log_is_capped_at_fifty_rows() {
         let (db, _tmp) = create_test_db();
-        db.upsert_workspace("p1", "/proj", "ready").unwrap();
-        db.upsert_workspace("r1", "/lib", "ready").unwrap();
-        db.add_reference("p1", "r1").unwrap();
 
-        let refs = db.list_references("p1").unwrap();
-        assert_eq!(refs.len(), 1);
-        assert_eq!(refs[0].workspace_id, "r1");
-        assert_eq!(refs[0].path, "/lib");
+        for i in 0..60 {
+            db.insert_cleanup_event(
+                &format!("ws{i}"),
+                &format!("/tmp/ws{i}"),
+                "auto_prune",
+                "missing_path",
+            )
+            .unwrap();
+        }
+
+        let events = db.list_cleanup_events(100).unwrap();
+        assert_eq!(
+            events.len(),
+            50,
+            "cleanup event log should keep the newest 50 rows"
+        );
+        assert_eq!(events[0].workspace_id, "ws59");
+        assert_eq!(events.last().unwrap().workspace_id, "ws10");
     }
 
     // -------------------------------------------------------------------------
@@ -390,15 +408,19 @@ mod tests {
         db.update_workspace_stats("julie_316c0b08", 100, 50, None, None, None)
             .unwrap();
 
-        // Insert a reference relationship
+        db.insert_cleanup_event(
+            "julie_316c0b08",
+            "/Users/murphy/source/julie",
+            "auto_prune",
+            "missing_path",
+        )
+        .unwrap();
         db.upsert_workspace(
             "goldfish_5ed767a5",
             "/Users/murphy/source/goldfish",
             "ready",
         )
         .unwrap();
-        db.add_reference("julie_316c0b08", "goldfish_5ed767a5")
-            .unwrap();
 
         // Insert codehealth snapshot
         use crate::daemon::database::CodehealthSnapshot;
@@ -438,10 +460,10 @@ mod tests {
         assert_eq!(ws.symbol_count, Some(100));
         assert_eq!(ws.file_count, Some(50));
 
-        // Verify workspace_references updated
-        let refs = db.list_references("julie_528d4264").unwrap();
-        assert_eq!(refs.len(), 1);
-        assert_eq!(refs[0].workspace_id, "goldfish_aa67f476");
+        // Verify cleanup events updated
+        let cleanup_events = db.list_cleanup_events(10).unwrap();
+        assert_eq!(cleanup_events.len(), 1);
+        assert_eq!(cleanup_events[0].workspace_id, "julie_528d4264");
 
         // Verify codehealth_snapshots updated
         let snapshot = db.get_latest_snapshot("julie_528d4264").unwrap();

@@ -23,9 +23,7 @@ fn extract_text(result: &CallToolResult) -> String {
         .join("\n")
 }
 
-async fn setup_indexed_workspace(
-    content: &str,
-) -> Result<(TempDir, JulieServerHandler, String)> {
+async fn setup_indexed_workspace(content: &str) -> Result<(TempDir, JulieServerHandler, String)> {
     let temp_dir = TempDir::new()?;
     let workspace_path = temp_dir.path().to_path_buf();
 
@@ -271,7 +269,9 @@ async fn test_rewrite_symbol_insert_after_applies_below_symbol() -> Result<()> {
     let on_disk = read_workspace_file(&temp_dir, "src/test.rs")?;
     let greet_pos = on_disk.find("pub fn greet").expect("greet should exist");
     let helper_pos = on_disk.find("pub fn helper").expect("helper should exist");
-    let farewell_pos = on_disk.find("pub fn farewell").expect("farewell should exist");
+    let farewell_pos = on_disk
+        .find("pub fn farewell")
+        .expect("farewell should exist");
     assert!(
         greet_pos < helper_pos && helper_pos < farewell_pos,
         "helper should be inserted after greet and before farewell, got: {on_disk}"
@@ -297,9 +297,14 @@ async fn test_rewrite_symbol_add_doc_inserts_comment_above_symbol() -> Result<()
     tool.call_tool(&handler).await?;
 
     let on_disk = read_workspace_file(&temp_dir, "src/test.rs")?;
-    let doc_pos = on_disk.find("/// Greets the caller.").expect("doc should exist");
+    let doc_pos = on_disk
+        .find("/// Greets the caller.")
+        .expect("doc should exist");
     let fn_pos = on_disk.find("pub fn greet").expect("function should exist");
-    assert!(doc_pos < fn_pos, "doc should appear before function, got: {on_disk}");
+    assert!(
+        doc_pos < fn_pos,
+        "doc should appear before function, got: {on_disk}"
+    );
 
     Ok(())
 }
@@ -373,7 +378,10 @@ async fn test_rewrite_symbol_not_found() -> Result<()> {
 
     let result = tool.call_tool(&handler).await?;
     let text = extract_text(&result);
-    assert!(text.contains("not found"), "Expected not-found error, got: {text}");
+    assert!(
+        text.contains("not found"),
+        "Expected not-found error, got: {text}"
+    );
 
     Ok(())
 }
@@ -381,8 +389,14 @@ async fn test_rewrite_symbol_not_found() -> Result<()> {
 #[tokio::test(flavor = "multi_thread")]
 async fn test_rewrite_symbol_requires_file_path_for_ambiguous_match() -> Result<()> {
     let files = [
-        ("src/alpha.rs", "pub fn collide() {\n    println!(\"alpha\");\n}\n"),
-        ("src/beta.rs", "pub fn collide() {\n    println!(\"beta\");\n}\n"),
+        (
+            "src/alpha.rs",
+            "pub fn collide() {\n    println!(\"alpha\");\n}\n",
+        ),
+        (
+            "src/beta.rs",
+            "pub fn collide() {\n    println!(\"beta\");\n}\n",
+        ),
     ];
     let (_temp_dir, handler) = setup_indexed_workspace_with_files(&files).await?;
 
@@ -443,7 +457,9 @@ async fn test_rewrite_symbol_uses_current_primary_db_after_rebind() -> Result<()
     let original_path = original_root.canonicalize()?;
     let original_path_str = original_path.to_string_lossy().to_string();
     let original_id = generate_workspace_id(&original_path_str)?;
-    let original_ws = pool.get_or_init(&original_id, original_path.clone()).await?;
+    let original_ws = pool
+        .get_or_init(&original_id, original_path.clone())
+        .await?;
 
     let handler = JulieServerHandler::new_with_shared_workspace(
         original_ws,
@@ -571,7 +587,9 @@ async fn test_rewrite_symbol_keeps_primary_binding_snapshot_across_swap_window()
     let original_path_str = original_path.to_string_lossy().to_string();
     let original_id = generate_workspace_id(&original_path_str)?;
     daemon_db.upsert_workspace(&original_id, &original_path_str, "ready")?;
-    let original_ws = pool.get_or_init(&original_id, original_path.clone()).await?;
+    let original_ws = pool
+        .get_or_init(&original_id, original_path.clone())
+        .await?;
     {
         let original_file_path = original_root.join("src").join("test.rs");
         let original_hash = crate::database::calculate_file_hash(&original_file_path)?;
@@ -614,7 +632,14 @@ async fn test_rewrite_symbol_keeps_primary_binding_snapshot_across_swap_window()
             code_context: None,
             content_type: None,
         };
-        original_db.bulk_store_fresh_atomic(&[file_info], &[symbol], &[], &[], &[], &original_id)?;
+        original_db.bulk_store_fresh_atomic(
+            &[file_info],
+            &[symbol],
+            &[],
+            &[],
+            &[],
+            &original_id,
+        )?;
     }
 
     let handler = JulieServerHandler::new_with_shared_workspace(

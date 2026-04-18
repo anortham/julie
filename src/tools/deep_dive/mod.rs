@@ -80,10 +80,10 @@ impl DeepDiveTool {
         let (incoming_cap, outgoing_cap) = ref_caps(depth);
 
         match workspace_target {
-            WorkspaceTarget::Reference(ref_workspace_id) => {
-                // Reference workspace: use handler helper for DB access
+            WorkspaceTarget::Target(target_workspace_id) => {
+                // Target workspace: use handler helper for DB access.
                 let db_arc = handler
-                    .get_database_for_workspace(&ref_workspace_id)
+                    .get_database_for_workspace(&target_workspace_id)
                     .await?;
 
                 let result = tokio::task::spawn_blocking(move || -> Result<String> {
@@ -133,7 +133,7 @@ impl DeepDiveTool {
     }
 }
 
-/// Shared query logic for both primary and reference workspace deep dives
+/// Shared query logic for both primary and target-workspace deep dives
 pub(crate) fn deep_dive_query(
     db: &crate::database::SymbolDatabase,
     symbol_name: &str,

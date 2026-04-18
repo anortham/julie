@@ -1,6 +1,15 @@
 <span style="color: var(--julie-text); font-weight: 600;">{{ total_count }}</span> workspace{% if total_count != 1 %}s{% endif %}
-{% if ready_count > 0 %}
-  &nbsp;&middot;&nbsp;<span style="color: var(--julie-success); font-weight: 600;">{{ ready_count }}</span> ready
+{% if current_count > 0 %}
+  &nbsp;&middot;&nbsp;<span style="color: var(--julie-success); font-weight: 600;">{{ current_count }}</span> current
+{% endif %}
+{% if active_count > 0 %}
+  &nbsp;&middot;&nbsp;<span style="color: var(--julie-warning); font-weight: 600;">{{ active_count }}</span> active
+{% endif %}
+{% if known_count > 0 %}
+  &nbsp;&middot;&nbsp;<span style="color: var(--julie-text); font-weight: 600;">{{ known_count }}</span> known
+{% endif %}
+{% if missing_count > 0 %}
+  &nbsp;&middot;&nbsp;<span style="color: var(--julie-danger); font-weight: 600;">{{ missing_count }}</span> missing
 {% endif %}
 {% if indexing_count > 0 %}
   &nbsp;&middot;&nbsp;<span style="color: var(--julie-warning); font-weight: 600;">{{ indexing_count }}</span> indexing

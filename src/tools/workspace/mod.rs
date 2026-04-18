@@ -1,4 +1,4 @@
-mod commands;
+pub(crate) mod commands;
 mod discovery;
 pub(crate) mod indexing;
 mod language;

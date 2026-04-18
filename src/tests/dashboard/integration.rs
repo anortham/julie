@@ -206,12 +206,11 @@ async fn test_all_dashboard_pages_return_200() {
 #[tokio::test]
 async fn test_metrics_page_renders_aggregated_tool_history() {
     let (state, _tmp) = test_state_with_db();
-    let daemon_db = state
-        .daemon_db()
-        .expect("daemon db")
-        .clone();
+    let daemon_db = state.daemon_db().expect("daemon db").clone();
 
-    daemon_db.upsert_workspace("ready-b", "/proj/b", "ready").unwrap();
+    daemon_db
+        .upsert_workspace("ready-b", "/proj/b", "ready")
+        .unwrap();
     daemon_db
         .update_workspace_stats("ready-b", 8, 1, None, None, None)
         .unwrap();
@@ -272,12 +271,11 @@ async fn test_metrics_page_renders_aggregated_tool_history() {
 #[tokio::test]
 async fn test_metrics_table_filters_to_selected_workspace() {
     let (state, _tmp) = test_state_with_db();
-    let daemon_db = state
-        .daemon_db()
-        .expect("daemon db")
-        .clone();
+    let daemon_db = state.daemon_db().expect("daemon db").clone();
 
-    daemon_db.upsert_workspace("ready-b", "/proj/b", "ready").unwrap();
+    daemon_db
+        .upsert_workspace("ready-b", "/proj/b", "ready")
+        .unwrap();
     daemon_db
         .update_workspace_stats("ready-b", 8, 1, None, None, None)
         .unwrap();

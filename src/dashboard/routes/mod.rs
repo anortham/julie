@@ -4,5 +4,6 @@ pub mod events;
 pub mod intelligence;
 pub mod metrics;
 pub mod projects;
+pub mod projects_actions;
 pub mod search;
 pub mod status;

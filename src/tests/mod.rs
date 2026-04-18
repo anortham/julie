@@ -64,11 +64,11 @@ pub mod regression_prevention_tests; // Tests for bugs that have regressed multi
 
 pub mod tools {
     pub mod get_symbols; // GetSymbolsTool tests
-    pub mod get_symbols_reference_workspace; // GetSymbolsTool reference workspace bug test
     pub mod get_symbols_relative_paths; // GetSymbolsTool Phase 2 relative path tests (TDD)
     pub mod get_symbols_smart_read; // GetSymbolsTool Phase 2 - Smart Read with code bodies
     pub mod get_symbols_target_filtering; // GetSymbolsTool target filtering tests
     pub mod get_symbols_target_filtering_dogfood; // GetSymbolsTool dogfood test: indexes full repo (~164s)
+    pub mod get_symbols_target_workspace; // GetSymbolsTool target-workspace bug test
     pub mod get_symbols_token; // GetSymbolsTool token optimization tests
     pub mod smart_read; // Smart Read token optimization tests
     // syntax_validation removed - abandoned AutoFixSyntax feature (Oct 2025)
@@ -100,8 +100,8 @@ pub mod tools {
 
     pub mod phase4_token_savings; // Phase 4: Data structure optimization token savings tests (skip_serializing_if)
 
-    pub mod filtering_tests; // Symbol filter pipeline tests (index-based refactor TDD)
-    pub mod call_path_tests; // call_path shortest-path navigation tests
+    pub mod call_path_tests;
+    pub mod filtering_tests; // Symbol filter pipeline tests (index-based refactor TDD) // call_path shortest-path navigation tests
 
     pub mod get_context_allocation_tests; // get_context token allocation tests
     pub mod get_context_formatting_tests; // get_context output formatting tests
@@ -121,7 +121,7 @@ pub mod tools {
     pub mod fast_refs_primary_rebind_tests; // FastRefsTool current-primary rebound routing tests
     pub mod formatting_tests; // Navigation formatting tests (lean refs, qualified name parsing)
     pub mod metrics; // Search metrics tests
-    pub mod reference_workspace_fast_refs_tests; // Reference workspace fast_refs parity (limit, reference_kind, identifiers)
+    pub mod target_workspace_fast_refs_tests; // Target-workspace fast_refs parity (limit, reference_kind, identifiers)
 }
 
 // ============================================================================
@@ -154,7 +154,6 @@ pub mod integration {
     pub mod projection_repair;
     pub mod query_preprocessor_tests; // Query preprocessor comprehensive test suite (TDD)
     pub mod real_world_validation; // Real-world code validation tests
-    pub mod reference_workspace; // Reference workspace tests
     pub mod search_regression_tests; // Regression tests for recurring search issues (glob patterns, Tantivy query semantics, limit/ranking)
     #[cfg(feature = "embeddings-sidecar")]
     pub mod sidecar_embedding_incremental; // Sidecar equivalents of embedding_incremental tests
@@ -163,6 +162,7 @@ pub mod integration {
     pub mod sidecar_test_helpers; // Shared fake-sidecar helpers for integration tests
     pub mod stale_index_detection; // Stale index detection tests
     pub mod system_health;
+    pub mod target_workspace; // Target-workspace tests
     pub mod tracing;
     pub mod watcher; // File watcher tests
     pub mod watcher_handlers; // File watcher handler tests (incremental indexing)

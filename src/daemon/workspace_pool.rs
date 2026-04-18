@@ -8,6 +8,7 @@ use tracing::{info, warn};
 use crate::daemon::database::DaemonDatabase;
 use crate::daemon::embedding_service::EmbeddingService;
 use crate::daemon::watcher_pool::WatcherPool;
+use crate::tools::workspace::indexing::state::IndexingRuntimeSnapshot;
 use crate::workspace::JulieWorkspace;
 
 /// A pool of shared `JulieWorkspace` instances for the daemon.
@@ -281,6 +282,30 @@ impl WorkspacePool {
     pub async fn active_count(&self) -> usize {
         let guard = self.workspaces.read().await;
         guard.len()
+    }
+
+    pub fn indexes_dir(&self) -> &std::path::Path {
+        &self.indexes_dir
+    }
+
+    pub(crate) async fn indexing_snapshot(
+        &self,
+        workspace_id: &str,
+    ) -> Option<IndexingRuntimeSnapshot> {
+        let guard = self.workspaces.read().await;
+        guard.get(workspace_id).map(|entry| {
+            entry
+                .workspace
+                .indexing_runtime
+                .read()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .snapshot()
+        })
+    }
+
+    pub async fn evict_workspace(&self, workspace_id: &str) -> bool {
+        let mut guard = self.workspaces.write().await;
+        guard.remove(workspace_id).is_some()
     }
 
     pub(crate) async fn indexing_snapshots(
