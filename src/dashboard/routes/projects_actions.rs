@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use axum::extract::{Form, Path, State};
 use axum::http::StatusCode;
-use axum::response::{Html, IntoResponse, Response};
+use axum::response::{IntoResponse, Response};
 use serde::Deserialize;
 
 use crate::dashboard::AppState;
