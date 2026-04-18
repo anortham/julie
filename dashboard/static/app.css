@@ -309,13 +309,14 @@ html, body {
   border-radius: var(--julie-radius);
   padding: 1rem;
   margin-bottom: 1rem;
-  transition: border-color var(--julie-transition), box-shadow var(--julie-transition);
+  transition: border-color var(--julie-transition), box-shadow var(--julie-transition), transform var(--julie-transition);
   position: relative;
 }
 
 .julie-card:hover {
   border-color: var(--julie-border-hover);
-  box-shadow: 0 2px 16px rgba(0,0,0,0.15);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+  transform: translateY(-2px);
 }
 
 /* Stat cards with centered text get equal height and centered content */
@@ -719,6 +720,12 @@ pre.mono {
 .section {
   animation: fade-up 0.3s ease-out;
 }
+
+/* Stagger animations for hero cards */
+.columns > .column:nth-child(1) .julie-card { animation: fade-up 0.3s ease-out 0.05s both; }
+.columns > .column:nth-child(2) .julie-card { animation: fade-up 0.3s ease-out 0.10s both; }
+.columns > .column:nth-child(3) .julie-card { animation: fade-up 0.3s ease-out 0.15s both; }
+.columns > .column:nth-child(4) .julie-card { animation: fade-up 0.3s ease-out 0.20s both; }
 
 @keyframes fade-up {
   from {
