@@ -152,7 +152,7 @@
       "mcp__plugin_goldfish_goldfish__recall",
       "mcp__julie__get_context",
       "mcp__julie__edit_file",
-      "mcp__julie__edit_symbol",
+      "mcp__julie__rewrite_symbol",
       "Bash(export PATH=\"$HOME/.cargo/bin:$PATH\")",
       "Bash(rustup which:*)",
       "Bash(cp /Users/murphy/source/julie/.claude/skills/editing/SKILL.md /Users/murphy/source/julie-plugin/skills/editing/SKILL.md)",
