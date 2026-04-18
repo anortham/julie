@@ -721,11 +721,13 @@ pre.mono {
   animation: fade-up 0.3s ease-out;
 }
 
-/* Stagger animations for hero cards */
+/* Stagger animations for hero cards — covers up to 6 columns (metrics row has 5) */
 .columns > .column:nth-child(1) .julie-card { animation: fade-up 0.3s ease-out 0.05s both; }
 .columns > .column:nth-child(2) .julie-card { animation: fade-up 0.3s ease-out 0.10s both; }
 .columns > .column:nth-child(3) .julie-card { animation: fade-up 0.3s ease-out 0.15s both; }
 .columns > .column:nth-child(4) .julie-card { animation: fade-up 0.3s ease-out 0.20s both; }
+.columns > .column:nth-child(5) .julie-card { animation: fade-up 0.3s ease-out 0.25s both; }
+.columns > .column:nth-child(6) .julie-card { animation: fade-up 0.3s ease-out 0.30s both; }
 
 @keyframes fade-up {
   from {
@@ -735,6 +737,22 @@ pre.mono {
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Kill all entrance animations */
+  .section,
+  .columns > .column .julie-card,
+  #activity-feed > div:not(#activity-placeholder) {
+    animation: none;
+  }
+  /* No motion on hover lift */
+  .julie-card {
+    transition: border-color var(--julie-transition), box-shadow var(--julie-transition);
+  }
+  .julie-card:hover {
+    transform: none;
   }
 }
 
