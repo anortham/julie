@@ -77,14 +77,8 @@ fn relationship_priority(kind: &RelationshipKind) -> u8 {
     match kind {
         RelationshipKind::Calls => 0,
         RelationshipKind::Instantiates => 1,
-        RelationshipKind::Uses => 2,
-        RelationshipKind::References => 3,
-        RelationshipKind::Imports => 4,
-        RelationshipKind::Returns => 5,
-        RelationshipKind::Parameter => 6,
-        RelationshipKind::Extends | RelationshipKind::Implements | RelationshipKind::Overrides => 7,
-        RelationshipKind::Contains => 8,
-        RelationshipKind::Defines | RelationshipKind::Joins | RelationshipKind::Composition => 9,
+        RelationshipKind::Overrides => 2,
+        _ => u8::MAX,
     }
 }
 
@@ -164,6 +158,12 @@ fn bfs_shortest_path(
 
         let frontier_ids = frontier.clone();
         let mut relationships = db.get_outgoing_relationships_for_symbols(&frontier_ids)?;
+        relationships.retain(|rel| {
+            matches!(
+                rel.kind,
+                RelationshipKind::Calls | RelationshipKind::Instantiates | RelationshipKind::Overrides
+            )
+        });
         relationships.sort_by(|left, right| {
             let source_cmp = left.from_symbol_id.cmp(&right.from_symbol_id);
             if source_cmp != std::cmp::Ordering::Equal {

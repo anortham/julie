@@ -2400,7 +2400,7 @@ impl JulieServerHandler {
 
     #[tool(
         name = "call_path",
-        description = "Find one shortest relationship path between two symbols. Returns a compact hop list when a path exists, or found=false with a short diagnostic when it does not.",
+        description = "Find one shortest call-graph path between two symbols (traverses calls, instantiations, and overrides only). Returns a compact hop list when a path exists, or found=false with a short diagnostic when it does not.",
         annotations(
             title = "Call Path",
             read_only_hint = true,

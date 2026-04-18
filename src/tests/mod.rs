@@ -120,7 +120,7 @@ pub mod tools {
 
     pub mod fast_refs_primary_rebind_tests; // FastRefsTool current-primary rebound routing tests
     pub mod formatting_tests; // Navigation formatting tests (lean refs, qualified name parsing)
-    pub mod metrics; // QueryMetricsTool metrics query tests
+    pub mod metrics; // Search metrics tests
     pub mod reference_workspace_fast_refs_tests; // Reference workspace fast_refs parity (limit, reference_kind, identifiers)
 }
 

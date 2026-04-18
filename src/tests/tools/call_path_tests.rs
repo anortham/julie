@@ -140,3 +140,72 @@ async fn test_call_path_respects_max_hops() -> Result<()> {
 
     Ok(())
 }
+
+// Regression test for the BFS edge-filter fix: before the fix, a 1-hop Contains
+// edge (module contains function) would beat any longer Calls path, producing
+// false positives for "does A call B?" queries. After the fix, BFS only traverses
+// Calls / Instantiates / Overrides, so structural containment is not a valid path.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_contains_edge_not_traversed() -> Result<()> {
+    // outer_mod structurally contains inner_fn via a Contains relationship.
+    // outer_mod does NOT call inner_fn. No call-graph path exists between them.
+    let source = "pub mod outer_mod {\n    pub fn inner_fn() {}\n}\n";
+    let (_temp_dir, handler) = setup_indexed_workspace(source).await?;
+
+    let tool = CallPathTool {
+        from: "outer_mod".to_string(),
+        to: "inner_fn".to_string(),
+        max_hops: 4,
+        workspace: Some("primary".to_string()),
+    };
+
+    let result = tool.call_tool(&handler).await?;
+    let text = extract_text(&result);
+    // If JSON parses cleanly, found must be false (Contains is not a call).
+    // If symbol resolution fails (module not indexed as a callable target),
+    // that is also acceptable — no false positive is possible either way.
+    if let Ok(response) = serde_json::from_str::<CallPathResponse>(&text) {
+        assert!(
+            !response.found,
+            "Contains edge must not produce a false call-graph path: {response:?}"
+        );
+    }
+
+    Ok(())
+}
+
+// Workspace isolation: call_path scopes its search to the specified workspace DB.
+// Specifying a non-existent workspace ID must not fall through to primary symbols.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_call_path_workspace_isolation() -> Result<()> {
+    let source = "pub fn alpha() {\n    beta();\n}\npub fn beta() {}\n";
+    let (_temp_dir, handler) = setup_indexed_workspace(source).await?;
+
+    let tool = CallPathTool {
+        from: "alpha".to_string(),
+        to: "beta".to_string(),
+        max_hops: 4,
+        workspace: Some("nonexistent-workspace-id".to_string()),
+    };
+
+    // call_tool may propagate Err when workspace resolution fails outright,
+    // or return Ok with an error-message string. Either is correct behavior.
+    // The key guarantee: it must NOT return found=true via primary-workspace symbols.
+    match tool.call_tool(&handler).await {
+        Err(_) => {
+            // Workspace not found — isolation enforced at the routing layer.
+        }
+        Ok(result) => {
+            let text = extract_text(&result);
+            let found_via_wrong_workspace = serde_json::from_str::<CallPathResponse>(&text)
+                .map(|r| r.found)
+                .unwrap_or(false);
+            assert!(
+                !found_via_wrong_workspace,
+                "call_path must not traverse primary symbols when a different workspace is specified: {text}"
+            );
+        }
+    }
+
+    Ok(())
+}
