@@ -204,6 +204,135 @@ async fn test_all_dashboard_pages_return_200() {
 }
 
 #[tokio::test]
+async fn test_metrics_page_renders_aggregated_tool_history() {
+    let (state, _tmp) = test_state_with_db();
+    let daemon_db = state
+        .daemon_db()
+        .expect("daemon db")
+        .clone();
+
+    daemon_db.upsert_workspace("ready-b", "/proj/b", "ready").unwrap();
+    daemon_db
+        .update_workspace_stats("ready-b", 8, 1, None, None, None)
+        .unwrap();
+
+    daemon_db
+        .insert_tool_call(
+            "ready-a",
+            "session-a",
+            "fast_search",
+            12.0,
+            Some(3),
+            Some(12_000),
+            Some(800),
+            true,
+            None,
+        )
+        .unwrap();
+    daemon_db
+        .insert_tool_call(
+            "ready-b",
+            "session-b",
+            "deep_dive",
+            25.0,
+            Some(1),
+            Some(8_000),
+            Some(1_200),
+            false,
+            None,
+        )
+        .unwrap();
+
+    let config = DashboardConfig::default();
+    let app = create_router(state, config).unwrap();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/metrics?days=7")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status().as_u16(), 200);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let html = String::from_utf8(body.to_vec()).unwrap();
+
+    assert!(html.contains("All Workspaces"));
+    assert!(html.contains("Success Rate"));
+    assert!(html.contains("Context Saved"));
+    assert!(html.contains("fast_search"));
+    assert!(html.contains("deep_dive"));
+}
+
+#[tokio::test]
+async fn test_metrics_table_filters_to_selected_workspace() {
+    let (state, _tmp) = test_state_with_db();
+    let daemon_db = state
+        .daemon_db()
+        .expect("daemon db")
+        .clone();
+
+    daemon_db.upsert_workspace("ready-b", "/proj/b", "ready").unwrap();
+    daemon_db
+        .update_workspace_stats("ready-b", 8, 1, None, None, None)
+        .unwrap();
+
+    daemon_db
+        .insert_tool_call(
+            "ready-a",
+            "session-a",
+            "fast_search",
+            12.0,
+            Some(3),
+            Some(12_000),
+            Some(800),
+            true,
+            None,
+        )
+        .unwrap();
+    daemon_db
+        .insert_tool_call(
+            "ready-b",
+            "session-b",
+            "deep_dive",
+            25.0,
+            Some(1),
+            Some(8_000),
+            Some(1_200),
+            true,
+            None,
+        )
+        .unwrap();
+
+    let config = DashboardConfig::default();
+    let app = create_router(state, config).unwrap();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/metrics/table?days=7&workspace=ready-a")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status().as_u16(), 200);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let html = String::from_utf8(body.to_vec()).unwrap();
+
+    assert!(html.contains("fast_search"));
+    assert!(!html.contains("deep_dive"));
+}
+
+#[tokio::test]
 async fn test_dashboard_static_files_served() {
     let state = test_state();
     let config = DashboardConfig::default();

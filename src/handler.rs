@@ -37,7 +37,7 @@ use crate::tools::metrics::session::{
 };
 use crate::tools::{
     DeepDiveTool, FastRefsTool, FastSearchTool, GetContextTool, GetSymbolsTool,
-    ManageWorkspaceTool, QueryMetricsTool, RenameSymbolTool,
+    ManageWorkspaceTool, RenameSymbolTool,
 };
 
 /// Data for a single metrics write, sent via bounded channel to the background writer.
@@ -714,21 +714,6 @@ impl JulieServerHandler {
         Ok(())
     }
 
-    fn query_metrics_request_targets_primary(
-        arguments: Option<&serde_json::Map<String, serde_json::Value>>,
-    ) -> bool {
-        let workspace_is_primary = arguments
-            .and_then(|args| args.get("workspace"))
-            .and_then(serde_json::Value::as_str)
-            .is_none_or(|workspace| workspace == "primary");
-        let category = arguments
-            .and_then(|args| args.get("category"))
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or("session");
-
-        workspace_is_primary && matches!(category, "history" | "doc_coverage" | "dead_code")
-    }
-
     fn manage_workspace_request_targets_primary(
         arguments: Option<&serde_json::Map<String, serde_json::Value>>,
     ) -> bool {
@@ -766,11 +751,11 @@ impl JulieServerHandler {
             .is_none_or(|workspace| workspace == "primary");
 
         match tool_name {
-            "fast_search" | "fast_refs" | "get_symbols" | "deep_dive" | "get_context"
-            | "rename_symbol" => workspace_is_primary,
-            "query_metrics" => Self::query_metrics_request_targets_primary(arguments),
+            "fast_search" | "fast_refs" | "call_path" | "get_symbols" | "deep_dive"
+            | "get_context" | "rename_symbol" => workspace_is_primary,
             "manage_workspace" => Self::manage_workspace_request_targets_primary(arguments),
-            "edit_file" | "edit_symbol" => true,
+            "edit_file" => true,
+            "rewrite_symbol" => workspace_is_primary,
             _ => false,
         }
     }
@@ -2414,6 +2399,56 @@ impl JulieServerHandler {
     }
 
     #[tool(
+        name = "call_path",
+        description = "Find one shortest relationship path between two symbols. Returns a compact hop list when a path exists, or found=false with a short diagnostic when it does not.",
+        annotations(
+            title = "Call Path",
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
+    )]
+    async fn call_path(
+        &self,
+        Parameters(params): Parameters<crate::tools::navigation::CallPathTool>,
+    ) -> Result<CallToolResult, McpError> {
+        debug!("🧭 call_path: {} -> {}", params.from, params.to);
+        let start = std::time::Instant::now();
+        let workspace_snapshot = if params.workspace.as_deref().unwrap_or("primary") == "primary" {
+            self.require_primary_workspace_binding().ok()
+        } else {
+            None
+        };
+        let metadata = serde_json::json!({
+            "from": params.from,
+            "to": params.to,
+            "max_hops": params.max_hops,
+            "workspace": params.workspace,
+        });
+        let result = params
+            .call_tool(self)
+            .await
+            .map_err(|e| McpError::internal_error(format!("call_path failed: {}", e), None))?;
+        let output_bytes = Self::output_bytes_from_result(&result);
+        let source_file_paths = Self::extract_paths_from_result(&result);
+        let report = ToolCallReport {
+            result_count: None,
+            source_bytes: None,
+            output_bytes,
+            metadata,
+            source_file_paths,
+        };
+        self.record_tool_call(
+            "call_path",
+            start.elapsed(),
+            &report,
+            workspace_snapshot.as_ref(),
+        );
+        Ok(result)
+    }
+
+    #[tool(
         name = "get_symbols",
         description = "Get symbols (functions, classes, etc.) from a file without reading full content. Requires exact file path — use deep_dive(symbol=...) if you don't know the path.",
         annotations(
@@ -2631,47 +2666,6 @@ impl JulieServerHandler {
         Ok(result)
     }
 
-    // ========== Metrics & Reporting Tools ==========
-
-    #[tool(
-        name = "query_metrics",
-        description = "Query operational metrics: session stats or historical tool call performance. Use category parameter: \"session\" (default) or \"history\".",
-        annotations(
-            title = "Query Code Metrics",
-            read_only_hint = true,
-            destructive_hint = false,
-            idempotent_hint = true,
-            open_world_hint = false
-        )
-    )]
-    async fn query_metrics(
-        &self,
-        Parameters(params): Parameters<QueryMetricsTool>,
-    ) -> Result<CallToolResult, McpError> {
-        debug!("📊 Query metrics: {:?}", params);
-        let start = std::time::Instant::now();
-        let workspace_snapshot = self.require_primary_workspace_binding().ok();
-        let metadata = serde_json::json!({ "category": params.category });
-        let result = params
-            .call_tool(self)
-            .await
-            .map_err(|e| McpError::internal_error(format!("query_metrics failed: {}", e), None))?;
-        let report = ToolCallReport {
-            result_count: None,
-            source_bytes: None,
-            output_bytes: Self::output_bytes_from_result(&result),
-            metadata,
-            source_file_paths: Vec::new(),
-        };
-        self.record_tool_call(
-            "query_metrics",
-            start.elapsed(),
-            &report,
-            workspace_snapshot.as_ref(),
-        );
-        Ok(result)
-    }
-
     // ========== Editing Tools ==========
 
     #[tool(
@@ -2723,35 +2717,40 @@ impl JulieServerHandler {
     }
 
     #[tool(
-        name = "edit_symbol",
-        description = "Edit a symbol by name without reading the file. Operations: replace (swap entire definition), insert_after, insert_before. The symbol is resolved from Julie's index by its line range. Edits operate at line granularity (not byte/column), so same-line symbols or tightly formatted code may need manual adjustment. Always dry_run=true first to preview, then dry_run=false to apply.",
+        name = "rewrite_symbol",
+        description = "Rewrite a symbol by name without reading the file first. Operations: replace_full, replace_body, replace_signature, insert_after, insert_before, add_doc. Julie resolves the symbol from the index, reparses the live file, and rewrites the live symbol span or a node-derived subspan. Always dry_run=true first to preview changes.",
         annotations(
-            title = "Edit Symbol",
+            title = "Rewrite Symbol",
             read_only_hint = false,
             destructive_hint = false,
             idempotent_hint = false,
             open_world_hint = false
         )
     )]
-    async fn edit_symbol(
+    async fn rewrite_symbol(
         &self,
-        Parameters(params): Parameters<crate::tools::editing::edit_symbol::EditSymbolTool>,
+        Parameters(params): Parameters<crate::tools::editing::rewrite_symbol::RewriteSymbolTool>,
     ) -> Result<CallToolResult, McpError> {
         debug!(
-            "✏️ edit_symbol: {} {} (dry_run={})",
+            "✏️ rewrite_symbol: {} {} (dry_run={})",
             params.operation, params.symbol, params.dry_run
         );
         let start = std::time::Instant::now();
-        let workspace_snapshot = self.require_primary_workspace_binding().ok();
+        let workspace_snapshot = if params.workspace.as_deref().unwrap_or("primary") == "primary" {
+            self.require_primary_workspace_binding().ok()
+        } else {
+            None
+        };
         let metadata = serde_json::json!({
             "symbol": params.symbol,
             "operation": params.operation,
             "dry_run": params.dry_run,
+            "workspace": params.workspace,
         });
         let result = params
             .call_tool(self)
             .await
-            .map_err(|e| McpError::internal_error(format!("edit_symbol failed: {}", e), None))?;
+            .map_err(|e| McpError::internal_error(format!("rewrite_symbol failed: {}", e), None))?;
         let output_bytes = Self::output_bytes_from_result(&result);
         let source_file_paths = Self::extract_paths_from_result(&result);
         let report = ToolCallReport {
@@ -2762,7 +2761,7 @@ impl JulieServerHandler {
             source_file_paths,
         };
         self.record_tool_call(
-            "edit_symbol",
+            "rewrite_symbol",
             start.elapsed(),
             &report,
             workspace_snapshot.as_ref(),

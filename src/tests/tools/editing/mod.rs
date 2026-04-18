@@ -1,10 +1,10 @@
 //! Editing infrastructure tests
 //!
-//! This module contains tests for EditingTransaction (used by rename_symbol).
+//! This module contains tests for EditingTransaction plus rewrite_symbol coverage.
 
 mod edit_file_tests;
-mod edit_symbol_tests;
 mod markdown_section_tests;
+mod rewrite_symbol_tests;
 mod security_tests;
 pub mod transactional_editing_tests; // EditingTransaction and MultiFileTransaction tests
 mod validation_tests;

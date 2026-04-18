@@ -5,6 +5,9 @@ use crate::database::types::FileInfo;
 use crate::handler::{JulieServerHandler, metrics_db_path_for_workspace};
 use crate::tools::metrics::session::ToolCallReport;
 use anyhow::Result;
+use rmcp::model::{NumberOrString, PaginatedRequestParams};
+use rmcp::service::{RequestContext, serve_directly};
+use rmcp::ServerHandler;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -42,6 +45,55 @@ async fn handler_construction_sets_workspace_root() -> Result<()> {
         ws.is_none(),
         "workspace should be None before initialization"
     );
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_tool_list_matches_public_surface() -> Result<()> {
+    let handler = JulieServerHandler::new_for_test().await?;
+
+    let (server_transport, client_transport) = tokio::io::duplex(64);
+    drop(client_transport);
+    let service =
+        serve_directly::<rmcp::RoleServer, _, _, _, _>(handler.clone(), server_transport, None);
+
+    let tools = <JulieServerHandler as ServerHandler>::list_tools(
+        &handler,
+        Some(PaginatedRequestParams::default()),
+        RequestContext::new(NumberOrString::Number(1), service.peer().clone()),
+    )
+    .await?;
+
+    assert!(
+        tools
+            .tools
+            .iter()
+            .all(|tool| tool.name.as_ref() != "query_metrics"),
+        "query_metrics should not appear in the public tool list"
+    );
+    assert!(
+        tools
+            .tools
+            .iter()
+            .all(|tool| tool.name.as_ref() != "edit_symbol"),
+        "edit_symbol should not appear in the public tool list"
+    );
+    assert!(
+        tools
+            .tools
+            .iter()
+            .any(|tool| tool.name.as_ref() == "rewrite_symbol"),
+        "rewrite_symbol should appear in the public tool list"
+    );
+    assert!(
+        tools
+            .tools
+            .iter()
+            .any(|tool| tool.name.as_ref() == "call_path"),
+        "call_path should appear in the public tool list"
+    );
+
+    let _ = service.cancel().await;
     Ok(())
 }
 

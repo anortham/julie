@@ -3,8 +3,8 @@
 // This module contains test utilities and infrastructure for testing extractors,
 // search functionality, editing tools, and other Julie components.
 //
-// Editing tools (edit_lines, fuzzy_replace, edit_symbol) were removed in the
-// toolset redesign (2026-02-07). Only EditingTransaction remains (used by rename_symbol).
+// Editing tools now center on edit_file and rewrite_symbol.
+// EditingTransaction remains shared with rename_symbol and other write paths.
 
 // ============================================================================
 // ANALYSIS TESTS - Post-indexing analysis (test quality, risk scoring)
@@ -101,6 +101,7 @@ pub mod tools {
     pub mod phase4_token_savings; // Phase 4: Data structure optimization token savings tests (skip_serializing_if)
 
     pub mod filtering_tests; // Symbol filter pipeline tests (index-based refactor TDD)
+    pub mod call_path_tests; // call_path shortest-path navigation tests
 
     pub mod get_context_allocation_tests; // get_context token allocation tests
     pub mod get_context_formatting_tests; // get_context output formatting tests

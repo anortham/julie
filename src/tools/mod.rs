@@ -7,18 +7,17 @@ pub mod shared;
 pub mod deep_dive; // Progressive-depth symbol investigation
 pub mod editing; // EditingTransaction infrastructure (shared by refactoring tools)
 pub mod get_context; // Token-budgeted code context subgraph
-pub mod metrics;
+pub mod metrics; // Internal metrics formatting and session tracking
 pub mod navigation;
 pub mod refactoring;
 pub mod search;
 pub mod symbols; // Symbol overview tools
-pub mod workspace; // Code health metrics query tool
+pub mod workspace; // Workspace management and indexing
 
 // Re-export all tools for external use
 pub use deep_dive::DeepDiveTool;
 pub use get_context::GetContextTool;
-pub use metrics::QueryMetricsTool;
-pub use navigation::FastRefsTool;
+pub use navigation::{CallPathTool, FastRefsTool};
 pub use refactoring::RenameSymbolTool;
 pub use search::FastSearchTool;
 pub use symbols::GetSymbolsTool;

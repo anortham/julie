@@ -284,7 +284,7 @@
         <div class="tool-desc">Zero-read editing: understand and modify without reading files</div>
         <div class="terminal">
           <div><span class="prompt">$ </span><span class="command">/editing</span></div>
-          <div><span class="result">deep_dive → edit_symbol (dry_run)</span></div>
+          <div><span class="result">deep_dive → rewrite_symbol (dry_run)</span></div>
           <div><span class="highlight">@@ -42,5 +42,5 @@</span></div>
           <div><span class="result">-fn validate(t: &str) -> bool</span></div>
           <div><span class="highlight">+fn validate(t: &str) -> Result</span></div>
@@ -439,14 +439,14 @@
       </div>
 
       <div class="card tool-card animate-on-scroll" data-delay="600">
-        <div class="tool-name">edit_symbol</div>
-        <div class="tool-desc">Edit a symbol by name without reading the file</div>
-        <div class="terminal" aria-label="edit_symbol replacing a function definition by symbol name">
-          <div><span class="prompt">$ </span><span class="command">edit_symbol("AuthService::validate", replace, dry_run)</span></div>
-          <div><span class="result">@@ -42,8 +42,10 @@</span></div>
-          <div><span class="comment">-fn validate(&self, ...) -> bool {</span></div>
-          <div><span class="highlight">+fn validate(&self, ...) -> Result&lt;Claims&gt; {</span></div>
-          <div><span class="comment">&nbsp; Symbol found in src/auth.rs:42</span></div>
+        <div class="tool-name">rewrite_symbol</div>
+        <div class="tool-desc">Rewrite one live symbol span without reading the file first</div>
+        <div class="terminal" aria-label="rewrite_symbol replacing a function body by symbol name">
+          <div><span class="prompt">$ </span><span class="command">rewrite_symbol("AuthService::validate", replace_body, dry_run)</span></div>
+          <div><span class="result">@@ -43,3 +43,5 @@</span></div>
+          <div><span class="comment">-    return false;</span></div>
+          <div><span class="highlight">+    return validate_claims(token)?;</span></div>
+          <div><span class="comment">&nbsp; Live symbol span from src/auth.rs:42</span></div>
         </div>
         <span class="token-badge">~250 tokens</span>
       </div>
@@ -476,15 +476,15 @@
       </div>
 
       <div class="card tool-card animate-on-scroll" data-delay="900">
-        <div class="tool-name">query_metrics</div>
-        <div class="tool-desc">Session performance stats and context efficiency</div>
-        <div class="terminal" aria-label="query_metrics showing session performance and context efficiency">
-          <div><span class="prompt">$ </span><span class="command">query_metrics(category="session")</span></div>
-          <div><span class="result">fast_search</span>  12 calls  avg 4.1ms</div>
-          <div><span class="result">Source examined:</span> <span class="highlight">214KB</span></div>
-          <div><span class="result">NOT injected: </span> <span class="highlight">206KB</span></div>
+        <div class="tool-name">call_path</div>
+        <div class="tool-desc">One shortest path between two symbols</div>
+        <div class="terminal" aria-label="call_path tracing from UI action to database write">
+          <div><span class="prompt">$ </span><span class="command">call_path("LoginButton::onClick", "insert_session")</span></div>
+          <div><span class="result">found:</span> <span class="highlight">true</span> <span class="result">hops:</span> 3</div>
+          <div><span class="result">&nbsp; onClick → AuthService::login</span></div>
+          <div><span class="result">&nbsp; AuthService::login → insert_session</span></div>
         </div>
-        <span class="token-badge">~300 tokens</span>
+        <span class="token-badge">~180 tokens</span>
       </div>
     </div>
   </section>

@@ -95,7 +95,7 @@
       reads.innerHTML = [
         '<div class="file-read-line visible"><span class="julie-cmd">fast_search("UserService", definitions)</span> → <span class="julie-result">Found · 100 tokens</span></div>',
         '<div class="file-read-line visible"><span class="julie-cmd">deep_dive("UserService::validate", context)</span> → <span class="julie-result">Full picture · 200 tokens</span></div>',
-        '<div class="file-read-line visible"><span class="julie-cmd">edit_symbol("UserService::validate", replace)</span> → <span class="julie-result">Applied · 200 tokens</span></div>',
+        '<div class="file-read-line visible"><span class="julie-cmd">rewrite_symbol("UserService::validate", replace_body)</span> → <span class="julie-result">Applied · 200 tokens</span></div>',
       ].join('');
       message.textContent = 'Found, understood, and edited. Zero file reads.';
       message.className = 'hero-message visible solution';
@@ -163,7 +163,7 @@
       const julieSteps = [
         { cmd: 'fast_search("UserService", definitions)', result: 'Found · 100 tokens', tokens: 100 },
         { cmd: 'deep_dive("UserService::validate", context)', result: 'Callers, callees, types · 200 tokens', tokens: 200 },
-        { cmd: 'edit_symbol("UserService::validate", replace)', result: 'Applied · 200 tokens', tokens: 200 },
+        { cmd: 'rewrite_symbol("UserService::validate", replace_body)', result: 'Applied · 200 tokens', tokens: 200 },
       ];
 
       let stepIdx = 0;

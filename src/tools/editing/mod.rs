@@ -7,7 +7,7 @@
 //! These primitives ensure file safety across all editing tools in Julie.
 
 pub mod edit_file;
-pub mod edit_symbol;
+pub mod rewrite_symbol;
 pub mod validation;
 
 use anyhow::Result;

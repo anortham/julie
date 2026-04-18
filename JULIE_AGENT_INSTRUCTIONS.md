@@ -14,17 +14,17 @@
 - `get_symbols`: File structure without reading full content. Use `target` + `mode="minimal"` to extract one symbol.
 - `deep_dive`: Investigate a symbol: definition, callers, callees, children, types. Always use before modifying.
 - `fast_refs`: All references to a symbol. Required before any change. Use `reference_kind` to filter.
+- `call_path`: One shortest relationship path between two symbols. Use it for "how does A reach B" questions.
 - `get_context`: Token-budgeted area orientation (pivots + neighbors). Use at start of task.
 - `rename_symbol`: Workspace-wide rename. Always preview with `dry_run=true` first.
 - `manage_workspace`: Index, open, add/remove workspace metadata, list, refresh, stats, and health-check workspaces. For cross-workspace work in daemon mode, call `operation="open"` first, then pass the returned `workspace_id` to search, navigation, and editing tools.
 - `edit_file`: Edit a file without reading it first. DMP fuzzy matching for old_text. Always `dry_run=true` first.
-- `edit_symbol`: Edit a symbol by name. Operations: replace, insert_after, insert_before. Always `dry_run=true` first.
-- `query_metrics`: Code health (security/change risk, test coverage), session stats, trend history.
+- `rewrite_symbol`: Rewrite a symbol by name. Operations: replace_full, replace_body, replace_signature, insert_after, insert_before, add_doc. Always `dry_run=true` first.
 
 ## Editing Workflow
 
-`edit_file` and `edit_symbol` are the DEFAULT for all file modifications. They edit without reading the file first.
-- Code symbols: `deep_dive` > `edit_symbol` (`dry_run=true` first)
+`edit_file` and `rewrite_symbol` are the DEFAULT for file modifications. They edit without reading the file first.
+- Code symbols: `deep_dive` > `rewrite_symbol` (`dry_run=true` first)
 - Any text: `edit_file(old_text=..., new_text=..., dry_run=true)`
 - Read + Edit is the FALLBACK, not the default. Use only when Julie tools genuinely cannot handle the edit.
 
@@ -46,6 +46,7 @@ Subagents (Agent tool) do NOT receive Julie's session guidance. When dispatching
     - get_symbols(file_path) to see file structure before reading
     - deep_dive(symbol) to understand a symbol before modifying it
     - fast_refs(symbol) to find all references (REQUIRED before any change)
+    - call_path(from, to) to trace one shortest dependency path
     - edit_file(old_text, new_text, dry_run=true) to edit without reading first
-    - edit_symbol(symbol, operation, content, dry_run=true) to edit by name
+    - rewrite_symbol(symbol, operation, content, dry_run=true) to edit by name
     Do NOT fall back to Glob/Read/Grep chains. Julie tools return targeted context in 1-2 calls.
