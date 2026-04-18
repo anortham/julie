@@ -741,11 +741,16 @@ pre.mono {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  /* Kill all entrance animations */
+  /* Kill all non-essential animations across the whole dashboard:
+     entrance motion, looping pulses/glows, shimmers, and live indicators. */
   .section,
   .columns > .column .julie-card,
-  #activity-feed > div:not(#activity-placeholder) {
-    animation: none;
+  #activity-feed > div:not(#activity-placeholder),
+  #live-dot,
+  .badge-ready,
+  .badge-indexing,
+  .volume-bar-fill::after {
+    animation: none !important;
   }
   /* No motion on hover lift */
   .julie-card {
@@ -753,6 +758,12 @@ pre.mono {
   }
   .julie-card:hover {
     transform: none;
+  }
+  /* Disable motion-flavoured width transitions on meters */
+  .volume-bar-fill,
+  .lang-bar-segment,
+  .kind-bar-segment {
+    transition: none;
   }
 }
 

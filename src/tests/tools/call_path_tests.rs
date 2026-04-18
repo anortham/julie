@@ -141,35 +141,39 @@ async fn test_call_path_respects_max_hops() -> Result<()> {
     Ok(())
 }
 
-// Regression test for the BFS edge-filter fix: before the fix, a 1-hop Contains
-// edge (module contains function) would beat any longer Calls path, producing
-// false positives for "does A call B?" queries. After the fix, BFS only traverses
-// Calls / Instantiates / Overrides, so structural containment is not a valid path.
+// Regression test for the BFS edge-filter fix. The Rust extractor emits an
+// `Implements` relationship for `impl Trait for Type`. Before the fix, BFS
+// traversed every RelationshipKind, so an Implements edge would produce a
+// 1-hop "path" from the type to the trait, answering "does Worker call Doer?"
+// with a false yes. After the fix, BFS only walks Calls / Instantiates /
+// Overrides, so Implements must not produce a reachable path.
+//
+// This test will FAIL if the `.retain()` filter inside bfs_shortest_path is
+// removed: the Implements edge would re-appear at depth 1 and found=true.
 #[tokio::test(flavor = "multi_thread")]
-async fn test_contains_edge_not_traversed() -> Result<()> {
-    // outer_mod structurally contains inner_fn via a Contains relationship.
-    // outer_mod does NOT call inner_fn. No call-graph path exists between them.
-    let source = "pub mod outer_mod {\n    pub fn inner_fn() {}\n}\n";
+async fn test_non_call_edge_not_traversed() -> Result<()> {
+    // Worker implements Doer via `impl Doer for Worker`. The extractor emits
+    // an Implements relationship (Worker -> Doer). Worker does NOT call Doer.
+    let source = "pub trait Doer {\n    fn act(&self);\n}\n\npub struct Worker;\n\nimpl Doer for Worker {\n    fn act(&self) {}\n}\n";
     let (_temp_dir, handler) = setup_indexed_workspace(source).await?;
 
     let tool = CallPathTool {
-        from: "outer_mod".to_string(),
-        to: "inner_fn".to_string(),
+        from: "Worker".to_string(),
+        to: "Doer".to_string(),
         max_hops: 4,
         workspace: Some("primary".to_string()),
     };
 
     let result = tool.call_tool(&handler).await?;
     let text = extract_text(&result);
-    // If JSON parses cleanly, found must be false (Contains is not a call).
-    // If symbol resolution fails (module not indexed as a callable target),
-    // that is also acceptable — no false positive is possible either way.
-    if let Ok(response) = serde_json::from_str::<CallPathResponse>(&text) {
-        assert!(
-            !response.found,
-            "Contains edge must not produce a false call-graph path: {response:?}"
-        );
-    }
+    let response: CallPathResponse = serde_json::from_str(&text)
+        .unwrap_or_else(|e| panic!("call_path must return valid JSON (err={e}, text={text})"));
+    assert!(
+        !response.found,
+        "Implements edge must not produce a call-graph path: {response:?}"
+    );
+    assert_eq!(response.hops, 0);
+    assert!(response.path.is_empty());
 
     Ok(())
 }
