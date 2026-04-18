@@ -1,8 +1,8 @@
 # Julie
 
-**[Website](https://anortham.github.io/julie/)** · **[Installation](#installation)** · **[Tools](#tools-8)** · **[Skills](#skills)** · **[34 Languages](#supported-languages-34)**
+**[Website](https://anortham.github.io/julie/)** · **[Installation](#installation)** · **[Tools](#tools-10)** · **[Skills](#skills)** · **[34 Languages](#supported-languages-34)**
 
-A cross-platform code intelligence server built in Rust, providing LSP-quality features across 33 programming languages via the Model Context Protocol (MCP).
+A cross-platform code intelligence server built in Rust, providing LSP-quality features across 34 programming languages via the Model Context Protocol (MCP).
 
 ## Why Julie?
 
@@ -263,6 +263,10 @@ Julie indexes your workspace automatically on first connection (~2-5s for most p
   - Includes test locations with quality tiers and centrality scores
   - Identifier fallback for references that relationships miss
 - `fast_refs` - Find all references to a symbol with structured output
+- `call_path` - Trace one shortest relationship path between two symbols
+  - Answers "how does A reach B?" in a single call
+  - Walks the relationship graph, returns the chain with kinds (calls, type-uses, member-access, etc.)
+  - Handles disconnected pairs with a clear "no path" result
 - `get_symbols` - Smart file reading with 70-90% token savings
   - View file structure without reading full content
   - Extract specific symbols with complete code bodies
@@ -276,28 +280,26 @@ Julie indexes your workspace automatically on first connection (~2-5s for most p
   - Dry-run preview with unified diff output (standard `@@` hunk headers)
   - Bracket balance validation for code files
   - CRLF-aware matching preserves line ending style
-- `edit_symbol` - Edit a symbol by name using Julie's indexed boundaries
-  - Operations: replace (entire definition), insert_after, insert_before
-  - Symbol lookup by qualified name (e.g., `MyClass::method`)
-  - Combine with deep_dive for zero-read editing workflows
+- `rewrite_symbol` - Edit a symbol by name without reading the file first
+  - Operations: `replace_full`, `replace_body`, `replace_signature`, `insert_before`, `insert_after`, `add_doc`
+  - Symbol lookup by qualified name (e.g., `MyClass::method`); use `file_path` to disambiguate
+  - Combine with `deep_dive` for zero-read editing workflows
   - Dry-run preview with unified diff output
 
 ### Refactoring
 
-- `rename_symbol` - Rename symbols across entire workspace
+- `rename_symbol` - Rename symbols across the workspace
   - Updates all references atomically
-  - Preview mode with dry_run parameter
+  - Scope control: `workspace` (default), `all`, or `file:<path>` to disambiguate shared names
+  - Preview mode with `dry_run` parameter
 
 ### Workspace Management
 
-- `manage_workspace` - Index, add, remove, refresh, and clean workspaces
+- `manage_workspace` - Index, open, register, refresh, list, stat, clean, and health-check workspaces
+  - Operations: `index`, `open`, `add`, `remove`, `list`, `refresh`, `stats`, `clean`, `health`
+  - Cross-workspace work: call `open` first, then pass the returned `workspace_id` to other tools
 
-### Metrics
-
-- `query_metrics` - Session performance and operational metrics
-  - `category: "session"` (default) — per-tool call counts, average latency, output bytes, and context efficiency (source bytes examined vs output returned)
-  - `category: "history"` — cross-session trends: total calls, p95 latencies, cumulative context efficiency
-  - Headline metric: **bytes NOT injected into context** (source_bytes - output_bytes)
+> Operational and session metrics are surfaced through the dashboard (`julie-server dashboard`) rather than an MCP tool — see the **bytes NOT injected** headline metric on the Metrics page.
 
 **Default Ignore Patterns** - Julie automatically excludes common build artifacts and dependencies to prevent indexing noise:
 
@@ -335,31 +337,22 @@ These signals appear in `deep_dive` output, giving agents immediate awareness of
 
 ## Skills
 
-Julie ships with 11 pre-built skills, reusable prompt workflows that combine Julie's tools into higher-level capabilities. Skills are invoked as slash commands (e.g., `/architecture`) in harnesses that support them, or used as system prompt instructions.
+Julie ships with a focused set of pre-built skills, reusable prompt workflows that combine Julie's tools into higher-level capabilities. Skills are invoked as slash commands (e.g., `/explore-area`) in harnesses that support them, or used as system prompt instructions.
+
+The plugin distributes four user-facing skills (`/editing`, `/explore-area`, `/impact-analysis`, `/web-research`); this repo also ships `/search-debug` for Julie development.
 
 ### Editing Skills
 
 | Skill | Description |
 |-------|-------------|
-| `/editing` | Zero-read editing: understand and modify code using edit_file and edit_symbol without reading files first |
-
-### Report Skills
-
-| Skill | Description |
-|-------|-------------|
-| `/architecture` | Architecture overview: entry points, module map, dependency flow, suggested reading order |
-| `/metrics` | Session performance report: tool usage, timing, and context efficiency (bytes NOT injected) |
+| `/editing` | Zero-read editing: understand and modify code using `edit_file`, `rewrite_symbol`, and `rename_symbol` without reading files first |
 
 ### Navigation & Analysis Skills
 
 | Skill | Description |
 |-------|-------------|
-| `/explore-area` | Orient on an unfamiliar area with token-budgeted exploration |
-| `/call-trace` | Trace the call path between two functions |
-| `/logic-flow` | Step-by-step explanation of a function's logic and control flow |
+| `/explore-area` | Orient on an unfamiliar area with token-budgeted exploration via `get_context` |
 | `/impact-analysis` | Analyze blast radius of changing a symbol — callers grouped by risk |
-| `/dependency-graph` | Show module dependencies by analyzing imports and cross-references |
-| `/type-flow` | Trace how types flow through a function — parameters, transforms, returns |
 
 ### Research Skills
 
@@ -369,11 +362,11 @@ Julie ships with 11 pre-built skills, reusable prompt workflows that combine Jul
 
 Web research applies Julie's token-efficiency model to web content. Instead of dumping an entire documentation page into context (often 10,000+ tokens), `/web-research` fetches the page as clean markdown, saves it locally where Julie's filewatcher indexes it, then uses `fast_search` and `get_symbols` to read just the sections you need. Requires [browser39](https://github.com/alejandroqh/browser39/releases) (download a binary release).
 
-### Debugging Skills
+### Development Skills
 
 | Skill | Description |
 |-------|-------------|
-| `/search-debug` | Diagnose why a search returns unexpected results (for Julie development) |
+| `/search-debug` | Diagnose why a search returns unexpected results (for Julie development; not distributed in the plugin) |
 
 ### Installing Skills
 
@@ -497,12 +490,14 @@ src/
 ├── watcher/         # File watcher for incremental re-indexing
 ├── tools/           # MCP tool implementations
 │   ├── deep_dive/   # Progressive-depth symbol investigation
+│   ├── editing/     # edit_file, rewrite_symbol
 │   ├── get_context/ # Token-budgeted context retrieval
-│   ├── navigation/  # fast_refs
+│   ├── metrics/     # Session metrics for the dashboard
+│   ├── navigation/  # fast_refs, call_path
 │   ├── refactoring/ # rename_symbol
 │   ├── search/      # fast_search
 │   ├── symbols/     # get_symbols
-│   └── workspace/   # Workspace management and indexing
+│   └── workspace/   # manage_workspace
 ├── workspace/       # Multi-workspace management and registry
 └── tests/           # Test infrastructure
 

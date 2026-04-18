@@ -276,7 +276,7 @@
   <!-- Section 6: Skills -->
   <section id="skills" class="section">
     <h2 class="section-title">Skills</h2>
-    <p class="section-subtitle">11 pre-built workflows that combine tools into higher-level capabilities.</p>
+    <p class="section-subtitle">A focused set of pre-built workflows that combine Julie's tools into higher-level capabilities.</p>
 
     <div class="card-grid" style="grid-template-columns: repeat(3, 1fr);">
       <div class="card tool-card animate-on-scroll" data-delay="0">
@@ -292,30 +292,30 @@
       </div>
 
       <div class="card tool-card animate-on-scroll" data-delay="100">
-        <div class="tool-name">/architecture</div>
-        <div class="tool-desc">Architecture overview with entry points and dependency flow</div>
+        <div class="tool-name">/explore-area</div>
+        <div class="tool-desc">Token-budgeted orientation on an unfamiliar area</div>
         <div class="terminal">
-          <div><span class="prompt">$ </span><span class="command">/architecture</span></div>
-          <div><span class="result">Entry points: 15 high-centrality symbols</span></div>
-          <div><span class="result">Modules: 8 groups by responsibility</span></div>
-          <div><span class="highlight">→ Reading order: handler.rs → tools/ → database/</span></div>
+          <div><span class="prompt">$ </span><span class="command">/explore-area auth flow</span></div>
+          <div><span class="result">get_context → 6 pivots, 14 neighbors</span></div>
+          <div><span class="result">Budget used: </span><span class="highlight">812 / 1500 tokens</span></div>
+          <div><span class="highlight">→ AuthService::login is the entry point</span></div>
         </div>
       </div>
 
       <div class="card tool-card animate-on-scroll" data-delay="200">
-        <div class="tool-name">/metrics</div>
-        <div class="tool-desc">Session performance and context efficiency report</div>
+        <div class="tool-name">/impact-analysis</div>
+        <div class="tool-desc">Blast radius for a symbol — callers grouped by risk</div>
         <div class="terminal">
-          <div><span class="prompt">$ </span><span class="command">/metrics</span></div>
-          <div><span class="result">21 calls | avg 10ms</span></div>
-          <div><span class="result">Source examined: </span><span class="highlight">529KB</span></div>
-          <div><span class="highlight">492KB NOT injected into context</span></div>
+          <div><span class="prompt">$ </span><span class="command">/impact-analysis User::email</span></div>
+          <div><span class="result">fast_refs → 47 callers</span></div>
+          <div><span class="result">High risk: 3 · Medium: 11 · Low: 33</span></div>
+          <div><span class="highlight">→ Review handler.rs and login_flow.rs first</span></div>
         </div>
       </div>
     </div>
 
     <p class="section-subtitle" style="margin-top: 24px; text-align: left; max-width: 720px; margin-left: auto; margin-right: auto;">
-      <strong>Also included:</strong> <code>/explore-area</code>, <code>/call-trace</code>, <code>/logic-flow</code>, <code>/impact-analysis</code>, <code>/dependency-graph</code>, <code>/type-flow</code>, <code>/web-research</code>, <code>/search-debug</code>
+      <strong>Also included:</strong> <code>/web-research</code> for fetching and locally indexing web content with Julie's token-efficient reading model.
     </p>
     <p class="section-subtitle" style="margin-top: 12px; text-align: left; max-width: 720px; margin-left: auto; margin-right: auto; font-size: 0.95rem; opacity: 0.85;">
       <code>/web-research</code> extends Julie's token efficiency to web content: fetch documentation or articles as markdown, index locally, then read selectively with Julie tools instead of dumping entire pages into context.
