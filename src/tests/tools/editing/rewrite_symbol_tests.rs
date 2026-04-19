@@ -948,3 +948,80 @@ async fn test_dry_run_long_body_elision() -> Result<()> {
 
     Ok(())
 }
+
+/// Regression test: file_path filter must use suffix semantics, not substring.
+/// `handler.rs` must match `src/tools/handler.rs` but NOT `src/tools/foohandler.rs`.
+#[tokio::test]
+async fn test_rewrite_symbol_file_path_filter_uses_suffix_not_substring() -> Result<()> {
+    let files = [
+        (
+            "src/tools/handler.rs",
+            "pub fn process() {\n    println!(\"handler\");\n}\n",
+        ),
+        (
+            "src/tools/foohandler.rs",
+            "pub fn process() {\n    println!(\"foohandler\");\n}\n",
+        ),
+    ];
+    let (_temp_dir, handler) = setup_indexed_workspace_with_files(&files).await?;
+
+    // With file_path="handler.rs", only src/tools/handler.rs should match.
+    let tool = crate::tools::editing::rewrite_symbol::RewriteSymbolTool {
+        symbol: "process".to_string(),
+        operation: "replace_full".to_string(),
+        content: "pub fn process() { println!(\"updated\"); }".to_string(),
+        file_path: Some("handler.rs".to_string()),
+        workspace: Some("primary".to_string()),
+        dry_run: true,
+    };
+
+    let result = tool.call_tool(&handler).await?;
+    let text = extract_text(&result);
+
+    // Must resolve to the exact-suffix file, not produce an ambiguity error or wrong-file match.
+    assert!(
+        !text.starts_with("Error:"),
+        "Expected successful resolution to handler.rs, got: {text}"
+    );
+    assert!(
+        text.contains("src/tools/handler.rs"),
+        "Diff must reference src/tools/handler.rs, got: {text}"
+    );
+    assert!(
+        !text.contains("foohandler.rs"),
+        "foohandler.rs must not appear in the result, got: {text}"
+    );
+
+    Ok(())
+}
+
+/// Regression test: a bogus file_path filter that is not a valid suffix of any indexed path
+/// must return a not-found error, not a false positive from substring matching.
+#[tokio::test]
+async fn test_rewrite_symbol_file_path_bogus_filter_returns_not_found() -> Result<()> {
+    let files = [(
+        "src/tools/handler.rs",
+        "pub fn process() {\n    println!(\"handler\");\n}\n",
+    )];
+    let (_temp_dir, handler) = setup_indexed_workspace_with_files(&files).await?;
+
+    // "andler.rs" is a substring of "handler.rs" but NOT a valid path suffix (no leading `/`).
+    let tool = crate::tools::editing::rewrite_symbol::RewriteSymbolTool {
+        symbol: "process".to_string(),
+        operation: "replace_full".to_string(),
+        content: "pub fn process() {}".to_string(),
+        file_path: Some("andler.rs".to_string()),
+        workspace: Some("primary".to_string()),
+        dry_run: true,
+    };
+
+    let result = tool.call_tool(&handler).await?;
+    let text = extract_text(&result);
+
+    assert!(
+        text.contains("Error:") && text.contains("not found"),
+        "Expected not-found error for bogus suffix filter, got: {text}"
+    );
+
+    Ok(())
+}

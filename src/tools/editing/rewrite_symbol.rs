@@ -13,7 +13,7 @@ use tracing::debug;
 use crate::extractors::{ExtractorManager, Symbol};
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::CallToolResultExt;
-use crate::tools::navigation::resolution::{WorkspaceTarget, resolve_workspace_filter};
+use crate::tools::navigation::resolution::{WorkspaceTarget, file_path_matches_suffix, resolve_workspace_filter};
 use crate::utils::file_utils::secure_path_resolution;
 use rmcp::model::{CallToolResult, Content};
 use tree_sitter::{Node, Parser, Tree};
@@ -485,12 +485,12 @@ impl RewriteSymbolTool {
             let symbols = crate::tools::deep_dive::data::find_symbol(
                 &db,
                 &symbol_name,
-                file_path_filter.as_deref(),
+                None,
             )?;
             let filtered = if let Some(ref filter) = file_path_filter {
                 symbols
                     .into_iter()
-                    .filter(|symbol| symbol.file_path.contains(filter.as_str()))
+                    .filter(|symbol| file_path_matches_suffix(&symbol.file_path, filter))
                     .collect()
             } else {
                 symbols
