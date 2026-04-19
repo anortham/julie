@@ -40,6 +40,31 @@ impl SearchProjection {
         self.ensure_current_inner(db, index, Some(search_ready))
     }
 
+    /// Rebuild Tantivy from canonical SQLite data when an index open operation
+    /// reports that the on-disk index had to be recreated due to incompatibility.
+    pub fn repair_recreated_open_if_needed(
+        &self,
+        db: &mut SymbolDatabase,
+        index: &SearchIndex,
+        repair_required: bool,
+        search_ready: Option<&AtomicBool>,
+    ) -> Result<()> {
+        if !repair_required {
+            return Ok(());
+        }
+
+        match search_ready {
+            Some(gate) => {
+                self.ensure_current_with_gate(db, index, gate)?;
+            }
+            None => {
+                self.ensure_current_from_database(db, index)?;
+            }
+        }
+
+        Ok(())
+    }
+
     fn ensure_current_inner(
         &self,
         db: &mut SymbolDatabase,

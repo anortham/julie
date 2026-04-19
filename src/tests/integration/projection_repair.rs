@@ -142,6 +142,68 @@ fn test_search_projection_rebuilds_empty_index_from_canonical_sqlite() -> Result
 }
 
 #[test]
+fn test_search_projection_repairs_recreated_open_from_canonical_sqlite() -> Result<()> {
+    let temp_dir = TempDir::new()?;
+    let db_path = temp_dir.path().join("symbols.db");
+    let index_path = temp_dir.path().join("tantivy");
+    std::fs::create_dir_all(&index_path)?;
+
+    let mut db = SymbolDatabase::new(&db_path)?;
+    let projection = SearchProjection::tantivy("ws_test");
+
+    {
+        let index = SearchIndex::open_or_create(&index_path)?;
+        db.bulk_store_fresh_atomic(
+            &[make_file("src/lib.rs", "fn repaired_symbol() {}\n")],
+            &[make_symbol("sym_repair", "repaired_symbol", "src/lib.rs")],
+            &[],
+            &[],
+            &[],
+            "ws_test",
+        )?;
+        projection.ensure_current_from_database(&mut db, &index)?;
+        assert_eq!(index.num_docs(), 2, "fixture setup should create docs");
+    }
+
+    let compat_marker_path = index_path.join("julie-search-compat.json");
+    assert!(compat_marker_path.exists(), "compat marker should exist");
+    std::fs::remove_file(&compat_marker_path)?;
+
+    let configs = crate::search::LanguageConfigs::load_embedded();
+    let open_outcome =
+        SearchIndex::open_or_create_with_language_configs_outcome(&index_path, &configs)?;
+    let repair_required = open_outcome.repair_required();
+    assert!(
+        repair_required,
+        "missing compat marker should force recreated-open repair"
+    );
+
+    let reopened_index = open_outcome.into_index();
+    assert_eq!(
+        reopened_index.num_docs(),
+        0,
+        "recreated open should start empty before repair"
+    );
+
+    projection.repair_recreated_open_if_needed(&mut db, &reopened_index, repair_required, None)?;
+
+    assert_eq!(
+        reopened_index.num_docs(),
+        2,
+        "repair should repopulate symbol and file docs from SQLite"
+    );
+
+    let results = reopened_index.search_symbols("repaired_symbol", &Default::default(), 10)?;
+    assert_eq!(
+        results.results.len(),
+        1,
+        "repaired open should restore searchability"
+    );
+    assert_eq!(results.results[0].name, "repaired_symbol");
+    Ok(())
+}
+
+#[test]
 fn test_search_projection_marks_stale_when_projection_write_fails() -> Result<()> {
     let temp_dir = TempDir::new()?;
     let db_path = temp_dir.path().join("symbols.db");

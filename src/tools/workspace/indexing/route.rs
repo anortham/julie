@@ -3,10 +3,11 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::Result;
+use tracing::warn;
 
 use crate::database::SymbolDatabase;
 use crate::handler::JulieServerHandler;
-use crate::search::SearchIndex;
+use crate::search::{SearchIndex, SearchProjection};
 use crate::tools::workspace::indexing::state::SharedIndexingRuntime;
 use crate::workspace::JulieWorkspace;
 
@@ -152,6 +153,8 @@ impl IndexRoute {
         }
 
         let tantivy_path = self.tantivy_path.clone();
+        let db_path = self.db_path.clone();
+        let workspace_id = self.workspace_id.clone();
         let search_index = tokio::task::spawn_blocking(move || {
             if create_if_missing {
                 std::fs::create_dir_all(&tantivy_path)?;
@@ -160,11 +163,27 @@ impl IndexRoute {
             }
 
             let configs = crate::search::LanguageConfigs::load_embedded();
-            let index = if create_if_missing {
-                SearchIndex::open_or_create_with_language_configs(&tantivy_path, &configs)?
+            let open_outcome = if create_if_missing {
+                SearchIndex::open_or_create_with_language_configs_outcome(&tantivy_path, &configs)?
             } else {
-                SearchIndex::open_with_language_configs(&tantivy_path, &configs)?
+                SearchIndex::open_with_language_configs_outcome(&tantivy_path, &configs)?
             };
+
+            let repair_required = open_outcome.repair_required();
+            let index = open_outcome.into_index();
+
+            if repair_required {
+                warn!(
+                    "Tantivy index for workspace route '{}' at {} was recreated empty during open; rebuilding projection from canonical SQLite state",
+                    workspace_id,
+                    tantivy_path.display()
+                );
+
+                let mut db = SymbolDatabase::new(&db_path)?;
+                let projection = SearchProjection::tantivy(workspace_id.clone());
+                projection
+                    .repair_recreated_open_if_needed(&mut db, &index, repair_required, None)?;
+            }
 
             Ok::<_, anyhow::Error>(Some(Arc::new(std::sync::Mutex::new(index))))
         })

@@ -2,7 +2,7 @@
 
 use super::super::helpers::SYMBOL_COLUMNS;
 use super::super::*;
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use tracing::debug;
 
 impl SymbolDatabase {
@@ -441,6 +441,8 @@ impl SymbolDatabase {
     /// Get most referenced symbols (GROUP BY aggregation on relationships)
     pub fn get_most_referenced_symbols(&self, limit: usize) -> Result<Vec<(String, usize)>> {
         let mut results = Vec::new();
+        let limit = i64::try_from(limit)
+            .map_err(|_| anyhow!("Query limit exceeds SQLite INTEGER range: {limit}"))?;
 
         // SQL GROUP BY aggregation - counts incoming references per symbol
         let query = "SELECT to_symbol_id, COUNT(*) as ref_count \
