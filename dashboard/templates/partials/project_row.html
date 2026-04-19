@@ -1,6 +1,6 @@
 <tbody x-data="{ expanded: false }">
   <tr style="cursor: pointer;" @click="expanded = !expanded">
-    <td style="text-align: center; width: 2rem;">
+    <td style="text-align: center; width: 2.5rem;">
       <span style="color: var(--julie-text-muted); display: inline-block; transition: transform 0.15s;"
             :style="expanded ? 'transform: rotate(90deg);' : ''">&#9654;</span>
     </td>
@@ -18,10 +18,10 @@
         {{ ws.session_state.path_state_badge_html | safe }}
       </div>
     </td>
-    <td id="session-state-{{ ws.workspace_id }}">
+    <td class="projects-session-cell" id="session-state-{{ ws.workspace_id }}">
       {{ ws.session_state.badge_html | safe }}
     </td>
-    <td id="status-{{ ws.workspace_id }}">
+    <td class="projects-status-cell" id="status-{{ ws.workspace_id }}">
       {% if ws.status == "ready" %}
         <span class="badge-ready">Ready</span>
       {% elif ws.status == "indexing" %}
@@ -32,13 +32,13 @@
         <span style="color: var(--julie-text-muted); font-size: 0.8rem;">{{ ws.status }}</span>
       {% endif %}
     </td>
-    <td style="text-align: right;" id="symbols-{{ ws.workspace_id }}">
+    <td class="projects-stats-cell" id="symbols-{{ ws.workspace_id }}">
       {{ ws.symbol_count | default(value="—") }}
     </td>
-    <td style="text-align: right;" id="files-{{ ws.workspace_id }}">
+    <td class="projects-stats-cell" id="files-{{ ws.workspace_id }}">
       {{ ws.file_count | default(value="—") }}
     </td>
-    <td style="text-align: right;" id="vectors-{{ ws.workspace_id }}">
+    <td class="projects-stats-cell" id="vectors-{{ ws.workspace_id }}">
       {{ ws.vector_count | default(value="—") }}
     </td>
     <td class="projects-actions-cell" @click.stop>

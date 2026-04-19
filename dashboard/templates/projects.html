@@ -5,21 +5,23 @@
 <h1 class="title" style="margin-bottom: 1rem;">Projects</h1>
 
 <div class="julie-card" style="margin-bottom: 1rem;">
-  <form method="post" action="/projects/register" style="display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: end;">
-    <div style="flex: 1 1 28rem;">
-      <label class="label-text" for="workspace-path" style="display: block; margin-bottom: 0.35rem;">Add Workspace</label>
-      <input id="workspace-path"
-             class="input mono"
-             type="text"
-             name="path"
-             placeholder="/path/to/project-or-worktree"
-             style="width: 100%;">
-      <p style="margin-top: 0.4rem; color: var(--julie-text-muted); font-size: 0.85rem;">
-        Register and index a workspace without activating it for any session.
-      </p>
+  <form method="post" action="/projects/register">
+    <label class="label-text" for="workspace-path" style="display: block; margin-bottom: 0.35rem;">Add Workspace</label>
+    <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center;">
+      <div style="flex: 1 1 28rem;">
+        <input id="workspace-path"
+               class="input mono"
+               type="text"
+               name="path"
+               placeholder="/path/to/project-or-worktree"
+               style="width: 100%;">
+      </div>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" class="button is-dark">Add Workspace</button>
     </div>
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <button type="submit" class="button is-dark">Add Workspace</button>
+    <p style="margin-top: 0.4rem; color: var(--julie-text-muted); font-size: 0.85rem;">
+      Register and index a workspace without activating it for any session.
+    </p>
   </form>
 </div>
 

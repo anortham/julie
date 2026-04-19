@@ -8,16 +8,16 @@
       <table class="table is-fullwidth projects-table" style="margin-bottom: 0;">
       <thead>
         <tr>
-          <th style="width: 2rem; background: var(--julie-bg-inset);"></th>
-          <th style="background: var(--julie-bg-inset);">Project</th>
-          <th style="background: var(--julie-bg-inset);">Path</th>
-          <th style="background: var(--julie-bg-inset);">Session</th>
-          <th style="background: var(--julie-bg-inset);">Status</th>
-          <th style="background: var(--julie-bg-inset); text-align: right;"
+          <th style="width: 2.5rem; background: var(--julie-bg-inset);"></th>
+          <th class="projects-project-cell" style="background: var(--julie-bg-inset);">Project</th>
+          <th class="projects-path-cell" style="background: var(--julie-bg-inset);">Path</th>
+          <th class="projects-session-cell" style="background: var(--julie-bg-inset);">Session</th>
+          <th class="projects-status-cell" style="background: var(--julie-bg-inset);">Status</th>
+          <th class="projects-stats-cell" style="background: var(--julie-bg-inset); text-align: right;"
               title="All extracted symbols (functions, classes, imports, exports, docs)">Symbols</th>
-          <th style="background: var(--julie-bg-inset); text-align: right;">Files</th>
-          <th style="background: var(--julie-bg-inset); text-align: right;">Vectors</th>
-          <th style="background: var(--julie-bg-inset); text-align: center;">Actions</th>
+          <th class="projects-stats-cell" style="background: var(--julie-bg-inset); text-align: right;">Files</th>
+          <th class="projects-stats-cell" style="background: var(--julie-bg-inset); text-align: right;">Vectors</th>
+          <th class="projects-actions-cell" style="background: var(--julie-bg-inset); text-align: center;">Actions</th>
         </tr>
       </thead>
       {% for ws in workspaces %}
