@@ -266,10 +266,4 @@ pub(crate) async fn spawn_workspace_embedding(
     total_symbols
 }
 
-/// Backward-compatible wrapper kept for call sites that are reference-specific.
-pub(crate) async fn spawn_target_workspace_embedding(
-    handler: &JulieServerHandler,
-    workspace_id: String,
-) -> usize {
-    spawn_workspace_embedding(handler, workspace_id).await
-}
+
