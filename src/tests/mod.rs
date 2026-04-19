@@ -100,8 +100,9 @@ pub mod tools {
 
     pub mod phase4_token_savings; // Phase 4: Data structure optimization token savings tests (skip_serializing_if)
 
-    pub mod call_path_tests;
-    pub mod filtering_tests; // Symbol filter pipeline tests (index-based refactor TDD) // call_path shortest-path navigation tests
+    pub mod call_path_tests; // call_path shortest-path navigation tests
+    pub mod call_path_disambiguation_tests; // call_path per-endpoint file-path disambiguation tests
+    pub mod filtering_tests; // Symbol filter pipeline tests (index-based refactor TDD)
 
     pub mod get_context_allocation_tests; // get_context token allocation tests
     pub mod get_context_formatting_tests; // get_context output formatting tests
