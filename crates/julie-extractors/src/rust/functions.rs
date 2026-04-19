@@ -1,6 +1,7 @@
 use super::helpers::{
-    ImplBlockInfo, extract_extern_modifier, extract_visibility, find_doc_comment,
-    get_preceding_attributes, has_async_keyword, has_unsafe_keyword, is_inside_impl,
+    ImplBlockInfo, extract_extern_modifier, extract_impl_target_names, extract_visibility,
+    find_doc_comment, get_preceding_attributes, has_async_keyword, has_unsafe_keyword,
+    is_inside_impl,
 };
 use super::signatures::extract_return_type;
 /// Rust function and method extraction
@@ -150,30 +151,8 @@ pub(super) fn extract_function(
 /// Store information about an impl block for phase 2 processing
 pub(super) fn extract_impl(extractor: &mut RustExtractor, node: Node, _parent_id: Option<String>) {
     let base = extractor.get_base_mut();
-    // Store impl block info for phase 2 processing
-    //
-    // Handle both direct types and scoped paths:
-    //   impl MyStruct { ... }          → child is "type_identifier"
-    //   impl super::MyStruct { ... }   → child is "scoped_type_identifier"
-    //   impl crate::foo::Bar { ... }   → child is "scoped_type_identifier"
-    let type_name = node
-        .children(&mut node.walk())
-        .find_map(|c| match c.kind() {
-            "type_identifier" => Some(base.get_node_text(&c)),
-            "scoped_type_identifier" => {
-                // Extract the last segment (the actual type name) from the scoped path
-                let mut last_type = None;
-                let mut cursor = c.walk();
-                for child in c.children(&mut cursor) {
-                    if child.kind() == "type_identifier" {
-                        last_type = Some(base.get_node_text(&child));
-                    }
-                }
-                last_type
-            }
-            _ => None,
-        });
-    let type_name = match type_name {
+    let targets = extract_impl_target_names(base, node);
+    let type_name = match targets.type_name {
         Some(name) => name,
         None => return, // Skip impl blocks where we can't determine the type name
     };

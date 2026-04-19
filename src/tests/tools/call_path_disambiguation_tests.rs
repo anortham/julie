@@ -101,8 +101,8 @@ async fn test_disambiguation_from_file_path() -> Result<()> {
         to_file_path: None,
     };
     let text = extract_text(&tool.call_tool(&handler).await?);
-    let response = try_parse_response(&text)
-        .unwrap_or_else(|| panic!("expected JSON response, got: {text}"));
+    let response =
+        try_parse_response(&text).unwrap_or_else(|| panic!("expected JSON response, got: {text}"));
 
     assert!(
         response.found,
@@ -129,7 +129,7 @@ async fn test_disambiguation_both_file_paths() -> Result<()> {
         ),
         (
             "src/b.rs",
-            "pub fn entry() { target(); }\npub fn target() {}\n",
+            "pub fn entry() { other(); }\npub fn other() {}\n",
         ),
     ];
     let (_temp_dir, handler) = setup_multi_file_workspace(files).await?;
@@ -159,23 +159,28 @@ async fn test_disambiguation_both_file_paths() -> Result<()> {
         to_file_path: Some("src/a.rs".to_string()),
     };
     let text = extract_text(&tool.call_tool(&handler).await?);
-    let response = try_parse_response(&text)
-        .unwrap_or_else(|| panic!("expected JSON response, got: {text}"));
+    let response =
+        try_parse_response(&text).unwrap_or_else(|| panic!("expected JSON response, got: {text}"));
 
     assert!(
         response.found,
-        "path should be found with both file-path params disambiguating: {response:?}"
+        "expected path with both file hints: {response:?}"
     );
+    assert_eq!(response.hops, 1);
+    assert_eq!(response.path[0].file, "src/a.rs:1");
 
     Ok(())
 }
 
 // ---------------------------------------------------------------------------
-// Case 2b: to_file_path alone disambiguates an ambiguous `to` symbol
+// Case 2b: multiple `to` candidates do not require disambiguation when only one
+// is reachable from `from`
 // ---------------------------------------------------------------------------
 //
 // Two files each define a `result` function. `from` is unambiguous (only in
-// src/a.rs), but `to` has two candidates. to_file_path pins it to src/a.rs.
+// src/a.rs), but `to` has two candidates. The reachable one in src/a.rs should
+// be enough for path search to succeed. to_file_path can still pin the same
+// destination explicitly.
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_disambiguation_to_file_path() -> Result<()> {
@@ -188,8 +193,9 @@ async fn test_disambiguation_to_file_path() -> Result<()> {
     ];
     let (_temp_dir, handler) = setup_multi_file_workspace(files).await?;
 
-    // Without hint: `to` is ambiguous
-    let ambiguous_tool = CallPathTool {
+    // Without hint: call_path should accept multiple `to` candidates and find
+    // the reachable one.
+    let tool_without_hint = CallPathTool {
         from: "runner".to_string(),
         to: "result".to_string(),
         max_hops: 2,
@@ -197,11 +203,15 @@ async fn test_disambiguation_to_file_path() -> Result<()> {
         from_file_path: None,
         to_file_path: None,
     };
-    let text = extract_text(&ambiguous_tool.call_tool(&handler).await?);
+    let text = extract_text(&tool_without_hint.call_tool(&handler).await?);
+    let response =
+        try_parse_response(&text).unwrap_or_else(|| panic!("expected JSON response, got: {text}"));
     assert!(
-        text.contains("ambiguous"),
-        "expected ambiguity error for `to` without hint, got: {text}"
+        response.found,
+        "reachable destination should not require to_file_path: {response:?}"
     );
+    assert_eq!(response.hops, 1);
+    assert_eq!(response.path[0].file, "src/a.rs:1");
 
     // With to_file_path: should resolve and find the 1-hop path
     let tool = CallPathTool {
@@ -213,8 +223,8 @@ async fn test_disambiguation_to_file_path() -> Result<()> {
         to_file_path: Some("src/a.rs".to_string()),
     };
     let text = extract_text(&tool.call_tool(&handler).await?);
-    let response = try_parse_response(&text)
-        .unwrap_or_else(|| panic!("expected JSON response, got: {text}"));
+    let response =
+        try_parse_response(&text).unwrap_or_else(|| panic!("expected JSON response, got: {text}"));
 
     assert!(
         response.found,
@@ -237,7 +247,10 @@ async fn test_disambiguation_to_file_path() -> Result<()> {
 #[tokio::test(flavor = "multi_thread")]
 async fn test_disambiguation_still_ambiguous_after_filter() -> Result<()> {
     let files = &[
-        ("src/a/handler.rs", "pub fn process() { step(); }\npub fn step() {}\n"),
+        (
+            "src/a/handler.rs",
+            "pub fn process() { step(); }\npub fn step() {}\n",
+        ),
         ("src/b/handler.rs", "pub fn process() {}\n"),
     ];
     let (_temp_dir, handler) = setup_multi_file_workspace(files).await?;
@@ -289,9 +302,7 @@ async fn test_disambiguation_no_substring_false_positive() -> Result<()> {
     let text = extract_text(&tool.call_tool(&handler).await?);
 
     // Should not produce a valid found=true response
-    let found_false_positive = try_parse_response(&text)
-        .map(|r| r.found)
-        .unwrap_or(false);
+    let found_false_positive = try_parse_response(&text).map(|r| r.found).unwrap_or(false);
     assert!(
         !found_false_positive,
         "handler.rs must not match foohandler.rs via substring: {text}"
@@ -345,20 +356,9 @@ async fn test_qualified_name_struct_method() -> Result<()> {
 }
 
 // ---------------------------------------------------------------------------
-// Case 5: trait-impl qualified name (known limitation)
+// Case 5: trait-impl qualified name
 // ---------------------------------------------------------------------------
 //
-// Methods defined inside `impl Trait for Struct` blocks are not linked to the
-// implementing struct by parent_id in the Rust extractor — the method's
-// parent_id points to the trait, not the struct. As a result,
-// "ImplStruct::method" qualified lookup falls through to a literal name search
-// which finds nothing, and call_path returns a clear "not found" error.
-//
-// If this test starts passing without the #[ignore] it means the extractor
-// was fixed to populate parent_id from trait impls — remove the ignore then.
-#[ignore = "Trait-impl methods are not linked to the implementing struct by parent_id; \
-            SomeHandler::handle qualified lookup fails. Fix requires updating the Rust \
-            extractor's trait-impl resolution to set parent_id = impl struct, not trait."]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_trait_impl_qualified_name_limitation() -> Result<()> {
     let source = "pub trait Runnable { fn run(&self); }\n\
@@ -379,8 +379,8 @@ async fn test_trait_impl_qualified_name_limitation() -> Result<()> {
         to_file_path: None,
     };
     let text = extract_text(&tool.call_tool(&handler).await?);
-    let response = try_parse_response(&text)
-        .unwrap_or_else(|| panic!("expected JSON response, got: {text}"));
+    let response =
+        try_parse_response(&text).unwrap_or_else(|| panic!("expected JSON response, got: {text}"));
 
     assert!(
         response.found,

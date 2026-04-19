@@ -15,6 +15,64 @@ pub struct ImplBlockInfo {
     pub parent_id: Option<String>,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ImplTargetNames {
+    pub trait_name: Option<String>,
+    pub type_name: Option<String>,
+}
+
+fn leaf_type_name(base: &BaseExtractor, node: Node) -> Option<String> {
+    match node.kind() {
+        "type_identifier" => Some(base.get_node_text(&node)),
+        "scoped_type_identifier" => {
+            let mut last_type = None;
+            let mut cursor = node.walk();
+            for child in node.children(&mut cursor) {
+                if child.kind() == "type_identifier" {
+                    last_type = Some(base.get_node_text(&child));
+                }
+            }
+            last_type
+        }
+        _ => None,
+    }
+}
+
+pub(super) fn extract_impl_target_names(base: &BaseExtractor, node: Node) -> ImplTargetNames {
+    let mut before_for = Vec::new();
+    let mut after_for = Vec::new();
+    let mut found_for = false;
+
+    for child in node.children(&mut node.walk()) {
+        if child.kind() == "for" {
+            found_for = true;
+            continue;
+        }
+
+        let Some(name) = leaf_type_name(base, child) else {
+            continue;
+        };
+
+        if found_for {
+            after_for.push(name);
+        } else {
+            before_for.push(name);
+        }
+    }
+
+    if found_for {
+        ImplTargetNames {
+            trait_name: before_for.into_iter().next(),
+            type_name: after_for.into_iter().next(),
+        }
+    } else {
+        ImplTargetNames {
+            trait_name: None,
+            type_name: before_for.into_iter().next(),
+        }
+    }
+}
+
 /// Extract visibility modifier from a node (pub, pub(crate), etc.)
 pub(super) fn extract_visibility(base: &BaseExtractor, node: Node) -> String {
     let visibility_node = node

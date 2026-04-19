@@ -1516,6 +1516,8 @@ mod formatting_tests {
 
 #[cfg(test)]
 mod data_tests {
+    use std::collections::HashMap;
+
     use crate::database::{FileInfo, SymbolDatabase};
     use crate::extractors::base::{Relationship, RelationshipKind, Symbol, SymbolKind, Visibility};
     use crate::tools::deep_dive::data::{build_symbol_context, find_symbol};
@@ -1779,6 +1781,54 @@ mod data_tests {
         // Unqualified still returns both
         let found_all = find_symbol(&db, "process", None).unwrap();
         assert_eq!(found_all.len(), 2, "unqualified should still return both");
+    }
+
+    #[test]
+    fn test_find_symbol_qualified_name_uses_impl_type_metadata() {
+        let (_tmp, mut db) = setup_db();
+
+        let mut metadata = HashMap::new();
+        metadata.insert(
+            "impl_type_name".to_string(),
+            serde_json::Value::String("Worker".to_string()),
+        );
+
+        let mut method_symbol = make_symbol(
+            "sym-run",
+            "run",
+            SymbolKind::Method,
+            "src/engine.rs",
+            5,
+            None,
+            Some("fn run(&self)"),
+            Some(Visibility::Private),
+            None,
+        );
+        method_symbol.metadata = Some(metadata);
+
+        let symbols = vec![
+            make_symbol(
+                "sym-worker",
+                "Worker",
+                SymbolKind::Struct,
+                "src/engine.rs",
+                1,
+                None,
+                Some("pub struct Worker;"),
+                Some(Visibility::Public),
+                None,
+            ),
+            method_symbol,
+        ];
+        db.store_symbols(&symbols).unwrap();
+
+        let found = find_symbol(&db, "Worker::run", None).unwrap();
+        assert_eq!(
+            found.len(),
+            1,
+            "qualified lookup should use impl_type_name metadata when parent_id is missing"
+        );
+        assert_eq!(found[0].id, "sym-run");
     }
 
     // === build_symbol_context tests ===

@@ -346,6 +346,94 @@ async fn test_go_replace_body() -> Result<()> {
     Ok(())
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn test_java_overloaded_method_can_be_disambiguated_with_symbol_line() -> Result<()> {
+    let source = "public class Greeter {\n\
+    public void greet() {\n\
+        System.out.println(\"no args\");\n\
+    }\n\
+\n\
+    public void greet(String name) {\n\
+        System.out.println(name);\n\
+    }\n\
+}\n";
+    let (temp_dir, handler) = setup_workspace(&[("Greeter.java", source)]).await?;
+
+    let tool = crate::tools::editing::rewrite_symbol::RewriteSymbolTool {
+        symbol: "Greeter::greet@6".to_string(),
+        operation: "replace_body".to_string(),
+        content: "{\n        System.out.println(name.toUpperCase());\n    }".to_string(),
+        file_path: Some("Greeter.java".to_string()),
+        workspace: Some("primary".to_string()),
+        dry_run: false,
+    };
+
+    let result = tool.call_tool(&handler).await?;
+    let text = extract_text(&result);
+    assert!(
+        !text.contains("Error:"),
+        "symbol@line should disambiguate overloaded methods, got: {text}"
+    );
+
+    let on_disk = fs::read_to_string(temp_dir.path().join("Greeter.java"))?;
+    assert!(
+        on_disk.contains("name.toUpperCase()"),
+        "target overload should be updated, got: {on_disk}"
+    );
+    assert!(
+        on_disk.contains("no args"),
+        "non-target overload should stay unchanged, got: {on_disk}"
+    );
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_rust_trait_impl_method_replace_body_via_qualified_name() -> Result<()> {
+    let source = "pub trait Runnable {\n\
+    fn run(&self);\n\
+}\n\
+\n\
+pub struct Worker;\n\
+\n\
+impl Runnable for Worker {\n\
+    fn run(&self) {\n\
+        inner();\n\
+    }\n\
+}\n\
+\n\
+pub fn inner() {}\n";
+    let (temp_dir, handler) = setup_workspace(&[("src/lib.rs", source)]).await?;
+
+    let tool = crate::tools::editing::rewrite_symbol::RewriteSymbolTool {
+        symbol: "Worker::run".to_string(),
+        operation: "replace_body".to_string(),
+        content: "{\n        inner();\n        inner();\n    }".to_string(),
+        file_path: Some("src/lib.rs".to_string()),
+        workspace: Some("primary".to_string()),
+        dry_run: false,
+    };
+
+    let result = tool.call_tool(&handler).await?;
+    let text = extract_text(&result);
+    assert!(
+        !text.contains("Error:"),
+        "trait-impl qualified name should resolve for rewrite_symbol, got: {text}"
+    );
+
+    let on_disk = fs::read_to_string(temp_dir.path().join("src/lib.rs"))?;
+    assert!(
+        on_disk.contains("inner();\n        inner();"),
+        "impl method body should be updated, got: {on_disk}"
+    );
+    assert!(
+        on_disk.contains("pub trait Runnable"),
+        "trait declaration should remain intact, got: {on_disk}"
+    );
+
+    Ok(())
+}
+
 // ── Rust trait (regression from the dogfood incident) ────────────────────────
 
 #[tokio::test(flavor = "multi_thread")]

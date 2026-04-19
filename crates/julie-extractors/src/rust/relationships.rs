@@ -1,4 +1,4 @@
-use super::helpers::find_containing_function;
+use super::helpers::{extract_impl_target_names, find_containing_function};
 /// Rust relationship extraction
 /// - Trait implementations
 /// - Type references in fields
@@ -56,27 +56,9 @@ fn extract_impl_relationships(
     relationships: &mut Vec<Relationship>,
 ) {
     let base = extractor.get_base_mut();
-    // Look for "impl TraitName for TypeName" pattern
-    let children: Vec<_> = node.children(&mut node.walk()).collect();
-    let mut trait_name = String::new();
-    let mut type_name = String::new();
-    let mut found_for = false;
+    let targets = extract_impl_target_names(base, node);
 
-    for child in children {
-        if child.kind() == "type_identifier" {
-            if !found_for {
-                trait_name = base.get_node_text(&child);
-            } else {
-                type_name = base.get_node_text(&child);
-                break;
-            }
-        } else if child.kind() == "for" {
-            found_for = true;
-        }
-    }
-
-    // If we found both trait and type, create implements relationship
-    if !trait_name.is_empty() && !type_name.is_empty() {
+    if let (Some(trait_name), Some(type_name)) = (targets.trait_name, targets.type_name) {
         if let (Some(trait_symbol), Some(type_symbol)) =
             (symbol_map.get(&trait_name), symbol_map.get(&type_name))
         {
