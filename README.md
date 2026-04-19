@@ -23,7 +23,7 @@ The key difference from simpler code indexing tools: Julie doesn't just extract 
 
 - **Fast symbol search** with code-aware tokenization (CamelCase/snake_case splitting, stemming, <5ms)
 - **Cross-language code navigation** (go-to-definition, find-references) across 34 languages
-- **Test intelligence** — automatic test detection, test quality metrics, and test-to-code linkage across all 34 languages
+- **Test-aware search** — automatic test detection across all 34 languages with smart filtering (`exclude_tests`)
 - **AST-aware refactoring** with workspace-wide rename and dry-run preview
 - **Operational metrics** — per-tool timing, context efficiency tracking, "bytes NOT injected" headline metric
 - **Multi-workspace support** for indexing and searching related codebases
@@ -324,16 +324,14 @@ third-party/
 
 Patterns use glob syntax (`**/` for recursive, `*` for wildcard). Default patterns cover 99% of use cases - only use `.julieignore` for project-specific needs.
 
-## Test Intelligence
+## Test Detection
 
-Julie automatically detects and analyzes tests during indexing across all 34 languages, with no configuration required.
+Julie automatically detects tests during indexing across all 34 languages, with no configuration required. It recognizes `#[test]`, `@Test`, `pytest`, `describe`/`it`, and other language-specific test patterns.
 
-- **Test detection** — recognizes `#[test]`, `@Test`, `pytest`, `describe`/`it`, and language-specific test patterns
-- **Test quality metrics** — assertion density, mock usage, error path coverage, classified as thorough/adequate/thin/stub
-- **Test-to-code linkage** — maps which tests exercise each production function via call graph and identifier analysis
-- **Smart test filtering** — `fast_search` supports `exclude_tests` parameter to filter test symbols from results
+- **Search filtering** — `fast_search` supports `exclude_tests` to keep test symbols out of production code results
+- **Test navigation** — `deep_dive` shows which test functions reference a symbol, so agents can find relevant tests without grepping
 
-These signals appear in `deep_dive` output, giving agents immediate awareness of test coverage without extra tool calls.
+For test *coverage measurement* (which lines executed, branch coverage), use your language's coverage tool (`cargo llvm-cov`, `pytest --cov`, `istanbul`, etc.). Julie handles test navigation and filtering; runtime tools handle coverage.
 
 ## Skills
 
@@ -483,7 +481,7 @@ src/
 ├── daemon/          # Background daemon: shared indexes, IPC server, lifecycle management
 ├── dashboard/       # Web dashboard (htmx + Tera templates, served by daemon)
 ├── extractors/      # Language-specific symbol extraction (34 languages)
-├── analysis/        # Post-indexing analysis (test quality metrics, risk scoring)
+├── analysis/        # Post-indexing analysis (test quality metrics)
 ├── database/        # SQLite structured storage
 ├── search/          # Tantivy search engine and tokenizer
 ├── embeddings/      # Embedding pipeline, sidecar supervisor and protocol

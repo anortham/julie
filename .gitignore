@@ -71,3 +71,5 @@ __pycache__/
 # Brainstorm mockups (ephemeral)
 .superpowers/
 .claude/settings.local.json
+
+docs/future/
