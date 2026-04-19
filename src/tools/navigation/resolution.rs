@@ -186,3 +186,11 @@ pub fn compare_symbols_by_priority_and_context(
     // Return Equal to allow caller to add final tiebreaker
     std::cmp::Ordering::Equal
 }
+
+/// True if `path` equals `filter` or has `filter` as a path-separated suffix.
+///
+/// Prevents false positives from bare `ends_with`: `"handler.rs"` matches
+/// `"src/tools/handler.rs"` (preceded by `/`) but NOT `"foohandler.rs"`.
+pub fn file_path_matches_suffix(path: &str, filter: &str) -> bool {
+    path == filter || path.ends_with(&format!("/{}", filter))
+}

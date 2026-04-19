@@ -14,7 +14,7 @@ use crate::mcp_compat::CallToolResultExt;
 use crate::tools::deep_dive::data::find_symbol;
 
 use super::lock_db;
-use super::resolution::{WorkspaceTarget, resolve_workspace_filter};
+use super::resolution::{WorkspaceTarget, file_path_matches_suffix, resolve_workspace_filter};
 
 fn default_max_hops() -> u32 {
     6
@@ -26,6 +26,8 @@ fn default_workspace() -> Option<String> {
 
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
+/// BFS traverses Calls, Instantiates, and Overrides relationships only.
+/// Extends/Implements/TypeUsage/Reference edges are not followed.
 pub struct CallPathTool {
     pub from: String,
     pub to: String,
@@ -36,6 +38,10 @@ pub struct CallPathTool {
     pub max_hops: u32,
     #[serde(default = "default_workspace")]
     pub workspace: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from_file_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub to_file_path: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -78,23 +84,34 @@ fn relationship_priority(kind: &RelationshipKind) -> u8 {
         RelationshipKind::Calls => 0,
         RelationshipKind::Instantiates => 1,
         RelationshipKind::Overrides => 2,
-        _ => u8::MAX,
+        _ => unreachable!("BFS only traverses Calls, Instantiates, and Overrides"),
     }
 }
 
-fn edge_label(kind: &RelationshipKind) -> &'static str {
+pub(crate) fn edge_label(kind: &RelationshipKind) -> &'static str {
     match kind {
         RelationshipKind::Calls => "call",
         RelationshipKind::Instantiates => "construct",
-        RelationshipKind::Extends | RelationshipKind::Implements | RelationshipKind::Overrides => {
-            "dispatch"
-        }
-        _ => "reference",
+        RelationshipKind::Overrides => "dispatch",
+        _ => unreachable!("BFS only traverses Calls, Instantiates, and Overrides"),
     }
 }
 
-fn resolve_unique_symbol(db: &SymbolDatabase, name: &str, role: &str) -> Result<Symbol> {
-    let matches = find_symbol(db, name, None)?;
+fn resolve_unique_symbol(
+    db: &SymbolDatabase,
+    name: &str,
+    role: &str,
+    file_path: Option<&str>,
+) -> Result<Symbol> {
+    let all_matches = find_symbol(db, name, None)?;
+    let matches: Vec<Symbol> = if let Some(filter) = file_path {
+        all_matches
+            .into_iter()
+            .filter(|s| file_path_matches_suffix(&s.file_path, filter))
+            .collect()
+    } else {
+        all_matches
+    };
     if matches.is_empty() {
         return Err(anyhow!(
             "Symbol '{}' for '{}' was not found. Use fast_search or deep_dive to verify the name.",
@@ -114,8 +131,9 @@ fn resolve_unique_symbol(db: &SymbolDatabase, name: &str, role: &str) -> Result<
             .collect::<Vec<_>>()
             .join("\n");
         return Err(anyhow!(
-            "Symbol '{}' for '{}' is ambiguous. Use a qualified name. Matches:\n{}",
+            "Symbol '{}' for '{}' is ambiguous. Use a qualified name or set '{}_file_path' to disambiguate. Matches:\n{}",
             name,
+            role,
             role,
             locations
         ));
@@ -123,9 +141,15 @@ fn resolve_unique_symbol(db: &SymbolDatabase, name: &str, role: &str) -> Result<
     Ok(matches.into_iter().next().expect("one symbol"))
 }
 
-fn resolve_endpoints(db: &SymbolDatabase, from: &str, to: &str) -> Result<ResolvedEndpoints> {
-    let from_symbol = resolve_unique_symbol(db, from, "from")?;
-    let to_symbol = resolve_unique_symbol(db, to, "to")?;
+fn resolve_endpoints(
+    db: &SymbolDatabase,
+    from: &str,
+    to: &str,
+    from_file_path: Option<&str>,
+    to_file_path: Option<&str>,
+) -> Result<ResolvedEndpoints> {
+    let from_symbol = resolve_unique_symbol(db, from, "from", from_file_path)?;
+    let to_symbol = resolve_unique_symbol(db, to, "to", to_file_path)?;
     let mut targets = HashSet::new();
     targets.insert(to_symbol.id);
     Ok(ResolvedEndpoints {
@@ -296,10 +320,13 @@ impl CallPathTool {
         let from = self.from.clone();
         let to = self.to.clone();
         let max_hops = self.max_hops;
+        let from_file_path = self.from_file_path.clone();
+        let to_file_path = self.to_file_path.clone();
 
         let response = tokio::task::spawn_blocking(move || -> Result<CallPathResponse> {
             let db = lock_db(&target.db, "call_path");
-            let endpoints = resolve_endpoints(&db, &from, &to)?;
+            let endpoints =
+                resolve_endpoints(&db, &from, &to, from_file_path.as_deref(), to_file_path.as_deref())?;
             let search = bfs_shortest_path(&db, &endpoints.from.id, &endpoints.targets, max_hops)?;
 
             if endpoints.targets.contains(&endpoints.from.id) {
