@@ -699,14 +699,25 @@ impl SymbolDatabase {
 
         // Read dimensions from embedding_config (set by migration 011).
         // Fall back to 384 if config doesn't exist yet (shouldn't happen in normal flow).
-        let dims: usize = self
-            .conn
-            .query_row(
-                "SELECT dimensions FROM embedding_config WHERE id = 1",
-                [],
-                |row| row.get(0),
+        let dims_i64 = match self.conn.query_row(
+            "SELECT dimensions FROM embedding_config WHERE id = 1",
+            [],
+            |row| row.get::<_, i64>(0),
+        ) {
+            Ok(dims) => dims,
+            Err(rusqlite::Error::QueryReturnedNoRows) => 384,
+            Err(err) => {
+                return Err(anyhow!(
+                    "Failed to read embedding dimensions from embedding_config: {err}"
+                ));
+            }
+        };
+
+        let dims = usize::try_from(dims_i64).map_err(|_| {
+            anyhow!(
+                "Invalid embedding dimensions in embedding_config: {dims_i64} (expected non-negative integer fitting usize)"
             )
-            .unwrap_or(384);
+        })?;
 
         self.conn.execute(
             &format!(

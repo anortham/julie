@@ -285,6 +285,8 @@ impl SymbolDatabase {
         let now = get_unix_timestamp()?;
 
         let cutoff_time = now - (days as i64 * 86400); // days * seconds_per_day
+        let limit = i64::try_from(limit)
+            .map_err(|_| anyhow!("Query limit exceeds SQLite INTEGER range: {limit}"))?;
 
         let mut stmt = self.conn.prepare(
             "SELECT path, language, hash, size, last_modified, last_indexed, symbol_count, content, line_count

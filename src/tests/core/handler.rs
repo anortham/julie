@@ -364,7 +364,7 @@ async fn test_record_tool_call_uses_binding_snapshot_for_metrics_attribution() -
         "daemon metrics row should use call-start workspace"
     );
 
-    let recorded_daemon_source_bytes: Option<u64> = {
+    let recorded_daemon_source_bytes: Option<i64> = {
         let conn = daemon_db.conn_for_test();
         conn.query_row(
             "SELECT source_bytes FROM tool_calls ORDER BY id DESC LIMIT 1",
@@ -374,11 +374,11 @@ async fn test_record_tool_call_uses_binding_snapshot_for_metrics_attribution() -
     };
     assert_eq!(
         recorded_daemon_source_bytes,
-        Some(source_bytes),
+        Some(source_bytes as i64),
         "daemon metrics row should preserve source_bytes from the snapshotted workspace db"
     );
 
-    let recorded_local_source_bytes: Option<u64> = {
+    let recorded_local_source_bytes: Option<i64> = {
         let conn = Connection::open(indexes_dir.join(&original_id).join("db").join("symbols.db"))?;
         conn.query_row(
             "SELECT source_bytes FROM tool_calls ORDER BY id DESC LIMIT 1",
@@ -388,7 +388,7 @@ async fn test_record_tool_call_uses_binding_snapshot_for_metrics_attribution() -
     };
     assert_eq!(
         recorded_local_source_bytes,
-        Some(source_bytes),
+        Some(source_bytes as i64),
         "local workspace metrics row should still write during the teardown gap"
     );
     assert_eq!(
