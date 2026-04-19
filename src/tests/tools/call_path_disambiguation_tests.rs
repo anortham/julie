@@ -171,6 +171,96 @@ async fn test_disambiguation_both_file_paths() -> Result<()> {
 }
 
 // ---------------------------------------------------------------------------
+// Case 2b: to_file_path alone disambiguates an ambiguous `to` symbol
+// ---------------------------------------------------------------------------
+//
+// Two files each define a `result` function. `from` is unambiguous (only in
+// src/a.rs), but `to` has two candidates. to_file_path pins it to src/a.rs.
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_disambiguation_to_file_path() -> Result<()> {
+    let files = &[
+        (
+            "src/a.rs",
+            "pub fn runner() { result(); }\npub fn result() {}\n",
+        ),
+        ("src/b.rs", "pub fn result() {}\n"),
+    ];
+    let (_temp_dir, handler) = setup_multi_file_workspace(files).await?;
+
+    // Without hint: `to` is ambiguous
+    let ambiguous_tool = CallPathTool {
+        from: "runner".to_string(),
+        to: "result".to_string(),
+        max_hops: 2,
+        workspace: Some("primary".to_string()),
+        from_file_path: None,
+        to_file_path: None,
+    };
+    let text = extract_text(&ambiguous_tool.call_tool(&handler).await?);
+    assert!(
+        text.contains("ambiguous"),
+        "expected ambiguity error for `to` without hint, got: {text}"
+    );
+
+    // With to_file_path: should resolve and find the 1-hop path
+    let tool = CallPathTool {
+        from: "runner".to_string(),
+        to: "result".to_string(),
+        max_hops: 2,
+        workspace: Some("primary".to_string()),
+        from_file_path: None,
+        to_file_path: Some("src/a.rs".to_string()),
+    };
+    let text = extract_text(&tool.call_tool(&handler).await?);
+    let response = try_parse_response(&text)
+        .unwrap_or_else(|| panic!("expected JSON response, got: {text}"));
+
+    assert!(
+        response.found,
+        "path should be found via to_file_path disambiguation: {response:?}"
+    );
+    assert_eq!(response.hops, 1);
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Case 2e: still-ambiguous after filter (filter matches multiple files)
+// ---------------------------------------------------------------------------
+//
+// Two files both named handler.rs in different directories each define
+// `process`. The filter "handler.rs" matches both (each path ends with
+// /handler.rs), so the error should still report "ambiguous" rather than
+// silently picking one.
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_disambiguation_still_ambiguous_after_filter() -> Result<()> {
+    let files = &[
+        ("src/a/handler.rs", "pub fn process() { step(); }\npub fn step() {}\n"),
+        ("src/b/handler.rs", "pub fn process() {}\n"),
+    ];
+    let (_temp_dir, handler) = setup_multi_file_workspace(files).await?;
+
+    // "handler.rs" matches both src/a/handler.rs and src/b/handler.rs — still ambiguous
+    let tool = CallPathTool {
+        from: "process".to_string(),
+        to: "step".to_string(),
+        max_hops: 2,
+        workspace: Some("primary".to_string()),
+        from_file_path: Some("handler.rs".to_string()),
+        to_file_path: None,
+    };
+    let text = extract_text(&tool.call_tool(&handler).await?);
+    assert!(
+        text.contains("ambiguous"),
+        "filter matching two files should still report ambiguous, got: {text}"
+    );
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
 // Case 3: substring false-positive rejection
 // ---------------------------------------------------------------------------
 //
