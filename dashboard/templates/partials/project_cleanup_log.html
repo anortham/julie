@@ -1,7 +1,32 @@
 <div class="julie-card" style="margin-top: 1rem;">
+  {% if blocked_cleanups | length > 0 %}
+    <div style="margin-bottom: 1rem;">
+      <div style="display: flex; justify-content: space-between; gap: 0.75rem; align-items: baseline; margin-bottom: 0.75rem; flex-wrap: wrap;">
+        <p class="label-text" style="margin: 0;">Cleanup Holds</p>
+        <span style="color: var(--julie-text-muted); font-size: 0.8rem;">Currently blocked</span>
+      </div>
+      <div style="display: grid; gap: 0.75rem;">
+        {% for blocked in blocked_cleanups %}
+          <div style="padding-top: {% if loop.first %}0{% else %}0.75rem{% endif %}; border-top: {% if loop.first %}none{% else %}1px solid rgba(255, 255, 255, 0.06){% endif %};">
+            <div style="display: flex; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap; align-items: baseline;">
+              <span class="mono" style="font-weight: 600;">{{ blocked.workspace_id }}</span>
+              <span style="color: var(--julie-text-muted); font-size: 0.8rem;">{{ blocked.session_label }}</span>
+            </div>
+            <div style="margin-top: 0.2rem; color: var(--julie-text); font-size: 0.9rem;">
+              {{ blocked.reason }}
+            </div>
+            <div class="mono" style="margin-top: 0.2rem; color: var(--julie-text-muted); font-size: 0.8rem; word-break: break-all;">
+              {{ blocked.path }}
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  {% endif %}
+
   <div style="display: flex; justify-content: space-between; gap: 0.75rem; align-items: baseline; margin-bottom: 0.75rem; flex-wrap: wrap;">
     <p class="label-text" style="margin: 0;">Recent Cleanup</p>
-    <span style="color: var(--julie-text-muted); font-size: 0.8rem;">Newest 5 events</span>
+    <span style="color: var(--julie-text-muted); font-size: 0.8rem;">Newest 5 completed events</span>
   </div>
 
   {% if cleanup_events | length == 0 %}

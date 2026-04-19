@@ -8,17 +8,21 @@
 #[cfg(unix)]
 mod tests {
     use std::sync::Arc;
+    use std::time::Duration;
 
     use anyhow::Result;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
+    use crate::daemon::database::DaemonDatabase;
     use crate::daemon::ipc::{IpcConnector, IpcListener};
     use crate::daemon::lifecycle::stop_daemon;
     use crate::daemon::transport::TransportEndpoint;
+    use crate::daemon::watcher_pool::WatcherPool;
     use crate::daemon::workspace_pool::WorkspacePool;
     use crate::handler::JulieServerHandler;
     use crate::migration::run_migration_for_workspace;
     use crate::paths::DaemonPaths;
+    use crate::tools::workspace::commands::registry::cleanup::run_cleanup_sweep;
 
     // ---------------------------------------------------------------
     // Test 1: Daemon starts, creates PID + socket, stops cleanly
@@ -299,6 +303,98 @@ mod tests {
             pool.active_count().await,
             1,
             "Pool should have 1 workspace, not 2"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_cleanup_sweep_blocks_missing_workspace_until_sessions_disconnect() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let daemon_db =
+            Arc::new(DaemonDatabase::open(&tmp.path().join("daemon.db")).expect("open daemon db"));
+        let watcher_pool = Arc::new(WatcherPool::new(Duration::from_secs(300)));
+        let indexes_dir = tmp.path().join("indexes");
+        std::fs::create_dir_all(&indexes_dir).expect("create indexes dir");
+
+        let pool = Arc::new(WorkspacePool::new(
+            indexes_dir,
+            Some(Arc::clone(&daemon_db)),
+            Some(Arc::clone(&watcher_pool)),
+            None,
+        ));
+
+        let ws_root = tempfile::tempdir().expect("tempdir for workspace");
+        std::fs::create_dir_all(ws_root.path().join(".julie")).expect("create .julie");
+        let ws_path = ws_root.path().to_path_buf();
+        let ws_id = crate::workspace::registry::generate_workspace_id(&ws_path.to_string_lossy())
+            .expect("generate workspace id");
+
+        pool.get_or_init(&ws_id, ws_path.clone())
+            .await
+            .expect("first workspace attach should succeed");
+        pool.get_or_init(&ws_id, ws_path.clone())
+            .await
+            .expect("second workspace attach should reuse the pooled workspace");
+
+        std::fs::remove_dir_all(&ws_path).expect("remove workspace path");
+
+        let blocked = run_cleanup_sweep(&daemon_db, Some(&pool), Some(&watcher_pool))
+            .await
+            .expect("cleanup sweep should succeed");
+        assert!(
+            blocked.pruned_workspaces.is_empty(),
+            "cleanup should not prune a workspace while sessions are still attached"
+        );
+        assert!(
+            blocked
+                .blocked_workspaces
+                .iter()
+                .any(|(workspace_id, reason)| {
+                    workspace_id == &ws_id && reason.contains("active session")
+                }),
+            "cleanup should explain that active sessions still block pruning: {:?}",
+            blocked.blocked_workspaces
+        );
+        assert!(
+            daemon_db
+                .get_workspace(&ws_id)
+                .expect("lookup workspace row")
+                .is_some(),
+            "blocked cleanup should keep the workspace row visible"
+        );
+
+        pool.disconnect_session(&ws_id).await;
+        let still_blocked = run_cleanup_sweep(&daemon_db, Some(&pool), Some(&watcher_pool))
+            .await
+            .expect("cleanup sweep should still succeed after one disconnect");
+        assert!(
+            still_blocked
+                .blocked_workspaces
+                .iter()
+                .any(|(workspace_id, reason)| {
+                    workspace_id == &ws_id && reason.contains("active session")
+                }),
+            "cleanup should remain blocked until the last attached session disconnects: {:?}",
+            still_blocked.blocked_workspaces
+        );
+
+        pool.disconnect_session(&ws_id).await;
+        let pruned = run_cleanup_sweep(&daemon_db, Some(&pool), Some(&watcher_pool))
+            .await
+            .expect("cleanup sweep should prune the missing workspace once detached");
+        assert!(
+            pruned
+                .pruned_workspaces
+                .iter()
+                .any(|workspace_id| workspace_id == &ws_id),
+            "cleanup should prune the missing workspace after the last session disconnects: {:?}",
+            pruned.pruned_workspaces
+        );
+        assert!(
+            daemon_db
+                .get_workspace(&ws_id)
+                .expect("lookup workspace row after prune")
+                .is_none(),
+            "pruned workspace row should be removed from daemon db"
         );
     }
 

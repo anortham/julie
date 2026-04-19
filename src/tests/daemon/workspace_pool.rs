@@ -284,6 +284,61 @@ async fn test_watcher_pool_ref_incremented_on_get_or_init() {
     assert_eq!(watcher_pool.ref_count("test_ws").await, 1);
 }
 
+#[tokio::test]
+async fn test_watcher_pool_reuses_session_refs_and_starts_grace_on_last_disconnect() {
+    use crate::daemon::watcher_pool::WatcherPool;
+    use std::time::Duration;
+
+    let indexes_dir = temp_indexes_dir();
+    let workspace_root = temp_workspace_root();
+    let watcher_pool = Arc::new(WatcherPool::new(Duration::from_secs(300)));
+    let pool = WorkspacePool::new(
+        indexes_dir.path().to_path_buf(),
+        None,
+        Some(Arc::clone(&watcher_pool)),
+        None,
+    );
+
+    pool.get_or_init("test_ws", workspace_root.path().to_path_buf())
+        .await
+        .expect("first get_or_init should succeed");
+    pool.get_or_init("test_ws", workspace_root.path().to_path_buf())
+        .await
+        .expect("second get_or_init should reuse the workspace");
+
+    assert_eq!(
+        watcher_pool.ref_count("test_ws").await,
+        2,
+        "shared sessions should increment the same watcher ref count"
+    );
+    assert!(
+        !watcher_pool.has_grace_deadline("test_ws").await,
+        "grace should stay off while at least one session is attached"
+    );
+
+    pool.disconnect_session("test_ws").await;
+    assert_eq!(
+        watcher_pool.ref_count("test_ws").await,
+        1,
+        "disconnecting one session should keep the shared watcher alive"
+    );
+    assert!(
+        !watcher_pool.has_grace_deadline("test_ws").await,
+        "grace should not start until the last session disconnects"
+    );
+
+    pool.disconnect_session("test_ws").await;
+    assert_eq!(
+        watcher_pool.ref_count("test_ws").await,
+        0,
+        "last disconnect should drain the watcher ref count"
+    );
+    assert!(
+        watcher_pool.has_grace_deadline("test_ws").await,
+        "last disconnect should start the watcher grace window"
+    );
+}
+
 // ── D-C1 ─────────────────────────────────────────────────────────────────────
 // session_count must NOT be incremented when init_workspace fails, otherwise
 // the count stays +1 permanently (leaked) and daemon.db is inconsistent.

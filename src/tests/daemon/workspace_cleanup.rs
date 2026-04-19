@@ -8,7 +8,9 @@ mod tests {
     use crate::daemon::workspace_pool::WorkspacePool;
     use crate::handler::JulieServerHandler;
     use crate::tools::workspace::ManageWorkspaceTool;
-    use crate::tools::workspace::commands::registry::cleanup::path_missing_after_grace;
+    use crate::tools::workspace::commands::registry::cleanup::{
+        WorkspaceCleanupState, inspect_workspace_cleanup_state, path_missing_after_grace,
+    };
     use crate::workspace::registry::generate_workspace_id;
 
     async fn build_primary_bound_handler(
@@ -166,6 +168,66 @@ mod tests {
         assert!(
             daemon_db.get_workspace(&primary_id).unwrap().is_some(),
             "active workspace row must remain in daemon db"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_inspect_workspace_cleanup_state_blocks_missing_active_workspace() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let (daemon_db, pool, _handler, primary_id) = build_primary_bound_handler(&temp_dir).await;
+
+        let primary_row = daemon_db
+            .get_workspace(&primary_id)
+            .unwrap()
+            .expect("primary workspace should exist");
+        fs::remove_dir_all(&primary_row.path).unwrap();
+
+        let cleanup_state =
+            inspect_workspace_cleanup_state(&primary_row, Some(&pool), None, "auto_prune")
+                .await
+                .expect("cleanup state inspection should succeed");
+
+        match cleanup_state {
+            WorkspaceCleanupState::MissingBlocked { reason } => {
+                assert!(
+                    reason.contains("active session"),
+                    "blocked cleanup should explain the active session: {reason}"
+                );
+            }
+            other => panic!("expected missing active workspace to stay blocked, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_inspect_workspace_cleanup_state_marks_missing_inactive_workspace_prunable() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let (daemon_db, pool, _handler, _primary_id) = build_primary_bound_handler(&temp_dir).await;
+
+        let target_root = temp_dir.path().join("stale-worktree");
+        fs::create_dir_all(&target_root).unwrap();
+        fs::write(target_root.join("lib.rs"), "pub fn stale() {}\n").unwrap();
+
+        let target_path = target_root.canonicalize().unwrap();
+        let target_path_str = target_path.to_string_lossy().to_string();
+        let target_id = generate_workspace_id(&target_path_str).unwrap();
+        daemon_db
+            .upsert_workspace(&target_id, &target_path_str, "ready")
+            .unwrap();
+
+        let target_row = daemon_db
+            .get_workspace(&target_id)
+            .unwrap()
+            .expect("target workspace should exist");
+        fs::remove_dir_all(&target_row.path).unwrap();
+
+        let cleanup_state =
+            inspect_workspace_cleanup_state(&target_row, Some(&pool), None, "auto_prune")
+                .await
+                .expect("cleanup state inspection should succeed");
+
+        assert!(
+            matches!(cleanup_state, WorkspaceCleanupState::MissingPrunable),
+            "missing inactive workspace should be ready to prune: {cleanup_state:?}"
         );
     }
 

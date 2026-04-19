@@ -17,6 +17,13 @@ pub(crate) const CLEANUP_REASON_ORPHAN_INDEX_DIR: &str = "orphan_index_dir";
 pub(crate) const CLEANUP_REASON_USER_REQUEST: &str = "user_request";
 pub(crate) const MISSING_PATH_RECHECK_DELAY: Duration = Duration::from_millis(250);
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum WorkspaceCleanupState {
+    Present,
+    MissingPrunable,
+    MissingBlocked { reason: String },
+}
+
 pub(crate) enum WorkspaceDeleteOutcome {
     Deleted {
         workspace_id: String,
@@ -149,6 +156,38 @@ async fn auto_prune_block_reason(
     live_indexing_reason(workspace_pool, &workspace.workspace_id).await
 }
 
+async fn cleanup_block_reason(
+    workspace: &WorkspaceRow,
+    workspace_pool: Option<&Arc<WorkspacePool>>,
+    watcher_pool: Option<&Arc<WatcherPool>>,
+    action: &str,
+) -> Option<String> {
+    if action == CLEANUP_ACTION_MANUAL_DELETE {
+        manual_delete_block_reason(workspace, workspace_pool, watcher_pool).await
+    } else {
+        auto_prune_block_reason(workspace, workspace_pool, watcher_pool).await
+    }
+}
+
+pub(crate) async fn inspect_workspace_cleanup_state(
+    workspace: &WorkspaceRow,
+    workspace_pool: Option<&Arc<WorkspacePool>>,
+    watcher_pool: Option<&Arc<WatcherPool>>,
+    action: &str,
+) -> Result<WorkspaceCleanupState> {
+    if !path_missing_after_grace(Path::new(&workspace.path), MISSING_PATH_RECHECK_DELAY).await? {
+        return Ok(WorkspaceCleanupState::Present);
+    }
+
+    if let Some(reason) =
+        cleanup_block_reason(workspace, workspace_pool, watcher_pool, action).await
+    {
+        return Ok(WorkspaceCleanupState::MissingBlocked { reason });
+    }
+
+    Ok(WorkspaceCleanupState::MissingPrunable)
+}
+
 pub(crate) async fn delete_workspace_if_allowed(
     daemon_db: &Arc<DaemonDatabase>,
     workspace_pool: Option<&Arc<WorkspacePool>>,
@@ -163,11 +202,7 @@ pub(crate) async fn delete_workspace_if_allowed(
         });
     };
 
-    let block_reason = if action == CLEANUP_ACTION_MANUAL_DELETE {
-        manual_delete_block_reason(&workspace, workspace_pool, watcher_pool).await
-    } else {
-        auto_prune_block_reason(&workspace, workspace_pool, watcher_pool).await
-    };
+    let block_reason = cleanup_block_reason(&workspace, workspace_pool, watcher_pool, action).await;
     if let Some(reason) = block_reason {
         return Ok(WorkspaceDeleteOutcome::Blocked {
             workspace_id: workspace.workspace_id.clone(),
@@ -221,10 +256,22 @@ pub(crate) async fn prune_missing_workspaces(
     let mut summary = CleanupSweepSummary::default();
 
     for workspace in all_workspaces {
-        match path_missing_after_grace(Path::new(&workspace.path), MISSING_PATH_RECHECK_DELAY).await
+        match inspect_workspace_cleanup_state(
+            &workspace,
+            workspace_pool,
+            watcher_pool,
+            CLEANUP_ACTION_AUTO_PRUNE,
+        )
+        .await
         {
-            Ok(true) => {}
-            Ok(false) => continue,
+            Ok(WorkspaceCleanupState::Present) => continue,
+            Ok(WorkspaceCleanupState::MissingBlocked { reason }) => {
+                summary
+                    .blocked_workspaces
+                    .push((workspace.workspace_id.clone(), reason));
+                continue;
+            }
+            Ok(WorkspaceCleanupState::MissingPrunable) => {}
             Err(error) => {
                 warn!(
                     workspace_id = %workspace.workspace_id,

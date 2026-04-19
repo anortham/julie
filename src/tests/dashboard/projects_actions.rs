@@ -70,9 +70,13 @@ async fn test_projects_page_shows_workspace_controls_and_cleanup_log() {
     let current_path = temp_dir.path().join("current-workspace");
     let active_path = temp_dir.path().join("active-workspace");
     let known_path = temp_dir.path().join("known-workspace");
+    let stale_path = temp_dir.path().join("stale-workspace");
+    let blocked_path = temp_dir.path().join("blocked-workspace");
     std::fs::create_dir_all(&current_path).expect("current path");
     std::fs::create_dir_all(&active_path).expect("active path");
     std::fs::create_dir_all(&known_path).expect("known path");
+    std::fs::create_dir_all(&stale_path).expect("stale path");
+    std::fs::create_dir_all(&blocked_path).expect("blocked path");
 
     daemon_db
         .upsert_workspace("current_ws", &current_path.to_string_lossy(), "ready")
@@ -83,11 +87,20 @@ async fn test_projects_page_shows_workspace_controls_and_cleanup_log() {
     daemon_db
         .upsert_workspace("known_ws", &known_path.to_string_lossy(), "ready")
         .unwrap();
+    daemon_db
+        .upsert_workspace("stale_ws", &stale_path.to_string_lossy(), "ready")
+        .unwrap();
+    daemon_db
+        .upsert_workspace("blocked_ws", &blocked_path.to_string_lossy(), "ready")
+        .unwrap();
     daemon_db.increment_session_count("current_ws").unwrap();
     daemon_db.increment_session_count("active_ws").unwrap();
+    daemon_db.increment_session_count("blocked_ws").unwrap();
     daemon_db
         .insert_cleanup_event("gone_ws", "/tmp/gone", "auto_prune", "missing_path")
         .unwrap();
+    std::fs::remove_dir_all(&stale_path).expect("remove stale path");
+    std::fs::remove_dir_all(&blocked_path).expect("remove blocked path");
 
     let current_session = state.sessions().add_session();
     assert!(
@@ -117,10 +130,19 @@ async fn test_projects_page_shows_workspace_controls_and_cleanup_log() {
     assert!(html.contains("CURRENT"));
     assert!(html.contains("ACTIVE"));
     assert!(html.contains("KNOWN"));
+    assert!(html.contains("STALE"));
+    assert!(html.contains("BLOCKED"));
+    assert!(html.contains("Cleanup Holds"));
+    assert!(html.contains("1 active session(s) remain"));
     assert!(html.contains("auto prune"));
     assert!(html.contains("missing path"));
     assert!(html.contains("projects-table-shell"));
     assert!(html.contains("/projects/current_ws/open"));
+    assert!(html.contains("/projects/stale_ws/open"));
+    assert!(
+        !html.contains("/projects/blocked_ws/open"),
+        "blocked missing workspaces should not offer an inline prune/open action"
+    );
     assert!(!html.contains("/projects/current_ws/refresh"));
     assert!(!html.contains("/projects/current_ws/delete"));
     assert!(
@@ -362,5 +384,40 @@ async fn test_project_detail_shows_workspace_state_without_reference_section() {
     assert!(
         !html.contains("Reference Workspaces"),
         "detail panel should no longer render workspace-pairing tags"
+    );
+}
+
+#[tokio::test]
+async fn test_project_detail_shows_blocked_cleanup_reason_for_missing_active_workspace() {
+    let (state, daemon_db, _workspace_pool, temp_dir) = action_ready_state();
+    let workspace_root = temp_dir.path().join("blocked-detail-target");
+    write_workspace_source(&workspace_root);
+    let workspace_id = generate_workspace_id(&workspace_root.to_string_lossy()).unwrap();
+    daemon_db
+        .upsert_workspace(&workspace_id, &workspace_root.to_string_lossy(), "ready")
+        .unwrap();
+    daemon_db.increment_session_count(&workspace_id).unwrap();
+    std::fs::remove_dir_all(&workspace_root).expect("remove workspace path");
+
+    let config = DashboardConfig::default();
+    let app = create_router(state, config).unwrap();
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri(format!("/projects/{workspace_id}/detail"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status().as_u16(), 200);
+    let html = body_to_string(response.into_body()).await;
+    assert!(html.contains("BLOCKED"));
+    assert!(html.contains("Cleanup"));
+    assert!(html.contains("1 active session(s) remain"));
+    assert!(
+        !html.contains(&format!("action=\"/projects/{workspace_id}/open\"")),
+        "blocked detail should not offer prune/open while cleanup is held live"
     );
 }

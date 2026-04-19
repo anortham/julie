@@ -58,6 +58,10 @@ setInterval(async () => {
       if (sessionState && ws.session_state !== undefined) {
         sessionState.innerHTML = ws.session_state;
       }
+      const pathState = document.getElementById('path-state-' + id);
+      if (pathState && ws.path_state !== undefined) {
+        pathState.innerHTML = ws.path_state;
+      }
       const badge = document.getElementById('status-' + id);
       if (badge) badge.innerHTML = ws.badge;
       const sym = document.getElementById('symbols-' + id);

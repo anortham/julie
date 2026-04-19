@@ -318,7 +318,7 @@ html, body {
 }
 
 .projects-project-cell {
-  width: 17rem;
+  width: 12rem;
 }
 
 .projects-path-cell {
@@ -330,6 +330,11 @@ html, body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.projects-path-state {
+  min-height: 1.4rem;
+  margin-top: 0.35rem;
 }
 
 .projects-actions-cell {
@@ -428,6 +433,32 @@ html, body {
 @keyframes badge-pulse {
   0%, 100% { opacity: 1; }
   50%      { opacity: 0.6; }
+}
+
+.badge-active {
+  background: rgba(240, 192, 96, 0.14);
+  color: var(--julie-warning);
+  border: 1px solid rgba(240, 192, 96, 0.28);
+  border-radius: 100px;
+  padding: 2px 10px;
+  font-family: var(--font-display);
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.badge-warning {
+  background: rgba(240, 192, 96, 0.14);
+  color: var(--julie-warning);
+  border: 1px solid rgba(240, 192, 96, 0.28);
+  border-radius: 100px;
+  padding: 2px 10px;
+  font-family: var(--font-display);
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .badge-error {
@@ -630,32 +661,6 @@ html, body {
 
 /* ---------- Symbol Kind Bars ---------- */
 
-.kind-bar-track {
-  display: flex;
-  height: 6px;
-  border-radius: 3px;
-  overflow: hidden;
-  background: var(--julie-bg-inset);
-}
-
-.kind-bar-segment {
-  height: 100%;
-  min-width: 2px;
-  transition: width 0.4s ease;
-}
-
-.kind-bar-segment:first-child {
-  border-radius: 3px 0 0 3px;
-}
-
-.kind-bar-segment:last-child {
-  border-radius: 0 3px 3px 0;
-}
-
-.kind-bar-segment:only-child {
-  border-radius: 3px;
-}
-
 /* Legend swatch */
 .lang-swatch {
   display: inline-block;
@@ -790,6 +795,7 @@ pre.mono {
   #activity-feed > div:not(#activity-placeholder),
   #live-dot,
   .badge-ready,
+  .badge-active,
   .badge-indexing,
   .volume-bar-fill::after {
     animation: none !important;
@@ -987,4 +993,17 @@ pre.mono {
 .kind-bar-segment {
   height: 100%;
   min-width: 2px;
+  transition: width 0.4s ease;
+}
+
+.kind-bar-segment:first-child {
+  border-radius: 3px 0 0 3px;
+}
+
+.kind-bar-segment:last-child {
+  border-radius: 0 3px 3px 0;
+}
+
+.kind-bar-segment:only-child {
+  border-radius: 3px;
 }

@@ -55,13 +55,25 @@
         <tr>
           <td style="color: var(--julie-text-muted); border: none; padding: 0.25rem 0.5rem 0.25rem 0;">Path health</td>
           <td style="border: none; padding: 0.25rem 0;">
-            {% if workspace.session_state.path_missing %}
-              <span class="badge-error">Missing</span>
+            {% if workspace.session_state.path_state_badge_html %}
+              {{ workspace.session_state.path_state_badge_html | safe }}
             {% else %}
               <span class="badge-ready">Present</span>
             {% endif %}
           </td>
         </tr>
+        {% if workspace.session_state.path_missing %}
+        <tr>
+          <td style="color: var(--julie-text-muted); border: none; padding: 0.25rem 0.5rem 0.25rem 0;">Cleanup</td>
+          <td style="border: none; padding: 0.25rem 0;">
+            {% if workspace.session_state.cleanup_block_reason %}
+              <span class="mono">{{ workspace.session_state.cleanup_block_reason }}</span>
+            {% else %}
+              <span style="color: var(--julie-text-muted);">Pruning or deleting will remove the stale workspace registry entry and index.</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endif %}
       </tbody>
     </table>
     <p style="margin-top: 0.35rem; color: var(--julie-text-muted); font-size: 0.85rem;">
@@ -100,14 +112,24 @@
 {% endif %}
 
 <div style="margin-top: 0.75rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
+  {% if workspace.session_state.path_missing and workspace.session_state.cleanup_blocked %}
+  <button type="button"
+          class="button is-dark is-small"
+          style="font-size: 0.78rem;"
+          disabled
+          title="{{ workspace.session_state.cleanup_block_reason | default(value='Cleanup blocked') }}">
+    Blocked
+  </button>
+  {% else %}
   <form method="post"
         action="/projects/{{ workspace.workspace_id }}/open"
-        {% if workspace.session_state.path_missing %}onsubmit="return confirm('Prune the stale workspace row and delete its index?');"{% endif %}>
+        {% if workspace.session_state.path_missing %}onsubmit="return confirm('Prune the stale workspace registry entry and delete its index?');"{% endif %}>
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <button type="submit" class="button is-dark is-small" style="font-size: 0.78rem;">
       {% if workspace.session_state.path_missing %}Prune{% else %}Open{% endif %}
     </button>
   </form>
+  {% endif %}
   <form method="post" action="/projects/{{ workspace.workspace_id }}/refresh">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <button type="submit"
@@ -119,11 +141,12 @@
   </form>
   <form method="post"
         action="/projects/{{ workspace.workspace_id }}/delete"
-        onsubmit="return confirm('Delete this workspace index and registry row?');">
+        onsubmit="return confirm('Delete this workspace registry entry and index?');">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <button type="submit"
             class="button is-small"
-            style="font-size: 0.78rem; background: rgba(212, 70, 88, 0.15); color: var(--julie-danger); border-color: rgba(212, 70, 88, 0.25);">
+            style="font-size: 0.78rem; background: rgba(212, 70, 88, 0.15); color: var(--julie-danger); border-color: rgba(212, 70, 88, 0.25);"
+            {% if workspace.session_state.cleanup_blocked %}disabled title="{{ workspace.session_state.cleanup_block_reason | default(value='Cleanup blocked') }}"{% endif %}>
       Delete
     </button>
   </form>

@@ -78,6 +78,12 @@ Validated against source. All findings confirmed. **All fixed 2026-04-05.**
 - [ ] **Function body hashing for duplication detection** -- Hash normalized function bodies during extraction to detect near-duplicate functions across a codebase. Low priority.
 - [ ] **Scoped path extraction for Rust** -- Capture `crate::module::func()` qualified paths as implicit import edges. Would improve call graph quality for Rust codebases specifically.
 
+## Completed 2026-04-18 Workspace Management
+
+- [x] **Worktree lifecycle and cleanup** -- Missing inactive worktrees now prune through the shared cleanup path. Missing active worktrees stay visible and report why cleanup is blocked. Watcher/session reuse and last-disconnect grace behavior are pinned by tests.
+- [x] **Projects dashboard management** -- The dashboard now supports register, open, refresh, delete, stale versus blocked lifecycle badges, blocked cleanup holds, and a compact row layout that fits laptop-width screens. Nice-to-haves such as editor launch and git status remain out of scope.
+- [x] **Reference workspace removal** -- `reference workspace` is gone as a product concept. The live model is `known`, `current`, `active`, and `target`.
+
 ## Historical Dogfood Notes
 
 ### 2026-03-21 LabHandbook Embedding Quality (CodeRankEmbed predecessor comparison)
@@ -88,3 +94,13 @@ Tested 9 semantic queries against LabHandbook V2 (434 files, 7306 symbols). Key 
 - **NL text search (`fast_search`) is the weak spot.** Definition mode is excellent; content mode with NL queries misses relevant code. The quality gap between `fast_search` and `get_context` for NL queries is significant.
 - **One persistent weakness:** "content management rich text editing" missed the core content subsystem. Embedding vectors for some symbols don't associate strongly with the concepts they implement. **Update (2026-04-03):** Embedding enrichment shipped (file paths, implementor names, field signatures, query classification). Similarity threshold lowered from 0.5 to 0.35. This improved conceptual search significantly but the core vocabulary gap remains for true semantic synonyms.
 - **Multi-instance VRAM is a concern** with larger models (768d). 2+ Julie processes = 2+ model loads. Daemon mode's shared `EmbeddingService` mitigates this for same-machine sessions.
+
+**Current work items below**
+
+Julie 7.1 is out! hooray we did it. I was poking around on the dashboard and I realized that on this machine we have a ton of indexes built and a lot of them are leftover from worktrees (that no longer exist). So I got to thinking we need to focus on index management for a session. So let's [$brainstorming](/Users/murphy/.codex/razorback/skills/brainstorming/SKILL.md) this.
+
+1. Worktrees - we use worktrees a lot now. One of the driving factors in moving to the current centralized daemon architecture was to better handle concurrency. What can we do to better support worktrees and the cleanup of indexes created from worktrees after they're deleted?
+
+2. Dashboard - can we add some management options to the dashboard? It's the best place for a user to get a view of all their indexed workspaces. Would be nice to be able to delete an index from there. Maybe even kick off a refresh. Maybe even add a new workspace so it could go ahead and be indexing before you start working in it... What else could live on the dashboard? Are there more metrics or more detailed views of metrics we could add with minor effort? Launch a user's editor to a workspace path from the dashboard? View the git status of a workspace?
+
+3. Reference Workspaces - we made some changes recently to how this works and what it means to be a reference workspace and tbh I can't remember what we decided. I'm not sure what it even means now that we are in the centralized daemon architecture. It was originally added when indexes lived in the workspace/project itself and ref workspace was a temp index or a path that existed outside of that project. What does it get it now? I can see ref workspaces listed on the dashboard, but ¯\_(ツ)_/¯ what it means now.

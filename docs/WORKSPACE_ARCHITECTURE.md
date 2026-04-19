@@ -95,9 +95,27 @@ Each workspace has its own PHYSICAL database and Tantivy index files. Workspace 
 
 ## Watchers And Cleanup
 
-Watcher coverage follows active workspaces, not every known workspace in `daemon.db`. If a workspace is known but not active in the current session, Julie does not keep a live watcher attached to it for that session.
+Watcher coverage follows active workspaces, not every known workspace in `daemon.db`.
 
-When a workspace path disappears, Julie can prune it from the registry and remove its index once it is inactive. This is the intended cleanup path for deleted worktrees and other temporary clones.
+- A watcher is attached when a workspace becomes active in a daemon session.
+- If another session opens the same workspace, Julie reuses the pooled workspace and watcher, then increments the watcher refcount instead of creating a second watcher.
+- When the last attached session disconnects, the watcher enters the existing grace window before the reaper removes it.
+- Known but inactive workspaces do not keep background watcher coverage.
+
+Cleanup follows the same liveness model.
+
+- **Present** workspace: path exists and the workspace is usable.
+- **Stale** workspace: path is gone and no live session or indexing work blocks cleanup. Open or delete will prune the row and index.
+- **Blocked** workspace: path is gone, but active sessions or live indexing still hold the workspace open. Julie keeps the row visible and reports the blocking reason.
+
+Missing-path cleanup is uniform across commands and the dashboard:
+
+- Opening a stale inactive workspace prunes it and records a cleanup event.
+- Opening a missing but blocked workspace does not prune it. Julie reports why cleanup is blocked.
+- Manual delete uses the same liveness checks and refuses to remove an active workspace.
+- Dashboard rows and detail panels surface the same stale versus blocked distinction so users can tell whether a dead worktree is ready to prune or still live in some session.
+
+This is the intended lifecycle for deleted worktrees and other short-lived clones. A dead path does not imply immediate deletion if the workspace is still active anywhere, but it also does not leave a permanent zombie row once liveness drains.
 
 ## Storage Location Summary
 

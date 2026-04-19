@@ -8,8 +8,11 @@
 {% if known_count > 0 %}
   &nbsp;&middot;&nbsp;<span style="color: var(--julie-text); font-weight: 600;">{{ known_count }}</span> known
 {% endif %}
-{% if missing_count > 0 %}
-  &nbsp;&middot;&nbsp;<span style="color: var(--julie-danger); font-weight: 600;">{{ missing_count }}</span> missing
+{% if stale_count > 0 %}
+  &nbsp;&middot;&nbsp;<span style="color: var(--julie-warning); font-weight: 600;">{{ stale_count }}</span> stale
+{% endif %}
+{% if blocked_count > 0 %}
+  &nbsp;&middot;&nbsp;<span style="color: var(--julie-danger); font-weight: 600;">{{ blocked_count }}</span> blocked
 {% endif %}
 {% if indexing_count > 0 %}
   &nbsp;&middot;&nbsp;<span style="color: var(--julie-warning); font-weight: 600;">{{ indexing_count }}</span> indexing

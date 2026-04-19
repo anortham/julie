@@ -1,7 +1,6 @@
 //! Projects page route handlers.
 
 use std::collections::HashMap;
-use std::path::Path;
 
 use axum::extract::{Path as AxumPath, State};
 use axum::http::StatusCode;
@@ -12,6 +11,9 @@ use tera::Context;
 use crate::daemon::database::{WorkspaceCleanupEventRow, WorkspaceRow};
 use crate::dashboard::AppState;
 use crate::dashboard::render_template;
+use crate::tools::workspace::commands::registry::cleanup::{
+    CLEANUP_ACTION_AUTO_PRUNE, WorkspaceCleanupState, inspect_workspace_cleanup_state,
+};
 
 /// A single language in the distribution bar.
 #[derive(Debug, Clone, Serialize)]
@@ -28,6 +30,10 @@ pub struct WorkspaceSessionStateView {
     pub detail: String,
     pub badge_html: String,
     pub path_missing: bool,
+    pub cleanup_blocked: bool,
+    pub cleanup_block_reason: Option<String>,
+    pub path_state_label: String,
+    pub path_state_badge_html: String,
     pub current_session_count: usize,
     pub active_session_count: usize,
 }
@@ -49,6 +55,14 @@ pub struct CleanupEventView {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct CleanupBlockView {
+    pub workspace_id: String,
+    pub path: String,
+    pub reason: String,
+    pub session_label: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct ProjectsNotice {
     pub kind: String,
     pub title: String,
@@ -57,12 +71,15 @@ pub struct ProjectsNotice {
 
 struct ProjectsPageData {
     workspaces: Vec<ProjectWorkspaceView>,
+    blocked_cleanups: Vec<CleanupBlockView>,
     cleanup_events: Vec<CleanupEventView>,
     total_count: usize,
     current_count: usize,
     active_count: usize,
     known_count: usize,
     missing_count: usize,
+    stale_count: usize,
+    blocked_count: usize,
     ready_count: usize,
     indexing_count: usize,
     error_count: usize,
@@ -144,36 +161,34 @@ pub(crate) fn lang_css_var(lang: &str) -> &'static str {
 fn session_state_badge(label: &str) -> String {
     match label {
         "CURRENT" => r#"<span class="badge-ready">CURRENT</span>"#.to_string(),
-        "ACTIVE" => r#"<span class="badge-indexing">ACTIVE</span>"#.to_string(),
-        "MISSING" => r#"<span class="badge-error">MISSING</span>"#.to_string(),
+        "ACTIVE" => r#"<span class="badge-active">ACTIVE</span>"#.to_string(),
         _ => r#"<span style="color: var(--julie-text-muted); font-size: 0.8rem;">KNOWN</span>"#
             .to_string(),
     }
 }
 
-fn workspace_session_state(
+fn path_state_badge(label: &str) -> String {
+    match label {
+        "PRESENT" => String::new(),
+        "STALE" => r#"<span class="badge-warning">STALE</span>"#.to_string(),
+        "BLOCKED" => r#"<span class="badge-error">BLOCKED</span>"#.to_string(),
+        _ => format!(
+            r#"<span style="color: var(--julie-text-muted); font-size: 0.8rem;">{label}</span>"#
+        ),
+    }
+}
+
+fn base_session_state(
     workspace: &WorkspaceRow,
     current_workspace_counts: &HashMap<String, usize>,
-) -> WorkspaceSessionStateView {
-    let path_missing = !Path::new(&workspace.path).exists();
+) -> (String, String, usize, usize) {
     let current_session_count = current_workspace_counts
         .get(&workspace.workspace_id)
         .copied()
         .unwrap_or(0);
     let active_session_count = workspace.session_count.max(0) as usize;
 
-    let (label, detail) = if path_missing {
-        let suffix = if active_session_count == 1 { "" } else { "s" };
-        let detail = if active_session_count > 0 {
-            format!(
-                "Path is gone. Auto-prune waits for {} live session{}.",
-                active_session_count, suffix
-            )
-        } else {
-            "Path is gone. Open will prune the stale row and index.".to_string()
-        };
-        ("MISSING", detail)
-    } else if current_session_count > 0 {
+    let (label, detail) = if current_session_count > 0 {
         let suffix = if current_session_count == 1 { "" } else { "s" };
         let detail = if active_session_count > current_session_count {
             format!(
@@ -200,11 +215,72 @@ fn workspace_session_state(
         ("KNOWN", "Indexed and inactive.".to_string())
     };
 
-    WorkspaceSessionStateView {
-        label: label.to_string(),
+    (
+        label.to_string(),
         detail,
-        badge_html: session_state_badge(label),
+        current_session_count,
+        active_session_count,
+    )
+}
+
+async fn workspace_session_state(
+    state: &AppState,
+    workspace: &WorkspaceRow,
+    current_workspace_counts: &HashMap<String, usize>,
+) -> WorkspaceSessionStateView {
+    let (label, base_detail, current_session_count, active_session_count) =
+        base_session_state(workspace, current_workspace_counts);
+    let lifecycle = inspect_workspace_cleanup_state(
+        workspace,
+        state.dashboard.workspace_pool(),
+        state.dashboard.watcher_pool(),
+        CLEANUP_ACTION_AUTO_PRUNE,
+    )
+    .await;
+
+    let (path_missing, cleanup_blocked, cleanup_block_reason, path_state_label, path_detail) =
+        match lifecycle {
+            Ok(WorkspaceCleanupState::Present) => (false, false, None, "PRESENT".to_string(), None),
+            Ok(WorkspaceCleanupState::MissingPrunable) => (
+                true,
+                false,
+                None,
+                "STALE".to_string(),
+                Some(
+                    "Path is gone. Pruning or deleting will remove the stale workspace registry entry and index."
+                        .to_string(),
+                ),
+            ),
+            Ok(WorkspaceCleanupState::MissingBlocked { reason }) => (
+                true,
+                true,
+                Some(reason.clone()),
+                "BLOCKED".to_string(),
+                Some(format!("Path is gone. Cleanup blocked: {reason}.")),
+            ),
+            Err(error) => (
+                false,
+                true,
+                Some(format!("path check failed: {error}")),
+                "BLOCKED".to_string(),
+                Some(format!("Path check failed: {error}.")),
+            ),
+        };
+
+    let detail = match path_detail {
+        Some(path_detail) => format!("{base_detail} {path_detail}"),
+        None => base_detail,
+    };
+
+    WorkspaceSessionStateView {
+        label: label.clone(),
+        detail,
+        badge_html: session_state_badge(&label),
         path_missing,
+        cleanup_blocked,
+        cleanup_block_reason,
+        path_state_label: path_state_label.clone(),
+        path_state_badge_html: path_state_badge(&path_state_label),
         current_session_count,
         active_session_count,
     }
@@ -224,21 +300,36 @@ fn cleanup_event_view(event: WorkspaceCleanupEventRow) -> CleanupEventView {
     }
 }
 
-fn load_projects_page_data(state: &AppState) -> ProjectsPageData {
+async fn load_projects_page_data(state: &AppState) -> ProjectsPageData {
     let workspace_rows = state
         .dashboard
         .daemon_db()
         .and_then(|db| db.list_workspaces().ok())
         .unwrap_or_default();
     let current_workspace_counts = state.dashboard.sessions().current_workspace_counts();
-    let workspaces = workspace_rows
-        .into_iter()
-        .map(|workspace| {
-            let session_state = workspace_session_state(&workspace, &current_workspace_counts);
-            ProjectWorkspaceView {
-                workspace,
-                session_state,
-            }
+    let mut workspaces = Vec::with_capacity(workspace_rows.len());
+    for workspace in workspace_rows {
+        let session_state =
+            workspace_session_state(state, &workspace, &current_workspace_counts).await;
+        workspaces.push(ProjectWorkspaceView {
+            workspace,
+            session_state,
+        });
+    }
+
+    let blocked_cleanups = workspaces
+        .iter()
+        .filter_map(|workspace| {
+            workspace
+                .session_state
+                .cleanup_block_reason
+                .as_ref()
+                .map(|reason| CleanupBlockView {
+                    workspace_id: workspace.workspace.workspace_id.clone(),
+                    path: workspace.workspace.path.clone(),
+                    reason: reason.clone(),
+                    session_label: workspace.session_state.label.clone(),
+                })
         })
         .collect::<Vec<_>>();
 
@@ -266,7 +357,17 @@ fn load_projects_page_data(state: &AppState) -> ProjectsPageData {
         .count();
     let missing_count = workspaces
         .iter()
-        .filter(|workspace| workspace.session_state.label == "MISSING")
+        .filter(|workspace| workspace.session_state.path_missing)
+        .count();
+    let stale_count = workspaces
+        .iter()
+        .filter(|workspace| {
+            workspace.session_state.path_missing && !workspace.session_state.cleanup_blocked
+        })
+        .count();
+    let blocked_count = workspaces
+        .iter()
+        .filter(|workspace| workspace.session_state.cleanup_blocked)
         .count();
     let ready_count = workspaces
         .iter()
@@ -283,12 +384,15 @@ fn load_projects_page_data(state: &AppState) -> ProjectsPageData {
 
     ProjectsPageData {
         workspaces,
+        blocked_cleanups,
         cleanup_events,
         total_count,
         current_count,
         active_count,
         known_count,
         missing_count,
+        stale_count,
+        blocked_count,
         ready_count,
         indexing_count,
         error_count,
@@ -299,12 +403,15 @@ fn build_projects_context(data: &ProjectsPageData, notice: Option<&ProjectsNotic
     let mut context = Context::new();
     context.insert("active_page", "projects");
     context.insert("workspaces", &data.workspaces);
+    context.insert("blocked_cleanups", &data.blocked_cleanups);
     context.insert("cleanup_events", &data.cleanup_events);
     context.insert("total_count", &data.total_count);
     context.insert("current_count", &data.current_count);
     context.insert("active_count", &data.active_count);
     context.insert("known_count", &data.known_count);
     context.insert("missing_count", &data.missing_count);
+    context.insert("stale_count", &data.stale_count);
+    context.insert("blocked_count", &data.blocked_count);
     context.insert("ready_count", &data.ready_count);
     context.insert("indexing_count", &data.indexing_count);
     context.insert("error_count", &data.error_count);
@@ -318,7 +425,7 @@ pub(crate) async fn render_projects_page(
     state: &AppState,
     notice: Option<ProjectsNotice>,
 ) -> Result<Html<String>, StatusCode> {
-    let data = load_projects_page_data(state);
+    let data = load_projects_page_data(state).await;
     let context = build_projects_context(&data, notice.as_ref());
     render_template(state, "projects.html", context).await
 }
@@ -422,7 +529,7 @@ pub async fn index(State(state): State<AppState>) -> Result<Html<String>, Status
 /// Response shape:
 /// `{ "_summary": "<html>", "workspace_id": { "badge": "<html>", ... }, ... }`
 pub async fn statuses(State(state): State<AppState>) -> Result<impl IntoResponse, StatusCode> {
-    let data = load_projects_page_data(&state);
+    let data = load_projects_page_data(&state).await;
 
     let mut summary_ctx = Context::new();
     summary_ctx.insert("total_count", &data.total_count);
@@ -430,6 +537,8 @@ pub async fn statuses(State(state): State<AppState>) -> Result<impl IntoResponse
     summary_ctx.insert("active_count", &data.active_count);
     summary_ctx.insert("known_count", &data.known_count);
     summary_ctx.insert("missing_count", &data.missing_count);
+    summary_ctx.insert("stale_count", &data.stale_count);
+    summary_ctx.insert("blocked_count", &data.blocked_count);
     summary_ctx.insert("ready_count", &data.ready_count);
     summary_ctx.insert("indexing_count", &data.indexing_count);
     summary_ctx.insert("error_count", &data.error_count);
@@ -459,6 +568,7 @@ pub async fn statuses(State(state): State<AppState>) -> Result<impl IntoResponse
             serde_json::json!({
                 "badge": badge,
                 "session_state": workspace.session_state.badge_html,
+                "path_state": workspace.session_state.path_state_badge_html,
                 "symbols": workspace.workspace.symbol_count.map(|count| count.to_string()).unwrap_or_else(|| "\u{2014}".into()),
                 "files": workspace.workspace.file_count.map(|count| count.to_string()).unwrap_or_else(|| "\u{2014}".into()),
                 "vectors": workspace.workspace.vector_count.map(|count| count.to_string()).unwrap_or_else(|| "\u{2014}".into()),
@@ -476,7 +586,7 @@ pub async fn statuses(State(state): State<AppState>) -> Result<impl IntoResponse
 
 /// Returns the project table partial.
 pub async fn table(State(state): State<AppState>) -> Result<Html<String>, StatusCode> {
-    let data = load_projects_page_data(&state);
+    let data = load_projects_page_data(&state).await;
     let context = build_projects_context(&data, None);
     render_template(&state, "partials/project_table.html", context).await
 }
@@ -492,7 +602,7 @@ pub async fn detail(
         .ok_or(StatusCode::NOT_FOUND)?;
     let current_workspace_counts = state.dashboard.sessions().current_workspace_counts();
     let workspace = ProjectWorkspaceView {
-        session_state: workspace_session_state(&workspace, &current_workspace_counts),
+        session_state: workspace_session_state(&state, &workspace, &current_workspace_counts).await,
         workspace,
     };
     let health = db.get_latest_snapshot(&workspace_id).ok().flatten();
