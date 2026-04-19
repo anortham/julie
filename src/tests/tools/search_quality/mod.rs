@@ -14,6 +14,8 @@
 //!
 //! - `dogfood_tests.rs` - Core search quality tests against Julie codebase
 //! - `helpers.rs` - Shared test utilities and assertions
+//! - `comparison.rs` - Reusable query-set snapshot and diff harness
+//! - `tantivy_upgrade_report.rs` - Tantivy upgrade baseline/report entrypoint
 //!
 //! ## Adding New Tests
 //!
@@ -22,7 +24,9 @@
 //! 2. Fix the underlying issue
 //! 3. Test passes - regression prevented!
 
+mod comparison;
 mod dogfood_tests;
 mod helpers;
 mod labhandbook_dogfood;
 mod stemming_dogfood_tests;
+mod tantivy_upgrade_report;

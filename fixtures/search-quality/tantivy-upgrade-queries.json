@@ -1,0 +1,98 @@
+{
+  "suite": "tantivy-0.26-upgrade",
+  "version": 1,
+  "default_top_n": 5,
+  "queries": [
+    {
+      "id": "symbol-symboldatabase",
+      "category": "symbol_lookup",
+      "description": "Exact symbol lookup for SymbolDatabase",
+      "target": "definitions",
+      "query": "SymbolDatabase"
+    },
+    {
+      "id": "symbol-text-search-impl",
+      "category": "symbol_lookup",
+      "description": "Direct function lookup for text_search_impl",
+      "target": "definitions",
+      "query": "text_search_impl"
+    },
+    {
+      "id": "and-query-row-select-symbols",
+      "category": "multi_token_and",
+      "description": "Multi-token content query used by dogfood regression",
+      "target": "content",
+      "query": "query_row SELECT symbols"
+    },
+    {
+      "id": "and-incremental-update-atomic",
+      "category": "multi_token_and",
+      "description": "Incremental indexing terms that should intersect",
+      "target": "content",
+      "query": "incremental update atomic"
+    },
+    {
+      "id": "or-fallback-postgresql-tantivy",
+      "category": "or_fallback",
+      "description": "Forces OR fallback with one stable token and one sentinel miss token",
+      "target": "content",
+      "query": "tantivy zzqxjvphf9d1c4a7"
+    },
+    {
+      "id": "or-fallback-workspace-embeddings",
+      "category": "or_fallback",
+      "description": "Cross-domain terms that should produce partial matches",
+      "target": "content",
+      "query": "workspace registry embeddings"
+    },
+    {
+      "id": "content-on-delete-cascade",
+      "category": "content_search",
+      "description": "SQL phrase search used by existing dogfood tests",
+      "target": "content",
+      "query": "ON DELETE CASCADE"
+    },
+    {
+      "id": "content-fast-refs-identifiers",
+      "category": "content_search",
+      "description": "Identifier-heavy content search",
+      "target": "content",
+      "query": "fast refs identifiers"
+    },
+    {
+      "id": "ranking-exact-vs-body-symboldatabase",
+      "category": "exact_vs_body",
+      "description": "Exact symbol name should beat body mentions",
+      "target": "definitions",
+      "query": "SymbolDatabase"
+    },
+    {
+      "id": "ranking-exact-vs-body-setup-handler",
+      "category": "exact_vs_body",
+      "description": "Helper definition should rank against body references",
+      "target": "definitions",
+      "query": "setup_handler_with_fixture"
+    },
+    {
+      "id": "tokenizer-hyphen-tree-sitter",
+      "category": "tokenizer_sensitive",
+      "description": "Hyphen tokenizer behavior",
+      "target": "content",
+      "query": "tree-sitter"
+    },
+    {
+      "id": "tokenizer-colon-rust-path",
+      "category": "tokenizer_sensitive",
+      "description": "Rust path separators in search query",
+      "target": "content",
+      "query": "SymbolDatabase::new"
+    },
+    {
+      "id": "tokenizer-underscore-workspace-id",
+      "category": "tokenizer_sensitive",
+      "description": "Underscore token splitting behavior",
+      "target": "definitions",
+      "query": "workspace_id"
+    }
+  ]
+}

@@ -678,11 +678,29 @@ impl JulieWorkspace {
         ))?;
 
         let configs = crate::search::LanguageConfigs::load_embedded();
-        let index = crate::search::SearchIndex::open_or_create_with_language_configs(
-            &tantivy_path,
-            &configs,
-        )
-        .context("Failed to open or create Tantivy search index")?;
+        let open_outcome =
+            crate::search::SearchIndex::open_or_create_with_language_configs_outcome(
+                &tantivy_path,
+                &configs,
+            )
+            .context("Failed to open or create Tantivy search index")?;
+
+        let repair_required = open_outcome.repair_required();
+        let index = open_outcome.into_index();
+
+        if repair_required {
+            warn!(
+                "Tantivy search index at {} was recreated empty during open; rebuilding projection from canonical SQLite state",
+                tantivy_path.display()
+            );
+
+            let db = self.db.as_ref().ok_or_else(|| {
+                anyhow!("Database must be initialized before repairing recreated Tantivy index")
+            })?;
+            let mut db = db.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+            let projection = crate::search::SearchProjection::tantivy(workspace_id.clone());
+            projection.repair_recreated_open_if_needed(&mut db, &index, repair_required, None)?;
+        }
 
         self.search_index = Some(Arc::new(std::sync::Mutex::new(index)));
         info!("Tantivy search index initialized successfully");

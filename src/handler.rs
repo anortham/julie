@@ -25,7 +25,7 @@ use crate::dashboard::state::DashboardEvent;
 
 use self::session_workspace::{PrimaryWorkspaceBinding, SessionWorkspaceState};
 use crate::database::SymbolDatabase;
-use crate::search::SearchIndex;
+use crate::search::{SearchIndex, SearchProjection};
 use crate::workspace::JulieWorkspace;
 use crate::workspace::startup_hint::WorkspaceStartupHint;
 use crate::workspace::startup_hint::WorkspaceStartupSource;
@@ -1883,10 +1883,36 @@ impl JulieServerHandler {
 
         let tantivy_path = self.primary_workspace_tantivy_path_from_binding(binding);
         let search_index = if tantivy_path.join("meta.json").exists() {
+            let workspace_id = binding.workspace_id.clone();
+            let database_for_projection = Arc::clone(&database);
+            let indexing_status = Arc::clone(&self.indexing_status);
             Some(
                 tokio::task::spawn_blocking(move || {
                     let configs = crate::search::LanguageConfigs::load_embedded();
-                    let index = SearchIndex::open_with_language_configs(&tantivy_path, &configs)?;
+                    let open_outcome =
+                        SearchIndex::open_with_language_configs_outcome(&tantivy_path, &configs)?;
+                    let repair_required = open_outcome.repair_required();
+                    let index = open_outcome.into_index();
+
+                    if repair_required {
+                        warn!(
+                            "Tantivy index for workspace '{}' at {} was recreated empty during open; rebuilding projection from canonical SQLite state",
+                            workspace_id,
+                            tantivy_path.display()
+                        );
+
+                        let mut db = database_for_projection
+                            .lock()
+                            .unwrap_or_else(|poisoned| poisoned.into_inner());
+                        let projection = SearchProjection::tantivy(workspace_id.clone());
+                        projection.repair_recreated_open_if_needed(
+                            &mut db,
+                            &index,
+                            repair_required,
+                            Some(&indexing_status.search_ready),
+                        )?;
+                    }
+
                     Ok::<_, anyhow::Error>(Arc::new(std::sync::Mutex::new(index)))
                 })
                 .await??,
@@ -2249,9 +2275,28 @@ impl JulieServerHandler {
             return Ok(None);
         }
 
+        let db_path = self.workspace_db_file_path_for(workspace_id).await?;
+
+        let workspace_id = workspace_id.to_string();
         tokio::task::spawn_blocking(move || {
             let configs = crate::search::LanguageConfigs::load_embedded();
-            let index = SearchIndex::open_with_language_configs(&tantivy_path, &configs)?;
+            let open_outcome =
+                SearchIndex::open_with_language_configs_outcome(&tantivy_path, &configs)?;
+            let repair_required = open_outcome.repair_required();
+            let index = open_outcome.into_index();
+
+            if repair_required {
+                warn!(
+                    "Tantivy index for workspace '{}' at {} was recreated empty during open; rebuilding projection from canonical SQLite state",
+                    workspace_id,
+                    tantivy_path.display()
+                );
+
+                let mut db = SymbolDatabase::new(&db_path)?;
+                let projection = SearchProjection::tantivy(workspace_id.clone());
+                projection.repair_recreated_open_if_needed(&mut db, &index, repair_required, None)?;
+            }
+
             Ok(Some(Arc::new(std::sync::Mutex::new(index))))
         })
         .await?

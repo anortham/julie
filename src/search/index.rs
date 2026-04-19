@@ -11,8 +11,9 @@ use std::path::Path;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use serde::{Deserialize, Serialize};
 use tantivy::collector::TopDocs;
-use tantivy::schema::{OwnedValue, TantivyDocument};
+use tantivy::schema::{TantivyDocument, Value};
 use tantivy::tokenizer::TextAnalyzer;
 use tantivy::{Index, IndexReader, IndexWriter, Term};
 
@@ -22,14 +23,18 @@ use crate::search::language_config::LanguageConfigs;
 use crate::search::query::{
     build_content_query_weighted, build_symbol_query, build_symbol_query_weighted,
 };
-use crate::search::schema::{SchemaFields, create_schema};
+use crate::search::schema::{
+    SchemaCompatibilitySignature, SchemaFields, compatibility_signature, create_schema,
+};
 use crate::search::scoring::{
     apply_important_patterns_boost, apply_nl_path_prior, is_nl_like_query,
 };
-use crate::search::tokenizer::CodeTokenizer;
+use crate::search::tokenizer::{CodeTokenizer, TokenizerCompatibilitySignature};
 
 const WRITER_HEAP_SIZE: usize = 50_000_000; // 50MB
 const NL_RERANK_OVERFETCH_FACTOR: usize = 4;
+const SEARCH_COMPAT_MARKER_VERSION: u32 = 1;
+pub const SEARCH_COMPAT_MARKER_FILE: &str = "julie-search-compat.json";
 
 /// A code symbol to be indexed.
 pub struct SymbolDocument {
@@ -124,6 +129,41 @@ pub struct ContentSearchResults {
     pub relaxed: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SearchIndexOpenDisposition {
+    Compatible,
+    RecreatedIncompatible,
+    RecreatedOpenFailure,
+}
+
+impl SearchIndexOpenDisposition {
+    pub fn repair_required(self) -> bool {
+        !matches!(self, Self::Compatible)
+    }
+}
+
+pub struct SearchIndexOpenOutcome {
+    pub index: SearchIndex,
+    pub disposition: SearchIndexOpenDisposition,
+}
+
+impl SearchIndexOpenOutcome {
+    pub fn repair_required(&self) -> bool {
+        self.disposition.repair_required()
+    }
+
+    pub fn into_index(self) -> SearchIndex {
+        self.index
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct SearchCompatMarker {
+    marker_version: u32,
+    schema_signature: SchemaCompatibilitySignature,
+    tokenizer_signature: TokenizerCompatibilitySignature,
+}
+
 /// Tantivy-backed search index for code intelligence.
 ///
 /// Supports indexing code symbols and file content, with code-aware
@@ -161,11 +201,23 @@ impl SearchIndex {
             return Err(SearchError::IndexNotFound(path.display().to_string()));
         }
         let tokenizer = CodeTokenizer::with_default_patterns();
-        Self::open_with_tokenizer(path, tokenizer, None)
+        Self::open_with_tokenizer(path, tokenizer, None).map(SearchIndexOpenOutcome::into_index)
     }
 
     /// Open an existing index with language-specific tokenizer patterns.
     pub fn open_with_language_configs(path: &Path, configs: &LanguageConfigs) -> Result<Self> {
+        if !path.join("meta.json").exists() {
+            return Err(SearchError::IndexNotFound(path.display().to_string()));
+        }
+        let tokenizer = CodeTokenizer::from_language_configs(configs);
+        Self::open_with_tokenizer(path, tokenizer, Some(configs.clone()))
+            .map(SearchIndexOpenOutcome::into_index)
+    }
+
+    pub fn open_with_language_configs_outcome(
+        path: &Path,
+        configs: &LanguageConfigs,
+    ) -> Result<SearchIndexOpenOutcome> {
         if !path.join("meta.json").exists() {
             return Err(SearchError::IndexNotFound(path.display().to_string()));
         }
@@ -177,6 +229,7 @@ impl SearchIndex {
     pub fn open_or_create(path: &Path) -> Result<Self> {
         let tokenizer = CodeTokenizer::with_default_patterns();
         Self::open_or_create_with_tokenizer(path, tokenizer, None)
+            .map(SearchIndexOpenOutcome::into_index)
     }
 
     /// Open an existing index or create a new one, using language-specific tokenizer patterns.
@@ -184,6 +237,15 @@ impl SearchIndex {
         path: &Path,
         configs: &LanguageConfigs,
     ) -> Result<Self> {
+        let tokenizer = CodeTokenizer::from_language_configs(configs);
+        Self::open_or_create_with_tokenizer(path, tokenizer, Some(configs.clone()))
+            .map(SearchIndexOpenOutcome::into_index)
+    }
+
+    pub fn open_or_create_with_language_configs_outcome(
+        path: &Path,
+        configs: &LanguageConfigs,
+    ) -> Result<SearchIndexOpenOutcome> {
         let tokenizer = CodeTokenizer::from_language_configs(configs);
         Self::open_or_create_with_tokenizer(path, tokenizer, Some(configs.clone()))
     }
@@ -306,7 +368,10 @@ impl SearchIndex {
 
         let searcher = self.reader.searcher();
         let candidate_limit = Self::rerank_candidate_limit(query_str, limit);
-        let top_docs = searcher.search(&query, &TopDocs::with_limit(candidate_limit))?;
+        let top_docs = searcher.search(
+            &query,
+            &TopDocs::with_limit(candidate_limit).order_by_score(),
+        )?;
 
         // Auto-fallback: if AND returned nothing and the user typed multiple words, try OR.
         // Use word count from query_str (not terms.len()) because the tokenizer can inflate
@@ -329,7 +394,10 @@ impl SearchIndex {
                 false, // OR mode
             );
             (
-                searcher.search(&or_query, &TopDocs::with_limit(candidate_limit))?,
+                searcher.search(
+                    &or_query,
+                    &TopDocs::with_limit(candidate_limit).order_by_score(),
+                )?,
                 true,
             )
         } else {
@@ -401,7 +469,10 @@ impl SearchIndex {
 
         let searcher = self.reader.searcher();
         let candidate_limit = Self::rerank_candidate_limit(query_str, limit);
-        let top_docs = searcher.search(&query, &TopDocs::with_limit(candidate_limit))?;
+        let top_docs = searcher.search(
+            &query,
+            &TopDocs::with_limit(candidate_limit).order_by_score(),
+        )?;
 
         let mut results = Vec::with_capacity(top_docs.len());
         for (score, doc_address) in top_docs {
@@ -472,7 +543,7 @@ impl SearchIndex {
         );
 
         let searcher = self.reader.searcher();
-        let top_docs = searcher.search(&query, &TopDocs::with_limit(limit))?;
+        let top_docs = searcher.search(&query, &TopDocs::with_limit(limit).order_by_score())?;
 
         // Auto-fallback: if AND returned nothing and the user typed multiple words, try OR.
         // Use word count from query_str (not terms.len()) because the tokenizer can inflate
@@ -490,7 +561,7 @@ impl SearchIndex {
                 false, // require_all_terms: OR mode (relaxed matching)
             );
             (
-                searcher.search(&or_query, &TopDocs::with_limit(limit))?,
+                searcher.search(&or_query, &TopDocs::with_limit(limit).order_by_score())?,
                 true,
             )
         } else {
@@ -516,70 +587,61 @@ impl SearchIndex {
         path: &Path,
         tokenizer: CodeTokenizer,
         language_configs: Option<LanguageConfigs>,
-    ) -> Result<Self> {
-        let schema = create_schema();
-        let schema_fields = SchemaFields::new(&schema);
+    ) -> Result<SearchIndexOpenOutcome> {
+        let expected_schema = create_schema();
+        let expected_marker = Self::expected_compat_marker(&expected_schema, &tokenizer);
 
-        let index = if path.join("meta.json").exists() {
-            // Index already exists — open and check schema compatibility
-            let existing = Index::open_in_dir(path)?;
-            if Self::schema_is_compatible(&schema, &existing.schema()) {
-                existing
-            } else {
-                tracing::warn!(
-                    "Tantivy schema mismatch at {} — recreating index (data will be repopulated on next indexing)",
-                    path.display()
-                );
-                // Acquire a file-based lock before modifying the index directory so a
-                // concurrent process doesn't observe a partially deleted directory.
-                // create_new is atomic on all supported platforms.
-                let lock_path = path.join(".recreating");
-                let _lock = match std::fs::OpenOptions::new()
-                    .write(true)
-                    .create_new(true)
-                    .open(&lock_path)
-                {
-                    Ok(f) => f,
-                    Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
-                        // Another process is already recreating — open whatever exists.
+        let (index, disposition) = if path.join("meta.json").exists() {
+            match Index::open_in_dir(path) {
+                Ok(existing) => {
+                    if Self::index_is_compatible(
+                        path,
+                        &expected_schema,
+                        &existing.schema(),
+                        &expected_marker,
+                    ) {
+                        (existing, SearchIndexOpenDisposition::Compatible)
+                    } else {
                         tracing::warn!(
-                            "Concurrent index recreation detected at {} — reusing existing index",
+                            "Tantivy index at {} is incompatible with Julie expectations, recreating empty index",
                             path.display()
                         );
-                        return Self::open_or_create_with_tokenizer(
-                            path,
-                            tokenizer,
-                            language_configs,
-                        );
+                        drop(existing);
+                        (
+                            Self::recreate_index_with_lock(
+                                path,
+                                &expected_schema,
+                                &expected_marker,
+                            )?,
+                            SearchIndexOpenDisposition::RecreatedIncompatible,
+                        )
                     }
-                    Err(e) => return Err(e.into()),
-                };
-                drop(existing);
-                let recreate_result = (|| -> Result<Index> {
-                    std::fs::remove_dir_all(path)?;
-                    std::fs::create_dir_all(path)?;
-                    Ok(Index::create_in_dir(path, schema)?)
-                })();
-                let _ = std::fs::remove_file(&lock_path);
-                recreate_result?
+                }
+                Err(err) => {
+                    tracing::warn!(
+                        "Failed to open Tantivy index at {} ({err}), recreating empty index",
+                        path.display()
+                    );
+                    (
+                        Self::recreate_index_with_lock(path, &expected_schema, &expected_marker)?,
+                        SearchIndexOpenDisposition::RecreatedOpenFailure,
+                    )
+                }
             }
         } else {
-            // No index yet — create it; propagates disk-full and permission errors
-            Index::builder()
-                .schema(schema.clone())
-                .create_in_dir(path)?
+            let index = Index::builder()
+                .schema(expected_schema.clone())
+                .create_in_dir(path)?;
+            Self::write_compat_marker(path, &expected_marker)?;
+            (index, SearchIndexOpenDisposition::Compatible)
         };
 
-        Self::register_tokenizer(&index, tokenizer);
-        let reader = index.reader()?;
+        let search_index =
+            Self::build_search_index(index, &expected_schema, tokenizer, language_configs)?;
 
-        Ok(Self {
-            index,
-            reader,
-            writer: Mutex::new(None),
-            schema_fields,
-            language_configs,
-            shutdown: AtomicBool::new(false),
+        Ok(SearchIndexOpenOutcome {
+            index: search_index,
+            disposition,
         })
     }
 
@@ -589,54 +651,58 @@ impl SearchIndex {
         language_configs: Option<LanguageConfigs>,
     ) -> Result<Self> {
         let schema = create_schema();
-        let schema_fields = SchemaFields::new(&schema);
-
-        let index = Index::create_in_dir(path, schema)?;
-        Self::register_tokenizer(&index, tokenizer);
-        let reader = index.reader()?;
-
-        Ok(Self {
-            index,
-            reader,
-            writer: Mutex::new(None),
-            schema_fields,
-            language_configs,
-            shutdown: AtomicBool::new(false),
-        })
+        let expected_marker = Self::expected_compat_marker(&schema, &tokenizer);
+        let index = Index::create_in_dir(path, schema.clone())?;
+        Self::write_compat_marker(path, &expected_marker)?;
+        Self::build_search_index(index, &schema, tokenizer, language_configs)
     }
 
     fn open_with_tokenizer(
         path: &Path,
         tokenizer: CodeTokenizer,
         language_configs: Option<LanguageConfigs>,
-    ) -> Result<Self> {
+    ) -> Result<SearchIndexOpenOutcome> {
         let expected_schema = create_schema();
-        let index = Index::open_in_dir(path)?;
+        let expected_marker = Self::expected_compat_marker(&expected_schema, &tokenizer);
 
-        let index = if Self::schema_is_compatible(&expected_schema, &index.schema()) {
-            index
-        } else {
-            tracing::warn!(
-                "Tantivy schema mismatch at {} — recreating index (data will be repopulated on next indexing)",
-                path.display()
-            );
-            drop(index);
-            std::fs::remove_dir_all(path)?;
-            std::fs::create_dir_all(path)?;
-            Index::create_in_dir(path, expected_schema.clone())?
+        let (index, disposition) = match Index::open_in_dir(path) {
+            Ok(index) => {
+                if Self::index_is_compatible(
+                    path,
+                    &expected_schema,
+                    &index.schema(),
+                    &expected_marker,
+                ) {
+                    (index, SearchIndexOpenDisposition::Compatible)
+                } else {
+                    tracing::warn!(
+                        "Tantivy index at {} is incompatible with Julie expectations, recreating empty index",
+                        path.display()
+                    );
+                    drop(index);
+                    (
+                        Self::recreate_index(path, &expected_schema, &expected_marker)?,
+                        SearchIndexOpenDisposition::RecreatedIncompatible,
+                    )
+                }
+            }
+            Err(err) => {
+                tracing::warn!(
+                    "Failed to open Tantivy index at {} ({err}), recreating empty index",
+                    path.display()
+                );
+                (
+                    Self::recreate_index(path, &expected_schema, &expected_marker)?,
+                    SearchIndexOpenDisposition::RecreatedOpenFailure,
+                )
+            }
         };
 
-        let schema_fields = SchemaFields::new(&expected_schema);
-        Self::register_tokenizer(&index, tokenizer);
-        let reader = index.reader()?;
-
-        Ok(Self {
-            index,
-            reader,
-            writer: Mutex::new(None),
-            schema_fields,
-            language_configs,
-            shutdown: AtomicBool::new(false),
+        let search_index =
+            Self::build_search_index(index, &expected_schema, tokenizer, language_configs)?;
+        Ok(SearchIndexOpenOutcome {
+            index: search_index,
+            disposition,
         })
     }
 
@@ -646,17 +712,163 @@ impl SearchIndex {
             .register("code", TextAnalyzer::builder(tokenizer).build());
     }
 
-    /// Check whether an on-disk Tantivy schema has all the fields the current
-    /// code expects.  Returns `false` when the index was created by an older
-    /// Julie version that used different field names (e.g. `symbol_name`
-    /// instead of `name`).
+    fn build_search_index(
+        index: Index,
+        schema: &tantivy::schema::Schema,
+        tokenizer: CodeTokenizer,
+        language_configs: Option<LanguageConfigs>,
+    ) -> Result<Self> {
+        let schema_fields = SchemaFields::new(schema);
+        Self::register_tokenizer(&index, tokenizer);
+        let reader = index.reader()?;
+
+        Ok(Self {
+            index,
+            reader,
+            writer: Mutex::new(None),
+            schema_fields,
+            language_configs,
+            shutdown: AtomicBool::new(false),
+        })
+    }
+
+    fn expected_compat_marker(
+        schema: &tantivy::schema::Schema,
+        tokenizer: &CodeTokenizer,
+    ) -> SearchCompatMarker {
+        SearchCompatMarker {
+            marker_version: SEARCH_COMPAT_MARKER_VERSION,
+            schema_signature: compatibility_signature(schema),
+            tokenizer_signature: tokenizer.compatibility_signature(),
+        }
+    }
+
+    fn read_compat_marker(path: &Path) -> std::result::Result<Option<SearchCompatMarker>, String> {
+        let marker_path = path.join(SEARCH_COMPAT_MARKER_FILE);
+        if !marker_path.exists() {
+            return Ok(None);
+        }
+
+        let raw = std::fs::read_to_string(&marker_path)
+            .map_err(|err| format!("failed to read {}: {err}", marker_path.display()))?;
+        let marker = serde_json::from_str::<SearchCompatMarker>(&raw)
+            .map_err(|err| format!("failed to parse {}: {err}", marker_path.display()))?;
+
+        Ok(Some(marker))
+    }
+
+    fn write_compat_marker(path: &Path, marker: &SearchCompatMarker) -> Result<()> {
+        let marker_path = path.join(SEARCH_COMPAT_MARKER_FILE);
+        let payload = serde_json::to_string_pretty(marker).map_err(|err| {
+            SearchError::IndexError(format!(
+                "failed to serialize compatibility marker for {}: {err}",
+                marker_path.display()
+            ))
+        })?;
+        std::fs::write(marker_path, payload)?;
+        Ok(())
+    }
+
+    fn index_is_compatible(
+        path: &Path,
+        expected_schema: &tantivy::schema::Schema,
+        actual_schema: &tantivy::schema::Schema,
+        expected_marker: &SearchCompatMarker,
+    ) -> bool {
+        if !Self::schema_is_compatible(expected_schema, actual_schema) {
+            return false;
+        }
+
+        match Self::read_compat_marker(path) {
+            Ok(Some(marker)) => {
+                if marker == *expected_marker {
+                    true
+                } else {
+                    tracing::warn!(
+                        "Compatibility marker mismatch at {} (expected Julie marker v{}, found v{}), recreating",
+                        path.display(),
+                        SEARCH_COMPAT_MARKER_VERSION,
+                        marker.marker_version
+                    );
+                    false
+                }
+            }
+            Ok(None) => {
+                tracing::warn!(
+                    "Compatibility marker missing at {} ({}), recreating",
+                    path.display(),
+                    SEARCH_COMPAT_MARKER_FILE
+                );
+                false
+            }
+            Err(err) => {
+                tracing::warn!(
+                    "Compatibility marker unreadable at {} ({}), recreating",
+                    path.display(),
+                    err
+                );
+                false
+            }
+        }
+    }
+
+    fn recreate_index(
+        path: &Path,
+        schema: &tantivy::schema::Schema,
+        marker: &SearchCompatMarker,
+    ) -> Result<Index> {
+        if path.exists() {
+            std::fs::remove_dir_all(path)?;
+        }
+        std::fs::create_dir_all(path)?;
+        let index = Index::create_in_dir(path, schema.clone())?;
+        Self::write_compat_marker(path, marker)?;
+        Ok(index)
+    }
+
+    fn recreate_index_with_lock(
+        path: &Path,
+        schema: &tantivy::schema::Schema,
+        marker: &SearchCompatMarker,
+    ) -> Result<Index> {
+        let lock_path = path.join(".recreating");
+        let _lock = match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&lock_path)
+        {
+            Ok(file) => file,
+            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
+                tracing::warn!(
+                    "Concurrent index recreation detected at {} — reusing existing index",
+                    path.display()
+                );
+                let existing = Index::open_in_dir(path)?;
+                if Self::index_is_compatible(path, schema, &existing.schema(), marker) {
+                    return Ok(existing);
+                }
+
+                tracing::warn!(
+                    "Concurrent recreation at {} yielded an incompatible index, forcing local recreation",
+                    path.display()
+                );
+                drop(existing);
+                return Self::recreate_index(path, schema, marker);
+            }
+            Err(err) => return Err(err.into()),
+        };
+
+        let recreate_result = Self::recreate_index(path, schema, marker);
+        let _ = std::fs::remove_file(&lock_path);
+        recreate_result
+    }
+
+    /// Check whether on-disk schema metadata matches Julie's expected schema shape.
     fn schema_is_compatible(
         expected: &tantivy::schema::Schema,
         actual: &tantivy::schema::Schema,
     ) -> bool {
-        expected
-            .fields()
-            .all(|(_field, entry)| actual.get_field(entry.name()).is_ok())
+        compatibility_signature(expected) == compatibility_signature(actual)
     }
 
     fn get_or_create_writer(&self) -> Result<std::sync::MutexGuard<'_, Option<IndexWriter>>> {
@@ -789,19 +1001,13 @@ impl SearchIndex {
 
     fn get_text_field(doc: &TantivyDocument, field: tantivy::schema::Field) -> String {
         doc.get_first(field)
-            .and_then(|v| match v {
-                OwnedValue::Str(s) => Some(s.clone()),
-                _ => None,
-            })
+            .and_then(|value| value.as_str().map(ToOwned::to_owned))
             .unwrap_or_default()
     }
 
     fn get_u64_field(doc: &TantivyDocument, field: tantivy::schema::Field) -> u64 {
         doc.get_first(field)
-            .and_then(|v| match v {
-                OwnedValue::U64(n) => Some(*n),
-                _ => None,
-            })
+            .and_then(|value| value.as_u64())
             .unwrap_or(0)
     }
 }

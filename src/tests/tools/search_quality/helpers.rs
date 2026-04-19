@@ -5,8 +5,49 @@
 
 use crate::extractors::Symbol;
 use crate::handler::JulieServerHandler;
-use anyhow::Result;
+use anyhow::{Result, bail};
 use std::sync::Arc;
+
+#[derive(Debug)]
+pub struct SearchExecution {
+    pub symbols: Vec<Symbol>,
+    pub relaxed: bool,
+    pub total_hits: usize,
+}
+
+/// Execute a search-quality query and return both hits and fallback metadata.
+pub async fn search_with_metadata(
+    handler: &JulieServerHandler,
+    query: &str,
+    limit: u32,
+    search_target: &str,
+) -> Result<SearchExecution> {
+    if !matches!(search_target, "content" | "definitions") {
+        bail!(
+            "Unsupported search_target '{}' in search quality helper",
+            search_target
+        );
+    }
+
+    let (symbols, relaxed, total_hits) = crate::tools::search::text_search::text_search_impl(
+        query,
+        &None,
+        &None,
+        limit,
+        None,
+        search_target,
+        None,
+        None,
+        handler,
+    )
+    .await?;
+
+    Ok(SearchExecution {
+        symbols,
+        relaxed,
+        total_hits,
+    })
+}
 
 /// Search Julie's codebase (file content search)
 pub async fn search_content(
@@ -14,11 +55,8 @@ pub async fn search_content(
     query: &str,
     limit: u32,
 ) -> Result<Vec<Symbol>> {
-    let (symbols, _relaxed, _) = crate::tools::search::text_search::text_search_impl(
-        query, &None, &None, limit, None, "content", None, None, handler,
-    )
-    .await?;
-    Ok(symbols)
+    let run = search_with_metadata(handler, query, limit, "content").await?;
+    Ok(run.symbols)
 }
 
 /// Search Julie's codebase (symbol definitions search)
@@ -27,19 +65,8 @@ pub async fn search_definitions(
     query: &str,
     limit: u32,
 ) -> Result<Vec<Symbol>> {
-    let (symbols, _relaxed, _) = crate::tools::search::text_search::text_search_impl(
-        query,
-        &None,
-        &None,
-        limit,
-        None,
-        "definitions",
-        None,
-        None,
-        handler,
-    )
-    .await?;
-    Ok(symbols)
+    let run = search_with_metadata(handler, query, limit, "definitions").await?;
+    Ok(run.symbols)
 }
 
 /// Assert that results contain a file path matching the pattern

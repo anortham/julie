@@ -30,6 +30,14 @@ pub struct CodeTokenizer {
     strip_suffixes: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct TokenizerCompatibilitySignature {
+    pub preserve_patterns: Vec<String>,
+    pub meaningful_affixes: Vec<String>,
+    pub strip_prefixes: Vec<String>,
+    pub strip_suffixes: Vec<String>,
+}
+
 impl CodeTokenizer {
     pub fn new(preserve_patterns: Vec<String>) -> Self {
         let mut patterns = preserve_patterns;
@@ -94,6 +102,22 @@ impl CodeTokenizer {
         tokenizer.set_strip_rules(prefixes, suffixes);
         tokenizer
     }
+
+    pub fn compatibility_signature(&self) -> TokenizerCompatibilitySignature {
+        TokenizerCompatibilitySignature {
+            preserve_patterns: canonicalize_signature_values(&self.preserve_patterns),
+            meaningful_affixes: canonicalize_signature_values(&self.meaningful_affixes),
+            strip_prefixes: canonicalize_signature_values(&self.strip_prefixes),
+            strip_suffixes: canonicalize_signature_values(&self.strip_suffixes),
+        }
+    }
+}
+
+fn canonicalize_signature_values(values: &[String]) -> Vec<String> {
+    let mut canonical = values.to_vec();
+    canonical.sort_by(|left, right| right.len().cmp(&left.len()).then_with(|| left.cmp(right)));
+    canonical.dedup();
+    canonical
 }
 
 impl Tokenizer for CodeTokenizer {

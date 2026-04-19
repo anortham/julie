@@ -9,6 +9,18 @@ use tantivy::schema::{
     TextOptions,
 };
 
+/// Canonical, Julie-owned signature for persisted Tantivy schema compatibility.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SchemaCompatibilitySignature {
+    pub fields: Vec<SchemaCompatibilityField>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SchemaCompatibilityField {
+    pub name: String,
+    pub field_type: String,
+}
+
 /// Field name constants for the search schema.
 pub mod fields {
     pub const DOC_TYPE: &str = "doc_type";
@@ -65,6 +77,24 @@ pub fn create_schema() -> Schema {
     builder.add_text_field(fields::CONTENT, code_text_not_stored);
 
     builder.build()
+}
+
+pub fn compatibility_signature(schema: &Schema) -> SchemaCompatibilitySignature {
+    let mut fields = schema
+        .fields()
+        .map(|(_field, entry)| SchemaCompatibilityField {
+            name: entry.name().to_string(),
+            field_type: format!("{:?}", entry.field_type()),
+        })
+        .collect::<Vec<_>>();
+
+    fields.sort_by(|left, right| {
+        left.name
+            .cmp(&right.name)
+            .then_with(|| left.field_type.cmp(&right.field_type))
+    });
+
+    SchemaCompatibilitySignature { fields }
 }
 
 /// Pre-resolved field handles for efficient document construction and retrieval.

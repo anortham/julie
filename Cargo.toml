@@ -58,7 +58,7 @@ toml = "0.8"
 rusqlite = { version = "0.39.0", features = ["bundled"] }
 
 # Full-text search engine with custom code tokenizer
-tantivy = "0.22"
+tantivy = "0.26.0"
 rust-stemmers = "1.2"
 
 # File watching

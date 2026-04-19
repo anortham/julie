@@ -4,7 +4,8 @@ use tempfile::TempDir;
 
 use crate::search::SearchError;
 use crate::search::index::{
-    FileDocument, SearchFilter, SearchIndex, SymbolDocument, SymbolSearchResults,
+    FileDocument, SearchFilter, SearchIndex, SearchIndexOpenDisposition, SymbolDocument,
+    SymbolSearchResults,
 };
 use crate::search::language_config::LanguageConfigs;
 
@@ -1256,6 +1257,44 @@ fn test_schema_migration_via_open_path() {
         .unwrap()
         .results;
     assert_eq!(results.len(), 1);
+}
+
+#[test]
+fn test_open_or_create_recreates_when_compat_marker_missing() {
+    let temp_dir = TempDir::new().unwrap();
+    let index_path = temp_dir.path().join("tantivy");
+    std::fs::create_dir_all(&index_path).unwrap();
+    let configs = LanguageConfigs::load_embedded();
+
+    let index = SearchIndex::create_with_language_configs(&index_path, &configs).unwrap();
+    index
+        .add_symbol(&SymbolDocument {
+            id: "sym1".into(),
+            name: "NeedsRepair".into(),
+            signature: "fn needs_repair()".into(),
+            doc_comment: "".into(),
+            code_body: "".into(),
+            file_path: "src/repair.rs".into(),
+            kind: "function".into(),
+            language: "rust".into(),
+            start_line: 1,
+        })
+        .unwrap();
+    index.commit().unwrap();
+    drop(index);
+
+    let compat_marker_path = index_path.join("julie-search-compat.json");
+    assert!(compat_marker_path.exists(), "compat marker should exist");
+    std::fs::remove_file(&compat_marker_path).unwrap();
+
+    let outcome =
+        SearchIndex::open_or_create_with_language_configs_outcome(&index_path, &configs).unwrap();
+    assert_eq!(
+        outcome.disposition,
+        SearchIndexOpenDisposition::RecreatedIncompatible
+    );
+    assert!(outcome.repair_required());
+    assert_eq!(outcome.index.num_docs(), 0);
 }
 
 /// Moved from src/search/index.rs (L22 cleanup: no inline tests in impl files).
