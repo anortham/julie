@@ -4,6 +4,7 @@
 
 mod edit_file_tests;
 mod markdown_section_tests;
+mod rewrite_symbol_cross_language_tests;
 mod rewrite_symbol_tests;
 mod security_tests;
 pub mod transactional_editing_tests; // EditingTransaction and MultiFileTransaction tests
