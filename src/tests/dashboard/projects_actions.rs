@@ -119,10 +119,55 @@ async fn test_projects_page_shows_workspace_controls_and_cleanup_log() {
     assert!(html.contains("KNOWN"));
     assert!(html.contains("auto prune"));
     assert!(html.contains("missing path"));
-    assert!(html.contains("Delete this workspace index and registry row?"));
+    assert!(html.contains("projects-table-shell"));
+    assert!(html.contains("/projects/current_ws/open"));
+    assert!(!html.contains("/projects/current_ws/refresh"));
+    assert!(!html.contains("/projects/current_ws/delete"));
     assert!(
         !html.contains("Reference Workspaces"),
         "projects dashboard should drop the dead workspace-pairing panel"
+    );
+}
+
+#[tokio::test]
+async fn test_projects_page_keeps_row_actions_compact() {
+    let (state, daemon_db, _workspace_pool, temp_dir) = action_ready_state();
+    let workspace_root = temp_dir.path().join("compact-row-target");
+    write_workspace_source(&workspace_root);
+    let workspace_id = generate_workspace_id(&workspace_root.to_string_lossy()).unwrap();
+    daemon_db
+        .upsert_workspace(&workspace_id, &workspace_root.to_string_lossy(), "ready")
+        .unwrap();
+
+    let config = DashboardConfig::default();
+    let app = create_router(state, config).unwrap();
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/projects")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status().as_u16(), 200);
+    let html = body_to_string(response.into_body()).await;
+    assert!(
+        html.contains("projects-table-shell"),
+        "projects table should render inside the responsive shell"
+    );
+    assert!(
+        html.contains(&format!("action=\"/projects/{workspace_id}/open\"")),
+        "row should keep the quick open action inline"
+    );
+    assert!(
+        !html.contains(&format!("action=\"/projects/{workspace_id}/refresh\"")),
+        "refresh should move out of the compact table row"
+    );
+    assert!(
+        !html.contains(&format!("action=\"/projects/{workspace_id}/delete\"")),
+        "delete should move out of the compact table row"
     );
 }
 
@@ -310,6 +355,10 @@ async fn test_project_detail_shows_workspace_state_without_reference_section() {
     let html = body_to_string(response.into_body()).await;
     assert!(html.contains("Workspace State"));
     assert!(html.contains("CURRENT"));
+    assert!(html.contains(&format!("/projects/{workspace_id}/refresh")));
+    assert!(html.contains(&format!("/projects/{workspace_id}/delete")));
+    assert!(html.contains(&format!("/metrics?workspace={workspace_id}")));
+    assert!(html.contains(&format!("/intelligence/{workspace_id}")));
     assert!(
         !html.contains("Reference Workspaces"),
         "detail panel should no longer render workspace-pairing tags"

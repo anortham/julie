@@ -301,6 +301,48 @@ html, body {
   background: var(--julie-bg-hover) !important;
 }
 
+.projects-table-card {
+  padding: 0;
+  overflow: hidden;
+}
+
+.projects-table-shell {
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.projects-table {
+  width: 100%;
+  table-layout: fixed;
+}
+
+.projects-project-cell {
+  width: 17rem;
+}
+
+.projects-path-cell {
+  width: 100%;
+}
+
+.projects-path-text {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.projects-actions-cell {
+  width: 7rem;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.projects-row-actions {
+  display: inline-flex;
+  justify-content: flex-end;
+}
+
 /* ---------- Cards ---------- */
 
 .julie-card {

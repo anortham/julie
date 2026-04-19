@@ -4,11 +4,13 @@
       <span style="color: var(--julie-text-muted); display: inline-block; transition: transform 0.15s;"
             :style="expanded ? 'transform: rotate(90deg);' : ''">&#9654;</span>
     </td>
-    <td>
+    <td class="projects-project-cell">
       <span style="font-weight: 600; color: var(--julie-text);" class="mono">{{ ws.workspace_id }}</span>
     </td>
-    <td>
-      <span class="mono" style="color: var(--julie-text-muted);">{{ ws.path }}</span>
+    <td class="projects-path-cell">
+      <span class="mono projects-path-text"
+            style="color: var(--julie-text-muted);"
+            title="{{ ws.path }}">{{ ws.path }}</span>
       <div class="lang-bar-track" id="langbar-{{ ws.workspace_id }}" style="margin-top: 0.3rem; display: none;"></div>
     </td>
     <td id="session-state-{{ ws.workspace_id }}">
@@ -34,8 +36,8 @@
     <td style="text-align: right;" id="vectors-{{ ws.workspace_id }}">
       {{ ws.vector_count | default(value="—") }}
     </td>
-    <td style="text-align: right; white-space: nowrap;" @click.stop>
-      <div style="display: inline-flex; gap: 0.35rem; flex-wrap: wrap; justify-content: flex-end;">
+    <td class="projects-actions-cell" @click.stop>
+      <div class="projects-row-actions">
         <form method="post"
               action="/projects/{{ ws.workspace_id }}/open"
               @click.stop
@@ -45,26 +47,6 @@
                   class="button is-dark is-small"
                   style="font-size: 0.75rem;">
             {% if ws.session_state.path_missing %}Prune{% else %}Open{% endif %}
-          </button>
-        </form>
-        <form method="post" action="/projects/{{ ws.workspace_id }}/refresh" @click.stop>
-          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-          <button type="submit"
-                  class="button is-dark is-small"
-                  style="font-size: 0.75rem;"
-                  {% if ws.session_state.path_missing %}disabled{% endif %}>
-            Refresh
-          </button>
-        </form>
-        <form method="post"
-              action="/projects/{{ ws.workspace_id }}/delete"
-              @click.stop
-              onsubmit="return confirm('Delete this workspace index and registry row?');">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-          <button type="submit"
-                  class="button is-small"
-                  style="font-size: 0.75rem; background: rgba(212, 70, 88, 0.15); color: var(--julie-danger); border-color: rgba(212, 70, 88, 0.25);">
-            Delete
           </button>
         </form>
       </div>

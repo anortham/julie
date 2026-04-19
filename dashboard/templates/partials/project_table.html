@@ -3,8 +3,9 @@
     No workspaces indexed yet. Start the daemon and add a project or worktree to see it here.
   </div>
 {% else %}
-  <div class="julie-card" style="padding: 0; overflow: hidden;">
-    <table class="table is-fullwidth" style="margin-bottom: 0;">
+  <div class="julie-card projects-table-card">
+    <div class="projects-table-shell">
+      <table class="table is-fullwidth projects-table" style="margin-bottom: 0;">
       <thead>
         <tr>
           <th style="width: 2rem; background: var(--julie-bg-inset);"></th>
@@ -22,6 +23,7 @@
       {% for ws in workspaces %}
         {% include "partials/project_row.html" %}
       {% endfor %}
-    </table>
+      </table>
+    </div>
   </div>
 {% endif %}
