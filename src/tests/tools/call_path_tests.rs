@@ -1,8 +1,9 @@
 use anyhow::Result;
 use std::fs;
 
+use crate::extractors::RelationshipKind;
 use crate::handler::JulieServerHandler;
-use crate::tools::navigation::call_path::{CallPathHop, CallPathResponse, CallPathTool};
+use crate::tools::navigation::call_path::{CallPathHop, CallPathResponse, CallPathTool, edge_label};
 use crate::tools::workspace::ManageWorkspaceTool;
 use tempfile::TempDir;
 
@@ -55,6 +56,8 @@ async fn test_call_path_finds_shortest_call_chain() -> Result<()> {
         to: "leaf".to_string(),
         max_hops: 4,
         workspace: Some("primary".to_string()),
+        from_file_path: None,
+        to_file_path: None,
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -93,6 +96,8 @@ async fn test_call_path_returns_found_false_when_no_path_exists() -> Result<()> 
         to: "leaf".to_string(),
         max_hops: 4,
         workspace: Some("primary".to_string()),
+        from_file_path: None,
+        to_file_path: None,
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -123,6 +128,8 @@ async fn test_call_path_respects_max_hops() -> Result<()> {
         to: "leaf".to_string(),
         max_hops: 1,
         workspace: Some("primary".to_string()),
+        from_file_path: None,
+        to_file_path: None,
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -162,6 +169,8 @@ async fn test_non_call_edge_not_traversed() -> Result<()> {
         to: "Doer".to_string(),
         max_hops: 4,
         workspace: Some("primary".to_string()),
+        from_file_path: None,
+        to_file_path: None,
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -190,6 +199,8 @@ async fn test_call_path_workspace_isolation() -> Result<()> {
         to: "beta".to_string(),
         max_hops: 4,
         workspace: Some("nonexistent-workspace-id".to_string()),
+        from_file_path: None,
+        to_file_path: None,
     };
 
     // call_tool may propagate Err when workspace resolution fails outright,
@@ -212,4 +223,11 @@ async fn test_call_path_workspace_isolation() -> Result<()> {
     }
 
     Ok(())
+}
+
+#[test]
+fn test_edge_label_exhaustive_over_traversed_kinds() {
+    assert_eq!(edge_label(&RelationshipKind::Calls), "call");
+    assert_eq!(edge_label(&RelationshipKind::Instantiates), "construct");
+    assert_eq!(edge_label(&RelationshipKind::Overrides), "dispatch");
 }
