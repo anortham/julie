@@ -439,4 +439,4 @@ These are project knowledge, not ephemeral. If you create a checkpoint or plan, 
 
 ---
 
-**Last Updated:** 2026-04-17 | **Status:** Production Ready (v7.0.0, VB.NET extractor + 34 languages)
+**Last Updated:** 2026-04-19 | **Status:** Production Ready (v7.2.0, workspace lifecycle + 34 languages)
