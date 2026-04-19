@@ -137,13 +137,12 @@ async fn test_projects_page_shows_workspace_controls_and_cleanup_log() {
     assert!(html.contains("auto prune"));
     assert!(html.contains("missing path"));
     assert!(html.contains("projects-table-shell"));
-    assert!(html.contains("/projects/current_ws/open"));
+    assert!(html.contains("/projects/current_ws/refresh"));
     assert!(html.contains("/projects/stale_ws/open"));
     assert!(
         !html.contains("/projects/blocked_ws/open"),
         "blocked missing workspaces should not offer an inline prune/open action"
     );
-    assert!(!html.contains("/projects/current_ws/refresh"));
     assert!(!html.contains("/projects/current_ws/delete"));
     assert!(
         !html.contains("Reference Workspaces"),
@@ -180,16 +179,12 @@ async fn test_projects_page_keeps_row_actions_compact() {
         "projects table should render inside the responsive shell"
     );
     assert!(
-        html.contains(&format!("action=\"/projects/{workspace_id}/open\"")),
-        "row should keep the quick open action inline"
-    );
-    assert!(
-        !html.contains(&format!("action=\"/projects/{workspace_id}/refresh\"")),
-        "refresh should move out of the compact table row"
+        html.contains(&format!("action=\"/projects/{workspace_id}/refresh\"")),
+        "healthy row should keep the quick refresh action inline"
     );
     assert!(
         !html.contains(&format!("action=\"/projects/{workspace_id}/delete\"")),
-        "delete should move out of the compact table row"
+        "delete should stay out of the compact table row"
     );
 }
 
