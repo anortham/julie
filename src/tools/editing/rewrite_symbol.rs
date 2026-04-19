@@ -13,7 +13,9 @@ use tracing::debug;
 use crate::extractors::{ExtractorManager, Symbol};
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::CallToolResultExt;
-use crate::tools::navigation::resolution::{WorkspaceTarget, file_path_matches_suffix, resolve_workspace_filter};
+use crate::tools::navigation::resolution::{
+    WorkspaceTarget, file_path_matches_suffix, resolve_workspace_filter,
+};
 use crate::utils::file_utils::secure_path_resolution;
 use rmcp::model::{CallToolResult, Content};
 use tree_sitter::{Node, Parser, Tree};
@@ -29,10 +31,28 @@ fn default_workspace() -> Option<String> {
     Some("primary".to_string())
 }
 
+fn parse_symbol_line_hint(symbol: &str) -> (&str, Option<u32>) {
+    let Some((name, line_text)) = symbol.rsplit_once('@') else {
+        return (symbol, None);
+    };
+    if name.is_empty() || line_text.is_empty() || !line_text.chars().all(|c| c.is_ascii_digit()) {
+        return (symbol, None);
+    }
+    match line_text.parse::<u32>() {
+        Ok(line) => (name, Some(line)),
+        Err(_) => (symbol, None),
+    }
+}
+
+fn symbol_matches_line(symbol: &Symbol, line: u32) -> bool {
+    symbol.start_line <= line && line <= symbol.end_line
+}
+
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RewriteSymbolTool {
-    /// Symbol name to edit (supports qualified names like `MyClass::method`)
+    /// Symbol name to edit. Supports qualified names like `MyClass::method` and
+    /// same-file disambiguators like `MyClass::method@42`.
     pub symbol: String,
 
     /// Operation to perform. All operations target the symbol's span as extracted from the
@@ -455,7 +475,10 @@ impl RewriteSymbolTool {
     }
 
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
-        if self.symbol.is_empty() {
+        let requested_symbol = self.symbol.clone();
+        let (parsed_symbol_name, line_hint) = parse_symbol_line_hint(&requested_symbol);
+
+        if parsed_symbol_name.is_empty() {
             return Ok(CallToolResult::text_content(vec![Content::text(
                 "Error: symbol name is required".to_string(),
             )]));
@@ -474,7 +497,8 @@ impl RewriteSymbolTool {
 
         let target = self.resolve_workspace_target(handler).await?;
 
-        let symbol_name = self.symbol.clone();
+        let symbol_name = parsed_symbol_name.to_string();
+        let symbol_name_for_lookup = symbol_name.clone();
         let file_path_filter = self.file_path.clone();
         let file_path_for_error = self.file_path.clone();
         let db_arc = target.db.clone();
@@ -482,11 +506,8 @@ impl RewriteSymbolTool {
             let db = db_arc
                 .lock()
                 .map_err(|error| anyhow!("Database lock error: {}", error))?;
-            let symbols = crate::tools::deep_dive::data::find_symbol(
-                &db,
-                &symbol_name,
-                None,
-            )?;
+            let symbols =
+                crate::tools::deep_dive::data::find_symbol(&db, &symbol_name_for_lookup, None)?;
             let filtered = if let Some(ref filter) = file_path_filter {
                 symbols
                     .into_iter()
@@ -495,38 +516,76 @@ impl RewriteSymbolTool {
             } else {
                 symbols
             };
-            Ok(filtered)
+            Ok(if let Some(line) = line_hint {
+                filtered
+                    .into_iter()
+                    .filter(|symbol| symbol_matches_line(symbol, line))
+                    .collect()
+            } else {
+                filtered
+            })
         })
         .await??;
 
         if matches.is_empty() {
+            if let Some(line) = line_hint {
+                if let Some(ref file_path) = file_path_for_error {
+                    return Ok(CallToolResult::text_content(vec![Content::text(format!(
+                        "Error: symbol '{}' not found at line {} in '{}'. Use fast_search or get_symbols to verify the location.",
+                        symbol_name, line, file_path
+                    ))]));
+                }
+                return Ok(CallToolResult::text_content(vec![Content::text(format!(
+                    "Error: symbol '{}' not found at line {} in index. Use fast_search or get_symbols to verify the name.",
+                    symbol_name, line
+                ))]));
+            }
             if let Some(ref file_path) = file_path_for_error {
                 return Ok(CallToolResult::text_content(vec![Content::text(format!(
                     "Error: symbol '{}' not found in '{}'. Use fast_search or get_symbols to verify the location.",
-                    self.symbol, file_path
+                    symbol_name, file_path
                 ))]));
             }
             return Ok(CallToolResult::text_content(vec![Content::text(format!(
                 "Error: symbol '{}' not found in index. Use fast_search or get_symbols to verify the name.",
-                self.symbol
+                symbol_name
             ))]));
         }
 
         if matches.len() > 1 {
+            let same_file = matches
+                .first()
+                .map(|first| {
+                    matches
+                        .iter()
+                        .all(|symbol| symbol.file_path == first.file_path)
+                })
+                .unwrap_or(false);
             let locations = matches
                 .iter()
                 .map(|symbol| {
                     format!(
-                        "  {} at {}:{}-{}",
-                        symbol.name, symbol.file_path, symbol.start_line, symbol.end_line
+                        "  {} at {}:{}-{} (try {}@{})",
+                        symbol.name,
+                        symbol.file_path,
+                        symbol.start_line,
+                        symbol.end_line,
+                        symbol_name,
+                        symbol.start_line
                     )
                 })
                 .collect::<Vec<_>>()
                 .join("\n");
+            let hint = if file_path_for_error.is_some() || same_file {
+                "Provide symbol@line to disambiguate"
+            } else {
+                "Provide file_path or symbol@line to disambiguate"
+            };
             return Ok(CallToolResult::text_content(vec![Content::text(format!(
-                "Error: '{}' matches {} symbols. Provide file_path to disambiguate:\n{}",
-                self.symbol,
+                "Error: '{}' matches {} symbols. {}:\n{}",
+                symbol_name,
                 matches.len(),
+                hint,
                 locations
             ))]));
         }

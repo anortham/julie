@@ -4,6 +4,7 @@
 //! All queries use existing indexed data — no new indexing required.
 
 use anyhow::Result;
+use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use tracing::debug;
 
@@ -85,6 +86,7 @@ pub fn find_symbol(
         let parents = db.find_symbols_by_name(parent_name)?;
         let parent_ids: std::collections::HashSet<&str> =
             parents.iter().map(|p| p.id.as_str()).collect();
+        let parent_leaf_name = qualified_name_leaf(parent_name);
 
         let qualified: Vec<Symbol> = candidates
             .iter()
@@ -92,6 +94,8 @@ pub fn find_symbol(
                 s.parent_id
                     .as_deref()
                     .map_or(false, |pid| parent_ids.contains(pid))
+                    || impl_type_name(s)
+                        .is_some_and(|name| name == parent_name || name == parent_leaf_name)
             })
             .cloned()
             .collect();
@@ -106,6 +110,21 @@ pub fn find_symbol(
     let mut symbols = db.find_symbols_by_name(name)?;
     symbols.retain(|s| s.kind != SymbolKind::Import);
     apply_context_file_filter(symbols, context_file)
+}
+
+fn qualified_name_leaf(name: &str) -> &str {
+    name.rsplit_once("::")
+        .map(|(_, tail)| tail)
+        .or_else(|| name.rsplit_once('.').map(|(_, tail)| tail))
+        .unwrap_or(name)
+}
+
+fn impl_type_name(symbol: &Symbol) -> Option<&str> {
+    symbol
+        .metadata
+        .as_ref()
+        .and_then(|metadata| metadata.get("impl_type_name"))
+        .and_then(Value::as_str)
 }
 
 /// Filter symbols by context_file if provided, falling back to full list.

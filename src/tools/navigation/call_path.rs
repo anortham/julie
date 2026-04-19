@@ -79,6 +79,22 @@ struct PathSearchResult {
     predecessor: HashMap<String, Relationship>,
 }
 
+fn find_matching_symbols(
+    db: &SymbolDatabase,
+    name: &str,
+    file_path: Option<&str>,
+) -> Result<Vec<Symbol>> {
+    let all_matches = find_symbol(db, name, None)?;
+    Ok(if let Some(filter) = file_path {
+        all_matches
+            .into_iter()
+            .filter(|s| file_path_matches_suffix(&s.file_path, filter))
+            .collect()
+    } else {
+        all_matches
+    })
+}
+
 fn relationship_priority(kind: &RelationshipKind) -> u8 {
     match kind {
         RelationshipKind::Calls => 0,
@@ -103,15 +119,7 @@ fn resolve_unique_symbol(
     role: &str,
     file_path: Option<&str>,
 ) -> Result<Symbol> {
-    let all_matches = find_symbol(db, name, None)?;
-    let matches: Vec<Symbol> = if let Some(filter) = file_path {
-        all_matches
-            .into_iter()
-            .filter(|s| file_path_matches_suffix(&s.file_path, filter))
-            .collect()
-    } else {
-        all_matches
-    };
+    let matches = find_matching_symbols(db, name, file_path)?;
     if matches.is_empty() {
         return Err(anyhow!(
             "Symbol '{}' for '{}' was not found. Use fast_search or deep_dive to verify the name.",
@@ -141,6 +149,22 @@ fn resolve_unique_symbol(
     Ok(matches.into_iter().next().expect("one symbol"))
 }
 
+fn resolve_target_ids(
+    db: &SymbolDatabase,
+    name: &str,
+    file_path: Option<&str>,
+) -> Result<HashSet<String>> {
+    let matches = find_matching_symbols(db, name, file_path)?;
+    if matches.is_empty() {
+        return Err(anyhow!(
+            "Symbol '{}' for 'to' was not found. Use fast_search or deep_dive to verify the name.",
+            name
+        ));
+    }
+
+    Ok(matches.into_iter().map(|symbol| symbol.id).collect())
+}
+
 fn resolve_endpoints(
     db: &SymbolDatabase,
     from: &str,
@@ -149,9 +173,7 @@ fn resolve_endpoints(
     to_file_path: Option<&str>,
 ) -> Result<ResolvedEndpoints> {
     let from_symbol = resolve_unique_symbol(db, from, "from", from_file_path)?;
-    let to_symbol = resolve_unique_symbol(db, to, "to", to_file_path)?;
-    let mut targets = HashSet::new();
-    targets.insert(to_symbol.id);
+    let targets = resolve_target_ids(db, to, to_file_path)?;
     Ok(ResolvedEndpoints {
         from: from_symbol,
         targets,
@@ -325,8 +347,13 @@ impl CallPathTool {
 
         let response = tokio::task::spawn_blocking(move || -> Result<CallPathResponse> {
             let db = lock_db(&target.db, "call_path");
-            let endpoints =
-                resolve_endpoints(&db, &from, &to, from_file_path.as_deref(), to_file_path.as_deref())?;
+            let endpoints = resolve_endpoints(
+                &db,
+                &from,
+                &to,
+                from_file_path.as_deref(),
+                to_file_path.as_deref(),
+            )?;
             let search = bfs_shortest_path(&db, &endpoints.from.id, &endpoints.targets, max_hops)?;
 
             if endpoints.targets.contains(&endpoints.from.id) {

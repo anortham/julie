@@ -412,7 +412,7 @@ async fn test_rewrite_symbol_requires_file_path_for_ambiguous_match() -> Result<
     let result = tool.call_tool(&handler).await?;
     let text = extract_text(&result);
     assert!(
-        text.contains("Provide file_path"),
+        text.contains("Provide file_path or symbol@line"),
         "Expected ambiguity error, got: {text}"
     );
     assert!(
