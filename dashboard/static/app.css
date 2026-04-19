@@ -339,13 +339,13 @@ html, body {
 
 .projects-actions-cell {
   width: 7rem;
-  text-align: right;
+  text-align: center;
   white-space: nowrap;
 }
 
 .projects-row-actions {
   display: inline-flex;
-  justify-content: flex-end;
+  justify-content: center;
 }
 
 /* ---------- Cards ---------- */

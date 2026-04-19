@@ -120,25 +120,27 @@
           title="{{ workspace.session_state.cleanup_block_reason | default(value='Cleanup blocked') }}">
     Blocked
   </button>
-  {% else %}
+  {% elif workspace.session_state.path_missing %}
   <form method="post"
         action="/projects/{{ workspace.workspace_id }}/open"
-        {% if workspace.session_state.path_missing %}onsubmit="return confirm('Prune the stale workspace registry entry and delete its index?');"{% endif %}>
+        onsubmit="return confirm('Prune the stale workspace registry entry and delete its index?');">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <button type="submit" class="button is-dark is-small" style="font-size: 0.78rem;">
-      {% if workspace.session_state.path_missing %}Prune{% else %}Open{% endif %}
+    <button type="submit" class="button is-dark is-small" style="font-size: 0.78rem;"
+            title="Remove this stale workspace and delete its index">
+      Prune
     </button>
   </form>
-  {% endif %}
+  {% else %}
   <form method="post" action="/projects/{{ workspace.workspace_id }}/refresh">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <button type="submit"
             class="button is-dark is-small"
             style="font-size: 0.78rem;"
-            {% if workspace.session_state.path_missing %}disabled{% endif %}>
+            title="Re-scan files and update the index">
       Refresh
     </button>
   </form>
+  {% endif %}
   <form method="post"
         action="/projects/{{ workspace.workspace_id }}/delete"
         onsubmit="return confirm('Delete this workspace registry entry and index?');">
