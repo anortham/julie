@@ -700,3 +700,251 @@ async fn test_rewrite_symbol_keeps_primary_binding_snapshot_across_swap_window()
 
     Ok(())
 }
+
+// Task 1: explicit errors for unsupported ops
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_replace_signature_no_body_returns_explicit_error() -> Result<()> {
+    // Rust trait method declarations parse as function_signature_item (no body field).
+    // replace_signature must return an explicit error, not silently clobber the whole symbol.
+    let source = "pub trait Greetable {\n    fn greet(&self) -> String;\n}\n";
+    let (temp_dir, handler, _) = setup_indexed_workspace(source).await?;
+
+    let tool = crate::tools::editing::rewrite_symbol::RewriteSymbolTool {
+        symbol: "greet".to_string(),
+        operation: "replace_signature".to_string(),
+        content: "fn greet(&self, name: &str) -> String".to_string(),
+        file_path: Some("src/test.rs".to_string()),
+        workspace: Some("primary".to_string()),
+        dry_run: false,
+    };
+
+    let result = tool.call_tool(&handler).await?;
+    let text = extract_text(&result);
+    assert!(
+        text.contains("replace_signature is not supported"),
+        "Expected explicit error for trait method with no body, got: {text}"
+    );
+    assert!(
+        text.contains("greet"),
+        "Error should name the symbol, got: {text}"
+    );
+
+    let on_disk = fs::read_to_string(temp_dir.path().join("src").join("test.rs"))?;
+    assert_eq!(
+        on_disk, source,
+        "File must be unchanged after replace_signature error"
+    );
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_replace_body_error_lists_actual_field_names() -> Result<()> {
+    // replace_body on a trait method declaration should error and list the actual
+    // field names the node has (e.g., name, parameters, return_type) — not 'body'.
+    let source = "pub trait Greetable {\n    fn greet(&self) -> String;\n}\n";
+    let (temp_dir, handler, _) = setup_indexed_workspace(source).await?;
+
+    let tool = crate::tools::editing::rewrite_symbol::RewriteSymbolTool {
+        symbol: "greet".to_string(),
+        operation: "replace_body".to_string(),
+        content: "{ String::from(\"hello\") }".to_string(),
+        file_path: Some("src/test.rs".to_string()),
+        workspace: Some("primary".to_string()),
+        dry_run: false,
+    };
+
+    let result = tool.call_tool(&handler).await?;
+    let text = extract_text(&result);
+    assert!(
+        text.contains("node has fields:"),
+        "Error should list actual node field names, got: {text}"
+    );
+    assert!(
+        text.contains("no 'body' field"),
+        "Error should mention the missing 'body' field, got: {text}"
+    );
+
+    let on_disk = fs::read_to_string(temp_dir.path().join("src").join("test.rs"))?;
+    assert_eq!(
+        on_disk, source,
+        "File must be unchanged after replace_body error"
+    );
+
+    Ok(())
+}
+
+// Task 2: no-op detection
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_replace_signature_noop_returns_info_message() -> Result<()> {
+    let source = "pub fn greet(name: &str) -> String {\n    format!(\"hello {name}\")\n}\n";
+    let (_temp_dir, handler, _) = setup_indexed_workspace(source).await?;
+
+    let tool = crate::tools::editing::rewrite_symbol::RewriteSymbolTool {
+        symbol: "greet".to_string(),
+        operation: "replace_signature".to_string(),
+        content: "pub fn greet(name: &str) -> String".to_string(),
+        file_path: Some("src/test.rs".to_string()),
+        workspace: Some("primary".to_string()),
+        dry_run: false,
+    };
+
+    let result = tool.call_tool(&handler).await?;
+    let text = extract_text(&result);
+    assert!(
+        text.contains("No changes:"),
+        "Expected no-op info message, got: {text}"
+    );
+    assert!(
+        text.contains("greet"),
+        "No-op message should name the symbol, got: {text}"
+    );
+    assert!(
+        !text.contains("Applied"),
+        "No-op should not claim to have applied anything, got: {text}"
+    );
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_replace_body_noop_returns_info_message() -> Result<()> {
+    let source = "pub fn greet() {\n    println!(\"hello\");\n}\n";
+    let (_temp_dir, handler, _) = setup_indexed_workspace(source).await?;
+
+    let tool = crate::tools::editing::rewrite_symbol::RewriteSymbolTool {
+        symbol: "greet".to_string(),
+        operation: "replace_body".to_string(),
+        content: "{\n    println!(\"hello\");\n}".to_string(),
+        file_path: Some("src/test.rs".to_string()),
+        workspace: Some("primary".to_string()),
+        dry_run: false,
+    };
+
+    let result = tool.call_tool(&handler).await?;
+    let text = extract_text(&result);
+    assert!(
+        text.contains("No changes:"),
+        "Expected no-op info message for replace_body with identical body, got: {text}"
+    );
+
+    Ok(())
+}
+
+// Task 3: dry-run span header
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_dry_run_replace_body_shows_old_content_with_braces() -> Result<()> {
+    // The span header must show the old content so callers can see the braces
+    // are part of the replaced span and must be included in their 'content'.
+    let source = "pub fn greet() {\n    println!(\"hello\");\n}\n";
+    let (_temp_dir, handler, _) = setup_indexed_workspace(source).await?;
+
+    let tool = crate::tools::editing::rewrite_symbol::RewriteSymbolTool {
+        symbol: "greet".to_string(),
+        operation: "replace_body".to_string(),
+        content: "{\n    println!(\"hi there\");\n}".to_string(),
+        file_path: Some("src/test.rs".to_string()),
+        workspace: Some("primary".to_string()),
+        dry_run: true,
+    };
+
+    let result = tool.call_tool(&handler).await?;
+    let text = extract_text(&result);
+    assert!(
+        text.contains("--- Old content ---"),
+        "Dry-run preview should include old content header, got: {text}"
+    );
+    assert!(
+        text.contains('{') && text.contains('}'),
+        "Old content section should show enclosing braces, got: {text}"
+    );
+    assert!(
+        text.contains("Replacing"),
+        "Dry-run should show span replacement header, got: {text}"
+    );
+    assert!(
+        text.contains("bytes"),
+        "Replacement header should show byte range, got: {text}"
+    );
+    assert!(
+        text.contains("lines"),
+        "Replacement header should show line range, got: {text}"
+    );
+    assert!(
+        text.contains("--- Diff ---"),
+        "Dry-run should include diff section header, got: {text}"
+    );
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_dry_run_add_doc_shows_anchor_no_old_content() -> Result<()> {
+    let source = "pub fn greet() {\n    println!(\"hello\");\n}\n";
+    let (_temp_dir, handler, _) = setup_indexed_workspace(source).await?;
+
+    let tool = crate::tools::editing::rewrite_symbol::RewriteSymbolTool {
+        symbol: "greet".to_string(),
+        operation: "add_doc".to_string(),
+        content: "/// Greets the user.".to_string(),
+        file_path: Some("src/test.rs".to_string()),
+        workspace: Some("primary".to_string()),
+        dry_run: true,
+    };
+
+    let result = tool.call_tool(&handler).await?;
+    let text = extract_text(&result);
+    assert!(
+        text.contains("Inserting at byte"),
+        "Insert dry-run should report anchor byte position, got: {text}"
+    );
+    assert!(
+        !text.contains("--- Old content ---"),
+        "Insert dry-run must not include old content section, got: {text}"
+    );
+    assert!(
+        text.contains("--- Diff ---"),
+        "Insert dry-run should include diff section header, got: {text}"
+    );
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_dry_run_long_body_elision() -> Result<()> {
+    // A body longer than 30 lines should show first 15 + last 5, rest elided.
+    let mut lines = vec!["pub fn long_fn() {".to_string()];
+    for i in 0..35u32 {
+        lines.push(format!("    let _x{i} = {i};"));
+    }
+    lines.push("}".to_string());
+    let source = lines.join("\n") + "\n";
+
+    let (_temp_dir, handler, _) = setup_indexed_workspace(&source).await?;
+
+    let new_body_lines: Vec<String> = (0..35u32)
+        .map(|i| format!("    let _x{i} = {};", i + 100))
+        .collect();
+    let new_body = format!("{{\n{}\n}}", new_body_lines.join("\n"));
+
+    let tool = crate::tools::editing::rewrite_symbol::RewriteSymbolTool {
+        symbol: "long_fn".to_string(),
+        operation: "replace_body".to_string(),
+        content: new_body,
+        file_path: Some("src/test.rs".to_string()),
+        workspace: Some("primary".to_string()),
+        dry_run: true,
+    };
+
+    let result = tool.call_tool(&handler).await?;
+    let text = extract_text(&result);
+    assert!(
+        text.contains("lines elided"),
+        "Long body should be elided in dry-run preview, got: {text}"
+    );
+
+    Ok(())
+}
