@@ -35,7 +35,21 @@ pub struct RewriteSymbolTool {
     /// Symbol name to edit (supports qualified names like `MyClass::method`)
     pub symbol: String,
 
-    /// Operation: replace_full, replace_body, replace_signature, insert_after, insert_before, add_doc
+    /// Operation to perform. All operations target the symbol's span as extracted from the
+    /// language's tree-sitter grammar.
+    ///
+    /// - replace_full: Replace the entire symbol span (signature + body if any).
+    /// - replace_body: Replace the grammar's `body` field. For brace-delimited languages
+    ///   (Rust, C, Java, Go, JS/TS, C#, Swift, Kotlin, Scala, PHP, etc.) the replaced
+    ///   span INCLUDES the enclosing braces, so your `content` must supply the full
+    ///   `{ ... }` block. For indentation-delimited languages (Python) the replaced
+    ///   span is the indented suite. For declarations without a body (trait methods,
+    ///   interface methods, forward declarations) this operation returns an error.
+    /// - replace_signature: Replace the text up to the start of the body field. Returns
+    ///   an error if the symbol has no body field.
+    /// - insert_after / insert_before: Insert content on the line after/before the symbol.
+    /// - add_doc: Insert a documentation comment before the symbol. Errors if the symbol
+    ///   already has documentation.
     pub operation: String,
 
     /// New code/text content for the operation
@@ -260,6 +274,46 @@ fn live_symbol_context(
     Ok(LiveSymbolContext { live_symbol, tree })
 }
 
+fn collect_node_field_names(node: Node<'_>) -> String {
+    let mut cursor = node.walk();
+    let mut field_names = std::collections::BTreeSet::new();
+    if cursor.goto_first_child() {
+        loop {
+            if let Some(name) = cursor.field_name() {
+                field_names.insert(name.to_string());
+            }
+            if !cursor.goto_next_sibling() {
+                break;
+            }
+        }
+    }
+    if field_names.is_empty() {
+        "no named fields".to_string()
+    } else {
+        field_names.into_iter().collect::<Vec<_>>().join(", ")
+    }
+}
+
+fn detect_language_name(file_path: &str) -> String {
+    crate::utils::language::detect_language(std::path::Path::new(file_path))
+        .map(|l| format!("{l:?}"))
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+enum SpanContext {
+    Replace {
+        byte_start: usize,
+        byte_end: usize,
+        start_line: usize,
+        end_line: usize,
+        old_content: String,
+    },
+    Anchor {
+        byte: usize,
+        line: usize,
+    },
+}
+
 fn span_for_operation(
     operation: &str,
     original_content: &str,
@@ -285,17 +339,21 @@ fn span_for_operation(
                     live_symbol.name
                 )
             })?;
-            let body = node.child_by_field_name("body").ok_or_else(|| {
-                anyhow!(
-                    "Operation 'replace_body' is not supported for symbol '{}' ({:?})",
-                    live_symbol.name,
-                    live_symbol.kind
-                )
-            })?;
-            Ok(Some(ByteRange {
-                start: body.start_byte(),
-                end: body.end_byte(),
-            }))
+            match node.child_by_field_name("body") {
+                Some(body) => Ok(Some(ByteRange {
+                    start: body.start_byte(),
+                    end: body.end_byte(),
+                })),
+                None => {
+                    let fields_str = collect_node_field_names(node);
+                    Err(anyhow!(
+                        "Operation 'replace_body' is not supported for '{}' ({:?}); node has fields: [{}] but no 'body' field.",
+                        live_symbol.name,
+                        live_symbol.kind,
+                        fields_str
+                    ))
+                }
+            }
         }
         "replace_signature" => {
             let node = find_exact_span_node(
@@ -319,11 +377,60 @@ fn span_for_operation(
                     ),
                 }))
             } else {
-                Ok(Some(full_range))
+                let language_name = detect_language_name(&live_symbol.file_path);
+                Err(anyhow!(
+                    "replace_signature is not supported for symbol '{}' (kind: {:?}); it has no body-delimited signature in the {} grammar.",
+                    live_symbol.name,
+                    live_symbol.kind,
+                    language_name
+                ))
             }
         }
         "insert_before" | "insert_after" | "add_doc" => Ok(None),
         _ => Err(anyhow!("Unsupported operation '{}'", operation)),
+    }
+}
+
+fn format_span_header(ctx: &SpanContext, file_path: &str) -> String {
+    match ctx {
+        SpanContext::Replace {
+            byte_start,
+            byte_end,
+            start_line,
+            end_line,
+            old_content,
+        } => {
+            let char_count = byte_end - byte_start;
+            let mut header = format!(
+                "Replacing {char_count} chars at bytes {byte_start}..{byte_end} (lines {start_line}-{end_line}) in {file_path}\n--- Old content ---\n"
+            );
+            let lines: Vec<&str> = old_content.lines().collect();
+            const MAX_LINES: usize = 30;
+            const HEAD_LINES: usize = 15;
+            const TAIL_LINES: usize = 5;
+            if lines.len() > MAX_LINES {
+                for line in &lines[..HEAD_LINES] {
+                    header.push_str(line);
+                    header.push('\n');
+                }
+                let elided = lines.len() - HEAD_LINES - TAIL_LINES;
+                header.push_str(&format!("... {elided} lines elided ...\n"));
+                for line in &lines[lines.len() - TAIL_LINES..] {
+                    header.push_str(line);
+                    header.push('\n');
+                }
+            } else {
+                header.push_str(old_content);
+                if !old_content.ends_with('\n') {
+                    header.push('\n');
+                }
+            }
+            header.push_str("--- Diff ---\n");
+            header
+        }
+        SpanContext::Anchor { byte, line } => {
+            format!("Inserting at byte {byte} (line {line}) in {file_path}\n--- Diff ---\n")
+        }
     }
 }
 
@@ -457,21 +564,41 @@ impl RewriteSymbolTool {
             &target.workspace_root,
         )?;
 
-        let modified_content = match self.operation.as_str() {
+        let (modified_content, span_context) = match self.operation.as_str() {
             "replace_full" | "replace_body" | "replace_signature" => {
-                let range = span_for_operation(
+                let range = match span_for_operation(
                     &self.operation,
                     &original_content,
                     &live.live_symbol,
                     &live.tree,
-                )?
-                .ok_or_else(|| {
-                    anyhow!(
-                        "Operation '{}' did not resolve a byte range",
-                        self.operation
-                    )
-                })?;
-                replace_byte_range(&original_content, range, &self.content)?
+                ) {
+                    Ok(Some(r)) => r,
+                    Ok(None) => {
+                        return Err(anyhow!(
+                            "Operation '{}' did not resolve a byte range",
+                            self.operation
+                        ));
+                    }
+                    Err(e) => {
+                        return Ok(CallToolResult::text_content(vec![Content::text(format!(
+                            "Error: {e}"
+                        ))]));
+                    }
+                };
+                let old_content = original_content[range.start..range.end].to_string();
+                let start_line = original_content[..range.start].lines().count() + 1;
+                let end_line = start_line + old_content.lines().count().saturating_sub(1);
+                let modified = replace_byte_range(&original_content, range, &self.content)?;
+                (
+                    modified,
+                    SpanContext::Replace {
+                        byte_start: range.start,
+                        byte_end: range.end,
+                        start_line,
+                        end_line,
+                        old_content,
+                    },
+                )
             }
             "insert_before" | "add_doc" => {
                 if self.operation == "add_doc" && live.live_symbol.doc_comment.is_some() {
@@ -480,19 +607,31 @@ impl RewriteSymbolTool {
                         self.symbol
                     ))]));
                 }
-                insert_before_line(
-                    &original_content,
-                    live.live_symbol.start_byte as usize,
-                    &self.content,
-                )?
+                let byte = live.live_symbol.start_byte as usize;
+                let line = original_content[..byte].lines().count() + 1;
+                let modified = insert_before_line(&original_content, byte, &self.content)?;
+                (modified, SpanContext::Anchor { byte, line })
             }
-            "insert_after" => insert_after_line(
-                &original_content,
-                live.live_symbol.end_byte as usize,
-                &self.content,
-            )?,
+            "insert_after" => {
+                let byte = live.live_symbol.end_byte as usize;
+                let line = original_content[..byte].lines().count();
+                let modified = insert_after_line(&original_content, byte, &self.content)?;
+                (modified, SpanContext::Anchor { byte, line })
+            }
             _ => unreachable!(),
         };
+
+        if modified_content == original_content {
+            let message = format!(
+                "No changes: {} with supplied content would not modify the file. Symbol '{}' at {}:{}-{} is already in the requested state.",
+                self.operation,
+                self.symbol,
+                indexed_symbol.file_path,
+                live.live_symbol.start_line,
+                live.live_symbol.end_line
+            );
+            return Ok(CallToolResult::text_content(vec![Content::text(message)]));
+        }
 
         let balance_warning = if should_check_balance(&indexed_symbol.file_path) {
             check_bracket_balance(&original_content, &modified_content)
@@ -511,7 +650,11 @@ impl RewriteSymbolTool {
                 "rewrite_symbol dry_run for {} in {}",
                 self.symbol, indexed_symbol.file_path
             );
-            let mut message = format!("Dry run preview (set dry_run=false to apply):\n\n{}", diff);
+            let span_header = format_span_header(&span_context, &indexed_symbol.file_path);
+            let mut message = format!(
+                "Dry run preview (set dry_run=false to apply):\n\n{}{}",
+                span_header, diff
+            );
             if let Some(ref warning) = balance_warning {
                 message.push_str(&format!("\n\n{}", warning));
             }
