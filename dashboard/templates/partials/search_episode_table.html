@@ -2,58 +2,98 @@
 {% if total_episode_count is defined %}
 <div style="margin-bottom: 0.75rem; color: var(--julie-text-muted); font-size: 0.85rem;">
   {% if show_all %}
-    Showing all {{ episodes | length }} episodes.
-    <a href="/search/analysis?{{ window_param }}">Show flagged only</a>
+    Showing all {{ episodes | length }} of {{ total_episode_count }} episodes.
+    <a href="/search/analysis?{{ window_param }}{% if active_flag %}&flag={{ active_flag }}{% endif %}">Show flagged only</a>
   {% else %}
-    Showing {{ episodes | length }} flagged of {{ total_episode_count }} total episodes.
-    <a href="/search/analysis?{{ window_param }}&show_all=true">Show all</a>
+    Showing {{ episodes | length }} flagged of {{ total_episode_count }} total.
+    <a href="/search/analysis?{{ window_param }}&show_all=true{% if active_flag %}&flag={{ active_flag }}{% endif %}">Show all</a>
   {% endif %}
 </div>
 {% endif %}
 
 {% if episodes | length == 0 %}
 <div class="julie-card" style="text-align: center; padding: 2rem; color: var(--julie-text-muted);">
-  <p>No search episodes to show.</p>
+  <p>No episodes to show.</p>
 </div>
 {% else %}
-{% for episode in episodes %}
-<div class="julie-card" style="margin-bottom: 0.75rem; padding: 1rem;">
-  <div style="display: flex; justify-content: space-between; gap: 1rem; align-items: start;">
-    <div>
-      <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
-        <span class="mono" style="color: var(--julie-text); font-weight: 600;">{{ episode.outcome }}</span>
-        {% if episode.suspicious %}
-        <span class="tag is-warning is-light">Flagged</span>
-        {% endif %}
-        <span class="mono" style="color: var(--julie-text-muted);">{{ episode.search_count }} search{{ episode.search_count | pluralize }}</span>
-        <span class="mono" style="color: var(--julie-text-muted);">{{ episode.workspace_id }}</span>
-      </div>
-      <div style="margin-top: 0.5rem;">
-        {% for query in episode.queries %}
-        <div style="margin-top: 0.35rem;">
-          <span class="mono" style="color: var(--julie-text);">{{ query.query }}</span>
-          <span style="color: var(--julie-text-muted);">({{ query.intent }}, {{ query.search_target }})</span>
-          {% if query.top_hit_score is number %}
-          <span class="tag is-dark is-small" style="margin-left: 0.25rem;" title="Top hit score">{{ query.top_hit_score | round(precision=2) }}</span>
+<div class="julie-card" style="padding: 0.5rem;">
+  <table class="table is-fullwidth is-narrow" style="background: transparent; font-size: 0.85rem;">
+    <thead>
+      <tr style="color: var(--julie-text-muted);">
+        <th>Queries</th>
+        <th style="text-align: right; width: 50px;">#</th>
+        <th>Flags</th>
+        <th style="text-align: right; width: 70px;">Score</th>
+        <th style="text-align: right; width: 70px;">Results</th>
+        <th>Downstream</th>
+        <th>Workspace</th>
+        <th style="width: 60px;"></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for episode in episodes %}
+      <tr style="color: var(--julie-text);">
+        <td>
+          {% if episode.search_count > 1 %}
+          <details>
+            <summary class="mono" style="cursor: pointer;">{{ episode.queries.0.query }}</summary>
+            <div style="padding: 0.5rem 0; font-size: 0.8rem;">
+              {% for query in episode.queries %}
+              <div style="margin-top: 0.35rem; padding-left: 0.5rem; border-left: 2px solid var(--julie-border);">
+                <span class="mono" style="color: var(--julie-text);">{{ query.query }}</span>
+                <span style="color: var(--julie-text-muted);">({{ query.intent }}, {{ query.search_target }})</span>
+                {% if query.top_hit_score is number %}
+                <span class="tag is-dark is-small" style="margin-left: 0.25rem;">{{ query.top_hit_score | round(precision=1) }}</span>
+                {% endif %}
+                {% if query.top_hit_name %}
+                <div style="color: var(--julie-text-muted);">
+                  top: <span class="mono">{{ query.top_hit_name }}</span>
+                  {% if query.top_hit_file %} in <span class="mono">{{ query.top_hit_file }}</span>{% endif %}
+                  {% if query.result_count is number %} ({{ query.result_count }} results){% endif %}
+                </div>
+                {% elif query.result_count is number and query.result_count == 0 %}
+                <div style="color: var(--julie-danger);">0 results</div>
+                {% endif %}
+              </div>
+              {% endfor %}
+            </div>
+          </details>
+          {% else %}
+          <span class="mono">{{ episode.queries.0.query }}</span>
           {% endif %}
-          {% if query.top_hit_name %}
-          <div style="color: var(--julie-text-muted); font-size: 0.85rem;">top hit: <span class="mono">{{ query.top_hit_name }}</span>{% if query.top_hit_file %} in <span class="mono">{{ query.top_hit_file }}</span>{% endif %}</div>
-          {% endif %}
-        </div>
-        {% endfor %}
-      </div>
-    </div>
-    <div style="min-width: 15rem;">
-      <p class="label-text" style="margin-bottom: 0.35rem;">Downstream</p>
-      <p class="mono" style="color: var(--julie-text);">{{ episode.downstream_tool | default(value="none") }}</p>
-      {% if episode.target_symbol_name %}
-      <p style="margin-top: 0.35rem; color: var(--julie-text-muted);">symbol: <span class="mono">{{ episode.target_symbol_name }}</span></p>
-      {% endif %}
-      {% if episode.target_file_path %}
-      <p style="color: var(--julie-text-muted);">file: <span class="mono">{{ episode.target_file_path }}</span></p>
-      {% endif %}
-    </div>
-  </div>
+        </td>
+        <td style="text-align: right;" class="mono">{{ episode.search_count }}</td>
+        <td>
+          {% for flag in episode.flags %}
+            {% if flag == "zero_hits" %}
+            <span class="tag is-danger is-light is-small">{{ flag }}</span>
+            {% elif flag == "low_score" %}
+            <span class="tag is-warning is-light is-small">{{ flag }}</span>
+            {% elif flag == "repeat_query" %}
+            <span class="tag is-info is-light is-small">{{ flag }}</span>
+            {% else %}
+            <span class="tag is-dark is-small">{{ flag }}</span>
+            {% endif %}
+          {% endfor %}
+        </td>
+        <td style="text-align: right;" class="mono">
+          {% if episode.queries.0.top_hit_score is number %}{{ episode.queries.0.top_hit_score | round(precision=1) }}{% else %}-{% endif %}
+        </td>
+        <td style="text-align: right;" class="mono">
+          {% if episode.queries.0.result_count is number %}{{ episode.queries.0.result_count }}{% else %}-{% endif %}
+        </td>
+        <td class="mono" style="color: var(--julie-text-muted);">
+          {{ episode.downstream_tool | default(value="-") }}
+        </td>
+        <td class="mono" style="color: var(--julie-text-muted); font-size: 0.8rem;">
+          {{ episode.workspace_id }}
+        </td>
+        <td>
+          <a href="/search/compare?query={{ episode.queries.0.query | urlencode }}" class="button is-small is-dark" title="Open in Compare" style="font-size: 0.7rem;">Compare</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
 </div>
-{% endfor %}
 {% endif %}
