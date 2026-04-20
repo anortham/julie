@@ -45,6 +45,8 @@ pub struct SearchEpisode {
     pub outcome: String,
     pub suspicious: bool,
     pub flags: Vec<String>,
+    pub best_score: Option<f32>,
+    pub min_result_count: Option<usize>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -178,6 +180,12 @@ impl EpisodeBuilder {
             "exploratory_success".to_string()
         };
         let suspicious = matches!(outcome.as_str(), "stalled" | "reformulation_converged");
+        let best_score = self
+            .queries
+            .iter()
+            .filter_map(|q| q.top_hit_score)
+            .max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let min_result_count = self.queries.iter().filter_map(|q| q.result_count).min();
 
         SearchEpisode {
             session_id: self.session_id,
@@ -192,6 +200,8 @@ impl EpisodeBuilder {
             outcome,
             suspicious,
             flags: Vec::new(),
+            best_score,
+            min_result_count,
         }
     }
 }

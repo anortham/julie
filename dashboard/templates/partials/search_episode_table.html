@@ -77,10 +77,10 @@
           {% endfor %}
         </td>
         <td style="text-align: right;" class="mono">
-          {% if episode.queries.0.top_hit_score is number %}{{ episode.queries.0.top_hit_score | round(precision=1) }}{% else %}-{% endif %}
+          {% if episode.best_score is number %}{{ episode.best_score | round(precision=1) }}{% else %}-{% endif %}
         </td>
         <td style="text-align: right;" class="mono">
-          {% if episode.queries.0.result_count is number %}{{ episode.queries.0.result_count }}{% else %}-{% endif %}
+          {% if episode.min_result_count is number %}{{ episode.min_result_count }}{% else %}-{% endif %}
         </td>
         <td class="mono" style="color: var(--julie-text-muted);">
           {{ episode.downstream_tool | default(value="-") }}
@@ -88,9 +88,7 @@
         <td class="mono" style="color: var(--julie-text-muted); font-size: 0.8rem;">
           {{ episode.workspace_id }}
         </td>
-        <td>
-          <a href="/search/compare?query={{ episode.queries.0.query | urlencode }}" class="button is-small is-dark" title="Open in Compare" style="font-size: 0.7rem;">Compare</a>
-        </td>
+        <td></td>
       </tr>
       {% endfor %}
     </tbody>
