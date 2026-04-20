@@ -675,9 +675,9 @@ impl DaemonDatabase {
         Ok(())
     }
 
-    pub fn list_tool_calls_for_search_analysis(&self, days: u32) -> Result<Vec<SearchToolCallRow>> {
+    pub fn list_tool_calls_for_search_analysis(&self, window_secs: i64) -> Result<Vec<SearchToolCallRow>> {
         let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
-        let cutoff = now_unix() - (days as i64 * 86400);
+        let cutoff = now_unix() - window_secs;
         let mut stmt = conn.prepare_cached(
             "SELECT id, workspace_id, session_id, timestamp, tool_name, metadata
              FROM tool_calls

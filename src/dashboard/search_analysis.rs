@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
 use serde_json::Value;
@@ -323,6 +324,7 @@ pub struct QueryProblem {
     pub stall_count: usize,
     pub reformulation_count: usize,
     pub last_seen: i64,
+    pub last_seen_display: String,
     pub avg_top_score: Option<f32>,
     pub avg_result_count: Option<f32>,
     pub triage_signal: String,
@@ -433,6 +435,7 @@ pub fn aggregate_problems(episodes: &[SearchEpisode]) -> Vec<QueryProblem> {
                 stall_count: group.stall_count,
                 reformulation_count: group.reformulation_count,
                 last_seen: group.last_seen,
+                last_seen_display: format_relative_time(group.last_seen),
                 avg_top_score,
                 avg_result_count,
                 triage_signal: triage_signal.to_string(),
@@ -542,4 +545,35 @@ struct ReformulationPairBuilder {
     target_name: Option<String>,
     target_file: Option<String>,
     occurrences: usize,
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+pub fn has_trace_data(episode: &SearchEpisode) -> bool {
+    episode.queries.iter().any(|q| q.strategy.is_some())
+}
+
+fn format_relative_time(unix_ts: i64) -> String {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    let delta = now - unix_ts;
+    if delta < 0 {
+        return "just now".to_string();
+    }
+    let minutes = delta / 60;
+    let hours = delta / 3600;
+    let days = delta / 86400;
+    if minutes < 1 {
+        "just now".to_string()
+    } else if minutes < 60 {
+        format!("{}m ago", minutes)
+    } else if hours < 24 {
+        format!("{}h ago", hours)
+    } else {
+        format!("{}d ago", days)
+    }
 }

@@ -42,7 +42,7 @@ pub async fn run_compare(state: &AppState, days: u32) -> Result<SearchCompareVie
         .dashboard
         .daemon_db()
         .ok_or_else(|| anyhow::anyhow!("daemon database unavailable"))?;
-    let rows = daemon_db.list_tool_calls_for_search_analysis(days)?;
+    let rows = daemon_db.list_tool_calls_for_search_analysis(days as i64 * 86400)?;
     let episodes = analyze_tool_calls(&rows);
     let corpus = episodes
         .iter()

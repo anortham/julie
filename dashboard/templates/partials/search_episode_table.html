@@ -3,10 +3,10 @@
 <div style="margin-bottom: 0.75rem; color: var(--julie-text-muted); font-size: 0.85rem;">
   {% if show_all %}
     Showing all {{ episodes | length }} episodes.
-    <a href="/search/analysis?days={{ days }}">Show flagged only</a>
+    <a href="/search/analysis?{{ window_param }}">Show flagged only</a>
   {% else %}
     Showing {{ episodes | length }} flagged of {{ total_episode_count }} total episodes.
-    <a href="/search/analysis?days={{ days }}&show_all=true">Show all</a>
+    <a href="/search/analysis?{{ window_param }}&show_all=true">Show all</a>
   {% endif %}
 </div>
 {% endif %}

@@ -14,6 +14,15 @@
   </div>
 </div>
 
+{# Time range selector #}
+<div class="is-flex" style="gap: 0.25rem; margin-bottom: 1.5rem;">
+  <a href="/search/analysis?hours=1" class="button is-small {% if window_label == '1h' %}is-primary{% else %}is-dark{% endif %}">1h</a>
+  <a href="/search/analysis?hours=6" class="button is-small {% if window_label == '6h' %}is-primary{% else %}is-dark{% endif %}">6h</a>
+  <a href="/search/analysis?days=1" class="button is-small {% if window_label == '1d' %}is-primary{% else %}is-dark{% endif %}">1d</a>
+  <a href="/search/analysis?days=7" class="button is-small {% if window_label == '7d' %}is-primary{% else %}is-dark{% endif %}">7d</a>
+  <a href="/search/analysis?days=30" class="button is-small {% if window_label == '30d' %}is-primary{% else %}is-dark{% endif %}">30d</a>
+</div>
+
 {# Section 1: Headline Metrics #}
 <div class="julie-card" style="margin-bottom: 1.5rem;">
   <div style="display: flex; gap: 2rem; flex-wrap: wrap; align-items: baseline;">
@@ -39,7 +48,7 @@
     </div>
     <div>
       <p class="label-text">Window</p>
-      <p class="mono" style="font-size: 1.1rem; color: var(--julie-text);">{{ days }} day{{ days | pluralize }}</p>
+      <p class="mono" style="font-size: 1.1rem; color: var(--julie-text);">{{ window_label }}</p>
     </div>
   </div>
 </div>
@@ -86,9 +95,9 @@
             {% elif problem.triage_signal == "ranking_problem" %}
             <span class="tag is-warning is-light is-small">ranking</span>
             {% elif problem.triage_signal == "mixed" %}
-            <span class="tag is-light is-small">mixed</span>
+            <span class="tag is-dark is-small">mixed</span>
             {% else %}
-            <span class="tag is-light is-small" style="opacity: 0.5;">unknown</span>
+            <span class="tag is-dark is-small" style="color: var(--julie-text-muted);">no data</span>
             {% endif %}
           </td>
           <td style="text-align: right;" class="mono">
@@ -97,8 +106,8 @@
           <td style="text-align: right;" class="mono">
             {% if problem.avg_result_count is number %}{{ problem.avg_result_count | round(precision=0) }}{% else %}-{% endif %}
           </td>
-          <td class="mono" style="color: var(--julie-text-muted); font-size: 0.8rem;">
-            {{ problem.last_seen }}
+          <td class="mono" style="color: var(--julie-text-muted); font-size: 0.85rem;">
+            {{ problem.last_seen_display }}
           </td>
         </tr>
         {% endfor %}
