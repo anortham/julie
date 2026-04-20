@@ -1,7 +1,6 @@
 use crate::daemon::database::SearchToolCallRow;
 use crate::dashboard::search_analysis::{
-    aggregate_problems, analyze_tool_calls, canonical_key, episode_stats,
-    extract_reformulation_pairs,
+    analyze_tool_calls, compute_flags, compute_summary,
 };
 
 fn fast_search_row(
@@ -77,12 +76,42 @@ fn fast_search_row_no_trace(
     }
 }
 
-fn fast_search_row_with_hit(
+fn fast_search_row_zero_hits(
     id: i64,
     session_id: &str,
     timestamp: i64,
     query: &str,
-    top_hit_name: &str,
+) -> SearchToolCallRow {
+    SearchToolCallRow {
+        id,
+        workspace_id: "ws1".to_string(),
+        session_id: session_id.to_string(),
+        timestamp,
+        tool_name: "fast_search".to_string(),
+        metadata: Some(
+            serde_json::json!({
+                "query": query,
+                "normalized_query": query,
+                "intent": "code_investigation",
+                "search_target": "definitions",
+                "trace": {
+                    "strategy": "definitions_first",
+                    "result_count": 0,
+                    "returned_hit_count": 0,
+                    "relaxed": false,
+                    "top_hits": []
+                }
+            })
+            .to_string(),
+        ),
+    }
+}
+
+fn fast_search_row_low_score(
+    id: i64,
+    session_id: &str,
+    timestamp: i64,
+    query: &str,
 ) -> SearchToolCallRow {
     SearchToolCallRow {
         id,
@@ -103,9 +132,46 @@ fn fast_search_row_with_hit(
                     "relaxed": false,
                     "top_hits": [
                         {
-                            "name": top_hit_name,
-                            "file": "src/dashboard/routes/search.rs",
-                            "score": 8.0
+                            "name": "something",
+                            "file": "src/lib.rs",
+                            "score": 2.0
+                        }
+                    ]
+                }
+            })
+            .to_string(),
+        ),
+    }
+}
+
+fn fast_search_row_relaxed(
+    id: i64,
+    session_id: &str,
+    timestamp: i64,
+    query: &str,
+) -> SearchToolCallRow {
+    SearchToolCallRow {
+        id,
+        workspace_id: "ws1".to_string(),
+        session_id: session_id.to_string(),
+        timestamp,
+        tool_name: "fast_search".to_string(),
+        metadata: Some(
+            serde_json::json!({
+                "query": query,
+                "normalized_query": query,
+                "intent": "code_investigation",
+                "search_target": "definitions",
+                "trace": {
+                    "strategy": "definitions_first",
+                    "result_count": 1,
+                    "returned_hit_count": 1,
+                    "relaxed": true,
+                    "top_hits": [
+                        {
+                            "name": "handler",
+                            "file": "src/lib.rs",
+                            "score": 6.0
                         }
                     ]
                 }
@@ -133,6 +199,10 @@ fn useful_action_row(id: i64, session_id: &str, timestamp: i64) -> SearchToolCal
         ),
     }
 }
+
+// ---------------------------------------------------------------------------
+// Episode builder tests (kept from prior iteration)
+// ---------------------------------------------------------------------------
 
 #[test]
 fn test_search_analysis_groups_nearby_searches_into_one_episode() {
@@ -249,208 +319,111 @@ fn test_search_analysis_trace_fields_populated() {
     assert_eq!(query.relaxed, Some(false));
 }
 
+// ---------------------------------------------------------------------------
+// compute_flags tests
+// ---------------------------------------------------------------------------
+
 #[test]
-fn test_episode_stats_computes_outcome_breakdown() {
+fn test_compute_flags_zero_hits() {
+    let rows = vec![fast_search_row_zero_hits(1, "sess-a", 100, "nonexistent")];
+    let mut episodes = analyze_tool_calls(&rows);
+    compute_flags(&mut episodes[0]);
+
+    assert!(episodes[0].flags.contains(&"zero_hits".to_string()));
+    assert!(episodes[0].flags.contains(&"no_follow_up".to_string()));
+}
+
+#[test]
+fn test_compute_flags_no_follow_up() {
+    let rows = vec![fast_search_row(1, "sess-a", 100, "handler", "handler")];
+    let mut episodes = analyze_tool_calls(&rows);
+    compute_flags(&mut episodes[0]);
+
+    assert!(episodes[0].flags.contains(&"no_follow_up".to_string()));
+    assert!(!episodes[0].flags.contains(&"zero_hits".to_string()));
+}
+
+#[test]
+fn test_compute_flags_repeat_query() {
     let rows = vec![
-        fast_search_row(1, "sess-a", 100, "handler", "handler"),
+        fast_search_row(1, "sess-a", 100, "search handler", "search handler"),
+        fast_search_row(2, "sess-a", 103, "handler search", "handler search"),
+        useful_action_row(3, "sess-a", 105),
+    ];
+    let mut episodes = analyze_tool_calls(&rows);
+    compute_flags(&mut episodes[0]);
+
+    assert!(episodes[0].flags.contains(&"repeat_query".to_string()));
+    assert!(!episodes[0].flags.contains(&"no_follow_up".to_string()));
+}
+
+#[test]
+fn test_compute_flags_low_score() {
+    let rows = vec![
+        fast_search_row_low_score(1, "sess-a", 100, "obscure thing"),
         useful_action_row(2, "sess-a", 102),
-        fast_search_row(3, "sess-b", 200, "search handler", "search handler"),
-        fast_search_row(4, "sess-b", 203, "handler search", "handler search"),
-        useful_action_row(5, "sess-b", 205),
-        fast_search_row(6, "sess-c", 300, "stalled query", "stalled query"),
-        fast_search_row(7, "sess-d", 400, "database pool", "database pool"),
-        fast_search_row(8, "sess-d", 403, "centrality badge", "centrality badge"),
-        useful_action_row(9, "sess-d", 405),
     ];
+    let mut episodes = analyze_tool_calls(&rows);
+    compute_flags(&mut episodes[0]);
 
-    let episodes = analyze_tool_calls(&rows);
-    let stats = episode_stats(&episodes);
-
-    assert_eq!(stats.total_episodes, 4);
-    assert_eq!(stats.one_shot_count, 1);
-    assert_eq!(stats.reformulation_count, 1);
-    assert_eq!(stats.stall_count, 1);
-    assert_eq!(stats.exploratory_count, 1);
-    assert!((stats.first_try_rate - 0.25).abs() < 0.01);
-}
-
-// ---------------------------------------------------------------------------
-// canonical_key tests
-// ---------------------------------------------------------------------------
-
-#[test]
-fn test_canonical_key_unifies_naming_conventions() {
-    assert_eq!(canonical_key("SearchHandler"), canonical_key("search_handler"));
-    assert_eq!(canonical_key("search_handler"), canonical_key("search::handler"));
-    assert_eq!(canonical_key("SearchHandler"), canonical_key("search handler"));
+    assert!(episodes[0].flags.contains(&"low_score".to_string()));
 }
 
 #[test]
-fn test_canonical_key_drops_filler_tokens() {
-    assert_eq!(canonical_key("find the handler"), canonical_key("handler"));
-    assert_eq!(canonical_key("get search results"), canonical_key("search results"));
-}
-
-#[test]
-fn test_canonical_key_sorts_alphabetically() {
-    assert_eq!(canonical_key("handler search"), canonical_key("search handler"));
-}
-
-#[test]
-fn test_canonical_key_empty_input() {
-    assert!(canonical_key("").is_empty());
-    assert!(canonical_key("the a an").is_empty());
-}
-
-// ---------------------------------------------------------------------------
-// aggregate_problems tests
-// ---------------------------------------------------------------------------
-
-#[test]
-fn test_aggregate_problems_excludes_terminal_successful_query() {
+fn test_compute_flags_relaxed() {
     let rows = vec![
-        fast_search_row(1, "sess-a", 100, "search handler", "search handler"),
-        fast_search_row(2, "sess-a", 103, "handler search", "handler search"),
-        useful_action_row(3, "sess-a", 105),
+        fast_search_row_relaxed(1, "sess-a", 100, "vague query"),
+        useful_action_row(2, "sess-a", 102),
     ];
+    let mut episodes = analyze_tool_calls(&rows);
+    compute_flags(&mut episodes[0]);
 
-    let episodes = analyze_tool_calls(&rows);
-    assert_eq!(episodes[0].outcome, "reformulation_converged");
-
-    let problems = aggregate_problems(&episodes);
-
-    let all_representative_queries: Vec<&str> = problems
-        .iter()
-        .map(|p| p.representative_query.as_str())
-        .collect();
-    assert!(
-        !all_representative_queries.contains(&"handler search"),
-        "terminal successful query should be excluded"
-    );
+    assert!(episodes[0].flags.contains(&"relaxed".to_string()));
 }
 
 #[test]
-fn test_aggregate_problems_counts_once_per_episode() {
-    let rows = vec![
-        fast_search_row(1, "sess-a", 100, "handler", "handler"),
-        fast_search_row(2, "sess-a", 103, "handler", "handler"),
-        fast_search_row(3, "sess-a", 106, "handler fixed", "handler fixed"),
-        useful_action_row(4, "sess-a", 108),
-    ];
-
-    let episodes = analyze_tool_calls(&rows);
-    let problems = aggregate_problems(&episodes);
-
-    let handler_problem = problems.iter().find(|p| {
-        canonical_key(&p.representative_query) == canonical_key("handler")
-    });
-    assert!(handler_problem.is_some());
-    assert_eq!(handler_problem.unwrap().failure_count, 1);
-}
-
-#[test]
-fn test_aggregate_problems_triage_ranking_problem() {
-    let rows = vec![
-        fast_search_row_with_hit(1, "sess-a", 100, "search handler", "search_handler"),
-        fast_search_row(2, "sess-a", 103, "handler search", "handler search"),
-        useful_action_row(3, "sess-a", 105),
-    ];
-
-    let episodes = analyze_tool_calls(&rows);
-    let problems = aggregate_problems(&episodes);
-
-    assert!(!problems.is_empty());
-    assert_eq!(problems[0].triage_signal, "ranking_problem");
-}
-
-#[test]
-fn test_aggregate_problems_triage_recall_gap() {
-    let rows = vec![
-        fast_search_row_with_hit(1, "sess-a", 100, "search handler", "wrong_symbol"),
-        fast_search_row(2, "sess-a", 103, "handler search", "handler search"),
-        useful_action_row(3, "sess-a", 105),
-    ];
-
-    let episodes = analyze_tool_calls(&rows);
-    let problems = aggregate_problems(&episodes);
-
-    assert!(!problems.is_empty());
-    assert_eq!(problems[0].triage_signal, "recall_gap");
-}
-
-#[test]
-fn test_aggregate_problems_empty_episodes() {
-    let problems = aggregate_problems(&[]);
-    assert!(problems.is_empty());
-}
-
-#[test]
-fn test_aggregate_problems_stalled_episode_includes_all_queries() {
-    let rows = vec![
-        fast_search_row(1, "sess-a", 100, "handler", "handler"),
-        fast_search_row(2, "sess-a", 103, "different topic", "different topic"),
-    ];
-
-    let episodes = analyze_tool_calls(&rows);
-    assert_eq!(episodes[0].outcome, "stalled");
-
-    let problems = aggregate_problems(&episodes);
-    assert_eq!(problems.len(), 2);
-}
-
-// ---------------------------------------------------------------------------
-// extract_reformulation_pairs tests
-// ---------------------------------------------------------------------------
-
-#[test]
-fn test_extract_reformulation_pairs_adjacent_transitions() {
-    let rows = vec![
-        fast_search_row(1, "sess-a", 100, "search handler", "search handler"),
-        fast_search_row(2, "sess-a", 103, "handler route", "handler route"),
-        fast_search_row(3, "sess-a", 106, "route handler", "route handler"),
-        useful_action_row(4, "sess-a", 108),
-    ];
-
-    let episodes = analyze_tool_calls(&rows);
-    let pairs = extract_reformulation_pairs(&episodes);
-
-    assert_eq!(pairs.len(), 2);
-}
-
-#[test]
-fn test_extract_reformulation_pairs_deduplication() {
-    let rows = vec![
-        fast_search_row(1, "sess-a", 100, "search handler", "search handler"),
-        fast_search_row(2, "sess-a", 103, "handler route", "handler route"),
-        useful_action_row(3, "sess-a", 105),
-        fast_search_row(4, "sess-b", 200, "handler search", "handler search"),
-        fast_search_row(5, "sess-b", 203, "route handler", "route handler"),
-        useful_action_row(6, "sess-b", 205),
-    ];
-
-    let episodes = analyze_tool_calls(&rows);
-    let pairs = extract_reformulation_pairs(&episodes);
-
-    assert_eq!(pairs.len(), 1);
-    assert_eq!(pairs[0].occurrences, 2);
-}
-
-#[test]
-fn test_extract_reformulation_pairs_empty_episodes() {
-    let pairs = extract_reformulation_pairs(&[]);
-    assert!(pairs.is_empty());
-}
-
-#[test]
-fn test_extract_reformulation_pairs_skips_non_reformulated() {
+fn test_compute_flags_clean_episode() {
     let rows = vec![
         fast_search_row(1, "sess-a", 100, "handler", "handler"),
         useful_action_row(2, "sess-a", 102),
     ];
+    let mut episodes = analyze_tool_calls(&rows);
+    compute_flags(&mut episodes[0]);
 
-    let episodes = analyze_tool_calls(&rows);
-    assert_eq!(episodes[0].outcome, "one_shot_success");
+    assert!(episodes[0].flags.is_empty());
+}
 
-    let pairs = extract_reformulation_pairs(&episodes);
-    assert!(pairs.is_empty());
+// ---------------------------------------------------------------------------
+// compute_summary tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_compute_summary_empty_episodes() {
+    let summary = compute_summary(&[]);
+    assert_eq!(summary.episode_count, 0);
+    assert_eq!(summary.zero_hit_count, 0);
+    assert!(summary.median_top_score.is_none());
+}
+
+#[test]
+fn test_compute_summary_counts() {
+    let rows = vec![
+        fast_search_row(1, "sess-a", 100, "handler", "handler"),
+        useful_action_row(2, "sess-a", 102),
+        fast_search_row_zero_hits(3, "sess-b", 200, "nonexistent"),
+        fast_search_row(4, "sess-c", 300, "search handler", "search handler"),
+        fast_search_row(5, "sess-c", 303, "handler search", "handler search"),
+        useful_action_row(6, "sess-c", 305),
+    ];
+
+    let mut episodes = analyze_tool_calls(&rows);
+    for ep in &mut episodes {
+        compute_flags(ep);
+    }
+    let summary = compute_summary(&episodes);
+
+    assert_eq!(summary.episode_count, 3);
+    assert_eq!(summary.zero_hit_count, 1);
+    assert_eq!(summary.repeat_query_count, 1);
+    assert!(summary.median_top_score.is_some());
 }
