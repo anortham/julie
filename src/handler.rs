@@ -1,4 +1,8 @@
+#[path = "handler/search_telemetry.rs"]
+pub(crate) mod search_telemetry;
 pub mod session_workspace;
+#[path = "handler/tool_targets.rs"]
+pub(crate) mod tool_targets;
 
 use std::collections::{HashMap, HashSet};
 
@@ -2382,18 +2386,20 @@ impl JulieServerHandler {
         debug!("⚡ Fast search: {:?}", params);
         let start = std::time::Instant::now();
         let workspace_snapshot = self.require_primary_workspace_binding().ok();
-        let metadata = serde_json::json!({
-            "query": params.query,
-            "target": params.search_target,
-        });
-        let result = params
-            .call_tool(self)
+        let executed = params
+            .execute_with_trace(self)
             .await
             .map_err(|e| McpError::internal_error(format!("fast_search failed: {}", e), None))?;
+        let metadata = search_telemetry::fast_search_metadata(&params, executed.execution.as_ref());
+        let result = executed.result;
         let output_bytes = Self::output_bytes_from_result(&result);
-        let source_file_paths = Self::extract_paths_from_result(&result);
+        let source_file_paths =
+            search_telemetry::fast_search_source_paths(executed.execution.as_ref());
         let report = ToolCallReport {
-            result_count: None,
+            result_count: executed
+                .execution
+                .as_ref()
+                .map(|result| result.total_results.min(u32::MAX as usize) as u32),
             source_bytes: None,
             output_bytes,
             metadata,
@@ -2426,7 +2432,7 @@ impl JulieServerHandler {
         debug!("⚡ Fast find references: {:?}", params);
         let start = std::time::Instant::now();
         let workspace_snapshot = self.require_primary_workspace_binding().ok();
-        let metadata = serde_json::json!({ "symbol": params.symbol });
+        let metadata = tool_targets::fast_refs_metadata(&params);
         let result = params
             .call_tool(self)
             .await
@@ -2471,12 +2477,7 @@ impl JulieServerHandler {
         } else {
             None
         };
-        let metadata = serde_json::json!({
-            "from": params.from,
-            "to": params.to,
-            "max_hops": params.max_hops,
-            "workspace": params.workspace,
-        });
+        let metadata = tool_targets::call_path_metadata(&params);
         let result = params
             .call_tool(self)
             .await
@@ -2517,11 +2518,7 @@ impl JulieServerHandler {
         debug!("📋 Get symbols for file: {:?}", params);
         let start = std::time::Instant::now();
         let workspace_snapshot = self.require_primary_workspace_binding().ok();
-        let metadata = serde_json::json!({
-            "file": params.file_path,
-            "mode": params.mode,
-            "target": params.target,
-        });
+        let metadata = tool_targets::get_symbols_metadata(&params);
         let source_file_paths = vec![params.file_path.clone()];
         let result = params
             .call_tool(self)
@@ -2561,10 +2558,7 @@ impl JulieServerHandler {
         debug!("🔍 Deep dive: {:?}", params);
         let start = std::time::Instant::now();
         let workspace_snapshot = self.require_primary_workspace_binding().ok();
-        let metadata = serde_json::json!({
-            "symbol": params.symbol,
-            "depth": params.depth,
-        });
+        let metadata = tool_targets::deep_dive_metadata(&params);
         let result = params
             .call_tool(self)
             .await
@@ -2607,7 +2601,7 @@ impl JulieServerHandler {
         debug!("📦 Get context: {:?}", params);
         let start = std::time::Instant::now();
         let workspace_snapshot = self.require_primary_workspace_binding().ok();
-        let metadata = serde_json::json!({ "query": params.query });
+        let metadata = tool_targets::get_context_metadata(&params);
         let result = params
             .call_tool(self)
             .await
@@ -2650,11 +2644,7 @@ impl JulieServerHandler {
         debug!("✏️ Rename symbol: {:?}", params);
         let start = std::time::Instant::now();
         let workspace_snapshot = self.require_primary_workspace_binding().ok();
-        let metadata = serde_json::json!({
-            "old": params.old_name,
-            "new": params.new_name,
-            "dry_run": params.dry_run,
-        });
+        let metadata = tool_targets::rename_symbol_metadata(&params);
         let result = params
             .call_tool(self)
             .await
@@ -2740,11 +2730,7 @@ impl JulieServerHandler {
         );
         let start = std::time::Instant::now();
         let workspace_snapshot = self.require_primary_workspace_binding().ok();
-        let metadata = serde_json::json!({
-            "file": params.file_path,
-            "occurrence": params.occurrence,
-            "dry_run": params.dry_run,
-        });
+        let metadata = tool_targets::edit_file_metadata(&params);
         let result = params
             .call_tool(self)
             .await
@@ -2792,12 +2778,7 @@ impl JulieServerHandler {
         } else {
             None
         };
-        let metadata = serde_json::json!({
-            "symbol": params.symbol,
-            "operation": params.operation,
-            "dry_run": params.dry_run,
-            "workspace": params.workspace,
-        });
+        let metadata = tool_targets::rewrite_symbol_metadata(&params);
         let result = params
             .call_tool(self)
             .await

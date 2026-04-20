@@ -8,7 +8,11 @@ use tera::Context;
 
 use crate::dashboard::AppState;
 use crate::dashboard::render_template;
-use crate::search::index::SearchFilter;
+use crate::dashboard::routes::projects_actions::{
+    cleanup_dashboard_anchor, dashboard_handler, disconnect_dashboard_attached_workspaces,
+};
+use crate::tools::search::execution::{self, SearchExecutionWorkspace};
+use crate::tools::search::trace::{SearchExecutionKind, SearchExecutionResult, SearchHit};
 
 #[derive(Deserialize)]
 pub struct SearchParams {
@@ -79,7 +83,7 @@ pub async fn search(
     context.insert("debug", &debug);
 
     // Run the actual search against the workspace's Tantivy index
-    let results = run_search(
+    let execution = run_search(
         &state,
         &query,
         &workspace_id,
@@ -91,7 +95,16 @@ pub async fn search(
     .await;
 
     let no_pool = state.dashboard.workspace_pool().is_none();
+    let results = execution
+        .as_ref()
+        .map(|result| result.hits.clone())
+        .unwrap_or_default();
     context.insert("results", &results);
+    if let Some(result) = &execution {
+        context.insert("search_trace", &result.trace);
+        context.insert("strategy_id", &result.trace.strategy_id);
+        context.insert("search_relaxed", &result.relaxed);
+    }
     context.insert("no_pool", &no_pool);
 
     // Build centrality ranks (name -> rank 1..=20) for badge display.
@@ -141,21 +154,15 @@ async fn run_search(
     language: &str,
     file_pattern: &str,
     limit: usize,
-) -> Vec<serde_json::Value> {
-    let pool = match state.dashboard.workspace_pool() {
-        Some(pool) => pool,
-        None => return vec![],
-    };
+) -> Option<SearchExecutionResult> {
+    if state.dashboard.workspace_pool().is_none() {
+        return None;
+    }
 
-    // Determine which workspaces to search
-    let ws_ids: Vec<String> = if workspace_id.is_empty() {
-        // Search all loaded workspaces
-        let db = match state.dashboard.daemon_db() {
-            Some(db) => db,
-            None => return vec![],
-        };
+    let workspaces: Vec<String> = if workspace_id.is_empty() {
+        let db = state.dashboard.daemon_db()?;
         db.list_workspaces()
-            .unwrap_or_default()
+            .ok()?
             .iter()
             .map(|ws| ws.workspace_id.clone())
             .collect()
@@ -163,97 +170,69 @@ async fn run_search(
         vec![workspace_id.to_string()]
     };
 
-    let filter = SearchFilter {
-        language: if language.is_empty() {
-            None
-        } else {
-            Some(language.to_string())
-        },
-        file_pattern: if file_pattern.is_empty() {
-            None
-        } else {
-            Some(file_pattern.to_string())
-        },
-        ..Default::default()
-    };
-
-    let mut all_results = Vec::new();
-
-    for ws_id in &ws_ids {
-        let ws = match pool.get(ws_id).await {
-            Some(ws) => ws,
-            None => continue,
-        };
-
-        let search_idx = match &ws.search_index {
-            Some(idx) => idx.clone(),
-            None => continue,
-        };
-
-        let query_str = query.to_string();
-        let filter_clone = filter.clone();
-        let target = search_target.to_string();
-        let ws_id_clone = ws_id.clone();
-
-        // Run search on blocking thread (Tantivy uses synchronous I/O)
-        let results = tokio::task::spawn_blocking(move || {
-            let idx = search_idx.lock().unwrap_or_else(|p| p.into_inner());
-            if target == "content" {
-                // Content search returns file-level matches
-                match idx.search_content(&query_str, &filter_clone, limit) {
-                    Ok(results) => results
-                        .results
-                        .into_iter()
-                        .map(|r| {
-                            let filename = r.file_path.split('/').last().unwrap_or(&r.file_path).to_string();
-                            serde_json::json!({
-                                "name": filename,
-                                "file": r.file_path,
-                                "kind": "file",
-                                "language": r.language,
-                                "score": r.score,
-                                "workspace": ws_id_clone,
-                            })
-                        })
-                        .collect::<Vec<_>>(),
-                    Err(_) => vec![],
-                }
-            } else {
-                // Symbol/definition search
-                match idx.search_symbols(&query_str, &filter_clone, limit) {
-                    Ok(results) => results
-                        .results
-                        .into_iter()
-                        .map(|r| {
-                            serde_json::json!({
-                                "name": r.name,
-                                "file": r.file_path,
-                                "line": r.start_line,
-                                "kind": r.kind,
-                                "language": r.language,
-                                "score": r.score,
-                                "snippet": if r.signature.is_empty() { r.doc_comment } else { r.signature },
-                                "workspace": ws_id_clone,
-                            })
-                        })
-                        .collect::<Vec<_>>(),
-                    Err(_) => vec![],
-                }
-            }
-        })
-        .await
-        .unwrap_or_default();
-
-        all_results.extend(results);
+    if workspaces.is_empty() {
+        return None;
     }
 
-    // Sort by score descending across all workspaces
-    all_results.sort_by(|a, b| {
-        let sa = a["score"].as_f64().unwrap_or(0.0);
-        let sb = b["score"].as_f64().unwrap_or(0.0);
-        sb.partial_cmp(&sa).unwrap_or(std::cmp::Ordering::Equal)
-    });
+    let (handler, _anchor_dir, anchor_id) = match dashboard_handler(state).await {
+        Ok(session) => session,
+        Err(_) => return None,
+    };
+    let execution_workspaces = workspaces
+        .into_iter()
+        .map(SearchExecutionWorkspace::target)
+        .collect::<Vec<_>>();
+    let language_filter = (!language.is_empty()).then(|| language.to_string());
+    let file_pattern_filter = (!file_pattern.is_empty()).then(|| file_pattern.to_string());
+    let result = execution::execute_search(
+        execution::SearchExecutionParams {
+            query,
+            language: &language_filter,
+            file_pattern: &file_pattern_filter,
+            limit: limit as u32,
+            search_target,
+            context_lines: None,
+            exclude_tests: None,
+        },
+        &execution_workspaces,
+        &handler,
+    )
+    .await
+    .ok();
 
-    all_results.truncate(limit);
-    all_results
+    disconnect_dashboard_attached_workspaces(state, &handler).await;
+    cleanup_dashboard_anchor(state, &anchor_id).await;
+
+    result.map(normalize_dashboard_results)
+}
+
+fn normalize_dashboard_results(result: SearchExecutionResult) -> SearchExecutionResult {
+    let hits = result
+        .hits
+        .into_iter()
+        .map(normalize_dashboard_hit)
+        .collect();
+    SearchExecutionResult {
+        hits,
+        relaxed: result.relaxed,
+        total_results: result.total_results,
+        trace: result.trace,
+        kind: match result.kind {
+            SearchExecutionKind::Definitions => SearchExecutionKind::Definitions,
+            SearchExecutionKind::Content {
+                workspace_label,
+                file_level,
+            } => SearchExecutionKind::Content {
+                workspace_label,
+                file_level,
+            },
+        },
+    }
+}
+
+fn normalize_dashboard_hit(mut hit: SearchHit) -> SearchHit {
+    if hit.kind == "line" && hit.line.is_some() && hit.snippet.is_none() {
+        hit.snippet = Some(String::new());
+    }
+    hit
 }

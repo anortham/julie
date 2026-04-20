@@ -3,7 +3,9 @@ use std::fs;
 
 use crate::extractors::RelationshipKind;
 use crate::handler::JulieServerHandler;
-use crate::tools::navigation::call_path::{CallPathHop, CallPathResponse, CallPathTool, edge_label};
+use crate::tools::navigation::call_path::{
+    CallPathHop, CallPathResponse, CallPathTool, edge_label,
+};
 use crate::tools::workspace::ManageWorkspaceTool;
 use tempfile::TempDir;
 

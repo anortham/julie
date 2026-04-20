@@ -1,0 +1,59 @@
+{# Toggle link #}
+{% if total_episode_count is defined %}
+<div style="margin-bottom: 0.75rem; color: var(--julie-text-muted); font-size: 0.85rem;">
+  {% if show_all %}
+    Showing all {{ episodes | length }} episodes.
+    <a href="/search/analysis?days={{ days }}">Show flagged only</a>
+  {% else %}
+    Showing {{ episodes | length }} flagged of {{ total_episode_count }} total episodes.
+    <a href="/search/analysis?days={{ days }}&show_all=true">Show all</a>
+  {% endif %}
+</div>
+{% endif %}
+
+{% if episodes | length == 0 %}
+<div class="julie-card" style="text-align: center; padding: 2rem; color: var(--julie-text-muted);">
+  <p>No search episodes to show.</p>
+</div>
+{% else %}
+{% for episode in episodes %}
+<div class="julie-card" style="margin-bottom: 0.75rem; padding: 1rem;">
+  <div style="display: flex; justify-content: space-between; gap: 1rem; align-items: start;">
+    <div>
+      <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+        <span class="mono" style="color: var(--julie-text); font-weight: 600;">{{ episode.outcome }}</span>
+        {% if episode.suspicious %}
+        <span class="tag is-warning is-light">Flagged</span>
+        {% endif %}
+        <span class="mono" style="color: var(--julie-text-muted);">{{ episode.search_count }} search{{ episode.search_count | pluralize }}</span>
+        <span class="mono" style="color: var(--julie-text-muted);">{{ episode.workspace_id }}</span>
+      </div>
+      <div style="margin-top: 0.5rem;">
+        {% for query in episode.queries %}
+        <div style="margin-top: 0.35rem;">
+          <span class="mono" style="color: var(--julie-text);">{{ query.query }}</span>
+          <span style="color: var(--julie-text-muted);">({{ query.intent }}, {{ query.search_target }})</span>
+          {% if query.top_hit_score is number %}
+          <span class="tag is-dark is-small" style="margin-left: 0.25rem;" title="Top hit score">{{ query.top_hit_score | round(precision=2) }}</span>
+          {% endif %}
+          {% if query.top_hit_name %}
+          <div style="color: var(--julie-text-muted); font-size: 0.85rem;">top hit: <span class="mono">{{ query.top_hit_name }}</span>{% if query.top_hit_file %} in <span class="mono">{{ query.top_hit_file }}</span>{% endif %}</div>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    <div style="min-width: 15rem;">
+      <p class="label-text" style="margin-bottom: 0.35rem;">Downstream</p>
+      <p class="mono" style="color: var(--julie-text);">{{ episode.downstream_tool | default(value="none") }}</p>
+      {% if episode.target_symbol_name %}
+      <p style="margin-top: 0.35rem; color: var(--julie-text-muted);">symbol: <span class="mono">{{ episode.target_symbol_name }}</span></p>
+      {% endif %}
+      {% if episode.target_file_path %}
+      <p style="color: var(--julie-text-muted);">file: <span class="mono">{{ episode.target_file_path }}</span></p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endfor %}
+{% endif %}

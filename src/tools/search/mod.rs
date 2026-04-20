@@ -15,12 +15,14 @@ pub use self::query_preprocessor::{
 pub use self::types::{LineMatch, LineMatchStrategy};
 
 // Internal modules
+pub(crate) mod execution;
 pub(crate) mod formatting; // Exposed for testing
 mod line_mode;
 mod nl_embeddings;
 pub(crate) mod query;
 pub mod query_preprocessor; // Public for testing
 pub mod text_search;
+pub(crate) mod trace;
 mod types;
 
 use crate::mcp_compat::{CallToolResult, CallToolResultExt, Content};
@@ -112,8 +114,20 @@ impl Default for FastSearchTool {
     }
 }
 
+pub(crate) struct FastSearchExecution {
+    pub result: CallToolResult,
+    pub execution: Option<trace::SearchExecutionResult>,
+}
+
 impl FastSearchTool {
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
+        self.execute_with_trace(handler).await.map(|run| run.result)
+    }
+
+    pub(crate) async fn execute_with_trace(
+        &self,
+        handler: &JulieServerHandler,
+    ) -> Result<FastSearchExecution> {
         debug!(
             "🔍 Fast search: {} (target: {})",
             self.query, self.search_target
@@ -144,7 +158,10 @@ impl FastSearchTool {
                         && handler.get_workspace().await?.is_none()
                     {
                         let message = "Workspace not indexed yet. Run manage_workspace(operation=\"index\") first.";
-                        return Ok(CallToolResult::text_content(vec![Content::text(message)]));
+                        return Ok(FastSearchExecution {
+                            result: CallToolResult::text_content(vec![Content::text(message)]),
+                            execution: None,
+                        });
                     }
 
                     let primary_id = handler.require_primary_workspace_identity()?;
@@ -163,7 +180,10 @@ impl FastSearchTool {
                         } else {
                             "Definition search requires a Tantivy index for the current primary workspace. Run manage_workspace(operation=\"refresh\") first.".to_string()
                         };
-                        return Ok(CallToolResult::text_content(vec![Content::text(message)]));
+                        return Ok(FastSearchExecution {
+                            result: CallToolResult::text_content(vec![Content::text(message)]),
+                            execution: None,
+                        });
                     }
                 }
 
@@ -188,7 +208,10 @@ impl FastSearchTool {
                                 target_workspace_id, target_workspace_id
                             )
                         };
-                        return Ok(CallToolResult::text_content(vec![Content::text(message)]));
+                        return Ok(FastSearchExecution {
+                            result: CallToolResult::text_content(vec![Content::text(message)]),
+                            execution: None,
+                        });
                     }
                 }
 
@@ -198,7 +221,10 @@ impl FastSearchTool {
                     );
                 } else {
                     let message = "Workspace not indexed yet. Run manage_workspace(operation=\"index\") first.";
-                    return Ok(CallToolResult::text_content(vec![Content::text(message)]));
+                    return Ok(FastSearchExecution {
+                        result: CallToolResult::text_content(vec![Content::text(message)]),
+                        execution: None,
+                    });
                 }
             }
             SystemStatus::SqliteOnly { symbol_count } => {
@@ -210,6 +236,15 @@ impl FastSearchTool {
         }
 
         // Route: content search → line mode, definition search → symbol mode
+        let execution_workspaces = match &workspace_target {
+            WorkspaceTarget::Primary => vec![execution::SearchExecutionWorkspace::primary(
+                handler.require_primary_workspace_identity()?,
+            )],
+            WorkspaceTarget::Target(id) => {
+                vec![execution::SearchExecutionWorkspace::target(id.clone())]
+            }
+        };
+
         if use_line_mode {
             match &workspace_target {
                 WorkspaceTarget::Primary => {
@@ -220,7 +255,10 @@ impl FastSearchTool {
                         .is_none()
                     {
                         let message = "Line-level content search requires a Tantivy index for the current primary workspace. Run manage_workspace(operation=\"refresh\") first.";
-                        return Ok(CallToolResult::text_content(vec![Content::text(message)]));
+                        return Ok(FastSearchExecution {
+                            result: CallToolResult::text_content(vec![Content::text(message)]),
+                            execution: None,
+                        });
                     }
                 }
                 WorkspaceTarget::Target(id) => {
@@ -230,21 +268,70 @@ impl FastSearchTool {
                             "Line-level content search requires a Tantivy index for workspace '{}'. Run manage_workspace(operation=\"refresh\", workspace_id=\"{}\") first.",
                             id, id
                         );
-                        return Ok(CallToolResult::text_content(vec![Content::text(message)]));
+                        return Ok(FastSearchExecution {
+                            result: CallToolResult::text_content(vec![Content::text(message)]),
+                            execution: None,
+                        });
                     }
                 }
             }
 
-            return line_mode::line_mode_search(
-                &self.query,
-                &self.language,
-                &self.file_pattern,
-                self.limit,
-                self.exclude_tests,
-                &workspace_target,
+            let execution = execution::execute_search(
+                execution::SearchExecutionParams {
+                    query: &self.query,
+                    language: &self.language,
+                    file_pattern: &self.file_pattern,
+                    limit: self.limit,
+                    search_target: &self.search_target,
+                    context_lines: self.context_lines,
+                    exclude_tests: self.exclude_tests,
+                },
+                &execution_workspaces,
                 handler,
             )
-            .await;
+            .await?;
+
+            if execution.hits.is_empty() {
+                let message = format!(
+                    "🔍 No lines found matching: '{}'\n\
+                    💡 Try search_target=\"definitions\" if looking for a symbol name, or broaden file_pattern/language filters",
+                    self.query
+                );
+                return Ok(FastSearchExecution {
+                    result: CallToolResult::text_content(vec![Content::text(message)]),
+                    execution: Some(execution),
+                });
+            }
+
+            let line_mode_result = match &execution.kind {
+                trace::SearchExecutionKind::Content {
+                    workspace_label,
+                    file_level,
+                } => line_mode::LineModeSearchResult {
+                    matches: execution
+                        .hits
+                        .iter()
+                        .filter_map(|hit| hit.as_line_match().cloned())
+                        .collect(),
+                    relaxed: execution.relaxed,
+                    strategy: if *file_level {
+                        types::LineMatchStrategy::FileLevel {
+                            terms: vec![self.query.clone()],
+                        }
+                    } else {
+                        types::LineMatchStrategy::Substring(self.query.clone())
+                    },
+                    workspace_label: workspace_label
+                        .clone()
+                        .unwrap_or_else(|| "multiple".to_string()),
+                },
+                trace::SearchExecutionKind::Definitions => unreachable!("content search kind"),
+            };
+            let output = line_mode::format_line_mode_output(&self.query, &line_mode_result);
+            return Ok(FastSearchExecution {
+                result: CallToolResult::text_content(vec![Content::text(output)]),
+                execution: Some(execution),
+            });
         }
 
         // Definition search → Tantivy symbol mode
@@ -257,7 +344,10 @@ impl FastSearchTool {
                     .is_none()
                 {
                     let message = "Definition search requires a Tantivy index for the current primary workspace. Run manage_workspace(operation=\"refresh\") first.";
-                    return Ok(CallToolResult::text_content(vec![Content::text(message)]));
+                    return Ok(FastSearchExecution {
+                        result: CallToolResult::text_content(vec![Content::text(message)]),
+                        execution: None,
+                    });
                 }
             }
             WorkspaceTarget::Target(id) => {
@@ -267,7 +357,10 @@ impl FastSearchTool {
                         "Definition search requires a Tantivy index for workspace '{}'. Run manage_workspace(operation=\"refresh\", workspace_id=\"{}\") first.",
                         id, id
                     );
-                    return Ok(CallToolResult::text_content(vec![Content::text(message)]));
+                    return Ok(FastSearchExecution {
+                        result: CallToolResult::text_content(vec![Content::text(message)]),
+                        execution: None,
+                    });
                 }
             }
         }
@@ -286,31 +379,31 @@ impl FastSearchTool {
                     "Definition search requires a Tantivy index for workspace '{}'. Run manage_workspace(operation=\"refresh\", workspace_id=\"{}\") first.",
                     target_workspace_id, target_workspace_id
                 );
-                return Ok(CallToolResult::text_content(vec![Content::text(message)]));
+                return Ok(FastSearchExecution {
+                    result: CallToolResult::text_content(vec![Content::text(message)]),
+                    execution: None,
+                });
             }
         }
 
-        // Convert WorkspaceTarget to Option<Vec<String>> for text_search_impl
-        let workspace_ids = match workspace_target {
-            WorkspaceTarget::Primary => Some(vec![handler.require_primary_workspace_identity()?]),
-            WorkspaceTarget::Target(id) => Some(vec![id]),
-        };
-        let (symbols, relaxed, pre_trunc_total) = text_search::text_search_impl(
-            &self.query,
-            &self.language,
-            &self.file_pattern,
-            self.limit,
-            workspace_ids,
-            &self.search_target,
-            self.context_lines,
-            self.exclude_tests,
+        let execution = execution::execute_search(
+            execution::SearchExecutionParams {
+                query: &self.query,
+                language: &self.language,
+                file_pattern: &self.file_pattern,
+                limit: self.limit,
+                search_target: &self.search_target,
+                context_lines: self.context_lines,
+                exclude_tests: self.exclude_tests,
+            },
+            &execution_workspaces,
             handler,
         )
         .await?;
 
-        let symbols = formatting::truncate_code_context(symbols, self.context_lines);
+        let symbols = execution.definition_symbols();
 
-        let optimized = OptimizedResponse::with_total(symbols, pre_trunc_total);
+        let optimized = OptimizedResponse::with_total(symbols, execution.total_results);
 
         if optimized.results.is_empty() {
             let message = format!(
@@ -318,28 +411,32 @@ impl FastSearchTool {
                 Try search_target=\"content\" for line-level search, or a broader query",
                 self.query
             );
-            return Ok(CallToolResult::text_content(vec![Content::text(message)]));
+            return Ok(FastSearchExecution {
+                result: CallToolResult::text_content(vec![Content::text(message)]),
+                execution: Some(execution),
+            });
         }
 
         // Locations-only mode: skip code context entirely (70-90% token savings)
         if self.return_format == "locations" {
             let mut locations_output = formatting::format_locations_only(&self.query, &optimized);
-            if relaxed {
+            if execution.relaxed {
                 locations_output = format!(
                     "NOTE: Relaxed search (showing partial matches — no results matched all terms)\n\n{}",
                     locations_output
                 );
             }
-            return Ok(CallToolResult::text_content(vec![Content::text(
-                locations_output,
-            )]));
+            return Ok(FastSearchExecution {
+                result: CallToolResult::text_content(vec![Content::text(locations_output)]),
+                execution: Some(execution),
+            });
         }
 
         // Definition search: use promoted formatting (exact matches get "Definition found:" header)
         let lean_output = formatting::format_definition_search_results(&self.query, &optimized);
 
         // Prepend relaxed-match indicator when OR fallback was used
-        let lean_output = if relaxed {
+        let lean_output = if execution.relaxed {
             format!(
                 "NOTE: Relaxed search (showing partial matches — no results matched all terms)\n\n{}",
                 lean_output
@@ -352,11 +449,12 @@ impl FastSearchTool {
             "✅ Returning lean search results ({} chars, {} results, relaxed: {})",
             lean_output.len(),
             optimized.results.len(),
-            relaxed,
+            execution.relaxed,
         );
-        Ok(CallToolResult::text_content(vec![Content::text(
-            lean_output,
-        )]))
+        Ok(FastSearchExecution {
+            result: CallToolResult::text_content(vec![Content::text(lean_output)]),
+            execution: Some(execution),
+        })
     }
 
     /// Resolve workspace filtering parameter to a WorkspaceTarget.

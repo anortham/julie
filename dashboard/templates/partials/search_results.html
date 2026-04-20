@@ -11,6 +11,8 @@
   <strong style="color: var(--julie-text);">{{ query }}</strong>
   {% if language %}&middot; language: <span class="mono">{{ language }}</span>{% endif %}
   {% if file_pattern %}&middot; pattern: <span class="mono">{{ file_pattern }}</span>{% endif %}
+  {% if strategy_id %}&middot; strategy: <span class="mono">{{ strategy_id }}</span>{% endif %}
+  {% if search_relaxed %}&middot; relaxed fallback{% endif %}
 </div>
 
 {% for result in results %}

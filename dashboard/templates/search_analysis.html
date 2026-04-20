@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% block title %}Search Analysis - Julie Dashboard{% endblock %}
+{% block content %}
+
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+  <div>
+    <h1 class="title" style="color: var(--julie-text); margin-bottom: 0.25rem;">Search Analysis</h1>
+    <p style="color: var(--julie-text-muted);">First-try success and failure patterns from tool call history.</p>
+  </div>
+  <div style="display: flex; gap: 0.5rem;">
+    <a class="button is-small" href="/search">Playground</a>
+    <a class="button is-small is-primary" href="/search/analysis">Analysis</a>
+    <a class="button is-small" href="/search/compare">Compare</a>
+  </div>
+</div>
+
+{# Section 1: Headline Metrics #}
+<div class="julie-card" style="margin-bottom: 1.5rem;">
+  <div style="display: flex; gap: 2rem; flex-wrap: wrap; align-items: baseline;">
+    <div>
+      <p class="label-text">First-Try Success</p>
+      <p class="mono" style="font-size: 1.6rem; color: var(--julie-accent);">{{ (episode_stats.first_try_rate * 100) | round(precision=1) }}%</p>
+    </div>
+    <div>
+      <p class="label-text">One-Shot</p>
+      <p class="mono" style="font-size: 1.1rem; color: var(--julie-text);">{{ episode_stats.one_shot_count }}</p>
+    </div>
+    <div>
+      <p class="label-text">Reformulated</p>
+      <p class="mono" style="font-size: 1.1rem; color: var(--julie-text);">{{ episode_stats.reformulation_count }}</p>
+    </div>
+    <div>
+      <p class="label-text">Stalled</p>
+      <p class="mono" style="font-size: 1.1rem; color: var(--julie-text);">{{ episode_stats.stall_count }}</p>
+    </div>
+    <div>
+      <p class="label-text">Exploratory</p>
+      <p class="mono" style="font-size: 1.1rem; color: var(--julie-text);">{{ episode_stats.exploratory_count }}</p>
+    </div>
+    <div>
+      <p class="label-text">Window</p>
+      <p class="mono" style="font-size: 1.1rem; color: var(--julie-text);">{{ days }} day{{ days | pluralize }}</p>
+    </div>
+  </div>
+</div>
+
+{# Section 2: Problem Queries #}
+<div class="julie-card" style="margin-bottom: 1.5rem;">
+  <h2 class="subtitle" style="color: var(--julie-text); margin-bottom: 0.75rem;">Problem Queries</h2>
+  {% if problems | length == 0 %}
+  <p style="color: var(--julie-text-muted); text-align: center; padding: 1rem;">
+    No problem queries detected. Either search is working well or there isn't enough data yet.
+  </p>
+  {% else %}
+  <div style="overflow-x: auto;">
+    <table class="table is-fullwidth is-narrow" style="background: transparent; font-size: 0.85rem;">
+      <thead>
+        <tr style="color: var(--julie-text-muted);">
+          <th>Query</th>
+          <th>Variants</th>
+          <th style="text-align: right;">Failures</th>
+          <th>Triage</th>
+          <th style="text-align: right;">Avg Score</th>
+          <th style="text-align: right;">Avg Results</th>
+          <th>Last Seen</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for problem in problems %}
+        <tr style="color: var(--julie-text);">
+          <td class="mono">{{ problem.representative_query }}</td>
+          <td>
+            {% for v in problem.variants %}
+            <span class="tag is-dark is-small" style="margin: 1px;">{{ v }}</span>
+            {% endfor %}
+          </td>
+          <td style="text-align: right;" class="mono">
+            {{ problem.failure_count }}
+            <span style="color: var(--julie-text-muted); font-size: 0.8rem;">
+              ({{ problem.stall_count }}s / {{ problem.reformulation_count }}r)
+            </span>
+          </td>
+          <td>
+            {% if problem.triage_signal == "recall_gap" %}
+            <span class="tag is-danger is-light is-small">recall</span>
+            {% elif problem.triage_signal == "ranking_problem" %}
+            <span class="tag is-warning is-light is-small">ranking</span>
+            {% elif problem.triage_signal == "mixed" %}
+            <span class="tag is-light is-small">mixed</span>
+            {% else %}
+            <span class="tag is-light is-small" style="opacity: 0.5;">unknown</span>
+            {% endif %}
+          </td>
+          <td style="text-align: right;" class="mono">
+            {% if problem.avg_top_score is number %}{{ problem.avg_top_score | round(precision=1) }}{% else %}-{% endif %}
+          </td>
+          <td style="text-align: right;" class="mono">
+            {% if problem.avg_result_count is number %}{{ problem.avg_result_count | round(precision=0) }}{% else %}-{% endif %}
+          </td>
+          <td class="mono" style="color: var(--julie-text-muted); font-size: 0.8rem;">
+            {{ problem.last_seen }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+
+{# Section 3: Reformulation Pairs #}
+<div class="julie-card" style="margin-bottom: 1.5rem;">
+  <h2 class="subtitle" style="color: var(--julie-text); margin-bottom: 0.75rem;">Reformulation Pairs</h2>
+  {% if reformulations | length == 0 %}
+  <p style="color: var(--julie-text-muted); text-align: center; padding: 1rem;">
+    No reformulation patterns detected.
+  </p>
+  {% else %}
+  <div style="overflow-x: auto;">
+    <table class="table is-fullwidth is-narrow" style="background: transparent; font-size: 0.85rem;">
+      <thead>
+        <tr style="color: var(--julie-text-muted);">
+          <th>Initial Query</th>
+          <th></th>
+          <th>Successful Query</th>
+          <th>Target</th>
+          <th style="text-align: right;">Occurrences</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for pair in reformulations %}
+        <tr style="color: var(--julie-text);">
+          <td class="mono">{{ pair.initial_query }}</td>
+          <td style="color: var(--julie-text-muted);">&rarr;</td>
+          <td class="mono">{{ pair.successful_query }}</td>
+          <td>
+            {% if pair.target_name %}
+            <span class="mono" style="color: var(--julie-text);">{{ pair.target_name }}</span>
+            {% if pair.target_file %}
+            <span style="color: var(--julie-text-muted); font-size: 0.8rem;"> @ {{ pair.target_file }}</span>
+            {% endif %}
+            {% else %}
+            <span style="color: var(--julie-text-muted);">-</span>
+            {% endif %}
+          </td>
+          <td style="text-align: right;" class="mono">{{ pair.occurrences }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+
+{# Section 4: Episode Feed #}
+{% include "partials/search_episode_table.html" %}
+
+{% endblock %}

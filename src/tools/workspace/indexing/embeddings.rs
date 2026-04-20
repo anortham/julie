@@ -265,5 +265,3 @@ pub(crate) async fn spawn_workspace_embedding(
 
     total_symbols
 }
-
-

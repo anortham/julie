@@ -2,6 +2,8 @@
 
 pub mod error_buffer;
 pub mod routes;
+pub mod search_analysis;
+pub mod search_compare;
 pub mod state;
 
 use std::path::PathBuf;
@@ -156,6 +158,9 @@ pub fn create_router(
         .route("/metrics/summary", get(routes::metrics::summary))
         .route("/search", get(routes::search::index))
         .route("/search", post(routes::search::search))
+        .route("/search/analysis", get(routes::search_analysis::index))
+        .route("/search/compare", get(routes::search_compare::index))
+        .route("/search/compare", post(routes::search_compare::run))
         .route(
             "/intelligence/{workspace_id}",
             get(routes::intelligence::index),

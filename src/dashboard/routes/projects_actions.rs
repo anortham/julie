@@ -39,7 +39,7 @@ fn extract_text_from_result(result: &CallToolResult) -> String {
         .join("\n")
 }
 
-async fn dashboard_handler(
+pub(crate) async fn dashboard_handler(
     state: &AppState,
 ) -> anyhow::Result<(JulieServerHandler, tempfile::TempDir, String)> {
     let anchor_dir = tempfile::tempdir()?;
@@ -67,7 +67,10 @@ async fn dashboard_handler(
     Ok((handler, anchor_dir, anchor_id))
 }
 
-async fn disconnect_dashboard_attached_workspaces(state: &AppState, handler: &JulieServerHandler) {
+pub(crate) async fn disconnect_dashboard_attached_workspaces(
+    state: &AppState,
+    handler: &JulieServerHandler,
+) {
     let Some(pool) = state.dashboard.workspace_pool() else {
         return;
     };
@@ -78,7 +81,7 @@ async fn disconnect_dashboard_attached_workspaces(state: &AppState, handler: &Ju
     }
 }
 
-async fn cleanup_dashboard_anchor(state: &AppState, anchor_id: &str) {
+pub(crate) async fn cleanup_dashboard_anchor(state: &AppState, anchor_id: &str) {
     if let Some(pool) = state.dashboard.workspace_pool() {
         pool.evict_workspace(anchor_id).await;
     }
