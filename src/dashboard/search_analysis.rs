@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use serde::Serialize;
 use serde_json::Value;
 
@@ -257,4 +259,269 @@ fn queries_overlap(queries: &[SearchEpisodeQuery]) -> bool {
 
 fn token_set(text: &str) -> std::collections::BTreeSet<&str> {
     text.split_whitespace().collect()
+}
+
+// ---------------------------------------------------------------------------
+// Canonical key for query grouping
+// ---------------------------------------------------------------------------
+
+const FILLER_TOKENS: &[&str] = &[
+    "find", "get", "the", "a", "an", "for", "in", "of", "to", "with",
+];
+
+pub fn canonical_key(query: &str) -> Vec<String> {
+    let mut tokens = Vec::new();
+    for part in query.split(|c: char| c.is_whitespace() || c == ':' || c == '_' || c == '.') {
+        if part.is_empty() {
+            continue;
+        }
+        split_camel_case(part, &mut tokens);
+    }
+    tokens.retain(|t| !FILLER_TOKENS.contains(&t.as_str()));
+    tokens.sort();
+    tokens
+}
+
+fn split_camel_case(text: &str, out: &mut Vec<String>) {
+    let mut current = String::new();
+    let mut prev_lower = false;
+
+    for ch in text.chars() {
+        if ch.is_uppercase() && prev_lower {
+            if !current.is_empty() {
+                out.push(current.to_lowercase());
+                current.clear();
+            }
+        }
+        current.push(ch);
+        prev_lower = ch.is_lowercase();
+    }
+    if !current.is_empty() {
+        out.push(current.to_lowercase());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Problem query aggregation
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize)]
+pub struct QueryProblem {
+    pub representative_query: String,
+    pub variants: Vec<String>,
+    pub failure_count: usize,
+    pub stall_count: usize,
+    pub reformulation_count: usize,
+    pub last_seen: i64,
+    pub avg_top_score: Option<f32>,
+    pub avg_result_count: Option<f32>,
+    pub triage_signal: String,
+}
+
+pub fn aggregate_problems(episodes: &[SearchEpisode]) -> Vec<QueryProblem> {
+    let mut groups: HashMap<Vec<String>, ProblemGroup> = HashMap::new();
+
+    for episode in episodes {
+        let is_stalled = episode.outcome == "stalled";
+        let is_reformulated = episode.outcome == "reformulation_converged";
+        if !is_stalled && !is_reformulated {
+            continue;
+        }
+
+        let candidate_queries: &[SearchEpisodeQuery] = if is_reformulated && episode.queries.len() > 1 {
+            &episode.queries[..episode.queries.len() - 1]
+        } else {
+            &episode.queries
+        };
+
+        let mut counted_groups: std::collections::HashSet<Vec<String>> =
+            std::collections::HashSet::new();
+
+        for query in candidate_queries {
+            let key = canonical_key(&query.query);
+            if key.is_empty() {
+                continue;
+            }
+            let group = groups.entry(key.clone()).or_insert_with(|| ProblemGroup {
+                queries: HashMap::new(),
+                stall_count: 0,
+                reformulation_count: 0,
+                failure_count: 0,
+                last_seen: 0,
+                scores: Vec::new(),
+                result_counts: Vec::new(),
+                ranking_hits: 0,
+                recall_misses: 0,
+            });
+
+            *group.queries.entry(query.query.clone()).or_insert(0) += 1;
+            if let Some(score) = query.top_hit_score {
+                group.scores.push(score);
+            }
+            if let Some(count) = query.result_count {
+                group.result_counts.push(count);
+            }
+            group.last_seen = group.last_seen.max(query.timestamp);
+
+            if is_reformulated {
+                if let Some(target) = &episode.target_symbol_name {
+                    if query.top_hit_name.as_ref() == Some(target) {
+                        group.ranking_hits += 1;
+                    } else {
+                        group.recall_misses += 1;
+                    }
+                }
+            }
+
+            if counted_groups.insert(key) {
+                group.failure_count += 1;
+                if is_stalled {
+                    group.stall_count += 1;
+                } else {
+                    group.reformulation_count += 1;
+                }
+            }
+        }
+    }
+
+    let mut problems: Vec<QueryProblem> = groups
+        .into_values()
+        .map(|group| {
+            let (representative, variants) = group.representative_and_variants();
+            let avg_top_score = if group.scores.is_empty() {
+                None
+            } else {
+                Some(group.scores.iter().sum::<f32>() / group.scores.len() as f32)
+            };
+            let avg_result_count = if group.result_counts.is_empty() {
+                None
+            } else {
+                Some(
+                    group.result_counts.iter().sum::<usize>() as f32
+                        / group.result_counts.len() as f32,
+                )
+            };
+            let triage_signal = if group.ranking_hits == 0 && group.recall_misses == 0 {
+                "unknown"
+            } else if group.ranking_hits > 0 && group.recall_misses == 0 {
+                "ranking_problem"
+            } else if group.recall_misses > 0 && group.ranking_hits == 0 {
+                "recall_gap"
+            } else {
+                "mixed"
+            };
+
+            QueryProblem {
+                representative_query: representative,
+                variants,
+                failure_count: group.failure_count,
+                stall_count: group.stall_count,
+                reformulation_count: group.reformulation_count,
+                last_seen: group.last_seen,
+                avg_top_score,
+                avg_result_count,
+                triage_signal: triage_signal.to_string(),
+            }
+        })
+        .collect();
+
+    problems.sort_by(|a, b| b.failure_count.cmp(&a.failure_count));
+    problems.truncate(20);
+    problems
+}
+
+struct ProblemGroup {
+    queries: HashMap<String, usize>,
+    stall_count: usize,
+    reformulation_count: usize,
+    failure_count: usize,
+    last_seen: i64,
+    scores: Vec<f32>,
+    result_counts: Vec<usize>,
+    ranking_hits: usize,
+    recall_misses: usize,
+}
+
+impl ProblemGroup {
+    fn representative_and_variants(&self) -> (String, Vec<String>) {
+        let mut sorted: Vec<_> = self.queries.iter().collect();
+        sorted.sort_by(|a, b| b.1.cmp(a.1));
+        let representative = sorted
+            .first()
+            .map(|(q, _)| (*q).clone())
+            .unwrap_or_default();
+        let variants: Vec<String> = sorted
+            .iter()
+            .skip(1)
+            .map(|(q, _)| (*q).clone())
+            .collect();
+        (representative, variants)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Reformulation pair extraction
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ReformulationPair {
+    pub initial_query: String,
+    pub successful_query: String,
+    pub target_name: Option<String>,
+    pub target_file: Option<String>,
+    pub occurrences: usize,
+}
+
+pub fn extract_reformulation_pairs(episodes: &[SearchEpisode]) -> Vec<ReformulationPair> {
+    let mut pair_map: HashMap<(Vec<String>, Vec<String>), ReformulationPairBuilder> =
+        HashMap::new();
+
+    for episode in episodes {
+        if episode.outcome != "reformulation_converged" || episode.queries.len() < 2 {
+            continue;
+        }
+
+        for window in episode.queries.windows(2) {
+            let initial_key = canonical_key(&window[0].query);
+            let successful_key = canonical_key(&window[1].query);
+            if initial_key.is_empty() || successful_key.is_empty() {
+                continue;
+            }
+
+            let map_key = (initial_key, successful_key);
+            let entry = pair_map.entry(map_key).or_insert_with(|| {
+                ReformulationPairBuilder {
+                    initial_query: window[0].query.clone(),
+                    successful_query: window[1].query.clone(),
+                    target_name: episode.target_symbol_name.clone(),
+                    target_file: episode.target_file_path.clone(),
+                    occurrences: 0,
+                }
+            });
+            entry.occurrences += 1;
+        }
+    }
+
+    let mut pairs: Vec<ReformulationPair> = pair_map
+        .into_values()
+        .map(|b| ReformulationPair {
+            initial_query: b.initial_query,
+            successful_query: b.successful_query,
+            target_name: b.target_name,
+            target_file: b.target_file,
+            occurrences: b.occurrences,
+        })
+        .collect();
+
+    pairs.sort_by(|a, b| b.occurrences.cmp(&a.occurrences));
+    pairs.truncate(15);
+    pairs
+}
+
+struct ReformulationPairBuilder {
+    initial_query: String,
+    successful_query: String,
+    target_name: Option<String>,
+    target_file: Option<String>,
+    occurrences: usize,
 }
