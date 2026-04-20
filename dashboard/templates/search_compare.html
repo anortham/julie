@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Search Compare - Julie Dashboard{% endblock %}
+{% block content %}
+
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+  <div>
+    <h1 class="title" style="color: var(--julie-text); margin-bottom: 0.25rem;">Search Compare</h1>
+    <p style="color: var(--julie-text-muted);">Replays real search episodes against the shared search path and the old direct path.</p>
+  </div>
+  <div style="display: flex; gap: 0.5rem;">
+    <a class="button is-small" href="/search">Playground</a>
+    <a class="button is-small" href="/search/analysis">Analysis</a>
+    <a class="button is-small is-primary" href="/search/compare">Compare</a>
+  </div>
+</div>
+
+<div class="julie-card" style="margin-bottom: 1rem;">
+  <form method="post" action="/search/compare" style="display: flex; gap: 0.75rem; align-items: end; flex-wrap: wrap;">
+    <div>
+      <label class="label" style="color: var(--julie-text-muted); font-size: 0.8rem;">Episode window</label>
+      <input class="input is-small" type="number" name="days" min="1" value="{{ days }}" style="max-width: 8rem;" />
+    </div>
+    <button class="button is-primary is-small" type="submit">Run Compare</button>
+  </form>
+</div>
+
+{% include "partials/search_compare_results.html" %}
+
+{% endblock %}

@@ -181,12 +181,94 @@ async fn state_with_projection_lag() -> (DashboardState, tempfile::TempDir, Stri
     )
 }
 
+async fn state_with_search_workspace(
+    file_path: &str,
+    content: &str,
+    symbol_name: &str,
+) -> (DashboardState, tempfile::TempDir, String) {
+    let temp_dir = tempfile::tempdir().expect("tempdir");
+    let workspace_root = temp_dir.path().join("workspace");
+    std::fs::create_dir_all(&workspace_root).expect("workspace dir");
+    let workspace_id =
+        generate_workspace_id(&workspace_root.to_string_lossy()).expect("workspace id");
+
+    let daemon_db =
+        Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).expect("open daemon.db"));
+    daemon_db
+        .upsert_workspace(&workspace_id, &workspace_root.to_string_lossy(), "ready")
+        .unwrap();
+    daemon_db
+        .update_workspace_stats(&workspace_id, 1, 1, None, None, None)
+        .unwrap();
+
+    let pool = Arc::new(WorkspacePool::new(
+        temp_dir.path().join("indexes"),
+        Some(Arc::clone(&daemon_db)),
+        None,
+        None,
+    ));
+    let workspace = pool
+        .get_or_init(&workspace_id, workspace_root.clone())
+        .await
+        .expect("workspace init");
+
+    {
+        let mut db = workspace
+            .db
+            .as_ref()
+            .expect("workspace db")
+            .lock()
+            .expect("db lock");
+        db.bulk_store_fresh_atomic(
+            &[make_file(file_path, content)],
+            &[make_symbol("sym_1", symbol_name, file_path)],
+            &[],
+            &[],
+            &[],
+            &workspace_id,
+        )
+        .unwrap();
+
+        let search_index = workspace
+            .search_index
+            .as_ref()
+            .expect("search index")
+            .lock()
+            .expect("index lock");
+        SearchProjection::tantivy(&workspace_id)
+            .ensure_current_from_database(&mut db, &search_index)
+            .unwrap();
+    }
+
+    (
+        DashboardState::new(
+            Arc::new(SessionTracker::new()),
+            Some(daemon_db),
+            Arc::new(AtomicBool::new(false)),
+            Arc::new(RwLock::new(LifecyclePhase::Ready)),
+            Instant::now(),
+            None,
+            Some(pool),
+            50,
+        ),
+        temp_dir,
+        workspace_id,
+    )
+}
+
 #[tokio::test]
 async fn test_all_dashboard_pages_return_200() {
     let state = test_state();
     let config = DashboardConfig::default();
 
-    for path in ["/", "/projects", "/metrics", "/search"] {
+    for path in [
+        "/",
+        "/projects",
+        "/metrics",
+        "/search",
+        "/search/analysis",
+        "/search/compare",
+    ] {
         let app = create_router(state.clone(), config.clone()).unwrap();
         let response = app
             .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
@@ -435,6 +517,47 @@ async fn test_dashboard_post_search_returns_200() {
         .unwrap();
 
     assert_eq!(response.status().as_u16(), 200);
+}
+
+#[tokio::test]
+async fn test_dashboard_content_search_renders_line_match_preview() {
+    let (state, _temp_dir, workspace_id) = state_with_search_workspace(
+        "src/lib.rs",
+        "TODO: implement authentication\nfn helper() {}\n",
+        "helper",
+    )
+    .await;
+    let config = DashboardConfig::default();
+    let app = create_router(state, config).unwrap();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/search")
+                .header("content-type", "application/x-www-form-urlencoded")
+                .body(Body::from(format!(
+                    "query=TODO&workspace={workspace_id}&search_target=content"
+                )))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status().as_u16(), 200);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body bytes");
+    let html = String::from_utf8(body.to_vec()).expect("utf8 body");
+
+    assert!(
+        html.contains("TODO: implement authentication"),
+        "dashboard content search should render line-level match preview: {html}"
+    );
+    assert!(
+        html.contains("lib.rs:1"),
+        "dashboard content search should carry file and line detail: {html}"
+    );
 }
 
 #[tokio::test]

@@ -369,6 +369,100 @@ mod tests {
     }
 
     #[test]
+    fn test_insert_tool_call_persists_metadata_json() {
+        let (db, _tmp) = create_test_db();
+        let metadata = serde_json::json!({
+            "intent": "api_tool_lookup",
+            "trace": {
+                "strategy": "fast_search_definitions",
+                "top_hits": [
+                    {
+                        "name": "search_handler",
+                        "file": "src/dashboard/routes/search.rs"
+                    }
+                ]
+            }
+        });
+        let metadata_str = metadata.to_string();
+        db.insert_tool_call(
+            "ws1",
+            "sess1",
+            "fast_search",
+            12.5,
+            Some(1),
+            None,
+            Some(500),
+            true,
+            Some(&metadata_str),
+        )
+        .unwrap();
+
+        let stored_metadata: String = {
+            let conn = db.conn_for_test();
+            conn.query_row(
+                "SELECT metadata FROM tool_calls ORDER BY id DESC LIMIT 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap()
+        };
+        let stored_value: serde_json::Value =
+            serde_json::from_str(&stored_metadata).expect("stored metadata json");
+
+        assert_eq!(stored_value["intent"], "api_tool_lookup");
+        assert_eq!(
+            stored_value["trace"]["top_hits"][0]["name"],
+            "search_handler"
+        );
+    }
+
+    #[test]
+    fn test_insert_and_list_search_compare_runs_and_cases() {
+        let (db, _tmp) = create_test_db();
+        let run_id = db
+            .insert_search_compare_run(&crate::daemon::database::SearchCompareRunInput {
+                baseline_strategy: "shared_current".to_string(),
+                candidate_strategy: "legacy_direct".to_string(),
+                case_count: 2,
+                baseline_top1_hits: 1,
+                candidate_top1_hits: 0,
+                baseline_top3_hits: 2,
+                candidate_top3_hits: 1,
+                baseline_source_wins: 2,
+                candidate_source_wins: 1,
+                convergence_rate: Some(0.5),
+                stall_rate: Some(0.25),
+            })
+            .unwrap();
+        db.replace_search_compare_cases(
+            run_id,
+            &[crate::daemon::database::SearchCompareCaseInput {
+                session_id: "sess1".to_string(),
+                workspace_id: "ws1".to_string(),
+                query: "search handler".to_string(),
+                search_target: "definitions".to_string(),
+                expected_symbol_name: Some("search_handler".to_string()),
+                expected_file_path: Some("src/dashboard/routes/search.rs".to_string()),
+                baseline_rank: Some(1),
+                candidate_rank: Some(3),
+                baseline_top_hit: Some(
+                    "search_handler @ src/dashboard/routes/search.rs".to_string(),
+                ),
+                candidate_top_hit: Some("run_search @ src/dashboard/routes/search.rs".to_string()),
+            }],
+        )
+        .unwrap();
+
+        let runs = db.list_search_compare_runs(10).unwrap();
+        let cases = db.list_search_compare_cases(run_id).unwrap();
+
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0].baseline_strategy, "shared_current");
+        assert_eq!(cases.len(), 1);
+        assert_eq!(cases[0].baseline_rank, Some(1));
+    }
+
+    #[test]
     fn test_prune_old_tool_calls() {
         let (db, _tmp) = create_test_db();
         // Insert a call with a very old timestamp (year 2001)

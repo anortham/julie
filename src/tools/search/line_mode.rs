@@ -14,6 +14,20 @@ use crate::tools::navigation::resolution::WorkspaceTarget;
 use super::query::{line_match_strategy, line_matches, matches_glob_pattern};
 use super::types::{LineMatch, LineMatchStrategy};
 
+pub(crate) struct LineModeSearchResult {
+    pub matches: Vec<LineMatch>,
+    pub relaxed: bool,
+    pub strategy: LineMatchStrategy,
+    pub workspace_label: String,
+}
+
+pub(crate) fn query_uses_file_level_header(query: &str) -> bool {
+    matches!(
+        line_match_strategy(query),
+        LineMatchStrategy::FileLevel { .. }
+    )
+}
+
 /// Line-level search mode (grep-style output with line numbers)
 ///
 /// Returns every line matching the query with file:line_number:line_content format.
@@ -21,6 +35,7 @@ use super::types::{LineMatch, LineMatchStrategy};
 ///
 /// Accepts a pre-resolved `WorkspaceTarget` to avoid redundant workspace resolution.
 /// The caller (`FastSearchTool::call_tool`) resolves the workspace once and passes it here.
+#[allow(dead_code)]
 pub async fn line_mode_search(
     query: &str,
     language: &Option<String>,
@@ -30,26 +45,53 @@ pub async fn line_mode_search(
     workspace_target: &WorkspaceTarget,
     handler: &JulieServerHandler,
 ) -> Result<CallToolResult> {
+    let result = line_mode_matches(
+        query,
+        language,
+        file_pattern,
+        limit,
+        exclude_tests,
+        workspace_target,
+        handler,
+    )
+    .await?;
+
+    if result.matches.is_empty() {
+        let message = format!(
+            "🔍 No lines found matching: '{}'\n\
+            💡 Try search_target=\"definitions\" if looking for a symbol name, or broaden file_pattern/language filters",
+            query
+        );
+        return Ok(CallToolResult::text_content(vec![Content::text(message)]));
+    }
+
+    Ok(CallToolResult::text_content(vec![Content::text(
+        format_line_mode_output(query, &result),
+    )]))
+}
+
+pub(crate) async fn line_mode_matches(
+    query: &str,
+    language: &Option<String>,
+    file_pattern: &Option<String>,
+    limit: u32,
+    exclude_tests: Option<bool>,
+    workspace_target: &WorkspaceTarget,
+    handler: &JulieServerHandler,
+) -> Result<LineModeSearchResult> {
     debug!("📄 Line-level search for: '{}'", query);
 
     let exclude_test_files = exclude_tests.unwrap_or(false);
-
-    // Display label for search result headers
     let workspace_label = match workspace_target {
         WorkspaceTarget::Primary => "primary".to_string(),
         WorkspaceTarget::Target(id) => id.clone(),
     };
-
     let match_strategy = line_match_strategy(query);
     let base_limit = limit.max(1) as usize;
     let has_file_filter = file_pattern.is_some();
     let fetch_limit = if has_file_filter {
-        // When file_pattern is active, most Tantivy results will be filtered out.
-        // Fetch more candidates so matching files aren't missed by the limit cap.
         base_limit.saturating_mul(100).max(500).min(1000)
     } else {
-        // 20x: compound token boosting broadens matching, so we need more candidates
-        // to surface precise matches after line-level re-ranking.
         base_limit.saturating_mul(20)
     };
     let filter = SearchFilter {
@@ -59,11 +101,8 @@ pub async fn line_mode_search(
         exclude_tests: false,
     };
 
-    // Search the single target workspace
-    let all_line_matches: Vec<LineMatch> = match workspace_target {
+    let (all_line_matches, relaxed): (Vec<LineMatch>, bool) = match workspace_target {
         WorkspaceTarget::Primary => {
-            // Capture the primary binding and storage handles together so a completed
-            // swap can't pair stale loaded-workspace handles with the new primary identity.
             let primary_snapshot = handler.primary_workspace_snapshot().await?;
             let db = primary_snapshot.database;
             let search_index = primary_snapshot.search_index.ok_or_else(|| {
@@ -77,7 +116,7 @@ pub async fn line_mode_search(
             let file_pattern_clone = file_pattern.clone();
             let language_clone = language.clone();
 
-            tokio::task::spawn_blocking(move || -> Result<Vec<LineMatch>> {
+            tokio::task::spawn_blocking(move || -> Result<(Vec<LineMatch>, bool)> {
                 let index = match search_index.lock() {
                     Ok(guard) => guard,
                     Err(poisoned) => {
@@ -85,7 +124,9 @@ pub async fn line_mode_search(
                         poisoned.into_inner()
                     }
                 };
-                let file_results = index.search_content(&query, &filter, fetch_limit)?.results;
+                let content_results = index.search_content(&query, &filter, fetch_limit)?;
+                let relaxed = content_results.relaxed;
+                let file_results = content_results.results;
                 drop(index);
 
                 let db_lock = match db.lock() {
@@ -102,16 +143,16 @@ pub async fn line_mode_search(
                         break;
                     }
 
-                    if let Some(ref pattern) = file_pattern_clone {
-                        if !matches_glob_pattern(&file_result.file_path, pattern) {
-                            continue;
-                        }
+                    if let Some(ref pattern) = file_pattern_clone
+                        && !matches_glob_pattern(&file_result.file_path, pattern)
+                    {
+                        continue;
                     }
 
-                    if let Some(ref lang) = language_clone {
-                        if !file_matches_language(&file_result.file_path, lang) {
-                            continue;
-                        }
+                    if let Some(ref lang) = language_clone
+                        && !file_matches_language(&file_result.file_path, lang)
+                    {
+                        continue;
                     }
 
                     if exclude_test_files
@@ -131,12 +172,11 @@ pub async fn line_mode_search(
                     }
                 }
 
-                Ok(matches)
+                Ok((matches, relaxed))
             })
             .await??
         }
         WorkspaceTarget::Target(workspace_id) => {
-            // Search the explicit workspace using handler helpers for DB + SearchIndex access.
             let db_arc = handler.get_database_for_workspace(workspace_id).await?;
             let si_arc = handler.get_search_index_for_workspace(workspace_id).await?;
             let target_workspace_id = workspace_id.clone();
@@ -146,7 +186,7 @@ pub async fn line_mode_search(
             let ref_file_pattern = file_pattern.clone();
             let ref_language = language.clone();
 
-            tokio::task::spawn_blocking(move || -> Result<Vec<LineMatch>> {
+            tokio::task::spawn_blocking(move || -> Result<(Vec<LineMatch>, bool)> {
                 let si_arc = match si_arc {
                     Some(si) => si,
                     None => {
@@ -166,13 +206,13 @@ pub async fn line_mode_search(
                     file_pattern: ref_file_pattern.clone(),
                     exclude_tests: false,
                 };
-                let file_results = ref_index
-                    .search_content(&query_clone, &ref_filter, fetch_limit)?
-                    .results;
+                let content_results = ref_index.search_content(&query_clone, &ref_filter, fetch_limit)?;
+                let relaxed = content_results.relaxed;
+                let file_results = content_results.results;
                 drop(ref_index);
 
                 if file_results.is_empty() {
-                    return Ok(Vec::new());
+                    return Ok((Vec::new(), relaxed));
                 }
 
                 let ref_db = db_arc
@@ -184,21 +224,18 @@ pub async fn line_mode_search(
                         break;
                     }
 
-                    // Apply file_pattern filter BEFORE expensive DB content retrieval
-                    if let Some(ref pattern) = ref_file_pattern {
-                        if !matches_glob_pattern(&file_result.file_path, pattern) {
-                            continue;
-                        }
+                    if let Some(ref pattern) = ref_file_pattern
+                        && !matches_glob_pattern(&file_result.file_path, pattern)
+                    {
+                        continue;
                     }
 
-                    // Apply language filter BEFORE DB lookup
-                    if let Some(ref lang) = ref_language {
-                        if !file_matches_language(&file_result.file_path, lang) {
-                            continue;
-                        }
+                    if let Some(ref lang) = ref_language
+                        && !file_matches_language(&file_result.file_path, lang)
+                    {
+                        continue;
                     }
 
-                    // Skip test files when exclude_tests is set
                     if exclude_test_files
                         && crate::search::scoring::is_test_path(&file_result.file_path)
                     {
@@ -216,15 +253,13 @@ pub async fn line_mode_search(
                     }
                 }
 
-                Ok(matches)
+                Ok((matches, relaxed))
             })
             .await
             .map_err(|e| anyhow::anyhow!("Failed to spawn target workspace search: {}", e))??
         }
     };
 
-    // Defense-in-depth: post-filter by language, file_pattern, and test exclusion
-    // (primary filtering now happens inside the collection loop above)
     let filtered_matches: Vec<LineMatch> = all_line_matches
         .into_iter()
         .filter(|line_match| {
@@ -232,67 +267,62 @@ pub async fn line_mode_search(
                 .as_ref()
                 .map(|lang| file_matches_language(&line_match.file_path, lang))
                 .unwrap_or(true);
-
             let file_match = file_pattern
                 .as_ref()
                 .map(|pattern| matches_glob_pattern(&line_match.file_path, pattern))
                 .unwrap_or(true);
-
             let test_match = if exclude_test_files {
                 !crate::search::scoring::is_test_path(&line_match.file_path)
             } else {
                 true
             };
-
             language_match && file_match && test_match
         })
         .collect();
 
-    if filtered_matches.is_empty() {
-        let message = format!(
-            "🔍 No lines found matching: '{}'\n\
-            💡 Try search_target=\"definitions\" if looking for a symbol name, or broaden file_pattern/language filters",
-            query
-        );
-        return Ok(CallToolResult::text_content(vec![Content::text(message)]));
-    }
+    Ok(LineModeSearchResult {
+        matches: filtered_matches,
+        relaxed,
+        strategy: match_strategy,
+        workspace_label,
+    })
+}
 
-    // Format results (single workspace search)
-    let header = match &match_strategy {
+pub(crate) fn format_line_mode_output(query: &str, result: &LineModeSearchResult) -> String {
+    let header = match &result.strategy {
         LineMatchStrategy::FileLevel { .. } => {
-            let file_count = filtered_matches
+            let file_count = result
+                .matches
                 .iter()
                 .map(|m| &m.file_path)
                 .collect::<std::collections::HashSet<_>>()
                 .len();
             format!(
                 "📄 File-level search in [{}]: '{}' (found {} lines across {} files)",
-                workspace_label,
+                result.workspace_label,
                 query,
-                filtered_matches.len(),
+                result.matches.len(),
                 file_count
             )
         }
         _ => format!(
             "📄 Line-level search in [{}]: '{}' (found {} lines)",
-            workspace_label,
+            result.workspace_label,
             query,
-            filtered_matches.len()
+            result.matches.len()
         ),
     };
     let mut lines = vec![header];
     lines.push(String::new());
 
-    for entry in &filtered_matches {
+    for entry in &result.matches {
         lines.push(format!(
             "{}:{}:{}",
             entry.file_path, entry.line_number, entry.line_content
         ));
     }
 
-    Ok(CallToolResult::text_content(vec![Content::text(
-        lines.join("\n"),
-    )]))
+    lines.join("\n")
 }
 
 /// Check if a file path matches the given language filter by extension.

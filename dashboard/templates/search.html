@@ -4,6 +4,12 @@
 
 <h1 class="title" style="color: var(--julie-text); margin-bottom: 1.5rem;">Search Playground</h1>
 
+<div style="display: flex; gap: 0.5rem; margin-bottom: 1rem;">
+  <a class="button is-small is-primary" href="/search">Playground</a>
+  <a class="button is-small" href="/search/analysis">Analysis</a>
+  <a class="button is-small" href="/search/compare">Compare</a>
+</div>
+
 <!-- Search form -->
 <div class="julie-card">
   <form hx-post="/search" hx-target="#search-results" hx-swap="innerHTML">

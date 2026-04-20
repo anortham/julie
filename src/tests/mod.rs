@@ -41,6 +41,7 @@ pub mod core {
     pub mod embedding_sidecar_protocol; // Sidecar protocol contracts + validation tests
     pub mod embedding_sidecar_provider; // Sidecar provider IPC + dimension guard tests
     pub mod handler; // MCP handler tests
+    pub mod handler_telemetry; // search telemetry and downstream target metadata tests
     pub mod incremental_update_atomic; // incremental_update_atomic write path tests (TDD)
     pub mod language; // Language detection and support tests
     pub mod memory_vectors; // Memory embedding vector storage (migration 012 + CRUD + KNN)
@@ -100,8 +101,8 @@ pub mod tools {
 
     pub mod phase4_token_savings; // Phase 4: Data structure optimization token savings tests (skip_serializing_if)
 
-    pub mod call_path_tests; // call_path shortest-path navigation tests
     pub mod call_path_disambiguation_tests; // call_path per-endpoint file-path disambiguation tests
+    pub mod call_path_tests; // call_path shortest-path navigation tests
     pub mod filtering_tests; // Symbol filter pipeline tests (index-based refactor TDD)
 
     pub mod get_context_allocation_tests; // get_context token allocation tests

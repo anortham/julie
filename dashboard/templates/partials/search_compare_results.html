@@ -1,0 +1,75 @@
+{% if compare_runs | length == 0 %}
+<div class="julie-card" style="text-align: center; padding: 2rem; color: var(--julie-text-muted);">
+  <p>No compare runs yet.</p>
+  <p style="margin-top: 0.5rem;">Run one after collecting a few search episodes.</p>
+</div>
+{% else %}
+<div class="julie-card" style="margin-bottom: 1rem;">
+  <p class="label-text" style="margin-bottom: 0.5rem;">Recent Runs</p>
+  {% for run in compare_runs %}
+  <div style="display: flex; justify-content: space-between; gap: 1rem; padding: 0.35rem 0; border-top: 1px solid var(--julie-border);">
+    <div>
+      <a class="mono" href="/search/compare?run_id={{ run.id }}">{{ run.baseline_strategy }} vs {{ run.candidate_strategy }}</a>
+      <span style="color: var(--julie-text-muted);">({{ run.case_count }} cases)</span>
+    </div>
+    <div class="mono" style="color: var(--julie-text-muted);">
+      top1 {{ run.baseline_top1_hits }} / {{ run.candidate_top1_hits }}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+{% if selected_run %}
+<div class="julie-card" style="margin-bottom: 1rem;">
+  <div style="display: flex; gap: 1.5rem; flex-wrap: wrap;">
+    <div>
+      <p class="label-text">Strategies</p>
+      <p class="mono">{{ selected_run.baseline_strategy }} vs {{ selected_run.candidate_strategy }}</p>
+    </div>
+    <div>
+      <p class="label-text">Top 1 Hits</p>
+      <p class="mono">{{ selected_run.baseline_top1_hits }} / {{ selected_run.candidate_top1_hits }}</p>
+    </div>
+    <div>
+      <p class="label-text">Top 3 Hits</p>
+      <p class="mono">{{ selected_run.baseline_top3_hits }} / {{ selected_run.candidate_top3_hits }}</p>
+    </div>
+    <div>
+      <p class="label-text">Source Wins</p>
+      <p class="mono">{{ selected_run.baseline_source_wins }} / {{ selected_run.candidate_source_wins }}</p>
+    </div>
+    <div>
+      <p class="label-text">Convergence</p>
+      <p class="mono">{{ selected_run.convergence_rate | default(value=0.0) | round(method="floor", precision=2) }}</p>
+    </div>
+    <div>
+      <p class="label-text">Stall Rate</p>
+      <p class="mono">{{ selected_run.stall_rate | default(value=0.0) | round(method="floor", precision=2) }}</p>
+    </div>
+  </div>
+</div>
+
+<div class="julie-card">
+  <p class="label-text" style="margin-bottom: 0.5rem;">Cases</p>
+  {% for case in compare_cases %}
+  <div style="padding: 0.6rem 0; border-top: 1px solid var(--julie-border);">
+    <p class="mono" style="color: var(--julie-text);">{{ case.query }}</p>
+    <p style="color: var(--julie-text-muted); margin-top: 0.25rem;">
+      expected:
+      {% if case.expected_symbol_name %}<span class="mono">{{ case.expected_symbol_name }}</span>{% endif %}
+      {% if case.expected_file_path %}<span class="mono">{{ case.expected_file_path }}</span>{% endif %}
+    </p>
+    <p style="color: var(--julie-text-muted); margin-top: 0.25rem;">
+      shared rank {{ case.baseline_rank | default(value="miss") }}, legacy rank {{ case.candidate_rank | default(value="miss") }}
+    </p>
+    <p style="color: var(--julie-text-muted); margin-top: 0.25rem;">
+      shared top hit: <span class="mono">{{ case.baseline_top_hit | default(value="none") }}</span>
+    </p>
+    <p style="color: var(--julie-text-muted);">
+      legacy top hit: <span class="mono">{{ case.candidate_top_hit | default(value="none") }}</span>
+    </p>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endif %}
