@@ -1,7 +1,19 @@
+{# Toggle link #}
+{% if total_episode_count is defined %}
+<div style="margin-bottom: 0.75rem; color: var(--julie-text-muted); font-size: 0.85rem;">
+  {% if show_all %}
+    Showing all {{ episodes | length }} episodes.
+    <a href="/search/analysis?days={{ days }}">Show flagged only</a>
+  {% else %}
+    Showing {{ episodes | length }} flagged of {{ total_episode_count }} total episodes.
+    <a href="/search/analysis?days={{ days }}&show_all=true">Show all</a>
+  {% endif %}
+</div>
+{% endif %}
+
 {% if episodes | length == 0 %}
 <div class="julie-card" style="text-align: center; padding: 2rem; color: var(--julie-text-muted);">
-  <p>No search episodes yet.</p>
-  <p style="margin-top: 0.5rem;">Run a few `fast_search` calls and come back when the tools have something to confess.</p>
+  <p>No search episodes to show.</p>
 </div>
 {% else %}
 {% for episode in episodes %}
@@ -21,6 +33,9 @@
         <div style="margin-top: 0.35rem;">
           <span class="mono" style="color: var(--julie-text);">{{ query.query }}</span>
           <span style="color: var(--julie-text-muted);">({{ query.intent }}, {{ query.search_target }})</span>
+          {% if query.top_hit_score %}
+          <span class="tag is-dark is-small" style="margin-left: 0.25rem;" title="Top hit score">{{ query.top_hit_score | round(precision=2) }}</span>
+          {% endif %}
           {% if query.top_hit_name %}
           <div style="color: var(--julie-text-muted); font-size: 0.85rem;">top hit: <span class="mono">{{ query.top_hit_name }}</span>{% if query.top_hit_file %} in <span class="mono">{{ query.top_hit_file }}</span>{% endif %}</div>
           {% endif %}
