@@ -104,7 +104,7 @@ fn fast_search_row_with_hit(
                     "top_hits": [
                         {
                             "name": top_hit_name,
-                            "file": "src/lib.rs",
+                            "file": "src/dashboard/routes/search.rs",
                             "score": 8.0
                         }
                     ]

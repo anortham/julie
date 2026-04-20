@@ -92,10 +92,10 @@
             {% endif %}
           </td>
           <td style="text-align: right;" class="mono">
-            {% if problem.avg_top_score %}{{ problem.avg_top_score | round(precision=1) }}{% else %}-{% endif %}
+            {% if problem.avg_top_score is number %}{{ problem.avg_top_score | round(precision=1) }}{% else %}-{% endif %}
           </td>
           <td style="text-align: right;" class="mono">
-            {% if problem.avg_result_count %}{{ problem.avg_result_count | round(precision=0) }}{% else %}-{% endif %}
+            {% if problem.avg_result_count is number %}{{ problem.avg_result_count | round(precision=0) }}{% else %}-{% endif %}
           </td>
           <td class="mono" style="color: var(--julie-text-muted); font-size: 0.8rem;">
             {{ problem.last_seen }}

@@ -257,6 +257,16 @@ fn queries_overlap(queries: &[SearchEpisodeQuery]) -> bool {
     false
 }
 
+fn pair_queries_overlap(left: &str, right: &str) -> bool {
+    if left == right {
+        return true;
+    }
+    let left_tokens = token_set(left);
+    let right_tokens = token_set(right);
+    let overlap = left_tokens.intersection(&right_tokens).count();
+    overlap > 0 && overlap * 2 >= left_tokens.len().max(right_tokens.len())
+}
+
 fn token_set(text: &str) -> std::collections::BTreeSet<&str> {
     text.split_whitespace().collect()
 }
@@ -364,8 +374,13 @@ pub fn aggregate_problems(episodes: &[SearchEpisode]) -> Vec<QueryProblem> {
             group.last_seen = group.last_seen.max(query.timestamp);
 
             if is_reformulated {
-                if let Some(target) = &episode.target_symbol_name {
-                    if query.top_hit_name.as_ref() == Some(target) {
+                if let Some(target_name) = &episode.target_symbol_name {
+                    let name_matches = query.top_hit_name.as_ref() == Some(target_name);
+                    let file_matches = match (&query.top_hit_file, &episode.target_file_path) {
+                        (Some(hit_file), Some(target_file)) => hit_file == target_file,
+                        _ => true,
+                    };
+                    if name_matches && file_matches {
                         group.ranking_hits += 1;
                     } else {
                         group.recall_misses += 1;
@@ -485,6 +500,9 @@ pub fn extract_reformulation_pairs(episodes: &[SearchEpisode]) -> Vec<Reformulat
             let initial_key = canonical_key(&window[0].query);
             let successful_key = canonical_key(&window[1].query);
             if initial_key.is_empty() || successful_key.is_empty() {
+                continue;
+            }
+            if !pair_queries_overlap(&window[0].normalized_query, &window[1].normalized_query) {
                 continue;
             }
 

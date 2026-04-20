@@ -33,7 +33,7 @@
         <div style="margin-top: 0.35rem;">
           <span class="mono" style="color: var(--julie-text);">{{ query.query }}</span>
           <span style="color: var(--julie-text-muted);">({{ query.intent }}, {{ query.search_target }})</span>
-          {% if query.top_hit_score %}
+          {% if query.top_hit_score is number %}
           <span class="tag is-dark is-small" style="margin-left: 0.25rem;" title="Top hit score">{{ query.top_hit_score | round(precision=2) }}</span>
           {% endif %}
           {% if query.top_hit_name %}
