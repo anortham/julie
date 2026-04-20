@@ -23,6 +23,10 @@ pub struct SearchEpisodeQuery {
     pub search_target: String,
     pub top_hit_name: Option<String>,
     pub top_hit_file: Option<String>,
+    pub top_hit_score: Option<f32>,
+    pub result_count: Option<usize>,
+    pub strategy: Option<String>,
+    pub relaxed: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -45,6 +49,11 @@ pub struct EpisodeStats {
     pub total_episodes: usize,
     pub convergence_rate: f64,
     pub stall_rate: f64,
+    pub first_try_rate: f64,
+    pub one_shot_count: usize,
+    pub reformulation_count: usize,
+    pub stall_count: usize,
+    pub exploratory_count: usize,
 }
 
 pub fn analyze_tool_calls(rows: &[SearchToolCallRow]) -> Vec<SearchEpisode> {
@@ -56,6 +65,7 @@ pub fn analyze_tool_calls(rows: &[SearchToolCallRow]) -> Vec<SearchEpisode> {
             let search = parse_search_query(row);
             let should_start_new = current.as_ref().is_none_or(|episode| {
                 episode.session_id != row.session_id
+                    || episode.workspace_id != row.workspace_id
                     || row.timestamp - episode.last_search_ts > 10
                     || episode.closed
             });
@@ -72,7 +82,9 @@ pub fn analyze_tool_calls(rows: &[SearchToolCallRow]) -> Vec<SearchEpisode> {
         }
 
         if let Some(episode) = current.as_mut() {
-            if episode.session_id != row.session_id {
+            if episode.session_id != row.session_id
+                || episode.workspace_id != row.workspace_id
+            {
                 let finished = current.take().expect("episode");
                 episodes.push(finished.finish());
             } else {
@@ -102,19 +114,29 @@ pub fn analyze_tool_calls(rows: &[SearchToolCallRow]) -> Vec<SearchEpisode> {
 
 pub fn episode_stats(episodes: &[SearchEpisode]) -> EpisodeStats {
     let total = episodes.len().max(1) as f64;
-    let converged = episodes
-        .iter()
-        .filter(|episode| episode.outcome == "reformulation_converged")
-        .count() as f64;
-    let stalled = episodes
-        .iter()
-        .filter(|episode| episode.outcome == "stalled")
-        .count() as f64;
+    let mut one_shot = 0usize;
+    let mut reformulated = 0usize;
+    let mut stalled = 0usize;
+    let mut exploratory = 0usize;
+
+    for episode in episodes {
+        match episode.outcome.as_str() {
+            "one_shot_success" => one_shot += 1,
+            "reformulation_converged" => reformulated += 1,
+            "stalled" => stalled += 1,
+            _ => exploratory += 1,
+        }
+    }
 
     EpisodeStats {
         total_episodes: episodes.len(),
-        convergence_rate: converged / total,
-        stall_rate: stalled / total,
+        convergence_rate: reformulated as f64 / total,
+        stall_rate: stalled as f64 / total,
+        first_try_rate: one_shot as f64 / total,
+        one_shot_count: one_shot,
+        reformulation_count: reformulated,
+        stall_count: stalled,
+        exploratory_count: exploratory,
     }
 }
 
@@ -203,6 +225,10 @@ fn parse_search_query(row: &SearchToolCallRow) -> SearchEpisodeQuery {
             .to_string(),
         top_hit_name: trace["top_hits"][0]["name"].as_str().map(ToOwned::to_owned),
         top_hit_file: trace["top_hits"][0]["file"].as_str().map(ToOwned::to_owned),
+        top_hit_score: trace["top_hits"][0]["score"].as_f64().map(|v| v as f32),
+        result_count: trace["result_count"].as_u64().map(|v| v as usize),
+        strategy: trace["strategy"].as_str().map(ToOwned::to_owned),
+        relaxed: trace["relaxed"].as_bool(),
     }
 }
 
