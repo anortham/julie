@@ -2572,7 +2572,7 @@ impl JulieServerHandler {
 
     #[tool(
         name = "get_context",
-        description = "Get token-budgeted context for a concept or task. Returns relevant code subgraph with pivots (full code) and neighbors (signatures). Use at the start of a task for orientation.",
+        description = "Get token-budgeted context for a concept or task. Returns a relevant code subgraph with pivots (full code) and neighbors (signatures). Use at the start of a task for orientation. Task inputs `edited_files`, `entry_symbols`, `stack_trace`, `failing_test` focus the subgraph.",
         annotations(
             title = "Get Context",
             read_only_hint = true,
@@ -2613,7 +2613,7 @@ impl JulieServerHandler {
 
     #[tool(
         name = "blast_radius",
-        description = "Analyze structural impact from changed symbols, files, or revision ranges. Returns impacted symbols, likely tests, deleted files, and spillover handles for long result sets.",
+        description = "Deterministic impact analysis for changed symbols, files, or revision ranges. Returns impacts ranked by centrality and hops, likely tests, deleted files, and a spillover handle for long lists. **Use before refactoring or after a change** to see affected callers and tests.",
         annotations(
             title = "Blast Radius",
             read_only_hint = true,

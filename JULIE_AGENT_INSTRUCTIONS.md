@@ -16,7 +16,7 @@
 - `fast_refs`: All references to a symbol. Required before any change. Use `reference_kind` to filter.
 - `call_path`: One shortest relationship path between two symbols. Use it for "how does A reach B" questions.
 - `get_context`: Token-budgeted area orientation (pivots + neighbors). Supports task inputs like `edited_files`, `entry_symbols`, `stack_trace`, and `failing_test`.
-- `blast_radius`: Deterministic impact analysis for changed files, symbols, or revision ranges. Use it to see likely affected callers and tests before editing or after a change.
+- `blast_radius`: Deterministic impact analysis for changed files, symbols, or revision ranges. Returns impacts ranked by centrality and hops plus linked tests. Use before refactoring or after a change.
 - `spillover_get`: Fetch the next page for large `get_context` or `blast_radius` result sets when a spillover handle is returned.
 - `rename_symbol`: Workspace-wide rename. Always preview with `dry_run=true` first.
 - `manage_workspace`: Index, open, add/remove workspace metadata, list, refresh, stats, and health-check workspaces. For cross-workspace work in daemon mode, call `operation="open"` first, then pass the returned `workspace_id` to search, navigation, and editing tools.
