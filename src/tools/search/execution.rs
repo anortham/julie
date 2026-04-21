@@ -47,10 +47,36 @@ pub async fn execute_search(
     workspaces: &[SearchExecutionWorkspace],
     handler: &JulieServerHandler,
 ) -> Result<SearchExecutionResult> {
-    if params.search_target == "content" {
-        execute_content_search(params, workspaces, handler).await
+    // Normalize empty/whitespace-only file_pattern to None so every caller
+    // (FastSearchTool, dashboard route, compare bench, …) gets the same
+    // "no filter" behavior instead of an empty-pattern match-nothing. This
+    // runs once at the shared entry point; downstream stages must never
+    // observe a blank file_pattern.
+    let normalized_file_pattern: Option<String> = params
+        .file_pattern
+        .as_ref()
+        .and_then(|s| {
+            if s.trim().is_empty() {
+                None
+            } else {
+                Some(s.clone())
+            }
+        });
+
+    let normalized_params = SearchExecutionParams {
+        query: params.query,
+        language: params.language,
+        file_pattern: &normalized_file_pattern,
+        limit: params.limit,
+        search_target: params.search_target,
+        context_lines: params.context_lines,
+        exclude_tests: params.exclude_tests,
+    };
+
+    if normalized_params.search_target == "content" {
+        execute_content_search(normalized_params, workspaces, handler).await
     } else {
-        execute_definition_search(params, workspaces, handler).await
+        execute_definition_search(normalized_params, workspaces, handler).await
     }
 }
 

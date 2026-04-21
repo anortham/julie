@@ -7,6 +7,14 @@
 //! - Exclusions via `!` prefix, including mixed include/exclude
 //! - Whitespace inside a glob (literal space path) stays a single pattern
 //! - Whitespace between globs is NOT a split separator
+//!
+//! Also covers Task 2: boundary normalization of empty / whitespace-only
+//! `file_pattern` to `None` at the `execute_search` entry point. The
+//! integration test exercises FastSearchTool across the four whitespace
+//! forms the spec names ("", "   ", "\t", "\n") and asserts each one
+//! yields the same result set as omitting `file_pattern` entirely. This
+//! covers the dashboard route and any other caller transitively, since
+//! they all dispatch through `execute_search`.
 
 use crate::tools::search::matches_glob_pattern;
 
@@ -181,4 +189,116 @@ fn whitespace_around_comma_segments_is_trimmed() {
     assert!(matches_glob_pattern("src/lib.rs", pattern));
     assert!(matches_glob_pattern("tests/foo.rs", pattern));
     assert!(!matches_glob_pattern("docs/README.md", pattern));
+}
+
+// ---------------------------------------------------------------------------
+// Task 2: boundary normalization of empty/whitespace file_pattern
+// ---------------------------------------------------------------------------
+
+mod boundary_normalization {
+    use std::fs;
+    use tempfile::TempDir;
+
+    use crate::handler::JulieServerHandler;
+    use crate::tools::{FastSearchTool, ManageWorkspaceTool};
+
+    /// Fingerprint of a search result set. Ignores score (which may shift due
+    /// to ties) and keeps a stable, order-sensitive identity for each hit.
+    type HitFingerprint = Vec<(String, Option<u32>, String)>;
+
+    async fn run_search(
+        handler: &JulieServerHandler,
+        file_pattern: Option<String>,
+    ) -> HitFingerprint {
+        let tool = FastSearchTool {
+            query: "calculate_total".to_string(),
+            language: None,
+            file_pattern,
+            limit: 20,
+            search_target: "content".to_string(),
+            context_lines: Some(0),
+            exclude_tests: None,
+            workspace: Some("primary".to_string()),
+            return_format: "full".to_string(),
+        };
+
+        let execution = tool
+            .execute_with_trace(handler)
+            .await
+            .expect("search should not error")
+            .execution
+            .expect("execute_with_trace must populate execution for content search");
+
+        execution
+            .hits
+            .iter()
+            .map(|hit| (hit.file.clone(), hit.line, hit.name.clone()))
+            .collect()
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn empty_and_whitespace_file_pattern_match_none() {
+        let temp_dir = TempDir::new().expect("tempdir");
+        let workspace_path = temp_dir.path().to_path_buf();
+
+        let src_dir = workspace_path.join("src");
+        fs::create_dir_all(&src_dir).unwrap();
+        fs::write(
+            src_dir.join("math.rs"),
+            "pub fn calculate_total(items: &[i32]) -> i32 {\n    items.iter().sum()\n}\n",
+        )
+        .unwrap();
+        fs::write(
+            src_dir.join("util.rs"),
+            "pub fn calculate_total_ex(v: i32) -> i32 {\n    v * 2\n}\n",
+        )
+        .unwrap();
+
+        let handler = JulieServerHandler::new_for_test()
+            .await
+            .expect("handler for test");
+        handler
+            .initialize_workspace_with_force(
+                Some(workspace_path.to_string_lossy().to_string()),
+                true,
+            )
+            .await
+            .expect("initialize workspace");
+
+        let index_tool = ManageWorkspaceTool {
+            operation: "index".to_string(),
+            path: Some(workspace_path.to_string_lossy().to_string()),
+            force: Some(false),
+            name: None,
+            workspace_id: None,
+            detailed: None,
+        };
+        index_tool
+            .call_tool(&handler)
+            .await
+            .expect("index workspace");
+
+        // Give the background indexer a moment to flush (mirrors
+        // search_context_lines tests).
+        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+
+        let baseline = run_search(&handler, None).await;
+        assert!(
+            !baseline.is_empty(),
+            "Baseline (file_pattern=None) must return hits; \
+             workspace may not be indexed correctly"
+        );
+
+        for probe in ["", "   ", "\t", "\n"] {
+            let probed = run_search(&handler, Some(probe.to_string())).await;
+            assert_eq!(
+                probed, baseline,
+                "file_pattern={:?} must produce the same result set as None, \
+                 got {} hits vs baseline {} hits",
+                probe,
+                probed.len(),
+                baseline.len(),
+            );
+        }
+    }
 }
