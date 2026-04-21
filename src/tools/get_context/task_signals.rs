@@ -1,5 +1,8 @@
 use std::collections::{HashMap, HashSet};
 
+use anyhow::Result;
+
+use crate::database::SymbolDatabase;
 use crate::search::index::SymbolSearchResult;
 
 #[derive(Debug, Clone, Default)]
@@ -187,4 +190,68 @@ pub fn path_matches_signal(actual_path: &str, signal_path: &str) -> bool {
     actual_path == signal_path
         || actual_path.ends_with(signal_path)
         || signal_path.ends_with(actual_path)
+}
+
+/// Populate `signals.failing_test_linked_symbol_ids` with symbols whose
+/// `test_linkage`/`test_coverage` metadata references the failing test.
+///
+/// Called from the pipeline before scoring so that scoring can boost symbols
+/// whose linked tests match the failing test signal.
+pub(crate) fn hydrate_failing_test_links(
+    db: &SymbolDatabase,
+    signals: &mut TaskSignals,
+) -> Result<()> {
+    let Some(failing_test) = signals.failing_test.clone() else {
+        return Ok(());
+    };
+    let normalized_failing_test = failing_test.replace('\\', "/");
+
+    let mut stmt = db.conn.prepare(
+        "SELECT id,
+                COALESCE(json_extract(metadata, '$.test_linkage.linked_tests'),
+                         json_extract(metadata, '$.test_coverage.linked_tests'),
+                         '[]'),
+                COALESCE(json_extract(metadata, '$.test_linkage.linked_test_paths'),
+                         json_extract(metadata, '$.test_coverage.linked_test_paths'),
+                         '[]')
+         FROM symbols
+         WHERE json_extract(metadata, '$.test_linkage') IS NOT NULL
+            OR json_extract(metadata, '$.test_coverage') IS NOT NULL",
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+        ))
+    })?;
+
+    for row in rows {
+        let (symbol_id, linked_tests_json, linked_test_paths_json) = row?;
+        let linked_tests =
+            serde_json::from_str::<Vec<String>>(&linked_tests_json).unwrap_or_default();
+        let linked_test_paths =
+            serde_json::from_str::<Vec<String>>(&linked_test_paths_json).unwrap_or_default();
+        let matches_signal = linked_test_paths.iter().any(|linked_path| {
+            path_matches_signal(
+                &linked_path.replace('\\', "/"),
+                &normalized_failing_test,
+            )
+        }) || linked_tests
+            .iter()
+            .any(|linked_test| test_name_matches_signal(linked_test, &failing_test));
+
+        if matches_signal {
+            signals.failing_test_linked_symbol_ids.insert(symbol_id);
+        }
+    }
+
+    Ok(())
+}
+
+fn test_name_matches_signal(candidate: &str, failing_test: &str) -> bool {
+    candidate == failing_test
+        || failing_test
+            .rsplit_once("::")
+            .is_some_and(|(_, leaf)| leaf == candidate)
 }

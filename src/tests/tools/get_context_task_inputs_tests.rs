@@ -6,11 +6,9 @@ mod tests {
 
     use crate::database::{FileInfo, SymbolDatabase};
     use crate::search::index::{SearchIndex, SymbolDocument, SymbolSearchResult};
-    use crate::tools::get_context::pipeline::{
-        hydrate_failing_test_links, run_pipeline_with_options,
-    };
+    use crate::tools::get_context::pipeline::run_pipeline_with_options;
     use crate::tools::get_context::scoring::select_pivots_with_task_signals_for_query;
-    use crate::tools::get_context::task_signals::TaskSignals;
+    use crate::tools::get_context::task_signals::{TaskSignals, hydrate_failing_test_links};
     use crate::tools::spillover::store::SpilloverStore;
     use crate::{
         extractors::base::{Relationship, RelationshipKind, Symbol, SymbolKind, Visibility},

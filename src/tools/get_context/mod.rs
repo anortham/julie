@@ -9,6 +9,7 @@ pub mod content;
 pub mod formatting;
 pub mod pipeline;
 pub mod scoring;
+pub mod second_hop;
 pub mod task_signals;
 
 use anyhow::Result;

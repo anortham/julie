@@ -10,7 +10,8 @@ use super::content::abbreviate_code;
 pub(crate) use super::content::truncate_to_token_budget;
 use super::content::truncate_to_token_budget_with_hint;
 pub use super::scoring::{Pivot, select_pivots};
-use super::task_signals::TaskSignals;
+use super::second_hop::{merge_expansions, select_second_hop_seeds, should_expand_second_hop};
+use super::task_signals::{TaskSignals, hydrate_failing_test_links};
 use crate::search::scoring::is_test_path;
 use tracing::debug;
 
@@ -135,25 +136,18 @@ fn expand_graph_from_ids(
     // Identifier-based neighbor expansion: fills in when relationships are sparse.
     // This is critical for TypeScript (and similar languages) where type usages and
     // call references live in the identifiers table rather than the relationships table.
-    // Relationship-based entries take priority (or_insert_with keeps first-seen).
+    // Relationship-based entries take priority (or_insert keeps first-seen).
+    //
+    // Shared helper in `crate::database::impact_graph` so `walk_impacts`
+    // (blast_radius) stays in sync.
     let pivot_names: Vec<String> = symbols.iter().map(|symbol| symbol.name.clone()).collect();
-    if !pivot_names.is_empty() {
-        let identifier_kinds = ["type_usage", "import", "call"];
-        if let Ok(ident_refs) = db.get_identifiers_by_names(&pivot_names) {
-            for iref in ident_refs {
-                if !identifier_kinds.contains(&iref.kind.as_str()) {
-                    continue;
-                }
-                let Some(container_id) = iref.containing_symbol_id else {
-                    continue;
-                };
-                if pivot_ids.contains(&container_id) {
-                    continue;
-                }
-                neighbor_map
-                    .entry(container_id)
-                    .or_insert_with(|| (RelationshipKind::References, NeighborDirection::Incoming));
-            }
+    if let Ok(identifier_edges) =
+        crate::database::impact_graph::identifier_incoming_edges(db, &pivot_names, &pivot_ids)
+    {
+        for (container_id, kind) in identifier_edges {
+            neighbor_map
+                .entry(container_id)
+                .or_insert((kind, NeighborDirection::Incoming));
         }
     }
 
@@ -194,19 +188,6 @@ fn expand_graph_from_ids(
     });
 
     Ok(GraphExpansion { neighbors })
-}
-
-fn merge_expansions(primary: GraphExpansion, secondary: GraphExpansion) -> GraphExpansion {
-    let mut seen = HashSet::new();
-    let mut neighbors = Vec::new();
-
-    for neighbor in primary.neighbors.into_iter().chain(secondary.neighbors) {
-        if seen.insert(neighbor.symbol.id.clone()) {
-            neighbors.push(neighbor);
-        }
-    }
-
-    GraphExpansion { neighbors }
 }
 
 /// Run the full get_context pipeline: search → rank → expand → allocate → format.
@@ -764,85 +745,3 @@ pub async fn run(tool: &GetContextTool, handler: &JulieServerHandler) -> Result<
     }
 }
 
-fn should_expand_second_hop(signals: &TaskSignals, expansion: &GraphExpansion) -> bool {
-    if signals.max_hops < 2 {
-        return false;
-    }
-
-    let code_neighbors = expansion
-        .neighbors
-        .iter()
-        .filter(|neighbor| !is_test_path(&neighbor.symbol.file_path))
-        .count();
-
-    code_neighbors < 4
-}
-
-fn select_second_hop_seeds(expansion: &GraphExpansion, prefer_tests: bool) -> Vec<Symbol> {
-    expansion
-        .neighbors
-        .iter()
-        .filter(|neighbor| prefer_tests || !is_test_path(&neighbor.symbol.file_path))
-        .take(3)
-        .map(|neighbor| neighbor.symbol.clone())
-        .collect()
-}
-
-pub(crate) fn hydrate_failing_test_links(
-    db: &SymbolDatabase,
-    signals: &mut TaskSignals,
-) -> Result<()> {
-    let Some(failing_test) = signals.failing_test.clone() else {
-        return Ok(());
-    };
-    let normalized_failing_test = failing_test.replace('\\', "/");
-
-    let mut stmt = db.conn.prepare(
-        "SELECT id,
-                COALESCE(json_extract(metadata, '$.test_linkage.linked_tests'),
-                         json_extract(metadata, '$.test_coverage.linked_tests'),
-                         '[]'),
-                COALESCE(json_extract(metadata, '$.test_linkage.linked_test_paths'),
-                         json_extract(metadata, '$.test_coverage.linked_test_paths'),
-                         '[]')
-         FROM symbols
-         WHERE json_extract(metadata, '$.test_linkage') IS NOT NULL
-            OR json_extract(metadata, '$.test_coverage') IS NOT NULL",
-    )?;
-    let rows = stmt.query_map([], |row| {
-        Ok((
-            row.get::<_, String>(0)?,
-            row.get::<_, String>(1)?,
-            row.get::<_, String>(2)?,
-        ))
-    })?;
-
-    for row in rows {
-        let (symbol_id, linked_tests_json, linked_test_paths_json) = row?;
-        let linked_tests =
-            serde_json::from_str::<Vec<String>>(&linked_tests_json).unwrap_or_default();
-        let linked_test_paths =
-            serde_json::from_str::<Vec<String>>(&linked_test_paths_json).unwrap_or_default();
-        let matches_signal = linked_test_paths.iter().any(|linked_path| {
-            super::task_signals::path_matches_signal(
-                &linked_path.replace('\\', "/"),
-                &normalized_failing_test,
-            )
-        }) || linked_tests
-            .iter()
-            .any(|linked_test| test_name_matches_signal(linked_test, &failing_test));
-
-        if matches_signal {
-            signals.failing_test_linked_symbol_ids.insert(symbol_id);
-        }
-    }
-
-    Ok(())
-}
-
-fn test_name_matches_signal(candidate: &str, failing_test: &str) -> bool {
-    candidate == failing_test
-        || failing_test
-            .rsplit_once("::")
-            .is_some_and(|(_, leaf)| leaf == candidate)
-}
