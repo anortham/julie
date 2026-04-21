@@ -20,12 +20,16 @@ pub struct IdentifierRef {
     pub file_path: String,
     pub start_line: u32,
     pub containing_symbol_id: Option<String>,
+    /// ID of the symbol this identifier resolves to, if resolution ran.
+    /// Used by blast_radius to prefer resolved target matches over name-only
+    /// fallbacks when collecting likely tests.
+    pub target_symbol_id: Option<String>,
     pub confidence: f32,
 }
 
 /// Column list for IdentifierRef queries
 const IDENTIFIER_REF_COLUMNS: &str =
-    "name, kind, file_path, start_line, containing_symbol_id, confidence";
+    "name, kind, file_path, start_line, containing_symbol_id, target_symbol_id, confidence";
 
 /// Escape SQL LIKE wildcard characters so they match literally.
 /// `_` (any single char) and `%` (any sequence) are escaped with `\`.
@@ -95,6 +99,7 @@ impl SymbolDatabase {
             file_path: row.get("file_path")?,
             start_line: row.get("start_line")?,
             containing_symbol_id: row.get("containing_symbol_id")?,
+            target_symbol_id: row.get("target_symbol_id")?,
             confidence: row.get("confidence")?,
         })
     }

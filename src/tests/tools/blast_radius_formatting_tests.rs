@@ -1,4 +1,5 @@
 use crate::extractors::{RelationshipKind, Symbol, SymbolKind};
+use crate::tools::impact::LikelyTests;
 use crate::tools::impact::formatting::format_blast_radius;
 use crate::tools::impact::ranking::RankedImpact;
 use crate::tools::impact::seed::SeedContext;
@@ -44,10 +45,14 @@ fn test_format_blast_radius_includes_sections_and_overflow_marker() {
         why: "direct caller, 1 hop, centrality=medium".to_string(),
     }];
 
+    let likely_tests = LikelyTests {
+        likely_test_paths: vec!["tests/request_tests.rs".to_string()],
+        related_test_symbols: vec!["test_handle_request".to_string()],
+    };
     let text = format_blast_radius(
         &seed_context,
         &impacts,
-        &["tests/request_tests.rs".to_string()],
+        &likely_tests,
         &seed_context.deleted_files,
         Some("br_123"),
         SpilloverFormat::Readable,
@@ -58,6 +63,8 @@ fn test_format_blast_radius_includes_sections_and_overflow_marker() {
     assert!(text.contains("handle_request  src/api.rs:20"));
     assert!(text.contains("Likely tests"));
     assert!(text.contains("tests/request_tests.rs"));
+    assert!(text.contains("Related test symbols"));
+    assert!(text.contains("test_handle_request"));
     assert!(text.contains("Deleted files"));
     assert!(text.contains("src/legacy.rs"));
     assert!(text.contains("More available: spillover_handle=br_123"));

@@ -17,6 +17,7 @@ mod bulk_operations;
 mod files;
 mod helpers;
 mod identifiers;
+pub mod impact_graph;
 mod memory_vectors;
 mod migrations;
 mod projections;

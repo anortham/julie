@@ -102,6 +102,7 @@ pub mod tools {
 
     pub mod phase4_token_savings; // Phase 4: Data structure optimization token savings tests (skip_serializing_if)
 
+    pub mod blast_radius_determinism_tests; // blast_radius identifier-walk + deterministic output tests (2026-04-21 fixup)
     pub mod blast_radius_formatting_tests; // blast_radius readable output formatting tests
     pub mod blast_radius_tests; // blast_radius impact ranking and revision-range tests
     pub mod call_path_disambiguation_tests; // call_path per-endpoint file-path disambiguation tests

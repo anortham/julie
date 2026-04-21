@@ -1,3 +1,4 @@
+use crate::tools::impact::LikelyTests;
 use crate::tools::impact::ranking::RankedImpact;
 use crate::tools::impact::seed::SeedContext;
 use crate::tools::spillover::SpilloverFormat;
@@ -5,7 +6,7 @@ use crate::tools::spillover::SpilloverFormat;
 pub fn format_blast_radius(
     seed_context: &SeedContext,
     impacts: &[RankedImpact],
-    likely_tests: &[String],
+    likely_tests: &LikelyTests,
     deleted_files: &[String],
     overflow_handle: Option<&str>,
     format: SpilloverFormat,
@@ -31,16 +32,30 @@ pub fn format_blast_radius(
         sections.push("No impacted symbols found.".to_string());
     }
 
-    if !likely_tests.is_empty() {
+    if !likely_tests.likely_test_paths.is_empty() {
         let mut tests_block = String::from("Likely tests\n");
         tests_block.push_str(
             &likely_tests
+                .likely_test_paths
                 .iter()
                 .map(|test| format!("- {}", test))
                 .collect::<Vec<_>>()
                 .join("\n"),
         );
         sections.push(tests_block);
+    }
+
+    if !likely_tests.related_test_symbols.is_empty() {
+        let mut related_block = String::from("Related test symbols\n");
+        related_block.push_str(
+            &likely_tests
+                .related_test_symbols
+                .iter()
+                .map(|symbol| format!("- {}", symbol))
+                .collect::<Vec<_>>()
+                .join("\n"),
+        );
+        sections.push(related_block);
     }
 
     if !deleted_files.is_empty() {

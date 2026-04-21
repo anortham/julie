@@ -3,7 +3,9 @@ use std::collections::{HashMap, HashSet};
 use anyhow::Result;
 
 use crate::database::SymbolDatabase;
+use crate::database::impact_graph::identifier_incoming_edges;
 use crate::extractors::{Relationship, RelationshipKind, Symbol};
+use crate::tools::impact::ranking::relationship_priority;
 
 #[derive(Debug, Clone)]
 pub struct ImpactCandidate {
@@ -58,6 +60,31 @@ pub fn walk_impacts(
             if should_replace {
                 best_by_source.insert(rel.from_symbol_id.clone(), candidate);
             }
+        }
+
+        // Identifier-based expansion: fill in callers that only appear in the
+        // identifiers table (TypeScript type usages, calls, imports). Merge
+        // AFTER relationship edges so first-seen wins — relationship edges
+        // take priority over identifier-derived ones.
+        let frontier_names_vec: Vec<String> = frontier_names.values().cloned().collect();
+        let identifier_seed_ids: HashSet<String> = visited
+            .iter()
+            .cloned()
+            .chain(frontier_ids.iter().cloned())
+            .collect();
+        let identifier_edges =
+            identifier_incoming_edges(db, &frontier_names_vec, &identifier_seed_ids)?;
+        // Arbitrary target among current frontier — used only as "via" label.
+        let via_target_id = frontier_ids.first().cloned();
+        for (container_id, kind) in identifier_edges {
+            if visited.contains(&container_id) {
+                continue;
+            }
+            let target_id = via_target_id.clone().unwrap_or_default();
+            let candidate = (kind, target_id);
+            best_by_source
+                .entry(container_id)
+                .or_insert(candidate);
         }
 
         if best_by_source.is_empty() {
@@ -134,16 +161,4 @@ fn impact_order(candidate: &ImpactCandidate) -> (u8, std::cmp::Reverse<u64>, &st
         candidate.symbol.start_line,
         candidate.symbol.name.as_str(),
     )
-}
-
-fn relationship_priority(kind: &RelationshipKind) -> u8 {
-    match kind {
-        RelationshipKind::Calls => 0,
-        RelationshipKind::Overrides => 1,
-        RelationshipKind::Implements => 2,
-        RelationshipKind::Instantiates => 3,
-        RelationshipKind::References => 4,
-        RelationshipKind::Imports => 5,
-        _ => 6,
-    }
 }
