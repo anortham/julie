@@ -8,7 +8,7 @@ use crate::tools::navigation::resolution::WorkspaceTarget;
 use super::formatting;
 use super::line_mode;
 use super::text_search;
-use super::trace::{SearchExecutionKind, SearchExecutionResult, SearchHit};
+use super::trace::{SearchExecutionKind, SearchExecutionResult, SearchHit, ZeroHitReason};
 
 pub struct SearchExecutionParams<'a> {
     pub query: &'a str,
@@ -137,6 +137,14 @@ async fn execute_content_search(
     let mut hits = Vec::new();
     let mut relaxed = false;
     let mut total_results = 0usize;
+    // Task 4b: capture the first non-None `zero_hit_reason` surfaced by
+    // `line_mode_matches`. When the aggregated `hits` set ends up empty,
+    // we copy this onto `SearchExecutionResult.trace.zero_hit_reason` so
+    // MCP callers, telemetry, and the dashboard see the same pipeline
+    // attribution that line_mode already computed. First-non-None wins
+    // because all-zero runs share the same culprit across workspaces;
+    // mixing variants would be noisier than useful.
+    let mut last_zero_hit_reason: Option<ZeroHitReason> = None;
     let file_level = line_mode::query_uses_file_level_header(params.query);
     let workspace_label = if workspaces.len() == 1 {
         match &workspaces[0].target {
@@ -161,6 +169,9 @@ async fn execute_content_search(
 
         relaxed |= result.relaxed;
         total_results += result.matches.len();
+        if last_zero_hit_reason.is_none() {
+            last_zero_hit_reason = result.zero_hit_reason;
+        }
 
         // Content (line-mode) hits carry a neutral 0.0 score intentionally.
         // The previous synthetic `workspace_total - idx as f32` looked like
@@ -186,7 +197,7 @@ async fn execute_content_search(
     sort_hits_by_score_desc(&mut hits);
     hits.truncate(params.limit.max(1) as usize);
 
-    Ok(SearchExecutionResult::new(
+    let mut execution_result = SearchExecutionResult::new(
         hits,
         relaxed,
         total_results,
@@ -195,7 +206,20 @@ async fn execute_content_search(
             workspace_label,
             file_level,
         },
-    ))
+    );
+
+    // Task 4b: only stamp the reason when the run is genuinely zero-hit
+    // AND trace.zero_hit_reason has not already been set upstream (e.g.
+    // by Task 7a's Promoted attribution on an auto-promote that yielded
+    // no definition hits). The `is_none()` guard is forward-compatible:
+    // today `SearchExecutionResult::new` always starts with None, but
+    // the guard keeps this propagation from clobbering a promotion-era
+    // attribution that Task 7a will set.
+    if execution_result.hits.is_empty() && execution_result.trace.zero_hit_reason.is_none() {
+        execution_result.trace.zero_hit_reason = last_zero_hit_reason;
+    }
+
+    Ok(execution_result)
 }
 
 fn infer_language(requested_language: &Option<String>) -> String {
