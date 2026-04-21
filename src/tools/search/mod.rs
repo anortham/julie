@@ -328,6 +328,12 @@ impl FastSearchTool {
                     // consumed by the execution trace; the downstream formatter
                     // does not re-render them, so `Default` is safe here.
                     stage_counts: line_mode::LineModeStageCounts::default(),
+                    // Zero-hit attribution lives on `execution.trace.zero_hit_reason`
+                    // in this branch (populated via teammate-a's Task 4b wiring);
+                    // the per-call `LineModeSearchResult` is only used for
+                    // rendering non-empty content output here, so `None` is the
+                    // honest value for the rendering-only struct.
+                    zero_hit_reason: None,
                 },
                 trace::SearchExecutionKind::Definitions => unreachable!("content search kind"),
                 // Promoted kind is only produced by the content→definitions

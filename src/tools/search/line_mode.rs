@@ -12,6 +12,7 @@ use crate::search::SearchFilter;
 use crate::tools::navigation::resolution::WorkspaceTarget;
 
 use super::query::{line_match_strategy, line_matches, matches_glob_pattern};
+use super::trace::ZeroHitReason;
 use super::types::{LineMatch, LineMatchStrategy};
 
 pub(crate) struct LineModeSearchResult {
@@ -20,6 +21,16 @@ pub(crate) struct LineModeSearchResult {
     pub strategy: LineMatchStrategy,
     pub workspace_label: String,
     pub stage_counts: LineModeStageCounts,
+    /// Post-hoc attribution of a zero-result path to a specific pipeline
+    /// stage. `Some(_)` only when `matches.is_empty()`; the chosen variant
+    /// is the top-most stage (Tantivy → file_pattern → language → test →
+    /// content-available → line-match) whose counter drained the surviving
+    /// candidate set to zero. Computed by
+    /// [`attribute_zero_hit_reason`] from the raw counters in
+    /// [`stage_counts`]. The `Promoted` variant is never set here; Task 7
+    /// / execute_search stamps it when a content→definitions promotion
+    /// occurs.
+    pub zero_hit_reason: Option<ZeroHitReason>,
 }
 
 /// Per-stage drop counters for the `line_mode_matches` pipeline.
@@ -55,6 +66,83 @@ pub(crate) fn query_uses_file_level_header(query: &str) -> bool {
         line_match_strategy(query),
         LineMatchStrategy::FileLevel { .. }
     )
+}
+
+/// Attribute a zero-result `line_mode_matches` run to the first pipeline
+/// stage that drained the surviving candidate set to zero.
+///
+/// The walk is top-down: Tantivy → file_pattern → language → test →
+/// content-available → line-match. The first stage where
+/// `count_before > 0 && count_after == 0` wins. Returns `None` if the
+/// pipeline never had any candidates at all AND no single filter stage
+/// drained it (which happens only when the query tokenises to zero
+/// terms: `search_content` early-returns, `tantivy_file_candidates == 0`
+/// and none of the drop counters fired).
+///
+/// The returned variant is also `None` when `matches` is non-empty —
+/// that invariant is enforced by the caller, not here.
+pub(crate) fn attribute_zero_hit_reason(
+    counts: &LineModeStageCounts,
+) -> Option<ZeroHitReason> {
+    // Tantivy surfaced nothing: either the query has no usable terms, or
+    // the AND+OR branches both missed. Either way, nothing entered the
+    // per-file loop.
+    if counts.tantivy_file_candidates == 0 {
+        return Some(ZeroHitReason::TantivyNoCandidates);
+    }
+
+    // Running count of "what's still alive after each stage".
+    let mut surviving = counts.tantivy_file_candidates;
+
+    // Stage 1: file_pattern.
+    let before_file_pattern = surviving;
+    surviving = surviving.saturating_sub(counts.file_pattern_dropped);
+    if before_file_pattern > 0 && surviving == 0 {
+        return Some(ZeroHitReason::FilePatternFiltered);
+    }
+
+    // Stage 2: language (per-file check; redundant with Tantivy's own
+    // SearchFilter.language in the current pipeline, so this rarely fires).
+    let before_language = surviving;
+    surviving = surviving.saturating_sub(counts.language_dropped);
+    if before_language > 0 && surviving == 0 {
+        return Some(ZeroHitReason::LanguageFiltered);
+    }
+
+    // Stage 3: exclude_tests.
+    let before_test = surviving;
+    surviving = surviving.saturating_sub(counts.test_dropped);
+    if before_test > 0 && surviving == 0 {
+        return Some(ZeroHitReason::TestFiltered);
+    }
+
+    // Stage 4: file content unavailable (blob missing / storage error).
+    let before_content = surviving;
+    surviving = surviving.saturating_sub(counts.file_content_unavailable_dropped);
+    if before_content > 0 && surviving == 0 {
+        return Some(ZeroHitReason::FileContentUnavailable);
+    }
+
+    // Stage 5: line-match miss. Every remaining file had content but
+    // produced zero line hits.
+    let before_line = surviving;
+    surviving = surviving.saturating_sub(counts.line_match_miss_dropped);
+    if before_line > 0 && surviving == 0 {
+        return Some(ZeroHitReason::LineMatchMiss);
+    }
+
+    // Pipeline had candidates that survived every drop counter but still
+    // `matches.is_empty()` at the top level. That can happen when the
+    // caller's `limit` was 0 (no files walked) or a future stage is added
+    // without updating this attribution. Falling back to LineMatchMiss
+    // keeps telemetry consistent (something took out the candidates;
+    // attribute to the closest thing we instrument) rather than leaving
+    // the reason unattributed.
+    if counts.tantivy_file_candidates > 0 {
+        Some(ZeroHitReason::LineMatchMiss)
+    } else {
+        None
+    }
 }
 
 /// Line-level search mode (grep-style output with line numbers)
@@ -341,12 +429,19 @@ pub(crate) async fn line_mode_matches(
     // `tests::tools::search::line_mode_second_pass_tests` for the
     // invariant; reintroduce a second pass only if the per-file loop
     // ever starts producing matches from files it didn't fully validate.
+    let zero_hit_reason = if all_line_matches.is_empty() {
+        attribute_zero_hit_reason(&stage_counts)
+    } else {
+        None
+    };
+
     Ok(LineModeSearchResult {
         matches: all_line_matches,
         relaxed,
         strategy: match_strategy,
         workspace_label,
         stage_counts,
+        zero_hit_reason,
     })
 }
 

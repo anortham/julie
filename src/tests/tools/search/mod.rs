@@ -25,3 +25,4 @@ mod tantivy_scoring_tests;
 mod tantivy_stemming_tests;
 mod tantivy_tokenizer_tests;
 mod tantivy_variants_tests;
+mod zero_hit_reason_tests;
