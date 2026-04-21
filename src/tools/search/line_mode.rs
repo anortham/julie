@@ -130,7 +130,7 @@ pub(crate) async fn line_mode_matches(
         exclude_tests: false,
     };
 
-    let (all_line_matches, relaxed, mut stage_counts): (Vec<LineMatch>, bool, LineModeStageCounts) =
+    let (all_line_matches, relaxed, stage_counts): (Vec<LineMatch>, bool, LineModeStageCounts) =
         match workspace_target {
             WorkspaceTarget::Primary => {
                 let primary_snapshot = handler.primary_workspace_snapshot().await?;
@@ -331,44 +331,18 @@ pub(crate) async fn line_mode_matches(
             }
         };
 
-    let total_before_second_pass = all_line_matches.len();
-    let filtered_matches: Vec<LineMatch> = all_line_matches
-        .into_iter()
-        .filter(|line_match| {
-            let language_match = language
-                .as_ref()
-                .map(|lang| file_matches_language(&line_match.file_path, lang))
-                .unwrap_or(true);
-            let file_match = file_pattern
-                .as_ref()
-                .map(|pattern| matches_glob_pattern(&line_match.file_path, pattern))
-                .unwrap_or(true);
-            let test_match = if exclude_test_files {
-                !crate::search::scoring::is_test_path(&line_match.file_path)
-            } else {
-                true
-            };
-            language_match && file_match && test_match
-        })
-        .collect();
-
-    // The second-pass filter above can drop additional matches that slipped
-    // past the per-file loop (e.g., via the target-workspace branch, or when
-    // `collect_line_matches` produced partial matches before a filter later
-    // rejected the file). Task 5 investigates whether this pass is ever
-    // load-bearing; for Task 3's instrumentation we fold any extra drops
-    // into the existing counters by delta.
-    let second_pass_dropped = total_before_second_pass.saturating_sub(filtered_matches.len());
-    if second_pass_dropped > 0 {
-        // Attribute the drop to a non-specific bucket: reuse line_match_miss
-        // (the catch-all for matches that existed but were removed by
-        // downstream filters). A dedicated variant can be added in Task 4.
-        stage_counts.line_match_miss_dropped =
-            stage_counts.line_match_miss_dropped.saturating_add(second_pass_dropped);
-    }
-
+    // Task 5: the second-pass filter that used to live here re-ran the
+    // caller's `file_pattern`, `language`, and `exclude_tests` checks on
+    // `line_match.file_path`. That was redundant with the per-file loop
+    // above — every file reaching `collect_line_matches` has already
+    // passed those same three checks, and `collect_line_matches` copies
+    // `file_result.file_path` verbatim into each `LineMatch`. So the
+    // second pass had nothing to drop. See
+    // `tests::tools::search::line_mode_second_pass_tests` for the
+    // invariant; reintroduce a second pass only if the per-file loop
+    // ever starts producing matches from files it didn't fully validate.
     Ok(LineModeSearchResult {
-        matches: filtered_matches,
+        matches: all_line_matches,
         relaxed,
         strategy: match_strategy,
         workspace_label,
