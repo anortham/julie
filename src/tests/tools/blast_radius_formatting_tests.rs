@@ -151,7 +151,7 @@ fn test_related_test_symbols_overflow_marker_independent_of_paths() {
     let likely_tests = LikelyTests {
         likely_test_paths: vec!["tests/single.rs".to_string()],
         related_test_symbols: related,
-        likely_test_paths_total: 1,   // no overflow on paths
+        likely_test_paths_total: 1,     // no overflow on paths
         related_test_symbols_total: 17, // 7 overflow on names
     };
     let text = format_blast_radius(

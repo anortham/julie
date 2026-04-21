@@ -206,52 +206,54 @@ pub(crate) fn hydrate_failing_test_links(
     };
     let normalized_failing_test = failing_test.replace('\\', "/");
 
+    let failing_test_name = failing_test
+        .rsplit_once("::")
+        .map(|(_, leaf)| leaf)
+        .unwrap_or(failing_test.as_str());
+
     let mut stmt = db.conn.prepare(
-        "SELECT id,
-                COALESCE(json_extract(metadata, '$.test_linkage.linked_tests'),
-                         json_extract(metadata, '$.test_coverage.linked_tests'),
-                         '[]'),
-                COALESCE(json_extract(metadata, '$.test_linkage.linked_test_paths'),
-                         json_extract(metadata, '$.test_coverage.linked_test_paths'),
-                         '[]')
+        "SELECT id
          FROM symbols
-         WHERE json_extract(metadata, '$.test_linkage') IS NOT NULL
-            OR json_extract(metadata, '$.test_coverage') IS NOT NULL",
+         WHERE (
+             json_extract(metadata, '$.test_linkage') IS NOT NULL
+             OR json_extract(metadata, '$.test_coverage') IS NOT NULL
+         )
+         AND (
+             EXISTS (
+                 SELECT 1
+                 FROM json_each(
+                     COALESCE(
+                         json_extract(metadata, '$.test_linkage.linked_test_paths'),
+                         json_extract(metadata, '$.test_coverage.linked_test_paths'),
+                         '[]'
+                     )
+                 ) AS linked_path
+                 WHERE linked_path.value = ?1
+                    OR linked_path.value LIKE '%' || ?1
+                    OR ?1 LIKE '%' || linked_path.value
+             )
+             OR EXISTS (
+                 SELECT 1
+                 FROM json_each(
+                     COALESCE(
+                         json_extract(metadata, '$.test_linkage.linked_tests'),
+                         json_extract(metadata, '$.test_coverage.linked_tests'),
+                         '[]'
+                     )
+                 ) AS linked_test
+                 WHERE linked_test.value = ?2
+                    OR ?2 LIKE '%::' || linked_test.value
+             )
+         )",
     )?;
-    let rows = stmt.query_map([], |row| {
-        Ok((
-            row.get::<_, String>(0)?,
-            row.get::<_, String>(1)?,
-            row.get::<_, String>(2)?,
-        ))
-    })?;
+    let rows = stmt.query_map(
+        rusqlite::params![normalized_failing_test, failing_test_name],
+        |row| row.get::<_, String>(0),
+    )?;
 
     for row in rows {
-        let (symbol_id, linked_tests_json, linked_test_paths_json) = row?;
-        let linked_tests =
-            serde_json::from_str::<Vec<String>>(&linked_tests_json).unwrap_or_default();
-        let linked_test_paths =
-            serde_json::from_str::<Vec<String>>(&linked_test_paths_json).unwrap_or_default();
-        let matches_signal = linked_test_paths.iter().any(|linked_path| {
-            path_matches_signal(
-                &linked_path.replace('\\', "/"),
-                &normalized_failing_test,
-            )
-        }) || linked_tests
-            .iter()
-            .any(|linked_test| test_name_matches_signal(linked_test, &failing_test));
-
-        if matches_signal {
-            signals.failing_test_linked_symbol_ids.insert(symbol_id);
-        }
+        signals.failing_test_linked_symbol_ids.insert(row?);
     }
 
     Ok(())
-}
-
-fn test_name_matches_signal(candidate: &str, failing_test: &str) -> bool {
-    candidate == failing_test
-        || failing_test
-            .rsplit_once("::")
-            .is_some_and(|(_, leaf)| leaf == candidate)
 }

@@ -51,7 +51,10 @@ fn vec_string_default_when_missing() {
 #[test]
 fn vec_string_rejects_non_string_items_inside_stringified_array() {
     let result: Result<Strict, _> = serde_json::from_str(r#"{"names": "[1, 2]"}"#);
-    assert!(result.is_err(), "numeric items in stringified array should error");
+    assert!(
+        result.is_err(),
+        "numeric items in stringified array should error"
+    );
 }
 
 #[test]
@@ -74,12 +77,8 @@ fn option_vec_string_accepts_raw_array() {
 
 #[test]
 fn option_vec_string_accepts_stringified_array() {
-    let parsed: Optional =
-        serde_json::from_str(r#"{"names": "[\"x\", \"y\"]"}"#).unwrap();
-    assert_eq!(
-        parsed.names,
-        Some(vec!["x".to_string(), "y".to_string()])
-    );
+    let parsed: Optional = serde_json::from_str(r#"{"names": "[\"x\", \"y\"]"}"#).unwrap();
+    assert_eq!(parsed.names, Some(vec!["x".to_string(), "y".to_string()]));
 }
 
 #[test]
@@ -159,7 +158,10 @@ fn blast_radius_tool_accepts_stringified_arrays() {
         "file_paths": "[\"src/foo.rs\"]"
     }"#;
     let tool: BlastRadiusTool = serde_json::from_str(payload).unwrap();
-    assert_eq!(tool.symbol_ids, vec!["alpha".to_string(), "beta".to_string()]);
+    assert_eq!(
+        tool.symbol_ids,
+        vec!["alpha".to_string(), "beta".to_string()]
+    );
     assert_eq!(tool.file_paths, vec!["src/foo.rs".to_string()]);
 }
 
@@ -177,6 +179,18 @@ fn blast_radius_tool_accepts_raw_arrays() {
 }
 
 #[test]
+fn blast_radius_tool_accepts_stringified_include_tests() {
+    use crate::tools::impact::BlastRadiusTool;
+
+    let payload = r#"{
+        "symbol_ids": ["alpha"],
+        "include_tests": "true"
+    }"#;
+    let tool: BlastRadiusTool = serde_json::from_str(payload).unwrap();
+    assert!(tool.include_tests);
+}
+
+#[test]
 fn get_context_tool_accepts_stringified_task_signals() {
     use crate::tools::get_context::GetContextTool;
 
@@ -191,4 +205,16 @@ fn get_context_tool_accepts_stringified_task_signals() {
         Some(vec!["src/a.rs".to_string(), "src/b.rs".to_string()])
     );
     assert_eq!(tool.entry_symbols, Some(vec!["foo".to_string()]));
+}
+
+#[test]
+fn get_context_tool_accepts_stringified_prefer_tests() {
+    use crate::tools::get_context::GetContextTool;
+
+    let payload = r#"{
+        "query": "investigate failure",
+        "prefer_tests": "false"
+    }"#;
+    let tool: GetContextTool = serde_json::from_str(payload).unwrap();
+    assert_eq!(tool.prefer_tests, Some(false));
 }

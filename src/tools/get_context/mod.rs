@@ -6,7 +6,9 @@
 
 pub mod allocation;
 pub mod content;
+pub mod entries;
 pub mod formatting;
+pub mod graph;
 pub mod pipeline;
 pub mod scoring;
 pub mod second_hop;
@@ -84,7 +86,10 @@ pub struct GetContextTool {
     pub max_hops: Option<u32>,
 
     /// Let test-linked symbols compete for neighbor slots when true.
-    #[serde(default)]
+    #[serde(
+        default,
+        deserialize_with = "crate::utils::serde_lenient::deserialize_option_bool_lenient"
+    )]
     pub prefer_tests: Option<bool>,
 }
 

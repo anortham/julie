@@ -15,7 +15,7 @@
 - `deep_dive`: Investigate a symbol: definition, callers, callees, children, types. Always use before modifying.
 - `fast_refs`: All references to a symbol. Required before any change. Use `reference_kind` to filter.
 - `call_path`: One shortest relationship path between two symbols. Use it for "how does A reach B" questions.
-- `get_context`: Token-budgeted area orientation (pivots + neighbors). Supports task inputs like `edited_files`, `entry_symbols`, `stack_trace`, and `failing_test`.
+- `get_context`: Token-budgeted area orientation (pivots + neighbors). Supports task inputs like `edited_files`, `entry_symbols`, `stack_trace`, `failing_test`, `max_hops`, and `prefer_tests`.
 - `blast_radius`: Deterministic impact analysis for changed files, symbols, or revision ranges. Returns impacts ranked by centrality and hops plus linked tests. Use before refactoring or after a change.
 - `spillover_get`: Fetch the next page for large `get_context` or `blast_radius` result sets when a spillover handle is returned.
 - `rename_symbol`: Workspace-wide rename. Always preview with `dry_run=true` first.
@@ -50,9 +50,9 @@ Subagents (Agent tool) do NOT receive Julie's session guidance. When dispatching
     - deep_dive(symbol) to understand a symbol before modifying it
     - fast_refs(symbol) to find all references (REQUIRED before any change)
     - call_path(from, to) to trace one shortest dependency path
-    - get_context(query, edited_files?, entry_symbols?, stack_trace?, failing_test?) for task-shaped context
-    - blast_radius(file_paths?, symbol_ids?, from_revision?, to_revision?) for likely impact and linked tests
-    - spillover_get(handle) to continue a large paged result
+    - get_context(query, edited_files?, entry_symbols?, stack_trace?, failing_test?, max_hops?, prefer_tests?) for task-shaped context
+    - blast_radius(file_paths?, symbol_ids?, from_revision?, to_revision?, max_depth?, include_tests?) for likely impact and linked tests
+    - spillover_get(spillover_handle) to continue a large paged result
     - edit_file(old_text, new_text, dry_run=true) to edit without reading first
     - rewrite_symbol(symbol, operation, content, dry_run=true) to edit by name
     Do NOT fall back to Glob/Read/Grep chains. Julie tools return targeted context in 1-2 calls.

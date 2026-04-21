@@ -74,7 +74,10 @@ pub struct BlastRadiusTool {
         deserialize_with = "crate::utils::serde_lenient::deserialize_u32_lenient"
     )]
     pub limit: u32,
-    #[serde(default = "default_include_tests")]
+    #[serde(
+        default = "default_include_tests",
+        deserialize_with = "crate::utils::serde_lenient::deserialize_bool_lenient"
+    )]
     pub include_tests: bool,
     #[serde(default)]
     pub format: Option<String>,
@@ -292,11 +295,7 @@ fn collect_likely_tests(
     from_ids.sort();
     from_ids.dedup();
     let mut from_symbols = db.get_symbols_by_ids(&from_ids)?;
-    from_symbols.sort_by(|a, b| {
-        a.file_path
-            .cmp(&b.file_path)
-            .then_with(|| a.id.cmp(&b.id))
-    });
+    from_symbols.sort_by(|a, b| a.file_path.cmp(&b.file_path).then_with(|| a.id.cmp(&b.id)));
     for symbol in from_symbols {
         if is_test_symbol(&symbol) {
             push_unique(

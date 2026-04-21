@@ -25,11 +25,12 @@ pub fn walk_impacts(
         return Ok(Vec::new());
     }
 
-    let mut frontier_ids: Vec<String> = seed_symbols
+    let mut frontier_symbols: Vec<Symbol> = seed_symbols.to_vec();
+    let mut frontier_ids: Vec<String> = frontier_symbols
         .iter()
         .map(|symbol| symbol.id.clone())
         .collect();
-    let mut frontier_names: HashMap<String, String> = seed_symbols
+    let mut frontier_names: HashMap<String, String> = frontier_symbols
         .iter()
         .map(|symbol| (symbol.id.clone(), symbol.name.clone()))
         .collect();
@@ -42,7 +43,8 @@ pub fn walk_impacts(
         }
 
         let relationships = db.get_relationships_to_symbols(&frontier_ids)?;
-        let mut best_by_source: HashMap<String, (RelationshipKind, String)> = HashMap::new();
+        let mut best_by_source: HashMap<String, (RelationshipKind, Option<String>)> =
+            HashMap::new();
 
         for rel in relationships {
             let Some(kind) = normalized_kind(&rel) else {
@@ -52,7 +54,7 @@ pub fn walk_impacts(
                 continue;
             }
 
-            let candidate = (kind, rel.to_symbol_id.clone());
+            let candidate = (kind, Some(rel.to_symbol_id.clone()));
             let should_replace = best_by_source
                 .get(&rel.from_symbol_id)
                 .is_none_or(|current| relation_order(&candidate) < relation_order(current));
@@ -66,25 +68,21 @@ pub fn walk_impacts(
         // identifiers table (TypeScript type usages, calls, imports). Merge
         // AFTER relationship edges so first-seen wins — relationship edges
         // take priority over identifier-derived ones.
-        let frontier_names_vec: Vec<String> = frontier_names.values().cloned().collect();
-        let identifier_seed_ids: HashSet<String> = visited
-            .iter()
-            .cloned()
-            .chain(frontier_ids.iter().cloned())
-            .collect();
-        let identifier_edges =
-            identifier_incoming_edges(db, &frontier_names_vec, &identifier_seed_ids)?;
-        // Arbitrary target among current frontier — used only as "via" label.
-        let via_target_id = frontier_ids.first().cloned();
-        for (container_id, kind) in identifier_edges {
-            if visited.contains(&container_id) {
+        let identifier_edges = identifier_incoming_edges(db, &frontier_symbols, &visited)?;
+        let fallback_target_id = if frontier_ids.len() == 1 {
+            frontier_ids.first().cloned()
+        } else {
+            None
+        };
+        for edge in identifier_edges {
+            if visited.contains(&edge.container_id) {
                 continue;
             }
-            let target_id = via_target_id.clone().unwrap_or_default();
-            let candidate = (kind, target_id);
-            best_by_source
-                .entry(container_id)
-                .or_insert(candidate);
+            let candidate = (
+                edge.relationship_kind,
+                edge.target_symbol_id.or_else(|| fallback_target_id.clone()),
+            );
+            best_by_source.entry(edge.container_id).or_insert(candidate);
         }
 
         if best_by_source.is_empty() {
@@ -100,8 +98,6 @@ pub fn walk_impacts(
         let source_id_refs: Vec<&str> = source_ids.iter().map(|id| id.as_str()).collect();
         let reference_scores = db.get_reference_scores(&source_id_refs)?;
 
-        let mut next_frontier_ids = Vec::new();
-        let mut next_frontier_names = HashMap::new();
         let mut depth_impacts = Vec::new();
 
         for source_id in source_ids {
@@ -113,25 +109,34 @@ pub fn walk_impacts(
             };
 
             visited.insert(source_id.clone());
-            next_frontier_names.insert(source_id.clone(), symbol.name.clone());
-            next_frontier_ids.push(source_id.clone());
 
             depth_impacts.push(ImpactCandidate {
                 symbol,
                 distance,
                 relationship_kind,
                 reference_score: reference_scores.get(&source_id).copied().unwrap_or(0.0),
-                via_symbol_name: frontier_names
-                    .get(&target_id)
+                via_symbol_name: target_id
+                    .as_ref()
+                    .and_then(|id| frontier_names.get(id))
                     .cloned()
                     .unwrap_or_else(|| "changed code".to_string()),
             });
         }
 
         depth_impacts.sort_by(|left, right| impact_order(left).cmp(&impact_order(right)));
+        frontier_symbols = depth_impacts
+            .iter()
+            .map(|candidate| candidate.symbol.clone())
+            .collect();
+        frontier_ids = frontier_symbols
+            .iter()
+            .map(|symbol| symbol.id.clone())
+            .collect();
+        frontier_names = frontier_symbols
+            .iter()
+            .map(|symbol| (symbol.id.clone(), symbol.name.clone()))
+            .collect();
         impacts.extend(depth_impacts);
-        frontier_ids = next_frontier_ids;
-        frontier_names = next_frontier_names;
     }
 
     Ok(impacts)
@@ -149,8 +154,11 @@ fn normalized_kind(relationship: &Relationship) -> Option<RelationshipKind> {
     }
 }
 
-fn relation_order(candidate: &(RelationshipKind, String)) -> (u8, &str) {
-    (relationship_priority(&candidate.0), candidate.1.as_str())
+fn relation_order(candidate: &(RelationshipKind, Option<String>)) -> (u8, &str) {
+    (
+        relationship_priority(&candidate.0),
+        candidate.1.as_deref().unwrap_or(""),
+    )
 }
 
 fn impact_order(candidate: &ImpactCandidate) -> (u8, std::cmp::Reverse<u64>, &str, u32, &str) {

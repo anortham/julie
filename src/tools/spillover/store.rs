@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use anyhow::{Result, anyhow};
+use blake3::Hasher;
 
 const DEFAULT_MAX_ENTRIES: usize = 256;
 const DEFAULT_TTL_SECS: u64 = 15 * 60;
@@ -181,7 +182,8 @@ impl SpilloverStore {
     }
 
     fn insert_locked(&self, inner: &mut SpilloverState, entry: SpilloverEntry) -> String {
-        let handle = format!("{}_{}", entry.prefix, uuid::Uuid::new_v4().simple());
+        let handle = stable_handle(&entry);
+        inner.order.retain(|queued_handle| queued_handle != &handle);
         inner.order.push_back(handle.clone());
         inner.entries.insert(handle.clone(), entry);
         self.enforce_limit_locked(inner);
@@ -221,4 +223,28 @@ impl SpilloverStore {
             inner.entries.remove(&oldest);
         }
     }
+}
+
+fn stable_handle(entry: &SpilloverEntry) -> String {
+    let mut hasher = Hasher::new();
+    hasher.update(entry.owner_session_id.as_bytes());
+    hasher.update(&[0]);
+    hasher.update(entry.prefix.as_bytes());
+    hasher.update(&[0]);
+    hasher.update(entry.title.as_bytes());
+    hasher.update(&[0]);
+    hasher.update(entry.offset.to_string().as_bytes());
+    hasher.update(&[0]);
+    hasher.update(entry.default_limit.to_string().as_bytes());
+    hasher.update(&[0]);
+    hasher.update(entry.format.as_str().as_bytes());
+    hasher.update(&[0]);
+
+    for row in entry.rows.iter() {
+        hasher.update(row.as_bytes());
+        hasher.update(&[0x1e]);
+    }
+
+    let digest = hasher.finalize().to_hex().to_string();
+    format!("{}_{}", entry.prefix, &digest[..24])
 }

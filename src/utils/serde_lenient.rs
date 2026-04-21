@@ -251,9 +251,8 @@ where
             if trimmed.is_empty() {
                 return Ok(Vec::new());
             }
-            serde_json::from_str::<Vec<String>>(trimmed).map_err(|err| {
-                E::custom(format!("invalid stringified Vec<String>: {err}"))
-            })
+            serde_json::from_str::<Vec<String>>(trimmed)
+                .map_err(|err| E::custom(format!("invalid stringified Vec<String>: {err}")))
         }
 
         fn visit_seq<A>(self, mut seq: A) -> Result<Vec<String>, A::Error>
@@ -312,9 +311,7 @@ where
             }
             serde_json::from_str::<Vec<String>>(trimmed)
                 .map(Some)
-                .map_err(|err| {
-                    E::custom(format!("invalid stringified Vec<String>: {err}"))
-                })
+                .map_err(|err| E::custom(format!("invalid stringified Vec<String>: {err}")))
         }
 
         fn visit_seq<A>(self, mut seq: A) -> Result<Option<Vec<String>>, A::Error>

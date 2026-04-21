@@ -15,12 +15,11 @@ use anyhow::Result;
 use tempfile::TempDir;
 
 use crate::database::types::FileInfo;
-use crate::extractors::{
-    Identifier, IdentifierKind, Relationship, Symbol, SymbolKind, Visibility,
-};
+use crate::extractors::{Identifier, IdentifierKind, Relationship, Symbol, SymbolKind, Visibility};
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::CallToolResult;
 use crate::tools::impact::BlastRadiusTool;
+use crate::tools::impact::walk::walk_impacts;
 
 fn make_file(path: &str, hash: &str) -> FileInfo {
     FileInfo {
@@ -263,6 +262,85 @@ async fn test_blast_radius_surfaces_identifier_only_callers() -> Result<()> {
         assert!(
             text.contains(caller),
             "expected identifier-derived caller `{caller}` in output: {text}"
+        );
+    }
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_walk_impacts_preserves_identifier_call_kind_and_resolved_target() -> Result<()> {
+    let (_temp_dir, handler, workspace_id) = setup_handler().await?;
+
+    let files = vec![
+        make_file("src/alpha.ts", "hash_alpha"),
+        make_file("src/beta.ts", "hash_beta"),
+        make_file("src/alpha_adapter.ts", "hash_alpha_adapter"),
+        make_file("src/beta_adapter.ts", "hash_beta_adapter"),
+    ];
+    let symbols = vec![
+        make_symbol("seed_alpha", "AlphaStore", "src/alpha.ts", None),
+        make_symbol("seed_beta", "BetaStore", "src/beta.ts", None),
+        make_symbol(
+            "alpha_adapter",
+            "alphaAdapter",
+            "src/alpha_adapter.ts",
+            None,
+        ),
+        make_symbol("beta_adapter", "betaAdapter", "src/beta_adapter.ts", None),
+    ];
+    let identifiers = vec![
+        make_identifier(
+            "alpha_ident",
+            "AlphaStore",
+            "src/alpha_adapter.ts",
+            Some("alpha_adapter"),
+            Some("seed_alpha"),
+            IdentifierKind::TypeUsage,
+            4,
+            0.90,
+        ),
+        make_identifier(
+            "beta_ident",
+            "BetaStore",
+            "src/beta_adapter.ts",
+            Some("beta_adapter"),
+            Some("seed_beta"),
+            IdentifierKind::Call,
+            7,
+            0.95,
+        ),
+    ];
+
+    let db = handler.primary_database().await?;
+    {
+        let mut guard = db.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        guard.bulk_store_fresh_atomic(
+            &files,
+            &symbols,
+            &Vec::<Relationship>::new(),
+            &identifiers,
+            &[],
+            workspace_id.as_str(),
+        )?;
+        guard.compute_reference_scores()?;
+
+        let seed_symbols =
+            guard.get_symbols_by_ids(&["seed_alpha".to_string(), "seed_beta".to_string()])?;
+        let impacts = walk_impacts(&guard, &seed_symbols, 1)?;
+
+        let beta_adapter = impacts
+            .iter()
+            .find(|candidate| candidate.symbol.id == "beta_adapter")
+            .expect("beta_adapter should be discovered via identifiers");
+        assert_eq!(
+            beta_adapter.relationship_kind,
+            crate::extractors::RelationshipKind::Calls,
+            "identifier kind=call should rank as a direct caller, not a generic reference"
+        );
+        assert_eq!(
+            beta_adapter.via_symbol_name, "BetaStore",
+            "identifier-derived impacts should use the resolved target symbol, not the first seed"
         );
     }
 

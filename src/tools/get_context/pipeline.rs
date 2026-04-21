@@ -1,199 +1,23 @@
 //! Main pipeline: search -> rank -> expand -> allocate -> format
 
-use std::collections::{HashMap, HashSet};
-
 use anyhow::Result;
+use tracing::debug;
 
 use super::GetContextTool;
-use super::content::abbreviate_code;
 #[cfg(test)]
 pub(crate) use super::content::truncate_to_token_budget;
-use super::content::truncate_to_token_budget_with_hint;
+pub use super::graph::{
+    GraphExpansion, Neighbor, NeighborDirection, expand_graph, expand_graph_from_symbols,
+};
 pub use super::scoring::{Pivot, select_pivots};
 use super::second_hop::{merge_expansions, select_second_hop_seeds, should_expand_second_hop};
 use super::task_signals::{TaskSignals, hydrate_failing_test_links};
-use crate::search::scoring::is_test_path;
-use tracing::debug;
-
 use crate::database::SymbolDatabase;
-use crate::extractors::base::{RelationshipKind, Symbol};
 use crate::handler::JulieServerHandler;
 use crate::tools::navigation::resolution::{WorkspaceTarget, resolve_workspace_filter};
-use crate::tools::shared::NOISE_CALLEE_NAMES;
 use crate::tools::spillover::{SpilloverFormat, SpilloverStore};
 
-/// Direction of a neighbor relative to the pivot symbol.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum NeighborDirection {
-    /// Symbol calls/uses/imports the pivot (incoming relationship).
-    Incoming,
-    /// Pivot calls/uses/imports this symbol (outgoing relationship).
-    Outgoing,
-}
-
-/// A neighbor symbol discovered through graph expansion from a pivot.
-pub struct Neighbor {
-    pub symbol: Symbol,
-    pub relationship_kind: RelationshipKind,
-    pub direction: NeighborDirection,
-    pub reference_score: f64,
-}
-
-/// Result of graph expansion — deduplicated neighbors sorted by reference_score.
-pub struct GraphExpansion {
-    pub neighbors: Vec<Neighbor>,
-}
-
-/// Expand pivots into a graph of related neighbor symbols.
-///
-/// For each pivot:
-/// 1. Fetch incoming relationships (callers, implementors, importers)
-/// 2. Fetch outgoing relationships (callees, types used, modules imported)
-/// 3. Deduplicate neighbors across all pivots (each symbol appears once)
-/// 4. Exclude pivot symbols themselves from the neighbor list
-/// 5. Look up neighbor metadata and reference_scores
-/// 6. Sort by reference_score descending (most important first)
-pub fn expand_graph(pivots: &[Pivot], db: &SymbolDatabase) -> Result<GraphExpansion> {
-    let pivot_symbols: Vec<Symbol> = pivots
-        .iter()
-        .map(|pivot| Symbol {
-            id: pivot.result.id.clone(),
-            name: pivot.result.name.clone(),
-            kind: crate::extractors::base::SymbolKind::from_string(&pivot.result.kind),
-            language: pivot.result.language.clone(),
-            file_path: pivot.result.file_path.clone(),
-            start_line: pivot.result.start_line,
-            end_line: pivot.result.start_line,
-            start_column: 0,
-            end_column: 0,
-            start_byte: 0,
-            end_byte: 0,
-            parent_id: None,
-            signature: Some(pivot.result.signature.clone()),
-            doc_comment: None,
-            visibility: None,
-            metadata: None,
-            semantic_group: None,
-            confidence: None,
-            code_context: None,
-            content_type: None,
-        })
-        .collect();
-    expand_graph_from_symbols(&pivot_symbols, db)
-}
-
-pub fn expand_graph_from_symbols(
-    symbols: &[Symbol],
-    db: &SymbolDatabase,
-) -> Result<GraphExpansion> {
-    if symbols.is_empty() {
-        return Ok(GraphExpansion {
-            neighbors: Vec::new(),
-        });
-    }
-
-    let pivot_ids_vec: Vec<String> = symbols.iter().map(|symbol| symbol.id.clone()).collect();
-    expand_graph_from_ids(symbols, &pivot_ids_vec, db)
-}
-
-fn expand_graph_from_ids(
-    symbols: &[Symbol],
-    pivot_ids_vec: &[String],
-    db: &SymbolDatabase,
-) -> Result<GraphExpansion> {
-    if symbols.is_empty() {
-        return Ok(GraphExpansion {
-            neighbors: Vec::new(),
-        });
-    }
-
-    // Collect pivot IDs for exclusion and batched relationship queries
-    let pivot_ids: HashSet<String> = pivot_ids_vec.iter().cloned().collect();
-
-    // For each neighbor, track: (relationship_kind, direction) — first seen wins
-    let mut neighbor_map: HashMap<String, (RelationshipKind, NeighborDirection)> = HashMap::new();
-
-    let incoming = db.get_relationships_to_symbols(pivot_ids_vec)?;
-    for rel in incoming {
-        let neighbor_id = &rel.from_symbol_id;
-        if !pivot_ids.contains(neighbor_id) {
-            neighbor_map
-                .entry(neighbor_id.clone())
-                .or_insert_with(|| (rel.kind, NeighborDirection::Incoming));
-        }
-    }
-
-    let outgoing = db.get_outgoing_relationships_for_symbols(pivot_ids_vec)?;
-    for rel in outgoing {
-        let neighbor_id = &rel.to_symbol_id;
-        if !pivot_ids.contains(neighbor_id) {
-            neighbor_map
-                .entry(neighbor_id.clone())
-                .or_insert_with(|| (rel.kind, NeighborDirection::Outgoing));
-        }
-    }
-
-    // Identifier-based neighbor expansion: fills in when relationships are sparse.
-    // This is critical for TypeScript (and similar languages) where type usages and
-    // call references live in the identifiers table rather than the relationships table.
-    // Relationship-based entries take priority (or_insert keeps first-seen).
-    //
-    // Shared helper in `crate::database::impact_graph` so `walk_impacts`
-    // (blast_radius) stays in sync.
-    let pivot_names: Vec<String> = symbols.iter().map(|symbol| symbol.name.clone()).collect();
-    if let Ok(identifier_edges) =
-        crate::database::impact_graph::identifier_incoming_edges(db, &pivot_names, &pivot_ids)
-    {
-        for (container_id, kind) in identifier_edges {
-            neighbor_map
-                .entry(container_id)
-                .or_insert((kind, NeighborDirection::Incoming));
-        }
-    }
-
-    if neighbor_map.is_empty() {
-        return Ok(GraphExpansion {
-            neighbors: Vec::new(),
-        });
-    }
-
-    // Batch-fetch symbol metadata
-    let neighbor_ids: Vec<String> = neighbor_map.keys().cloned().collect();
-    let symbols = db.get_symbols_by_ids(&neighbor_ids)?;
-
-    // Batch-fetch reference scores
-    let id_refs: Vec<&str> = neighbor_ids.iter().map(|s| s.as_str()).collect();
-    let ref_scores = db.get_reference_scores(&id_refs)?;
-
-    // Build neighbors with metadata
-    let mut neighbors: Vec<Neighbor> = symbols
-        .into_iter()
-        .filter_map(|sym| {
-            let (kind, direction) = neighbor_map.remove(&sym.id)?;
-            let reference_score = ref_scores.get(&sym.id).copied().unwrap_or(0.0);
-            Some(Neighbor {
-                symbol: sym,
-                relationship_kind: kind,
-                direction,
-                reference_score,
-            })
-        })
-        .collect();
-
-    // Sort by reference_score descending
-    neighbors.sort_by(|a, b| {
-        b.reference_score
-            .partial_cmp(&a.reference_score)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
-
-    Ok(GraphExpansion { neighbors })
-}
-
 /// Run the full get_context pipeline: search → rank → expand → allocate → format.
-///
-/// This is the testable core — takes raw DB and SearchIndex references,
-/// independent of the MCP handler. Called by `run()` inside `spawn_blocking`.
 pub fn run_pipeline(
     query: &str,
     max_tokens: Option<u32>,
@@ -233,6 +57,7 @@ pub fn run_pipeline_with_options(
     spillover_session: Option<(&str, SpilloverFormat)>,
 ) -> Result<String> {
     use super::allocation::TokenBudget;
+    use super::entries::{build_neighbor_entries, build_pivot_entries};
     use super::formatting::{ContextData, format_context_with_mode, format_neighbor_rows};
     use crate::search::index::SearchFilter;
 
@@ -255,7 +80,6 @@ pub fn run_pipeline_with_options(
         embedding_provider,
         Some(profile),
     )?;
-
     let output_format = super::formatting::OutputFormat::from_option(format.as_deref());
 
     if search_results.results.is_empty() {
@@ -272,10 +96,9 @@ pub fn run_pipeline_with_options(
     let result_ids: Vec<&str> = search_results
         .results
         .iter()
-        .map(|r| r.id.as_str())
+        .map(|result| result.id.as_str())
         .collect();
     let ref_scores = db.get_reference_scores(&result_ids)?;
-
     let pivots = if resolved_signals.is_empty() {
         super::scoring::select_pivots_with_code_fallback_for_query(
             query,
@@ -309,7 +132,10 @@ pub fn run_pipeline_with_options(
     };
     let allocation = budget.allocate(pivots.len(), expansion.neighbors.len());
 
-    let pivot_ids: Vec<&str> = pivots.iter().map(|p| p.result.id.as_str()).collect();
+    let pivot_ids: Vec<&str> = pivots
+        .iter()
+        .map(|pivot| pivot.result.id.as_str())
+        .collect();
     let pivot_ref_scores = db.get_reference_scores(&pivot_ids)?;
     let pivot_entries =
         build_pivot_entries(&pivots, &expansion, db, &allocation, &pivot_ref_scores)?;
@@ -351,306 +177,7 @@ pub fn run_pipeline_with_options(
     Ok(format_context_with_mode(&context_data, output_format))
 }
 
-/// Pre-fetched data for building pivot entries without N+1 DB queries.
-///
-/// All data is loaded in batch before the per-pivot loop runs.
-struct PivotBatchData {
-    /// Full symbol bodies, keyed by symbol ID (empty if SignatureOnly mode).
-    full_symbols: HashMap<String, Symbol>,
-    /// Related symbol names/paths, keyed by symbol ID.
-    related_symbols: HashMap<String, (String, String)>,
-    /// Incoming relationship source IDs, grouped by target pivot ID.
-    incoming_by_pivot: HashMap<String, Vec<String>>,
-    /// Outgoing relationship target IDs, grouped by source pivot ID.
-    outgoing_by_pivot: HashMap<String, Vec<String>>,
-}
-
-/// Batch-fetch all data needed to build pivot entries.
-///
-/// Replaces per-pivot N+1 queries with 3-4 batched DB calls.
-fn fetch_pivot_batch_data(
-    pivot_ids: &[String],
-    expansion: &GraphExpansion,
-    db: &SymbolDatabase,
-    _pivot_mode: &super::allocation::PivotMode,
-) -> Result<PivotBatchData> {
-    // Always fetch full symbols — even in SignatureOnly mode we need metadata
-    // for test quality labels. Code bodies are only used in FullBody/SignatureAndKey
-    // modes (handled by build_pivot_entries).
-    let full_symbols: HashMap<String, Symbol> = db
-        .get_symbols_by_ids(pivot_ids)?
-        .into_iter()
-        .map(|s| (s.id.clone(), s))
-        .collect();
-
-    // 2. Relationships (batched)
-    let incoming_rels = db.get_relationships_to_symbols(pivot_ids)?;
-    let outgoing_rels = db.get_outgoing_relationships_for_symbols(pivot_ids)?;
-
-    // 3. Resolve related symbol names — seed from expansion neighbors, fill gaps from DB
-    let mut related_ids: Vec<String> = incoming_rels
-        .iter()
-        .map(|r| r.from_symbol_id.clone())
-        .collect();
-    related_ids.extend(outgoing_rels.iter().map(|r| r.to_symbol_id.clone()));
-    related_ids.sort();
-    related_ids.dedup();
-
-    let mut related_symbols: HashMap<String, (String, String)> = expansion
-        .neighbors
-        .iter()
-        .map(|n| {
-            (
-                n.symbol.id.clone(),
-                (n.symbol.name.clone(), n.symbol.file_path.clone()),
-            )
-        })
-        .collect();
-
-    if !related_ids.is_empty() {
-        for sym in db.get_symbols_by_ids(&related_ids)? {
-            related_symbols
-                .entry(sym.id.clone())
-                .or_insert((sym.name, sym.file_path));
-        }
-    }
-
-    // 4. Group relationships by pivot
-    let mut incoming_by_pivot: HashMap<String, Vec<String>> = HashMap::new();
-    for rel in &incoming_rels {
-        incoming_by_pivot
-            .entry(rel.to_symbol_id.clone())
-            .or_default()
-            .push(rel.from_symbol_id.clone());
-    }
-
-    let mut outgoing_by_pivot: HashMap<String, Vec<String>> = HashMap::new();
-    for rel in &outgoing_rels {
-        outgoing_by_pivot
-            .entry(rel.from_symbol_id.clone())
-            .or_default()
-            .push(rel.to_symbol_id.clone());
-    }
-
-    Ok(PivotBatchData {
-        full_symbols,
-        related_symbols,
-        incoming_by_pivot,
-        outgoing_by_pivot,
-    })
-}
-
-/// Build PivotEntry structs from pivots, selecting content based on PivotMode.
-fn build_pivot_entries(
-    pivots: &[Pivot],
-    expansion: &GraphExpansion,
-    db: &SymbolDatabase,
-    allocation: &super::allocation::Allocation,
-    reference_scores: &HashMap<String, f64>,
-) -> Result<Vec<super::formatting::PivotEntry>> {
-    use super::allocation::PivotMode;
-    use super::formatting::PivotEntry;
-
-    let pivot_ids: Vec<String> = pivots.iter().map(|p| p.result.id.clone()).collect();
-    let per_pivot_tokens = allocation.pivot_tokens as usize / pivots.len().max(1);
-    let batch = fetch_pivot_batch_data(&pivot_ids, expansion, db, &allocation.pivot_mode)?;
-
-    let mut entries = Vec::with_capacity(pivots.len());
-
-    for pivot in pivots {
-        let content = match allocation.pivot_mode {
-            PivotMode::FullBody => {
-                if let Some(full_symbol) = batch.full_symbols.get(&pivot.result.id) {
-                    full_symbol
-                        .code_context
-                        .as_deref()
-                        .map(str::to_string)
-                        .unwrap_or_else(|| pivot.result.signature.clone())
-                } else {
-                    pivot.result.signature.clone()
-                }
-            }
-            PivotMode::SignatureAndKey => {
-                if let Some(full_symbol) = batch.full_symbols.get(&pivot.result.id) {
-                    if let Some(code) = full_symbol.code_context.as_deref() {
-                        abbreviate_code(code)
-                    } else {
-                        pivot.result.signature.clone()
-                    }
-                } else {
-                    pivot.result.signature.clone()
-                }
-            }
-            PivotMode::SignatureOnly => pivot.result.signature.clone(),
-        };
-
-        let content = truncate_to_token_budget_with_hint(
-            &content,
-            per_pivot_tokens,
-            Some(&pivot.result.name),
-        );
-
-        let (incoming_names, outgoing_names) = get_pivot_relationship_names_batched(
-            &pivot.result.id,
-            &batch.incoming_by_pivot,
-            &batch.outgoing_by_pivot,
-            &batch.related_symbols,
-        );
-
-        let ref_score = reference_scores
-            .get(&pivot.result.id)
-            .copied()
-            .unwrap_or(0.0);
-
-        let test_quality_label = batch
-            .full_symbols
-            .get(&pivot.result.id)
-            .and_then(|sym| sym.metadata.as_ref())
-            .and_then(|m| m.get("test_quality"))
-            .and_then(|tq| tq.get("quality_tier"))
-            .and_then(|t| t.as_str())
-            .map(String::from);
-
-        entries.push(PivotEntry {
-            name: pivot.result.name.clone(),
-            file_path: pivot.result.file_path.clone(),
-            start_line: pivot.result.start_line,
-            kind: pivot.result.kind.clone(),
-            reference_score: ref_score,
-            content,
-            incoming_names,
-            outgoing_names,
-            test_quality_label,
-        });
-    }
-
-    Ok(entries)
-}
-
-/// Get incoming and outgoing relationship names for a pivot symbol.
-///
-/// Uses the neighbor list from graph expansion where possible,
-/// and falls back to direct DB queries for callers/callees of this pivot.
-fn get_pivot_relationship_names_batched(
-    pivot_id: &str,
-    incoming_by_pivot: &HashMap<String, Vec<String>>,
-    outgoing_by_pivot: &HashMap<String, Vec<String>>,
-    symbols_by_id: &HashMap<String, (String, String)>,
-) -> (Vec<String>, Vec<String>) {
-    let mut incoming_names = Vec::new();
-    let mut outgoing_names = Vec::new();
-
-    // Filter: skip noise callee names and test file symbols
-    let should_include = |name: &str, path: &str| -> bool {
-        !NOISE_CALLEE_NAMES.contains(&name) && !is_test_path(path)
-    };
-
-    if let Some(incoming_ids) = incoming_by_pivot.get(pivot_id) {
-        for related_id in incoming_ids {
-            if let Some((name, path)) = symbols_by_id.get(related_id) {
-                if should_include(&name, &path) {
-                    incoming_names.push(name.clone());
-                }
-            }
-        }
-    }
-
-    if let Some(outgoing_ids) = outgoing_by_pivot.get(pivot_id) {
-        for related_id in outgoing_ids {
-            if let Some((name, path)) = symbols_by_id.get(related_id) {
-                if should_include(&name, &path) {
-                    outgoing_names.push(name.clone());
-                }
-            }
-        }
-    }
-
-    (incoming_names, outgoing_names)
-}
-
-// Noise callee names are shared across tools — see NOISE_CALLEE_NAMES in shared.rs
-
-/// Build NeighborEntry structs from graph expansion results, filtering noise.
-/// Filters out: common trait methods (clone, fmt, etc.) and test file symbols.
-const MAX_NEIGHBOR_ENTRIES: usize = 200;
-
-#[derive(Default)]
-struct NeighborBuildOutput {
-    entries: Vec<super::formatting::NeighborEntry>,
-    overflow_entries: Vec<super::formatting::NeighborEntry>,
-}
-
-fn build_neighbor_entries(
-    expansion: &GraphExpansion,
-    neighbor_token_budget: u32,
-    prefer_tests: bool,
-) -> NeighborBuildOutput {
-    use super::formatting::NeighborEntry;
-
-    // Scale char budget from the caller's token allocation (rough: 4 chars/token).
-    // Keep a modest floor so tiny budgets still show something, but do not force
-    // the old 2400-char minimum now that spillover can carry the overflow.
-    let char_budget = ((neighbor_token_budget as usize) * 4).max(800);
-
-    let mut estimated_chars: usize = 0;
-    let mut entries = Vec::new();
-    let mut overflow_entries = Vec::new();
-
-    for neighbor in expansion
-        .neighbors
-        .iter()
-        .filter(|neighbor| !NOISE_CALLEE_NAMES.contains(&neighbor.symbol.name.as_str()))
-        .filter(|neighbor| prefer_tests || !is_test_path(&neighbor.symbol.file_path))
-        .take(MAX_NEIGHBOR_ENTRIES)
-    {
-        // Estimate chars for this entry: name + file_path + line digits + kind + sig + doc
-        let entry_char_estimate = neighbor.symbol.name.len()
-            + neighbor.symbol.file_path.len()
-            + 10 // line number, separators, label overhead
-            + neighbor
-                .symbol
-                .signature
-                .as_ref()
-                .map(|s| s.len())
-                .unwrap_or(0)
-            + neighbor
-                .symbol
-                .doc_comment
-                .as_ref()
-                .map(|d| d.len().min(120))
-                .unwrap_or(0);
-
-        let entry = NeighborEntry {
-            name: neighbor.symbol.name.clone(),
-            file_path: neighbor.symbol.file_path.clone(),
-            start_line: neighbor.symbol.start_line,
-            kind: format!("{:?}", neighbor.symbol.kind).to_lowercase(),
-            signature: neighbor.symbol.signature.clone(),
-            doc_summary: neighbor
-                .symbol
-                .doc_comment
-                .as_ref()
-                .map(|d| crate::embeddings::metadata::first_sentence(d))
-                .filter(|s| !s.is_empty()),
-        };
-
-        if estimated_chars + entry_char_estimate > char_budget && !entries.is_empty() {
-            overflow_entries.push(entry);
-            continue;
-        }
-
-        estimated_chars += entry_char_estimate;
-        entries.push(entry);
-    }
-
-    NeighborBuildOutput {
-        entries,
-        overflow_entries,
-    }
-}
-
 /// Handler entry point: extracts DB and SearchIndex from handler, delegates to run_pipeline.
-/// Supports both the primary workspace and explicit workspace targets.
 pub async fn run(tool: &GetContextTool, handler: &JulieServerHandler) -> Result<String> {
     let workspace_target = resolve_workspace_filter(tool.workspace.as_deref(), handler).await?;
 
@@ -666,17 +193,14 @@ pub async fn run(tool: &GetContextTool, handler: &JulieServerHandler) -> Result<
 
     match workspace_target {
         WorkspaceTarget::Target(target_workspace_id) => {
-            // Target workspace: use handler helpers for DB + SearchIndex access.
             debug!("get_context: using workspace {}", target_workspace_id);
 
-            // Get Arcs for target workspace DB and search index.
             let db_arc = handler
                 .get_database_for_workspace(&target_workspace_id)
                 .await?;
             let si_arc = handler
                 .get_search_index_for_workspace(&target_workspace_id)
                 .await?;
-
             let embedding_provider = handler.embedding_provider().await;
 
             let result = tokio::task::spawn_blocking(move || -> Result<String> {
@@ -685,7 +209,6 @@ pub async fn run(tool: &GetContextTool, handler: &JulieServerHandler) -> Result<
                         "No search index for workspace. Run manage_workspace(operation=\"refresh\") first."
                     )
                 })?;
-                // Lock order: SearchIndex first, then DB (matches text_search.rs and Primary arm)
                 let index = si
                     .lock()
                     .map_err(|e| anyhow::anyhow!("Search index lock error: {}", e))?;
@@ -712,9 +235,7 @@ pub async fn run(tool: &GetContextTool, handler: &JulieServerHandler) -> Result<
             Ok(result)
         }
         WorkspaceTarget::Primary => {
-            // Primary workspace: use the current-primary DB/search store.
             let (db, search_index) = handler.primary_database_and_search_index().await?;
-
             let embedding_provider = handler.embedding_provider().await;
 
             let result = tokio::task::spawn_blocking(move || -> Result<String> {
@@ -744,4 +265,3 @@ pub async fn run(tool: &GetContextTool, handler: &JulieServerHandler) -> Result<
         }
     }
 }
-

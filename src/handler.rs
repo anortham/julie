@@ -2572,7 +2572,7 @@ impl JulieServerHandler {
 
     #[tool(
         name = "get_context",
-        description = "Get token-budgeted context for a concept or task. Returns a relevant code subgraph with pivots (full code) and neighbors (signatures). Use at the start of a task for orientation. Task inputs `edited_files`, `entry_symbols`, `stack_trace`, `failing_test` focus the subgraph.",
+        description = "Get token-budgeted context for a concept or task. Returns a relevant code subgraph with pivots (full code) and neighbors (signatures). Use at the start of a task for orientation. Task inputs `edited_files`, `entry_symbols`, `stack_trace`, `failing_test`, `max_hops`, and `prefer_tests` focus the subgraph.",
         annotations(
             title = "Get Context",
             read_only_hint = true,
@@ -2654,7 +2654,7 @@ impl JulieServerHandler {
 
     #[tool(
         name = "spillover_get",
-        description = "Fetch the next page for a stored graph-heavy result set without rerunning the underlying query.",
+        description = "Fetch the next page for a stored graph-heavy result set using a `spillover_handle`, without rerunning the underlying query.",
         annotations(
             title = "Get Spillover Page",
             read_only_hint = true,

@@ -16,10 +16,7 @@ use crate::search::scoring::is_test_path;
 /// Only expand when the caller opted into `max_hops >= 2` and the first-hop
 /// produced fewer than four non-test neighbors — otherwise the first hop is
 /// already informative enough.
-pub(super) fn should_expand_second_hop(
-    signals: &TaskSignals,
-    expansion: &GraphExpansion,
-) -> bool {
+pub(super) fn should_expand_second_hop(signals: &TaskSignals, expansion: &GraphExpansion) -> bool {
     if signals.max_hops < 2 {
         return false;
     }

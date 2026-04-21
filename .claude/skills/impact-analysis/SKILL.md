@@ -2,8 +2,8 @@
 name: impact-analysis
 description: Analyze what would break if a symbol changes: finds callers, groups by risk level, assesses impact. Use when the user asks about blast radius, who uses a symbol, or is planning a refactor.
 user-invocable: true
-arguments: "<symbol_name>"
-allowed-tools: mcp__julie__fast_refs, mcp__julie__deep_dive, mcp__julie__get_context, mcp__julie__blast_radius, mcp__julie__spillover_get
+arguments: "<symbol, file path, or change target>"
+allowed-tools: mcp__julie__fast_search, mcp__julie__fast_refs, mcp__julie__deep_dive, mcp__julie__get_context, mcp__julie__blast_radius, mcp__julie__spillover_get, mcp__julie__manage_workspace
 ---
 
 # Impact Analysis
@@ -12,22 +12,33 @@ Analyze the impact of changing a symbol by finding all references and assessing 
 
 ## Process
 
-### Step 1: One-shot impact via blast_radius
+### Step 1: Resolve the change target
+
+If the user gives you a symbol name, resolve the definition first so you know which file or symbol they mean:
 
 ```
-blast_radius(symbol_ids=["<id>"], max_depth=2, include_tests=true)
+fast_search(query="<symbol_name>", search_target="definitions")
+deep_dive(symbol="<symbol_name>", context_file="<partial_file_path>", depth="overview")
+```
+
+Use `context_file` when the name is ambiguous. `blast_radius(symbol_ids=[...])` is the tightest seed mode, but only use it when another Julie result already gave you concrete symbol IDs. If all you have is a definition file, use `file_paths=[...]`.
+
+### Step 2: One-shot impact via blast_radius
+
+```
+blast_radius(file_paths=["<definition_file>"], max_depth=2, include_tests=true)
 ```
 
 `blast_radius` is the primary entry point for impact analysis. One call returns ranked impacted symbols with why-reasons, likely tests, and (for revision-range seeds) deleted files. It walks the reference graph deterministically, so you don't have to chain `get_context → fast_refs → deep_dive` to build the same picture.
 
 You can seed it three ways:
-- `symbol_ids=["<id>"]` — impact of changing one or more specific symbols
-- `file_paths=["src/foo.rs"]` — impact of editing whole files
-- `from_revision="<ref>"`, `to_revision="<ref>"` — impact of a commit range
+- `file_paths=["src/foo.rs"]` — default when you know the changed file but not a symbol ID
+- `symbol_ids=["<id>"]` — tighter impact when another Julie result already gave you concrete symbol IDs
+- `from_revision=<number>`, `to_revision=<number>` — advanced mode using Julie's canonical revision numbers, not Git refs or SHAs
 
-If the impact list is large, the first page includes `spillover_handle=br_xxx`. Hold onto it for Step 3.
+If the impact list is large, the first page includes `spillover_handle=br_xxx`. Hold onto it for Step 4.
 
-### Step 2: Drill down into high-risk callers
+### Step 3: Drill down into high-risk callers
 
 For any impacted symbol you need to understand in depth (unfamiliar caller, ambiguous usage, high centrality), use the targeted tools:
 
@@ -42,9 +53,9 @@ If `deep_dive` returns the wrong symbol (common names like `new`, `result`, `con
 deep_dive(symbol="<caller>", context_file="<partial_file_path>")
 ```
 
-### Step 3: Page long impact lists
+### Step 4: Page long impact lists
 
-If Step 1 returned `spillover_handle=br_xxx`, fetch the rest without rerunning the walk:
+If Step 2 returned `spillover_handle=br_xxx`, fetch the rest without rerunning the walk:
 
 ```
 spillover_get(spillover_handle="br_xxx")
@@ -54,15 +65,15 @@ Keep paging until the handle stops appearing.
 
 ### Reviewing what changed since a revision
 
-For "what's the blast radius of everything that shipped since the last deploy?" use revision-range seeds:
+For "what's the blast radius of everything that changed in a recorded Julie revision range?" use revision-range seeds:
 
 ```
-blast_radius(from_revision="<base>", to_revision="<head>", include_tests=true)
+blast_radius(from_revision=101, to_revision=108, include_tests=true)
 ```
 
-This walks from every symbol touched in that range. Deleted files get reported in a separate section of the output (they have no symbols to walk from, so they need explicit callout). Useful for pre-deploy reviews and post-incident diffs.
+This walks from every symbol touched in that range. Deleted files get reported in a separate section of the output because they have no symbols left to walk from. Do not pass branch names, SHAs, or tags here, the tool only accepts canonical numeric revisions.
 
-### Step 4: Sample Deep Dives on High-Risk Callers
+### Step 5: Sample Deep Dives on High-Risk Callers
 
 For each high-risk file surfaced by `blast_radius`, `deep_dive` on the calling function to understand HOW the symbol is used:
 - Is it called with specific arguments?
@@ -87,10 +98,10 @@ For each high-risk file surfaced by `blast_radius`, `deep_dive` on the calling f
 - Test files (paths containing `test`, `tests`, `spec`, `__tests__`, or test annotations)
 - Files with 1-2 references
 
-### Step 5: Report
+### Step 6: Report
 
 ```
-Impact Analysis: <symbol_name>
+Impact Analysis: <change_target>
 Definition: <file>:<line> (<kind>)
 Centrality: <high/medium/low>
 

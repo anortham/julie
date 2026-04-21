@@ -64,6 +64,55 @@ fn test_spillover_store_pages_rows_and_issues_next_handle() {
 }
 
 #[test]
+fn test_spillover_store_replays_identical_handles_for_same_payload_and_page() {
+    let store = SpilloverStore::new(32, Duration::from_secs(60));
+
+    let first_handle = store
+        .store_rows(
+            "session-a",
+            "br",
+            "Impact overflow",
+            vec![
+                "row 1".to_string(),
+                "row 2".to_string(),
+                "row 3".to_string(),
+            ],
+            1,
+            1,
+            SpilloverFormat::Readable,
+        )
+        .expect("overflow handle");
+    let second_handle = store
+        .store_rows(
+            "session-a",
+            "br",
+            "Impact overflow",
+            vec![
+                "row 1".to_string(),
+                "row 2".to_string(),
+                "row 3".to_string(),
+            ],
+            1,
+            1,
+            SpilloverFormat::Readable,
+        )
+        .expect("overflow handle");
+
+    assert_eq!(
+        first_handle, second_handle,
+        "identical overflow payloads should reuse the same root handle"
+    );
+
+    let first_page = store.page("session-a", &first_handle, None, None).unwrap();
+    let replayed_page = store.page("session-a", &first_handle, None, None).unwrap();
+
+    assert_eq!(
+        first_page, replayed_page,
+        "repeated paging calls should be replayable instead of minting fresh handles"
+    );
+}
+
+#[test]
 fn test_spillover_store_rejects_foreign_session_handles() {
     let store = SpilloverStore::new(32, Duration::from_secs(60));
     let handle = store

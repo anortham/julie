@@ -473,6 +473,54 @@ mod graph_expansion_tests {
         );
     }
 
+    #[test]
+    fn test_expand_graph_preserves_identifier_call_relationship_kind() {
+        let (_tmp, mut db) = setup_db();
+
+        let pivot_sym = make_symbol(
+            "sym_iface",
+            "BuildPipeline",
+            SymbolKind::Function,
+            "src/main.rs",
+            1,
+        );
+        let caller = make_symbol(
+            "sym_caller",
+            "setup_handler",
+            SymbolKind::Function,
+            "src/handler.rs",
+            5,
+        );
+        db.store_symbols(&[pivot_sym, caller]).unwrap();
+
+        db.conn
+            .execute(
+                "INSERT INTO identifiers (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, containing_symbol_id, target_symbol_id, confidence)
+                 VALUES ('ident_call', 'BuildPipeline', 'call', 'typescript', 'src/handler.rs', 6, 0, 6, 13, 0, 100, 'sym_caller', 'sym_iface', 0.95)",
+                [],
+            )
+            .unwrap();
+
+        let pivots = vec![make_pivot("sym_iface", "BuildPipeline", 9.0)];
+        let expansion = expand_graph(&pivots, &db).unwrap();
+
+        let caller_neighbor = expansion
+            .neighbors
+            .iter()
+            .find(|neighbor| neighbor.symbol.id == "sym_caller")
+            .expect("identifier call should surface the caller as a neighbor");
+        assert_eq!(
+            caller_neighbor.direction,
+            NeighborDirection::Incoming,
+            "identifier-based callers should remain incoming neighbors"
+        );
+        assert_eq!(
+            caller_neighbor.relationship_kind,
+            RelationshipKind::Calls,
+            "identifier kind=call should preserve call semantics for get_context ranking"
+        );
+    }
+
     /// Identifiers with names containing SQL wildcard chars (`_`, `%`) must NOT
     /// match unrelated identifiers. Regression test for the unescaped LIKE bug in
     /// `build_name_match_clause`.

@@ -400,7 +400,10 @@ mod tests {
 
         // Run #2: clear all metadata, re-run. Output must match run #1 exactly.
         db.conn
-            .execute("UPDATE symbols SET metadata = NULL WHERE id IN ('prod_aaa', 'prod_zzz')", [])
+            .execute(
+                "UPDATE symbols SET metadata = NULL WHERE id IN ('prod_aaa', 'prod_zzz')",
+                [],
+            )
             .unwrap();
         crate::analysis::test_linkage::compute_test_linkage(&db).unwrap();
 

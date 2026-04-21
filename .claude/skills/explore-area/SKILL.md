@@ -3,7 +3,7 @@ name: explore-area
 description: Orient on a new codebase area using get_context for token-budgeted exploration. Use when the user asks "what does this module do", "explain this part", or wants to understand an unfamiliar area before making changes.
 user-invocable: true
 arguments: "<query or concept>"
-allowed-tools: mcp__julie__get_context, mcp__julie__deep_dive, mcp__julie__get_symbols, mcp__julie__spillover_get
+allowed-tools: mcp__julie__get_context, mcp__julie__deep_dive, mcp__julie__get_symbols, mcp__julie__spillover_get, mcp__julie__manage_workspace
 ---
 
 # Explore Area
