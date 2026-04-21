@@ -211,6 +211,10 @@ pub(crate) fn hydrate_failing_test_links(
         .map(|(_, leaf)| leaf)
         .unwrap_or(failing_test.as_str());
 
+    // LIKE patterns must escape `%` and `_` so path or name segments containing
+    // those characters (e.g. `payment_service_tests.rs`) match literally instead
+    // of as wildcards. The escape convention matches `build_name_match_clause`
+    // in `src/database/identifiers.rs` and `relationships.rs`.
     let mut stmt = db.conn.prepare(
         "SELECT id
          FROM symbols
@@ -229,8 +233,8 @@ pub(crate) fn hydrate_failing_test_links(
                      )
                  ) AS linked_path
                  WHERE linked_path.value = ?1
-                    OR linked_path.value LIKE '%' || ?1
-                    OR ?1 LIKE '%' || linked_path.value
+                    OR linked_path.value LIKE '%' || REPLACE(REPLACE(REPLACE(?1, '\\', '\\\\'), '%', '\\%'), '_', '\\_') ESCAPE '\\'
+                    OR ?1 LIKE '%' || REPLACE(REPLACE(REPLACE(linked_path.value, '\\', '\\\\'), '%', '\\%'), '_', '\\_') ESCAPE '\\'
              )
              OR EXISTS (
                  SELECT 1
@@ -242,7 +246,6 @@ pub(crate) fn hydrate_failing_test_links(
                      )
                  ) AS linked_test
                  WHERE linked_test.value = ?2
-                    OR ?2 LIKE '%::' || linked_test.value
              )
          )",
     )?;

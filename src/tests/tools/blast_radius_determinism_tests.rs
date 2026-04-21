@@ -342,6 +342,20 @@ async fn test_walk_impacts_preserves_identifier_call_kind_and_resolved_target() 
             beta_adapter.via_symbol_name, "BetaStore",
             "identifier-derived impacts should use the resolved target symbol, not the first seed"
         );
+
+        let alpha_adapter = impacts
+            .iter()
+            .find(|candidate| candidate.symbol.id == "alpha_adapter")
+            .expect("alpha_adapter should be discovered via identifiers");
+        assert_eq!(
+            alpha_adapter.relationship_kind,
+            crate::extractors::RelationshipKind::References,
+            "identifier kind=type_usage should map to a References edge"
+        );
+        assert_eq!(
+            alpha_adapter.via_symbol_name, "AlphaStore",
+            "multi-seed identifier walks should resolve each target via target_symbol_id, not fall back to frontier-first"
+        );
     }
 
     Ok(())

@@ -310,4 +310,45 @@ mod tests {
             "unlinked symbols should not be hydrated"
         );
     }
+
+    #[test]
+    fn test_hydrate_failing_test_links_treats_underscores_as_literals() {
+        let mut unrelated = make_symbol(
+            "unrelated",
+            "unrelated_symbol",
+            "src/unrelated.rs",
+            "fn unrelated_symbol() {}",
+        );
+        // Path uses literal 'X' chars at the positions where the failing test
+        // path has '_'. Without ESCAPE on the LIKE patterns, SQLite treats the
+        // '_' in the failing-test parameter as a single-char wildcard and the
+        // 'X's would match it — a false positive. The escape pass should make
+        // the underscore a literal so this row stays unmatched.
+        unrelated.metadata = Some(
+            serde_json::from_value(serde_json::json!({
+                "test_linkage": {
+                    "test_count": 1,
+                    "best_tier": "thorough",
+                    "worst_tier": "thorough",
+                    "linked_tests": ["something_else"],
+                    "linked_test_paths": ["tests/paymentXserviceXtests.rs"],
+                    "evidence_sources": ["relationship"]
+                }
+            }))
+            .unwrap(),
+        );
+
+        let (_db_dir, _index_dir, db, _index) = setup_env(&[unrelated], &[]);
+        let mut signals = TaskSignals {
+            failing_test: Some("tests/payment_service_tests.rs".to_string()),
+            ..TaskSignals::default()
+        };
+
+        hydrate_failing_test_links(&db, &mut signals).unwrap();
+
+        assert!(
+            !signals.failing_test_linked_symbol_ids.contains("unrelated"),
+            "underscores in the failing-test path must be literal, not LIKE wildcards"
+        );
+    }
 }
