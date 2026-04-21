@@ -161,15 +161,24 @@ async fn execute_content_search(
 
         relaxed |= result.relaxed;
         total_results += result.matches.len();
-        let workspace_total = result.matches.len().max(1) as f32;
 
-        for (idx, line_match) in result.matches.into_iter().enumerate() {
-            let score = workspace_total - idx as f32;
+        // Content (line-mode) hits carry a neutral 0.0 score intentionally.
+        // The previous synthetic `workspace_total - idx as f32` looked like
+        // a score but was count-derived ranking noise — it gave downstream
+        // consumers (dashboard compare bench, telemetry, agent prompts) the
+        // false impression that line-mode results had a meaningful
+        // relevance signal. Real per-line BM25 is deferred (see the
+        // dashboard-scoring doc); until that lands, content hits are
+        // unranked and the list order is the order line_mode_matches
+        // emitted them. `sort_hits_by_score_desc` becomes a stable no-op
+        // here because Rust's sort preserves insertion order for equal
+        // keys.
+        for line_match in result.matches.into_iter() {
             hits.push(SearchHit::from_line_match(
                 line_match,
                 workspace.workspace_id.clone(),
                 infer_language(params.language),
-                score,
+                0.0_f32,
             ));
         }
     }

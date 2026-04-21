@@ -1,6 +1,7 @@
 // Tests extracted from src/tools/search.rs
 // These were previously inline tests that have been moved to follow project standards
 
+mod content_scoring_tests;
 mod definition_overfetch_tests;
 mod definition_promotion_tests;
 mod file_pattern_tests;
