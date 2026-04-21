@@ -17,6 +17,7 @@ pub use self::types::{LineMatch, LineMatchStrategy};
 // Internal modules
 pub(crate) mod execution;
 pub(crate) mod formatting; // Exposed for testing
+pub(crate) mod hint_formatter;
 pub(crate) mod line_mode;
 mod nl_embeddings;
 pub(crate) mod query;
@@ -276,7 +277,7 @@ impl FastSearchTool {
                 }
             }
 
-            let execution = execution::execute_search(
+            let mut execution = execution::execute_search(
                 execution::SearchExecutionParams {
                     query: &self.query,
                     language: &self.language,
@@ -292,11 +293,26 @@ impl FastSearchTool {
             .await?;
 
             if execution.hits.is_empty() {
-                let message = format!(
-                    "🔍 No lines found matching: '{}'\n\
-                    💡 Try search_target=\"definitions\" if looking for a symbol name, or broaden file_pattern/language filters",
-                    self.query
-                );
+                // Multi-token content zero-hit → structured hint (plan §3.7).
+                // Single-token zero-hits flow through the auto-promotion path
+                // (Task 7); when both legs still miss, hint_kind stays None
+                // and the terse fallback below fires.
+                let message = if hint_formatter::is_multi_token_query(&self.query) {
+                    execution.trace.hint_kind = Some(trace::HintKind::MultiTokenHint);
+                    hint_formatter::build_multi_token_zero_hit_hint(
+                        &self.query,
+                        self.file_pattern.as_deref(),
+                        self.language.as_deref(),
+                        self.exclude_tests,
+                        execution.trace.zero_hit_reason.as_ref(),
+                    )
+                } else {
+                    format!(
+                        "🔍 No lines found matching: '{}'\n\
+                        💡 Try search_target=\"definitions\" if looking for a symbol name, or broaden file_pattern/language filters",
+                        self.query
+                    )
+                };
                 return Ok(FastSearchExecution {
                     result: CallToolResult::text_content(vec![Content::text(message)]),
                     execution: Some(execution),
