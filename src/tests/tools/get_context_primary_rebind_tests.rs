@@ -1,40 +1,23 @@
 use std::fs;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 
 use anyhow::Result;
 use tempfile::TempDir;
 
 use crate::daemon::database::DaemonDatabase;
 use crate::daemon::workspace_pool::WorkspacePool;
-use crate::extractors::{Symbol, SymbolKind};
 use crate::handler::JulieServerHandler;
-use crate::search::index::{SearchIndex, SymbolDocument};
 use crate::tools::get_context::GetContextTool;
+use crate::tools::workspace::ManageWorkspaceTool;
 use crate::workspace::registry::generate_workspace_id;
 
-fn rebound_symbol() -> Symbol {
-    Symbol {
-        id: "rebound-primary-symbol-id".to_string(),
-        name: "rebound_primary_symbol".to_string(),
-        kind: SymbolKind::Function,
-        language: "rust".to_string(),
-        file_path: "src/rebound.rs".to_string(),
-        start_line: 2,
-        start_column: 0,
-        end_line: 2,
-        end_column: 32,
-        start_byte: 0,
-        end_byte: 56,
-        signature: Some("pub fn rebound_primary_symbol()".to_string()),
-        doc_comment: Some("rebound context phrase".to_string()),
-        visibility: None,
-        parent_id: None,
-        metadata: None,
-        semantic_group: None,
-        confidence: None,
-        code_context: Some("pub fn rebound_primary_symbol() {}".to_string()),
-        content_type: None,
-    }
+async fn mark_index_ready(handler: &JulieServerHandler) {
+    handler
+        .indexing_status
+        .search_ready
+        .store(true, Ordering::Relaxed);
+    *handler.is_indexed.write().await = true;
 }
 
 async fn setup_rebound_primary_get_context_handler()
@@ -92,45 +75,32 @@ async fn setup_rebound_primary_get_context_handler()
     daemon_db.upsert_workspace(&rebound_id, &rebound_path_str, "ready")?;
 
     let rebound_ws = pool.get_or_init(&rebound_id, rebound_path.clone()).await?;
-    {
-        let rebound_db = rebound_ws.db.as_ref().unwrap().clone();
-        let mut rebound_db = rebound_db.lock().unwrap();
-        let file_info = crate::database::types::FileInfo {
-            path: "src/rebound.rs".to_string(),
-            language: "rust".to_string(),
-            hash: "rebound-primary-hash".to_string(),
-            size: 1,
-            last_modified: 1,
-            last_indexed: 1,
-            symbol_count: 1,
-            line_count: 2,
-            content: Some(
-                "/// rebound context phrase\npub fn rebound_primary_symbol() {}\n".to_string(),
-            ),
-        };
-        let symbol = rebound_symbol();
-        rebound_db.bulk_store_fresh_atomic(
-            &[file_info],
-            &[symbol.clone()],
-            &[],
-            &[],
-            &[],
-            &rebound_id,
-        )?;
+    let seed_handler = JulieServerHandler::new_with_shared_workspace(
+        rebound_ws,
+        rebound_path.clone(),
+        Some(Arc::clone(&daemon_db)),
+        Some(rebound_id.clone()),
+        None,
+        None,
+        None,
+        None,
+        Some(Arc::clone(&pool)),
+    )
+    .await?;
 
-        let tantivy_dir = temp_dir
-            .path()
-            .join("indexes")
-            .join(&rebound_id)
-            .join("tantivy");
-        fs::create_dir_all(&tantivy_dir)?;
-        let configs = crate::search::LanguageConfigs::load_embedded();
-        let index = SearchIndex::open_with_language_configs(&tantivy_dir, &configs)?;
-        index.add_symbol(&SymbolDocument::from_symbol(&symbol))?;
-        index.commit()?;
+    ManageWorkspaceTool {
+        operation: "index".to_string(),
+        path: Some(rebound_path_str.clone()),
+        force: Some(true),
+        name: None,
+        workspace_id: None,
+        detailed: None,
     }
+    .call_tool(&seed_handler)
+    .await?;
 
     handler.set_current_primary_binding(rebound_id.clone(), rebound_path.clone());
+    mark_index_ready(&handler).await;
 
     std::mem::forget(temp_dir);
 
@@ -148,6 +118,12 @@ async fn test_get_context_primary_uses_rebound_current_primary_store() -> Result
         language: Some("rust".to_string()),
         file_pattern: None,
         format: Some("readable".to_string()),
+        edited_files: None,
+        entry_symbols: None,
+        stack_trace: None,
+        failing_test: None,
+        max_hops: None,
+        prefer_tests: None,
     }
     .call_tool(&handler)
     .await?;
@@ -173,6 +149,12 @@ async fn test_get_context_primary_rejects_swap_gap() -> Result<()> {
         language: Some("rust".to_string()),
         file_pattern: None,
         format: Some("readable".to_string()),
+        edited_files: None,
+        entry_symbols: None,
+        stack_trace: None,
+        failing_test: None,
+        max_hops: None,
+        prefer_tests: None,
     }
     .call_tool(&handler)
     .await

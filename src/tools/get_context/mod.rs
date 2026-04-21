@@ -9,6 +9,7 @@ pub mod content;
 pub mod formatting;
 pub mod pipeline;
 pub mod scoring;
+pub mod task_signals;
 
 use anyhow::Result;
 use schemars::JsonSchema;
@@ -51,6 +52,33 @@ pub struct GetContextTool {
     /// Output format: "compact" (default) or "readable"
     #[serde(default)]
     pub format: Option<String>,
+
+    /// File paths edited in the current task. Boosts pivots and neighbors in those files.
+    #[serde(default)]
+    pub edited_files: Option<Vec<String>>,
+
+    /// Explicit symbol entry points for the current task.
+    #[serde(default)]
+    pub entry_symbols: Option<Vec<String>>,
+
+    /// Optional stack trace or file:line list for the current task.
+    #[serde(default)]
+    pub stack_trace: Option<String>,
+
+    /// Named failing test file or symbol for the current task.
+    #[serde(default)]
+    pub failing_test: Option<String>,
+
+    /// Maximum graph hop depth. Defaults to 1, with 2 enabling bounded second-hop expansion.
+    #[serde(
+        default,
+        deserialize_with = "crate::utils::serde_lenient::deserialize_option_u32_lenient"
+    )]
+    pub max_hops: Option<u32>,
+
+    /// Let test-linked symbols compete for neighbor slots when true.
+    #[serde(default)]
+    pub prefer_tests: Option<bool>,
 }
 
 impl GetContextTool {

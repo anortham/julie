@@ -2657,6 +2657,73 @@ mod data_tests {
         );
     }
 
+    #[test]
+    fn test_build_context_uses_test_symbol_metadata_for_test_refs() {
+        let (_tmp, mut db) = setup_db();
+
+        db.store_file_info(&FileInfo {
+            path: "integration/auth_flow.rs".to_string(),
+            language: "rust".to_string(),
+            hash: "hash_integration_auth_flow".to_string(),
+            size: 500,
+            last_modified: 1_000_000,
+            last_indexed: 0,
+            symbol_count: 1,
+            line_count: 0,
+            content: None,
+        })
+        .unwrap();
+
+        let target = make_symbol(
+            "sym-target",
+            "process",
+            SymbolKind::Function,
+            "src/engine.rs",
+            10,
+            None,
+            None,
+            None,
+            None,
+        );
+        let mut test_symbol = make_symbol(
+            "sym-test",
+            "auth_flow_succeeds",
+            SymbolKind::Function,
+            "integration/auth_flow.rs",
+            40,
+            None,
+            Some("fn auth_flow_succeeds()"),
+            None,
+            None,
+        );
+        test_symbol.metadata = Some(HashMap::from([(
+            "is_test".to_string(),
+            serde_json::Value::Bool(true),
+        )]));
+        db.store_symbols(&[target.clone(), test_symbol]).unwrap();
+
+        insert_identifier(
+            &db,
+            "process",
+            "call",
+            "integration/auth_flow.rs",
+            42,
+            Some("sym-test"),
+        );
+
+        let ctx = build_symbol_context(&db, &target, "context", 10, 10).unwrap();
+        assert_eq!(
+            ctx.test_refs.len(),
+            1,
+            "test_refs should honor containing symbol metadata even when the file path lacks test markers"
+        );
+        assert_eq!(ctx.test_refs[0].file_path, "integration/auth_flow.rs");
+        assert_eq!(
+            ctx.test_refs[0].symbol.as_ref().unwrap().name,
+            "auth_flow_succeeds"
+        );
+    }
+
     // === Same-file overload auto-selection tests ===
 
     #[test]

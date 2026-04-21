@@ -13,7 +13,7 @@ fn get_unix_timestamp() -> Result<i64> {
 }
 
 /// Current schema version - increment when adding migrations
-pub const LATEST_SCHEMA_VERSION: i32 = 18;
+pub const LATEST_SCHEMA_VERSION: i32 = 19;
 
 impl SymbolDatabase {
     // ============================================================
@@ -114,6 +114,7 @@ impl SymbolDatabase {
             16 => self.migration_016_add_canonical_revisions()?,
             17 => self.migration_017_add_projection_states()?,
             18 => self.migration_018_add_projected_revision_to_projection_states()?,
+            19 => self.migration_019_add_revision_file_changes()?,
             _ => return Err(anyhow!("Unknown migration version: {}", version)),
         }
         Ok(())
@@ -140,6 +141,7 @@ impl SymbolDatabase {
             16 => "Add canonical_revisions table",
             17 => "Add projection_states table",
             18 => "Add projected_revision to projection_states",
+            19 => "Add revision_file_changes table",
             _ => "Unknown migration",
         };
 
@@ -873,6 +875,29 @@ impl SymbolDatabase {
         )?;
 
         info!("Migration 018 complete: projected_revision backfilled for ready states");
+        Ok(())
+    }
+
+    fn migration_019_add_revision_file_changes(&self) -> Result<()> {
+        info!("Running migration 019: Add revision_file_changes table");
+
+        self.conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS revision_file_changes (
+                revision INTEGER NOT NULL,
+                workspace_id TEXT NOT NULL,
+                file_path TEXT NOT NULL,
+                change_kind TEXT NOT NULL CHECK(change_kind IN ('added', 'modified', 'deleted')),
+                old_hash TEXT,
+                new_hash TEXT,
+                PRIMARY KEY (revision, workspace_id, file_path)
+            );
+            CREATE INDEX IF NOT EXISTS idx_revision_file_changes_workspace_revision
+            ON revision_file_changes(workspace_id, revision);
+            CREATE INDEX IF NOT EXISTS idx_revision_file_changes_workspace_path
+            ON revision_file_changes(workspace_id, file_path);",
+        )?;
+
+        info!("Migration 019 complete: revision_file_changes table added");
         Ok(())
     }
 }

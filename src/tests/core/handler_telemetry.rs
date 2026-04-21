@@ -3,7 +3,8 @@ use crate::handler::search_telemetry;
 use crate::handler::tool_targets;
 use crate::tools::search::FastSearchTool;
 use crate::tools::search::trace::{SearchExecutionKind, SearchExecutionResult, SearchHit};
-use crate::tools::{DeepDiveTool, GetSymbolsTool};
+use crate::tools::spillover::SpilloverGetTool;
+use crate::tools::{BlastRadiusTool, DeepDiveTool, GetSymbolsTool};
 
 fn sample_symbol() -> Symbol {
     Symbol {
@@ -98,4 +99,42 @@ fn test_deep_dive_metadata_carries_symbol_and_context_file_target() {
         metadata["target"]["target_file_path"],
         "src/dashboard/routes/search.rs"
     );
+}
+
+#[test]
+fn test_spillover_get_metadata_carries_handle_and_limit() {
+    let params = SpilloverGetTool {
+        spillover_handle: "br_123".to_string(),
+        limit: Some(5),
+        format: Some("compact".to_string()),
+    };
+
+    let metadata = tool_targets::spillover_get_metadata(&params);
+
+    assert_eq!(metadata["spillover_handle"], "br_123");
+    assert_eq!(metadata["limit"], 5);
+    assert_eq!(metadata["format"], "compact");
+}
+
+#[test]
+fn test_blast_radius_metadata_carries_seed_modes() {
+    let params = BlastRadiusTool {
+        symbol_ids: vec!["sym_a".to_string()],
+        file_paths: vec!["src/api.rs".to_string()],
+        from_revision: Some(10),
+        to_revision: Some(12),
+        max_depth: 2,
+        limit: 5,
+        include_tests: true,
+        format: Some("readable".to_string()),
+        workspace: Some("primary".to_string()),
+    };
+
+    let metadata = tool_targets::blast_radius_metadata(&params);
+
+    assert_eq!(metadata["symbol_ids"][0], "sym_a");
+    assert_eq!(metadata["file_paths"][0], "src/api.rs");
+    assert_eq!(metadata["from_revision"], 10);
+    assert_eq!(metadata["to_revision"], 12);
+    assert_eq!(metadata["limit"], 5);
 }

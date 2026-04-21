@@ -32,13 +32,15 @@ pub enum ToolKind {
     GetSymbols = 2,
     DeepDive = 3,
     GetContext = 4,
-    RenameSymbol = 5,
-    ManageWorkspace = 6,
-    QueryMetrics = 7,
+    BlastRadius = 5,
+    RenameSymbol = 6,
+    ManageWorkspace = 7,
+    QueryMetrics = 8,
+    SpilloverGet = 9,
 }
 
 impl ToolKind {
-    pub const COUNT: usize = 8;
+    pub const COUNT: usize = 10;
 
     pub fn from_name(name: &str) -> Option<Self> {
         match name {
@@ -47,9 +49,11 @@ impl ToolKind {
             "get_symbols" => Some(Self::GetSymbols),
             "deep_dive" => Some(Self::DeepDive),
             "get_context" => Some(Self::GetContext),
+            "blast_radius" => Some(Self::BlastRadius),
             "rename_symbol" => Some(Self::RenameSymbol),
             "manage_workspace" => Some(Self::ManageWorkspace),
             "query_metrics" => Some(Self::QueryMetrics),
+            "spillover_get" => Some(Self::SpilloverGet),
             _ => None,
         }
     }
@@ -61,9 +65,11 @@ impl ToolKind {
             Self::GetSymbols => "get_symbols",
             Self::DeepDive => "deep_dive",
             Self::GetContext => "get_context",
+            Self::BlastRadius => "blast_radius",
             Self::RenameSymbol => "rename_symbol",
             Self::ManageWorkspace => "manage_workspace",
             Self::QueryMetrics => "query_metrics",
+            Self::SpilloverGet => "spillover_get",
         }
     }
 }

@@ -125,7 +125,7 @@ mod tests {
                 r#"
             INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, reference_score, visibility, metadata)
             VALUES ('s2', 'MY_CONST', 'constant', 'rust', 'src/config.rs', 1, 0, 1, 0, 0, 0, 0.0, 'private',
-                    '{"test_coverage": {"test_count": 2, "best_tier": "thorough", "worst_tier": "adequate", "covering_tests": ["test_a", "test_b"]}}');
+                    '{"test_linkage": {"test_count": 2, "best_tier": "thorough", "worst_tier": "adequate", "linked_tests": ["test_a", "test_b"], "evidence_sources": ["relationship"]}}');
         "#,
             )
             .unwrap();

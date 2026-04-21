@@ -319,23 +319,24 @@ fn is_container_kind(kind: &SymbolKind) -> bool {
     )
 }
 
-/// Build test location refs by querying identifiers in test files.
+fn symbol_is_test(symbol: &Symbol) -> bool {
+    symbol
+        .metadata
+        .as_ref()
+        .and_then(|metadata| metadata.get("is_test"))
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+        || is_test_path(&symbol.file_path)
+}
+
+/// Build test location refs by querying identifiers linked from test symbols.
 fn build_test_refs(db: &SymbolDatabase, symbol: &Symbol) -> Result<Vec<RefEntry>> {
     let names = vec![symbol.name.clone()];
     let ident_refs = db.get_identifiers_by_names(&names)?;
 
-    // Filter to test-file identifiers first, then batch-fetch containing symbols
-    // in a single query instead of one per identifier.
-    let test_idents: Vec<_> = ident_refs
-        .into_iter()
-        .filter(|ident| {
-            is_test_path(&ident.file_path)
-                && !(ident.file_path == symbol.file_path && ident.start_line == symbol.start_line)
-        })
-        .collect();
-
-    // Batch-fetch all containing symbols in one query.
-    let containing_ids: Vec<String> = test_idents
+    // Batch-fetch all containing symbols in one query so metadata can drive test
+    // detection before the path fallback kicks in.
+    let containing_ids: Vec<String> = ident_refs
         .iter()
         .filter_map(|i| i.containing_symbol_id.clone())
         .collect::<HashSet<_>>()
@@ -350,6 +351,22 @@ fn build_test_refs(db: &SymbolDatabase, symbol: &Symbol) -> Result<Vec<RefEntry>
             .map(|s| (s.id.clone(), s))
             .collect()
     };
+
+    let test_idents: Vec<_> = ident_refs
+        .into_iter()
+        .filter(|ident| {
+            if ident.file_path == symbol.file_path && ident.start_line == symbol.start_line {
+                return false;
+            }
+
+            ident
+                .containing_symbol_id
+                .as_ref()
+                .and_then(|id| symbol_map.get(id))
+                .is_some_and(symbol_is_test)
+                || is_test_path(&ident.file_path)
+        })
+        .collect();
 
     let mut test_refs = Vec::new();
     for ident in test_idents {

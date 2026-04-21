@@ -8,9 +8,11 @@ fn test_tool_kind_ordinal_covers_all_tools() {
     assert_eq!(ToolKind::GetSymbols as u8, 2);
     assert_eq!(ToolKind::DeepDive as u8, 3);
     assert_eq!(ToolKind::GetContext as u8, 4);
-    assert_eq!(ToolKind::RenameSymbol as u8, 5);
-    assert_eq!(ToolKind::ManageWorkspace as u8, 6);
-    assert_eq!(ToolKind::QueryMetrics as u8, 7);
+    assert_eq!(ToolKind::BlastRadius as u8, 5);
+    assert_eq!(ToolKind::RenameSymbol as u8, 6);
+    assert_eq!(ToolKind::ManageWorkspace as u8, 7);
+    assert_eq!(ToolKind::QueryMetrics as u8, 8);
+    assert_eq!(ToolKind::SpilloverGet as u8, 9);
 }
 
 #[test]
@@ -22,6 +24,10 @@ fn test_tool_kind_from_name() {
     assert!(matches!(
         ToolKind::from_name("deep_dive"),
         Some(ToolKind::DeepDive)
+    ));
+    assert!(matches!(
+        ToolKind::from_name("blast_radius"),
+        Some(ToolKind::BlastRadius)
     ));
     assert!(ToolKind::from_name("nonexistent").is_none());
 }
@@ -36,9 +42,11 @@ fn test_tool_kind_name_roundtrip() {
             2 => ToolKind::GetSymbols,
             3 => ToolKind::DeepDive,
             4 => ToolKind::GetContext,
-            5 => ToolKind::RenameSymbol,
-            6 => ToolKind::ManageWorkspace,
-            7 => ToolKind::QueryMetrics,
+            5 => ToolKind::BlastRadius,
+            6 => ToolKind::RenameSymbol,
+            7 => ToolKind::ManageWorkspace,
+            8 => ToolKind::QueryMetrics,
+            9 => ToolKind::SpilloverGet,
             _ => unreachable!(),
         };
         let name = kind.name();

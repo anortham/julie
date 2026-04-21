@@ -22,6 +22,7 @@ mod migrations;
 mod projections;
 mod relationships;
 mod repairs;
+mod revision_changes;
 mod revisions;
 mod schema;
 mod symbols;
@@ -32,6 +33,7 @@ pub mod vectors;
 mod workspace;
 pub use analytics::*;
 pub use projections::{ProjectionState, ProjectionStatus};
+pub use revision_changes::{RevisionChangeKind, RevisionFileChange};
 pub use revisions::{CanonicalRevision, CanonicalRevisionKind};
 pub use tool_calls::{HistorySummary, ToolCallSummary};
 

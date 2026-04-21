@@ -10,6 +10,7 @@ use super::content::abbreviate_code;
 pub(crate) use super::content::truncate_to_token_budget;
 use super::content::truncate_to_token_budget_with_hint;
 pub use super::scoring::{Pivot, select_pivots};
+use super::task_signals::TaskSignals;
 use crate::search::scoring::is_test_path;
 use tracing::debug;
 
@@ -18,6 +19,7 @@ use crate::extractors::base::{RelationshipKind, Symbol};
 use crate::handler::JulieServerHandler;
 use crate::tools::navigation::resolution::{WorkspaceTarget, resolve_workspace_filter};
 use crate::tools::shared::NOISE_CALLEE_NAMES;
+use crate::tools::spillover::{SpilloverFormat, SpilloverStore};
 
 /// Direction of a neighbor relative to the pivot symbol.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -51,20 +53,66 @@ pub struct GraphExpansion {
 /// 5. Look up neighbor metadata and reference_scores
 /// 6. Sort by reference_score descending (most important first)
 pub fn expand_graph(pivots: &[Pivot], db: &SymbolDatabase) -> Result<GraphExpansion> {
-    if pivots.is_empty() {
+    let pivot_symbols: Vec<Symbol> = pivots
+        .iter()
+        .map(|pivot| Symbol {
+            id: pivot.result.id.clone(),
+            name: pivot.result.name.clone(),
+            kind: crate::extractors::base::SymbolKind::from_string(&pivot.result.kind),
+            language: pivot.result.language.clone(),
+            file_path: pivot.result.file_path.clone(),
+            start_line: pivot.result.start_line,
+            end_line: pivot.result.start_line,
+            start_column: 0,
+            end_column: 0,
+            start_byte: 0,
+            end_byte: 0,
+            parent_id: None,
+            signature: Some(pivot.result.signature.clone()),
+            doc_comment: None,
+            visibility: None,
+            metadata: None,
+            semantic_group: None,
+            confidence: None,
+            code_context: None,
+            content_type: None,
+        })
+        .collect();
+    expand_graph_from_symbols(&pivot_symbols, db)
+}
+
+pub fn expand_graph_from_symbols(
+    symbols: &[Symbol],
+    db: &SymbolDatabase,
+) -> Result<GraphExpansion> {
+    if symbols.is_empty() {
+        return Ok(GraphExpansion {
+            neighbors: Vec::new(),
+        });
+    }
+
+    let pivot_ids_vec: Vec<String> = symbols.iter().map(|symbol| symbol.id.clone()).collect();
+    expand_graph_from_ids(symbols, &pivot_ids_vec, db)
+}
+
+fn expand_graph_from_ids(
+    symbols: &[Symbol],
+    pivot_ids_vec: &[String],
+    db: &SymbolDatabase,
+) -> Result<GraphExpansion> {
+    if symbols.is_empty() {
         return Ok(GraphExpansion {
             neighbors: Vec::new(),
         });
     }
 
     // Collect pivot IDs for exclusion and batched relationship queries
-    let pivot_ids_vec: Vec<String> = pivots.iter().map(|p| p.result.id.clone()).collect();
     let pivot_ids: HashSet<String> = pivot_ids_vec.iter().cloned().collect();
 
     // For each neighbor, track: (relationship_kind, direction) — first seen wins
     let mut neighbor_map: HashMap<String, (RelationshipKind, NeighborDirection)> = HashMap::new();
 
-    let incoming = db.get_relationships_to_symbols(&pivot_ids_vec)?;
+    let incoming = db.get_relationships_to_symbols(pivot_ids_vec)?;
     for rel in incoming {
         let neighbor_id = &rel.from_symbol_id;
         if !pivot_ids.contains(neighbor_id) {
@@ -74,7 +122,7 @@ pub fn expand_graph(pivots: &[Pivot], db: &SymbolDatabase) -> Result<GraphExpans
         }
     }
 
-    let outgoing = db.get_outgoing_relationships_for_symbols(&pivot_ids_vec)?;
+    let outgoing = db.get_outgoing_relationships_for_symbols(pivot_ids_vec)?;
     for rel in outgoing {
         let neighbor_id = &rel.to_symbol_id;
         if !pivot_ids.contains(neighbor_id) {
@@ -88,7 +136,7 @@ pub fn expand_graph(pivots: &[Pivot], db: &SymbolDatabase) -> Result<GraphExpans
     // This is critical for TypeScript (and similar languages) where type usages and
     // call references live in the identifiers table rather than the relationships table.
     // Relationship-based entries take priority (or_insert_with keeps first-seen).
-    let pivot_names: Vec<String> = pivots.iter().map(|p| p.result.name.clone()).collect();
+    let pivot_names: Vec<String> = symbols.iter().map(|symbol| symbol.name.clone()).collect();
     if !pivot_names.is_empty() {
         let identifier_kinds = ["type_usage", "import", "call"];
         if let Ok(ident_refs) = db.get_identifiers_by_names(&pivot_names) {
@@ -148,6 +196,19 @@ pub fn expand_graph(pivots: &[Pivot], db: &SymbolDatabase) -> Result<GraphExpans
     Ok(GraphExpansion { neighbors })
 }
 
+fn merge_expansions(primary: GraphExpansion, secondary: GraphExpansion) -> GraphExpansion {
+    let mut seen = HashSet::new();
+    let mut neighbors = Vec::new();
+
+    for neighbor in primary.neighbors.into_iter().chain(secondary.neighbors) {
+        if seen.insert(neighbor.symbol.id.clone()) {
+            neighbors.push(neighbor);
+        }
+    }
+
+    GraphExpansion { neighbors }
+}
+
 /// Run the full get_context pipeline: search → rank → expand → allocate → format.
 ///
 /// This is the testable core — takes raw DB and SearchIndex references,
@@ -162,11 +223,41 @@ pub fn run_pipeline(
     search_index: &crate::search::SearchIndex,
     embedding_provider: Option<&dyn crate::embeddings::EmbeddingProvider>,
 ) -> Result<String> {
+    run_pipeline_with_options(
+        query,
+        max_tokens,
+        language,
+        file_pattern,
+        format,
+        db,
+        search_index,
+        embedding_provider,
+        None,
+        None,
+        None,
+    )
+}
+
+pub fn run_pipeline_with_options(
+    query: &str,
+    max_tokens: Option<u32>,
+    language: Option<String>,
+    file_pattern: Option<String>,
+    format: Option<String>,
+    db: &SymbolDatabase,
+    search_index: &crate::search::SearchIndex,
+    embedding_provider: Option<&dyn crate::embeddings::EmbeddingProvider>,
+    task_signals: Option<&TaskSignals>,
+    spillover_store: Option<&SpilloverStore>,
+    spillover_session: Option<(&str, SpilloverFormat)>,
+) -> Result<String> {
     use super::allocation::TokenBudget;
-    use super::formatting::{ContextData, format_context_with_mode};
+    use super::formatting::{ContextData, format_context_with_mode, format_neighbor_rows};
     use crate::search::index::SearchFilter;
 
-    // 1. Search for relevant symbols (hybrid: keyword + optional semantic)
+    let mut resolved_signals = task_signals.cloned().unwrap_or_default();
+    hydrate_failing_test_links(db, &mut resolved_signals)?;
+
     let filter = SearchFilter {
         language,
         kind: None,
@@ -184,20 +275,19 @@ pub fn run_pipeline(
         Some(profile),
     )?;
 
+    let output_format = super::formatting::OutputFormat::from_option(format.as_deref());
+
     if search_results.results.is_empty() {
         let empty_data = ContextData {
             query: query.to_string(),
             pivots: vec![],
             neighbors: vec![],
             allocation: TokenBudget::new(0).allocate(0, 0),
+            spillover_handle: None,
         };
-        return Ok(format_context_with_mode(
-            &empty_data,
-            super::formatting::OutputFormat::from_option(format.as_deref()),
-        ));
+        return Ok(format_context_with_mode(&empty_data, output_format));
     }
 
-    // 2. Get reference scores for centrality-weighted ranking
     let result_ids: Vec<&str> = search_results
         .results
         .iter()
@@ -205,46 +295,79 @@ pub fn run_pipeline(
         .collect();
     let ref_scores = db.get_reference_scores(&result_ids)?;
 
-    // 3. Select pivots using centrality-weighted scoring (with exact-name boost)
-    let pivots = super::scoring::select_pivots_with_code_fallback_for_query(
-        query,
-        search_results.results,
-        &ref_scores,
-    );
+    let pivots = if resolved_signals.is_empty() {
+        super::scoring::select_pivots_with_code_fallback_for_query(
+            query,
+            search_results.results,
+            &ref_scores,
+        )
+    } else {
+        super::scoring::select_pivots_with_task_signals_for_query(
+            query,
+            search_results.results,
+            &ref_scores,
+            &resolved_signals,
+        )
+    };
 
-    // 4. Expand graph from pivots
     let expansion = expand_graph(&pivots, db)?;
+    let expansion = if should_expand_second_hop(&resolved_signals, &expansion) {
+        let second_hop_seeds = select_second_hop_seeds(&expansion, resolved_signals.prefer_tests);
+        if second_hop_seeds.is_empty() {
+            expansion
+        } else {
+            merge_expansions(expansion, expand_graph_from_symbols(&second_hop_seeds, db)?)
+        }
+    } else {
+        expansion
+    };
 
-    // 5. Allocate token budget
     let budget = match max_tokens {
         Some(tokens) => TokenBudget::new(tokens),
         None => TokenBudget::adaptive(pivots.len()),
     };
     let allocation = budget.allocate(pivots.len(), expansion.neighbors.len());
 
-    // 6. Get reference scores for pivots (reuse batch query, not per-pivot)
     let pivot_ids: Vec<&str> = pivots.iter().map(|p| p.result.id.as_str()).collect();
     let pivot_ref_scores = db.get_reference_scores(&pivot_ids)?;
-
-    // 7. Build PivotEntries
     let pivot_entries =
         build_pivot_entries(&pivots, &expansion, db, &allocation, &pivot_ref_scores)?;
 
-    // 8. Build NeighborEntries
-    let neighbor_entries = build_neighbor_entries(&expansion, allocation.neighbor_tokens);
+    let neighbor_output = build_neighbor_entries(
+        &expansion,
+        allocation.neighbor_tokens,
+        resolved_signals.prefer_tests,
+    );
+    let spillover_handle = if !neighbor_output.overflow_entries.is_empty() {
+        spillover_store.zip(spillover_session).and_then(
+            |(store, (session_id, spillover_format))| {
+                store.store_rows(
+                    session_id,
+                    "gc",
+                    "get_context overflow",
+                    format_neighbor_rows(
+                        &neighbor_output.overflow_entries,
+                        &allocation.neighbor_mode,
+                    ),
+                    0,
+                    10,
+                    spillover_format,
+                )
+            },
+        )
+    } else {
+        None
+    };
 
-    // 9. Format and return
     let context_data = ContextData {
         query: query.to_string(),
         pivots: pivot_entries,
-        neighbors: neighbor_entries,
+        neighbors: neighbor_output.entries,
         allocation,
+        spillover_handle,
     };
 
-    Ok(format_context_with_mode(
-        &context_data,
-        super::formatting::OutputFormat::from_option(format.as_deref()),
-    ))
+    Ok(format_context_with_mode(&context_data, output_format))
 }
 
 /// Pre-fetched data for building pivot entries without N+1 DB queries.
@@ -470,24 +593,33 @@ fn get_pivot_relationship_names_batched(
 /// Filters out: common trait methods (clone, fmt, etc.) and test file symbols.
 const MAX_NEIGHBOR_ENTRIES: usize = 200;
 
+#[derive(Default)]
+struct NeighborBuildOutput {
+    entries: Vec<super::formatting::NeighborEntry>,
+    overflow_entries: Vec<super::formatting::NeighborEntry>,
+}
+
 fn build_neighbor_entries(
     expansion: &GraphExpansion,
     neighbor_token_budget: u32,
-) -> Vec<super::formatting::NeighborEntry> {
+    prefer_tests: bool,
+) -> NeighborBuildOutput {
     use super::formatting::NeighborEntry;
 
     // Scale char budget from the caller's token allocation (rough: 4 chars/token).
-    // Minimum of 2400 chars (~600 tokens) to preserve existing behavior when budget is low.
-    let char_budget = ((neighbor_token_budget as usize) * 4).max(2400);
+    // Keep a modest floor so tiny budgets still show something, but do not force
+    // the old 2400-char minimum now that spillover can carry the overflow.
+    let char_budget = ((neighbor_token_budget as usize) * 4).max(800);
 
     let mut estimated_chars: usize = 0;
     let mut entries = Vec::new();
+    let mut overflow_entries = Vec::new();
 
     for neighbor in expansion
         .neighbors
         .iter()
         .filter(|neighbor| !NOISE_CALLEE_NAMES.contains(&neighbor.symbol.name.as_str()))
-        .filter(|neighbor| !is_test_path(&neighbor.symbol.file_path))
+        .filter(|neighbor| prefer_tests || !is_test_path(&neighbor.symbol.file_path))
         .take(MAX_NEIGHBOR_ENTRIES)
     {
         // Estimate chars for this entry: name + file_path + line digits + kind + sig + doc
@@ -507,12 +639,7 @@ fn build_neighbor_entries(
                 .map(|d| d.len().min(120))
                 .unwrap_or(0);
 
-        if estimated_chars + entry_char_estimate > char_budget && !entries.is_empty() {
-            break;
-        }
-        estimated_chars += entry_char_estimate;
-
-        entries.push(NeighborEntry {
+        let entry = NeighborEntry {
             name: neighbor.symbol.name.clone(),
             file_path: neighbor.symbol.file_path.clone(),
             start_line: neighbor.symbol.start_line,
@@ -524,10 +651,21 @@ fn build_neighbor_entries(
                 .as_ref()
                 .map(|d| crate::embeddings::metadata::first_sentence(d))
                 .filter(|s| !s.is_empty()),
-        });
+        };
+
+        if estimated_chars + entry_char_estimate > char_budget && !entries.is_empty() {
+            overflow_entries.push(entry);
+            continue;
+        }
+
+        estimated_chars += entry_char_estimate;
+        entries.push(entry);
     }
 
-    entries
+    NeighborBuildOutput {
+        entries,
+        overflow_entries,
+    }
 }
 
 /// Handler entry point: extracts DB and SearchIndex from handler, delegates to run_pipeline.
@@ -540,6 +678,10 @@ pub async fn run(tool: &GetContextTool, handler: &JulieServerHandler) -> Result<
     let language = tool.language.clone();
     let file_pattern = tool.file_pattern.clone();
     let format = tool.format.clone();
+    let task_signals = TaskSignals::from_tool(tool);
+    let spillover_store = handler.spillover_store.clone();
+    let session_id = handler.session_metrics.session_id.clone();
+    let spillover_format = SpilloverFormat::from_option(tool.format.as_deref());
 
     match workspace_target {
         WorkspaceTarget::Target(target_workspace_id) => {
@@ -569,7 +711,19 @@ pub async fn run(tool: &GetContextTool, handler: &JulieServerHandler) -> Result<
                 let db = db_arc
                     .lock()
                     .map_err(|e| anyhow::anyhow!("Database lock error: {}", e))?;
-                run_pipeline(&query, max_tokens, language, file_pattern, format, &db, &index, embedding_provider.as_deref())
+                run_pipeline_with_options(
+                    &query,
+                    max_tokens,
+                    language,
+                    file_pattern,
+                    format,
+                    &db,
+                    &index,
+                    embedding_provider.as_deref(),
+                    Some(&task_signals),
+                    Some(&spillover_store),
+                    Some((&session_id, spillover_format)),
+                )
             })
             .await
             .map_err(|e| anyhow::anyhow!("spawn_blocking error: {}", e))??;
@@ -589,7 +743,7 @@ pub async fn run(tool: &GetContextTool, handler: &JulieServerHandler) -> Result<
                 let db_guard = db
                     .lock()
                     .map_err(|e| anyhow::anyhow!("Database lock error: {}", e))?;
-                run_pipeline(
+                run_pipeline_with_options(
                     &query,
                     max_tokens,
                     language,
@@ -598,6 +752,9 @@ pub async fn run(tool: &GetContextTool, handler: &JulieServerHandler) -> Result<
                     &db_guard,
                     &index,
                     embedding_provider.as_deref(),
+                    Some(&task_signals),
+                    Some(&spillover_store),
+                    Some((&session_id, spillover_format)),
                 )
             })
             .await??;
@@ -605,4 +762,87 @@ pub async fn run(tool: &GetContextTool, handler: &JulieServerHandler) -> Result<
             Ok(result)
         }
     }
+}
+
+fn should_expand_second_hop(signals: &TaskSignals, expansion: &GraphExpansion) -> bool {
+    if signals.max_hops < 2 {
+        return false;
+    }
+
+    let code_neighbors = expansion
+        .neighbors
+        .iter()
+        .filter(|neighbor| !is_test_path(&neighbor.symbol.file_path))
+        .count();
+
+    code_neighbors < 4
+}
+
+fn select_second_hop_seeds(expansion: &GraphExpansion, prefer_tests: bool) -> Vec<Symbol> {
+    expansion
+        .neighbors
+        .iter()
+        .filter(|neighbor| prefer_tests || !is_test_path(&neighbor.symbol.file_path))
+        .take(3)
+        .map(|neighbor| neighbor.symbol.clone())
+        .collect()
+}
+
+pub(crate) fn hydrate_failing_test_links(
+    db: &SymbolDatabase,
+    signals: &mut TaskSignals,
+) -> Result<()> {
+    let Some(failing_test) = signals.failing_test.clone() else {
+        return Ok(());
+    };
+    let normalized_failing_test = failing_test.replace('\\', "/");
+
+    let mut stmt = db.conn.prepare(
+        "SELECT id,
+                COALESCE(json_extract(metadata, '$.test_linkage.linked_tests'),
+                         json_extract(metadata, '$.test_coverage.linked_tests'),
+                         '[]'),
+                COALESCE(json_extract(metadata, '$.test_linkage.linked_test_paths'),
+                         json_extract(metadata, '$.test_coverage.linked_test_paths'),
+                         '[]')
+         FROM symbols
+         WHERE json_extract(metadata, '$.test_linkage') IS NOT NULL
+            OR json_extract(metadata, '$.test_coverage') IS NOT NULL",
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+        ))
+    })?;
+
+    for row in rows {
+        let (symbol_id, linked_tests_json, linked_test_paths_json) = row?;
+        let linked_tests =
+            serde_json::from_str::<Vec<String>>(&linked_tests_json).unwrap_or_default();
+        let linked_test_paths =
+            serde_json::from_str::<Vec<String>>(&linked_test_paths_json).unwrap_or_default();
+        let matches_signal = linked_test_paths.iter().any(|linked_path| {
+            super::task_signals::path_matches_signal(
+                &linked_path.replace('\\', "/"),
+                &normalized_failing_test,
+            )
+        }) || linked_tests
+            .iter()
+            .any(|linked_test| test_name_matches_signal(linked_test, &failing_test));
+
+        if matches_signal {
+            signals.failing_test_linked_symbol_ids.insert(symbol_id);
+        }
+    }
+
+    Ok(())
+}
+
+fn test_name_matches_signal(candidate: &str, failing_test: &str) -> bool {
+    candidate == failing_test
+        || failing_test
+            .rsplit_once("::")
+            .is_some_and(|(_, leaf)| leaf == candidate)
 }

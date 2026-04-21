@@ -63,6 +63,7 @@ mod formatting_tests {
             pivots: vec![],
             neighbors: vec![],
             allocation: make_allocation(PivotMode::FullBody, NeighborMode::SignatureAndDoc),
+            spillover_handle: None,
         };
 
         let output = format_context(&data);
@@ -98,6 +99,7 @@ mod formatting_tests {
                 Some("Validates payment data"),
             )],
             allocation: make_allocation(PivotMode::FullBody, NeighborMode::SignatureAndDoc),
+            spillover_handle: None,
         };
 
         let output = format_context(&data);
@@ -145,6 +147,7 @@ mod formatting_tests {
             )],
             neighbors: vec![],
             allocation: make_allocation(PivotMode::FullBody, NeighborMode::SignatureAndDoc),
+            spillover_handle: None,
         };
         let output = format_context(&data);
         assert!(
@@ -161,6 +164,7 @@ mod formatting_tests {
             pivots: vec![make_pivot("med_fn", "src/b.rs", 1, 10.0, "fn med_fn() {}")],
             neighbors: vec![],
             allocation: make_allocation(PivotMode::FullBody, NeighborMode::SignatureAndDoc),
+            spillover_handle: None,
         };
         let output = format_context(&data);
         assert!(
@@ -177,6 +181,7 @@ mod formatting_tests {
             pivots: vec![make_pivot("low_fn", "src/c.rs", 1, 2.0, "fn low_fn() {}")],
             neighbors: vec![],
             allocation: make_allocation(PivotMode::FullBody, NeighborMode::SignatureAndDoc),
+            spillover_handle: None,
         };
         let output = format_context(&data);
         assert!(
@@ -199,6 +204,7 @@ mod formatting_tests {
             )],
             neighbors: vec![],
             allocation: make_allocation(PivotMode::FullBody, NeighborMode::SignatureAndDoc),
+            spillover_handle: None,
         };
         let output = format_context(&data);
         assert!(
@@ -214,6 +220,7 @@ mod formatting_tests {
             pivots: vec![make_pivot("edge_fn", "src/e.rs", 1, 5.0, "fn edge_fn() {}")],
             neighbors: vec![],
             allocation: make_allocation(PivotMode::FullBody, NeighborMode::SignatureAndDoc),
+            spillover_handle: None,
         };
         let output = format_context(&data);
         assert!(
@@ -238,6 +245,7 @@ mod formatting_tests {
             )],
             neighbors: vec![],
             allocation: make_allocation(PivotMode::FullBody, NeighborMode::SignatureAndDoc),
+            spillover_handle: None,
         };
 
         let output = format_context(&data);
@@ -278,6 +286,7 @@ mod formatting_tests {
             pivots: vec![pivot],
             neighbors: vec![],
             allocation: make_allocation(PivotMode::FullBody, NeighborMode::SignatureAndDoc),
+            spillover_handle: None,
         };
 
         let output = format_context(&data);
@@ -304,6 +313,7 @@ mod formatting_tests {
             pivots: vec![pivot],
             neighbors: vec![],
             allocation: make_allocation(PivotMode::FullBody, NeighborMode::SignatureAndDoc),
+            spillover_handle: None,
         };
 
         let output = format_context(&data);
@@ -338,6 +348,7 @@ mod formatting_tests {
             pivots: vec![pivot],
             neighbors: vec![],
             allocation: make_allocation(PivotMode::FullBody, NeighborMode::SignatureAndDoc),
+            spillover_handle: None,
         };
 
         let output = format_context(&data);
@@ -385,6 +396,7 @@ mod formatting_tests {
                 ),
             ],
             allocation: make_allocation(PivotMode::FullBody, NeighborMode::SignatureAndDoc),
+            spillover_handle: None,
         };
 
         let output = format_context(&data);
@@ -422,6 +434,7 @@ mod formatting_tests {
                 Some("This doc should NOT appear in SignatureOnly mode"),
             )],
             allocation: make_allocation(PivotMode::SignatureAndKey, NeighborMode::SignatureOnly),
+            spillover_handle: None,
         };
 
         let output = format_context(&data);
@@ -451,6 +464,7 @@ mod formatting_tests {
                 Some("Helper doc"),
             )],
             allocation: make_allocation(PivotMode::SignatureOnly, NeighborMode::NameAndLocation),
+            spillover_handle: None,
         };
 
         let output = format_context(&data);
@@ -494,6 +508,7 @@ mod formatting_tests {
             ],
             neighbors: vec![],
             allocation: make_allocation(PivotMode::FullBody, NeighborMode::SignatureAndDoc),
+            spillover_handle: None,
         };
 
         let output = format_context(&data);
@@ -526,6 +541,7 @@ mod formatting_tests {
             )],
             neighbors: vec![],
             allocation: make_allocation(PivotMode::FullBody, NeighborMode::SignatureAndDoc),
+            spillover_handle: None,
         };
 
         let output = format_context(&data);
@@ -555,6 +571,7 @@ mod formatting_tests {
                 make_neighbor("y", "src/y.rs", 1, None, None),
             ],
             allocation: make_allocation(PivotMode::FullBody, NeighborMode::SignatureAndDoc),
+            spillover_handle: None,
         };
 
         let output = format_context(&data);
@@ -583,6 +600,7 @@ mod formatting_tests {
             )],
             neighbors: vec![],
             allocation: make_allocation(PivotMode::FullBody, NeighborMode::SignatureAndDoc),
+            spillover_handle: None,
         };
 
         let output = format_context(&data);
@@ -607,6 +625,7 @@ mod formatting_tests {
             pivots: vec![make_pivot("fn_a", "src/a.rs", 1, 47.8, "fn fn_a() {}")],
             neighbors: vec![],
             allocation: make_allocation(PivotMode::FullBody, NeighborMode::SignatureAndDoc),
+            spillover_handle: None,
         };
 
         let output = format_context(&data);
@@ -645,6 +664,7 @@ mod formatting_tests {
                 Some("Validates payment data"),
             )],
             allocation: make_allocation(PivotMode::FullBody, NeighborMode::SignatureAndDoc),
+            spillover_handle: None,
         };
 
         let output = format_context_with_mode(&data, OutputFormat::Compact);
@@ -679,6 +699,7 @@ mod formatting_tests {
                 Some("Helper doc"),
             )],
             allocation: make_allocation(PivotMode::SignatureOnly, NeighborMode::NameAndLocation),
+            spillover_handle: None,
         };
 
         let output = format_context_with_mode(&data, OutputFormat::Compact);
@@ -725,6 +746,7 @@ mod formatting_tests {
                 ),
             ],
             allocation: make_allocation(PivotMode::FullBody, NeighborMode::SignatureAndDoc),
+            spillover_handle: None,
         };
 
         let readable = format_context(&data);
@@ -803,6 +825,7 @@ mod formatting_tests {
             pivots,
             neighbors,
             allocation: make_allocation(PivotMode::FullBody, NeighborMode::SignatureAndDoc),
+            spillover_handle: None,
         };
 
         let readable = format_context(&data);
@@ -838,6 +861,7 @@ mod formatting_tests {
             pivots: vec![pivot],
             neighbors: vec![],
             allocation: make_allocation(PivotMode::FullBody, NeighborMode::SignatureAndDoc),
+            spillover_handle: None,
         };
 
         let output = format_context_with_mode(&data, OutputFormat::Compact);
@@ -864,6 +888,7 @@ mod formatting_tests {
             pivots: vec![pivot],
             neighbors: vec![],
             allocation: make_allocation(PivotMode::FullBody, NeighborMode::SignatureAndDoc),
+            spillover_handle: None,
         };
 
         let output = format_context_with_mode(&data, OutputFormat::Readable);
@@ -881,6 +906,7 @@ mod formatting_tests {
             pivots: vec![],
             neighbors: vec![],
             allocation: make_allocation(PivotMode::SignatureOnly, NeighborMode::NameAndLocation),
+            spillover_handle: None,
         };
 
         let compact = format_context_with_mode(&data, OutputFormat::Compact);

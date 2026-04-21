@@ -1,5 +1,9 @@
 // Workspace management operations
 
+use super::revision_changes::{
+    RevisionChangeKind, RevisionFileChange, record_revision_file_changes_tx,
+    snapshot_file_hashes_tx,
+};
 use super::*;
 use anyhow::Result;
 use tracing::info;
@@ -15,6 +19,7 @@ impl SymbolDatabase {
         }
 
         let tx = self.conn.transaction()?;
+        let existing_file_hashes = snapshot_file_hashes_tx(&tx, orphaned_files)?;
 
         for file_path in orphaned_files {
             tx.execute(
@@ -65,6 +70,23 @@ impl SymbolDatabase {
             0,
         )?;
 
+        let revision_changes: Vec<RevisionFileChange> = orphaned_files
+            .iter()
+            .filter_map(|file_path| {
+                existing_file_hashes
+                    .get(file_path)
+                    .map(|old_hash| RevisionFileChange {
+                        revision,
+                        workspace_id: workspace_id.to_string(),
+                        file_path: file_path.clone(),
+                        change_kind: RevisionChangeKind::Deleted,
+                        old_hash: Some(old_hash.clone()),
+                        new_hash: None,
+                    })
+            })
+            .collect();
+        record_revision_file_changes_tx(&tx, revision, workspace_id, &revision_changes)?;
+
         tx.commit()?;
         Ok(Some(revision))
     }
@@ -97,6 +119,7 @@ impl SymbolDatabase {
         tx.execute("DELETE FROM files", [])?;
         tx.execute("DELETE FROM indexing_repairs", [])?;
         tx.execute("DELETE FROM canonical_revisions", [])?;
+        tx.execute("DELETE FROM revision_file_changes", [])?;
         tx.execute("DELETE FROM projection_states", [])?;
 
         tx.commit()?;

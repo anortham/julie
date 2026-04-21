@@ -15,7 +15,9 @@
 - `deep_dive`: Investigate a symbol: definition, callers, callees, children, types. Always use before modifying.
 - `fast_refs`: All references to a symbol. Required before any change. Use `reference_kind` to filter.
 - `call_path`: One shortest relationship path between two symbols. Use it for "how does A reach B" questions.
-- `get_context`: Token-budgeted area orientation (pivots + neighbors). Use at start of task.
+- `get_context`: Token-budgeted area orientation (pivots + neighbors). Supports task inputs like `edited_files`, `entry_symbols`, `stack_trace`, and `failing_test`.
+- `blast_radius`: Deterministic impact analysis for changed files, symbols, or revision ranges. Use it to see likely affected callers and tests before editing or after a change.
+- `spillover_get`: Fetch the next page for large `get_context` or `blast_radius` result sets when a spillover handle is returned.
 - `rename_symbol`: Workspace-wide rename. Always preview with `dry_run=true` first.
 - `manage_workspace`: Index, open, add/remove workspace metadata, list, refresh, stats, and health-check workspaces. For cross-workspace work in daemon mode, call `operation="open"` first, then pass the returned `workspace_id` to search, navigation, and editing tools.
 - `edit_file`: Edit a file without reading it first. DMP fuzzy matching for old_text. Always `dry_run=true` first.
@@ -31,6 +33,7 @@
 ## Other Workflows
 
 - **New task**: get_context > deep_dive key symbols > fast_refs > implement
+- **Change impact**: blast_radius > inspect likely callers/tests > implement > rerun blast_radius if needed
 - **Bug fix**: fast_search > deep_dive > write failing test > fix
 - **Refactor**: fast_refs > deep_dive > rename_symbol (dry_run first)
 
@@ -47,6 +50,9 @@ Subagents (Agent tool) do NOT receive Julie's session guidance. When dispatching
     - deep_dive(symbol) to understand a symbol before modifying it
     - fast_refs(symbol) to find all references (REQUIRED before any change)
     - call_path(from, to) to trace one shortest dependency path
+    - get_context(query, edited_files?, entry_symbols?, stack_trace?, failing_test?) for task-shaped context
+    - blast_radius(file_paths?, symbol_ids?, from_revision?, to_revision?) for likely impact and linked tests
+    - spillover_get(handle) to continue a large paged result
     - edit_file(old_text, new_text, dry_run=true) to edit without reading first
     - rewrite_symbol(symbol, operation, content, dry_run=true) to edit by name
     Do NOT fall back to Glob/Read/Grep chains. Julie tools return targeted context in 1-2 calls.

@@ -1,15 +1,18 @@
 //! SQL query engine and output formatting for metrics queries.
 //!
 //! Queries the symbols table with ORDER BY on analysis-derived fields
-//! (security_risk, change_risk, test_coverage, reference_score) stored
+//! (security_risk, change_risk, test_linkage, reference_score) stored
 //! in the metadata JSON blob and the reference_score column.
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
+use crate::analysis::test_linkage::test_linkage_entry;
 use crate::database::SymbolDatabase;
 use crate::tools::search::matches_glob_pattern;
+
+const TEST_COUNT_SQL: &str = "COALESCE(json_extract(metadata, '$.test_linkage.test_count'), json_extract(metadata, '$.test_coverage.test_count'), 0)";
 
 /// A single metrics query result row.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -23,7 +26,7 @@ pub struct MetricsResult {
     pub security_risk_label: Option<String>,
     pub change_risk_score: Option<f64>,
     pub change_risk_label: Option<String>,
-    pub test_coverage_tier: Option<String>,
+    pub test_linkage_tier: Option<String>,
     pub test_count: Option<u32>,
     pub raw_metadata: Option<serde_json::Value>,
 }
@@ -60,8 +63,8 @@ pub fn query_by_metrics(
             format!("COALESCE(json_extract(metadata, '$.change_risk.score'), 0.0) {order_dir}")
         }
         "centrality" => format!("reference_score {order_dir}"),
-        "test_coverage" => {
-            format!("COALESCE(json_extract(metadata, '$.test_coverage.test_count'), 0) {order_dir}")
+        "test_linkage" | "test_coverage" => {
+            format!("{TEST_COUNT_SQL} {order_dir}")
         }
         _ => format!("COALESCE(json_extract(metadata, '$.security_risk.score'), 0.0) {order_dir}"),
     };
@@ -108,14 +111,9 @@ pub fn query_by_metrics(
     // has_tests filter
     if let Some(has_tests) = has_tests {
         if has_tests {
-            // Only symbols WITH test coverage
-            conditions.push("json_extract(metadata, '$.test_coverage.test_count') > 0".to_string());
+            conditions.push(format!("{TEST_COUNT_SQL} > 0"));
         } else {
-            // Only symbols WITHOUT test coverage
-            conditions.push(
-                "(json_extract(metadata, '$.test_coverage.test_count') IS NULL OR json_extract(metadata, '$.test_coverage.test_count') = 0)"
-                    .to_string(),
-            );
+            conditions.push(format!("{TEST_COUNT_SQL} = 0"));
         }
     }
 
@@ -222,16 +220,14 @@ pub fn query_by_metrics(
             .and_then(|v| v.as_str())
             .map(String::from);
 
-        let test_coverage_tier = raw_metadata
-            .as_ref()
-            .and_then(|v| v.get("test_coverage"))
+        let test_linkage = raw_metadata.as_ref().and_then(test_linkage_entry);
+
+        let test_linkage_tier = test_linkage
             .and_then(|v| v.get("best_tier"))
             .and_then(|v| v.as_str())
             .map(String::from);
 
-        let test_count = raw_metadata
-            .as_ref()
-            .and_then(|v| v.get("test_coverage"))
+        let test_count = test_linkage
             .and_then(|v| v.get("test_count"))
             .and_then(|v| v.as_u64())
             .map(|n| n as u32);
@@ -246,7 +242,7 @@ pub fn query_by_metrics(
             security_risk_label,
             change_risk_score,
             change_risk_label,
-            test_coverage_tier,
+            test_linkage_tier,
             test_count,
             raw_metadata,
         });
@@ -288,13 +284,12 @@ pub fn format_metrics_output(results: &[MetricsResult], sort_by: &str, order: &s
             output.push_str(&format!("   Change risk: {} ({:.2})\n", label, score));
         }
 
-        // Test coverage
-        match (&r.test_coverage_tier, r.test_count) {
+        match (&r.test_linkage_tier, r.test_count) {
             (Some(tier), Some(count)) => {
-                output.push_str(&format!("   Tests: {} ({} tests)\n", tier, count));
+                output.push_str(&format!("   Linked tests: {} ({} tests)\n", tier, count));
             }
             _ => {
-                output.push_str("   Tests: untested\n");
+                output.push_str("   Linked tests: none\n");
             }
         }
 

@@ -12,6 +12,8 @@ use crate::search::scoring::{
     CENTRALITY_NOISE_NAMES, CENTRALITY_WEIGHT, is_docs_path, is_fixture_path, is_test_path,
 };
 
+use super::task_signals::TaskSignals;
+
 /// A pivot symbol selected from search results, with its combined score.
 pub struct Pivot {
     pub result: SymbolSearchResult,
@@ -145,6 +147,17 @@ pub fn select_pivots_with_code_fallback_for_query(
     select_pivots_with_code_fallback(boosted, reference_scores)
 }
 
+pub fn select_pivots_with_task_signals_for_query(
+    query: &str,
+    results: Vec<SymbolSearchResult>,
+    reference_scores: &HashMap<String, f64>,
+    task_signals: &TaskSignals,
+) -> Vec<Pivot> {
+    let boosted = apply_exact_name_boost(query, results);
+    let boosted = apply_task_signal_boosts(boosted, task_signals);
+    select_pivots_with_code_fallback(boosted, reference_scores)
+}
+
 /// Apply exact-name boost to results where the symbol name matches the query.
 fn apply_exact_name_boost(
     query: &str,
@@ -158,6 +171,19 @@ fn apply_exact_name_boost(
                 r.score *= EXACT_NAME_MATCH_BOOST;
             }
             r
+        })
+        .collect()
+}
+
+fn apply_task_signal_boosts(
+    results: Vec<SymbolSearchResult>,
+    task_signals: &TaskSignals,
+) -> Vec<SymbolSearchResult> {
+    results
+        .into_iter()
+        .map(|mut result| {
+            result.score *= task_signals.score_multiplier(&result);
+            result
         })
         .collect()
 }
