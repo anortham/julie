@@ -2,7 +2,7 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::analysis::test_coverage::tier_rank;
+    use crate::analysis::test_linkage::tier_rank;
     use crate::database::SymbolDatabase;
     use tempfile::TempDir;
 
@@ -65,9 +65,9 @@ mod tests {
     }
 
     #[test]
-    fn test_compute_coverage_relationship_linkage() {
+    fn test_compute_linkage_relationship_linkage() {
         let (_temp, db) = setup_test_db();
-        let stats = crate::analysis::test_coverage::compute_test_coverage(&db).unwrap();
+        let stats = crate::analysis::test_linkage::compute_test_linkage(&db).unwrap();
 
         assert_eq!(
             stats.symbols_covered, 1,
@@ -78,13 +78,15 @@ mod tests {
         // Verify metadata was written
         let prod = db.get_symbol_by_id("prod_1").unwrap().unwrap();
         let meta = prod.metadata.unwrap();
-        let coverage = meta.get("test_coverage").unwrap();
-        let test_count = coverage.get("test_count").unwrap().as_u64().unwrap();
+        let linkage = meta.get("test_linkage").unwrap();
+        let test_count = linkage.get("test_count").unwrap().as_u64().unwrap();
         assert_eq!(test_count, 2);
-        let best = coverage.get("best_tier").unwrap().as_str().unwrap();
+        let best = linkage.get("best_tier").unwrap().as_str().unwrap();
         assert_eq!(best, "thorough");
-        let worst = coverage.get("worst_tier").unwrap().as_str().unwrap();
+        let worst = linkage.get("worst_tier").unwrap().as_str().unwrap();
         assert_eq!(worst, "thin");
+        let linked_tests = linkage.get("linked_tests").unwrap().as_array().unwrap();
+        assert_eq!(linked_tests.len(), 2);
     }
 
     #[test]
@@ -109,24 +111,24 @@ mod tests {
             VALUES ('id_u', 'validate_input', 'call', 'rust', 'tests/utils_test.rs', 3, 0, 3, 20, 'test_u', 'prod_u');
         "#).unwrap();
 
-        let stats = crate::analysis::test_coverage::compute_test_coverage(&db).unwrap();
+        let stats = crate::analysis::test_linkage::compute_test_linkage(&db).unwrap();
         assert_eq!(
             stats.symbols_covered, 1,
-            "Identifier-only linkage should create coverage"
+            "identifier-only linkage should create test linkage"
         );
 
         let prod = db.get_symbol_by_id("prod_u").unwrap().unwrap();
         let meta = prod.metadata.unwrap();
-        let coverage = meta.get("test_coverage").unwrap();
-        assert_eq!(coverage.get("test_count").unwrap().as_u64().unwrap(), 1);
+        let linkage = meta.get("test_linkage").unwrap();
+        assert_eq!(linkage.get("test_count").unwrap().as_u64().unwrap(), 1);
         assert_eq!(
-            coverage.get("best_tier").unwrap().as_str().unwrap(),
+            linkage.get("best_tier").unwrap().as_str().unwrap(),
             "adequate"
         );
     }
 
     #[test]
-    fn test_uncovered_symbol_has_no_test_coverage_key() {
+    fn test_uncovered_symbol_has_no_test_linkage_key() {
         let temp_dir = TempDir::new().unwrap();
         let db_path = temp_dir.path().join("test.db");
         let db = SymbolDatabase::new(&db_path).unwrap();
@@ -138,13 +140,13 @@ mod tests {
             VALUES ('lonely', 'lonely_function', 'function', 'rust', 'src/lib.rs', 1, 0, 5, 0, 0, 0, NULL, 0.0);
         "#).unwrap();
 
-        let _stats = crate::analysis::test_coverage::compute_test_coverage(&db).unwrap();
+        let _stats = crate::analysis::test_linkage::compute_test_linkage(&db).unwrap();
 
         let sym = db.get_symbol_by_id("lonely").unwrap().unwrap();
         if let Some(meta) = &sym.metadata {
             assert!(
-                meta.get("test_coverage").is_none(),
-                "Uncovered symbol should not have test_coverage key"
+                meta.get("test_linkage").is_none(),
+                "uncovered symbol should not have test_linkage key"
             );
         }
     }
@@ -167,15 +169,15 @@ mod tests {
             VALUES ('r1', 't1', 't2', 'calls', 'tests/a.rs', 3);
         "#).unwrap();
 
-        let stats = crate::analysis::test_coverage::compute_test_coverage(&db).unwrap();
+        let stats = crate::analysis::test_linkage::compute_test_linkage(&db).unwrap();
         assert_eq!(
             stats.symbols_covered, 0,
-            "Test-to-test calls should not create coverage"
+            "test-to-test calls should not create linkage"
         );
     }
 
     #[test]
-    fn test_covering_tests_capped_at_five() {
+    fn test_linked_tests_capped_at_five() {
         let (_temp, db) = setup_test_db();
 
         insert_file(&db, "tests/extra.rs");
@@ -195,20 +197,20 @@ mod tests {
             ), []).unwrap();
         }
 
-        let _stats = crate::analysis::test_coverage::compute_test_coverage(&db).unwrap();
+        let _stats = crate::analysis::test_linkage::compute_test_linkage(&db).unwrap();
         let prod = db.get_symbol_by_id("prod_1").unwrap().unwrap();
         let meta = prod.metadata.unwrap();
-        let coverage = meta.get("test_coverage").unwrap();
-        let names = coverage.get("covering_tests").unwrap().as_array().unwrap();
+        let linkage = meta.get("test_linkage").unwrap();
+        let names = linkage.get("linked_tests").unwrap().as_array().unwrap();
         assert!(
             names.len() <= 5,
-            "covering_tests should be capped at 5, got {}",
+            "linked_tests should be capped at 5, got {}",
             names.len()
         );
-        let count = coverage.get("test_count").unwrap().as_u64().unwrap();
+        let count = linkage.get("test_count").unwrap().as_u64().unwrap();
         assert_eq!(
             count, 7,
-            "test_count should reflect all 7 tests even though names are capped"
+            "test_count should reflect all 7 tests even though linked_tests are capped"
         );
     }
 
@@ -237,30 +239,30 @@ mod tests {
             VALUES ('ident_1', 'ListAsync', 'call', 'csharp', 'tests/Services/LabTestServiceTests.cs', 41, 0, 41, 20, 'test_1', NULL);
         "#).unwrap();
 
-        let stats = crate::analysis::test_coverage::compute_test_coverage(&db).unwrap();
+        let stats = crate::analysis::test_linkage::compute_test_linkage(&db).unwrap();
         assert_eq!(stats.symbols_covered, 1, "Should cover exactly one symbol");
 
         let cov: Option<String> = db.conn.query_row(
-            "SELECT json_extract(metadata, '$.test_coverage') FROM symbols WHERE id = 'prod_labtest'",
+            "SELECT json_extract(metadata, '$.test_linkage') FROM symbols WHERE id = 'prod_labtest'",
             [], |row| row.get(0)
         ).unwrap();
         assert!(
             cov.is_some(),
-            "LabTestService.ListAsync should have test coverage"
+            "LabTestService.ListAsync should have test linkage"
         );
 
         let no_cov: Option<String> = db.conn.query_row(
-            "SELECT json_extract(metadata, '$.test_coverage') FROM symbols WHERE id = 'prod_media'",
+            "SELECT json_extract(metadata, '$.test_linkage') FROM symbols WHERE id = 'prod_media'",
             [], |row| row.get(0)
         ).unwrap();
         assert!(
             no_cov.is_none(),
-            "MediaService.ListAsync should NOT have test coverage from LabTestServiceTests"
+            "MediaService.ListAsync should NOT have test linkage from LabTestServiceTests"
         );
     }
 
     #[test]
-    fn test_class_inherits_method_coverage() {
+    fn test_class_inherits_method_linkage() {
         let temp_dir = TempDir::new().unwrap();
         let db_path = temp_dir.path().join("test.db");
         let db = SymbolDatabase::new(&db_path).unwrap();
@@ -283,21 +285,25 @@ mod tests {
             VALUES ('rel_1', 'test_1', 'method_1', 'calls', 'tests/services_test.rs', 10);
         "#).unwrap();
 
-        let _stats = crate::analysis::test_coverage::compute_test_coverage(&db).unwrap();
+        let _stats = crate::analysis::test_linkage::compute_test_linkage(&db).unwrap();
 
         let method_cov: Option<String> = db.conn.query_row(
-            "SELECT json_extract(metadata, '$.test_coverage') FROM symbols WHERE id = 'method_1'",
+            "SELECT json_extract(metadata, '$.test_linkage') FROM symbols WHERE id = 'method_1'",
             [], |row| row.get(0)
         ).unwrap();
-        assert!(method_cov.is_some(), "Method should have test coverage");
+        assert!(method_cov.is_some(), "Method should have test linkage");
 
-        let class_cov: Option<String> = db.conn.query_row(
-            "SELECT json_extract(metadata, '$.test_coverage') FROM symbols WHERE id = 'class_1'",
-            [], |row| row.get(0)
-        ).unwrap();
+        let class_cov: Option<String> = db
+            .conn
+            .query_row(
+                "SELECT json_extract(metadata, '$.test_linkage') FROM symbols WHERE id = 'class_1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
         assert!(
             class_cov.is_some(),
-            "Class should inherit test coverage from its methods"
+            "Class should inherit test linkage from its methods"
         );
     }
 
@@ -312,14 +318,187 @@ mod tests {
             [],
         ).unwrap();
 
-        let _stats = crate::analysis::test_coverage::compute_test_coverage(&db).unwrap();
+        let _stats = crate::analysis::test_linkage::compute_test_linkage(&db).unwrap();
         let prod = db.get_symbol_by_id("prod_1").unwrap().unwrap();
         let meta = prod.metadata.unwrap();
-        let coverage = meta.get("test_coverage").unwrap();
-        let count = coverage.get("test_count").unwrap().as_u64().unwrap();
+        let linkage = meta.get("test_linkage").unwrap();
+        let count = linkage.get("test_count").unwrap().as_u64().unwrap();
         assert_eq!(
             count, 2,
             "Duplicate test_1→prod_1 from identifier should be deduped"
+        );
+    }
+
+    #[test]
+    fn test_name_match_fallback_is_deterministic_on_tied_scores() {
+        // REGRESSION: when two prod symbols share a name and produce tied
+        // dir_score + name_bonus, the name-match fallback must pick a
+        // deterministic winner. Spec: smallest prod_id lexicographically,
+        // then smallest prod_path. The query must also ORDER BY so SQLite
+        // row order does not leak into the result across runs.
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        let db = SymbolDatabase::new(&db_path).unwrap();
+
+        // Both prods live in the same directory so common_directory_depth
+        // to the test path is identical. Neither file stem is a substring
+        // of the test file stem, so name_bonus is 0 for both. Tied score.
+        insert_file(&db, "src/services/Helper.cs");
+        insert_file(&db, "src/services/Helper2.cs");
+        insert_file(&db, "tests/services/SomeTest.cs");
+
+        // Insertion order: prod_aaa first, prod_zzz second. Without ORDER BY,
+        // SQLite returns rows in rowid order → [prod_aaa, prod_zzz]. max_by_key
+        // returns the LAST equal element (per std docs), so the unfixed code
+        // picks prod_zzz — the wrong winner per spec.
+        db.conn.execute_batch(r#"
+            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata, reference_score, visibility)
+            VALUES ('prod_aaa', 'Helper', 'method', 'csharp', 'src/services/Helper.cs', 10, 0, 30, 0, 0, 0, NULL, 1.0, 'public');
+
+            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata, reference_score, visibility)
+            VALUES ('prod_zzz', 'Helper', 'method', 'csharp', 'src/services/Helper2.cs', 10, 0, 30, 0, 0, 0, NULL, 1.0, 'public');
+
+            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata, reference_score, visibility)
+            VALUES ('test_some', 'SomeTest', 'method', 'csharp', 'tests/services/SomeTest.cs', 5, 0, 15, 0, 0, 0,
+                    '{"is_test": true, "test_quality": {"quality_tier": "adequate"}}', 0.0, 'private');
+
+            INSERT INTO identifiers (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, containing_symbol_id, target_symbol_id)
+            VALUES ('ident_1', 'Helper', 'call', 'csharp', 'tests/services/SomeTest.cs', 10, 0, 10, 20, 'test_some', NULL);
+        "#).unwrap();
+
+        // Run #1: populate metadata.
+        crate::analysis::test_linkage::compute_test_linkage(&db).unwrap();
+
+        let cov_aaa_1: Option<String> = db
+            .conn
+            .query_row(
+                "SELECT json_extract(metadata, '$.test_linkage') FROM symbols WHERE id = 'prod_aaa'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let cov_zzz_1: Option<String> = db
+            .conn
+            .query_row(
+                "SELECT json_extract(metadata, '$.test_linkage') FROM symbols WHERE id = 'prod_zzz'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        // Spec: on tied score, smallest prod_id lexicographically wins.
+        // 'prod_aaa' < 'prod_zzz' → prod_aaa must receive the linkage.
+        assert!(
+            cov_aaa_1.is_some(),
+            "prod_aaa (smaller id, tied score) should receive linkage; got None"
+        );
+        assert!(
+            cov_zzz_1.is_none(),
+            "prod_zzz (larger id, tied score) must NOT receive linkage; got {:?}",
+            cov_zzz_1
+        );
+
+        // Run #2: clear all metadata, re-run. Output must match run #1 exactly.
+        db.conn
+            .execute("UPDATE symbols SET metadata = NULL WHERE id IN ('prod_aaa', 'prod_zzz')", [])
+            .unwrap();
+        crate::analysis::test_linkage::compute_test_linkage(&db).unwrap();
+
+        let cov_aaa_2: Option<String> = db
+            .conn
+            .query_row(
+                "SELECT json_extract(metadata, '$.test_linkage') FROM symbols WHERE id = 'prod_aaa'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let cov_zzz_2: Option<String> = db
+            .conn
+            .query_row(
+                "SELECT json_extract(metadata, '$.test_linkage') FROM symbols WHERE id = 'prod_zzz'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert_eq!(
+            cov_aaa_1, cov_aaa_2,
+            "prod_aaa metadata must be byte-identical across runs"
+        );
+        assert_eq!(
+            cov_zzz_1, cov_zzz_2,
+            "prod_zzz metadata must be byte-identical across runs (both None)"
+        );
+    }
+
+    #[test]
+    fn test_compute_linkage_clears_stale_symbol_and_parent_linkage() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        let db = SymbolDatabase::new(&db_path).unwrap();
+
+        insert_file(&db, "src/payment_service.rs");
+        insert_file(&db, "tests/payment_service_tests.rs");
+
+        db.conn.execute_batch(r#"
+            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata)
+            VALUES ('parent', 'PaymentService', 'class', 'rust', 'src/payment_service.rs', 1, 0, 40, 0, 0, 0, NULL);
+
+            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata, parent_id)
+            VALUES ('child', 'process_payment', 'function', 'rust', 'src/payment_service.rs', 5, 0, 20, 0, 0, 0, NULL, 'parent');
+
+            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata)
+            VALUES ('test_1', 'test_process_payment', 'function', 'rust', 'tests/payment_service_tests.rs', 1, 0, 10, 0, 0, 0,
+                    '{"is_test": true, "test_quality": {"quality_tier": "thorough"}}');
+
+            INSERT INTO relationships (id, from_symbol_id, to_symbol_id, kind, file_path, line_number)
+            VALUES ('rel_1', 'test_1', 'child', 'calls', 'tests/payment_service_tests.rs', 3);
+        "#).unwrap();
+
+        crate::analysis::test_linkage::compute_test_linkage(&db).unwrap();
+
+        let child_before = db.get_symbol_by_id("child").unwrap().unwrap();
+        let parent_before = db.get_symbol_by_id("parent").unwrap().unwrap();
+        assert!(
+            child_before
+                .metadata
+                .as_ref()
+                .and_then(|meta| meta.get("test_linkage"))
+                .is_some(),
+            "child should gain linkage on first pass"
+        );
+        assert!(
+            parent_before
+                .metadata
+                .as_ref()
+                .and_then(|meta| meta.get("test_linkage"))
+                .is_some(),
+            "parent should inherit aggregated linkage on first pass"
+        );
+
+        db.conn
+            .execute("DELETE FROM relationships WHERE id = 'rel_1'", [])
+            .unwrap();
+
+        crate::analysis::test_linkage::compute_test_linkage(&db).unwrap();
+
+        let child_after = db.get_symbol_by_id("child").unwrap().unwrap();
+        let parent_after = db.get_symbol_by_id("parent").unwrap().unwrap();
+        assert!(
+            child_after
+                .metadata
+                .as_ref()
+                .and_then(|meta| meta.get("test_linkage"))
+                .is_none(),
+            "child linkage should be cleared when no tests still point at it"
+        );
+        assert!(
+            parent_after
+                .metadata
+                .as_ref()
+                .and_then(|meta| meta.get("test_linkage"))
+                .is_none(),
+            "parent aggregation should also be cleared when child linkage disappears"
         );
     }
 }

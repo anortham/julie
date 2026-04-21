@@ -82,9 +82,7 @@ pub fn analyze_tool_calls(rows: &[SearchToolCallRow]) -> Vec<SearchEpisode> {
         }
 
         if let Some(episode) = current.as_mut() {
-            if episode.session_id != row.session_id
-                || episode.workspace_id != row.workspace_id
-            {
+            if episode.session_id != row.session_id || episode.workspace_id != row.workspace_id {
                 let finished = current.take().expect("episode");
                 episodes.push(finished.finish());
             } else {
@@ -118,10 +116,7 @@ pub fn episode_stats(episodes: &[SearchEpisode]) -> EpisodeStats {
         .iter()
         .filter(|e| e.outcome == "reformulation_converged")
         .count() as f64;
-    let stalled = episodes
-        .iter()
-        .filter(|e| e.outcome == "stalled")
-        .count() as f64;
+    let stalled = episodes.iter().filter(|e| e.outcome == "stalled").count() as f64;
 
     EpisodeStats {
         total_episodes: episodes.len(),

@@ -1,5 +1,9 @@
 // Bulk operations with index optimization
 
+use super::revision_changes::{
+    RevisionChangeKind, RevisionFileChange, record_revision_file_changes_tx,
+    snapshot_file_hashes_tx,
+};
 use super::revisions::record_canonical_revision_tx;
 use super::*;
 use anyhow::{Result, anyhow};
@@ -630,6 +634,7 @@ impl SymbolDatabase {
             // 🔥 CRITICAL: ONE outer transaction wraps EVERYTHING
             debug!("🔐 Starting atomic transaction for incremental update");
             let outer_tx = self.conn.transaction()?;
+            let existing_file_hashes = snapshot_file_hashes_tx(&outer_tx, files_to_clean)?;
             let mut inserted_file_count = 0i64;
             let mut inserted_symbol_count = 0i64;
             let mut inserted_relationship_count = 0i64;
@@ -933,7 +938,7 @@ impl SymbolDatabase {
                 || inserted_type_count > 0;
 
             if has_canonical_change {
-                record_canonical_revision_tx(
+                let revision = record_canonical_revision_tx(
                     &outer_tx,
                     workspace_id,
                     CanonicalRevisionKind::Incremental,
@@ -943,6 +948,46 @@ impl SymbolDatabase {
                     inserted_relationship_count,
                     inserted_identifier_count,
                     inserted_type_count,
+                )?;
+
+                let mut revision_changes = Vec::new();
+                for file in new_files {
+                    let (change_kind, old_hash) = match existing_file_hashes.get(&file.path) {
+                        Some(old_hash) => (RevisionChangeKind::Modified, Some(old_hash.clone())),
+                        None => (RevisionChangeKind::Added, None),
+                    };
+                    revision_changes.push(RevisionFileChange {
+                        revision,
+                        workspace_id: workspace_id.to_string(),
+                        file_path: file.path.clone(),
+                        change_kind,
+                        old_hash,
+                        new_hash: Some(file.hash.clone()),
+                    });
+                }
+
+                for file_path in files_to_clean {
+                    if new_files.iter().any(|file| file.path == *file_path) {
+                        continue;
+                    }
+                    let Some(old_hash) = existing_file_hashes.get(file_path) else {
+                        continue;
+                    };
+                    revision_changes.push(RevisionFileChange {
+                        revision,
+                        workspace_id: workspace_id.to_string(),
+                        file_path: file_path.clone(),
+                        change_kind: RevisionChangeKind::Deleted,
+                        old_hash: Some(old_hash.clone()),
+                        new_hash: None,
+                    });
+                }
+
+                record_revision_file_changes_tx(
+                    &outer_tx,
+                    revision,
+                    workspace_id,
+                    &revision_changes,
                 )?;
             } else {
                 debug!("Skipping canonical revision record for no-op incremental update");
@@ -1372,7 +1417,7 @@ impl SymbolDatabase {
                 || inserted_type_count > 0;
 
             if has_canonical_change {
-                record_canonical_revision_tx(
+                let revision = record_canonical_revision_tx(
                     &outer_tx,
                     workspace_id,
                     CanonicalRevisionKind::Fresh,
@@ -1382,6 +1427,24 @@ impl SymbolDatabase {
                     inserted_relationship_count,
                     inserted_identifier_count,
                     inserted_type_count,
+                )?;
+
+                let revision_changes: Vec<RevisionFileChange> = files
+                    .iter()
+                    .map(|file| RevisionFileChange {
+                        revision,
+                        workspace_id: workspace_id.to_string(),
+                        file_path: file.path.clone(),
+                        change_kind: RevisionChangeKind::Added,
+                        old_hash: None,
+                        new_hash: Some(file.hash.clone()),
+                    })
+                    .collect();
+                record_revision_file_changes_tx(
+                    &outer_tx,
+                    revision,
+                    workspace_id,
+                    &revision_changes,
                 )?;
             } else {
                 debug!("Skipping canonical revision record for no-op fresh update");

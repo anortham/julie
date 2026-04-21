@@ -151,6 +151,8 @@
       "Read(//c/Users/CHS300372/.claude/**)",
       "mcp__plugin_goldfish_goldfish__recall",
       "mcp__julie__get_context",
+      "mcp__julie__blast_radius",
+      "mcp__julie__spillover_get",
       "mcp__julie__edit_file",
       "mcp__julie__rewrite_symbol",
       "Bash(export PATH=\"$HOME/.cargo/bin:$PATH\")",

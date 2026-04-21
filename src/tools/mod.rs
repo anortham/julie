@@ -7,19 +7,23 @@ pub mod shared;
 pub mod deep_dive; // Progressive-depth symbol investigation
 pub mod editing; // EditingTransaction infrastructure (shared by refactoring tools)
 pub mod get_context; // Token-budgeted code context subgraph
+pub mod impact; // Change impact analysis and blast radius reporting
 pub mod metrics; // Internal metrics formatting and session tracking
 pub mod navigation;
 pub mod refactoring;
 pub mod search;
+pub mod spillover;
 pub mod symbols; // Symbol overview tools
 pub mod workspace; // Workspace management and indexing
 
 // Re-export all tools for external use
 pub use deep_dive::DeepDiveTool;
 pub use get_context::GetContextTool;
+pub use impact::BlastRadiusTool;
 pub use navigation::{CallPathTool, FastRefsTool};
 pub use refactoring::RenameSymbolTool;
 pub use search::FastSearchTool;
+pub use spillover::SpilloverGetTool;
 pub use symbols::GetSymbolsTool;
 pub use workspace::ManageWorkspaceTool;
 

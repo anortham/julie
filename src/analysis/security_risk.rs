@@ -339,7 +339,7 @@ pub fn risk_label(score: f64) -> &'static str {
 /// Compute structural security risk for all non-test, non-import symbols.
 ///
 /// Must run AFTER `compute_change_risk_scores()` in the pipeline so that
-/// `metadata["test_coverage"]` is available for the untested signal.
+/// `metadata["test_linkage"]` is available for the untested signal.
 pub fn compute_security_risk(db: &SymbolDatabase) -> Result<SecurityRiskStats> {
     let mut stats = SecurityRiskStats::default();
     let sink_patterns = all_sink_patterns();
@@ -457,12 +457,14 @@ pub fn compute_security_risk(db: &SymbolDatabase) -> Result<SecurityRiskStats> {
             let blast_radius = normalize_blast_radius(*ref_score, p95);
 
             // Untested signal: binary
-            let untested = metadata_json
+            let metadata = metadata_json
                 .as_ref()
-                .and_then(|json| serde_json::from_str::<serde_json::Value>(json).ok())
-                .and_then(|v| v.get("test_coverage").cloned())
-                .map(|_| 0.0) // has test_coverage → not untested
-                .unwrap_or(1.0); // no test_coverage → untested
+                .and_then(|json| serde_json::from_str::<serde_json::Value>(json).ok());
+            let untested = metadata
+                .as_ref()
+                .and_then(crate::analysis::test_linkage::test_linkage_entry)
+                .map(|_| 0.0)
+                .unwrap_or(1.0);
 
             let score = compute_score(exposure, input_handling, sink_score, blast_radius, untested);
             let label = risk_label(score);

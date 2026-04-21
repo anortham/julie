@@ -1,10 +1,11 @@
 //! Change risk scoring: per-symbol 0.0–1.0 score representing
 //! "how risky is it to change this?" based on centrality, visibility,
-//! test coverage quality, and symbol kind.
+//! test linkage quality, and symbol kind.
 
 use anyhow::Result;
 use tracing::{debug, info};
 
+use crate::analysis::test_linkage::test_linkage_entry;
 use crate::database::SymbolDatabase;
 use crate::extractors::SymbolKind;
 
@@ -66,8 +67,8 @@ pub fn kind_weight(kind: &SymbolKind) -> Option<f64> {
     }
 }
 
-/// Map test coverage best_tier to a "test weakness" score.
-/// Higher = worse coverage = more risk.
+/// Map linked-test best_tier to a "test weakness" score.
+/// Higher = weaker linkage = more risk.
 pub fn test_weakness_score(best_tier: Option<&str>) -> f64 {
     match best_tier {
         None => 1.0, // Untested
@@ -109,7 +110,7 @@ pub fn risk_label(score: f64) -> &'static str {
 
 /// Compute change risk scores for all non-test, non-import/export symbols.
 ///
-/// Must run AFTER `compute_test_coverage()` so that `metadata["test_coverage"]`
+/// Must run AFTER `compute_test_linkage()` so that `metadata["test_linkage"]`
 /// is available for the test weakness signal.
 pub fn compute_change_risk_scores(db: &SymbolDatabase) -> Result<ChangeRiskStats> {
     let mut stats = ChangeRiskStats::default();
@@ -167,16 +168,15 @@ pub fn compute_change_risk_scores(db: &SymbolDatabase) -> Result<ChangeRiskStats
             let centrality = normalize_centrality(*ref_score, p95);
             let vis_score = visibility_score(vis.as_deref());
 
-            // Extract test weakness from metadata["test_coverage"]["best_tier"]
-            let best_tier = metadata_json
+            let metadata = metadata_json
                 .as_ref()
-                .and_then(|json| serde_json::from_str::<serde_json::Value>(json).ok())
-                .and_then(|v| {
-                    v.get("test_coverage")?
-                        .get("best_tier")?
-                        .as_str()
-                        .map(String::from)
-                });
+                .and_then(|json| serde_json::from_str::<serde_json::Value>(json).ok());
+            let best_tier = metadata
+                .as_ref()
+                .and_then(test_linkage_entry)
+                .and_then(|v| v.get("best_tier"))
+                .and_then(|v| v.as_str())
+                .map(String::from);
             let tw = test_weakness_score(best_tier.as_deref());
 
             let score = compute_risk_score(centrality, vis_score, tw, kw);

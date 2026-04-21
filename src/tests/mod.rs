@@ -46,6 +46,7 @@ pub mod core {
     pub mod language; // Language detection and support tests
     pub mod memory_vectors; // Memory embedding vector storage (migration 012 + CRUD + KNN)
     pub mod paths; // Path utility tests (display_path, UNC handling)
+    pub mod revision_changes; // Canonical revision file-delta persistence tests
     pub mod sidecar_embedding_tests; // Embedded sidecar extraction + root path fallback tests
     pub mod sidecar_supervisor_tests; // Sidecar supervisor config, launch, and utility tests
     pub mod tracing; // Tracing and logging tests
@@ -101,6 +102,9 @@ pub mod tools {
 
     pub mod phase4_token_savings; // Phase 4: Data structure optimization token savings tests (skip_serializing_if)
 
+    pub mod blast_radius_determinism_tests; // blast_radius identifier-walk + deterministic output tests (2026-04-21 fixup)
+    pub mod blast_radius_formatting_tests; // blast_radius readable output formatting tests
+    pub mod blast_radius_tests; // blast_radius impact ranking and revision-range tests
     pub mod call_path_disambiguation_tests; // call_path per-endpoint file-path disambiguation tests
     pub mod call_path_tests; // call_path shortest-path navigation tests
     pub mod filtering_tests; // Symbol filter pipeline tests (index-based refactor TDD)
@@ -114,11 +118,13 @@ pub mod tools {
     pub mod get_context_quality_tests; // get_context fixed-query quality regression tests
     pub mod get_context_relevance_tests; // get_context fallback relevance guardrail tests
     pub mod get_context_scoring_tests; // get_context namespace/module de-boost scoring tests
+    pub mod get_context_task_inputs_tests; // get_context task-shaped scoring, second-hop, and spillover tests
     pub mod get_context_tests; // get_context tool pipeline tests (pivot selection, scoring)
     pub mod get_context_token_budget_tests; // get_context token truncation tests // get_context run_pipeline fallback relevance tests
 
     pub mod hybrid_search_tests; // RRF merge algorithm tests (hybrid keyword + semantic search)
     pub mod query_classification_tests; // QueryIntent classification heuristics (symbol, conceptual, mixed)
+    pub mod spillover_tests; // Spillover store and spillover_get paging tests
 
     pub mod fast_refs_primary_rebind_tests; // FastRefsTool current-primary rebound routing tests
     pub mod formatting_tests; // Navigation formatting tests (lean refs, qualified name parsing)

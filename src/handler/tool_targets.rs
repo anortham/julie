@@ -4,7 +4,8 @@ use crate::tools::editing::edit_file::EditFileTool;
 use crate::tools::editing::rewrite_symbol::RewriteSymbolTool;
 use crate::tools::get_context::GetContextTool;
 use crate::tools::navigation::{CallPathTool, FastRefsTool};
-use crate::tools::{DeepDiveTool, GetSymbolsTool, RenameSymbolTool};
+use crate::tools::spillover::SpilloverGetTool;
+use crate::tools::{BlastRadiusTool, DeepDiveTool, GetSymbolsTool, RenameSymbolTool};
 
 fn target_metadata(symbol_name: Option<&str>, file_path: Option<&str>, line: Option<u32>) -> Value {
     json!({
@@ -59,6 +60,35 @@ pub(crate) fn get_context_metadata(params: &GetContextTool) -> Value {
         "language": params.language,
         "file_pattern": params.file_pattern,
         "max_tokens": params.max_tokens,
+        "edited_files": params.edited_files,
+        "entry_symbols": params.entry_symbols,
+        "stack_trace": params.stack_trace,
+        "failing_test": params.failing_test,
+        "max_hops": params.max_hops,
+        "prefer_tests": params.prefer_tests,
+        "workspace": params.workspace,
+        "target": target_metadata(None, None, None),
+    })
+}
+
+pub(crate) fn spillover_get_metadata(params: &SpilloverGetTool) -> Value {
+    json!({
+        "spillover_handle": params.spillover_handle,
+        "limit": params.limit,
+        "format": params.format,
+        "target": target_metadata(None, None, None),
+    })
+}
+
+pub(crate) fn blast_radius_metadata(params: &BlastRadiusTool) -> Value {
+    json!({
+        "symbol_ids": params.symbol_ids,
+        "file_paths": params.file_paths,
+        "from_revision": params.from_revision,
+        "to_revision": params.to_revision,
+        "max_depth": params.max_depth,
+        "limit": params.limit,
+        "include_tests": params.include_tests,
         "workspace": params.workspace,
         "target": target_metadata(None, None, None),
     })

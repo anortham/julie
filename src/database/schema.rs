@@ -18,6 +18,7 @@ impl SymbolDatabase {
         // Create tables in dependency order
         self.create_workspaces_table()?;
         self.create_canonical_revisions_table()?;
+        self.create_revision_file_changes_table()?;
         self.create_projection_states_table()?;
         self.create_files_table()?;
         self.create_indexing_repairs_table()?;

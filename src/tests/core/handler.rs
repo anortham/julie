@@ -92,6 +92,20 @@ async fn test_tool_list_matches_public_surface() -> Result<()> {
             .any(|tool| tool.name.as_ref() == "call_path"),
         "call_path should appear in the public tool list"
     );
+    assert!(
+        tools
+            .tools
+            .iter()
+            .any(|tool| tool.name.as_ref() == "blast_radius"),
+        "blast_radius should appear in the public tool list"
+    );
+    assert!(
+        tools
+            .tools
+            .iter()
+            .any(|tool| tool.name.as_ref() == "spillover_get"),
+        "spillover_get should appear in the public tool list"
+    );
 
     let _ = service.cancel().await;
     Ok(())

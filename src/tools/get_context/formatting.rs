@@ -19,6 +19,8 @@ pub struct ContextData {
     pub neighbors: Vec<NeighborEntry>,
     /// Token allocation (determines rendering modes).
     pub allocation: Allocation,
+    /// Optional handle for overflow neighbors or second-hop results.
+    pub spillover_handle: Option<String>,
 }
 
 /// Output rendering style.
@@ -63,6 +65,7 @@ pub struct PivotEntry {
 }
 
 /// Pre-processed neighbor for formatting.
+#[derive(Clone)]
 pub struct NeighborEntry {
     /// Symbol name.
     pub name: String,
@@ -182,6 +185,11 @@ fn format_context_readable(data: &ContextData) -> String {
         }
     }
 
+    if let Some(handle) = &data.spillover_handle {
+        out.push('\n');
+        out.push_str(&format!("More available: spillover_handle={handle}\n"));
+    }
+
     out
 }
 
@@ -237,7 +245,49 @@ fn format_context_compact(data: &ContextData) -> String {
         format_neighbor_compact(&mut out, neighbor, &data.allocation.neighbor_mode);
     }
 
+    if let Some(handle) = &data.spillover_handle {
+        out.push_str(&format!("More available: spillover_handle={handle}\n"));
+    }
+
     out
+}
+
+pub fn format_neighbor_rows(entries: &[NeighborEntry], mode: &NeighborMode) -> Vec<String> {
+    entries
+        .iter()
+        .map(|neighbor| match mode {
+            NeighborMode::SignatureAndDoc => {
+                let mut row = format!(
+                    "{} {}:{} ({})",
+                    neighbor.name, neighbor.file_path, neighbor.start_line, neighbor.kind
+                );
+                if let Some(signature) = &neighbor.signature {
+                    row.push_str(&format!("\n   sig: {}", signature));
+                }
+                if let Some(doc_summary) = &neighbor.doc_summary {
+                    row.push_str(&format!("\n   doc: {}", doc_summary));
+                }
+                row
+            }
+            NeighborMode::SignatureOnly => {
+                let signature = neighbor.signature.as_deref().unwrap_or(&neighbor.name);
+                format!(
+                    "{} {}:{} ({})\n   sig: {}",
+                    neighbor.name,
+                    neighbor.file_path,
+                    neighbor.start_line,
+                    neighbor.kind,
+                    signature
+                )
+            }
+            NeighborMode::NameAndLocation => {
+                format!(
+                    "{} {}:{} ({})",
+                    neighbor.name, neighbor.file_path, neighbor.start_line, neighbor.kind
+                )
+            }
+        })
+        .collect()
 }
 
 fn dedup_names(names: &[String]) -> Vec<String> {

@@ -55,7 +55,10 @@ pub async fn index(
     let filtered_episodes: Vec<_> = if show_all {
         episodes
     } else {
-        episodes.into_iter().filter(|e| !e.flags.is_empty()).collect()
+        episodes
+            .into_iter()
+            .filter(|e| !e.flags.is_empty())
+            .collect()
     };
 
     let window_param = if params.hours.is_some() {

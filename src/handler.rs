@@ -40,8 +40,8 @@ use crate::tools::metrics::session::{
     SessionMetrics, ToolCallReport, ToolKind, extract_source_paths,
 };
 use crate::tools::{
-    DeepDiveTool, FastRefsTool, FastSearchTool, GetContextTool, GetSymbolsTool,
-    ManageWorkspaceTool, RenameSymbolTool,
+    BlastRadiusTool, DeepDiveTool, FastRefsTool, FastSearchTool, GetContextTool, GetSymbolsTool,
+    ManageWorkspaceTool, RenameSymbolTool, SpilloverGetTool,
 };
 
 /// Data for a single metrics write, sent via bounded channel to the background writer.
@@ -357,6 +357,8 @@ pub struct JulieServerHandler {
     pub indexing_status: Arc<IndexingStatus>,
     /// Per-session operational metrics (tool call timing, output sizes)
     pub session_metrics: Arc<SessionMetrics>,
+    /// In-memory spillover pages for graph-heavy tool outputs.
+    pub(crate) spillover_store: Arc<crate::tools::spillover::store::SpilloverStore>,
     /// Per-workspace embedding pipeline: cancellation flag + task handle.
     /// Keyed by workspace_id so concurrent workspaces don't cancel each other.
     pub(crate) embedding_tasks: Arc<
@@ -755,7 +757,7 @@ impl JulieServerHandler {
 
         match tool_name {
             "fast_search" | "fast_refs" | "call_path" | "get_symbols" | "deep_dive"
-            | "get_context" | "rename_symbol" => workspace_is_primary,
+            | "get_context" | "blast_radius" | "rename_symbol" => workspace_is_primary,
             "manage_workspace" => Self::manage_workspace_request_targets_primary(arguments),
             "edit_file" => true,
             "rewrite_symbol" => workspace_is_primary,
@@ -829,6 +831,7 @@ impl JulieServerHandler {
             is_indexed: Arc::new(RwLock::new(false)),
             indexing_status: Arc::new(IndexingStatus::new()),
             session_metrics: Arc::new(SessionMetrics::new()),
+            spillover_store: Arc::new(crate::tools::spillover::store::SpilloverStore::default()),
             embedding_tasks: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
             tool_router: Self::tool_router(),
             project_log: None,
@@ -944,6 +947,7 @@ impl JulieServerHandler {
             is_indexed: Arc::new(RwLock::new(already_indexed)),
             indexing_status: Arc::new(IndexingStatus::new()),
             session_metrics: Arc::new(SessionMetrics::new()),
+            spillover_store: Arc::new(crate::tools::spillover::store::SpilloverStore::default()),
             embedding_tasks: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
             tool_router: Self::tool_router(),
             project_log,
@@ -991,6 +995,7 @@ impl JulieServerHandler {
             is_indexed: Arc::new(RwLock::new(false)),
             indexing_status: Arc::new(IndexingStatus::new()),
             session_metrics: Arc::new(SessionMetrics::new()),
+            spillover_store: Arc::new(crate::tools::spillover::store::SpilloverStore::default()),
             embedding_tasks: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
             tool_router: Self::tool_router(),
             project_log: Some(Arc::new(crate::daemon::project_log::ProjectLog::new(
@@ -1770,28 +1775,6 @@ impl JulieServerHandler {
 
     // ========== Workspace Access Helpers ==========
 
-    fn primary_workspace_db_path_from_binding(&self, binding: &PrimaryWorkspaceBinding) -> PathBuf {
-        binding
-            .workspace_root
-            .join(".julie")
-            .join("indexes")
-            .join(&binding.workspace_id)
-            .join("db")
-            .join("symbols.db")
-    }
-
-    fn primary_workspace_tantivy_path_from_binding(
-        &self,
-        binding: &PrimaryWorkspaceBinding,
-    ) -> PathBuf {
-        binding
-            .workspace_root
-            .join(".julie")
-            .join("indexes")
-            .join(&binding.workspace_id)
-            .join("tantivy")
-    }
-
     async fn primary_workspace_snapshot_from_loaded_workspace(
         &self,
         binding: &PrimaryWorkspaceBinding,
@@ -1850,7 +1833,9 @@ impl JulieServerHandler {
         &self,
         binding: &PrimaryWorkspaceBinding,
     ) -> Result<PrimaryWorkspaceSnapshot> {
-        let db_path = self.primary_workspace_db_path_from_binding(binding);
+        let db_path = self
+            .workspace_db_file_path_for(&binding.workspace_id)
+            .await?;
         if !db_path.exists() {
             return Err(anyhow::anyhow!(
                 "Database not found for workspace '{}' at {}",
@@ -1885,7 +1870,9 @@ impl JulieServerHandler {
             database
         };
 
-        let tantivy_path = self.primary_workspace_tantivy_path_from_binding(binding);
+        let tantivy_path = self
+            .workspace_tantivy_dir_for(&binding.workspace_id)
+            .await?;
         let search_index = if tantivy_path.join("meta.json").exists() {
             let workspace_id = binding.workspace_id.clone();
             let database_for_projection = Arc::clone(&database);
@@ -2617,6 +2604,88 @@ impl JulieServerHandler {
         };
         self.record_tool_call(
             "get_context",
+            start.elapsed(),
+            &report,
+            workspace_snapshot.as_ref(),
+        );
+        Ok(result)
+    }
+
+    #[tool(
+        name = "blast_radius",
+        description = "Analyze structural impact from changed symbols, files, or revision ranges. Returns impacted symbols, likely tests, deleted files, and spillover handles for long result sets.",
+        annotations(
+            title = "Blast Radius",
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
+    )]
+    async fn blast_radius(
+        &self,
+        Parameters(params): Parameters<BlastRadiusTool>,
+    ) -> Result<CallToolResult, McpError> {
+        debug!("💥 Blast radius: {:?}", params);
+        let start = std::time::Instant::now();
+        let workspace_snapshot = self.require_primary_workspace_binding().ok();
+        let metadata = tool_targets::blast_radius_metadata(&params);
+        let result = params
+            .call_tool(self)
+            .await
+            .map_err(|e| McpError::internal_error(format!("blast_radius failed: {}", e), None))?;
+        let output_bytes = Self::output_bytes_from_result(&result);
+        let source_file_paths = Self::extract_paths_from_result(&result);
+        let report = ToolCallReport {
+            result_count: None,
+            source_bytes: None,
+            output_bytes,
+            metadata,
+            source_file_paths,
+        };
+        self.record_tool_call(
+            "blast_radius",
+            start.elapsed(),
+            &report,
+            workspace_snapshot.as_ref(),
+        );
+        Ok(result)
+    }
+
+    #[tool(
+        name = "spillover_get",
+        description = "Fetch the next page for a stored graph-heavy result set without rerunning the underlying query.",
+        annotations(
+            title = "Get Spillover Page",
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
+    )]
+    async fn spillover_get(
+        &self,
+        Parameters(params): Parameters<SpilloverGetTool>,
+    ) -> Result<CallToolResult, McpError> {
+        debug!("📄 Spillover get: {:?}", params);
+        let start = std::time::Instant::now();
+        let workspace_snapshot = self.require_primary_workspace_binding().ok();
+        let metadata = tool_targets::spillover_get_metadata(&params);
+        let result = params
+            .call_tool(self)
+            .await
+            .map_err(|e| McpError::internal_error(format!("spillover_get failed: {}", e), None))?;
+        let output_bytes = Self::output_bytes_from_result(&result);
+        let source_file_paths = Self::extract_paths_from_result(&result);
+        let report = ToolCallReport {
+            result_count: None,
+            source_bytes: None,
+            output_bytes,
+            metadata,
+            source_file_paths,
+        };
+        self.record_tool_call(
+            "spillover_get",
             start.elapsed(),
             &report,
             workspace_snapshot.as_ref(),

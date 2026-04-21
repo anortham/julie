@@ -1,7 +1,5 @@
 use crate::daemon::database::SearchToolCallRow;
-use crate::dashboard::search_analysis::{
-    analyze_tool_calls, compute_flags, compute_summary,
-};
+use crate::dashboard::search_analysis::{analyze_tool_calls, compute_flags, compute_summary};
 
 fn fast_search_row(
     id: i64,

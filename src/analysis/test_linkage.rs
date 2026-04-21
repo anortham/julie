@@ -1,28 +1,39 @@
 //! Test-to-code linkage: determines which test symbols exercise each
-//! production symbol and aggregates their quality tiers.
+//! production symbol and aggregates their quality tiers plus evidence sources.
 //!
 //! Uses two data sources:
 //! 1. Relationships — direct test→production edges (high confidence)
 //! 2. Identifiers — test file references to production symbols (medium confidence)
 
 use anyhow::Result;
+use std::cmp::Reverse;
 use std::collections::{HashMap, HashSet};
 use tracing::{debug, info};
 
 use crate::database::SymbolDatabase;
 
-/// Per-symbol test coverage data, stored in metadata["test_coverage"].
+#[derive(Debug, Clone, Default)]
+struct LinkedTest {
+    name: String,
+    file_path: String,
+    tier: String,
+    evidence_sources: HashSet<String>,
+}
+
+/// Per-symbol static test linkage data, stored in metadata["test_linkage"].
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct TestCoverageInfo {
+pub struct TestLinkageInfo {
     pub test_count: usize,
     pub best_tier: String,
     pub worst_tier: String,
-    pub covering_tests: Vec<String>,
+    pub linked_tests: Vec<String>,
+    pub linked_test_paths: Vec<String>,
+    pub evidence_sources: Vec<String>,
 }
 
-/// Summary stats from running test coverage analysis.
+/// Summary stats from running test linkage analysis.
 #[derive(Debug, Clone, Default)]
-pub struct TestCoverageStats {
+pub struct TestLinkageStats {
     pub symbols_covered: usize,
     pub total_linkages: usize,
 }
@@ -38,20 +49,52 @@ pub fn tier_rank(tier: &str) -> u8 {
     }
 }
 
+fn add_linkage(
+    linkages: &mut HashMap<String, HashMap<String, LinkedTest>>,
+    prod_id: String,
+    test_id: String,
+    test_name: String,
+    test_file_path: String,
+    tier: String,
+    source: &str,
+) {
+    let entry = linkages
+        .entry(prod_id)
+        .or_default()
+        .entry(test_id)
+        .or_insert_with(|| LinkedTest {
+            name: test_name.clone(),
+            file_path: test_file_path.clone(),
+            tier: tier.clone(),
+            evidence_sources: HashSet::new(),
+        });
+
+    entry.name = test_name;
+    entry.file_path = test_file_path;
+    entry.tier = tier;
+    entry.evidence_sources.insert(source.to_string());
+}
+
+pub fn test_linkage_entry<'a>(metadata: &'a serde_json::Value) -> Option<&'a serde_json::Value> {
+    metadata
+        .get("test_linkage")
+        .or_else(|| metadata.get("test_coverage"))
+}
+
 /// Compute test-to-code linkage for all production symbols.
 ///
 /// Runs after `compute_test_quality_metrics()` in the indexing pipeline.
 /// Reads relationships and identifiers to find test→production edges,
-/// then aggregates coverage data into each production symbol's metadata.
-pub fn compute_test_coverage(db: &SymbolDatabase) -> Result<TestCoverageStats> {
-    let mut stats = TestCoverageStats::default();
+/// then aggregates linkage data into each production symbol's metadata.
+pub fn compute_test_linkage(db: &SymbolDatabase) -> Result<TestLinkageStats> {
+    let mut stats = TestLinkageStats::default();
 
     // Step 1: Relationship-based linkage (high confidence)
-    let mut linkages: HashMap<String, HashSet<(String, String, String)>> = HashMap::new();
-    // Maps prod_id → set of (test_id, test_name, quality_tier)
+    let mut linkages: HashMap<String, HashMap<String, LinkedTest>> = HashMap::new();
+    // Maps prod_id → test_id → linked test details
 
     let mut stmt = db.conn.prepare(
-        "SELECT r.to_symbol_id, s_test.id, s_test.name,
+        "SELECT r.to_symbol_id, s_test.id, s_test.name, s_test.file_path,
                 COALESCE(json_extract(s_test.metadata, '$.test_quality.quality_tier'), 'unknown')
          FROM relationships r
          JOIN symbols s_test ON r.from_symbol_id = s_test.id
@@ -68,15 +111,21 @@ pub fn compute_test_coverage(db: &SymbolDatabase) -> Result<TestCoverageStats> {
             row.get::<_, String>(1)?,
             row.get::<_, String>(2)?,
             row.get::<_, String>(3)?,
+            row.get::<_, String>(4)?,
         ))
     })?;
 
     for row in rows {
-        let (prod_id, test_id, test_name, tier) = row?;
-        linkages
-            .entry(prod_id)
-            .or_default()
-            .insert((test_id, test_name, tier));
+        let (prod_id, test_id, test_name, test_file_path, tier) = row?;
+        add_linkage(
+            &mut linkages,
+            prod_id,
+            test_id,
+            test_name,
+            test_file_path,
+            tier,
+            "relationship",
+        );
     }
 
     debug!(
@@ -86,7 +135,7 @@ pub fn compute_test_coverage(db: &SymbolDatabase) -> Result<TestCoverageStats> {
 
     // Step 2: Identifier-based linkage — precise (target_symbol_id set)
     let mut stmt2 = db.conn.prepare(
-        "SELECT i.target_symbol_id, s_test.id, s_test.name,
+        "SELECT i.target_symbol_id, s_test.id, s_test.name, s_test.file_path,
                 COALESCE(json_extract(s_test.metadata, '$.test_quality.quality_tier'), 'unknown')
          FROM identifiers i
          JOIN symbols s_test ON i.containing_symbol_id = s_test.id
@@ -103,15 +152,21 @@ pub fn compute_test_coverage(db: &SymbolDatabase) -> Result<TestCoverageStats> {
             row.get::<_, String>(1)?,
             row.get::<_, String>(2)?,
             row.get::<_, String>(3)?,
+            row.get::<_, String>(4)?,
         ))
     })?;
 
     for row in rows2 {
-        let (prod_id, test_id, test_name, tier) = row?;
-        linkages
-            .entry(prod_id)
-            .or_default()
-            .insert((test_id, test_name, tier));
+        let (prod_id, test_id, test_name, test_file_path, tier) = row?;
+        add_linkage(
+            &mut linkages,
+            prod_id,
+            test_id,
+            test_name,
+            test_file_path,
+            tier,
+            "resolved_identifier",
+        );
     }
 
     // Step 2b: Identifier-based linkage — name-match fallback
@@ -124,6 +179,11 @@ pub fn compute_test_coverage(db: &SymbolDatabase) -> Result<TestCoverageStats> {
     // planner to drop idx_symbols_name in favor of idx_symbols_language,
     // turning a fast name-index lookup into a full language-scan + name filter.
     // On Julie's codebase this changed a <1s query into a 3+ minute hang.
+    // ORDER BY s_prod.id, s_prod.file_path gives the scoring loop a stable
+    // row order so max_by_key sees ties in a deterministic sequence across
+    // runs on the same database. Combined with the explicit tie-breaker
+    // below, `linked_tests` / `linked_test_paths` / `evidence_sources`
+    // become reproducible — no SQLite row-order leakage.
     let mut stmt3 = db.conn.prepare(
         "SELECT s_prod.id, s_prod.file_path, s_test.id, s_test.name, i.file_path AS test_file,
                 COALESCE(json_extract(s_test.metadata, '$.test_quality.quality_tier'), 'unknown'),
@@ -136,7 +196,8 @@ pub fn compute_test_coverage(db: &SymbolDatabase) -> Result<TestCoverageStats> {
            AND i.target_symbol_id IS NULL
            AND (json_extract(s_prod.metadata, '$.is_test') IS NULL
                 OR json_extract(s_prod.metadata, '$.is_test') != 1)
-           AND s_prod.kind NOT IN ('import', 'export', 'module', 'namespace')",
+           AND s_prod.kind NOT IN ('import', 'export', 'module', 'namespace')
+         ORDER BY s_prod.id, s_prod.file_path",
     )?;
 
     // Group by (test_id, identifier_name) → pick best prod match by directory proximity
@@ -187,9 +248,15 @@ pub fn compute_test_coverage(db: &SymbolDatabase) -> Result<TestCoverageStats> {
         if candidates.is_empty() {
             continue;
         }
+        // Tie-breaker: when dir_score + name_bonus is equal across candidates,
+        // pick the smallest prod_id lexicographically, then smallest prod_path.
+        // Wrapping the id/path in Reverse flips their ordering so tuple-compare
+        // inside max_by_key selects the smaller value on ties. Combined with
+        // the ORDER BY on stmt3, this guarantees deterministic output across
+        // runs on the same database.
         let best = candidates
             .iter()
-            .max_by_key(|(_, prod_path, test_path, _, _)| {
+            .max_by_key(|(prod_id, prod_path, test_path, _, _)| {
                 let dir_score = common_directory_depth(prod_path, test_path) * 10;
                 let test_file_stem = test_path
                     .rsplit('/')
@@ -211,14 +278,22 @@ pub fn compute_test_coverage(db: &SymbolDatabase) -> Result<TestCoverageStats> {
                     } else {
                         0
                     };
-                dir_score + name_bonus
+                (
+                    dir_score + name_bonus,
+                    Reverse(prod_id.clone()),
+                    Reverse(prod_path.clone()),
+                )
             });
-        if let Some((prod_id, _, _, tier, test_name)) = best {
-            linkages.entry(prod_id.clone()).or_default().insert((
+        if let Some((prod_id, _, test_path, tier, test_name)) = best {
+            add_linkage(
+                &mut linkages,
+                prod_id.clone(),
                 test_id.clone(),
                 test_name.clone(),
+                test_path.clone(),
                 tier.clone(),
-            ));
+                "name_match_fallback",
+            );
         }
     }
 
@@ -230,9 +305,17 @@ pub fn compute_test_coverage(db: &SymbolDatabase) -> Result<TestCoverageStats> {
     // Step 3+4: Aggregate and write metadata
     db.conn.execute_batch("BEGIN")?;
     let result = (|| -> Result<()> {
+        db.conn.execute(
+            "UPDATE symbols
+             SET metadata = json_remove(metadata, '$.test_linkage', '$.test_coverage')
+             WHERE json_extract(metadata, '$.test_linkage') IS NOT NULL
+                OR json_extract(metadata, '$.test_coverage') IS NOT NULL",
+            [],
+        )?;
+
         for (prod_id, tests) in &linkages {
             let test_count = tests.len();
-            let tiers: Vec<&str> = tests.iter().map(|(_, _, t)| t.as_str()).collect();
+            let tiers: Vec<&str> = tests.values().map(|test| test.tier.as_str()).collect();
             let best_tier = tiers
                 .iter()
                 .max_by_key(|t| tier_rank(t))
@@ -241,15 +324,28 @@ pub fn compute_test_coverage(db: &SymbolDatabase) -> Result<TestCoverageStats> {
                 .iter()
                 .min_by_key(|t| tier_rank(t))
                 .unwrap_or(&"unknown");
-            let mut names: Vec<&str> = tests.iter().map(|(_, n, _)| n.as_str()).collect();
+            let mut names: Vec<&str> = tests.values().map(|test| test.name.as_str()).collect();
             names.sort();
+            names.dedup();
             names.truncate(5);
+            let mut paths: Vec<&str> = tests.values().map(|test| test.file_path.as_str()).collect();
+            paths.sort();
+            paths.dedup();
+            paths.truncate(5);
+            let mut evidence_sources: Vec<String> = tests
+                .values()
+                .flat_map(|test| test.evidence_sources.iter().cloned())
+                .collect();
+            evidence_sources.sort();
+            evidence_sources.dedup();
 
-            let coverage_info = serde_json::json!({
+            let linkage_info = serde_json::json!({
                 "test_count": test_count,
                 "best_tier": best_tier,
                 "worst_tier": worst_tier,
-                "covering_tests": names,
+                "linked_tests": names,
+                "linked_test_paths": paths,
+                "evidence_sources": evidence_sources,
             });
 
             // Merge into existing metadata
@@ -270,7 +366,7 @@ pub fn compute_test_coverage(db: &SymbolDatabase) -> Result<TestCoverageStats> {
             };
 
             if let Some(obj) = meta.as_object_mut() {
-                obj.insert("test_coverage".to_string(), coverage_info);
+                obj.insert("test_linkage".to_string(), linkage_info);
             }
 
             db.conn.execute(
@@ -295,19 +391,19 @@ pub fn compute_test_coverage(db: &SymbolDatabase) -> Result<TestCoverageStats> {
 
     stats.symbols_covered = linkages.len();
 
-    // Step 4: Aggregate method-level coverage to parent classes/structs.
-    // Parents that have NO direct test_coverage but have children WITH test_coverage
+    // Step 4: Aggregate method-level linkage to parent classes/structs.
+    // Parents that have NO direct test_linkage but have children WITH test_linkage
     // inherit aggregated stats from their children.
     let mut parent_stmt = db.conn.prepare(
         "SELECT parent.id,
-                json_extract(child.metadata, '$.test_coverage.test_count'),
-                json_extract(child.metadata, '$.test_coverage.best_tier'),
-                json_extract(child.metadata, '$.test_coverage.worst_tier')
+                json_extract(child.metadata, '$.test_linkage.test_count'),
+                json_extract(child.metadata, '$.test_linkage.best_tier'),
+                json_extract(child.metadata, '$.test_linkage.worst_tier')
          FROM symbols parent
          JOIN symbols child ON child.parent_id = parent.id
          WHERE parent.kind IN ('class', 'struct', 'interface', 'enum', 'trait')
-           AND json_extract(child.metadata, '$.test_coverage') IS NOT NULL
-           AND (json_extract(parent.metadata, '$.test_coverage') IS NULL)",
+           AND json_extract(child.metadata, '$.test_linkage') IS NOT NULL
+           AND (json_extract(parent.metadata, '$.test_linkage') IS NULL)",
     )?;
 
     let mut parent_coverage: HashMap<String, (u32, String, String)> = HashMap::new();
@@ -340,18 +436,21 @@ pub fn compute_test_coverage(db: &SymbolDatabase) -> Result<TestCoverageStats> {
         db.conn.execute_batch("BEGIN")?;
         let agg_result = (|| -> Result<()> {
             for (parent_id, (total_tests, best, worst)) in &parent_coverage {
-                let coverage = serde_json::json!({
+                let linkage = serde_json::json!({
                     "test_count": total_tests,
                     "best_tier": best,
                     "worst_tier": worst,
+                    "linked_tests": [],
+                    "linked_test_paths": [],
+                    "evidence_sources": ["aggregated_from_methods"],
                     "source": "aggregated_from_methods"
                 });
                 db.conn.execute(
                     "UPDATE symbols SET metadata = json_set(
                         COALESCE(metadata, '{}'),
-                        '$.test_coverage', json(?1)
+                        '$.test_linkage', json(?1)
                     ) WHERE id = ?2",
-                    rusqlite::params![coverage.to_string(), parent_id],
+                    rusqlite::params![linkage.to_string(), parent_id],
                 )?;
                 stats.symbols_covered += 1;
             }
@@ -368,13 +467,13 @@ pub fn compute_test_coverage(db: &SymbolDatabase) -> Result<TestCoverageStats> {
             }
         }
         debug!(
-            "Step 4 (parent aggregation): {} classes/structs got coverage from methods",
+            "Step 4 (parent aggregation): {} classes/structs got linkage from methods",
             parent_coverage.len()
         );
     }
 
     info!(
-        "Test coverage computed: {} symbols covered, {} total linkages",
+        "Test linkage computed: {} symbols covered, {} total linkages",
         stats.symbols_covered, stats.total_linkages
     );
 

@@ -632,6 +632,15 @@ fn analyze_batch(
         t.elapsed().as_secs_f64()
     );
 
+    let t = std::time::Instant::now();
+    if let Err(e) = crate::analysis::compute_test_linkage(&db_lock) {
+        warn!("Failed to compute test linkage: {}", e);
+    }
+    info!(
+        "⏱️  compute_test_linkage: {:.2}s",
+        t.elapsed().as_secs_f64()
+    );
+
     if let Some(ref daemon_db) = handler.daemon_db {
         let current_primary_id = if route.is_primary {
             handler

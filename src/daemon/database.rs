@@ -675,7 +675,10 @@ impl DaemonDatabase {
         Ok(())
     }
 
-    pub fn list_tool_calls_for_search_analysis(&self, window_secs: i64) -> Result<Vec<SearchToolCallRow>> {
+    pub fn list_tool_calls_for_search_analysis(
+        &self,
+        window_secs: i64,
+    ) -> Result<Vec<SearchToolCallRow>> {
         let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
         let cutoff = now_unix() - window_secs;
         let mut stmt = conn.prepare_cached(
