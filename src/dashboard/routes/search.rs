@@ -226,6 +226,30 @@ fn normalize_dashboard_results(result: SearchExecutionResult) -> SearchExecution
                 workspace_label,
                 file_level,
             },
+            // Content→definitions auto-promotion: the effective hits on
+            // `result.hits` already come from the `inner_definitions` leg
+            // (see `SearchExecutionResult::new_promoted`), so rendering
+            // passes through the existing definitions rendering path.
+            // Preserve the composite variant so telemetry / future template
+            // work can surface the promotion. UI badge work is deferred to
+            // the dashboard follow-up design.
+            SearchExecutionKind::Promoted {
+                requested_target,
+                effective_target,
+                requested_result_count,
+                effective_result_count,
+                promotion_reason,
+                inner_content,
+                inner_definitions,
+            } => SearchExecutionKind::Promoted {
+                requested_target,
+                effective_target,
+                requested_result_count,
+                effective_result_count,
+                promotion_reason,
+                inner_content,
+                inner_definitions,
+            },
         },
     }
 }
@@ -235,4 +259,81 @@ fn normalize_dashboard_hit(mut hit: SearchHit) -> SearchHit {
         hit.snippet = Some(String::new());
     }
     hit
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::extractors::{Symbol, SymbolKind};
+    use crate::tools::search::trace::SearchExecutionResult;
+
+    fn sample_definition_hit() -> SearchHit {
+        let symbol = Symbol {
+            id: "sym_promoted_1".to_string(),
+            name: "handle_request".to_string(),
+            kind: SymbolKind::Function,
+            language: "rust".to_string(),
+            file_path: "src/server.rs".to_string(),
+            start_line: 10,
+            start_column: 0,
+            end_line: 20,
+            end_column: 0,
+            start_byte: 0,
+            end_byte: 0,
+            signature: Some("fn handle_request()".to_string()),
+            doc_comment: None,
+            visibility: None,
+            parent_id: None,
+            metadata: None,
+            semantic_group: None,
+            confidence: Some(0.9),
+            code_context: None,
+            content_type: None,
+        };
+        SearchHit::from_symbol(symbol, "primary".to_string())
+    }
+
+    #[test]
+    fn normalize_dashboard_results_handles_promoted_variant_without_panic() {
+        // Task 11 acceptance: constructing a Promoted execution result and
+        // passing it through `normalize_dashboard_results` must not panic,
+        // and the hits array that flows through must come from the
+        // definitions leg (which `new_promoted` already places on `hits`).
+        let inner_content = SearchExecutionKind::Content {
+            workspace_label: Some("primary".to_string()),
+            file_level: false,
+        };
+        let inner_definitions = SearchExecutionKind::Definitions;
+        let definition_hit = sample_definition_hit();
+
+        let result = SearchExecutionResult::new_promoted(
+            vec![definition_hit.clone()],
+            false,
+            1,
+            "fast_search_content_promoted",
+            "content",
+            "definitions",
+            0,
+            "single_identifier_content_zero_hit",
+            inner_content,
+            inner_definitions,
+        );
+
+        let normalized = normalize_dashboard_results(result);
+
+        assert_eq!(normalized.hits.len(), 1, "hits preserved through normalize");
+        assert_eq!(normalized.hits[0].name, definition_hit.name);
+        assert_eq!(normalized.hits[0].file, definition_hit.file);
+        assert!(
+            matches!(normalized.kind, SearchExecutionKind::Promoted { .. }),
+            "Promoted variant should flow through normalize_dashboard_results"
+        );
+        let info = normalized
+            .trace
+            .promoted
+            .as_ref()
+            .expect("trace.promoted should be populated for a promoted result");
+        assert_eq!(info.requested_target, "content");
+        assert_eq!(info.effective_target, "definitions");
+    }
 }
