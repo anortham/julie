@@ -3,6 +3,7 @@
 
 mod definition_overfetch_tests;
 mod definition_promotion_tests;
+mod file_pattern_tests;
 mod lean_format_tests;
 mod line_match_strategy_tests;
 mod line_mode;
