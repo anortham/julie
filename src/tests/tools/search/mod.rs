@@ -7,6 +7,7 @@ mod lean_format_tests;
 mod line_match_strategy_tests;
 mod line_mode;
 mod primary_workspace_bug;
+mod promotion_tests;
 mod quality;
 mod race_condition;
 mod tantivy_affix_tests;

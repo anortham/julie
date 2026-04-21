@@ -17,7 +17,7 @@ pub use self::types::{LineMatch, LineMatchStrategy};
 // Internal modules
 pub(crate) mod execution;
 pub(crate) mod formatting; // Exposed for testing
-mod line_mode;
+pub(crate) mod line_mode;
 mod nl_embeddings;
 pub(crate) mod query;
 pub mod query_preprocessor; // Public for testing
@@ -324,8 +324,20 @@ impl FastSearchTool {
                     workspace_label: workspace_label
                         .clone()
                         .unwrap_or_else(|| "multiple".to_string()),
+                    // Stage counts are tracked inside `line_mode_matches` and
+                    // consumed by the execution trace; the downstream formatter
+                    // does not re-render them, so `Default` is safe here.
+                    stage_counts: line_mode::LineModeStageCounts::default(),
                 },
                 trace::SearchExecutionKind::Definitions => unreachable!("content search kind"),
+                // Promoted kind is only produced by the content→definitions
+                // auto-promotion path (Task 7). That path bypasses this
+                // content-formatter branch and dispatches through the
+                // Promoted-specific formatter introduced in Task 7b. Reaching
+                // here would indicate an execution-path bug.
+                trace::SearchExecutionKind::Promoted { .. } => {
+                    unreachable!("promoted kind routed through content formatter")
+                }
             };
             let output = line_mode::format_line_mode_output(&self.query, &line_mode_result);
             return Ok(FastSearchExecution {
