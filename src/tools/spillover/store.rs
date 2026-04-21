@@ -21,6 +21,19 @@ impl SpilloverFormat {
         }
     }
 
+    /// Strict parse used by tools that want to reject typos instead of
+    /// silently coercing to Readable. Case-insensitive; empty strings error.
+    pub fn parse_strict(value: &str) -> Result<Self, String> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "readable" => Ok(Self::Readable),
+            "compact" => Ok(Self::Compact),
+            "" => Err("format must be \"readable\" or \"compact\" (got empty string)".to_string()),
+            other => Err(format!(
+                "unknown format \"{other}\" (expected \"readable\" or \"compact\")"
+            )),
+        }
+    }
+
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Readable => "readable",

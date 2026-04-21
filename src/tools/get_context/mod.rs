@@ -55,11 +55,17 @@ pub struct GetContextTool {
     pub format: Option<String>,
 
     /// File paths edited in the current task. Boosts pivots and neighbors in those files.
-    #[serde(default)]
+    #[serde(
+        default,
+        deserialize_with = "crate::utils::serde_lenient::deserialize_option_vec_string_lenient"
+    )]
     pub edited_files: Option<Vec<String>>,
 
     /// Explicit symbol entry points for the current task.
-    #[serde(default)]
+    #[serde(
+        default,
+        deserialize_with = "crate::utils::serde_lenient::deserialize_option_vec_string_lenient"
+    )]
     pub entry_symbols: Option<Vec<String>>,
 
     /// Optional stack trace or file:line list for the current task.

@@ -18,7 +18,7 @@ use crate::search::scoring::is_test_path;
 use crate::tools::navigation::resolution::{WorkspaceTarget, resolve_workspace_filter};
 use crate::tools::spillover::SpilloverFormat;
 
-use self::formatting::{format_blast_radius, impact_rows};
+use self::formatting::{BlastRadiusHeader, format_blast_radius, impact_rows};
 use self::ranking::RankedImpact;
 use self::seed::SeedContext;
 
@@ -44,13 +44,25 @@ const LIKELY_TESTS_LIMIT: usize = 10;
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct BlastRadiusTool {
-    #[serde(default)]
+    #[serde(
+        default,
+        deserialize_with = "crate::utils::serde_lenient::deserialize_vec_string_lenient"
+    )]
     pub symbol_ids: Vec<String>,
-    #[serde(default)]
+    #[serde(
+        default,
+        deserialize_with = "crate::utils::serde_lenient::deserialize_vec_string_lenient"
+    )]
     pub file_paths: Vec<String>,
-    #[serde(default)]
+    #[serde(
+        default,
+        deserialize_with = "crate::utils::serde_lenient::deserialize_option_i64_lenient"
+    )]
     pub from_revision: Option<i64>,
-    #[serde(default)]
+    #[serde(
+        default,
+        deserialize_with = "crate::utils::serde_lenient::deserialize_option_i64_lenient"
+    )]
     pub to_revision: Option<i64>,
     #[serde(
         default = "default_max_depth",
@@ -86,6 +98,10 @@ impl BlastRadiusTool {
 pub struct LikelyTests {
     pub likely_test_paths: Vec<String>,
     pub related_test_symbols: Vec<String>,
+    /// Pre-truncate counts so the formatter can surface overflow markers
+    /// independently per collection.
+    pub likely_test_paths_total: usize,
+    pub related_test_symbols_total: usize,
 }
 
 impl LikelyTests {
@@ -164,9 +180,10 @@ fn run_with_db(
     // Default blast_radius to compact when caller left format unset. Compact
     // is the denser output and the better fit for agent-mediated tool chains;
     // spillover_get keeps its readable default via SpilloverFormat::from_option
-    // (used by other tools).
+    // (used by other tools). Unknown values error rather than silently
+    // coerce, so typos fail loudly.
     let format = match tool.format.as_deref() {
-        Some(value) => SpilloverFormat::from_option(Some(value)),
+        Some(value) => SpilloverFormat::parse_strict(value).map_err(|msg| anyhow!(msg))?,
         None => SpilloverFormat::Compact,
     };
     let overflow_handle = if ranked_impacts.len() > page_limit {
@@ -183,6 +200,13 @@ fn run_with_db(
         None
     };
 
+    let header = BlastRadiusHeader {
+        revision_range: match (tool.from_revision, tool.to_revision) {
+            (Some(from), Some(to)) => Some((from, to)),
+            _ => None,
+        },
+    };
+
     Ok(format_blast_radius(
         &seed_context,
         &visible_impacts,
@@ -190,6 +214,7 @@ fn run_with_db(
         &seed_context.deleted_files,
         overflow_handle.as_deref(),
         format,
+        header,
     ))
 }
 
@@ -395,6 +420,11 @@ fn push_unique(values: &mut Vec<String>, seen: &mut HashSet<String>, candidate: 
 }
 
 fn truncate(tests: &mut LikelyTests) {
+    // Capture pre-truncate totals so the formatter can emit an overflow marker
+    // per collection without re-counting. Independent caps: paths and
+    // symbol names never share a budget.
+    tests.likely_test_paths_total = tests.likely_test_paths.len();
+    tests.related_test_symbols_total = tests.related_test_symbols.len();
     tests.likely_test_paths.truncate(LIKELY_TESTS_LIMIT);
     tests.related_test_symbols.truncate(LIKELY_TESTS_LIMIT);
 }

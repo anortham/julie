@@ -47,6 +47,7 @@ pub mod core {
     pub mod memory_vectors; // Memory embedding vector storage (migration 012 + CRUD + KNN)
     pub mod paths; // Path utility tests (display_path, UNC handling)
     pub mod revision_changes; // Canonical revision file-delta persistence tests
+    pub mod serde_lenient_tests; // Lenient MCP param deserializers (u32, bool, Vec<String>)
     pub mod sidecar_embedding_tests; // Embedded sidecar extraction + root path fallback tests
     pub mod sidecar_supervisor_tests; // Sidecar supervisor config, launch, and utility tests
     pub mod tracing; // Tracing and logging tests

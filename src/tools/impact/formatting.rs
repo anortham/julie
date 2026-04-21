@@ -3,6 +3,17 @@ use crate::tools::impact::ranking::RankedImpact;
 use crate::tools::impact::seed::SeedContext;
 use crate::tools::spillover::SpilloverFormat;
 
+/// Extra context that shapes the blast-radius header line.
+///
+/// Kept as a struct so new optional context (e.g. workspace label) can be added
+/// without bumping the arity of `format_blast_radius`.
+#[derive(Debug, Clone, Default)]
+pub struct BlastRadiusHeader {
+    /// Inclusive `(from, to)` database revision range driving the seed, if
+    /// the caller asked for a revision-range blast radius.
+    pub revision_range: Option<(i64, i64)>,
+}
+
 pub fn format_blast_radius(
     seed_context: &SeedContext,
     impacts: &[RankedImpact],
@@ -10,6 +21,7 @@ pub fn format_blast_radius(
     deleted_files: &[String],
     overflow_handle: Option<&str>,
     format: SpilloverFormat,
+    header: BlastRadiusHeader,
 ) -> String {
     let newline = match format {
         SpilloverFormat::Readable => "\n\n",
@@ -17,7 +29,7 @@ pub fn format_blast_radius(
     };
 
     let mut sections = Vec::new();
-    sections.push(header_line(seed_context));
+    sections.push(header_line(seed_context, &header));
 
     if !impacts.is_empty() {
         let mut impact_block = String::from("High impact\n");
@@ -33,29 +45,19 @@ pub fn format_blast_radius(
     }
 
     if !likely_tests.likely_test_paths.is_empty() {
-        let mut tests_block = String::from("Likely tests\n");
-        tests_block.push_str(
-            &likely_tests
-                .likely_test_paths
-                .iter()
-                .map(|test| format!("- {}", test))
-                .collect::<Vec<_>>()
-                .join("\n"),
-        );
-        sections.push(tests_block);
+        sections.push(tests_block(
+            "Likely tests",
+            &likely_tests.likely_test_paths,
+            likely_tests.likely_test_paths_total,
+        ));
     }
 
     if !likely_tests.related_test_symbols.is_empty() {
-        let mut related_block = String::from("Related test symbols\n");
-        related_block.push_str(
-            &likely_tests
-                .related_test_symbols
-                .iter()
-                .map(|symbol| format!("- {}", symbol))
-                .collect::<Vec<_>>()
-                .join("\n"),
-        );
-        sections.push(related_block);
+        sections.push(tests_block(
+            "Related test symbols",
+            &likely_tests.related_test_symbols,
+            likely_tests.related_test_symbols_total,
+        ));
     }
 
     if !deleted_files.is_empty() {
@@ -77,6 +79,27 @@ pub fn format_blast_radius(
     sections.join(newline)
 }
 
+fn tests_block(heading: &str, entries: &[String], total: usize) -> String {
+    let mut block = format!("{}\n", heading);
+    block.push_str(
+        &entries
+            .iter()
+            .map(|entry| format!("- {}", entry))
+            .collect::<Vec<_>>()
+            .join("\n"),
+    );
+    // `total` is the pre-truncate count. If more entries existed than we
+    // rendered, surface an overflow marker so agents know the list is capped.
+    // If `total` is zero (legacy/default construction), fall back to the
+    // visible count so we never emit a bogus "…and 0 more" line.
+    let shown = entries.len();
+    let effective_total = total.max(shown);
+    if effective_total > shown {
+        block.push_str(&format!("\n- …and {} more", effective_total - shown));
+    }
+    block
+}
+
 pub fn impact_rows(impacts: &[RankedImpact], start_index: usize) -> Vec<String> {
     impacts
         .iter()
@@ -94,11 +117,11 @@ pub fn impact_rows(impacts: &[RankedImpact], start_index: usize) -> Vec<String> 
         .collect()
 }
 
-fn header_line(seed_context: &SeedContext) -> String {
+fn header_line(seed_context: &SeedContext, header: &BlastRadiusHeader) -> String {
     let file_count = seed_context.changed_files.len();
     let seed_count = seed_context.seed_symbols.len();
 
-    match (file_count, seed_count) {
+    let base = match (file_count, seed_count) {
         (0, 0) => "Blast radius".to_string(),
         (0, 1) => "Blast radius from 1 seed symbol".to_string(),
         (0, _) => format!("Blast radius from {} seed symbols", seed_count),
@@ -117,5 +140,10 @@ fn header_line(seed_context: &SeedContext) -> String {
             "Blast radius from {} changed files, {} seed symbols",
             file_count, seed_count
         ),
+    };
+
+    match header.revision_range {
+        Some((from, to)) => format!("{} (revs {}..{})", base, from, to),
+        None => base,
     }
 }
