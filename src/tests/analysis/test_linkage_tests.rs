@@ -330,6 +330,108 @@ mod tests {
     }
 
     #[test]
+    fn test_name_match_fallback_is_deterministic_on_tied_scores() {
+        // REGRESSION: when two prod symbols share a name and produce tied
+        // dir_score + name_bonus, the name-match fallback must pick a
+        // deterministic winner. Spec: smallest prod_id lexicographically,
+        // then smallest prod_path. The query must also ORDER BY so SQLite
+        // row order does not leak into the result across runs.
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        let db = SymbolDatabase::new(&db_path).unwrap();
+
+        // Both prods live in the same directory so common_directory_depth
+        // to the test path is identical. Neither file stem is a substring
+        // of the test file stem, so name_bonus is 0 for both. Tied score.
+        insert_file(&db, "src/services/Helper.cs");
+        insert_file(&db, "src/services/Helper2.cs");
+        insert_file(&db, "tests/services/SomeTest.cs");
+
+        // Insertion order: prod_aaa first, prod_zzz second. Without ORDER BY,
+        // SQLite returns rows in rowid order → [prod_aaa, prod_zzz]. max_by_key
+        // returns the LAST equal element (per std docs), so the unfixed code
+        // picks prod_zzz — the wrong winner per spec.
+        db.conn.execute_batch(r#"
+            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata, reference_score, visibility)
+            VALUES ('prod_aaa', 'Helper', 'method', 'csharp', 'src/services/Helper.cs', 10, 0, 30, 0, 0, 0, NULL, 1.0, 'public');
+
+            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata, reference_score, visibility)
+            VALUES ('prod_zzz', 'Helper', 'method', 'csharp', 'src/services/Helper2.cs', 10, 0, 30, 0, 0, 0, NULL, 1.0, 'public');
+
+            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata, reference_score, visibility)
+            VALUES ('test_some', 'SomeTest', 'method', 'csharp', 'tests/services/SomeTest.cs', 5, 0, 15, 0, 0, 0,
+                    '{"is_test": true, "test_quality": {"quality_tier": "adequate"}}', 0.0, 'private');
+
+            INSERT INTO identifiers (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, containing_symbol_id, target_symbol_id)
+            VALUES ('ident_1', 'Helper', 'call', 'csharp', 'tests/services/SomeTest.cs', 10, 0, 10, 20, 'test_some', NULL);
+        "#).unwrap();
+
+        // Run #1: populate metadata.
+        crate::analysis::test_linkage::compute_test_linkage(&db).unwrap();
+
+        let cov_aaa_1: Option<String> = db
+            .conn
+            .query_row(
+                "SELECT json_extract(metadata, '$.test_linkage') FROM symbols WHERE id = 'prod_aaa'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let cov_zzz_1: Option<String> = db
+            .conn
+            .query_row(
+                "SELECT json_extract(metadata, '$.test_linkage') FROM symbols WHERE id = 'prod_zzz'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        // Spec: on tied score, smallest prod_id lexicographically wins.
+        // 'prod_aaa' < 'prod_zzz' → prod_aaa must receive the linkage.
+        assert!(
+            cov_aaa_1.is_some(),
+            "prod_aaa (smaller id, tied score) should receive linkage; got None"
+        );
+        assert!(
+            cov_zzz_1.is_none(),
+            "prod_zzz (larger id, tied score) must NOT receive linkage; got {:?}",
+            cov_zzz_1
+        );
+
+        // Run #2: clear all metadata, re-run. Output must match run #1 exactly.
+        db.conn
+            .execute("UPDATE symbols SET metadata = NULL WHERE id IN ('prod_aaa', 'prod_zzz')", [])
+            .unwrap();
+        crate::analysis::test_linkage::compute_test_linkage(&db).unwrap();
+
+        let cov_aaa_2: Option<String> = db
+            .conn
+            .query_row(
+                "SELECT json_extract(metadata, '$.test_linkage') FROM symbols WHERE id = 'prod_aaa'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let cov_zzz_2: Option<String> = db
+            .conn
+            .query_row(
+                "SELECT json_extract(metadata, '$.test_linkage') FROM symbols WHERE id = 'prod_zzz'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert_eq!(
+            cov_aaa_1, cov_aaa_2,
+            "prod_aaa metadata must be byte-identical across runs"
+        );
+        assert_eq!(
+            cov_zzz_1, cov_zzz_2,
+            "prod_zzz metadata must be byte-identical across runs (both None)"
+        );
+    }
+
+    #[test]
     fn test_compute_linkage_clears_stale_symbol_and_parent_linkage() {
         let temp_dir = TempDir::new().unwrap();
         let db_path = temp_dir.path().join("test.db");

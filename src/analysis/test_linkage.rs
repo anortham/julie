@@ -6,6 +6,7 @@
 //! 2. Identifiers — test file references to production symbols (medium confidence)
 
 use anyhow::Result;
+use std::cmp::Reverse;
 use std::collections::{HashMap, HashSet};
 use tracing::{debug, info};
 
@@ -178,6 +179,11 @@ pub fn compute_test_linkage(db: &SymbolDatabase) -> Result<TestLinkageStats> {
     // planner to drop idx_symbols_name in favor of idx_symbols_language,
     // turning a fast name-index lookup into a full language-scan + name filter.
     // On Julie's codebase this changed a <1s query into a 3+ minute hang.
+    // ORDER BY s_prod.id, s_prod.file_path gives the scoring loop a stable
+    // row order so max_by_key sees ties in a deterministic sequence across
+    // runs on the same database. Combined with the explicit tie-breaker
+    // below, `linked_tests` / `linked_test_paths` / `evidence_sources`
+    // become reproducible — no SQLite row-order leakage.
     let mut stmt3 = db.conn.prepare(
         "SELECT s_prod.id, s_prod.file_path, s_test.id, s_test.name, i.file_path AS test_file,
                 COALESCE(json_extract(s_test.metadata, '$.test_quality.quality_tier'), 'unknown'),
@@ -190,7 +196,8 @@ pub fn compute_test_linkage(db: &SymbolDatabase) -> Result<TestLinkageStats> {
            AND i.target_symbol_id IS NULL
            AND (json_extract(s_prod.metadata, '$.is_test') IS NULL
                 OR json_extract(s_prod.metadata, '$.is_test') != 1)
-           AND s_prod.kind NOT IN ('import', 'export', 'module', 'namespace')",
+           AND s_prod.kind NOT IN ('import', 'export', 'module', 'namespace')
+         ORDER BY s_prod.id, s_prod.file_path",
     )?;
 
     // Group by (test_id, identifier_name) → pick best prod match by directory proximity
@@ -241,9 +248,15 @@ pub fn compute_test_linkage(db: &SymbolDatabase) -> Result<TestLinkageStats> {
         if candidates.is_empty() {
             continue;
         }
+        // Tie-breaker: when dir_score + name_bonus is equal across candidates,
+        // pick the smallest prod_id lexicographically, then smallest prod_path.
+        // Wrapping the id/path in Reverse flips their ordering so tuple-compare
+        // inside max_by_key selects the smaller value on ties. Combined with
+        // the ORDER BY on stmt3, this guarantees deterministic output across
+        // runs on the same database.
         let best = candidates
             .iter()
-            .max_by_key(|(_, prod_path, test_path, _, _)| {
+            .max_by_key(|(prod_id, prod_path, test_path, _, _)| {
                 let dir_score = common_directory_depth(prod_path, test_path) * 10;
                 let test_file_stem = test_path
                     .rsplit('/')
@@ -265,7 +278,11 @@ pub fn compute_test_linkage(db: &SymbolDatabase) -> Result<TestLinkageStats> {
                     } else {
                         0
                     };
-                dir_score + name_bonus
+                (
+                    dir_score + name_bonus,
+                    Reverse(prod_id.clone()),
+                    Reverse(prod_path.clone()),
+                )
             });
         if let Some((prod_id, _, test_path, tier, test_name)) = best {
             add_linkage(
