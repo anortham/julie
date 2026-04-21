@@ -19,6 +19,35 @@ pub(crate) struct LineModeSearchResult {
     pub relaxed: bool,
     pub strategy: LineMatchStrategy,
     pub workspace_label: String,
+    pub stage_counts: LineModeStageCounts,
+}
+
+/// Per-stage drop counters for the `line_mode_matches` pipeline.
+///
+/// Each field records how many candidates each filter stage dropped.
+/// Used for zero-hit diagnosis: when `matches.is_empty()`, the first
+/// stage where `count_before > 0 && count_after == 0` is the culprit.
+/// Task 4 translates this into a `ZeroHitReason` enum; Task 3 keeps
+/// the raw counts so the replay report can attribute every zero-hit
+/// to a specific stage.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct LineModeStageCounts {
+    /// AND-stage candidate count surfaced by `SearchIndex::search_content`.
+    pub and_candidates: usize,
+    /// OR-stage candidate count (0 if OR fallback was not invoked).
+    pub or_candidates: usize,
+    /// Files fed from Tantivy into the per-file filter loop.
+    pub tantivy_file_candidates: usize,
+    /// Files dropped by the `file_pattern` filter inside the loop.
+    pub file_pattern_dropped: usize,
+    /// Files dropped by the language filter inside the loop.
+    pub language_dropped: usize,
+    /// Files dropped by the `exclude_tests` filter inside the loop.
+    pub test_dropped: usize,
+    /// Files where `get_file_content` returned `None` (content unavailable).
+    pub file_content_unavailable_dropped: usize,
+    /// Files that passed every filter but produced zero line-level matches.
+    pub line_match_miss_dropped: usize,
 }
 
 pub(crate) fn query_uses_file_level_header(query: &str) -> bool {
@@ -101,165 +130,208 @@ pub(crate) async fn line_mode_matches(
         exclude_tests: false,
     };
 
-    let (all_line_matches, relaxed): (Vec<LineMatch>, bool) = match workspace_target {
-        WorkspaceTarget::Primary => {
-            let primary_snapshot = handler.primary_workspace_snapshot().await?;
-            let db = primary_snapshot.database;
-            let search_index = primary_snapshot.search_index.ok_or_else(|| {
-                anyhow::anyhow!(
-                    "Line-level content search requires a Tantivy index for the current primary workspace. Run manage_workspace(operation=\"refresh\") first."
+    let (all_line_matches, relaxed, mut stage_counts): (Vec<LineMatch>, bool, LineModeStageCounts) =
+        match workspace_target {
+            WorkspaceTarget::Primary => {
+                let primary_snapshot = handler.primary_workspace_snapshot().await?;
+                let db = primary_snapshot.database;
+                let search_index = primary_snapshot.search_index.ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "Line-level content search requires a Tantivy index for the current primary workspace. Run manage_workspace(operation=\"refresh\") first."
+                    )
+                })?;
+
+                let query = query.to_string();
+                let match_strategy = match_strategy.clone();
+                let file_pattern_clone = file_pattern.clone();
+                let language_clone = language.clone();
+
+                tokio::task::spawn_blocking(
+                    move || -> Result<(Vec<LineMatch>, bool, LineModeStageCounts)> {
+                        let index = match search_index.lock() {
+                            Ok(guard) => guard,
+                            Err(poisoned) => {
+                                warn!("Search index mutex poisoned, recovering: {}", poisoned);
+                                poisoned.into_inner()
+                            }
+                        };
+                        let content_results = index.search_content(&query, &filter, fetch_limit)?;
+                        let relaxed = content_results.relaxed;
+                        let file_results = content_results.results;
+                        let mut counts = LineModeStageCounts {
+                            and_candidates: content_results.and_candidate_count,
+                            or_candidates: content_results.or_candidate_count,
+                            tantivy_file_candidates: file_results.len(),
+                            ..Default::default()
+                        };
+                        drop(index);
+
+                        let db_lock = match db.lock() {
+                            Ok(guard) => guard,
+                            Err(poisoned) => {
+                                warn!("Database mutex poisoned, recovering: {}", poisoned);
+                                poisoned.into_inner()
+                            }
+                        };
+
+                        let mut matches = Vec::new();
+                        for file_result in file_results {
+                            if matches.len() >= base_limit {
+                                break;
+                            }
+
+                            if let Some(ref pattern) = file_pattern_clone
+                                && !matches_glob_pattern(&file_result.file_path, pattern)
+                            {
+                                counts.file_pattern_dropped += 1;
+                                continue;
+                            }
+
+                            if let Some(ref lang) = language_clone
+                                && !file_matches_language(&file_result.file_path, lang)
+                            {
+                                counts.language_dropped += 1;
+                                continue;
+                            }
+
+                            if exclude_test_files
+                                && crate::search::scoring::is_test_path(&file_result.file_path)
+                            {
+                                counts.test_dropped += 1;
+                                continue;
+                            }
+
+                            match db_lock.get_file_content(&file_result.file_path)? {
+                                Some(content) => {
+                                    let before = matches.len();
+                                    collect_line_matches(
+                                        &mut matches,
+                                        &content,
+                                        &file_result.file_path,
+                                        &match_strategy,
+                                        base_limit,
+                                    );
+                                    if matches.len() == before {
+                                        counts.line_match_miss_dropped += 1;
+                                    }
+                                }
+                                None => {
+                                    counts.file_content_unavailable_dropped += 1;
+                                }
+                            }
+                        }
+
+                        Ok((matches, relaxed, counts))
+                    },
                 )
-            })?;
+                .await??
+            }
+            WorkspaceTarget::Target(workspace_id) => {
+                let db_arc = handler.get_database_for_workspace(workspace_id).await?;
+                let si_arc = handler.get_search_index_for_workspace(workspace_id).await?;
+                let target_workspace_id = workspace_id.clone();
 
-            let query = query.to_string();
-            let match_strategy = match_strategy.clone();
-            let file_pattern_clone = file_pattern.clone();
-            let language_clone = language.clone();
+                let query_clone = query.to_string();
+                let strategy = match_strategy.clone();
+                let ref_file_pattern = file_pattern.clone();
+                let ref_language = language.clone();
 
-            tokio::task::spawn_blocking(move || -> Result<(Vec<LineMatch>, bool)> {
-                let index = match search_index.lock() {
-                    Ok(guard) => guard,
-                    Err(poisoned) => {
-                        warn!("Search index mutex poisoned, recovering: {}", poisoned);
-                        poisoned.into_inner()
-                    }
-                };
-                let content_results = index.search_content(&query, &filter, fetch_limit)?;
-                let relaxed = content_results.relaxed;
-                let file_results = content_results.results;
-                drop(index);
+                tokio::task::spawn_blocking(
+                    move || -> Result<(Vec<LineMatch>, bool, LineModeStageCounts)> {
+                        let si_arc = match si_arc {
+                            Some(si) => si,
+                            None => {
+                                return Err(anyhow::anyhow!(
+                                    "Line-level content search requires a Tantivy index for workspace '{}'. Run manage_workspace(operation=\"refresh\", workspace_id=\"{}\") first.",
+                                    target_workspace_id,
+                                    target_workspace_id
+                                ));
+                            }
+                        };
+                        let ref_index = si_arc
+                            .lock()
+                            .map_err(|e| anyhow::anyhow!("Search index lock error: {}", e))?;
+                        let ref_filter = SearchFilter {
+                            language: ref_language.clone(),
+                            kind: None,
+                            file_pattern: ref_file_pattern.clone(),
+                            exclude_tests: false,
+                        };
+                        let content_results =
+                            ref_index.search_content(&query_clone, &ref_filter, fetch_limit)?;
+                        let relaxed = content_results.relaxed;
+                        let file_results = content_results.results;
+                        let mut counts = LineModeStageCounts {
+                            and_candidates: content_results.and_candidate_count,
+                            or_candidates: content_results.or_candidate_count,
+                            tantivy_file_candidates: file_results.len(),
+                            ..Default::default()
+                        };
+                        drop(ref_index);
 
-                let db_lock = match db.lock() {
-                    Ok(guard) => guard,
-                    Err(poisoned) => {
-                        warn!("Database mutex poisoned, recovering: {}", poisoned);
-                        poisoned.into_inner()
-                    }
-                };
+                        if file_results.is_empty() {
+                            return Ok((Vec::new(), relaxed, counts));
+                        }
 
-                let mut matches = Vec::new();
-                for file_result in file_results {
-                    if matches.len() >= base_limit {
-                        break;
-                    }
+                        let ref_db = db_arc
+                            .lock()
+                            .map_err(|e| anyhow::anyhow!("Database lock error: {}", e))?;
+                        let mut matches = Vec::new();
+                        for file_result in file_results {
+                            if matches.len() >= base_limit {
+                                break;
+                            }
 
-                    if let Some(ref pattern) = file_pattern_clone
-                        && !matches_glob_pattern(&file_result.file_path, pattern)
-                    {
-                        continue;
-                    }
+                            if let Some(ref pattern) = ref_file_pattern
+                                && !matches_glob_pattern(&file_result.file_path, pattern)
+                            {
+                                counts.file_pattern_dropped += 1;
+                                continue;
+                            }
 
-                    if let Some(ref lang) = language_clone
-                        && !file_matches_language(&file_result.file_path, lang)
-                    {
-                        continue;
-                    }
+                            if let Some(ref lang) = ref_language
+                                && !file_matches_language(&file_result.file_path, lang)
+                            {
+                                counts.language_dropped += 1;
+                                continue;
+                            }
 
-                    if exclude_test_files
-                        && crate::search::scoring::is_test_path(&file_result.file_path)
-                    {
-                        continue;
-                    }
+                            if exclude_test_files
+                                && crate::search::scoring::is_test_path(&file_result.file_path)
+                            {
+                                counts.test_dropped += 1;
+                                continue;
+                            }
 
-                    if let Some(content) = db_lock.get_file_content(&file_result.file_path)? {
-                        collect_line_matches(
-                            &mut matches,
-                            &content,
-                            &file_result.file_path,
-                            &match_strategy,
-                            base_limit,
-                        );
-                    }
-                }
+                            match ref_db.get_file_content(&file_result.file_path)? {
+                                Some(content) => {
+                                    let before = matches.len();
+                                    collect_line_matches(
+                                        &mut matches,
+                                        &content,
+                                        &file_result.file_path,
+                                        &strategy,
+                                        base_limit,
+                                    );
+                                    if matches.len() == before {
+                                        counts.line_match_miss_dropped += 1;
+                                    }
+                                }
+                                None => {
+                                    counts.file_content_unavailable_dropped += 1;
+                                }
+                            }
+                        }
 
-                Ok((matches, relaxed))
-            })
-            .await??
-        }
-        WorkspaceTarget::Target(workspace_id) => {
-            let db_arc = handler.get_database_for_workspace(workspace_id).await?;
-            let si_arc = handler.get_search_index_for_workspace(workspace_id).await?;
-            let target_workspace_id = workspace_id.clone();
+                        Ok((matches, relaxed, counts))
+                    },
+                )
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to spawn target workspace search: {}", e))??
+            }
+        };
 
-            let query_clone = query.to_string();
-            let strategy = match_strategy.clone();
-            let ref_file_pattern = file_pattern.clone();
-            let ref_language = language.clone();
-
-            tokio::task::spawn_blocking(move || -> Result<(Vec<LineMatch>, bool)> {
-                let si_arc = match si_arc {
-                    Some(si) => si,
-                    None => {
-                        return Err(anyhow::anyhow!(
-                            "Line-level content search requires a Tantivy index for workspace '{}'. Run manage_workspace(operation=\"refresh\", workspace_id=\"{}\") first.",
-                            target_workspace_id,
-                            target_workspace_id
-                        ));
-                    }
-                };
-                let ref_index = si_arc
-                    .lock()
-                    .map_err(|e| anyhow::anyhow!("Search index lock error: {}", e))?;
-                let ref_filter = SearchFilter {
-                    language: ref_language.clone(),
-                    kind: None,
-                    file_pattern: ref_file_pattern.clone(),
-                    exclude_tests: false,
-                };
-                let content_results = ref_index.search_content(&query_clone, &ref_filter, fetch_limit)?;
-                let relaxed = content_results.relaxed;
-                let file_results = content_results.results;
-                drop(ref_index);
-
-                if file_results.is_empty() {
-                    return Ok((Vec::new(), relaxed));
-                }
-
-                let ref_db = db_arc
-                    .lock()
-                    .map_err(|e| anyhow::anyhow!("Database lock error: {}", e))?;
-                let mut matches = Vec::new();
-                for file_result in file_results {
-                    if matches.len() >= base_limit {
-                        break;
-                    }
-
-                    if let Some(ref pattern) = ref_file_pattern
-                        && !matches_glob_pattern(&file_result.file_path, pattern)
-                    {
-                        continue;
-                    }
-
-                    if let Some(ref lang) = ref_language
-                        && !file_matches_language(&file_result.file_path, lang)
-                    {
-                        continue;
-                    }
-
-                    if exclude_test_files
-                        && crate::search::scoring::is_test_path(&file_result.file_path)
-                    {
-                        continue;
-                    }
-
-                    if let Some(content) = ref_db.get_file_content(&file_result.file_path)? {
-                        collect_line_matches(
-                            &mut matches,
-                            &content,
-                            &file_result.file_path,
-                            &strategy,
-                            base_limit,
-                        );
-                    }
-                }
-
-                Ok((matches, relaxed))
-            })
-            .await
-            .map_err(|e| anyhow::anyhow!("Failed to spawn target workspace search: {}", e))??
-        }
-    };
-
+    let total_before_second_pass = all_line_matches.len();
     let filtered_matches: Vec<LineMatch> = all_line_matches
         .into_iter()
         .filter(|line_match| {
@@ -280,11 +352,27 @@ pub(crate) async fn line_mode_matches(
         })
         .collect();
 
+    // The second-pass filter above can drop additional matches that slipped
+    // past the per-file loop (e.g., via the target-workspace branch, or when
+    // `collect_line_matches` produced partial matches before a filter later
+    // rejected the file). Task 5 investigates whether this pass is ever
+    // load-bearing; for Task 3's instrumentation we fold any extra drops
+    // into the existing counters by delta.
+    let second_pass_dropped = total_before_second_pass.saturating_sub(filtered_matches.len());
+    if second_pass_dropped > 0 {
+        // Attribute the drop to a non-specific bucket: reuse line_match_miss
+        // (the catch-all for matches that existed but were removed by
+        // downstream filters). A dedicated variant can be added in Task 4.
+        stage_counts.line_match_miss_dropped =
+            stage_counts.line_match_miss_dropped.saturating_add(second_pass_dropped);
+    }
+
     Ok(LineModeSearchResult {
         matches: filtered_matches,
         relaxed,
         strategy: match_strategy,
         workspace_label,
+        stage_counts,
     })
 }
 

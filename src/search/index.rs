@@ -127,6 +127,17 @@ pub struct ContentSearchResults {
     pub results: Vec<ContentSearchResult>,
     /// True if AND-per-term returned zero results and OR fallback was used
     pub relaxed: bool,
+    /// Number of candidate documents returned by the initial AND query.
+    ///
+    /// Instrumentation for the search-quality hardening work: diagnoses
+    /// whether zero-hit queries die at the AND stage or further downstream.
+    /// Equal to the truncated `TopDocs` length (bounded by `limit`).
+    pub and_candidate_count: usize,
+    /// Number of candidate documents returned by the OR fallback query.
+    ///
+    /// `0` when the OR fallback was not invoked (AND produced results, or the
+    /// query was a single word so the fallback gate never fired).
+    pub or_candidate_count: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -528,6 +539,8 @@ impl SearchIndex {
             return Ok(ContentSearchResults {
                 results: Vec::new(),
                 relaxed: false,
+                and_candidate_count: 0,
+                or_candidate_count: 0,
             });
         }
 
@@ -544,12 +557,15 @@ impl SearchIndex {
 
         let searcher = self.reader.searcher();
         let top_docs = searcher.search(&query, &TopDocs::with_limit(limit).order_by_score())?;
+        let and_candidate_count = top_docs.len();
 
         // Auto-fallback: if AND returned nothing and the user typed multiple words, try OR.
         // Use word count from query_str (not terms.len()) because the tokenizer can inflate
         // a single word into multiple tokens via CamelCase splitting, stemming, etc.
         let user_word_count = query_str.split_whitespace().count();
-        let (top_docs, relaxed) = if top_docs.is_empty() && user_word_count > 1 {
+        let (top_docs, relaxed, or_candidate_count) = if top_docs.is_empty()
+            && user_word_count > 1
+        {
             let or_query = build_content_query_weighted(
                 &original_terms,
                 &alias_terms,
@@ -560,12 +576,12 @@ impl SearchIndex {
                 filter.language.as_deref(),
                 false, // require_all_terms: OR mode (relaxed matching)
             );
-            (
-                searcher.search(&or_query, &TopDocs::with_limit(limit).order_by_score())?,
-                true,
-            )
+            let or_top_docs =
+                searcher.search(&or_query, &TopDocs::with_limit(limit).order_by_score())?;
+            let or_count = or_top_docs.len();
+            (or_top_docs, true, or_count)
         } else {
-            (top_docs, false)
+            (top_docs, false, 0)
         };
 
         let mut results = Vec::with_capacity(top_docs.len());
@@ -578,7 +594,12 @@ impl SearchIndex {
             });
         }
 
-        Ok(ContentSearchResults { results, relaxed })
+        Ok(ContentSearchResults {
+            results,
+            relaxed,
+            and_candidate_count,
+            or_candidate_count,
+        })
     }
 
     // --- Private helpers ---

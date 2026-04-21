@@ -77,8 +77,9 @@ pub fn search_content_debug(
 ) -> crate::search::Result<ContentDebugResults> {
     let query_tokens = search_index.tokenize_query_public(query_str);
 
-    let ContentSearchResults { results, relaxed } =
-        search_index.search_content(query_str, filter, limit)?;
+    let ContentSearchResults {
+        results, relaxed, ..
+    } = search_index.search_content(query_str, filter, limit)?;
 
     let debug_results: Vec<ContentDebugResult> = results
         .into_iter()
