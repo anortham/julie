@@ -4,7 +4,8 @@
 #[cfg(test)]
 mod tests {
     use crate::tools::search::hint_formatter::{
-        build_multi_token_zero_hit_hint, is_multi_token_query, tokenize_query_for_hint,
+        build_content_zero_hit_hint, build_multi_token_zero_hit_hint, is_multi_token_query,
+        tokenize_query_for_hint,
     };
     use crate::tools::search::trace::{
         FilePatternDiagnostic, HintKind, SearchExecutionKind, SearchExecutionResult, SearchTrace,
@@ -16,6 +17,7 @@ mod tests {
         for (variant, expected) in [
             (HintKind::MultiTokenHint, "multi_token_hint"),
             (HintKind::FilePatternSyntaxHint, "file_pattern_syntax_hint"),
+            (HintKind::OutOfScopeContentHint, "out_of_scope_content_hint"),
         ] {
             let json = serde_json::to_value(&variant).expect("serialize hint kind");
             assert_eq!(
@@ -287,5 +289,50 @@ mod tests {
         // the header and the Filters line (no splitting, no quoting).
         assert!(hint.contains("with file_pattern=src/database/*.rs,src/database/**/*.rs."));
         assert!(hint.contains("file_pattern=src/database/*.rs,src/database/**/*.rs, language="));
+    }
+
+    #[test]
+    fn content_zero_hit_hint_prefers_out_of_scope_over_multi_token() {
+        let (hint_kind, text) = build_content_zero_hit_hint(
+            "marker scope",
+            Some("src/ui/**"),
+            None,
+            None,
+            Some(&ZeroHitReason::FilePatternFiltered),
+            Some(&FilePatternDiagnostic::NoInScopeCandidates),
+        )
+        .expect("no-in-scope content zero-hit should build a hint");
+
+        assert_eq!(hint_kind, HintKind::OutOfScopeContentHint);
+        assert!(
+            text.contains("found no candidate files inside file_pattern=src/ui/**"),
+            "expected dedicated out-of-scope text, got: {}",
+            text,
+        );
+        assert!(
+            !text.contains("Tokens: ["),
+            "out-of-scope hint should beat multi-token hint, got: {}",
+            text,
+        );
+    }
+
+    #[test]
+    fn content_zero_hit_hint_leaves_candidate_starvation_on_multi_token_path() {
+        let (hint_kind, text) = build_content_zero_hit_hint(
+            "marker scope",
+            Some("src/ui/**"),
+            None,
+            None,
+            Some(&ZeroHitReason::FilePatternFiltered),
+            Some(&FilePatternDiagnostic::CandidateStarvation),
+        )
+        .expect("candidate starvation still falls back to multi-token hinting");
+
+        assert_eq!(hint_kind, HintKind::MultiTokenHint);
+        assert!(
+            text.contains("Tokens: ["),
+            "expected multi-token hint, got: {}",
+            text
+        );
     }
 }

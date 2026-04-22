@@ -13,8 +13,8 @@ use std::collections::HashSet;
 use tantivy::tokenizer::{TokenStream, Tokenizer};
 
 use crate::search::tokenizer::CodeTokenizer;
-use crate::tools::search::query::line_match_strategy;
-use crate::tools::search::trace::ZeroHitReason;
+use crate::tools::search::query::{line_match_strategy, looks_like_whitespace_separated_globs};
+use crate::tools::search::trace::{FilePatternDiagnostic, HintKind, ZeroHitReason};
 use crate::tools::search::types::LineMatchStrategy;
 
 /// Whether `query` has two or more whitespace-separated tokens. This is the
@@ -122,4 +122,57 @@ pub fn build_file_pattern_syntax_hint(query: &str, file_pattern: &str) -> String
         query = query,
         file_pattern = file_pattern,
     )
+}
+
+pub fn build_out_of_scope_content_hint(query: &str, file_pattern: &str) -> String {
+    format!(
+        "0 content matches for \"{query}\" with file_pattern={file_pattern}.\n\
+         \n\
+         Content search found no candidate files inside file_pattern={file_pattern}.\n\
+         Try broadening that scope or removing file_pattern if you are not sure where the code lives.",
+        query = query,
+        file_pattern = file_pattern,
+    )
+}
+
+pub fn build_content_zero_hit_hint(
+    query: &str,
+    file_pattern: Option<&str>,
+    language: Option<&str>,
+    exclude_tests: Option<bool>,
+    zero_hit_reason: Option<&ZeroHitReason>,
+    file_pattern_diagnostic: Option<&FilePatternDiagnostic>,
+) -> Option<(HintKind, String)> {
+    if let Some(file_pattern) = file_pattern
+        && looks_like_whitespace_separated_globs(file_pattern)
+    {
+        return Some((
+            HintKind::FilePatternSyntaxHint,
+            build_file_pattern_syntax_hint(query, file_pattern),
+        ));
+    }
+
+    if let (Some(file_pattern), Some(FilePatternDiagnostic::NoInScopeCandidates)) =
+        (file_pattern, file_pattern_diagnostic)
+    {
+        return Some((
+            HintKind::OutOfScopeContentHint,
+            build_out_of_scope_content_hint(query, file_pattern),
+        ));
+    }
+
+    if is_multi_token_query(query) {
+        return Some((
+            HintKind::MultiTokenHint,
+            build_multi_token_zero_hit_hint(
+                query,
+                file_pattern,
+                language,
+                exclude_tests,
+                zero_hit_reason,
+            ),
+        ));
+    }
+
+    None
 }

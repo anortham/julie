@@ -293,28 +293,23 @@ impl FastSearchTool {
             .await?;
 
             if execution.hits.is_empty() {
-                // Multi-token content zero-hit → structured hint (plan §3.7).
-                // Single-token zero-hits flow through the auto-promotion path
-                // (Task 7); when both legs still miss, hint_kind stays None
-                // and the terse fallback below fires.
-                let message = if let Some(file_pattern) = self
-                    .file_pattern
-                    .as_deref()
-                    .filter(|pattern| query::looks_like_whitespace_separated_globs(pattern))
-                {
-                    execution.trace.file_pattern_diagnostic =
-                        Some(trace::FilePatternDiagnostic::WhitespaceSeparatedMultiGlob);
-                    execution.trace.hint_kind = Some(trace::HintKind::FilePatternSyntaxHint);
-                    hint_formatter::build_file_pattern_syntax_hint(&self.query, file_pattern)
-                } else if hint_formatter::is_multi_token_query(&self.query) {
-                    execution.trace.hint_kind = Some(trace::HintKind::MultiTokenHint);
-                    hint_formatter::build_multi_token_zero_hit_hint(
+                // Content zero-hit hint precedence:
+                // syntax hint > out-of-scope hint > multi-token hint.
+                let message = if let Some((hint_kind, text)) =
+                    hint_formatter::build_content_zero_hit_hint(
                         &self.query,
                         self.file_pattern.as_deref(),
                         self.language.as_deref(),
                         self.exclude_tests,
                         execution.trace.zero_hit_reason.as_ref(),
-                    )
+                        execution.trace.file_pattern_diagnostic.as_ref(),
+                    ) {
+                    if matches!(hint_kind, trace::HintKind::FilePatternSyntaxHint) {
+                        execution.trace.file_pattern_diagnostic =
+                            Some(trace::FilePatternDiagnostic::WhitespaceSeparatedMultiGlob);
+                    }
+                    execution.trace.hint_kind = Some(hint_kind);
+                    text
                 } else {
                     format!(
                         "🔍 No lines found matching: '{}'\n\

@@ -155,6 +155,9 @@ pub enum HintKind {
     /// `file_pattern` appears to be multiple globs joined with whitespace
     /// instead of `,` or `|`.
     FilePatternSyntaxHint,
+    /// Content search found no candidate files inside the requested
+    /// `file_pattern` scope.
+    OutOfScopeContentHint,
     /// Multi-token content search produced zero hits; formatter prepended a
     /// per-token breakdown hint.
     MultiTokenHint,

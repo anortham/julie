@@ -192,6 +192,32 @@ fn test_fast_search_metadata_serializes_hint_kind() {
 }
 
 #[test]
+fn test_fast_search_metadata_serializes_out_of_scope_hint_kind() {
+    let params = FastSearchTool {
+        query: "marker scope".to_string(),
+        search_target: "content".to_string(),
+        file_pattern: Some("src/ui/**".to_string()),
+        limit: 10,
+        ..Default::default()
+    };
+    let mut execution = SearchExecutionResult::new(
+        Vec::new(),
+        false,
+        0,
+        "fast_search_content",
+        SearchExecutionKind::Content {
+            workspace_label: Some("primary".to_string()),
+            file_level: false,
+        },
+    );
+    execution.trace.hint_kind = Some(HintKind::OutOfScopeContentHint);
+
+    let metadata = search_telemetry::fast_search_metadata(&params, Some(&execution));
+
+    assert_eq!(metadata["trace"]["hint_kind"], "out_of_scope_content_hint");
+}
+
+#[test]
 fn test_get_symbols_metadata_prefers_file_target_with_symbol_filter() {
     let params = GetSymbolsTool {
         file_path: "src/dashboard/routes/search.rs".to_string(),
