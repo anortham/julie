@@ -10,9 +10,9 @@ repos = [
   "razorback",
   "express",
   "zod",
-  "rtk",
+  "riverpod",
   "flask",
-  "toon-python",
+  "nlohmann-json",
   "Newtonsoft.Json",
   "cobra",
   "gson",
@@ -26,9 +26,9 @@ repos = [
   "razorback",
   "express",
   "zod",
-  "rtk",
+  "riverpod",
   "flask",
-  "toon-python",
+  "nlohmann-json",
   "Newtonsoft.Json",
   "blazor-samples",
   "SurgeryScheduling",
@@ -67,8 +67,8 @@ language = "typescript"
 profile_tags = ["breadth", "full"]
 
 [[repos]]
-name = "rtk"
-language = "typescript"
+name = "riverpod"
+language = "dart"
 profile_tags = ["breadth", "full"]
 
 [[repos]]
@@ -77,8 +77,8 @@ language = "python"
 profile_tags = ["smoke", "breadth", "full"]
 
 [[repos]]
-name = "toon-python"
-language = "python"
+name = "nlohmann-json"
+language = "cpp"
 profile_tags = ["breadth", "full"]
 
 [[repos]]

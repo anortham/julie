@@ -162,6 +162,68 @@ fn search_matrix_contract_tests_corpus_fixture_loads_profiles_and_roots() {
 }
 
 #[test]
+fn search_matrix_contract_tests_starter_fixtures_cover_large_verification_repos_in_breadth() {
+    let cases_path = workspace_root().join("fixtures/search-quality/search-matrix-cases.toml");
+    let corpus_path = workspace_root().join("fixtures/search-quality/search-matrix-corpus.toml");
+
+    let cases =
+        SearchMatrixCaseSet::load(&cases_path).expect("case fixture should deserialize cleanly");
+    let corpus =
+        SearchMatrixCorpus::load(&corpus_path).expect("corpus fixture should deserialize cleanly");
+
+    let breadth_repos = corpus
+        .profiles
+        .get("breadth")
+        .expect("breadth profile should exist");
+    assert!(
+        breadth_repos.repos.iter().any(|repo| repo == "riverpod"),
+        "breadth profile should include riverpod"
+    );
+    assert!(
+        breadth_repos.repos.iter().any(|repo| repo == "nlohmann-json"),
+        "breadth profile should include nlohmann-json"
+    );
+    assert!(
+        !breadth_repos.repos.iter().any(|repo| repo == "rtk"),
+        "breadth profile should not keep rtk once riverpod is added"
+    );
+    assert!(
+        !breadth_repos.repos.iter().any(|repo| repo == "toon-python"),
+        "breadth profile should not keep toon-python once nlohmann-json is added"
+    );
+
+    assert!(
+        corpus.repos.iter().any(|repo| {
+            repo.name == "riverpod" && repo.language == "dart"
+        }),
+        "corpus should define riverpod as a dart repo"
+    );
+    assert!(
+        corpus.repos.iter().any(|repo| {
+            repo.name == "nlohmann-json" && repo.language == "cpp"
+        }),
+        "corpus should define nlohmann-json as a cpp repo"
+    );
+
+    assert!(
+        cases.cases.iter().any(|case| {
+            case.repo_selector
+                .as_ref()
+                .is_some_and(|repos| repos.iter().any(|repo| repo == "riverpod"))
+        }),
+        "starter matrix should contain a riverpod-targeted case"
+    );
+    assert!(
+        cases.cases.iter().any(|case| {
+            case.repo_selector
+                .as_ref()
+                .is_some_and(|repos| repos.iter().any(|repo| repo == "nlohmann-json"))
+        }),
+        "starter matrix should contain a nlohmann-json-targeted case"
+    );
+}
+
+#[test]
 fn search_matrix_contract_tests_mine_ignores_non_search_rows_and_preserves_trace_fields() {
     let temp_dir = TempDir::new().expect("temp dir");
     let db_path = temp_dir.path().join("daemon.db");

@@ -56,6 +56,27 @@ repo_selector = ["flask"]
 expected_mode = "observational"
 
 [[cases]]
+case_id = "dart-provider-container-packages"
+family = "scoped_content"
+query = "ProviderContainer"
+search_target = "content"
+file_pattern = "packages/**"
+exclude_tests = true
+profile_tags = ["breadth", "full"]
+repo_selector = ["riverpod"]
+expected_mode = "expect_hits"
+
+[[cases]]
+case_id = "cpp-json-pointer"
+family = "exact_identifier"
+query = "json_pointer"
+search_target = "definitions"
+file_pattern = "include/**"
+profile_tags = ["breadth", "full"]
+repo_selector = ["nlohmann-json"]
+expected_mode = "expect_hits"
+
+[[cases]]
 case_id = "glob-alternation-docs-or-src"
 family = "alternation_file_pattern"
 query = "blast_radius"
