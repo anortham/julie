@@ -7,12 +7,16 @@ mod tests {
         build_multi_token_zero_hit_hint, is_multi_token_query, tokenize_query_for_hint,
     };
     use crate::tools::search::trace::{
-        HintKind, SearchExecutionKind, SearchExecutionResult, SearchTrace, ZeroHitReason,
+        FilePatternDiagnostic, HintKind, SearchExecutionKind, SearchExecutionResult, SearchTrace,
+        ZeroHitReason,
     };
 
     #[test]
     fn hint_kind_serializes_snake_case() {
-        for (variant, expected) in [(HintKind::MultiTokenHint, "multi_token_hint")] {
+        for (variant, expected) in [
+            (HintKind::MultiTokenHint, "multi_token_hint"),
+            (HintKind::FilePatternSyntaxHint, "file_pattern_syntax_hint"),
+        ] {
             let json = serde_json::to_value(&variant).expect("serialize hint kind");
             assert_eq!(
                 json,
@@ -49,9 +53,37 @@ mod tests {
     }
 
     #[test]
+    fn file_pattern_diagnostic_serializes_snake_case() {
+        for (variant, expected) in [
+            (
+                FilePatternDiagnostic::WhitespaceSeparatedMultiGlob,
+                "whitespace_separated_multi_glob",
+            ),
+            (
+                FilePatternDiagnostic::NoInScopeCandidates,
+                "no_in_scope_candidates",
+            ),
+            (
+                FilePatternDiagnostic::CandidateStarvation,
+                "candidate_starvation",
+            ),
+        ] {
+            let json = serde_json::to_value(&variant).expect("serialize file pattern diagnostic");
+            assert_eq!(
+                json,
+                serde_json::Value::String(expected.to_string()),
+                "FilePatternDiagnostic::{:?} should serialize as {:?}",
+                variant,
+                expected
+            );
+        }
+    }
+
+    #[test]
     fn trace_from_hits_defaults_new_fields_to_none() {
         let trace = SearchTrace::from_hits("fast_search_content", &[]);
         assert!(trace.zero_hit_reason.is_none());
+        assert!(trace.file_pattern_diagnostic.is_none());
         assert!(trace.hint_kind.is_none());
         assert_eq!(trace.result_count, 0);
         assert_eq!(trace.strategy_id, "fast_search_content");
@@ -61,14 +93,19 @@ mod tests {
     fn trace_serializes_zero_hit_and_hint_fields() {
         let mut trace = SearchTrace::from_hits("fast_search_content", &[]);
         trace.zero_hit_reason = Some(ZeroHitReason::LineMatchMiss);
-        trace.hint_kind = Some(HintKind::MultiTokenHint);
+        trace.file_pattern_diagnostic = Some(FilePatternDiagnostic::WhitespaceSeparatedMultiGlob);
+        trace.hint_kind = Some(HintKind::FilePatternSyntaxHint);
 
         let json = serde_json::to_value(&trace).expect("serialize trace");
         assert_eq!(json["strategy_id"], "fast_search_content");
         assert_eq!(json["result_count"], 0);
         assert!(json.get("promoted").is_none());
         assert_eq!(json["zero_hit_reason"], "line_match_miss");
-        assert_eq!(json["hint_kind"], "multi_token_hint");
+        assert_eq!(
+            json["file_pattern_diagnostic"],
+            "whitespace_separated_multi_glob"
+        );
+        assert_eq!(json["hint_kind"], "file_pattern_syntax_hint");
     }
 
     #[test]
@@ -83,6 +120,7 @@ mod tests {
             SearchExecutionKind::Definitions,
         );
         assert!(definitions_result.trace.zero_hit_reason.is_none());
+        assert!(definitions_result.trace.file_pattern_diagnostic.is_none());
         assert!(definitions_result.trace.hint_kind.is_none());
 
         let content_result = SearchExecutionResult::new(
@@ -96,6 +134,7 @@ mod tests {
             },
         );
         assert!(content_result.trace.zero_hit_reason.is_none());
+        assert!(content_result.trace.file_pattern_diagnostic.is_none());
         assert!(content_result.trace.hint_kind.is_none());
     }
 
@@ -150,7 +189,11 @@ mod tests {
         // "foo foo" should yield one "foo" (deduplicated like index tokenizer).
         let tokens = tokenize_query_for_hint("foo foo");
         let foo_count = tokens.iter().filter(|t| t.as_str() == "foo").count();
-        assert_eq!(foo_count, 1, "tokens should be deduplicated, got {:?}", tokens);
+        assert_eq!(
+            foo_count, 1,
+            "tokens should be deduplicated, got {:?}",
+            tokens
+        );
     }
 
     #[test]
@@ -179,9 +222,21 @@ mod tests {
             .lines()
             .find(|l| l.starts_with("Tokens: ["))
             .expect("hint must contain Tokens: line");
-        assert!(tokens_line.contains("retry"), "missing retry: {}", tokens_line);
-        assert!(tokens_line.contains("backoff"), "missing backoff: {}", tokens_line);
-        assert!(tokens_line.contains("jitter"), "missing jitter: {}", tokens_line);
+        assert!(
+            tokens_line.contains("retry"),
+            "missing retry: {}",
+            tokens_line
+        );
+        assert!(
+            tokens_line.contains("backoff"),
+            "missing backoff: {}",
+            tokens_line
+        );
+        assert!(
+            tokens_line.contains("jitter"),
+            "missing jitter: {}",
+            tokens_line
+        );
         // "retry backoff jitter" (multi-word, no exclusions) → FileLevel
         // per `line_match_strategy`. Tokens strategy is tested separately
         // with an exclusion query below.
@@ -193,13 +248,7 @@ mod tests {
 
     #[test]
     fn multi_token_hint_renders_none_filters_and_unknown_reason() {
-        let hint = build_multi_token_zero_hit_hint(
-            "error handling retry",
-            None,
-            None,
-            None,
-            None,
-        );
+        let hint = build_multi_token_zero_hit_hint("error handling retry", None, None, None, None);
         assert!(hint.contains("file_pattern=(none)"));
         assert!(hint.contains("language=(none)"));
         assert!(hint.contains("exclude_tests=auto"));
@@ -209,13 +258,7 @@ mod tests {
     #[test]
     fn multi_token_hint_strategy_reflects_line_match_strategy() {
         // Quoted queries fall into Substring regardless of token count.
-        let hint = build_multi_token_zero_hit_hint(
-            "\"fn main\"",
-            None,
-            None,
-            None,
-            None,
-        );
+        let hint = build_multi_token_zero_hit_hint("\"fn main\"", None, None, None, None);
         assert!(
             hint.contains("Strategy used: Substring"),
             "expected Substring strategy for quoted query, got: {}",
@@ -223,13 +266,7 @@ mod tests {
         );
 
         // Multi-token with exclusion token (leading '-') triggers Tokens.
-        let hint_tokens = build_multi_token_zero_hit_hint(
-            "retry -mock",
-            None,
-            None,
-            None,
-            None,
-        );
+        let hint_tokens = build_multi_token_zero_hit_hint("retry -mock", None, None, None, None);
         assert!(
             hint_tokens.contains("Strategy used: Tokens"),
             "expected Tokens strategy for exclusion query, got: {}",

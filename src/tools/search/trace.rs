@@ -131,12 +131,30 @@ pub enum ZeroHitReason {
     LineMatchMiss,
 }
 
+/// Root-cause diagnostics for `file_pattern`-specific content zero-hits.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum FilePatternDiagnostic {
+    /// Pattern looks like multiple globs separated by whitespace instead of a
+    /// supported top-level separator.
+    WhitespaceSeparatedMultiGlob,
+    /// No candidate paths matching the requested `file_pattern` exist in the
+    /// wider scoped probe.
+    NoInScopeCandidates,
+    /// The initial fetch window missed in-scope candidates that a wider probe
+    /// can see.
+    CandidateStarvation,
+}
+
 /// Categorizes the kind of hint prepended to an agent-facing search response.
 /// Persisted through `SearchTrace.hint_kind` so the "without-recourse" rate is
 /// measurable from `tool_calls.metadata`.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum HintKind {
+    /// `file_pattern` appears to be multiple globs joined with whitespace
+    /// instead of `,` or `|`.
+    FilePatternSyntaxHint,
     /// Multi-token content search produced zero hits; formatter prepended a
     /// per-token breakdown hint.
     MultiTokenHint,
@@ -152,6 +170,8 @@ pub enum HintKind {
 ///   `result_count == 0`. Paths that intentionally leave it `None`:
 ///     * content hit with `result_count > 0`,
 ///     * definitions search that returned hits.
+/// - `file_pattern_diagnostic` is set for `file_pattern`-specific root causes
+///   on content zero-hits. It stays `None` for runs without that diagnosis.
 /// - `hint_kind` is set by the multi-token zero-hit hint formatter. It stays
 ///   `None` for responses that carry no prepended hint.
 #[derive(Debug, Clone, Serialize)]
@@ -160,6 +180,7 @@ pub struct SearchTrace {
     pub result_count: usize,
     pub top_hits: Vec<SearchHitSummary>,
     pub zero_hit_reason: Option<ZeroHitReason>,
+    pub file_pattern_diagnostic: Option<FilePatternDiagnostic>,
     pub hint_kind: Option<HintKind>,
 }
 
@@ -187,6 +208,7 @@ impl SearchTrace {
             result_count: hits.len(),
             top_hits,
             zero_hit_reason: None,
+            file_pattern_diagnostic: None,
             hint_kind: None,
         }
     }

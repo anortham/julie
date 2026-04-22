@@ -4,15 +4,20 @@
 //! for both file-level and line-level searching.
 
 use globset::{Glob, GlobMatcher};
+use std::collections::HashSet;
+use tantivy::tokenizer::{TokenStream, Tokenizer};
 use tracing::warn;
+
+use crate::search::tokenizer::CodeTokenizer;
 
 use super::types::LineMatchStrategy;
 
 /// Match file path against a glob pattern expression.
 ///
-/// A pattern expression is one or more glob segments separated by top-level commas
-/// (commas inside `{...}` brace alternation groups stay inside the group). Each
-/// segment is either an inclusion (`src/**`) or an exclusion (`!docs/**`).
+/// A pattern expression is one or more glob segments separated by top-level
+/// commas or pipes (separators inside `{...}` brace alternation groups stay
+/// inside the group). Each segment is either an inclusion (`src/**`) or an
+/// exclusion (`!docs/**`).
 ///
 /// Match semantics:
 /// `(inclusions.is_empty() || any(inclusions).matches(path)) && !any(exclusions).matches(path)`
@@ -22,6 +27,23 @@ use super::types::LineMatchStrategy;
 /// `**/file name.rs` is preserved as a single glob with a literal space.
 pub fn matches_glob_pattern(file_path: &str, pattern: &str) -> bool {
     compile_patterns(pattern).matches(file_path)
+}
+
+/// Heuristic for the common caller mistake `a/** b/**`: multiple top-level
+/// globs separated by whitespace instead of `,` or `|`.
+///
+/// We bias toward "only fire when likely" instead of trying to parse every
+/// possible spaced filename. Literal-path patterns such as `**/file name.rs`
+/// should not trip this detector.
+pub fn looks_like_whitespace_separated_globs(pattern: &str) -> bool {
+    let tokens: Vec<&str> = pattern.split_whitespace().collect();
+    if tokens.len() < 2 {
+        return false;
+    }
+
+    tokens
+        .iter()
+        .all(|token| token.starts_with('!') || token.contains('*') || token.contains('/'))
 }
 
 /// A compiled single-segment matcher.
@@ -115,7 +137,7 @@ fn split_top_level_commas(pattern: &str) -> Vec<String> {
                 depth = depth.saturating_sub(1);
                 current.push(c);
             }
-            ',' if depth == 0 => {
+            ',' | '|' if depth == 0 => {
                 result.push(std::mem::take(&mut current));
             }
             _ => current.push(c),
@@ -219,22 +241,54 @@ pub fn line_match_strategy(query: &str) -> LineMatchStrategy {
 
 /// Check if a line matches the given strategy
 pub fn line_matches(strategy: &LineMatchStrategy, line: &str) -> bool {
-    let line_lower = line.to_lowercase();
-
     match strategy {
         LineMatchStrategy::Substring(pattern) => {
-            !pattern.is_empty() && line_lower.contains(pattern)
+            !pattern.is_empty() && line_matches_literal(line, pattern)
         }
         LineMatchStrategy::Tokens { required, excluded } => {
-            let required_ok =
-                required.is_empty() || required.iter().all(|token| line_lower.contains(token));
-            let excluded_ok = excluded.iter().all(|token| !line_lower.contains(token));
+            let line_tokens = tokenize_text_for_line_match(line);
+            let required_ok = required.is_empty()
+                || required
+                    .iter()
+                    .all(|term| term_matches_tokens(term, &line_tokens));
+            let excluded_ok = excluded
+                .iter()
+                .all(|term| !term_matches_tokens(term, &line_tokens));
             required_ok && excluded_ok
         }
         LineMatchStrategy::FileLevel { terms } => {
             // Match lines containing ANY term (OR logic)
             // Tantivy already guarantees all terms exist in the file
-            terms.iter().any(|term| line_lower.contains(term))
+            let line_tokens = tokenize_text_for_line_match(line);
+            terms
+                .iter()
+                .any(|term| term_matches_tokens(term, &line_tokens))
         }
     }
+}
+
+fn line_matches_literal(line: &str, pattern: &str) -> bool {
+    let line_lower = line.to_lowercase();
+    line_lower.contains(pattern)
+}
+
+fn tokenize_text_for_line_match(text: &str) -> HashSet<String> {
+    let mut tokenizer = CodeTokenizer::with_default_patterns();
+    let mut stream = tokenizer.token_stream(text);
+    let mut tokens = HashSet::new();
+    while stream.advance() {
+        tokens.insert(stream.token().text.clone());
+    }
+    tokens
+}
+
+fn term_matches_tokens(term: &str, line_tokens: &HashSet<String>) -> bool {
+    let mut tokenizer = CodeTokenizer::with_default_patterns();
+    let mut stream = tokenizer.token_stream(term);
+    while stream.advance() {
+        if line_tokens.contains(&stream.token().text) {
+            return true;
+        }
+    }
+    false
 }

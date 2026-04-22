@@ -82,4 +82,29 @@ mod line_match_strategy_tests {
         // Case-insensitive
         assert!(line_matches(&strategy, "SPAWN_BLOCKING is loud"));
     }
+
+    #[test]
+    fn test_file_level_line_matches_tokenized_terms() {
+        let strategy = LineMatchStrategy::FileLevel {
+            terms: vec!["tokens".to_string(), "estimation".to_string()],
+        };
+
+        assert!(
+            line_matches(&strategy, "pub struct TokenEstimator;"),
+            "file-level verifier should honor tokenizer splits/stems, not only raw substrings",
+        );
+    }
+
+    #[test]
+    fn test_tokens_strategy_excluded_terms_use_tokenized_forms() {
+        let strategy = LineMatchStrategy::Tokens {
+            required: vec!["format".to_string()],
+            excluded: vec!["tests".to_string()],
+        };
+
+        assert!(
+            !line_matches(&strategy, "fn test_format_output() {}"),
+            "excluded query terms should catch tokenized/stemmed forms on the line",
+        );
+    }
 }

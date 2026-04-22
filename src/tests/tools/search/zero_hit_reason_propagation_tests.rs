@@ -17,7 +17,7 @@ use tempfile::TempDir;
 use tokio::time::{Duration, sleep};
 
 use crate::handler::JulieServerHandler;
-use crate::tools::search::trace::ZeroHitReason;
+use crate::tools::search::trace::{FilePatternDiagnostic, ZeroHitReason};
 use crate::tools::{FastSearchTool, ManageWorkspaceTool};
 
 async fn mark_index_ready(handler: &JulieServerHandler) {
@@ -48,10 +48,7 @@ async fn seed_workspace(files: &[(&str, &str)]) -> (TempDir, JulieServerHandler)
         .await
         .expect("handler init");
     handler
-        .initialize_workspace_with_force(
-            Some(workspace_path.to_string_lossy().to_string()),
-            true,
-        )
+        .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
         .await
         .expect("workspace init");
 
@@ -131,10 +128,8 @@ async fn trace_zero_hit_reason_propagates_file_pattern_filtered() {
 /// aggregation).
 #[tokio::test(flavor = "multi_thread")]
 async fn trace_zero_hit_reason_stays_none_on_non_empty_run() {
-    let (_dir, handler) = seed_workspace(&[
-        ("src/core.rs", "fn core() { let hit_me = 1; }\n"),
-    ])
-    .await;
+    let (_dir, handler) =
+        seed_workspace(&[("src/core.rs", "fn core() { let hit_me = 1; }\n")]).await;
 
     let execution = content_search("hit_me", None)
         .execute_with_trace(&handler)
@@ -151,5 +146,39 @@ async fn trace_zero_hit_reason_stays_none_on_non_empty_run() {
         execution.trace.zero_hit_reason, None,
         "non-empty runs must leave zero_hit_reason None; got {:?}",
         execution.trace.zero_hit_reason,
+    );
+}
+
+/// Task 2: when the scoped miss is a real out-of-scope request rather than
+/// starvation, the execution layer must copy `file_pattern_diagnostic` onto the
+/// public trace the same way it already does for `zero_hit_reason`.
+#[tokio::test(flavor = "multi_thread")]
+async fn trace_file_pattern_diagnostic_propagates_no_in_scope_candidates() {
+    let (_dir, handler) = seed_workspace(&[
+        ("src/core.rs", "fn core() { let marker_scope = 1; }\n"),
+        (
+            "crates/other/misc.rs",
+            "fn misc() { let marker_scope = 2; }\n",
+        ),
+    ])
+    .await;
+
+    let execution = content_search("marker_scope", Some("src/ui/**"))
+        .execute_with_trace(&handler)
+        .await
+        .expect("search should not error")
+        .execution
+        .expect("execute_with_trace populates execution for content search");
+
+    assert!(execution.hits.is_empty(), "scoped miss should stay empty");
+    assert_eq!(
+        execution.trace.zero_hit_reason,
+        Some(ZeroHitReason::FilePatternFiltered),
+    );
+    assert_eq!(
+        execution.trace.file_pattern_diagnostic,
+        Some(FilePatternDiagnostic::NoInScopeCandidates),
+        "execute_content_search must copy line_mode's file_pattern_diagnostic onto trace; got {:?}",
+        execution.trace.file_pattern_diagnostic,
     );
 }

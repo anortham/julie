@@ -112,3 +112,14 @@ pub fn build_multi_token_zero_hit_hint(
         reason = reason_display,
     )
 }
+
+pub fn build_file_pattern_syntax_hint(query: &str, file_pattern: &str) -> String {
+    format!(
+        "0 content matches for \"{query}\" with file_pattern={file_pattern}.\n\
+         \n\
+         file_pattern looks like multiple globs separated by whitespace.\n\
+         Use ',' or '|' between globs, for example: src/**,tests/**",
+        query = query,
+        file_pattern = file_pattern,
+    )
+}

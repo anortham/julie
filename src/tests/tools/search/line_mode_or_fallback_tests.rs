@@ -44,9 +44,14 @@ mod search_content_candidate_counts {
             .expect("search_content");
 
         assert_eq!(
-            result.and_candidate_count, 0,
+            result.and_candidate_count,
+            0,
             "AND should find no file containing all three tokens; got {:?}",
-            result.results.iter().map(|r| &r.file_path).collect::<Vec<_>>()
+            result
+                .results
+                .iter()
+                .map(|r| &r.file_path)
+                .collect::<Vec<_>>()
         );
         assert!(
             result.or_candidate_count > 0,
@@ -116,6 +121,7 @@ mod line_mode_stage_counts {
     use crate::handler::JulieServerHandler;
     use crate::tools::navigation::resolution::WorkspaceTarget;
     use crate::tools::search::line_mode::line_mode_matches;
+    use crate::tools::search::trace::{FilePatternDiagnostic, ZeroHitReason};
     use crate::tools::workspace::ManageWorkspaceTool;
     use std::fs;
     use std::sync::atomic::Ordering;
@@ -225,7 +231,10 @@ mod line_mode_stage_counts {
         .await
         .expect("line_mode_matches");
 
-        assert!(result.matches.is_empty(), "file_pattern should exclude the sole hit");
+        assert!(
+            result.matches.is_empty(),
+            "file_pattern should exclude the sole hit"
+        );
         assert!(
             result.stage_counts.tantivy_file_candidates >= 1,
             "Tantivy should have returned the src file candidate"
@@ -233,6 +242,102 @@ mod line_mode_stage_counts {
         assert!(
             result.stage_counts.file_pattern_dropped >= 1,
             "file_pattern filter should have dropped the src file"
+        );
+    }
+
+    /// Scoped zero-hit with no matching paths even after a wider probe should
+    /// classify as `NoInScopeCandidates` while keeping the coarse stage as
+    /// `FilePatternFiltered`.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn file_pattern_diagnostic_no_in_scope_candidates() {
+        let (_dir, handler) = seed_workspace(&[
+            ("src/core.rs", "fn core() { let marker_scope = 1; }\n"),
+            (
+                "crates/other/misc.rs",
+                "fn misc() { let marker_scope = 2; }\n",
+            ),
+        ])
+        .await;
+
+        let result = line_mode_matches(
+            "marker_scope",
+            &None,
+            &Some("src/ui/**".to_string()),
+            1,
+            None,
+            &WorkspaceTarget::Primary,
+            &handler,
+        )
+        .await
+        .expect("line_mode_matches");
+
+        assert!(result.matches.is_empty(), "scoped miss should stay empty");
+        assert_eq!(
+            result.zero_hit_reason,
+            Some(ZeroHitReason::FilePatternFiltered),
+        );
+        assert_eq!(
+            result.file_pattern_diagnostic,
+            Some(FilePatternDiagnostic::NoInScopeCandidates),
+        );
+    }
+
+    /// Task 3: when the first scoped fetch window is saturated by higher-ranked
+    /// out-of-scope files but later ranked files are in-scope, the adaptive
+    /// fetch loop should widen and return the in-scope hit instead of a
+    /// diagnostic-only zero-hit.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn scoped_candidate_starvation_returns_in_scope_hit() {
+        let mut files = Vec::new();
+        for idx in 0..800 {
+            files.push((
+                format!("crates/outscope/file_{idx:03}.rs"),
+                format!(
+                    "fn out_{idx}() {{ let marker_starvation = 1; let marker_starvation = 2; let marker_starvation = 3; let marker_starvation = 4; let marker_starvation = 5; let marker_starvation = 6; let marker_starvation = 7; let marker_starvation = 8; }}\n"
+                ),
+            ));
+        }
+        files.push((
+            "src/ui/target.rs".to_string(),
+            format!(
+                "fn target() {{ {} let marker_starvation = 1; }}\n",
+                "let filler = 0; ".repeat(200)
+            ),
+        ));
+        let file_refs: Vec<(&str, &str)> = files
+            .iter()
+            .map(|(path, content)| (path.as_str(), content.as_str()))
+            .collect();
+        let (_dir, handler) = seed_workspace(&file_refs).await;
+
+        let result = line_mode_matches(
+            "marker_starvation",
+            &None,
+            &Some("src/ui/**".to_string()),
+            1,
+            None,
+            &WorkspaceTarget::Primary,
+            &handler,
+        )
+        .await
+        .expect("line_mode_matches");
+
+        assert_eq!(
+            result.matches.len(),
+            1,
+            "adaptive scoped fetch should recover the in-scope file; got {:?}",
+            result
+                .matches
+                .iter()
+                .map(|m| (&m.file_path, m.line_number, &m.line_content))
+                .collect::<Vec<_>>(),
+        );
+        assert_eq!(result.matches[0].file_path, "src/ui/target.rs");
+        assert_eq!(result.zero_hit_reason, None);
+        assert_eq!(
+            result.file_pattern_diagnostic,
+            None,
+            "successful widened fetch should not leave a zero-hit diagnostic behind",
         );
     }
 
@@ -245,8 +350,7 @@ mod line_mode_stage_counts {
     #[tokio::test(flavor = "multi_thread")]
     async fn stage_language_filter_is_redundant_with_tantivy_filter() {
         let (_dir, handler) =
-            seed_workspace(&[("src/example.rs", "fn alpha() { let marker_lang = 1; }\n")])
-                .await;
+            seed_workspace(&[("src/example.rs", "fn alpha() { let marker_lang = 1; }\n")]).await;
 
         let result = line_mode_matches(
             "marker_lang",
@@ -260,7 +364,10 @@ mod line_mode_stage_counts {
         .await
         .expect("line_mode_matches");
 
-        assert!(result.matches.is_empty(), "python filter excludes the .rs file");
+        assert!(
+            result.matches.is_empty(),
+            "python filter excludes the .rs file"
+        );
         assert_eq!(
             result.stage_counts.tantivy_file_candidates, 0,
             "Tantivy should have filtered out the .rs file via SearchFilter.language",
@@ -302,11 +409,8 @@ mod line_mode_stage_counts {
     /// Happy path sanity check: successful hits keep all drop counters at 0.
     #[tokio::test(flavor = "multi_thread")]
     async fn stage_counts_zero_on_happy_path() {
-        let (_dir, handler) = seed_workspace(&[(
-            "src/example.rs",
-            "fn alpha() { let marker_ok = 1; }\n",
-        )])
-        .await;
+        let (_dir, handler) =
+            seed_workspace(&[("src/example.rs", "fn alpha() { let marker_ok = 1; }\n")]).await;
 
         let result = line_mode_matches(
             "marker_ok",

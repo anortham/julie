@@ -3,7 +3,8 @@ use crate::handler::search_telemetry;
 use crate::handler::tool_targets;
 use crate::tools::search::FastSearchTool;
 use crate::tools::search::trace::{
-    HintKind, SearchExecutionKind, SearchExecutionResult, SearchHit, ZeroHitReason,
+    FilePatternDiagnostic, HintKind, SearchExecutionKind, SearchExecutionResult, SearchHit,
+    ZeroHitReason,
 };
 use crate::tools::spillover::SpilloverGetTool;
 use crate::tools::{BlastRadiusTool, DeepDiveTool, GetSymbolsTool};
@@ -68,6 +69,10 @@ fn test_fast_search_metadata_captures_trace_and_intent() {
         "execution with hits should serialize zero_hit_reason as null"
     );
     assert!(
+        metadata["trace"]["file_pattern_diagnostic"].is_null(),
+        "execution with hits should serialize file_pattern_diagnostic as null"
+    );
+    assert!(
         metadata["trace"]["hint_kind"].is_null(),
         "execution without a hint should serialize hint_kind as null"
     );
@@ -96,7 +101,69 @@ fn test_fast_search_metadata_serializes_zero_hit_reason() {
 
     let metadata = search_telemetry::fast_search_metadata(&params, Some(&execution));
 
-    assert_eq!(metadata["trace"]["zero_hit_reason"], "file_pattern_filtered");
+    assert_eq!(
+        metadata["trace"]["zero_hit_reason"],
+        "file_pattern_filtered"
+    );
+}
+
+#[test]
+fn test_fast_search_metadata_serializes_file_pattern_diagnostic() {
+    let params = FastSearchTool {
+        query: "calculate_total".to_string(),
+        search_target: "content".to_string(),
+        file_pattern: Some("src/** tests/**".to_string()),
+        limit: 10,
+        ..Default::default()
+    };
+    let mut execution = SearchExecutionResult::new(
+        Vec::new(),
+        false,
+        0,
+        "fast_search_content",
+        SearchExecutionKind::Content {
+            workspace_label: Some("primary".to_string()),
+            file_level: false,
+        },
+    );
+    execution.trace.file_pattern_diagnostic =
+        Some(FilePatternDiagnostic::WhitespaceSeparatedMultiGlob);
+
+    let metadata = search_telemetry::fast_search_metadata(&params, Some(&execution));
+
+    assert_eq!(
+        metadata["trace"]["file_pattern_diagnostic"],
+        "whitespace_separated_multi_glob"
+    );
+}
+
+#[test]
+fn test_fast_search_metadata_serializes_scoped_file_pattern_diagnostic() {
+    let params = FastSearchTool {
+        query: "calculate_total".to_string(),
+        search_target: "content".to_string(),
+        file_pattern: Some("src/ui/**".to_string()),
+        limit: 10,
+        ..Default::default()
+    };
+    let mut execution = SearchExecutionResult::new(
+        Vec::new(),
+        false,
+        0,
+        "fast_search_content",
+        SearchExecutionKind::Content {
+            workspace_label: Some("primary".to_string()),
+            file_level: false,
+        },
+    );
+    execution.trace.file_pattern_diagnostic = Some(FilePatternDiagnostic::NoInScopeCandidates);
+
+    let metadata = search_telemetry::fast_search_metadata(&params, Some(&execution));
+
+    assert_eq!(
+        metadata["trace"]["file_pattern_diagnostic"],
+        "no_in_scope_candidates"
+    );
 }
 
 #[test]
@@ -117,11 +184,11 @@ fn test_fast_search_metadata_serializes_hint_kind() {
             file_level: false,
         },
     );
-    execution.trace.hint_kind = Some(HintKind::MultiTokenHint);
+    execution.trace.hint_kind = Some(HintKind::FilePatternSyntaxHint);
 
     let metadata = search_telemetry::fast_search_metadata(&params, Some(&execution));
 
-    assert_eq!(metadata["trace"]["hint_kind"], "multi_token_hint");
+    assert_eq!(metadata["trace"]["hint_kind"], "file_pattern_syntax_hint");
 }
 
 #[test]

@@ -18,6 +18,7 @@ pub(crate) fn fast_search_metadata(
             "relaxed": result.relaxed,
             "top_hits": result.trace.top_hits,
             "zero_hit_reason": result.trace.zero_hit_reason,
+            "file_pattern_diagnostic": result.trace.file_pattern_diagnostic,
             "hint_kind": result.trace.hint_kind,
         })
     });

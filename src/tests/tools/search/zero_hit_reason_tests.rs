@@ -12,9 +12,7 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::tools::search::line_mode::{
-        LineModeStageCounts, attribute_zero_hit_reason,
-    };
+    use crate::tools::search::line_mode::{LineModeStageCounts, attribute_zero_hit_reason};
     use crate::tools::search::trace::ZeroHitReason;
 
     /// Tantivy returned nothing — the per-file loop never ran. This is
@@ -167,7 +165,6 @@ mod tests {
             Some(ZeroHitReason::LineMatchMiss),
         );
     }
-
 }
 
 /// Live-pipeline coverage: make sure `line_mode_matches` actually
@@ -243,11 +240,8 @@ mod integration_tests {
     /// candidates → `zero_hit_reason` should be `TantivyNoCandidates`.
     #[tokio::test(flavor = "multi_thread")]
     async fn live_zero_hit_attributes_tantivy_no_candidates_for_missing_term() {
-        let (_dir, handler) = seed_workspace(&[(
-            "src/code.rs",
-            "fn alpha() { let present = 1; }\n",
-        )])
-        .await;
+        let (_dir, handler) =
+            seed_workspace(&[("src/code.rs", "fn alpha() { let present = 1; }\n")]).await;
 
         let result = line_mode_matches(
             "definitely_not_in_the_index_xyz",
@@ -327,10 +321,7 @@ mod integration_tests {
         .expect("line_mode_matches");
 
         assert!(result.matches.is_empty());
-        assert_eq!(
-            result.zero_hit_reason,
-            Some(ZeroHitReason::TestFiltered),
-        );
+        assert_eq!(result.zero_hit_reason, Some(ZeroHitReason::TestFiltered),);
     }
 
     /// Non-empty runs do NOT populate `zero_hit_reason`; the field is
@@ -338,11 +329,8 @@ mod integration_tests {
     /// an empty result.
     #[tokio::test(flavor = "multi_thread")]
     async fn live_non_empty_run_leaves_zero_hit_reason_none() {
-        let (_dir, handler) = seed_workspace(&[(
-            "src/code.rs",
-            "fn alpha() { let marker_found = 1; }\n",
-        )])
-        .await;
+        let (_dir, handler) =
+            seed_workspace(&[("src/code.rs", "fn alpha() { let marker_found = 1; }\n")]).await;
 
         let result = line_mode_matches(
             "marker_found",
@@ -361,6 +349,47 @@ mod integration_tests {
             result.zero_hit_reason.is_none(),
             "non-empty matches should leave zero_hit_reason None, got {:?}",
             result.zero_hit_reason
+        );
+    }
+
+    /// File-level verification should follow Tantivy tokenization closely
+    /// enough to keep tokenized/stemmed hits alive. Before Task 5 this
+    /// query zero-hit with `LineMatchMiss` because the verifier looked for
+    /// raw substrings "tokens" / "estimation" on the line instead of the
+    /// tokenized forms that matched in Tantivy.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn live_tokenized_file_level_match_avoids_line_match_miss() {
+        let (_dir, handler) =
+            seed_workspace(&[("src/token_estimator.rs", "pub struct TokenEstimator;\n")]).await;
+
+        let result = line_mode_matches(
+            "tokens estimation",
+            &None,
+            &None,
+            10,
+            None,
+            &WorkspaceTarget::Primary,
+            &handler,
+        )
+        .await
+        .expect("line_mode_matches");
+
+        assert!(
+            !result.matches.is_empty(),
+            "tokenized file-level hit should survive line verification"
+        );
+        assert_eq!(result.zero_hit_reason, None);
+        assert!(
+            result
+                .matches
+                .iter()
+                .any(|m| m.file_path == "src/token_estimator.rs"),
+            "expected src/token_estimator.rs in {:?}",
+            result
+                .matches
+                .iter()
+                .map(|m| (&m.file_path, m.line_number, &m.line_content))
+                .collect::<Vec<_>>()
         );
     }
 }

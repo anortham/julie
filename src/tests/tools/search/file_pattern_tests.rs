@@ -46,6 +46,17 @@ fn comma_or_matches_second_alternative() {
     );
 }
 
+#[test]
+fn pipe_splits_into_or_of_inclusions() {
+    let pattern = "src/**|tests/**";
+    assert!(matches_glob_pattern("src/lib.rs", pattern));
+    assert!(matches_glob_pattern("tests/foo/bar.rs", pattern));
+    assert!(
+        !matches_glob_pattern("docs/README.md", pattern),
+        "docs/ is not in either inclusion; should not match",
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Brace alternation (globset native feature; must survive comma splitting)
 // ---------------------------------------------------------------------------
@@ -73,6 +84,15 @@ fn brace_alternation_comma_is_not_a_split() {
     let pattern = "{src/database/*.rs,tests/**/*.rs}";
     assert!(matches_glob_pattern("src/database/workspace.rs", pattern));
     assert!(matches_glob_pattern("tests/integration/foo.rs", pattern));
+}
+
+#[test]
+fn top_level_pipe_respects_brace_nesting() {
+    let pattern = "src/**|{tests/**,docs/**}";
+    assert!(matches_glob_pattern("src/lib.rs", pattern));
+    assert!(matches_glob_pattern("tests/foo.rs", pattern));
+    assert!(matches_glob_pattern("docs/README.md", pattern));
+    assert!(!matches_glob_pattern("xtask/src/main.rs", pattern));
 }
 
 // ---------------------------------------------------------------------------
@@ -200,6 +220,7 @@ mod boundary_normalization {
     use tempfile::TempDir;
 
     use crate::handler::JulieServerHandler;
+    use crate::tools::search::trace::{FilePatternDiagnostic, HintKind};
     use crate::tools::{FastSearchTool, ManageWorkspaceTool};
 
     /// Fingerprint of a search result set. Ignores score (which may shift due
@@ -236,13 +257,29 @@ mod boundary_normalization {
             .collect()
     }
 
-    #[tokio::test(flavor = "multi_thread")]
-    async fn empty_and_whitespace_file_pattern_match_none() {
+    fn extract_text_from_result(result: &crate::mcp_compat::CallToolResult) -> String {
+        result
+            .content
+            .iter()
+            .filter_map(|content_block| {
+                serde_json::to_value(content_block).ok().and_then(|json| {
+                    json.get("text")
+                        .and_then(|value| value.as_str())
+                        .map(|text| text.to_string())
+                })
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    async fn seed_workspace() -> (TempDir, JulieServerHandler) {
         let temp_dir = TempDir::new().expect("tempdir");
         let workspace_path = temp_dir.path().to_path_buf();
 
         let src_dir = workspace_path.join("src");
+        let tests_dir = workspace_path.join("tests");
         fs::create_dir_all(&src_dir).unwrap();
+        fs::create_dir_all(&tests_dir).unwrap();
         fs::write(
             src_dir.join("math.rs"),
             "pub fn calculate_total(items: &[i32]) -> i32 {\n    items.iter().sum()\n}\n",
@@ -251,6 +288,11 @@ mod boundary_normalization {
         fs::write(
             src_dir.join("util.rs"),
             "pub fn calculate_total_ex(v: i32) -> i32 {\n    v * 2\n}\n",
+        )
+        .unwrap();
+        fs::write(
+            tests_dir.join("math_test.rs"),
+            "fn calculate_total_smoke() { assert_eq!(2, 2); }\n",
         )
         .unwrap();
 
@@ -278,9 +320,13 @@ mod boundary_normalization {
             .await
             .expect("index workspace");
 
-        // Give the background indexer a moment to flush (mirrors
-        // search_context_lines tests).
         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+        (temp_dir, handler)
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn empty_and_whitespace_file_pattern_match_none() {
+        let (_temp_dir, handler) = seed_workspace().await;
 
         let baseline = run_search(&handler, None).await;
         assert!(
@@ -292,7 +338,8 @@ mod boundary_normalization {
         for probe in ["", "   ", "\t", "\n"] {
             let probed = run_search(&handler, Some(probe.to_string())).await;
             assert_eq!(
-                probed, baseline,
+                probed,
+                baseline,
                 "file_pattern={:?} must produce the same result set as None, \
                  got {} hits vs baseline {} hits",
                 probe,
@@ -300,5 +347,53 @@ mod boundary_normalization {
                 baseline.len(),
             );
         }
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn whitespace_separated_globs_emit_syntax_hint_and_trace_diagnostic() {
+        let (_temp_dir, handler) = seed_workspace().await;
+        let tool = FastSearchTool {
+            query: "calculate_total".to_string(),
+            language: None,
+            file_pattern: Some("src/** tests/**".to_string()),
+            limit: 20,
+            search_target: "content".to_string(),
+            context_lines: Some(0),
+            exclude_tests: None,
+            workspace: Some("primary".to_string()),
+            return_format: "full".to_string(),
+        };
+
+        let run = tool
+            .execute_with_trace(&handler)
+            .await
+            .expect("search should not error");
+        let execution = run
+            .execution
+            .expect("execute_with_trace must populate execution for content search");
+        let text = extract_text_from_result(&run.result);
+
+        assert!(
+            execution.hits.is_empty(),
+            "invalid pattern should stay zero-hit"
+        );
+        assert_eq!(
+            execution.trace.file_pattern_diagnostic,
+            Some(FilePatternDiagnostic::WhitespaceSeparatedMultiGlob),
+        );
+        assert_eq!(
+            execution.trace.hint_kind,
+            Some(HintKind::FilePatternSyntaxHint),
+        );
+        assert!(
+            text.contains("multiple globs separated by whitespace"),
+            "expected syntax hint text, got: {}",
+            text,
+        );
+        assert!(
+            text.contains("Use ',' or '|'"),
+            "expected separator guidance, got: {}",
+            text,
+        );
     }
 }

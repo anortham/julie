@@ -8,7 +8,9 @@ use crate::tools::navigation::resolution::WorkspaceTarget;
 use super::formatting;
 use super::line_mode;
 use super::text_search;
-use super::trace::{SearchExecutionKind, SearchExecutionResult, SearchHit, ZeroHitReason};
+use super::trace::{
+    FilePatternDiagnostic, SearchExecutionKind, SearchExecutionResult, SearchHit, ZeroHitReason,
+};
 
 pub struct SearchExecutionParams<'a> {
     pub query: &'a str,
@@ -52,16 +54,13 @@ pub async fn execute_search(
     // "no filter" behavior instead of an empty-pattern match-nothing. This
     // runs once at the shared entry point; downstream stages must never
     // observe a blank file_pattern.
-    let normalized_file_pattern: Option<String> = params
-        .file_pattern
-        .as_ref()
-        .and_then(|s| {
-            if s.trim().is_empty() {
-                None
-            } else {
-                Some(s.clone())
-            }
-        });
+    let normalized_file_pattern: Option<String> = params.file_pattern.as_ref().and_then(|s| {
+        if s.trim().is_empty() {
+            None
+        } else {
+            Some(s.clone())
+        }
+    });
 
     let normalized_params = SearchExecutionParams {
         query: params.query,
@@ -145,6 +144,7 @@ async fn execute_content_search(
     // because all-zero runs share the same culprit across workspaces;
     // mixing variants would be noisier than useful.
     let mut last_zero_hit_reason: Option<ZeroHitReason> = None;
+    let mut last_file_pattern_diagnostic: Option<FilePatternDiagnostic> = None;
     let file_level = line_mode::query_uses_file_level_header(params.query);
     let workspace_label = if workspaces.len() == 1 {
         match &workspaces[0].target {
@@ -171,6 +171,9 @@ async fn execute_content_search(
         total_results += result.matches.len();
         if last_zero_hit_reason.is_none() {
             last_zero_hit_reason = result.zero_hit_reason;
+        }
+        if last_file_pattern_diagnostic.is_none() {
+            last_file_pattern_diagnostic = result.file_pattern_diagnostic;
         }
 
         // Content (line-mode) hits carry a neutral 0.0 score intentionally.
@@ -212,6 +215,10 @@ async fn execute_content_search(
     // earlier stage already set `trace.zero_hit_reason`.
     if execution_result.hits.is_empty() && execution_result.trace.zero_hit_reason.is_none() {
         execution_result.trace.zero_hit_reason = last_zero_hit_reason;
+    }
+    if execution_result.hits.is_empty() && execution_result.trace.file_pattern_diagnostic.is_none()
+    {
+        execution_result.trace.file_pattern_diagnostic = last_file_pattern_diagnostic;
     }
 
     Ok(execution_result)
