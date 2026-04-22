@@ -307,8 +307,9 @@
         <div class="tool-desc">Blast radius for a symbol — callers grouped by risk</div>
         <div class="terminal">
           <div><span class="prompt">$ </span><span class="command">/impact-analysis User::email</span></div>
-          <div><span class="result">fast_refs → 47 callers</span></div>
+          <div><span class="result">blast_radius → 47 impacted symbols</span></div>
           <div><span class="result">High risk: 3 · Medium: 11 · Low: 33</span></div>
+          <div><span class="result">Likely tests: auth_tests.rs · user_api.rs</span></div>
           <div><span class="highlight">→ Review handler.rs and login_flow.rs first</span></div>
         </div>
       </div>
@@ -442,7 +443,7 @@
         <div class="tool-name">rewrite_symbol</div>
         <div class="tool-desc">Rewrite one live symbol span without reading the file first</div>
         <div class="terminal" aria-label="rewrite_symbol replacing a function body by symbol name">
-          <div><span class="prompt">$ </span><span class="command">rewrite_symbol("AuthService::validate", replace_body, dry_run)</span></div>
+          <div><span class="prompt">$ </span><span class="command">rewrite_symbol("AuthService::validate", replace_body, "{ return validate_claims(token)?; }", dry_run)</span></div>
           <div><span class="result">@@ -43,3 +43,5 @@</span></div>
           <div><span class="comment">-    return false;</span></div>
           <div><span class="highlight">+    return validate_claims(token)?;</span></div>
@@ -476,15 +477,40 @@
       </div>
 
       <div class="card tool-card animate-on-scroll" data-delay="900">
+        <div class="tool-name">blast_radius</div>
+        <div class="tool-desc">Impact analysis for changed symbols, files, or revisions</div>
+        <div class="terminal" aria-label="blast_radius showing impacted callers and tests for a changed function">
+          <div><span class="prompt">$ </span><span class="command">blast_radius(symbol_ids=["AuthService::validate"])</span></div>
+          <div><span class="result">47 impacted symbols</span></div>
+          <div><span class="result">&nbsp; High: login_flow.rs:LoginHandler::handle</span></div>
+          <div><span class="result">&nbsp; Tests: auth_tests.rs, session_api.rs</span></div>
+          <div><span class="comment">&nbsp; spillover_handle=br_a1b2 (23 more)</span></div>
+        </div>
+        <span class="token-badge">~400 tokens</span>
+      </div>
+
+      <div class="card tool-card animate-on-scroll" data-delay="1000">
         <div class="tool-name">call_path</div>
-        <div class="tool-desc">One shortest path between two symbols</div>
+        <div class="tool-desc">One shortest call-graph path between two symbols</div>
         <div class="terminal" aria-label="call_path tracing from UI action to database write">
           <div><span class="prompt">$ </span><span class="command">call_path("LoginButton::onClick", "insert_session")</span></div>
-          <div><span class="result">found:</span> <span class="highlight">true</span> <span class="result">hops:</span> 3</div>
+          <div><span class="result">found:</span> <span class="highlight">true</span> <span class="result">hops:</span> 2</div>
           <div><span class="result">&nbsp; onClick → AuthService::login</span></div>
           <div><span class="result">&nbsp; AuthService::login → insert_session</span></div>
         </div>
         <span class="token-badge">~180 tokens</span>
+      </div>
+
+      <div class="card tool-card animate-on-scroll" data-delay="1100">
+        <div class="tool-name">spillover_get</div>
+        <div class="tool-desc">Fetch the next page from a saved overflow handle</div>
+        <div class="terminal" aria-label="spillover_get paging the next blast_radius result page">
+          <div><span class="prompt">$ </span><span class="command">spillover_get("br_a1b2")</span></div>
+          <div><span class="result">Impact overflow</span></div>
+          <div><span class="result">&nbsp; 11. AuthService::refresh</span></div>
+          <div><span class="comment">&nbsp; More available: spillover_handle=br_c3d4</span></div>
+        </div>
+        <span class="token-badge">~120 tokens</span>
       </div>
     </div>
   </section>

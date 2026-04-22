@@ -30,6 +30,8 @@ pub(crate) fn call_path_metadata(params: &CallPathTool) -> Value {
         "to": params.to,
         "max_hops": params.max_hops,
         "workspace": params.workspace,
+        "from_file_path": params.from_file_path,
+        "to_file_path": params.to_file_path,
         "target": target_metadata(Some(&params.to), params.to_file_path.as_deref(), None),
     })
 }
@@ -89,6 +91,7 @@ pub(crate) fn blast_radius_metadata(params: &BlastRadiusTool) -> Value {
         "max_depth": params.max_depth,
         "limit": params.limit,
         "include_tests": params.include_tests,
+        "format": params.format,
         "workspace": params.workspace,
         "target": target_metadata(None, None, None),
     })

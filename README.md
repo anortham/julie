@@ -241,7 +241,7 @@ All `env` values are optional — see the table below for defaults.
 
 Julie indexes your workspace automatically on first connection (~2-5s for most projects). All search capabilities are available immediately after indexing completes.
 
-## Tools (10)
+## Tools (12)
 
 ### Search & Navigation
 
@@ -263,14 +263,21 @@ Julie indexes your workspace automatically on first connection (~2-5s for most p
   - Includes test locations with quality tiers and centrality scores
   - Identifier fallback for references that relationships miss
 - `fast_refs` - Find all references to a symbol with structured output
-- `call_path` - Trace one shortest relationship path between two symbols
+- `call_path` - Trace one shortest call-graph path between two symbols
   - Answers "how does A reach B?" in a single call
-  - Walks the relationship graph, returns the chain with kinds (calls, type-uses, member-access, etc.)
+  - Walks calls, instantiations, and overrides only, returns the hop chain with edge kinds
   - Handles disconnected pairs with a clear "no path" result
+  - Supports `from_file_path` / `to_file_path` disambiguation for shared names
 - `get_symbols` - Smart file reading with 70-90% token savings
   - View file structure without reading full content
   - Extract specific symbols with complete code bodies
   - Structure/minimal/full reading modes
+- `blast_radius` - Deterministic impact analysis for changed files, symbols, or revision ranges
+  - Returns ranked impacted symbols, likely tests, deleted files, and spillover handles for long lists
+  - Seed with `file_paths`, `symbol_ids`, or Julie revision numbers
+  - Use before refactoring or after a change to see affected callers and tests
+- `spillover_get` - Fetch the next page for large `get_context` or `blast_radius` results
+  - Reuses the stored spillover handle instead of rerunning the underlying query
 
 ### Editing
 
@@ -490,10 +497,12 @@ src/
 │   ├── deep_dive/   # Progressive-depth symbol investigation
 │   ├── editing/     # edit_file, rewrite_symbol
 │   ├── get_context/ # Token-budgeted context retrieval
+│   ├── impact/      # blast_radius
 │   ├── metrics/     # Session metrics for the dashboard
 │   ├── navigation/  # fast_refs, call_path
 │   ├── refactoring/ # rename_symbol
 │   ├── search/      # fast_search
+│   ├── spillover/   # spillover_get
 │   ├── symbols/     # get_symbols
 │   └── workspace/   # manage_workspace
 ├── workspace/       # Multi-workspace management and registry

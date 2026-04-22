@@ -3,7 +3,7 @@ name: impact-analysis
 description: Analyze what would break if a symbol changes: finds callers, groups by risk level, assesses impact. Use when the user asks about blast radius, who uses a symbol, or is planning a refactor.
 user-invocable: true
 arguments: "<symbol, file path, or change target>"
-allowed-tools: mcp__julie__fast_search, mcp__julie__fast_refs, mcp__julie__deep_dive, mcp__julie__get_context, mcp__julie__blast_radius, mcp__julie__spillover_get, mcp__julie__manage_workspace
+allowed-tools: mcp__julie__fast_search, mcp__julie__fast_refs, mcp__julie__deep_dive, mcp__julie__get_context, mcp__julie__call_path, mcp__julie__blast_radius, mcp__julie__spillover_get, mcp__julie__manage_workspace
 ---
 
 # Impact Analysis
@@ -79,6 +79,12 @@ For each high-risk file surfaced by `blast_radius`, `deep_dive` on the calling f
 - Is it called with specific arguments?
 - Does the caller depend on the return type?
 - Is it used in error handling paths?
+
+If you need the shortest route from one surfaced caller into a downstream sink or shared dependency, use `call_path` after `blast_radius`:
+
+```
+call_path(from="<impacted_symbol>", to="<downstream_symbol>")
+```
 
 ### Categorizing Callers by Risk
 

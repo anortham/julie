@@ -3,7 +3,7 @@ name: explore-area
 description: Orient on a new codebase area using get_context for token-budgeted exploration. Use when the user asks "what does this module do", "explain this part", or wants to understand an unfamiliar area before making changes.
 user-invocable: true
 arguments: "<query or concept>"
-allowed-tools: mcp__julie__get_context, mcp__julie__deep_dive, mcp__julie__get_symbols, mcp__julie__spillover_get, mcp__julie__manage_workspace
+allowed-tools: mcp__julie__get_context, mcp__julie__deep_dive, mcp__julie__get_symbols, mcp__julie__call_path, mcp__julie__spillover_get, mcp__julie__manage_workspace
 ---
 
 # Explore Area
@@ -70,6 +70,16 @@ Use `context_file` if the symbol name is ambiguous:
 deep_dive(symbol="<symbol>", depth="overview", context_file="<partial_path>")
 ```
 
+### Step 3b: Trace a concrete path when the question is about reachability
+
+If the user asks a path-shaped question, use `call_path` instead of trying to reconstruct the route by hand:
+
+```
+call_path(from="<entry_or_caller>", to="<sink_or_dependency>")
+```
+
+Use `from_file_path` and `to_file_path` when shared names make either endpoint ambiguous.
+
 ### Step 4: Check File Structure (Optional)
 
 For files with many symbols that weren't fully covered by `get_context`:
@@ -123,6 +133,11 @@ Suggested Starting Point:
   ```
   get_context(query="...", language="rust", file_pattern="src/tools/**")
   ```
+- **Use `call_path` for one concrete route**, not general impact:
+  ```
+  call_path(from="RequestHandler::handle", to="persist_session")
+  ```
+  Reach for `blast_radius` when the real question is "what would this change affect?"
 - **Cross-workspace**: Call `manage_workspace(operation="open", path="<path>")` first, then pass the returned `workspace_id` to all tool calls
 
 ## Paging long neighbor lists

@@ -2357,7 +2357,7 @@ impl JulieServerHandler {
 
     #[tool(
         name = "fast_search",
-        description = "Search code using text search with code-aware tokenization. Supports multi-word queries with AND/OR logic.",
+        description = "Search code using text search with code-aware tokenization. Supports multi-word queries with AND/OR logic. Use `search_target=\"definitions\"` to promote exact symbol-name matches and enable semantic search for conceptual queries.",
         annotations(
             title = "Fast Code Search",
             read_only_hint = true,
@@ -2403,7 +2403,7 @@ impl JulieServerHandler {
 
     #[tool(
         name = "fast_refs",
-        description = "Find all references to a symbol across the codebase.",
+        description = "Find all references to a symbol across the codebase. Required before modifying any symbol. Use `reference_kind` to filter (calls, type-uses, etc.). For a broader view including definition and callers in one call, use deep_dive instead.",
         annotations(
             title = "Find References",
             read_only_hint = true,
@@ -2444,7 +2444,7 @@ impl JulieServerHandler {
 
     #[tool(
         name = "call_path",
-        description = "Find one shortest call-graph path between two symbols (traverses calls, instantiations, and overrides only). Returns a compact hop list when a path exists, or found=false with a short diagnostic when it does not.",
+        description = "Find one shortest call-graph path between two symbols. Use it for \"how does A reach B?\" questions or to trace one caller chain between two known symbols. Traverses calls, instantiations, and overrides only; use `from_file_path` / `to_file_path` when shared names are ambiguous. Returns a compact hop list when a path exists, or found=false with a short diagnostic when it does not.",
         annotations(
             title = "Call Path",
             read_only_hint = true,
@@ -2654,7 +2654,7 @@ impl JulieServerHandler {
 
     #[tool(
         name = "spillover_get",
-        description = "Fetch the next page for a stored graph-heavy result set using a `spillover_handle`, without rerunning the underlying query.",
+        description = "Fetch the next page for a large `get_context` or `blast_radius` result using the returned `spillover_handle`, without rerunning the underlying query.",
         annotations(
             title = "Get Spillover Page",
             read_only_hint = true,
@@ -2697,7 +2697,7 @@ impl JulieServerHandler {
 
     #[tool(
         name = "rename_symbol",
-        description = "Rename a symbol across the entire codebase with workspace-wide updates.",
+        description = "Rename a symbol across the entire codebase with index-aware, workspace-wide updates. Always preview with `dry_run=true` first.",
         annotations(
             title = "Rename Symbol",
             read_only_hint = false,

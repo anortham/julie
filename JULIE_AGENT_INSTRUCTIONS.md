@@ -14,7 +14,7 @@
 - `get_symbols`: File structure without reading full content. Use `target` + `mode="minimal"` to extract one symbol.
 - `deep_dive`: Investigate a symbol: definition, callers, callees, children, types. Always use before modifying.
 - `fast_refs`: All references to a symbol. Required before any change. Use `reference_kind` to filter.
-- `call_path`: One shortest relationship path between two symbols. Use it for "how does A reach B" questions.
+- `call_path`: One shortest call-graph path between two symbols. Use it for "how does A reach B?" or "what caller chain connects these symbols?" questions. Traverses calls, instantiations, and overrides only. Use `from_file_path` / `to_file_path` when names are ambiguous.
 - `get_context`: Token-budgeted area orientation (pivots + neighbors). Supports task inputs like `edited_files`, `entry_symbols`, `stack_trace`, `failing_test`, `max_hops`, and `prefer_tests`.
 - `blast_radius`: Deterministic impact analysis for changed files, symbols, or revision ranges. Returns impacts ranked by centrality and hops plus linked tests. Use before refactoring or after a change.
 - `spillover_get`: Fetch the next page for large `get_context` or `blast_radius` result sets when a spillover handle is returned.
@@ -33,6 +33,7 @@
 ## Other Workflows
 
 - **New task**: get_context > deep_dive key symbols > fast_refs > implement
+- **Flow tracing**: call_path > deep_dive the hops you need to understand in detail
 - **Change impact**: blast_radius > inspect likely callers/tests > implement > rerun blast_radius if needed
 - **Bug fix**: fast_search > deep_dive > write failing test > fix
 - **Refactor**: fast_refs > deep_dive > rename_symbol (dry_run first)
@@ -49,7 +50,7 @@ Subagents (Agent tool) do NOT receive Julie's session guidance. When dispatching
     - get_symbols(file_path) to see file structure before reading
     - deep_dive(symbol) to understand a symbol before modifying it
     - fast_refs(symbol) to find all references (REQUIRED before any change)
-    - call_path(from, to) to trace one shortest dependency path
+    - call_path(from, to, from_file_path?, to_file_path?, max_hops?) to trace one shortest caller chain between symbols
     - get_context(query, edited_files?, entry_symbols?, stack_trace?, failing_test?, max_hops?, prefer_tests?) for task-shaped context
     - blast_radius(file_paths?, symbol_ids?, from_revision?, to_revision?, max_depth?, include_tests?) for likely impact and linked tests
     - spillover_get(spillover_handle) to continue a large paged result

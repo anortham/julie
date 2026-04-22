@@ -37,10 +37,13 @@ pub enum ToolKind {
     ManageWorkspace = 7,
     QueryMetrics = 8,
     SpilloverGet = 9,
+    CallPath = 10,
+    EditFile = 11,
+    RewriteSymbol = 12,
 }
 
 impl ToolKind {
-    pub const COUNT: usize = 10;
+    pub const COUNT: usize = 13;
 
     pub fn from_name(name: &str) -> Option<Self> {
         match name {
@@ -54,6 +57,9 @@ impl ToolKind {
             "manage_workspace" => Some(Self::ManageWorkspace),
             "query_metrics" => Some(Self::QueryMetrics),
             "spillover_get" => Some(Self::SpilloverGet),
+            "call_path" => Some(Self::CallPath),
+            "edit_file" => Some(Self::EditFile),
+            "rewrite_symbol" => Some(Self::RewriteSymbol),
             _ => None,
         }
     }
@@ -70,6 +76,9 @@ impl ToolKind {
             Self::ManageWorkspace => "manage_workspace",
             Self::QueryMetrics => "query_metrics",
             Self::SpilloverGet => "spillover_get",
+            Self::CallPath => "call_path",
+            Self::EditFile => "edit_file",
+            Self::RewriteSymbol => "rewrite_symbol",
         }
     }
 }
