@@ -107,4 +107,14 @@ mod line_match_strategy_tests {
             "excluded query terms should catch tokenized/stemmed forms on the line",
         );
     }
+
+    #[test]
+    fn test_quoted_phrase_matches_tokenized_code_separator_sequence() {
+        let strategy = line_match_strategy("\"router use\"");
+
+        assert!(
+            line_matches(&strategy, "router.use('/foo', middleware);"),
+            "quoted phrase verifier should match adjacent code tokens split by punctuation",
+        );
+    }
 }

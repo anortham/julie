@@ -268,6 +268,10 @@ pub fn line_matches(strategy: &LineMatchStrategy, line: &str) -> bool {
 }
 
 fn line_matches_literal(line: &str, pattern: &str) -> bool {
+    if let Some(phrase) = strip_balanced_wrapping_quotes(pattern) {
+        return line_matches_tokenized_phrase(line, phrase);
+    }
+
     let line_lower = line.to_lowercase();
     line_lower.contains(pattern)
 }
@@ -280,6 +284,45 @@ fn tokenize_text_for_line_match(text: &str) -> HashSet<String> {
         tokens.insert(stream.token().text.clone());
     }
     tokens
+}
+
+fn tokenize_text_sequence(text: &str) -> Vec<String> {
+    let mut tokenizer = CodeTokenizer::with_default_patterns();
+    let mut stream = tokenizer.token_stream(text);
+    let mut tokens = Vec::new();
+    while stream.advance() {
+        tokens.push(stream.token().text.clone());
+    }
+    tokens
+}
+
+fn strip_balanced_wrapping_quotes(pattern: &str) -> Option<&str> {
+    let mut chars = pattern.chars();
+    let first = chars.next()?;
+    if first != '"' && first != '\'' {
+        return None;
+    }
+    if !pattern.ends_with(first) || pattern.len() < first.len_utf8() * 2 {
+        return None;
+    }
+
+    Some(&pattern[first.len_utf8()..pattern.len() - first.len_utf8()])
+}
+
+fn line_matches_tokenized_phrase(line: &str, phrase: &str) -> bool {
+    let phrase_tokens = tokenize_text_sequence(phrase);
+    if phrase_tokens.is_empty() {
+        return false;
+    }
+
+    let line_tokens = tokenize_text_sequence(line);
+    if line_tokens.len() < phrase_tokens.len() {
+        return false;
+    }
+
+    line_tokens
+        .windows(phrase_tokens.len())
+        .any(|window| window == phrase_tokens.as_slice())
 }
 
 fn term_matches_tokens(term: &str, line_tokens: &HashSet<String>) -> bool {

@@ -13,10 +13,12 @@ pub struct LineMatch {
 /// Strategy for matching individual lines
 ///
 /// Used to determine how to filter lines when performing line-level searches.
-/// Supports both substring matching and token-based matching with exclusions.
+/// Supports literal substring matching, quoted phrase verification, and
+/// token-based matching with exclusions.
 #[derive(Debug, Clone)]
 pub enum LineMatchStrategy {
-    /// Simple substring matching (case-insensitive)
+    /// Case-insensitive substring matching; quoted phrases fall back to
+    /// ordered tokenizer-term matching inside `line_matches`.
     Substring(String),
     /// Token-based matching with required and excluded terms
     Tokens {

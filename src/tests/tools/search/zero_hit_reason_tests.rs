@@ -392,4 +392,43 @@ mod integration_tests {
                 .collect::<Vec<_>>()
         );
     }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn live_quoted_phrase_match_avoids_line_match_miss() {
+        let (_dir, handler) = seed_workspace(&[(
+            "src/router.js",
+            "router.use('/foo', middleware);\n",
+        )])
+        .await;
+
+        let result = line_mode_matches(
+            "\"router use\"",
+            &None,
+            &None,
+            10,
+            None,
+            &WorkspaceTarget::Primary,
+            &handler,
+        )
+        .await
+        .expect("line_mode_matches");
+
+        assert!(
+            !result.matches.is_empty(),
+            "quoted phrase hit should survive line verification across punctuation"
+        );
+        assert_eq!(result.zero_hit_reason, None);
+        assert!(
+            result
+                .matches
+                .iter()
+                .any(|m| m.file_path == "src/router.js" && m.line_content.contains("router.use")),
+            "expected src/router.js in {:?}",
+            result
+                .matches
+                .iter()
+                .map(|m| (&m.file_path, m.line_number, &m.line_content))
+                .collect::<Vec<_>>()
+        );
+    }
 }
