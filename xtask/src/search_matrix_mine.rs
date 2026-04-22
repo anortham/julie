@@ -67,7 +67,9 @@ pub fn mine_search_matrix_seed_report(
     Ok(report)
 }
 
-fn candidate_from_row(row: &julie::daemon::database::SearchToolCallRow) -> Result<Option<SearchMatrixSeedCandidate>> {
+fn candidate_from_row(
+    row: &julie::daemon::database::SearchToolCallRow,
+) -> Result<Option<SearchMatrixSeedCandidate>> {
     let Some(metadata_text) = row.metadata.as_deref() else {
         return Ok(None);
     };
@@ -90,7 +92,12 @@ fn candidate_from_row(row: &julie::daemon::database::SearchToolCallRow) -> Resul
         tool_call_id: row.id,
         workspace_id: row.workspace_id.clone(),
         session_id: row.session_id.clone(),
-        family: infer_query_family(&query, &search_target, file_pattern.as_deref(), exclude_tests),
+        family: infer_query_family(
+            &query,
+            &search_target,
+            file_pattern.as_deref(),
+            exclude_tests,
+        ),
         query,
         normalized_query,
         search_target,
@@ -108,8 +115,10 @@ fn candidate_from_row(row: &julie::daemon::database::SearchToolCallRow) -> Resul
 }
 
 fn cluster_candidates(candidates: &[SearchMatrixSeedCandidate]) -> Vec<SearchMatrixSeedCluster> {
-    let mut grouped: BTreeMap<(String, Option<String>, Option<String>, Option<String>), Vec<String>> =
-        BTreeMap::new();
+    let mut grouped: BTreeMap<
+        (String, Option<String>, Option<String>, Option<String>),
+        Vec<String>,
+    > = BTreeMap::new();
 
     for candidate in candidates {
         grouped

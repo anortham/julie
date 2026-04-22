@@ -1,8 +1,9 @@
 use crate::extractors::{Symbol, SymbolKind};
 use crate::handler::search_telemetry;
 use crate::handler::tool_targets;
-use crate::tools::navigation::CallPathTool;
+use crate::search::index::{FileMatchKind, FileSearchResult};
 use crate::tools::editing::rewrite_symbol::RewriteSymbolTool;
+use crate::tools::navigation::CallPathTool;
 use crate::tools::search::FastSearchTool;
 use crate::tools::search::trace::{
     FilePatternDiagnostic, HintKind, SearchExecutionKind, SearchExecutionResult, SearchHit,
@@ -34,6 +35,18 @@ fn sample_symbol() -> Symbol {
         code_context: None,
         content_type: None,
     }
+}
+
+fn sample_file_hit() -> SearchHit {
+    SearchHit::from_file_result(
+        FileSearchResult {
+            file_path: "src/tools/search/mod.rs".to_string(),
+            language: "rust".to_string(),
+            score: 12.0,
+            match_kind: FileMatchKind::ExactPath,
+        },
+        "workspace-a".to_string(),
+    )
 }
 
 #[test]
@@ -217,6 +230,50 @@ fn test_fast_search_metadata_serializes_out_of_scope_hint_kind() {
     let metadata = search_telemetry::fast_search_metadata(&params, Some(&execution));
 
     assert_eq!(metadata["trace"]["hint_kind"], "out_of_scope_content_hint");
+}
+
+#[test]
+fn test_fast_search_metadata_canonicalizes_paths_alias_to_files() {
+    let params: FastSearchTool =
+        serde_json::from_str(r#"{"query":"line_mode.rs","search_target":"paths"}"#).unwrap();
+
+    let metadata = search_telemetry::fast_search_metadata(&params, None);
+
+    assert_eq!(metadata["search_target"], "files");
+}
+
+#[test]
+fn test_fast_search_metadata_uses_file_lookup_intent_for_files_target() {
+    let params: FastSearchTool =
+        serde_json::from_str(r#"{"query":"line_mode.rs","search_target":"files"}"#).unwrap();
+
+    let metadata = search_telemetry::fast_search_metadata(&params, None);
+
+    assert_eq!(metadata["intent"], "file_lookup");
+}
+
+#[test]
+fn test_fast_search_metadata_serializes_file_hit_trace() {
+    let params: FastSearchTool =
+        serde_json::from_str(r#"{"query":"src/tools/search/mod.rs","search_target":"files"}"#)
+            .unwrap();
+    let execution = SearchExecutionResult::new(
+        vec![sample_file_hit()],
+        false,
+        1,
+        "fast_search_files",
+        SearchExecutionKind::Files,
+    );
+
+    let metadata = search_telemetry::fast_search_metadata(&params, Some(&execution));
+
+    assert_eq!(metadata["trace"]["strategy"], "fast_search_files");
+    assert_eq!(metadata["trace"]["top_hits"][0]["kind"], "file");
+    assert_eq!(
+        metadata["trace"]["top_hits"][0]["file"],
+        "src/tools/search/mod.rs"
+    );
+    assert!(metadata["trace"]["top_hits"][0]["line"].is_null());
 }
 
 #[test]

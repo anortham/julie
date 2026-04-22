@@ -3,6 +3,9 @@
 //! Provides formatting utilities for search tool responses.
 
 use crate::extractors::Symbol;
+use crate::search::index::FileMatchKind;
+use crate::search::scoring::is_test_path;
+use crate::tools::search::trace::SearchHit;
 use crate::tools::shared::OptimizedResponse;
 
 /// Truncate code_context field to save massive tokens in search results
@@ -236,6 +239,47 @@ pub fn format_locations_only(query: &str, response: &OptimizedResponse<Symbol>) 
     output.trim_end().to_string()
 }
 
+pub fn format_file_locations_only(query: &str, response: &OptimizedResponse<SearchHit>) -> String {
+    let mut output = String::new();
+    write_file_header(&mut output, "file matches", query, response);
+
+    for hit in &response.results {
+        output.push_str(&hit.file);
+        output.push('\n');
+    }
+
+    output.trim_end().to_string()
+}
+
+pub fn format_file_search_results(query: &str, response: &OptimizedResponse<SearchHit>) -> String {
+    let mut output = String::new();
+    write_file_header(&mut output, "file matches", query, response);
+
+    for hit in &response.results {
+        output.push_str(&hit.file);
+
+        let mut annotations = Vec::new();
+        if !hit.language.is_empty() {
+            annotations.push(hit.language.clone());
+        }
+        if let Some(file_result) = hit.as_file_result() {
+            annotations.push(file_match_kind_label(file_result.match_kind).to_string());
+        }
+        if is_test_path(&hit.file) {
+            annotations.push("test".to_string());
+        }
+
+        if !annotations.is_empty() {
+            output.push_str(" (");
+            output.push_str(&annotations.join(", "));
+            output.push(')');
+        }
+        output.push('\n');
+    }
+
+    output.trim_end().to_string()
+}
+
 /// Check if a symbol name matches a query for definition formatting.
 /// Matches exact name OR last component of a dot-qualified name.
 fn is_definition_name_match(symbol_name: &str, query_lower: &str) -> bool {
@@ -255,4 +299,30 @@ fn is_definition_name_match(symbol_name: &str, query_lower: &str) -> bool {
         }
     }
     false
+}
+
+fn write_file_header(
+    output: &mut String,
+    noun: &str,
+    query: &str,
+    response: &OptimizedResponse<SearchHit>,
+) {
+    let count = response.results.len();
+    let total = response.total_found;
+    if count == total {
+        output.push_str(&format!("{count} {noun} for \"{query}\":\n\n"));
+    } else {
+        output.push_str(&format!(
+            "{count} {noun} for \"{query}\" (showing {count} of {total}):\n\n"
+        ));
+    }
+}
+
+fn file_match_kind_label(match_kind: FileMatchKind) -> &'static str {
+    match match_kind {
+        FileMatchKind::ExactPath => "exact path",
+        FileMatchKind::ExactBasename => "exact basename",
+        FileMatchKind::PathFragment => "path fragment",
+        FileMatchKind::Glob => "glob match",
+    }
 }

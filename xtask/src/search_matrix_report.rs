@@ -22,7 +22,10 @@ pub fn write_baseline_report(report: &SearchMatrixBaselineReport, out_path: &Pat
     }
 
     fs::write(out_path, serde_json::to_string_pretty(report)?)?;
-    fs::write(markdown_path(out_path), render_baseline_report_markdown(report))?;
+    fs::write(
+        markdown_path(out_path),
+        render_baseline_report_markdown(report),
+    )?;
     Ok(())
 }
 
@@ -63,7 +66,9 @@ fn render_baseline_report_markdown(report: &SearchMatrixBaselineReport) -> Strin
         report.executions.len(),
         report.skipped_repos.len()
     ));
-    output.push_str("| repo | case_id | hit_count | zero_hit_reason | file_pattern_diagnostic | hint_kind |\n");
+    output.push_str(
+        "| repo | case_id | hit_count | zero_hit_reason | file_pattern_diagnostic | hint_kind |\n",
+    );
     output.push_str("| --- | --- | ---: | --- | --- | --- |\n");
     for execution in &report.executions {
         let hit_count = if execution.hit_count_is_lower_bound {

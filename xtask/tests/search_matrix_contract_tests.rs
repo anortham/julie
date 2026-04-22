@@ -122,18 +122,34 @@ fn search_matrix_contract_tests_case_fixture_loads_query_families_and_profiles()
     let cases =
         SearchMatrixCaseSet::load(&fixture_path).expect("case fixture should deserialize cleanly");
 
-    assert!(cases.cases.len() >= 6, "expected a non-trivial starter matrix");
+    assert!(
+        cases.cases.len() >= 6,
+        "expected a non-trivial starter matrix"
+    );
     assert!(
         cases
             .cases
             .iter()
-            .any(|case| case.family == "scoped_content" && case.profile_tags.contains(&"smoke".to_string()))
+            .any(|case| case.family == "scoped_content"
+                && case.profile_tags.contains(&"smoke".to_string()))
     );
     assert!(
         cases
             .cases
             .iter()
             .any(|case| case.expected_mode == "expect_hint_kind")
+    );
+    assert!(
+        cases.cases.iter().any(|case| {
+            case.search_target == "files" && case.profile_tags.contains(&"smoke".to_string())
+        }),
+        "starter matrix should include a smoke file-mode case"
+    );
+    assert!(
+        cases.cases.iter().any(|case| {
+            case.search_target == "files" && case.profile_tags.contains(&"breadth".to_string())
+        }),
+        "starter matrix should include a breadth file-mode case"
     );
 }
 
@@ -180,7 +196,10 @@ fn search_matrix_contract_tests_starter_fixtures_cover_large_verification_repos_
         "breadth profile should include riverpod"
     );
     assert!(
-        breadth_repos.repos.iter().any(|repo| repo == "nlohmann-json"),
+        breadth_repos
+            .repos
+            .iter()
+            .any(|repo| repo == "nlohmann-json"),
         "breadth profile should include nlohmann-json"
     );
     assert!(
@@ -193,15 +212,17 @@ fn search_matrix_contract_tests_starter_fixtures_cover_large_verification_repos_
     );
 
     assert!(
-        corpus.repos.iter().any(|repo| {
-            repo.name == "riverpod" && repo.language == "dart"
-        }),
+        corpus
+            .repos
+            .iter()
+            .any(|repo| { repo.name == "riverpod" && repo.language == "dart" }),
         "corpus should define riverpod as a dart repo"
     );
     assert!(
-        corpus.repos.iter().any(|repo| {
-            repo.name == "nlohmann-json" && repo.language == "cpp"
-        }),
+        corpus
+            .repos
+            .iter()
+            .any(|repo| { repo.name == "nlohmann-json" && repo.language == "cpp" }),
         "corpus should define nlohmann-json as a cpp repo"
     );
 
@@ -303,7 +324,11 @@ fn search_matrix_contract_tests_mine_ignores_non_search_rows_and_preserves_trace
 
     let report = mine_search_matrix_seed_report(&db_path, 7, &out_path).expect("mine report");
 
-    assert_eq!(report.candidates.len(), 2, "only fast_search rows should be mined");
+    assert_eq!(
+        report.candidates.len(),
+        2,
+        "only fast_search rows should be mined"
+    );
     assert!(
         report.clusters.iter().any(|cluster| {
             cluster.family == "scoped_content"
@@ -423,9 +448,8 @@ fn search_matrix_contract_tests_baseline_runs_ready_workspace_and_skips_pending_
     )
     .expect("write pending repo");
 
-    let daemon_db = Arc::new(
-        DaemonDatabase::open(&julie_home.join("daemon.db")).expect("open temp daemon db"),
-    );
+    let daemon_db =
+        Arc::new(DaemonDatabase::open(&julie_home.join("daemon.db")).expect("open temp daemon db"));
     daemon_db
         .upsert_workspace(
             "pending_repo_ws",
@@ -499,7 +523,10 @@ profile_tags = ["smoke"]
             .iter()
             .any(|repo| repo.repo_name == "pending-repo" && repo.reason.contains("pending"))
     );
-    assert!(out_path.is_file(), "baseline json artifact should be written");
+    assert!(
+        out_path.is_file(),
+        "baseline json artifact should be written"
+    );
     assert!(
         out_path.with_extension("md").is_file(),
         "baseline markdown artifact should be written"
@@ -532,9 +559,8 @@ fn search_matrix_contract_tests_baseline_uses_configured_roots_for_workspace_mat
     )
     .expect("write indexed repo");
 
-    let daemon_db = Arc::new(
-        DaemonDatabase::open(&julie_home.join("daemon.db")).expect("open temp daemon db"),
-    );
+    let daemon_db =
+        Arc::new(DaemonDatabase::open(&julie_home.join("daemon.db")).expect("open temp daemon db"));
     index_ready_repo(&julie_home, Arc::clone(&daemon_db), indexed_repo);
 
     let cases_path = temp_dir.path().join("cases.toml");
@@ -589,8 +615,7 @@ profile_tags = ["smoke"]
     );
     assert!(
         report.skipped_repos.iter().any(|repo| {
-            repo.repo_name == "shared-repo"
-                && repo.reason.contains("resolved repo root")
+            repo.repo_name == "shared-repo" && repo.reason.contains("resolved repo root")
         }),
         "expected root-scoped workspace miss, got {:?}",
         report.skipped_repos
@@ -612,9 +637,8 @@ fn search_matrix_contract_tests_baseline_reports_total_results_beyond_limit() {
         .collect::<String>();
     fs::write(dense_repo.join("src/lib.rs"), repeated_lines).expect("write dense repo");
 
-    let daemon_db = Arc::new(
-        DaemonDatabase::open(&julie_home.join("daemon.db")).expect("open temp daemon db"),
-    );
+    let daemon_db =
+        Arc::new(DaemonDatabase::open(&julie_home.join("daemon.db")).expect("open temp daemon db"));
     index_ready_repo(&julie_home, Arc::clone(&daemon_db), dense_repo.clone());
 
     let cases_path = temp_dir.path().join("cases.toml");
@@ -692,9 +716,8 @@ fn search_matrix_contract_tests_baseline_flags_expect_hits_zero_hit() {
     )
     .expect("write ready repo");
 
-    let daemon_db = Arc::new(
-        DaemonDatabase::open(&julie_home.join("daemon.db")).expect("open temp daemon db"),
-    );
+    let daemon_db =
+        Arc::new(DaemonDatabase::open(&julie_home.join("daemon.db")).expect("open temp daemon db"));
     index_ready_repo(&julie_home, Arc::clone(&daemon_db), ready_repo.clone());
 
     let cases_path = temp_dir.path().join("cases.toml");
@@ -744,13 +767,20 @@ profile_tags = ["smoke"]
     .expect("baseline report");
 
     assert!(
-        report.summary_flags.iter().any(|flag| flag == "expected_hits_missing"),
+        report
+            .summary_flags
+            .iter()
+            .any(|flag| flag == "expected_hits_missing"),
         "expected expect_hits zero-hit to surface in summary flags: {:?}",
         report.summary_flags
     );
 }
 
-fn index_ready_repo(julie_home: &std::path::Path, daemon_db: Arc<DaemonDatabase>, repo_root: PathBuf) {
+fn index_ready_repo(
+    julie_home: &std::path::Path,
+    daemon_db: Arc<DaemonDatabase>,
+    repo_root: PathBuf,
+) {
     let indexes_dir = julie_home.join("indexes");
     fs::create_dir_all(&indexes_dir).expect("indexes dir");
 
@@ -759,7 +789,12 @@ fn index_ready_repo(julie_home: &std::path::Path, daemon_db: Arc<DaemonDatabase>
         .build()
         .expect("tokio runtime");
     runtime.block_on(async move {
-        let pool = Arc::new(WorkspacePool::new(indexes_dir, Some(Arc::clone(&daemon_db)), None, None));
+        let pool = Arc::new(WorkspacePool::new(
+            indexes_dir,
+            Some(Arc::clone(&daemon_db)),
+            None,
+            None,
+        ));
         let handler = JulieServerHandler::new_deferred_daemon_startup_hint(
             julie::workspace::startup_hint::WorkspaceStartupHint {
                 path: repo_root.clone(),

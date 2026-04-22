@@ -19,6 +19,9 @@ const NAME_FIELD_BOOST: f32 = 5.0;
 const SIGNATURE_FIELD_BOOST: f32 = 3.0;
 const DOC_FIELD_BOOST: f32 = 2.0;
 const BODY_FIELD_BOOST: f32 = 1.0;
+const FILE_PATH_EXACT_BOOST: f32 = 40.0;
+const BASENAME_EXACT_BOOST: f32 = 25.0;
+const PATH_TEXT_TERM_BOOST: f32 = 3.0;
 
 /// Build a boosted symbol search query with optional filters.
 ///
@@ -297,6 +300,93 @@ pub fn build_content_query_weighted(
         // so without wrapping, every file document would match).
         let terms_query = BooleanQuery::new(term_clauses);
         subqueries.push((Occur::Must, Box::new(terms_query)));
+    }
+
+    BooleanQuery::new(subqueries)
+}
+
+pub fn build_file_query(
+    path_terms: &[String],
+    file_path_field: Field,
+    basename_field: Field,
+    path_text_field: Field,
+    doc_type_field: Field,
+    language_field: Field,
+    language_filter: Option<&str>,
+    exact_path: Option<&str>,
+    exact_basename: Option<&str>,
+    require_all_terms: bool,
+) -> BooleanQuery {
+    let mut subqueries: Vec<(Occur, Box<dyn tantivy::query::Query>)> = Vec::new();
+
+    let type_term = Term::from_field_text(doc_type_field, "file");
+    let type_query = TermQuery::new(type_term, IndexRecordOption::Basic);
+    subqueries.push((Occur::Must, Box::new(type_query)));
+
+    if let Some(lang) = language_filter {
+        let lang_term = Term::from_field_text(language_field, lang);
+        subqueries.push((
+            Occur::Must,
+            Box::new(TermQuery::new(lang_term, IndexRecordOption::Basic)),
+        ));
+    }
+
+    let mut ranking_clauses: Vec<(Occur, Box<dyn tantivy::query::Query>)> = Vec::new();
+    if let Some(path) = exact_path {
+        let path_term = Term::from_field_text(file_path_field, path);
+        ranking_clauses.push((
+            Occur::Should,
+            Box::new(BoostQuery::new(
+                Box::new(TermQuery::new(path_term, IndexRecordOption::Basic)),
+                FILE_PATH_EXACT_BOOST,
+            )),
+        ));
+    }
+    if let Some(basename) = exact_basename {
+        let basename_term = Term::from_field_text(basename_field, basename);
+        ranking_clauses.push((
+            Occur::Should,
+            Box::new(BoostQuery::new(
+                Box::new(TermQuery::new(basename_term, IndexRecordOption::Basic)),
+                BASENAME_EXACT_BOOST,
+            )),
+        ));
+    }
+
+    let mut path_term_clauses: Vec<(Occur, Box<dyn tantivy::query::Query>)> = Vec::new();
+    for term in path_terms {
+        let path_term = Term::from_field_text(path_text_field, &term.to_lowercase());
+        let occur = if require_all_terms {
+            Occur::Must
+        } else {
+            Occur::Should
+        };
+        path_term_clauses.push((
+            occur,
+            Box::new(BoostQuery::new(
+                Box::new(TermQuery::new(path_term, IndexRecordOption::Basic)),
+                PATH_TEXT_TERM_BOOST,
+            )),
+        ));
+    }
+
+    if require_all_terms {
+        if path_term_clauses.is_empty() {
+            if !ranking_clauses.is_empty() {
+                subqueries.push((Occur::Must, Box::new(BooleanQuery::new(ranking_clauses))));
+            }
+        } else {
+            subqueries.extend(path_term_clauses);
+            if !ranking_clauses.is_empty() {
+                subqueries.push((Occur::Should, Box::new(BooleanQuery::new(ranking_clauses))));
+            }
+        }
+    } else {
+        let mut any_match_clauses = ranking_clauses;
+        any_match_clauses.extend(path_term_clauses);
+        if !any_match_clauses.is_empty() {
+            subqueries.push((Occur::Must, Box::new(BooleanQuery::new(any_match_clauses))));
+        }
     }
 
     BooleanQuery::new(subqueries)

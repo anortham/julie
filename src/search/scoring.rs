@@ -252,6 +252,19 @@ pub(crate) fn is_fixture_path(path: &str) -> bool {
     false
 }
 
+pub(crate) fn file_path_priority_bucket(path: &str) -> u8 {
+    if is_test_path(path) {
+        return 1;
+    }
+    if is_docs_path(path) {
+        return 2;
+    }
+    if is_fixture_path(path) {
+        return 3;
+    }
+    0
+}
+
 pub(crate) fn is_nl_like_query(query: &str) -> bool {
     let terms: Vec<&str> = query.split_whitespace().collect();
     if terms.len() < 2 {

@@ -76,11 +76,7 @@ async fn content_hits_have_neutral_zero_score() {
         5,
         "expected 5 content hits, one per seeded file; got {}: {:?}",
         execution.hits.len(),
-        execution
-            .hits
-            .iter()
-            .map(|h| &h.file)
-            .collect::<Vec<_>>(),
+        execution.hits.iter().map(|h| &h.file).collect::<Vec<_>>(),
     );
 
     for hit in &execution.hits {
@@ -92,11 +88,8 @@ async fn content_hits_have_neutral_zero_score() {
     }
 
     // All scores equal ⇒ set of unique scores has exactly one element.
-    let unique_scores: std::collections::BTreeSet<u32> = execution
-        .hits
-        .iter()
-        .map(|h| h.score.to_bits())
-        .collect();
+    let unique_scores: std::collections::BTreeSet<u32> =
+        execution.hits.iter().map(|h| h.score.to_bits()).collect();
     assert_eq!(
         unique_scores.len(),
         1,

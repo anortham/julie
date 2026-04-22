@@ -172,10 +172,8 @@ mod tests {
     /// passes trivially, and the second-pass is a no-op.
     #[tokio::test(flavor = "multi_thread")]
     async fn second_pass_is_noop_without_caller_filters() {
-        let (_dir, handler) = seed_workspace(&[
-            ("src/code.rs", "fn alpha() { let marker_plain = 1; }\n"),
-        ])
-        .await;
+        let (_dir, handler) =
+            seed_workspace(&[("src/code.rs", "fn alpha() { let marker_plain = 1; }\n")]).await;
 
         let result = line_mode_matches(
             "marker_plain",

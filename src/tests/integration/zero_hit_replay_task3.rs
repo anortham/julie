@@ -227,8 +227,7 @@ fn replay_content_zero_hits_and_classify() -> Result<()> {
     }
 
     // Persist raw rows for downstream inspection.
-    let json_rows =
-        serde_json::to_string_pretty(&rows).context("serialize replay rows to JSON")?;
+    let json_rows = serde_json::to_string_pretty(&rows).context("serialize replay rows to JSON")?;
     fs::write(results_path(), &json_rows)
         .with_context(|| format!("writing {}", results_path().display()))?;
 
@@ -259,10 +258,8 @@ fn replay_content_zero_hits_and_classify() -> Result<()> {
     // Compute how many queries that originally returned zero are now
     // returning >0 vs. still zero, and break the "still zero" class down
     // further to separate the degenerate early-return case from real misses.
-    let mut still_zero_rows: Vec<&ReplayRow> = rows
-        .iter()
-        .filter(|r| r.final_result_count == 0)
-        .collect();
+    let mut still_zero_rows: Vec<&ReplayRow> =
+        rows.iter().filter(|r| r.final_result_count == 0).collect();
     still_zero_rows.sort_by_key(|r| r.query.clone());
     // A degenerate query is one whose tokeniser output is empty, which means
     // `search_content` early-returns with `relaxed = false, and = 0, or = 0`.
@@ -291,7 +288,9 @@ fn replay_content_zero_hits_and_classify() -> Result<()> {
         no_cand_single_word, no_cand_multi_word, degenerate_rows.len()
     ));
     if !degenerate_rows.is_empty() {
-        md.push_str("Degenerate-input queries (shown for completeness; they can never match anything):\n\n");
+        md.push_str(
+            "Degenerate-input queries (shown for completeness; they can never match anything):\n\n",
+        );
         for r in &degenerate_rows {
             md.push_str(&format!(
                 "* `{}` (filter: {}) — tokenises to zero terms\n",

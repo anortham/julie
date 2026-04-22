@@ -26,6 +26,8 @@ pub mod fields {
     pub const DOC_TYPE: &str = "doc_type";
     pub const ID: &str = "id";
     pub const FILE_PATH: &str = "file_path";
+    pub const BASENAME: &str = "basename";
+    pub const PATH_TEXT: &str = "path_text";
     pub const LANGUAGE: &str = "language";
     pub const NAME: &str = "name";
     pub const SIGNATURE: &str = "signature";
@@ -63,6 +65,8 @@ pub fn create_schema() -> Schema {
     builder.add_text_field(fields::DOC_TYPE, STRING | STORED);
     builder.add_text_field(fields::ID, STRING | STORED);
     builder.add_text_field(fields::FILE_PATH, STRING | STORED);
+    builder.add_text_field(fields::BASENAME, STRING | STORED);
+    builder.add_text_field(fields::PATH_TEXT, code_text_not_stored.clone());
     builder.add_text_field(fields::LANGUAGE, STRING | STORED);
 
     // Symbol fields (code-tokenized)
@@ -103,6 +107,8 @@ pub struct SchemaFields {
     pub doc_type: Field,
     pub id: Field,
     pub file_path: Field,
+    pub basename: Field,
+    pub path_text: Field,
     pub language: Field,
     pub name: Field,
     pub signature: Field,
@@ -123,6 +129,8 @@ impl SchemaFields {
             doc_type: schema.get_field(fields::DOC_TYPE).unwrap(),
             id: schema.get_field(fields::ID).unwrap(),
             file_path: schema.get_field(fields::FILE_PATH).unwrap(),
+            basename: schema.get_field(fields::BASENAME).unwrap(),
+            path_text: schema.get_field(fields::PATH_TEXT).unwrap(),
             language: schema.get_field(fields::LANGUAGE).unwrap(),
             name: schema.get_field(fields::NAME).unwrap(),
             signature: schema.get_field(fields::SIGNATURE).unwrap(),

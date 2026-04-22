@@ -25,6 +25,7 @@ pub(crate) mod line_mode;
 mod nl_embeddings;
 pub(crate) mod query;
 pub mod query_preprocessor; // Public for testing
+pub(crate) mod target;
 pub mod text_search;
 pub(crate) mod trace;
 mod types;
@@ -32,9 +33,11 @@ mod types;
 use crate::mcp_compat::{CallToolResult, CallToolResultExt, Content};
 use anyhow::Result;
 use schemars::JsonSchema;
+use serde::de::{Deserializer, Error as DeError, IntoDeserializer};
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
+use self::target::SearchTarget;
 use crate::handler::JulieServerHandler;
 use crate::health::SystemStatus;
 use crate::tools::navigation::resolution::WorkspaceTarget;
@@ -44,7 +47,7 @@ use crate::tools::shared::OptimizedResponse;
 //   Search Tools   //
 //******************//
 
-#[derive(Debug, Deserialize, Serialize, JsonSchema)]
+#[derive(Debug, Serialize, JsonSchema)]
 /// Search code using text search with code-aware tokenization. Supports multi-word queries with AND/OR logic. For conceptual queries (e.g., "error handling"), use search_target="definitions" to leverage semantic search.
 pub struct FastSearchTool {
     /// Search query. Exact symbol names work best for definition search. Too many results? Add file_pattern or language filter. Zero results? Run manage_workspace(operation="index")
@@ -86,6 +89,61 @@ pub struct FastSearchTool {
     pub return_format: String,
 }
 
+#[derive(Deserialize)]
+struct FastSearchToolSerde {
+    query: String,
+    #[serde(default = "default_search_target")]
+    search_target: String,
+    #[serde(default)]
+    language: Option<String>,
+    #[serde(default)]
+    file_pattern: Option<String>,
+    #[serde(
+        default = "default_limit",
+        deserialize_with = "crate::utils::serde_lenient::deserialize_u32_lenient"
+    )]
+    limit: u32,
+    #[serde(default, deserialize_with = "deserialize_presence_tracked_option_u32")]
+    context_lines: Option<Option<u32>>,
+    #[serde(
+        default,
+        deserialize_with = "crate::utils::serde_lenient::deserialize_option_bool_lenient"
+    )]
+    exclude_tests: Option<bool>,
+    #[serde(default = "default_workspace")]
+    workspace: Option<String>,
+    #[serde(default = "default_return_format")]
+    return_format: String,
+}
+
+impl<'de> Deserialize<'de> for FastSearchTool {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let raw = FastSearchToolSerde::deserialize(deserializer)?;
+        let search_target = SearchTarget::parse(&raw.search_target)
+            .map_err(|err| D::Error::custom(err.to_string()))?;
+        let context_lines = match raw.context_lines {
+            Some(value) => value,
+            None if search_target == SearchTarget::Files => None,
+            None => default_context_lines(),
+        };
+
+        Ok(Self {
+            query: raw.query,
+            search_target: search_target.canonical_name().to_string(),
+            language: raw.language,
+            file_pattern: raw.file_pattern,
+            limit: raw.limit,
+            context_lines,
+            exclude_tests: raw.exclude_tests,
+            workspace: raw.workspace,
+            return_format: raw.return_format,
+        })
+    }
+}
+
 fn default_limit() -> u32 {
     10 // Reduced from 15 with enhanced scoring (better quality = fewer results needed)
 }
@@ -100,6 +158,25 @@ fn default_search_target() -> String {
 }
 fn default_return_format() -> String {
     "full".to_string()
+}
+
+fn deserialize_presence_tracked_option_u32<'de, D>(
+    deserializer: D,
+) -> std::result::Result<Option<Option<u32>>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = Option::<serde_json::Value>::deserialize(deserializer)?;
+    match value {
+        None => Ok(None),
+        Some(value) => {
+            let parsed = crate::utils::serde_lenient::deserialize_option_u32_lenient(
+                value.into_deserializer(),
+            )
+            .map_err(D::Error::custom)?;
+            Ok(Some(parsed))
+        }
+    }
 }
 
 impl Default for FastSearchTool {
@@ -124,6 +201,14 @@ pub struct FastSearchExecution {
 }
 
 impl FastSearchTool {
+    pub(crate) fn validated_search_target(&self) -> Result<SearchTarget> {
+        let search_target = SearchTarget::parse(&self.search_target)?;
+        if search_target == SearchTarget::Files && self.context_lines.is_some() {
+            anyhow::bail!("search_target=\"files\" does not support context_lines; omit the field");
+        }
+        Ok(search_target)
+    }
+
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
         self.execute_with_trace(handler).await.map(|run| run.result)
     }
@@ -132,6 +217,7 @@ impl FastSearchTool {
         &self,
         handler: &JulieServerHandler,
     ) -> Result<FastSearchExecution> {
+        let search_target = self.validated_search_target()?;
         debug!(
             "🔍 Fast search: {} (target: {})",
             self.query, self.search_target
@@ -153,7 +239,7 @@ impl FastSearchTool {
         )
         .await?;
 
-        let use_line_mode = self.search_target != "definitions";
+        let use_line_mode = search_target == SearchTarget::Content;
 
         match readiness {
             SystemStatus::NotReady => {
@@ -181,6 +267,8 @@ impl FastSearchTool {
                     {
                         let message = if use_line_mode {
                             "Line-level content search requires a Tantivy index for the current primary workspace. Run manage_workspace(operation=\"refresh\") first.".to_string()
+                        } else if search_target == SearchTarget::Files {
+                            "File search requires a Tantivy index for the current primary workspace. Run manage_workspace(operation=\"refresh\") first.".to_string()
                         } else {
                             "Definition search requires a Tantivy index for the current primary workspace. Run manage_workspace(operation=\"refresh\") first.".to_string()
                         };
@@ -204,6 +292,11 @@ impl FastSearchTool {
                         let message = if use_line_mode {
                             format!(
                                 "Line-level content search requires a Tantivy index for workspace '{}'. Run manage_workspace(operation=\"refresh\", workspace_id=\"{}\") first.",
+                                target_workspace_id, target_workspace_id
+                            )
+                        } else if search_target == SearchTarget::Files {
+                            format!(
+                                "File search requires a Tantivy index for workspace '{}'. Run manage_workspace(operation=\"refresh\", workspace_id=\"{}\") first.",
                                 target_workspace_id, target_workspace_id
                             )
                         } else {
@@ -360,6 +453,7 @@ impl FastSearchTool {
                     file_pattern_diagnostic: None,
                 },
                 trace::SearchExecutionKind::Definitions => unreachable!("content search kind"),
+                trace::SearchExecutionKind::Files => unreachable!("content search kind"),
             };
             let output = line_mode::format_line_mode_output(&self.query, &line_mode_result);
             return Ok(FastSearchExecution {
@@ -434,6 +528,41 @@ impl FastSearchTool {
             handler,
         )
         .await?;
+
+        if search_target == SearchTarget::Files {
+            let optimized =
+                OptimizedResponse::with_total(execution.hits.clone(), execution.total_results);
+
+            if optimized.results.is_empty() {
+                let message = format!(
+                    "No files found for: '{}'\n\
+                    Try a broader path fragment or search_target=\"definitions\" for symbol lookup",
+                    self.query
+                );
+                return Ok(FastSearchExecution {
+                    result: CallToolResult::text_content(vec![Content::text(message)]),
+                    execution: Some(execution),
+                });
+            }
+
+            let mut output = if self.return_format == "locations" {
+                formatting::format_file_locations_only(&self.query, &optimized)
+            } else {
+                formatting::format_file_search_results(&self.query, &optimized)
+            };
+
+            if execution.relaxed {
+                output = format!(
+                    "NOTE: Relaxed search (showing partial matches — no results matched all path terms)\n\n{}",
+                    output
+                );
+            }
+
+            return Ok(FastSearchExecution {
+                result: CallToolResult::text_content(vec![Content::text(output)]),
+                execution: Some(execution),
+            });
+        }
 
         let symbols = execution.definition_symbols();
 

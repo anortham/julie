@@ -1,12 +1,16 @@
 use std::cmp::Ordering;
 
-use anyhow::Result;
+use anyhow::{Result, bail};
 
 use crate::handler::JulieServerHandler;
+use crate::search::index::{FileMatchKind, SearchFilter};
+use crate::search::scoring::{file_path_priority_bucket, is_test_path};
 use crate::tools::navigation::resolution::WorkspaceTarget;
 
 use super::formatting;
 use super::line_mode;
+use super::query;
+use super::target::SearchTarget;
 use super::text_search;
 use super::trace::{
     FilePatternDiagnostic, SearchExecutionKind, SearchExecutionResult, SearchHit, ZeroHitReason,
@@ -72,15 +76,47 @@ pub async fn execute_search(
         exclude_tests: params.exclude_tests,
     };
 
-    if normalized_params.search_target == "content" {
-        execute_content_search(normalized_params, workspaces, handler).await
-    } else {
-        execute_definition_search(normalized_params, workspaces, handler).await
+    let search_target = SearchTarget::parse(normalized_params.search_target)?;
+
+    match search_target {
+        SearchTarget::Content => {
+            execute_content_search(normalized_params, workspaces, handler).await
+        }
+        SearchTarget::Definitions => {
+            execute_definition_search(normalized_params, workspaces, handler).await
+        }
+        SearchTarget::Files => execute_file_search(normalized_params, workspaces, handler).await,
     }
 }
 
 fn sort_hits_by_score_desc(hits: &mut [SearchHit]) {
     hits.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(Ordering::Equal));
+}
+
+fn sort_file_hits(hits: &mut [SearchHit]) {
+    hits.sort_by(|left, right| {
+        file_match_rank(
+            left.as_file_result()
+                .map(|result| result.match_kind)
+                .unwrap_or(FileMatchKind::PathFragment),
+        )
+        .cmp(&file_match_rank(
+            right
+                .as_file_result()
+                .map(|result| result.match_kind)
+                .unwrap_or(FileMatchKind::PathFragment),
+        ))
+        .then_with(|| {
+            file_path_priority_bucket(&left.file).cmp(&file_path_priority_bucket(&right.file))
+        })
+        .then_with(|| {
+            right
+                .score
+                .partial_cmp(&left.score)
+                .unwrap_or(Ordering::Equal)
+        })
+        .then_with(|| left.file.cmp(&right.file))
+    });
 }
 
 async fn execute_definition_search(
@@ -99,7 +135,7 @@ async fn execute_definition_search(
             params.file_pattern,
             params.limit,
             Some(vec![workspace.workspace_id.clone()]),
-            "definitions",
+            SearchTarget::Definitions.canonical_name(),
             params.context_lines,
             params.exclude_tests,
             handler,
@@ -226,4 +262,77 @@ async fn execute_content_search(
 
 fn infer_language(requested_language: &Option<String>) -> String {
     requested_language.clone().unwrap_or_default()
+}
+
+async fn execute_file_search(
+    params: SearchExecutionParams<'_>,
+    workspaces: &[SearchExecutionWorkspace],
+    handler: &JulieServerHandler,
+) -> Result<SearchExecutionResult> {
+    let mut hits = Vec::new();
+    let mut relaxed = false;
+    let mut total_results = 0usize;
+    let exclude_tests = params.exclude_tests.unwrap_or(false);
+
+    for workspace in workspaces {
+        let Some(search_index) = handler
+            .get_search_index_for_workspace(&workspace.workspace_id)
+            .await?
+        else {
+            bail!(
+                "File search requires a Tantivy index for workspace '{}'",
+                workspace.workspace_id
+            );
+        };
+
+        let filter = SearchFilter {
+            language: params.language.clone(),
+            kind: None,
+            file_pattern: None,
+            exclude_tests: false,
+        };
+
+        let results = {
+            let index = search_index.lock().unwrap();
+            index.search_files(params.query, &filter, params.limit.max(1) as usize)?
+        };
+
+        relaxed |= results.relaxed;
+        total_results += results.results.len();
+        hits.extend(
+            results
+                .results
+                .into_iter()
+                .filter(|result| {
+                    if exclude_tests && is_test_path(&result.file_path) {
+                        return false;
+                    }
+                    if let Some(pattern) = params.file_pattern.as_deref() {
+                        return query::matches_glob_pattern(&result.file_path, pattern);
+                    }
+                    true
+                })
+                .map(|result| SearchHit::from_file_result(result, workspace.workspace_id.clone())),
+        );
+    }
+
+    sort_file_hits(&mut hits);
+    hits.truncate(params.limit.max(1) as usize);
+
+    Ok(SearchExecutionResult::new(
+        hits,
+        relaxed,
+        total_results,
+        "fast_search_files",
+        SearchExecutionKind::Files,
+    ))
+}
+
+fn file_match_rank(kind: FileMatchKind) -> u8 {
+    match kind {
+        FileMatchKind::ExactPath => 0,
+        FileMatchKind::ExactBasename => 1,
+        FileMatchKind::PathFragment => 2,
+        FileMatchKind::Glob => 3,
+    }
 }

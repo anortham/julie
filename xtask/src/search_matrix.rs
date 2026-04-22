@@ -136,7 +136,8 @@ pub fn run_search_matrix_command(
         }
         SearchMatrixCommand::Baseline { profile, out } => {
             let daemon_paths = DaemonPaths::new();
-            let cases_path = workspace_root().join("fixtures/search-quality/search-matrix-cases.toml");
+            let cases_path =
+                workspace_root().join("fixtures/search-quality/search-matrix-cases.toml");
             let corpus_path =
                 workspace_root().join("fixtures/search-quality/search-matrix-corpus.toml");
             let out_path = out.clone().unwrap_or_else(|| {
@@ -290,8 +291,9 @@ async fn run_baseline_async(
                 .execution
                 .ok_or_else(|| anyhow!("search-matrix baseline received no execution trace"))?;
             let hit_count_is_lower_bound =
-                case.search_target == "content" && execution.hits.len() >= search_limit;
-            let hit_count = if case.search_target == "content" {
+                matches!(case.search_target.as_str(), "content" | "files")
+                    && execution.hits.len() >= search_limit;
+            let hit_count = if matches!(case.search_target.as_str(), "content" | "files") {
                 execution.hits.len()
             } else {
                 execution.total_results
@@ -386,11 +388,14 @@ fn expand_search_root(root: &str) -> PathBuf {
     PathBuf::from(root)
 }
 
-fn find_workspace_row<'a>(workspaces: &'a [WorkspaceRow], repo_root: &Path) -> Option<&'a WorkspaceRow> {
+fn find_workspace_row<'a>(
+    workspaces: &'a [WorkspaceRow],
+    repo_root: &Path,
+) -> Option<&'a WorkspaceRow> {
     let target_root = normalize_repo_root(repo_root);
-    workspaces.iter().find(|workspace| {
-        normalize_repo_root(Path::new(&workspace.path)) == target_root
-    })
+    workspaces
+        .iter()
+        .find(|workspace| normalize_repo_root(Path::new(&workspace.path)) == target_root)
 }
 
 fn normalize_repo_root(path: &Path) -> PathBuf {
@@ -428,7 +433,11 @@ fn compute_summary_flags(
     }
 
     for execution in executions {
-        let Some(case) = cases.cases.iter().find(|case| case.case_id == execution.case_id) else {
+        let Some(case) = cases
+            .cases
+            .iter()
+            .find(|case| case.case_id == execution.case_id)
+        else {
             continue;
         };
         if case.expected_mode == "expect_hint_kind"

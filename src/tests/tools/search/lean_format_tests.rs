@@ -8,7 +8,12 @@
 #[cfg(test)]
 mod tests {
     use crate::extractors::base::{Symbol, SymbolKind};
-    use crate::tools::search::formatting::{format_lean_search_results, format_locations_only};
+    use crate::search::index::{FileMatchKind, FileSearchResult};
+    use crate::tools::search::formatting::{
+        format_file_locations_only, format_file_search_results, format_lean_search_results,
+        format_locations_only,
+    };
+    use crate::tools::search::trace::{SearchHit, SearchHitBacking};
     use crate::tools::shared::OptimizedResponse;
 
     fn make_test_symbol(file_path: &str, line: u32, code_context: &str) -> Symbol {
@@ -33,6 +38,32 @@ mod tests {
             confidence: None,
             code_context: Some(code_context.to_string()),
             content_type: None,
+        }
+    }
+
+    fn make_file_hit(file_path: &str, language: &str, match_kind: FileMatchKind) -> SearchHit {
+        let file_result = FileSearchResult {
+            file_path: file_path.to_string(),
+            language: language.to_string(),
+            score: 1.0,
+            match_kind,
+        };
+
+        SearchHit {
+            name: file_path
+                .rsplit('/')
+                .next()
+                .unwrap_or(file_path)
+                .to_string(),
+            file: file_path.to_string(),
+            line: None,
+            kind: "file".to_string(),
+            language: language.to_string(),
+            score: 1.0,
+            snippet: None,
+            workspace: "primary".to_string(),
+            symbol_id: None,
+            backing: SearchHitBacking::File(file_result),
         }
     }
 
@@ -255,6 +286,60 @@ mod tests {
 
         // When count < total, show "showing N of M"
         assert!(output.contains("3 locations for \"foo\" (showing 3 of 50)"));
+    }
+
+    #[test]
+    fn test_file_locations_only_format_is_path_only() {
+        let response = OptimizedResponse {
+            results: vec![
+                make_file_hit(
+                    "src/tools/search/mod.rs",
+                    "rust",
+                    FileMatchKind::ExactBasename,
+                ),
+                make_file_hit(
+                    "tests/tools/search/mod.rs",
+                    "rust",
+                    FileMatchKind::ExactBasename,
+                ),
+            ],
+            total_found: 2,
+        };
+
+        let output = format_file_locations_only("mod.rs", &response);
+        let lines: Vec<&str> = output.lines().collect();
+
+        assert_eq!(lines[0], "2 file matches for \"mod.rs\":");
+        assert_eq!(lines[1], "");
+        assert_eq!(lines[2], "src/tools/search/mod.rs");
+        assert_eq!(lines[3], "tests/tools/search/mod.rs");
+        assert!(!lines[2].contains(':'));
+        assert!(!lines[3].contains(':'));
+        assert!(!output.contains("(rust"));
+    }
+
+    #[test]
+    fn test_file_full_format_includes_language_match_kind_and_test_annotation() {
+        let response = OptimizedResponse {
+            results: vec![
+                make_file_hit(
+                    "src/tools/search/mod.rs",
+                    "rust",
+                    FileMatchKind::ExactBasename,
+                ),
+                make_file_hit(
+                    "tests/tools/search/mod.rs",
+                    "rust",
+                    FileMatchKind::ExactBasename,
+                ),
+            ],
+            total_found: 2,
+        };
+
+        let output = format_file_search_results("mod.rs", &response);
+
+        assert!(output.contains("src/tools/search/mod.rs (rust, exact basename)"));
+        assert!(output.contains("tests/tools/search/mod.rs (rust, exact basename, test)"));
     }
 
     #[test]

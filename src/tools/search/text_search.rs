@@ -4,6 +4,7 @@ use anyhow::Result;
 use tracing::{debug, info, warn};
 
 use super::query::matches_glob_pattern;
+use super::target::SearchTarget;
 use crate::extractors::{Symbol, SymbolKind};
 use crate::handler::JulieServerHandler;
 use crate::search::SearchFilter;
@@ -33,9 +34,10 @@ pub async fn text_search_impl(
     exclude_tests: Option<bool>,
     handler: &JulieServerHandler,
 ) -> Result<(Vec<Symbol>, bool, usize)> {
+    let search_target = SearchTarget::parse(search_target)?;
     super::nl_embeddings::maybe_initialize_embeddings_for_nl_definitions(
         query,
-        search_target,
+        search_target.canonical_name(),
         handler,
     )
     .await;
@@ -63,13 +65,15 @@ pub async fn text_search_impl(
 
     debug!(
         "🔍 Tantivy text search: '{}' (target: {}, workspace: {:?})",
-        query, search_target, target_workspace_id
+        query,
+        search_target.canonical_name(),
+        target_workspace_id
     );
 
     // Resolve exclude_tests smart default
     let exclude_tests_resolved = exclude_tests.unwrap_or_else(|| {
         // NL queries auto-exclude tests; definition searches always include them
-        search_target != "definitions" && crate::search::scoring::is_nl_like_query(query)
+        search_target == SearchTarget::Content && crate::search::scoring::is_nl_like_query(query)
     });
 
     let filter = SearchFilter {
@@ -81,7 +85,7 @@ pub async fn text_search_impl(
 
     let query_clone = query.to_string();
     let limit_usize = limit as usize;
-    let search_target_clone = search_target.to_string();
+    let search_target_clone = search_target;
 
     // Target workspace: use handler helpers for DB + SearchIndex access.
     if let Some(target_id) = target_workspace_id {
@@ -104,23 +108,25 @@ pub async fn text_search_impl(
                 .lock()
                 .map_err(|e| anyhow::anyhow!("Database lock error: {}", e))?;
 
-            if search_target_clone == "definitions" {
-                definition_search_with_index(
+            match search_target_clone {
+                SearchTarget::Definitions => definition_search_with_index(
                     &query_clone,
                     &filter,
                     limit_usize,
                     &index,
                     Some(&db_lock),
                     target_embedding_provider.as_deref(),
-                )
-            } else {
-                content_search_with_index(
+                ),
+                SearchTarget::Content => content_search_with_index(
                     &query_clone,
                     &filter,
                     limit_usize,
                     &index,
                     Some(&db_lock),
-                )
+                ),
+                SearchTarget::Files => {
+                    anyhow::bail!("search_target=\"files\" is not implemented yet")
+                }
             }
         })
         .await??;
@@ -147,17 +153,23 @@ pub async fn text_search_impl(
             poisoned.into_inner()
         });
 
-        if search_target_clone == "definitions" {
-            definition_search_with_index(
+        match search_target_clone {
+            SearchTarget::Definitions => definition_search_with_index(
                 &query_clone,
                 &filter,
                 limit_usize,
                 &index,
                 Some(&db_guard),
                 embedding_provider.as_deref(),
-            )
-        } else {
-            content_search_with_index(&query_clone, &filter, limit_usize, &index, Some(&db_guard))
+            ),
+            SearchTarget::Content => content_search_with_index(
+                &query_clone,
+                &filter,
+                limit_usize,
+                &index,
+                Some(&db_guard),
+            ),
+            SearchTarget::Files => anyhow::bail!("search_target=\"files\" is not implemented yet"),
         }
     })
     .await??;

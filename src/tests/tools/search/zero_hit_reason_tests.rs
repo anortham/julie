@@ -395,11 +395,8 @@ mod integration_tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn live_quoted_phrase_match_avoids_line_match_miss() {
-        let (_dir, handler) = seed_workspace(&[(
-            "src/router.js",
-            "router.use('/foo', middleware);\n",
-        )])
-        .await;
+        let (_dir, handler) =
+            seed_workspace(&[("src/router.js", "router.use('/foo', middleware);\n")]).await;
 
         let result = line_mode_matches(
             "\"router use\"",

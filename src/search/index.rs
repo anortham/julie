@@ -11,6 +11,7 @@ use std::path::Path;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use globset::{Glob, GlobMatcher};
 use serde::{Deserialize, Serialize};
 use tantivy::collector::TopDocs;
 use tantivy::schema::{TantivyDocument, Value};
@@ -21,7 +22,7 @@ use crate::search::error::{Result, SearchError};
 use crate::search::expansion::expand_query_terms;
 use crate::search::language_config::LanguageConfigs;
 use crate::search::query::{
-    build_content_query_weighted, build_symbol_query, build_symbol_query_weighted,
+    build_content_query_weighted, build_file_query, build_symbol_query, build_symbol_query_weighted,
 };
 use crate::search::schema::{
     SchemaCompatibilitySignature, SchemaFields, compatibility_signature, create_schema,
@@ -33,7 +34,7 @@ use crate::search::tokenizer::{CodeTokenizer, TokenizerCompatibilitySignature};
 
 const WRITER_HEAP_SIZE: usize = 50_000_000; // 50MB
 const NL_RERANK_OVERFETCH_FACTOR: usize = 4;
-const SEARCH_COMPAT_MARKER_VERSION: u32 = 1;
+const SEARCH_COMPAT_MARKER_VERSION: u32 = 2;
 pub const SEARCH_COMPAT_MARKER_FILE: &str = "julie-search-compat.json";
 
 /// A code symbol to be indexed.
@@ -54,6 +55,14 @@ pub struct FileDocument {
     pub file_path: String,
     pub content: String,
     pub language: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FileMatchKind {
+    ExactPath,
+    ExactBasename,
+    PathFragment,
+    Glob,
 }
 
 impl SymbolDocument {
@@ -120,6 +129,19 @@ pub struct ContentSearchResult {
     pub file_path: String,
     pub language: String,
     pub score: f32,
+}
+
+#[derive(Debug, Clone)]
+pub struct FileSearchResult {
+    pub file_path: String,
+    pub language: String,
+    pub score: f32,
+    pub match_kind: FileMatchKind,
+}
+
+pub struct FileSearchResults {
+    pub results: Vec<FileSearchResult>,
+    pub relaxed: bool,
 }
 
 /// Result from search_content, includes metadata about the search.
@@ -293,9 +315,13 @@ impl SearchIndex {
     pub fn add_file_content(&self, doc: &FileDocument) -> Result<()> {
         let f = &self.schema_fields;
         let mut tantivy_doc = TantivyDocument::new();
+        let normalized_path = normalize_file_path(&doc.file_path);
+        let basename = basename_for_path(&normalized_path);
 
         tantivy_doc.add_text(f.doc_type, "file");
-        tantivy_doc.add_text(f.file_path, &doc.file_path);
+        tantivy_doc.add_text(f.file_path, &normalized_path);
+        tantivy_doc.add_text(f.basename, basename);
+        tantivy_doc.add_text(f.path_text, &normalized_path);
         tantivy_doc.add_text(f.language, &doc.language);
         tantivy_doc.add_text(f.content, &doc.content);
 
@@ -563,8 +589,7 @@ impl SearchIndex {
         // Use word count from query_str (not terms.len()) because the tokenizer can inflate
         // a single word into multiple tokens via CamelCase splitting, stemming, etc.
         let user_word_count = query_str.split_whitespace().count();
-        let (top_docs, relaxed, or_candidate_count) = if top_docs.is_empty()
-            && user_word_count > 1
+        let (top_docs, relaxed, or_candidate_count) = if top_docs.is_empty() && user_word_count > 1
         {
             let or_query = build_content_query_weighted(
                 &original_terms,
@@ -600,6 +625,120 @@ impl SearchIndex {
             and_candidate_count,
             or_candidate_count,
         })
+    }
+
+    pub fn search_files(
+        &self,
+        query_str: &str,
+        filter: &SearchFilter,
+        limit: usize,
+    ) -> Result<FileSearchResults> {
+        if limit == 0 {
+            return Ok(FileSearchResults {
+                results: Vec::new(),
+                relaxed: false,
+            });
+        }
+
+        let f = &self.schema_fields;
+        let normalized_query = normalize_file_path(query_str.trim());
+        let glob_matcher = compile_query_glob(&normalized_query)?;
+        let is_glob_query = glob_matcher.is_some();
+        let exact_path = (!is_glob_query).then_some(normalized_query.as_str());
+        let exact_basename =
+            (!normalized_query.is_empty()).then_some(basename_for_path(&normalized_query));
+
+        let literal_query = if is_glob_query {
+            extract_glob_literals(&normalized_query).join(" ")
+        } else {
+            normalized_query.clone()
+        };
+        let expanded = expand_query_terms(&literal_query);
+        let mut path_terms =
+            Self::filter_compound_tokens(self.tokenize_terms(&expanded.original_terms));
+        if path_terms.is_empty() {
+            path_terms = Self::filter_compound_tokens(self.tokenize_query(&literal_query));
+        }
+
+        if path_terms.is_empty() && exact_path.is_none() && exact_basename.is_none() {
+            return Ok(FileSearchResults {
+                results: Vec::new(),
+                relaxed: false,
+            });
+        }
+
+        let searcher = self.reader.searcher();
+        let candidate_limit = Self::file_candidate_limit(query_str, limit);
+        let and_query = build_file_query(
+            &path_terms,
+            f.file_path,
+            f.basename,
+            f.path_text,
+            f.doc_type,
+            f.language,
+            filter.language.as_deref(),
+            exact_path,
+            exact_basename,
+            true,
+        );
+        let top_docs = searcher.search(
+            &and_query,
+            &TopDocs::with_limit(candidate_limit).order_by_score(),
+        )?;
+
+        let (top_docs, relaxed) = if top_docs.is_empty() && path_terms.len() > 1 {
+            let or_query = build_file_query(
+                &path_terms,
+                f.file_path,
+                f.basename,
+                f.path_text,
+                f.doc_type,
+                f.language,
+                filter.language.as_deref(),
+                exact_path,
+                exact_basename,
+                false,
+            );
+            (
+                searcher.search(
+                    &or_query,
+                    &TopDocs::with_limit(candidate_limit).order_by_score(),
+                )?,
+                true,
+            )
+        } else {
+            (top_docs, false)
+        };
+
+        let mut results = Vec::with_capacity(top_docs.len());
+        for (score, doc_address) in top_docs {
+            let doc: TantivyDocument = searcher.doc(doc_address)?;
+            let file_path = Self::get_text_field(&doc, f.file_path);
+            if let Some(glob_matcher) = &glob_matcher
+                && !glob_matcher.is_match(&file_path)
+            {
+                continue;
+            }
+
+            results.push(FileSearchResult {
+                language: Self::get_text_field(&doc, f.language),
+                match_kind: classify_file_match(query_str, &normalized_query, &file_path),
+                file_path,
+                score,
+            });
+        }
+
+        results.sort_by(|left, right| {
+            file_match_rank(left.match_kind)
+                .cmp(&file_match_rank(right.match_kind))
+                .then_with(|| right.score.total_cmp(&left.score))
+                .then_with(|| left.file_path.cmp(&right.file_path))
+        });
+        if results.len() > limit {
+            results.truncate(limit);
+        }
+
+        Ok(FileSearchResults { results, relaxed })
     }
 
     // --- Private helpers ---
@@ -991,6 +1130,19 @@ impl SearchIndex {
         limit.saturating_mul(NL_RERANK_OVERFETCH_FACTOR)
     }
 
+    fn file_candidate_limit(query_str: &str, limit: usize) -> usize {
+        if limit == 0 {
+            return 0;
+        }
+
+        let factor = if query_contains_glob_syntax(query_str) {
+            50
+        } else {
+            20
+        };
+        limit.saturating_mul(factor).clamp(50, 1000)
+    }
+
     /// Remove compound tokens whose snake_case sub-parts are all present in the list.
     ///
     /// The CodeTokenizer emits the full form plus atomic sub-parts, but never
@@ -1030,5 +1182,60 @@ impl SearchIndex {
         doc.get_first(field)
             .and_then(|value| value.as_u64())
             .unwrap_or(0)
+    }
+}
+
+fn normalize_file_path(path: &str) -> String {
+    path.replace('\\', "/")
+}
+
+fn basename_for_path(path: &str) -> &str {
+    path.rsplit('/').next().unwrap_or(path)
+}
+
+fn query_contains_glob_syntax(query: &str) -> bool {
+    query
+        .chars()
+        .any(|ch| matches!(ch, '*' | '?' | '[' | ']' | '{' | '}'))
+}
+
+fn compile_query_glob(query: &str) -> Result<Option<GlobMatcher>> {
+    if !query_contains_glob_syntax(query) {
+        return Ok(None);
+    }
+
+    let glob = Glob::new(query)
+        .map_err(|err| SearchError::QueryError(format!("Invalid file glob {query:?}: {err}")))?;
+    Ok(Some(glob.compile_matcher()))
+}
+
+fn extract_glob_literals(query: &str) -> Vec<String> {
+    query
+        .split(|ch: char| matches!(ch, '*' | '?' | '[' | ']' | '{' | '}' | ',' | '!'))
+        .map(str::trim)
+        .filter(|segment| !segment.is_empty())
+        .map(ToOwned::to_owned)
+        .collect()
+}
+
+fn classify_file_match(query: &str, normalized_query: &str, file_path: &str) -> FileMatchKind {
+    if query_contains_glob_syntax(query) {
+        return FileMatchKind::Glob;
+    }
+    if file_path == normalized_query {
+        return FileMatchKind::ExactPath;
+    }
+    if basename_for_path(file_path) == basename_for_path(normalized_query) {
+        return FileMatchKind::ExactBasename;
+    }
+    FileMatchKind::PathFragment
+}
+
+fn file_match_rank(kind: FileMatchKind) -> u8 {
+    match kind {
+        FileMatchKind::ExactPath => 0,
+        FileMatchKind::ExactBasename => 1,
+        FileMatchKind::PathFragment => 2,
+        FileMatchKind::Glob => 3,
     }
 }

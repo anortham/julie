@@ -21,6 +21,20 @@ fn make_file(path: &str, content: &str) -> FileInfo {
     }
 }
 
+fn make_file_without_content(path: &str, language: &str) -> FileInfo {
+    FileInfo {
+        path: path.to_string(),
+        language: language.to_string(),
+        hash: format!("hash_{path}"),
+        size: 0,
+        last_modified: 1000,
+        last_indexed: 0,
+        symbol_count: 0,
+        line_count: 0,
+        content: None,
+    }
+}
+
 fn make_symbol(id: &str, name: &str, file_path: &str) -> Symbol {
     Symbol {
         id: id.to_string(),
@@ -200,6 +214,39 @@ fn test_search_projection_repairs_recreated_open_from_canonical_sqlite() -> Resu
         "repaired open should restore searchability"
     );
     assert_eq!(results.results[0].name, "repaired_symbol");
+    Ok(())
+}
+
+#[test]
+fn test_search_projection_indexes_file_rows_without_content_for_file_mode() -> Result<()> {
+    let temp_dir = TempDir::new()?;
+    let db_path = temp_dir.path().join("symbols.db");
+    let index_path = temp_dir.path().join("tantivy");
+    std::fs::create_dir_all(&index_path)?;
+
+    let mut db = SymbolDatabase::new(&db_path)?;
+    let index = SearchIndex::open_or_create(&index_path)?;
+    let projection = SearchProjection::tantivy("ws_test");
+
+    db.store_file_info(&make_file_without_content("docs/guide.md", "markdown"))?;
+    let raw = rusqlite::Connection::open(&db_path)?;
+    raw.execute(
+        "UPDATE files SET content = NULL WHERE path = 'docs/guide.md'",
+        [],
+    )?;
+
+    let state = projection.ensure_current_from_database(&mut db, &index)?;
+
+    assert_eq!(state.status, ProjectionStatus::Ready);
+    assert_eq!(
+        index.num_docs(),
+        1,
+        "content-less file rows should still produce a Tantivy file doc"
+    );
+
+    let results = index.search_files("guide.md", &Default::default(), 10)?;
+    assert_eq!(results.results.len(), 1);
+    assert_eq!(results.results[0].file_path, "docs/guide.md");
     Ok(())
 }
 

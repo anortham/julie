@@ -141,7 +141,7 @@ impl SearchProjection {
         )?;
 
         let symbols = db.get_all_symbols()?;
-        let file_contents = db.get_all_file_contents_with_language()?;
+        let file_contents = db.get_all_files_for_search_projection()?;
         let symbol_docs: Vec<_> = symbols.iter().map(SymbolDocument::from_symbol).collect();
         let file_docs: Vec<_> = file_contents
             .iter()

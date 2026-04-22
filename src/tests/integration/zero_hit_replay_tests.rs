@@ -196,7 +196,11 @@ fn write_diagnosis_section(counts: &ReplayCounts) -> Result<()> {
     ));
     md.push_str(&format!(
         "* Multi-token zero-hit hints: **{}**\n\n",
-        counts.per_hint_on_zero.get("multi_token_hint").copied().unwrap_or(0),
+        counts
+            .per_hint_on_zero
+            .get("multi_token_hint")
+            .copied()
+            .unwrap_or(0),
     ));
 
     md.push_str("### Zero-hit reason distribution\n\n");
@@ -351,7 +355,11 @@ async fn acceptance_replay_against_captured_zero_hits() -> Result<()> {
     );
     eprintln!(
         "multi-token hints = {}",
-        counts.per_hint_on_zero.get("multi_token_hint").copied().unwrap_or(0)
+        counts
+            .per_hint_on_zero
+            .get("multi_token_hint")
+            .copied()
+            .unwrap_or(0)
     );
     eprintln!("limit clamped  = {}", counts.limit_clamped);
     for (label, c) in &counts.per_reason {

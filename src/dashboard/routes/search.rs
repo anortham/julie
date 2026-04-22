@@ -226,6 +226,7 @@ fn normalize_dashboard_results(result: SearchExecutionResult) -> SearchExecution
                 workspace_label,
                 file_level,
             },
+            SearchExecutionKind::Files => SearchExecutionKind::Files,
         },
     }
 }

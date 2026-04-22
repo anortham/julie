@@ -1,6 +1,7 @@
 use serde_json::{Value, json};
 
 use crate::tools::search::FastSearchTool;
+use crate::tools::search::target::SearchTarget;
 use crate::tools::search::trace::SearchExecutionResult;
 
 const TRACE_VERSION: &str = "fast_search_trace_v1";
@@ -9,7 +10,10 @@ pub(crate) fn fast_search_metadata(
     params: &FastSearchTool,
     execution: Option<&SearchExecutionResult>,
 ) -> Value {
-    let intent = infer_intent(&params.query, &params.search_target);
+    let canonical_target = SearchTarget::parse(&params.search_target)
+        .map(SearchTarget::canonical_name)
+        .unwrap_or(params.search_target.as_str());
+    let intent = infer_intent(&params.query, canonical_target);
     let trace = execution.map(|result| {
         json!({
             "strategy": result.trace.strategy_id,
@@ -26,7 +30,7 @@ pub(crate) fn fast_search_metadata(
     json!({
         "query": params.query,
         "normalized_query": normalize_query(&params.query),
-        "search_target": params.search_target,
+        "search_target": canonical_target,
         "language": params.language,
         "file_pattern": params.file_pattern,
         "limit": params.limit,
@@ -51,6 +55,10 @@ fn normalize_query(query: &str) -> String {
 }
 
 fn infer_intent(query: &str, search_target: &str) -> &'static str {
+    if search_target == SearchTarget::Files.canonical_name() {
+        return "file_lookup";
+    }
+
     let normalized = query.to_lowercase();
     let token_count = query.split_whitespace().count();
     let has_symbol_shape = query.contains("::")

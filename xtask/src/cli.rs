@@ -27,8 +27,14 @@ pub enum TestCommand {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SearchMatrixCommand {
-    Mine { days: u32, out: PathBuf },
-    Baseline { profile: String, out: Option<PathBuf> },
+    Mine {
+        days: u32,
+        out: PathBuf,
+    },
+    Baseline {
+        profile: String,
+        out: Option<PathBuf>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -113,9 +119,10 @@ where
 
 pub fn validate_cli_command(manifest: &TestManifest, command: CliCommand) -> Result<CliCommand> {
     match command {
-        CliCommand::Test(test_command) => {
-            Ok(CliCommand::Test(validate_test_command(manifest, test_command)?))
-        }
+        CliCommand::Test(test_command) => Ok(CliCommand::Test(validate_test_command(
+            manifest,
+            test_command,
+        )?)),
         CliCommand::SearchMatrix(command) => Ok(CliCommand::SearchMatrix(command)),
     }
 }
@@ -334,14 +341,9 @@ commands = ["cargo test --lib tests::cli_tests"]
 
     #[test]
     fn cli_tests_parse_top_level_search_matrix_command() {
-        let parsed = parse_cli_command([
-            "xtask",
-            "search-matrix",
-            "baseline",
-            "--profile",
-            "smoke",
-        ])
-        .unwrap();
+        let parsed =
+            parse_cli_command(["xtask", "search-matrix", "baseline", "--profile", "smoke"])
+                .unwrap();
 
         assert!(matches!(
             parsed,

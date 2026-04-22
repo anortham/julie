@@ -4,6 +4,8 @@
 mod content_scoring_tests;
 mod definition_overfetch_tests;
 mod definition_promotion_tests;
+mod file_mode_index_tests;
+mod file_mode_tests;
 mod file_pattern_tests;
 mod lean_format_tests;
 mod line_match_strategy_tests;

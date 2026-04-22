@@ -280,6 +280,30 @@ impl SymbolDatabase {
         Ok(results)
     }
 
+    /// Get all file rows for Tantivy projection.
+    /// Returns every indexed file row, coercing NULL content to an empty string
+    /// so projection doc counts stay aligned with `count_projection_source_docs`.
+    pub fn get_all_files_for_search_projection(&self) -> Result<Vec<(String, String, String)>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT path, language, COALESCE(content, '') FROM files")?;
+
+        let rows = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })?;
+
+        let mut results = Vec::new();
+        for row in rows {
+            results.push(row?);
+        }
+
+        Ok(results)
+    }
+
     /// Get recently modified files (last N days)
     pub fn get_recent_files(&self, days: u32, limit: usize) -> Result<Vec<FileInfo>> {
         let now = get_unix_timestamp()?;

@@ -1,6 +1,7 @@
 use serde::Serialize;
 
 use crate::extractors::Symbol;
+use crate::search::index::FileSearchResult;
 
 use super::types::LineMatch;
 
@@ -8,6 +9,7 @@ use super::types::LineMatch;
 pub enum SearchHitBacking {
     Symbol(Symbol),
     LineMatch(LineMatch),
+    File(FileSearchResult),
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -84,10 +86,36 @@ impl SearchHit {
         }
     }
 
+    pub fn from_file_result(file_result: FileSearchResult, workspace: String) -> Self {
+        let name = file_result
+            .file_path
+            .rsplit('/')
+            .next()
+            .unwrap_or(&file_result.file_path)
+            .to_string();
+        let file = file_result.file_path.clone();
+        let language = file_result.language.clone();
+        let score = file_result.score;
+
+        Self {
+            name,
+            file,
+            line: None,
+            kind: "file".to_string(),
+            language,
+            score,
+            snippet: None,
+            workspace,
+            symbol_id: None,
+            backing: SearchHitBacking::File(file_result),
+        }
+    }
+
     pub fn as_symbol(&self) -> Option<&Symbol> {
         match &self.backing {
             SearchHitBacking::Symbol(symbol) => Some(symbol),
             SearchHitBacking::LineMatch(_) => None,
+            SearchHitBacking::File(_) => None,
         }
     }
 
@@ -95,6 +123,15 @@ impl SearchHit {
         match &self.backing {
             SearchHitBacking::Symbol(_) => None,
             SearchHitBacking::LineMatch(line_match) => Some(line_match),
+            SearchHitBacking::File(_) => None,
+        }
+    }
+
+    pub fn as_file_result(&self) -> Option<&FileSearchResult> {
+        match &self.backing {
+            SearchHitBacking::Symbol(_) => None,
+            SearchHitBacking::LineMatch(_) => None,
+            SearchHitBacking::File(file_result) => Some(file_result),
         }
     }
 }
@@ -224,6 +261,7 @@ pub enum SearchExecutionKind {
         workspace_label: Option<String>,
         file_level: bool,
     },
+    Files,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -258,6 +296,13 @@ impl SearchExecutionResult {
         self.hits
             .iter()
             .filter_map(|hit| hit.as_symbol().cloned())
+            .collect()
+    }
+
+    pub fn file_hits(&self) -> Vec<FileSearchResult> {
+        self.hits
+            .iter()
+            .filter_map(|hit| hit.as_file_result().cloned())
             .collect()
     }
 }

@@ -335,8 +335,7 @@ mod line_mode_stage_counts {
         assert_eq!(result.matches[0].file_path, "src/ui/target.rs");
         assert_eq!(result.zero_hit_reason, None);
         assert_eq!(
-            result.file_pattern_diagnostic,
-            None,
+            result.file_pattern_diagnostic, None,
             "successful widened fetch should not leave a zero-hit diagnostic behind",
         );
     }

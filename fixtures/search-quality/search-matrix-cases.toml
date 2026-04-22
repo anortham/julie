@@ -37,6 +37,15 @@ expected_mode = "expect_hint_kind"
 expected_value = "out_of_scope_content_hint"
 
 [[cases]]
+case_id = "rust-file-exact-search-mod"
+family = "file_lookup"
+query = "src/tools/search/mod.rs"
+search_target = "files"
+profile_tags = ["smoke", "breadth", "full"]
+repo_selector = ["julie"]
+expected_mode = "expect_hits"
+
+[[cases]]
 case_id = "ts-quoted-phrase-router"
 family = "quoted_phrase"
 query = "\"router use\""
@@ -44,6 +53,15 @@ search_target = "content"
 profile_tags = ["breadth", "full"]
 repo_selector = ["express"]
 expected_mode = "observational"
+
+[[cases]]
+case_id = "ts-file-index-js"
+family = "file_lookup"
+query = "index.js"
+search_target = "files"
+profile_tags = ["breadth", "full"]
+repo_selector = ["express"]
+expected_mode = "expect_hits"
 
 [[cases]]
 case_id = "py-exclude-tests-flask"
