@@ -208,13 +208,8 @@ async fn execute_content_search(
         },
     );
 
-    // Task 4b: only stamp the reason when the run is genuinely zero-hit
-    // AND trace.zero_hit_reason has not already been set upstream (e.g.
-    // by Task 7a's Promoted attribution on an auto-promote that yielded
-    // no definition hits). The `is_none()` guard is forward-compatible:
-    // today `SearchExecutionResult::new` always starts with None, but
-    // the guard keeps this propagation from clobbering a promotion-era
-    // attribution that Task 7a will set.
+    // Only stamp the reason when the run is genuinely zero-hit and no
+    // earlier stage already set `trace.zero_hit_reason`.
     if execution_result.hits.is_empty() && execution_result.trace.zero_hit_reason.is_none() {
         execution_result.trace.zero_hit_reason = last_zero_hit_reason;
     }

@@ -27,9 +27,7 @@ pub(crate) struct LineModeSearchResult {
     /// content-available → line-match) whose counter drained the surviving
     /// candidate set to zero. Computed by
     /// [`attribute_zero_hit_reason`] from the raw counters in
-    /// [`stage_counts`]. The `Promoted` variant is never set here; Task 7
-    /// / execute_search stamps it when a content→definitions promotion
-    /// occurs.
+    /// [`stage_counts`].
     pub zero_hit_reason: Option<ZeroHitReason>,
 }
 

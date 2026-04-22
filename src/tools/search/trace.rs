@@ -112,12 +112,8 @@ pub struct SearchHitSummary {
 }
 
 /// Attribution for a zero-hit search outcome. Populated by per-stage
-/// instrumentation (Task 4) and surfaced through `SearchTrace.zero_hit_reason`
-/// so telemetry can classify empty results without log-scraping.
-///
-/// `Promoted` is set on the original (content) leg of a content→definitions
-/// auto-promotion: the content search returned zero hits, which triggered the
-/// promotion into the `Promoted` composite.
+/// instrumentation and surfaced through `SearchTrace.zero_hit_reason` so
+/// telemetry can classify empty results without log-scraping.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum ZeroHitReason {
@@ -133,9 +129,6 @@ pub enum ZeroHitReason {
     FileContentUnavailable,
     /// Line-level post-processing did not match any content lines.
     LineMatchMiss,
-    /// Zero hits on the requested leg were promoted to a fallback leg; the
-    /// original zero-hit branch carries this reason.
-    Promoted,
 }
 
 /// Categorizes the kind of hint prepended to an agent-facing search response.
@@ -145,23 +138,8 @@ pub enum ZeroHitReason {
 #[serde(rename_all = "snake_case")]
 pub enum HintKind {
     /// Multi-token content search produced zero hits; formatter prepended a
-    /// per-token breakdown hint (Task 8).
+    /// per-token breakdown hint.
     MultiTokenHint,
-    /// Definitions search produced hits only outside the requested file scope.
-    OutOfScopeDefinitionHint,
-    /// `file_pattern` contains commas; formatter prepended a glob-syntax hint.
-    CommaGlobHint,
-}
-
-/// Summarizes a content→definitions auto-promotion for trace consumers and
-/// telemetry. The effective result count is `SearchTrace::result_count` on the
-/// enclosing trace; storing it here would be redundant.
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
-pub struct PromotionInfo {
-    pub requested_target: String,
-    pub effective_target: String,
-    pub requested_result_count: usize,
-    pub promotion_reason: String,
 }
 
 /// Trace describing the executed search strategy, result count, and diagnostic
@@ -170,23 +148,17 @@ pub struct PromotionInfo {
 /// The following fields are populated by downstream stages and default to
 /// `None`:
 ///
-/// - `promoted` is set by the single-identifier auto-promotion constructor
-///   (`SearchExecutionResult::new_promoted`, Task 7).
-/// - `zero_hit_reason` is set by per-stage attribution (Task 4) when
+/// - `zero_hit_reason` is set by per-stage attribution when
 ///   `result_count == 0`. Paths that intentionally leave it `None`:
-///     * single-identifier definitions search where the symbol genuinely does
-///       not exist anywhere in the index,
 ///     * content hit with `result_count > 0`,
 ///     * definitions search that returned hits.
-/// - `hint_kind` is set by the multi-token zero-hit hint formatter (Task 8),
-///   the out-of-scope definition hint, and the comma-glob hint. It stays
+/// - `hint_kind` is set by the multi-token zero-hit hint formatter. It stays
 ///   `None` for responses that carry no prepended hint.
 #[derive(Debug, Clone, Serialize)]
 pub struct SearchTrace {
     pub strategy_id: String,
     pub result_count: usize,
     pub top_hits: Vec<SearchHitSummary>,
-    pub promoted: Option<PromotionInfo>,
     pub zero_hit_reason: Option<ZeroHitReason>,
     pub hint_kind: Option<HintKind>,
 }
@@ -214,7 +186,6 @@ impl SearchTrace {
             strategy_id,
             result_count: hits.len(),
             top_hits,
-            promoted: None,
             zero_hit_reason: None,
             hint_kind: None,
         }
@@ -227,22 +198,6 @@ pub enum SearchExecutionKind {
     Content {
         workspace_label: Option<String>,
         file_level: bool,
-    },
-    /// Composite variant for content→definitions auto-promotions. The caller
-    /// originally requested `requested_target` (typically `"content"`) but the
-    /// first leg returned zero hits, so the executor transparently ran a
-    /// second leg against `effective_target` (typically `"definitions"`) and
-    /// returned those hits instead. Both inner kinds are preserved so
-    /// downstream consumers (formatter, dashboard, telemetry) can inspect or
-    /// render either side.
-    Promoted {
-        requested_target: String,
-        effective_target: String,
-        requested_result_count: usize,
-        effective_result_count: usize,
-        promotion_reason: String,
-        inner_content: Box<SearchExecutionKind>,
-        inner_definitions: Box<SearchExecutionKind>,
     },
 }
 
@@ -265,57 +220,6 @@ impl SearchExecutionResult {
         kind: SearchExecutionKind,
     ) -> Self {
         let trace = SearchTrace::from_hits(strategy_id, &hits);
-        Self {
-            hits,
-            relaxed,
-            total_results,
-            trace,
-            kind,
-        }
-    }
-
-    /// Construct a `SearchExecutionResult` for a content→definitions
-    /// auto-promotion. Wraps the inner content and definitions execution kinds
-    /// in a composite `Promoted` variant and records the promotion metadata on
-    /// `trace.promoted`. `hits` are the effective hits that will be shown to
-    /// the agent (typically the definitions leg results). The effective result
-    /// count is derived from `hits.len()`.
-    #[allow(clippy::too_many_arguments)]
-    pub fn new_promoted(
-        hits: Vec<SearchHit>,
-        relaxed: bool,
-        total_results: usize,
-        strategy_id: impl Into<String>,
-        requested_target: impl Into<String>,
-        effective_target: impl Into<String>,
-        requested_result_count: usize,
-        promotion_reason: impl Into<String>,
-        inner_content: SearchExecutionKind,
-        inner_definitions: SearchExecutionKind,
-    ) -> Self {
-        let requested_target = requested_target.into();
-        let effective_target = effective_target.into();
-        let promotion_reason = promotion_reason.into();
-        let effective_result_count = hits.len();
-
-        let mut trace = SearchTrace::from_hits(strategy_id, &hits);
-        trace.promoted = Some(PromotionInfo {
-            requested_target: requested_target.clone(),
-            effective_target: effective_target.clone(),
-            requested_result_count,
-            promotion_reason: promotion_reason.clone(),
-        });
-
-        let kind = SearchExecutionKind::Promoted {
-            requested_target,
-            effective_target,
-            requested_result_count,
-            effective_result_count,
-            promotion_reason,
-            inner_content: Box::new(inner_content),
-            inner_definitions: Box::new(inner_definitions),
-        };
-
         Self {
             hits,
             relaxed,

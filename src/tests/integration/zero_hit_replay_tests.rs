@@ -165,7 +165,6 @@ struct ReplayCounts {
     limit_clamped: usize,
     per_reason: BTreeMap<String, usize>,
     per_hint_on_zero: BTreeMap<String, usize>,
-    promoted_hits: usize,
 }
 
 fn write_diagnosis_section(counts: &ReplayCounts) -> Result<()> {
@@ -196,8 +195,8 @@ fn write_diagnosis_section(counts: &ReplayCounts) -> Result<()> {
         FAST_SEARCH_LIMIT_UPPER, counts.limit_clamped,
     ));
     md.push_str(&format!(
-        "* Promotion rescues (content→definitions): **{}**\n\n",
-        counts.promoted_hits,
+        "* Multi-token zero-hit hints: **{}**\n\n",
+        counts.per_hint_on_zero.get("multi_token_hint").copied().unwrap_or(0),
     ));
 
     md.push_str("### Zero-hit reason distribution\n\n");
@@ -266,7 +265,6 @@ async fn acceptance_replay_against_captured_zero_hits() -> Result<()> {
         limit_clamped: 0,
         per_reason: BTreeMap::new(),
         per_hint_on_zero: BTreeMap::new(),
-        promoted_hits: 0,
     };
 
     for entry in &entries {
@@ -303,10 +301,6 @@ async fn acceptance_replay_against_captured_zero_hits() -> Result<()> {
                 entry.query
             )
         });
-
-        if execution.trace.promoted.is_some() {
-            counts.promoted_hits += 1;
-        }
 
         let hit_count = execution.trace.result_count;
         if hit_count == 0 {
@@ -355,7 +349,10 @@ async fn acceptance_replay_against_captured_zero_hits() -> Result<()> {
         100.0 * wr_rate,
         100.0 * WITHOUT_RECOURSE_CEILING
     );
-    eprintln!("promoted hits  = {}", counts.promoted_hits);
+    eprintln!(
+        "multi-token hints = {}",
+        counts.per_hint_on_zero.get("multi_token_hint").copied().unwrap_or(0)
+    );
     eprintln!("limit clamped  = {}", counts.limit_clamped);
     for (label, c) in &counts.per_reason {
         eprintln!("  reason: {label:<28} {c}");

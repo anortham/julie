@@ -352,14 +352,6 @@ impl FastSearchTool {
                     zero_hit_reason: None,
                 },
                 trace::SearchExecutionKind::Definitions => unreachable!("content search kind"),
-                // Promoted kind is only produced by the content→definitions
-                // auto-promotion path (Task 7). That path bypasses this
-                // content-formatter branch and dispatches through the
-                // Promoted-specific formatter introduced in Task 7b. Reaching
-                // here would indicate an execution-path bug.
-                trace::SearchExecutionKind::Promoted { .. } => {
-                    unreachable!("promoted kind routed through content formatter")
-                }
             };
             let output = line_mode::format_line_mode_output(&self.query, &line_mode_result);
             return Ok(FastSearchExecution {

@@ -64,55 +64,12 @@ fn test_fast_search_metadata_captures_trace_and_intent() {
     assert_eq!(metadata["trace"]["result_count"], 4);
     assert_eq!(metadata["trace"]["top_hits"][0]["name"], "search_handler");
     assert!(
-        metadata["trace"]["promoted"].is_null(),
-        "non-promoted execution should serialize promoted as null"
-    );
-    assert!(
         metadata["trace"]["zero_hit_reason"].is_null(),
         "execution with hits should serialize zero_hit_reason as null"
     );
     assert!(
         metadata["trace"]["hint_kind"].is_null(),
         "execution without a hint should serialize hint_kind as null"
-    );
-}
-
-#[test]
-fn test_fast_search_metadata_serializes_promoted_trace_fields() {
-    let params = FastSearchTool {
-        query: "SpilloverStore".to_string(),
-        search_target: "content".to_string(),
-        limit: 10,
-        ..Default::default()
-    };
-    let hit = SearchHit::from_symbol(sample_symbol(), "workspace-a".to_string());
-    let execution = SearchExecutionResult::new_promoted(
-        vec![hit],
-        false,
-        1,
-        "fast_search_content_promoted",
-        "content",
-        "definitions",
-        0,
-        "single_identifier_content_zero_hit",
-        SearchExecutionKind::Content {
-            workspace_label: Some("primary".to_string()),
-            file_level: false,
-        },
-        SearchExecutionKind::Definitions,
-    );
-
-    let metadata = search_telemetry::fast_search_metadata(&params, Some(&execution));
-
-    assert_eq!(metadata["trace"]["promoted"]["requested_target"], "content");
-    assert_eq!(
-        metadata["trace"]["promoted"]["effective_target"],
-        "definitions"
-    );
-    assert_eq!(metadata["trace"]["promoted"]["requested_result_count"], 0);
-    assert_eq!(
-        metadata["trace"]["promoted"]["promotion_reason"],
-        "single_identifier_content_zero_hit"
     );
 }
 

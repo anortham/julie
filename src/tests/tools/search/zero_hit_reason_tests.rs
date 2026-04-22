@@ -168,35 +168,6 @@ mod tests {
         );
     }
 
-    /// Promoted is NEVER produced by `attribute_zero_hit_reason`.
-    /// teammate-a's Task 4b / Task 7 stamps it on the trace when a
-    /// content→definitions auto-promotion fires. Pinning this so nobody
-    /// "helpfully" wires it in here and breaks the ownership contract.
-    #[test]
-    fn promoted_is_never_produced_by_attribution_helper() {
-        // Every plausible counter combination → verify Promoted never
-        // appears. A brute-force sweep isn't needed; the helper has no
-        // branch that constructs Promoted, but cover the extremes.
-        let zero = LineModeStageCounts::default();
-        let saturated = LineModeStageCounts {
-            and_candidates: 100,
-            or_candidates: 100,
-            tantivy_file_candidates: 100,
-            file_pattern_dropped: 100,
-            language_dropped: 100,
-            test_dropped: 100,
-            file_content_unavailable_dropped: 100,
-            line_match_miss_dropped: 100,
-        };
-        assert_ne!(
-            attribute_zero_hit_reason(&zero),
-            Some(ZeroHitReason::Promoted),
-        );
-        assert_ne!(
-            attribute_zero_hit_reason(&saturated),
-            Some(ZeroHitReason::Promoted),
-        );
-    }
 }
 
 /// Live-pipeline coverage: make sure `line_mode_matches` actually

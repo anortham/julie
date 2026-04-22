@@ -17,7 +17,6 @@ pub(crate) fn fast_search_metadata(
             "result_count": result.total_results,
             "relaxed": result.relaxed,
             "top_hits": result.trace.top_hits,
-            "promoted": result.trace.promoted,
             "zero_hit_reason": result.trace.zero_hit_reason,
             "hint_kind": result.trace.hint_kind,
         })
