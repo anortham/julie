@@ -11,6 +11,70 @@ _Replay harness: `cargo nextest run --lib zero_hit_replay_task3 -- --ignored`_
 
 > **Context.** The captured entries are historical zero-hits from daemon telemetry. Between capture and replay, the `search-quality-hardening` branch landed Tasks 1, 2, 9, and 11 (file_pattern parser + boundary normalization, fake content-hit score removal, dashboard fix). The high `non-zero-now` count is expected: it measures how many of those historical zero-hits have already been resolved by upstream fixes on the branch, not a regression in the replay.
 
+## Post-Recovery Live Telemetry (2026-04-22)
+
+The replay fixture still has value, but the live daemon telemetry is the real scorecard now.
+
+Fresh post-rollout dogfood on the rebuilt binary confirms the new scoped miss hint is live:
+
+> `0 content matches for "line_matches" with file_pattern=src/ui/**.`
+>
+> `Content search found no candidate files inside file_pattern=src/ui/**.`
+>
+> `Try broadening that scope or removing file_pattern if you are not sure where the code lives.`
+
+The live windows below still straddle pre-rollout traffic, so the aggregate counts include older rows that predate the new out-of-scope hint. That matters when reading the `hint_kind` split: the new `out_of_scope_content_hint` is present in fresh rows, but older `no_in_scope_candidates` rows still carry `multi_token_hint` or no hint because they were recorded before the rollout.
+
+### Live rates
+
+| Window | All known-target `fast_search` | Content | Definitions | Content without-recourse |
+| --- | ---: | ---: | ---: | ---: |
+| Last 24h | `48/174 = 27.6%` | `45/139 = 32.4%` | `3/35 = 8.6%` | `34/139 = 24.5%` |
+| Last 7d | `94/362 = 26.0%` | `86/277 = 31.0%` | `8/85 = 9.4%` | `75/277 = 27.1%` |
+
+`Without-recourse` here means content zero-hits with `hint_kind IS NULL`. On that stricter denominator, the live windows are still ugly:
+
+- Last 24h: `34/45 = 75.6%` of content zero-hits had no hint
+- Last 7d: `75/86 = 87.2%` of content zero-hits had no hint
+
+So the recovery work is helping known buckets, but the overall live miss rate is still well above the `<= 20%` and `<= 8%` goals from the recovery plan.
+
+### Live 24h content zero-hit split
+
+| zero_hit_reason | file_pattern_diagnostic | hint_kind | count |
+| --- | --- | --- | ---: |
+| `∅` | `∅` | `∅` | 25 |
+| `line_match_miss` | `∅` | `multi_token_hint` | 5 |
+| `line_match_miss` | `∅` | `∅` | 5 |
+| `file_pattern_filtered` | `no_in_scope_candidates` | `multi_token_hint` | 3 |
+| `file_pattern_filtered` | `no_in_scope_candidates` | `∅` | 3 |
+| `file_pattern_filtered` | `no_in_scope_candidates` | `out_of_scope_content_hint` | 2 |
+| `file_pattern_filtered` | `∅` | `multi_token_hint` | 1 |
+| `file_pattern_filtered` | `∅` | `∅` | 1 |
+
+### Live 7d content zero-hit split
+
+| zero_hit_reason | file_pattern_diagnostic | hint_kind | count |
+| --- | --- | --- | ---: |
+| `∅` | `∅` | `∅` | 66 |
+| `line_match_miss` | `∅` | `multi_token_hint` | 5 |
+| `line_match_miss` | `∅` | `∅` | 5 |
+| `file_pattern_filtered` | `no_in_scope_candidates` | `multi_token_hint` | 3 |
+| `file_pattern_filtered` | `no_in_scope_candidates` | `∅` | 3 |
+| `file_pattern_filtered` | `no_in_scope_candidates` | `out_of_scope_content_hint` | 2 |
+| `file_pattern_filtered` | `∅` | `multi_token_hint` | 1 |
+| `file_pattern_filtered` | `∅` | `∅` | 1 |
+
+### What moved
+
+- The scoped root-cause split is real in production data. `file_pattern_filtered` is now split from `no_in_scope_candidates`, instead of being one opaque bucket.
+- The new `out_of_scope_content_hint` is live and shows up in fresh daemon rows after the rebuild.
+- `LineMatchMiss` is still a material live bucket, and the giant `∅ / ∅ / ∅` rows show there is still a pile of unattributed or unhinted content pain left.
+
+### Verdict
+
+The rollout cleared the narrow recovery tasks and the new hint is live, but the live telemetry says the job is not finished. The next pass should focus on the unattributed `∅ / ∅ / ∅` bucket and on shrinking `LineMatchMiss`, not on inventing more fallback hints.
+
 ## 1. Classification counts
 
 | Class | Count |
@@ -142,4 +206,3 @@ _Replay harness: `cargo nextest run --lib acceptance_replay_against_captured_zer
 | `multi_token_hint` | 26 |
 | `none` | 5 |
 | `out_of_scope_definition_hint` | 6 |
-
