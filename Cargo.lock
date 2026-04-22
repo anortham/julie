@@ -4889,7 +4889,11 @@ name = "xtask"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "julie",
  "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
  "toml",
 ]
 

@@ -2,6 +2,9 @@ pub mod changed;
 pub mod cli;
 pub mod manifest;
 pub mod runner;
+pub mod search_matrix;
+pub mod search_matrix_mine;
+pub mod search_matrix_report;
 
 pub use cli::TestCommand;
 pub use manifest::{BucketConfig, TestManifest};

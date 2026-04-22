@@ -1,0 +1,132 @@
+roots = ["~/source"]
+
+[profiles.smoke]
+repos = ["julie", "express", "flask"]
+
+[profiles.breadth]
+repos = [
+  "julie",
+  "goldfish",
+  "razorback",
+  "express",
+  "zod",
+  "rtk",
+  "flask",
+  "toon-python",
+  "Newtonsoft.Json",
+  "cobra",
+  "gson",
+  "Alamofire",
+]
+
+[profiles.full]
+repos = [
+  "julie",
+  "goldfish",
+  "razorback",
+  "express",
+  "zod",
+  "rtk",
+  "flask",
+  "toon-python",
+  "Newtonsoft.Json",
+  "blazor-samples",
+  "SurgeryScheduling",
+  "cobra",
+  "gson",
+  "okhttp",
+  "Alamofire",
+  "sinatra",
+  "phoenix",
+  "zls",
+]
+
+[[repos]]
+name = "julie"
+language = "rust"
+profile_tags = ["smoke", "breadth", "full"]
+
+[[repos]]
+name = "goldfish"
+language = "rust"
+profile_tags = ["breadth", "full"]
+
+[[repos]]
+name = "razorback"
+language = "rust"
+profile_tags = ["breadth", "full"]
+
+[[repos]]
+name = "express"
+language = "typescript"
+profile_tags = ["smoke", "breadth", "full"]
+
+[[repos]]
+name = "zod"
+language = "typescript"
+profile_tags = ["breadth", "full"]
+
+[[repos]]
+name = "rtk"
+language = "typescript"
+profile_tags = ["breadth", "full"]
+
+[[repos]]
+name = "flask"
+language = "python"
+profile_tags = ["smoke", "breadth", "full"]
+
+[[repos]]
+name = "toon-python"
+language = "python"
+profile_tags = ["breadth", "full"]
+
+[[repos]]
+name = "Newtonsoft.Json"
+language = "csharp"
+profile_tags = ["breadth", "full"]
+
+[[repos]]
+name = "blazor-samples"
+language = "csharp"
+profile_tags = ["full"]
+
+[[repos]]
+name = "SurgeryScheduling"
+language = "csharp"
+profile_tags = ["full"]
+
+[[repos]]
+name = "cobra"
+language = "go"
+profile_tags = ["breadth", "full"]
+
+[[repos]]
+name = "gson"
+language = "java"
+profile_tags = ["breadth", "full"]
+
+[[repos]]
+name = "okhttp"
+language = "java"
+profile_tags = ["full"]
+
+[[repos]]
+name = "Alamofire"
+language = "swift"
+profile_tags = ["breadth", "full"]
+
+[[repos]]
+name = "sinatra"
+language = "ruby"
+profile_tags = ["full"]
+
+[[repos]]
+name = "phoenix"
+language = "elixir"
+profile_tags = ["full"]
+
+[[repos]]
+name = "zls"
+language = "zig"
+profile_tags = ["full"]

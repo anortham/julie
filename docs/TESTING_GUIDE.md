@@ -40,7 +40,7 @@ struct EditingTestCase {
 ## Running Tests
 
 ```bash
-# Default -- run after EVERY change
+# Default batch gate after a completed change set
 cargo xtask test dev
 
 # When touching startup/workspace/system flows
@@ -55,8 +55,13 @@ cargo xtask test full
 # List all buckets
 cargo xtask test list
 
-# Narrow filter for a specific test (use ONLY when debugging a failure)
-cargo test --lib test_stemming
+# Search matrix investigation harness
+cargo xtask search-matrix mine --days 7 --out artifacts/search-matrix/seeds-YYYY-MM-DD.json
+cargo xtask search-matrix baseline --profile smoke
+cargo xtask search-matrix baseline --profile breadth --out artifacts/search-matrix/breadth-YYYY-MM-DD.json
+
+# Narrow filter for a specific test
+cargo nextest run --lib test_stemming
 cargo test -p julie-extractors typescript_extractor
 ```
 
@@ -69,6 +74,15 @@ cargo test -p julie-extractors typescript_extractor
 | system | `cargo xtask test system` | Startup/workspace/system changes |
 | dogfood | `cargo xtask test dogfood` | Search/scoring/tokenization changes |
 | full | `cargo xtask test full` | Pre-merge broad pass |
+
+## Search Matrix Harness
+
+`cargo xtask search-matrix` is an investigation harness, not a replacement for `cargo xtask test dogfood`.
+
+- `mine` reads the local daemon DB and writes a seed report under `artifacts/search-matrix/`.
+- `baseline` runs the committed case and corpus manifests against pre-indexed daemon workspaces and writes JSON plus Markdown reports under `artifacts/search-matrix/`.
+- Version 1 expects the target repos to already be indexed and registered in daemon mode. Missing or non-ready repos are reported as skipped, not auto-indexed on the fly.
+- Use the matrix harness to mine failure shapes, compare repo families, and promote stable cases into dogfood coverage.
 
 ## Dogfooding Tests
 

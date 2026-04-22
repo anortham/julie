@@ -1,0 +1,66 @@
+[[cases]]
+case_id = "rust-exact-workspace-pool"
+family = "exact_identifier"
+query = "WorkspacePool"
+search_target = "definitions"
+profile_tags = ["smoke", "breadth", "full"]
+repo_selector = ["julie"]
+expected_mode = "expect_hits"
+
+[[cases]]
+case_id = "rust-camelcase-fast-search"
+family = "camel_case"
+query = "FastSearchTool"
+search_target = "definitions"
+profile_tags = ["smoke", "breadth", "full"]
+repo_selector = ["julie"]
+expected_mode = "expect_hits"
+
+[[cases]]
+case_id = "rust-snake-case-line-matches"
+family = "snake_case"
+query = "line_matches"
+search_target = "content"
+profile_tags = ["smoke", "breadth", "full"]
+repo_selector = ["julie"]
+expected_mode = "observational"
+
+[[cases]]
+case_id = "rust-scoped-content-ui"
+family = "scoped_content"
+query = "line_matches"
+search_target = "content"
+file_pattern = "src/ui/**"
+profile_tags = ["smoke", "breadth", "full"]
+repo_selector = ["julie"]
+expected_mode = "expect_hint_kind"
+expected_value = "out_of_scope_content_hint"
+
+[[cases]]
+case_id = "ts-quoted-phrase-router"
+family = "quoted_phrase"
+query = "\"router use\""
+search_target = "content"
+profile_tags = ["breadth", "full"]
+repo_selector = ["express"]
+expected_mode = "observational"
+
+[[cases]]
+case_id = "py-exclude-tests-flask"
+family = "exclude_tests"
+query = "Flask"
+search_target = "content"
+exclude_tests = true
+profile_tags = ["breadth", "full"]
+repo_selector = ["flask"]
+expected_mode = "observational"
+
+[[cases]]
+case_id = "glob-alternation-docs-or-src"
+family = "alternation_file_pattern"
+query = "blast_radius"
+search_target = "content"
+file_pattern = "docs/**|src/**"
+profile_tags = ["breadth", "full"]
+repo_selector = ["julie"]
+expected_mode = "observational"

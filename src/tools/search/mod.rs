@@ -12,6 +12,9 @@ pub use self::query_preprocessor::{
     PreprocessedQuery, QueryType, detect_query_type, preprocess_query, sanitize_query,
     validate_query,
 };
+pub use self::trace::{
+    FilePatternDiagnostic, HintKind, SearchExecutionResult, SearchHit, SearchTrace, ZeroHitReason,
+};
 pub use self::types::{LineMatch, LineMatchStrategy};
 
 // Internal modules
@@ -115,9 +118,9 @@ impl Default for FastSearchTool {
     }
 }
 
-pub(crate) struct FastSearchExecution {
+pub struct FastSearchExecution {
     pub result: CallToolResult,
-    pub execution: Option<trace::SearchExecutionResult>,
+    pub execution: Option<SearchExecutionResult>,
 }
 
 impl FastSearchTool {
@@ -125,7 +128,7 @@ impl FastSearchTool {
         self.execute_with_trace(handler).await.map(|run| run.result)
     }
 
-    pub(crate) async fn execute_with_trace(
+    pub async fn execute_with_trace(
         &self,
         handler: &JulieServerHandler,
     ) -> Result<FastSearchExecution> {

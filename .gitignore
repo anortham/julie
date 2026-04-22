@@ -37,6 +37,7 @@ julie-server
 # Test artifacts
 /test_workspaces/
 /temp/
+/artifacts/search-matrix/
 test_*.rs
 !**/test_calls.rs
 !**/test_call_extraction.rs
