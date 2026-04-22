@@ -114,3 +114,32 @@ While wiring the per-stage drop counters in `line_mode_matches`, the narrow test
 * **Task 4** — use the new `stage_counts` to attribute `zero_hit_reason` per stage in `LineModeSearchResult`.
 * **Task 5** — resolve the redundant per-file language filter finding above; decide whether to delete it or reintroduce it pre-Tantivy-filter.
 * **Task 12** — acceptance replay will re-run this harness after Tasks 4/7/8/9/10 land and compare class counts.
+
+## Task 12 — Acceptance replay (FastSearchTool end-to-end)
+
+_Replay harness: `cargo nextest run --lib acceptance_replay_against_captured_zero_hits -- --ignored`_
+
+* Fixture: `fixtures/search-quality/zero-hit-replay-task3.json`
+* Entries replayed: 47
+* Still zero hits after full pipeline: **37** (78.7%) — ceiling 20%
+* Zero hits without an actionable hint (without-recourse): **5** (10.6%) — ceiling 8%
+* Fixture entries with `limit_param > 500` (would hit the tool clamp): **0**
+* Promotion rescues (content→definitions): **10**
+
+### Zero-hit reason distribution
+
+| reason | count |
+| --- | ---: |
+| `file_pattern_filtered` | 22 |
+| `line_match_miss` | 6 |
+| `promoted` | 6 |
+| `tantivy_no_candidates` | 3 |
+
+### Hint distribution on zero-hit results
+
+| hint | count |
+| --- | ---: |
+| `multi_token_hint` | 26 |
+| `none` | 5 |
+| `out_of_scope_definition_hint` | 6 |
+
