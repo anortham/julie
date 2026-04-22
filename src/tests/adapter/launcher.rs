@@ -203,6 +203,21 @@ mod tests {
         assert_eq!(launcher.daemon_readiness(), DaemonReadiness::Stopping);
     }
 
+    /// Draining means the daemon is still accepting sessions but will restart
+    /// when all sessions disconnect. Adapters must treat this as Ready so they
+    /// connect normally instead of waiting for PID exit (which deadlocks when
+    /// an orphan session holds remaining > 0).
+    #[test]
+    fn test_readiness_ready_when_draining_with_live_pid() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DaemonPaths::with_home(dir.path().to_path_buf());
+        fs::create_dir_all(dir.path()).unwrap();
+        let _pid_file = PidFile::create(&paths.daemon_pid()).unwrap();
+        fs::write(paths.daemon_state(), "draining").unwrap();
+        let launcher = DaemonLauncher::new(paths);
+        assert_eq!(launcher.daemon_readiness(), DaemonReadiness::Ready);
+    }
+
     #[test]
     fn test_readiness_dead_with_stale_pid() {
         let dir = tempfile::tempdir().unwrap();
@@ -247,6 +262,31 @@ mod tests {
         let handle = std::thread::spawn(move || {
             std::thread::sleep(Duration::from_millis(200));
             fs::write(&state_path_clone, "ready").unwrap();
+        });
+
+        let launcher = DaemonLauncher::new(paths);
+        let result = launcher.ensure_daemon_ready();
+        handle.join().unwrap();
+        assert!(result.is_ok());
+    }
+
+    /// When a daemon transitions from "starting" to "draining" (e.g. stale
+    /// binary detected during startup), the adapter waiting for "ready" must
+    /// treat "draining" as success since the daemon is accepting connections.
+    #[test]
+    fn test_ensure_daemon_ready_treats_draining_as_ready() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DaemonPaths::with_home(dir.path().to_path_buf());
+        fs::create_dir_all(dir.path()).unwrap();
+
+        let _pid_file = PidFile::create(&paths.daemon_pid()).unwrap();
+        let state_path = paths.daemon_state();
+        fs::write(&state_path, "starting").unwrap();
+
+        let state_path_clone = state_path.clone();
+        let handle = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(200));
+            fs::write(&state_path_clone, "draining").unwrap();
         });
 
         let launcher = DaemonLauncher::new(paths);

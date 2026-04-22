@@ -33,7 +33,7 @@ mod tests {
     }
 
     #[test]
-    fn test_write_daemon_phase_uses_lifecycle_state_value() {
+    fn test_write_daemon_phase_draining_writes_draining() {
         let dir = tempfile::TempDir::new().unwrap();
         let state_path = dir.path().join("daemon.state");
         write_daemon_phase(
@@ -42,21 +42,38 @@ mod tests {
                 cause: ShutdownCause::RestartRequired,
             },
         );
+        assert_eq!(
+            std::fs::read_to_string(&state_path).unwrap(),
+            "draining",
+            "Draining must write 'draining' so adapters can still connect"
+        );
+    }
+
+    #[test]
+    fn test_write_daemon_phase_stopping_writes_stopping() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let state_path = dir.path().join("daemon.state");
+        write_daemon_phase(
+            &state_path,
+            LifecyclePhase::Stopping {
+                cause: ShutdownCause::RestartRequired,
+            },
+        );
         assert_eq!(std::fs::read_to_string(&state_path).unwrap(), "stopping");
     }
 
-    /// Finding #1 regression: when the daemon rejects a version-mismatched
-    /// session while other sessions are active, daemon_state must transition
-    /// to "stopping" on the first rejection so the adapter's
-    /// `ensure_daemon_ready` path waits for PID exit instead of burning
-    /// its short retry budget against a daemon still advertising "ready".
+    /// When the daemon flags restart-pending with active sessions, the state
+    /// file must say "draining" (not "stopping") so adapters can still connect.
+    /// The daemon continues to accept sessions during Draining; only Stopping
+    /// means "wait for PID exit." Writing "stopping" here caused a liveness
+    /// deadlock: adapters waited for PID death, but the daemon wouldn't exit
+    /// while sessions remained.
     #[test]
-    fn test_flag_restart_pending_after_version_reject_writes_stopping_on_first_call() {
+    fn test_flag_restart_pending_with_active_sessions_writes_draining() {
         use std::sync::atomic::{AtomicBool, Ordering};
 
         let dir = tempfile::TempDir::new().unwrap();
         let state_path = dir.path().join("daemon.state");
-        // Pre-existing state: "ready" (as set by a running daemon).
         write_daemon_state(&state_path, "ready");
 
         let restart_pending = AtomicBool::new(false);
@@ -84,8 +101,45 @@ mod tests {
         );
         assert_eq!(
             std::fs::read_to_string(&state_path).unwrap(),
+            "draining",
+            "daemon_state must say 'draining' so adapters can still connect"
+        );
+    }
+
+    /// When no sessions are active, restart-pending should write "stopping"
+    /// since the daemon will shut down immediately.
+    #[test]
+    fn test_flag_restart_pending_with_zero_sessions_writes_stopping() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        let dir = tempfile::TempDir::new().unwrap();
+        let state_path = dir.path().join("daemon.state");
+        write_daemon_state(&state_path, "ready");
+
+        let restart_pending = AtomicBool::new(false);
+        let RestartPendingTransition {
+            first_request,
+            next_phase,
+        } = flag_restart_pending_for_restart(
+            &restart_pending,
+            &state_path,
+            LifecyclePhase::Ready,
+            0,
+            ShutdownCause::RestartRequired,
+        );
+
+        assert!(first_request);
+        assert!(restart_pending.load(Ordering::Relaxed));
+        assert_eq!(
+            next_phase,
+            LifecyclePhase::Stopping {
+                cause: ShutdownCause::RestartRequired,
+            }
+        );
+        assert_eq!(
+            std::fs::read_to_string(&state_path).unwrap(),
             "stopping",
-            "daemon_state must transition to 'stopping' so adapters wait for PID exit"
+            "zero sessions means immediate shutdown; state must be 'stopping'"
         );
     }
 

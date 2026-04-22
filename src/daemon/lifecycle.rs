@@ -47,7 +47,8 @@ impl LifecyclePhase {
         match self {
             Self::Starting => "starting",
             Self::Ready => "ready",
-            Self::Draining { .. } | Self::Stopping { .. } => "stopping",
+            Self::Draining { .. } => "draining",
+            Self::Stopping { .. } => "stopping",
         }
     }
 }

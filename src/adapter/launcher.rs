@@ -77,6 +77,7 @@ impl DaemonLauncher {
             Some(_pid) => {
                 match std::fs::read_to_string(self.paths.daemon_state()) {
                     Ok(s) if s.trim() == "ready" => DaemonReadiness::Ready,
+                    Ok(s) if s.trim() == "draining" => DaemonReadiness::Ready,
                     Ok(s) if s.trim() == "stopping" => DaemonReadiness::Stopping,
                     _ => {
                         // State file missing or unreadable (old binary, write failure).
@@ -218,6 +219,9 @@ impl DaemonLauncher {
             if let Ok(s) = std::fs::read_to_string(self.paths.daemon_state()) {
                 let state = s.trim();
                 if state == target_state {
+                    return Ok(());
+                }
+                if target_state == "ready" && state == "draining" {
                     return Ok(());
                 }
                 if target_state == "ready" && state == "stopping" {
