@@ -82,19 +82,11 @@ pub(super) fn extract_function(
 
     let doc_comment = base.find_doc_comment(node);
 
-    // Test detection
-    let annotations: Vec<String> = modifiers
-        .iter()
-        .filter(|m| m.starts_with('@'))
-        .map(|m| m.strip_prefix('@').unwrap_or(m).to_string())
-        .collect();
-
     if is_test_symbol(
         "scala",
         &name,
         &base.file_path,
         &symbol_kind,
-        &annotations,
         &[],
         doc_comment.as_deref(),
     ) {

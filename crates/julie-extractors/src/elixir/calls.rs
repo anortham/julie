@@ -110,7 +110,6 @@ fn extract_def(
         &extractor.base.file_path,
         &SymbolKind::Function,
         &[],
-        &[],
         doc_comment.as_deref(),
     ) {
         let mut m = HashMap::new();

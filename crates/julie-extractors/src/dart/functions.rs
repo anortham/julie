@@ -88,16 +88,12 @@ pub(super) fn extract_function(
             .insert("isAsync".to_string(), serde_json::Value::Bool(true));
     }
 
-    // Extract annotations (e.g. @isTest) from sibling nodes for test detection
-    let annotations = extract_annotations(node);
-
     // Test detection for Dart functions
     if is_test_symbol(
         "dart",
         &symbol.name,
         &base.file_path,
         &symbol.kind,
-        &annotations,
         &[],
         None,
     ) {
@@ -190,16 +186,12 @@ pub(super) fn extract_method(
         serde_json::Value::Bool(is_flutter_lifecycle),
     );
 
-    // Extract annotations (e.g. @isTest) from sibling nodes for test detection
-    let annotations = extract_annotations(node);
-
     // Test detection for Dart methods
     if is_test_symbol(
         "dart",
         &symbol.name,
         &base.file_path,
         &SymbolKind::Method,
-        &annotations,
         &[],
         None,
     ) {
@@ -295,7 +287,6 @@ pub(super) fn extract_constructor(
         &symbol.name,
         &base.file_path,
         &SymbolKind::Constructor,
-        &[],
         &[],
         None,
     ) {

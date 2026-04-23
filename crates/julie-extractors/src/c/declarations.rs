@@ -178,7 +178,6 @@ pub(super) fn extract_function_definition(
         &extractor.base.file_path,
         &SymbolKind::Function,
         &[],
-        &[],
         doc_comment.as_deref(),
     ) {
         metadata.insert("is_test".to_string(), Value::Bool(true));

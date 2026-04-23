@@ -34,7 +34,6 @@ pub fn extract_method(
     }
 
     let doc_comment = base.find_doc_comment(&node);
-    let attributes = helpers::extract_attributes(base, &node);
 
     let mut metadata = helpers::vb_visibility_metadata(&modifiers, "public");
     if is_test_symbol(
@@ -43,7 +42,6 @@ pub fn extract_method(
         &base.file_path,
         &SymbolKind::Method,
         &[],
-        &attributes,
         doc_comment.as_deref(),
     ) {
         metadata.insert("is_test".to_string(), serde_json::Value::Bool(true));

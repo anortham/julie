@@ -61,7 +61,6 @@ pub(super) fn extract_function(extractor: &mut TypeScriptExtractor, node: Node) 
         &extractor.base().file_path,
         &SymbolKind::Function,
         &[],
-        &[],
         doc_comment.as_deref(),
     ) {
         metadata.insert("is_test".to_string(), serde_json::json!(true));
@@ -183,7 +182,6 @@ pub(super) fn extract_method(extractor: &mut TypeScriptExtractor, node: Node) ->
         &name,
         &extractor.base().file_path,
         &symbol_kind,
-        &[],
         &[],
         doc_comment.as_deref(),
     ) {

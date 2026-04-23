@@ -101,19 +101,11 @@ pub(super) fn extract_function(
     // Extract KDoc comment
     let doc_comment = base.find_doc_comment(node);
 
-    // Extract annotations for test detection (modifiers starting with '@')
-    let annotations: Vec<String> = modifiers
-        .iter()
-        .filter(|m| m.starts_with('@'))
-        .map(|m| m.strip_prefix('@').unwrap_or(m).to_string())
-        .collect();
-
     if is_test_symbol(
         "kotlin",
         &name,
         &base.file_path,
         &symbol_kind,
-        &annotations,
         &[],
         doc_comment.as_deref(),
     ) {
@@ -184,19 +176,11 @@ pub(super) fn extract_secondary_constructor(
         ),
     ]);
 
-    // Extract annotations for test detection
-    let annotations: Vec<String> = modifiers
-        .iter()
-        .filter(|m| m.starts_with('@'))
-        .map(|m| m.strip_prefix('@').unwrap_or(m).to_string())
-        .collect();
-
     if is_test_symbol(
         "kotlin",
         class_name,
         &base.file_path,
         &SymbolKind::Constructor,
-        &annotations,
         &[],
         doc_comment.as_deref(),
     ) {

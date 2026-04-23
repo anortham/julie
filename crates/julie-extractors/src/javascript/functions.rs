@@ -68,7 +68,6 @@ impl super::JavaScriptExtractor {
             &self.base.file_path,
             &SymbolKind::Function,
             &[],
-            &[],
             doc_comment.as_deref(),
         ) {
             metadata.insert("is_test".to_string(), json!(true));
@@ -142,7 +141,6 @@ impl super::JavaScriptExtractor {
             &name,
             &self.base.file_path,
             &symbol_kind,
-            &[],
             &[],
             doc_comment.as_deref(),
         ) {

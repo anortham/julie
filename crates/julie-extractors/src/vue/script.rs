@@ -90,22 +90,16 @@ pub(super) fn extract_script_symbols(base: &BaseExtractor, section: &VueSection)
                 let name = func_name.as_str();
                 let start_col = line.find(name).unwrap_or(0) + 1;
 
-                // Test detection (Category 3: name + path, empty decorators/attributes)
-                let metadata = if is_test_symbol(
-                    "vue",
-                    name,
-                    &base.file_path,
-                    &SymbolKind::Method,
-                    &[],
-                    &[],
-                    None,
-                ) {
-                    let mut m = HashMap::new();
-                    m.insert("is_test".to_string(), Value::Bool(true));
-                    Some(m)
-                } else {
-                    None
-                };
+                // Test detection (Category 3: name + path, empty annotation keys)
+                let metadata =
+                    if is_test_symbol("vue", name, &base.file_path, &SymbolKind::Method, &[], None)
+                    {
+                        let mut m = HashMap::new();
+                        m.insert("is_test".to_string(), Value::Bool(true));
+                        Some(m)
+                    } else {
+                        None
+                    };
 
                 symbols.push(create_symbol_manual(
                     base,

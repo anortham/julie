@@ -219,7 +219,6 @@ impl QmlExtractor {
                         &self.base.file_path,
                         &SymbolKind::Function,
                         &[],
-                        &[],
                         None,
                     ) {
                         metadata.insert("is_test".to_string(), serde_json::Value::Bool(true));

@@ -101,7 +101,6 @@ pub(super) fn extract_function_definition_statement(
         &base.file_path,
         &kind,
         &[],
-        &[],
         doc_comment.as_deref(),
     ) {
         metadata.insert("is_test".to_string(), serde_json::Value::Bool(true));

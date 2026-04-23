@@ -6,7 +6,7 @@ use crate::base::SymbolKind;
 use crate::test_detection::is_test_symbol;
 
 // ---------------------------------------------------------------------------
-// Helper: shorthand for common no-decorators/no-attributes/no-doc calls
+// Helper: shorthand for common no-annotations/no-doc calls
 // ---------------------------------------------------------------------------
 
 fn check(
@@ -14,8 +14,7 @@ fn check(
     name: &str,
     file_path: &str,
     kind: &SymbolKind,
-    decorators: &[String],
-    attributes: &[String],
+    annotation_keys: &[String],
     doc_comment: Option<&str>,
 ) -> bool {
     is_test_symbol(
@@ -23,8 +22,7 @@ fn check(
         name,
         file_path,
         kind,
-        decorators,
-        attributes,
+        annotation_keys,
         doc_comment,
     )
 }
@@ -44,7 +42,6 @@ fn rust_test_attribute() {
         "test_add",
         "src/tests/math.rs",
         &SymbolKind::Function,
-        &[],
         &[s("test")],
         None,
     ));
@@ -57,7 +54,6 @@ fn rust_tokio_test_attribute() {
         "test_async_fetch",
         "src/lib.rs",
         &SymbolKind::Function,
-        &[],
         &[s("tokio::test")],
         None,
     ));
@@ -70,7 +66,6 @@ fn rust_rstest_attribute() {
         "my_parameterized",
         "src/lib.rs",
         &SymbolKind::Function,
-        &[],
         &[s("rstest")],
         None,
     ));
@@ -83,7 +78,6 @@ fn rust_no_test_attr() {
         "process_data",
         "src/lib.rs",
         &SymbolKind::Function,
-        &[],
         &[s("inline")],
         None,
     ));
@@ -101,7 +95,6 @@ fn python_pytest_decorator() {
         "tests/test_payment.py",
         &SymbolKind::Function,
         &[s("pytest.mark.parametrize")],
-        &[],
         None,
     ));
 }
@@ -114,7 +107,6 @@ fn python_unittest_decorator() {
         "tests/test_thing.py",
         &SymbolKind::Method,
         &[s("unittest.skip")],
-        &[],
         None,
     ));
 }
@@ -126,7 +118,6 @@ fn python_test_prefix_function() {
         "test_login",
         "tests/test_auth.py",
         &SymbolKind::Function,
-        &[],
         &[],
         None,
     ));
@@ -141,7 +132,6 @@ fn python_test_class_returns_false() {
         "tests/test_payment.py",
         &SymbolKind::Class,
         &[],
-        &[],
         None,
     ));
 }
@@ -153,7 +143,6 @@ fn python_regular_function() {
         "process_payment",
         "src/payment.py",
         &SymbolKind::Function,
-        &[],
         &[],
         None,
     ));
@@ -170,8 +159,7 @@ fn java_test_annotation() {
         "shouldProcessPayment",
         "src/test/java/PaymentTest.java",
         &SymbolKind::Method,
-        &[s("Test")],
-        &[],
+        &[s("test")],
         None,
     ));
 }
@@ -183,8 +171,7 @@ fn java_parameterized_test() {
         "testWithParams",
         "src/test/java/PaymentTest.java",
         &SymbolKind::Method,
-        &[s("ParameterizedTest")],
-        &[],
+        &[s("parameterizedtest")],
         None,
     ));
 }
@@ -196,8 +183,7 @@ fn java_repeated_test() {
         "testRepeated",
         "src/test/java/PaymentTest.java",
         &SymbolKind::Method,
-        &[s("RepeatedTest")],
-        &[],
+        &[s("repeatedtest")],
         None,
     ));
 }
@@ -209,8 +195,7 @@ fn java_regular_method() {
         "processPayment",
         "src/main/java/Payment.java",
         &SymbolKind::Method,
-        &[s("Override")],
-        &[],
+        &[s("override")],
         None,
     ));
 }
@@ -222,8 +207,7 @@ fn kotlin_test_annotation() {
         "shouldReturnUser",
         "src/test/kotlin/UserTest.kt",
         &SymbolKind::Method,
-        &[s("Test")],
-        &[],
+        &[s("test")],
         None,
     ));
 }
@@ -239,8 +223,7 @@ fn csharp_fact_attribute() {
         "ShouldProcessOrder",
         "MyProject.Tests/OrderTests.cs",
         &SymbolKind::Method,
-        &[],
-        &[s("Fact")],
+        &[s("fact")],
         None,
     ));
 }
@@ -252,8 +235,7 @@ fn csharp_theory_attribute() {
         "ShouldCalculateTotal",
         "MyProject.Tests/OrderTests.cs",
         &SymbolKind::Method,
-        &[],
-        &[s("Theory")],
+        &[s("theory")],
         None,
     ));
 }
@@ -265,8 +247,7 @@ fn csharp_test_attribute() {
         "TestOrder",
         "MyProject.Tests/OrderTests.cs",
         &SymbolKind::Method,
-        &[],
-        &[s("Test")],
+        &[s("test")],
         None,
     ));
 }
@@ -278,35 +259,32 @@ fn csharp_test_method_attribute() {
         "TestMethod1",
         "MyProject.Tests/OrderTests.cs",
         &SymbolKind::Method,
-        &[],
-        &[s("TestMethod")],
+        &[s("testmethod")],
         None,
     ));
 }
 
 #[test]
-fn csharp_bracketed_fact_attribute() {
-    // C# extractors produce bracketed text like "[Fact]" — must still match
+fn csharp_normalized_fact_attribute() {
+    // C# extractor markers are normalized before test detection.
     assert!(check(
         "csharp",
         "ShouldValidateInput",
         "MyProject.Tests/ValidationTests.cs",
         &SymbolKind::Method,
-        &[],
-        &[s("[Fact]")],
+        &[s("fact")],
         None,
     ));
 }
 
 #[test]
-fn csharp_bracketed_theory_attribute() {
+fn csharp_normalized_theory_attribute() {
     assert!(check(
         "csharp",
         "ShouldCalculateDiscount",
         "MyProject.Tests/PricingTests.cs",
         &SymbolKind::Method,
-        &[],
-        &[s("[Theory]")],
+        &[s("theory")],
         None,
     ));
 }
@@ -317,14 +295,13 @@ fn csharp_bracketed_theory_attribute() {
 
 #[test]
 fn razor_routes_to_csharp_fact_attribute() {
-    // Razor files with C# attributes should route through detect_csharp
+    // Razor files with C# annotation keys should route through detect_csharp.
     assert!(check(
         "razor",
         "ShouldRenderComponent",
         "MyProject.Tests/Components/ButtonTests.cshtml",
         &SymbolKind::Method,
-        &[],
-        &[s("[Fact]")],
+        &[s("fact")],
         None,
     ));
 }
@@ -336,22 +313,20 @@ fn razor_routes_to_csharp_test_attribute() {
         "TestRender",
         "MyProject.Tests/Views/IndexTests.cshtml",
         &SymbolKind::Method,
-        &[],
-        &[s("Test")],
+        &[s("test")],
         None,
     ));
 }
 
 #[test]
 fn razor_no_test_attribute_returns_false() {
-    // Razor method without test attributes should not be flagged
+    // Razor method without test annotation keys should not be flagged.
     assert!(!check(
         "razor",
         "OnGet",
         "MyProject/Pages/Index.cshtml",
         &SymbolKind::Method,
-        &[],
-        &[s("[HttpGet]")],
+        &[s("httpget")],
         None,
     ));
 }
@@ -368,7 +343,6 @@ fn go_test_function_in_test_file() {
         "payment/payment_test.go",
         &SymbolKind::Function,
         &[],
-        &[],
         None,
     ));
 }
@@ -381,7 +355,6 @@ fn go_test_name_not_in_test_file() {
         "TestHelper",
         "payment/helpers.go",
         &SymbolKind::Function,
-        &[],
         &[],
         None,
     ));
@@ -396,7 +369,6 @@ fn go_benchmark_not_test() {
         "payment/payment_test.go",
         &SymbolKind::Function,
         &[],
-        &[],
         None,
     ));
 }
@@ -409,7 +381,6 @@ fn go_fuzz_function_in_test_file() {
         "parser/parser_test.go",
         &SymbolKind::Function,
         &[],
-        &[],
         None,
     ));
 }
@@ -421,7 +392,6 @@ fn go_example_function_in_test_file() {
         "ExampleProcessPayment",
         "payment/payment_test.go",
         &SymbolKind::Function,
-        &[],
         &[],
         None,
     ));
@@ -439,7 +409,6 @@ fn js_test_in_test_file() {
         "src/__tests__/payment.test.js",
         &SymbolKind::Function,
         &[],
-        &[],
         None,
     ));
 }
@@ -452,7 +421,6 @@ fn ts_describe_in_spec_file() {
         "src/payment.spec.ts",
         &SymbolKind::Function,
         &[],
-        &[],
         None,
     ));
 }
@@ -464,7 +432,6 @@ fn js_it_in_test_file() {
         "it",
         "tests/payment.test.js",
         &SymbolKind::Function,
-        &[],
         &[],
         None,
     ));
@@ -479,7 +446,6 @@ fn ts_test_function_not_in_test_file() {
         "src/utils.ts",
         &SymbolKind::Function,
         &[],
-        &[],
         None,
     ));
 }
@@ -489,13 +455,24 @@ fn ts_test_function_not_in_test_file() {
 // ===========================================================================
 
 #[test]
-fn php_test_in_doc_comment() {
+fn php_test_annotation_key() {
     assert!(check(
         "php",
         "itShouldProcess",
         "tests/PaymentTest.php",
         &SymbolKind::Method,
-        &[],
+        &[s("test")],
+        None,
+    ));
+}
+
+#[test]
+fn php_doc_comment_test_fallback_still_works() {
+    assert!(check(
+        "php",
+        "itShouldProcess",
+        "tests/PaymentTest.php",
+        &SymbolKind::Method,
         &[],
         Some("/** @test */"),
     ));
@@ -508,7 +485,6 @@ fn php_test_prefix() {
         "testProcessPayment",
         "tests/PaymentTest.php",
         &SymbolKind::Method,
-        &[],
         &[],
         None,
     ));
@@ -526,7 +502,6 @@ fn ruby_test_prefix_in_spec_dir() {
         "spec/payment_spec.rb",
         &SymbolKind::Method,
         &[],
-        &[],
         None,
     ));
 }
@@ -538,7 +513,6 @@ fn ruby_test_prefix_in_test_dir() {
         "test_login",
         "test/auth_test.rb",
         &SymbolKind::Method,
-        &[],
         &[],
         None,
     ));
@@ -556,7 +530,6 @@ fn swift_test_prefix_method() {
         "Tests/AuthTests.swift",
         &SymbolKind::Method,
         &[],
-        &[],
         None,
     ));
 }
@@ -568,7 +541,6 @@ fn swift_test_prefix_function() {
         "testNetworkCall",
         "Tests/NetworkTests.swift",
         &SymbolKind::Function,
-        &[],
         &[],
         None,
     ));
@@ -582,7 +554,6 @@ fn swift_class_with_test_prefix_returns_false() {
         "TestHelper",
         "Tests/Helpers.swift",
         &SymbolKind::Class,
-        &[],
         &[],
         None,
     ));
@@ -599,8 +570,7 @@ fn dart_is_test_decorator() {
         "myTest",
         "test/widget_test.dart",
         &SymbolKind::Function,
-        &[s("isTest")],
-        &[],
+        &[s("istest")],
         None,
     ));
 }
@@ -612,7 +582,6 @@ fn dart_test_prefix() {
         "testWidgetRendering",
         "test/widget_test.dart",
         &SymbolKind::Function,
-        &[],
         &[],
         None,
     ));
@@ -626,7 +595,6 @@ fn dart_test_prefix_in_production_code_returns_false() {
         "testWidgetRendering",
         "lib/widgets.dart",
         &SymbolKind::Function,
-        &[],
         &[],
         None,
     ));
@@ -644,7 +612,6 @@ fn generic_test_underscore_prefix_in_test_path() {
         "tests/test_util.lua",
         &SymbolKind::Function,
         &[],
-        &[],
         None,
     ));
 }
@@ -656,7 +623,6 @@ fn generic_test_capital_prefix_in_test_path() {
         "TestAllocator",
         "tests/allocator_test.zig",
         &SymbolKind::Function,
-        &[],
         &[],
         None,
     ));
@@ -673,8 +639,7 @@ fn csharp_setup_is_test() {
         "SetUp",
         "Tests/MyTests.cs",
         &SymbolKind::Method,
-        &[],
-        &[s("SetUp")],
+        &[s("setup")],
         None
     ));
 }
@@ -686,8 +651,7 @@ fn csharp_teardown_is_test() {
         "TearDown",
         "Tests/MyTests.cs",
         &SymbolKind::Method,
-        &[],
-        &[s("TearDown")],
+        &[s("teardown")],
         None
     ));
 }
@@ -699,8 +663,7 @@ fn csharp_onetime_setup_is_test() {
         "Initialize",
         "Tests/MyTests.cs",
         &SymbolKind::Method,
-        &[],
-        &[s("OneTimeSetUp")],
+        &[s("onetimesetup")],
         None
     ));
 }
@@ -712,8 +675,7 @@ fn java_before_each_is_test() {
         "setup",
         "src/test/MyTest.java",
         &SymbolKind::Method,
-        &[s("BeforeEach")],
-        &[],
+        &[s("beforeeach")],
         None
     ));
 }
@@ -726,7 +688,6 @@ fn python_setup_is_test() {
         "tests/test_foo.py",
         &SymbolKind::Method,
         &[],
-        &[],
         None
     ));
 }
@@ -738,7 +699,6 @@ fn swift_setup_is_test() {
         "setUp",
         "Tests/MyTests.swift",
         &SymbolKind::Method,
-        &[],
         &[],
         None
     ));
@@ -757,22 +717,20 @@ fn php_test_prefix_in_production_code_returns_false() {
         "src/services/database.php",
         &SymbolKind::Method,
         &[],
-        &[],
         None,
     ));
 }
 
 #[test]
 fn php_test_annotation_in_production_code_returns_true() {
-    // @test doc annotation is a genuine test marker regardless of file path
+    // A normalized @test annotation key is a genuine test marker regardless of file path.
     assert!(check(
         "php",
         "someMethod",
         "src/services/database.php",
         &SymbolKind::Method,
-        &[],
-        &[],
-        Some("/** @test */"),
+        &[s("test")],
+        None,
     ));
 }
 
@@ -789,7 +747,6 @@ fn swift_test_prefix_in_production_code_returns_false() {
         "Sources/App/Database.swift",
         &SymbolKind::Method,
         &[],
-        &[],
         None,
     ));
 }
@@ -802,7 +759,6 @@ fn swift_setup_in_production_code_returns_false() {
         "setUp",
         "Sources/App/Database.swift",
         &SymbolKind::Method,
-        &[],
         &[],
         None,
     ));
@@ -822,7 +778,6 @@ fn false_positive_production_function_with_test_in_name() {
         "src/database/pool.rs",
         &SymbolKind::Function,
         &[],
-        &[],
         None,
     ));
 }
@@ -834,7 +789,6 @@ fn false_positive_test_helper_in_prod_code() {
         "create_test_user",
         "src/factories.py",
         &SymbolKind::Function,
-        &[],
         &[],
         None,
     ));
@@ -851,7 +805,6 @@ fn struct_named_test_fixture_returns_false() {
         "TestFixture",
         "src/tests/fixtures.rs",
         &SymbolKind::Struct,
-        &[],
         &[s("test")],
         None,
     ));
@@ -864,8 +817,7 @@ fn enum_named_test_variant_returns_false() {
         "TestStatus",
         "src/test/java/Status.java",
         &SymbolKind::Enum,
-        &[s("Test")],
-        &[],
+        &[s("test")],
         None,
     ));
 }
@@ -877,8 +829,7 @@ fn interface_returns_false() {
         "ITestService",
         "MyProject.Tests/ITestService.cs",
         &SymbolKind::Interface,
-        &[],
-        &[s("Fact")],
+        &[s("fact")],
         None,
     ));
 }
@@ -890,7 +841,6 @@ fn variable_returns_false() {
         "test",
         "src/__tests__/payment.test.js",
         &SymbolKind::Variable,
-        &[],
         &[],
         None,
     ));
@@ -904,7 +854,6 @@ fn constant_returns_false() {
         "src/payment.spec.ts",
         &SymbolKind::Constant,
         &[],
-        &[],
         None,
     ));
 }
@@ -915,14 +864,13 @@ fn constant_returns_false() {
 
 #[test]
 fn constructor_with_test_attr_returns_true() {
-    // Constructors are callable, so if they have test attributes, they count
+    // Constructors are callable, so if they have test annotation keys, they count.
     assert!(check(
         "csharp",
         "TestSetup",
         "MyProject.Tests/Setup.cs",
         &SymbolKind::Constructor,
-        &[],
-        &[s("TestMethod")],
+        &[s("testmethod")],
         None,
     ));
 }
@@ -1070,26 +1018,24 @@ pub fn calculate_sum(a: i32, b: i32) -> i32 {
 
 #[test]
 fn test_is_test_symbol_dispatch_across_languages() {
-    // Each tuple: (language, name, file_path, kind, decorators, attributes, doc_comment, expected)
+    // Each tuple: (language, name, file_path, kind, annotation_keys, doc_comment, expected)
     type Case = (
         &'static str,
         &'static str,
         &'static str,
         SymbolKind,
         Vec<String>,
-        Vec<String>,
         Option<&'static str>,
         bool,
     );
 
     let cases: Vec<Case> = vec![
-        // --- Rust: attribute-driven only ---
+        // --- Rust: annotation-key-driven only ---
         (
             "rust",
             "test_add",
             "src/tests/math.rs",
             SymbolKind::Function,
-            vec![],
             vec![s("test")],
             None,
             true,
@@ -1099,18 +1045,16 @@ fn test_is_test_symbol_dispatch_across_languages() {
             "test_async",
             "src/lib.rs",
             SymbolKind::Function,
-            vec![],
             vec![s("tokio::test")],
             None,
             true,
         ),
-        // Rust: test_ prefix WITHOUT #[test] attr → false (Rust is attribute-only)
+        // Rust: test_ prefix without #[test] marker returns false.
         (
             "rust",
             "test_something",
             "src/tests/foo.rs",
             SymbolKind::Function,
-            vec![],
             vec![],
             None,
             false,
@@ -1122,17 +1066,15 @@ fn test_is_test_symbol_dispatch_across_languages() {
             "src/lib.rs",
             SymbolKind::Function,
             vec![],
-            vec![],
             None,
             false,
         ),
-        // --- Python: decorator or name prefix (no path guard) ---
+        // --- Python: annotation key or name prefix (no path guard) ---
         (
             "python",
             "test_login",
             "tests/test_auth.py",
             SymbolKind::Function,
-            vec![],
             vec![],
             None,
             true,
@@ -1144,18 +1086,16 @@ fn test_is_test_symbol_dispatch_across_languages() {
             "src/auth.py",
             SymbolKind::Function,
             vec![],
-            vec![],
             None,
             true,
         ),
-        // Python: pytest decorator
+        // Python: pytest annotation key
         (
             "python",
             "some_check",
             "tests/test_auth.py",
             SymbolKind::Function,
             vec![s("pytest.mark.parametrize")],
-            vec![],
             None,
             true,
         ),
@@ -1165,7 +1105,6 @@ fn test_is_test_symbol_dispatch_across_languages() {
             "setUp",
             "tests/test_foo.py",
             SymbolKind::Method,
-            vec![],
             vec![],
             None,
             true,
@@ -1177,18 +1116,16 @@ fn test_is_test_symbol_dispatch_across_languages() {
             "src/auth.py",
             SymbolKind::Function,
             vec![],
-            vec![],
             None,
             false,
         ),
-        // --- Java: @Test decorator ---
+        // --- Java: @Test annotation key ---
         (
             "java",
             "shouldReturnTrue",
             "src/test/java/FooTest.java",
             SymbolKind::Method,
-            vec![s("Test")],
-            vec![],
+            vec![s("test")],
             None,
             true,
         ),
@@ -1198,8 +1135,7 @@ fn test_is_test_symbol_dispatch_across_languages() {
             "init",
             "src/test/java/FooTest.java",
             SymbolKind::Method,
-            vec![s("BeforeEach")],
-            vec![],
+            vec![s("beforeeach")],
             None,
             true,
         ),
@@ -1210,7 +1146,6 @@ fn test_is_test_symbol_dispatch_across_languages() {
             "src/main/java/Order.java",
             SymbolKind::Method,
             vec![],
-            vec![],
             None,
             false,
         ),
@@ -1220,8 +1155,7 @@ fn test_is_test_symbol_dispatch_across_languages() {
             "shouldReturnUser",
             "src/test/kotlin/UserTest.kt",
             SymbolKind::Method,
-            vec![s("Test")],
-            vec![],
+            vec![s("test")],
             None,
             true,
         ),
@@ -1230,7 +1164,6 @@ fn test_is_test_symbol_dispatch_across_languages() {
             "fetchUser",
             "src/main/kotlin/User.kt",
             SymbolKind::Method,
-            vec![],
             vec![],
             None,
             false,
@@ -1241,8 +1174,7 @@ fn test_is_test_symbol_dispatch_across_languages() {
             "shouldCompute",
             "src/test/scala/MathSpec.scala",
             SymbolKind::Method,
-            vec![s("Test")],
-            vec![],
+            vec![s("test")],
             None,
             true,
         ),
@@ -1252,7 +1184,6 @@ fn test_is_test_symbol_dispatch_across_languages() {
             "compute",
             "src/test/scala/MathSpec.scala",
             SymbolKind::Method,
-            vec![],
             vec![],
             None,
             true,
@@ -1264,7 +1195,6 @@ fn test_is_test_symbol_dispatch_across_languages() {
             "src/main/scala/Math.scala",
             SymbolKind::Function,
             vec![],
-            vec![],
             None,
             true,
         ),
@@ -1274,7 +1204,6 @@ fn test_is_test_symbol_dispatch_across_languages() {
             "compute",
             "src/main/scala/Math.scala",
             SymbolKind::Function,
-            vec![],
             vec![],
             None,
             false,
@@ -1286,7 +1215,6 @@ fn test_is_test_symbol_dispatch_across_languages() {
             "test/math_test.exs",
             SymbolKind::Function,
             vec![],
-            vec![],
             None,
             true,
         ),
@@ -1296,7 +1224,6 @@ fn test_is_test_symbol_dispatch_across_languages() {
             "setup_context",
             "test/support/helpers.exs",
             SymbolKind::Function,
-            vec![],
             vec![],
             None,
             true,
@@ -1308,7 +1235,6 @@ fn test_is_test_symbol_dispatch_across_languages() {
             "lib/my_app.ex",
             SymbolKind::Function,
             vec![],
-            vec![],
             None,
             true,
         ),
@@ -1319,18 +1245,16 @@ fn test_is_test_symbol_dispatch_across_languages() {
             "lib/math.ex",
             SymbolKind::Function,
             vec![],
-            vec![],
             None,
             false,
         ),
-        // --- C#: attribute-driven ---
+        // --- C#: annotation-key-driven ---
         (
             "csharp",
             "ShouldWork",
             "Tests/MyTest.cs",
             SymbolKind::Method,
-            vec![],
-            vec![s("Fact")],
+            vec![s("fact")],
             None,
             true,
         ),
@@ -1339,29 +1263,26 @@ fn test_is_test_symbol_dispatch_across_languages() {
             "ShouldAlsoWork",
             "Tests/MyTest.cs",
             SymbolKind::Method,
-            vec![],
-            vec![s("Theory")],
+            vec![s("theory")],
             None,
             true,
         ),
-        // C#: bracketed attribute format
+        // C#: normalized attribute key
         (
             "csharp",
             "ShouldValidate",
             "Tests/MyTest.cs",
             SymbolKind::Method,
-            vec![],
-            vec![s("[Fact]")],
+            vec![s("fact")],
             None,
             true,
         ),
-        // C#: no test attribute → false
+        // C#: no test annotation key returns false.
         (
             "csharp",
             "ProcessOrder",
             "MyProject/OrderService.cs",
             SymbolKind::Method,
-            vec![],
             vec![],
             None,
             false,
@@ -1372,8 +1293,7 @@ fn test_is_test_symbol_dispatch_across_languages() {
             "ShouldRender",
             "MyProject.Tests/ButtonTests.cshtml",
             SymbolKind::Method,
-            vec![],
-            vec![s("Fact")],
+            vec![s("fact")],
             None,
             true,
         ),
@@ -1382,7 +1302,6 @@ fn test_is_test_symbol_dispatch_across_languages() {
             "OnGet",
             "MyProject/Pages/Index.cshtml",
             SymbolKind::Method,
-            vec![],
             vec![],
             None,
             false,
@@ -1394,7 +1313,6 @@ fn test_is_test_symbol_dispatch_across_languages() {
             "parser/parser_test.go",
             SymbolKind::Function,
             vec![],
-            vec![],
             None,
             true,
         ),
@@ -1404,7 +1322,6 @@ fn test_is_test_symbol_dispatch_across_languages() {
             "parser/parser_test.go",
             SymbolKind::Function,
             vec![],
-            vec![],
             None,
             true,
         ),
@@ -1413,7 +1330,6 @@ fn test_is_test_symbol_dispatch_across_languages() {
             "ExampleParse",
             "parser/parser_test.go",
             SymbolKind::Function,
-            vec![],
             vec![],
             None,
             true,
@@ -1425,7 +1341,6 @@ fn test_is_test_symbol_dispatch_across_languages() {
             "parser/parser.go",
             SymbolKind::Function,
             vec![],
-            vec![],
             None,
             false,
         ),
@@ -1435,7 +1350,6 @@ fn test_is_test_symbol_dispatch_across_languages() {
             "helperSetup",
             "parser/parser_test.go",
             SymbolKind::Function,
-            vec![],
             vec![],
             None,
             false,
@@ -1447,7 +1361,6 @@ fn test_is_test_symbol_dispatch_across_languages() {
             "src/__tests__/auth.test.js",
             SymbolKind::Function,
             vec![],
-            vec![],
             None,
             true,
         ),
@@ -1457,7 +1370,6 @@ fn test_is_test_symbol_dispatch_across_languages() {
             "tests/payment.test.js",
             SymbolKind::Function,
             vec![],
-            vec![],
             None,
             true,
         ),
@@ -1466,7 +1378,6 @@ fn test_is_test_symbol_dispatch_across_languages() {
             "describe",
             "tests/payment.test.js",
             SymbolKind::Function,
-            vec![],
             vec![],
             None,
             true,
@@ -1478,7 +1389,6 @@ fn test_is_test_symbol_dispatch_across_languages() {
             "src/utils.js",
             SymbolKind::Function,
             vec![],
-            vec![],
             None,
             false,
         ),
@@ -1489,7 +1399,6 @@ fn test_is_test_symbol_dispatch_across_languages() {
             "src/payment.spec.ts",
             SymbolKind::Function,
             vec![],
-            vec![],
             None,
             true,
         ),
@@ -1499,19 +1408,17 @@ fn test_is_test_symbol_dispatch_across_languages() {
             "src/utils.ts",
             SymbolKind::Function,
             vec![],
-            vec![],
             None,
             false,
         ),
-        // --- PHP: @test doc or test prefix in test path ---
+        // --- PHP: annotation key or test prefix in test path ---
         (
             "php",
             "itShouldProcess",
             "tests/PaymentTest.php",
             SymbolKind::Method,
-            vec![],
-            vec![],
-            Some("/** @test */"),
+            vec![s("test")],
+            None,
             true,
         ),
         (
@@ -1520,19 +1427,17 @@ fn test_is_test_symbol_dispatch_across_languages() {
             "tests/PaymentTest.php",
             SymbolKind::Method,
             vec![],
-            vec![],
             None,
             true,
         ),
-        // PHP: @test works even outside test path
+        // PHP: normalized @test key works even outside test path.
         (
             "php",
             "someMethod",
             "src/Service.php",
             SymbolKind::Method,
-            vec![],
-            vec![],
-            Some("/** @test */"),
+            vec![s("test")],
+            None,
             true,
         ),
         // PHP: test prefix in prod code → false (path guard)
@@ -1541,7 +1446,6 @@ fn test_is_test_symbol_dispatch_across_languages() {
             "testConnection",
             "src/database.php",
             SymbolKind::Method,
-            vec![],
             vec![],
             None,
             false,
@@ -1553,7 +1457,6 @@ fn test_is_test_symbol_dispatch_across_languages() {
             "spec/payment_spec.rb",
             SymbolKind::Method,
             vec![],
-            vec![],
             None,
             true,
         ),
@@ -1562,7 +1465,6 @@ fn test_is_test_symbol_dispatch_across_languages() {
             "test_login",
             "test/auth_test.rb",
             SymbolKind::Method,
-            vec![],
             vec![],
             None,
             true,
@@ -1574,7 +1476,6 @@ fn test_is_test_symbol_dispatch_across_languages() {
             "lib/database.rb",
             SymbolKind::Method,
             vec![],
-            vec![],
             None,
             false,
         ),
@@ -1584,7 +1485,6 @@ fn test_is_test_symbol_dispatch_across_languages() {
             "testLogin",
             "Tests/AuthTests.swift",
             SymbolKind::Method,
-            vec![],
             vec![],
             None,
             true,
@@ -1596,7 +1496,6 @@ fn test_is_test_symbol_dispatch_across_languages() {
             "Tests/AuthTests.swift",
             SymbolKind::Method,
             vec![],
-            vec![],
             None,
             true,
         ),
@@ -1607,18 +1506,16 @@ fn test_is_test_symbol_dispatch_across_languages() {
             "Sources/App/DB.swift",
             SymbolKind::Method,
             vec![],
-            vec![],
             None,
             false,
         ),
-        // --- Dart: @isTest decorator or test prefix in test path ---
+        // --- Dart: @isTest annotation key or test prefix in test path ---
         (
             "dart",
             "myTest",
             "test/widget_test.dart",
             SymbolKind::Function,
-            vec![s("isTest")],
-            vec![],
+            vec![s("istest")],
             None,
             true,
         ),
@@ -1627,7 +1524,6 @@ fn test_is_test_symbol_dispatch_across_languages() {
             "testWidgetRendering",
             "test/widget_test.dart",
             SymbolKind::Function,
-            vec![],
             vec![],
             None,
             true,
@@ -1639,7 +1535,6 @@ fn test_is_test_symbol_dispatch_across_languages() {
             "lib/widgets.dart",
             SymbolKind::Function,
             vec![],
-            vec![],
             None,
             false,
         ),
@@ -1650,7 +1545,6 @@ fn test_is_test_symbol_dispatch_across_languages() {
             "tests/test_util.lua",
             SymbolKind::Function,
             vec![],
-            vec![],
             None,
             true,
         ),
@@ -1659,7 +1553,6 @@ fn test_is_test_symbol_dispatch_across_languages() {
             "TestAllocator",
             "tests/allocator_test.zig",
             SymbolKind::Function,
-            vec![],
             vec![],
             None,
             true,
@@ -1671,7 +1564,6 @@ fn test_is_test_symbol_dispatch_across_languages() {
             "src/utils.lua",
             SymbolKind::Function,
             vec![],
-            vec![],
             None,
             false,
         ),
@@ -1682,7 +1574,6 @@ fn test_is_test_symbol_dispatch_across_languages() {
             "tests/test.bf",
             SymbolKind::Function,
             vec![],
-            vec![],
             None,
             true,
         ),
@@ -1691,7 +1582,6 @@ fn test_is_test_symbol_dispatch_across_languages() {
             "run_program",
             "src/main.bf",
             SymbolKind::Function,
-            vec![],
             vec![],
             None,
             false,
@@ -1702,7 +1592,6 @@ fn test_is_test_symbol_dispatch_across_languages() {
             "TestFixture",
             "src/tests/foo.rs",
             SymbolKind::Struct,
-            vec![],
             vec![s("test")],
             None,
             false,
@@ -1713,7 +1602,6 @@ fn test_is_test_symbol_dispatch_across_languages() {
             "tests/test_payment.py",
             SymbolKind::Class,
             vec![],
-            vec![],
             None,
             false,
         ),
@@ -1722,8 +1610,7 @@ fn test_is_test_symbol_dispatch_across_languages() {
             "TestStatus",
             "src/test/java/Status.java",
             SymbolKind::Enum,
-            vec![s("Test")],
-            vec![],
+            vec![s("test")],
             None,
             false,
         ),
@@ -1732,8 +1619,7 @@ fn test_is_test_symbol_dispatch_across_languages() {
             "ITestService",
             "Tests/ITestService.cs",
             SymbolKind::Interface,
-            vec![],
-            vec![s("Fact")],
+            vec![s("fact")],
             None,
             false,
         ),
@@ -1742,7 +1628,6 @@ fn test_is_test_symbol_dispatch_across_languages() {
             "test",
             "src/__tests__/payment.test.js",
             SymbolKind::Variable,
-            vec![],
             vec![],
             None,
             false,
@@ -1753,17 +1638,14 @@ fn test_is_test_symbol_dispatch_across_languages() {
             "TestSetup",
             "MyProject.Tests/Setup.cs",
             SymbolKind::Constructor,
-            vec![],
-            vec![s("TestMethod")],
+            vec![s("testmethod")],
             None,
             true,
         ),
     ];
 
-    for (i, (lang, name, path, kind, decorators, attributes, doc, expected)) in
-        cases.iter().enumerate()
-    {
-        let result = is_test_symbol(lang, name, path, kind, decorators, attributes, *doc);
+    for (i, (lang, name, path, kind, annotation_keys, doc, expected)) in cases.iter().enumerate() {
+        let result = is_test_symbol(lang, name, path, kind, annotation_keys, *doc);
         assert_eq!(
             result, *expected,
             "Case {} FAILED: is_test_symbol({:?}, {:?}, {:?}, {:?}) = {} but expected {}",

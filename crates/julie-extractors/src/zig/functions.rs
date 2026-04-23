@@ -43,7 +43,6 @@ pub(super) fn extract_function(
         &base.file_path,
         &symbol_kind,
         &[],
-        &[],
         doc_comment.as_deref(),
     ) {
         metadata.insert("is_test".to_string(), serde_json::Value::Bool(true));

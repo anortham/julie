@@ -254,14 +254,13 @@ impl super::RazorExtractor {
         // Extract C# XML doc comment
         let doc_comment = self.base.find_doc_comment(&node);
 
-        // Test detection — pass actual attributes for C# attribute detection (e.g. [Fact], [Test])
+        // Test detection uses normalized annotation keys supplied by later extraction tasks.
         let is_test = is_test_symbol(
             "razor",
             &name,
             &self.base.file_path,
             &SymbolKind::Method,
             &[],
-            &attributes,
             doc_comment.as_deref(),
         );
 

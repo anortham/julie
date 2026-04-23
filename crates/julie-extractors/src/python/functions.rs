@@ -74,7 +74,6 @@ pub fn extract_function(extractor: &mut PythonExtractor, node: Node) -> Option<S
         &extractor.base().file_path,
         &symbol_kind,
         &decorators_list,
-        &[],
         doc_comment.as_deref(),
     ) {
         metadata.insert("is_test".to_string(), serde_json::json!(true));

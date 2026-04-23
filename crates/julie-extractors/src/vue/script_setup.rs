@@ -117,13 +117,12 @@ fn extract_function_declaration(
     let mut metadata = HashMap::new();
     metadata.insert("type".to_string(), Value::String("function".to_string()));
 
-    // Test detection (Category 3: name + path, empty decorators/attributes)
+    // Test detection (Category 3: name + path, empty annotation keys)
     if is_test_symbol(
         "vue",
         &name,
         &base.file_path,
         &SymbolKind::Function,
-        &[],
         &[],
         None,
     ) {
@@ -197,13 +196,12 @@ fn extract_variable_declarator(
             Value::Bool(value_node.kind() == "arrow_function"),
         );
 
-        // Test detection (Category 3: name + path, empty decorators/attributes)
+        // Test detection (Category 3: name + path, empty annotation keys)
         if is_test_symbol(
             "vue",
             &name,
             &base.file_path,
             &SymbolKind::Function,
-            &[],
             &[],
             None,
         ) {

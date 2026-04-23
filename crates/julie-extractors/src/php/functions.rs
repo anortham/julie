@@ -97,7 +97,6 @@ pub(super) fn extract_function(
         &extractor.get_base().file_path,
         &symbol_kind,
         &[],
-        &[],
         doc_comment.as_deref(),
     );
 

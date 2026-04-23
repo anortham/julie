@@ -64,13 +64,6 @@ pub fn extract_method(
     // Extract XML doc comment
     let doc_comment = base.find_doc_comment(&node);
 
-    // Extract attributes for test detection (modifiers starting with '[')
-    let attributes: Vec<String> = modifiers
-        .iter()
-        .filter(|m| m.starts_with('['))
-        .cloned()
-        .collect();
-
     let mut metadata = HashMap::new();
     if is_test_symbol(
         "csharp",
@@ -78,7 +71,6 @@ pub fn extract_method(
         &base.file_path,
         &SymbolKind::Method,
         &[],
-        &attributes,
         doc_comment.as_deref(),
     ) {
         metadata.insert("is_test".to_string(), serde_json::Value::Bool(true));
@@ -128,13 +120,6 @@ pub fn extract_constructor(
     // Extract XML doc comment
     let doc_comment = base.find_doc_comment(&node);
 
-    // Extract attributes for test detection
-    let attributes: Vec<String> = modifiers
-        .iter()
-        .filter(|m| m.starts_with('['))
-        .cloned()
-        .collect();
-
     let mut metadata = HashMap::new();
     if is_test_symbol(
         "csharp",
@@ -142,7 +127,6 @@ pub fn extract_constructor(
         &base.file_path,
         &SymbolKind::Constructor,
         &[],
-        &attributes,
         doc_comment.as_deref(),
     ) {
         metadata.insert("is_test".to_string(), serde_json::Value::Bool(true));
@@ -193,7 +177,6 @@ pub fn extract_destructor(
         &name,
         &base.file_path,
         &SymbolKind::Method,
-        &[],
         &[],
         doc_comment.as_deref(),
     ) {
