@@ -33,6 +33,7 @@ pub mod main_error_handling; // MCP server initialization and runtime error hand
 // CORE SYSTEM TESTS - Database, handlers, language support
 // ============================================================================
 pub mod core {
+    pub mod annotation_storage;
     pub mod batch_resolver;
     pub mod bulk_store_types_tests;
     pub mod database; // Database operations and SQLite tests

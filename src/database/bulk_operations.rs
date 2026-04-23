@@ -1,10 +1,12 @@
 // Bulk operations with index optimization
 
+use super::helpers::SYMBOL_UPSERT_SQL;
 use super::revision_changes::{
     RevisionChangeKind, RevisionFileChange, record_revision_file_changes_tx,
     snapshot_file_hashes_tx,
 };
 use super::revisions::record_canonical_revision_tx;
+use super::symbols::annotations::{delete_annotations_for_file, replace_annotations_batch};
 use super::*;
 use anyhow::{Result, anyhow};
 use rusqlite::params;
@@ -671,6 +673,8 @@ impl SymbolDatabase {
                         params![file_path],
                     )?;
 
+                    delete_annotations_for_file(&outer_tx, file_path)?;
+
                     // Delete symbols
                     debug!("Deleting symbols for file: {}", file_path);
                     let symbols_deleted = outer_tx.execute(
@@ -719,13 +723,7 @@ impl SymbolDatabase {
             if !new_symbols.is_empty() {
                 debug!("🔤 Inserting {} new symbols", new_symbols.len());
 
-                let mut stmt = outer_tx.prepare(
-                    "INSERT OR REPLACE INTO symbols
-                     (id, name, kind, language, file_path, signature, start_line, start_col,
-                      end_line, end_col, start_byte, end_byte, doc_comment, visibility, code_context,
-                      parent_id, metadata, semantic_group, confidence, content_type)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
-                )?;
+                let mut stmt = outer_tx.prepare(SYMBOL_UPSERT_SQL)?;
 
                 for symbol in new_symbols {
                     let metadata_json = symbol
@@ -765,6 +763,7 @@ impl SymbolDatabase {
                     inserted_symbol_count += 1;
                 }
                 drop(stmt);
+                replace_annotations_batch(&outer_tx, new_symbols)?;
             }
 
             // STEP 4: Bulk insert new relationships (if any)
@@ -1091,6 +1090,9 @@ impl SymbolDatabase {
                 "idx_symbols_file",
                 "idx_symbols_semantic",
                 "idx_symbols_parent",
+                "idx_symbol_annotations_symbol_id",
+                "idx_symbol_annotations_annotation_key",
+                "idx_symbol_annotations_carrier",
                 "idx_rel_from",
                 "idx_rel_to",
                 "idx_rel_kind",
@@ -1183,13 +1185,7 @@ impl SymbolDatabase {
                 }
 
                 let sp = outer_tx.savepoint()?;
-                let mut stmt = sp.prepare(
-                    "INSERT OR REPLACE INTO symbols
-                     (id, name, kind, language, file_path, signature, start_line, start_col,
-                      end_line, end_col, start_byte, end_byte, doc_comment, visibility, code_context,
-                      parent_id, metadata, semantic_group, confidence, content_type)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
-                )?;
+                let mut stmt = sp.prepare(SYMBOL_UPSERT_SQL)?;
                 for symbol in &sorted_symbols {
                     let metadata_json = symbol
                         .metadata
@@ -1227,6 +1223,7 @@ impl SymbolDatabase {
                 }
                 drop(stmt);
                 sp.commit()?;
+                replace_annotations_batch(&outer_tx, &sorted_symbols)?;
             }
 
             // --- Insert relationships ---
@@ -1395,6 +1392,9 @@ impl SymbolDatabase {
                 "CREATE INDEX IF NOT EXISTS idx_symbols_file ON symbols(file_path)",
                 "CREATE INDEX IF NOT EXISTS idx_symbols_semantic ON symbols(semantic_group)",
                 "CREATE INDEX IF NOT EXISTS idx_symbols_parent ON symbols(parent_id)",
+                "CREATE INDEX IF NOT EXISTS idx_symbol_annotations_symbol_id ON symbol_annotations(symbol_id)",
+                "CREATE INDEX IF NOT EXISTS idx_symbol_annotations_annotation_key ON symbol_annotations(annotation_key)",
+                "CREATE INDEX IF NOT EXISTS idx_symbol_annotations_carrier ON symbol_annotations(carrier)",
                 "CREATE INDEX IF NOT EXISTS idx_rel_from ON relationships(from_symbol_id)",
                 "CREATE INDEX IF NOT EXISTS idx_rel_to ON relationships(to_symbol_id)",
                 "CREATE INDEX IF NOT EXISTS idx_rel_kind ON relationships(kind)",

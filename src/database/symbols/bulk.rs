@@ -1,6 +1,8 @@
 // Bulk symbol storage operations with index optimization
 
+use super::super::helpers::SYMBOL_UPSERT_SQL;
 use super::super::*;
+use super::annotations::replace_annotations_batch;
 use anyhow::{Result, anyhow};
 use rusqlite::params;
 use tracing::{debug, info, warn};
@@ -57,6 +59,9 @@ impl SymbolDatabase {
                 "idx_symbols_file",
                 "idx_symbols_semantic",
                 "idx_symbols_parent",
+                "idx_symbol_annotations_symbol_id",
+                "idx_symbol_annotations_annotation_key",
+                "idx_symbol_annotations_carrier",
             ];
             for index in &indexes {
                 outer_tx.execute(&format!("DROP INDEX IF EXISTS {}", index), [])?;
@@ -90,13 +95,7 @@ impl SymbolDatabase {
             drop(file_stmt);
 
             // STEP 5: Prepare statement once, use many times
-            let mut stmt = tx.prepare(
-                "INSERT OR REPLACE INTO symbols
-                 (id, name, kind, language, file_path, signature, start_line, start_col,
-                  end_line, end_col, start_byte, end_byte, doc_comment, visibility, code_context,
-                  parent_id, metadata, semantic_group, confidence, content_type)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
-            )?;
+            let mut stmt = tx.prepare(SYMBOL_UPSERT_SQL)?;
 
             // STEP 5.5: Sort symbols in parent-first order to avoid foreign key violations
             let all_symbol_ids: std::collections::HashSet<_> =
@@ -242,6 +241,7 @@ impl SymbolDatabase {
 
             drop(stmt);
             tx.commit()?; // Commit savepoint
+            replace_annotations_batch(&outer_tx, &sorted_symbols)?;
 
             // STEP 6: Recreate indexes (WITHIN OUTER TRANSACTION)
             debug!("🏗️ Rebuilding symbol indexes after bulk insert");
@@ -267,6 +267,18 @@ impl SymbolDatabase {
             )?;
             outer_tx.execute(
                 "CREATE INDEX IF NOT EXISTS idx_symbols_parent ON symbols(parent_id)",
+                [],
+            )?;
+            outer_tx.execute(
+                "CREATE INDEX IF NOT EXISTS idx_symbol_annotations_symbol_id ON symbol_annotations(symbol_id)",
+                [],
+            )?;
+            outer_tx.execute(
+                "CREATE INDEX IF NOT EXISTS idx_symbol_annotations_annotation_key ON symbol_annotations(annotation_key)",
+                [],
+            )?;
+            outer_tx.execute(
+                "CREATE INDEX IF NOT EXISTS idx_symbol_annotations_carrier ON symbol_annotations(carrier)",
                 [],
             )?;
 

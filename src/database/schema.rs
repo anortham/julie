@@ -23,6 +23,7 @@ impl SymbolDatabase {
         self.create_files_table()?;
         self.create_indexing_repairs_table()?;
         self.create_symbols_table()?;
+        self.create_symbol_annotations_table()?;
         self.create_identifiers_table()?; // Reference tracking
         self.create_types_table()?; // Type intelligence
         self.create_relationships_table()?;
@@ -191,6 +192,30 @@ impl SymbolDatabase {
 
         debug!("Created symbols table and indexes");
 
+        Ok(())
+    }
+
+    pub(crate) fn create_symbol_annotations_table(&self) -> Result<()> {
+        self.conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS symbol_annotations (
+                id TEXT PRIMARY KEY,
+                symbol_id TEXT NOT NULL REFERENCES symbols(id) ON DELETE CASCADE,
+                ordinal INTEGER NOT NULL,
+                annotation TEXT NOT NULL,
+                annotation_key TEXT NOT NULL,
+                raw_text TEXT,
+                carrier TEXT,
+                UNIQUE(symbol_id, ordinal)
+            );
+            CREATE INDEX IF NOT EXISTS idx_symbol_annotations_symbol_id
+            ON symbol_annotations(symbol_id);
+            CREATE INDEX IF NOT EXISTS idx_symbol_annotations_annotation_key
+            ON symbol_annotations(annotation_key);
+            CREATE INDEX IF NOT EXISTS idx_symbol_annotations_carrier
+            ON symbol_annotations(carrier);",
+        )?;
+
+        debug!("Created symbol_annotations table and indexes");
         Ok(())
     }
 

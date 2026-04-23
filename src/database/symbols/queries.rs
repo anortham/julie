@@ -2,6 +2,7 @@
 
 use super::super::helpers::{SYMBOL_COLUMNS, SYMBOL_COLUMNS_LIGHTWEIGHT};
 use super::super::*;
+use super::annotations::hydrate_annotations_for_symbols;
 use anyhow::Result;
 use rusqlite::params;
 use std::collections::HashMap;
@@ -15,7 +16,10 @@ impl SymbolDatabase {
         let result = stmt.query_row(params![id], |row| self.row_to_symbol(row));
 
         match result {
-            Ok(symbol) => Ok(Some(symbol)),
+            Ok(mut symbol) => {
+                hydrate_annotations_for_symbols(self, std::slice::from_mut(&mut symbol))?;
+                Ok(Some(symbol))
+            }
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
             Err(e) => Err(anyhow!("Database error: {}", e)),
         }
@@ -59,6 +63,7 @@ impl SymbolDatabase {
             symbols.push(symbol_result?);
         }
 
+        hydrate_annotations_for_symbols(self, &mut symbols)?;
         Ok(symbols)
     }
 
@@ -77,6 +82,7 @@ impl SymbolDatabase {
             symbols.push(symbol_result?);
         }
 
+        hydrate_annotations_for_symbols(self, &mut symbols)?;
         debug!("Found {} symbols named '{}'", symbols.len(), name);
         Ok(symbols)
     }
@@ -128,9 +134,13 @@ impl SymbolDatabase {
                 .collect();
 
             let symbol_iter = stmt.query_map(&*params, |row| self.row_to_symbol(row))?;
-
+            let mut chunk_symbols = Vec::new();
             for symbol_result in symbol_iter {
-                let symbol = symbol_result?;
+                chunk_symbols.push(symbol_result?);
+            }
+
+            hydrate_annotations_for_symbols(self, &mut chunk_symbols)?;
+            for symbol in chunk_symbols {
                 result.entry(symbol.name.clone()).or_default().push(symbol);
             }
         }
@@ -179,6 +189,7 @@ impl SymbolDatabase {
             symbols.push(symbol_result?);
         }
 
+        hydrate_annotations_for_symbols(self, &mut symbols)?;
         debug!("Found {} symbols in file '{}'", symbols.len(), file_path);
         Ok(symbols)
     }

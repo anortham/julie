@@ -21,6 +21,35 @@ pub(crate) const SYMBOL_COLUMNS_LIGHTWEIGHT: &str = "id, name, kind, language, f
      start_line, start_col, end_line, end_col, start_byte, end_byte, \
      doc_comment, visibility, parent_id";
 
+pub(crate) const SYMBOL_UPSERT_SQL: &str = "INSERT INTO symbols
+     (id, name, kind, language, file_path, signature, start_line, start_col,
+      end_line, end_col, start_byte, end_byte, doc_comment, visibility, code_context,
+      parent_id, metadata, semantic_group, confidence, content_type)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)
+     ON CONFLICT(id) DO UPDATE SET
+      name = excluded.name,
+      kind = excluded.kind,
+      language = excluded.language,
+      file_path = excluded.file_path,
+      signature = excluded.signature,
+      start_line = excluded.start_line,
+      start_col = excluded.start_col,
+      end_line = excluded.end_line,
+      end_col = excluded.end_col,
+      start_byte = excluded.start_byte,
+      end_byte = excluded.end_byte,
+      doc_comment = excluded.doc_comment,
+      visibility = excluded.visibility,
+      code_context = excluded.code_context,
+      parent_id = excluded.parent_id,
+      metadata = excluded.metadata,
+      semantic_group = excluded.semantic_group,
+      confidence = excluded.confidence,
+      content_type = excluded.content_type,
+      file_hash = NULL,
+      last_indexed = 0,
+      reference_score = 0.0";
+
 impl SymbolDatabase {
     /// Get database statistics
     pub fn get_stats(&self) -> Result<DatabaseStats> {
