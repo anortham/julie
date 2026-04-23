@@ -35,3 +35,36 @@ important_patterns = [
 [embeddings]
 extra_kinds = []
 variable_ratio = 0.40  # decorated assignments, module-level vars
+
+[annotation_classes]
+entrypoint = [
+    "app.route",
+    "app.get",
+    "app.post",
+    "app.put",
+    "app.delete",
+    "app.patch",
+    "router.get",
+    "router.post",
+    "router.put",
+    "router.delete",
+    "router.patch",
+    "blueprint.route",
+]
+auth = [
+    "login_required",
+    "permission_required",
+    "user_passes_test",
+    "jwt_required",
+    "requires_auth",
+    "auth_required",
+    "require_auth",
+]
+auth_bypass = ["allow_anonymous"]
+scheduler = ["celery.task", "shared_task", "periodic_task"]
+test = ["pytest.mark.parametrize", "pytest.mark.asyncio", "pytest.mark.django_db"]
+fixture = ["pytest.fixture"]
+
+[early_warnings]
+review_markers = ["allow_anonymous"]
+schema_version = 1

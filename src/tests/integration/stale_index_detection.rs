@@ -24,8 +24,9 @@ use crate::tools::workspace::indexing::state::IndexingRepairReason;
 /// Previously flaky because `check_if_indexing_needed` compares `max_file_mtime > db_mtime`
 /// and filesystem timestamp resolution (ext4/APFS nanoseconds vs HFS+/FAT 1-2s) can leave
 /// file mtime and db mtime indistinguishable or inverted on coarse-grained filesystems.
-/// We now explicitly backdate the source file's mtime after indexing so the comparison
-/// has a deterministic >1s gap regardless of host filesystem resolution.
+/// We now explicitly set the source file's mtime to a fixed old timestamp after
+/// indexing so the comparison has a deterministic gap regardless of host
+/// filesystem resolution or integration-test load.
 #[tokio::test]
 #[serial_test::serial(embedding_env)]
 async fn test_fresh_index_no_reindex_needed() -> Result<()> {
@@ -47,18 +48,20 @@ async fn test_fresh_index_no_reindex_needed() -> Result<()> {
     let handler = create_test_handler(workspace_path).await?;
     index_workspace(&handler, workspace_path).await?;
 
-    // Seed mtime explicitly: backdate the source file 10s so db_mtime (written during
-    // indexing, ~now) is unambiguously newer. This removes dependence on sub-second
-    // filesystem clock resolution.
-    let backdated = SystemTime::now() - Duration::from_secs(10);
+    // Seed mtime explicitly to a fixed old timestamp so db_mtime is
+    // unambiguously newer even when indexing is slow under integration load.
+    let backdated = SystemTime::UNIX_EPOCH + Duration::from_secs(1);
     File::options()
         .write(true)
         .open(&test_file)?
         .set_modified(backdated)?;
 
     // Verify: No indexing needed (database is fresh)
-    let needs_indexing = crate::startup::check_if_indexing_needed(&handler).await?;
-    assert!(!needs_indexing, "Fresh index should not need re-indexing");
+    let repair_plan = crate::startup::plan_primary_workspace_repair(&handler).await?;
+    assert!(
+        repair_plan.is_none(),
+        "Fresh index should not need re-indexing; repair plan: {repair_plan:?}"
+    );
 
     Ok(())
 }
@@ -96,8 +99,9 @@ async fn test_fresh_index_with_extensionless_text_files_needs_no_reindex() -> Re
     let handler = create_test_handler(workspace_path).await?;
     index_workspace(&handler, workspace_path).await?;
 
-    // Backdate every file so `db_mtime > max(file_mtime)` regardless of FS clock resolution.
-    let backdated = SystemTime::now() - Duration::from_secs(10);
+    // Backdate every file so `db_mtime > max(file_mtime)` regardless of FS
+    // clock resolution or integration-test load.
+    let backdated = SystemTime::UNIX_EPOCH + Duration::from_secs(1);
     for path in [&rust_file, &dockerfile, &makefile] {
         File::options()
             .write(true)
@@ -105,10 +109,10 @@ async fn test_fresh_index_with_extensionless_text_files_needs_no_reindex() -> Re
             .set_modified(backdated)?;
     }
 
-    let needs_indexing = crate::startup::check_if_indexing_needed(&handler).await?;
+    let repair_plan = crate::startup::plan_primary_workspace_repair(&handler).await?;
     assert!(
-        !needs_indexing,
-        "Fresh index with Dockerfile + Makefile must not trigger re-indexing (scan/index asymmetry)"
+        repair_plan.is_none(),
+        "Fresh index with Dockerfile + Makefile must not trigger re-indexing (scan/index asymmetry); repair plan: {repair_plan:?}"
     );
 
     Ok(())

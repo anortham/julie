@@ -376,6 +376,7 @@ async fn test_project_detail_shows_workspace_state_without_reference_section() {
     assert!(html.contains(&format!("/projects/{workspace_id}/delete")));
     assert!(html.contains(&format!("/metrics?workspace={workspace_id}")));
     assert!(html.contains(&format!("/intelligence/{workspace_id}")));
+    assert!(html.contains(&format!("/signals/{workspace_id}")));
     assert!(
         !html.contains("Reference Workspaces"),
         "detail panel should no longer render workspace-pairing tags"

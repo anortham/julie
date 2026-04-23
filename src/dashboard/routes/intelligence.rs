@@ -201,7 +201,10 @@ pub fn format_duration_ms(ms: i64) -> String {
 /// through WorkspacePool, avoiding session side-effects (count increment,
 /// watcher attachment). Works for any registered workspace, even those
 /// without an active session.
-fn open_workspace_db(workspace_id: &str) -> Result<SymbolDatabase, StatusCode> {
+pub(crate) fn open_workspace_db(
+    state: &AppState,
+    workspace_id: &str,
+) -> Result<SymbolDatabase, StatusCode> {
     // Reject path traversal attempts (workspace IDs are alphanumeric + underscore)
     if workspace_id.contains('/')
         || workspace_id.contains('\\')
@@ -211,11 +214,25 @@ fn open_workspace_db(workspace_id: &str) -> Result<SymbolDatabase, StatusCode> {
         return Err(StatusCode::BAD_REQUEST);
     }
 
-    let db_path = dirs::home_dir()
-        .unwrap_or_default()
-        .join(".julie/indexes")
-        .join(workspace_id)
-        .join("db/symbols.db");
+    let has_workspace = state
+        .dashboard
+        .daemon_db()
+        .and_then(|db| db.get_workspace(workspace_id).ok().flatten())
+        .is_some();
+
+    if !has_workspace {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    let db_path = if let Some(pool) = state.dashboard.workspace_pool() {
+        pool.indexes_dir().join(workspace_id).join("db/symbols.db")
+    } else {
+        dirs::home_dir()
+            .unwrap_or_default()
+            .join(".julie/indexes")
+            .join(workspace_id)
+            .join("db/symbols.db")
+    };
 
     if !db_path.exists() {
         return Err(StatusCode::NOT_FOUND);
@@ -229,18 +246,7 @@ pub async fn index(
     State(state): State<AppState>,
     Path(workspace_id): Path<String>,
 ) -> Result<Html<String>, StatusCode> {
-    // Check workspace exists in daemon DB
-    let has_workspace = state
-        .dashboard
-        .daemon_db()
-        .and_then(|db| db.get_workspace(&workspace_id).ok().flatten())
-        .is_some();
-
-    if !has_workspace {
-        return Err(StatusCode::NOT_FOUND);
-    }
-
-    let db = open_workspace_db(&workspace_id)?;
+    let db = open_workspace_db(&state, &workspace_id)?;
 
     let (top_symbols, hotspots, stats, by_kind, lang_counts) = {
         let top_symbols = db.get_top_symbols_by_centrality(15).unwrap_or_default();
@@ -287,7 +293,7 @@ pub async fn story_cards(
     State(state): State<AppState>,
     Path(workspace_id): Path<String>,
 ) -> Result<Html<String>, StatusCode> {
-    let db = match open_workspace_db(&workspace_id) {
+    let db = match open_workspace_db(&state, &workspace_id) {
         Ok(db) => db,
         Err(_) => return Ok(Html(String::new())),
     };

@@ -39,3 +39,17 @@ important_patterns = [
 [embeddings]
 extra_kinds = ["constructor", "export"]  # 1713 exports in Zod
 variable_ratio = 0.50  # 50% of symbols are arrow function variables
+
+[annotation_classes]
+entrypoint = [
+    "controller",
+    "get",
+    "post",
+    "put",
+    "delete",
+    "patch",
+]
+auth = ["useguards"]
+
+[early_warnings]
+schema_version = 1

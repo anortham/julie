@@ -1,8 +1,8 @@
 //! SQL query engine and output formatting for metrics queries.
 //!
 //! Queries the symbols table with ORDER BY on analysis-derived fields
-//! (security_risk, change_risk, test_linkage, reference_score) stored
-//! in the metadata JSON blob and the reference_score column.
+//! (change_risk, test_linkage, reference_score) stored in the metadata JSON
+//! blob and the reference_score column.
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -22,8 +22,6 @@ pub struct MetricsResult {
     pub start_line: u32,
     pub kind: String,
     pub reference_score: f64,
-    pub security_risk_score: Option<f64>,
-    pub security_risk_label: Option<String>,
     pub change_risk_score: Option<f64>,
     pub change_risk_label: Option<String>,
     pub test_linkage_tier: Option<String>,
@@ -56,9 +54,6 @@ pub fn query_by_metrics(
     };
 
     let order_clause = match sort_by {
-        "security_risk" => {
-            format!("COALESCE(json_extract(metadata, '$.security_risk.score'), 0.0) {order_dir}")
-        }
         "change_risk" => {
             format!("COALESCE(json_extract(metadata, '$.change_risk.score'), 0.0) {order_dir}")
         }
@@ -66,7 +61,7 @@ pub fn query_by_metrics(
         "test_linkage" | "test_coverage" => {
             format!("{TEST_COUNT_SQL} {order_dir}")
         }
-        _ => format!("COALESCE(json_extract(metadata, '$.security_risk.score'), 0.0) {order_dir}"),
+        _ => format!("reference_score {order_dir}"),
     };
 
     // Build WHERE clauses
@@ -84,12 +79,9 @@ pub fn query_by_metrics(
         );
     }
 
-    // min_risk filter (applies to the sort_by field's risk label)
+    // min_risk filter applies to the remaining risk label stored in metadata.
     if let Some(min_risk) = min_risk {
-        let risk_path = match sort_by {
-            "change_risk" => "$.change_risk.label",
-            _ => "$.security_risk.label",
-        };
+        let risk_path = "$.change_risk.label";
         match min_risk.to_uppercase().as_str() {
             "HIGH" => {
                 conditions.push(format!("json_extract(metadata, '{risk_path}') = 'HIGH'"));
@@ -194,19 +186,6 @@ pub fn query_by_metrics(
             .as_deref()
             .and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok());
 
-        let security_risk_score = raw_metadata
-            .as_ref()
-            .and_then(|v| v.get("security_risk"))
-            .and_then(|v| v.get("score"))
-            .and_then(|v| v.as_f64());
-
-        let security_risk_label = raw_metadata
-            .as_ref()
-            .and_then(|v| v.get("security_risk"))
-            .and_then(|v| v.get("label"))
-            .and_then(|v| v.as_str())
-            .map(String::from);
-
         let change_risk_score = raw_metadata
             .as_ref()
             .and_then(|v| v.get("change_risk"))
@@ -238,8 +217,6 @@ pub fn query_by_metrics(
             start_line,
             kind,
             reference_score,
-            security_risk_score,
-            security_risk_label,
             change_risk_score,
             change_risk_label,
             test_linkage_tier,
@@ -273,11 +250,6 @@ pub fn format_metrics_output(results: &[MetricsResult], sort_by: &str, order: &s
     for (i, r) in results.iter().enumerate() {
         output.push_str(&format!("{}. {} [{}]\n", i + 1, r.name, r.kind));
         output.push_str(&format!("   {}:{}\n", r.file_path, r.start_line));
-
-        // Security risk
-        if let (Some(score), Some(label)) = (r.security_risk_score, &r.security_risk_label) {
-            output.push_str(&format!("   Security: {} ({:.2})\n", label, score));
-        }
 
         // Change risk
         if let (Some(score), Some(label)) = (r.change_risk_score, &r.change_risk_label) {

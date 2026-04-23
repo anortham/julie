@@ -24,6 +24,7 @@ impl SymbolDatabase {
         self.create_indexing_repairs_table()?;
         self.create_symbols_table()?;
         self.create_symbol_annotations_table()?;
+        self.create_early_warning_reports_table()?;
         self.create_identifiers_table()?; // Reference tracking
         self.create_types_table()?; // Type intelligence
         self.create_relationships_table()?;
@@ -216,6 +217,34 @@ impl SymbolDatabase {
         )?;
 
         debug!("Created symbol_annotations table and indexes");
+        Ok(())
+    }
+
+    pub(crate) fn create_early_warning_reports_table(&self) -> Result<()> {
+        self.conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS early_warning_reports (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                workspace_id TEXT NOT NULL,
+                canonical_revision INTEGER NOT NULL,
+                projection_revision INTEGER NOT NULL,
+                config_schema_version INTEGER NOT NULL,
+                file_pattern TEXT NOT NULL DEFAULT '',
+                generated_at INTEGER NOT NULL,
+                serialized_json TEXT NOT NULL
+            );
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_early_warning_reports_cache_key
+            ON early_warning_reports(
+                workspace_id,
+                canonical_revision,
+                projection_revision,
+                config_schema_version,
+                file_pattern
+            );
+            CREATE INDEX IF NOT EXISTS idx_early_warning_reports_workspace_generated
+            ON early_warning_reports(workspace_id, generated_at DESC);",
+        )?;
+
+        debug!("Created early_warning_reports table and indexes");
         Ok(())
     }
 

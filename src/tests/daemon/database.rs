@@ -310,14 +310,14 @@ mod tests {
             )
             .unwrap();
 
-        // Insert a symbol with HIGH security risk
+        // Insert a symbol with metadata used by snapshot aggregation
         symbols_db
             .conn
             .execute(
                 "INSERT INTO symbols \
                  (id, name, kind, file_path, start_line, end_line, start_col, end_col, language, metadata) \
                  VALUES ('s1', 'foo', 'Function', 'foo.rs', 1, 10, 0, 0, 'rust', \
-                 '{\"security_risk\":{\"label\":\"HIGH\",\"score\":0.9}}')",
+                 '{\"change_risk\":{\"label\":\"HIGH\",\"score\":0.9}}')",
                 [],
             )
             .unwrap();

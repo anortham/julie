@@ -1,0 +1,49 @@
+<section style="margin-top: 1.25rem;">
+  <h3 class="subtitle" style="margin-bottom: 0.65rem; font-size: 0.95rem; color: var(--julie-text);">Auth Coverage</h3>
+  <p style="color: var(--julie-text-muted); font-size: 0.82rem; margin-bottom: 0.65rem;">
+    Framework or middleware-based auth that is not expressed via annotations is not visible here.
+  </p>
+  {% if report.auth_coverage_candidates | length > 0 %}
+  <div style="overflow-x: auto;">
+    <table class="table is-fullwidth is-narrow" style="background: transparent; font-size: 0.82rem;">
+      <thead>
+        <tr>
+          <th style="color: var(--julie-text-muted);">Symbol</th>
+          <th style="color: var(--julie-text-muted);">File</th>
+          <th style="color: var(--julie-text-muted);">Status</th>
+          <th style="color: var(--julie-text-muted);">Entry Marker</th>
+          <th style="color: var(--julie-text-muted);">Evidence</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in report.auth_coverage_candidates %}
+        <tr>
+          <td>
+            <a href="/search?query={{ row.file_path }}:{{ row.start_line }}" class="mono" style="color: var(--julie-primary); font-weight: 600;">
+              {{ row.symbol_name }}
+            </a>
+            <br><span style="color: var(--julie-text-muted); font-size: 0.75rem;">{{ row.symbol_kind }} / {{ row.language }}</span>
+          </td>
+          <td>
+            <a href="/search?query={{ row.file_path }}:{{ row.start_line }}" class="mono" style="color: var(--julie-text); font-size: 0.78rem;">
+              {{ row.file_path }}:{{ row.start_line }}
+            </a>
+          </td>
+          <td style="color: var(--julie-text-muted);">No auth marker observed on this symbol or owner</td>
+          <td><span class="mono" style="color: var(--julie-text);">{{ row.annotation_key }}</span></td>
+          <td>
+            {% if row.raw_text %}
+              <span class="mono" style="color: var(--julie-text);">{{ row.raw_text }}</span>
+            {% else %}
+              <span class="mono" style="color: var(--julie-text);">{{ row.annotation }}</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <p style="color: var(--julie-text-muted); font-size: 0.85rem;">No auth coverage candidates.</p>
+  {% endif %}
+</section>

@@ -149,7 +149,7 @@ impl SymbolDatabase {
     /// Get all call identifiers grouped by containing_symbol_id.
     ///
     /// Returns a HashMap mapping symbol_id → Vec<callee_name>.
-    /// Used by security risk analysis for batch sink detection.
+    /// Used by analysis passes that need batched call names.
     pub fn get_call_identifiers_grouped(&self) -> Result<HashMap<String, Vec<String>>> {
         let mut stmt = self.conn.prepare(
             "SELECT containing_symbol_id, name FROM identifiers WHERE kind = 'call' AND containing_symbol_id IS NOT NULL"

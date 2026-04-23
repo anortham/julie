@@ -45,3 +45,17 @@ important_patterns = [
 [embeddings]
 extra_kinds = ["export"]
 variable_ratio = 0.50  # arrow functions, const exports
+
+[annotation_classes]
+entrypoint = [
+    "controller",
+    "get",
+    "post",
+    "put",
+    "delete",
+    "patch",
+]
+auth = ["useguards"]
+
+[early_warnings]
+schema_version = 1

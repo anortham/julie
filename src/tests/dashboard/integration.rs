@@ -14,7 +14,7 @@ use crate::daemon::workspace_pool::WorkspacePool;
 use crate::dashboard::state::DashboardState;
 use crate::dashboard::{DashboardConfig, create_router};
 use crate::database::types::FileInfo;
-use crate::extractors::{Symbol, SymbolKind};
+use crate::extractors::{AnnotationMarker, Symbol, SymbolKind};
 use crate::search::SearchProjection;
 use crate::tools::workspace::indexing::state::{
     IndexingOperation, IndexingRepairReason, IndexingStage,
@@ -99,6 +99,61 @@ fn make_symbol(id: &str, name: &str, file_path: &str) -> Symbol {
     }
 }
 
+fn make_file_with_language(path: &str, language: &str, content: &str) -> FileInfo {
+    FileInfo {
+        path: path.to_string(),
+        language: language.to_string(),
+        hash: format!("hash_{path}"),
+        size: content.len() as i64,
+        last_modified: 1000,
+        last_indexed: 0,
+        symbol_count: 1,
+        line_count: content.lines().count() as i32,
+        content: Some(content.to_string()),
+    }
+}
+
+fn make_marker(annotation: &str, annotation_key: &str, raw_text: &str) -> AnnotationMarker {
+    AnnotationMarker {
+        annotation: annotation.to_string(),
+        annotation_key: annotation_key.to_string(),
+        raw_text: Some(raw_text.to_string()),
+        carrier: None,
+    }
+}
+
+fn make_signal_symbol(
+    id: &str,
+    name: &str,
+    file_path: &str,
+    start_line: u32,
+    annotations: Vec<AnnotationMarker>,
+) -> Symbol {
+    Symbol {
+        id: id.to_string(),
+        name: name.to_string(),
+        kind: SymbolKind::Method,
+        language: "csharp".to_string(),
+        file_path: file_path.to_string(),
+        start_line,
+        start_column: 4,
+        end_line: start_line + 2,
+        end_column: 1,
+        start_byte: 20,
+        end_byte: 80,
+        signature: Some(format!("{name}()")),
+        doc_comment: None,
+        visibility: None,
+        parent_id: None,
+        metadata: None,
+        semantic_group: None,
+        confidence: Some(1.0),
+        code_context: Some(format!("{name}() {{}}")),
+        content_type: None,
+        annotations,
+    }
+}
+
 async fn state_with_projection_lag() -> (DashboardState, tempfile::TempDir, String) {
     let temp_dir = tempfile::tempdir().expect("tempdir");
     let workspace_root = temp_dir.path().join("workspace");
@@ -158,6 +213,89 @@ async fn state_with_projection_lag() -> (DashboardState, tempfile::TempDir, Stri
             &["src/lib.rs".to_string()],
             &[make_file("src/lib.rs", "fn second_symbol() {}\n")],
             &[make_symbol("sym_2", "second_symbol", "src/lib.rs")],
+            &[],
+            &[],
+            &[],
+            &workspace_id,
+        )
+        .unwrap();
+    }
+
+    (
+        DashboardState::new(
+            Arc::new(SessionTracker::new()),
+            Some(daemon_db),
+            Arc::new(AtomicBool::new(false)),
+            Arc::new(RwLock::new(LifecyclePhase::Ready)),
+            Instant::now(),
+            None,
+            Some(pool),
+            50,
+        ),
+        temp_dir,
+        workspace_id,
+    )
+}
+
+async fn state_with_signal_workspace() -> (DashboardState, tempfile::TempDir, String) {
+    let temp_dir = tempfile::tempdir().expect("tempdir");
+    let workspace_root = temp_dir.path().join("signals-workspace");
+    std::fs::create_dir_all(&workspace_root).expect("workspace dir");
+    let workspace_id =
+        generate_workspace_id(&workspace_root.to_string_lossy()).expect("workspace id");
+
+    let daemon_db =
+        Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).expect("open daemon.db"));
+    daemon_db
+        .upsert_workspace(&workspace_id, &workspace_root.to_string_lossy(), "ready")
+        .unwrap();
+    daemon_db
+        .update_workspace_stats(&workspace_id, 2, 1, None, None, None)
+        .unwrap();
+
+    let pool = Arc::new(WorkspacePool::new(
+        temp_dir.path().join("indexes"),
+        Some(Arc::clone(&daemon_db)),
+        None,
+        None,
+    ));
+    let workspace = pool
+        .get_or_init(&workspace_id, workspace_root.clone())
+        .await
+        .expect("workspace init");
+
+    {
+        let mut db = workspace
+            .db
+            .as_ref()
+            .expect("workspace db")
+            .lock()
+            .expect("db lock");
+        db.bulk_store_fresh_atomic(
+            &[make_file_with_language(
+                "Controllers/HealthController.cs",
+                "csharp",
+                "[HttpGet]\npublic string Health() => \"ok\";\n",
+            )],
+            &[
+                make_signal_symbol(
+                    "health-route",
+                    "Health",
+                    "Controllers/HealthController.cs",
+                    12,
+                    vec![make_marker("HttpGet", "httpget", "[HttpGet(\"/health\")]")],
+                ),
+                make_signal_symbol(
+                    "status-route",
+                    "Status",
+                    "Controllers/HealthController.cs",
+                    20,
+                    vec![
+                        make_marker("HttpGet", "httpget", "[HttpGet(\"/status\")]"),
+                        make_marker("AllowAnonymous", "allowanonymous", "[AllowAnonymous]"),
+                    ],
+                ),
+            ],
             &[],
             &[],
             &[],
@@ -255,6 +393,163 @@ async fn state_with_search_workspace(
         temp_dir,
         workspace_id,
     )
+}
+
+#[tokio::test]
+async fn test_signals_page_returns_200_for_indexed_workspace() {
+    let (state, _temp_dir, workspace_id) = state_with_signal_workspace().await;
+    let app = create_router(state, DashboardConfig::default()).unwrap();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri(format!("/signals/{workspace_id}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status().as_u16(), 200);
+}
+
+#[tokio::test]
+async fn test_signals_page_returns_404_for_unknown_workspace() {
+    let (state, _temp_dir, _workspace_id) = state_with_signal_workspace().await;
+    let app = create_router(state, DashboardConfig::default()).unwrap();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/signals/unknown-workspace")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status().as_u16(), 404);
+}
+
+#[tokio::test]
+async fn test_signals_summary_renders_counts_and_marker_evidence() {
+    let (state, _temp_dir, workspace_id) = state_with_signal_workspace().await;
+    let app = create_router(state, DashboardConfig::default()).unwrap();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri(format!("/signals/{workspace_id}/summary"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status().as_u16(), 200);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let html = String::from_utf8(body.to_vec()).unwrap();
+
+    assert!(html.contains("Observed Entry Points"));
+    assert!(html.contains("Auth Coverage"));
+    assert!(html.contains("Review Markers"));
+    assert!(
+        html.contains(
+            "<p class=\"stat-value\">2</p>\n      <p class=\"stat-label\">Observed Entry Points</p>"
+        ),
+        "{html}"
+    );
+    assert!(
+        html.contains(
+            "<p class=\"stat-value\">1</p>\n      <p class=\"stat-label\">Auth Coverage Candidates</p>"
+        ),
+        "{html}"
+    );
+    assert!(
+        html.contains(
+            "<p class=\"stat-value\">1</p>\n      <p class=\"stat-label\">Review Markers</p>"
+        ),
+        "{html}"
+    );
+    assert!(html.contains("No auth marker observed on this symbol or owner"));
+    assert!(
+        html.contains("Framework or middleware-based auth that is not expressed via annotations is not visible here.")
+    );
+    assert!(html.contains("Controllers&#x2F;HealthController.cs:12"));
+    assert!(html.contains("[HttpGet(&quot;&#x2F;health&quot;)]"));
+    assert!(html.contains("[AllowAnonymous]"));
+    assert!(!html.contains("Security Risk"));
+    assert!(!html.contains("HIGH"));
+}
+
+#[tokio::test]
+async fn test_signals_summary_empty_state_names_classified_markers() {
+    let (state, _temp_dir, workspace_id) =
+        state_with_search_workspace("src/lib.rs", "fn plain() {}\n", "plain").await;
+    let app = create_router(state, DashboardConfig::default()).unwrap();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri(format!("/signals/{workspace_id}/summary"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status().as_u16(), 200);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let html = String::from_utf8(body.to_vec()).unwrap();
+
+    assert!(html.contains("No classified annotation markers were found."));
+}
+
+#[tokio::test]
+async fn test_signals_refresh_requires_csrf_and_returns_summary() {
+    let (state, _temp_dir, workspace_id) = state_with_signal_workspace().await;
+    let csrf_token = state.action_csrf_token().to_string();
+    let app = create_router(state, DashboardConfig::default()).unwrap();
+
+    let forbidden = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/signals/{workspace_id}/refresh"))
+                .header("content-type", "application/x-www-form-urlencoded")
+                .body(Body::from("csrf_token=bad-token"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(forbidden.status().as_u16(), 403);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/signals/{workspace_id}/refresh"))
+                .header("content-type", "application/x-www-form-urlencoded")
+                .body(Body::from(format!("csrf_token={csrf_token}")))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status().as_u16(), 200);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let html = String::from_utf8(body.to_vec()).unwrap();
+
+    assert!(html.contains("Fresh report"));
+    assert!(html.contains("Observed Entry Points"));
+    assert!(html.contains("[AllowAnonymous]"));
 }
 
 #[tokio::test]

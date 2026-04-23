@@ -848,16 +848,16 @@ mod formatting_tests {
     #[test]
     fn test_compact_format_renders_test_quality_label() {
         let mut pivot = make_pivot(
-            "test_compute_security_risk",
-            "src/tests/analysis/security_risk_tests.rs",
+            "test_compute_change_risk_scores",
+            "src/tests/analysis/change_risk_tests.rs",
             10,
             2.0,
-            "fn test_compute_security_risk() { ... }",
+            "fn test_compute_change_risk_scores() { ... }",
         );
         pivot.test_quality_label = Some("thorough".to_string());
 
         let data = ContextData {
-            query: "test_compute_security_risk".to_string(),
+            query: "test_compute_change_risk_scores".to_string(),
             pivots: vec![pivot],
             neighbors: vec![],
             allocation: make_allocation(PivotMode::FullBody, NeighborMode::SignatureAndDoc),
@@ -875,16 +875,16 @@ mod formatting_tests {
     #[test]
     fn test_readable_format_renders_test_quality_label() {
         let mut pivot = make_pivot(
-            "test_compute_security_risk",
-            "src/tests/analysis/security_risk_tests.rs",
+            "test_compute_change_risk_scores",
+            "src/tests/analysis/change_risk_tests.rs",
             10,
             2.0,
-            "fn test_compute_security_risk() { ... }",
+            "fn test_compute_change_risk_scores() { ... }",
         );
         pivot.test_quality_label = Some("thorough".to_string());
 
         let data = ContextData {
-            query: "test_compute_security_risk".to_string(),
+            query: "test_compute_change_risk_scores".to_string(),
             pivots: vec![pivot],
             neighbors: vec![],
             allocation: make_allocation(PivotMode::FullBody, NeighborMode::SignatureAndDoc),
