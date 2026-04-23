@@ -3,7 +3,7 @@
 //! Each named subcommand is an ergonomic alias over the same underlying MCP tool
 //! structs. The generic `Tool` variant is the fallback for any tool by name.
 
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{Parser, ValueEnum};
 
 // ---------------------------------------------------------------------------
 // Output format shared across all tool commands
@@ -59,35 +59,6 @@ impl GlobalToolFlags {
             OutputFormat::Text
         }
     }
-}
-
-// ---------------------------------------------------------------------------
-// Tool subcommands
-// ---------------------------------------------------------------------------
-
-/// Tool commands exposed as top-level CLI subcommands.
-#[derive(Debug, Clone, Subcommand)]
-pub enum ToolCommand {
-    /// Search code, symbols, or file paths
-    Search(SearchArgs),
-
-    /// Find all references to a symbol
-    Refs(RefsArgs),
-
-    /// List symbols in a file
-    Symbols(SymbolsArgs),
-
-    /// Get token-budgeted context for a concept or task
-    Context(ContextArgs),
-
-    /// Analyze blast radius of changes
-    BlastRadius(BlastRadiusArgs),
-
-    /// Manage workspaces (index, list, stats, health, etc.)
-    Workspace(WorkspaceArgs),
-
-    /// Run any tool by name with JSON params (generic fallback)
-    Tool(GenericToolArgs),
 }
 
 // ---------------------------------------------------------------------------

@@ -6,11 +6,12 @@ use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberI
 
 use clap::Parser;
 use julie::cli::{Cli, Command, resolve_workspace_startup_hint};
+use julie::cli_tools::run_cli_tool;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
-    let startup_hint = resolve_workspace_startup_hint(cli.workspace);
+    let startup_hint = resolve_workspace_startup_hint(cli.workspace.clone());
 
     match cli.command {
         Some(Command::Daemon { port, no_dashboard }) => {
@@ -84,34 +85,27 @@ async fn main() -> anyhow::Result<()> {
             println!("Daemon stopped. Will auto-restart on next tool call.");
         }
 
-        // Tool commands (A2/A3 will wire execution logic)
-        Some(Command::Search(_)) => {
-            eprintln!("CLI tool execution not yet wired (see task A2/A3)");
-            std::process::exit(1);
+        // Tool commands: routed through the CLI execution core
+        Some(Command::Search(args)) => {
+            run_tool_command(&args, &cli.tool_flags, cli.workspace).await?;
         }
-        Some(Command::Refs(_)) => {
-            eprintln!("CLI tool execution not yet wired (see task A2/A3)");
-            std::process::exit(1);
+        Some(Command::Refs(args)) => {
+            run_tool_command(&args, &cli.tool_flags, cli.workspace).await?;
         }
-        Some(Command::Symbols(_)) => {
-            eprintln!("CLI tool execution not yet wired (see task A2/A3)");
-            std::process::exit(1);
+        Some(Command::Symbols(args)) => {
+            run_tool_command(&args, &cli.tool_flags, cli.workspace).await?;
         }
-        Some(Command::Context(_)) => {
-            eprintln!("CLI tool execution not yet wired (see task A2/A3)");
-            std::process::exit(1);
+        Some(Command::Context(args)) => {
+            run_tool_command(&args, &cli.tool_flags, cli.workspace).await?;
         }
-        Some(Command::BlastRadius(_)) => {
-            eprintln!("CLI tool execution not yet wired (see task A2/A3)");
-            std::process::exit(1);
+        Some(Command::BlastRadius(args)) => {
+            run_tool_command(&args, &cli.tool_flags, cli.workspace).await?;
         }
-        Some(Command::Workspace(_)) => {
-            eprintln!("CLI tool execution not yet wired (see task A2/A3)");
-            std::process::exit(1);
+        Some(Command::Workspace(args)) => {
+            run_tool_command(&args, &cli.tool_flags, cli.workspace).await?;
         }
-        Some(Command::Tool(_)) => {
-            eprintln!("CLI tool execution not yet wired (see task A2/A3)");
-            std::process::exit(1);
+        Some(Command::Tool(args)) => {
+            run_tool_command(&args, &cli.tool_flags, cli.workspace).await?;
         }
 
         None => {
@@ -121,4 +115,50 @@ async fn main() -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+/// Route a tool command through the CLI execution core.
+///
+/// This wraps `run_cli_tool`, handles the output, and exits with the
+/// appropriate status code. A4 will refine the output formatting.
+async fn run_tool_command(
+    command: &dyn julie::cli_tools::CliToolCommand,
+    flags: &julie::cli_tools::GlobalToolFlags,
+    cli_workspace: Option<std::path::PathBuf>,
+) -> anyhow::Result<()> {
+    let output = run_cli_tool(command, cli_workspace, flags.standalone).await?;
+
+    // A4 will add proper formatting (text, json, markdown).
+    // For now, dump the result JSON to stdout.
+    let formatted = if flags.effective_format() == julie::cli_tools::OutputFormat::Json {
+        serde_json::to_string_pretty(&output.result)?
+    } else {
+        // Extract text content from the CallToolResult structure
+        extract_text_content(&output.result)
+    };
+
+    println!("{}", formatted);
+
+    if output.is_error {
+        std::process::exit(1);
+    }
+
+    Ok(())
+}
+
+/// Extract text content from a serialized CallToolResult for plain-text display.
+/// A4 will replace this with proper formatting.
+fn extract_text_content(result: &serde_json::Value) -> String {
+    if let Some(content) = result.get("content").and_then(|c| c.as_array()) {
+        content
+            .iter()
+            .filter_map(|item| {
+                // CallToolResult content items have a "text" field
+                item.get("text").and_then(|t| t.as_str())
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    } else {
+        serde_json::to_string_pretty(result).unwrap_or_default()
+    }
 }
