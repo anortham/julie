@@ -5,6 +5,7 @@ use tempfile::TempDir;
 use crate::database::{FileInfo, SymbolDatabase};
 use crate::extractors::{AnnotationMarker, Symbol, SymbolKind};
 use crate::search::{SearchFilter, SearchIndex, SearchProjection, SymbolDocument};
+use crate::tools::search::text_search::definition_search_with_index_for_test;
 
 fn marker(annotation: &str, annotation_key: &str, raw_text: &str) -> AnnotationMarker {
     AnnotationMarker {
@@ -63,6 +64,11 @@ fn file_info(path: &str) -> FileInfo {
 }
 
 fn projected_index(symbols: &[Symbol]) -> (TempDir, TempDir, SearchIndex) {
+    let (db_dir, index_dir, _db, index) = projected_index_with_db(symbols);
+    (db_dir, index_dir, index)
+}
+
+fn projected_index_with_db(symbols: &[Symbol]) -> (TempDir, TempDir, SymbolDatabase, SearchIndex) {
     let db_dir = TempDir::new().unwrap();
     let mut db = SymbolDatabase::new(&db_dir.path().join("symbols.db")).unwrap();
 
@@ -82,7 +88,7 @@ fn projected_index(symbols: &[Symbol]) -> (TempDir, TempDir, SearchIndex) {
         .project_documents(&mut db, &index, &symbol_docs, &[], &[], Some(1))
         .unwrap();
 
-    (db_dir, index_dir, index)
+    (db_dir, index_dir, db, index)
 }
 
 fn result_names(index: &SearchIndex, query: &str) -> Vec<String> {
@@ -253,5 +259,50 @@ fn annotation_search_or_fallback_keeps_annotation_filter_required() {
             .map(|result| result.name)
             .collect::<Vec<_>>(),
         vec!["list_users"]
+    );
+}
+
+#[test]
+fn annotation_text_search_hydrates_hits_without_sqlite_prepend_pollution() {
+    let symbols = vec![
+        symbol(
+            "annotated",
+            "plain_handler",
+            SymbolKind::Function,
+            "src/routes.rs",
+            None,
+            vec![marker("Test", "test", "Test")],
+        ),
+        symbol(
+            "sqlite-rescue",
+            "Noise.@Test",
+            SymbolKind::Function,
+            "src/noise.rs",
+            None,
+            Vec::new(),
+        ),
+    ];
+    let (_db_dir, _index_dir, db, index) = projected_index_with_db(&symbols);
+
+    let (results, _relaxed, pre_trunc) = definition_search_with_index_for_test(
+        "@Test",
+        &SearchFilter::default(),
+        10,
+        &index,
+        Some(&db),
+    )
+    .unwrap();
+
+    assert_eq!(pre_trunc, 1);
+    assert_eq!(
+        results
+            .iter()
+            .map(|symbol| symbol.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["plain_handler"]
+    );
+    assert_eq!(
+        results[0].code_context.as_deref(),
+        Some("fn plain_handler() {}")
     );
 }

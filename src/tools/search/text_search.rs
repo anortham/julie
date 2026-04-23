@@ -338,7 +338,7 @@ fn definition_search_with_index(
             .into_iter()
             .map(tantivy_symbol_to_symbol)
             .collect();
-        if let Some(db) = db.filter(|_| !has_annotation_filters) {
+        if let Some(db) = db {
             enrich_symbols_from_db(&mut symbols, db);
         }
 
@@ -351,7 +351,7 @@ fn definition_search_with_index(
         // Tantivy pipeline missed or buried. This handles qualified names like
         // "Phoenix.Router" when an agent searches just "Router".
         // Runs AFTER truncation so these are guaranteed to appear in the output.
-        if let Some(db) = db {
+        if let Some(db) = db.filter(|_| !has_annotation_filters) {
             match db.find_definitions_by_name_component(query, filter.language.as_deref(), 5) {
                 Err(e) => {
                     tracing::warn!(
@@ -415,6 +415,17 @@ fn definition_search_with_index(
 
         Ok((symbols, relaxed, pre_trunc))
     }
+}
+
+#[cfg(test)]
+pub(crate) fn definition_search_with_index_for_test(
+    query: &str,
+    filter: &SearchFilter,
+    limit: usize,
+    index: &crate::search::index::SearchIndex,
+    db: Option<&crate::database::SymbolDatabase>,
+) -> Result<(Vec<Symbol>, bool, usize)> {
+    definition_search_with_index(query, filter, limit, index, db, None)
 }
 
 /// Run a content search with post-verification against actual file content.
