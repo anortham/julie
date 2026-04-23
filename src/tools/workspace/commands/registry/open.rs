@@ -37,7 +37,7 @@ impl ManageWorkspaceTool {
         let Some(db) = handler.daemon_db.as_ref() else {
             let message =
                 "Workspace open requires daemon mode. Start the daemon with `julie daemon`.";
-            return Ok(CallToolResult::text_content(vec![Content::text(message)]));
+            return Ok(CallToolResult::error(vec![Content::text(message)]));
         };
 
         // A primary workspace swap is already in progress; refuse to mutate

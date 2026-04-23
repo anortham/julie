@@ -9,6 +9,7 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use serde_json::Value;
+use thiserror::Error;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 use crate::adapter::{ReadyOutcome, build_ipc_header, read_daemon_ready};
@@ -19,6 +20,26 @@ use crate::workspace::startup_hint::WorkspaceStartupHint;
 /// Timeout for the daemon's READY handshake signal during CLI invocations.
 /// Shorter than the adapter's 30s since CLI users expect snappy responses.
 const CLI_READY_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Errors from daemon tool calls. Distinguishes transport failures (where
+/// standalone fallback is appropriate) from tool-level errors (where the
+/// daemon processed the request and returned an error response).
+#[derive(Debug, Error)]
+pub enum DaemonCallError {
+    /// Transport-level failure: connection refused, handshake timeout, I/O
+    /// error, etc. Standalone fallback is appropriate.
+    #[error("{0}")]
+    Transport(#[from] anyhow::Error),
+
+    /// The daemon received and processed the request but returned a JSON-RPC
+    /// error response. Fallback would be wrong; surface this to the user.
+    #[error("Daemon tool error: {message}")]
+    ToolError {
+        message: String,
+        /// The raw JSON-RPC error object for structured access.
+        raw: Value,
+    },
+}
 
 /// A single-shot daemon client for CLI tool calls.
 ///
@@ -72,7 +93,16 @@ impl DaemonClient {
     ///
     /// The request follows MCP's JSON-RPC format. The daemon's session handler
     /// processes it and returns a `tools/call` response with `CallToolResult`.
-    pub async fn call_tool(&mut self, tool_name: &str, arguments: Value) -> Result<Value> {
+    ///
+    /// Returns `DaemonCallError::ToolError` when the daemon processes the
+    /// request but returns a JSON-RPC error (invalid params, workspace not
+    /// found, etc.). Returns `DaemonCallError::Transport` for I/O and
+    /// protocol-level failures where standalone fallback is appropriate.
+    pub async fn call_tool(
+        &mut self,
+        tool_name: &str,
+        arguments: Value,
+    ) -> Result<Value, DaemonCallError> {
         let request = serde_json::json!({
             "jsonrpc": "2.0",
             "id": 1,
@@ -102,7 +132,9 @@ impl DaemonClient {
             .context("Failed to read tool call response from daemon")?;
 
         if response_line.is_empty() {
-            anyhow::bail!("Daemon closed connection without sending a response");
+            return Err(DaemonCallError::Transport(anyhow::anyhow!(
+                "Daemon closed connection without sending a response"
+            )));
         }
 
         let response: Value = serde_json::from_str(&response_line).with_context(|| {
@@ -112,15 +144,25 @@ impl DaemonClient {
             )
         })?;
 
-        // Extract the result or error from the JSON-RPC envelope
+        // Extract the result or error from the JSON-RPC envelope.
+        // A JSON-RPC error means the daemon processed the request and
+        // rejected it (invalid params, tool error, etc.). This is NOT a
+        // transport failure, so standalone fallback would be wrong.
         if let Some(error) = response.get("error") {
-            anyhow::bail!("Daemon returned error: {}", error);
+            let message = error
+                .get("message")
+                .and_then(|m| m.as_str())
+                .unwrap_or("unknown error")
+                .to_string();
+            return Err(DaemonCallError::ToolError {
+                message,
+                raw: error.clone(),
+            });
         }
 
-        response
-            .get("result")
-            .cloned()
-            .ok_or_else(|| anyhow::anyhow!("Daemon response missing 'result' field"))
+        response.get("result").cloned().ok_or_else(|| {
+            DaemonCallError::Transport(anyhow::anyhow!("Daemon response missing 'result' field"))
+        })
     }
 }
 

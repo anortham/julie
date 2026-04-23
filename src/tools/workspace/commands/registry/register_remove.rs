@@ -20,7 +20,7 @@ impl ManageWorkspaceTool {
     ) -> Result<CallToolResult> {
         let Some(db) = handler.daemon_db.as_ref() else {
             let message = "Workspace registration requires daemon mode. Start the daemon with `julie daemon`.";
-            return Ok(CallToolResult::text_content(vec![Content::text(message)]));
+            return Ok(CallToolResult::error(vec![Content::text(message)]));
         };
 
         if let Err(error) = prune_missing_workspaces(
@@ -198,6 +198,6 @@ impl ManageWorkspaceTool {
         // Stdio mode: workspace registry requires daemon mode
         let message =
             "Workspace removal requires daemon mode. Start the daemon with `julie daemon`.";
-        Ok(CallToolResult::text_content(vec![Content::text(message)]))
+        Ok(CallToolResult::error(vec![Content::text(message)]))
     }
 }

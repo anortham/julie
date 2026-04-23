@@ -119,14 +119,6 @@ pub struct RefsArgs {
     #[arg(short = 'k', long)]
     pub kind: Option<String>,
 
-    /// Filter references to a specific file path
-    #[arg(short = 'f', long)]
-    pub file_path: Option<String>,
-
-    /// Filter references by file pattern (glob syntax)
-    #[arg(short = 'p', long)]
-    pub file_pattern: Option<String>,
-
     /// Maximum references (default: 10)
     #[arg(short = 'n', long, default_value = "10")]
     pub limit: u32,

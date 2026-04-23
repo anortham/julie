@@ -219,7 +219,7 @@ impl ManageWorkspaceTool {
                 Ok(CallToolResult::text_content(vec![Content::text(message)]))
             }
             RefreshWorkspaceOutcome::Failure(message) => {
-                Ok(CallToolResult::text_content(vec![Content::text(message)]))
+                Ok(CallToolResult::error(vec![Content::text(message)]))
             }
         }
     }
@@ -315,6 +315,6 @@ impl ManageWorkspaceTool {
 
         // Stdio mode: workspace statistics require daemon mode
         let message = "No workspace statistics available. Start the daemon with `julie daemon`.";
-        Ok(CallToolResult::text_content(vec![Content::text(message)]))
+        Ok(CallToolResult::error(vec![Content::text(message)]))
     }
 }

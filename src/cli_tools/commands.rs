@@ -86,12 +86,6 @@ impl CliToolCommand for RefsArgs {
         if let Some(ref kind) = self.kind {
             args["reference_kind"] = Value::String(kind.clone());
         }
-        if let Some(ref path) = self.file_path {
-            args["file_path"] = Value::String(path.clone());
-        }
-        if let Some(ref pattern) = self.file_pattern {
-            args["file_pattern"] = Value::String(pattern.clone());
-        }
 
         Ok(args)
     }
@@ -99,9 +93,6 @@ impl CliToolCommand for RefsArgs {
     async fn call_standalone(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
         use crate::tools::FastRefsTool;
 
-        // Note: file_path and file_pattern from CLI args are not supported by
-        // FastRefsTool (they exist on RefsArgs for the daemon JSON path but
-        // FastRefsTool has no matching fields). Standalone uses the struct as-is.
         let tool = FastRefsTool {
             symbol: self.symbol.clone(),
             include_definition: true,
@@ -219,12 +210,54 @@ impl CliToolCommand for BlastRadiusArgs {
     fn to_tool_args(&self) -> Result<Value> {
         let mut args = serde_json::json!({});
 
+        // Resolve --rev to file paths via git, since BlastRadiusTool's
+        // from_revision/to_revision are internal database revision IDs,
+        // not git rev strings.
+        let mut file_paths: Vec<String> = self.files.clone().unwrap_or_default();
         if let Some(ref rev) = self.rev {
-            args["rev"] = Value::String(rev.clone());
+            let output = std::process::Command::new("git")
+                .args(["diff", "--name-only", rev])
+                .output();
+
+            match output {
+                Ok(o) if o.status.success() => {
+                    let stdout = String::from_utf8_lossy(&o.stdout);
+                    let rev_files: Vec<String> = stdout
+                        .lines()
+                        .filter(|l| !l.is_empty())
+                        .map(String::from)
+                        .collect();
+                    if rev_files.is_empty() {
+                        anyhow::bail!(
+                            "No changed files found for revision '{}'. \
+                             Verify the revision exists and has changes.",
+                            rev
+                        );
+                    }
+                    file_paths.extend(rev_files);
+                }
+                Ok(o) => {
+                    let stderr = String::from_utf8_lossy(&o.stderr);
+                    anyhow::bail!("git diff --name-only {} failed: {}", rev, stderr.trim());
+                }
+                Err(e) => {
+                    anyhow::bail!(
+                        "Failed to run git to resolve --rev '{}': {}. \
+                         Use --files to specify file paths directly.",
+                        rev,
+                        e
+                    );
+                }
+            }
         }
-        if let Some(ref files) = self.files {
-            args["file_paths"] =
-                Value::Array(files.iter().map(|f| Value::String(f.clone())).collect());
+
+        if !file_paths.is_empty() {
+            args["file_paths"] = Value::Array(
+                file_paths
+                    .iter()
+                    .map(|f| Value::String(f.clone()))
+                    .collect(),
+            );
         }
         if let Some(ref symbols) = self.symbols {
             args["symbol_ids"] =
@@ -240,12 +273,82 @@ impl CliToolCommand for BlastRadiusArgs {
     async fn call_standalone(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
         use crate::tools::impact::BlastRadiusTool;
 
-        // Note: BlastRadiusTool uses from_revision/to_revision (database
-        // revision IDs), not git rev strings. The --rev CLI flag is
-        // aspirational for daemon mode; standalone maps files/symbols directly.
+        // Resolve --rev to file paths via `git diff --name-only <rev>`.
+        // BlastRadiusTool uses from_revision/to_revision (internal database
+        // revision IDs), not git rev strings, so we convert the rev to
+        // changed file paths instead.
+        let mut file_paths = self.files.clone().unwrap_or_default();
+        if let Some(ref rev) = self.rev {
+            let output = std::process::Command::new("git")
+                .args(["diff", "--name-only", rev])
+                .output();
+
+            match output {
+                Ok(o) if o.status.success() => {
+                    let stdout = String::from_utf8_lossy(&o.stdout);
+                    let rev_files: Vec<String> = stdout
+                        .lines()
+                        .filter(|l| !l.is_empty())
+                        .map(String::from)
+                        .collect();
+                    if rev_files.is_empty() {
+                        anyhow::bail!(
+                            "No changed files found for revision '{}'. \
+                             Verify the revision exists and has changes.",
+                            rev
+                        );
+                    }
+                    file_paths.extend(rev_files);
+                }
+                Ok(o) => {
+                    let stderr = String::from_utf8_lossy(&o.stderr);
+                    anyhow::bail!("git diff --name-only {} failed: {}", rev, stderr.trim());
+                }
+                Err(e) => {
+                    anyhow::bail!(
+                        "Failed to run git to resolve --rev '{}': {}. \
+                         Use --files to specify file paths directly.",
+                        rev,
+                        e
+                    );
+                }
+            }
+        }
+
+        // Validate --symbols: BlastRadiusTool expects opaque symbol IDs (from
+        // the database), not human-readable names. Provide a clear error
+        // message directing users to --files or the tool subcommand.
+        if let Some(ref symbols) = self.symbols {
+            // Symbol IDs are numeric or UUID-like strings. If the user passed
+            // something that looks like a human-readable name (contains
+            // uppercase letters, colons, or is a common identifier pattern),
+            // warn them and suggest alternatives.
+            let looks_like_name = symbols.iter().any(|s| {
+                // Real symbol IDs are hex UUIDs; names have mixed case,
+                // underscores in identifier positions, etc.
+                s.contains("::")
+                    || s.chars().any(|c| c.is_uppercase())
+                    || s.chars().all(|c| c.is_alphabetic() || c == '_')
+            });
+
+            if looks_like_name {
+                anyhow::bail!(
+                    "The --symbols flag expects internal symbol IDs, not human-readable names.\n\
+                     Received: {}\n\n\
+                     To analyze by symbol name, use:\n  \
+                     julie-server search \"{}\" --target definitions\n\
+                     to find the symbol, then use --files with the file path instead.\n\n\
+                     To analyze by file path:\n  \
+                     julie-server blast-radius --files src/path/to/file.rs",
+                    symbols.join(", "),
+                    symbols.first().map(|s| s.as_str()).unwrap_or("SymbolName"),
+                );
+            }
+        }
+
         let tool = BlastRadiusTool {
             symbol_ids: self.symbols.clone().unwrap_or_default(),
-            file_paths: self.files.clone().unwrap_or_default(),
+            file_paths,
             from_revision: None,
             to_revision: None,
             max_depth: 2, // matches default_max_depth() in impact/mod.rs

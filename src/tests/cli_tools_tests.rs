@@ -82,29 +82,14 @@ fn test_refs_defaults() {
     let args = RefsArgs::parse_from(["refs", "Command"]);
     assert_eq!(args.symbol, "Command");
     assert!(args.kind.is_none());
-    assert!(args.file_path.is_none());
-    assert!(args.file_pattern.is_none());
     assert_eq!(args.limit, 10);
 }
 
 #[test]
 fn test_refs_all_flags() {
-    let args = RefsArgs::parse_from([
-        "refs",
-        "FastSearchTool",
-        "--kind",
-        "call",
-        "--file-path",
-        "src/handler.rs",
-        "--file-pattern",
-        "src/tools/**",
-        "--limit",
-        "25",
-    ]);
+    let args = RefsArgs::parse_from(["refs", "FastSearchTool", "--kind", "call", "--limit", "25"]);
     assert_eq!(args.symbol, "FastSearchTool");
     assert_eq!(args.kind.as_deref(), Some("call"));
-    assert_eq!(args.file_path.as_deref(), Some("src/handler.rs"));
-    assert_eq!(args.file_pattern.as_deref(), Some("src/tools/**"));
     assert_eq!(args.limit, 25);
 }
 

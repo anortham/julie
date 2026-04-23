@@ -36,7 +36,7 @@ use crate::cli::resolve_workspace_root;
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::CallToolResult;
 
-use self::daemon::DaemonClient;
+use self::daemon::{DaemonCallError, DaemonClient};
 
 // ---------------------------------------------------------------------------
 // Execution mode tracking
@@ -167,7 +167,11 @@ pub async fn run_cli_tool(
 /// Execute a tool via daemon IPC.
 ///
 /// Ensures the daemon is running, connects, sends the tool call, and returns
-/// the result.
+/// the result. Only transport-level failures (connection refused, timeout,
+/// I/O errors) are returned as `Err` to allow standalone fallback. Tool-level
+/// errors from the daemon (invalid params, workspace not found) are surfaced
+/// as `Ok((value, true))` so the caller exits with the error instead of
+/// silently retrying in standalone mode.
 async fn run_via_daemon(
     command: &dyn CliToolCommand,
     cli_workspace: Option<PathBuf>,
@@ -180,17 +184,37 @@ async fn run_via_daemon(
     let startup_hint = build_cli_startup_hint(cli_workspace);
     let mut client = DaemonClient::connect(&startup_hint).await?;
 
-    let result = client
-        .call_tool(tool_name, arguments)
-        .await
-        .context("Tool call via daemon failed")?;
-
-    let is_error = result
-        .get("isError")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-
-    Ok((result, is_error))
+    match client.call_tool(tool_name, arguments).await {
+        Ok(result) => {
+            let is_error = result
+                .get("isError")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            Ok((result, is_error))
+        }
+        Err(DaemonCallError::ToolError { message, raw }) => {
+            // The daemon processed the request and returned an error.
+            // Surface it as a successful daemon call with is_error=true so
+            // the CLI prints the error and exits 1 (no standalone fallback).
+            let error_detail = raw
+                .get("data")
+                .map(|d| format!("\n{}", d))
+                .unwrap_or_default();
+            let error_value = serde_json::json!({
+                "content": [{
+                    "type": "text",
+                    "text": format!("{}{}", message, error_detail),
+                }],
+                "isError": true,
+            });
+            Ok((error_value, true))
+        }
+        Err(DaemonCallError::Transport(e)) => {
+            // Transport failure: connection refused, handshake timeout, etc.
+            // The caller should fall back to standalone mode.
+            Err(e.context("Tool call via daemon failed"))
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

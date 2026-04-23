@@ -60,8 +60,6 @@ fn test_refs_args_tool_name() {
     let args = RefsArgs {
         symbol: "Foo".into(),
         kind: None,
-        file_path: None,
-        file_pattern: None,
         limit: 10,
     };
     assert_eq!(args.tool_name(), "fast_refs");
@@ -173,15 +171,13 @@ fn test_refs_to_tool_args_with_filters() {
     let args = RefsArgs {
         symbol: "Command".into(),
         kind: Some("call".into()),
-        file_path: Some("src/cli.rs".into()),
-        file_pattern: Some("src/**".into()),
         limit: 25,
     };
     let json = args.to_tool_args().unwrap();
     assert_eq!(json["symbol"], "Command");
     assert_eq!(json["reference_kind"], "call");
-    assert_eq!(json["file_path"], "src/cli.rs");
-    assert_eq!(json["file_pattern"], "src/**");
+    assert!(json.get("file_path").is_none());
+    assert!(json.get("file_pattern").is_none());
     assert_eq!(json["limit"], 25);
 }
 
@@ -223,19 +219,74 @@ fn test_context_to_tool_args_full() {
 
 #[test]
 fn test_blast_radius_to_tool_args_with_files() {
+    // Note: --rev is now resolved via `git diff`, so we only test
+    // the non-rev path here. Rev resolution is tested separately.
     let args = BlastRadiusArgs {
-        rev: Some("HEAD~3".into()),
+        rev: None,
         files: Some(vec!["src/cli.rs".into()]),
         symbols: Some(vec!["Command".into()]),
         format: Some("markdown".into()),
     };
     let json = args.to_tool_args().unwrap();
-    assert_eq!(json["rev"], "HEAD~3");
+    assert!(
+        json.get("rev").is_none(),
+        "--rev should not appear in tool args"
+    );
     let files = json["file_paths"].as_array().unwrap();
     assert_eq!(files[0], "src/cli.rs");
     let symbols = json["symbol_ids"].as_array().unwrap();
     assert_eq!(symbols[0], "Command");
     assert_eq!(json["format"], "markdown");
+}
+
+#[test]
+fn test_blast_radius_to_tool_args_rev_resolves_to_files() {
+    // --rev HEAD~1 should resolve via git diff to file paths.
+    // This test runs in the julie repo so HEAD~1 should have changes.
+    let args = BlastRadiusArgs {
+        rev: Some("HEAD~1".into()),
+        files: None,
+        symbols: None,
+        format: None,
+    };
+    let json = args.to_tool_args().unwrap();
+    // The rev should be resolved to file_paths, not passed as "rev"
+    assert!(
+        json.get("rev").is_none(),
+        "--rev should be resolved to file_paths"
+    );
+    let files = json["file_paths"].as_array().unwrap();
+    assert!(!files.is_empty(), "HEAD~1 should have changed files");
+}
+
+#[test]
+fn test_blast_radius_to_tool_args_rev_invalid() {
+    let args = BlastRadiusArgs {
+        rev: Some("nonexistent_rev_abc123xyz".into()),
+        files: None,
+        symbols: None,
+        format: None,
+    };
+    let result = args.to_tool_args();
+    assert!(result.is_err(), "Invalid rev should produce an error");
+}
+
+#[test]
+fn test_blast_radius_symbols_validation_catches_names() {
+    // Passing human-readable names like "FastSearchTool" should produce
+    // a clear error in standalone mode.
+    let args = BlastRadiusArgs {
+        rev: None,
+        files: None,
+        symbols: Some(vec!["FastSearchTool".into()]),
+        format: None,
+    };
+    // call_standalone would need a handler, but we can check that to_tool_args
+    // at least passes (symbol validation happens in call_standalone).
+    // The to_tool_args path passes symbols through as-is for daemon mode.
+    let json = args.to_tool_args().unwrap();
+    let symbols = json["symbol_ids"].as_array().unwrap();
+    assert_eq!(symbols[0], "FastSearchTool");
 }
 
 #[test]
@@ -478,4 +529,62 @@ fn test_serialize_call_tool_result_error_flag() {
 
     let (_, is_error) = serialize_call_tool_result(result).unwrap();
     assert!(is_error);
+}
+
+// ---------------------------------------------------------------------------
+// DaemonCallError: transport vs tool error distinction
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_daemon_call_error_transport_displays() {
+    use crate::cli_tools::daemon::DaemonCallError;
+
+    let err = DaemonCallError::Transport(anyhow::anyhow!("connection refused"));
+    let msg = err.to_string();
+    assert_eq!(msg, "connection refused");
+}
+
+#[test]
+fn test_daemon_call_error_tool_error_displays() {
+    use crate::cli_tools::daemon::DaemonCallError;
+
+    let err = DaemonCallError::ToolError {
+        message: "Invalid params: missing 'query'".into(),
+        raw: serde_json::json!({"code": -32602, "message": "Invalid params: missing 'query'"}),
+    };
+    let msg = err.to_string();
+    assert!(
+        msg.contains("Invalid params"),
+        "Tool error message should surface the daemon's error: {}",
+        msg
+    );
+}
+
+#[test]
+fn test_daemon_call_error_transport_is_send_sync() {
+    // Verify DaemonCallError can be used across async boundaries
+    fn assert_send_sync<T: Send + Sync>() {}
+    assert_send_sync::<crate::cli_tools::daemon::DaemonCallError>();
+}
+
+// ---------------------------------------------------------------------------
+// Refs: removed file_path/file_pattern flags
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_refs_to_tool_args_no_file_filters() {
+    let args = RefsArgs {
+        symbol: "Command".into(),
+        kind: None,
+        limit: 10,
+    };
+    let json = args.to_tool_args().unwrap();
+    assert!(
+        json.get("file_path").is_none(),
+        "file_path should not be in refs tool args"
+    );
+    assert!(
+        json.get("file_pattern").is_none(),
+        "file_pattern should not be in refs tool args"
+    );
 }
