@@ -155,6 +155,59 @@ function Set-CustomProperty {
                     .contains("[Parameter(Mandatory=$true)]")
             );
         }
+
+        #[test]
+        fn test_powershell_attributes_persist_without_type_brackets() {
+            let powershell_code = r#"
+function Invoke-Thing {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$Name,
+
+        [ValidateRange(1, 10)]
+        [int]$Count
+    )
+}
+"#;
+
+            let (mut extractor, tree) = create_extractor_and_parse(powershell_code);
+            let symbols = extractor.extract_symbols(&tree);
+
+            let function = symbols
+                .iter()
+                .find(|s| s.name == "Invoke-Thing" && s.kind == SymbolKind::Function)
+                .expect("Should find attributed function");
+            let function_keys = function
+                .annotations
+                .iter()
+                .map(|annotation| annotation.annotation_key.as_str())
+                .collect::<Vec<_>>();
+            assert_eq!(function_keys, vec!["cmdletbinding", "outputtype"]);
+
+            let name_param = symbols
+                .iter()
+                .find(|s| s.name == "Name" && s.parent_id.as_ref() == Some(&function.id))
+                .expect("Should find Name parameter");
+            let name_param_keys = name_param
+                .annotations
+                .iter()
+                .map(|annotation| annotation.annotation_key.as_str())
+                .collect::<Vec<_>>();
+            assert_eq!(name_param_keys, vec!["parameter"]);
+
+            let count_param = symbols
+                .iter()
+                .find(|s| s.name == "Count" && s.parent_id.as_ref() == Some(&function.id))
+                .expect("Should find Count parameter");
+            let count_param_keys = count_param
+                .annotations
+                .iter()
+                .map(|annotation| annotation.annotation_key.as_str())
+                .collect::<Vec<_>>();
+            assert_eq!(count_param_keys, vec!["validaterange"]);
+        }
     }
 
     mod variables_and_automatic_variables {

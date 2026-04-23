@@ -3,7 +3,10 @@
 /// Handles @type, @typep, @opaque, @callback, @spec, @behaviour, @moduledoc, @doc.
 /// In tree-sitter-elixir, attributes parse as `unary_operator` with `@` operator.
 use super::ElixirExtractor;
-use crate::base::{Symbol, SymbolKind, SymbolOptions, Visibility, find_child_by_type};
+use crate::base::{
+    BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility, find_child_by_type,
+    normalize_annotations,
+};
 use serde_json::Value;
 use std::collections::HashMap;
 use tree_sitter::Node;
@@ -78,6 +81,7 @@ fn extract_type_attribute(
     };
 
     let signature = format!("@{} {}", attr_name, extractor.base.get_node_text(call_node));
+    let annotations = normalize_annotations(&[extractor.base.get_node_text(attr_node)], "elixir");
 
     Some(extractor.base.create_symbol(
         attr_node,
@@ -89,7 +93,7 @@ fn extract_type_attribute(
             parent_id: parent_id.map(String::from),
             metadata: None,
             doc_comment: None,
-            annotations: Vec::new(),
+            annotations,
         },
     ))
 }
@@ -114,6 +118,7 @@ fn extract_callback_attribute(
     }
 
     let signature = format!("@callback {}", extractor.base.get_node_text(call_node));
+    let annotations = normalize_annotations(&[extractor.base.get_node_text(attr_node)], "elixir");
 
     let mut metadata = HashMap::new();
     metadata.insert("callback".to_string(), Value::Bool(true));
@@ -128,7 +133,7 @@ fn extract_callback_attribute(
             parent_id: parent_id.map(String::from),
             metadata: Some(metadata),
             doc_comment: None,
-            annotations: Vec::new(),
+            annotations,
         },
     ))
 }
@@ -168,6 +173,8 @@ fn extract_behaviour_attribute(
         if child.kind() == "alias" {
             let behaviour_name = extractor.base.get_node_text(&child);
             let signature = format!("@behaviour {}", behaviour_name);
+            let annotations =
+                normalize_annotations(&[extractor.base.get_node_text(attr_node)], "elixir");
             return Some(extractor.base.create_symbol(
                 attr_node,
                 behaviour_name,
@@ -178,10 +185,74 @@ fn extract_behaviour_attribute(
                     parent_id: parent_id.map(String::from),
                     metadata: None,
                     doc_comment: None,
-                    annotations: Vec::new(),
+                    annotations,
                 },
             ));
         }
     }
     None
+}
+
+pub(super) fn collect_preceding_annotations(
+    base: &BaseExtractor,
+    node: &Node,
+    allowed_names: &[&str],
+) -> Vec<String> {
+    let mut annotations = Vec::new();
+    let mut current = node.prev_sibling();
+
+    while let Some(sibling) = current {
+        let text = base.get_node_text(&sibling);
+        let Some(name) = annotation_name_from_text(&text) else {
+            break;
+        };
+        if !allowed_names.contains(&name.as_str()) {
+            break;
+        }
+
+        annotations.push(text);
+        current = sibling.prev_sibling();
+    }
+
+    annotations.reverse();
+    annotations
+}
+
+pub(super) fn collect_module_annotations(base: &BaseExtractor, node: &Node) -> Vec<String> {
+    base.get_node_text(node)
+        .lines()
+        .map(str::trim)
+        .filter(|line| {
+            annotation_name_from_text(line)
+                .map(|name| {
+                    matches!(
+                        name.as_str(),
+                        "moduledoc"
+                            | "behaviour"
+                            | "behavior"
+                            | "derive"
+                            | "external_resource"
+                            | "before_compile"
+                            | "after_compile"
+                    )
+                })
+                .unwrap_or(false)
+        })
+        .map(ToString::to_string)
+        .collect()
+}
+
+fn annotation_name_from_text(text: &str) -> Option<String> {
+    let text = text.trim().strip_prefix('@')?.trim();
+    let end = text
+        .char_indices()
+        .find(|(_, ch)| ch.is_whitespace() || *ch == '(')
+        .map(|(index, _)| index)
+        .unwrap_or(text.len());
+    let name = text[..end].trim();
+    if name.is_empty() {
+        None
+    } else {
+        Some(name.to_ascii_lowercase())
+    }
 }

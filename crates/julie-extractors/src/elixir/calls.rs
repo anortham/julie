@@ -1,10 +1,11 @@
-use super::ElixirExtractor;
 /// Core call dispatch for Elixir extraction.
 ///
 /// In tree-sitter-elixir, nearly every definition is a `call` node.
 /// This module inspects the call target and dispatches to the appropriate handler.
+use super::ElixirExtractor;
+use super::attributes;
 use super::helpers;
-use crate::base::{Symbol, SymbolKind, SymbolOptions, Visibility};
+use crate::base::{Symbol, SymbolKind, SymbolOptions, Visibility, normalize_annotations};
 use crate::test_detection::is_test_symbol;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -55,6 +56,10 @@ fn extract_defmodule(
 
     let signature = format!("defmodule {}", module_name);
     let doc_comment = extractor.base.find_doc_comment(node);
+    let annotations = normalize_annotations(
+        &attributes::collect_module_annotations(&extractor.base, node),
+        "elixir",
+    );
 
     let symbol = extractor.base.create_symbol(
         node,
@@ -66,7 +71,7 @@ fn extract_defmodule(
             parent_id: parent_id.map(String::from),
             metadata: None,
             doc_comment,
-            annotations: Vec::new(),
+            annotations,
         },
     );
 
@@ -102,6 +107,14 @@ fn extract_def(
         None => format!("def {}", fn_name),
     };
     let doc_comment = extractor.base.find_doc_comment(node);
+    let annotations = normalize_annotations(
+        &attributes::collect_preceding_annotations(&extractor.base, node, &["doc", "spec", "impl"]),
+        "elixir",
+    );
+    let annotation_keys = annotations
+        .iter()
+        .map(|annotation| annotation.annotation_key.clone())
+        .collect::<Vec<_>>();
 
     // Test detection
     let metadata = if is_test_symbol(
@@ -109,7 +122,7 @@ fn extract_def(
         &fn_name,
         &extractor.base.file_path,
         &SymbolKind::Function,
-        &[],
+        &annotation_keys,
         doc_comment.as_deref(),
     ) {
         let mut m = HashMap::new();
@@ -129,7 +142,7 @@ fn extract_def(
             parent_id: parent_id.map(String::from),
             metadata,
             doc_comment,
-            annotations: Vec::new(),
+            annotations,
         },
     );
 
@@ -158,6 +171,10 @@ fn extract_defmacro(
         None => format!("{} {}", keyword, macro_name),
     };
     let doc_comment = extractor.base.find_doc_comment(node);
+    let annotations = normalize_annotations(
+        &attributes::collect_preceding_annotations(&extractor.base, node, &["doc", "spec", "impl"]),
+        "elixir",
+    );
 
     let mut metadata = HashMap::new();
     metadata.insert("macro".to_string(), Value::Bool(true));
@@ -172,7 +189,7 @@ fn extract_defmacro(
             parent_id: parent_id.map(String::from),
             metadata: Some(metadata),
             doc_comment,
-            annotations: Vec::new(),
+            annotations,
         },
     );
 

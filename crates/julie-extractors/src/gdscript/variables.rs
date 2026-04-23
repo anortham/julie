@@ -2,7 +2,9 @@
 
 use super::helpers::{extract_variable_annotations, find_child_by_type};
 use super::types::extract_variable_type;
-use crate::base::{BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility};
+use crate::base::{
+    BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility, normalize_annotations,
+};
 use serde_json::Value;
 use std::collections::HashMap;
 use tree_sitter::Node;
@@ -40,6 +42,7 @@ pub(super) fn extract_variable_statement(
 
     // Extract annotations and determine properties
     let (annotations, full_signature) = extract_variable_annotations(base, parent_node, &signature);
+    let annotation_markers = normalize_annotations(&annotations, "gdscript");
     let is_exported = annotations.iter().any(|a| a.starts_with("@export"));
     let is_onready = annotations.iter().any(|a| a.starts_with("@onready"));
 
@@ -79,7 +82,7 @@ pub(super) fn extract_variable_statement(
             parent_id: parent_id.cloned(),
             metadata: Some(metadata),
             doc_comment,
-            annotations: Vec::new(),
+            annotations: annotation_markers,
         },
     ))
 }
@@ -114,6 +117,8 @@ pub(super) fn extract_constant_statement(
     let name_node = name_node?;
     let name = base.get_node_text(&name_node);
     let signature = base.get_node_text(&parent_node);
+    let (annotations, full_signature) = extract_variable_annotations(base, parent_node, &signature);
+    let annotation_markers = normalize_annotations(&annotations, "gdscript");
 
     // Get type annotation
     let data_type = extract_variable_type(base, parent_node, &name_node)
@@ -121,6 +126,13 @@ pub(super) fn extract_constant_statement(
 
     let mut metadata = HashMap::new();
     metadata.insert("dataType".to_string(), Value::String(data_type));
+    if !annotations.is_empty() {
+        let annotations_json = annotations
+            .iter()
+            .map(|a| Value::String(a.clone()))
+            .collect::<Vec<_>>();
+        metadata.insert("annotations".to_string(), Value::Array(annotations_json));
+    }
 
     // Extract doc comment
     let doc_comment = base.find_doc_comment(&node);
@@ -130,12 +142,12 @@ pub(super) fn extract_constant_statement(
         name,
         SymbolKind::Constant,
         SymbolOptions {
-            signature: Some(signature),
+            signature: Some(full_signature),
             visibility: Some(Visibility::Public),
             parent_id: parent_id.cloned(),
             metadata: Some(metadata),
             doc_comment,
-            annotations: Vec::new(),
+            annotations: annotation_markers,
         },
     ))
 }
