@@ -95,7 +95,7 @@ fn test_blast_radius_args_tool_name() {
         rev: None,
         files: None,
         symbols: None,
-        format: None,
+        report_format: None,
     };
     assert_eq!(args.tool_name(), "blast_radius");
 }
@@ -224,8 +224,8 @@ fn test_blast_radius_to_tool_args_with_files() {
     let args = BlastRadiusArgs {
         rev: None,
         files: Some(vec!["src/cli.rs".into()]),
-        symbols: Some(vec!["Command".into()]),
-        format: Some("markdown".into()),
+        symbols: Some(vec!["sym_1234abcd".into()]),
+        report_format: Some("markdown".into()),
     };
     let json = args.to_tool_args().unwrap();
     assert!(
@@ -235,7 +235,7 @@ fn test_blast_radius_to_tool_args_with_files() {
     let files = json["file_paths"].as_array().unwrap();
     assert_eq!(files[0], "src/cli.rs");
     let symbols = json["symbol_ids"].as_array().unwrap();
-    assert_eq!(symbols[0], "Command");
+    assert_eq!(symbols[0], "sym_1234abcd");
     assert_eq!(json["format"], "markdown");
 }
 
@@ -247,7 +247,7 @@ fn test_blast_radius_to_tool_args_rev_resolves_to_files() {
         rev: Some("HEAD~1".into()),
         files: None,
         symbols: None,
-        format: None,
+        report_format: None,
     };
     let json = args.to_tool_args().unwrap();
     // The rev should be resolved to file_paths, not passed as "rev"
@@ -265,7 +265,7 @@ fn test_blast_radius_to_tool_args_rev_invalid() {
         rev: Some("nonexistent_rev_abc123xyz".into()),
         files: None,
         symbols: None,
-        format: None,
+        report_format: None,
     };
     let result = args.to_tool_args();
     assert!(result.is_err(), "Invalid rev should produce an error");
@@ -274,19 +274,21 @@ fn test_blast_radius_to_tool_args_rev_invalid() {
 #[test]
 fn test_blast_radius_symbols_validation_catches_names() {
     // Passing human-readable names like "FastSearchTool" should produce
-    // a clear error in standalone mode.
+    // a clear error before either daemon or standalone execution so both
+    // modes share the same wrapper contract.
     let args = BlastRadiusArgs {
         rev: None,
         files: None,
         symbols: Some(vec!["FastSearchTool".into()]),
-        format: None,
+        report_format: None,
     };
-    // call_standalone would need a handler, but we can check that to_tool_args
-    // at least passes (symbol validation happens in call_standalone).
-    // The to_tool_args path passes symbols through as-is for daemon mode.
-    let json = args.to_tool_args().unwrap();
-    let symbols = json["symbol_ids"].as_array().unwrap();
-    assert_eq!(symbols[0], "FastSearchTool");
+    let result = args.to_tool_args();
+    let err = result.expect_err("human-readable symbol names should be rejected");
+    assert!(
+        err.to_string()
+            .contains("expects internal symbol IDs, not human-readable names"),
+        "unexpected error: {err}"
+    );
 }
 
 #[test]
@@ -438,6 +440,33 @@ async fn test_run_cli_tool_standalone_missing_workspace() {
         err_msg.contains("does not exist"),
         "Expected workspace-not-found error, got: {}",
         err_msg
+    );
+}
+
+#[tokio::test]
+async fn test_run_cli_tool_standalone_workspace_stats_requires_daemon() {
+    let temp = tempfile::Builder::new()
+        .prefix("julie_cli_workspace_stats_")
+        .tempdir()
+        .unwrap();
+    let src_dir = temp.path().join("src");
+    std::fs::create_dir_all(&src_dir).unwrap();
+    std::fs::write(src_dir.join("main.rs"), "fn main() {}\n").unwrap();
+
+    let args = WorkspaceArgs {
+        operation: "stats".into(),
+        path: None,
+        force: false,
+        name: None,
+    };
+
+    let result = run_cli_tool(&args, Some(temp.path().to_path_buf()), true).await;
+
+    let err = result.expect_err("workspace stats should refuse standalone mode");
+    assert!(
+        err.to_string().contains("daemon mode"),
+        "Expected daemon-mode guidance, got: {}",
+        err
     );
 }
 

@@ -194,7 +194,8 @@ pub struct ContextArgs {
 ///
 /// Examples:
 ///   julie-server blast-radius --files src/cli.rs
-///   julie-server blast-radius --symbols FastSearchTool --format markdown
+///   julie-server blast-radius --symbols FastSearchTool --report-format readable
+///   julie-server blast-radius --format markdown
 ///   julie-server blast-radius --rev HEAD~3
 #[derive(Debug, Clone, Parser)]
 pub struct BlastRadiusArgs {
@@ -210,9 +211,9 @@ pub struct BlastRadiusArgs {
     #[arg(short = 's', long, value_delimiter = ',')]
     pub symbols: Option<Vec<String>>,
 
-    /// Output format for blast radius results
-    #[arg(long)]
-    pub format: Option<String>,
+    /// Blast-radius text layout: readable or compact
+    #[arg(long = "report-format")]
+    pub report_format: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -226,6 +227,8 @@ pub struct BlastRadiusArgs {
 ///   julie-server workspace stats
 ///   julie-server workspace health --force
 ///   julie-server workspace register --path /code/myproject --name "My Project"
+///
+/// Note: `open`, `register`, `remove`, `refresh`, and `stats` require daemon mode.
 #[derive(Debug, Clone, Parser)]
 pub struct WorkspaceArgs {
     /// Operation: index, list, register, remove, stats, clean, refresh, open, health

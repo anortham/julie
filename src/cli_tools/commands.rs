@@ -17,6 +17,99 @@ use super::subcommands::{
     BlastRadiusArgs, ContextArgs, GenericToolArgs, RefsArgs, SearchArgs, SymbolsArgs, WorkspaceArgs,
 };
 
+fn resolve_git_diff_file_paths(rev: &str) -> Result<Vec<String>> {
+    let output = std::process::Command::new("git")
+        .args(["diff", "--name-only", rev])
+        .output();
+
+    match output {
+        Ok(o) if o.status.success() => {
+            let stdout = String::from_utf8_lossy(&o.stdout);
+            let rev_files: Vec<String> = stdout
+                .lines()
+                .filter(|line| !line.is_empty())
+                .map(String::from)
+                .collect();
+            if rev_files.is_empty() {
+                anyhow::bail!(
+                    "No changed files found for revision '{}'. Verify the revision exists and has changes.",
+                    rev
+                );
+            }
+            Ok(rev_files)
+        }
+        Ok(o) => {
+            let stderr = String::from_utf8_lossy(&o.stderr);
+            anyhow::bail!("git diff --name-only {} failed: {}", rev, stderr.trim());
+        }
+        Err(e) => {
+            anyhow::bail!(
+                "Failed to run git to resolve --rev '{}': {}. Use --files to specify file paths directly.",
+                rev,
+                e
+            );
+        }
+    }
+}
+
+fn validate_blast_radius_symbol_ids(symbols: &[String]) -> Result<()> {
+    let looks_like_name = symbols.iter().any(|symbol| {
+        symbol.contains("::")
+            || symbol.chars().any(|c| c.is_uppercase())
+            || symbol.chars().all(|c| c.is_alphabetic() || c == '_')
+    });
+
+    if looks_like_name {
+        anyhow::bail!(
+            "The --symbols flag expects internal symbol IDs, not human-readable names.\n\
+             Received: {}\n\n\
+             To analyze by symbol name, use:\n  \
+             julie-server search \"{}\" --target definitions\n\
+             to find the symbol, then use --files with the file path instead.\n\n\
+             To analyze by file path:\n  \
+             julie-server blast-radius --files src/path/to/file.rs",
+            symbols.join(", "),
+            symbols.first().map(|s| s.as_str()).unwrap_or("SymbolName"),
+        );
+    }
+
+    Ok(())
+}
+
+fn build_blast_radius_tool_args(args: &BlastRadiusArgs) -> Result<Value> {
+    let mut tool_args = serde_json::json!({});
+    let mut file_paths = args.files.clone().unwrap_or_default();
+
+    if let Some(ref rev) = args.rev {
+        file_paths.extend(resolve_git_diff_file_paths(rev)?);
+    }
+
+    if !file_paths.is_empty() {
+        tool_args["file_paths"] = Value::Array(
+            file_paths
+                .iter()
+                .map(|path| Value::String(path.clone()))
+                .collect(),
+        );
+    }
+
+    if let Some(ref symbols) = args.symbols {
+        validate_blast_radius_symbol_ids(symbols)?;
+        tool_args["symbol_ids"] = Value::Array(
+            symbols
+                .iter()
+                .map(|symbol| Value::String(symbol.clone()))
+                .collect(),
+        );
+    }
+
+    if let Some(ref fmt) = args.report_format {
+        tool_args["format"] = Value::String(fmt.clone());
+    }
+
+    Ok(tool_args)
+}
+
 // ---------------------------------------------------------------------------
 // search -> fast_search
 // ---------------------------------------------------------------------------
@@ -208,155 +301,13 @@ impl CliToolCommand for BlastRadiusArgs {
     }
 
     fn to_tool_args(&self) -> Result<Value> {
-        let mut args = serde_json::json!({});
-
-        // Resolve --rev to file paths via git, since BlastRadiusTool's
-        // from_revision/to_revision are internal database revision IDs,
-        // not git rev strings.
-        let mut file_paths: Vec<String> = self.files.clone().unwrap_or_default();
-        if let Some(ref rev) = self.rev {
-            let output = std::process::Command::new("git")
-                .args(["diff", "--name-only", rev])
-                .output();
-
-            match output {
-                Ok(o) if o.status.success() => {
-                    let stdout = String::from_utf8_lossy(&o.stdout);
-                    let rev_files: Vec<String> = stdout
-                        .lines()
-                        .filter(|l| !l.is_empty())
-                        .map(String::from)
-                        .collect();
-                    if rev_files.is_empty() {
-                        anyhow::bail!(
-                            "No changed files found for revision '{}'. \
-                             Verify the revision exists and has changes.",
-                            rev
-                        );
-                    }
-                    file_paths.extend(rev_files);
-                }
-                Ok(o) => {
-                    let stderr = String::from_utf8_lossy(&o.stderr);
-                    anyhow::bail!("git diff --name-only {} failed: {}", rev, stderr.trim());
-                }
-                Err(e) => {
-                    anyhow::bail!(
-                        "Failed to run git to resolve --rev '{}': {}. \
-                         Use --files to specify file paths directly.",
-                        rev,
-                        e
-                    );
-                }
-            }
-        }
-
-        if !file_paths.is_empty() {
-            args["file_paths"] = Value::Array(
-                file_paths
-                    .iter()
-                    .map(|f| Value::String(f.clone()))
-                    .collect(),
-            );
-        }
-        if let Some(ref symbols) = self.symbols {
-            args["symbol_ids"] =
-                Value::Array(symbols.iter().map(|s| Value::String(s.clone())).collect());
-        }
-        if let Some(ref fmt) = self.format {
-            args["format"] = Value::String(fmt.clone());
-        }
-
-        Ok(args)
+        build_blast_radius_tool_args(self)
     }
 
     async fn call_standalone(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
         use crate::tools::impact::BlastRadiusTool;
 
-        // Resolve --rev to file paths via `git diff --name-only <rev>`.
-        // BlastRadiusTool uses from_revision/to_revision (internal database
-        // revision IDs), not git rev strings, so we convert the rev to
-        // changed file paths instead.
-        let mut file_paths = self.files.clone().unwrap_or_default();
-        if let Some(ref rev) = self.rev {
-            let output = std::process::Command::new("git")
-                .args(["diff", "--name-only", rev])
-                .output();
-
-            match output {
-                Ok(o) if o.status.success() => {
-                    let stdout = String::from_utf8_lossy(&o.stdout);
-                    let rev_files: Vec<String> = stdout
-                        .lines()
-                        .filter(|l| !l.is_empty())
-                        .map(String::from)
-                        .collect();
-                    if rev_files.is_empty() {
-                        anyhow::bail!(
-                            "No changed files found for revision '{}'. \
-                             Verify the revision exists and has changes.",
-                            rev
-                        );
-                    }
-                    file_paths.extend(rev_files);
-                }
-                Ok(o) => {
-                    let stderr = String::from_utf8_lossy(&o.stderr);
-                    anyhow::bail!("git diff --name-only {} failed: {}", rev, stderr.trim());
-                }
-                Err(e) => {
-                    anyhow::bail!(
-                        "Failed to run git to resolve --rev '{}': {}. \
-                         Use --files to specify file paths directly.",
-                        rev,
-                        e
-                    );
-                }
-            }
-        }
-
-        // Validate --symbols: BlastRadiusTool expects opaque symbol IDs (from
-        // the database), not human-readable names. Provide a clear error
-        // message directing users to --files or the tool subcommand.
-        if let Some(ref symbols) = self.symbols {
-            // Symbol IDs are numeric or UUID-like strings. If the user passed
-            // something that looks like a human-readable name (contains
-            // uppercase letters, colons, or is a common identifier pattern),
-            // warn them and suggest alternatives.
-            let looks_like_name = symbols.iter().any(|s| {
-                // Real symbol IDs are hex UUIDs; names have mixed case,
-                // underscores in identifier positions, etc.
-                s.contains("::")
-                    || s.chars().any(|c| c.is_uppercase())
-                    || s.chars().all(|c| c.is_alphabetic() || c == '_')
-            });
-
-            if looks_like_name {
-                anyhow::bail!(
-                    "The --symbols flag expects internal symbol IDs, not human-readable names.\n\
-                     Received: {}\n\n\
-                     To analyze by symbol name, use:\n  \
-                     julie-server search \"{}\" --target definitions\n\
-                     to find the symbol, then use --files with the file path instead.\n\n\
-                     To analyze by file path:\n  \
-                     julie-server blast-radius --files src/path/to/file.rs",
-                    symbols.join(", "),
-                    symbols.first().map(|s| s.as_str()).unwrap_or("SymbolName"),
-                );
-            }
-        }
-
-        let tool = BlastRadiusTool {
-            symbol_ids: self.symbols.clone().unwrap_or_default(),
-            file_paths,
-            from_revision: None,
-            to_revision: None,
-            max_depth: 2, // matches default_max_depth() in impact/mod.rs
-            limit: 12,    // matches default_limit() in impact/mod.rs
-            include_tests: true,
-            format: self.format.clone(),
-            workspace: None,
-        };
+        let tool: BlastRadiusTool = serde_json::from_value(build_blast_radius_tool_args(self)?)?;
         tool.call_tool(handler).await
     }
 }
@@ -387,6 +338,27 @@ impl CliToolCommand for WorkspaceArgs {
         }
 
         Ok(args)
+    }
+
+    fn validate_standalone(&self) -> Result<()> {
+        match self.operation.as_str() {
+            "open" => anyhow::bail!(
+                "Workspace open requires daemon mode. Start the daemon with `julie daemon`."
+            ),
+            "register" => anyhow::bail!(
+                "Workspace registration requires daemon mode. Start the daemon with `julie daemon`."
+            ),
+            "remove" => anyhow::bail!(
+                "Workspace removal requires daemon mode. Start the daemon with `julie daemon`."
+            ),
+            "refresh" => anyhow::bail!(
+                "Workspace refresh requires daemon mode. Start the daemon with `julie daemon`."
+            ),
+            "stats" => anyhow::bail!(
+                "Workspace statistics require daemon mode. Start the daemon with `julie daemon`."
+            ),
+            _ => Ok(()),
+        }
     }
 
     async fn call_standalone(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {

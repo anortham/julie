@@ -200,7 +200,7 @@ fn test_blast_radius_empty() {
     assert!(args.rev.is_none());
     assert!(args.files.is_none());
     assert!(args.symbols.is_none());
-    assert!(args.format.is_none());
+    assert!(args.report_format.is_none());
 }
 
 #[test]
@@ -213,7 +213,7 @@ fn test_blast_radius_all_flags() {
         "src/cli.rs,src/main.rs",
         "--symbols",
         "Command,Cli",
-        "--format",
+        "--report-format",
         "markdown",
     ]);
     assert_eq!(args.rev.as_deref(), Some("HEAD~3"));
@@ -221,7 +221,7 @@ fn test_blast_radius_all_flags() {
     assert_eq!(files, vec!["src/cli.rs", "src/main.rs"]);
     let symbols = args.symbols.unwrap();
     assert_eq!(symbols, vec!["Command", "Cli"]);
-    assert_eq!(args.format.as_deref(), Some("markdown"));
+    assert_eq!(args.report_format.as_deref(), Some("markdown"));
 }
 
 #[test]
@@ -233,6 +233,43 @@ fn test_blast_radius_short_flags() {
     assert_eq!(files, vec!["a.rs"]);
     let symbols = args.symbols.unwrap();
     assert_eq!(symbols, vec!["Foo"]);
+}
+
+#[test]
+fn test_cli_blast_radius_global_format_flag_uses_output_format() {
+    use crate::cli::{Cli, Command};
+
+    let cli = Cli::try_parse_from(["julie-server", "blast-radius", "--format", "markdown"])
+        .expect("blast-radius should accept the global output format flag");
+
+    match cli.command.expect("expected blast-radius command") {
+        Command::BlastRadius(args) => {
+            assert!(
+                args.report_format.is_none(),
+                "tool report format should stay unset"
+            );
+        }
+        _ => panic!("expected blast-radius command"),
+    }
+
+    assert_eq!(cli.tool_flags.effective_format(), OutputFormat::Markdown);
+}
+
+#[test]
+fn test_cli_blast_radius_report_format_flag_is_separate() {
+    use crate::cli::{Cli, Command};
+
+    let cli = Cli::try_parse_from(["julie-server", "blast-radius", "--report-format", "compact"])
+        .expect("blast-radius should accept a separate report-format flag");
+
+    match cli.command.expect("expected blast-radius command") {
+        Command::BlastRadius(args) => {
+            assert_eq!(args.report_format.as_deref(), Some("compact"));
+        }
+        _ => panic!("expected blast-radius command"),
+    }
+
+    assert_eq!(cli.tool_flags.effective_format(), OutputFormat::Text);
 }
 
 // ---------------------------------------------------------------------------

@@ -99,6 +99,15 @@ pub trait CliToolCommand: Send + Sync {
     /// Convert CLI args to JSON tool parameters for daemon-mode dispatch.
     fn to_tool_args(&self) -> Result<Value>;
 
+    /// Validate that the command can run in standalone mode.
+    ///
+    /// Most commands support standalone execution. Commands that rely on
+    /// daemon-only registry state should override this and return a clear
+    /// actionable error.
+    fn validate_standalone(&self) -> Result<()> {
+        Ok(())
+    }
+
     /// Execute the tool directly against a handler in standalone mode.
     async fn call_standalone(&self, handler: &JulieServerHandler) -> Result<CallToolResult>;
 }
@@ -121,6 +130,10 @@ pub async fn run_cli_tool(
     cli_workspace: Option<PathBuf>,
     standalone: bool,
 ) -> Result<CliToolOutput> {
+    if standalone {
+        command.validate_standalone()?;
+    }
+
     let start = Instant::now();
     let workspace_root = resolve_workspace_root(cli_workspace.clone());
 
@@ -134,6 +147,17 @@ pub async fn run_cli_tool(
         match run_via_daemon(command, cli_workspace.clone()).await {
             Ok((value, is_err)) => (CliExecutionMode::Daemon, value, is_err),
             Err(daemon_err) => {
+                if let Err(standalone_err) = command.validate_standalone() {
+                    eprintln!(
+                        "julie: daemon unavailable ({})",
+                        summarize_error(&daemon_err)
+                    );
+                    return Err(standalone_err.context(format!(
+                        "Daemon unavailable: {}",
+                        summarize_error(&daemon_err)
+                    )));
+                }
+
                 eprintln!(
                     "julie: daemon unavailable ({}), falling back to standalone mode",
                     summarize_error(&daemon_err)
