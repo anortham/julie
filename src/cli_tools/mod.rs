@@ -282,14 +282,24 @@ pub async fn bootstrap_standalone_handler(
         .await
         .context("Failed to initialize workspace")?;
 
-    // In standalone mode, initialize_workspace_with_force loads the workspace
-    // but does not flip is_indexed (that flag is normally managed by
-    // run_auto_indexing, which is triggered by the MCP on_initialized callback
-    // that doesn't fire in CLI mode). Check whether the workspace was
-    // populated and set the flag ourselves.
+    // In standalone mode, initialize_workspace_with_force opens the workspace
+    // handles, while run_auto_indexing normally fills SQLite and Tantivy after
+    // the MCP on_initialized callback. CLI mode has no callback, so run the
+    // index path here and skip embeddings to keep startup responsive.
     let has_workspace = handler.workspace.read().await.is_some();
     if has_workspace {
-        *handler.is_indexed.write().await = true;
+        let index_tool = crate::tools::workspace::commands::ManageWorkspaceTool {
+            operation: "index".to_string(),
+            path: Some(workspace_root.to_string_lossy().to_string()),
+            force: Some(false),
+            name: None,
+            workspace_id: None,
+            detailed: None,
+        };
+        index_tool
+            .call_tool_with_options(&handler, true)
+            .await
+            .context("Failed to index standalone workspace")?;
     } else {
         anyhow::bail!(
             "Workspace not indexed: {}\n\

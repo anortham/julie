@@ -390,6 +390,56 @@ async fn test_bootstrap_standalone_handler_indexes_workspace() {
     assert!(is_indexed, "Workspace should be indexed after bootstrap");
 }
 
+#[tokio::test]
+async fn test_run_cli_tool_standalone_definition_search_uses_bootstrapped_index() {
+    let temp = tempfile::Builder::new()
+        .prefix("julie_cli_definition_search_")
+        .tempdir()
+        .unwrap();
+
+    let src_dir = temp.path().join("src");
+    std::fs::create_dir_all(&src_dir).unwrap();
+    std::fs::write(
+        src_dir.join("main.rs"),
+        "pub fn cli_probe_marker() -> usize { 42 }\n",
+    )
+    .unwrap();
+
+    let args = SearchArgs {
+        query: "cli_probe_marker".into(),
+        target: "definitions".into(),
+        limit: 10,
+        language: Some("rust".into()),
+        file_pattern: None,
+        context_lines: None,
+        exclude_tests: false,
+    };
+
+    let output = run_cli_tool(&args, Some(temp.path().to_path_buf()), true)
+        .await
+        .expect("standalone definition search should run");
+
+    assert_eq!(output.mode, CliExecutionMode::Standalone);
+    assert!(
+        !output.is_error,
+        "tool result should not be flagged as error"
+    );
+
+    let text = output.result["content"][0]["text"]
+        .as_str()
+        .expect("search output should contain text");
+    assert!(
+        !text.contains("Workspace not indexed yet"),
+        "standalone bootstrap should open the search readiness gate: {}",
+        text
+    );
+    assert!(
+        text.contains("cli_probe_marker"),
+        "definition search should find the indexed function: {}",
+        text
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Daemon detection
 // ---------------------------------------------------------------------------
