@@ -239,6 +239,7 @@ impl SearchProjection {
             file_docs,
             files_to_clean,
             &symbol_contexts,
+            true,
         ) {
             let detail = err.to_string();
             let _ = db.upsert_projection_state(
@@ -270,7 +271,7 @@ impl SearchProjection {
         symbol_contexts: &HashMap<String, SymbolIndexContext>,
     ) -> Result<()> {
         index.clear_all()?;
-        apply_documents_with_context(index, symbol_docs, file_docs, &[], symbol_contexts)
+        apply_documents_with_context(index, symbol_docs, file_docs, &[], symbol_contexts, true)
     }
 }
 
@@ -296,6 +297,28 @@ pub fn apply_documents(
         file_docs,
         files_to_clean,
         &HashMap::new(),
+        true,
+    )
+}
+
+pub(crate) fn apply_uncommitted_documents_from_symbols(
+    index: &SearchIndex,
+    symbols: &[Symbol],
+    file_docs: &[FileDocument],
+    files_to_clean: &[String],
+) -> Result<()> {
+    let symbol_docs = symbols
+        .iter()
+        .map(SymbolDocument::from_symbol)
+        .collect::<Vec<_>>();
+    let symbol_contexts = symbol_contexts_from_symbols(symbols);
+    apply_documents_with_context(
+        index,
+        &symbol_docs,
+        file_docs,
+        files_to_clean,
+        &symbol_contexts,
+        false,
     )
 }
 
@@ -305,6 +328,7 @@ fn apply_documents_with_context(
     file_docs: &[FileDocument],
     files_to_clean: &[String],
     symbol_contexts: &HashMap<String, SymbolIndexContext>,
+    commit: bool,
 ) -> Result<()> {
     for file_path in files_to_clean {
         index.remove_by_file_path(file_path)?;
@@ -324,7 +348,9 @@ fn apply_documents_with_context(
         index.add_file_content(doc)?;
     }
 
-    index.commit()?;
+    if commit {
+        index.commit()?;
+    }
     Ok(())
 }
 

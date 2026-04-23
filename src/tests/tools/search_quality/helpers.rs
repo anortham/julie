@@ -267,24 +267,15 @@ async fn setup_handler_inner() -> JulieServerHandler {
         .await
         .expect("Failed to create handler");
 
-    // Now we need to load the fixture database directly
-    // Open a connection to the fixture database directly (not through normal initialization)
     use crate::database::SymbolDatabase;
-    use rusqlite::Connection;
     use std::sync::{Arc, Mutex};
 
-    // The copied database already has all the data - we just need to wrap it
-    // Open a read-write connection directly to the fixture database
-    let conn = Connection::open(&fixture_db_dest).expect("Failed to open fixture database");
-
-    // Configure for search operations
-    conn.busy_timeout(std::time::Duration::from_secs(5))
-        .expect("Failed to set busy timeout");
-    conn.pragma_update(None, "wal_autocheckpoint", 2000)
-        .expect("Failed to set WAL autocheckpoint");
+    // Open through SymbolDatabase so copied fixtures receive current migrations.
+    let db_struct = SymbolDatabase::new(&fixture_db_dest).expect("Failed to open fixture database");
 
     // Verify the database has data
-    let symbol_count: i64 = conn
+    let symbol_count: i64 = db_struct
+        .conn
         .query_row("SELECT COUNT(*) FROM symbols", [], |row| row.get(0))
         .expect("Failed to count symbols");
 
@@ -292,12 +283,6 @@ async fn setup_handler_inner() -> JulieServerHandler {
         "✓ Fixture database opened directly with {} symbols",
         symbol_count
     );
-
-    // Wrap the connection in the database struct
-    let db_struct = SymbolDatabase {
-        conn,
-        file_path: fixture_db_dest.clone(),
-    };
 
     // Create workspace configuration and registry
     {

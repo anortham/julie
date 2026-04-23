@@ -931,6 +931,63 @@ fn render_rich_text_field() {
 }
 
 #[tokio::test]
+async fn test_incremental_indexing_preserves_tantivy_annotation_fields() {
+    use crate::search::index::{SearchFilter, SearchIndex};
+
+    let temp_dir = crate::tests::helpers::unique_temp_dir("watcher_tantivy_annotations");
+    let workspace_root = temp_dir.path().canonicalize().unwrap();
+
+    let test_file = workspace_root.join("annotated_test.rs");
+    let content = r#"
+#[test]
+fn watched_annotation_marker() {
+    assert_eq!(2 + 2, 4);
+}
+"#;
+    fs::write(&test_file, content).unwrap();
+    let absolute_path = test_file.canonicalize().unwrap();
+
+    let db_path = workspace_root.join("test.db");
+    let db = Arc::new(Mutex::new(
+        SymbolDatabase::new(&db_path).expect("Failed to create test database"),
+    ));
+    let extractor_manager = Arc::new(ExtractorManager::new());
+
+    let tantivy_dir = workspace_root.join("tantivy");
+    fs::create_dir_all(&tantivy_dir).unwrap();
+    let search_index = Arc::new(Mutex::new(
+        SearchIndex::create(&tantivy_dir).expect("Failed to create search index"),
+    ));
+
+    handle_file_created_or_modified_static(
+        absolute_path,
+        &db,
+        &extractor_manager,
+        &workspace_root,
+        Some(&search_index),
+    )
+    .await
+    .expect("incremental indexing should succeed");
+
+    let idx = search_index.lock().unwrap();
+    idx.commit().unwrap();
+    let results = idx
+        .search_symbols("@test", &SearchFilter::default(), 10)
+        .unwrap()
+        .results;
+    assert!(
+        results
+            .iter()
+            .any(|result| result.name == "watched_annotation_marker"),
+        "annotation search should find the watched test function after incremental indexing: {:?}",
+        results
+            .iter()
+            .map(|result| result.name.as_str())
+            .collect::<Vec<_>>()
+    );
+}
+
+#[tokio::test]
 async fn test_incremental_indexing_projection_failure_reports_repair_reason() {
     use crate::search::index::SearchIndex;
 

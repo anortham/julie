@@ -301,7 +301,7 @@ impl QueueRuntime {
         );
 
         for rel_path in dirty_paths {
-            let (symbol_docs, file_doc) = {
+            let (symbols, file_doc) = {
                 let db_guard = self
                     .db
                     .lock()
@@ -315,16 +315,12 @@ impl QueueRuntime {
                     .first()
                     .map(|symbol| symbol.language.clone())
                     .unwrap_or_else(|| "unknown".to_string());
-                let docs: Vec<_> = symbols
-                    .iter()
-                    .map(crate::search::SymbolDocument::from_symbol)
-                    .collect();
                 let file_doc = crate::search::FileDocument {
                     file_path: rel_path.clone(),
                     content,
                     language,
                 };
-                (docs, file_doc)
+                (symbols, file_doc)
             };
 
             let search_index = Arc::clone(search_index);
@@ -333,11 +329,12 @@ impl QueueRuntime {
                 let idx = search_index
                     .lock()
                     .unwrap_or_else(|poisoned| poisoned.into_inner());
-                idx.remove_by_file_path(&rel_clone)?;
-                for doc in &symbol_docs {
-                    idx.add_symbol(doc)?;
-                }
-                idx.add_file_content(&file_doc)?;
+                crate::search::projection::apply_uncommitted_documents_from_symbols(
+                    &idx,
+                    &symbols,
+                    std::slice::from_ref(&file_doc),
+                    std::slice::from_ref(&rel_clone),
+                )?;
                 Ok::<(), anyhow::Error>(())
             })
             .await;

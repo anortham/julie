@@ -45,7 +45,7 @@ mod workspace_isolation_smoke_tests {
     /// This is the most critical isolation test - searching primary workspace
     /// should NEVER return results from reference workspace and vice versa.
     #[tokio::test(flavor = "multi_thread")]
-    #[serial_test::serial] // Shared fixtures (tiny-primary, tiny-reference)
+    #[serial_test::file_serial(workspace_isolation_fixtures)] // Shared fixture roots need a cross-process lane.
     async fn test_search_never_crosses_workspaces() -> Result<()> {
         let primary_path = get_fixture_path("tiny-primary");
         let reference_path = get_fixture_path("tiny-reference");
@@ -139,7 +139,7 @@ mod workspace_isolation_smoke_tests {
     /// Tests that "primary" resolves to primary workspace and specific IDs
     /// resolve to their respective reference workspaces.
     #[tokio::test(flavor = "multi_thread")]
-    #[serial_test::serial] // Shared fixtures (tiny-primary, tiny-reference)
+    #[serial_test::file_serial(workspace_isolation_fixtures)] // Shared fixture roots need a cross-process lane.
     async fn test_workspace_id_resolution() -> Result<()> {
         let primary_path = get_fixture_path("tiny-primary");
         let reference_path = get_fixture_path("tiny-reference");
@@ -230,7 +230,7 @@ mod workspace_isolation_smoke_tests {
     /// permissively. The search should succeed, but it must not fall back to the primary
     /// workspace when that reference workspace does not exist.
     #[tokio::test(flavor = "multi_thread")]
-    #[serial_test::serial] // Shared fixtures (tiny-primary, tiny-reference)
+    #[serial_test::file_serial(workspace_isolation_fixtures)] // Shared fixture roots need a cross-process lane.
     async fn test_invalid_workspace_id_returns_error() -> Result<()> {
         let primary_path = get_fixture_path("tiny-primary");
 
