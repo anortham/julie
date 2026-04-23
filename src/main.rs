@@ -119,8 +119,8 @@ async fn main() -> anyhow::Result<()> {
 
 /// Route a tool command through the CLI execution core.
 ///
-/// This wraps `run_cli_tool`, handles the output, and exits with the
-/// appropriate status code. A4 will refine the output formatting.
+/// Formats output according to `--format` / `--json` flags, prints to stdout,
+/// and exits with code 1 if the tool reported an error.
 async fn run_tool_command(
     command: &dyn julie::cli_tools::CliToolCommand,
     flags: &julie::cli_tools::GlobalToolFlags,
@@ -128,14 +128,11 @@ async fn run_tool_command(
 ) -> anyhow::Result<()> {
     let output = run_cli_tool(command, cli_workspace, flags.standalone).await?;
 
-    // A4 will add proper formatting (text, json, markdown).
-    // For now, dump the result JSON to stdout.
-    let formatted = if flags.effective_format() == julie::cli_tools::OutputFormat::Json {
-        serde_json::to_string_pretty(&output.result)?
-    } else {
-        // Extract text content from the CallToolResult structure
-        extract_text_content(&output.result)
-    };
+    let formatted = julie::cli_tools::output::format_output(
+        &output,
+        flags.effective_format(),
+        command.tool_name(),
+    );
 
     println!("{}", formatted);
 
@@ -144,21 +141,4 @@ async fn run_tool_command(
     }
 
     Ok(())
-}
-
-/// Extract text content from a serialized CallToolResult for plain-text display.
-/// A4 will replace this with proper formatting.
-fn extract_text_content(result: &serde_json::Value) -> String {
-    if let Some(content) = result.get("content").and_then(|c| c.as_array()) {
-        content
-            .iter()
-            .filter_map(|item| {
-                // CallToolResult content items have a "text" field
-                item.get("text").and_then(|t| t.as_str())
-            })
-            .collect::<Vec<_>>()
-            .join("\n")
-    } else {
-        serde_json::to_string_pretty(result).unwrap_or_default()
-    }
 }

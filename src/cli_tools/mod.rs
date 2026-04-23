@@ -20,6 +20,7 @@
 pub mod commands;
 pub mod daemon;
 pub mod generic;
+pub mod output;
 pub mod subcommands;
 
 pub use subcommands::*;
