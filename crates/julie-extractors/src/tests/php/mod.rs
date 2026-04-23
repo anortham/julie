@@ -59,6 +59,16 @@ fn extract_relationships(code: &str) -> (Vec<Symbol>, Vec<Relationship>) {
     (symbols, relationships)
 }
 
+fn tree_contains_kind(node: tree_sitter::Node, kind: &str) -> bool {
+    if node.kind() == kind {
+        return true;
+    }
+
+    let mut cursor = node.walk();
+    node.children(&mut cursor)
+        .any(|child| tree_contains_kind(child, kind))
+}
+
 #[cfg(test)]
 mod php_extractor_tests {
     use super::*;
@@ -1775,6 +1785,69 @@ class Product
                 .as_ref()
                 .unwrap()
                 .contains("use Timestampable")
+        );
+    }
+
+    #[test]
+    fn test_php_namespaced_attributes_extract_annotation_markers() {
+        let php_code = r#"<?php
+#[App\Domain\Entity]
+class Account
+{
+    #[App\Validation\Required]
+    public string $name;
+
+    #[App\Http\Route('/accounts'), App\Tests\Test]
+    public function list(): array
+    {
+        return [];
+    }
+}
+"#;
+
+        let mut parser = init_parser();
+        let tree = parser.parse(php_code, None).unwrap();
+        assert!(
+            tree_contains_kind(tree.root_node(), "attribute_list"),
+            "PHP grammar must expose attribute_list nodes"
+        );
+
+        let symbols = extract_symbols(php_code);
+
+        let account = symbols
+            .iter()
+            .find(|symbol| symbol.name == "Account")
+            .expect("annotated class should be extracted");
+        assert_eq!(account.annotations[0].annotation, r"App\Domain\Entity");
+        assert_eq!(account.annotations[0].annotation_key, "entity");
+
+        let name = symbols
+            .iter()
+            .find(|symbol| symbol.name == "name")
+            .expect("annotated property should be extracted");
+        assert_eq!(name.annotations[0].annotation, r"App\Validation\Required");
+        assert_eq!(name.annotations[0].annotation_key, "required");
+
+        let list = symbols
+            .iter()
+            .find(|symbol| symbol.name == "list")
+            .expect("annotated method should be extracted");
+        let markers: Vec<_> = list
+            .annotations
+            .iter()
+            .map(|marker| (marker.annotation.as_str(), marker.annotation_key.as_str()))
+            .collect();
+
+        assert_eq!(
+            markers,
+            vec![(r"App\Http\Route", "route"), (r"App\Tests\Test", "test")]
+        );
+        assert_eq!(
+            list.metadata
+                .as_ref()
+                .and_then(|metadata| metadata.get("is_test"))
+                .and_then(|value| value.as_bool()),
+            Some(true)
         );
     }
 

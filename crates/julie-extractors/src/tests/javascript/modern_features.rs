@@ -23,6 +23,70 @@ fn init_parser() -> Parser {
     parser
 }
 
+fn tree_contains_kind(node: tree_sitter::Node, kind: &str) -> bool {
+    if node.kind() == kind {
+        return true;
+    }
+
+    let mut cursor = node.walk();
+    node.children(&mut cursor)
+        .any(|child| tree_contains_kind(child, kind))
+}
+
+#[test]
+fn test_javascript_decorated_methods_extract_annotation_markers() {
+    let code = r#"
+function logged(value, context) {
+  return value;
+}
+
+function memoize(value, context) {
+  return value;
+}
+
+class Service {
+  @logged
+  @memoize('user')
+  async loadUser(id) {
+    return id;
+  }
+}
+"#;
+
+    let mut parser = init_parser();
+    let tree = parser.parse(code, None).unwrap();
+    assert!(
+        tree_contains_kind(tree.root_node(), "decorator"),
+        "JavaScript grammar must expose decorator nodes"
+    );
+
+    let workspace_root = PathBuf::from("/tmp/test");
+    let mut extractor = JavaScriptExtractor::new(
+        "javascript".to_string(),
+        "decorators.js".to_string(),
+        code.to_string(),
+        &workspace_root,
+    );
+
+    let symbols = extractor.extract_symbols(&tree);
+    let load_user = symbols
+        .iter()
+        .find(|symbol| symbol.name == "loadUser")
+        .expect("decorated method should be extracted");
+
+    let markers: Vec<_> = load_user
+        .annotations
+        .iter()
+        .map(|marker| (marker.annotation.as_str(), marker.annotation_key.as_str()))
+        .collect();
+
+    assert_eq!(markers, vec![("logged", "logged"), ("memoize", "memoize")]);
+    assert_eq!(
+        load_user.annotations[1].raw_text.as_deref(),
+        Some("memoize('user')")
+    );
+}
+
 #[test]
 fn test_extract_es6_plus_features() {
     let code = r#"

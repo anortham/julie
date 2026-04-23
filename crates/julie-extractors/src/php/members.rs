@@ -1,6 +1,9 @@
 // PHP Extractor - Property and constant extraction
 
-use super::{PhpExtractor, determine_visibility, extract_modifiers, find_child};
+use super::{
+    PhpExtractor, determine_visibility, extract_modifiers, find_child,
+    functions::extract_attribute_markers,
+};
 use crate::base::{Symbol, SymbolKind, SymbolOptions, Visibility};
 use std::collections::HashMap;
 use tree_sitter::Node;
@@ -17,6 +20,7 @@ pub(super) fn extract_property(
     let name = extractor.get_base().get_node_text(&name_node);
 
     let modifiers = extract_modifiers(extractor, &node);
+    let annotations = extract_attribute_markers(extractor, &node);
     let type_node = find_type_node(extractor, &node);
     let attribute_list = find_child(extractor, &node, "attribute_list");
 
@@ -79,7 +83,7 @@ pub(super) fn extract_property(
                         .collect(),
                 ),
                 doc_comment,
-                annotations: Vec::new(),
+                annotations,
             },
         ),
     )
@@ -117,9 +121,12 @@ pub(super) fn extract_constant(
     };
 
     // Extract modifiers and visibility immediately
-    let visibility = {
+    let (visibility, annotations) = {
         let modifiers = extract_modifiers(extractor, &node);
-        determine_visibility(&modifiers)
+        (
+            determine_visibility(&modifiers),
+            extract_attribute_markers(extractor, &node),
+        )
     };
 
     // Now all borrows are complete - build the symbol
@@ -162,7 +169,7 @@ pub(super) fn extract_constant(
                         .collect(),
                 ),
                 doc_comment,
-                annotations: Vec::new(),
+                annotations,
             },
         ),
     )

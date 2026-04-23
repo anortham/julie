@@ -4,7 +4,10 @@
 
 use super::helpers::*;
 use super::signatures;
-use crate::base::{BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility};
+use crate::base::{
+    AnnotationMarker, BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility,
+    normalize_annotations,
+};
 use crate::test_detection::is_test_symbol;
 use std::collections::HashMap;
 use tree_sitter::Node;
@@ -17,6 +20,7 @@ pub(super) fn extract_class(
 ) -> Option<Symbol> {
     let name_node = find_child_by_type(node, "identifier")?;
     let name = get_node_text(&name_node);
+    let annotations = extract_annotation_markers(node);
 
     // Check if it's a Flutter widget (extends StatelessWidget, StatefulWidget, etc.)
     let is_widget = is_flutter_widget(node);
@@ -31,7 +35,7 @@ pub(super) fn extract_class(
             parent_id: parent_id.map(|id| id.to_string()),
             metadata: Some(HashMap::new()),
             doc_comment: None,
-            annotations: Vec::new(),
+            annotations,
         },
     );
 
@@ -55,6 +59,8 @@ pub(super) fn extract_function(
 
     let is_async = is_async_function(node, &base.content);
     let is_private = name.starts_with('_');
+    let annotations = extract_annotation_markers(node);
+    let annotation_keys = annotation_keys(&annotations);
 
     // Use Method kind if inside a class (has parent_id), otherwise Function
     let symbol_kind = if parent_id.is_some() {
@@ -76,6 +82,7 @@ pub(super) fn extract_function(
             }),
             parent_id: parent_id.map(|id| id.to_string()),
             metadata: Some(HashMap::new()),
+            annotations,
             ..Default::default()
         },
     );
@@ -94,7 +101,7 @@ pub(super) fn extract_function(
         &symbol.name,
         &base.file_path,
         &symbol.kind,
-        &[],
+        &annotation_keys,
         None,
     ) {
         symbol
@@ -127,6 +134,8 @@ pub(super) fn extract_method(
     let is_private = name.starts_with('_');
     let is_override = is_override_method(node, &base.content);
     let is_flutter_lifecycle = is_flutter_lifecycle_method(&name);
+    let annotations = extract_annotation_markers(node);
+    let annotation_keys = annotation_keys(&annotations);
 
     // Get the base function signature (return type + name + params)
     let base_signature =
@@ -164,6 +173,7 @@ pub(super) fn extract_method(
             }),
             parent_id: parent_id.map(|id| id.to_string()),
             metadata: Some(HashMap::new()),
+            annotations,
             ..Default::default()
         },
     );
@@ -192,7 +202,7 @@ pub(super) fn extract_method(
         &symbol.name,
         &base.file_path,
         &SymbolKind::Method,
-        &[],
+        &annotation_keys,
         None,
     ) {
         symbol
@@ -257,6 +267,8 @@ pub(super) fn extract_constructor(
 
     let is_factory = is_factory_constructor(node);
     let is_const = is_const_constructor(node);
+    let annotations = extract_annotation_markers(node);
+    let annotation_keys = annotation_keys(&annotations);
 
     let mut symbol = base.create_symbol(
         node,
@@ -267,6 +279,7 @@ pub(super) fn extract_constructor(
             visibility: Some(Visibility::Public),
             parent_id: parent_id.map(|id| id.to_string()),
             metadata: Some(HashMap::new()),
+            annotations,
             ..Default::default()
         },
     );
@@ -287,7 +300,7 @@ pub(super) fn extract_constructor(
         &symbol.name,
         &base.file_path,
         &SymbolKind::Constructor,
-        &[],
+        &annotation_keys,
         None,
     ) {
         symbol
@@ -317,6 +330,7 @@ pub(super) fn extract_variable(
                 let is_private = name.starts_with('_');
                 let is_final = is_final_variable(&child);
                 let is_const = is_const_variable(&child);
+                let annotations = extract_annotation_markers(node);
 
                 let symbol_kind = if is_final || is_const {
                     SymbolKind::Constant
@@ -337,6 +351,7 @@ pub(super) fn extract_variable(
                         }),
                         parent_id: parent_id.map(|id| id.to_string()),
                         metadata: Some(HashMap::new()),
+                        annotations,
                         ..Default::default()
                     },
                 );
@@ -357,4 +372,15 @@ pub(super) fn extract_variable(
     }
 
     None
+}
+
+fn extract_annotation_markers(node: &Node) -> Vec<AnnotationMarker> {
+    normalize_annotations(&extract_annotations(node), "dart")
+}
+
+fn annotation_keys(annotations: &[AnnotationMarker]) -> Vec<String> {
+    annotations
+        .iter()
+        .map(|annotation| annotation.annotation_key.clone())
+        .collect()
 }

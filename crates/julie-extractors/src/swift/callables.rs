@@ -20,6 +20,11 @@ impl SwiftExtractor {
         let name = name_node.map(|n| self.base.get_node_text(&n))?;
 
         let modifiers = self.extract_modifiers(node);
+        let annotations = self.extract_annotations(node);
+        let annotation_keys: Vec<String> = annotations
+            .iter()
+            .map(|annotation| annotation.annotation_key.clone())
+            .collect();
         let generic_params = self.extract_generic_parameters(node);
         let parameters = self.extract_parameters(node);
         let return_type = self.extract_return_type(node);
@@ -78,7 +83,7 @@ impl SwiftExtractor {
             &name,
             &self.base.file_path,
             &symbol_kind,
-            &[],
+            &annotation_keys,
             doc_comment.as_deref(),
         ) {
             metadata.insert("is_test".to_string(), serde_json::Value::Bool(true));
@@ -94,7 +99,7 @@ impl SwiftExtractor {
                 parent_id: parent_id.map(|s| s.to_string()),
                 metadata: Some(metadata),
                 doc_comment,
-                annotations: Vec::new(),
+                annotations,
             },
         ))
     }
@@ -103,6 +108,7 @@ impl SwiftExtractor {
     pub(super) fn extract_initializer(&mut self, node: Node, parent_id: Option<&str>) -> Symbol {
         let name = "init".to_string();
         let modifiers = self.extract_modifiers(node);
+        let annotations = self.extract_annotations(node);
         let parameters = self.extract_initializer_parameters(node);
 
         let params_str = parameters.unwrap_or_else(|| "()".to_string());
@@ -140,7 +146,7 @@ impl SwiftExtractor {
                 parent_id: parent_id.map(|s| s.to_string()),
                 metadata: Some(metadata),
                 doc_comment,
-                annotations: Vec::new(),
+                annotations,
             },
         )
     }
@@ -149,6 +155,7 @@ impl SwiftExtractor {
     pub(super) fn extract_deinitializer(&mut self, node: Node, parent_id: Option<&str>) -> Symbol {
         let name = "deinit".to_string();
         let signature = "deinit".to_string();
+        let annotations = self.extract_annotations(node);
 
         let metadata = HashMap::from([(
             "type".to_string(),
@@ -168,7 +175,7 @@ impl SwiftExtractor {
                 parent_id: parent_id.map(|s| s.to_string()),
                 metadata: Some(metadata),
                 doc_comment,
-                annotations: Vec::new(),
+                annotations,
             },
         )
     }

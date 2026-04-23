@@ -3,7 +3,7 @@
 //! Utility functions for extracting modifiers, visibility, type parameters,
 //! and other metadata from Scala AST nodes.
 
-use crate::base::Visibility;
+use crate::base::{AnnotationMarker, Visibility, normalize_annotations};
 use tree_sitter::Node;
 
 type Base = super::super::base::BaseExtractor;
@@ -28,6 +28,25 @@ pub(super) fn extract_modifiers(base: &Base, node: &Node) -> Vec<String> {
         }
     }
     modifiers
+}
+
+pub(super) fn extract_annotations(base: &Base, node: &Node) -> Vec<AnnotationMarker> {
+    let mut raw_annotations = Vec::new();
+
+    for child in node.children(&mut node.walk()) {
+        if child.kind() == "annotation" {
+            raw_annotations.push(base.get_node_text(&child));
+        } else if child.kind() == "modifiers" {
+            raw_annotations.extend(
+                child
+                    .children(&mut child.walk())
+                    .filter(|mod_child| mod_child.kind() == "annotation")
+                    .map(|mod_child| base.get_node_text(&mod_child)),
+            );
+        }
+    }
+
+    normalize_annotations(&raw_annotations, "scala")
 }
 
 fn is_modifier_keyword(s: &str) -> bool {
