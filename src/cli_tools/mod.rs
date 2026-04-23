@@ -19,6 +19,7 @@
 
 pub mod commands;
 pub mod daemon;
+pub mod generic;
 pub mod subcommands;
 
 pub use subcommands::*;
@@ -203,7 +204,9 @@ async fn run_via_daemon(
 ///
 /// Exposed as `pub` so A3 tool wrappers can use it for testing or custom
 /// standalone flows, though the normal path goes through `run_standalone`.
-pub async fn bootstrap_standalone_handler(workspace_root: &std::path::Path) -> Result<JulieServerHandler> {
+pub async fn bootstrap_standalone_handler(
+    workspace_root: &std::path::Path,
+) -> Result<JulieServerHandler> {
     if !workspace_root.exists() {
         anyhow::bail!(
             "Workspace path does not exist: {}\n\

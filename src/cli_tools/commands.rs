@@ -2,10 +2,8 @@
 //!
 //! These bridge CLI args into the tool execution pipeline. Each named
 //! subcommand maps to an MCP tool name and produces the JSON parameters
-//! for daemon-mode dispatch.
-//!
-//! A3 will replace the `call_standalone` stubs with real tool struct
-//! construction and execution.
+//! for daemon-mode dispatch. The `call_standalone` methods construct real
+//! tool structs and execute them via `.call_tool(&handler)`.
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -52,13 +50,20 @@ impl CliToolCommand for SearchArgs {
         Ok(args)
     }
 
-    async fn call_standalone(&self, _handler: &JulieServerHandler) -> Result<CallToolResult> {
-        // A3 will wire: FastSearchTool { ... }.call_tool(handler).await
-        anyhow::bail!(
-            "Standalone tool execution not yet wired for '{}'. \
-             Use daemon mode (without --standalone) or wait for A3.",
-            self.tool_name()
-        )
+    async fn call_standalone(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
+        use crate::tools::search::FastSearchTool;
+
+        let tool = FastSearchTool {
+            query: self.query.clone(),
+            search_target: self.target.clone(),
+            limit: self.limit,
+            language: self.language.clone(),
+            file_pattern: self.file_pattern.clone(),
+            context_lines: self.context_lines,
+            exclude_tests: if self.exclude_tests { Some(true) } else { None },
+            ..Default::default()
+        };
+        tool.call_tool(handler).await
     }
 }
 
@@ -91,12 +96,20 @@ impl CliToolCommand for RefsArgs {
         Ok(args)
     }
 
-    async fn call_standalone(&self, _handler: &JulieServerHandler) -> Result<CallToolResult> {
-        anyhow::bail!(
-            "Standalone tool execution not yet wired for '{}'. \
-             Use daemon mode (without --standalone) or wait for A3.",
-            self.tool_name()
-        )
+    async fn call_standalone(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
+        use crate::tools::FastRefsTool;
+
+        // Note: file_path and file_pattern from CLI args are not supported by
+        // FastRefsTool (they exist on RefsArgs for the daemon JSON path but
+        // FastRefsTool has no matching fields). Standalone uses the struct as-is.
+        let tool = FastRefsTool {
+            symbol: self.symbol.clone(),
+            include_definition: true,
+            limit: self.limit,
+            workspace: None,
+            reference_kind: self.kind.clone(),
+        };
+        tool.call_tool(handler).await
     }
 }
 
@@ -125,12 +138,18 @@ impl CliToolCommand for SymbolsArgs {
         Ok(args)
     }
 
-    async fn call_standalone(&self, _handler: &JulieServerHandler) -> Result<CallToolResult> {
-        anyhow::bail!(
-            "Standalone tool execution not yet wired for '{}'. \
-             Use daemon mode (without --standalone) or wait for A3.",
-            self.tool_name()
-        )
+    async fn call_standalone(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
+        use crate::tools::symbols::GetSymbolsTool;
+
+        let tool = GetSymbolsTool {
+            file_path: self.file_path.clone(),
+            max_depth: self.max_depth,
+            target: self.target.clone(),
+            limit: Some(self.limit),
+            mode: Some(self.mode.clone()),
+            workspace: None,
+        };
+        tool.call_tool(handler).await
     }
 }
 
@@ -150,7 +169,7 @@ impl CliToolCommand for ContextArgs {
         });
 
         if let Some(budget) = self.budget {
-            args["budget"] = Value::Number(budget.into());
+            args["max_tokens"] = Value::Number(budget.into());
         }
         if let Some(hops) = self.max_hops {
             args["max_hops"] = Value::Number(hops.into());
@@ -166,12 +185,24 @@ impl CliToolCommand for ContextArgs {
         Ok(args)
     }
 
-    async fn call_standalone(&self, _handler: &JulieServerHandler) -> Result<CallToolResult> {
-        anyhow::bail!(
-            "Standalone tool execution not yet wired for '{}'. \
-             Use daemon mode (without --standalone) or wait for A3.",
-            self.tool_name()
-        )
+    async fn call_standalone(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
+        use crate::tools::get_context::GetContextTool;
+
+        let tool = GetContextTool {
+            query: self.query.clone(),
+            max_tokens: self.budget,
+            workspace: None,
+            language: None,
+            file_pattern: None,
+            format: None,
+            edited_files: None,
+            entry_symbols: self.entry_symbols.clone(),
+            stack_trace: None,
+            failing_test: None,
+            max_hops: self.max_hops,
+            prefer_tests: if self.prefer_tests { Some(true) } else { None },
+        };
+        tool.call_tool(handler).await
     }
 }
 
@@ -192,10 +223,11 @@ impl CliToolCommand for BlastRadiusArgs {
             args["rev"] = Value::String(rev.clone());
         }
         if let Some(ref files) = self.files {
-            args["files"] = Value::Array(files.iter().map(|f| Value::String(f.clone())).collect());
+            args["file_paths"] =
+                Value::Array(files.iter().map(|f| Value::String(f.clone())).collect());
         }
         if let Some(ref symbols) = self.symbols {
-            args["symbols"] =
+            args["symbol_ids"] =
                 Value::Array(symbols.iter().map(|s| Value::String(s.clone())).collect());
         }
         if let Some(ref fmt) = self.format {
@@ -205,12 +237,24 @@ impl CliToolCommand for BlastRadiusArgs {
         Ok(args)
     }
 
-    async fn call_standalone(&self, _handler: &JulieServerHandler) -> Result<CallToolResult> {
-        anyhow::bail!(
-            "Standalone tool execution not yet wired for '{}'. \
-             Use daemon mode (without --standalone) or wait for A3.",
-            self.tool_name()
-        )
+    async fn call_standalone(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
+        use crate::tools::impact::BlastRadiusTool;
+
+        // Note: BlastRadiusTool uses from_revision/to_revision (database
+        // revision IDs), not git rev strings. The --rev CLI flag is
+        // aspirational for daemon mode; standalone maps files/symbols directly.
+        let tool = BlastRadiusTool {
+            symbol_ids: self.symbols.clone().unwrap_or_default(),
+            file_paths: self.files.clone().unwrap_or_default(),
+            from_revision: None,
+            to_revision: None,
+            max_depth: 2, // matches default_max_depth() in impact/mod.rs
+            limit: 12,    // matches default_limit() in impact/mod.rs
+            include_tests: true,
+            format: self.format.clone(),
+            workspace: None,
+        };
+        tool.call_tool(handler).await
     }
 }
 
@@ -242,12 +286,18 @@ impl CliToolCommand for WorkspaceArgs {
         Ok(args)
     }
 
-    async fn call_standalone(&self, _handler: &JulieServerHandler) -> Result<CallToolResult> {
-        anyhow::bail!(
-            "Standalone tool execution not yet wired for '{}'. \
-             Use daemon mode (without --standalone) or wait for A3.",
-            self.tool_name()
-        )
+    async fn call_standalone(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
+        use crate::tools::workspace::commands::ManageWorkspaceTool;
+
+        let tool = ManageWorkspaceTool {
+            operation: self.operation.clone(),
+            path: self.path.clone(),
+            force: if self.force { Some(true) } else { None },
+            name: self.name.clone(),
+            workspace_id: None,
+            detailed: None,
+        };
+        tool.call_tool(handler).await
     }
 }
 
@@ -260,10 +310,8 @@ impl CliToolCommand for GenericToolArgs {
     fn tool_name(&self) -> &'static str {
         // The generic tool command uses the user-provided name.
         // This is a lifetime workaround: we leak the string since tool_name
-        // returns &'static str for the trait. The alternative is changing
-        // the trait signature, but this is fine for a CLI binary that
+        // returns &'static str for the trait. Fine for a CLI binary that
         // exits after one invocation.
-        // A3 may refine this with a proper dispatch table.
         Box::leak(self.name.clone().into_boxed_str())
     }
 
@@ -283,11 +331,19 @@ impl CliToolCommand for GenericToolArgs {
         Ok(args)
     }
 
-    async fn call_standalone(&self, _handler: &JulieServerHandler) -> Result<CallToolResult> {
-        anyhow::bail!(
-            "Standalone tool execution not yet wired for generic tool '{}'. \
-             Use daemon mode (without --standalone) or wait for A3.",
-            self.name
-        )
+    async fn call_standalone(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
+        let params: Value = serde_json::from_str(&self.params).map_err(|e| {
+            anyhow::anyhow!(
+                "Invalid JSON in --params: {}\n\
+                 Expected valid JSON object, e.g. '{{\"query\":\"test\"}}'",
+                e
+            )
+        })?;
+
+        if !params.is_object() {
+            anyhow::bail!("Tool parameters must be a JSON object, got: {}", params);
+        }
+
+        super::generic::dispatch_generic_tool(&self.name, params, handler).await
     }
 }
