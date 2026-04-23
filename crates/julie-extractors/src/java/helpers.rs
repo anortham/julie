@@ -1,6 +1,6 @@
 /// Helper functions for Java extraction
 /// Handles modifiers, visibility, and common parsing utilities
-use crate::base::{normalize_annotations, AnnotationMarker, BaseExtractor, Visibility};
+use crate::base::{AnnotationMarker, BaseExtractor, Visibility, normalize_annotations};
 use tree_sitter::Node;
 
 /// Extract all modifiers from a Java node (public, private, static, final, etc.)

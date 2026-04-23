@@ -2,7 +2,7 @@
 //
 // Collection of utility functions for parsing C# AST nodes and extracting metadata
 
-use crate::base::{normalize_annotations, AnnotationMarker, BaseExtractor, Visibility};
+use crate::base::{AnnotationMarker, BaseExtractor, Visibility, normalize_annotations};
 use tree_sitter::Node;
 
 /// Extract modifiers from a node (attributes and modifiers)

@@ -3,7 +3,7 @@
 //! This module provides utility functions for extracting modifiers, visibility,
 //! type information, and other metadata from Kotlin code.
 
-use crate::base::{normalize_annotations, AnnotationMarker, SymbolKind, Visibility};
+use crate::base::{AnnotationMarker, SymbolKind, Visibility, normalize_annotations};
 use tree_sitter::Node;
 
 /// Extract modifiers from a Kotlin node (public, private, open, sealed, data, etc.)
