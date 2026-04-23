@@ -8,6 +8,7 @@ use anyhow::Result;
 use rmcp::ServerHandler;
 use rmcp::model::{NumberOrString, PaginatedRequestParams};
 use rmcp::service::{RequestContext, serve_directly};
+use serde_json::Value;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -105,6 +106,84 @@ async fn test_tool_list_matches_public_surface() -> Result<()> {
             .iter()
             .any(|tool| tool.name.as_ref() == "spillover_get"),
         "spillover_get should appear in the public tool list"
+    );
+
+    let _ = service.cancel().await;
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_fast_search_public_docs_describe_file_mode() -> Result<()> {
+    let handler = JulieServerHandler::new_for_test().await?;
+
+    let (server_transport, client_transport) = tokio::io::duplex(64);
+    drop(client_transport);
+    let service =
+        serve_directly::<rmcp::RoleServer, _, _, _, _>(handler.clone(), server_transport, None);
+
+    let tools = <JulieServerHandler as ServerHandler>::list_tools(
+        &handler,
+        Some(PaginatedRequestParams::default()),
+        RequestContext::new(NumberOrString::Number(1), service.peer().clone()),
+    )
+    .await?;
+
+    let fast_search = tools
+        .tools
+        .iter()
+        .find(|tool| tool.name.as_ref() == "fast_search")
+        .expect("fast_search should appear in the public tool list");
+
+    let description = fast_search
+        .description
+        .as_deref()
+        .expect("fast_search should publish a tool description");
+    assert!(
+        description.contains("search_target=\"files\""),
+        "tool description should mention file search mode, got: {description}"
+    );
+
+    let properties = fast_search
+        .input_schema
+        .get("properties")
+        .and_then(Value::as_object)
+        .expect("fast_search input schema should expose properties");
+
+    let search_target_description = properties
+        .get("search_target")
+        .and_then(Value::as_object)
+        .and_then(|field| field.get("description"))
+        .and_then(Value::as_str)
+        .expect("search_target should publish a description");
+    assert!(
+        search_target_description.contains("\"files\""),
+        "search_target docs should mention the files mode, got: {search_target_description}"
+    );
+    assert!(
+        search_target_description.contains("\"paths\""),
+        "search_target docs should mention the paths alias, got: {search_target_description}"
+    );
+
+    let context_lines_description = properties
+        .get("context_lines")
+        .and_then(Value::as_object)
+        .and_then(|field| field.get("description"))
+        .and_then(Value::as_str)
+        .expect("context_lines should publish a description");
+    assert!(
+        context_lines_description.contains("search_target=\"files\""),
+        "context_lines docs should explain the files-mode restriction, got: {context_lines_description}"
+    );
+
+    let return_format_description = properties
+        .get("return_format")
+        .and_then(Value::as_object)
+        .and_then(|field| field.get("description"))
+        .and_then(Value::as_str)
+        .expect("return_format should publish a description");
+    assert!(
+        return_format_description.contains("path-only"),
+        "return_format docs should explain file-mode locations output, got: {return_format_description}"
     );
 
     let _ = service.cancel().await;

@@ -48,11 +48,11 @@ use crate::tools::shared::OptimizedResponse;
 //******************//
 
 #[derive(Debug, Serialize, JsonSchema)]
-/// Search code using text search with code-aware tokenization. Supports multi-word queries with AND/OR logic. For conceptual queries (e.g., "error handling"), use search_target="definitions" to leverage semantic search.
+/// Search code, symbols, or file paths using code-aware tokenization. Supports multi-word queries with AND/OR logic. Use search_target="definitions" for symbol lookup and conceptual search, or search_target="files" for path and basename matches.
 pub struct FastSearchTool {
     /// Search query. Exact symbol names work best for definition search. Too many results? Add file_pattern or language filter. Zero results? Run manage_workspace(operation="index")
     pub query: String,
-    /// Search target: "content" (default, line-level text search) or "definitions" (promotes exact symbol name matches to top, best for jumping to where a symbol is defined). Use "definitions" for conceptual queries too (e.g., "error handling retry logic") as it leverages semantic search
+    /// Search target: "content" (default, line-level text search), "definitions" (promotes exact symbol name matches and supports conceptual semantic search), or "files" (path and basename search). Alias: "paths"
     #[serde(default = "default_search_target")]
     pub search_target: String,
     /// Language filter: "rust", "typescript", "javascript", "python", "java", "csharp", "vbnet", "php", "ruby", "swift", "kotlin", "scala", "go", "c", "cpp", "lua", "qml", "r", "sql", "html", "css", "vue", "bash", "gdscript", "dart", "zig"
@@ -67,7 +67,7 @@ pub struct FastSearchTool {
         deserialize_with = "crate::utils::serde_lenient::deserialize_u32_lenient"
     )]
     pub limit: u32,
-    /// Context lines before/after match (default: 1)
+    /// Context lines before/after a content match (default: 1). Not supported for search_target="files" (rejected if set)
     #[serde(
         default = "default_context_lines",
         deserialize_with = "crate::utils::serde_lenient::deserialize_option_u32_lenient"
@@ -84,7 +84,7 @@ pub struct FastSearchTool {
     /// Workspace filter: "primary" (default) or a workspace ID
     #[serde(default = "default_workspace")]
     pub workspace: Option<String>,
-    /// Return format: "full" (default, code context included) or "locations" (file:line only, 70-90% fewer tokens)
+    /// Return format: "full" (default, code context for content/definition results and rich summaries for file search) or "locations" (file:line only for content/definitions, path-only for file search)
     #[serde(default = "default_return_format")]
     pub return_format: String,
 }

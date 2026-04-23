@@ -264,6 +264,27 @@ fn infer_language(requested_language: &Option<String>) -> String {
     requested_language.clone().unwrap_or_default()
 }
 
+fn file_result_matches_post_filters(
+    result: &crate::search::index::FileSearchResult,
+    file_pattern: Option<&str>,
+    exclude_tests: bool,
+) -> bool {
+    if exclude_tests && is_test_path(&result.file_path) {
+        return false;
+    }
+    if let Some(pattern) = file_pattern {
+        return query::matches_glob_pattern(&result.file_path, pattern);
+    }
+    true
+}
+
+fn next_file_search_fetch_limit(current: usize, hard_cap: usize) -> usize {
+    current
+        .saturating_mul(2)
+        .max(current.saturating_add(1))
+        .min(hard_cap)
+}
+
 async fn execute_file_search(
     params: SearchExecutionParams<'_>,
     workspaces: &[SearchExecutionWorkspace],
@@ -272,7 +293,10 @@ async fn execute_file_search(
     let mut hits = Vec::new();
     let mut relaxed = false;
     let mut total_results = 0usize;
+    let base_limit = params.limit.max(1) as usize;
     let exclude_tests = params.exclude_tests.unwrap_or(false);
+    let file_pattern = params.file_pattern.as_deref();
+    let has_post_filters = exclude_tests || file_pattern.is_some();
 
     for workspace in workspaces {
         let Some(search_index) = handler
@@ -292,32 +316,45 @@ async fn execute_file_search(
             exclude_tests: false,
         };
 
-        let results = {
-            let index = search_index.lock().unwrap();
-            index.search_files(params.query, &filter, params.limit.max(1) as usize)?
-        };
+        let hard_cap = if has_post_filters { 1000 } else { base_limit };
+        let mut fetch_limit = base_limit;
+        let filtered_results = loop {
+            let results = {
+                let index = search_index.lock().unwrap();
+                index.search_files(params.query, &filter, fetch_limit)?
+            };
 
-        relaxed |= results.relaxed;
-        total_results += results.results.len();
-        hits.extend(
-            results
+            relaxed |= results.relaxed;
+            let raw_result_count = results.results.len();
+            let filtered_results: Vec<crate::search::index::FileSearchResult> = results
                 .results
                 .into_iter()
                 .filter(|result| {
-                    if exclude_tests && is_test_path(&result.file_path) {
-                        return false;
-                    }
-                    if let Some(pattern) = params.file_pattern.as_deref() {
-                        return query::matches_glob_pattern(&result.file_path, pattern);
-                    }
-                    true
+                    file_result_matches_post_filters(result, file_pattern, exclude_tests)
                 })
-                .map(|result| SearchHit::from_file_result(result, workspace.workspace_id.clone())),
-        );
+                .collect();
+
+            let exhausted_results = raw_result_count < fetch_limit;
+            let enough_filtered_results = filtered_results.len() >= base_limit;
+            if !has_post_filters
+                || enough_filtered_results
+                || exhausted_results
+                || fetch_limit >= hard_cap
+            {
+                break filtered_results;
+            }
+
+            fetch_limit = next_file_search_fetch_limit(fetch_limit, hard_cap);
+        };
+
+        total_results += filtered_results.len();
+        hits.extend(filtered_results.into_iter().map(|result| {
+            SearchHit::from_file_result(result, workspace.workspace_id.clone())
+        }));
     }
 
     sort_file_hits(&mut hits);
-    hits.truncate(params.limit.max(1) as usize);
+    hits.truncate(base_limit);
 
     Ok(SearchExecutionResult::new(
         hits,

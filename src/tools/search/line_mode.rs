@@ -20,6 +20,7 @@ pub(crate) struct LineModeSearchResult {
     pub relaxed: bool,
     pub strategy: LineMatchStrategy,
     pub workspace_label: String,
+    #[cfg_attr(not(test), allow(dead_code))]
     pub stage_counts: LineModeStageCounts,
     /// Post-hoc attribution of a zero-result path to a specific pipeline
     /// stage. `Some(_)` only when `matches.is_empty()`; the chosen variant

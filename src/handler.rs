@@ -2357,7 +2357,7 @@ impl JulieServerHandler {
 
     #[tool(
         name = "fast_search",
-        description = "Search code using text search with code-aware tokenization. Supports multi-word queries with AND/OR logic. Use `search_target=\"definitions\"` to promote exact symbol-name matches and enable semantic search for conceptual queries.",
+        description = "Search code, symbols, or file paths using code-aware tokenization. Supports multi-word queries with AND/OR logic. Use `search_target=\"definitions\"` for symbol lookup and conceptual semantic search, or `search_target=\"files\"` for path and basename matches. Alias: `search_target=\"paths\"`.",
         annotations(
             title = "Fast Code Search",
             read_only_hint = true,

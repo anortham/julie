@@ -561,6 +561,39 @@ async fn test_dashboard_content_search_renders_line_match_preview() {
 }
 
 #[tokio::test]
+async fn test_search_and_compare_pages_do_not_link_to_search_analysis() {
+    let state = test_state();
+    let config = DashboardConfig::default();
+
+    for path in ["/search", "/search/compare"] {
+        let app = create_router(state.clone(), config.clone()).unwrap();
+        let response = app
+            .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+
+        assert_eq!(
+            response.status().as_u16(),
+            200,
+            "GET {} returned {}",
+            path,
+            response.status()
+        );
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body bytes");
+        let html = String::from_utf8(body.to_vec()).expect("utf8 body");
+
+        assert!(
+            !html.contains("/search/analysis"),
+            "{} should not advertise the search analysis page: {html}",
+            path
+        );
+    }
+}
+
+#[tokio::test]
 async fn test_project_detail_returns_404_without_daemon_db() {
     // With no daemon_db, the detail endpoint should return 404
     // (daemon_db is None, so get_workspace returns NotFound)
