@@ -3,7 +3,7 @@
 //! This module provides utility functions for extracting modifiers, visibility,
 //! type information, and other metadata from Kotlin code.
 
-use crate::base::{SymbolKind, Visibility};
+use crate::base::{normalize_annotations, AnnotationMarker, SymbolKind, Visibility};
 use tree_sitter::Node;
 
 /// Extract modifiers from a Kotlin node (public, private, open, sealed, data, etc.)
@@ -47,6 +47,26 @@ pub(super) fn extract_modifiers(
     }
 
     modifiers
+}
+
+/// Extract canonical annotation markers from Kotlin modifiers.
+pub(super) fn extract_annotations(
+    base: &super::super::base::BaseExtractor,
+    node: &Node,
+) -> Vec<AnnotationMarker> {
+    let raw_annotations: Vec<String> = node
+        .children(&mut node.walk())
+        .find(|n| n.kind() == "modifiers")
+        .map(|modifiers_list| {
+            modifiers_list
+                .children(&mut modifiers_list.walk())
+                .filter(|child| child.kind() == "annotation")
+                .map(|child| base.get_node_text(&child))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    normalize_annotations(&raw_annotations, "kotlin")
 }
 
 /// Extract type parameters from a Kotlin node (e.g., <T, U>)

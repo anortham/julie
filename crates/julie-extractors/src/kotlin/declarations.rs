@@ -22,6 +22,11 @@ pub(super) fn extract_function(
     let name = name_node.map(|n| base.get_node_text(&n))?;
 
     let modifiers = helpers::extract_modifiers(base, node);
+    let annotations = helpers::extract_annotations(base, node);
+    let annotation_keys: Vec<String> = annotations
+        .iter()
+        .map(|annotation| annotation.annotation_key.clone())
+        .collect();
     let type_params = helpers::extract_type_parameters(base, node);
     let receiver_type = helpers::extract_receiver_type(base, node);
     let parameters = helpers::extract_parameters(base, node);
@@ -106,7 +111,7 @@ pub(super) fn extract_function(
         &name,
         &base.file_path,
         &symbol_kind,
-        &[],
+        &annotation_keys,
         doc_comment.as_deref(),
     ) {
         metadata.insert("is_test".to_string(), Value::Bool(true));
@@ -122,7 +127,7 @@ pub(super) fn extract_function(
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: Some(metadata),
             doc_comment,
-            annotations: Vec::new(),
+            annotations,
         },
     ))
 }
@@ -143,6 +148,11 @@ pub(super) fn extract_secondary_constructor(
     class_name: &str,
 ) -> Option<Symbol> {
     let modifiers = helpers::extract_modifiers(base, node);
+    let annotations = helpers::extract_annotations(base, node);
+    let annotation_keys: Vec<String> = annotations
+        .iter()
+        .map(|annotation| annotation.annotation_key.clone())
+        .collect();
     let parameters = helpers::extract_parameters(base, node);
 
     let mut signature = "constructor".to_string();
@@ -181,7 +191,7 @@ pub(super) fn extract_secondary_constructor(
         class_name,
         &base.file_path,
         &SymbolKind::Constructor,
-        &[],
+        &annotation_keys,
         doc_comment.as_deref(),
     ) {
         metadata.insert("is_test".to_string(), Value::Bool(true));
@@ -197,7 +207,7 @@ pub(super) fn extract_secondary_constructor(
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: Some(metadata),
             doc_comment,
-            annotations: Vec::new(),
+            annotations,
         },
     ))
 }
