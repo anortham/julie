@@ -32,7 +32,7 @@ use crate::search::schema::{
 use crate::search::scoring::{
     apply_important_patterns_boost, apply_nl_path_prior, is_nl_like_query,
 };
-use crate::search::tokenizer::{CodeTokenizer, TokenizerCompatibilitySignature};
+use crate::search::tokenizer::{CodeTokenizer, TokenizerCompatibilitySignature, split_camel_case};
 
 const WRITER_HEAP_SIZE: usize = 50_000_000; // 50MB
 const NL_RERANK_OVERFETCH_FACTOR: usize = 4;
@@ -410,8 +410,11 @@ impl SearchIndex {
             query_str
         };
         let expanded = expand_query_terms(term_query);
-        let original_terms =
-            Self::filter_compound_tokens(self.tokenize_terms(&expanded.original_terms));
+        let original_terms = if has_annotation_filters {
+            self.annotation_context_terms(term_query)
+        } else {
+            Self::filter_compound_tokens(self.tokenize_terms(&expanded.original_terms))
+        };
         let alias_terms = Self::filter_compound_tokens(self.tokenize_terms(&expanded.alias_terms));
         let normalized_terms =
             Self::filter_compound_tokens(self.tokenize_terms(&expanded.normalized_terms));
@@ -1200,6 +1203,49 @@ impl SearchIndex {
             }
         }
         tokenized_terms
+    }
+
+    fn annotation_context_terms(&self, query: &str) -> Vec<String> {
+        use std::collections::HashSet;
+
+        let terms = query
+            .split_whitespace()
+            .map(|term| {
+                term.trim_matches(|ch: char| !ch.is_ascii_alphanumeric() && ch != '_' && ch != '-')
+            })
+            .filter(|term| !term.is_empty())
+            .map(ToString::to_string)
+            .collect::<Vec<_>>();
+        let tokenized_terms = self.tokenize_terms(&terms);
+        let token_set: HashSet<String> = tokenized_terms.iter().cloned().collect();
+        let mut compound_tokens_to_drop = HashSet::new();
+
+        for term in &terms {
+            let camel_parts = split_camel_case(term);
+            if camel_parts.len() <= 1 {
+                continue;
+            }
+
+            let part_tokens = camel_parts
+                .iter()
+                .flat_map(|part| self.tokenize_query(part))
+                .collect::<HashSet<_>>();
+            if part_tokens.is_empty() || !part_tokens.iter().all(|part| token_set.contains(part)) {
+                continue;
+            }
+
+            let term_lower = term.to_ascii_lowercase();
+            if token_set.contains(&term_lower) {
+                compound_tokens_to_drop.insert(term_lower);
+            }
+        }
+
+        Self::filter_compound_tokens(
+            tokenized_terms
+                .into_iter()
+                .filter(|token| !compound_tokens_to_drop.contains(token))
+                .collect(),
+        )
     }
 
     fn rerank_candidate_limit(query_str: &str, limit: usize) -> usize {
