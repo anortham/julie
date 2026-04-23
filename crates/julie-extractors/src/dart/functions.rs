@@ -31,6 +31,7 @@ pub(super) fn extract_class(
             parent_id: parent_id.map(|id| id.to_string()),
             metadata: Some(HashMap::new()),
             doc_comment: None,
+            annotations: Vec::new(),
         },
     );
 

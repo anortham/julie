@@ -121,6 +121,7 @@ pub(super) fn extract_function(
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: Some(json_metadata),
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }

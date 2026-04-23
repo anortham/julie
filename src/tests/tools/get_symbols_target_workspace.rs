@@ -118,6 +118,7 @@ async fn test_get_symbols_target_workspace() -> Result<()> {
                     confidence: None,
                     code_context: None,
                     content_type: None,
+                    annotations: Vec::new(),
                 },
                 Symbol {
                     id: "ref_fn_1".to_string(),
@@ -140,6 +141,7 @@ async fn test_get_symbols_target_workspace() -> Result<()> {
                     confidence: None,
                     code_context: None,
                     content_type: None,
+                    annotations: Vec::new(),
                 },
             ],
             &workspace_id,
@@ -273,6 +275,7 @@ pub struct Another { pub field: String }
                     confidence: None,
                     code_context: None,
                     content_type: None,
+                    annotations: Vec::new(),
                 },
                 Symbol {
                     id: "ref_method_one".to_string(),
@@ -295,6 +298,7 @@ pub struct Another { pub field: String }
                     confidence: None,
                     code_context: None,
                     content_type: None,
+                    annotations: Vec::new(),
                 },
                 Symbol {
                     id: "ref_method_two".to_string(),
@@ -317,6 +321,7 @@ pub struct Another { pub field: String }
                     confidence: None,
                     code_context: None,
                     content_type: None,
+                    annotations: Vec::new(),
                 },
                 Symbol {
                     id: "ref_outer_fn".to_string(),
@@ -339,6 +344,7 @@ pub struct Another { pub field: String }
                     confidence: None,
                     code_context: None,
                     content_type: None,
+                    annotations: Vec::new(),
                 },
                 Symbol {
                     id: "ref_another_struct".to_string(),
@@ -361,6 +367,7 @@ pub struct Another { pub field: String }
                     confidence: None,
                     code_context: None,
                     content_type: None,
+                    annotations: Vec::new(),
                 },
             ],
             &workspace_id,
@@ -549,6 +556,7 @@ async fn test_get_symbols_target_workspace_relative_paths_after_primary_rebind()
                 confidence: None,
                 code_context: None,
                 content_type: None,
+                annotations: Vec::new(),
             }],
             &[],
             &[],
@@ -693,6 +701,7 @@ async fn test_get_workspace_root_for_target_rejects_swap_gap_root_resolution() -
                 confidence: None,
                 code_context: None,
                 content_type: None,
+                annotations: Vec::new(),
             }],
             &[],
             &[],

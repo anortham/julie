@@ -79,6 +79,7 @@ pub(super) fn extract_variable_statement(
             parent_id: parent_id.cloned(),
             metadata: Some(metadata),
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -134,6 +135,7 @@ pub(super) fn extract_constant_statement(
             parent_id: parent_id.cloned(),
             metadata: Some(metadata),
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }

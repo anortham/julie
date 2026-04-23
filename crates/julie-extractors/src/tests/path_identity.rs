@@ -71,6 +71,7 @@ fn test_rekey_normalized_locations_rekeys_type_map_keys() {
             confidence: None,
             code_context: None,
             content_type: None,
+            annotations: Vec::new(),
         }],
         relationships: Vec::new(),
         pending_relationships: Vec::new(),
@@ -133,6 +134,7 @@ fn test_rekey_normalized_locations_refreshes_relationship_ids() {
                 confidence: None,
                 code_context: None,
                 content_type: None,
+                annotations: Vec::new(),
             },
             Symbol {
                 id: old_to_symbol_id.clone(),
@@ -155,6 +157,7 @@ fn test_rekey_normalized_locations_refreshes_relationship_ids() {
                 confidence: None,
                 code_context: None,
                 content_type: None,
+                annotations: Vec::new(),
             },
         ],
         relationships: vec![Relationship {
@@ -261,6 +264,7 @@ fn test_rekey_normalized_locations_preserves_structured_target_identity() {
                 confidence: None,
                 code_context: None,
                 content_type: None,
+                annotations: Vec::new(),
             },
             Symbol {
                 id: old_scope_id.clone(),
@@ -283,6 +287,7 @@ fn test_rekey_normalized_locations_preserves_structured_target_identity() {
                 confidence: None,
                 code_context: None,
                 content_type: None,
+                annotations: Vec::new(),
             },
         ],
         relationships: Vec::new(),

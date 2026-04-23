@@ -318,6 +318,7 @@ impl CrossLanguageTracer {
             confidence: Some(0.9),
             code_context: None,
             content_type: None,
+            annotations: Vec::new(),
         })
     }
 
@@ -346,6 +347,7 @@ impl CrossLanguageTracer {
             confidence: Some(0.95),
             code_context: None,
             content_type: None,
+            annotations: Vec::new(),
         })
     }
 
@@ -478,6 +480,7 @@ impl CrossLanguageTracer {
             confidence: Some(1.0),
             code_context: None,
             content_type: None,
+            annotations: Vec::new(),
         })
     }
 }

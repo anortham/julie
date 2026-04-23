@@ -79,6 +79,7 @@ pub(super) fn extract_property(
                         .collect(),
                 ),
                 doc_comment,
+                annotations: Vec::new(),
             },
         ),
     )
@@ -161,6 +162,7 @@ pub(super) fn extract_constant(
                         .collect(),
                 ),
                 doc_comment,
+                annotations: Vec::new(),
             },
         ),
     )

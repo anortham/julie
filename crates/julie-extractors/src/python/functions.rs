@@ -90,6 +90,7 @@ pub fn extract_function(extractor: &mut PythonExtractor, node: Node) -> Option<S
             parent_id,
             metadata: Some(metadata),
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -139,6 +140,7 @@ pub(super) fn extract_lambda(extractor: &mut PythonExtractor, node: Node) -> Sym
             parent_id: None, // Lambdas are typically inline and don't have meaningful parent relationships
             metadata: None,
             doc_comment,
+            annotations: Vec::new(),
         },
     )
 }

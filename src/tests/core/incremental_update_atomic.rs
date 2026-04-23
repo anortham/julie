@@ -34,6 +34,7 @@ fn make_symbol(id: &str, name: &str, file_path: &str) -> Symbol {
         confidence: None,
         code_context: None,
         content_type: None,
+        annotations: Vec::new(),
     }
 }
 

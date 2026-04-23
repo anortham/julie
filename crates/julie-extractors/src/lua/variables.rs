@@ -120,6 +120,7 @@ fn push_variable_symbol(
         visibility: Some(visibility),
         metadata: Some(metadata),
         doc_comment,
+        annotations: Vec::new(),
     };
 
     let symbol = base.create_symbol(name_node, name, kind, options);

@@ -79,6 +79,7 @@ pub(super) fn extract_function(extractor: &mut TypeScriptExtractor, node: Node) 
             parent_id: None,
             metadata: Some(metadata),
             doc_comment,
+            annotations: Vec::new(),
         },
     );
 
@@ -200,6 +201,7 @@ pub(super) fn extract_method(extractor: &mut TypeScriptExtractor, node: Node) ->
             parent_id,
             metadata: Some(metadata),
             doc_comment,
+            annotations: Vec::new(),
         },
     );
 

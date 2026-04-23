@@ -84,6 +84,7 @@ impl super::GoExtractor {
                     Some(metadata)
                 },
                 doc_comment,
+                annotations: Vec::new(),
             },
         ))
     }
@@ -187,6 +188,7 @@ impl super::GoExtractor {
                     Some(metadata)
                 },
                 doc_comment,
+                annotations: Vec::new(),
             },
         ))
     }
@@ -292,6 +294,7 @@ impl super::GoExtractor {
                     parent_id: parent_id.map(|s| s.to_string()),
                     metadata: None,
                     doc_comment,
+                    annotations: Vec::new(),
                 },
             ));
         }

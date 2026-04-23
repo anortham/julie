@@ -105,6 +105,7 @@ pub(super) fn extract_class(extractor: &mut PythonExtractor, node: Node) -> Opti
             parent_id,
             metadata: Some(metadata),
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }

@@ -32,6 +32,7 @@ pub(super) fn extract_struct(
             parent_id: parent_id.cloned(),
             metadata: None,
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -74,6 +75,7 @@ pub(super) fn extract_union(
             parent_id: parent_id.cloned(),
             metadata: None,
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -108,6 +110,7 @@ pub(super) fn extract_enum(
             parent_id: parent_id.cloned(),
             metadata: None,
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -131,6 +134,7 @@ pub(super) fn extract_enum_variant(
             parent_id: parent_id.cloned(),
             metadata: None,
             doc_comment: None,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -175,6 +179,7 @@ pub(super) fn extract_struct_field(
             parent_id: parent_id.cloned(),
             metadata: None,
             doc_comment: None,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -205,6 +210,7 @@ pub(super) fn extract_error_type(
             parent_id: parent_id.cloned(),
             metadata,
             doc_comment: base.extract_documentation(&node),
+            annotations: Vec::new(),
         },
     ))
 }
@@ -243,6 +249,7 @@ pub(super) fn extract_type_alias(
             parent_id: parent_id.cloned(),
             metadata,
             doc_comment: base.extract_documentation(&node),
+            annotations: Vec::new(),
         },
     ))
 }

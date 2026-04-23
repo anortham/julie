@@ -89,6 +89,7 @@ fn extract_type_attribute(
             parent_id: parent_id.map(String::from),
             metadata: None,
             doc_comment: None,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -127,6 +128,7 @@ fn extract_callback_attribute(
             parent_id: parent_id.map(String::from),
             metadata: Some(metadata),
             doc_comment: None,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -176,6 +178,7 @@ fn extract_behaviour_attribute(
                     parent_id: parent_id.map(String::from),
                     metadata: None,
                     doc_comment: None,
+                    annotations: Vec::new(),
                 },
             ));
         }

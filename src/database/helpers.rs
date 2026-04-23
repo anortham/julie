@@ -133,6 +133,7 @@ impl SymbolDatabase {
             confidence: row.get("confidence")?,
             code_context: row.get("code_context")?,
             content_type: row.get("content_type")?,
+            annotations: Vec::new(),
         })
     }
 
@@ -171,6 +172,7 @@ impl SymbolDatabase {
             confidence: None,
             code_context: None,
             content_type: None,
+            annotations: Vec::new(),
         })
     }
 

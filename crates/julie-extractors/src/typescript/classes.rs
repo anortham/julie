@@ -105,6 +105,7 @@ pub(super) fn extract_class(extractor: &mut TypeScriptExtractor, node: Node) -> 
             parent_id: None,
             metadata: Some(metadata),
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }

@@ -148,6 +148,7 @@ fn create_import_symbol(
             parent_id: None,
             metadata: None,
             doc_comment,
+            annotations: Vec::new(),
         },
     )
 }

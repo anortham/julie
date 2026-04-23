@@ -522,6 +522,7 @@ pub(crate) fn tantivy_symbol_to_symbol(result: crate::search::index::SymbolSearc
         confidence: Some(result.score),
         code_context: None,
         content_type: None,
+        annotations: Vec::new(),
     }
 }
 
@@ -577,5 +578,6 @@ pub(crate) fn content_result_to_symbol(
         confidence: Some(result.score),
         code_context: None,
         content_type: None,
+        annotations: Vec::new(),
     }
 }

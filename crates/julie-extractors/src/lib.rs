@@ -79,8 +79,9 @@ pub mod zig;
 
 // Re-export the public API - Core types
 pub use base::{
-    ContextConfig, ExtractionResults, Identifier, IdentifierKind, PendingRelationship,
-    Relationship, RelationshipKind, Symbol, SymbolKind, SymbolOptions, TypeInfo, Visibility,
+    AnnotationMarker, ContextConfig, ExtractionResults, Identifier, IdentifierKind,
+    PendingRelationship, Relationship, RelationshipKind, Symbol, SymbolKind, SymbolOptions,
+    TypeInfo, Visibility, normalize_annotations,
 };
 
 // Re-export the public API - canonical extraction functions

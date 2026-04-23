@@ -159,6 +159,7 @@ pub(super) fn extract_table_columns(
                 parent_id: Some(parent_table_id.to_string()),
                 doc_comment: None,
                 metadata: None,
+                annotations: Vec::new(),
             };
 
             // Columns are fields within the table (strategy)
@@ -242,6 +243,7 @@ fn create_constraint_symbol(
         parent_id: Some(parent_table_id.to_string()),
         doc_comment: None,
         metadata: None,
+        annotations: Vec::new(),
     };
 
     // Constraints as Interface symbols (strategy)
@@ -330,6 +332,7 @@ pub(super) fn extract_constraints_from_alter_table(
                 parent_id: parent_id.map(|s| s.to_string()),
                 doc_comment: None,
                 metadata: Some(metadata),
+                annotations: Vec::new(),
             };
 
             let constraint_symbol = base.create_symbol(&node, name, SymbolKind::Property, options);
@@ -412,6 +415,7 @@ pub(super) fn extract_constraints_from_error(
                 parent_id: parent_id.map(|s| s.to_string()),
                 doc_comment: None,
                 metadata: Some(metadata),
+                annotations: Vec::new(),
             };
 
             let constraint_symbol = base.create_symbol(node, name, SymbolKind::Property, options);

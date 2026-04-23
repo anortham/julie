@@ -62,6 +62,7 @@ pub(super) fn extract_function(
                 Some(metadata)
             },
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -93,6 +94,7 @@ pub(super) fn extract_advanced_function(
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: None,
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -134,6 +136,7 @@ pub(super) fn extract_function_parameters(
                         parent_id: Some(parent_id.to_string()),
                         metadata: None,
                         doc_comment,
+                        annotations: Vec::new(),
                     },
                 );
 
@@ -177,6 +180,7 @@ pub(super) fn extract_function_parameters(
                         parent_id: Some(parent_id.to_string()),
                         metadata: None,
                         doc_comment,
+                        annotations: Vec::new(),
                     },
                 );
 

@@ -41,6 +41,7 @@ pub(super) fn extract_constructor_definition(
             parent_id: parent_id.cloned(),
             metadata: None,
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -131,6 +132,7 @@ pub(super) fn extract_function_definition(
                 Some(metadata)
             },
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }

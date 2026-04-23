@@ -67,6 +67,7 @@ pub(super) fn extract_val(
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: Some(metadata),
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -125,6 +126,7 @@ pub(super) fn extract_var(
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: Some(metadata),
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }

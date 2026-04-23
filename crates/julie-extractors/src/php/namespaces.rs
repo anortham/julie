@@ -33,6 +33,7 @@ pub(super) fn extract_namespace(
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: Some(metadata),
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -152,6 +153,7 @@ fn extract_grouped_use(
                 parent_id: parent_id.map(|s| s.to_string()),
                 metadata: Some(metadata),
                 doc_comment: doc_comment.clone(),
+                annotations: Vec::new(),
             },
         ));
     }
@@ -239,6 +241,7 @@ fn create_use_symbol(
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: Some(metadata),
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -295,6 +298,7 @@ pub(super) fn extract_variable_assignment(
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: Some(metadata),
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }

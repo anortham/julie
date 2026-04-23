@@ -62,6 +62,7 @@ fn make_symbol(
         confidence: Some(1.0),
         code_context: None,
         content_type: None,
+        annotations: Vec::new(),
     }
 }
 

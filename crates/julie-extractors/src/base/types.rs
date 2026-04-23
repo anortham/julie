@@ -10,6 +10,17 @@ use std::collections::HashMap;
 use super::relationship_resolution::StructuredPendingRelationship;
 use super::span::NormalizedSpan;
 
+/// Canonical annotation marker with display, match, and source text forms.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AnnotationMarker {
+    pub annotation: String,
+    pub annotation_key: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub raw_text: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub carrier: Option<String>,
+}
+
 /// Configuration for code context extraction
 #[derive(Debug, Clone)]
 pub struct ContextConfig {
@@ -76,6 +87,9 @@ pub struct Symbol {
     /// Additional language-specific metadata
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata: Option<HashMap<String, serde_json::Value>>,
+    /// Canonical annotation markers.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub annotations: Vec<AnnotationMarker>,
     /// Semantic group for cross-language linking
     #[serde(skip_serializing_if = "Option::is_none")]
     pub semantic_group: Option<String>,
@@ -469,6 +483,7 @@ pub struct SymbolOptions {
     pub parent_id: Option<String>,
     pub metadata: Option<HashMap<String, serde_json::Value>>,
     pub doc_comment: Option<String>,
+    pub annotations: Vec<AnnotationMarker>,
 }
 
 /// Extraction results - matches getResults return type

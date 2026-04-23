@@ -46,6 +46,7 @@ fn create_test_symbol(name: &str, file_path: &str) -> Symbol {
         metadata: None,
         semantic_group: None,
         confidence: None,
+        annotations: Vec::new(),
     }
 }
 

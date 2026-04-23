@@ -43,6 +43,7 @@ pub(super) fn extract_module(
             parent_id,
             metadata: None,
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -83,6 +84,7 @@ pub(super) fn extract_class(
             parent_id,
             metadata: None,
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -115,6 +117,7 @@ pub(super) fn extract_singleton_class(
             parent_id,
             metadata: None,
             doc_comment,
+            annotations: Vec::new(),
         },
     )
 }
@@ -181,6 +184,7 @@ pub(super) fn extract_method(
                 Some(metadata)
             },
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -209,6 +213,7 @@ pub(super) fn extract_singleton_method(
             parent_id,
             metadata: None,
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -231,6 +236,7 @@ pub(super) fn extract_variable(base: &mut BaseExtractor, node: Node) -> Symbol {
             parent_id: None,
             metadata: None,
             doc_comment,
+            annotations: Vec::new(),
         },
     )
 }
@@ -257,6 +263,7 @@ pub(super) fn extract_constant(
             parent_id,
             metadata: None,
             doc_comment,
+            annotations: Vec::new(),
         },
     )
 }
@@ -279,6 +286,7 @@ pub(super) fn extract_alias(base: &mut BaseExtractor, node: Node) -> Option<Symb
             parent_id: None,
             metadata: None,
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }

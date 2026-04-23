@@ -81,6 +81,7 @@ impl super::RazorExtractor {
                     metadata
                 }),
                 doc_comment: None,
+                annotations: Vec::new(),
             },
         ))
     }
@@ -191,6 +192,7 @@ impl super::RazorExtractor {
                     metadata
                 }),
                 doc_comment: None,
+                annotations: Vec::new(),
             },
         ))
     }
@@ -290,6 +292,7 @@ impl super::RazorExtractor {
                     metadata
                 }),
                 doc_comment: None,
+                annotations: Vec::new(),
             },
         ))
     }

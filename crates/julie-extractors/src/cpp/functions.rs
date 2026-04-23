@@ -153,6 +153,7 @@ pub(super) fn extract_function(
                 Some(metadata)
             },
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -237,6 +238,7 @@ fn extract_method(
                 Some(metadata)
             },
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }

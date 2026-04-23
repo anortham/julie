@@ -60,6 +60,7 @@ mod tests {
                 confidence: Some(0.9),
                 code_context: Some(docs_blob.to_string()),
                 content_type: None,
+                annotations: Vec::new(),
             },
             Symbol {
                 id: "doc_2".to_string(),
@@ -82,6 +83,7 @@ mod tests {
                 confidence: Some(0.9),
                 code_context: Some(docs_blob.to_string()),
                 content_type: None,
+                annotations: Vec::new(),
             },
             Symbol {
                 id: "code_1".to_string(),
@@ -109,6 +111,7 @@ mod tests {
                         .to_string(),
                 ),
                 content_type: None,
+                annotations: Vec::new(),
             },
             Symbol {
                 id: "code_2".to_string(),
@@ -136,6 +139,7 @@ mod tests {
                         .to_string(),
                 ),
                 content_type: None,
+                annotations: Vec::new(),
             },
         ];
 

@@ -105,6 +105,7 @@ pub(super) fn extract_class(
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: Some(metadata),
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -155,6 +156,7 @@ pub(super) fn extract_interface(
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: Some(metadata),
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -186,6 +188,7 @@ pub(super) fn extract_trait(
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: Some(metadata),
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -243,6 +246,7 @@ pub(super) fn extract_enum(
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: Some(metadata),
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -303,6 +307,7 @@ pub(super) fn extract_enum_case(
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: Some(metadata),
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -379,6 +384,7 @@ pub(super) fn extract_anonymous_class(
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: Some(metadata),
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }

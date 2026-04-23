@@ -130,6 +130,7 @@ pub(super) fn extract_function(
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: Some(metadata),
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -212,6 +213,7 @@ pub(super) fn extract_secondary_constructor(
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: Some(metadata),
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -244,6 +246,7 @@ pub(super) fn extract_package(
                 Value::String("package".to_string()),
             )])),
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -276,6 +279,7 @@ pub(super) fn extract_import(
                 Value::String("import".to_string()),
             )])),
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -342,6 +346,7 @@ pub(super) fn extract_type_alias(
                 ("aliasedType".to_string(), Value::String(aliased_type)),
             ])),
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }

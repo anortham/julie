@@ -56,6 +56,7 @@ pub(super) fn extract_variable(
             } else {
                 Some(doc_comment)
             },
+            annotations: Vec::new(),
         },
     ))
 }
@@ -112,6 +113,7 @@ pub(super) fn extract_variable_reference(
             } else {
                 Some(doc_comment)
             },
+            annotations: Vec::new(),
         },
     ))
 }

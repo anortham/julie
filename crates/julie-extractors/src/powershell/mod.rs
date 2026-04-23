@@ -165,6 +165,7 @@ impl PowerShellExtractor {
                 parent_id: parent_id.map(|s| s.to_string()),
                 metadata: None,
                 doc_comment,
+                annotations: Vec::new(),
             },
         ))
     }
@@ -192,6 +193,7 @@ impl PowerShellExtractor {
                         parent_id: parent_id.map(|s| s.to_string()),
                         metadata: None,
                         doc_comment: Some("PowerShell DSC Configuration".to_string()),
+                        annotations: Vec::new(),
                     },
                 ));
             }
@@ -212,6 +214,7 @@ impl PowerShellExtractor {
                         parent_id: parent_id.map(|s| s.to_string()),
                         metadata: None,
                         doc_comment: None,
+                        annotations: Vec::new(),
                     },
                 ));
             }

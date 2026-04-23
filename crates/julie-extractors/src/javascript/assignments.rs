@@ -56,6 +56,7 @@ impl super::JavaScriptExtractor {
                                 parent_id,
                                 metadata: Some(metadata),
                                 doc_comment,
+                                annotations: Vec::new(),
                             },
                         ));
                     }
@@ -81,6 +82,7 @@ impl super::JavaScriptExtractor {
                                     parent_id,
                                     metadata: Some(metadata),
                                     doc_comment,
+                                    annotations: Vec::new(),
                                 },
                             ));
                         }

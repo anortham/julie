@@ -70,6 +70,7 @@ mod quality_tests {
             confidence: Some(0.95),
             code_context: Some(format!("{} {{ /* {} */ }}", sig, doc)),
             content_type: None,
+            annotations: Vec::new(),
         };
 
         let symbols = vec![

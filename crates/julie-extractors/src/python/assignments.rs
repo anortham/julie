@@ -99,6 +99,7 @@ pub(super) fn extract_assignment(extractor: &mut PythonExtractor, node: Node) ->
             parent_id,
             metadata: Some(metadata),
             doc_comment,
+            annotations: Vec::new(),
         },
     )]
 }
@@ -154,6 +155,7 @@ fn extract_multiple_assignment_targets(
                     parent_id: parent_id.clone(),
                     metadata: None,
                     doc_comment,
+                    annotations: Vec::new(),
                 },
             );
 

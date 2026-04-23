@@ -91,6 +91,7 @@ mod tests {
             confidence: None,
             code_context: Some(format!("fn {}() {{}}", name)),
             content_type: None,
+            annotations: Vec::new(),
         }
     }
 

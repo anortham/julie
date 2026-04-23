@@ -35,6 +35,7 @@ mod search_quality_tests {
             confidence: Some(0.95),
             code_context: None,
             content_type: None,
+            annotations: Vec::new(),
         });
 
         // Test file symbol (should rank lower when not searching "test")
@@ -59,6 +60,7 @@ mod search_quality_tests {
             confidence: Some(0.85),
             code_context: None,
             content_type: None,
+            annotations: Vec::new(),
         });
 
         // Test directory symbol (should rank lowest)
@@ -83,6 +85,7 @@ mod search_quality_tests {
             confidence: Some(0.80),
             code_context: None,
             content_type: None,
+            annotations: Vec::new(),
         });
 
         symbols
@@ -370,6 +373,7 @@ mod search_integration_tests {
                 confidence: Some(0.95),
                 code_context: None,
                 content_type: None,
+                annotations: Vec::new(),
             },
             // snake_case function
             Symbol {
@@ -393,6 +397,7 @@ mod search_integration_tests {
                 confidence: Some(0.90),
                 code_context: None,
                 content_type: None,
+                annotations: Vec::new(),
             },
             // camelCase method
             Symbol {
@@ -416,6 +421,7 @@ mod search_integration_tests {
                 confidence: Some(0.88),
                 code_context: None,
                 content_type: None,
+                annotations: Vec::new(),
             },
         ]
     }

@@ -30,6 +30,7 @@ fn make_test_symbol(file_path: &str, line: u32, kind: SymbolKind, sig: Option<&s
         confidence: None,
         code_context: None,
         content_type: None,
+        annotations: Vec::new(),
     }
 }
 
@@ -410,6 +411,7 @@ fn test_format_semantic_fallback_with_results() {
             semantic_group: None,
             metadata: None,
             code_context: None,
+            annotations: Vec::new(),
         },
         score: 0.82,
     }];

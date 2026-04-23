@@ -273,6 +273,7 @@ impl CppExtractor {
                         parent_id: parent_id.map(String::from),
                         metadata: None,
                         doc_comment,
+                        annotations: Vec::new(),
                     },
                 ));
             } else if current.kind() == "struct" && next.kind() == "type_identifier" {
@@ -291,6 +292,7 @@ impl CppExtractor {
                         parent_id: parent_id.map(String::from),
                         metadata: None,
                         doc_comment,
+                        annotations: Vec::new(),
                     },
                 ));
             }

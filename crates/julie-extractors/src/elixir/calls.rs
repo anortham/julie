@@ -66,6 +66,7 @@ fn extract_defmodule(
             parent_id: parent_id.map(String::from),
             metadata: None,
             doc_comment,
+            annotations: Vec::new(),
         },
     );
 
@@ -129,6 +130,7 @@ fn extract_def(
             parent_id: parent_id.map(String::from),
             metadata,
             doc_comment,
+            annotations: Vec::new(),
         },
     );
 
@@ -171,6 +173,7 @@ fn extract_defmacro(
             parent_id: parent_id.map(String::from),
             metadata: Some(metadata),
             doc_comment,
+            annotations: Vec::new(),
         },
     );
 
@@ -202,6 +205,7 @@ fn extract_defprotocol(
             parent_id: parent_id.map(String::from),
             metadata: None,
             doc_comment,
+            annotations: Vec::new(),
         },
     );
 
@@ -261,6 +265,7 @@ fn extract_defimpl(
             parent_id: parent_id.map(String::from),
             metadata: Some(metadata),
             doc_comment,
+            annotations: Vec::new(),
         },
     );
 
@@ -308,6 +313,7 @@ fn extract_defstruct(
             parent_id: parent_id.map(String::from),
             metadata: None,
             doc_comment: None,
+            annotations: Vec::new(),
         },
     );
 
@@ -326,6 +332,7 @@ fn extract_defstruct(
                 parent_id: Some(sym_id.clone()),
                 metadata: None,
                 doc_comment: None,
+                annotations: Vec::new(),
             },
         );
         symbols.push(field_sym);
@@ -389,6 +396,7 @@ fn extract_directive(
             parent_id: parent_id.map(String::from),
             metadata: None,
             doc_comment: None,
+            annotations: Vec::new(),
         },
     );
 
@@ -421,6 +429,7 @@ fn extract_test(
             parent_id: parent_id.map(String::from),
             metadata: Some(metadata),
             doc_comment: None,
+            annotations: Vec::new(),
         },
     );
 
@@ -448,6 +457,7 @@ fn extract_describe(
             parent_id: parent_id.map(String::from),
             metadata: None,
             doc_comment: None,
+            annotations: Vec::new(),
         },
     );
 

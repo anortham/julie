@@ -120,6 +120,7 @@ pub(super) fn extract_property(
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: Some(metadata),
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -250,6 +251,7 @@ pub(super) fn extract_constructor_parameters(
                             ),
                         ])),
                         doc_comment,
+                        annotations: Vec::new(),
                     },
                 );
 

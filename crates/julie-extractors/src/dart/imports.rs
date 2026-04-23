@@ -60,6 +60,7 @@ fn extract_library_import(
                 serde_json::Value::String("import".to_string()),
             )])),
             doc_comment: None,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -86,6 +87,7 @@ fn extract_library_export(
                 serde_json::Value::String("export".to_string()),
             )])),
             doc_comment: None,
+            annotations: Vec::new(),
         },
     ))
 }

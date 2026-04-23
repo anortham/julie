@@ -56,6 +56,7 @@ fn setup_test_db_with_rich_symbols() -> (TempDir, SymbolDatabase) {
             confidence: Some(0.95),
             code_context: Some("pub struct UserService {\n    users: Vec<User>,\n}".to_string()),
             content_type: None,
+            annotations: Vec::new(),
         },
         Symbol {
             id: "sym-child-1".to_string(),
@@ -88,6 +89,7 @@ fn setup_test_db_with_rich_symbols() -> (TempDir, SymbolDatabase) {
                     .to_string(),
             ),
             content_type: None,
+            annotations: Vec::new(),
         },
         Symbol {
             id: "sym-child-2".to_string(),
@@ -113,6 +115,7 @@ fn setup_test_db_with_rich_symbols() -> (TempDir, SymbolDatabase) {
                     .to_string(),
             ),
             content_type: None,
+            annotations: Vec::new(),
         },
     ];
 

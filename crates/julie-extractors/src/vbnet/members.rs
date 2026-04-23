@@ -59,6 +59,7 @@ pub fn extract_method(
         } else {
             Some(metadata)
         },
+        annotations: Vec::new(),
     };
 
     Some(base.create_symbol(&node, name, SymbolKind::Method, options))

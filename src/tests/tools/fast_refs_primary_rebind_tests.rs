@@ -35,6 +35,7 @@ fn rebound_symbol() -> Symbol {
         confidence: None,
         code_context: None,
         content_type: None,
+        annotations: Vec::new(),
     }
 }
 
@@ -60,6 +61,7 @@ fn rebound_caller_symbol() -> Symbol {
         confidence: None,
         code_context: None,
         content_type: None,
+        annotations: Vec::new(),
     }
 }
 

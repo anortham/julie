@@ -11,6 +11,7 @@
 // - extractor.rs: BaseExtractor implementation (core methods)
 // - tree_methods.rs: Tree navigation and traversal methods
 
+pub mod annotations;
 pub mod creation_methods;
 pub mod extractor;
 pub mod relationship_resolution;
@@ -20,11 +21,13 @@ pub mod tree_methods;
 pub mod types;
 
 // Re-export key types for external use
+pub use annotations::normalize_annotations;
 pub use extractor::BaseExtractor;
 pub use relationship_resolution::{StructuredPendingRelationship, UnresolvedTarget};
 pub use span::{NormalizedSpan, RecordOffset, normalize_file_path};
 pub use tree_methods::{find_child_by_type, find_child_by_types};
 pub use types::{
-    ContextConfig, ExtractionResults, Identifier, IdentifierKind, PendingRelationship,
-    Relationship, RelationshipKind, Symbol, SymbolKind, SymbolOptions, TypeInfo, Visibility,
+    AnnotationMarker, ContextConfig, ExtractionResults, Identifier, IdentifierKind,
+    PendingRelationship, Relationship, RelationshipKind, Symbol, SymbolKind, SymbolOptions,
+    TypeInfo, Visibility,
 };

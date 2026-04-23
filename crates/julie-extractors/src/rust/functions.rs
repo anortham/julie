@@ -144,6 +144,7 @@ pub(super) fn extract_function(
             parent_id,
             doc_comment: find_doc_comment(base, node),
             metadata: Some(metadata),
+            annotations: Vec::new(),
         },
     ))
 }

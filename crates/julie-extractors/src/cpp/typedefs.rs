@@ -43,6 +43,7 @@ pub(super) fn extract_typedef(
             parent_id: parent_id.map(String::from),
             metadata: None,
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }

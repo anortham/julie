@@ -63,6 +63,7 @@ pub(super) fn extract_function(
                 Some(metadata)
             },
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -105,6 +106,7 @@ pub(super) fn extract_test(
             parent_id: parent_id.cloned(),
             metadata,
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
