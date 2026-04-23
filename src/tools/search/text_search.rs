@@ -239,7 +239,10 @@ fn definition_search_with_index(
     db: Option<&crate::database::SymbolDatabase>,
     embedding_provider: Option<&dyn crate::embeddings::EmbeddingProvider>,
 ) -> Result<(Vec<Symbol>, bool, usize)> {
-    let use_hybrid = crate::search::scoring::is_nl_like_query(query)
+    let annotation_query = crate::search::query::parse_annotation_query(query);
+    let has_annotation_filters = annotation_query.has_annotation_filters();
+    let use_hybrid = !has_annotation_filters
+        && crate::search::scoring::is_nl_like_query(query)
         && embedding_provider.is_some()
         && db.is_some();
 
@@ -335,7 +338,7 @@ fn definition_search_with_index(
             .into_iter()
             .map(tantivy_symbol_to_symbol)
             .collect();
-        if let Some(db) = db {
+        if let Some(db) = db.filter(|_| !has_annotation_filters) {
             enrich_symbols_from_db(&mut symbols, db);
         }
 

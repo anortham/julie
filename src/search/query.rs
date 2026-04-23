@@ -7,9 +7,13 @@
 //! - doc_comment: 2.0x
 //! - code_body: 1.0x
 
+use std::collections::HashSet;
+
 use tantivy::Term;
 use tantivy::query::{BooleanQuery, BoostQuery, Occur, TermQuery};
 use tantivy::schema::{Field, IndexRecordOption};
+
+use crate::extractors::normalize_annotations;
 
 const ORIGINAL_GROUP_WEIGHT: f32 = 5.0;
 const ALIAS_GROUP_WEIGHT: f32 = 3.5;
@@ -22,6 +26,63 @@ const BODY_FIELD_BOOST: f32 = 1.0;
 const FILE_PATH_EXACT_BOOST: f32 = 40.0;
 const BASENAME_EXACT_BOOST: f32 = 25.0;
 const PATH_TEXT_TERM_BOOST: f32 = 3.0;
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub(crate) struct ParsedAnnotationQuery {
+    pub annotation_keys: Vec<String>,
+    pub remaining_query: String,
+}
+
+impl ParsedAnnotationQuery {
+    pub(crate) fn has_annotation_filters(&self) -> bool {
+        !self.annotation_keys.is_empty()
+    }
+}
+
+/// Split annotation-prefixed terms from normal definition search text.
+pub(crate) fn parse_annotation_query(query: &str) -> ParsedAnnotationQuery {
+    let mut annotation_keys = Vec::new();
+    let mut seen_annotation_keys = HashSet::new();
+    let mut remaining_terms = Vec::new();
+
+    for token in query.split_whitespace() {
+        if let Some((raw_annotation, language)) = annotation_token(token) {
+            let markers = normalize_annotations(&[raw_annotation], language);
+            if markers.is_empty() {
+                remaining_terms.push(token.to_string());
+            } else {
+                for marker in markers {
+                    let key = marker.annotation_key.trim().to_ascii_lowercase();
+                    if !key.is_empty() && seen_annotation_keys.insert(key.clone()) {
+                        annotation_keys.push(key);
+                    }
+                }
+            }
+            continue;
+        }
+
+        remaining_terms.push(token.to_string());
+    }
+
+    ParsedAnnotationQuery {
+        annotation_keys,
+        remaining_query: remaining_terms.join(" "),
+    }
+}
+
+fn annotation_token(token: &str) -> Option<(&str, &'static str)> {
+    let token = token.trim_matches(|ch| matches!(ch, ',' | ';'));
+    if token.starts_with("#[") && token.ends_with(']') {
+        return Some((token, "rust"));
+    }
+    if token.starts_with("[[") && token.ends_with("]]") {
+        return Some((token, "cpp"));
+    }
+    if token.starts_with('[') && token.ends_with(']') {
+        return Some((token, "csharp"));
+    }
+    token.starts_with('@').then_some((token, "python"))
+}
 
 /// Build a boosted symbol search query with optional filters.
 ///

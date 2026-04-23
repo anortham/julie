@@ -14,7 +14,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use globset::{Glob, GlobMatcher};
 use serde::{Deserialize, Serialize};
 use tantivy::collector::TopDocs;
-use tantivy::schema::{TantivyDocument, Value};
+use tantivy::query::{BooleanQuery, BoostQuery, Occur, TermQuery};
+use tantivy::schema::{IndexRecordOption, TantivyDocument, Value};
 use tantivy::tokenizer::TextAnalyzer;
 use tantivy::{Index, IndexReader, IndexWriter, Term};
 
@@ -22,7 +23,8 @@ use crate::search::error::{Result, SearchError};
 use crate::search::expansion::expand_query_terms;
 use crate::search::language_config::LanguageConfigs;
 use crate::search::query::{
-    build_content_query_weighted, build_file_query, build_symbol_query, build_symbol_query_weighted,
+    build_content_query_weighted, build_file_query, build_symbol_query,
+    build_symbol_query_weighted, parse_annotation_query,
 };
 use crate::search::schema::{
     SchemaCompatibilitySignature, SchemaFields, compatibility_signature, create_schema,
@@ -34,7 +36,15 @@ use crate::search::tokenizer::{CodeTokenizer, TokenizerCompatibilitySignature};
 
 const WRITER_HEAP_SIZE: usize = 50_000_000; // 50MB
 const NL_RERANK_OVERFETCH_FACTOR: usize = 4;
-const SEARCH_COMPAT_MARKER_VERSION: u32 = 2;
+const SEARCH_COMPAT_MARKER_VERSION: u32 = 3;
+const ANNOTATION_ORIGINAL_GROUP_WEIGHT: f32 = 5.0;
+const ANNOTATION_ALIAS_GROUP_WEIGHT: f32 = 3.5;
+const ANNOTATION_NORMALIZED_GROUP_WEIGHT: f32 = 2.5;
+const ANNOTATION_NAME_FIELD_BOOST: f32 = 5.0;
+const ANNOTATION_SIGNATURE_FIELD_BOOST: f32 = 3.0;
+const ANNOTATION_DOC_FIELD_BOOST: f32 = 2.0;
+const ANNOTATION_BODY_FIELD_BOOST: f32 = 1.0;
+const ANNOTATION_OWNER_FIELD_BOOST: f32 = 4.0;
 pub const SEARCH_COMPAT_MARKER_FILE: &str = "julie-search-compat.json";
 
 /// A code symbol to be indexed.
@@ -291,6 +301,17 @@ impl SearchIndex {
 
     /// Add a symbol document to the index.
     pub fn add_symbol(&self, doc: &SymbolDocument) -> Result<()> {
+        self.add_symbol_with_context(doc, &[], "", "")
+    }
+
+    /// Add a symbol document plus projection-only annotation and owner context.
+    pub fn add_symbol_with_context(
+        &self,
+        doc: &SymbolDocument,
+        annotation_keys: &[String],
+        annotations_text: &str,
+        owner_names_text: &str,
+    ) -> Result<()> {
         let f = &self.schema_fields;
         let mut tantivy_doc = TantivyDocument::new();
 
@@ -302,6 +323,14 @@ impl SearchIndex {
         tantivy_doc.add_text(f.signature, &doc.signature);
         tantivy_doc.add_text(f.doc_comment, &doc.doc_comment);
         tantivy_doc.add_text(f.code_body, &doc.code_body);
+        for key in annotation_keys {
+            let key = key.trim().to_ascii_lowercase();
+            if !key.is_empty() {
+                tantivy_doc.add_text(f.annotations_exact, &key);
+            }
+        }
+        tantivy_doc.add_text(f.annotations_text, annotations_text);
+        tantivy_doc.add_text(f.owner_names_text, owner_names_text);
         tantivy_doc.add_text(f.kind, &doc.kind);
         tantivy_doc.add_u64(f.start_line, doc.start_line as u64);
 
@@ -373,49 +402,39 @@ impl SearchIndex {
     ) -> Result<SymbolSearchResults> {
         let f = &self.schema_fields;
 
-        let expanded = expand_query_terms(query_str);
+        let parsed_annotation_query = parse_annotation_query(query_str);
+        let has_annotation_filters = parsed_annotation_query.has_annotation_filters();
+        let term_query = if has_annotation_filters {
+            parsed_annotation_query.remaining_query.as_str()
+        } else {
+            query_str
+        };
+        let expanded = expand_query_terms(term_query);
         let original_terms =
             Self::filter_compound_tokens(self.tokenize_terms(&expanded.original_terms));
         let alias_terms = Self::filter_compound_tokens(self.tokenize_terms(&expanded.alias_terms));
         let normalized_terms =
             Self::filter_compound_tokens(self.tokenize_terms(&expanded.normalized_terms));
 
-        if original_terms.is_empty() {
+        if original_terms.is_empty() && !has_annotation_filters {
             return Ok(SymbolSearchResults {
                 results: Vec::new(),
                 relaxed: false,
             });
         }
 
-        let query = build_symbol_query_weighted(
-            &original_terms,
-            &alias_terms,
-            &normalized_terms,
-            f.name,
-            f.signature,
-            f.doc_comment,
-            f.code_body,
-            f.doc_type,
-            f.language,
-            f.kind,
-            filter.language.as_deref(),
-            filter.kind.as_deref(),
-            true, // require_all_terms: AND mode (strict matching)
-        );
-
-        let searcher = self.reader.searcher();
-        let candidate_limit = Self::rerank_candidate_limit(query_str, limit);
-        let top_docs = searcher.search(
-            &query,
-            &TopDocs::with_limit(candidate_limit).order_by_score(),
-        )?;
-
-        // Auto-fallback: if AND returned nothing and the user typed multiple words, try OR.
-        // Use word count from query_str (not terms.len()) because the tokenizer can inflate
-        // a single word into multiple tokens via CamelCase splitting, stemming, etc.
-        let user_word_count = query_str.split_whitespace().count();
-        let (top_docs, relaxed) = if top_docs.is_empty() && user_word_count > 1 {
-            let or_query = build_symbol_query_weighted(
+        let query = if has_annotation_filters {
+            build_annotation_symbol_query(
+                &original_terms,
+                &alias_terms,
+                &normalized_terms,
+                &parsed_annotation_query.annotation_keys,
+                f,
+                filter,
+                true,
+            )
+        } else {
+            build_symbol_query_weighted(
                 &original_terms,
                 &alias_terms,
                 &normalized_terms,
@@ -428,8 +447,49 @@ impl SearchIndex {
                 f.kind,
                 filter.language.as_deref(),
                 filter.kind.as_deref(),
-                false, // OR mode
-            );
+                true, // require_all_terms: AND mode (strict matching)
+            )
+        };
+
+        let searcher = self.reader.searcher();
+        let candidate_limit = Self::rerank_candidate_limit(query_str, limit);
+        let top_docs = searcher.search(
+            &query,
+            &TopDocs::with_limit(candidate_limit).order_by_score(),
+        )?;
+
+        // Auto-fallback: if AND returned nothing and the user typed multiple words, try OR.
+        // Use word count from query_str (not terms.len()) because the tokenizer can inflate
+        // a single word into multiple tokens via CamelCase splitting, stemming, etc.
+        let user_word_count = term_query.split_whitespace().count();
+        let (top_docs, relaxed) = if top_docs.is_empty() && user_word_count > 1 {
+            let or_query = if has_annotation_filters {
+                build_annotation_symbol_query(
+                    &original_terms,
+                    &alias_terms,
+                    &normalized_terms,
+                    &parsed_annotation_query.annotation_keys,
+                    f,
+                    filter,
+                    false,
+                )
+            } else {
+                build_symbol_query_weighted(
+                    &original_terms,
+                    &alias_terms,
+                    &normalized_terms,
+                    f.name,
+                    f.signature,
+                    f.doc_comment,
+                    f.code_body,
+                    f.doc_type,
+                    f.language,
+                    f.kind,
+                    filter.language.as_deref(),
+                    filter.kind.as_deref(),
+                    false, // OR mode
+                )
+            };
             (
                 searcher.search(
                     &or_query,
@@ -482,27 +542,47 @@ impl SearchIndex {
     ) -> Result<SymbolSearchResults> {
         let f = &self.schema_fields;
 
-        let terms = Self::filter_compound_tokens(self.tokenize_query(query_str));
-        if terms.is_empty() {
+        let parsed_annotation_query = parse_annotation_query(query_str);
+        let has_annotation_filters = parsed_annotation_query.has_annotation_filters();
+        let term_query = if has_annotation_filters {
+            parsed_annotation_query.remaining_query.as_str()
+        } else {
+            query_str
+        };
+
+        let terms = Self::filter_compound_tokens(self.tokenize_query(term_query));
+        if terms.is_empty() && !has_annotation_filters {
             return Ok(SymbolSearchResults {
                 results: Vec::new(),
                 relaxed: true,
             });
         }
 
-        let query = build_symbol_query(
-            &terms,
-            f.name,
-            f.signature,
-            f.doc_comment,
-            f.code_body,
-            f.doc_type,
-            f.language,
-            f.kind,
-            filter.language.as_deref(),
-            filter.kind.as_deref(),
-            false, // require_all_terms: OR mode (relaxed matching)
-        );
+        let query = if has_annotation_filters {
+            build_annotation_symbol_query(
+                &terms,
+                &[],
+                &[],
+                &parsed_annotation_query.annotation_keys,
+                f,
+                filter,
+                false,
+            )
+        } else {
+            build_symbol_query(
+                &terms,
+                f.name,
+                f.signature,
+                f.doc_comment,
+                f.code_body,
+                f.doc_type,
+                f.language,
+                f.kind,
+                filter.language.as_deref(),
+                filter.kind.as_deref(),
+                false, // require_all_terms: OR mode (relaxed matching)
+            )
+        };
 
         let searcher = self.reader.searcher();
         let candidate_limit = Self::rerank_candidate_limit(query_str, limit);
@@ -1183,6 +1263,139 @@ impl SearchIndex {
             .and_then(|value| value.as_u64())
             .unwrap_or(0)
     }
+}
+
+fn build_annotation_symbol_query(
+    original_terms: &[String],
+    alias_terms: &[String],
+    normalized_terms: &[String],
+    annotation_keys: &[String],
+    f: &SchemaFields,
+    filter: &SearchFilter,
+    require_all_terms: bool,
+) -> BooleanQuery {
+    let mut subqueries: Vec<(Occur, Box<dyn tantivy::query::Query>)> = Vec::new();
+
+    let type_term = Term::from_field_text(f.doc_type, "symbol");
+    subqueries.push((
+        Occur::Must,
+        Box::new(TermQuery::new(type_term, IndexRecordOption::Basic)),
+    ));
+
+    if let Some(language) = filter.language.as_deref() {
+        let lang_term = Term::from_field_text(f.language, language);
+        subqueries.push((
+            Occur::Must,
+            Box::new(TermQuery::new(lang_term, IndexRecordOption::Basic)),
+        ));
+    }
+    if let Some(kind) = filter.kind.as_deref() {
+        let kind_term = Term::from_field_text(f.kind, kind);
+        subqueries.push((
+            Occur::Must,
+            Box::new(TermQuery::new(kind_term, IndexRecordOption::Basic)),
+        ));
+    }
+    for key in annotation_keys {
+        let key = key.trim().to_ascii_lowercase();
+        if !key.is_empty() {
+            let annotation_term = Term::from_field_text(f.annotations_exact, &key);
+            subqueries.push((
+                Occur::Must,
+                Box::new(TermQuery::new(annotation_term, IndexRecordOption::Basic)),
+            ));
+        }
+    }
+
+    let mut term_clauses: Vec<(Occur, Box<dyn tantivy::query::Query>)> = Vec::new();
+    let grouped_terms = [
+        (original_terms, ANNOTATION_ORIGINAL_GROUP_WEIGHT, true),
+        (alias_terms, ANNOTATION_ALIAS_GROUP_WEIGHT, false),
+        (normalized_terms, ANNOTATION_NORMALIZED_GROUP_WEIGHT, false),
+    ];
+
+    for (terms, group_weight, is_original_group) in grouped_terms {
+        let group_factor = group_weight / ANNOTATION_ORIGINAL_GROUP_WEIGHT;
+        let mut group_term_clauses: Vec<(Occur, Box<dyn tantivy::query::Query>)> = Vec::new();
+
+        for term in terms {
+            let term_lower = term.to_lowercase();
+            let mut field_clauses: Vec<(Occur, Box<dyn tantivy::query::Query>)> = Vec::new();
+            push_boosted_term(
+                &mut field_clauses,
+                f.name,
+                &term_lower,
+                ANNOTATION_NAME_FIELD_BOOST * group_factor,
+            );
+            push_boosted_term(
+                &mut field_clauses,
+                f.signature,
+                &term_lower,
+                ANNOTATION_SIGNATURE_FIELD_BOOST * group_factor,
+            );
+            push_boosted_term(
+                &mut field_clauses,
+                f.doc_comment,
+                &term_lower,
+                ANNOTATION_DOC_FIELD_BOOST * group_factor,
+            );
+            push_boosted_term(
+                &mut field_clauses,
+                f.code_body,
+                &term_lower,
+                ANNOTATION_BODY_FIELD_BOOST * group_factor,
+            );
+            push_boosted_term(
+                &mut field_clauses,
+                f.owner_names_text,
+                &term_lower,
+                ANNOTATION_OWNER_FIELD_BOOST * group_factor,
+            );
+
+            let term_occur = if require_all_terms && is_original_group {
+                Occur::Must
+            } else {
+                Occur::Should
+            };
+            group_term_clauses.push((term_occur, Box::new(BooleanQuery::new(field_clauses))));
+        }
+
+        if !group_term_clauses.is_empty() {
+            let group_occur = if require_all_terms && is_original_group {
+                Occur::Must
+            } else {
+                Occur::Should
+            };
+            term_clauses.push((group_occur, Box::new(BooleanQuery::new(group_term_clauses))));
+        }
+    }
+
+    if term_clauses.is_empty() {
+        return BooleanQuery::new(subqueries);
+    }
+    if require_all_terms {
+        subqueries.extend(term_clauses);
+    } else {
+        subqueries.push((Occur::Must, Box::new(BooleanQuery::new(term_clauses))));
+    }
+
+    BooleanQuery::new(subqueries)
+}
+
+fn push_boosted_term(
+    clauses: &mut Vec<(Occur, Box<dyn tantivy::query::Query>)>,
+    field: tantivy::schema::Field,
+    term: &str,
+    boost: f32,
+) {
+    let term = Term::from_field_text(field, term);
+    clauses.push((
+        Occur::Should,
+        Box::new(BoostQuery::new(
+            Box::new(TermQuery::new(term, IndexRecordOption::Basic)),
+            boost,
+        )),
+    ));
 }
 
 fn normalize_file_path(path: &str) -> String {
