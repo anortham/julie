@@ -83,6 +83,37 @@ async fn main() -> anyhow::Result<()> {
             julie::daemon::lifecycle::stop_daemon(&paths)?;
             println!("Daemon stopped. Will auto-restart on next tool call.");
         }
+
+        // Tool commands (A2/A3 will wire execution logic)
+        Some(Command::Search(_)) => {
+            eprintln!("CLI tool execution not yet wired (see task A2/A3)");
+            std::process::exit(1);
+        }
+        Some(Command::Refs(_)) => {
+            eprintln!("CLI tool execution not yet wired (see task A2/A3)");
+            std::process::exit(1);
+        }
+        Some(Command::Symbols(_)) => {
+            eprintln!("CLI tool execution not yet wired (see task A2/A3)");
+            std::process::exit(1);
+        }
+        Some(Command::Context(_)) => {
+            eprintln!("CLI tool execution not yet wired (see task A2/A3)");
+            std::process::exit(1);
+        }
+        Some(Command::BlastRadius(_)) => {
+            eprintln!("CLI tool execution not yet wired (see task A2/A3)");
+            std::process::exit(1);
+        }
+        Some(Command::Workspace(_)) => {
+            eprintln!("CLI tool execution not yet wired (see task A2/A3)");
+            std::process::exit(1);
+        }
+        Some(Command::Tool(_)) => {
+            eprintln!("CLI tool execution not yet wired (see task A2/A3)");
+            std::process::exit(1);
+        }
+
         None => {
             // Adapter mode: auto-start daemon, forward stdio to IPC
             julie::adapter::run_adapter(startup_hint).await?;

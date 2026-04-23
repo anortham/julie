@@ -1,6 +1,10 @@
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
+use crate::cli_tools::subcommands::{
+    BlastRadiusArgs, ContextArgs, GenericToolArgs, GlobalToolFlags, RefsArgs, SearchArgs,
+    SymbolsArgs, WorkspaceArgs,
+};
 use crate::workspace::startup_hint::{WorkspaceStartupHint, WorkspaceStartupSource};
 
 #[derive(Parser)]
@@ -14,12 +18,16 @@ pub struct Cli {
     #[arg(long, global = true)]
     pub workspace: Option<PathBuf>,
 
+    #[command(flatten)]
+    pub tool_flags: GlobalToolFlags,
+
     #[command(subcommand)]
     pub command: Option<Command>,
 }
 
 #[derive(Subcommand)]
 pub enum Command {
+    // -- Lifecycle commands --------------------------------------------------
     /// Run as persistent daemon (HTTP + IPC transport)
     Daemon {
         /// HTTP port for dashboard (default: 7890, fallback to auto if taken)
@@ -37,6 +45,25 @@ pub enum Command {
     Status,
     /// Stop daemon; it will auto-restart on next tool call
     Restart,
+
+    // -- Tool commands (named wrappers) --------------------------------------
+    /// Search code, symbols, or file paths
+    Search(SearchArgs),
+    /// Find all references to a symbol
+    Refs(RefsArgs),
+    /// List symbols in a file
+    Symbols(SymbolsArgs),
+    /// Get token-budgeted context for a concept or task
+    Context(ContextArgs),
+    /// Analyze blast radius of changes
+    BlastRadius(BlastRadiusArgs),
+    /// Manage workspaces (index, list, stats, health, etc.)
+    #[command(name = "workspace")]
+    Workspace(WorkspaceArgs),
+
+    // -- Generic tool fallback -----------------------------------------------
+    /// Run any tool by name with JSON params
+    Tool(GenericToolArgs),
 }
 
 /// Resolve the workspace root path from CLI arg, env var, or current directory.

@@ -20,6 +20,7 @@ pub mod fixtures; // Test fixtures (JulieTestFixture for fast dogfooding tests)
 // CLI TESTS - Argument parsing and workspace resolution
 // ============================================================================
 pub mod cli_tests; // CLI argument parsing (clap) and workspace resolution tests
+pub mod cli_tools_tests; // CLI tool subcommand parsing (search, refs, symbols, etc.)
 
 // ============================================================================
 // MAIN SERVER TESTS - Entry point error handling
