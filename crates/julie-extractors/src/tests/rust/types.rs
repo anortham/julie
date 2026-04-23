@@ -135,3 +135,61 @@ struct User {
         assert_eq!(types.get(&age_field.id), Some(&"Option<u32>".to_string()));
     }
 }
+
+#[test]
+fn rust_derive_attribute_markers_persist_on_structs() {
+    let code = r#"
+#[derive(Debug, Clone)]
+struct User {
+    id: u64,
+}
+"#;
+
+    let mut parser = Parser::new();
+    parser
+        .set_language(&tree_sitter_rust::LANGUAGE.into())
+        .expect("Failed to load Rust grammar");
+
+    let tree = parser.parse(code, None).expect("Failed to parse code");
+    let workspace_root = PathBuf::from("/test");
+
+    let mut extractor = RustExtractor::new(
+        "rust".to_string(),
+        "test.rs".to_string(),
+        code.to_string(),
+        &workspace_root,
+    );
+
+    let symbols = extractor.extract_symbols(&tree);
+    let user = symbols
+        .iter()
+        .find(|s| s.name == "User")
+        .expect("Should extract User struct");
+
+    let annotations: Vec<_> = user
+        .annotations
+        .iter()
+        .map(|marker| {
+            (
+                marker.annotation.as_str(),
+                marker.annotation_key.as_str(),
+                marker.raw_text.as_deref(),
+                marker.carrier.as_deref(),
+            )
+        })
+        .collect();
+
+    assert_eq!(
+        annotations,
+        vec![
+            ("Debug", "debug", Some("Debug"), Some("derive")),
+            ("Clone", "clone", Some("Clone"), Some("derive")),
+        ]
+    );
+    assert!(
+        user.signature
+            .as_deref()
+            .unwrap_or_default()
+            .contains("#[derive(Debug, Clone)] struct User")
+    );
+}

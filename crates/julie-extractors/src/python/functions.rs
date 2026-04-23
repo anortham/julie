@@ -1,6 +1,6 @@
 /// Function and method extraction
 /// Handles regular functions, async functions, lambdas, and method detection
-use super::super::base::{Symbol, SymbolKind, SymbolOptions, Visibility};
+use super::super::base::{Symbol, SymbolKind, SymbolOptions, Visibility, normalize_annotations};
 use super::PythonExtractor;
 use super::{decorators, signatures};
 use crate::test_detection::is_test_symbol;
@@ -36,6 +36,12 @@ pub fn extract_function(extractor: &mut PythonExtractor, node: Node) -> Option<S
 
     // Extract decorators
     let decorators_list = decorators::extract_decorators(extractor, &node);
+    let decorator_texts = decorators::extract_decorator_texts(extractor, &node);
+    let annotations = normalize_annotations(&decorator_texts, "python");
+    let annotation_keys: Vec<String> = annotations
+        .iter()
+        .map(|marker| marker.annotation_key.clone())
+        .collect();
     let decorator_info = if decorators_list.is_empty() {
         String::new()
     } else {
@@ -73,7 +79,7 @@ pub fn extract_function(extractor: &mut PythonExtractor, node: Node) -> Option<S
         &name,
         &extractor.base().file_path,
         &symbol_kind,
-        &decorators_list,
+        &annotation_keys,
         doc_comment.as_deref(),
     ) {
         metadata.insert("is_test".to_string(), serde_json::json!(true));
@@ -89,7 +95,7 @@ pub fn extract_function(extractor: &mut PythonExtractor, node: Node) -> Option<S
             parent_id,
             metadata: Some(metadata),
             doc_comment,
-            annotations: Vec::new(),
+            annotations,
         },
     ))
 }

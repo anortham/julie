@@ -310,6 +310,70 @@ class AppComponent {
     );
 }
 
+#[test]
+fn typescript_decorator_markers_persist_for_classes_and_methods() {
+    let code = r#"
+@Injectable()
+class UserService {
+    @HostListener('click')
+    onClick(): void {}
+}
+"#;
+
+    let mut parser = tree_sitter::Parser::new();
+    parser
+        .set_language(&tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into())
+        .unwrap();
+    let tree = parser.parse(code, None).unwrap();
+
+    let workspace_root = PathBuf::from("/tmp/test");
+    let mut extractor = TypeScriptExtractor::new(
+        "typescript".to_string(),
+        "test.ts".to_string(),
+        code.to_string(),
+        &workspace_root,
+    );
+    let symbols = extractor.extract_symbols(&tree);
+
+    let class_sym = symbols
+        .iter()
+        .find(|s| s.name == "UserService" && s.kind == SymbolKind::Class)
+        .expect("Should extract UserService class");
+    assert_eq!(class_sym.annotations.len(), 1);
+    assert_eq!(class_sym.annotations[0].annotation, "Injectable");
+    assert_eq!(class_sym.annotations[0].annotation_key, "injectable");
+    assert_eq!(
+        class_sym.annotations[0].raw_text.as_deref(),
+        Some("Injectable()")
+    );
+    assert!(
+        class_sym
+            .signature
+            .as_deref()
+            .unwrap_or_default()
+            .contains("@Injectable class UserService")
+    );
+
+    let method_sym = symbols
+        .iter()
+        .find(|s| s.name == "onClick" && s.kind == SymbolKind::Method)
+        .expect("Should extract onClick method");
+    assert_eq!(method_sym.annotations.len(), 1);
+    assert_eq!(method_sym.annotations[0].annotation, "HostListener");
+    assert_eq!(method_sym.annotations[0].annotation_key, "hostlistener");
+    assert_eq!(
+        method_sym.annotations[0].raw_text.as_deref(),
+        Some("HostListener('click')")
+    );
+    assert!(
+        method_sym
+            .signature
+            .as_deref()
+            .unwrap_or_default()
+            .contains("@HostListener onClick")
+    );
+}
+
 // ========================================================================
 // Access modifier (visibility) extraction tests
 // ========================================================================

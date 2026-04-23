@@ -115,6 +115,14 @@ pub(super) fn get_preceding_attributes<'a>(_base: &BaseExtractor, node: Node<'a>
     attributes
 }
 
+/// Extract raw attribute text from attribute nodes.
+pub(super) fn extract_attribute_texts(base: &BaseExtractor, attributes: &[Node]) -> Vec<String> {
+    attributes
+        .iter()
+        .map(|attribute| base.get_node_text(attribute))
+        .collect()
+}
+
 /// Extract trait names from #[derive(...)] attributes
 pub(super) fn extract_derived_traits(base: &BaseExtractor, attributes: &[Node]) -> Vec<String> {
     let mut traits = Vec::new();
