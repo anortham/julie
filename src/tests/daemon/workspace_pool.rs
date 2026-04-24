@@ -372,6 +372,33 @@ async fn test_session_count_not_incremented_on_init_failure() {
     // If the row doesn't exist at all, that's also acceptable — no leak either way
 }
 
+#[tokio::test]
+async fn test_get_or_init_rejects_missing_workspace_without_creating_path_or_row() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let daemon_db = Arc::new(DaemonDatabase::open(&tmp.path().join("daemon.db")).unwrap());
+    let indexes_dir = tmp.path().join("indexes");
+    std::fs::create_dir_all(&indexes_dir).unwrap();
+
+    let missing_root = tmp.path().join("missing-workspace");
+    let workspace_id = "missing_ws";
+    let pool = WorkspacePool::new(indexes_dir, Some(Arc::clone(&daemon_db)), None, None);
+
+    let result = pool.get_or_init(workspace_id, missing_root.clone()).await;
+
+    assert!(
+        result.is_err(),
+        "missing workspace roots must be rejected before initialization"
+    );
+    assert!(
+        !missing_root.exists(),
+        "get_or_init must not create a missing workspace root"
+    );
+    assert!(
+        daemon_db.get_workspace(workspace_id).unwrap().is_none(),
+        "failed initialization must not leave a daemon registry row"
+    );
+}
+
 // ── D-H6 ─────────────────────────────────────────────────────────────────────
 // After indexing, the IPC session tear-down must call sync_indexed_from_db so
 // the pool's in-memory `indexed` flag reflects what daemon.db already knows.

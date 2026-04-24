@@ -578,6 +578,7 @@ mod tests {
         // Migrate with same old->new (no-op case: old doesn't exist)
         let mut migrations = std::collections::HashMap::new();
         migrations.insert("julie_316c0b08".to_string(), "julie_528d4264".to_string());
+        migrations.insert("julie_528d4264".to_string(), "julie_528d4264".to_string());
 
         // Should not crash even though old ID doesn't exist
         db.migrate_workspace_ids(&migrations).unwrap();
@@ -585,6 +586,56 @@ mod tests {
         // Original entry untouched
         let ws = db.get_workspace("julie_528d4264").unwrap();
         assert!(ws.is_some());
+    }
+
+    #[test]
+    fn test_migrate_workspace_ids_merges_when_target_workspace_exists() {
+        let (db, _tmp) = create_test_db();
+
+        db.upsert_workspace("old_tmp_ws", "/tmp/julie", "ready")
+            .unwrap();
+        db.update_workspace_stats("old_tmp_ws", 100, 50, None, None, None)
+            .unwrap();
+        db.upsert_workspace("new_tmp_ws", "/private/tmp/julie", "pending")
+            .unwrap();
+
+        use crate::daemon::database::CodehealthSnapshot;
+        db.insert_codehealth_snapshot("old_tmp_ws", &CodehealthSnapshot::default())
+            .unwrap();
+        db.insert_cleanup_event("old_tmp_ws", "/tmp/julie", "auto_prune", "missing_path")
+            .unwrap();
+        db.insert_tool_call(
+            "old_tmp_ws",
+            "sess1",
+            "fast_search",
+            50.0,
+            Some(5),
+            None,
+            None,
+            true,
+            None,
+        )
+        .unwrap();
+
+        let mut migrations = std::collections::HashMap::new();
+        migrations.insert("old_tmp_ws".to_string(), "new_tmp_ws".to_string());
+
+        db.migrate_workspace_ids(&migrations).unwrap();
+
+        assert!(db.get_workspace("old_tmp_ws").unwrap().is_none());
+
+        let merged = db.get_workspace("new_tmp_ws").unwrap().unwrap();
+        assert_eq!(merged.status, "ready");
+        assert_eq!(merged.symbol_count, Some(100));
+        assert_eq!(merged.file_count, Some(50));
+
+        let cleanup_events = db.list_cleanup_events(10).unwrap();
+        assert_eq!(cleanup_events.len(), 1);
+        assert_eq!(cleanup_events[0].workspace_id, "new_tmp_ws");
+        assert!(db.get_latest_snapshot("new_tmp_ws").unwrap().is_some());
+
+        let history = db.query_tool_call_history("new_tmp_ws", 30).unwrap();
+        assert_eq!(history.total_calls, 1);
     }
 
     #[test]

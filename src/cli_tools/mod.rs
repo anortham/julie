@@ -137,6 +137,19 @@ pub async fn run_cli_tool(
     let start = Instant::now();
     let workspace_root = resolve_workspace_root(cli_workspace.clone());
 
+    if !workspace_root.exists() {
+        anyhow::bail!(
+            "Workspace path does not exist: {}",
+            workspace_root.display()
+        );
+    }
+    if !workspace_root.is_dir() {
+        anyhow::bail!(
+            "Workspace path is not a directory: {}",
+            workspace_root.display()
+        );
+    }
+
     eprintln!("julie: workspace {}", workspace_root.display());
 
     let (mode, result_value, is_error) = if standalone {

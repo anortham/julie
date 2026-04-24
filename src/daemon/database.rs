@@ -917,6 +917,21 @@ impl DaemonDatabase {
             let tx = conn.transaction()?;
 
             for (old_id, new_id) in id_map {
+                if old_id == new_id {
+                    continue;
+                }
+
+                let old_exists: bool = tx.query_row(
+                    "SELECT EXISTS(SELECT 1 FROM workspaces WHERE workspace_id = ?1)",
+                    params![old_id],
+                    |row| row.get::<_, i64>(0).map(|value| value != 0),
+                )?;
+                let new_exists: bool = tx.query_row(
+                    "SELECT EXISTS(SELECT 1 FROM workspaces WHERE workspace_id = ?1)",
+                    params![new_id],
+                    |row| row.get::<_, i64>(0).map(|value| value != 0),
+                )?;
+
                 // Update child tables first
                 tx.execute(
                     "UPDATE workspace_cleanup_events SET workspace_id = ?1
@@ -933,12 +948,71 @@ impl DaemonDatabase {
                      WHERE workspace_id = ?2",
                     params![new_id, old_id],
                 )?;
-                // Update workspace row itself (PK change)
-                tx.execute(
-                    "UPDATE workspaces SET workspace_id = ?1
-                     WHERE workspace_id = ?2",
-                    params![new_id, old_id],
-                )?;
+
+                if !old_exists {
+                    continue;
+                }
+
+                if new_exists {
+                    tx.execute(
+                        "UPDATE workspaces
+                         SET status = CASE
+                                 WHEN status = 'ready' THEN status
+                                 WHEN (SELECT status FROM workspaces WHERE workspace_id = ?2) = 'ready'
+                                     THEN 'ready'
+                                 ELSE status
+                             END,
+                             session_count = MAX(
+                                 session_count,
+                                 (SELECT session_count FROM workspaces WHERE workspace_id = ?2)
+                             ),
+                             last_indexed = COALESCE(
+                                 last_indexed,
+                                 (SELECT last_indexed FROM workspaces WHERE workspace_id = ?2)
+                             ),
+                             symbol_count = COALESCE(
+                                 symbol_count,
+                                 (SELECT symbol_count FROM workspaces WHERE workspace_id = ?2)
+                             ),
+                             file_count = COALESCE(
+                                 file_count,
+                                 (SELECT file_count FROM workspaces WHERE workspace_id = ?2)
+                             ),
+                             embedding_model = COALESCE(
+                                 embedding_model,
+                                 (SELECT embedding_model FROM workspaces WHERE workspace_id = ?2)
+                             ),
+                             vector_count = COALESCE(
+                                 vector_count,
+                                 (SELECT vector_count FROM workspaces WHERE workspace_id = ?2)
+                             ),
+                             created_at = MIN(
+                                 created_at,
+                                 (SELECT created_at FROM workspaces WHERE workspace_id = ?2)
+                             ),
+                             updated_at = MAX(
+                                 updated_at,
+                                 (SELECT updated_at FROM workspaces WHERE workspace_id = ?2)
+                             ),
+                             last_index_duration_ms = COALESCE(
+                                 last_index_duration_ms,
+                                 (SELECT last_index_duration_ms FROM workspaces WHERE workspace_id = ?2)
+                             )
+                         WHERE workspace_id = ?1",
+                        params![new_id, old_id],
+                    )?;
+                    tx.execute(
+                        "DELETE FROM workspaces WHERE workspace_id = ?1",
+                        params![old_id],
+                    )?;
+                } else {
+                    // Update workspace row itself (PK change)
+                    tx.execute(
+                        "UPDATE workspaces SET workspace_id = ?1
+                         WHERE workspace_id = ?2",
+                        params![new_id, old_id],
+                    )?;
+                }
             }
 
             // Verify FK integrity before committing

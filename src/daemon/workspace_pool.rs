@@ -132,6 +132,19 @@ impl WorkspacePool {
             "Initializing workspace in pool"
         );
 
+        if !workspace_root.exists() {
+            anyhow::bail!(
+                "Workspace path does not exist: {}",
+                workspace_root.display()
+            );
+        }
+        if !workspace_root.is_dir() {
+            anyhow::bail!(
+                "Workspace path is not a directory: {}",
+                workspace_root.display()
+            );
+        }
+
         if let Some(julie_home) = self.indexes_dir.parent() {
             let daemon_paths = crate::paths::DaemonPaths::with_home(julie_home.to_path_buf());
             if let Err(e) = crate::migration::run_migration_for_workspace(

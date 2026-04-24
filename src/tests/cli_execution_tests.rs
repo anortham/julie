@@ -467,6 +467,8 @@ fn test_build_startup_hint_sets_cli_source() {
 
 #[tokio::test]
 async fn test_run_cli_tool_standalone_missing_workspace() {
+    let temp = tempfile::TempDir::new().unwrap();
+    let missing_workspace = temp.path().join("missing-workspace");
     let args = SearchArgs {
         query: "test".into(),
         target: "content".into(),
@@ -479,7 +481,7 @@ async fn test_run_cli_tool_standalone_missing_workspace() {
 
     let result = run_cli_tool(
         &args,
-        Some(PathBuf::from("/tmp/julie_nonexistent_ws_99999")),
+        Some(missing_workspace),
         true, // standalone
     )
     .await;
@@ -526,9 +528,9 @@ async fn test_run_cli_tool_standalone_workspace_stats_requires_daemon() {
 
 #[tokio::test]
 async fn test_run_cli_tool_daemon_fallback_missing_workspace() {
-    // With a nonexistent workspace path and no daemon, this should fail
-    // with a workspace error (after the daemon fallback attempt).
-    // If a daemon IS running, it may handle the call and return a result.
+    let temp = tempfile::TempDir::new().unwrap();
+    let missing_workspace = temp.path().join("missing-workspace");
+
     let args = SearchArgs {
         query: "test".into(),
         target: "content".into(),
@@ -541,36 +543,22 @@ async fn test_run_cli_tool_daemon_fallback_missing_workspace() {
 
     let result = run_cli_tool(
         &args,
-        Some(PathBuf::from("/tmp/julie_nonexistent_ws_99998")),
+        Some(missing_workspace.clone()),
         false, // not standalone, will try daemon then fall back
     )
     .await;
 
-    // If a daemon is running, it may return a result (OK or error content).
-    // If no daemon, standalone fallback should fail for the nonexistent path.
-    // Either outcome is valid depending on environment state.
-    match result {
-        Ok(output) => {
-            // Daemon handled it, or standalone fallback succeeded
-            assert!(
-                output.mode == crate::cli_tools::CliExecutionMode::Daemon
-                    || output.mode == crate::cli_tools::CliExecutionMode::DaemonFallback,
-                "Expected daemon or fallback mode, got: {}",
-                output.mode
-            );
-        }
-        Err(e) => {
-            // Standalone fallback failed (expected when no daemon is running)
-            let err_msg = e.to_string();
-            assert!(
-                err_msg.contains("does not exist")
-                    || err_msg.contains("not indexed")
-                    || err_msg.contains("Failed"),
-                "Expected workspace error, got: {}",
-                err_msg
-            );
-        }
-    }
+    assert!(result.is_err());
+    let err_msg = result.unwrap_err().to_string();
+    assert!(
+        err_msg.contains("does not exist"),
+        "Expected workspace-not-found error, got: {}",
+        err_msg
+    );
+    assert!(
+        !missing_workspace.exists(),
+        "missing workspace path must not be created by daemon fallback"
+    );
 }
 
 // ---------------------------------------------------------------------------
