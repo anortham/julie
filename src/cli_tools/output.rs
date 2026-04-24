@@ -101,8 +101,9 @@ fn format_signals_text(report: &crate::analysis::EarlyWarningReport) -> String {
     let mut out = String::new();
     let s = &report.summary;
     out.push_str(&format!(
-        "Early Warning Signals  (entry_points: {}, auth_coverage_candidates: {}, review_markers: {})\n",
-        s.entry_points, s.auth_coverage_candidates, s.review_markers
+        "Early Warning Signals  (entry_points: {}, auth_coverage_candidates: {}, review_markers: {}, scheduler: {}, ep_linkage_gaps: {}, centrality_gaps: {})\n",
+        s.entry_points, s.auth_coverage_candidates, s.review_markers,
+        s.scheduler_signals, s.entry_point_linkage_gaps, s.high_centrality_linkage_gaps
     ));
     if report.from_cache {
         out.push_str("  (from cache)\n");
@@ -139,6 +140,39 @@ fn format_signals_text(report: &crate::analysis::EarlyWarningReport) -> String {
                 rm.symbol_name, rm.file_path, rm.start_line, rm.annotation
             ));
         }
+        out.push('\n');
+    }
+
+    if !report.scheduler_signals.is_empty() {
+        out.push_str("Scheduler Signals:\n");
+        for ss in &report.scheduler_signals {
+            out.push_str(&format!(
+                "  {} ({}:{}) [{}]\n",
+                ss.symbol_name, ss.file_path, ss.start_line, ss.annotation
+            ));
+        }
+        out.push('\n');
+    }
+
+    if !report.entry_point_linkage_gaps.is_empty() {
+        out.push_str("Entry Point Linkage Gaps:\n");
+        for gap in &report.entry_point_linkage_gaps {
+            out.push_str(&format!(
+                "  {} ({}:{}) [{}]\n",
+                gap.symbol_name, gap.file_path, gap.start_line, gap.entry_annotation
+            ));
+        }
+        out.push('\n');
+    }
+
+    if !report.high_centrality_linkage_gaps.is_empty() {
+        out.push_str("High Centrality Linkage Gaps:\n");
+        for gap in &report.high_centrality_linkage_gaps {
+            out.push_str(&format!(
+                "  {} ({}:{}) score={:.2}\n",
+                gap.symbol_name, gap.file_path, gap.start_line, gap.reference_score
+            ));
+        }
     }
 
     out
@@ -149,8 +183,9 @@ fn format_signals_markdown(report: &crate::analysis::EarlyWarningReport) -> Stri
     let s = &report.summary;
     out.push_str("# Early Warning Signals\n\n");
     out.push_str(&format!(
-        "| Metric | Count |\n|--------|-------|\n| Entry Points | {} |\n| Auth Coverage Candidates | {} |\n| Review Markers | {} |\n\n",
-        s.entry_points, s.auth_coverage_candidates, s.review_markers
+        "| Metric | Count |\n|--------|-------|\n| Entry Points | {} |\n| Auth Coverage Candidates | {} |\n| Review Markers | {} |\n| Scheduler Signals | {} |\n| Entry Point Linkage Gaps | {} |\n| High Centrality Linkage Gaps | {} |\n\n",
+        s.entry_points, s.auth_coverage_candidates, s.review_markers,
+        s.scheduler_signals, s.entry_point_linkage_gaps, s.high_centrality_linkage_gaps
     ));
 
     if !report.entry_points.is_empty() {
@@ -181,6 +216,39 @@ fn format_signals_markdown(report: &crate::analysis::EarlyWarningReport) -> Stri
             out.push_str(&format!(
                 "| {} | {} | {} | {} |\n",
                 rm.symbol_name, rm.file_path, rm.start_line, rm.annotation
+            ));
+        }
+        out.push('\n');
+    }
+
+    if !report.scheduler_signals.is_empty() {
+        out.push_str("## Scheduler Signals\n\n| Symbol | File | Line | Annotation |\n|--------|------|------|------------|\n");
+        for ss in &report.scheduler_signals {
+            out.push_str(&format!(
+                "| {} | {} | {} | {} |\n",
+                ss.symbol_name, ss.file_path, ss.start_line, ss.annotation
+            ));
+        }
+        out.push('\n');
+    }
+
+    if !report.entry_point_linkage_gaps.is_empty() {
+        out.push_str("## Entry Point Linkage Gaps\n\n| Symbol | File | Line | Entry Annotation |\n|--------|------|------|------------------|\n");
+        for gap in &report.entry_point_linkage_gaps {
+            out.push_str(&format!(
+                "| {} | {} | {} | {} |\n",
+                gap.symbol_name, gap.file_path, gap.start_line, gap.entry_annotation
+            ));
+        }
+        out.push('\n');
+    }
+
+    if !report.high_centrality_linkage_gaps.is_empty() {
+        out.push_str("## High Centrality Linkage Gaps\n\n| Symbol | File | Line | Reference Score |\n|--------|------|------|-----------------|\n");
+        for gap in &report.high_centrality_linkage_gaps {
+            out.push_str(&format!(
+                "| {} | {} | {} | {:.2} |\n",
+                gap.symbol_name, gap.file_path, gap.start_line, gap.reference_score
             ));
         }
     }

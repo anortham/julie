@@ -2,6 +2,7 @@ use crate::analysis::early_warnings::{EarlyWarningReportOptions, generate_early_
 use crate::database::{FileInfo, SymbolDatabase};
 use crate::extractors::{AnnotationMarker, Symbol, SymbolKind};
 use crate::search::language_config::LanguageConfigs;
+use std::collections::HashMap;
 use tempfile::TempDir;
 
 fn file_info(path: &str, language: &str) -> FileInfo {
@@ -203,12 +204,21 @@ fn early_warning_report_empty_state_serializes_zero_counts() {
     assert_eq!(report.summary.entry_points, 0);
     assert_eq!(report.summary.auth_coverage_candidates, 0);
     assert_eq!(report.summary.review_markers, 0);
+    assert_eq!(report.summary.scheduler_signals, 0);
+    assert_eq!(report.summary.entry_point_linkage_gaps, 0);
+    assert_eq!(report.summary.high_centrality_linkage_gaps, 0);
     assert!(report.entry_points.is_empty());
     assert!(report.auth_coverage_candidates.is_empty());
     assert!(report.review_markers.is_empty());
+    assert!(report.scheduler_signals.is_empty());
+    assert!(report.entry_point_linkage_gaps.is_empty());
+    assert!(report.high_centrality_linkage_gaps.is_empty());
     assert!(json.contains("\"entry_points\":0"));
     assert!(json.contains("\"auth_coverage_candidates\":0"));
     assert!(json.contains("\"review_markers\":0"));
+    assert!(json.contains("\"scheduler_signals\":0"));
+    assert!(json.contains("\"entry_point_linkage_gaps\":0"));
+    assert!(json.contains("\"high_centrality_linkage_gaps\":0"));
 }
 
 #[test]
@@ -327,4 +337,233 @@ fn early_warning_report_file_pattern_scopes_analysis() {
         unscoped.summary.entry_points, 2,
         "no filter should include both"
     );
+}
+
+// ---------------------------------------------------------------------------
+// Task 7: Scheduler signal tests
+// ---------------------------------------------------------------------------
+
+fn symbol_with_metadata(
+    id: &str,
+    name: &str,
+    kind: SymbolKind,
+    language: &str,
+    file_path: &str,
+    start_line: u32,
+    parent_id: Option<&str>,
+    annotations: Vec<AnnotationMarker>,
+    metadata: Option<HashMap<String, serde_json::Value>>,
+) -> Symbol {
+    Symbol {
+        id: id.to_string(),
+        name: name.to_string(),
+        kind,
+        language: language.to_string(),
+        file_path: file_path.to_string(),
+        start_line,
+        start_column: 4,
+        end_line: start_line + 3,
+        end_column: 1,
+        start_byte: 20,
+        end_byte: 80,
+        signature: Some(format!("{name}()")),
+        doc_comment: None,
+        visibility: None,
+        parent_id: parent_id.map(str::to_string),
+        metadata,
+        semantic_group: None,
+        confidence: Some(1.0),
+        code_context: Some(format!("{name}() {{}}")),
+        content_type: None,
+        annotations,
+    }
+}
+
+#[test]
+fn early_warning_report_scheduler_signal_detection() {
+    let (_temp_dir, mut db) = open_db();
+    let configs = LanguageConfigs::load_embedded();
+    let file = file_info("tasks/jobs.py", "python");
+    db.store_file_info(&file).unwrap();
+
+    let scheduled_task = symbol(
+        "task-1",
+        "send_daily_email",
+        SymbolKind::Function,
+        "python",
+        &file.path,
+        10,
+        None,
+        vec![marker("celery.task", "celery.task", Some("@celery.task"))],
+    );
+    let plain_func = symbol(
+        "plain-1",
+        "helper",
+        SymbolKind::Function,
+        "python",
+        &file.path,
+        20,
+        None,
+        Vec::new(),
+    );
+    db.store_symbols(&[scheduled_task, plain_func]).unwrap();
+
+    let report = generate_early_warning_report(&db, &configs, options()).unwrap();
+
+    assert_eq!(report.summary.scheduler_signals, 1);
+    assert_eq!(report.scheduler_signals.len(), 1);
+    assert_eq!(report.scheduler_signals[0].symbol_name, "send_daily_email");
+    assert_eq!(report.scheduler_signals[0].annotation_key, "celery.task");
+    assert_eq!(report.scheduler_signals[0].language, "python");
+}
+
+// ---------------------------------------------------------------------------
+// Task 8: Linkage gap tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn early_warning_report_entry_point_linkage_gap_no_test_linkage() {
+    let (_temp_dir, mut db) = open_db();
+    let configs = LanguageConfigs::load_embedded();
+    let file = file_info("Controllers/UsersController.cs", "csharp");
+    db.store_file_info(&file).unwrap();
+
+    // Entry point without test_linkage metadata => gap
+    let route = symbol(
+        "route-no-linkage",
+        "GetUsers",
+        SymbolKind::Method,
+        "csharp",
+        &file.path,
+        5,
+        None,
+        vec![marker("HttpGet", "httpget", Some("[HttpGet]"))],
+    );
+    db.store_symbols(&[route]).unwrap();
+
+    let report = generate_early_warning_report(&db, &configs, options()).unwrap();
+
+    assert_eq!(report.summary.entry_points, 1);
+    assert_eq!(report.summary.entry_point_linkage_gaps, 1);
+    assert_eq!(report.entry_point_linkage_gaps.len(), 1);
+    assert_eq!(report.entry_point_linkage_gaps[0].symbol_name, "GetUsers");
+    assert_eq!(
+        report.entry_point_linkage_gaps[0].entry_annotation,
+        "HttpGet"
+    );
+}
+
+#[test]
+fn early_warning_report_entry_point_with_test_linkage_is_not_a_gap() {
+    let (_temp_dir, mut db) = open_db();
+    let configs = LanguageConfigs::load_embedded();
+    let file = file_info("Controllers/OrdersController.cs", "csharp");
+    db.store_file_info(&file).unwrap();
+
+    // Entry point WITH test_linkage metadata => not a gap
+    let mut metadata = HashMap::new();
+    metadata.insert(
+        "test_linkage".to_string(),
+        serde_json::json!({"tests": ["test_get_orders"]}),
+    );
+    let route = symbol_with_metadata(
+        "route-with-linkage",
+        "GetOrders",
+        SymbolKind::Method,
+        "csharp",
+        &file.path,
+        5,
+        None,
+        vec![marker("HttpGet", "httpget", Some("[HttpGet]"))],
+        Some(metadata),
+    );
+    db.store_symbols(&[route]).unwrap();
+
+    let report = generate_early_warning_report(&db, &configs, options()).unwrap();
+
+    assert_eq!(report.summary.entry_points, 1);
+    assert_eq!(report.summary.entry_point_linkage_gaps, 0);
+    assert!(report.entry_point_linkage_gaps.is_empty());
+}
+
+#[test]
+fn early_warning_report_high_centrality_linkage_gap_query() {
+    let (_temp_dir, mut db) = open_db();
+    let configs = LanguageConfigs::load_embedded();
+    let file = file_info("src/core/engine.rs", "rust");
+    db.store_file_info(&file).unwrap();
+
+    // Symbol with high centrality, no test_linkage => gap
+    let high_centrality = symbol(
+        "engine-run",
+        "run",
+        SymbolKind::Function,
+        "rust",
+        &file.path,
+        10,
+        None,
+        Vec::new(),
+    );
+    // Symbol with test_linkage => not a gap
+    let mut metadata = HashMap::new();
+    metadata.insert(
+        "test_linkage".to_string(),
+        serde_json::json!({"tests": ["test_process"]}),
+    );
+    let linked = symbol_with_metadata(
+        "engine-process",
+        "process",
+        SymbolKind::Function,
+        "rust",
+        &file.path,
+        30,
+        None,
+        Vec::new(),
+        Some(metadata),
+    );
+    // Test symbol with high centrality => excluded (is_test)
+    let mut test_meta = HashMap::new();
+    test_meta.insert("is_test".to_string(), serde_json::json!(1));
+    let test_sym = symbol_with_metadata(
+        "test-engine",
+        "test_run",
+        SymbolKind::Function,
+        "rust",
+        &file.path,
+        50,
+        None,
+        Vec::new(),
+        Some(test_meta),
+    );
+
+    db.store_symbols(&[high_centrality, linked, test_sym])
+        .unwrap();
+
+    // Set reference_score on engine-run and test-engine to make them "high centrality"
+    db.conn
+        .execute(
+            "UPDATE symbols SET reference_score = 5.0 WHERE id = ?1",
+            rusqlite::params!["engine-run"],
+        )
+        .unwrap();
+    db.conn
+        .execute(
+            "UPDATE symbols SET reference_score = 3.0 WHERE id = ?1",
+            rusqlite::params!["engine-process"],
+        )
+        .unwrap();
+    db.conn
+        .execute(
+            "UPDATE symbols SET reference_score = 4.0 WHERE id = ?1",
+            rusqlite::params!["test-engine"],
+        )
+        .unwrap();
+
+    let report = generate_early_warning_report(&db, &configs, options()).unwrap();
+
+    // Only engine-run should appear: high centrality, no test_linkage, not a test
+    assert_eq!(report.summary.high_centrality_linkage_gaps, 1);
+    assert_eq!(report.high_centrality_linkage_gaps.len(), 1);
+    assert_eq!(report.high_centrality_linkage_gaps[0].symbol_name, "run");
+    assert_eq!(report.high_centrality_linkage_gaps[0].reference_score, 5.0);
 }
