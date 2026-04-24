@@ -504,4 +504,149 @@ mod tests {
             "parent aggregation should also be cleared when child linkage disappears"
         );
     }
+
+    #[test]
+    fn test_scorable_filter_excludes_fixture_includes_test_case_and_legacy() {
+        // Verifies the updated SQL filter:
+        // - test_role = "test_case" => included
+        // - test_role = "fixture_setup" with is_test = true => excluded
+        // - is_test = true with no test_role => included (backward compat)
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        let db = SymbolDatabase::new(&db_path).unwrap();
+
+        insert_file(&db, "src/core.rs");
+        insert_file(&db, "tests/core_test.rs");
+
+        db.conn.execute_batch(r#"
+            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata, reference_score, visibility)
+            VALUES ('prod_core', 'do_work', 'function', 'rust', 'src/core.rs', 1, 0, 20, 0, 0, 0, NULL, 5.0, 'public');
+
+            -- Scorable test case (test_role = "test_case")
+            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata, reference_score, visibility)
+            VALUES ('test_case_1', 'test_do_work', 'function', 'rust', 'tests/core_test.rs', 5, 0, 15, 0, 0, 0,
+                    '{"is_test": true, "test_role": "test_case", "test_quality": {"quality_tier": "thorough", "confidence": 0.85}}', 0.0, 'private');
+
+            -- Fixture setup (test_role = "fixture_setup", is_test = true) => should be EXCLUDED
+            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata, reference_score, visibility)
+            VALUES ('fixture_1', 'setup_db', 'function', 'rust', 'tests/core_test.rs', 20, 0, 30, 0, 0, 0,
+                    '{"is_test": true, "test_role": "fixture_setup"}', 0.0, 'private');
+
+            -- Legacy test (is_test = true, no test_role) => should be INCLUDED
+            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata, reference_score, visibility)
+            VALUES ('legacy_test', 'test_do_work_legacy', 'function', 'rust', 'tests/core_test.rs', 35, 0, 45, 0, 0, 0,
+                    '{"is_test": true, "test_quality": {"quality_tier": "adequate"}}', 0.0, 'private');
+
+            -- All three call the production symbol
+            INSERT INTO relationships (id, from_symbol_id, to_symbol_id, kind, file_path, line_number)
+            VALUES ('rel_tc', 'test_case_1', 'prod_core', 'calls', 'tests/core_test.rs', 10);
+            INSERT INTO relationships (id, from_symbol_id, to_symbol_id, kind, file_path, line_number)
+            VALUES ('rel_fix', 'fixture_1', 'prod_core', 'calls', 'tests/core_test.rs', 25);
+            INSERT INTO relationships (id, from_symbol_id, to_symbol_id, kind, file_path, line_number)
+            VALUES ('rel_leg', 'legacy_test', 'prod_core', 'calls', 'tests/core_test.rs', 40);
+        "#).unwrap();
+
+        let stats = crate::analysis::test_linkage::compute_test_linkage(&db).unwrap();
+        assert_eq!(
+            stats.symbols_covered, 1,
+            "One production symbol should be covered"
+        );
+
+        let prod = db.get_symbol_by_id("prod_core").unwrap().unwrap();
+        let meta = prod.metadata.unwrap();
+        let linkage = meta.get("test_linkage").unwrap();
+
+        // Fixture should be excluded, so only test_case_1 and legacy_test
+        let test_count = linkage.get("test_count").unwrap().as_u64().unwrap();
+        assert_eq!(
+            test_count, 2,
+            "Fixture should be excluded; only test_case and legacy test should link"
+        );
+
+        let linked_tests = linkage.get("linked_tests").unwrap().as_array().unwrap();
+        let test_names: Vec<&str> = linked_tests.iter().map(|v| v.as_str().unwrap()).collect();
+        assert!(
+            test_names.contains(&"test_do_work"),
+            "test_case should be linked"
+        );
+        assert!(
+            test_names.contains(&"test_do_work_legacy"),
+            "legacy test should be linked (backward compat)"
+        );
+        assert!(
+            !test_names.contains(&"setup_db"),
+            "fixture should NOT be linked"
+        );
+    }
+
+    #[test]
+    fn test_best_confidence_present_in_linkage_output() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        let db = SymbolDatabase::new(&db_path).unwrap();
+
+        insert_file(&db, "src/engine.rs");
+        insert_file(&db, "tests/engine_test.rs");
+
+        db.conn.execute_batch(r#"
+            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata, reference_score, visibility)
+            VALUES ('prod_eng', 'run_engine', 'function', 'rust', 'src/engine.rs', 1, 0, 20, 0, 0, 0, NULL, 3.0, 'public');
+
+            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata, reference_score, visibility)
+            VALUES ('test_eng', 'test_run_engine', 'function', 'rust', 'tests/engine_test.rs', 1, 0, 10, 0, 0, 0,
+                    '{"is_test": true, "test_quality": {"quality_tier": "thorough", "confidence": 0.92}}', 0.0, 'private');
+
+            INSERT INTO relationships (id, from_symbol_id, to_symbol_id, kind, file_path, line_number)
+            VALUES ('rel_eng', 'test_eng', 'prod_eng', 'calls', 'tests/engine_test.rs', 5);
+        "#).unwrap();
+
+        crate::analysis::test_linkage::compute_test_linkage(&db).unwrap();
+
+        let prod = db.get_symbol_by_id("prod_eng").unwrap().unwrap();
+        let meta = prod.metadata.unwrap();
+        let linkage = meta.get("test_linkage").unwrap();
+
+        let best_confidence = linkage.get("best_confidence").unwrap().as_f64().unwrap();
+        assert!(
+            (best_confidence - 0.92).abs() < 0.001,
+            "best_confidence should be 0.92 from the test's metadata, got {}",
+            best_confidence
+        );
+    }
+
+    #[test]
+    fn test_best_confidence_defaults_when_metadata_absent() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        let db = SymbolDatabase::new(&db_path).unwrap();
+
+        insert_file(&db, "src/old.rs");
+        insert_file(&db, "tests/old_test.rs");
+
+        // Test symbol with no confidence field in test_quality
+        db.conn.execute_batch(r#"
+            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata, reference_score, visibility)
+            VALUES ('prod_old', 'old_function', 'function', 'rust', 'src/old.rs', 1, 0, 10, 0, 0, 0, NULL, 2.0, 'public');
+
+            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata, reference_score, visibility)
+            VALUES ('test_old', 'test_old_function', 'function', 'rust', 'tests/old_test.rs', 1, 0, 8, 0, 0, 0,
+                    '{"is_test": true, "test_quality": {"quality_tier": "adequate"}}', 0.0, 'private');
+
+            INSERT INTO relationships (id, from_symbol_id, to_symbol_id, kind, file_path, line_number)
+            VALUES ('rel_old', 'test_old', 'prod_old', 'calls', 'tests/old_test.rs', 3);
+        "#).unwrap();
+
+        crate::analysis::test_linkage::compute_test_linkage(&db).unwrap();
+
+        let prod = db.get_symbol_by_id("prod_old").unwrap().unwrap();
+        let meta = prod.metadata.unwrap();
+        let linkage = meta.get("test_linkage").unwrap();
+
+        let best_confidence = linkage.get("best_confidence").unwrap().as_f64().unwrap();
+        assert!(
+            (best_confidence - 0.5).abs() < 0.001,
+            "best_confidence should default to 0.5 when test has no confidence metadata, got {}",
+            best_confidence
+        );
+    }
 }

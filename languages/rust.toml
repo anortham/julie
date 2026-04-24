@@ -51,5 +51,10 @@ extra_kinds = []
 [annotation_classes.test]
 test_case = ["test", "tokio::test", "rstest"]
 
+[test_evidence]
+assertion_identifiers = ["assert_eq", "assert_ne", "assert", "assert_matches", "debug_assert"]
+error_assertion_identifiers = ["should_err", "should_panic"]
+mock_identifiers = []
+
 [early_warnings]
 schema_version = 1

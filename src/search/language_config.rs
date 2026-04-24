@@ -20,6 +20,8 @@ pub struct LanguageConfig {
     #[serde(default)]
     pub annotation_classes: AnnotationClassesConfig,
     #[serde(default)]
+    pub test_evidence: TestEvidenceConfig,
+    #[serde(default)]
     pub early_warnings: EarlyWarningConfig,
 }
 
@@ -102,6 +104,21 @@ pub struct AnnotationClassesConfig {
     pub scheduler: Vec<String>,
     #[serde(default)]
     pub test: TestAnnotationClasses,
+}
+
+/// Framework-specific test evidence identifiers.
+///
+/// Used by downstream test quality scoring to recognize assertion calls,
+/// error-path assertions, and mock/stub setups within test bodies. All
+/// identifiers are stored lowercase for case-insensitive matching.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct TestEvidenceConfig {
+    #[serde(default)]
+    pub assertion_identifiers: Vec<String>,
+    #[serde(default)]
+    pub error_assertion_identifiers: Vec<String>,
+    #[serde(default)]
+    pub mock_identifiers: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -326,6 +343,9 @@ meaningful_affixes = []
         assert!(config.annotation_classes.test.fixture_setup.is_empty());
         assert!(config.annotation_classes.test.fixture_teardown.is_empty());
         assert!(config.annotation_classes.test.test_container.is_empty());
+        assert!(config.test_evidence.assertion_identifiers.is_empty());
+        assert!(config.test_evidence.error_assertion_identifiers.is_empty());
+        assert!(config.test_evidence.mock_identifiers.is_empty());
         assert!(config.early_warnings.review_markers.is_empty());
         assert_eq!(config.early_warnings.schema_version, 1);
     }
@@ -575,6 +595,157 @@ schema_version = 7
                 .test
                 .test_container
                 .contains(&"testfixture".into())
+        );
+    }
+
+    #[test]
+    fn test_evidence_config_defaults_empty_when_absent() {
+        let config: LanguageConfig = toml::from_str(
+            r#"
+[tokenizer]
+preserve_patterns = ["@"]
+naming_styles = ["snake_case"]
+meaningful_affixes = []
+"#,
+        )
+        .expect("config without test_evidence section should parse");
+
+        assert!(config.test_evidence.assertion_identifiers.is_empty());
+        assert!(config.test_evidence.error_assertion_identifiers.is_empty());
+        assert!(config.test_evidence.mock_identifiers.is_empty());
+    }
+
+    #[test]
+    fn test_evidence_config_loads_from_toml() {
+        let config: LanguageConfig = toml::from_str(
+            r#"
+[tokenizer]
+preserve_patterns = ["@"]
+naming_styles = ["snake_case"]
+meaningful_affixes = []
+
+[test_evidence]
+assertion_identifiers = ["assert_eq", "assert_ne"]
+error_assertion_identifiers = ["should_panic"]
+mock_identifiers = ["mock", "spy"]
+"#,
+        )
+        .expect("config with test_evidence section should parse");
+
+        assert_eq!(
+            config.test_evidence.assertion_identifiers,
+            vec!["assert_eq", "assert_ne"]
+        );
+        assert_eq!(
+            config.test_evidence.error_assertion_identifiers,
+            vec!["should_panic"]
+        );
+        assert_eq!(config.test_evidence.mock_identifiers, vec!["mock", "spy"]);
+    }
+
+    #[test]
+    fn test_evidence_rust_has_assertion_identifiers() {
+        let configs = LanguageConfigs::load_embedded();
+        let rust = configs.get("rust").expect("rust config should exist");
+
+        assert!(
+            rust.test_evidence
+                .assertion_identifiers
+                .contains(&"assert_eq".into()),
+            "Rust test_evidence should contain assert_eq"
+        );
+        assert!(
+            rust.test_evidence
+                .assertion_identifiers
+                .contains(&"assert_ne".into()),
+            "Rust test_evidence should contain assert_ne"
+        );
+        assert!(
+            rust.test_evidence
+                .assertion_identifiers
+                .contains(&"assert".into()),
+            "Rust test_evidence should contain assert"
+        );
+        assert!(
+            rust.test_evidence
+                .error_assertion_identifiers
+                .contains(&"should_panic".into()),
+            "Rust test_evidence should contain should_panic"
+        );
+        assert!(
+            rust.test_evidence.mock_identifiers.is_empty(),
+            "Rust test_evidence should have no mock identifiers"
+        );
+    }
+
+    #[test]
+    fn test_evidence_populated_for_all_configured_languages() {
+        let configs = LanguageConfigs::load_embedded();
+
+        // Python
+        let python = configs.get("python").expect("python config should exist");
+        assert!(
+            python
+                .test_evidence
+                .assertion_identifiers
+                .contains(&"assertequal".into())
+        );
+        assert!(
+            python
+                .test_evidence
+                .mock_identifiers
+                .contains(&"mock".into())
+        );
+        assert!(
+            python
+                .test_evidence
+                .error_assertion_identifiers
+                .contains(&"assertraises".into())
+        );
+
+        // Java
+        let java = configs.get("java").expect("java config should exist");
+        assert!(
+            java.test_evidence
+                .assertion_identifiers
+                .contains(&"assertequals".into())
+        );
+        assert!(java.test_evidence.mock_identifiers.contains(&"mock".into()));
+
+        // C#
+        let csharp = configs.get("csharp").expect("csharp config should exist");
+        assert!(
+            csharp
+                .test_evidence
+                .assertion_identifiers
+                .contains(&"equal".into())
+        );
+        assert!(
+            csharp
+                .test_evidence
+                .error_assertion_identifiers
+                .contains(&"throws".into())
+        );
+        assert!(
+            csharp
+                .test_evidence
+                .mock_identifiers
+                .contains(&"mock".into())
+        );
+
+        // Kotlin
+        let kotlin = configs.get("kotlin").expect("kotlin config should exist");
+        assert!(
+            kotlin
+                .test_evidence
+                .assertion_identifiers
+                .contains(&"assertequals".into())
+        );
+        assert!(
+            kotlin
+                .test_evidence
+                .mock_identifiers
+                .contains(&"every".into())
         );
     }
 }

@@ -70,6 +70,11 @@ fixture_setup = ["pytest.fixture"]
 fixture_teardown = []
 test_container = []
 
+[test_evidence]
+assertion_identifiers = ["assert", "assertequal", "asserttrue", "assertfalse", "assertin", "assertisnone", "assertraises"]
+error_assertion_identifiers = ["assertraises", "pytest.raises"]
+mock_identifiers = ["mock", "magicmock", "patch", "mock_open"]
+
 [early_warnings]
 review_markers = ["allow_anonymous"]
 schema_version = 1

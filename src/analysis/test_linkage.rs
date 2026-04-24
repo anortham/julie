@@ -17,6 +17,7 @@ struct LinkedTest {
     name: String,
     file_path: String,
     tier: String,
+    confidence: f64,
     evidence_sources: HashSet<String>,
 }
 
@@ -26,9 +27,15 @@ pub struct TestLinkageInfo {
     pub test_count: usize,
     pub best_tier: String,
     pub worst_tier: String,
+    #[serde(default = "default_confidence")]
+    pub best_confidence: f64,
     pub linked_tests: Vec<String>,
     pub linked_test_paths: Vec<String>,
     pub evidence_sources: Vec<String>,
+}
+
+fn default_confidence() -> f64 {
+    0.5
 }
 
 /// Summary stats from running test linkage analysis.
@@ -56,6 +63,7 @@ fn add_linkage(
     test_name: String,
     test_file_path: String,
     tier: String,
+    confidence: f64,
     source: &str,
 ) {
     let entry = linkages
@@ -66,12 +74,14 @@ fn add_linkage(
             name: test_name.clone(),
             file_path: test_file_path.clone(),
             tier: tier.clone(),
+            confidence,
             evidence_sources: HashSet::new(),
         });
 
     entry.name = test_name;
     entry.file_path = test_file_path;
     entry.tier = tier;
+    entry.confidence = confidence;
     entry.evidence_sources.insert(source.to_string());
 }
 
@@ -93,17 +103,27 @@ pub fn compute_test_linkage(db: &SymbolDatabase) -> Result<TestLinkageStats> {
     let mut linkages: HashMap<String, HashMap<String, LinkedTest>> = HashMap::new();
     // Maps prod_id → test_id → linked test details
 
-    let mut stmt = db.conn.prepare(
+    // Scorable test filter: prefer test_role-classified symbols (test_case,
+    // parameterized_test), fall back to is_test for symbols without role
+    // classification (convention-based languages where the pipeline step
+    // did not classify).
+    let scorable_test_filter =
+        "(json_extract(s_test.metadata, '$.test_role') IN ('test_case', 'parameterized_test')
+           OR (json_extract(s_test.metadata, '$.is_test') = 1
+               AND json_extract(s_test.metadata, '$.test_role') IS NULL))";
+
+    let mut stmt = db.conn.prepare(&format!(
         "SELECT r.to_symbol_id, s_test.id, s_test.name, s_test.file_path,
-                COALESCE(json_extract(s_test.metadata, '$.test_quality.quality_tier'), 'unknown')
+                COALESCE(json_extract(s_test.metadata, '$.test_quality.quality_tier'), 'unknown'),
+                COALESCE(json_extract(s_test.metadata, '$.test_quality.confidence'), 0.5)
          FROM relationships r
          JOIN symbols s_test ON r.from_symbol_id = s_test.id
          JOIN symbols s_prod ON r.to_symbol_id = s_prod.id
-         WHERE json_extract(s_test.metadata, '$.is_test') = 1
+         WHERE {scorable_test_filter}
            AND (json_extract(s_prod.metadata, '$.is_test') IS NULL
                 OR json_extract(s_prod.metadata, '$.is_test') != 1)
            AND r.kind IN ('calls', 'uses', 'references', 'instantiates', 'imports')",
-    )?;
+    ))?;
 
     let rows = stmt.query_map([], |row| {
         Ok((
@@ -112,11 +132,12 @@ pub fn compute_test_linkage(db: &SymbolDatabase) -> Result<TestLinkageStats> {
             row.get::<_, String>(2)?,
             row.get::<_, String>(3)?,
             row.get::<_, String>(4)?,
+            row.get::<_, f64>(5)?,
         ))
     })?;
 
     for row in rows {
-        let (prod_id, test_id, test_name, test_file_path, tier) = row?;
+        let (prod_id, test_id, test_name, test_file_path, tier, confidence) = row?;
         add_linkage(
             &mut linkages,
             prod_id,
@@ -124,6 +145,7 @@ pub fn compute_test_linkage(db: &SymbolDatabase) -> Result<TestLinkageStats> {
             test_name,
             test_file_path,
             tier,
+            confidence,
             "relationship",
         );
     }
@@ -134,17 +156,18 @@ pub fn compute_test_linkage(db: &SymbolDatabase) -> Result<TestLinkageStats> {
     );
 
     // Step 2: Identifier-based linkage — precise (target_symbol_id set)
-    let mut stmt2 = db.conn.prepare(
+    let mut stmt2 = db.conn.prepare(&format!(
         "SELECT i.target_symbol_id, s_test.id, s_test.name, s_test.file_path,
-                COALESCE(json_extract(s_test.metadata, '$.test_quality.quality_tier'), 'unknown')
+                COALESCE(json_extract(s_test.metadata, '$.test_quality.quality_tier'), 'unknown'),
+                COALESCE(json_extract(s_test.metadata, '$.test_quality.confidence'), 0.5)
          FROM identifiers i
          JOIN symbols s_test ON i.containing_symbol_id = s_test.id
          JOIN symbols s_prod ON i.target_symbol_id = s_prod.id
-         WHERE json_extract(s_test.metadata, '$.is_test') = 1
+         WHERE {scorable_test_filter}
            AND i.target_symbol_id IS NOT NULL
            AND (json_extract(s_prod.metadata, '$.is_test') IS NULL
                 OR json_extract(s_prod.metadata, '$.is_test') != 1)",
-    )?;
+    ))?;
 
     let rows2 = stmt2.query_map([], |row| {
         Ok((
@@ -153,11 +176,12 @@ pub fn compute_test_linkage(db: &SymbolDatabase) -> Result<TestLinkageStats> {
             row.get::<_, String>(2)?,
             row.get::<_, String>(3)?,
             row.get::<_, String>(4)?,
+            row.get::<_, f64>(5)?,
         ))
     })?;
 
     for row in rows2 {
-        let (prod_id, test_id, test_name, test_file_path, tier) = row?;
+        let (prod_id, test_id, test_name, test_file_path, tier, confidence) = row?;
         add_linkage(
             &mut linkages,
             prod_id,
@@ -165,6 +189,7 @@ pub fn compute_test_linkage(db: &SymbolDatabase) -> Result<TestLinkageStats> {
             test_name,
             test_file_path,
             tier,
+            confidence,
             "resolved_identifier",
         );
     }
@@ -184,27 +209,30 @@ pub fn compute_test_linkage(db: &SymbolDatabase) -> Result<TestLinkageStats> {
     // runs on the same database. Combined with the explicit tie-breaker
     // below, `linked_tests` / `linked_test_paths` / `evidence_sources`
     // become reproducible — no SQLite row-order leakage.
-    let mut stmt3 = db.conn.prepare(
+    let mut stmt3 = db.conn.prepare(&format!(
         "SELECT s_prod.id, s_prod.file_path, s_test.id, s_test.name, i.file_path AS test_file,
                 COALESCE(json_extract(s_test.metadata, '$.test_quality.quality_tier'), 'unknown'),
                 i.name AS ident_name,
-                s_test.language, s_prod.language
+                s_test.language, s_prod.language,
+                COALESCE(json_extract(s_test.metadata, '$.test_quality.confidence'), 0.5)
          FROM identifiers i
          JOIN symbols s_test ON i.containing_symbol_id = s_test.id
          JOIN symbols s_prod ON s_prod.name = i.name
-         WHERE json_extract(s_test.metadata, '$.is_test') = 1
+         WHERE {scorable_test_filter}
            AND i.target_symbol_id IS NULL
            AND (json_extract(s_prod.metadata, '$.is_test') IS NULL
                 OR json_extract(s_prod.metadata, '$.is_test') != 1)
            AND s_prod.kind NOT IN ('import', 'export', 'module', 'namespace')
          ORDER BY s_prod.id, s_prod.file_path",
-    )?;
+    ))?;
 
     // Group by (test_id, identifier_name) → pick best prod match by directory proximity
-    // Key is (test_id, ident_name) — NOT (test_id, test_name) — so each identifier
+    // Key is (test_id, ident_name) -- NOT (test_id, test_name) -- so each identifier
     // reference disambiguates independently.
-    let mut name_matches: HashMap<(String, String), Vec<(String, String, String, String, String)>> =
-        HashMap::new();
+    let mut name_matches: HashMap<
+        (String, String),
+        Vec<(String, String, String, String, String, f64)>,
+    > = HashMap::new();
 
     let rows3 = stmt3.query_map([], |row| {
         Ok((
@@ -217,6 +245,7 @@ pub fn compute_test_linkage(db: &SymbolDatabase) -> Result<TestLinkageStats> {
             row.get::<_, String>(6)?, // ident_name
             row.get::<_, String>(7)?, // test_language
             row.get::<_, String>(8)?, // prod_language
+            row.get::<_, f64>(9)?,    // confidence
         ))
     })?;
 
@@ -231,15 +260,16 @@ pub fn compute_test_linkage(db: &SymbolDatabase) -> Result<TestLinkageStats> {
             ident_name,
             test_lang,
             prod_lang,
+            confidence,
         ) = row?;
-        // Language filter: skip cross-language matches (e.g. Python test → Rust symbol)
+        // Language filter: skip cross-language matches (e.g. Python test -> Rust symbol)
         if test_lang != prod_lang {
             continue;
         }
         name_matches
             .entry((test_id.clone(), ident_name))
             .or_default()
-            .push((prod_id, prod_path, test_path, tier, test_name));
+            .push((prod_id, prod_path, test_path, tier, test_name, confidence));
     }
 
     // For each (test, identifier_name), pick the production symbol with closest directory
@@ -256,7 +286,7 @@ pub fn compute_test_linkage(db: &SymbolDatabase) -> Result<TestLinkageStats> {
         // runs on the same database.
         let best = candidates
             .iter()
-            .max_by_key(|(prod_id, prod_path, test_path, _, _)| {
+            .max_by_key(|(prod_id, prod_path, test_path, _, _, _)| {
                 let dir_score = common_directory_depth(prod_path, test_path) * 10;
                 let test_file_stem = test_path
                     .rsplit('/')
@@ -284,7 +314,7 @@ pub fn compute_test_linkage(db: &SymbolDatabase) -> Result<TestLinkageStats> {
                     Reverse(prod_path.clone()),
                 )
             });
-        if let Some((prod_id, _, test_path, tier, test_name)) = best {
+        if let Some((prod_id, _, test_path, tier, test_name, confidence)) = best {
             add_linkage(
                 &mut linkages,
                 prod_id.clone(),
@@ -292,6 +322,7 @@ pub fn compute_test_linkage(db: &SymbolDatabase) -> Result<TestLinkageStats> {
                 test_name.clone(),
                 test_path.clone(),
                 tier.clone(),
+                *confidence,
                 "name_match_fallback",
             );
         }
@@ -324,6 +355,20 @@ pub fn compute_test_linkage(db: &SymbolDatabase) -> Result<TestLinkageStats> {
                 .iter()
                 .min_by_key(|t| tier_rank(t))
                 .unwrap_or(&"unknown");
+
+            // Pick the highest confidence among tests at the best tier.
+            // Defaults to 0.5 for data without confidence metadata (pre-Task 4).
+            let best_confidence: f64 = tests
+                .values()
+                .filter(|t| t.tier.as_str() == *best_tier)
+                .map(|t| t.confidence)
+                .fold(0.0_f64, f64::max);
+            let best_confidence = if best_confidence == 0.0 {
+                0.5
+            } else {
+                best_confidence
+            };
+
             let mut names: Vec<&str> = tests.values().map(|test| test.name.as_str()).collect();
             names.sort();
             names.dedup();
@@ -343,6 +388,7 @@ pub fn compute_test_linkage(db: &SymbolDatabase) -> Result<TestLinkageStats> {
                 "test_count": test_count,
                 "best_tier": best_tier,
                 "worst_tier": worst_tier,
+                "best_confidence": best_confidence,
                 "linked_tests": names,
                 "linked_test_paths": paths,
                 "evidence_sources": evidence_sources,

@@ -69,6 +69,11 @@ fixture_setup = ["beforeeach", "beforeall", "before", "beforeclass", "beforemeth
 fixture_teardown = ["aftereach", "afterall", "after", "afterclass", "aftermethod", "aftersuite", "aftertest"]
 test_container = ["nested"]
 
+[test_evidence]
+assertion_identifiers = ["assertequals", "asserttrue", "assertfalse", "assertnull", "assertnotnull", "assertthrows", "assertthat"]
+error_assertion_identifiers = ["assertthrows"]
+mock_identifiers = ["mock", "every", "verify", "coevery"]
+
 [early_warnings]
 review_markers = ["permitall"]
 schema_version = 1

@@ -64,6 +64,11 @@ fixture_setup = ["setup", "onetimesetup", "testinitialize", "classinitialize", "
 fixture_teardown = ["teardown", "onetimeteardown", "testcleanup", "classcleanup", "assemblycleanup"]
 test_container = ["testfixture", "testclass", "collection", "collectiondefinition"]
 
+[test_evidence]
+assertion_identifiers = ["equal", "true", "false", "null", "notnull", "throws", "throwsasync", "contains", "empty", "istype", "collection", "single", "istrue", "isfalse", "areequal"]
+error_assertion_identifiers = ["throws", "throwsasync", "catch"]
+mock_identifiers = ["mock", "setup", "returns", "verifiable"]
+
 [early_warnings]
 review_markers = ["allowanonymous"]
 schema_version = 1
