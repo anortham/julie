@@ -113,8 +113,9 @@ test_case = [
 ]
 parameterized_test = [
     "parameterizedtest", # JUnit 5
-    "dataprovider",      # TestNG (on the data method; consumer has @Test)
 ]
+# Note: @DataProvider (TestNG) annotates the DATA-PROVIDING method, not the test itself.
+# It is not a test role; it is excluded from the taxonomy.
 fixture_setup = [
     "beforeeach",        # JUnit 5
     "beforeall",         # JUnit 5
@@ -148,7 +149,7 @@ test_case = [
 ]
 parameterized_test = [
     "parameterizedtest",
-    "dataprovider",
+    # @DataProvider excluded: annotates data method, not the test
 ]
 fixture_setup = [
     "beforeeach", "beforeall", "before", "beforeclass",
@@ -254,7 +255,7 @@ test_case = [
     "test",              # PHPUnit #[Test] or @test docblock
 ]
 parameterized_test = [
-    "dataprovider",      # PHPUnit #[DataProvider] or @dataProvider
+    # @DataProvider excluded: annotates data method, not the test      # PHPUnit #[DataProvider] or @dataProvider
 ]
 fixture_setup = [
     "before",            # PHPUnit #[Before] or @before
@@ -278,7 +279,7 @@ test_case = [
 ]
 parameterized_test = [
     "parameterizedtest",
-    "dataprovider",
+    # @DataProvider excluded: annotates data method, not the test
 ]
 fixture_setup = [
     "beforeeach", "beforeall", "before", "beforeclass",
@@ -343,55 +344,54 @@ Test detection for these languages remains in `is_test_symbol()` using name/path
 
 ### Architecture
 
-The extractors crate cannot access server-side TOML configs (it's a separate crate with no dependency on the server). Two options:
+The extractors crate cannot access server-side TOML configs (it's a separate crate with no dependency on the server). Three options were considered:
 
 **Option A: Post-extraction role classification in the indexing pipeline.**
-Extractors continue setting `metadata.is_test` via the current `is_test_symbol()` with its hardcoded lists. The indexing pipeline adds a new step that reads TOML configs and classifies `metadata.test_role` based on the symbol's annotation_keys. `test_quality` and downstream consumers use `test_role` instead of raw `is_test`.
+Extractors continue setting `metadata.is_test` via the current `is_test_symbol()` with its hardcoded lists. The indexing pipeline adds a new step that reads TOML configs and classifies `metadata.test_role` based on the symbol's annotation_keys. The pipeline step is authoritative and overrides extractor decisions. `test_quality` and downstream consumers use `test_role` instead of raw `is_test`.
 
 **Option B: Pass annotation role config into extractors.**
-Create a shared config module that both the extractors crate and the server crate can access. `is_test_symbol()` reads role definitions from this shared config instead of hardcoded arrays.
+Create a shared config module. `is_test_symbol()` reads role definitions from this shared config instead of hardcoded arrays. Requires changing 30+ function signatures in the extraction pipeline.
 
-**Recommendation: Option B.** Option A creates a two-pass system where the first pass (is_test_symbol with hardcoded lists) can disagree with the second pass (config-driven roles). Option B has a single source of truth. The shared config is a small struct passed into extractors at initialization; it doesn't require the extractors to depend on the full server.
+**Option C: OnceLock global in the extractors crate.**
+Store config in a process-global `OnceLock`, populated at startup. Extractors read from the global.
 
-The shared config struct:
+**Recommendation: Option A (revised).** Option B requires threading a parameter through 30+ function signatures across the extraction pipeline (registry entries, factory, pipeline, every language extractor). Option C creates hidden mutable global state in a previously-pure library crate, introduces test-order leakage, and risks silent stale config in daemon restart scenarios.
 
-```rust
-/// Passed into extractors at init time. Populated from TOML configs.
-pub struct TestRoleConfig {
-    pub test_case: HashSet<String>,
-    pub parameterized_test: HashSet<String>,
-    pub fixture_setup: HashSet<String>,
-    pub fixture_teardown: HashSet<String>,
-    pub test_container: HashSet<String>,
-}
-```
+Option A's original objection ("two passes can disagree") is resolved by making the pipeline step authoritative. The extractors' `is_test_symbol()` provides a reasonable first pass for convention-based languages (Go, Ruby, Swift, etc.). The pipeline step overrides with config-driven role classification for annotation-based languages. There is no disagreement because the pipeline step's output is what gets written to the database. Over time, `is_test_symbol()` can be simplified to convention-only detection.
 
-`is_test_symbol()` signature becomes:
+The classification function lives in the server crate (it has access to TOML configs):
 
 ```rust
 pub fn classify_test_role(
-    language: &str,
-    name: &str,
-    file_path: &str,
-    kind: &SymbolKind,
-    annotation_keys: &[String],
-    doc_comment: Option<&str>,
+    symbol: &Symbol,
     role_config: Option<&TestRoleConfig>,
 ) -> Option<TestRole>
 ```
 
-Returns `None` for non-test symbols, `Some(TestRole::TestCase)`, `Some(TestRole::FixtureSetup)`, etc. for test-related symbols. For languages without config (role_config is None), falls back to name/path heuristics and returns `TestRole::TestCase` for anything that matches (preserving current behavior for convention-based languages).
+This operates on fully-extracted `Symbol` structs with their annotations, name, kind, file_path, and doc_comment already populated. For symbols with annotations matching a TOML role, it returns the config-driven role. For symbols without matching annotations, it falls back to the extractor's `is_test` decision (returning `TestRole::TestCase` if `is_test` was set).
 
-The existing `is_test` metadata flag becomes derived: `is_test = test_role.is_some()`.
+The pipeline step runs after extraction, before `persist_batch` writes symbols to the database.
+
+### Accessor helpers
+
+New code must NOT use raw `metadata.is_test`. Instead, use typed helpers:
+
+- `is_test_related(symbol)`: true for any test-related symbol (test, fixture, container). Use for: excluding from production rankings, embeddings, search de-boosting.
+- `is_scorable_test(symbol)`: true only for `TestCase` and `ParameterizedTest`. Use for: quality scoring, test linkage coverage, risk assessment.
+- `test_role(symbol)`: returns `Option<TestRole>`. Use for: display, sorting, detailed classification.
+
+`metadata.is_test` continues to be set (derived from `test_role.is_some()`) for backward compat with existing SQL queries, but new Rust code must use the helpers.
 
 ### Migration
 
-1. Add `TestRoleConfig` and `TestRole` to the extractors crate
-2. Rename `is_test_symbol()` to `classify_test_role()` with the new signature
-3. Update all 16+ extractor call sites to pass the role config and store `test_role` in metadata
-4. Keep `is_test` as a derived field for backward compat with queries
-5. Update TOML configs with the new `[annotation_classes.test]` structure
-6. Remove hardcoded annotation lists from `test_detection.rs`
+1. Add `TestRole` enum to the extractors crate (shared type)
+2. Add `TestRoleConfig` to the server crate
+3. Add `classify_test_role()` to the server crate (operates on Symbol, reads TOML config)
+4. Add pipeline step after extraction, before DB write, that classifies roles
+5. Add `is_test_related()`, `is_scorable_test()`, `test_role()` helpers
+6. Update `test_linkage` to use `is_scorable_test()` instead of raw `is_test`
+7. Keep `is_test` as a derived field for backward compat with SQL queries
+8. `is_test_symbol()` in extractors remains unchanged (convention-based detection still works)
 
 ---
 
@@ -492,22 +492,21 @@ mock_identifiers = [
 ]
 ```
 
-The identifier query:
+The identifier query filters on `kind = 'Call'` to avoid false positives from variable names like `equal`, `setup`, `mock`:
 
 ```sql
-SELECT COUNT(*) FROM identifiers
+SELECT LOWER(name) FROM identifiers
 WHERE containing_symbol_id = ?test_id
-AND LOWER(name) IN (?assertion_identifiers)
+AND kind = 'Call'
 ```
+
+The results are matched against the framework-specific assertion identifier list from TOML config. Using `kind = 'Call'` is critical: names like `verify`, `mock`, `setup` appear as both function calls and variable references. Only call-site matches are meaningful assertion evidence.
+
+When `target_symbol_id` is present on an identifier, it provides even higher confidence (resolved reference vs. name-only match). The evidence model should prefer resolved identifiers where available.
 
 **Important caveat:** Identifier extraction coverage varies by language. Rust macro calls (`assert_eq!`) may not appear as identifiers depending on tree-sitter grammar handling. The design must verify identifier extraction for assertion calls per language before relying on it. Where identifier data is insufficient, the existing regex approach serves as a fallback with lower confidence.
 
-**Evidence source 3: Linkage breadth (from test_linkage)**
-- How many production symbols does this test reference?
-- A test that touches one function is narrower than one that exercises a full workflow
-- This data already exists in `test_linkage` metadata
-
-**Evidence source 4: Body presence**
+**Evidence source 3: Body presence**
 - Does the test have a code body at all?
 - A function with `pass`, `...`, `TODO`, or an empty body is definitively a stub
 - This check is simple and high-confidence
@@ -583,7 +582,11 @@ The `test_weakness_score` function maps quality tiers to scores, but does not co
 
 ### Design
 
-`test_weakness_score` incorporates confidence:
+**Confidence must flow end-to-end:** `test_quality` computes confidence per test, `test_linkage` aggregates confidence alongside `best_tier` when linking tests to production symbols, and `change_risk` consumes the aggregated confidence. The plan must NOT invent confidence from tier names at the change_risk level; that defeats the entire purpose.
+
+**test_linkage changes:** When storing test_linkage metadata on production symbols, include `best_confidence` aggregated from linked tests' `test_quality.confidence` values. Use the confidence of the best-tier linked test (not an average, since the best test is the most relevant signal).
+
+**change_risk formula:**
 
 ```rust
 pub fn test_weakness_score(best_tier: Option<&str>, confidence: f64) -> f64 {
@@ -592,20 +595,23 @@ pub fn test_weakness_score(best_tier: Option<&str>, confidence: f64) -> f64 {
         Some("stub") => 0.9,
         Some("thin") => 0.6,
         Some("adequate") => 0.3,
-        Some("thorough") => 0.0,
+        Some("thorough") => 0.1,      // Lower risk but not zero; static evidence has limits
         Some("unknown") => 0.5,       // Hedge: unknown is not great but not awful
         Some("n/a") => 0.5,           // Fixture-only coverage, uncertain
         _ => 0.5,
     };
+    let confidence = confidence.clamp(0.0, 1.0);
     // Scale by confidence: low confidence pulls the weakness toward neutral (0.5)
     let neutral = 0.5;
     neutral + (raw_weakness - neutral) * confidence
 }
 ```
 
+Note: `thorough` maps to `0.1`, not `0.0`. Static evidence should lower risk, not erase it entirely.
+
 When confidence is 1.0, the score is unmodified. When confidence is 0.0, the score collapses to 0.5 (neutral, neither hurting nor helping). This prevents low-confidence assessments from dominating the risk score.
 
-The W_TEST_WEAKNESS weight (0.30) stays the same. The gating happens at the evidence level, not the weight level. If we later prove that identifier-based quality assessment is highly reliable, the full 30% weight takes effect naturally.
+The W_TEST_WEAKNESS weight (0.30) stays the same. The gating happens at the evidence level, not the weight level.
 
 ---
 
@@ -623,7 +629,7 @@ Expand scheduler annotations for additional languages where applicable:
 - PHP: cron-related annotations if frameworks use them
 - C#: Hangfire `[AutomaticRetry]`, Quartz `[DisallowConcurrentExecution]` if applicable
 
-### 6B. Untested Entry Point Signal
+### 6B. Entry Point Linkage Gap Signal
 
 Cross-reference `EntryPointSignal` (already computed) with `test_linkage` metadata (already computed). Report entry points with no observed test linkage.
 
@@ -631,7 +637,7 @@ Signal framing: "These API endpoints have no observed test linkage. This does no
 
 Acceptance criteria: only surface when test_linkage pipeline has run successfully and the entry point's language has reasonable identifier extraction coverage. Do not surface for languages where test_linkage has low structural coverage.
 
-### 6C. High-Centrality Untested Signal
+### 6C. High-Centrality Linkage Gap Signal
 
 Top-N production symbols (by centrality score) with no test linkage. These are well-connected symbols where a bug has wide blast radius and no test safety net.
 
@@ -716,15 +722,17 @@ Pipeline
 ### Proposed flow
 
 ```
-Extractor
-  → classify_test_role(config-driven) → metadata.test_role = TestCase/FixtureSetup/...
-  → metadata.is_test = test_role.is_some()   (derived, backward compat)
+Extractor (unchanged)
+  → is_test_symbol(hardcoded lists) → metadata.is_test = true/false
   → extract annotations → AnnotationMarker[]
 
-Pipeline
+Pipeline (new step: classify_symbols_by_role)
+  → classify_symbols_by_role(config-driven, authoritative)
+      → metadata.test_role = TestCase/FixtureSetup/...
+      → metadata.is_test overridden if needed (derived, backward compat)
   → test_quality_evidence(role-aware, identifier + fallback regex)
       → metadata.test_quality.tier + confidence + evidence
-  → test_linkage(unchanged, uses is_test for gating)
+  → test_linkage(uses is_scorable_test, carries confidence)
   → change_risk(confidence-gated test_weakness) → metadata.change_risk
 ```
 
@@ -734,13 +742,15 @@ Pipeline
 |------|--------|
 | `src/search/language_config.rs` | Replace flat `test`/`fixture` with `TestAnnotationClasses` struct, add `TestEvidenceConfig` |
 | `languages/*.toml` | Update all applicable configs with role taxonomy and test_evidence |
-| `crates/julie-extractors/src/test_detection.rs` | Rename to `test_classification.rs`, `classify_test_role()` consuming `TestRoleConfig` |
-| `crates/julie-extractors/src/base/types.rs` | Add `TestRole` enum, `TestRoleConfig` struct |
-| All 16+ extractor files | Update call sites to pass role config, store `test_role` |
+| `crates/julie-extractors/src/base/types.rs` | Add `TestRole` enum (shared type) |
+| `crates/julie-extractors/src/test_detection.rs` | Unchanged (convention-based detection stays) |
+| Extractor files | Unchanged (no signature changes needed) |
+| `src/analysis/test_roles.rs` | Create: `classify_test_role()`, `classify_symbols_by_role()`, `is_scorable_test()`, `is_test_related()` |
 | `src/analysis/test_quality.rs` | Replace regex oracle with evidence model |
+| `src/analysis/test_linkage.rs` | Use `is_scorable_test()`, carry confidence in aggregation |
 | `src/analysis/change_risk.rs` | Add confidence gating to `test_weakness_score` |
-| `src/analysis/early_warnings.rs` | Add scheduler, untested entry point, high-centrality signals |
-| `src/tools/workspace/indexing/pipeline.rs` | Pass `TestRoleConfig` to extractors, pass evidence config to test_quality |
+| `src/analysis/early_warnings.rs` | Add scheduler, linkage gap signals; bump cache schema version |
+| `src/tools/workspace/indexing/pipeline.rs` | Add `classify_symbols_by_role` step before persist_batch |
 
 ---
 
