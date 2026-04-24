@@ -417,12 +417,6 @@ fn strip_comments_and_strings(body: &str) -> String {
 /// Counts assertions, mocks, error-testing patterns, and computes body lines.
 pub fn analyze_test_body(body: &str) -> TestQualityAssessment {
     let stripped = strip_comments_and_strings(body);
-    let non_empty_lines: Vec<&str> = stripped
-        .lines()
-        .filter(|line| !line.trim().is_empty())
-        .collect();
-    let body_lines = non_empty_lines.len() as u32;
-
     // Count assertion matches across all patterns (on stripped text)
     let assertion_count = count_pattern_matches(&stripped, assertion_patterns());
 
