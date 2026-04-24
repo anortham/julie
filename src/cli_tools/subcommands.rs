@@ -248,6 +248,34 @@ pub struct WorkspaceArgs {
 }
 
 // ---------------------------------------------------------------------------
+// signals (early warning report)
+// ---------------------------------------------------------------------------
+
+/// Generate an early warning signals report from annotation-derived data.
+///
+/// Identifies entry points, auth coverage gaps, and review markers.
+/// Output uses structural signal language, not vulnerability claims.
+///
+/// Examples:
+///   julie-server signals --standalone
+///   julie-server signals --file-pattern "src/api/**" --standalone --json
+///   julie-server signals --fresh --standalone --format markdown
+#[derive(Debug, Clone, Parser)]
+pub struct SignalsArgs {
+    /// Scope analysis to files matching this glob pattern
+    #[arg(long)]
+    pub file_pattern: Option<String>,
+
+    /// Bypass cache and regenerate the report
+    #[arg(long)]
+    pub fresh: bool,
+
+    /// Maximum rows per report section
+    #[arg(long)]
+    pub limit: Option<usize>,
+}
+
+// ---------------------------------------------------------------------------
 // tool (generic)
 // ---------------------------------------------------------------------------
 

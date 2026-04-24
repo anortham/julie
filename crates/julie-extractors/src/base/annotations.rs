@@ -169,7 +169,7 @@ fn key_annotation<'a>(annotation: &'a str, language: &str) -> String {
     } else {
         annotation
     };
-    key_source.trim().to_lowercase()
+    key_source.trim().to_ascii_lowercase()
 }
 
 fn trims_to_rightmost_type_name(language: &str) -> bool {

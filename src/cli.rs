@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use crate::cli_tools::subcommands::{
     BlastRadiusArgs, ContextArgs, GenericToolArgs, GlobalToolFlags, RefsArgs, SearchArgs,
-    SymbolsArgs, WorkspaceArgs,
+    SignalsArgs, SymbolsArgs, WorkspaceArgs,
 };
 use crate::workspace::startup_hint::{WorkspaceStartupHint, WorkspaceStartupSource};
 
@@ -60,6 +60,8 @@ pub enum Command {
     /// Manage workspaces (index, list, stats, health, etc.)
     #[command(name = "workspace")]
     Workspace(WorkspaceArgs),
+    /// Generate early warning signals report
+    Signals(SignalsArgs),
 
     // -- Generic tool fallback -----------------------------------------------
     /// Run any tool by name with JSON params

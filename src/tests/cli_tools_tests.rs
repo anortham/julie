@@ -381,3 +381,36 @@ fn test_output_format_display() {
     assert_eq!(OutputFormat::Json.to_string(), "json");
     assert_eq!(OutputFormat::Markdown.to_string(), "markdown");
 }
+
+#[test]
+fn test_signals_defaults() {
+    use crate::cli::{Cli, Command};
+    let cli = Cli::try_parse_from(["julie-server", "signals"]).unwrap();
+    let Command::Signals(args) = cli.command.unwrap() else {
+        panic!("expected Signals");
+    };
+    assert!(!args.fresh);
+    assert!(args.file_pattern.is_none());
+    assert!(args.limit.is_none());
+}
+
+#[test]
+fn test_signals_all_flags() {
+    use crate::cli::{Cli, Command};
+    let cli = Cli::try_parse_from([
+        "julie-server",
+        "signals",
+        "--fresh",
+        "--file-pattern",
+        "src/api/**",
+        "--limit",
+        "50",
+    ])
+    .unwrap();
+    let Command::Signals(args) = cli.command.unwrap() else {
+        panic!("expected Signals");
+    };
+    assert!(args.fresh);
+    assert_eq!(args.file_pattern.as_deref(), Some("src/api/**"));
+    assert_eq!(args.limit, Some(50));
+}

@@ -93,9 +93,10 @@ struct ReportCacheKey {
     file_pattern_key: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct AnnotationSets {
     entrypoint: HashSet<String>,
+    auth: HashSet<String>,
     review: HashSet<String>,
 }
 
@@ -134,6 +135,8 @@ fn build_report(
         .map(|symbol| (symbol.id.clone(), symbol))
         .collect();
 
+    let mut sets_cache: HashMap<&str, AnnotationSets> = HashMap::new();
+
     let mut entry_points = Vec::new();
     let mut auth_coverage_candidates = Vec::new();
     let mut review_markers = Vec::new();
@@ -143,17 +146,29 @@ fn build_report(
         .iter()
         .filter(|symbol| matches_file_pattern(&symbol.file_path, file_pattern.as_deref()))
     {
+        if symbol.annotations.is_empty() {
+            continue;
+        }
         let Some(config) = language_configs.get(&symbol.language) else {
             continue;
         };
-        let sets = annotation_sets(config);
-        let has_auth_marker = has_auth_marker_in_owner_chain(symbol, &symbol_map, language_configs);
+        let sets = sets_cache
+            .entry(&symbol.language)
+            .or_insert_with(|| annotation_sets(config));
 
         for annotation in &symbol.annotations {
             if sets.entrypoint.contains(&annotation.annotation_key) {
                 entry_points.push(entry_point_signal(symbol, annotation));
-                if !has_auth_marker && auth_candidate_symbol_ids.insert(symbol.id.clone()) {
-                    auth_coverage_candidates.push(auth_coverage_candidate(symbol, annotation));
+                if auth_candidate_symbol_ids.insert(symbol.id.clone()) {
+                    let has_auth = has_auth_marker_in_owner_chain(
+                        symbol,
+                        &symbol_map,
+                        &sets.auth,
+                    );
+                    if !has_auth {
+                        auth_coverage_candidates
+                            .push(auth_coverage_candidate(symbol, annotation));
+                    }
                 }
             }
             if sets.review.contains(&annotation.annotation_key) {
@@ -307,6 +322,8 @@ fn annotation_sets(config: &LanguageConfig) -> AnnotationSets {
         .iter()
         .cloned()
         .collect();
+    let mut auth: HashSet<String> = config.annotation_classes.auth.iter().cloned().collect();
+    auth.extend(config.annotation_classes.auth_bypass.iter().cloned());
     let mut review: HashSet<String> = config
         .annotation_classes
         .auth_bypass
@@ -315,13 +332,17 @@ fn annotation_sets(config: &LanguageConfig) -> AnnotationSets {
         .collect();
     review.extend(config.early_warnings.review_markers.iter().cloned());
 
-    AnnotationSets { entrypoint, review }
+    AnnotationSets {
+        entrypoint,
+        auth,
+        review,
+    }
 }
 
 fn has_auth_marker_in_owner_chain(
     symbol: &Symbol,
     symbol_map: &HashMap<String, &Symbol>,
-    language_configs: &LanguageConfigs,
+    auth_keys: &HashSet<String>,
 ) -> bool {
     let mut visited = HashSet::new();
     let mut current = Some(symbol);
@@ -331,7 +352,11 @@ fn has_auth_marker_in_owner_chain(
             return false;
         }
 
-        if symbol_has_auth_marker(candidate, language_configs) {
+        if candidate
+            .annotations
+            .iter()
+            .any(|a| auth_keys.contains(&a.annotation_key))
+        {
             return true;
         }
 
@@ -342,18 +367,6 @@ fn has_auth_marker_in_owner_chain(
     }
 
     false
-}
-
-fn symbol_has_auth_marker(symbol: &Symbol, language_configs: &LanguageConfigs) -> bool {
-    let Some(config) = language_configs.get(&symbol.language) else {
-        return false;
-    };
-    let mut auth_keys: HashSet<String> = config.annotation_classes.auth.iter().cloned().collect();
-    auth_keys.extend(config.annotation_classes.auth_bypass.iter().cloned());
-    symbol
-        .annotations
-        .iter()
-        .any(|annotation| auth_keys.contains(&annotation.annotation_key))
 }
 
 fn entry_point_signal(symbol: &Symbol, annotation: &AnnotationMarker) -> EntryPointSignal {

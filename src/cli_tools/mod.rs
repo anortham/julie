@@ -335,6 +335,43 @@ async fn run_standalone(
 }
 
 // ---------------------------------------------------------------------------
+// Signals report (standalone-only, not an MCP tool)
+// ---------------------------------------------------------------------------
+
+/// Generate an early warning signals report for CLI output.
+pub async fn run_signals_report(
+    args: &subcommands::SignalsArgs,
+    cli_workspace: Option<PathBuf>,
+) -> Result<crate::analysis::EarlyWarningReport> {
+    let start = std::time::Instant::now();
+    let workspace_root = resolve_workspace_root(cli_workspace);
+    eprintln!("Mode: standalone | Workspace: {:?}", workspace_root);
+
+    let handler = bootstrap_standalone_handler(&workspace_root).await?;
+    let workspace_id = handler
+        .current_workspace_id()
+        .ok_or_else(|| anyhow::anyhow!("No workspace initialized"))?;
+
+    let db_arc = handler.primary_database().await?;
+    let db = db_arc
+        .lock()
+        .map_err(|e| anyhow::anyhow!("Database lock: {e}"))?;
+
+    let options = crate::analysis::EarlyWarningReportOptions {
+        workspace_id,
+        file_pattern: args.file_pattern.clone(),
+        fresh: args.fresh,
+        limit_per_section: args.limit,
+    };
+
+    let configs = crate::search::language_config::LanguageConfigs::load_embedded();
+    let report = crate::analysis::generate_early_warning_report(&db, &configs, options)?;
+
+    eprintln!("Elapsed: {:.2?}", start.elapsed());
+    Ok(report)
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 

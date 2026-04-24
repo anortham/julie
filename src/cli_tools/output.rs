@@ -82,6 +82,113 @@ fn format_markdown(result: &serde_json::Value, tool_name: &str) -> String {
 }
 
 // ---------------------------------------------------------------------------
+// Signals report formatter
+// ---------------------------------------------------------------------------
+
+/// Format an early warning signals report for CLI output.
+pub fn format_signals_report(
+    report: &crate::analysis::EarlyWarningReport,
+    format: OutputFormat,
+) -> String {
+    match format {
+        OutputFormat::Json => serde_json::to_string_pretty(report).unwrap_or_default(),
+        OutputFormat::Text => format_signals_text(report),
+        OutputFormat::Markdown => format_signals_markdown(report),
+    }
+}
+
+fn format_signals_text(report: &crate::analysis::EarlyWarningReport) -> String {
+    let mut out = String::new();
+    let s = &report.summary;
+    out.push_str(&format!(
+        "Early Warning Signals  (entry_points: {}, auth_coverage_candidates: {}, review_markers: {})\n",
+        s.entry_points, s.auth_coverage_candidates, s.review_markers
+    ));
+    if report.from_cache {
+        out.push_str("  (from cache)\n");
+    }
+    out.push('\n');
+
+    if !report.entry_points.is_empty() {
+        out.push_str("Entry Points:\n");
+        for ep in &report.entry_points {
+            out.push_str(&format!(
+                "  {} ({}:{}) [{}]\n",
+                ep.symbol_name, ep.file_path, ep.start_line, ep.annotation
+            ));
+        }
+        out.push('\n');
+    }
+
+    if !report.auth_coverage_candidates.is_empty() {
+        out.push_str("Auth Coverage Candidates:\n");
+        for ac in &report.auth_coverage_candidates {
+            out.push_str(&format!(
+                "  {} ({}:{}) [{}]\n",
+                ac.symbol_name, ac.file_path, ac.start_line, ac.annotation
+            ));
+        }
+        out.push('\n');
+    }
+
+    if !report.review_markers.is_empty() {
+        out.push_str("Review Markers:\n");
+        for rm in &report.review_markers {
+            out.push_str(&format!(
+                "  {} ({}:{}) [{}]\n",
+                rm.symbol_name, rm.file_path, rm.start_line, rm.annotation
+            ));
+        }
+    }
+
+    out
+}
+
+fn format_signals_markdown(report: &crate::analysis::EarlyWarningReport) -> String {
+    let mut out = String::new();
+    let s = &report.summary;
+    out.push_str("# Early Warning Signals\n\n");
+    out.push_str(&format!(
+        "| Metric | Count |\n|--------|-------|\n| Entry Points | {} |\n| Auth Coverage Candidates | {} |\n| Review Markers | {} |\n\n",
+        s.entry_points, s.auth_coverage_candidates, s.review_markers
+    ));
+
+    if !report.entry_points.is_empty() {
+        out.push_str("## Entry Points\n\n| Symbol | File | Line | Annotation |\n|--------|------|------|------------|\n");
+        for ep in &report.entry_points {
+            out.push_str(&format!(
+                "| {} | {} | {} | {} |\n",
+                ep.symbol_name, ep.file_path, ep.start_line, ep.annotation
+            ));
+        }
+        out.push('\n');
+    }
+
+    if !report.auth_coverage_candidates.is_empty() {
+        out.push_str("## Auth Coverage Candidates\n\n| Symbol | File | Line | Annotation |\n|--------|------|------|------------|\n");
+        for ac in &report.auth_coverage_candidates {
+            out.push_str(&format!(
+                "| {} | {} | {} | {} |\n",
+                ac.symbol_name, ac.file_path, ac.start_line, ac.annotation
+            ));
+        }
+        out.push('\n');
+    }
+
+    if !report.review_markers.is_empty() {
+        out.push_str("## Review Markers\n\n| Symbol | File | Line | Annotation |\n|--------|------|------|------------|\n");
+        for rm in &report.review_markers {
+            out.push_str(&format!(
+                "| {} | {} | {} | {} |\n",
+                rm.symbol_name, rm.file_path, rm.start_line, rm.annotation
+            ));
+        }
+    }
+
+    out
+}
+
+// ---------------------------------------------------------------------------
 // Shared helpers
 // ---------------------------------------------------------------------------
 

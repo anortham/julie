@@ -107,6 +107,9 @@ async fn main() -> anyhow::Result<()> {
         Some(Command::Tool(args)) => {
             run_tool_command(&args, &cli.tool_flags, cli.workspace).await?;
         }
+        Some(Command::Signals(args)) => {
+            run_signals_command(&args, &cli.tool_flags, cli.workspace).await?;
+        }
 
         None => {
             // Adapter mode: auto-start daemon, forward stdio to IPC
@@ -114,6 +117,21 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
+    Ok(())
+}
+
+/// Run the early warning signals report (standalone-only, not an MCP tool).
+async fn run_signals_command(
+    args: &julie::cli_tools::subcommands::SignalsArgs,
+    flags: &julie::cli_tools::GlobalToolFlags,
+    cli_workspace: Option<std::path::PathBuf>,
+) -> anyhow::Result<()> {
+    let output = julie::cli_tools::run_signals_report(args, cli_workspace).await?;
+    let formatted = julie::cli_tools::output::format_signals_report(
+        &output,
+        flags.effective_format(),
+    );
+    println!("{}", formatted);
     Ok(())
 }
 

@@ -257,3 +257,66 @@ fn early_warning_report_limit_caps_rows_not_summary_counts() {
     assert_eq!(report.entry_points.len(), 1);
     assert_eq!(report.auth_coverage_candidates.len(), 1);
 }
+
+#[test]
+fn early_warning_report_file_pattern_scopes_analysis() {
+    let (_temp_dir, mut db) = open_db();
+    let configs = LanguageConfigs::load_embedded();
+
+    let api_file = file_info("src/api/users.py", "python");
+    let util_file = file_info("src/utils/helpers.py", "python");
+    db.store_file_info(&api_file).unwrap();
+    db.store_file_info(&util_file).unwrap();
+
+    db.store_symbols(&[
+        symbol(
+            "api-route",
+            "get_users",
+            SymbolKind::Function,
+            "python",
+            &api_file.path,
+            10,
+            None,
+            vec![marker("app.route", "app.route", Some("@app.route(\"/users\")"))],
+        ),
+        symbol(
+            "util-route",
+            "health_check",
+            SymbolKind::Function,
+            "python",
+            &util_file.path,
+            5,
+            None,
+            vec![marker("app.route", "app.route", Some("@app.route(\"/health\")"))],
+        ),
+    ])
+    .unwrap();
+
+    let scoped = generate_early_warning_report(
+        &db,
+        &configs,
+        EarlyWarningReportOptions {
+            file_pattern: Some("src/api/**".to_string()),
+            ..options()
+        },
+    )
+    .unwrap();
+
+    assert_eq!(scoped.summary.entry_points, 1, "only api file should match");
+    assert_eq!(scoped.entry_points[0].symbol_name, "get_users");
+
+    let unscoped = generate_early_warning_report(
+        &db,
+        &configs,
+        EarlyWarningReportOptions {
+            file_pattern: None,
+            ..options()
+        },
+    )
+    .unwrap();
+
+    assert_eq!(
+        unscoped.summary.entry_points, 2,
+        "no filter should include both"
+    );
+}
