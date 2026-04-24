@@ -1,14 +1,324 @@
 //! Tests for the test quality metrics engine.
 //!
-//! TDD: These tests define the expected behavior for analyzing test function bodies
-//! for assertion density, mock usage, and quality tiering.
+//! Covers both the evidence-based assessment model (assess_test_quality)
+//! and the regex fallback path (analyze_test_body), plus pipeline integration.
 
 #[cfg(test)]
 mod tests {
-    use crate::analysis::test_quality::analyze_test_body;
+    use crate::analysis::test_quality::{
+        EvidenceSource, TestQualityTier, analyze_test_body, assess_test_quality,
+    };
 
     // =========================================================================
-    // Assertion counting — language-agnostic pattern matching
+    // assess_test_quality: role-based short circuits
+    // =========================================================================
+
+    #[test]
+    fn test_fixture_setup_is_not_applicable() {
+        let assessment = assess_test_quality(
+            Some("fixture_setup"),
+            Some("do_setup();"),
+            0,
+            false,
+            0,
+            false,
+        );
+        assert_eq!(assessment.tier, TestQualityTier::NotApplicable);
+        assert_eq!(assessment.confidence, 1.0);
+        assert_eq!(assessment.evidence.assertion_source, EvidenceSource::None);
+    }
+
+    #[test]
+    fn test_teardown_is_not_applicable() {
+        let assessment = assess_test_quality(
+            Some("fixture_teardown"),
+            Some("cleanup();"),
+            0,
+            false,
+            0,
+            false,
+        );
+        assert_eq!(assessment.tier, TestQualityTier::NotApplicable);
+        assert_eq!(assessment.confidence, 1.0);
+    }
+
+    #[test]
+    fn test_container_is_not_applicable() {
+        let assessment = assess_test_quality(
+            Some("test_container"),
+            Some("describe('suite', () => { ... });"),
+            0,
+            false,
+            0,
+            false,
+        );
+        assert_eq!(assessment.tier, TestQualityTier::NotApplicable);
+        assert_eq!(assessment.confidence, 1.0);
+    }
+
+    // =========================================================================
+    // assess_test_quality: stub detection (no body / placeholder body)
+    // =========================================================================
+
+    #[test]
+    fn test_empty_body_is_stub() {
+        let assessment = assess_test_quality(
+            Some("test_case"),
+            None, // no body
+            0,
+            false,
+            0,
+            false,
+        );
+        assert_eq!(assessment.tier, TestQualityTier::Stub);
+        assert_eq!(assessment.confidence, 1.0);
+        assert_eq!(assessment.evidence.assertion_source, EvidenceSource::None);
+        assert_eq!(assessment.evidence.body_lines, 0);
+    }
+
+    #[test]
+    fn test_placeholder_body_pass_is_stub() {
+        let assessment = assess_test_quality(
+            Some("test_case"),
+            Some("pass"),
+            0,
+            false,
+            0,
+            false,
+        );
+        assert_eq!(assessment.tier, TestQualityTier::Stub);
+        assert_eq!(assessment.confidence, 1.0);
+    }
+
+    #[test]
+    fn test_placeholder_body_todo_is_stub() {
+        let assessment = assess_test_quality(
+            Some("test_case"),
+            Some("todo!()"),
+            0,
+            false,
+            0,
+            false,
+        );
+        assert_eq!(assessment.tier, TestQualityTier::Stub);
+        assert_eq!(assessment.confidence, 1.0);
+    }
+
+    #[test]
+    fn test_placeholder_body_unimplemented_is_stub() {
+        let assessment = assess_test_quality(
+            Some("test_case"),
+            Some("unimplemented!()"),
+            0,
+            false,
+            0,
+            false,
+        );
+        assert_eq!(assessment.tier, TestQualityTier::Stub);
+        assert_eq!(assessment.confidence, 1.0);
+    }
+
+    #[test]
+    fn test_placeholder_body_ellipsis_is_stub() {
+        let assessment = assess_test_quality(
+            Some("test_case"),
+            Some("..."),
+            0,
+            false,
+            0,
+            false,
+        );
+        assert_eq!(assessment.tier, TestQualityTier::Stub);
+        assert_eq!(assessment.confidence, 1.0);
+    }
+
+    #[test]
+    fn test_placeholder_body_todo_comment_is_stub() {
+        let assessment = assess_test_quality(
+            Some("test_case"),
+            Some("// TODO"),
+            0,
+            false,
+            0,
+            false,
+        );
+        assert_eq!(assessment.tier, TestQualityTier::Stub);
+        assert_eq!(assessment.confidence, 1.0);
+    }
+
+    #[test]
+    fn test_placeholder_body_braces_with_pass_is_stub() {
+        let assessment = assess_test_quality(
+            Some("test_case"),
+            Some("{ pass }"),
+            0,
+            false,
+            0,
+            false,
+        );
+        assert_eq!(assessment.tier, TestQualityTier::Stub);
+        assert_eq!(assessment.confidence, 1.0);
+    }
+
+    // =========================================================================
+    // assess_test_quality: identifier-based evidence (high confidence)
+    // =========================================================================
+
+    #[test]
+    fn test_identifier_thorough() {
+        // 3 assertions + error testing from identifiers
+        let assessment = assess_test_quality(
+            Some("test_case"),
+            Some("let x = compute();\nassert_eq!(x, 1);\nassert!(ok);\nassert_ne!(a, b);"),
+            3,    // assertion_count
+            true, // has_error_testing
+            0,    // mock_count
+            true, // has_identifier_evidence
+        );
+        assert_eq!(assessment.tier, TestQualityTier::Thorough);
+        assert!(
+            assessment.confidence >= 0.85,
+            "confidence {} should be >= 0.85",
+            assessment.confidence
+        );
+        assert_eq!(assessment.evidence.assertion_source, EvidenceSource::Identifier);
+        assert_eq!(assessment.evidence.assertion_count, 3);
+        assert!(assessment.evidence.has_error_testing);
+    }
+
+    #[test]
+    fn test_identifier_adequate() {
+        // 2 assertions, no error testing, no mocks
+        let assessment = assess_test_quality(
+            Some("test_case"),
+            Some("let x = compute();\nassert_eq!(x, 1);\nassert!(ok);"),
+            2,
+            false,
+            0,
+            true,
+        );
+        assert_eq!(assessment.tier, TestQualityTier::Adequate);
+        assert!(assessment.confidence >= 0.8);
+        assert_eq!(assessment.evidence.assertion_source, EvidenceSource::Identifier);
+    }
+
+    #[test]
+    fn test_identifier_thin() {
+        // 1 assertion from identifiers
+        let assessment = assess_test_quality(
+            Some("test_case"),
+            Some("let x = compute();\nassert_eq!(x, 1);"),
+            1,
+            false,
+            0,
+            true,
+        );
+        assert_eq!(assessment.tier, TestQualityTier::Thin);
+        assert!(assessment.confidence >= 0.8);
+        assert_eq!(assessment.evidence.assertion_source, EvidenceSource::Identifier);
+    }
+
+    #[test]
+    fn test_identifier_stub() {
+        // 0 assertions from identifiers (but we have identifier evidence)
+        let assessment = assess_test_quality(
+            Some("test_case"),
+            Some("let x = compute();\nprintln!(\"done\");"),
+            0,
+            false,
+            0,
+            true,
+        );
+        assert_eq!(assessment.tier, TestQualityTier::Stub);
+        assert_eq!(assessment.confidence, 0.85);
+        assert_eq!(assessment.evidence.assertion_source, EvidenceSource::Identifier);
+    }
+
+    #[test]
+    fn test_identifier_thorough_with_mocks() {
+        // 2 assertions + mocks from identifiers -> Thorough
+        let assessment = assess_test_quality(
+            Some("test_case"),
+            Some("let mock = mock_service();\nassert_eq!(result, 42);\nassert!(ok);"),
+            2,
+            false,
+            1,
+            true,
+        );
+        assert_eq!(assessment.tier, TestQualityTier::Thorough);
+        assert_eq!(assessment.evidence.mock_count, 1);
+    }
+
+    // =========================================================================
+    // assess_test_quality: regex fallback (low confidence)
+    // =========================================================================
+
+    #[test]
+    fn test_regex_zero_assertions_is_unknown() {
+        // No identifier evidence, regex finds nothing -> Unknown, NOT Stub
+        let assessment = assess_test_quality(
+            Some("test_case"),
+            Some("let x = compute(42);\nprintln!(\"result: {}\", x);"),
+            0,     // regex found 0 assertions
+            false, // no error testing
+            0,     // no mocks
+            false, // no identifier evidence
+        );
+        assert_eq!(assessment.tier, TestQualityTier::Unknown);
+        assert_eq!(assessment.confidence, 0.3);
+        assert_eq!(assessment.evidence.assertion_source, EvidenceSource::Regex);
+    }
+
+    #[test]
+    fn test_regex_with_assertions_thorough() {
+        // No identifier evidence, regex finds 3+ assertions -> Thorough at low confidence
+        let assessment = assess_test_quality(
+            Some("test_case"),
+            Some("assert_eq!(a, 1);\nassert_eq!(b, 2);\nassert_eq!(c, 3);"),
+            3,
+            false,
+            0,
+            false,
+        );
+        assert_eq!(assessment.tier, TestQualityTier::Thorough);
+        assert!(
+            assessment.confidence <= 0.5,
+            "regex confidence {} should be <= 0.5",
+            assessment.confidence
+        );
+        assert_eq!(assessment.evidence.assertion_source, EvidenceSource::Regex);
+    }
+
+    #[test]
+    fn test_regex_with_assertions_adequate() {
+        let assessment = assess_test_quality(
+            Some("test_case"),
+            Some("assert_eq!(a, 1);\nassert_eq!(b, 2);"),
+            2,
+            false,
+            0,
+            false,
+        );
+        assert_eq!(assessment.tier, TestQualityTier::Adequate);
+        assert_eq!(assessment.confidence, 0.4);
+    }
+
+    #[test]
+    fn test_regex_with_assertions_thin() {
+        let assessment = assess_test_quality(
+            Some("test_case"),
+            Some("let x = compute();\nassert_eq!(x, 42);"),
+            1,
+            false,
+            0,
+            false,
+        );
+        assert_eq!(assessment.tier, TestQualityTier::Thin);
+        assert_eq!(assessment.confidence, 0.4);
+    }
+
+    // =========================================================================
+    // analyze_test_body: regex-based analysis (backward compatibility)
     // =========================================================================
 
     #[test]
@@ -18,8 +328,8 @@ mod tests {
             assert_eq!(result, 84);
             assert!(result > 0);
         "#;
-        let metrics = analyze_test_body(body);
-        assert_eq!(metrics.assertion_count, 2, "Rust assert_eq! + assert! = 2");
+        let assessment = analyze_test_body(body);
+        assert_eq!(assessment.evidence.assertion_count, 2, "Rust assert_eq! + assert! = 2");
     }
 
     #[test]
@@ -30,9 +340,9 @@ mod tests {
             with pytest.raises(ValueError):
                 compute(-1)
         "#;
-        let metrics = analyze_test_body(body);
+        let assessment = analyze_test_body(body);
         assert_eq!(
-            metrics.assertion_count, 2,
+            assessment.evidence.assertion_count, 2,
             "Python self.assertEqual + pytest.raises = 2"
         );
     }
@@ -44,9 +354,9 @@ mod tests {
             expect(result).toBe(84);
             expect(result).toEqual(84);
         "#;
-        let metrics = analyze_test_body(body);
+        let assessment = analyze_test_body(body);
         assert_eq!(
-            metrics.assertion_count, 2,
+            assessment.evidence.assertion_count, 2,
             "JS expect().toBe() + expect().toEqual() = 2"
         );
     }
@@ -58,8 +368,8 @@ mod tests {
             require.Equal(t, 84, result)
             t.Fatal("should not reach here")
         "#;
-        let metrics = analyze_test_body(body);
-        assert_eq!(metrics.assertion_count, 2, "Go require.Equal + t.Fatal = 2");
+        let assessment = analyze_test_body(body);
+        assert_eq!(assessment.evidence.assertion_count, 2, "Go require.Equal + t.Fatal = 2");
     }
 
     #[test]
@@ -70,9 +380,9 @@ mod tests {
             assertTrue(result > 0);
             assertNotNull(result);
         "#;
-        let metrics = analyze_test_body(body);
+        let assessment = analyze_test_body(body);
         assert_eq!(
-            metrics.assertion_count, 3,
+            assessment.evidence.assertion_count, 3,
             "Java assertEquals + assertTrue + assertNotNull = 3"
         );
     }
@@ -84,8 +394,8 @@ mod tests {
             result.Should().Be(84);
             Expect(result).To.BeGreaterThan(0);
         "#;
-        let metrics = analyze_test_body(body);
-        assert_eq!(metrics.assertion_count, 2, "C# Should + Expect( = 2");
+        let assessment = analyze_test_body(body);
+        assert_eq!(assessment.evidence.assertion_count, 2, "C# Should + Expect( = 2");
     }
 
     #[test]
@@ -95,9 +405,9 @@ mod tests {
             XCTAssertEqual(result, 84)
             XCTAssertTrue(result > 0)
         "#;
-        let metrics = analyze_test_body(body);
+        let assessment = analyze_test_body(body);
         assert_eq!(
-            metrics.assertion_count, 2,
+            assessment.evidence.assertion_count, 2,
             "Swift XCTAssertEqual + XCTAssertTrue = 2"
         );
     }
@@ -108,11 +418,10 @@ mod tests {
             result = compute(42)
             expect(result).to eq(84)
         "#;
-        let metrics = analyze_test_body(body);
-        // Ruby uses expect() chains — counted once via the expect( anchor pattern.
-        // Chain methods (.to eq) are not separately counted to avoid double-counting.
+        let assessment = analyze_test_body(body);
+        // Ruby uses expect() chains, counted once via the expect( anchor pattern.
         assert_eq!(
-            metrics.assertion_count, 1,
+            assessment.evidence.assertion_count, 1,
             "Ruby expect().to eq = 1 (counted via expect( anchor)"
         );
     }
@@ -124,10 +433,10 @@ mod tests {
             $this->assertEquals(84, $result);
             $this->assertTrue($result > 0);
         "#;
-        let metrics = analyze_test_body(body);
+        let assessment = analyze_test_body(body);
         // PHP's assertEquals/assertTrue match the Java/JUnit assertion patterns.
         assert_eq!(
-            metrics.assertion_count, 2,
+            assessment.evidence.assertion_count, 2,
             "PHP assertEquals + assertTrue = 2 (matched via JUnit patterns)"
         );
     }
@@ -138,12 +447,14 @@ mod tests {
             let x = 42;
             println!("hello");
         "#;
-        let metrics = analyze_test_body(body);
-        assert_eq!(metrics.assertion_count, 0, "No assertions in body");
+        let assessment = analyze_test_body(body);
+        assert_eq!(assessment.evidence.assertion_count, 0, "No assertions in body");
+        // Regex path with 0 assertions => Unknown
+        assert_eq!(assessment.tier, TestQualityTier::Unknown);
     }
 
     // =========================================================================
-    // Mock/stub counting
+    // Mock/stub counting (via analyze_test_body regex path)
     // =========================================================================
 
     #[test]
@@ -153,8 +464,8 @@ mod tests {
             let spy = jest.fn();
             service.get_user.returns(42);
         "#;
-        let metrics = analyze_test_body(body);
-        assert_eq!(metrics.mock_count, 3, "mock + jest.fn( + spy = 3");
+        let assessment = analyze_test_body(body);
+        assert_eq!(assessment.evidence.mock_count, 3, "mock + jest.fn( + spy = 3");
     }
 
     #[test]
@@ -166,8 +477,8 @@ mod tests {
             private UserController controller;
             Mockito.when(service.getUser(1)).thenReturn(user);
         "#;
-        let metrics = analyze_test_body(body);
-        assert_eq!(metrics.mock_count, 3, "@Mock + @InjectMocks + Mockito = 3");
+        let assessment = analyze_test_body(body);
+        assert_eq!(assessment.evidence.mock_count, 3, "@Mock + @InjectMocks + Mockito = 3");
     }
 
     #[test]
@@ -177,14 +488,8 @@ mod tests {
                 mock_service.get_user.return_value = user
                 result = controller.handle()
         "#;
-        let metrics = analyze_test_body(body);
-        // patch( + mock (in mock_service variable name won't match \bmock\b... let's check)
-        // Actually "mock_service" starts with "mock" so \bmock\b won't match "mock_service"
-        // because \b is a word boundary. The word "mock" in "mock_service" is followed by "_",
-        // not a word boundary. Wait, underscore IS a word character. So \bmock\b won't match
-        // "mock_service". It will only match standalone "mock".
-        // But patch( matches.
-        assert!(metrics.mock_count >= 1, "Python patch( should be detected");
+        let assessment = analyze_test_body(body);
+        assert!(assessment.evidence.mock_count >= 1, "Python patch( should be detected");
     }
 
     #[test]
@@ -193,8 +498,8 @@ mod tests {
             let result = compute(42);
             assert_eq!(result, 84);
         "#;
-        let metrics = analyze_test_body(body);
-        assert_eq!(metrics.mock_count, 0, "No mocks in body");
+        let assessment = analyze_test_body(body);
+        assert_eq!(assessment.evidence.mock_count, 0, "No mocks in body");
     }
 
     #[test]
@@ -203,14 +508,13 @@ mod tests {
             var mockService = new Moq.Mock<IUserService>();
             mockService.Setup(s => s.GetUser(1)).Returns(user);
         "#;
-        let metrics = analyze_test_body(body);
-        // Moq + mock (in mockService? no, "mockService" — \bmock\b won't match)
-        // Actually "Moq" matches \bMoq\b. And "Mock" in "Moq.Mock" matches \bMock\b.
-        assert!(metrics.mock_count >= 2, "C# Moq + Mock should be detected");
+        let assessment = analyze_test_body(body);
+        // Moq matches \bMoq\b, Mock in "Moq.Mock" matches \bMock\b.
+        assert!(assessment.evidence.mock_count >= 2, "C# Moq + Mock should be detected");
     }
 
     // =========================================================================
-    // Error testing detection
+    // Error testing detection (via analyze_test_body regex path)
     // =========================================================================
 
     #[test]
@@ -220,9 +524,9 @@ mod tests {
             assert!(result.is_err());
             result.should_err();
         "#;
-        let metrics = analyze_test_body(body);
+        let assessment = analyze_test_body(body);
         assert!(
-            metrics.has_error_testing,
+            assessment.evidence.has_error_testing,
             "Rust should_err should be detected"
         );
     }
@@ -233,9 +537,9 @@ mod tests {
             with pytest.raises(ValueError):
                 compute(-1)
         "#;
-        let metrics = analyze_test_body(body);
+        let assessment = analyze_test_body(body);
         assert!(
-            metrics.has_error_testing,
+            assessment.evidence.has_error_testing,
             "Python pytest.raises should trigger error testing"
         );
     }
@@ -247,9 +551,9 @@ mod tests {
                 compute(-1);
             });
         "#;
-        let metrics = analyze_test_body(body);
+        let assessment = analyze_test_body(body);
         assert!(
-            metrics.has_error_testing,
+            assessment.evidence.has_error_testing,
             "Java assertThrows should trigger error testing"
         );
     }
@@ -259,9 +563,9 @@ mod tests {
         let body = r#"
             expect(() => compute(-1)).toThrow();
         "#;
-        let metrics = analyze_test_body(body);
+        let assessment = analyze_test_body(body);
         assert!(
-            metrics.has_error_testing,
+            assessment.evidence.has_error_testing,
             "JS .toThrow() should trigger error testing"
         );
     }
@@ -271,9 +575,9 @@ mod tests {
         let body = r#"
             await expect(computeAsync(-1)).rejects.toThrow();
         "#;
-        let metrics = analyze_test_body(body);
+        let assessment = analyze_test_body(body);
         assert!(
-            metrics.has_error_testing,
+            assessment.evidence.has_error_testing,
             "JS .rejects should trigger error testing"
         );
     }
@@ -284,26 +588,27 @@ mod tests {
             let result = compute(42);
             assert_eq!(result, 84);
         "#;
-        let metrics = analyze_test_body(body);
+        let assessment = analyze_test_body(body);
         assert!(
-            !metrics.has_error_testing,
+            !assessment.evidence.has_error_testing,
             "No error testing patterns in body"
         );
     }
 
     // =========================================================================
-    // Quality tier classification
+    // Quality tier classification (via analyze_test_body regex path)
     // =========================================================================
 
     #[test]
-    fn test_quality_tier_stub() {
+    fn test_quality_tier_zero_assertions_is_unknown() {
+        // Changed from old behavior: regex with 0 assertions -> Unknown, not Stub
         let body = r#"
             // TODO: implement this test
             let x = 42;
         "#;
-        let metrics = analyze_test_body(body);
-        assert_eq!(metrics.assertion_count, 0);
-        assert_eq!(metrics.quality_tier, "stub");
+        let assessment = analyze_test_body(body);
+        assert_eq!(assessment.evidence.assertion_count, 0);
+        assert_eq!(assessment.tier, TestQualityTier::Unknown);
     }
 
     #[test]
@@ -312,45 +617,9 @@ mod tests {
             let result = compute(42);
             assert_eq!(result, 84);
         "#;
-        let metrics = analyze_test_body(body);
-        assert_eq!(metrics.assertion_count, 1);
-        assert_eq!(metrics.quality_tier, "thin");
-    }
-
-    #[test]
-    fn test_quality_tier_thin_low_density() {
-        // 1 assertion in a very long body => assertion_density < 0.05
-        let body = "let x = 1;\n".repeat(25) + "assert_eq!(x, 1);\n";
-        let metrics = analyze_test_body(&body);
-        assert_eq!(metrics.assertion_count, 1);
-        assert_eq!(
-            metrics.quality_tier, "thin",
-            "1 assertion always produces thin tier"
-        );
-    }
-
-    #[test]
-    fn test_quality_tier_thin_low_density_multiple_assertions() {
-        // 2 assertions in 100 non-empty lines => density = 0.02 < 0.05 => thin
-        let mut lines: Vec<String> = (0..98)
-            .map(|i| format!("    let x{} = {};", i, i))
-            .collect();
-        lines.push("    assert_eq!(x0, 0);".to_string());
-        lines.push("    assert_eq!(x1, 1);".to_string());
-        let body = lines.join("\n");
-
-        let metrics = analyze_test_body(&body);
-        assert_eq!(metrics.assertion_count, 2);
-        assert_eq!(metrics.body_lines, 100);
-        assert!(
-            metrics.assertion_density < 0.05,
-            "density {} should be < 0.05",
-            metrics.assertion_density
-        );
-        assert_eq!(
-            metrics.quality_tier, "thin",
-            "2 assertions in 100 lines (density 0.02) should be thin"
-        );
+        let assessment = analyze_test_body(body);
+        assert_eq!(assessment.evidence.assertion_count, 1);
+        assert_eq!(assessment.tier, TestQualityTier::Thin);
     }
 
     #[test]
@@ -363,9 +632,9 @@ mod tests {
             let c = compute(3);
             assert_eq!(c, 9);
         "#;
-        let metrics = analyze_test_body(body);
-        assert_eq!(metrics.assertion_count, 3);
-        assert_eq!(metrics.quality_tier, "thorough");
+        let assessment = analyze_test_body(body);
+        assert_eq!(assessment.evidence.assertion_count, 3);
+        assert_eq!(assessment.tier, TestQualityTier::Thorough);
     }
 
     #[test]
@@ -375,9 +644,9 @@ mod tests {
             assert!(result.is_err());
             result.should_err();
         "#;
-        let metrics = analyze_test_body(body);
-        assert!(metrics.has_error_testing);
-        assert_eq!(metrics.quality_tier, "thorough");
+        let assessment = analyze_test_body(body);
+        assert!(assessment.evidence.has_error_testing);
+        assert_eq!(assessment.tier, TestQualityTier::Thorough);
     }
 
     #[test]
@@ -388,10 +657,10 @@ mod tests {
             assert_eq!(result, 84);
             assert!(result > 0);
         "#;
-        let metrics = analyze_test_body(body);
-        assert!(metrics.mock_count > 0);
-        assert!(metrics.assertion_count >= 2);
-        assert_eq!(metrics.quality_tier, "thorough");
+        let assessment = analyze_test_body(body);
+        assert!(assessment.evidence.mock_count > 0);
+        assert!(assessment.evidence.assertion_count >= 2);
+        assert_eq!(assessment.tier, TestQualityTier::Thorough);
     }
 
     #[test]
@@ -401,67 +670,33 @@ mod tests {
             assert_eq!(result, 84);
             assert!(result > 0);
         "#;
-        let metrics = analyze_test_body(body);
-        assert_eq!(metrics.assertion_count, 2);
-        assert_eq!(metrics.mock_count, 0);
-        assert!(!metrics.has_error_testing);
-        assert_eq!(metrics.quality_tier, "adequate");
+        let assessment = analyze_test_body(body);
+        assert_eq!(assessment.evidence.assertion_count, 2);
+        assert_eq!(assessment.evidence.mock_count, 0);
+        assert!(!assessment.evidence.has_error_testing);
+        assert_eq!(assessment.tier, TestQualityTier::Adequate);
     }
 
     // =========================================================================
-    // Assertion density
+    // Empty/None body handling (via analyze_test_body)
     // =========================================================================
 
     #[test]
-    fn test_assertion_density_calculation() {
-        // 3 assertions in 20 lines => density = 0.15
-        let mut lines = Vec::new();
-        for i in 0..17 {
-            lines.push(format!("    let x{} = {};", i, i));
-        }
-        lines.push("    assert_eq!(x0, 0);".to_string());
-        lines.push("    assert_eq!(x1, 1);".to_string());
-        lines.push("    assert_eq!(x2, 2);".to_string());
-        let body = lines.join("\n");
-
-        let metrics = analyze_test_body(&body);
-        assert_eq!(metrics.assertion_count, 3);
-        assert_eq!(metrics.body_lines, 20);
-        let expected_density = 3.0 / 20.0;
-        assert!(
-            (metrics.assertion_density - expected_density).abs() < 0.001,
-            "Expected density ~{}, got {}",
-            expected_density,
-            metrics.assertion_density
-        );
+    fn test_empty_body_produces_stub_via_analyze() {
+        let assessment = analyze_test_body("");
+        assert_eq!(assessment.evidence.assertion_count, 0);
+        assert_eq!(assessment.evidence.mock_count, 0);
+        assert_eq!(assessment.evidence.body_lines, 0);
+        assert!(!assessment.evidence.has_error_testing);
+        assert_eq!(assessment.tier, TestQualityTier::Stub);
+        assert_eq!(assessment.confidence, 1.0);
     }
 
     #[test]
-    fn test_assertion_density_empty_body() {
-        let metrics = analyze_test_body("");
-        assert_eq!(metrics.assertion_density, 0.0, "Empty body => density 0.0");
-        assert_eq!(metrics.body_lines, 0);
-    }
-
-    // =========================================================================
-    // Empty/None body handling
-    // =========================================================================
-
-    #[test]
-    fn test_empty_body_produces_stub() {
-        let metrics = analyze_test_body("");
-        assert_eq!(metrics.assertion_count, 0);
-        assert_eq!(metrics.mock_count, 0);
-        assert_eq!(metrics.body_lines, 0);
-        assert!(!metrics.has_error_testing);
-        assert_eq!(metrics.quality_tier, "stub");
-    }
-
-    #[test]
-    fn test_whitespace_only_body_produces_stub() {
-        let metrics = analyze_test_body("   \n  \n   ");
-        assert_eq!(metrics.quality_tier, "stub");
-        assert_eq!(metrics.assertion_count, 0);
+    fn test_whitespace_only_body_produces_stub_via_analyze() {
+        let assessment = analyze_test_body("   \n  \n   ");
+        assert_eq!(assessment.tier, TestQualityTier::Stub);
+        assert_eq!(assessment.evidence.assertion_count, 0);
     }
 
     // =========================================================================
@@ -472,11 +707,13 @@ mod tests {
     fn test_pipeline_integration_updates_metadata() {
         use crate::analysis::test_quality::compute_test_quality_metrics;
         use crate::database::SymbolDatabase;
+        use crate::search::LanguageConfigs;
 
         // Create an in-memory database with the full schema
         let tmp = tempfile::TempDir::new().unwrap();
         let db_path = tmp.path().join("test.db");
         let db = SymbolDatabase::new(&db_path).unwrap();
+        let configs = LanguageConfigs::load_embedded();
 
         // Insert a fake file first (foreign key constraint)
         db.conn
@@ -527,14 +764,10 @@ mod tests {
             .unwrap();
 
         // Run the pipeline function
-        let stats = compute_test_quality_metrics(&db).unwrap();
+        let stats = compute_test_quality_metrics(&db, &configs).unwrap();
 
         // Verify stats
         assert_eq!(stats.total_tests, 1, "Should have analyzed 1 test symbol");
-        assert_eq!(
-            stats.adequate, 1,
-            "2 assertions, no mocks, no error testing = adequate"
-        );
 
         // Verify metadata was updated on the test symbol
         let updated_metadata: String = db
@@ -555,10 +788,25 @@ mod tests {
             meta["test_quality"].is_object(),
             "test_quality should be added"
         );
-        assert_eq!(meta["test_quality"]["assertion_count"].as_u64().unwrap(), 2);
+        assert_eq!(
+            meta["test_quality"]["assertion_count"].as_u64().unwrap(),
+            2
+        );
+        // Regex fallback with 2 assertions -> adequate
         assert_eq!(
             meta["test_quality"]["quality_tier"].as_str().unwrap(),
             "adequate"
+        );
+        // Should have confidence field
+        assert!(
+            meta["test_quality"]["confidence"].as_f64().is_some(),
+            "confidence should be present"
+        );
+        // Should have assertion_source
+        assert_eq!(
+            meta["test_quality"]["assertion_source"].as_str().unwrap(),
+            "regex",
+            "No identifiers inserted, so should be regex path"
         );
 
         // Verify non-test symbol was NOT modified
@@ -581,10 +829,12 @@ mod tests {
     fn test_pipeline_integration_no_body() {
         use crate::analysis::test_quality::compute_test_quality_metrics;
         use crate::database::SymbolDatabase;
+        use crate::search::LanguageConfigs;
 
         let tmp = tempfile::TempDir::new().unwrap();
         let db_path = tmp.path().join("test.db");
         let db = SymbolDatabase::new(&db_path).unwrap();
+        let configs = LanguageConfigs::load_embedded();
 
         db.conn
             .execute(
@@ -609,7 +859,7 @@ mod tests {
             )
             .unwrap();
 
-        let stats = compute_test_quality_metrics(&db).unwrap();
+        let stats = compute_test_quality_metrics(&db, &configs).unwrap();
         assert_eq!(stats.total_tests, 1);
         assert_eq!(
             stats.no_body, 1,
@@ -622,10 +872,12 @@ mod tests {
     fn test_pipeline_integration_preserves_existing_metadata() {
         use crate::analysis::test_quality::compute_test_quality_metrics;
         use crate::database::SymbolDatabase;
+        use crate::search::LanguageConfigs;
 
         let tmp = tempfile::TempDir::new().unwrap();
         let db_path = tmp.path().join("test.db");
         let db = SymbolDatabase::new(&db_path).unwrap();
+        let configs = LanguageConfigs::load_embedded();
 
         db.conn
             .execute(
@@ -652,7 +904,7 @@ mod tests {
             )
             .unwrap();
 
-        compute_test_quality_metrics(&db).unwrap();
+        compute_test_quality_metrics(&db, &configs).unwrap();
 
         let updated: String = db
             .conn
@@ -675,8 +927,156 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_pipeline_integration_with_identifier_evidence() {
+        use crate::analysis::test_quality::compute_test_quality_metrics;
+        use crate::database::SymbolDatabase;
+        use crate::search::LanguageConfigs;
+
+        let tmp = tempfile::TempDir::new().unwrap();
+        let db_path = tmp.path().join("test.db");
+        let db = SymbolDatabase::new(&db_path).unwrap();
+        let configs = LanguageConfigs::load_embedded();
+
+        db.conn
+            .execute(
+                "INSERT INTO files (path, language, hash, size, last_modified) VALUES (?1, ?2, ?3, ?4, ?5)",
+                rusqlite::params!["test_file.rs", "rust", "abc123", 100, 0],
+            )
+            .unwrap();
+
+        // Insert a test symbol
+        let code_body = "fn test_with_identifiers() {\n    let x = compute();\n    assert_eq!(x, 42);\n}";
+        let metadata = r#"{"is_test":true}"#;
+        db.conn
+            .execute(
+                "INSERT INTO symbols (id, name, kind, language, file_path, code_context, metadata, reference_score) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0.0)",
+                rusqlite::params![
+                    "sym-test-ids",
+                    "test_with_identifiers",
+                    "function",
+                    "rust",
+                    "test_file.rs",
+                    code_body,
+                    metadata,
+                ],
+            )
+            .unwrap();
+
+        // Insert Call-kind identifiers for this test symbol
+        // These simulate what the extractor would produce
+        db.conn
+            .execute(
+                "INSERT INTO identifiers (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, containing_symbol_id) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                rusqlite::params![
+                    "id-1", "assert_eq", "call", "rust", "test_file.rs", 3, 4, 3, 20, "sym-test-ids",
+                ],
+            )
+            .unwrap();
+        db.conn
+            .execute(
+                "INSERT INTO identifiers (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, containing_symbol_id) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                rusqlite::params![
+                    "id-2", "assert", "call", "rust", "test_file.rs", 4, 4, 4, 15, "sym-test-ids",
+                ],
+            )
+            .unwrap();
+        db.conn
+            .execute(
+                "INSERT INTO identifiers (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, containing_symbol_id) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                rusqlite::params![
+                    "id-3", "assert_ne", "call", "rust", "test_file.rs", 5, 4, 5, 15, "sym-test-ids",
+                ],
+            )
+            .unwrap();
+
+        let stats = compute_test_quality_metrics(&db, &configs).unwrap();
+        assert_eq!(stats.total_tests, 1);
+
+        let updated_metadata: String = db
+            .conn
+            .query_row(
+                "SELECT metadata FROM symbols WHERE id = 'sym-test-ids'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let meta: serde_json::Value = serde_json::from_str(&updated_metadata).unwrap();
+        let tq = &meta["test_quality"];
+        assert_eq!(
+            tq["assertion_source"].as_str().unwrap(),
+            "identifier",
+            "Should use identifier evidence path"
+        );
+        assert!(
+            tq["confidence"].as_f64().unwrap() >= 0.85,
+            "Identifier path should have high confidence"
+        );
+        assert!(
+            tq["assertion_count"].as_u64().unwrap() >= 2,
+            "Should have counted identifier assertions"
+        );
+    }
+
+    #[test]
+    fn test_pipeline_integration_fixture_not_applicable() {
+        use crate::analysis::test_quality::compute_test_quality_metrics;
+        use crate::database::SymbolDatabase;
+        use crate::search::LanguageConfigs;
+
+        let tmp = tempfile::TempDir::new().unwrap();
+        let db_path = tmp.path().join("test.db");
+        let db = SymbolDatabase::new(&db_path).unwrap();
+        let configs = LanguageConfigs::load_embedded();
+
+        db.conn
+            .execute(
+                "INSERT INTO files (path, language, hash, size, last_modified) VALUES (?1, ?2, ?3, ?4, ?5)",
+                rusqlite::params!["test_file.py", "python", "abc123", 100, 0],
+            )
+            .unwrap();
+
+        // Insert a fixture_setup test symbol
+        let metadata = r#"{"is_test":true,"test_role":"fixture_setup"}"#;
+        db.conn
+            .execute(
+                "INSERT INTO symbols (id, name, kind, language, file_path, code_context, metadata, reference_score) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0.0)",
+                rusqlite::params![
+                    "sym-fixture",
+                    "setUp",
+                    "function",
+                    "python",
+                    "test_file.py",
+                    "self.db = create_test_db()",
+                    metadata,
+                ],
+            )
+            .unwrap();
+
+        let stats = compute_test_quality_metrics(&db, &configs).unwrap();
+        assert_eq!(stats.total_tests, 1);
+        assert_eq!(stats.not_applicable, 1, "Fixture should be not_applicable");
+
+        let updated: String = db
+            .conn
+            .query_row(
+                "SELECT metadata FROM symbols WHERE id = 'sym-fixture'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let meta: serde_json::Value = serde_json::from_str(&updated).unwrap();
+        assert_eq!(meta["test_quality"]["quality_tier"].as_str().unwrap(), "n/a");
+        assert_eq!(meta["test_quality"]["confidence"].as_f64().unwrap(), 1.0);
+    }
+
     // =========================================================================
-    // Comment/string stripping — false positive prevention
+    // Comment/string stripping -- false positive prevention
     // =========================================================================
 
     #[test]
@@ -684,12 +1084,12 @@ mod tests {
         let body = r#"
             let result = do_something();
             // assert_eq!(result, expected)  <-- commented out
-            // should_err is just a note
+            // should_err is a note
             println!("done");
         "#;
-        let metrics = analyze_test_body(body);
+        let assessment = analyze_test_body(body);
         assert_eq!(
-            metrics.assertion_count, 0,
+            assessment.evidence.assertion_count, 0,
             "commented-out assertions should not count"
         );
     }
@@ -701,9 +1101,9 @@ mod tests {
             let desc = "when(something).thenReturn(value)";
             do_real_work();
         "#;
-        let metrics = analyze_test_body(body);
+        let assessment = analyze_test_body(body);
         assert_eq!(
-            metrics.mock_count, 0,
+            assessment.evidence.mock_count, 0,
             "mock patterns inside strings should not count"
         );
     }
@@ -716,9 +1116,9 @@ mod tests {
                expect(x).toBe(1); */
             println!("test");
         "#;
-        let metrics = analyze_test_body(body);
+        let assessment = analyze_test_body(body);
         assert_eq!(
-            metrics.assertion_count, 0,
+            assessment.evidence.assertion_count, 0,
             "block-commented assertions should not count"
         );
     }
@@ -731,9 +1131,9 @@ mod tests {
             assert_eq!(result, true);
             assert!(result.is_ok());
         "#;
-        let metrics = analyze_test_body(body);
+        let assessment = analyze_test_body(body);
         assert_eq!(
-            metrics.assertion_count, 2,
+            assessment.evidence.assertion_count, 2,
             "real assertions should still count after stripping comments"
         );
     }
@@ -749,9 +1149,9 @@ mod tests {
             let assertion_helper = setup();
             let assertive = true;
         "#;
-        let metrics = analyze_test_body(body);
+        let assessment = analyze_test_body(body);
         assert_eq!(
-            metrics.assertion_count, 0,
+            assessment.evidence.assertion_count, 0,
             "assert in variable names should not match"
         );
     }
@@ -760,10 +1160,24 @@ mod tests {
     fn test_multiple_assertions_on_same_line() {
         // Each pattern match counts independently
         let body = "assert_eq!(a, b); assert_ne!(c, d);";
-        let metrics = analyze_test_body(body);
+        let assessment = analyze_test_body(body);
         assert_eq!(
-            metrics.assertion_count, 2,
+            assessment.evidence.assertion_count, 2,
             "Two assertions on same line should both count"
         );
+    }
+
+    // =========================================================================
+    // TestQualityTier::as_str
+    // =========================================================================
+
+    #[test]
+    fn test_tier_as_str() {
+        assert_eq!(TestQualityTier::Thorough.as_str(), "thorough");
+        assert_eq!(TestQualityTier::Adequate.as_str(), "adequate");
+        assert_eq!(TestQualityTier::Thin.as_str(), "thin");
+        assert_eq!(TestQualityTier::Stub.as_str(), "stub");
+        assert_eq!(TestQualityTier::Unknown.as_str(), "unknown");
+        assert_eq!(TestQualityTier::NotApplicable.as_str(), "n/a");
     }
 }

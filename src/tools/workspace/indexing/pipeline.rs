@@ -634,8 +634,9 @@ fn analyze_batch(
         t.elapsed().as_secs_f64()
     );
 
+    let language_configs = crate::search::LanguageConfigs::load_embedded();
     let t = std::time::Instant::now();
-    if let Err(e) = crate::analysis::compute_test_quality_metrics(&db_lock) {
+    if let Err(e) = crate::analysis::compute_test_quality_metrics(&db_lock, &language_configs) {
         warn!("Failed to compute test quality metrics: {}", e);
     }
     info!(
