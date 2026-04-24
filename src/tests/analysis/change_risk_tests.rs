@@ -28,12 +28,47 @@ mod tests {
     }
 
     #[test]
-    fn test_test_weakness_scores() {
-        assert_eq!(test_weakness_score(None), 1.0); // Untested
-        assert_eq!(test_weakness_score(Some("stub")), 0.8);
-        assert_eq!(test_weakness_score(Some("thin")), 0.6);
-        assert_eq!(test_weakness_score(Some("adequate")), 0.3);
-        assert_eq!(test_weakness_score(Some("thorough")), 0.1);
+    fn test_test_weakness_scores_full_confidence() {
+        // With confidence=1.0, raw weakness passes through unchanged
+        let eps = 0.01;
+        assert!((test_weakness_score(None, 1.0) - 1.0).abs() < eps); // Untested
+        assert!((test_weakness_score(Some("stub"), 1.0) - 0.9).abs() < eps);
+        assert!((test_weakness_score(Some("thin"), 1.0) - 0.6).abs() < eps);
+        assert!((test_weakness_score(Some("adequate"), 1.0) - 0.3).abs() < eps);
+        assert!((test_weakness_score(Some("thorough"), 1.0) - 0.1).abs() < eps);
+    }
+
+    #[test]
+    fn test_weakness_high_confidence_thorough() {
+        let score = test_weakness_score(Some("thorough"), 0.9);
+        // raw = 0.1, confidence 0.9: 0.5 + (0.1 - 0.5) * 0.9 = 0.14
+        assert!((score - 0.14).abs() < 0.02);
+    }
+
+    #[test]
+    fn test_weakness_low_confidence_converges_to_neutral() {
+        let score = test_weakness_score(Some("stub"), 0.0);
+        // confidence 0 -> always neutral
+        assert!((score - 0.5).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_weakness_unknown_tier() {
+        let score = test_weakness_score(Some("unknown"), 0.3);
+        // raw = 0.5, so result = 0.5 + (0.5 - 0.5) * 0.3 = 0.5
+        assert!((score - 0.5).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_weakness_no_linkage_full_penalty() {
+        let score = test_weakness_score(None, 1.0);
+        assert!((score - 1.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_weakness_na_tier_is_neutral() {
+        let score = test_weakness_score(Some("n/a"), 1.0);
+        assert!((score - 0.5).abs() < 0.01);
     }
 
     #[test]
@@ -125,7 +160,7 @@ mod tests {
                 r#"
             INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, reference_score, visibility, metadata)
             VALUES ('s2', 'MY_CONST', 'constant', 'rust', 'src/config.rs', 1, 0, 1, 0, 0, 0, 0.0, 'private',
-                    '{"test_linkage": {"test_count": 2, "best_tier": "thorough", "worst_tier": "adequate", "linked_tests": ["test_a", "test_b"], "evidence_sources": ["relationship"]}}');
+                    '{"test_linkage": {"test_count": 2, "best_tier": "thorough", "worst_tier": "adequate", "best_confidence": 0.9, "linked_tests": ["test_a", "test_b"], "evidence_sources": ["relationship"]}}');
         "#,
             )
             .unwrap();

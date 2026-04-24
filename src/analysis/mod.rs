@@ -4,6 +4,7 @@
 //! These analyses enrich symbol metadata with derived quality signals
 //! that tools can surface to users.
 
+pub mod change_risk;
 pub mod early_warnings;
 pub mod test_linkage;
 pub mod test_quality;

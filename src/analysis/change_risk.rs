@@ -67,17 +67,24 @@ pub fn kind_weight(kind: &SymbolKind) -> Option<f64> {
     }
 }
 
-/// Map linked-test best_tier to a "test weakness" score.
-/// Higher = weaker linkage = more risk.
-pub fn test_weakness_score(best_tier: Option<&str>) -> f64 {
-    match best_tier {
-        None => 1.0, // Untested
-        Some("stub") => 0.8,
+/// Map linked-test best_tier to a "test weakness" score, gated by confidence.
+/// Higher = weaker linkage = more risk.  Low confidence pulls the score
+/// toward the neutral midpoint (0.5) so uncertain tiers neither inflate
+/// nor deflate risk.
+pub fn test_weakness_score(best_tier: Option<&str>, confidence: f64) -> f64 {
+    let raw_weakness = match best_tier {
+        None => 1.0,
+        Some("stub") => 0.9,
         Some("thin") => 0.6,
         Some("adequate") => 0.3,
         Some("thorough") => 0.1,
-        _ => 1.0, // Unknown tier → treat as untested
-    }
+        Some("unknown") => 0.5,
+        Some("n/a") => 0.5,
+        _ => 0.5, // Unrecognized tier -> neutral
+    };
+    let confidence = confidence.clamp(0.0, 1.0);
+    let neutral = 0.5;
+    neutral + (raw_weakness - neutral) * confidence
 }
 
 /// Normalize reference_score to 0.0–1.0 using log sigmoid.
@@ -171,13 +178,16 @@ pub fn compute_change_risk_scores(db: &SymbolDatabase) -> Result<ChangeRiskStats
             let metadata = metadata_json
                 .as_ref()
                 .and_then(|json| serde_json::from_str::<serde_json::Value>(json).ok());
-            let best_tier = metadata
-                .as_ref()
-                .and_then(test_linkage_entry)
+            let tl_entry = metadata.as_ref().and_then(test_linkage_entry);
+            let best_tier = tl_entry
                 .and_then(|v| v.get("best_tier"))
                 .and_then(|v| v.as_str())
                 .map(String::from);
-            let tw = test_weakness_score(best_tier.as_deref());
+            let confidence = tl_entry
+                .and_then(|v| v.get("best_confidence"))
+                .and_then(|v| v.as_f64())
+                .unwrap_or(0.5); // Default for old data without confidence
+            let tw = test_weakness_score(best_tier.as_deref(), confidence);
 
             let score = compute_risk_score(centrality, vis_score, tw, kw);
             let label = risk_label(score);
