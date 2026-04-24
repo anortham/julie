@@ -1245,6 +1245,61 @@ mod formatting_tests {
     }
 
     #[test]
+    fn test_quality_info_includes_stored_metrics_for_test_symbol_self() {
+        let mut sym = make_symbol(
+            "test_process_payment",
+            SymbolKind::Function,
+            "tests/payment_tests.rs",
+            45,
+            Some("fn test_process_payment()"),
+            None,
+            None,
+        );
+        let mut metadata = std::collections::HashMap::new();
+        metadata.insert("is_test".to_string(), serde_json::json!(true));
+        metadata.insert("test_role".to_string(), serde_json::json!("test_case"));
+        metadata.insert(
+            "test_quality".to_string(),
+            serde_json::json!({
+                "quality_tier": "thorough",
+                "confidence": 0.85,
+                "assertion_count": 5,
+                "mock_count": 1,
+                "assertion_density": 0.25
+            }),
+        );
+        sym.metadata = Some(metadata);
+
+        let ctx = empty_context(sym);
+        let output = format_symbol_context(&ctx, "full");
+        assert!(
+            output.contains("[test_case]"),
+            "should retain test role, got: {}",
+            output
+        );
+        assert!(
+            output.contains("[thorough confidence:85%]"),
+            "should retain quality tier and confidence, got: {}",
+            output
+        );
+        assert!(
+            output.contains("5 assertions"),
+            "should show stored assertion count, got: {}",
+            output
+        );
+        assert!(
+            output.contains("1 mocks"),
+            "should show stored mock count, got: {}",
+            output
+        );
+        assert!(
+            output.contains("0.25 density"),
+            "should show stored assertion density, got: {}",
+            output
+        );
+    }
+
+    #[test]
     fn test_quality_info_no_confidence_shows_tier_only() {
         let mut sym = make_symbol(
             "test_process_payment",

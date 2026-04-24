@@ -1196,7 +1196,11 @@ mod tests {
         let go_cfg = configs.get("go");
         assert!(go_cfg.is_some(), "Go should have a LanguageConfig");
         assert!(
-            go_cfg.unwrap().test_evidence.assertion_identifiers.is_empty(),
+            go_cfg
+                .unwrap()
+                .test_evidence
+                .assertion_identifiers
+                .is_empty(),
             "Go test_evidence.assertion_identifiers should be empty"
         );
 
@@ -1262,6 +1266,80 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_identifier_evidence_without_matches_falls_back_to_regex_body() {
+        use crate::analysis::test_quality::compute_test_quality_metrics;
+        use crate::database::SymbolDatabase;
+        use crate::search::LanguageConfigs;
+
+        let tmp = tempfile::TempDir::new().unwrap();
+        let db_path = tmp.path().join("test.db");
+        let db = SymbolDatabase::new(&db_path).unwrap();
+        let configs = LanguageConfigs::load_embedded();
+
+        db.conn
+            .execute(
+                "INSERT INTO files (path, language, hash, size, last_modified) VALUES (?1, ?2, ?3, ?4, ?5)",
+                rusqlite::params!["test_service.py", "python", "hash1", 200, 0],
+            )
+            .unwrap();
+
+        let code_body = "def test_service():\n    helper()\n    assert result == expected";
+        db.conn
+            .execute(
+                "INSERT INTO symbols (id, name, kind, language, file_path, code_context, metadata, reference_score) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0.0)",
+                rusqlite::params![
+                    "sym-python-test",
+                    "test_service",
+                    "function",
+                    "python",
+                    "test_service.py",
+                    code_body,
+                    r#"{"is_test":true,"test_role":"test_case"}"#,
+                ],
+            )
+            .unwrap();
+
+        db.conn
+            .execute(
+                "INSERT INTO identifiers (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, containing_symbol_id) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                rusqlite::params![
+                    "id-python-helper",
+                    "helper",
+                    "call",
+                    "python",
+                    "test_service.py",
+                    2,
+                    4,
+                    2,
+                    12,
+                    "sym-python-test",
+                ],
+            )
+            .unwrap();
+
+        let stats = compute_test_quality_metrics(&db, &configs).unwrap();
+        assert_eq!(stats.total_tests, 1);
+
+        let updated: String = db
+            .conn
+            .query_row(
+                "SELECT metadata FROM symbols WHERE id = 'sym-python-test'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let meta: serde_json::Value = serde_json::from_str(&updated).unwrap();
+        let tq = &meta["test_quality"];
+
+        assert_eq!(tq["assertion_source"].as_str().unwrap(), "regex");
+        assert_eq!(tq["assertion_count"].as_u64().unwrap(), 1);
+        assert_eq!(tq["quality_tier"].as_str().unwrap(), "thin");
+        assert!((tq["confidence"].as_f64().unwrap() - 0.4).abs() < 0.001);
+    }
+
     // =========================================================================
     // Identifier evidence: no substring matching
     // =========================================================================
@@ -1289,7 +1367,8 @@ mod tests {
             .unwrap();
 
         // Test body that has no regex-detectable assertions either
-        let code_body = "fn test_no_real_asserts() {\n    let r = assertion_report();\n    mock_database();\n}";
+        let code_body =
+            "fn test_no_real_asserts() {\n    let r = assertion_report();\n    mock_database();\n}";
         db.conn
             .execute(
                 "INSERT INTO symbols (id, name, kind, language, file_path, code_context, metadata, reference_score) \

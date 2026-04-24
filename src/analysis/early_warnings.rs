@@ -219,14 +219,13 @@ fn build_report(
         }
     }
 
-    // Entry point linkage gaps: entry points with no observed test_linkage metadata
+    // Entry point linkage gaps: entry points with no observed linkage metadata.
     let mut entry_point_linkage_gaps = Vec::new();
     for ep in &entry_points {
         let has_test_linkage = symbol_map
             .get(&ep.symbol_id)
             .and_then(|s| s.metadata.as_ref())
-            .and_then(|m| m.get("test_linkage"))
-            .is_some();
+            .is_some_and(|m| m.contains_key("test_linkage") || m.contains_key("test_coverage"));
         if !has_test_linkage {
             entry_point_linkage_gaps.push(EntryPointLinkageGap {
                 symbol_id: ep.symbol_id.clone(),
@@ -240,7 +239,7 @@ fn build_report(
         }
     }
 
-    let high_centrality_linkage_gaps =
+    let (high_centrality_linkage_gap_count, high_centrality_linkage_gaps) =
         collect_high_centrality_linkage_gaps(db, file_pattern.as_deref(), 20)?;
 
     let summary = ReportSummary {
@@ -249,7 +248,7 @@ fn build_report(
         review_markers: review_markers.len(),
         scheduler_signals: scheduler_signals.len(),
         entry_point_linkage_gaps: entry_point_linkage_gaps.len(),
-        high_centrality_linkage_gaps: high_centrality_linkage_gaps.len(),
+        high_centrality_linkage_gaps: high_centrality_linkage_gap_count,
     };
 
     Ok(EarlyWarningReport {
@@ -544,14 +543,8 @@ fn collect_high_centrality_linkage_gaps(
     db: &SymbolDatabase,
     file_pattern: Option<&str>,
     limit: usize,
-) -> Result<Vec<HighCentralityLinkageGap>> {
-    // Query symbols with reference_score > 0, not tests, and no test_linkage metadata.
-    // Over-fetch by 4x to allow for file_pattern filtering after the query.
-    let fetch_limit = if file_pattern.is_some() {
-        limit * 4
-    } else {
-        limit
-    };
+) -> Result<(usize, Vec<HighCentralityLinkageGap>)> {
+    // Query symbols with reference_score > 0, not tests, and no linkage metadata.
     let mut stmt = db.conn.prepare(
         "SELECT id, name, kind, language, file_path, start_line, reference_score
          FROM symbols
@@ -559,10 +552,10 @@ fn collect_high_centrality_linkage_gaps(
            AND (json_extract(metadata, '$.is_test') IS NULL
                 OR json_extract(metadata, '$.is_test') != 1)
            AND json_extract(metadata, '$.test_linkage') IS NULL
-         ORDER BY reference_score DESC
-         LIMIT ?1",
+           AND json_extract(metadata, '$.test_coverage') IS NULL
+         ORDER BY reference_score DESC",
     )?;
-    let rows = stmt.query_map(params![fetch_limit as i64], |row| {
+    let rows = stmt.query_map([], |row| {
         Ok(HighCentralityLinkageGap {
             symbol_id: row.get(0)?,
             symbol_name: row.get(1)?,
@@ -575,16 +568,17 @@ fn collect_high_centrality_linkage_gaps(
     })?;
 
     let mut gaps = Vec::new();
+    let mut total_matching_gaps = 0;
     for row_result in rows {
         let gap = row_result?;
         if matches_file_pattern(&gap.file_path, file_pattern) {
-            gaps.push(gap);
-            if gaps.len() >= limit {
-                break;
+            total_matching_gaps += 1;
+            if gaps.len() < limit {
+                gaps.push(gap);
             }
         }
     }
-    Ok(gaps)
+    Ok((total_matching_gaps, gaps))
 }
 
 fn unix_timestamp_millis() -> i64 {

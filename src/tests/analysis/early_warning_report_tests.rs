@@ -487,6 +487,38 @@ fn early_warning_report_entry_point_with_test_linkage_is_not_a_gap() {
 }
 
 #[test]
+fn early_warning_report_entry_point_with_test_coverage_is_not_a_gap() {
+    let (_temp_dir, mut db) = open_db();
+    let configs = LanguageConfigs::load_embedded();
+    let file = file_info("Controllers/LegacyCoverageController.cs", "csharp");
+    db.store_file_info(&file).unwrap();
+
+    let mut metadata = HashMap::new();
+    metadata.insert(
+        "test_coverage".to_string(),
+        serde_json::json!({"tests": ["test_get_legacy_orders"]}),
+    );
+    let route = symbol_with_metadata(
+        "route-with-legacy-coverage",
+        "GetLegacyOrders",
+        SymbolKind::Method,
+        "csharp",
+        &file.path,
+        5,
+        None,
+        vec![marker("HttpGet", "httpget", Some("[HttpGet]"))],
+        Some(metadata),
+    );
+    db.store_symbols(&[route]).unwrap();
+
+    let report = generate_early_warning_report(&db, &configs, options()).unwrap();
+
+    assert_eq!(report.summary.entry_points, 1);
+    assert_eq!(report.summary.entry_point_linkage_gaps, 0);
+    assert!(report.entry_point_linkage_gaps.is_empty());
+}
+
+#[test]
 fn early_warning_report_high_centrality_linkage_gap_query() {
     let (_temp_dir, mut db) = open_db();
     let configs = LanguageConfigs::load_embedded();
@@ -566,4 +598,154 @@ fn early_warning_report_high_centrality_linkage_gap_query() {
     assert_eq!(report.high_centrality_linkage_gaps.len(), 1);
     assert_eq!(report.high_centrality_linkage_gaps[0].symbol_name, "run");
     assert_eq!(report.high_centrality_linkage_gaps[0].reference_score, 5.0);
+}
+
+#[test]
+fn early_warning_report_high_centrality_with_test_coverage_is_not_a_gap() {
+    let (_temp_dir, mut db) = open_db();
+    let configs = LanguageConfigs::load_embedded();
+    let file = file_info("src/core/legacy.rs", "rust");
+    db.store_file_info(&file).unwrap();
+
+    let mut metadata = HashMap::new();
+    metadata.insert(
+        "test_coverage".to_string(),
+        serde_json::json!({"tests": ["test_legacy_run"]}),
+    );
+    let covered = symbol_with_metadata(
+        "legacy-covered",
+        "legacy_run",
+        SymbolKind::Function,
+        "rust",
+        &file.path,
+        10,
+        None,
+        Vec::new(),
+        Some(metadata),
+    );
+    db.store_symbols(&[covered]).unwrap();
+    db.conn
+        .execute(
+            "UPDATE symbols SET reference_score = 10.0 WHERE id = ?1",
+            rusqlite::params!["legacy-covered"],
+        )
+        .unwrap();
+
+    let report = generate_early_warning_report(&db, &configs, options()).unwrap();
+
+    assert_eq!(report.summary.high_centrality_linkage_gaps, 0);
+    assert!(report.high_centrality_linkage_gaps.is_empty());
+}
+
+#[test]
+fn early_warning_report_high_centrality_file_pattern_searches_past_unscoped_limit() {
+    let (_temp_dir, mut db) = open_db();
+    let configs = LanguageConfigs::load_embedded();
+    let api_file = file_info("src/api/routes.rs", "rust");
+    let core_file = file_info("src/core/engine.rs", "rust");
+    db.store_file_info(&api_file).unwrap();
+    db.store_file_info(&core_file).unwrap();
+
+    let mut symbols = Vec::new();
+    for idx in 0..81 {
+        symbols.push(symbol(
+            &format!("core-{idx}"),
+            &format!("core_helper_{idx}"),
+            SymbolKind::Function,
+            "rust",
+            &core_file.path,
+            idx + 1,
+            None,
+            Vec::new(),
+        ));
+    }
+    symbols.push(symbol(
+        "api-route",
+        "serve_route",
+        SymbolKind::Function,
+        "rust",
+        &api_file.path,
+        200,
+        None,
+        Vec::new(),
+    ));
+    db.store_symbols(&symbols).unwrap();
+
+    for idx in 0..81 {
+        db.conn
+            .execute(
+                "UPDATE symbols SET reference_score = ?1 WHERE id = ?2",
+                rusqlite::params![100.0 - f64::from(idx), format!("core-{idx}")],
+            )
+            .unwrap();
+    }
+    db.conn
+        .execute(
+            "UPDATE symbols SET reference_score = 1.0 WHERE id = ?1",
+            rusqlite::params!["api-route"],
+        )
+        .unwrap();
+
+    let report = generate_early_warning_report(
+        &db,
+        &configs,
+        EarlyWarningReportOptions {
+            file_pattern: Some("src/api/**".to_string()),
+            ..options()
+        },
+    )
+    .unwrap();
+
+    assert_eq!(report.summary.high_centrality_linkage_gaps, 1);
+    assert_eq!(report.high_centrality_linkage_gaps.len(), 1);
+    assert_eq!(
+        report.high_centrality_linkage_gaps[0].symbol_id,
+        "api-route"
+    );
+}
+
+#[test]
+fn early_warning_report_high_centrality_summary_counts_all_matching_gaps() {
+    let (_temp_dir, mut db) = open_db();
+    let configs = LanguageConfigs::load_embedded();
+    let file = file_info("src/core/many.rs", "rust");
+    db.store_file_info(&file).unwrap();
+
+    let mut symbols = Vec::new();
+    for idx in 0..25 {
+        symbols.push(symbol(
+            &format!("gap-{idx}"),
+            &format!("gap_symbol_{idx}"),
+            SymbolKind::Function,
+            "rust",
+            &file.path,
+            idx + 1,
+            None,
+            Vec::new(),
+        ));
+    }
+    db.store_symbols(&symbols).unwrap();
+
+    for idx in 0..25 {
+        db.conn
+            .execute(
+                "UPDATE symbols SET reference_score = ?1 WHERE id = ?2",
+                rusqlite::params![100.0 - f64::from(idx), format!("gap-{idx}")],
+            )
+            .unwrap();
+    }
+
+    let report = generate_early_warning_report(
+        &db,
+        &configs,
+        EarlyWarningReportOptions {
+            limit_per_section: Some(5),
+            ..options()
+        },
+    )
+    .unwrap();
+
+    assert_eq!(report.summary.high_centrality_linkage_gaps, 25);
+    assert_eq!(report.high_centrality_linkage_gaps.len(), 5);
+    assert_eq!(report.high_centrality_linkage_gaps[0].symbol_id, "gap-0");
 }

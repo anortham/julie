@@ -664,8 +664,7 @@ mod tests {
             "Parent class should have aggregated test_linkage"
         );
 
-        let linkage: serde_json::Value =
-            serde_json::from_str(&class_meta_str.unwrap()).unwrap();
+        let linkage: serde_json::Value = serde_json::from_str(&class_meta_str.unwrap()).unwrap();
 
         // best_confidence should be present and reflect the best child's confidence
         let best_confidence = linkage

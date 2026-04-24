@@ -183,10 +183,13 @@ pub fn compute_change_risk_scores(db: &SymbolDatabase) -> Result<ChangeRiskStats
                 .and_then(|v| v.get("best_tier"))
                 .and_then(|v| v.as_str())
                 .map(String::from);
-            let confidence = tl_entry
-                .and_then(|v| v.get("best_confidence"))
-                .and_then(|v| v.as_f64())
-                .unwrap_or(0.5); // Default for old data without confidence
+            let confidence = match tl_entry {
+                Some(linkage) => linkage
+                    .get("best_confidence")
+                    .and_then(|v| v.as_f64())
+                    .unwrap_or(0.5), // Default for old data without confidence
+                None => 1.0,
+            };
             let tw = test_weakness_score(best_tier.as_deref(), confidence);
 
             let score = compute_risk_score(centrality, vis_score, tw, kw);

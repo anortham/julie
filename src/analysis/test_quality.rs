@@ -108,6 +108,7 @@ fn assertion_patterns() -> &'static [Regex] {
             r"\bassert\(",
             r"\bAssert\.",
             // Python
+            r"(?m)^\s*assert\s+",
             r"\bself\.assert",
             r"\bpytest\.raises\b",
             // Java / C# / JUnit
@@ -672,16 +673,13 @@ pub fn compute_test_quality_metrics(
             // Match identifiers against framework-specific evidence config
             let evidence_config = language_configs.get(language).map(|cfg| &cfg.test_evidence);
 
-            let has_identifier_evidence = evidence_config
-                .map(|cfg| !cfg.assertion_identifiers.is_empty() && !call_names.is_empty())
-                .unwrap_or(false);
-
             let (id_assertion_count, id_error_count, id_mock_count) =
                 if let Some(ev_cfg) = evidence_config {
                     count_identifier_evidence(&call_names, ev_cfg)
                 } else {
                     (0, 0, 0)
                 };
+            let has_identifier_evidence = id_assertion_count > 0;
 
             // Determine body status
             let body = code_context.as_deref().filter(|b| !b.trim().is_empty());
@@ -814,11 +812,7 @@ fn count_identifier_evidence(
         {
             error_count += 1;
         }
-        if evidence_config
-            .mock_identifiers
-            .iter()
-            .any(|m| lower == *m)
-        {
+        if evidence_config.mock_identifiers.iter().any(|m| lower == *m) {
             mock_count += 1;
         }
     }

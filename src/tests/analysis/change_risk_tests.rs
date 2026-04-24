@@ -198,6 +198,16 @@ mod tests {
         let risk = meta.get("change_risk").unwrap();
         let label = risk.get("label").unwrap().as_str().unwrap();
         assert_eq!(label, "HIGH");
+        assert_eq!(
+            risk.get("factors")
+                .unwrap()
+                .get("test_weakness")
+                .unwrap()
+                .as_f64()
+                .unwrap(),
+            1.0,
+            "symbols with no linkage metadata should get the full untested penalty"
+        );
 
         // Verify s2 is LOW risk
         let s2 = db.get_symbol_by_id("s2").unwrap().unwrap();
