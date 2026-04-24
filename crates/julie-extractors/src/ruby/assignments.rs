@@ -43,6 +43,7 @@ pub(super) fn extract_assignment(
             parent_id,
             metadata: None,
             doc_comment: None,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -85,6 +86,7 @@ fn handle_parallel_assignment(
                 parent_id: parent_id.clone(),
                 metadata: None,
                 doc_comment: None,
+                annotations: Vec::new(),
             },
         );
         created_symbols.push(symbol);
@@ -107,6 +109,7 @@ fn handle_parallel_assignment(
                     parent_id: parent_id.clone(),
                     metadata: None,
                     doc_comment: None,
+                    annotations: Vec::new(),
                 },
             );
             created_symbols.push(rest_symbol);

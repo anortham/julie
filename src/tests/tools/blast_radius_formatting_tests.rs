@@ -27,6 +27,7 @@ fn make_symbol(name: &str, file_path: &str, line: u32) -> Symbol {
         confidence: Some(1.0),
         code_context: None,
         content_type: None,
+        annotations: Vec::new(),
     }
 }
 

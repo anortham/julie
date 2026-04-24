@@ -44,6 +44,7 @@ pub(super) fn extract_table_definition(
         parent_id: parent_id.map(|s| s.to_string()),
         doc_comment: base.find_doc_comment(&node),
         metadata: Some(metadata),
+        annotations: Vec::new(),
     };
 
     Some(base.create_symbol(&node, table_name, SymbolKind::Class, options))
@@ -103,6 +104,7 @@ pub(super) fn extract_view(
                 parent_id: parent_id.map(|s| s.to_string()),
                 doc_comment: base.find_doc_comment(&node),
                 metadata: Some(metadata),
+                annotations: Vec::new(),
             };
 
             return Some(base.create_symbol(&node, name, SymbolKind::Interface, options));
@@ -189,6 +191,7 @@ pub(super) fn extract_index(
         parent_id: parent_id.map(|s| s.to_string()),
         doc_comment: base.find_doc_comment(&node),
         metadata: Some(metadata),
+        annotations: Vec::new(),
     };
 
     Some(base.create_symbol(&node, name, SymbolKind::Property, options))
@@ -216,6 +219,7 @@ pub(super) fn extract_trigger(
         parent_id: parent_id.map(|s| s.to_string()),
         doc_comment: base.find_doc_comment(&node),
         metadata: Some(metadata),
+        annotations: Vec::new(),
     };
 
     Some(base.create_symbol(&node, name, SymbolKind::Method, options))
@@ -250,6 +254,7 @@ pub(super) fn extract_schema(
                 parent_id: parent_id.map(|s| s.to_string()),
                 doc_comment: base.find_doc_comment(&node),
                 metadata: Some(metadata),
+                annotations: Vec::new(),
             };
 
             return Some(base.create_symbol(&node, name, SymbolKind::Namespace, options));
@@ -309,6 +314,7 @@ pub(super) fn extract_domain(
         parent_id: parent_id.map(|s| s.to_string()),
         doc_comment: base.find_doc_comment(&node),
         metadata: Some(metadata),
+        annotations: Vec::new(),
     };
 
     Some(base.create_symbol(&node, name, SymbolKind::Class, options))
@@ -354,6 +360,7 @@ pub(super) fn extract_type(
             parent_id: parent_id.map(|s| s.to_string()),
             doc_comment: base.find_doc_comment(&node),
             metadata: Some(metadata),
+            annotations: Vec::new(),
         };
 
         return Some(base.create_symbol(&node, name, SymbolKind::Class, options));
@@ -371,6 +378,7 @@ pub(super) fn extract_type(
         parent_id: parent_id.map(|s| s.to_string()),
         doc_comment: base.find_doc_comment(&node),
         metadata: Some(metadata),
+        annotations: Vec::new(),
     };
 
     Some(base.create_symbol(&node, name, SymbolKind::Class, options))
@@ -407,6 +415,7 @@ pub(super) fn extract_cte(
         parent_id: parent_id.map(|s| s.to_string()),
         doc_comment: base.find_doc_comment(&node),
         metadata: Some(metadata),
+        annotations: Vec::new(),
     };
 
     Some(base.create_symbol(&node, name, SymbolKind::Interface, options))
@@ -491,6 +500,7 @@ pub(super) fn extract_sequence(
         parent_id: parent_id.map(|s| s.to_string()),
         doc_comment: base.find_doc_comment(&node),
         metadata: Some(metadata),
+        annotations: Vec::new(),
     };
 
     Some(base.create_symbol(&node, name, SymbolKind::Variable, options))

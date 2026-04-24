@@ -137,7 +137,7 @@ fn check_node_for_override_annotation(node: &Node) -> bool {
         let sibling_text = get_node_text(&sibling);
 
         // Check if this sibling is an annotation with @override
-        if sibling.kind() == "annotation" && sibling_text.contains("@override") {
+        if is_annotation_node(sibling.kind()) && sibling_text.contains("@override") {
             return true;
         }
 
@@ -149,6 +149,7 @@ fn check_node_for_override_annotation(node: &Node) -> bool {
         // Stop if we hit a substantive non-annotation node
         if !sibling_text.trim().is_empty()
             && sibling.kind() != "annotation"
+            && sibling.kind() != "marker_annotation"
             && !sibling_text.chars().all(|c| c.is_whitespace())
         {
             break;
@@ -162,7 +163,7 @@ fn check_node_for_override_annotation(node: &Node) -> bool {
 fn find_override_annotation_in_subtree(node: &Node) -> bool {
     // Check current node
     let node_text = get_node_text(node);
-    if node.kind() == "annotation" && node_text.contains("@override") {
+    if is_annotation_node(node.kind()) && node_text.contains("@override") {
         return true;
     }
 
@@ -185,8 +186,7 @@ fn find_override_annotation_in_subtree(node: &Node) -> bool {
 pub(super) fn extract_annotations(node: &Node) -> Vec<String> {
     let mut annotations = Vec::new();
 
-    // For method_signature nodes, check the parent node's siblings
-    let target_node = if node.kind() == "method_signature" {
+    let target_node = if annotation_parent_should_be_used(node.kind()) {
         node.parent().unwrap_or(*node)
     } else {
         *node
@@ -196,7 +196,7 @@ pub(super) fn extract_annotations(node: &Node) -> Vec<String> {
     while let Some(sibling) = current {
         let sibling_text = get_node_text(&sibling);
 
-        if sibling.kind() == "annotation" {
+        if is_annotation_node(sibling.kind()) {
             // Strip leading @ and trim whitespace
             let name = sibling_text
                 .trim()
@@ -222,17 +222,38 @@ pub(super) fn extract_annotations(node: &Node) -> Vec<String> {
     annotations
 }
 
+fn annotation_parent_should_be_used(kind: &str) -> bool {
+    matches!(
+        kind,
+        "function_signature"
+            | "method_signature"
+            | "constructor_signature"
+            | "factory_constructor_signature"
+            | "constant_constructor_signature"
+            | "getter_signature"
+            | "setter_signature"
+    )
+}
+
 fn collect_annotations_from_subtree(node: &Node, annotations: &mut Vec<String>) {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        if child.kind() == "annotation" {
-            let text = get_node_text(&child);
-            let name = text.trim().strip_prefix('@').unwrap_or(&text).to_string();
-            if !name.is_empty() && !annotations.contains(&name) {
-                annotations.push(name);
+        match child.kind() {
+            kind if is_annotation_node(kind) => {
+                let text = get_node_text(&child);
+                let name = text.trim().strip_prefix('@').unwrap_or(&text).to_string();
+                if !name.is_empty() && !annotations.contains(&name) {
+                    annotations.push(name);
+                }
             }
+            "metadata" | "metadata_star" => collect_annotations_from_subtree(&child, annotations),
+            _ => {}
         }
     }
+}
+
+fn is_annotation_node(kind: &str) -> bool {
+    matches!(kind, "annotation" | "marker_annotation")
 }
 
 /// Check if a constructor is a factory constructor

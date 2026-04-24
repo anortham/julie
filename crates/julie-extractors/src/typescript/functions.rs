@@ -4,7 +4,7 @@
 //! and arrow functions assigned to variables.
 
 use super::helpers;
-use crate::base::{Symbol, SymbolKind, SymbolOptions};
+use crate::base::{Symbol, SymbolKind, SymbolOptions, normalize_annotations};
 use crate::test_detection::is_test_symbol;
 use crate::typescript::TypeScriptExtractor;
 use std::collections::HashMap;
@@ -30,6 +30,13 @@ pub(super) fn extract_function(extractor: &mut TypeScriptExtractor, node: Node) 
 
     let signature = build_function_signature(extractor, &node, &name);
     let visibility = extractor.base().extract_visibility(&node);
+    let content = extractor.base().content.clone();
+    let decorator_texts = helpers::extract_decorator_texts(node, &content);
+    let annotations = normalize_annotations(&decorator_texts, "typescript");
+    let annotation_keys: Vec<String> = annotations
+        .iter()
+        .map(|marker| marker.annotation_key.clone())
+        .collect();
 
     // Check for modifiers
     let is_async = helpers::has_modifier(node, "async");
@@ -60,8 +67,7 @@ pub(super) fn extract_function(extractor: &mut TypeScriptExtractor, node: Node) 
         &name,
         &extractor.base().file_path,
         &SymbolKind::Function,
-        &[],
-        &[],
+        &annotation_keys,
         doc_comment.as_deref(),
     ) {
         metadata.insert("is_test".to_string(), serde_json::json!(true));
@@ -79,6 +85,7 @@ pub(super) fn extract_function(extractor: &mut TypeScriptExtractor, node: Node) 
             parent_id: None,
             metadata: Some(metadata),
             doc_comment,
+            annotations,
         },
     );
 
@@ -141,6 +148,12 @@ pub(super) fn extract_method(extractor: &mut TypeScriptExtractor, node: Node) ->
     // Extract decorators from preceding siblings (tree-sitter TS puts method decorators as siblings)
     let content = extractor.base().content.clone();
     let decorators = helpers::extract_preceding_decorator_names(node, &content);
+    let decorator_texts = helpers::extract_preceding_decorator_texts(node, &content);
+    let annotations = normalize_annotations(&decorator_texts, "typescript");
+    let annotation_keys: Vec<String> = annotations
+        .iter()
+        .map(|marker| marker.annotation_key.clone())
+        .collect();
     let decorator_prefix = helpers::decorator_prefix(&decorators);
     let signature = format!("{}{}", decorator_prefix, base_sig);
 
@@ -182,8 +195,7 @@ pub(super) fn extract_method(extractor: &mut TypeScriptExtractor, node: Node) ->
         &name,
         &extractor.base().file_path,
         &symbol_kind,
-        &[],
-        &[],
+        &annotation_keys,
         doc_comment.as_deref(),
     ) {
         metadata.insert("is_test".to_string(), serde_json::json!(true));
@@ -200,6 +212,7 @@ pub(super) fn extract_method(extractor: &mut TypeScriptExtractor, node: Node) ->
             parent_id,
             metadata: Some(metadata),
             doc_comment,
+            annotations,
         },
     );
 

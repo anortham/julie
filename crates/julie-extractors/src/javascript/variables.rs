@@ -51,6 +51,7 @@ impl super::JavaScriptExtractor {
                         parent_id,
                         metadata: Some(metadata),
                         doc_comment,
+                        annotations: Vec::new(),
                     },
                 ));
             }
@@ -86,6 +87,7 @@ impl super::JavaScriptExtractor {
                         parent_id,
                         metadata: Some(metadata),
                         doc_comment,
+                        annotations: Vec::new(),
                     },
                 ));
             }
@@ -119,6 +121,7 @@ impl super::JavaScriptExtractor {
                 parent_id,
                 metadata: Some(metadata),
                 doc_comment,
+                annotations: Vec::new(),
             },
         ))
     }
@@ -172,6 +175,7 @@ impl super::JavaScriptExtractor {
                                         parent_id: parent_id.clone(),
                                         metadata: Some(metadata),
                                         doc_comment,
+                                        annotations: Vec::new(),
                                     },
                                 ));
                             }
@@ -210,6 +214,7 @@ impl super::JavaScriptExtractor {
                                             parent_id: parent_id.clone(),
                                             metadata: Some(metadata),
                                             doc_comment,
+                                            annotations: Vec::new(),
                                         },
                                     ));
                                 }
@@ -246,6 +251,7 @@ impl super::JavaScriptExtractor {
                                     parent_id: parent_id.clone(),
                                     metadata: Some(metadata),
                                     doc_comment,
+                                    annotations: Vec::new(),
                                 },
                             ));
                             index += 1;

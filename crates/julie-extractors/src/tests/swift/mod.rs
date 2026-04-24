@@ -29,6 +29,16 @@ mod swift_extractor_tests {
         (extractor, tree)
     }
 
+    fn tree_contains_kind(node: tree_sitter::Node, kind: &str) -> bool {
+        if node.kind() == kind {
+            return true;
+        }
+
+        let mut cursor = node.walk();
+        node.children(&mut cursor)
+            .any(|child| tree_contains_kind(child, kind))
+    }
+
     mod class_and_struct_extraction {
         use super::*;
 
@@ -1002,6 +1012,67 @@ struct MyApp: App {
                     .as_ref()
                     .unwrap()
                     .contains("@main")
+            );
+        }
+
+        #[test]
+        fn test_callable_attributes_extract_markers_and_skip_type_attributes() {
+            let swift_code = r#"
+class HandlerFactory {
+    @available(iOS 17.0, *)
+    @discardableResult
+    func buildHandler() -> @Sendable () -> Void {
+        return {}
+    }
+}
+
+open class Session: @unchecked Sendable {
+    func request() {}
+}
+"#;
+
+            let (mut extractor, tree) = create_extractor_and_parse(swift_code);
+            assert!(
+                tree_contains_kind(tree.root_node(), "attribute"),
+                "Swift grammar must expose attribute nodes"
+            );
+
+            let symbols = extractor.extract_symbols(&tree);
+            let build_handler = symbols
+                .iter()
+                .find(|symbol| symbol.name == "buildHandler")
+                .expect("annotated function should be extracted");
+
+            let markers: Vec<_> = build_handler
+                .annotations
+                .iter()
+                .map(|marker| (marker.annotation.as_str(), marker.annotation_key.as_str()))
+                .collect();
+
+            assert_eq!(
+                markers,
+                vec![
+                    ("available", "available"),
+                    ("discardableResult", "discardableresult")
+                ]
+            );
+            assert!(
+                build_handler
+                    .annotations
+                    .iter()
+                    .all(|marker| marker.annotation_key != "sendable"
+                        && marker.annotation_key != "unchecked")
+            );
+
+            let session = symbols
+                .iter()
+                .find(|symbol| symbol.name == "Session")
+                .expect("class with type attribute should be extracted");
+            assert!(
+                session
+                    .signature
+                    .as_ref()
+                    .is_some_and(|signature| signature.contains("@unchecked Sendable"))
             );
         }
     }

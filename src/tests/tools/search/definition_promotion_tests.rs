@@ -41,6 +41,7 @@ mod tests {
             confidence: Some(0.9),
             code_context: code_context.map(|s| s.to_string()),
             content_type: None,
+            annotations: Vec::new(),
         }
     }
 

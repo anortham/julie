@@ -13,10 +13,17 @@ full = ["cli", "core-database", "core-embeddings", "tools-get-context", "tools-s
 [blocked_tiers]
 
 [buckets.cli]
-# Single focused CLI module; use as the floor for quick sanity checks.
-expected_seconds = 30
-timeout_seconds = 90
-commands = ["cargo nextest run --lib tests::cli_tests", "cargo test -p xtask"]
+# CLI argument parsing, execution core, and end-to-end integration tests.
+expected_seconds = 45
+timeout_seconds = 120
+commands = [
+  "cargo nextest run --lib tests::cli_tests",
+  "cargo nextest run --lib tests::cli_execution_tests",
+  "cargo nextest run --lib tests::cli_tools_tests",
+  "cargo build",
+  "cargo nextest run --lib --run-ignored only tests::cli::",
+  "cargo test -p xtask",
+]
 
 [buckets.core-database]
 # Core database path; modest runtime but commonly exercised.

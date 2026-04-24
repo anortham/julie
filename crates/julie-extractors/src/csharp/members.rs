@@ -22,6 +22,11 @@ pub fn extract_method(
 
     let name = base.get_node_text(name_node);
     let modifiers = helpers::extract_modifiers(base, &node);
+    let annotations = helpers::extract_annotations(base, &node);
+    let annotation_keys: Vec<String> = annotations
+        .iter()
+        .map(|annotation| annotation.annotation_key.clone())
+        .collect();
     let visibility = helpers::determine_visibility(&modifiers, None);
     let return_type =
         helpers::extract_return_type(base, &node).unwrap_or_else(|| "void".to_string());
@@ -64,21 +69,13 @@ pub fn extract_method(
     // Extract XML doc comment
     let doc_comment = base.find_doc_comment(&node);
 
-    // Extract attributes for test detection (modifiers starting with '[')
-    let attributes: Vec<String> = modifiers
-        .iter()
-        .filter(|m| m.starts_with('['))
-        .cloned()
-        .collect();
-
     let mut metadata = HashMap::new();
     if is_test_symbol(
         "csharp",
         &name,
         &base.file_path,
         &SymbolKind::Method,
-        &[],
-        &attributes,
+        &annotation_keys,
         doc_comment.as_deref(),
     ) {
         metadata.insert("is_test".to_string(), serde_json::Value::Bool(true));
@@ -94,6 +91,7 @@ pub fn extract_method(
         } else {
             Some(metadata)
         },
+        annotations,
         ..Default::default()
     };
 
@@ -112,6 +110,11 @@ pub fn extract_constructor(
         .find(|c| c.kind() == "identifier")?;
     let name = base.get_node_text(&name_node);
     let modifiers = helpers::extract_modifiers(base, &node);
+    let annotations = helpers::extract_annotations(base, &node);
+    let annotation_keys: Vec<String> = annotations
+        .iter()
+        .map(|annotation| annotation.annotation_key.clone())
+        .collect();
     let visibility = helpers::determine_visibility(&modifiers, Some("constructor_declaration"));
     let param_list = node
         .children(&mut cursor)
@@ -128,21 +131,13 @@ pub fn extract_constructor(
     // Extract XML doc comment
     let doc_comment = base.find_doc_comment(&node);
 
-    // Extract attributes for test detection
-    let attributes: Vec<String> = modifiers
-        .iter()
-        .filter(|m| m.starts_with('['))
-        .cloned()
-        .collect();
-
     let mut metadata = HashMap::new();
     if is_test_symbol(
         "csharp",
         &name,
         &base.file_path,
         &SymbolKind::Constructor,
-        &[],
-        &attributes,
+        &annotation_keys,
         doc_comment.as_deref(),
     ) {
         metadata.insert("is_test".to_string(), serde_json::Value::Bool(true));
@@ -158,6 +153,7 @@ pub fn extract_constructor(
         } else {
             Some(metadata)
         },
+        annotations,
         ..Default::default()
     };
 
@@ -193,7 +189,6 @@ pub fn extract_destructor(
         &name,
         &base.file_path,
         &SymbolKind::Method,
-        &[],
         &[],
         doc_comment.as_deref(),
     ) {

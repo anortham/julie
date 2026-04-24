@@ -72,6 +72,7 @@ pub(super) fn extract_field(
                 parent_id: parent_id.map(String::from),
                 metadata: None,
                 doc_comment: doc_comment.clone(),
+                annotations: Vec::new(),
             },
         ));
     }
@@ -138,6 +139,7 @@ fn extract_fields_without_declarators(
                 parent_id: parent_id.map(String::from),
                 metadata: None,
                 doc_comment: doc_comment.clone(),
+                annotations: Vec::new(),
             },
         ));
     }
@@ -219,6 +221,7 @@ pub(super) fn extract_multi_declarations(
                     parent_id: parent_id.map(String::from),
                     metadata: None,
                     doc_comment: doc_comment.clone(),
+                    annotations: Vec::new(),
                 },
             ))
         })

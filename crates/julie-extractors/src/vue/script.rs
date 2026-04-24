@@ -90,22 +90,16 @@ pub(super) fn extract_script_symbols(base: &BaseExtractor, section: &VueSection)
                 let name = func_name.as_str();
                 let start_col = line.find(name).unwrap_or(0) + 1;
 
-                // Test detection (Category 3: name + path, empty decorators/attributes)
-                let metadata = if is_test_symbol(
-                    "vue",
-                    name,
-                    &base.file_path,
-                    &SymbolKind::Method,
-                    &[],
-                    &[],
-                    None,
-                ) {
-                    let mut m = HashMap::new();
-                    m.insert("is_test".to_string(), Value::Bool(true));
-                    Some(m)
-                } else {
-                    None
-                };
+                // Test detection (Category 3: name + path, empty annotation keys)
+                let metadata =
+                    if is_test_symbol("vue", name, &base.file_path, &SymbolKind::Method, &[], None)
+                    {
+                        let mut m = HashMap::new();
+                        m.insert("is_test".to_string(), Value::Bool(true));
+                        Some(m)
+                    } else {
+                        None
+                    };
 
                 symbols.push(create_symbol_manual(
                     base,
@@ -200,6 +194,7 @@ pub(super) fn create_symbol_manual(
         visibility: Some(Visibility::Public),
         parent_id: None,
         metadata,
+        annotations: Vec::new(),
     };
 
     // Generate ID similar to standard approach
@@ -222,6 +217,7 @@ pub(super) fn create_symbol_manual(
         visibility: options.visibility,
         parent_id: options.parent_id,
         metadata: Some(options.metadata.unwrap_or_default()),
+        annotations: options.annotations,
         semantic_group: None, // Vue components don't have cross-language groups yet
         confidence: None,     // Will be set during validation
         code_context: None,   // Will be populated during context extraction

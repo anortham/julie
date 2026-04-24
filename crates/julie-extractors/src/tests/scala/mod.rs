@@ -28,6 +28,16 @@ fn extract_symbols(code: &str) -> Vec<crate::base::Symbol> {
     extractor.extract_symbols(&tree)
 }
 
+fn tree_contains_kind(node: tree_sitter::Node, kind: &str) -> bool {
+    if node.kind() == kind {
+        return true;
+    }
+
+    let mut cursor = node.walk();
+    node.children(&mut cursor)
+        .any(|child| tree_contains_kind(child, kind))
+}
+
 // ========================================================================
 // AST Exploration (run with --nocapture to see output)
 // ========================================================================
@@ -176,6 +186,46 @@ sealed trait Animal {
     );
     let speak = methods.iter().find(|s| s.name == "speak");
     assert!(speak.is_some(), "Expected 'speak' method");
+}
+
+#[test]
+fn test_scala_function_annotations_extract_markers() {
+    let code = r#"
+class DatabaseSuite {
+  @org.junit.Test
+  @com.example.Slow("db")
+  def checksDatabase(): Unit = ()
+}
+"#;
+
+    let mut parser = init_parser();
+    let tree = parser.parse(code, None).unwrap();
+    assert!(
+        tree_contains_kind(tree.root_node(), "annotation"),
+        "Scala grammar must expose annotation nodes"
+    );
+
+    let symbols = extract_symbols(code);
+    let checks_database = symbols
+        .iter()
+        .find(|symbol| symbol.name == "checksDatabase")
+        .expect("annotated function should be extracted");
+
+    let markers: Vec<_> = checks_database
+        .annotations
+        .iter()
+        .map(|marker| (marker.annotation.as_str(), marker.annotation_key.as_str()))
+        .collect();
+
+    assert_eq!(markers, vec![("Test", "test"), ("Slow", "slow")]);
+    assert_eq!(
+        checks_database
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("is_test"))
+            .and_then(|value| value.as_bool()),
+        Some(true)
+    );
 }
 
 #[test]

@@ -44,6 +44,7 @@ impl FallbackExtractor {
                     parent_id: None,
                     metadata: Some(metadata),
                     doc_comment,
+                    annotations: Vec::new(),
                 },
             );
             symbols.push(symbol);
@@ -154,6 +155,7 @@ impl FallbackExtractor {
                         parent_id: None,
                         metadata: Some(metadata),
                         doc_comment,
+                        annotations: Vec::new(),
                     },
                 );
                 symbols.push(symbol);

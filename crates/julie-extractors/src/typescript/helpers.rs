@@ -32,6 +32,18 @@ pub(super) fn extract_decorator_names(node: Node, content: &str) -> Vec<String> 
     decorators
 }
 
+/// Extract raw decorator text from child `decorator` nodes.
+pub(super) fn extract_decorator_texts(node: Node, content: &str) -> Vec<String> {
+    let mut decorators = Vec::new();
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "decorator" {
+            decorators.push(content[child.byte_range()].trim().to_string());
+        }
+    }
+    decorators
+}
+
 /// Extract decorator names from preceding sibling nodes.
 ///
 /// In tree-sitter TypeScript, method decorators are siblings of the
@@ -47,6 +59,21 @@ pub(super) fn extract_preceding_decorator_names(node: Node, content: &str) -> Ve
             }
         } else if sib.kind() != "comment" {
             // Stop at non-decorator, non-comment siblings
+            break;
+        }
+        sibling = sib.prev_sibling();
+    }
+    decorators
+}
+
+/// Extract raw decorator text from preceding sibling nodes.
+pub(super) fn extract_preceding_decorator_texts(node: Node, content: &str) -> Vec<String> {
+    let mut decorators = Vec::new();
+    let mut sibling = node.prev_sibling();
+    while let Some(sib) = sibling {
+        if sib.kind() == "decorator" {
+            decorators.insert(0, content[sib.byte_range()].trim().to_string());
+        } else if sib.kind() != "comment" {
             break;
         }
         sibling = sib.prev_sibling();

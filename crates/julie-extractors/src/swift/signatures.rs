@@ -1,4 +1,4 @@
-use crate::base::Visibility;
+use crate::base::{AnnotationMarker, Visibility, normalize_annotations};
 use tree_sitter::Node;
 
 use super::SwiftExtractor;
@@ -49,7 +49,7 @@ impl SwiftExtractor {
         // Stop at ":" to avoid pulling in type-attributes like @unchecked that belong
         // to an inherited type (e.g. `open class Session: @unchecked Sendable`).
         for child in node.children(&mut node.walk()) {
-            if child.kind() == ":" {
+            if is_declaration_attribute_boundary(child.kind()) {
                 break;
             }
             if child.kind() == "lazy" || self.base.get_node_text(&child) == "lazy" {
@@ -60,6 +60,38 @@ impl SwiftExtractor {
         }
 
         modifiers
+    }
+
+    pub(super) fn extract_annotations(&self, node: Node) -> Vec<AnnotationMarker> {
+        let raw_attributes = self.extract_declaration_attribute_texts(node);
+        normalize_annotations(&raw_attributes, "swift")
+    }
+
+    fn extract_declaration_attribute_texts(&self, node: Node) -> Vec<String> {
+        let mut attributes = Vec::new();
+
+        if let Some(modifiers_list) = node
+            .children(&mut node.walk())
+            .find(|child| child.kind() == "modifiers")
+        {
+            attributes.extend(
+                modifiers_list
+                    .children(&mut modifiers_list.walk())
+                    .filter(|child| child.kind() == "attribute")
+                    .map(|child| self.base.get_node_text(&child)),
+            );
+        }
+
+        for child in node.children(&mut node.walk()) {
+            if is_declaration_attribute_boundary(child.kind()) {
+                break;
+            }
+            if child.kind() == "attribute" {
+                attributes.push(self.base.get_node_text(&child));
+            }
+        }
+
+        attributes
     }
 
     /// Implementation of extractGenericParameters method
@@ -295,4 +327,20 @@ impl SwiftExtractor {
             Visibility::Public
         }
     }
+}
+
+fn is_declaration_attribute_boundary(kind: &str) -> bool {
+    matches!(
+        kind,
+        ":" | "parameter_clause"
+            | "function_body"
+            | "class_body"
+            | "struct_body"
+            | "enum_body"
+            | "protocol_body"
+            | "simple_identifier"
+            | "type_identifier"
+            | "user_type"
+            | "type"
+    )
 }

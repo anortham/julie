@@ -30,7 +30,6 @@ impl super::BashExtractor {
             &self.base.file_path,
             &SymbolKind::Function,
             &[],
-            &[],
             doc_comment.as_deref(),
         ) {
             metadata.insert("is_test".to_string(), serde_json::Value::Bool(true));

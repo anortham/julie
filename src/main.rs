@@ -6,11 +6,12 @@ use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberI
 
 use clap::Parser;
 use julie::cli::{Cli, Command, resolve_workspace_startup_hint};
+use julie::cli_tools::run_cli_tool;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
-    let startup_hint = resolve_workspace_startup_hint(cli.workspace);
+    let startup_hint = resolve_workspace_startup_hint(cli.workspace.clone());
 
     match cli.command {
         Some(Command::Daemon { port, no_dashboard }) => {
@@ -83,10 +84,60 @@ async fn main() -> anyhow::Result<()> {
             julie::daemon::lifecycle::stop_daemon(&paths)?;
             println!("Daemon stopped. Will auto-restart on next tool call.");
         }
+
+        // Tool commands: routed through the CLI execution core
+        Some(Command::Search(args)) => {
+            run_tool_command(&args, &cli.tool_flags, cli.workspace).await?;
+        }
+        Some(Command::Refs(args)) => {
+            run_tool_command(&args, &cli.tool_flags, cli.workspace).await?;
+        }
+        Some(Command::Symbols(args)) => {
+            run_tool_command(&args, &cli.tool_flags, cli.workspace).await?;
+        }
+        Some(Command::Context(args)) => {
+            run_tool_command(&args, &cli.tool_flags, cli.workspace).await?;
+        }
+        Some(Command::BlastRadius(args)) => {
+            run_tool_command(&args, &cli.tool_flags, cli.workspace).await?;
+        }
+        Some(Command::Workspace(args)) => {
+            run_tool_command(&args, &cli.tool_flags, cli.workspace).await?;
+        }
+        Some(Command::Tool(args)) => {
+            run_tool_command(&args, &cli.tool_flags, cli.workspace).await?;
+        }
+
         None => {
             // Adapter mode: auto-start daemon, forward stdio to IPC
             julie::adapter::run_adapter(startup_hint).await?;
         }
+    }
+
+    Ok(())
+}
+
+/// Route a tool command through the CLI execution core.
+///
+/// Formats output according to `--format` / `--json` flags, prints to stdout,
+/// and exits with code 1 if the tool reported an error.
+async fn run_tool_command(
+    command: &dyn julie::cli_tools::CliToolCommand,
+    flags: &julie::cli_tools::GlobalToolFlags,
+    cli_workspace: Option<std::path::PathBuf>,
+) -> anyhow::Result<()> {
+    let output = run_cli_tool(command, cli_workspace, flags.standalone).await?;
+
+    let formatted = julie::cli_tools::output::format_output(
+        &output,
+        flags.effective_format(),
+        command.tool_name(),
+    );
+
+    println!("{}", formatted);
+
+    if output.is_error {
+        std::process::exit(1);
     }
 
     Ok(())

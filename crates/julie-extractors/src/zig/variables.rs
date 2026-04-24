@@ -99,6 +99,7 @@ fn extract_import(
             parent_id: parent_id.cloned(),
             metadata: None,
             doc_comment: base.extract_documentation(&node),
+            annotations: Vec::new(),
         },
     ))
 }
@@ -144,6 +145,7 @@ fn extract_generic_type_constructor(
             parent_id: parent_id.cloned(),
             metadata,
             doc_comment: base.extract_documentation(&node),
+            annotations: Vec::new(),
         },
     ))
 }
@@ -181,6 +183,7 @@ fn extract_struct_assignment(
             parent_id: parent_id.cloned(),
             metadata: None,
             doc_comment: base.extract_documentation(&node),
+            annotations: Vec::new(),
         },
     ))
 }
@@ -216,6 +219,7 @@ fn extract_union_assignment(
             parent_id: parent_id.cloned(),
             metadata: None,
             doc_comment: base.extract_documentation(&node),
+            annotations: Vec::new(),
         },
     ))
 }
@@ -252,6 +256,7 @@ fn extract_enum_assignment(
             parent_id: parent_id.cloned(),
             metadata: None,
             doc_comment: base.extract_documentation(&node),
+            annotations: Vec::new(),
         },
     ))
 }
@@ -301,6 +306,7 @@ fn extract_error_set_assignment(
             parent_id: parent_id.cloned(),
             metadata,
             doc_comment: base.extract_documentation(&node),
+            annotations: Vec::new(),
         },
     ))
 }
@@ -345,6 +351,7 @@ fn extract_function_type_assignment(
             parent_id: parent_id.cloned(),
             metadata,
             doc_comment: base.extract_documentation(&node),
+            annotations: Vec::new(),
         },
     ))
 }
@@ -418,6 +425,7 @@ fn extract_standard_variable(
             parent_id: parent_id.cloned(),
             metadata: None,
             doc_comment: base.extract_documentation(&node),
+            annotations: Vec::new(),
         },
     ))
 }

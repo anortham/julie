@@ -221,25 +221,37 @@ func _cleanup_resources():
 
         let player_speed = symbols.iter().find(|s| s.name == "player_speed");
         assert!(player_speed.is_some());
+        let player_speed = player_speed.unwrap();
         assert!(
             player_speed
-                .unwrap()
                 .signature
                 .as_ref()
                 .unwrap()
                 .contains("@export_category")
         );
+        let mut player_speed_annotation_keys = player_speed
+            .annotations
+            .iter()
+            .map(|annotation| annotation.annotation_key.as_str())
+            .collect::<Vec<_>>();
+        player_speed_annotation_keys.sort_unstable();
+        assert_eq!(
+            player_speed_annotation_keys,
+            vec!["export", "export_category"]
+        );
 
         let difficulty = symbols.iter().find(|s| s.name == "difficulty");
         assert!(difficulty.is_some());
+        let difficulty = difficulty.unwrap();
         assert!(
             difficulty
-                .unwrap()
                 .signature
                 .as_ref()
                 .unwrap()
                 .contains("@export_enum")
         );
+        assert_eq!(difficulty.annotations.len(), 1);
+        assert_eq!(difficulty.annotations[0].annotation_key, "export_enum");
 
         let config_file = symbols.iter().find(|s| s.name == "config_file");
         assert!(config_file.is_some());

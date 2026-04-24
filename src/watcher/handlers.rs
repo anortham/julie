@@ -243,11 +243,7 @@ pub(crate) async fn handle_file_created_or_modified_static(
     // remove_by_file_path() deletes all doc types for the file path.
     // Fix B-b: Track Tantivy success so callers can add to a dirty-file retry set.
     let tantivy_ok = if let Some(search_index) = search_index {
-        let symbol_docs: Vec<_> = results
-            .symbols
-            .iter()
-            .map(crate::search::SymbolDocument::from_symbol)
-            .collect();
+        let symbols = results.symbols.clone();
         let file_content_doc = crate::search::FileDocument {
             file_path: relative_path.clone(),
             content: content_str.to_string(),
@@ -265,24 +261,19 @@ pub(crate) async fn handle_file_created_or_modified_static(
                 }
             };
 
-            let mut ok = true;
-            // Delete old documents for this file, then add new ones
-            if let Err(e) = idx.remove_by_file_path(&file_to_clean) {
-                warn!("Failed to remove Tantivy docs for {}: {}", file_to_clean, e);
-                ok = false;
-            }
-            for doc in &symbol_docs {
-                if let Err(e) = idx.add_symbol(doc) {
-                    warn!("Failed to add Tantivy symbol doc: {}", e);
-                    ok = false;
+            let ok = match crate::search::projection::apply_uncommitted_documents_from_symbols(
+                &idx,
+                &symbols,
+                std::slice::from_ref(&file_content_doc),
+                std::slice::from_ref(&file_to_clean),
+            ) {
+                Ok(()) => true,
+                Err(e) => {
+                    warn!("Failed to update Tantivy docs for {}: {}", file_to_clean, e);
+                    false
                 }
-            }
-            // Re-add file content doc (required for content search / line-mode search)
-            if let Err(e) = idx.add_file_content(&file_content_doc) {
-                warn!("Failed to add Tantivy file content doc: {}", e);
-                ok = false;
-            }
-            // NOTE: commit is intentionally deferred — the caller batches
+            };
+            // NOTE: commit is intentionally deferred; the caller batches
             // multiple file operations and commits once per tick to avoid
             // Tantivy segment-merge conflicts (FileDoesNotExist on .term files).
             ok

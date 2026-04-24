@@ -1,9 +1,10 @@
 use super::helpers::{
-    extract_derived_traits, extract_visibility, find_doc_comment, get_preceding_attributes,
+    extract_attribute_texts, extract_derived_traits, extract_visibility, find_doc_comment,
+    get_preceding_attributes,
 };
 // Rust type definitions: structs, enums, fields, variants, traits,
 // unions, modules, consts, statics, macros, type aliases.
-use crate::base::{Symbol, SymbolKind, SymbolOptions, Visibility};
+use crate::base::{Symbol, SymbolKind, SymbolOptions, Visibility, normalize_annotations};
 use crate::rust::RustExtractor;
 use std::collections::HashMap;
 use tree_sitter::Node;
@@ -22,6 +23,8 @@ pub(super) fn extract_struct(
     let visibility = extract_visibility(base, node);
     let attributes = get_preceding_attributes(base, node);
     let derived_traits = extract_derived_traits(base, &attributes);
+    let attribute_texts = extract_attribute_texts(base, &attributes);
+    let annotations = normalize_annotations(&attribute_texts, "rust");
 
     // Extract generic type parameters
     let type_params = node
@@ -52,6 +55,7 @@ pub(super) fn extract_struct(
             parent_id,
             doc_comment: find_doc_comment(base, node),
             metadata: Some(HashMap::new()),
+            annotations,
         },
     ))
 }
@@ -69,6 +73,8 @@ pub(super) fn extract_enum(
     let visibility = extract_visibility(base, node);
     let attributes = get_preceding_attributes(base, node);
     let derived_traits = extract_derived_traits(base, &attributes);
+    let attribute_texts = extract_attribute_texts(base, &attributes);
+    let annotations = normalize_annotations(&attribute_texts, "rust");
 
     // Extract generic type parameters
     let type_params = node
@@ -98,6 +104,7 @@ pub(super) fn extract_enum(
             parent_id,
             doc_comment: find_doc_comment(base, node),
             metadata: Some(HashMap::new()),
+            annotations,
         },
     ))
 }
@@ -138,6 +145,7 @@ pub(super) fn extract_field(
             parent_id,
             doc_comment: find_doc_comment(base, node),
             metadata: Some(HashMap::new()),
+            annotations: Vec::new(),
         },
     ))
 }
@@ -172,6 +180,7 @@ pub(super) fn extract_enum_variant(
             parent_id,
             doc_comment: find_doc_comment(base, node),
             metadata: Some(HashMap::new()),
+            annotations: Vec::new(),
         },
     ))
 }
@@ -241,6 +250,7 @@ pub(super) fn extract_trait(
             parent_id,
             doc_comment: find_doc_comment(base, node),
             metadata: Some(HashMap::new()),
+            annotations: Vec::new(),
         },
     ))
 }
@@ -276,6 +286,7 @@ pub(super) fn extract_union(
             parent_id,
             doc_comment: find_doc_comment(base, node),
             metadata: Some(HashMap::new()),
+            annotations: Vec::new(),
         },
     ))
 }
@@ -309,6 +320,7 @@ pub(super) fn extract_module(
             parent_id,
             doc_comment: find_doc_comment(base, node),
             metadata: Some(HashMap::new()),
+            annotations: Vec::new(),
         },
     ))
 }
@@ -351,6 +363,7 @@ pub(super) fn extract_const(
             parent_id,
             doc_comment: find_doc_comment(base, node),
             metadata: Some(HashMap::new()),
+            annotations: Vec::new(),
         },
     ))
 }
@@ -407,6 +420,7 @@ pub(super) fn extract_static(
             parent_id,
             doc_comment: find_doc_comment(base, node),
             metadata: Some(HashMap::new()),
+            annotations: Vec::new(),
         },
     ))
 }
@@ -433,6 +447,7 @@ pub(super) fn extract_macro(
             parent_id,
             doc_comment: find_doc_comment(base, node),
             metadata: Some(HashMap::new()),
+            annotations: Vec::new(),
         },
     ))
 }
@@ -489,6 +504,7 @@ pub(super) fn extract_type_alias(
             parent_id,
             doc_comment: find_doc_comment(base, node),
             metadata: Some(HashMap::new()),
+            annotations: Vec::new(),
         },
     ))
 }

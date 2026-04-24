@@ -56,6 +56,7 @@ pub(super) fn extract_type_definition(
                 ("isStruct".to_string(), Value::String(is_struct.to_string())),
             ])),
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -86,6 +87,7 @@ pub(super) fn extract_typedef_from_declaration(
                 ("underlyingType".to_string(), Value::String(underlying_type)),
             ])),
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -123,6 +125,7 @@ pub(super) fn extract_from_expression_statement(
                             ),
                         ])),
                         doc_comment,
+                        annotations: Vec::new(),
                     },
                 ));
             }

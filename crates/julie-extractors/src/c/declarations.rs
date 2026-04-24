@@ -45,6 +45,7 @@ pub(super) fn extract_include(
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: Some(metadata),
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -80,6 +81,7 @@ pub(super) fn extract_macro(
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: Some(metadata),
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -176,7 +178,6 @@ pub(super) fn extract_function_definition(
         &extractor.base.file_path,
         &SymbolKind::Function,
         &[],
-        &[],
         doc_comment.as_deref(),
     ) {
         metadata.insert("is_test".to_string(), Value::Bool(true));
@@ -196,6 +197,7 @@ pub(super) fn extract_function_definition(
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: Some(metadata),
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -258,6 +260,7 @@ pub(super) fn extract_function_declaration(
                     ),
                 ])),
                 doc_comment,
+                annotations: Vec::new(),
             },
         ),
     )
@@ -325,6 +328,7 @@ pub(super) fn extract_variable_declaration(
                 ),
             ])),
             doc_comment: extractor.base.find_doc_comment(&node),
+            annotations: Vec::new(),
         },
     ))
 }
@@ -358,6 +362,7 @@ pub(super) fn extract_linkage_specification(
                             ("linkage".to_string(), Value::String("C".to_string())),
                         ])),
                         doc_comment,
+                        annotations: Vec::new(),
                     },
                 ));
             }

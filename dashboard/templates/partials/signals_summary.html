@@ -1,0 +1,46 @@
+<div class="julie-card" style="margin-bottom: 1.5rem;">
+  <div style="display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin-bottom: 1rem; flex-wrap: wrap;">
+    <div>
+      <h2 class="subtitle" style="margin-bottom: 0.25rem; font-size: 1rem; color: var(--julie-text);">Workspace Signals</h2>
+      <p style="color: var(--julie-text-muted); font-size: 0.82rem;">
+        {% if report.from_cache %}Cached report{% else %}Fresh report{% endif %}
+      </p>
+    </div>
+    <form method="post"
+          action="/signals/{{ workspace_id }}/refresh"
+          hx-post="/signals/{{ workspace_id }}/refresh"
+          hx-target="#signals-summary"
+          hx-swap="innerHTML">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" class="button is-dark is-small" style="font-size: 0.78rem;">
+        Refresh
+      </button>
+    </form>
+  </div>
+
+  <div class="fingerprint-grid" style="margin-bottom: 1rem;">
+    <div class="fingerprint-card">
+      <p class="stat-value">{{ report.summary.entry_points }}</p>
+      <p class="stat-label">Observed Entry Points</p>
+    </div>
+    <div class="fingerprint-card">
+      <p class="stat-value">{{ report.summary.auth_coverage_candidates }}</p>
+      <p class="stat-label">Auth Coverage Candidates</p>
+    </div>
+    <div class="fingerprint-card">
+      <p class="stat-value">{{ report.summary.review_markers }}</p>
+      <p class="stat-label">Review Markers</p>
+    </div>
+  </div>
+
+  {% set has_signals = report.summary.entry_points > 0 or report.summary.auth_coverage_candidates > 0 or report.summary.review_markers > 0 %}
+  {% if has_signals %}
+    {% include "partials/signals_entry_points.html" %}
+    {% include "partials/signals_auth_gaps.html" %}
+    {% include "partials/signals_review_markers.html" %}
+  {% else %}
+    <p style="color: var(--julie-text-muted); font-size: 0.9rem;">
+      No classified annotation markers were found.
+    </p>
+  {% endif %}
+</div>

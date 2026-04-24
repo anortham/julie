@@ -270,6 +270,7 @@ pub(super) fn extract_record(
         parent_id: parent_id.map(|s| s.to_string()),
         metadata: Some(metadata),
         doc_comment,
+        annotations: Vec::new(),
     };
 
     Some(

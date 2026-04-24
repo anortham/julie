@@ -81,6 +81,7 @@ impl super::RazorExtractor {
                     metadata
                 }),
                 doc_comment: None,
+                annotations: Vec::new(),
             },
         ))
     }
@@ -140,14 +141,13 @@ impl super::RazorExtractor {
             parameters.clone().unwrap_or_else(|| "()".to_string())
         ));
 
-        // Test detection — pass actual attributes for C# attribute detection (e.g. [Fact], [Test])
+        // Test detection uses normalized annotation keys supplied by later extraction tasks.
         let is_test = is_test_symbol(
             "razor",
             &name,
             &self.base.file_path,
             &SymbolKind::Method,
             &[],
-            &attributes,
             None,
         );
 
@@ -191,6 +191,7 @@ impl super::RazorExtractor {
                     metadata
                 }),
                 doc_comment: None,
+                annotations: Vec::new(),
             },
         ))
     }
@@ -290,6 +291,7 @@ impl super::RazorExtractor {
                     metadata
                 }),
                 doc_comment: None,
+                annotations: Vec::new(),
             },
         ))
     }

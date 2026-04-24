@@ -53,6 +53,7 @@ pub(super) fn extract_import(
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: None,
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -130,6 +131,7 @@ pub(super) fn extract_import_command(
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: None,
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -171,6 +173,7 @@ pub(super) fn extract_dot_sourcing(
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: None,
             doc_comment: Some("Dot sourcing script".to_string()),
+            annotations: Vec::new(),
         },
     ))
 }

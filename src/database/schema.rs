@@ -23,6 +23,8 @@ impl SymbolDatabase {
         self.create_files_table()?;
         self.create_indexing_repairs_table()?;
         self.create_symbols_table()?;
+        self.create_symbol_annotations_table()?;
+        self.create_early_warning_reports_table()?;
         self.create_identifiers_table()?; // Reference tracking
         self.create_types_table()?; // Type intelligence
         self.create_relationships_table()?;
@@ -191,6 +193,58 @@ impl SymbolDatabase {
 
         debug!("Created symbols table and indexes");
 
+        Ok(())
+    }
+
+    pub(crate) fn create_symbol_annotations_table(&self) -> Result<()> {
+        self.conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS symbol_annotations (
+                id TEXT PRIMARY KEY,
+                symbol_id TEXT NOT NULL REFERENCES symbols(id) ON DELETE CASCADE,
+                ordinal INTEGER NOT NULL,
+                annotation TEXT NOT NULL,
+                annotation_key TEXT NOT NULL,
+                raw_text TEXT,
+                carrier TEXT,
+                UNIQUE(symbol_id, ordinal)
+            );
+            CREATE INDEX IF NOT EXISTS idx_symbol_annotations_symbol_id
+            ON symbol_annotations(symbol_id);
+            CREATE INDEX IF NOT EXISTS idx_symbol_annotations_annotation_key
+            ON symbol_annotations(annotation_key);
+            CREATE INDEX IF NOT EXISTS idx_symbol_annotations_carrier
+            ON symbol_annotations(carrier);",
+        )?;
+
+        debug!("Created symbol_annotations table and indexes");
+        Ok(())
+    }
+
+    pub(crate) fn create_early_warning_reports_table(&self) -> Result<()> {
+        self.conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS early_warning_reports (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                workspace_id TEXT NOT NULL,
+                canonical_revision INTEGER NOT NULL,
+                projection_revision INTEGER NOT NULL,
+                config_schema_version INTEGER NOT NULL,
+                file_pattern TEXT NOT NULL DEFAULT '',
+                generated_at INTEGER NOT NULL,
+                serialized_json TEXT NOT NULL
+            );
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_early_warning_reports_cache_key
+            ON early_warning_reports(
+                workspace_id,
+                canonical_revision,
+                projection_revision,
+                config_schema_version,
+                file_pattern
+            );
+            CREATE INDEX IF NOT EXISTS idx_early_warning_reports_workspace_generated
+            ON early_warning_reports(workspace_id, generated_at DESC);",
+        )?;
+
+        debug!("Created early_warning_reports table and indexes");
         Ok(())
     }
 

@@ -63,7 +63,10 @@ pub(super) fn extract_variable_annotations(
                         let annotation_text = base.get_node_text(&child);
                         annotations.push(annotation_text.clone());
                         annotation_texts.insert(0, annotation_text);
-                    } else if child.kind() == "variable_statement" || child.kind() == "var" {
+                    } else if matches!(
+                        child.kind(),
+                        "variable_statement" | "constant_statement" | "var" | "const"
+                    ) {
                         break;
                     }
                 }

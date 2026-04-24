@@ -151,6 +151,42 @@ end"#;
     }
 
     #[test]
+    fn test_elixir_module_attributes_persist_on_described_symbols() {
+        let code = r#"defmodule MyApp.Service do
+  @moduledoc "Service API"
+  @behaviour GenServer
+
+  @doc "Starts the service"
+  @spec start_link(keyword()) :: GenServer.on_start()
+  def start_link(opts), do: GenServer.start_link(__MODULE__, opts)
+end"#;
+        let (mut extractor, tree) = create_extractor_and_parse(code);
+        let symbols = extractor.extract_symbols(&tree);
+
+        let module = symbols
+            .iter()
+            .find(|s| s.name == "MyApp.Service" && s.kind == SymbolKind::Module)
+            .expect("Should find module");
+        let module_keys = module
+            .annotations
+            .iter()
+            .map(|annotation| annotation.annotation_key.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(module_keys, vec!["moduledoc", "behaviour"]);
+
+        let start_link = symbols
+            .iter()
+            .find(|s| s.name == "start_link" && s.kind == SymbolKind::Function)
+            .expect("Should find annotated function");
+        let function_keys = start_link
+            .annotations
+            .iter()
+            .map(|annotation| annotation.annotation_key.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(function_keys, vec!["doc", "spec"]);
+    }
+
+    #[test]
     fn test_elixir_def_defp_visibility() {
         let code = r#"defmodule Foo do
   def public_fn(x), do: x

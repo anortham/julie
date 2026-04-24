@@ -1,6 +1,9 @@
 // PHP Extractor - Type extraction (classes, interfaces, traits, enums)
 
-use super::{PhpExtractor, determine_visibility, extract_modifiers, find_child, find_child_text};
+use super::{
+    PhpExtractor, determine_visibility, extract_modifiers, find_child, find_child_text,
+    functions::extract_attribute_markers,
+};
 use crate::base::{Symbol, SymbolKind, SymbolOptions, Visibility};
 use std::collections::HashMap;
 use tree_sitter::Node;
@@ -14,6 +17,7 @@ pub(super) fn extract_class(
     let name = find_child_text(extractor, &node, "name")?;
 
     let modifiers = extract_modifiers(extractor, &node);
+    let annotations = extract_attribute_markers(extractor, &node);
     let extends_node = find_child(extractor, &node, "base_clause");
     let implements_node = find_child(extractor, &node, "class_interface_clause");
     let attribute_list = find_child(extractor, &node, "attribute_list");
@@ -105,6 +109,7 @@ pub(super) fn extract_class(
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: Some(metadata),
             doc_comment,
+            annotations,
         },
     ))
 }
@@ -117,6 +122,7 @@ pub(super) fn extract_interface(
 ) -> Option<Symbol> {
     let name = find_child_text(extractor, &node, "name")?;
 
+    let annotations = extract_attribute_markers(extractor, &node);
     let extends_node = find_child(extractor, &node, "base_clause");
     let mut signature = format!("interface {}", name);
 
@@ -155,6 +161,7 @@ pub(super) fn extract_interface(
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: Some(metadata),
             doc_comment,
+            annotations,
         },
     ))
 }
@@ -166,6 +173,7 @@ pub(super) fn extract_trait(
     parent_id: Option<&str>,
 ) -> Option<Symbol> {
     let name = find_child_text(extractor, &node, "name")?;
+    let annotations = extract_attribute_markers(extractor, &node);
 
     let mut metadata = HashMap::new();
     metadata.insert(
@@ -186,6 +194,7 @@ pub(super) fn extract_trait(
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: Some(metadata),
             doc_comment,
+            annotations,
         },
     ))
 }
@@ -197,6 +206,7 @@ pub(super) fn extract_enum(
     parent_id: Option<&str>,
 ) -> Option<Symbol> {
     let name = find_child_text(extractor, &node, "name")?;
+    let annotations = extract_attribute_markers(extractor, &node);
 
     // Check for backing type (e.g., enum Status: string)
     let backing_type = find_backing_type(extractor, &node);
@@ -243,6 +253,7 @@ pub(super) fn extract_enum(
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: Some(metadata),
             doc_comment,
+            annotations,
         },
     ))
 }
@@ -255,6 +266,7 @@ pub(super) fn extract_enum_case(
 ) -> Option<Symbol> {
     let name_node = find_child(extractor, &node, "name")?;
     let case_name = extractor.get_base().get_node_text(&name_node);
+    let annotations = extract_attribute_markers(extractor, &node);
 
     // Check for value assignment (e.g., case PENDING = 'pending')
     let mut value = None;
@@ -303,6 +315,7 @@ pub(super) fn extract_enum_case(
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: Some(metadata),
             doc_comment,
+            annotations,
         },
     ))
 }
@@ -321,6 +334,7 @@ pub(super) fn extract_anonymous_class(
     // Generate a name based on line number for uniqueness.
     let line = node.start_position().row + 1;
     let name = format!("anonymous_class_L{}", line);
+    let annotations = extract_attribute_markers(extractor, &node);
 
     let extends_node = find_child(extractor, &node, "base_clause");
     let implements_node = find_child(extractor, &node, "class_interface_clause");
@@ -379,6 +393,7 @@ pub(super) fn extract_anonymous_class(
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: Some(metadata),
             doc_comment,
+            annotations,
         },
     ))
 }

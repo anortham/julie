@@ -152,6 +152,7 @@ pub fn extract_class(
         parent_id,
         metadata: Some(metadata),
         doc_comment,
+        annotations: Vec::new(),
     };
 
     Some(base.create_symbol(&node, name, SymbolKind::Class, options))

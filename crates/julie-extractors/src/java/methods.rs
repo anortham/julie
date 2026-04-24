@@ -19,6 +19,11 @@ pub(super) fn extract_method(
 
     let name = extractor.base().get_node_text(&name_node);
     let modifiers = helpers::extract_modifiers(extractor.base(), node);
+    let annotations = helpers::extract_annotations(extractor.base(), node);
+    let annotation_keys: Vec<String> = annotations
+        .iter()
+        .map(|annotation| annotation.annotation_key.clone())
+        .collect();
     let visibility = helpers::determine_visibility(&modifiers);
 
     // Get return type (comes before the method name in the AST)
@@ -75,21 +80,13 @@ pub(super) fn extract_method(
     // Extract JavaDoc comment
     let doc_comment = extractor.base().find_doc_comment(&node);
 
-    // Extract annotations for test detection (modifiers starting with '@')
-    let annotations: Vec<String> = modifiers
-        .iter()
-        .filter(|m| m.starts_with('@'))
-        .map(|m| m.strip_prefix('@').unwrap_or(m).to_string())
-        .collect();
-
     let mut metadata = HashMap::new();
     if is_test_symbol(
         "java",
         &name,
         &extractor.base().file_path,
         &SymbolKind::Method,
-        &annotations,
-        &[],
+        &annotation_keys,
         doc_comment.as_deref(),
     ) {
         metadata.insert("is_test".to_string(), serde_json::Value::Bool(true));
@@ -105,6 +102,7 @@ pub(super) fn extract_method(
         } else {
             Some(metadata)
         },
+        annotations,
         ..Default::default()
     };
 
@@ -127,6 +125,11 @@ pub(super) fn extract_constructor(
 
     let name = extractor.base().get_node_text(&name_node);
     let modifiers = helpers::extract_modifiers(extractor.base(), node);
+    let annotations = helpers::extract_annotations(extractor.base(), node);
+    let annotation_keys: Vec<String> = annotations
+        .iter()
+        .map(|annotation| annotation.annotation_key.clone())
+        .collect();
     let visibility = helpers::determine_visibility(&modifiers);
 
     // Get parameters
@@ -148,21 +151,13 @@ pub(super) fn extract_constructor(
     // Extract JavaDoc comment
     let doc_comment = extractor.base().find_doc_comment(&node);
 
-    // Extract annotations for test detection
-    let annotations: Vec<String> = modifiers
-        .iter()
-        .filter(|m| m.starts_with('@'))
-        .map(|m| m.strip_prefix('@').unwrap_or(m).to_string())
-        .collect();
-
     let mut metadata = HashMap::new();
     if is_test_symbol(
         "java",
         &name,
         &extractor.base().file_path,
         &SymbolKind::Constructor,
-        &annotations,
-        &[],
+        &annotation_keys,
         doc_comment.as_deref(),
     ) {
         metadata.insert("is_test".to_string(), serde_json::Value::Bool(true));
@@ -178,6 +173,7 @@ pub(super) fn extract_constructor(
         } else {
             Some(metadata)
         },
+        annotations,
         ..Default::default()
     };
 

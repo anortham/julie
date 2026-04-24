@@ -13,7 +13,7 @@ fn get_unix_timestamp() -> Result<i64> {
 }
 
 /// Current schema version - increment when adding migrations
-pub const LATEST_SCHEMA_VERSION: i32 = 19;
+pub const LATEST_SCHEMA_VERSION: i32 = 21;
 
 impl SymbolDatabase {
     // ============================================================
@@ -115,6 +115,8 @@ impl SymbolDatabase {
             17 => self.migration_017_add_projection_states()?,
             18 => self.migration_018_add_projected_revision_to_projection_states()?,
             19 => self.migration_019_add_revision_file_changes()?,
+            20 => self.migration_020_add_symbol_annotations()?,
+            21 => self.migration_021_add_early_warning_reports()?,
             _ => return Err(anyhow!("Unknown migration version: {}", version)),
         }
         Ok(())
@@ -142,6 +144,8 @@ impl SymbolDatabase {
             17 => "Add projection_states table",
             18 => "Add projected_revision to projection_states",
             19 => "Add revision_file_changes table",
+            20 => "Add symbol_annotations table",
+            21 => "Add early_warning_reports table",
             _ => "Unknown migration",
         };
 
@@ -898,6 +902,24 @@ impl SymbolDatabase {
         )?;
 
         info!("Migration 019 complete: revision_file_changes table added");
+        Ok(())
+    }
+
+    fn migration_020_add_symbol_annotations(&self) -> Result<()> {
+        info!("Running migration 020: Add symbol_annotations table");
+
+        self.create_symbol_annotations_table()?;
+
+        info!("Migration 020 complete: symbol_annotations table added");
+        Ok(())
+    }
+
+    fn migration_021_add_early_warning_reports(&self) -> Result<()> {
+        info!("Running migration 021: Add early_warning_reports table");
+
+        self.create_early_warning_reports_table()?;
+
+        info!("Migration 021 complete: early_warning_reports table added");
         Ok(())
     }
 }

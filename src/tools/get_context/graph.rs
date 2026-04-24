@@ -53,6 +53,7 @@ pub fn expand_graph(pivots: &[Pivot], db: &SymbolDatabase) -> Result<GraphExpans
             confidence: None,
             code_context: None,
             content_type: None,
+            annotations: Vec::new(),
         })
         .collect();
     expand_graph_from_symbols(&pivot_symbols, db)

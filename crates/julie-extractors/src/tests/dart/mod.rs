@@ -21,6 +21,16 @@ fn init_parser() -> Parser {
     parser
 }
 
+fn tree_contains_kind(node: tree_sitter::Node, kind: &str) -> bool {
+    if node.kind() == kind {
+        return true;
+    }
+
+    let mut cursor = node.walk();
+    node.children(&mut cursor)
+        .any(|child| tree_contains_kind(child, kind))
+}
+
 #[cfg(test)]
 mod dart_extractor_tests {
     use super::*;
@@ -1620,6 +1630,16 @@ Future<String> riskyOperation() async {
         fn test_extract_annotations_and_metadata() {
             let code = r#"
 // Built-in annotations
+@isTest
+void annotatedSpec() {
+  print('Runs as a test');
+}
+
+@pragma('vm:entry-point')
+void entryPoint() {
+  print('Entry');
+}
+
 @deprecated
 @override
 void oldMethod() {
@@ -1642,6 +1662,9 @@ class User {
     required this.userName,
     required this.password,
   });
+
+  @override
+  String toString() => name;
 
   @JsonSerializable()
   factory User.fromJson(Map<String, dynamic> json) => _$UserFromJson(json);
@@ -1716,6 +1739,10 @@ class UserService {
 
             let mut parser = init_parser();
             let tree = parser.parse(code, None).unwrap();
+            assert!(
+                tree_contains_kind(tree.root_node(), "annotation"),
+                "Dart grammar must expose annotation nodes"
+            );
 
             let workspace_root = PathBuf::from("/tmp/test");
             let mut extractor = DartExtractor::new(
@@ -1728,6 +1755,24 @@ class UserService {
             let symbols = extractor.extract_symbols(&tree);
 
             // Test annotated functions
+            let annotated_spec = symbols.iter().find(|s| s.name == "annotatedSpec");
+            assert!(annotated_spec.is_some());
+            let annotated_spec = annotated_spec.unwrap();
+            assert_eq!(annotated_spec.annotations[0].annotation, "isTest");
+            assert_eq!(annotated_spec.annotations[0].annotation_key, "istest");
+            assert_eq!(
+                annotated_spec
+                    .metadata
+                    .as_ref()
+                    .and_then(|metadata| metadata.get("is_test"))
+                    .and_then(|value| value.as_bool()),
+                Some(true)
+            );
+
+            let entry_point = symbols.iter().find(|s| s.name == "entryPoint");
+            assert!(entry_point.is_some());
+            assert_eq!(entry_point.unwrap().annotations[0].annotation_key, "pragma");
+
             let old_method = symbols.iter().find(|s| s.name == "oldMethod");
             assert!(old_method.is_some());
 
@@ -1735,6 +1780,10 @@ class UserService {
             let user = symbols.iter().find(|s| s.name == "User");
             assert!(user.is_some());
             assert_eq!(user.unwrap().kind, SymbolKind::Class);
+
+            let to_string = symbols.iter().find(|s| s.name == "toString");
+            assert!(to_string.is_some());
+            assert_eq!(to_string.unwrap().annotations[0].annotation_key, "override");
 
             // Test custom annotation class
             let todo = symbols.iter().find(|s| s.name == "Todo");

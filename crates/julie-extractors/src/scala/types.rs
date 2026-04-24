@@ -66,6 +66,7 @@ pub(super) fn extract_class(
                 ("modifiers".to_string(), Value::String(modifiers.join(","))),
             ])),
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -122,6 +123,7 @@ pub(super) fn extract_trait(
                 ("modifiers".to_string(), Value::String(modifiers.join(","))),
             ])),
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -189,6 +191,7 @@ pub(super) fn extract_object(
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: Some(metadata),
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -228,6 +231,7 @@ pub(super) fn extract_enum(
                 ("modifiers".to_string(), Value::String(modifiers.join(","))),
             ])),
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -261,6 +265,7 @@ pub(super) fn extract_enum_case(
                 Value::String("enum-member".to_string()),
             )])),
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }

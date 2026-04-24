@@ -49,6 +49,7 @@ pub(super) fn extract_pattern(
             parent_id,
             metadata: Some(metadata),
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -83,6 +84,7 @@ pub(super) fn extract_character_class(
             parent_id,
             metadata: Some(metadata),
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -121,6 +123,7 @@ pub(super) fn extract_group(
             parent_id,
             metadata: Some(metadata),
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -162,6 +165,7 @@ pub(super) fn extract_lookaround(
             parent_id,
             metadata: Some(metadata),
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -194,6 +198,7 @@ pub(super) fn extract_unicode_property(
             parent_id,
             metadata: Some(metadata),
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -226,6 +231,7 @@ pub(super) fn extract_conditional(
             parent_id,
             metadata: Some(metadata),
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }

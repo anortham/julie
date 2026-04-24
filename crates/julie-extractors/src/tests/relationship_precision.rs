@@ -140,6 +140,7 @@ fn test_structured_pending_relationships_survive_extend_offset_and_rekey() {
                 confidence: None,
                 code_context: None,
                 content_type: None,
+                annotations: Vec::new(),
             },
             Symbol {
                 id: old_scope_id.clone(),
@@ -162,6 +163,7 @@ fn test_structured_pending_relationships_survive_extend_offset_and_rekey() {
                 confidence: None,
                 code_context: None,
                 content_type: None,
+                annotations: Vec::new(),
             },
         ],
         relationships: Vec::new(),

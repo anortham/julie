@@ -583,6 +583,7 @@ fn processPayment() {
             confidence: None,
             code_context: None,
             content_type: None,
+            annotations: Vec::new(),
         };
         first_db.bulk_store_fresh_atomic(&[first_file], &[first_symbol], &[], &[], &[], ref_id)?;
 
@@ -638,6 +639,7 @@ fn processPayment() {
                 confidence: None,
                 code_context: None,
                 content_type: None,
+                annotations: Vec::new(),
             },
             Symbol {
                 id: "gamma-id".to_string(),
@@ -660,6 +662,7 @@ fn processPayment() {
                 confidence: None,
                 code_context: None,
                 content_type: None,
+                annotations: Vec::new(),
             },
         ];
         second_db.bulk_store_fresh_atomic(
@@ -843,6 +846,7 @@ fn processPayment() {
             confidence: None,
             code_context: None,
             content_type: None,
+            annotations: Vec::new(),
         };
         reference_db.bulk_store_fresh_atomic(
             &[reference_file],
@@ -1718,6 +1722,7 @@ fn test_authenticate_user() {
                 confidence: None,
                 code_context: Some("pub fn rebound_search_symbol() {}".to_string()),
                 content_type: None,
+                annotations: Vec::new(),
             };
             rebound_db.bulk_store_fresh_atomic(
                 &[file_info],

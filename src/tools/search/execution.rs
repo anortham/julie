@@ -348,9 +348,11 @@ async fn execute_file_search(
         };
 
         total_results += filtered_results.len();
-        hits.extend(filtered_results.into_iter().map(|result| {
-            SearchHit::from_file_result(result, workspace.workspace_id.clone())
-        }));
+        hits.extend(
+            filtered_results
+                .into_iter()
+                .map(|result| SearchHit::from_file_result(result, workspace.workspace_id.clone())),
+        );
     }
 
     sort_file_hits(&mut hits);

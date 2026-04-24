@@ -4,7 +4,7 @@
 //! modifiers, and abstract classes.
 
 use super::helpers;
-use crate::base::{Symbol, SymbolKind, SymbolOptions};
+use crate::base::{Symbol, SymbolKind, SymbolOptions, normalize_annotations};
 use crate::typescript::TypeScriptExtractor;
 use std::collections::HashMap;
 use tree_sitter::Node;
@@ -76,6 +76,8 @@ pub(super) fn extract_class(extractor: &mut TypeScriptExtractor, node: Node) -> 
     // Extract decorators from child nodes
     let content = extractor.base().content.clone();
     let decorators = helpers::extract_decorator_names(node, &content);
+    let decorator_texts = helpers::extract_decorator_texts(node, &content);
+    let annotations = normalize_annotations(&decorator_texts, "typescript");
 
     // Build signature
     let mut signature = String::new();
@@ -105,6 +107,7 @@ pub(super) fn extract_class(extractor: &mut TypeScriptExtractor, node: Node) -> 
             parent_id: None,
             metadata: Some(metadata),
             doc_comment,
+            annotations,
         },
     ))
 }

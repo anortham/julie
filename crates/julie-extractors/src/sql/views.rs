@@ -112,6 +112,7 @@ impl SqlExtractor {
                             parent_id: parent_id.map(|s| s.to_string()),
                             doc_comment: None,
                             metadata: Some(metadata),
+                            annotations: Vec::new(),
                         };
 
                         let alias_symbol =
@@ -239,6 +240,7 @@ impl SqlExtractor {
                 parent_id: Some(parent_view_id.to_string()),
                 doc_comment: None,
                 metadata: Some(metadata),
+                annotations: Vec::new(),
             };
 
             let alias_symbol =
@@ -274,6 +276,7 @@ pub(super) fn extract_views_from_error(
                 parent_id: parent_id.map(|s| s.to_string()),
                 doc_comment: None,
                 metadata: Some(metadata),
+                annotations: Vec::new(),
             };
 
             let view_symbol =

@@ -10,6 +10,9 @@ use tree_sitter::Node;
 static PARAMETER_ATTR_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\[Parameter[^\]]*\]").unwrap());
 
+/// Matches a PowerShell `param(...)` block opener.
+static PARAM_BLOCK_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)\bparam\s*\(").unwrap());
+
 /// Matches inheritance declaration: `: ClassName`
 static INHERITANCE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r":\s*(\w+)").unwrap());
 
@@ -156,6 +159,167 @@ pub(super) fn extract_parameter_attributes(base: &BaseExtractor, node: Node) -> 
     } else {
         String::new()
     }
+}
+
+pub(super) fn extract_command_annotation_attributes(
+    base: &BaseExtractor,
+    node: Node,
+) -> Vec<String> {
+    let node_text = base.get_node_text(&node);
+    let prefix = match find_param_keyword(&node_text) {
+        Some(index) => &node_text[..index],
+        None => node_text.as_str(),
+    };
+
+    extract_non_type_bracket_attributes(prefix)
+}
+
+pub(super) fn extract_parameter_annotation_attributes(
+    base: &BaseExtractor,
+    node: Node,
+) -> Vec<String> {
+    let node_text = base.get_node_text(&node);
+    extract_non_type_bracket_attributes(&node_text)
+}
+
+fn find_param_keyword(text: &str) -> Option<usize> {
+    PARAM_BLOCK_RE.find(text).map(|m| m.start())
+}
+
+fn extract_non_type_bracket_attributes(text: &str) -> Vec<String> {
+    extract_bracket_segments(text)
+        .into_iter()
+        .filter(|segment| !is_type_annotation_bracket(segment))
+        .collect()
+}
+
+fn extract_bracket_segments(text: &str) -> Vec<String> {
+    let mut segments = Vec::new();
+    let mut start = None;
+    let mut depth = 0usize;
+    let mut quote = None;
+    let mut previous_was_escape = false;
+
+    for (index, ch) in text.char_indices() {
+        if update_quote_state(ch, &mut quote, &mut previous_was_escape) {
+            continue;
+        }
+        if quote.is_some() {
+            continue;
+        }
+
+        match ch {
+            '[' => {
+                if depth == 0 {
+                    start = Some(index);
+                }
+                depth += 1;
+            }
+            ']' if depth > 0 => {
+                depth -= 1;
+                if depth == 0 {
+                    if let Some(start_index) = start.take() {
+                        segments.push(text[start_index..index + ch.len_utf8()].to_string());
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    segments
+}
+
+fn update_quote_state(ch: char, quote: &mut Option<char>, previous_was_escape: &mut bool) -> bool {
+    if let Some(active_quote) = *quote {
+        if *previous_was_escape {
+            *previous_was_escape = false;
+            return true;
+        }
+        if ch == '`' || ch == '\\' {
+            *previous_was_escape = true;
+            return true;
+        }
+        if ch == active_quote {
+            *quote = None;
+            return true;
+        }
+        return true;
+    }
+
+    if matches!(ch, '\'' | '"') {
+        *quote = Some(ch);
+        return true;
+    }
+
+    false
+}
+
+fn is_type_annotation_bracket(segment: &str) -> bool {
+    let inner = segment
+        .trim()
+        .strip_prefix('[')
+        .and_then(|value| value.strip_suffix(']'))
+        .map(str::trim)
+        .unwrap_or(segment.trim());
+
+    if inner.is_empty() {
+        return false;
+    }
+
+    let name = inner
+        .split_once('(')
+        .map(|(name, _)| name)
+        .unwrap_or(inner)
+        .trim();
+
+    if is_known_attribute_name(name) {
+        return false;
+    }
+
+    if inner.contains('(') || inner.contains('=') || inner.contains(',') {
+        return false;
+    }
+
+    inner
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '.' | '[' | ']'))
+}
+
+fn is_known_attribute_name(name: &str) -> bool {
+    let key = name
+        .rsplit(['.', '\\'])
+        .next()
+        .unwrap_or(name)
+        .trim()
+        .trim_end_matches("Attribute")
+        .to_ascii_lowercase();
+
+    matches!(
+        key.as_str(),
+        "alias"
+            | "allowemptycollection"
+            | "allowemptystring"
+            | "allownull"
+            | "argumentcompleter"
+            | "argumenttransformation"
+            | "cmdletbinding"
+            | "credential"
+            | "outputtype"
+            | "parameter"
+            | "psdefaultvalue"
+            | "supportswildcards"
+            | "validatescript"
+            | "validateset"
+            | "validaterange"
+            | "validatepattern"
+            | "validatelength"
+            | "validatecount"
+            | "validatenotnull"
+            | "validatenotnullorempty"
+            | "validatedrive"
+            | "validateuserdrive"
+    )
 }
 
 /// Extract inheritance relationship from a class definition

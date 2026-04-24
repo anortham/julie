@@ -135,25 +135,26 @@ mod tests {
     fn test_exact_test_name_match_overcomes_test_penalty() {
         let test_result = make_result_with_kind_and_path(
             "t1",
-            "test_compute_security_risk",
+            "test_compute_change_risk_scores",
             "function",
-            "src/tests/analysis/security_risk_tests.rs",
+            "src/tests/analysis/change_risk_tests.rs",
             0.9,
         );
         let prod_result = make_result_with_kind_and_path(
             "p1",
-            "compute_security_risk",
+            "compute_change_risk_scores",
             "function",
-            "src/analysis/security_risk.rs",
+            "src/analysis/change_risk.rs",
             0.8,
         );
         let results = vec![test_result, prod_result];
         let ref_scores = HashMap::new();
 
-        let pivots = select_pivots_for_query("test_compute_security_risk", results, &ref_scores);
+        let pivots =
+            select_pivots_for_query("test_compute_change_risk_scores", results, &ref_scores);
         assert!(!pivots.is_empty());
         assert_eq!(
-            pivots[0].result.name, "test_compute_security_risk",
+            pivots[0].result.name, "test_compute_change_risk_scores",
             "exact test-name match should rank first despite TEST_FILE_PENALTY"
         );
     }

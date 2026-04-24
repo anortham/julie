@@ -79,6 +79,7 @@ impl CSharpExtractor {
             confidence: Some(1.0),
             code_context: None,
             content_type: None,
+            annotations: Vec::new(),
         };
 
         self.base

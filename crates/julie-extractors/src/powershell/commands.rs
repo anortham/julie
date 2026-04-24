@@ -83,6 +83,7 @@ pub(super) fn extract_command(
                 parent_id: parent_id.map(|s| s.to_string()),
                 metadata: None,
                 doc_comment: Some(doc_comment),
+                annotations: Vec::new(),
             },
         ))
     } else {
@@ -132,6 +133,7 @@ pub(super) fn extract_dsc_configuration(
                         parent_id: parent_id.map(|s| s.to_string()),
                         metadata: None,
                         doc_comment,
+                        annotations: Vec::new(),
                     },
                 ));
             }

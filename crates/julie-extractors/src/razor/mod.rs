@@ -178,6 +178,7 @@ impl RazorExtractor {
                         parent_id: parent_id.map(|s| s.to_string()),
                         metadata: None,
                         doc_comment: None,
+                        annotations: Vec::new(),
                     },
                 );
                 symbols.push(symbol);
@@ -198,6 +199,7 @@ impl RazorExtractor {
                         parent_id: parent_id.map(|s| s.to_string()),
                         metadata: None,
                         doc_comment: None,
+                        annotations: Vec::new(),
                     },
                 );
                 symbols.push(symbol);

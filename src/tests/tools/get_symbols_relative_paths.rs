@@ -279,6 +279,7 @@ async fn test_get_symbols_relative_path_uses_rebound_current_primary_root() -> R
             confidence: None,
             code_context: None,
             content_type: None,
+            annotations: Vec::new(),
         };
         rebound_db.bulk_store_fresh_atomic(&[file_info], &[symbol], &[], &[], &[], &rebound_id)?;
     }
@@ -400,6 +401,7 @@ async fn test_get_symbols_primary_uses_rebound_current_primary_root() -> Result<
             confidence: None,
             code_context: None,
             content_type: None,
+            annotations: Vec::new(),
         };
         rebound_db.bulk_store_fresh_atomic(&[file_info], &[symbol], &[], &[], &[], &rebound_id)?;
     }
@@ -498,6 +500,7 @@ async fn test_get_symbols_primary_wrapper_resolves_roots_before_reading() -> Res
             confidence: None,
             code_context: Some("pub fn rebound_primary_symbol() {}".to_string()),
             content_type: None,
+            annotations: Vec::new(),
         };
         rebound_db.bulk_store_fresh_atomic(&[file_info], &[symbol], &[], &[], &[], &roots_id)?;
     }

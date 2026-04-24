@@ -1,25 +1,21 @@
 // Symbol storage and deletion operations
 
+use super::super::helpers::SYMBOL_UPSERT_SQL;
 use super::super::*;
+use super::annotations::{delete_annotations_for_file, replace_annotations_batch};
 use anyhow::Result;
 use rusqlite::params;
 use tracing::debug;
 
 impl SymbolDatabase {
-    /// Store symbols within an existing transaction.
-    ///
-    /// This function is intentionally non-transactional: it issues individual
-    /// INSERT OR REPLACE statements without wrapping them in a transaction.
-    /// Callers are responsible for transaction management (the file watcher and
-    /// bulk operations both manage their own transactions around calls here).
-    /// Use `store_symbols_transactional` for one-off storage without an
-    /// existing transaction.
+    /// Store symbols and annotation rows atomically.
     pub fn store_symbols(&mut self, symbols: &[Symbol]) -> Result<()> {
         if symbols.is_empty() {
             return Ok(());
         }
 
         debug!("Storing {} symbols", symbols.len());
+        let tx = self.conn.transaction()?;
 
         for symbol in symbols {
             let metadata_json = symbol
@@ -43,12 +39,8 @@ impl SymbolDatabase {
                 );
             }
 
-            self.conn.execute(
-                "INSERT OR REPLACE INTO symbols
-                 (id, name, kind, language, file_path, signature, start_line, start_col,
-                  end_line, end_col, start_byte, end_byte, doc_comment, visibility, code_context,
-                  parent_id, metadata, semantic_group, confidence, content_type)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
+            tx.execute(
+                SYMBOL_UPSERT_SQL,
                 params![
                     symbol.id,
                     symbol.name,
@@ -74,6 +66,8 @@ impl SymbolDatabase {
             )?;
         }
 
+        replace_annotations_batch(&tx, symbols)?;
+        tx.commit()?;
         debug!("Successfully stored {} symbols", symbols.len());
         Ok(())
     }
@@ -104,11 +98,7 @@ impl SymbolDatabase {
             });
 
             tx.execute(
-                "INSERT OR REPLACE INTO symbols
-                 (id, name, kind, language, file_path, signature, start_line, start_col,
-                  end_line, end_col, start_byte, end_byte, doc_comment, visibility, code_context,
-                  parent_id, metadata, semantic_group, confidence, content_type)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
+                SYMBOL_UPSERT_SQL,
                 params![
                     symbol.id,
                     symbol.name,
@@ -134,6 +124,7 @@ impl SymbolDatabase {
             )?;
         }
 
+        replace_annotations_batch(&tx, symbols)?;
         tx.commit()?;
         debug!(
             "Successfully stored {} symbols (transaction committed)",
@@ -143,6 +134,7 @@ impl SymbolDatabase {
     }
 
     pub fn delete_symbols_for_file(&self, file_path: &str) -> Result<()> {
+        delete_annotations_for_file(&self.conn, file_path)?;
         self.conn.execute(
             "DELETE FROM symbols WHERE file_path = ?1",
             params![file_path],
@@ -151,6 +143,7 @@ impl SymbolDatabase {
     }
 
     pub fn delete_symbols_for_file_in_workspace(&self, file_path: &str) -> Result<()> {
+        delete_annotations_for_file(&self.conn, file_path)?;
         let count = self.conn.execute(
             "DELETE FROM symbols WHERE file_path = ?1",
             params![file_path],

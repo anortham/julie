@@ -110,6 +110,7 @@ pub(super) fn extract_class(
                 ),
             ])),
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -161,6 +162,7 @@ pub(super) fn extract_interface(
                 ("modifiers".to_string(), Value::String(modifiers.join(","))),
             ])),
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -207,6 +209,7 @@ pub(super) fn extract_object(
                 ("modifiers".to_string(), Value::String(modifiers.join(","))),
             ])),
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -248,6 +251,7 @@ pub(super) fn extract_companion_object(
                 Value::String("companion-object".to_string()),
             )])),
             doc_comment,
+            annotations: Vec::new(),
         },
     )
 }
@@ -293,6 +297,7 @@ pub(super) fn extract_enum_members(
                             Value::String("enum-member".to_string()),
                         )])),
                         doc_comment,
+                        annotations: Vec::new(),
                     },
                 );
                 symbols.push(symbol);

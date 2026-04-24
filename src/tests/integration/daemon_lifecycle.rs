@@ -701,12 +701,12 @@ mod tests {
                 [],
             )?;
 
-            // Symbol with HIGH security risk
+            // Symbol with metadata used by snapshot aggregation
             db.conn.execute(
                 "INSERT INTO symbols
                  (id, name, kind, file_path, start_line, end_line, start_col, end_col, language, metadata)
                  VALUES ('s1', 'risky_op', 'Function', 'src/lib.rs', 1, 10, 0, 0, 'rust',
-                 '{\"security_risk\":{\"label\":\"HIGH\",\"score\":0.92}}')",
+                 '{\"change_risk\":{\"label\":\"HIGH\",\"score\":0.92}}')",
                 [],
             )?;
 

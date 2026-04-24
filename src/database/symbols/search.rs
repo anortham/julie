@@ -2,6 +2,7 @@
 
 use super::super::helpers::SYMBOL_COLUMNS;
 use super::super::*;
+use super::annotations::hydrate_annotations_for_symbols;
 use anyhow::{Result, anyhow};
 use tracing::debug;
 
@@ -20,6 +21,7 @@ impl SymbolDatabase {
             symbols.push(row_result?);
         }
 
+        hydrate_annotations_for_symbols(self, &mut symbols)?;
         Ok(symbols)
     }
 
@@ -40,6 +42,7 @@ impl SymbolDatabase {
             symbols.push(row_result?);
         }
 
+        hydrate_annotations_for_symbols(self, &mut symbols)?;
         debug!(
             "Retrieved {} symbols from database for SearchEngine",
             symbols.len()
@@ -63,6 +66,7 @@ impl SymbolDatabase {
             symbols.push(row_result?);
         }
 
+        hydrate_annotations_for_symbols(self, &mut symbols)?;
         debug!(
             "Retrieved {} symbols with name '{}' from database",
             symbols.len(),
@@ -87,6 +91,7 @@ impl SymbolDatabase {
             symbols.push(row_result?);
         }
 
+        hydrate_annotations_for_symbols(self, &mut symbols)?;
         debug!(
             "Retrieved {} symbols with exact name '{}'",
             symbols.len(),
@@ -115,6 +120,7 @@ impl SymbolDatabase {
             symbols.push(row_result?);
         }
 
+        hydrate_annotations_for_symbols(self, &mut symbols)?;
         debug!(
             "Retrieved {} symbols for workspace '{}' from database",
             symbols.len(),
@@ -146,6 +152,7 @@ impl SymbolDatabase {
             symbols.push(row_result?);
         }
 
+        hydrate_annotations_for_symbols(self, &mut symbols)?;
         debug!(
             "Retrieved batch of {} symbols (offset: {}, limit: {}) for workspace '{}'",
             symbols.len(),
@@ -241,6 +248,7 @@ impl SymbolDatabase {
             }
         }
 
+        hydrate_annotations_for_symbols(self, &mut symbols)?;
         Ok(symbols)
     }
 
@@ -305,6 +313,7 @@ impl SymbolDatabase {
             }
         }
 
+        hydrate_annotations_for_symbols(self, &mut symbols)?;
         debug!(
             "find_definitions_by_name_component('{}', lang={:?}) → {} results",
             name,
@@ -356,6 +365,7 @@ impl SymbolDatabase {
             symbols.push(row?);
         }
 
+        hydrate_annotations_for_symbols(self, &mut symbols)?;
         Ok(symbols)
     }
 
@@ -375,6 +385,7 @@ impl SymbolDatabase {
             symbols.push(row?);
         }
 
+        hydrate_annotations_for_symbols(self, &mut symbols)?;
         Ok(symbols)
     }
 

@@ -160,6 +160,110 @@ namespace MyProject
     }
 
     #[test]
+    fn test_csharp_attribute_markers_expand_multi_attribute_lists_and_mark_tests() {
+        let code = r#"
+namespace MyProject.Tests
+{
+    public class UserTests
+    {
+        [Fact, Trait("Category", "Fast"), CustomAttribute]
+        public void HandlesFact()
+        {
+        }
+
+        [Theory]
+        [InlineData(1)]
+        public void HandlesTheory(int value)
+        {
+        }
+
+        [TestMethod]
+        public void HandlesMsTest()
+        {
+        }
+    }
+}
+"#;
+
+        let mut parser = init_parser();
+        let tree = parser.parse(code, None).unwrap();
+
+        let workspace_root = PathBuf::from("/tmp/test");
+        let mut extractor = CSharpExtractor::new(
+            "c_sharp".to_string(),
+            "test.cs".to_string(),
+            code.to_string(),
+            &workspace_root,
+        );
+
+        let symbols = extractor.extract_symbols(&tree);
+
+        let handles_fact = symbols
+            .iter()
+            .find(|s| s.name == "HandlesFact")
+            .expect("Fact method should be extracted");
+        let fact_keys: Vec<_> = handles_fact
+            .annotations
+            .iter()
+            .map(|annotation| annotation.annotation_key.as_str())
+            .collect();
+        assert_eq!(fact_keys, vec!["fact", "trait", "custom"]);
+        assert_eq!(
+            handles_fact
+                .metadata
+                .as_ref()
+                .and_then(|metadata| metadata.get("is_test"))
+                .and_then(|value| value.as_bool()),
+            Some(true)
+        );
+        assert!(
+            handles_fact
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("[Fact, Trait")
+        );
+
+        let handles_theory = symbols
+            .iter()
+            .find(|s| s.name == "HandlesTheory")
+            .expect("Theory method should be extracted");
+        let theory_keys: Vec<_> = handles_theory
+            .annotations
+            .iter()
+            .map(|annotation| annotation.annotation_key.as_str())
+            .collect();
+        assert_eq!(theory_keys, vec!["theory", "inlinedata"]);
+        assert_eq!(
+            handles_theory
+                .metadata
+                .as_ref()
+                .and_then(|metadata| metadata.get("is_test"))
+                .and_then(|value| value.as_bool()),
+            Some(true)
+        );
+
+        let handles_ms_test = symbols
+            .iter()
+            .find(|s| s.name == "HandlesMsTest")
+            .expect("MSTest method should be extracted");
+        let ms_test_keys: Vec<_> = handles_ms_test
+            .annotations
+            .iter()
+            .map(|annotation| annotation.annotation_key.as_str())
+            .collect();
+        assert_eq!(ms_test_keys, vec!["testmethod"]);
+        assert_eq!(
+            handles_ms_test
+                .metadata
+                .as_ref()
+                .and_then(|metadata| metadata.get("is_test"))
+                .and_then(|value| value.as_bool()),
+            Some(true)
+        );
+    }
+
+    #[test]
     fn test_delegate_and_nested_classes() {
         let code = r#"
 namespace MyProject

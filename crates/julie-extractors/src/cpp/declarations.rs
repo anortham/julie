@@ -41,6 +41,7 @@ pub(super) fn extract_namespace(
             parent_id: parent_id.map(String::from),
             metadata: None,
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -108,6 +109,7 @@ pub(super) fn extract_using(
             parent_id: parent_id.map(String::from),
             metadata: None,
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -258,6 +260,7 @@ pub(super) fn extract_declaration(
                 parent_id: parent_id.map(String::from),
                 metadata: None,
                 doc_comment,
+                annotations: Vec::new(),
             },
         ));
     }
@@ -294,6 +297,7 @@ pub(super) fn extract_declaration(
             parent_id: parent_id.map(String::from),
             metadata: None,
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -353,6 +357,7 @@ pub(super) fn extract_friend_declaration(
             parent_id: parent_id.map(String::from),
             metadata: None,
             doc_comment,
+            annotations: Vec::new(),
         },
     );
 
@@ -403,6 +408,7 @@ fn extract_conversion_operator(
             parent_id: parent_id.map(String::from),
             metadata: None,
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -434,6 +440,7 @@ fn extract_destructor_from_declaration(
             parent_id: parent_id.map(String::from),
             metadata: None,
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -493,6 +500,7 @@ fn extract_constructor_from_declaration(
             parent_id: parent_id.map(String::from),
             metadata: None,
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }

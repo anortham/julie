@@ -35,6 +35,7 @@ pub(super) fn extract_class(
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: None,
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -70,6 +71,7 @@ pub(super) fn extract_method(
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: None,
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -105,6 +107,7 @@ pub(super) fn extract_property(
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: None,
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -133,6 +136,7 @@ pub(super) fn extract_enum(
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: None,
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -163,6 +167,7 @@ pub(super) fn extract_enum_member(
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: None,
             doc_comment: None,
+            annotations: Vec::new(),
         },
     ))
 }

@@ -5,6 +5,7 @@
 
 pub mod analysis;
 pub mod cli;
+pub mod cli_tools;
 pub mod database;
 pub mod embeddings;
 pub mod extractors;

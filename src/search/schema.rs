@@ -33,6 +33,9 @@ pub mod fields {
     pub const SIGNATURE: &str = "signature";
     pub const DOC_COMMENT: &str = "doc_comment";
     pub const CODE_BODY: &str = "code_body";
+    pub const ANNOTATIONS_EXACT: &str = "annotations_exact";
+    pub const ANNOTATIONS_TEXT: &str = "annotations_text";
+    pub const OWNER_NAMES_TEXT: &str = "owner_names_text";
     pub const KIND: &str = "kind";
     pub const START_LINE: &str = "start_line";
     pub const CONTENT: &str = "content";
@@ -74,6 +77,9 @@ pub fn create_schema() -> Schema {
     builder.add_text_field(fields::SIGNATURE, code_text_options.clone());
     builder.add_text_field(fields::DOC_COMMENT, code_text_options.clone());
     builder.add_text_field(fields::CODE_BODY, code_text_not_stored.clone());
+    builder.add_text_field(fields::ANNOTATIONS_EXACT, STRING);
+    builder.add_text_field(fields::ANNOTATIONS_TEXT, code_text_not_stored.clone());
+    builder.add_text_field(fields::OWNER_NAMES_TEXT, code_text_not_stored.clone());
     builder.add_text_field(fields::KIND, STRING | STORED);
     builder.add_u64_field(fields::START_LINE, NumericOptions::default().set_stored());
 
@@ -114,6 +120,9 @@ pub struct SchemaFields {
     pub signature: Field,
     pub doc_comment: Field,
     pub code_body: Field,
+    pub annotations_exact: Field,
+    pub annotations_text: Field,
+    pub owner_names_text: Field,
     pub kind: Field,
     pub start_line: Field,
     pub content: Field,
@@ -136,6 +145,9 @@ impl SchemaFields {
             signature: schema.get_field(fields::SIGNATURE).unwrap(),
             doc_comment: schema.get_field(fields::DOC_COMMENT).unwrap(),
             code_body: schema.get_field(fields::CODE_BODY).unwrap(),
+            annotations_exact: schema.get_field(fields::ANNOTATIONS_EXACT).unwrap(),
+            annotations_text: schema.get_field(fields::ANNOTATIONS_TEXT).unwrap(),
+            owner_names_text: schema.get_field(fields::OWNER_NAMES_TEXT).unwrap(),
             kind: schema.get_field(fields::KIND).unwrap(),
             start_line: schema.get_field(fields::START_LINE).unwrap(),
             content: schema.get_field(fields::CONTENT).unwrap(),

@@ -930,6 +930,80 @@ import kotlin.jvm.JvmStatic
     }
 
     #[test]
+    fn test_kotlin_annotation_markers_persist_on_functions_and_constructors() {
+        let code = r#"
+class ExampleTest {
+    @org.junit.Test
+    @DisplayName("runs named case")
+    fun runsNamedCase() {
+    }
+
+    @javax.inject.Inject
+    constructor(name: String) : this() {
+    }
+
+    constructor() {
+    }
+}
+"#;
+
+        let mut parser = init_parser();
+        let tree = parser.parse(code, None).unwrap();
+
+        let workspace_root = PathBuf::from("/tmp/test");
+        let mut extractor = KotlinExtractor::new(
+            "kotlin".to_string(),
+            "test.kt".to_string(),
+            code.to_string(),
+            &workspace_root,
+        );
+
+        let symbols = extractor.extract_symbols(&tree);
+
+        let method = symbols
+            .iter()
+            .find(|s| s.name == "runsNamedCase")
+            .expect("function should be extracted");
+        let method_keys: Vec<_> = method
+            .annotations
+            .iter()
+            .map(|annotation| annotation.annotation_key.as_str())
+            .collect();
+        assert_eq!(method_keys, vec!["test", "displayname"]);
+        assert_eq!(
+            method
+                .metadata
+                .as_ref()
+                .and_then(|metadata| metadata.get("is_test"))
+                .and_then(|value| value.as_bool()),
+            Some(true)
+        );
+
+        let constructor = symbols
+            .iter()
+            .find(|s| {
+                s.kind == SymbolKind::Constructor
+                    && s.signature
+                        .as_deref()
+                        .is_some_and(|signature| signature.contains("name: String"))
+            })
+            .expect("annotated constructor should be extracted");
+        let constructor_keys: Vec<_> = constructor
+            .annotations
+            .iter()
+            .map(|annotation| annotation.annotation_key.as_str())
+            .collect();
+        assert_eq!(constructor_keys, vec!["inject"]);
+        assert!(
+            constructor
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("@javax.inject.Inject constructor")
+        );
+    }
+
+    #[test]
     fn test_extract_generics_and_variance() {
         let code = r#"
 interface Producer<out T> {

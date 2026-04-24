@@ -43,6 +43,7 @@ pub(super) fn extract_from_error_node(
                 parent_id: parent_id.cloned(),
                 metadata,
                 doc_comment: base.extract_documentation(&node),
+                annotations: Vec::new(),
             },
         ));
     }

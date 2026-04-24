@@ -27,6 +27,7 @@ pub(super) fn extract_signal_statement(
             parent_id: parent_id.cloned(),
             metadata: None,
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }

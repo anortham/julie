@@ -96,4 +96,36 @@ mod tests {
         let call_op = symbols.iter().find(|s| s.name == "operator()");
         assert!(call_op.is_some());
     }
+
+    #[test]
+    fn test_cpp_standard_attributes_persist_and_expand() {
+        let cpp_code = r#"
+    [[nodiscard, maybe_unused]]
+    int compute_value() {
+        return 42;
+    }
+    "#;
+
+        let (mut extractor, tree) = parse_cpp(cpp_code);
+        let symbols = extractor.extract_symbols(&tree);
+
+        let function = symbols
+            .iter()
+            .find(|s| s.name == "compute_value")
+            .expect("Should find attributed function");
+
+        let annotation_keys = function
+            .annotations
+            .iter()
+            .map(|annotation| annotation.annotation_key.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(annotation_keys, vec!["nodiscard", "maybe_unused"]);
+
+        let raw_texts = function
+            .annotations
+            .iter()
+            .map(|annotation| annotation.raw_text.as_deref())
+            .collect::<Vec<_>>();
+        assert_eq!(raw_texts, vec![Some("nodiscard"), Some("maybe_unused")]);
+    }
 }

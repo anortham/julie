@@ -1,7 +1,7 @@
 //! Test symbol detection for all 31 supported languages.
 //!
 //! Provides [`is_test_symbol`] — a pure, data-driven function that determines whether
-//! a symbol is a test based on its language, name, file path, kind, decorators/attributes,
+//! a symbol is a test based on its language, name, file path, kind, annotation keys,
 //! and doc comment. No tree-sitter, no file I/O.
 
 use crate::base::SymbolKind;
@@ -49,7 +49,7 @@ fn is_test_path(file_path: &str) -> bool {
 /// Determine if a symbol is a test symbol.
 ///
 /// Two-tier approach:
-/// 1. **Language-specific**: check attributes, decorators, annotations, doc comments, and
+/// 1. **Language-specific**: check normalized annotation keys, doc comments, and
 ///    language-idiomatic naming conventions.
 /// 2. **Generic fallback**: for the ~20 languages without specific test framework conventions,
 ///    check if the function name starts with `test_` or `Test` AND the file is in a test path.
@@ -63,8 +63,7 @@ pub fn is_test_symbol(
     name: &str,
     file_path: &str,
     kind: &SymbolKind,
-    decorators: &[String],
-    attributes: &[String],
+    annotation_keys: &[String],
     doc_comment: Option<&str>,
 ) -> bool {
     // Gate: only callable symbols can be tests
@@ -73,18 +72,18 @@ pub fn is_test_symbol(
     }
 
     match language {
-        "rust" => detect_rust(attributes),
-        "python" => detect_python(name, decorators),
-        "java" | "kotlin" => detect_java_kotlin(decorators, attributes),
-        "scala" => detect_scala(name, file_path, decorators, attributes),
+        "rust" => detect_rust(annotation_keys),
+        "python" => detect_python(name, annotation_keys),
+        "java" | "kotlin" => detect_java_kotlin(annotation_keys),
+        "scala" => detect_scala(name, file_path, annotation_keys),
         "elixir" => detect_elixir(name, file_path),
-        "csharp" | "vbnet" | "razor" => detect_csharp(attributes),
+        "csharp" | "vbnet" | "razor" => detect_csharp(annotation_keys),
         "go" => detect_go(name, file_path),
         "javascript" | "typescript" => detect_js_ts(name, file_path),
-        "php" => detect_php(name, file_path, doc_comment),
+        "php" => detect_php(name, file_path, annotation_keys, doc_comment),
         "ruby" => detect_ruby(name, file_path),
         "swift" => detect_swift(name, file_path),
-        "dart" => detect_dart(name, file_path, decorators),
+        "dart" => detect_dart(name, file_path, annotation_keys),
         _ => detect_generic(name, file_path),
     }
 }
@@ -93,15 +92,15 @@ pub fn is_test_symbol(
 // Language-specific detectors
 // ---------------------------------------------------------------------------
 
-fn detect_rust(attributes: &[String]) -> bool {
-    attributes
+fn detect_rust(annotation_keys: &[String]) -> bool {
+    annotation_keys
         .iter()
         .any(|a| a == "test" || a == "tokio::test" || a == "rstest")
 }
 
-fn detect_python(name: &str, decorators: &[String]) -> bool {
-    // Decorator-based: pytest.* or unittest.*
-    if decorators
+fn detect_python(name: &str, annotation_keys: &[String]) -> bool {
+    // Annotation-key-based: pytest.* or unittest.*
+    if annotation_keys
         .iter()
         .any(|d| d.starts_with("pytest") || d.starts_with("unittest"))
     {
@@ -115,9 +114,9 @@ fn detect_python(name: &str, decorators: &[String]) -> bool {
     name.starts_with("test_")
 }
 
-fn detect_scala(name: &str, file_path: &str, decorators: &[String], attributes: &[String]) -> bool {
+fn detect_scala(name: &str, file_path: &str, annotation_keys: &[String]) -> bool {
     // JUnit-style: @Test annotation (used by some Scala projects)
-    if detect_java_kotlin(decorators, attributes) {
+    if detect_java_kotlin(annotation_keys) {
         return true;
     }
     // ScalaTest/MUnit/Specs2: tests are methods in test files —
@@ -130,54 +129,43 @@ fn detect_scala(name: &str, file_path: &str, decorators: &[String], attributes: 
     name.starts_with("test")
 }
 
-fn detect_java_kotlin(decorators: &[String], attributes: &[String]) -> bool {
+fn detect_java_kotlin(annotation_keys: &[String]) -> bool {
     let test_annotations = [
-        "Test",
-        "ParameterizedTest",
-        "RepeatedTest",
-        "BeforeEach",
-        "AfterEach",
-        "BeforeAll",
-        "AfterAll",
-        "Before",
-        "After",
-        "BeforeClass",
-        "AfterClass",
+        "test",
+        "parameterizedtest",
+        "repeatedtest",
+        "beforeeach",
+        "aftereach",
+        "beforeall",
+        "afterall",
+        "before",
+        "after",
+        "beforeclass",
+        "afterclass",
     ];
-    decorators
+    annotation_keys
         .iter()
-        .chain(attributes.iter())
         .any(|a| test_annotations.contains(&a.as_str()))
 }
 
-fn detect_csharp(attributes: &[String]) -> bool {
+fn detect_csharp(annotation_keys: &[String]) -> bool {
     let test_attrs = [
-        "Test",
-        "TestMethod",
-        "Fact",
-        "Theory",
-        "SetUp",
-        "TearDown",
-        "OneTimeSetUp",
-        "OneTimeTearDown",
-        "TestInitialize",
-        "TestCleanup",
-        "ClassInitialize",
-        "ClassCleanup",
+        "test",
+        "testmethod",
+        "fact",
+        "theory",
+        "setup",
+        "teardown",
+        "onetimesetup",
+        "onetimeteardown",
+        "testinitialize",
+        "testcleanup",
+        "classinitialize",
+        "classcleanup",
     ];
-    attributes.iter().any(|a| {
-        // C# extractors may produce bracketed attributes like "[Fact]" or bare "Fact".
-        // Strip surrounding brackets before matching.
-        let stripped = a
-            .strip_prefix('[')
-            .or_else(|| a.strip_prefix('<'))
-            .unwrap_or(a);
-        let stripped = stripped
-            .strip_suffix(']')
-            .or_else(|| stripped.strip_suffix('>'))
-            .unwrap_or(stripped);
-        test_attrs.contains(&stripped)
-    })
+    annotation_keys
+        .iter()
+        .any(|a| test_attrs.contains(&a.as_str()))
 }
 
 fn detect_go(name: &str, file_path: &str) -> bool {
@@ -199,7 +187,15 @@ fn detect_js_ts(name: &str, file_path: &str) -> bool {
     is_test_fn && in_test_file
 }
 
-fn detect_php(name: &str, file_path: &str, doc_comment: Option<&str>) -> bool {
+fn detect_php(
+    name: &str,
+    file_path: &str,
+    annotation_keys: &[String],
+    doc_comment: Option<&str>,
+) -> bool {
+    if annotation_keys.iter().any(|a| a == "test") {
+        return true;
+    }
     // @test annotation in doc comment — genuine test marker regardless of path
     if let Some(doc) = doc_comment {
         if doc.contains("@test") {
@@ -232,9 +228,9 @@ fn detect_elixir(name: &str, file_path: &str) -> bool {
     name.starts_with("test_") || name.starts_with("test ") || is_test_path(file_path)
 }
 
-fn detect_dart(name: &str, file_path: &str, decorators: &[String]) -> bool {
-    // isTest decorator — definitive, no path guard needed
-    if decorators.iter().any(|d| d.contains("isTest")) {
+fn detect_dart(name: &str, file_path: &str, annotation_keys: &[String]) -> bool {
+    // isTest annotation key is definitive, no path guard needed.
+    if annotation_keys.iter().any(|d| d == "istest") {
         return true;
     }
     // Name prefix — requires test path to avoid false positives on production Dart functions

@@ -36,6 +36,7 @@ mod resolver_tests {
             confidence: None,
             code_context: None,
             content_type: None,
+            annotations: Vec::new(),
         }
     }
 

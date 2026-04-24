@@ -22,6 +22,11 @@ pub(super) fn extract_function(
     let name = name_node.map(|n| base.get_node_text(&n))?;
 
     let modifiers = helpers::extract_modifiers(base, node);
+    let annotations = helpers::extract_annotations(base, node);
+    let annotation_keys: Vec<String> = annotations
+        .iter()
+        .map(|annotation| annotation.annotation_key.clone())
+        .collect();
     let type_params = helpers::extract_type_parameters(base, node);
     let receiver_type = helpers::extract_receiver_type(base, node);
     let parameters = helpers::extract_parameters(base, node);
@@ -101,20 +106,12 @@ pub(super) fn extract_function(
     // Extract KDoc comment
     let doc_comment = base.find_doc_comment(node);
 
-    // Extract annotations for test detection (modifiers starting with '@')
-    let annotations: Vec<String> = modifiers
-        .iter()
-        .filter(|m| m.starts_with('@'))
-        .map(|m| m.strip_prefix('@').unwrap_or(m).to_string())
-        .collect();
-
     if is_test_symbol(
         "kotlin",
         &name,
         &base.file_path,
         &symbol_kind,
-        &annotations,
-        &[],
+        &annotation_keys,
         doc_comment.as_deref(),
     ) {
         metadata.insert("is_test".to_string(), Value::Bool(true));
@@ -130,6 +127,7 @@ pub(super) fn extract_function(
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: Some(metadata),
             doc_comment,
+            annotations,
         },
     ))
 }
@@ -150,6 +148,11 @@ pub(super) fn extract_secondary_constructor(
     class_name: &str,
 ) -> Option<Symbol> {
     let modifiers = helpers::extract_modifiers(base, node);
+    let annotations = helpers::extract_annotations(base, node);
+    let annotation_keys: Vec<String> = annotations
+        .iter()
+        .map(|annotation| annotation.annotation_key.clone())
+        .collect();
     let parameters = helpers::extract_parameters(base, node);
 
     let mut signature = "constructor".to_string();
@@ -183,20 +186,12 @@ pub(super) fn extract_secondary_constructor(
         ),
     ]);
 
-    // Extract annotations for test detection
-    let annotations: Vec<String> = modifiers
-        .iter()
-        .filter(|m| m.starts_with('@'))
-        .map(|m| m.strip_prefix('@').unwrap_or(m).to_string())
-        .collect();
-
     if is_test_symbol(
         "kotlin",
         class_name,
         &base.file_path,
         &SymbolKind::Constructor,
-        &annotations,
-        &[],
+        &annotation_keys,
         doc_comment.as_deref(),
     ) {
         metadata.insert("is_test".to_string(), Value::Bool(true));
@@ -212,6 +207,7 @@ pub(super) fn extract_secondary_constructor(
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: Some(metadata),
             doc_comment,
+            annotations,
         },
     ))
 }
@@ -244,6 +240,7 @@ pub(super) fn extract_package(
                 Value::String("package".to_string()),
             )])),
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -276,6 +273,7 @@ pub(super) fn extract_import(
                 Value::String("import".to_string()),
             )])),
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -342,6 +340,7 @@ pub(super) fn extract_type_alias(
                 ("aliasedType".to_string(), Value::String(aliased_type)),
             ])),
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }

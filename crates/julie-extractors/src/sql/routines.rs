@@ -50,7 +50,6 @@ pub(super) fn extract_stored_procedure(
         &base.file_path,
         &symbol_kind,
         &[],
-        &[],
         doc_comment.as_deref(),
     ) {
         metadata.insert("is_test".to_string(), Value::Bool(true));
@@ -62,6 +61,7 @@ pub(super) fn extract_stored_procedure(
         parent_id: parent_id.map(|s| s.to_string()),
         doc_comment,
         metadata: Some(metadata),
+        annotations: Vec::new(),
     };
 
     Some(base.create_symbol(&node, name, symbol_kind, options))
@@ -208,6 +208,7 @@ pub(super) fn extract_declare_variables(
                     parent_id: Some(parent_id.to_string()),
                     doc_comment: None,
                     metadata: Some(metadata),
+                    annotations: Vec::new(),
                 };
 
                 let variable_symbol = base.create_symbol(
@@ -248,6 +249,7 @@ pub(super) fn extract_declare_variables(
                         parent_id: Some(parent_id.to_string()),
                         doc_comment: None,
                         metadata: Some(metadata),
+                        annotations: Vec::new(),
                     };
 
                     let variable_symbol = base.create_symbol(
@@ -291,6 +293,7 @@ pub(super) fn extract_declare_variables(
                 parent_id: Some(parent_id.to_string()),
                 doc_comment: None,
                 metadata: Some(metadata),
+                annotations: Vec::new(),
             };
 
             let variable_symbol = base.create_symbol(
@@ -334,6 +337,7 @@ pub(super) fn extract_procedures_from_error(
                 parent_id: parent_id.map(|s| s.to_string()),
                 doc_comment: None,
                 metadata: Some(metadata),
+                annotations: Vec::new(),
             };
 
             let procedure_symbol =
@@ -381,6 +385,7 @@ pub(super) fn extract_functions_from_error(
                 parent_id: parent_id.map(|s| s.to_string()),
                 doc_comment: None,
                 metadata: Some(metadata),
+                annotations: Vec::new(),
             };
 
             let function_symbol =
@@ -412,6 +417,7 @@ pub(super) fn extract_functions_from_error(
                 parent_id: parent_id.map(|s| s.to_string()),
                 doc_comment: None,
                 metadata: Some(metadata),
+                annotations: Vec::new(),
             };
 
             let function_symbol =
@@ -452,6 +458,7 @@ pub(super) fn extract_aggregates_from_error(
                 parent_id: parent_id.map(|s| s.to_string()),
                 doc_comment: None,
                 metadata: Some(metadata),
+                annotations: Vec::new(),
             };
 
             let aggregate_symbol = base.create_symbol(node, name, SymbolKind::Function, options);
@@ -503,6 +510,7 @@ pub(super) fn extract_parameters_from_error_node(
                 parent_id: Some(parent_id.to_string()),
                 doc_comment: None,
                 metadata: Some(metadata),
+                annotations: Vec::new(),
             };
 
             let param_symbol =

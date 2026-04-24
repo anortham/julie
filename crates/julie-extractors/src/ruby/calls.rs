@@ -78,6 +78,7 @@ pub(super) fn try_extract_struct_new(
             parent_id,
             metadata: None,
             doc_comment,
+            annotations: Vec::new(),
         },
     );
 
@@ -99,6 +100,7 @@ pub(super) fn try_extract_struct_new(
                         parent_id: Some(class_symbol.id.clone()),
                         metadata: None,
                         doc_comment: None,
+                        annotations: Vec::new(),
                     },
                 );
                 field_properties.push(prop);
@@ -138,6 +140,7 @@ fn extract_require(base: &mut BaseExtractor, node: Node) -> Option<Symbol> {
             parent_id: None,
             metadata: None,
             doc_comment: None,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -167,6 +170,7 @@ fn extract_attr_accessor(
                 parent_id: None,
                 metadata: None,
                 doc_comment: None,
+                annotations: Vec::new(),
             },
         ))
     } else {
@@ -205,6 +209,7 @@ fn extract_define_method(
             parent_id: None,
             metadata: None,
             doc_comment: None,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -235,6 +240,7 @@ fn extract_def_delegator(base: &mut BaseExtractor, node: Node) -> Option<Symbol>
                 parent_id: None,
                 metadata: None,
                 doc_comment: None,
+                annotations: Vec::new(),
             },
         ))
     } else {

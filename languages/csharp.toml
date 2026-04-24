@@ -43,3 +43,22 @@ important_patterns = [
 
 [embeddings]
 extra_kinds = ["constructor"]  # DI patterns, 595 in Newtonsoft.Json
+
+[annotation_classes]
+entrypoint = [
+    "apicontroller",
+    "route",
+    "httpget",
+    "httppost",
+    "httpput",
+    "httpdelete",
+    "httppatch",
+]
+auth = ["authorize"]
+auth_bypass = ["allowanonymous"]
+test = ["fact", "theory", "testmethod"]
+fixture = ["setup", "testinitialize", "onetimesetup", "collection"]
+
+[early_warnings]
+review_markers = ["allowanonymous"]
+schema_version = 1

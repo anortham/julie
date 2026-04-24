@@ -96,6 +96,7 @@ impl GDScriptExtractor {
                                 parent_id: None,
                                 metadata: Some(metadata),
                                 doc_comment: None,
+                                annotations: Vec::new(),
                             },
                         );
 

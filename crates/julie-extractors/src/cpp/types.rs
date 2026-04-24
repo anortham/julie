@@ -66,6 +66,7 @@ pub(super) fn extract_class(
             parent_id: parent_id.map(String::from),
             metadata: None,
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -122,6 +123,7 @@ pub(super) fn extract_struct(
             parent_id: parent_id.map(String::from),
             metadata: None,
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -162,6 +164,7 @@ pub(super) fn extract_union(
             parent_id: parent_id.map(String::from),
             metadata: None,
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -211,6 +214,7 @@ pub(super) fn extract_enum(
             parent_id: parent_id.map(String::from),
             metadata: None,
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -275,6 +279,7 @@ pub(super) fn extract_enum_member(
             parent_id: parent_id.map(String::from),
             metadata: None,
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }

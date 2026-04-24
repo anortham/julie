@@ -54,6 +54,7 @@ impl AtRuleExtractor {
                 parent_id: parent_id.map(|id| id.to_string()),
                 metadata: Some(metadata),
                 doc_comment,
+                annotations: Vec::new(),
             },
         ))
     }

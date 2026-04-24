@@ -165,6 +165,7 @@ impl SwiftExtractor {
             parent_id,
             metadata: Some(json_metadata),
             doc_comment,
+            annotations: Vec::new(),
         }
     }
 }

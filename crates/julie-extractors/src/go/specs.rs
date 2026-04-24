@@ -153,6 +153,7 @@ impl super::GoExtractor {
                     parent_id: parent_id.map(|s| s.to_string()),
                     metadata: None,
                     doc_comment,
+                    annotations: Vec::new(),
                 },
             ))
         } else {
@@ -222,6 +223,7 @@ impl super::GoExtractor {
                     parent_id: parent_id.map(|s| s.to_string()),
                     metadata: None,
                     doc_comment,
+                    annotations: Vec::new(),
                 },
             ))
         } else {
@@ -293,6 +295,7 @@ impl super::GoExtractor {
                     parent_id: parent_id.map(|s| s.to_string()),
                     metadata: None,
                     doc_comment,
+                    annotations: Vec::new(),
                 },
             ))
         } else {

@@ -64,6 +64,7 @@ mod pipeline_integration_tests {
                         .to_string(),
                 ),
                 content_type: None,
+                annotations: Vec::new(),
             },
             Symbol {
                 id: "sym_validate".to_string(),
@@ -89,6 +90,7 @@ mod pipeline_integration_tests {
                         .to_string(),
                 ),
                 content_type: None,
+                annotations: Vec::new(),
             },
             Symbol {
                 id: "sym_build".to_string(),
@@ -114,6 +116,7 @@ mod pipeline_integration_tests {
                         .to_string(),
                 ),
                 content_type: None,
+                annotations: Vec::new(),
             },
             Symbol {
                 id: "sym_error".to_string(),
@@ -136,6 +139,7 @@ mod pipeline_integration_tests {
                 confidence: Some(0.9),
                 code_context: None,
                 content_type: None,
+                annotations: Vec::new(),
             },
             Symbol {
                 id: "sym_main".to_string(),
@@ -158,6 +162,7 @@ mod pipeline_integration_tests {
                 confidence: Some(0.9),
                 code_context: None,
                 content_type: None,
+                annotations: Vec::new(),
             },
         ];
 
@@ -350,6 +355,7 @@ mod pipeline_integration_tests {
                 confidence: Some(0.9),
                 code_context: Some(format!("fn {}() {{ }}", name)),
                 content_type: None,
+                annotations: Vec::new(),
             }
         }
 
@@ -445,6 +451,7 @@ mod pipeline_integration_tests {
                 "fn test_process_request_works() { process_request(&req); }".to_string(),
             ),
             content_type: None,
+            annotations: Vec::new(),
         };
         db.store_symbols(&[test_sym]).unwrap();
 

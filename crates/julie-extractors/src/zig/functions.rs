@@ -43,7 +43,6 @@ pub(super) fn extract_function(
         &base.file_path,
         &symbol_kind,
         &[],
-        &[],
         doc_comment.as_deref(),
     ) {
         metadata.insert("is_test".to_string(), serde_json::Value::Bool(true));
@@ -63,6 +62,7 @@ pub(super) fn extract_function(
                 Some(metadata)
             },
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -105,6 +105,7 @@ pub(super) fn extract_test(
             parent_id: parent_id.cloned(),
             metadata,
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }

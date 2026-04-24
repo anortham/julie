@@ -71,6 +71,7 @@ pub(super) fn extract_class_name_statement(
                 Some(metadata)
             },
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -129,6 +130,7 @@ pub(super) fn extract_class_definition(
             parent_id: parent_id.cloned(),
             metadata: None,
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }

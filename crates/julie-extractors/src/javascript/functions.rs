@@ -3,7 +3,7 @@
 //! Handles extraction of function declarations, function expressions,
 //! arrow functions, methods, and constructors.
 
-use crate::base::{Symbol, SymbolKind, SymbolOptions};
+use crate::base::{AnnotationMarker, Symbol, SymbolKind, SymbolOptions, normalize_annotations};
 use crate::test_detection::is_test_symbol;
 use serde_json::json;
 use std::collections::HashMap;
@@ -41,6 +41,11 @@ impl super::JavaScriptExtractor {
         let name = name?;
 
         let signature = self.build_function_signature(&node, &name);
+        let annotations = self.extract_decorator_annotations(node);
+        let annotation_keys: Vec<String> = annotations
+            .iter()
+            .map(|annotation| annotation.annotation_key.clone())
+            .collect();
 
         let mut metadata = HashMap::new();
         metadata.insert("isAsync".to_string(), json!(self.is_async(&node)));
@@ -67,8 +72,7 @@ impl super::JavaScriptExtractor {
             &name,
             &self.base.file_path,
             &SymbolKind::Function,
-            &[],
-            &[],
+            &annotation_keys,
             doc_comment.as_deref(),
         ) {
             metadata.insert("is_test".to_string(), json!(true));
@@ -84,6 +88,7 @@ impl super::JavaScriptExtractor {
                 parent_id,
                 metadata: Some(metadata),
                 doc_comment,
+                annotations,
             },
         ))
     }
@@ -102,6 +107,11 @@ impl super::JavaScriptExtractor {
         let name = name_node.map(|n| self.base.get_node_text(&n))?;
 
         let signature = self.build_method_signature(&node, &name);
+        let annotations = self.extract_decorator_annotations(node);
+        let annotation_keys: Vec<String> = annotations
+            .iter()
+            .map(|annotation| annotation.annotation_key.clone())
+            .collect();
 
         // Determine if it's a constructor (reference logic)
         let symbol_kind = if name == "constructor" {
@@ -141,8 +151,7 @@ impl super::JavaScriptExtractor {
             &name,
             &self.base.file_path,
             &symbol_kind,
-            &[],
-            &[],
+            &annotation_keys,
             doc_comment.as_deref(),
         ) {
             metadata.insert("is_test".to_string(), json!(true));
@@ -158,7 +167,28 @@ impl super::JavaScriptExtractor {
                 parent_id,
                 metadata: Some(metadata),
                 doc_comment,
+                annotations,
             },
         ))
+    }
+
+    fn extract_decorator_annotations(&self, node: Node) -> Vec<AnnotationMarker> {
+        let mut raw_decorators: Vec<String> = node
+            .children(&mut node.walk())
+            .filter(|child| child.kind() == "decorator")
+            .map(|child| self.base.get_node_text(&child))
+            .collect();
+
+        if raw_decorators.is_empty() {
+            if let Some(parent) = node.parent() {
+                raw_decorators = parent
+                    .children(&mut parent.walk())
+                    .filter(|child| child.kind() == "decorator")
+                    .map(|child| self.base.get_node_text(&child))
+                    .collect();
+            }
+        }
+
+        normalize_annotations(&raw_decorators, "javascript")
     }
 }

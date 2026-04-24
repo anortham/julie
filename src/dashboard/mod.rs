@@ -169,6 +169,15 @@ pub fn create_router(
             "/intelligence/{workspace_id}/stories",
             get(routes::intelligence::story_cards),
         )
+        .route("/signals/{workspace_id}", get(routes::signals::index))
+        .route(
+            "/signals/{workspace_id}/summary",
+            get(routes::signals::summary),
+        )
+        .route(
+            "/signals/{workspace_id}/refresh",
+            post(routes::signals::refresh),
+        )
         .route("/events/activity", get(routes::events::activity_stream))
         .route("/static/{*path}", get(serve_static))
         .with_state(app_state);

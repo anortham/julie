@@ -56,6 +56,7 @@ impl BaseExtractor {
             visibility: options.visibility,
             parent_id: options.parent_id,
             metadata: Some(options.metadata.unwrap_or_default()),
+            annotations: options.annotations,
             semantic_group: None, // Will be populated during cross-language analysis
             confidence: None,     // Will be calculated based on parsing context
             code_context,

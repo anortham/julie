@@ -64,7 +64,6 @@ impl super::GoExtractor {
             &self.base.file_path,
             &SymbolKind::Function,
             &[],
-            &[],
             doc_comment.as_deref(),
         ) {
             metadata.insert("is_test".to_string(), serde_json::Value::Bool(true));
@@ -84,6 +83,7 @@ impl super::GoExtractor {
                     Some(metadata)
                 },
                 doc_comment,
+                annotations: Vec::new(),
             },
         ))
     }
@@ -167,7 +167,6 @@ impl super::GoExtractor {
             &self.base.file_path,
             &SymbolKind::Method,
             &[],
-            &[],
             doc_comment.as_deref(),
         ) {
             metadata.insert("is_test".to_string(), serde_json::Value::Bool(true));
@@ -187,6 +186,7 @@ impl super::GoExtractor {
                     Some(metadata)
                 },
                 doc_comment,
+                annotations: Vec::new(),
             },
         ))
     }
@@ -292,6 +292,7 @@ impl super::GoExtractor {
                     parent_id: parent_id.map(|s| s.to_string()),
                     metadata: None,
                     doc_comment,
+                    annotations: Vec::new(),
                 },
             ));
         }

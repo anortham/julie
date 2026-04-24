@@ -19,7 +19,10 @@ pub mod fixtures; // Test fixtures (JulieTestFixture for fast dogfooding tests)
 // ============================================================================
 // CLI TESTS - Argument parsing and workspace resolution
 // ============================================================================
+pub mod cli; // End-to-end CLI integration tests (binary invocation via std::process::Command)
+pub mod cli_execution_tests; // CLI execution core (daemon/standalone mode, handler bootstrap)
 pub mod cli_tests; // CLI argument parsing (clap) and workspace resolution tests
+pub mod cli_tools_tests; // CLI tool subcommand parsing (search, refs, symbols, etc.)
 
 // ============================================================================
 // MAIN SERVER TESTS - Entry point error handling
@@ -30,10 +33,12 @@ pub mod main_error_handling; // MCP server initialization and runtime error hand
 // CORE SYSTEM TESTS - Database, handlers, language support
 // ============================================================================
 pub mod core {
+    pub mod annotation_storage;
     pub mod batch_resolver;
     pub mod bulk_store_types_tests;
     pub mod database; // Database operations and SQLite tests
     pub mod database_lightweight_query; // Lightweight query optimization tests
+    pub mod early_warning_report_cache;
     pub mod embedding_deps; // Embedding dependency smoke tests (sqlite-vec + zerocopy)
     pub mod embedding_metadata; // Symbol metadata formatting for embeddings
     pub mod embedding_metadata_enrichment; // Variable budget, callee/field enrichment, doc excerpt

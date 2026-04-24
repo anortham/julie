@@ -85,6 +85,7 @@ async fn test_debug_foreign_key_constraint() {
         confidence: None,
         code_context: None,
         content_type: None,
+        annotations: Vec::new(),
     };
 
     // This should work without foreign key constraint error
@@ -185,6 +186,7 @@ async fn test_symbol_storage_and_retrieval() {
         confidence: None,
         code_context: None,
         content_type: None,
+        annotations: Vec::new(),
     };
 
     // Following foreign key contract: store file record first
@@ -290,6 +292,7 @@ async fn test_symbol_with_metadata_and_semantic_fields() {
         confidence: Some(0.95),
         code_context: None,
         content_type: None,
+        annotations: Vec::new(),
     };
 
     // First, store the file record (required due to foreign key constraint)
@@ -373,6 +376,7 @@ async fn test_relationship_with_id_field() {
         confidence: None,
         code_context: None,
         content_type: None,
+        annotations: Vec::new(),
     };
 
     let called_symbol = Symbol {
@@ -396,6 +400,7 @@ async fn test_relationship_with_id_field() {
         confidence: None,
         code_context: None,
         content_type: None,
+        annotations: Vec::new(),
     };
 
     db.store_symbols_transactional(&[caller_symbol, called_symbol])
@@ -455,6 +460,7 @@ async fn test_cross_language_semantic_grouping() {
         confidence: Some(1.0),
         code_context: None,
         content_type: None,
+        annotations: Vec::new(),
     };
 
     let rust_struct = Symbol {
@@ -478,6 +484,7 @@ async fn test_cross_language_semantic_grouping() {
         confidence: Some(0.98),
         code_context: None,
         content_type: None,
+        annotations: Vec::new(),
     };
 
     // Following foreign key contract: store file records first
@@ -564,6 +571,7 @@ async fn test_get_outgoing_relationships_for_symbols_batch() {
         confidence: None,
         code_context: None,
         content_type: None,
+        annotations: Vec::new(),
     };
 
     db.store_symbols_transactional(&[
@@ -672,6 +680,7 @@ async fn test_extractor_database_integration() {
         confidence: None,     // Will be calculated based on parsing context
         code_context: None,
         content_type: None,
+        annotations: Vec::new(),
     };
 
     // Following foreign key contract: store file record first
@@ -750,6 +759,7 @@ async fn test_complete_symbol_field_persistence() {
         metadata: None,
         semantic_group: Some("test-group".to_string()),
         confidence: Some(0.95),
+        annotations: Vec::new(),
     };
 
     // Store the symbol
@@ -986,6 +996,7 @@ fn test_concurrent_read_access_no_corruption() {
             content_type: None,
             confidence: None,
             semantic_group: None,
+            annotations: Vec::new(),
         }];
 
         db.bulk_store_symbols(&symbols, "test_workspace").unwrap();
@@ -1440,6 +1451,7 @@ fn test_get_symbols_by_ids_preserves_order() {
             confidence: None,
             code_context: None,
             content_type: None,
+            annotations: Vec::new(),
         },
         Symbol {
             id: "mmm_middle".to_string(),
@@ -1462,6 +1474,7 @@ fn test_get_symbols_by_ids_preserves_order() {
             confidence: None,
             code_context: None,
             content_type: None,
+            annotations: Vec::new(),
         },
         Symbol {
             id: "aaa_first".to_string(),       // Alphabetically first
@@ -1484,6 +1497,7 @@ fn test_get_symbols_by_ids_preserves_order() {
             confidence: None,
             code_context: None,
             content_type: None,
+            annotations: Vec::new(),
         },
         Symbol {
             id: "ppp_fourth".to_string(),
@@ -1506,6 +1520,7 @@ fn test_get_symbols_by_ids_preserves_order() {
             confidence: None,
             code_context: None,
             content_type: None,
+            annotations: Vec::new(),
         },
     ];
 

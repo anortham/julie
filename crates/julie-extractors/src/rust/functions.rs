@@ -1,13 +1,13 @@
 use super::helpers::{
-    ImplBlockInfo, extract_extern_modifier, extract_impl_target_names, extract_visibility,
-    find_doc_comment, get_preceding_attributes, has_async_keyword, has_unsafe_keyword,
-    is_inside_impl,
+    ImplBlockInfo, extract_attribute_texts, extract_extern_modifier, extract_impl_target_names,
+    extract_visibility, find_doc_comment, get_preceding_attributes, has_async_keyword,
+    has_unsafe_keyword, is_inside_impl,
 };
 use super::signatures::extract_return_type;
 /// Rust function and method extraction
 /// - Functions and methods
 /// - Impl blocks and two-phase processing
-use crate::base::{Symbol, SymbolKind, SymbolOptions, Visibility};
+use crate::base::{Symbol, SymbolKind, SymbolOptions, Visibility, normalize_annotations};
 use crate::rust::RustExtractor;
 use crate::test_detection::is_test_symbol;
 use serde_json::Value;
@@ -106,18 +106,11 @@ pub(super) fn extract_function(
 
     // Extract attributes for test detection
     let attr_nodes = get_preceding_attributes(base, node);
-    let attributes: Vec<String> = attr_nodes
+    let attribute_texts = extract_attribute_texts(base, &attr_nodes);
+    let annotations = normalize_annotations(&attribute_texts, "rust");
+    let annotation_keys: Vec<String> = annotations
         .iter()
-        .filter_map(|attr_node| {
-            // Extract the inner attribute content (e.g., "test" from "#[test]")
-            let attr_child = attr_node
-                .children(&mut attr_node.walk())
-                .find(|c| c.kind() == "attribute")?;
-            let ident = attr_child
-                .children(&mut attr_child.walk())
-                .find(|c| c.kind() == "identifier" || c.kind() == "scoped_identifier")?;
-            Some(base.get_node_text(&ident))
-        })
+        .map(|marker| marker.annotation_key.clone())
         .collect();
 
     let mut metadata = HashMap::new();
@@ -127,8 +120,7 @@ pub(super) fn extract_function(
         &name,
         &base.file_path,
         &kind,
-        &[],
-        &attributes,
+        &annotation_keys,
         None,
     ) {
         metadata.insert("is_test".to_string(), Value::Bool(true));
@@ -144,6 +136,7 @@ pub(super) fn extract_function(
             parent_id,
             doc_comment: find_doc_comment(base, node),
             metadata: Some(metadata),
+            annotations,
         },
     ))
 }

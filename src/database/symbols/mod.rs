@@ -6,6 +6,7 @@
 //! - queries: Get symbol by ID, find by name/pattern
 //! - search: Advanced search, statistics, batch queries
 
+pub(in crate::database) mod annotations;
 mod bulk;
 mod queries;
 mod search;

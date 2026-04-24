@@ -1,7 +1,9 @@
 //! PowerShell function extraction
 //! Handles simple functions, advanced functions with [CmdletBinding()], and parameters
 
-use crate::base::{BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility};
+use crate::base::{
+    BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility, normalize_annotations,
+};
 use crate::test_detection::is_test_symbol;
 use regex::Regex;
 use std::collections::HashMap;
@@ -10,7 +12,8 @@ use tree_sitter::Node;
 
 use super::documentation;
 use super::helpers::{
-    extract_function_name_from_param_block, extract_parameter_attributes, find_function_name_node,
+    extract_command_annotation_attributes, extract_function_name_from_param_block,
+    extract_parameter_annotation_attributes, extract_parameter_attributes, find_function_name_node,
     find_nodes_by_type, find_parameter_name_node, has_attribute, has_parameter_attribute,
 };
 
@@ -33,6 +36,14 @@ pub(super) fn extract_function(
 
     // Extract doc comment (PowerShell comment-based help)
     let doc_comment = documentation::extract_powershell_doc_comment(base, &node);
+    let annotations = normalize_annotations(
+        &extract_command_annotation_attributes(base, node),
+        "powershell",
+    );
+    let annotation_keys = annotations
+        .iter()
+        .map(|annotation| annotation.annotation_key.clone())
+        .collect::<Vec<_>>();
 
     // Test detection
     let mut metadata = HashMap::new();
@@ -41,8 +52,7 @@ pub(super) fn extract_function(
         &name,
         &base.file_path,
         &SymbolKind::Function,
-        &[],
-        &[],
+        &annotation_keys,
         doc_comment.as_deref(),
     ) {
         metadata.insert("is_test".to_string(), serde_json::Value::Bool(true));
@@ -62,6 +72,7 @@ pub(super) fn extract_function(
                 Some(metadata)
             },
             doc_comment,
+            annotations,
         },
     ))
 }
@@ -82,6 +93,10 @@ pub(super) fn extract_advanced_function(
 
     // Extract doc comment (PowerShell comment-based help)
     let doc_comment = documentation::extract_powershell_doc_comment(base, &node);
+    let annotations = normalize_annotations(
+        &extract_command_annotation_attributes(base, node),
+        "powershell",
+    );
 
     Some(base.create_symbol(
         &node,
@@ -93,6 +108,7 @@ pub(super) fn extract_advanced_function(
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: None,
             doc_comment,
+            annotations,
         },
     ))
 }
@@ -123,6 +139,10 @@ pub(super) fn extract_function_parameters(
                 } else {
                     Some("Optional parameter".to_string())
                 };
+                let annotations = normalize_annotations(
+                    &extract_parameter_annotation_attributes(base, param_def),
+                    "powershell",
+                );
 
                 let param_symbol = base.create_symbol(
                     &param_def,
@@ -134,6 +154,7 @@ pub(super) fn extract_function_parameters(
                         parent_id: Some(parent_id.to_string()),
                         metadata: None,
                         doc_comment,
+                        annotations,
                     },
                 );
 
@@ -166,6 +187,10 @@ pub(super) fn extract_function_parameters(
                 } else {
                     Some("Optional parameter".to_string())
                 };
+                let annotations = normalize_annotations(
+                    &extract_parameter_annotation_attributes(base, script_param),
+                    "powershell",
+                );
 
                 let param_symbol = base.create_symbol(
                     &script_param,
@@ -177,6 +202,7 @@ pub(super) fn extract_function_parameters(
                         parent_id: Some(parent_id.to_string()),
                         metadata: None,
                         doc_comment,
+                        annotations,
                     },
                 );
 

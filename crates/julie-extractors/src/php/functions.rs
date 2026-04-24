@@ -1,7 +1,7 @@
 // PHP Extractor - Function/method extraction
 
 use super::{PhpExtractor, determine_visibility, extract_modifiers, find_child, find_child_text};
-use crate::base::{Symbol, SymbolKind, SymbolOptions};
+use crate::base::{AnnotationMarker, Symbol, SymbolKind, SymbolOptions, normalize_annotations};
 use crate::test_detection::is_test_symbol;
 use std::collections::HashMap;
 use tree_sitter::Node;
@@ -15,6 +15,11 @@ pub(super) fn extract_function(
     let name = find_child_text(extractor, &node, "name")?;
 
     let modifiers = extract_modifiers(extractor, &node);
+    let annotations = extract_attribute_markers(extractor, &node);
+    let annotation_keys: Vec<String> = annotations
+        .iter()
+        .map(|annotation| annotation.annotation_key.clone())
+        .collect();
     let parameters_node = find_child(extractor, &node, "formal_parameters");
     let attribute_list = find_child(extractor, &node, "attribute_list");
 
@@ -96,8 +101,7 @@ pub(super) fn extract_function(
         &name,
         &extractor.get_base().file_path,
         &symbol_kind,
-        &[],
-        &[],
+        &annotation_keys,
         doc_comment.as_deref(),
     );
 
@@ -121,8 +125,22 @@ pub(super) fn extract_function(
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: Some(json_metadata),
             doc_comment,
+            annotations,
         },
     ))
+}
+
+pub(super) fn extract_attribute_markers(
+    extractor: &PhpExtractor,
+    node: &Node,
+) -> Vec<AnnotationMarker> {
+    let raw_attributes: Vec<String> = node
+        .children(&mut node.walk())
+        .filter(|child| child.kind() == "attribute_list")
+        .map(|child| extractor.get_base().get_node_text(&child))
+        .collect();
+
+    normalize_annotations(&raw_attributes, "php")
 }
 
 /// Find return type node after colon

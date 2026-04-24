@@ -45,6 +45,7 @@ impl SwiftExtractor {
                             parent_id: parent_id.map(|s| s.to_string()),
                             metadata: Some(metadata),
                             doc_comment: None,
+                            annotations: Vec::new(),
                         },
                     );
                     symbols.push(symbol);
@@ -100,6 +101,7 @@ impl SwiftExtractor {
                 parent_id: parent_id.map(|s| s.to_string()),
                 metadata: Some(metadata),
                 doc_comment,
+                annotations: Vec::new(),
             },
         ))
     }

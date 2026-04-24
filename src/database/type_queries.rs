@@ -12,6 +12,7 @@ use tracing::debug;
 
 use crate::database::SymbolDatabase;
 use crate::database::helpers::SYMBOL_COLUMNS;
+use crate::database::symbols::annotations::hydrate_annotations_for_symbols;
 use crate::extractors::Symbol;
 
 impl SymbolDatabase {
@@ -78,6 +79,7 @@ impl SymbolDatabase {
             }
         }
 
+        hydrate_annotations_for_symbols(self, &mut implementations)?;
         debug!(
             "Found {} implementations of {}",
             implementations.len(),
@@ -150,6 +152,7 @@ impl SymbolDatabase {
             }
         }
 
+        hydrate_annotations_for_symbols(self, &mut returners)?;
         debug!(
             "Found {} functions returning {}",
             returners.len(),
@@ -213,6 +216,7 @@ impl SymbolDatabase {
             }
         }
 
+        hydrate_annotations_for_symbols(self, &mut acceptors)?;
         debug!(
             "Found {} functions with parameter type {}",
             acceptors.len(),

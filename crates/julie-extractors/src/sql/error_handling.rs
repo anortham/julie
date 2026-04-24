@@ -65,6 +65,7 @@ fn extract_schemas_from_error(
                 parent_id: parent_id.map(|s| s.to_string()),
                 doc_comment: None,
                 metadata: Some(metadata),
+                annotations: Vec::new(),
             };
 
             let schema_symbol = base.create_symbol(node, name, SymbolKind::Namespace, options);
@@ -113,6 +114,7 @@ fn extract_triggers_from_error(
                 parent_id: parent_id.map(|s| s.to_string()),
                 doc_comment: None,
                 metadata: Some(metadata),
+                annotations: Vec::new(),
             };
 
             let trigger_symbol = base.create_symbol(node, name, SymbolKind::Method, options);
@@ -167,6 +169,7 @@ fn extract_domains_from_error(
                 parent_id: parent_id.map(|s| s.to_string()),
                 doc_comment: None,
                 metadata: Some(metadata),
+                annotations: Vec::new(),
             };
 
             let domain_symbol = base.create_symbol(node, name, SymbolKind::Class, options);
@@ -211,6 +214,7 @@ fn extract_types_from_error(
                 parent_id: parent_id.map(|s| s.to_string()),
                 doc_comment: None,
                 metadata: Some(metadata),
+                annotations: Vec::new(),
             };
 
             let enum_symbol = base.create_symbol(node, name, SymbolKind::Class, options);

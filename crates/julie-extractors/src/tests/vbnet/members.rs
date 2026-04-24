@@ -38,6 +38,46 @@ End Class
     }
 
     #[test]
+    fn test_member_attributes_persist_with_attribute_suffix_keys() {
+        let code = r#"
+Class C
+    <TestMethodAttribute>
+    Public Sub Runs()
+    End Sub
+
+    <ObsoleteAttribute("Use CurrentName")>
+    Public Property LegacyName As String
+End Class
+"#;
+        let mut parser = init_parser();
+        let tree = parser.parse(code, None).unwrap();
+        let workspace_root = PathBuf::from("/tmp/test");
+        let mut extractor = VbNetExtractor::new(
+            "vbnet".to_string(),
+            "test.vb".to_string(),
+            code.to_string(),
+            &workspace_root,
+        );
+        let symbols = extractor.extract_symbols(&tree);
+
+        let method = symbols
+            .iter()
+            .find(|s| s.name == "Runs" && s.kind == SymbolKind::Method)
+            .expect("Should find attributed method");
+        assert_eq!(method.annotations.len(), 1);
+        assert_eq!(method.annotations[0].annotation, "TestMethodAttribute");
+        assert_eq!(method.annotations[0].annotation_key, "testmethod");
+
+        let property = symbols
+            .iter()
+            .find(|s| s.name == "LegacyName" && s.kind == SymbolKind::Property)
+            .expect("Should find attributed property");
+        assert_eq!(property.annotations.len(), 1);
+        assert_eq!(property.annotations[0].annotation, "ObsoleteAttribute");
+        assert_eq!(property.annotations[0].annotation_key, "obsolete");
+    }
+
+    #[test]
     fn test_function_method_extraction() {
         let code = r#"
 Class Calculator

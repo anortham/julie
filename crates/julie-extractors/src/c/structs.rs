@@ -32,6 +32,7 @@ pub(super) fn extract_struct(
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: None,
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -57,6 +58,7 @@ pub(super) fn extract_union(
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: None,
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -82,6 +84,7 @@ pub(super) fn extract_enum(
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: None,
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -145,6 +148,7 @@ pub(super) fn extract_struct_field_symbols(
                         Value::String(field_type.clone()),
                     )])),
                     doc_comment,
+                    annotations: Vec::new(),
                 },
             );
 
@@ -199,6 +203,7 @@ pub(super) fn extract_enum_value_symbols(
                                     None
                                 },
                                 doc_comment,
+                                annotations: Vec::new(),
                             },
                         );
 

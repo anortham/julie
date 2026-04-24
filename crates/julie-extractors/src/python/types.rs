@@ -1,6 +1,6 @@
 /// Class and type extraction for Python
 /// Handles class definitions, enums, protocols, and type detection
-use super::super::base::{Symbol, SymbolKind, SymbolOptions, Visibility};
+use super::super::base::{Symbol, SymbolKind, SymbolOptions, Visibility, normalize_annotations};
 use super::PythonExtractor;
 use super::{decorators, helpers};
 use std::collections::HashMap;
@@ -67,6 +67,8 @@ pub(super) fn extract_class(extractor: &mut PythonExtractor, node: Node) -> Opti
 
     // Extract decorators
     let decorators_list = decorators::extract_decorators(extractor, &node);
+    let decorator_texts = decorators::extract_decorator_texts(extractor, &node);
+    let annotations = normalize_annotations(&decorator_texts, "python");
     let decorator_info = if decorators_list.is_empty() {
         String::new()
     } else {
@@ -105,6 +107,7 @@ pub(super) fn extract_class(extractor: &mut PythonExtractor, node: Node) -> Opti
             parent_id,
             metadata: Some(metadata),
             doc_comment,
+            annotations,
         },
     ))
 }

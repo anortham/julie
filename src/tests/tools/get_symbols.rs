@@ -633,6 +633,7 @@ fn test_lean_format_skips_redundant_kind_prefix() {
         confidence: None,
         code_context: None,
         content_type: None,
+        annotations: Vec::new(),
     };
 
     let fn_sym = Symbol {
@@ -656,6 +657,7 @@ fn test_lean_format_skips_redundant_kind_prefix() {
         confidence: None,
         code_context: None,
         content_type: None,
+        annotations: Vec::new(),
     };
 
     let result = format_symbol_response("src/foo.rs", vec![struct_sym, fn_sym], None)

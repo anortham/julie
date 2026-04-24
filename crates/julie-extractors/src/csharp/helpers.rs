@@ -2,7 +2,7 @@
 //
 // Collection of utility functions for parsing C# AST nodes and extracting metadata
 
-use crate::base::{BaseExtractor, Visibility};
+use crate::base::{AnnotationMarker, BaseExtractor, Visibility, normalize_annotations};
 use tree_sitter::Node;
 
 /// Extract modifiers from a node (attributes and modifiers)
@@ -28,6 +28,17 @@ pub fn extract_modifiers(base: &BaseExtractor, node: &Node) -> Vec<String> {
 
     // Combine attributes and modifiers
     [attributes, modifiers].concat()
+}
+
+/// Extract canonical attribute markers from C# attribute lists.
+pub fn extract_annotations(base: &BaseExtractor, node: &Node) -> Vec<AnnotationMarker> {
+    let raw_attributes: Vec<String> = node
+        .children(&mut node.walk())
+        .filter(|child| child.kind() == "attribute_list")
+        .map(|child| base.get_node_text(&child))
+        .collect();
+
+    normalize_annotations(&raw_attributes, "csharp")
 }
 
 /// Determine visibility from modifiers

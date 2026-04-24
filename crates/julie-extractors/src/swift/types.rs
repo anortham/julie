@@ -94,6 +94,7 @@ impl SwiftExtractor {
                 parent_id: parent_id.map(|s| s.to_string()),
                 metadata: Some(metadata),
                 doc_comment,
+                annotations: Vec::new(),
             },
         ))
     }
@@ -147,6 +148,7 @@ impl SwiftExtractor {
                 parent_id: parent_id.map(|s| s.to_string()),
                 metadata: Some(metadata),
                 doc_comment,
+                annotations: Vec::new(),
             },
         ))
     }
@@ -199,6 +201,7 @@ impl SwiftExtractor {
                 parent_id: parent_id.map(|s| s.to_string()),
                 metadata: Some(metadata),
                 doc_comment,
+                annotations: Vec::new(),
             },
         ))
     }
@@ -252,6 +255,7 @@ impl SwiftExtractor {
                 parent_id: parent_id.map(|s| s.to_string()),
                 metadata: Some(metadata),
                 doc_comment,
+                annotations: Vec::new(),
             },
         ))
     }

@@ -1,6 +1,6 @@
 /// Helper functions for Java extraction
 /// Handles modifiers, visibility, and common parsing utilities
-use crate::base::{BaseExtractor, Visibility};
+use crate::base::{AnnotationMarker, BaseExtractor, Visibility, normalize_annotations};
 use tree_sitter::Node;
 
 /// Extract all modifiers from a Java node (public, private, static, final, etc.)
@@ -14,6 +14,23 @@ pub(super) fn extract_modifiers(base: &BaseExtractor, node: Node) -> Vec<String>
                 .collect()
         })
         .unwrap_or_default()
+}
+
+/// Extract canonical annotation markers from Java modifiers.
+pub(super) fn extract_annotations(base: &BaseExtractor, node: Node) -> Vec<AnnotationMarker> {
+    let raw_annotations: Vec<String> = node
+        .children(&mut node.walk())
+        .find(|c| c.kind() == "modifiers")
+        .map(|modifiers_node| {
+            modifiers_node
+                .children(&mut modifiers_node.walk())
+                .filter(|c| c.kind().contains("annotation"))
+                .map(|c| base.get_node_text(&c))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    normalize_annotations(&raw_annotations, "java")
 }
 
 /// Determine visibility from modifier list

@@ -17,6 +17,10 @@ pub struct LanguageConfig {
     pub scoring: ScoringConfig,
     #[serde(default)]
     pub embeddings: EmbeddingsConfig,
+    #[serde(default)]
+    pub annotation_classes: AnnotationClassesConfig,
+    #[serde(default)]
+    pub early_warnings: EarlyWarningConfig,
 }
 
 /// Tokenizer configuration for code-aware text processing.
@@ -63,6 +67,45 @@ pub struct EmbeddingsConfig {
     /// higher ratios (0.40-0.50).
     #[serde(default)]
     pub variable_ratio: Option<f64>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct AnnotationClassesConfig {
+    #[serde(default)]
+    pub entrypoint: Vec<String>,
+    #[serde(default)]
+    pub auth: Vec<String>,
+    #[serde(default)]
+    pub auth_bypass: Vec<String>,
+    #[serde(default)]
+    pub middleware: Vec<String>,
+    #[serde(default)]
+    pub scheduler: Vec<String>,
+    #[serde(default)]
+    pub test: Vec<String>,
+    #[serde(default)]
+    pub fixture: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct EarlyWarningConfig {
+    #[serde(default)]
+    pub review_markers: Vec<String>,
+    #[serde(default = "default_early_warning_schema_version")]
+    pub schema_version: u32,
+}
+
+impl Default for EarlyWarningConfig {
+    fn default() -> Self {
+        Self {
+            review_markers: Vec::new(),
+            schema_version: default_early_warning_schema_version(),
+        }
+    }
+}
+
+fn default_early_warning_schema_version() -> u32 {
+    1
 }
 
 /// Registry of all language configurations.
@@ -221,5 +264,193 @@ mod tests {
              A broken TOML or missing entry would cause this count to be wrong.",
             configs.len()
         );
+    }
+
+    #[test]
+    fn test_language_config_defaults_empty_annotation_sections() {
+        let config: LanguageConfig = toml::from_str(
+            r#"
+[tokenizer]
+preserve_patterns = ["@"]
+naming_styles = ["snake_case"]
+meaningful_affixes = []
+"#,
+        )
+        .expect("config without annotation sections should parse");
+
+        assert!(config.annotation_classes.entrypoint.is_empty());
+        assert!(config.annotation_classes.auth.is_empty());
+        assert!(config.annotation_classes.auth_bypass.is_empty());
+        assert!(config.annotation_classes.middleware.is_empty());
+        assert!(config.annotation_classes.scheduler.is_empty());
+        assert!(config.annotation_classes.test.is_empty());
+        assert!(config.annotation_classes.fixture.is_empty());
+        assert!(config.early_warnings.review_markers.is_empty());
+        assert_eq!(config.early_warnings.schema_version, 1);
+    }
+
+    #[test]
+    fn test_language_config_loads_populated_annotation_sections() {
+        let config: LanguageConfig = toml::from_str(
+            r#"
+[tokenizer]
+preserve_patterns = ["@"]
+naming_styles = ["snake_case"]
+meaningful_affixes = []
+
+[annotation_classes]
+entrypoint = ["app.route"]
+auth = ["login_required"]
+auth_bypass = ["allowanonymous"]
+middleware = ["middleware"]
+scheduler = ["celery.task"]
+test = ["pytest.mark.parametrize"]
+fixture = ["pytest.fixture"]
+
+[early_warnings]
+review_markers = ["allowanonymous"]
+schema_version = 7
+"#,
+        )
+        .expect("config with annotation sections should parse");
+
+        assert_eq!(config.annotation_classes.entrypoint, vec!["app.route"]);
+        assert_eq!(config.annotation_classes.auth, vec!["login_required"]);
+        assert_eq!(
+            config.annotation_classes.auth_bypass,
+            vec!["allowanonymous"]
+        );
+        assert_eq!(config.annotation_classes.middleware, vec!["middleware"]);
+        assert_eq!(config.annotation_classes.scheduler, vec!["celery.task"]);
+        assert_eq!(
+            config.annotation_classes.test,
+            vec!["pytest.mark.parametrize"]
+        );
+        assert_eq!(config.annotation_classes.fixture, vec!["pytest.fixture"]);
+        assert_eq!(config.early_warnings.review_markers, vec!["allowanonymous"]);
+        assert_eq!(config.early_warnings.schema_version, 7);
+    }
+
+    #[test]
+    fn test_embedded_language_configs_include_expected_annotation_classes() {
+        let configs = LanguageConfigs::load_embedded();
+
+        let python = configs.get("python").expect("python config should exist");
+        assert!(
+            python
+                .annotation_classes
+                .entrypoint
+                .contains(&"app.route".into())
+        );
+        assert!(
+            python
+                .annotation_classes
+                .auth
+                .contains(&"login_required".into())
+        );
+        assert!(
+            python
+                .annotation_classes
+                .test
+                .contains(&"pytest.mark.parametrize".into())
+        );
+
+        let java = configs.get("java").expect("java config should exist");
+        assert!(
+            java.annotation_classes
+                .entrypoint
+                .contains(&"getmapping".into())
+        );
+        assert!(
+            java.annotation_classes
+                .auth
+                .contains(&"preauthorize".into())
+        );
+        assert!(
+            java.annotation_classes
+                .auth_bypass
+                .contains(&"permitall".into())
+        );
+
+        let kotlin = configs.get("kotlin").expect("kotlin config should exist");
+        assert!(
+            kotlin
+                .annotation_classes
+                .entrypoint
+                .contains(&"getmapping".into())
+        );
+        assert!(
+            kotlin
+                .annotation_classes
+                .auth
+                .contains(&"preauthorize".into())
+        );
+        assert!(
+            kotlin
+                .annotation_classes
+                .auth_bypass
+                .contains(&"permitall".into())
+        );
+
+        let csharp = configs.get("csharp").expect("csharp config should exist");
+        assert!(
+            csharp
+                .annotation_classes
+                .entrypoint
+                .contains(&"httpget".into())
+        );
+        assert!(csharp.annotation_classes.auth.contains(&"authorize".into()));
+        assert!(
+            csharp
+                .annotation_classes
+                .auth_bypass
+                .contains(&"allowanonymous".into())
+        );
+
+        let typescript = configs
+            .get("typescript")
+            .expect("typescript config should exist");
+        assert!(
+            typescript
+                .annotation_classes
+                .entrypoint
+                .contains(&"controller".into())
+        );
+        assert!(
+            typescript
+                .annotation_classes
+                .entrypoint
+                .contains(&"get".into())
+        );
+        assert!(
+            typescript
+                .annotation_classes
+                .auth
+                .contains(&"useguards".into())
+        );
+        assert!(typescript.annotation_classes.auth_bypass.is_empty());
+        assert!(typescript.early_warnings.review_markers.is_empty());
+        assert_eq!(typescript.early_warnings.schema_version, 1);
+
+        let javascript = configs
+            .get("javascript")
+            .expect("javascript config should exist");
+        assert!(
+            javascript
+                .annotation_classes
+                .entrypoint
+                .contains(&"controller".into())
+        );
+        assert!(
+            javascript
+                .annotation_classes
+                .auth
+                .contains(&"useguards".into())
+        );
+        assert!(javascript.annotation_classes.auth_bypass.is_empty());
+
+        let rust = configs.get("rust").expect("rust config should exist");
+        assert!(rust.annotation_classes.entrypoint.is_empty());
+        assert_eq!(rust.annotation_classes.test, vec!["test", "tokio::test"]);
     }
 }

@@ -1,7 +1,7 @@
 //! Function and method extraction for C++
 //! Handles extraction of functions, methods, constructors, destructors, and operators
 
-use crate::base::{BaseExtractor, Symbol, SymbolKind, SymbolOptions};
+use crate::base::{BaseExtractor, Symbol, SymbolKind, SymbolOptions, normalize_annotations};
 use crate::test_detection::is_test_symbol;
 use std::collections::HashMap;
 use tree_sitter::Node;
@@ -124,6 +124,11 @@ pub(super) fn extract_function(
     let visibility = declarations::extract_cpp_visibility(base, node);
 
     let doc_comment = base.find_doc_comment(&node);
+    let annotations = normalize_annotations(&extract_standard_attributes(base, node), "cpp");
+    let annotation_keys = annotations
+        .iter()
+        .map(|annotation| annotation.annotation_key.clone())
+        .collect::<Vec<_>>();
 
     // Test detection
     let mut metadata = HashMap::new();
@@ -132,8 +137,7 @@ pub(super) fn extract_function(
         &name,
         &base.file_path,
         &kind,
-        &[],
-        &[],
+        &annotation_keys,
         doc_comment.as_deref(),
     ) {
         metadata.insert("is_test".to_string(), serde_json::Value::Bool(true));
@@ -153,6 +157,7 @@ pub(super) fn extract_function(
                 Some(metadata)
             },
             doc_comment,
+            annotations,
         },
     ))
 }
@@ -208,6 +213,11 @@ fn extract_method(
     let visibility = declarations::extract_cpp_visibility(base, node);
 
     let doc_comment = base.find_doc_comment(&node);
+    let annotations = normalize_annotations(&extract_standard_attributes(base, node), "cpp");
+    let annotation_keys = annotations
+        .iter()
+        .map(|annotation| annotation.annotation_key.clone())
+        .collect::<Vec<_>>();
 
     // Test detection
     let mut metadata = HashMap::new();
@@ -216,8 +226,7 @@ fn extract_method(
         name,
         &base.file_path,
         &kind,
-        &[],
-        &[],
+        &annotation_keys,
         doc_comment.as_deref(),
     ) {
         metadata.insert("is_test".to_string(), serde_json::Value::Bool(true));
@@ -237,8 +246,41 @@ fn extract_method(
                 Some(metadata)
             },
             doc_comment,
+            annotations,
         },
     ))
+}
+
+fn extract_standard_attributes(base: &mut BaseExtractor, node: Node) -> Vec<String> {
+    let mut attributes = Vec::new();
+    collect_standard_attributes_from_text(&base.get_node_text(&node), &mut attributes);
+
+    let mut current = node.prev_sibling();
+    while let Some(sibling) = current {
+        let sibling_text = base.get_node_text(&sibling);
+        if !sibling_text.trim_start().starts_with("[[") {
+            break;
+        }
+        let mut sibling_attributes = Vec::new();
+        collect_standard_attributes_from_text(&sibling_text, &mut sibling_attributes);
+        sibling_attributes.extend(attributes);
+        attributes = sibling_attributes;
+        current = sibling.prev_sibling();
+    }
+
+    attributes
+}
+
+fn collect_standard_attributes_from_text(text: &str, attributes: &mut Vec<String>) {
+    let mut remaining = text;
+    while let Some(start) = remaining.find("[[") {
+        let after_start = &remaining[start + 2..];
+        let Some(end) = after_start.find("]]") else {
+            break;
+        };
+        attributes.push(format!("[[{}]]", after_start[..end].trim()));
+        remaining = &after_start[end + 2..];
+    }
 }
 
 /// Extract function name from function declarator

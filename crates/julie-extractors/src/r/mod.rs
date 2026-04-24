@@ -289,7 +289,7 @@ impl RExtractor {
         }
 
         // Test detection
-        if is_test_symbol("r", &name, &self.base.file_path, &kind, &[], &[], None) {
+        if is_test_symbol("r", &name, &self.base.file_path, &kind, &[], None) {
             metadata.insert("is_test".to_string(), serde_json::Value::Bool(true));
         }
 

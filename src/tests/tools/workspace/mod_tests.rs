@@ -1180,6 +1180,7 @@ async fn test_manage_workspace_health_uses_rebound_session_primary() {
             confidence: None,
             code_context: None,
             content_type: None,
+            annotations: Vec::new(),
         };
         rebound_guard
             .bulk_store_fresh_atomic(&[file_info], &[symbol], &[], &[], &[], &rebound_primary_id)
@@ -1305,6 +1306,7 @@ async fn test_manage_workspace_health_keeps_primary_snapshot_after_completed_swa
             confidence: None,
             code_context: None,
             content_type: None,
+            annotations: Vec::new(),
         };
         original_guard
             .bulk_store_fresh_atomic(&[file_info], &[symbol], &[], &[], &[], &original_id)
@@ -1471,6 +1473,7 @@ async fn test_manage_workspace_health_detailed_uses_rebound_session_primary() {
             confidence: None,
             code_context: None,
             content_type: None,
+            annotations: Vec::new(),
         };
         rebound_guard
             .bulk_store_fresh_atomic(&[file_info], &[symbol], &[], &[], &[], &rebound_primary_id)
@@ -1770,6 +1773,7 @@ async fn test_manage_workspace_health_triggers_roots_resolution_when_primary_mis
             confidence: None,
             code_context: None,
             content_type: None,
+            annotations: Vec::new(),
         };
         roots_db
             .bulk_store_fresh_atomic(&[file_info], &[symbol], &[], &[], &[], &roots_id)

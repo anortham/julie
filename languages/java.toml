@@ -42,3 +42,31 @@ important_patterns = [
 
 [embeddings]
 extra_kinds = ["constructor"]  # 3696 in Guava; DI injection, factory patterns
+
+[annotation_classes]
+entrypoint = [
+    "restcontroller",
+    "controller",
+    "requestmapping",
+    "getmapping",
+    "postmapping",
+    "putmapping",
+    "deletemapping",
+    "patchmapping",
+    "path",
+]
+auth = [
+    "preauthorize",
+    "postauthorize",
+    "secured",
+    "rolesallowed",
+    "authenticated",
+]
+auth_bypass = ["permitall"]
+scheduler = ["scheduled"]
+test = ["test", "parameterizedtest"]
+fixture = ["beforeeach", "beforeall"]
+
+[early_warnings]
+review_markers = ["permitall"]
+schema_version = 1

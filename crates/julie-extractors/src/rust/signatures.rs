@@ -77,6 +77,7 @@ pub(super) fn extract_function_signature(
             parent_id,
             doc_comment: None,
             metadata: Some(HashMap::new()),
+            annotations: Vec::new(),
         },
     ))
 }
@@ -112,6 +113,7 @@ pub(super) fn extract_associated_type(
             parent_id,
             doc_comment: None,
             metadata: Some(HashMap::new()),
+            annotations: Vec::new(),
         },
     ))
 }
@@ -211,6 +213,7 @@ pub(super) fn extract_macro_invocation(
             parent_id,
             doc_comment: None,
             metadata: Some(HashMap::new()),
+            annotations: Vec::new(),
         },
     ))
 }
@@ -263,6 +266,7 @@ pub(super) fn extract_use(
                 parent_id,
                 doc_comment: None,
                 metadata: Some(HashMap::new()),
+                annotations: Vec::new(),
             },
         ));
     }
@@ -285,6 +289,7 @@ pub(super) fn extract_use(
                 parent_id,
                 doc_comment: None,
                 metadata: Some(HashMap::new()),
+                annotations: Vec::new(),
             },
         ));
     }
@@ -304,6 +309,7 @@ pub(super) fn extract_use(
                     parent_id,
                     doc_comment: None,
                     metadata: Some(HashMap::new()),
+                    annotations: Vec::new(),
                 },
             ));
         }
@@ -323,6 +329,7 @@ pub(super) fn extract_use(
                 parent_id,
                 doc_comment: None,
                 metadata: Some(HashMap::new()),
+                annotations: Vec::new(),
             },
         ));
     }

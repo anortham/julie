@@ -17,6 +17,11 @@ pub(super) fn extract_function(
 ) -> Option<Symbol> {
     let name = helpers::get_name(base, node)?;
     let modifiers = helpers::extract_modifiers(base, node);
+    let annotations = helpers::extract_annotations(base, node);
+    let annotation_keys: Vec<String> = annotations
+        .iter()
+        .map(|annotation| annotation.annotation_key.clone())
+        .collect();
     let type_params = helpers::extract_type_parameters(base, node);
     let parameters = helpers::extract_parameters(base, node);
     let return_type = helpers::extract_return_type(base, node);
@@ -82,20 +87,12 @@ pub(super) fn extract_function(
 
     let doc_comment = base.find_doc_comment(node);
 
-    // Test detection
-    let annotations: Vec<String> = modifiers
-        .iter()
-        .filter(|m| m.starts_with('@'))
-        .map(|m| m.strip_prefix('@').unwrap_or(m).to_string())
-        .collect();
-
     if is_test_symbol(
         "scala",
         &name,
         &base.file_path,
         &symbol_kind,
-        &annotations,
-        &[],
+        &annotation_keys,
         doc_comment.as_deref(),
     ) {
         metadata.insert("is_test".to_string(), Value::Bool(true));
@@ -111,6 +108,7 @@ pub(super) fn extract_function(
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: Some(metadata),
             doc_comment,
+            annotations,
         },
     ))
 }
@@ -143,6 +141,7 @@ pub(super) fn extract_import(
                 Value::String("import".to_string()),
             )])),
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -176,6 +175,7 @@ pub(super) fn extract_package(
                 Value::String("package".to_string()),
             )])),
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }
@@ -188,6 +188,7 @@ pub(super) fn extract_type_alias(
 ) -> Option<Symbol> {
     let name = helpers::get_name(base, node)?;
     let modifiers = helpers::extract_modifiers(base, node);
+    let annotations = helpers::extract_annotations(base, node);
     let _type_params = helpers::extract_type_parameters(base, node);
 
     let full_text = base.get_node_text(node);
@@ -209,6 +210,7 @@ pub(super) fn extract_type_alias(
                 ("modifiers".to_string(), Value::String(modifiers.join(","))),
             ])),
             doc_comment,
+            annotations,
         },
     ))
 }
@@ -220,6 +222,7 @@ pub(super) fn extract_given(
     parent_id: Option<&str>,
 ) -> Option<Symbol> {
     let name = helpers::get_name(base, node).unwrap_or_else(|| "<anonymous>".to_string());
+    let annotations = helpers::extract_annotations(base, node);
     let full_text = base.get_node_text(node);
     let signature = full_text
         .lines()
@@ -243,6 +246,7 @@ pub(super) fn extract_given(
                 ("given".to_string(), Value::Bool(true)),
             ])),
             doc_comment,
+            annotations,
         },
     ))
 }
@@ -254,6 +258,7 @@ pub(super) fn extract_extension(
     parent_id: Option<&str>,
 ) -> Option<Symbol> {
     let full_text = base.get_node_text(node);
+    let annotations = helpers::extract_annotations(base, node);
     let signature = full_text
         .lines()
         .next()
@@ -279,6 +284,7 @@ pub(super) fn extract_extension(
                 ("extension".to_string(), Value::Bool(true)),
             ])),
             doc_comment,
+            annotations,
         },
     ))
 }

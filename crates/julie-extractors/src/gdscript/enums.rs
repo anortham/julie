@@ -42,6 +42,7 @@ pub(super) fn extract_enum_definition(
             parent_id: parent_id.cloned(),
             metadata: None,
             doc_comment,
+            annotations: Vec::new(),
         },
     );
 
@@ -79,6 +80,7 @@ pub(super) fn extract_enum_member(
             parent_id: Some(enum_parent.id.clone()),
             metadata: None,
             doc_comment,
+            annotations: Vec::new(),
         },
     ))
 }

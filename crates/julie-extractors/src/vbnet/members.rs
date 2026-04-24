@@ -1,5 +1,5 @@
 use super::helpers;
-use crate::base::{BaseExtractor, Symbol, SymbolKind, SymbolOptions};
+use crate::base::{BaseExtractor, Symbol, SymbolKind, SymbolOptions, normalize_annotations};
 use crate::test_detection::is_test_symbol;
 use tree_sitter::Node;
 
@@ -34,7 +34,11 @@ pub fn extract_method(
     }
 
     let doc_comment = base.find_doc_comment(&node);
-    let attributes = helpers::extract_attributes(base, &node);
+    let annotations = normalize_annotations(&helpers::extract_attributes(base, &node), "vbnet");
+    let annotation_keys = annotations
+        .iter()
+        .map(|annotation| annotation.annotation_key.clone())
+        .collect::<Vec<_>>();
 
     let mut metadata = helpers::vb_visibility_metadata(&modifiers, "public");
     if is_test_symbol(
@@ -42,8 +46,7 @@ pub fn extract_method(
         &name,
         &base.file_path,
         &SymbolKind::Method,
-        &[],
-        &attributes,
+        &annotation_keys,
         doc_comment.as_deref(),
     ) {
         metadata.insert("is_test".to_string(), serde_json::Value::Bool(true));
@@ -59,6 +62,7 @@ pub fn extract_method(
         } else {
             Some(metadata)
         },
+        annotations,
     };
 
     Some(base.create_symbol(&node, name, SymbolKind::Method, options))
@@ -85,6 +89,7 @@ pub fn extract_constructor(
     let signature = format!("{}Sub New{}", helpers::modifier_prefix(&modifiers), params);
     let doc_comment = base.find_doc_comment(&node);
     let metadata = helpers::vb_visibility_metadata(&modifiers, "public");
+    let annotations = normalize_annotations(&helpers::extract_attributes(base, &node), "vbnet");
 
     let options = SymbolOptions {
         signature: Some(signature),
@@ -92,6 +97,7 @@ pub fn extract_constructor(
         parent_id,
         metadata: Some(metadata),
         doc_comment,
+        annotations,
         ..Default::default()
     };
 
@@ -124,6 +130,7 @@ pub fn extract_property(
 
     let doc_comment = base.find_doc_comment(&node);
     let metadata = helpers::vb_visibility_metadata(&modifiers, "public");
+    let annotations = normalize_annotations(&helpers::extract_attributes(base, &node), "vbnet");
 
     let options = SymbolOptions {
         signature: Some(signature),
@@ -131,6 +138,7 @@ pub fn extract_property(
         parent_id,
         metadata: Some(metadata),
         doc_comment,
+        annotations,
         ..Default::default()
     };
 
@@ -167,6 +175,7 @@ pub fn extract_field(
 
     let doc_comment = base.find_doc_comment(&node);
     let metadata = helpers::vb_visibility_metadata(&modifiers, "private");
+    let annotations = normalize_annotations(&helpers::extract_attributes(base, &node), "vbnet");
 
     let options = SymbolOptions {
         signature: Some(signature),
@@ -174,6 +183,7 @@ pub fn extract_field(
         parent_id,
         metadata: Some(metadata),
         doc_comment,
+        annotations,
         ..Default::default()
     };
 
@@ -198,6 +208,7 @@ pub fn extract_event(
 
     let doc_comment = base.find_doc_comment(&node);
     let metadata = helpers::vb_visibility_metadata(&modifiers, "public");
+    let annotations = normalize_annotations(&helpers::extract_attributes(base, &node), "vbnet");
 
     let options = SymbolOptions {
         signature: Some(signature),
@@ -205,6 +216,7 @@ pub fn extract_event(
         parent_id,
         metadata: Some(metadata),
         doc_comment,
+        annotations,
         ..Default::default()
     };
 
@@ -236,6 +248,7 @@ pub fn extract_operator(
 
     let doc_comment = base.find_doc_comment(&node);
     let metadata = helpers::vb_visibility_metadata(&modifiers, "public");
+    let annotations = normalize_annotations(&helpers::extract_attributes(base, &node), "vbnet");
 
     let options = SymbolOptions {
         signature: Some(signature),
@@ -243,6 +256,7 @@ pub fn extract_operator(
         parent_id,
         metadata: Some(metadata),
         doc_comment,
+        annotations,
         ..Default::default()
     };
 
@@ -271,6 +285,7 @@ pub fn extract_const(
 
     let doc_comment = base.find_doc_comment(&node);
     let metadata = helpers::vb_visibility_metadata(&modifiers, "public");
+    let annotations = normalize_annotations(&helpers::extract_attributes(base, &node), "vbnet");
 
     let options = SymbolOptions {
         signature: Some(signature),
@@ -278,6 +293,7 @@ pub fn extract_const(
         parent_id,
         metadata: Some(metadata),
         doc_comment,
+        annotations,
         ..Default::default()
     };
 
@@ -325,6 +341,7 @@ pub fn extract_declare(
 
     let doc_comment = base.find_doc_comment(&node);
     let metadata = helpers::vb_visibility_metadata(&modifiers, default_visibility);
+    let annotations = normalize_annotations(&helpers::extract_attributes(base, &node), "vbnet");
 
     let options = SymbolOptions {
         signature: Some(signature),
@@ -332,6 +349,7 @@ pub fn extract_declare(
         parent_id,
         metadata: Some(metadata),
         doc_comment,
+        annotations,
         ..Default::default()
     };
 

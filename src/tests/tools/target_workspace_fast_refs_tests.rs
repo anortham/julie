@@ -62,6 +62,7 @@ mod tests {
             confidence: None,
             code_context: None,
             content_type: None,
+            annotations: Vec::new(),
         }
     }
 
@@ -718,6 +719,7 @@ pub fn caller_two() {
                         confidence: None,
                         code_context: None,
                         content_type: None,
+                        annotations: Vec::new(),
                     }],
                     &workspace_id,
                 )
@@ -825,6 +827,7 @@ pub fn caller_two() {
             confidence: None,
             code_context: None,
             content_type: None,
+            annotations: Vec::new(),
         }
     }
 
@@ -857,6 +860,7 @@ pub fn caller_two() {
             confidence: None,
             code_context: None,
             content_type: None,
+            annotations: Vec::new(),
         }
     }
 

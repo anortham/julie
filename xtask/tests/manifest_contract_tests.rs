@@ -140,10 +140,14 @@ fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
         (
             "cli",
             ExpectedBucket {
-                expected_seconds: 30,
-                timeout_seconds: 90,
+                expected_seconds: 45,
+                timeout_seconds: 120,
                 commands: &[
                     "cargo nextest run --lib tests::cli_tests",
+                    "cargo nextest run --lib tests::cli_execution_tests",
+                    "cargo nextest run --lib tests::cli_tools_tests",
+                    "cargo build",
+                    "cargo nextest run --lib --run-ignored only tests::cli::",
                     "cargo test -p xtask",
                 ],
             },

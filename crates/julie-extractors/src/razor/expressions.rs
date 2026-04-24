@@ -101,6 +101,7 @@ impl super::RazorExtractor {
                         metadata
                     }),
                     doc_comment: None,
+                    annotations: Vec::new(),
                 },
             ))
         } else {
