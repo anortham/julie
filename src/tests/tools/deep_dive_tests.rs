@@ -1217,10 +1217,12 @@ mod formatting_tests {
         );
         let mut metadata = std::collections::HashMap::new();
         metadata.insert("is_test".to_string(), serde_json::json!(true));
+        metadata.insert("test_role".to_string(), serde_json::json!("test_case"));
         metadata.insert(
             "test_quality".to_string(),
             serde_json::json!({
                 "quality_tier": "thorough",
+                "confidence": 0.85,
                 "assertion_count": 5,
                 "mock_count": 1,
                 "assertion_density": 0.25
@@ -1231,23 +1233,54 @@ mod formatting_tests {
         let ctx = empty_context(sym);
         let output = format_symbol_context(&ctx, "full");
         assert!(
-            output.contains("Test quality: thorough"),
-            "should show test quality line for test symbol, got: {}",
+            output.contains("[test_case]"),
+            "should show test role, got: {}",
             output
         );
         assert!(
-            output.contains("5 assertions"),
-            "should show assertion count, got: {}",
+            output.contains("[thorough confidence:85%]"),
+            "should show quality tier with confidence, got: {}",
+            output
+        );
+    }
+
+    #[test]
+    fn test_quality_info_no_confidence_shows_tier_only() {
+        let mut sym = make_symbol(
+            "test_process_payment",
+            SymbolKind::Function,
+            "tests/payment_tests.rs",
+            45,
+            Some("fn test_process_payment()"),
+            None,
+            None,
+        );
+        let mut metadata = std::collections::HashMap::new();
+        metadata.insert("is_test".to_string(), serde_json::json!(true));
+        metadata.insert(
+            "test_quality".to_string(),
+            serde_json::json!({
+                "quality_tier": "adequate"
+            }),
+        );
+        sym.metadata = Some(metadata);
+
+        let ctx = empty_context(sym);
+        let output = format_symbol_context(&ctx, "full");
+        // With is_test but no test_role, role defaults to "test"
+        assert!(
+            output.contains("[test]"),
+            "should show default role 'test' when test_role not set, got: {}",
             output
         );
         assert!(
-            output.contains("1 mocks"),
-            "should show mock count, got: {}",
+            output.contains("[adequate]"),
+            "should show quality tier without confidence, got: {}",
             output
         );
         assert!(
-            output.contains("0.25 density"),
-            "should show assertion density, got: {}",
+            !output.contains("confidence"),
+            "should NOT show confidence when not present, got: {}",
             output
         );
     }

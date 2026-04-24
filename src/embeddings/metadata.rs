@@ -81,21 +81,10 @@ pub fn is_embeddable_language(language: &str) -> bool {
 /// Check whether a symbol is test code that should be excluded from embeddings.
 ///
 /// Uses the same two-tier detection as search filtering:
-/// 1. Extractor-set `is_test` metadata (set by `is_test_symbol()` during extraction)
+/// 1. Metadata-based: `test_role` (preferred) or legacy `is_test` flag
 /// 2. Path-based fallback via `is_test_path()` for symbols extractors don't annotate
 pub fn is_test_symbol_for_embedding(symbol: &Symbol) -> bool {
-    // Check extractor-set metadata first (most precise)
-    if let Some(ref meta) = symbol.metadata {
-        if meta
-            .get("is_test")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false)
-        {
-            return true;
-        }
-    }
-    // Fall back to path-based detection
-    is_test_path(&symbol.file_path)
+    crate::analysis::test_roles::is_test_related(symbol) || is_test_path(&symbol.file_path)
 }
 
 /// Format a symbol's metadata into a natural language string for embedding.

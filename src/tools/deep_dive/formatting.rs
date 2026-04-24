@@ -182,25 +182,32 @@ fn extract_quality_tier(
         .unwrap_or_default()
 }
 
-/// Format test quality info line when the primary symbol IS a test
+/// Format test quality info line when the primary symbol IS a test.
+///
+/// Shows test role, quality tier, and confidence when available.
 fn format_test_quality_info(out: &mut String, symbol: &crate::extractors::base::Symbol) {
     let metadata = match &symbol.metadata {
         Some(m) => m,
         None => return,
     };
 
-    // Only show for test symbols
-    let is_test = metadata
-        .get("is_test")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-    if !is_test {
+    // Only show for test-related symbols
+    if !crate::analysis::test_roles::is_test_related(symbol) {
         return;
     }
 
+    let role = metadata
+        .get("test_role")
+        .and_then(|v| v.as_str())
+        .unwrap_or("test");
+
     let tq = match metadata.get("test_quality") {
         Some(v) => v,
-        None => return,
+        None => {
+            // No quality data, but still show the role
+            out.push_str(&format!("  [{}]\n", role));
+            return;
+        }
     };
 
     let tier = tq
@@ -208,26 +215,16 @@ fn format_test_quality_info(out: &mut String, symbol: &crate::extractors::base::
         .and_then(|v| v.as_str())
         .unwrap_or("unknown");
 
-    // Build detail parts from available metrics
-    let mut details = Vec::new();
-    if let Some(count) = tq.get("assertion_count").and_then(|v| v.as_u64()) {
-        details.push(format!("{} assertions", count));
-    }
-    if let Some(count) = tq.get("mock_count").and_then(|v| v.as_u64()) {
-        details.push(format!("{} mocks", count));
-    }
-    if let Some(density) = tq.get("assertion_density").and_then(|v| v.as_f64()) {
-        details.push(format!("{:.2} density", density));
-    }
+    let confidence = tq.get("confidence").and_then(|v| v.as_f64());
 
-    if details.is_empty() {
-        out.push_str(&format!("  Test quality: {}\n", tier));
-    } else {
-        out.push_str(&format!(
-            "  Test quality: {} ({})\n",
+    match confidence {
+        Some(c) => out.push_str(&format!(
+            "  [{}] [{} confidence:{:.0}%]\n",
+            role,
             tier,
-            details.join(", ")
-        ));
+            c * 100.0
+        )),
+        None => out.push_str(&format!("  [{}] [{}]\n", role, tier)),
     }
 }
 

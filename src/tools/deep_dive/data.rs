@@ -320,13 +320,7 @@ fn is_container_kind(kind: &SymbolKind) -> bool {
 }
 
 fn symbol_is_test(symbol: &Symbol) -> bool {
-    symbol
-        .metadata
-        .as_ref()
-        .and_then(|metadata| metadata.get("is_test"))
-        .and_then(Value::as_bool)
-        .unwrap_or(false)
-        || is_test_path(&symbol.file_path)
+    crate::analysis::test_roles::is_test_related(symbol) || is_test_path(&symbol.file_path)
 }
 
 /// Build test location refs by querying identifiers linked from test symbols.

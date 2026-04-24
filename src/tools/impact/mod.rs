@@ -446,11 +446,5 @@ fn sort_identifier_refs(refs: &mut [IdentifierRef]) {
 }
 
 fn is_test_symbol(symbol: &crate::extractors::Symbol) -> bool {
-    symbol
-        .metadata
-        .as_ref()
-        .and_then(|metadata| metadata.get("is_test"))
-        .and_then(|value| value.as_bool())
-        .unwrap_or(false)
-        || is_test_path(&symbol.file_path)
+    crate::analysis::test_roles::is_test_related(symbol) || is_test_path(&symbol.file_path)
 }

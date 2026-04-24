@@ -1,5 +1,3 @@
-use serde_json::Value;
-
 use super::walk::ImpactCandidate;
 use crate::extractors::{RelationshipKind, Symbol, Visibility};
 use crate::search::scoring::is_test_path;
@@ -104,11 +102,5 @@ fn relationship_label(kind: &RelationshipKind) -> &'static str {
 }
 
 fn is_test_symbol(symbol: &Symbol) -> bool {
-    symbol
-        .metadata
-        .as_ref()
-        .and_then(|metadata| metadata.get("is_test"))
-        .and_then(Value::as_bool)
-        .unwrap_or(false)
-        || is_test_path(&symbol.file_path)
+    crate::analysis::test_roles::is_test_related(symbol) || is_test_path(&symbol.file_path)
 }
