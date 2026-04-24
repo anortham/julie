@@ -243,7 +243,7 @@ fn early_warning_report_cache_invalidation() {
     let after_config_change = generate_early_warning_report(&db, &configs, options(false)).unwrap();
 
     assert!(!after_config_change.from_cache);
-    assert_eq!(after_config_change.config_schema_version, 1);
+    assert_eq!(after_config_change.config_schema_version, 2);
     assert_eq!(cache_row_count(&db), 1);
 
     db.conn

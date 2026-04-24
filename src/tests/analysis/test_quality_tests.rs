@@ -78,28 +78,15 @@ mod tests {
 
     #[test]
     fn test_placeholder_body_pass_is_stub() {
-        let assessment = assess_test_quality(
-            Some("test_case"),
-            Some("pass"),
-            0,
-            false,
-            0,
-            false,
-        );
+        let assessment = assess_test_quality(Some("test_case"), Some("pass"), 0, false, 0, false);
         assert_eq!(assessment.tier, TestQualityTier::Stub);
         assert_eq!(assessment.confidence, 1.0);
     }
 
     #[test]
     fn test_placeholder_body_todo_is_stub() {
-        let assessment = assess_test_quality(
-            Some("test_case"),
-            Some("todo!()"),
-            0,
-            false,
-            0,
-            false,
-        );
+        let assessment =
+            assess_test_quality(Some("test_case"), Some("todo!()"), 0, false, 0, false);
         assert_eq!(assessment.tier, TestQualityTier::Stub);
         assert_eq!(assessment.confidence, 1.0);
     }
@@ -120,42 +107,23 @@ mod tests {
 
     #[test]
     fn test_placeholder_body_ellipsis_is_stub() {
-        let assessment = assess_test_quality(
-            Some("test_case"),
-            Some("..."),
-            0,
-            false,
-            0,
-            false,
-        );
+        let assessment = assess_test_quality(Some("test_case"), Some("..."), 0, false, 0, false);
         assert_eq!(assessment.tier, TestQualityTier::Stub);
         assert_eq!(assessment.confidence, 1.0);
     }
 
     #[test]
     fn test_placeholder_body_todo_comment_is_stub() {
-        let assessment = assess_test_quality(
-            Some("test_case"),
-            Some("// TODO"),
-            0,
-            false,
-            0,
-            false,
-        );
+        let assessment =
+            assess_test_quality(Some("test_case"), Some("// TODO"), 0, false, 0, false);
         assert_eq!(assessment.tier, TestQualityTier::Stub);
         assert_eq!(assessment.confidence, 1.0);
     }
 
     #[test]
     fn test_placeholder_body_braces_with_pass_is_stub() {
-        let assessment = assess_test_quality(
-            Some("test_case"),
-            Some("{ pass }"),
-            0,
-            false,
-            0,
-            false,
-        );
+        let assessment =
+            assess_test_quality(Some("test_case"), Some("{ pass }"), 0, false, 0, false);
         assert_eq!(assessment.tier, TestQualityTier::Stub);
         assert_eq!(assessment.confidence, 1.0);
     }
@@ -181,7 +149,10 @@ mod tests {
             "confidence {} should be >= 0.85",
             assessment.confidence
         );
-        assert_eq!(assessment.evidence.assertion_source, EvidenceSource::Identifier);
+        assert_eq!(
+            assessment.evidence.assertion_source,
+            EvidenceSource::Identifier
+        );
         assert_eq!(assessment.evidence.assertion_count, 3);
         assert!(assessment.evidence.has_error_testing);
     }
@@ -199,7 +170,10 @@ mod tests {
         );
         assert_eq!(assessment.tier, TestQualityTier::Adequate);
         assert!(assessment.confidence >= 0.8);
-        assert_eq!(assessment.evidence.assertion_source, EvidenceSource::Identifier);
+        assert_eq!(
+            assessment.evidence.assertion_source,
+            EvidenceSource::Identifier
+        );
     }
 
     #[test]
@@ -215,7 +189,10 @@ mod tests {
         );
         assert_eq!(assessment.tier, TestQualityTier::Thin);
         assert!(assessment.confidence >= 0.8);
-        assert_eq!(assessment.evidence.assertion_source, EvidenceSource::Identifier);
+        assert_eq!(
+            assessment.evidence.assertion_source,
+            EvidenceSource::Identifier
+        );
     }
 
     #[test]
@@ -231,7 +208,10 @@ mod tests {
         );
         assert_eq!(assessment.tier, TestQualityTier::Stub);
         assert_eq!(assessment.confidence, 0.85);
-        assert_eq!(assessment.evidence.assertion_source, EvidenceSource::Identifier);
+        assert_eq!(
+            assessment.evidence.assertion_source,
+            EvidenceSource::Identifier
+        );
     }
 
     #[test]
@@ -329,7 +309,10 @@ mod tests {
             assert!(result > 0);
         "#;
         let assessment = analyze_test_body(body);
-        assert_eq!(assessment.evidence.assertion_count, 2, "Rust assert_eq! + assert! = 2");
+        assert_eq!(
+            assessment.evidence.assertion_count, 2,
+            "Rust assert_eq! + assert! = 2"
+        );
     }
 
     #[test]
@@ -369,7 +352,10 @@ mod tests {
             t.Fatal("should not reach here")
         "#;
         let assessment = analyze_test_body(body);
-        assert_eq!(assessment.evidence.assertion_count, 2, "Go require.Equal + t.Fatal = 2");
+        assert_eq!(
+            assessment.evidence.assertion_count, 2,
+            "Go require.Equal + t.Fatal = 2"
+        );
     }
 
     #[test]
@@ -395,7 +381,10 @@ mod tests {
             Expect(result).To.BeGreaterThan(0);
         "#;
         let assessment = analyze_test_body(body);
-        assert_eq!(assessment.evidence.assertion_count, 2, "C# Should + Expect( = 2");
+        assert_eq!(
+            assessment.evidence.assertion_count, 2,
+            "C# Should + Expect( = 2"
+        );
     }
 
     #[test]
@@ -448,7 +437,10 @@ mod tests {
             println!("hello");
         "#;
         let assessment = analyze_test_body(body);
-        assert_eq!(assessment.evidence.assertion_count, 0, "No assertions in body");
+        assert_eq!(
+            assessment.evidence.assertion_count, 0,
+            "No assertions in body"
+        );
         // Regex path with 0 assertions => Unknown
         assert_eq!(assessment.tier, TestQualityTier::Unknown);
     }
@@ -465,7 +457,10 @@ mod tests {
             service.get_user.returns(42);
         "#;
         let assessment = analyze_test_body(body);
-        assert_eq!(assessment.evidence.mock_count, 3, "mock + jest.fn( + spy = 3");
+        assert_eq!(
+            assessment.evidence.mock_count, 3,
+            "mock + jest.fn( + spy = 3"
+        );
     }
 
     #[test]
@@ -478,7 +473,10 @@ mod tests {
             Mockito.when(service.getUser(1)).thenReturn(user);
         "#;
         let assessment = analyze_test_body(body);
-        assert_eq!(assessment.evidence.mock_count, 3, "@Mock + @InjectMocks + Mockito = 3");
+        assert_eq!(
+            assessment.evidence.mock_count, 3,
+            "@Mock + @InjectMocks + Mockito = 3"
+        );
     }
 
     #[test]
@@ -489,7 +487,10 @@ mod tests {
                 result = controller.handle()
         "#;
         let assessment = analyze_test_body(body);
-        assert!(assessment.evidence.mock_count >= 1, "Python patch( should be detected");
+        assert!(
+            assessment.evidence.mock_count >= 1,
+            "Python patch( should be detected"
+        );
     }
 
     #[test]
@@ -510,7 +511,10 @@ mod tests {
         "#;
         let assessment = analyze_test_body(body);
         // Moq matches \bMoq\b, Mock in "Moq.Mock" matches \bMock\b.
-        assert!(assessment.evidence.mock_count >= 2, "C# Moq + Mock should be detected");
+        assert!(
+            assessment.evidence.mock_count >= 2,
+            "C# Moq + Mock should be detected"
+        );
     }
 
     // =========================================================================
@@ -788,10 +792,7 @@ mod tests {
             meta["test_quality"].is_object(),
             "test_quality should be added"
         );
-        assert_eq!(
-            meta["test_quality"]["assertion_count"].as_u64().unwrap(),
-            2
-        );
+        assert_eq!(meta["test_quality"]["assertion_count"].as_u64().unwrap(), 2);
         // Regex fallback with 2 assertions -> adequate
         assert_eq!(
             meta["test_quality"]["quality_tier"].as_str().unwrap(),
@@ -946,7 +947,8 @@ mod tests {
             .unwrap();
 
         // Insert a test symbol
-        let code_body = "fn test_with_identifiers() {\n    let x = compute();\n    assert_eq!(x, 42);\n}";
+        let code_body =
+            "fn test_with_identifiers() {\n    let x = compute();\n    assert_eq!(x, 42);\n}";
         let metadata = r#"{"is_test":true}"#;
         db.conn
             .execute(
@@ -1071,7 +1073,10 @@ mod tests {
             )
             .unwrap();
         let meta: serde_json::Value = serde_json::from_str(&updated).unwrap();
-        assert_eq!(meta["test_quality"]["quality_tier"].as_str().unwrap(), "n/a");
+        assert_eq!(
+            meta["test_quality"]["quality_tier"].as_str().unwrap(),
+            "n/a"
+        );
         assert_eq!(meta["test_quality"]["confidence"].as_f64().unwrap(), 1.0);
     }
 

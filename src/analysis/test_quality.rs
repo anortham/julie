@@ -558,8 +558,7 @@ pub fn assess_test_quality(
                 },
             }
         } else {
-            let tier =
-                classify_tier_from_counts(assertion_count, mock_count, has_error_testing);
+            let tier = classify_tier_from_counts(assertion_count, mock_count, has_error_testing);
             let confidence = if assertion_count >= 3 { 0.5 } else { 0.4 };
             TestQualityAssessment {
                 tier,
@@ -595,10 +594,7 @@ fn classify_tier_from_counts(
     }
     // Check thorough BEFORE thin: a test with error testing or mocks
     // is thorough even with low assertion counts.
-    if assertion_count >= 3
-        || has_error_testing
-        || (mock_count > 0 && assertion_count >= 2)
-    {
+    if assertion_count >= 3 || has_error_testing || (mock_count > 0 && assertion_count >= 2) {
         return TestQualityTier::Thorough;
     }
     if assertion_count == 1 {
@@ -609,9 +605,7 @@ fn classify_tier_from_counts(
 
 /// Count non-empty lines in a body string.
 fn count_non_empty_lines(body: &str) -> u32 {
-    body.lines()
-        .filter(|line| !line.trim().is_empty())
-        .count() as u32
+    body.lines().filter(|line| !line.trim().is_empty()).count() as u32
 }
 
 // =============================================================================
@@ -682,9 +676,7 @@ pub fn compute_test_quality_metrics(
                 .collect();
 
             // Match identifiers against framework-specific evidence config
-            let evidence_config = language_configs
-                .get(language)
-                .map(|cfg| &cfg.test_evidence);
+            let evidence_config = language_configs.get(language).map(|cfg| &cfg.test_evidence);
 
             let has_identifier_evidence = evidence_config.is_some() && !call_names.is_empty();
 
@@ -786,8 +778,14 @@ pub fn compute_test_quality_metrics(
 
     info!(
         "Test quality metrics: {} total, {} thorough, {} adequate, {} thin, {} stub, {} unknown, {} n/a, {} no_body",
-        stats.total_tests, stats.thorough, stats.adequate, stats.thin, stats.stub,
-        stats.unknown, stats.not_applicable, stats.no_body
+        stats.total_tests,
+        stats.thorough,
+        stats.adequate,
+        stats.thin,
+        stats.stub,
+        stats.unknown,
+        stats.not_applicable,
+        stats.no_body
     );
 
     Ok(stats)

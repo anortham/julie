@@ -9,7 +9,7 @@ use crate::search::language_config::{LanguageConfig, LanguageConfigs};
 use crate::tools::search::matches_glob_pattern;
 
 const TANTIVY_PROJECTION: &str = "tantivy";
-const DEFAULT_CONFIG_SCHEMA_VERSION: u32 = 1;
+const DEFAULT_CONFIG_SCHEMA_VERSION: u32 = 2;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EarlyWarningReportOptions {
@@ -19,7 +19,7 @@ pub struct EarlyWarningReportOptions {
     pub limit_per_section: Option<usize>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct EarlyWarningReport {
     pub workspace_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -33,6 +33,9 @@ pub struct EarlyWarningReport {
     pub entry_points: Vec<EntryPointSignal>,
     pub auth_coverage_candidates: Vec<AuthCoverageCandidate>,
     pub review_markers: Vec<ReviewMarkerSignal>,
+    pub scheduler_signals: Vec<SchedulerSignal>,
+    pub entry_point_linkage_gaps: Vec<EntryPointLinkageGap>,
+    pub high_centrality_linkage_gaps: Vec<HighCentralityLinkageGap>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -40,6 +43,9 @@ pub struct ReportSummary {
     pub entry_points: usize,
     pub auth_coverage_candidates: usize,
     pub review_markers: usize,
+    pub scheduler_signals: usize,
+    pub entry_point_linkage_gaps: usize,
+    pub high_centrality_linkage_gaps: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -84,6 +90,42 @@ pub struct ReviewMarkerSignal {
     pub raw_text: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SchedulerSignal {
+    pub symbol_id: String,
+    pub symbol_name: String,
+    pub symbol_kind: String,
+    pub language: String,
+    pub file_path: String,
+    pub start_line: u32,
+    pub annotation: String,
+    pub annotation_key: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub raw_text: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct EntryPointLinkageGap {
+    pub symbol_id: String,
+    pub symbol_name: String,
+    pub symbol_kind: String,
+    pub language: String,
+    pub file_path: String,
+    pub start_line: u32,
+    pub entry_annotation: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct HighCentralityLinkageGap {
+    pub symbol_id: String,
+    pub symbol_name: String,
+    pub symbol_kind: String,
+    pub language: String,
+    pub file_path: String,
+    pub start_line: u32,
+    pub reference_score: f64,
+}
+
 #[derive(Debug, Clone)]
 struct ReportCacheKey {
     workspace_id: String,
@@ -98,6 +140,7 @@ struct AnnotationSets {
     entrypoint: HashSet<String>,
     auth: HashSet<String>,
     review: HashSet<String>,
+    scheduler: HashSet<String>,
 }
 
 pub fn generate_early_warning_report(
@@ -140,6 +183,7 @@ fn build_report(
     let mut entry_points = Vec::new();
     let mut auth_coverage_candidates = Vec::new();
     let mut review_markers = Vec::new();
+    let mut scheduler_signals = Vec::new();
     let mut auth_candidate_symbol_ids = HashSet::new();
 
     for symbol in symbols
@@ -169,13 +213,43 @@ fn build_report(
             if sets.review.contains(&annotation.annotation_key) {
                 review_markers.push(review_marker_signal(symbol, annotation));
             }
+            if sets.scheduler.contains(&annotation.annotation_key) {
+                scheduler_signals.push(scheduler_signal(symbol, annotation));
+            }
         }
     }
+
+    // Entry point linkage gaps: entry points with no observed test_linkage metadata
+    let mut entry_point_linkage_gaps = Vec::new();
+    for ep in &entry_points {
+        let has_test_linkage = symbol_map
+            .get(&ep.symbol_id)
+            .and_then(|s| s.metadata.as_ref())
+            .and_then(|m| m.get("test_linkage"))
+            .is_some();
+        if !has_test_linkage {
+            entry_point_linkage_gaps.push(EntryPointLinkageGap {
+                symbol_id: ep.symbol_id.clone(),
+                symbol_name: ep.symbol_name.clone(),
+                symbol_kind: ep.symbol_kind.clone(),
+                language: ep.language.clone(),
+                file_path: ep.file_path.clone(),
+                start_line: ep.start_line,
+                entry_annotation: ep.annotation.clone(),
+            });
+        }
+    }
+
+    let high_centrality_linkage_gaps =
+        collect_high_centrality_linkage_gaps(db, file_pattern.as_deref(), 20)?;
 
     let summary = ReportSummary {
         entry_points: entry_points.len(),
         auth_coverage_candidates: auth_coverage_candidates.len(),
         review_markers: review_markers.len(),
+        scheduler_signals: scheduler_signals.len(),
+        entry_point_linkage_gaps: entry_point_linkage_gaps.len(),
+        high_centrality_linkage_gaps: high_centrality_linkage_gaps.len(),
     };
 
     Ok(EarlyWarningReport {
@@ -190,6 +264,9 @@ fn build_report(
         entry_points,
         auth_coverage_candidates,
         review_markers,
+        scheduler_signals,
+        entry_point_linkage_gaps,
+        high_centrality_linkage_gaps,
     })
 }
 
@@ -327,10 +404,18 @@ fn annotation_sets(config: &LanguageConfig) -> AnnotationSets {
         .collect();
     review.extend(config.early_warnings.review_markers.iter().cloned());
 
+    let scheduler = config
+        .annotation_classes
+        .scheduler
+        .iter()
+        .cloned()
+        .collect();
+
     AnnotationSets {
         entrypoint,
         auth,
         review,
+        scheduler,
     }
 }
 
@@ -395,6 +480,20 @@ fn auth_coverage_candidate(
     }
 }
 
+fn scheduler_signal(symbol: &Symbol, annotation: &AnnotationMarker) -> SchedulerSignal {
+    SchedulerSignal {
+        symbol_id: symbol.id.clone(),
+        symbol_name: symbol.name.clone(),
+        symbol_kind: symbol.kind.to_string(),
+        language: symbol.language.clone(),
+        file_path: symbol.file_path.clone(),
+        start_line: symbol.start_line,
+        annotation: annotation.annotation.clone(),
+        annotation_key: annotation.annotation_key.clone(),
+        raw_text: annotation.raw_text.clone(),
+    }
+}
+
 fn review_marker_signal(symbol: &Symbol, annotation: &AnnotationMarker) -> ReviewMarkerSignal {
     ReviewMarkerSignal {
         symbol_id: symbol.id.clone(),
@@ -436,6 +535,56 @@ fn apply_limit_per_section(report: &mut EarlyWarningReport, limit: Option<usize>
     truncate_if_needed(&mut report.entry_points, limit);
     truncate_if_needed(&mut report.auth_coverage_candidates, limit);
     truncate_if_needed(&mut report.review_markers, limit);
+    truncate_if_needed(&mut report.scheduler_signals, limit);
+    truncate_if_needed(&mut report.entry_point_linkage_gaps, limit);
+    truncate_if_needed(&mut report.high_centrality_linkage_gaps, limit);
+}
+
+fn collect_high_centrality_linkage_gaps(
+    db: &SymbolDatabase,
+    file_pattern: Option<&str>,
+    limit: usize,
+) -> Result<Vec<HighCentralityLinkageGap>> {
+    // Query symbols with reference_score > 0, not tests, and no test_linkage metadata.
+    // Over-fetch by 4x to allow for file_pattern filtering after the query.
+    let fetch_limit = if file_pattern.is_some() {
+        limit * 4
+    } else {
+        limit
+    };
+    let mut stmt = db.conn.prepare(
+        "SELECT id, name, kind, language, file_path, start_line, reference_score
+         FROM symbols
+         WHERE reference_score > 0
+           AND (json_extract(metadata, '$.is_test') IS NULL
+                OR json_extract(metadata, '$.is_test') != 1)
+           AND json_extract(metadata, '$.test_linkage') IS NULL
+         ORDER BY reference_score DESC
+         LIMIT ?1",
+    )?;
+    let rows = stmt.query_map(params![fetch_limit as i64], |row| {
+        Ok(HighCentralityLinkageGap {
+            symbol_id: row.get(0)?,
+            symbol_name: row.get(1)?,
+            symbol_kind: row.get(2)?,
+            language: row.get(3)?,
+            file_path: row.get(4)?,
+            start_line: row.get(5)?,
+            reference_score: row.get(6)?,
+        })
+    })?;
+
+    let mut gaps = Vec::new();
+    for row_result in rows {
+        let gap = row_result?;
+        if matches_file_pattern(&gap.file_path, file_pattern) {
+            gaps.push(gap);
+            if gaps.len() >= limit {
+                break;
+            }
+        }
+    }
+    Ok(gaps)
 }
 
 fn unix_timestamp_millis() -> i64 {

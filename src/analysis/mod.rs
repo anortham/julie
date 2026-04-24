@@ -11,8 +11,9 @@ pub mod test_quality;
 pub mod test_roles;
 
 pub use early_warnings::{
-    AuthCoverageCandidate, EarlyWarningReport, EarlyWarningReportOptions, EntryPointSignal,
-    ReportSummary, ReviewMarkerSignal, generate_early_warning_report,
+    AuthCoverageCandidate, EarlyWarningReport, EarlyWarningReportOptions, EntryPointLinkageGap,
+    EntryPointSignal, HighCentralityLinkageGap, ReportSummary, ReviewMarkerSignal, SchedulerSignal,
+    generate_early_warning_report,
 };
 pub use test_linkage::compute_test_linkage;
 pub use test_quality::compute_test_quality_metrics;
