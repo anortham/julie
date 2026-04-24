@@ -127,10 +127,8 @@ async fn run_signals_command(
     cli_workspace: Option<std::path::PathBuf>,
 ) -> anyhow::Result<()> {
     let output = julie::cli_tools::run_signals_report(args, cli_workspace).await?;
-    let formatted = julie::cli_tools::output::format_signals_report(
-        &output,
-        flags.effective_format(),
-    );
+    let formatted =
+        julie::cli_tools::output::format_signals_report(&output, flags.effective_format());
     println!("{}", formatted);
     Ok(())
 }

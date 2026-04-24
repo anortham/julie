@@ -7,6 +7,7 @@
 pub mod early_warnings;
 pub mod test_linkage;
 pub mod test_quality;
+pub mod test_roles;
 
 pub use early_warnings::{
     AuthCoverageCandidate, EarlyWarningReport, EarlyWarningReportOptions, EntryPointSignal,
@@ -14,3 +15,6 @@ pub use early_warnings::{
 };
 pub use test_linkage::compute_test_linkage;
 pub use test_quality::compute_test_quality_metrics;
+pub use test_roles::{
+    TestRoleConfig, classify_symbols_by_role, classify_test_role, is_scorable_test, is_test_related,
+};

@@ -259,6 +259,27 @@ impl LanguageConfigs {
     pub fn embeddings_config(&self, language: &str) -> Option<&EmbeddingsConfig> {
         self.configs.get(language).map(|c| &c.embeddings)
     }
+
+    /// Build per-language test role configs from the annotation classes in each
+    /// language TOML. Used by `classify_symbols_by_role` in the indexing pipeline.
+    pub fn build_test_role_configs(
+        &self,
+    ) -> HashMap<String, crate::analysis::test_roles::TestRoleConfig> {
+        self.configs
+            .iter()
+            .map(|(lang, config)| {
+                let tc = &config.annotation_classes.test;
+                let role_config = crate::analysis::test_roles::TestRoleConfig {
+                    test_case: tc.test_case.iter().cloned().collect(),
+                    parameterized_test: tc.parameterized_test.iter().cloned().collect(),
+                    fixture_setup: tc.fixture_setup.iter().cloned().collect(),
+                    fixture_teardown: tc.fixture_teardown.iter().cloned().collect(),
+                    test_container: tc.test_container.iter().cloned().collect(),
+                };
+                (lang.clone(), role_config)
+            })
+            .collect()
+    }
 }
 
 #[cfg(test)]

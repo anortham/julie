@@ -65,9 +65,20 @@ pub(crate) async fn run_indexing_pipeline(
     info!("🚀 Processing {} languages", files_by_language.len());
 
     transition_stage(&mut state, route, IndexingStage::Extracting);
-    let batch = tool
+    let mut batch = tool
         .extract_index_batch(files_by_language, &route.workspace_root, &mut state)
         .await?;
+
+    // Classify test roles from annotation configs before persisting.
+    // This enriches symbol metadata with test_role and is_test fields.
+    {
+        let configs = crate::search::LanguageConfigs::load_embedded();
+        let role_configs = configs.build_test_role_configs();
+        crate::analysis::test_roles::classify_symbols_by_role(
+            &mut batch.all_symbols,
+            &role_configs,
+        );
+    }
 
     let Some(db) = route.database_for_write(handler).await? else {
         transition_stage(&mut state, route, IndexingStage::Completed);

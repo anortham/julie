@@ -160,14 +160,9 @@ fn build_report(
             if sets.entrypoint.contains(&annotation.annotation_key) {
                 entry_points.push(entry_point_signal(symbol, annotation));
                 if auth_candidate_symbol_ids.insert(symbol.id.clone()) {
-                    let has_auth = has_auth_marker_in_owner_chain(
-                        symbol,
-                        &symbol_map,
-                        &sets.auth,
-                    );
+                    let has_auth = has_auth_marker_in_owner_chain(symbol, &symbol_map, &sets.auth);
                     if !has_auth {
-                        auth_coverage_candidates
-                            .push(auth_coverage_candidate(symbol, annotation));
+                        auth_coverage_candidates.push(auth_coverage_candidate(symbol, annotation));
                     }
                 }
             }

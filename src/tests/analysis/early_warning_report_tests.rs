@@ -277,7 +277,11 @@ fn early_warning_report_file_pattern_scopes_analysis() {
             &api_file.path,
             10,
             None,
-            vec![marker("app.route", "app.route", Some("@app.route(\"/users\")"))],
+            vec![marker(
+                "app.route",
+                "app.route",
+                Some("@app.route(\"/users\")"),
+            )],
         ),
         symbol(
             "util-route",
@@ -287,7 +291,11 @@ fn early_warning_report_file_pattern_scopes_analysis() {
             &util_file.path,
             5,
             None,
-            vec![marker("app.route", "app.route", Some("@app.route(\"/health\")"))],
+            vec![marker(
+                "app.route",
+                "app.route",
+                Some("@app.route(\"/health\")"),
+            )],
         ),
     ])
     .unwrap();
