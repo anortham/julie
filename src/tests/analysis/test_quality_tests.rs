@@ -1173,6 +1173,189 @@ mod tests {
     }
 
     // =========================================================================
+    // Identifier evidence: empty config falls back to regex
+    // =========================================================================
+
+    #[test]
+    fn test_empty_evidence_config_falls_back_to_regex() {
+        // A Go test has a LanguageConfig but its test_evidence has empty
+        // assertion_identifiers. Even with call identifiers present, the
+        // pipeline should fall back to the regex path. With no regex
+        // assertions in the body either, the result should be Unknown
+        // (not high-confidence Stub from the identifier path seeing 0 matches).
+        use crate::analysis::test_quality::compute_test_quality_metrics;
+        use crate::database::SymbolDatabase;
+        use crate::search::LanguageConfigs;
+
+        let tmp = tempfile::TempDir::new().unwrap();
+        let db_path = tmp.path().join("test.db");
+        let db = SymbolDatabase::new(&db_path).unwrap();
+        let configs = LanguageConfigs::load_embedded();
+
+        // Verify Go has a config but empty assertion_identifiers
+        let go_cfg = configs.get("go");
+        assert!(go_cfg.is_some(), "Go should have a LanguageConfig");
+        assert!(
+            go_cfg.unwrap().test_evidence.assertion_identifiers.is_empty(),
+            "Go test_evidence.assertion_identifiers should be empty"
+        );
+
+        db.conn
+            .execute(
+                "INSERT INTO files (path, language, hash, size, last_modified) VALUES (?1, ?2, ?3, ?4, ?5)",
+                rusqlite::params!["handler_test.go", "go", "hash1", 200, 0],
+            )
+            .unwrap();
+
+        // Go test with a body that has no regex-detectable assertions
+        let code_body = "func TestHandler(t *testing.T) {\n    h := NewHandler()\n    h.Run()\n}";
+        db.conn
+            .execute(
+                "INSERT INTO symbols (id, name, kind, language, file_path, code_context, metadata, reference_score) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0.0)",
+                rusqlite::params![
+                    "sym-go-test",
+                    "TestHandler",
+                    "function",
+                    "go",
+                    "handler_test.go",
+                    code_body,
+                    r#"{"is_test":true}"#,
+                ],
+            )
+            .unwrap();
+
+        // Insert call identifiers (simulating tree-sitter extraction)
+        db.conn
+            .execute(
+                "INSERT INTO identifiers (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, containing_symbol_id) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                rusqlite::params![
+                    "id-go-1", "NewHandler", "call", "go", "handler_test.go", 2, 8, 2, 20, "sym-go-test",
+                ],
+            )
+            .unwrap();
+
+        let stats = compute_test_quality_metrics(&db, &configs).unwrap();
+        assert_eq!(stats.total_tests, 1);
+
+        let updated: String = db
+            .conn
+            .query_row(
+                "SELECT metadata FROM symbols WHERE id = 'sym-go-test'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let meta: serde_json::Value = serde_json::from_str(&updated).unwrap();
+        let tq = &meta["test_quality"];
+
+        assert_eq!(
+            tq["assertion_source"].as_str().unwrap(),
+            "regex",
+            "Go with empty evidence config should fall back to regex path"
+        );
+        assert_eq!(
+            tq["quality_tier"].as_str().unwrap(),
+            "unknown",
+            "No regex assertions found => Unknown, not high-confidence Stub"
+        );
+    }
+
+    // =========================================================================
+    // Identifier evidence: no substring matching
+    // =========================================================================
+
+    #[test]
+    fn test_identifier_evidence_no_substring_matching() {
+        // "assertion_report" should NOT match config entry "assert".
+        // "mock_database" should NOT match config entry "mock".
+        // This tests through the pipeline (compute_test_quality_metrics)
+        // to verify that exact-match-only semantics hold end-to-end.
+        use crate::analysis::test_quality::compute_test_quality_metrics;
+        use crate::database::SymbolDatabase;
+        use crate::search::LanguageConfigs;
+
+        let tmp = tempfile::TempDir::new().unwrap();
+        let db_path = tmp.path().join("test.db");
+        let db = SymbolDatabase::new(&db_path).unwrap();
+        let configs = LanguageConfigs::load_embedded();
+
+        db.conn
+            .execute(
+                "INSERT INTO files (path, language, hash, size, last_modified) VALUES (?1, ?2, ?3, ?4, ?5)",
+                rusqlite::params!["test_file.rs", "rust", "abc123", 100, 0],
+            )
+            .unwrap();
+
+        // Test body that has no regex-detectable assertions either
+        let code_body = "fn test_no_real_asserts() {\n    let r = assertion_report();\n    mock_database();\n}";
+        db.conn
+            .execute(
+                "INSERT INTO symbols (id, name, kind, language, file_path, code_context, metadata, reference_score) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0.0)",
+                rusqlite::params![
+                    "sym-substr",
+                    "test_no_real_asserts",
+                    "function",
+                    "rust",
+                    "test_file.rs",
+                    code_body,
+                    r#"{"is_test":true}"#,
+                ],
+            )
+            .unwrap();
+
+        // Insert identifiers that are substrings of config entries but not exact matches
+        db.conn
+            .execute(
+                "INSERT INTO identifiers (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, containing_symbol_id) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                rusqlite::params![
+                    "id-sub-1", "assertion_report", "call", "rust", "test_file.rs", 2, 12, 2, 30, "sym-substr",
+                ],
+            )
+            .unwrap();
+        db.conn
+            .execute(
+                "INSERT INTO identifiers (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, containing_symbol_id) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                rusqlite::params![
+                    "id-sub-2", "mock_database", "call", "rust", "test_file.rs", 3, 4, 3, 18, "sym-substr",
+                ],
+            )
+            .unwrap();
+
+        let stats = compute_test_quality_metrics(&db, &configs).unwrap();
+        assert_eq!(stats.total_tests, 1);
+
+        let updated: String = db
+            .conn
+            .query_row(
+                "SELECT metadata FROM symbols WHERE id = 'sym-substr'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let meta: serde_json::Value = serde_json::from_str(&updated).unwrap();
+        let tq = &meta["test_quality"];
+
+        // With exact matching, "assertion_report" does NOT match "assert",
+        // and "mock_database" does NOT match "mock". So identifier path
+        // sees 0 assertions and 0 mocks.
+        assert_eq!(
+            tq["assertion_count"].as_u64().unwrap(),
+            0,
+            "assertion_report should not match config entry 'assert'"
+        );
+        assert_eq!(
+            tq["mock_count"].as_u64().unwrap(),
+            0,
+            "mock_database should not match config entry 'mock'"
+        );
+    }
+
+    // =========================================================================
     // TestQualityTier::as_str
     // =========================================================================
 

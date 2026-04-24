@@ -672,7 +672,9 @@ pub fn compute_test_quality_metrics(
             // Match identifiers against framework-specific evidence config
             let evidence_config = language_configs.get(language).map(|cfg| &cfg.test_evidence);
 
-            let has_identifier_evidence = evidence_config.is_some() && !call_names.is_empty();
+            let has_identifier_evidence = evidence_config
+                .map(|cfg| !cfg.assertion_identifiers.is_empty() && !call_names.is_empty())
+                .unwrap_or(false);
 
             let (id_assertion_count, id_error_count, id_mock_count) =
                 if let Some(ev_cfg) = evidence_config {
@@ -801,21 +803,21 @@ fn count_identifier_evidence(
         if evidence_config
             .assertion_identifiers
             .iter()
-            .any(|a| lower == *a || lower.contains(a.as_str()))
+            .any(|a| lower == *a)
         {
             assertion_count += 1;
         }
         if evidence_config
             .error_assertion_identifiers
             .iter()
-            .any(|e| lower == *e || lower.contains(e.as_str()))
+            .any(|e| lower == *e)
         {
             error_count += 1;
         }
         if evidence_config
             .mock_identifiers
             .iter()
-            .any(|m| lower == *m || lower.contains(m.as_str()))
+            .any(|m| lower == *m)
         {
             mock_count += 1;
         }

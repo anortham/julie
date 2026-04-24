@@ -615,6 +615,78 @@ mod tests {
     }
 
     #[test]
+    fn test_parent_aggregation_includes_best_confidence() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        let db = SymbolDatabase::new(&db_path).unwrap();
+
+        insert_file(&db, "src/services.rs");
+        insert_file(&db, "tests/services_test.rs");
+
+        db.conn.execute_batch(r#"
+            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata, reference_score, visibility)
+            VALUES ('class_agg', 'OrderService', 'class', 'csharp', 'src/services.rs', 1, 0, 60, 0, 0, 0, NULL, 5.0, 'public');
+
+            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata, reference_score, visibility, parent_id)
+            VALUES ('method_agg1', 'CreateOrder', 'method', 'csharp', 'src/services.rs', 5, 0, 20, 0, 0, 0, NULL, 3.0, 'public', 'class_agg');
+
+            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata, reference_score, visibility, parent_id)
+            VALUES ('method_agg2', 'CancelOrder', 'method', 'csharp', 'src/services.rs', 25, 0, 40, 0, 0, 0, NULL, 2.0, 'public', 'class_agg');
+
+            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata, reference_score, visibility)
+            VALUES ('test_agg1', 'test_create_order', 'method', 'csharp', 'tests/services_test.rs', 1, 0, 10, 0, 0, 0,
+                    '{"is_test": true, "test_quality": {"quality_tier": "thorough", "confidence": 0.92}}', 0.0, 'private');
+
+            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata, reference_score, visibility)
+            VALUES ('test_agg2', 'test_cancel_order', 'method', 'csharp', 'tests/services_test.rs', 15, 0, 25, 0, 0, 0,
+                    '{"is_test": true, "test_quality": {"quality_tier": "adequate", "confidence": 0.75}}', 0.0, 'private');
+
+            INSERT INTO relationships (id, from_symbol_id, to_symbol_id, kind, file_path, line_number)
+            VALUES ('rel_agg1', 'test_agg1', 'method_agg1', 'calls', 'tests/services_test.rs', 5);
+
+            INSERT INTO relationships (id, from_symbol_id, to_symbol_id, kind, file_path, line_number)
+            VALUES ('rel_agg2', 'test_agg2', 'method_agg2', 'calls', 'tests/services_test.rs', 18);
+        "#).unwrap();
+
+        crate::analysis::test_linkage::compute_test_linkage(&db).unwrap();
+
+        // The parent class should inherit aggregated linkage from its methods
+        let class_meta_str: Option<String> = db
+            .conn
+            .query_row(
+                "SELECT json_extract(metadata, '$.test_linkage') FROM symbols WHERE id = 'class_agg'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(
+            class_meta_str.is_some(),
+            "Parent class should have aggregated test_linkage"
+        );
+
+        let linkage: serde_json::Value =
+            serde_json::from_str(&class_meta_str.unwrap()).unwrap();
+
+        // best_confidence should be present and reflect the best child's confidence
+        let best_confidence = linkage
+            .get("best_confidence")
+            .expect("best_confidence must be present in parent linkage")
+            .as_f64()
+            .unwrap();
+        assert!(
+            (best_confidence - 0.92).abs() < 0.001,
+            "Parent best_confidence should be 0.92 (from the thorough child), got {}",
+            best_confidence
+        );
+
+        // best_tier should be "thorough" (the best among children)
+        assert_eq!(
+            linkage.get("best_tier").unwrap().as_str().unwrap(),
+            "thorough"
+        );
+    }
+
+    #[test]
     fn test_best_confidence_defaults_when_metadata_absent() {
         let temp_dir = TempDir::new().unwrap();
         let db_path = temp_dir.path().join("test.db");

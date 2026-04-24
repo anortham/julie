@@ -444,7 +444,8 @@ pub fn compute_test_linkage(db: &SymbolDatabase) -> Result<TestLinkageStats> {
         "SELECT parent.id,
                 json_extract(child.metadata, '$.test_linkage.test_count'),
                 json_extract(child.metadata, '$.test_linkage.best_tier'),
-                json_extract(child.metadata, '$.test_linkage.worst_tier')
+                json_extract(child.metadata, '$.test_linkage.worst_tier'),
+                json_extract(child.metadata, '$.test_linkage.best_confidence')
          FROM symbols parent
          JOIN symbols child ON child.parent_id = parent.id
          WHERE parent.kind IN ('class', 'struct', 'interface', 'enum', 'trait')
@@ -452,26 +453,35 @@ pub fn compute_test_linkage(db: &SymbolDatabase) -> Result<TestLinkageStats> {
            AND (json_extract(parent.metadata, '$.test_linkage') IS NULL)",
     )?;
 
-    let mut parent_coverage: HashMap<String, (u32, String, String)> = HashMap::new();
+    // (total_tests, best_tier, worst_tier, best_confidence)
+    let mut parent_coverage: HashMap<String, (u32, String, String, f64)> = HashMap::new();
     let parent_rows = parent_stmt.query_map([], |row| {
         Ok((
             row.get::<_, String>(0)?,
             row.get::<_, u32>(1)?,
             row.get::<_, String>(2)?,
             row.get::<_, String>(3)?,
+            row.get::<_, Option<f64>>(4)?,
         ))
     })?;
 
     for row in parent_rows {
-        let (parent_id, child_count, child_best, child_worst) = row?;
+        let (parent_id, child_count, child_best, child_worst, child_confidence) = row?;
+        let child_confidence = child_confidence.unwrap_or(0.5);
         let entry = parent_coverage.entry(parent_id).or_insert((
             0,
             "stub".to_string(),
             "thorough".to_string(),
+            0.0,
         ));
         entry.0 += child_count;
         if tier_rank(&child_best) > tier_rank(&entry.1) {
-            entry.1 = child_best;
+            entry.1 = child_best.clone();
+            // When best_tier changes, reset best_confidence to this child's value
+            entry.3 = child_confidence;
+        } else if tier_rank(&child_best) == tier_rank(&entry.1) && child_confidence > entry.3 {
+            // Same tier, higher confidence wins
+            entry.3 = child_confidence;
         }
         if tier_rank(&child_worst) < tier_rank(&entry.2) {
             entry.2 = child_worst;
@@ -481,11 +491,12 @@ pub fn compute_test_linkage(db: &SymbolDatabase) -> Result<TestLinkageStats> {
     if !parent_coverage.is_empty() {
         db.conn.execute_batch("BEGIN")?;
         let agg_result = (|| -> Result<()> {
-            for (parent_id, (total_tests, best, worst)) in &parent_coverage {
+            for (parent_id, (total_tests, best, worst, confidence)) in &parent_coverage {
                 let linkage = serde_json::json!({
                     "test_count": total_tests,
                     "best_tier": best,
                     "worst_tier": worst,
+                    "best_confidence": confidence,
                     "linked_tests": [],
                     "linked_test_paths": [],
                     "evidence_sources": ["aggregated_from_methods"],
