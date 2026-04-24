@@ -62,8 +62,13 @@ auth = [
 ]
 auth_bypass = ["allow_anonymous"]
 scheduler = ["celery.task", "shared_task", "periodic_task"]
-test = ["pytest.mark.parametrize", "pytest.mark.asyncio", "pytest.mark.django_db"]
-fixture = ["pytest.fixture"]
+
+[annotation_classes.test]
+test_case = []
+parameterized_test = ["pytest.mark.parametrize"]
+fixture_setup = ["pytest.fixture"]
+fixture_teardown = []
+test_container = []
 
 [early_warnings]
 review_markers = ["allow_anonymous"]

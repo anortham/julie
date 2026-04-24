@@ -64,8 +64,13 @@ auth = [
 ]
 auth_bypass = ["permitall"]
 scheduler = ["scheduled"]
-test = ["test", "parameterizedtest"]
-fixture = ["beforeeach", "beforeall"]
+
+[annotation_classes.test]
+test_case = ["test", "repeatedtest", "testfactory", "testtemplate"]
+parameterized_test = ["parameterizedtest"]
+fixture_setup = ["beforeeach", "beforeall", "before", "beforeclass", "beforemethod", "beforesuite"]
+fixture_teardown = ["aftereach", "afterall", "after", "afterclass", "aftermethod", "aftersuite"]
+test_container = ["nested"]
 
 [early_warnings]
 review_markers = ["permitall"]

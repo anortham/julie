@@ -69,6 +69,25 @@ pub struct EmbeddingsConfig {
     pub variable_ratio: Option<f64>,
 }
 
+/// Role-classified test annotation mappings.
+///
+/// Replaces the old flat `test: Vec<String>` + `fixture: Vec<String>` with
+/// per-role lists so downstream quality scoring can distinguish scorable
+/// test cases from non-scorable fixtures and containers.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct TestAnnotationClasses {
+    #[serde(default)]
+    pub test_case: Vec<String>,
+    #[serde(default)]
+    pub parameterized_test: Vec<String>,
+    #[serde(default)]
+    pub fixture_setup: Vec<String>,
+    #[serde(default)]
+    pub fixture_teardown: Vec<String>,
+    #[serde(default)]
+    pub test_container: Vec<String>,
+}
+
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct AnnotationClassesConfig {
     #[serde(default)]
@@ -82,9 +101,7 @@ pub struct AnnotationClassesConfig {
     #[serde(default)]
     pub scheduler: Vec<String>,
     #[serde(default)]
-    pub test: Vec<String>,
-    #[serde(default)]
-    pub fixture: Vec<String>,
+    pub test: TestAnnotationClasses,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -283,8 +300,11 @@ meaningful_affixes = []
         assert!(config.annotation_classes.auth_bypass.is_empty());
         assert!(config.annotation_classes.middleware.is_empty());
         assert!(config.annotation_classes.scheduler.is_empty());
-        assert!(config.annotation_classes.test.is_empty());
-        assert!(config.annotation_classes.fixture.is_empty());
+        assert!(config.annotation_classes.test.test_case.is_empty());
+        assert!(config.annotation_classes.test.parameterized_test.is_empty());
+        assert!(config.annotation_classes.test.fixture_setup.is_empty());
+        assert!(config.annotation_classes.test.fixture_teardown.is_empty());
+        assert!(config.annotation_classes.test.test_container.is_empty());
         assert!(config.early_warnings.review_markers.is_empty());
         assert_eq!(config.early_warnings.schema_version, 1);
     }
@@ -304,8 +324,10 @@ auth = ["login_required"]
 auth_bypass = ["allowanonymous"]
 middleware = ["middleware"]
 scheduler = ["celery.task"]
-test = ["pytest.mark.parametrize"]
-fixture = ["pytest.fixture"]
+
+[annotation_classes.test]
+parameterized_test = ["pytest.mark.parametrize"]
+fixture_setup = ["pytest.fixture"]
 
 [early_warnings]
 review_markers = ["allowanonymous"]
@@ -323,10 +345,16 @@ schema_version = 7
         assert_eq!(config.annotation_classes.middleware, vec!["middleware"]);
         assert_eq!(config.annotation_classes.scheduler, vec!["celery.task"]);
         assert_eq!(
-            config.annotation_classes.test,
+            config.annotation_classes.test.parameterized_test,
             vec!["pytest.mark.parametrize"]
         );
-        assert_eq!(config.annotation_classes.fixture, vec!["pytest.fixture"]);
+        assert_eq!(
+            config.annotation_classes.test.fixture_setup,
+            vec!["pytest.fixture"]
+        );
+        assert!(config.annotation_classes.test.test_case.is_empty());
+        assert!(config.annotation_classes.test.fixture_teardown.is_empty());
+        assert!(config.annotation_classes.test.test_container.is_empty());
         assert_eq!(config.early_warnings.review_markers, vec!["allowanonymous"]);
         assert_eq!(config.early_warnings.schema_version, 7);
     }
@@ -352,7 +380,15 @@ schema_version = 7
             python
                 .annotation_classes
                 .test
+                .parameterized_test
                 .contains(&"pytest.mark.parametrize".into())
+        );
+        assert!(
+            python
+                .annotation_classes
+                .test
+                .fixture_setup
+                .contains(&"pytest.fixture".into())
         );
 
         let java = configs.get("java").expect("java config should exist");
@@ -451,6 +487,73 @@ schema_version = 7
 
         let rust = configs.get("rust").expect("rust config should exist");
         assert!(rust.annotation_classes.entrypoint.is_empty());
-        assert_eq!(rust.annotation_classes.test, vec!["test", "tokio::test"]);
+        assert!(
+            rust.annotation_classes
+                .test
+                .test_case
+                .contains(&"test".into())
+        );
+        assert!(
+            rust.annotation_classes
+                .test
+                .test_case
+                .contains(&"tokio::test".into())
+        );
+
+        // Verify Java has role-classified test annotations
+        assert!(
+            java.annotation_classes
+                .test
+                .test_case
+                .contains(&"test".into())
+        );
+        assert!(
+            java.annotation_classes
+                .test
+                .parameterized_test
+                .contains(&"parameterizedtest".into())
+        );
+        assert!(
+            java.annotation_classes
+                .test
+                .fixture_setup
+                .contains(&"beforeeach".into())
+        );
+        assert!(
+            java.annotation_classes
+                .test
+                .fixture_teardown
+                .contains(&"aftereach".into())
+        );
+
+        // Verify C# has role-classified test annotations
+        assert!(
+            csharp
+                .annotation_classes
+                .test
+                .test_case
+                .contains(&"fact".into())
+        );
+        assert!(
+            csharp
+                .annotation_classes
+                .test
+                .parameterized_test
+                .contains(&"theory".into())
+        );
+        assert!(
+            csharp
+                .annotation_classes
+                .test
+                .fixture_setup
+                .contains(&"setup".into())
+        );
+        assert!(
+            csharp
+                .annotation_classes
+                .test
+                .test_container
+                .contains(&"testfixture".into())
+        );
     }
 }

@@ -47,7 +47,9 @@ important_patterns = [
 extra_kinds = []
 
 [annotation_classes]
-test = ["test", "tokio::test"]
+
+[annotation_classes.test]
+test_case = ["test", "tokio::test", "rstest"]
 
 [early_warnings]
 schema_version = 1

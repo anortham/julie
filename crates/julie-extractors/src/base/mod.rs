@@ -29,5 +29,5 @@ pub use tree_methods::{find_child_by_type, find_child_by_types};
 pub use types::{
     AnnotationMarker, ContextConfig, ExtractionResults, Identifier, IdentifierKind,
     PendingRelationship, Relationship, RelationshipKind, Symbol, SymbolKind, SymbolOptions,
-    TypeInfo, Visibility,
+    TestRole, TypeInfo, Visibility,
 };

@@ -56,8 +56,13 @@ entrypoint = [
 ]
 auth = ["authorize"]
 auth_bypass = ["allowanonymous"]
-test = ["fact", "theory", "testmethod"]
-fixture = ["setup", "testinitialize", "onetimesetup", "collection"]
+
+[annotation_classes.test]
+test_case = ["fact", "test", "testmethod"]
+parameterized_test = ["theory", "testcase", "testcasesource", "datatestmethod"]
+fixture_setup = ["setup", "onetimesetup", "testinitialize", "classinitialize", "assemblyinitialize"]
+fixture_teardown = ["teardown", "onetimeteardown", "testcleanup", "classcleanup", "assemblycleanup"]
+test_container = ["testfixture", "testclass", "collection", "collectiondefinition"]
 
 [early_warnings]
 review_markers = ["allowanonymous"]

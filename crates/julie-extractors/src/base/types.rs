@@ -10,6 +10,37 @@ use std::collections::HashMap;
 use super::relationship_resolution::StructuredPendingRelationship;
 use super::span::NormalizedSpan;
 
+/// Role classification for test-related symbols.
+///
+/// Distinguishes test cases (scorable for quality) from fixtures and containers
+/// (not scorable), preventing false "stub" classifications on setup/teardown methods.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TestRole {
+    TestCase,
+    ParameterizedTest,
+    FixtureSetup,
+    FixtureTeardown,
+    TestContainer,
+}
+
+impl TestRole {
+    /// Returns true for roles where quality scoring (assert density, stub detection) applies.
+    pub fn is_scorable(&self) -> bool {
+        matches!(self, TestRole::TestCase | TestRole::ParameterizedTest)
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            TestRole::TestCase => "test_case",
+            TestRole::ParameterizedTest => "parameterized_test",
+            TestRole::FixtureSetup => "fixture_setup",
+            TestRole::FixtureTeardown => "fixture_teardown",
+            TestRole::TestContainer => "test_container",
+        }
+    }
+}
+
 /// Canonical annotation marker with display, match, and source text forms.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct AnnotationMarker {
