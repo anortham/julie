@@ -2523,6 +2523,23 @@ async fn test_refresh_no_changes_skips_embedding_pipeline() {
         "Index should succeed: {msg}"
     );
 
+    // Wait for background embedding to finish so the workspace has embeddings
+    // before refreshing. Without this, the catch-up logic would (correctly)
+    // schedule embedding because the workspace has symbols but 0 vectors.
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        let tasks = handler.embedding_tasks.lock().await;
+        if tasks.is_empty() {
+            break;
+        }
+        drop(tasks);
+        assert!(
+            Instant::now() < deadline,
+            "Embedding task did not complete within 5s"
+        );
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+
     // Now: refresh with no changes and no force
     let refresh_tool = ManageWorkspaceTool {
         operation: "refresh".to_string(),
@@ -2543,5 +2560,86 @@ async fn test_refresh_no_changes_skips_embedding_pipeline() {
     assert!(
         !msg.contains("Embedding"),
         "Refresh with no changes should NOT trigger embedding pipeline: {msg}"
+    );
+}
+
+#[tokio::test]
+#[serial]
+async fn test_incremental_index_triggers_catch_up_embedding_when_none_exist() {
+    let temp_dir = TempDir::new().unwrap();
+    let test_file = temp_dir.path().join("main.rs");
+    fs::write(&test_file, "fn alpha() {}\nfn beta() {}\n").unwrap();
+
+    let handler = JulieServerHandler::new_for_test().await.unwrap();
+    handler
+        .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
+        .await
+        .unwrap();
+
+    // Inject provider so embedding can run
+    {
+        let mut ws_guard = handler.workspace.write().await;
+        let ws = ws_guard.as_mut().expect("workspace should be initialized");
+        ws.embedding_provider = Some(Arc::new(NoopEmbeddingProvider));
+    }
+
+    // First index with force: creates symbols and spawns background embedding
+    let tool = ManageWorkspaceTool {
+        operation: "index".to_string(),
+        path: Some(temp_dir.path().to_string_lossy().to_string()),
+        force: Some(true),
+        name: None,
+        workspace_id: None,
+        detailed: None,
+    };
+    let _ = tool.call_tool(&handler).await.unwrap();
+
+    // Wait for background embedding task to finish
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        let tasks = handler.embedding_tasks.lock().await;
+        if tasks.is_empty() {
+            break;
+        }
+        drop(tasks);
+        assert!(
+            Instant::now() < deadline,
+            "Embedding task did not complete within 5s"
+        );
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+
+    // Clear all embeddings to simulate "sidecar wasn't ready during initial indexing"
+    if let Ok(Some(workspace)) = handler.get_workspace().await {
+        if let Some(db) = workspace.db.as_ref() {
+            let mut db_lock = db.lock().unwrap();
+            db_lock.clear_all_embeddings().unwrap();
+            assert_eq!(
+                db_lock.embedding_count().unwrap(),
+                0,
+                "embeddings should be cleared"
+            );
+            assert!(
+                db_lock.count_symbols_for_workspace().unwrap() > 0,
+                "symbols should still exist"
+            );
+        }
+    }
+
+    // Second index: force=false, incremental — no file changes detected
+    let incremental_tool = ManageWorkspaceTool {
+        operation: "index".to_string(),
+        path: Some(temp_dir.path().to_string_lossy().to_string()),
+        force: Some(false),
+        name: None,
+        workspace_id: None,
+        detailed: None,
+    };
+    let result = incremental_tool.call_tool(&handler).await.unwrap();
+    let message = extract_text_from_result(&result);
+
+    assert!(
+        message.contains("Embedding") && message.contains("background"),
+        "Incremental index should schedule catch-up embedding when workspace has symbols but 0 embeddings. Message: {message}"
     );
 }

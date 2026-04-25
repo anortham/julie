@@ -16,6 +16,7 @@
 use anyhow::Result;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::sync::OnceLock;
 use tracing::{debug, info, warn};
 
@@ -641,11 +642,27 @@ pub fn compute_test_quality_metrics(
         rows.len()
     );
 
-    // Prepare identifier query (reused per symbol)
-    let mut id_stmt = db.conn.prepare(
-        "SELECT LOWER(name) FROM identifiers \
-         WHERE containing_symbol_id = ?1 AND kind = 'call'",
-    )?;
+    // Batch-fetch all call identifiers for test symbols in one query.
+    // This replaces 16K individual per-symbol queries with a single scan,
+    // avoiding B-tree cache thrashing on large databases.
+    let test_ids: Vec<&str> = rows.iter().map(|(id, _, _, _)| id.as_str()).collect();
+    let call_names_by_symbol: HashMap<String, Vec<String>> = {
+        let json_ids = serde_json::to_string(&test_ids)?;
+        let mut stmt2 = db.conn.prepare(
+            "SELECT containing_symbol_id, LOWER(name) FROM identifiers \
+             WHERE containing_symbol_id IN (SELECT value FROM json_each(?1)) \
+               AND kind = 'call'",
+        )?;
+        let mut map: HashMap<String, Vec<String>> = HashMap::new();
+        let id_rows = stmt2.query_map([&json_ids], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
+        for row in id_rows {
+            let (symbol_id, name) = row?;
+            map.entry(symbol_id).or_default().push(name);
+        }
+        map
+    };
 
     // Wrap all UPDATEs in a single transaction for performance on large codebases
     db.conn.execute_batch("BEGIN")?;
@@ -664,18 +681,17 @@ pub fn compute_test_quality_metrics(
                 .and_then(|v| v.as_str())
                 .map(String::from);
 
-            // Gather identifier evidence for this symbol
-            let call_names: Vec<String> = id_stmt
-                .query_map(rusqlite::params![id], |row| row.get::<_, String>(0))?
-                .filter_map(|r| r.ok())
-                .collect();
+            let empty_calls = Vec::new();
+            let call_names = call_names_by_symbol
+                .get(id.as_str())
+                .unwrap_or(&empty_calls);
 
             // Match identifiers against framework-specific evidence config
             let evidence_config = language_configs.get(language).map(|cfg| &cfg.test_evidence);
 
             let (id_assertion_count, id_error_count, id_mock_count) =
                 if let Some(ev_cfg) = evidence_config {
-                    count_identifier_evidence(&call_names, ev_cfg)
+                    count_identifier_evidence(call_names, ev_cfg)
                 } else {
                     (0, 0, 0)
                 };

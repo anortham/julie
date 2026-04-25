@@ -34,35 +34,24 @@ impl SymbolDatabase {
             return Ok(Vec::new());
         }
 
-        // Build parameterized query with IN clause for batch fetch
-        let placeholders: Vec<String> = (1..=ids.len()).map(|i| format!("?{}", i)).collect();
-
-        // Build CASE statement for ORDER BY to preserve input order
-        // This maps each ID to its position in the input array
-        let order_cases: Vec<String> = (0..ids.len())
-            .map(|i| format!("WHEN id = ?{} THEN {}", i + 1, i))
-            .collect();
+        let json_ids = serde_json::to_string(ids)
+            .map_err(|e| anyhow::anyhow!("Failed to serialize IDs to JSON: {e}"))?;
 
         let query = format!(
-            "SELECT {} FROM symbols WHERE id IN ({}) ORDER BY CASE {} END",
-            SYMBOL_COLUMNS,
-            placeholders.join(", "),
-            order_cases.join(" ")
+            "SELECT {SYMBOL_COLUMNS} FROM symbols \
+             WHERE id IN (SELECT value FROM json_each(?1))"
         );
 
         let mut stmt = self.conn.prepare(&query)?;
+        let symbol_iter = stmt.query_map([&json_ids], |row| self.row_to_symbol(row))?;
 
-        // Convert Vec<String> to Vec<&dyn ToSql> for params!
-        let params: Vec<&dyn rusqlite::ToSql> =
-            ids.iter().map(|id| id as &dyn rusqlite::ToSql).collect();
-
-        let symbol_iter = stmt.query_map(&params[..], |row| self.row_to_symbol(row))?;
-
-        let mut symbols = Vec::new();
+        let mut by_id = std::collections::HashMap::new();
         for symbol_result in symbol_iter {
-            symbols.push(symbol_result?);
+            let symbol = symbol_result?;
+            by_id.insert(symbol.id.clone(), symbol);
         }
 
+        let mut symbols: Vec<Symbol> = ids.iter().filter_map(|id| by_id.remove(id)).collect();
         hydrate_annotations_for_symbols(self, &mut symbols)?;
         Ok(symbols)
     }

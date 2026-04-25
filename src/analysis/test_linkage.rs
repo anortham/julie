@@ -197,18 +197,23 @@ pub fn compute_test_linkage(db: &SymbolDatabase) -> Result<TestLinkageStats> {
     // Step 2b: Identifier-based linkage — name-match fallback
     // For identifiers without target_symbol_id, match by name against production symbols.
     // Disambiguate by file proximity (same directory tree preferred).
-    // Group by (test_id, identifier_name) so each identifier reference picks
-    // the closest matching production symbol independently.
-    // NOTE: Language filter is applied in Rust (not SQL) because adding
-    // `AND s_test.language = s_prod.language` to the query causes SQLite's
-    // planner to drop idx_symbols_name in favor of idx_symbols_language,
-    // turning a fast name-index lookup into a full language-scan + name filter.
-    // On Julie's codebase this changed a <1s query into a 3+ minute hang.
-    // ORDER BY s_prod.id, s_prod.file_path gives the scoring loop a stable
-    // row order so max_by_key sees ties in a deterministic sequence across
-    // runs on the same database. Combined with the explicit tie-breaker
-    // below, `linked_tests` / `linked_test_paths` / `evidence_sources`
-    // become reproducible — no SQLite row-order leakage.
+    //
+    // Guard against cartesian explosions: on large codebases, common names like "get",
+    // "run", "init" match dozens of production symbols each, producing millions of rows.
+    // Pre-compute the set of ambiguous names (matching > 10 prod symbols) and exclude
+    // them from the join.
+    //
+    // Language filter applied in Rust (not SQL) because adding it to the JOIN causes
+    // SQLite to drop idx_symbols_name in favor of idx_symbols_language.
+    db.conn.execute_batch(
+        "CREATE TEMP TABLE IF NOT EXISTS _ambiguous_names (name TEXT PRIMARY KEY);
+         DELETE FROM _ambiguous_names;
+         INSERT INTO _ambiguous_names (name)
+         SELECT name FROM symbols
+         WHERE kind NOT IN ('import', 'export', 'module', 'namespace')
+         GROUP BY name HAVING COUNT(*) > 10;",
+    )?;
+
     let mut stmt3 = db.conn.prepare(&format!(
         "SELECT s_prod.id, s_prod.file_path, s_test.id, s_test.name, i.file_path AS test_file,
                 COALESCE(json_extract(s_test.metadata, '$.test_quality.quality_tier'), 'unknown'),
@@ -223,6 +228,7 @@ pub fn compute_test_linkage(db: &SymbolDatabase) -> Result<TestLinkageStats> {
            AND (json_extract(s_prod.metadata, '$.is_test') IS NULL
                 OR json_extract(s_prod.metadata, '$.is_test') != 1)
            AND s_prod.kind NOT IN ('import', 'export', 'module', 'namespace')
+           AND i.name NOT IN (SELECT name FROM _ambiguous_names)
          ORDER BY s_prod.id, s_prod.file_path",
     ))?;
 
@@ -327,6 +333,10 @@ pub fn compute_test_linkage(db: &SymbolDatabase) -> Result<TestLinkageStats> {
             );
         }
     }
+
+    let _ = db
+        .conn
+        .execute_batch("DROP TABLE IF EXISTS _ambiguous_names;");
 
     debug!(
         "After identifier linkage: {} production symbols linked",

@@ -110,7 +110,7 @@ async fn answer_roots_request_error(
 }
 
 #[tokio::test]
-async fn test_initialized_weak_cwd_does_not_probe_roots_before_first_request() -> Result<()> {
+async fn test_initialized_weak_cwd_eagerly_probes_and_binds_roots() -> Result<()> {
     let indexes_dir = tempfile::tempdir()?;
     let startup_root = tempfile::tempdir()?;
     let roots_root = tempfile::tempdir()?;
@@ -176,63 +176,34 @@ async fn test_initialized_weak_cwd_does_not_probe_roots_before_first_request() -
     )
     .await?;
 
-    match tokio::time::timeout(Duration::from_millis(250), read_server_message(&mut lines)).await {
-        Ok(Ok(message)) => {
-            panic!(
-                "weak cwd startup should defer roots/list until the first primary-scoped request, got: {message:?}"
-            );
-        }
-        Ok(Err(err)) => return Err(err),
-        Err(_) => {}
-    }
-
-    assert_eq!(
-        handler.current_workspace_id(),
-        None,
-        "weak cwd startup should remain unbound after on_initialized"
-    );
-    assert!(
-        !*handler.is_indexed.read().await,
-        "weak cwd startup should keep auto-indexing deferred until request-time resolution"
-    );
-
     let roots_paths = [roots_root.path()];
-    let roots_reply = answer_roots_request(&mut lines, &mut write_half, &roots_paths);
-    let list_future = <JulieServerHandler as ServerHandler>::call_tool(
-        &handler,
-        CallToolRequestParams::new("manage_workspace").with_arguments(
-            serde_json::json!({
-                "operation": "list"
-            })
-            .as_object()
-            .expect("manage_workspace list args")
-            .clone(),
-        ),
-        RequestContext::new(NumberOrString::Number(300), service.peer().clone()),
-    );
-    let (roots_result, list_result) = tokio::time::timeout(Duration::from_secs(10), async {
-        tokio::join!(roots_reply, list_future)
-    })
+    tokio::time::timeout(
+        Duration::from_secs(10),
+        answer_roots_request(&mut lines, &mut write_half, &roots_paths),
+    )
     .await
-    .expect("request-time roots resolution should finish");
-    roots_result?;
-    let result = list_result?;
+    .expect("on_initialized with cwd startup should eagerly send roots/list")?;
 
     let roots_workspace_id = crate::workspace::registry::generate_workspace_id(
         &roots_root.path().canonicalize()?.to_string_lossy(),
     )?;
-    assert_eq!(
-        handler.current_workspace_id().as_deref(),
-        Some(roots_workspace_id.as_str()),
-        "the first primary-scoped request should bind the real roots workspace"
+
+    let bound = tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            if handler.current_workspace_id().as_deref() == Some(roots_workspace_id.as_str()) {
+                break;
+            }
+            sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await;
+    assert!(
+        bound.is_ok(),
+        "on_initialized should eagerly bind the roots workspace without a tool call"
     );
     assert_eq!(
         handler.current_workspace_root(),
         roots_root.path().canonicalize()?
-    );
-    assert!(
-        extract_text(&result).contains(&roots_workspace_id),
-        "manage_workspace list should report the roots-bound primary"
     );
 
     drop(write_half);
@@ -2483,6 +2454,134 @@ async fn test_roots_list_changed_env_startup_does_not_rebind() -> Result<()> {
     );
 
     drop(write_half);
+    let _ = service.cancel().await;
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_roots_list_changed_resolves_deferred_auto_index() -> Result<()> {
+    let indexes_dir = tempfile::tempdir()?;
+    let startup_root = tempfile::tempdir()?;
+    let roots_root = tempfile::tempdir()?;
+    std::fs::create_dir_all(startup_root.path().join(".julie"))?;
+    std::fs::create_dir_all(roots_root.path().join("src"))?;
+    std::fs::write(
+        roots_root.path().join("src/lib.rs"),
+        "pub fn from_roots() {}\n",
+    )?;
+
+    let daemon_db_path = indexes_dir.path().join("daemon.db");
+    let daemon_db = Arc::new(DaemonDatabase::open(&daemon_db_path)?);
+    let embedding_service = Arc::new(EmbeddingService::initializing());
+    embedding_service.publish_unavailable("test: embeddings disabled".to_string(), None);
+    let pool = Arc::new(WorkspacePool::new(
+        indexes_dir.path().to_path_buf(),
+        Some(Arc::clone(&daemon_db)),
+        None,
+        Some(Arc::clone(&embedding_service)),
+    ));
+    let restart_pending = Arc::new(AtomicBool::new(false));
+
+    let startup_path = startup_root.path().canonicalize()?;
+    let startup_workspace_id =
+        crate::workspace::registry::generate_workspace_id(&startup_path.to_string_lossy())?;
+    let startup_workspace = pool
+        .get_or_init(&startup_workspace_id, startup_path.clone())
+        .await?;
+
+    let handler = JulieServerHandler::new_with_shared_workspace_startup_hint(
+        startup_workspace,
+        WorkspaceStartupHint {
+            path: startup_path.clone(),
+            source: Some(WorkspaceStartupSource::Cwd),
+        },
+        Some(Arc::clone(&daemon_db)),
+        Some(startup_workspace_id.clone()),
+        Some(Arc::clone(&embedding_service)),
+        Some(Arc::clone(&restart_pending)),
+        None,
+        None,
+        Some(Arc::clone(&pool)),
+    )
+    .await?;
+
+    handler.set_client_supports_workspace_roots_for_test(true);
+    let (server_transport, client_transport) = tokio::io::duplex(512);
+    let service =
+        serve_directly::<rmcp::RoleServer, _, _, _, _>(handler.clone(), server_transport, None);
+    let (read_half, mut write_half) = tokio::io::split(client_transport);
+    let mut lines = BufReader::new(read_half).lines();
+
+    send_json_line(
+        &mut write_half,
+        &serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "notifications/initialized"
+        }),
+    )
+    .await?;
+
+    tokio::task::yield_now().await;
+
+    assert_eq!(
+        handler.current_workspace_id(),
+        None,
+        "cwd startup should remain unbound after on_initialized"
+    );
+    assert!(
+        !*handler.is_indexed.read().await,
+        "auto-indexing should be deferred after cwd startup"
+    );
+
+    send_json_line(
+        &mut write_half,
+        &serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "notifications/roots/list_changed"
+        }),
+    )
+    .await?;
+
+    let roots_paths = [roots_root.path()];
+    tokio::time::timeout(
+        Duration::from_secs(10),
+        answer_roots_request(&mut lines, &mut write_half, &roots_paths),
+    )
+    .await
+    .expect("roots_list_changed with deferred auto-index should eagerly send roots/list")?;
+
+    let roots_workspace_id = crate::workspace::registry::generate_workspace_id(
+        &roots_root.path().canonicalize()?.to_string_lossy(),
+    )?;
+
+    let indexed = tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            if handler.current_workspace_id().as_deref() == Some(roots_workspace_id.as_str()) {
+                if let Ok(db) = handler
+                    .get_database_for_workspace(&roots_workspace_id)
+                    .await
+                {
+                    let count = db
+                        .lock()
+                        .unwrap_or_else(|p| p.into_inner())
+                        .count_symbols_for_workspace()?;
+                    if count > 0 {
+                        break Ok::<bool, anyhow::Error>(true);
+                    }
+                }
+            }
+            sleep(Duration::from_millis(50)).await;
+        }
+    })
+    .await
+    .expect("roots_list_changed should eagerly resolve deferred auto-indexing")?;
+    assert!(
+        indexed,
+        "roots_list_changed with pending deferred auto-index should bind workspace and index"
+    );
+
+    drop(write_half);
+    drop(lines);
     let _ = service.cancel().await;
     Ok(())
 }

@@ -407,18 +407,13 @@ impl SymbolDatabase {
         if paths.is_empty() {
             return Ok(0);
         }
-        let placeholders: Vec<String> = (1..=paths.len()).map(|i| format!("?{}", i)).collect();
-        let sql = format!(
-            "SELECT COALESCE(SUM(size), 0) FROM files WHERE path IN ({})",
-            placeholders.join(", ")
-        );
-        let params: Vec<&dyn rusqlite::types::ToSql> = paths
-            .iter()
-            .map(|p| p as &dyn rusqlite::types::ToSql)
-            .collect();
-        let total: i64 = self
-            .conn
-            .query_row(&sql, params.as_slice(), |row| row.get(0))?;
+        let json_paths = serde_json::to_string(paths)
+            .map_err(|e| anyhow::anyhow!("Failed to serialize paths to JSON: {e}"))?;
+        let total: i64 = self.conn.query_row(
+            "SELECT COALESCE(SUM(size), 0) FROM files WHERE path IN (SELECT value FROM json_each(?1))",
+            [&json_paths],
+            |row| row.get(0),
+        )?;
         Ok(total as u64)
     }
 

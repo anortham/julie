@@ -407,7 +407,64 @@ impl ManageWorkspaceTool {
                                 ));
                             }
                         } else {
-                            debug!("No files changed, skipping embedding pipeline");
+                            // No files changed, but the workspace may have been
+                            // indexed before the embedding sidecar was ready.
+                            // Check if symbols exist without any embeddings.
+                            let embedding_count = if is_non_primary_workspace_target {
+                                match handler.workspace_db_file_path_for(&ws_id).await {
+                                    Ok(path) if path.exists() => {
+                                        let c = tokio::task::spawn_blocking(move || {
+                                            crate::database::SymbolDatabase::new(path)
+                                                .and_then(|db| db.embedding_count())
+                                                .unwrap_or(0)
+                                        })
+                                        .await
+                                        .unwrap_or(0);
+                                        c
+                                    }
+                                    _ => 0,
+                                }
+                            } else if let Ok(Some(ws)) = handler.get_workspace().await {
+                                ws.db.as_ref().map_or(0, |db| {
+                                    db.lock()
+                                        .unwrap_or_else(|p| p.into_inner())
+                                        .embedding_count()
+                                        .unwrap_or(0)
+                                })
+                            } else {
+                                0
+                            };
+
+                            // Skip catch-up if an embedding task is already
+                            // running (it may not have stored its first batch
+                            // yet, so embedding_count is still 0).
+                            let task_already_running = {
+                                let tasks = handler.embedding_tasks.lock().await;
+                                tasks.contains_key(&ws_id)
+                            };
+
+                            if embedding_count == 0
+                                && symbols_total > 0
+                                && !task_already_running
+                            {
+                                info!(
+                                    symbols_total,
+                                    "Workspace has symbols but 0 embeddings, scheduling catch-up embedding"
+                                );
+                                let embed_count =
+                                    crate::tools::workspace::indexing::embeddings::spawn_workspace_embedding(
+                                        handler, ws_id,
+                                    )
+                                    .await;
+                                if embed_count > 0 {
+                                    message.push_str(&format!(
+                                        "\nEmbedding {} symbols in background...",
+                                        embed_count
+                                    ));
+                                }
+                            } else {
+                                debug!("No files changed, skipping embedding pipeline");
+                            }
                         }
                     }
                 }

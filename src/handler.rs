@@ -2927,7 +2927,7 @@ impl ServerHandler for JulieServerHandler {
         self.tool_router.get(name).cloned()
     }
 
-    async fn on_initialized(&self, _context: NotificationContext<RoleServer>) {
+    async fn on_initialized(&self, context: NotificationContext<RoleServer>) {
         info!("MCP connection established - client initialized");
 
         let startup_hint = self.workspace_startup_hint();
@@ -2937,8 +2937,15 @@ impl ServerHandler for JulieServerHandler {
             self.mark_deferred_auto_index_pending(true);
             info!(
                 startup_source = ?startup_hint.source.unwrap_or(WorkspaceStartupSource::Cwd),
-                "Deferring auto-indexing until the first primary-scoped request resolves client roots"
+                "Resolving client roots before auto-indexing"
             );
+            let handler = self.clone();
+            let peer = context.peer;
+            tokio::spawn(async move {
+                if let Err(err) = handler.ensure_primary_workspace_for_request(&peer).await {
+                    warn!("Failed to resolve primary workspace from client roots: {err}");
+                }
+            });
             return;
         }
 
@@ -2979,7 +2986,20 @@ impl ServerHandler for JulieServerHandler {
         });
     }
 
-    async fn on_roots_list_changed(&self, _context: NotificationContext<RoleServer>) {
+    async fn on_roots_list_changed(&self, context: NotificationContext<RoleServer>) {
         self.mark_roots_dirty();
+
+        if self
+            .deferred_auto_index_pending
+            .load(std::sync::atomic::Ordering::Acquire)
+        {
+            let handler = self.clone();
+            let peer = context.peer;
+            tokio::spawn(async move {
+                if let Err(err) = handler.ensure_primary_workspace_for_request(&peer).await {
+                    warn!("Failed to resolve deferred workspace on roots_list_changed: {err}");
+                }
+            });
+        }
     }
 }

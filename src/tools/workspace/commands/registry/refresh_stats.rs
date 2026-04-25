@@ -97,7 +97,40 @@ impl ManageWorkspaceTool {
                             )
                             .await
                         } else {
-                            0
+                            // No files changed, but check for missing embeddings.
+                            let needs_catchup = result.symbols_total > 0 && {
+                                let ws_id = workspace_id.to_string();
+                                let count = match handler.workspace_db_file_path_for(&ws_id).await {
+                                    Ok(path) if path.exists() => {
+                                        tokio::task::spawn_blocking(move || {
+                                            crate::database::SymbolDatabase::new(path)
+                                                .and_then(|db| db.embedding_count())
+                                                .unwrap_or(0)
+                                        })
+                                        .await
+                                        .unwrap_or(0)
+                                    }
+                                    _ => 0,
+                                };
+                                count == 0
+                            };
+                            let task_already_running = {
+                                let tasks = handler.embedding_tasks.lock().await;
+                                tasks.contains_key(workspace_id)
+                            };
+                            if needs_catchup && !task_already_running {
+                                info!(
+                                    symbols_total = result.symbols_total,
+                                    "Workspace has symbols but 0 embeddings, scheduling catch-up embedding"
+                                );
+                                crate::tools::workspace::indexing::embeddings::spawn_workspace_embedding(
+                                    handler,
+                                    workspace_id.to_string(),
+                                )
+                                .await
+                            } else {
+                                0
+                            }
                         };
 
                         let mut status = if result.files_processed == 0 {

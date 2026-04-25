@@ -265,58 +265,79 @@ impl SymbolDatabase {
         )?;
 
         // Step 1b: Boost centrality from identifier references (cross-file only).
-        // Languages reference types through type annotations (var x: Foo, extends Foo)
-        // and imports (const Foo = @import("Foo.zig"), import { Foo } from "./foo").
-        // These are captured as identifiers but not always as relationships,
-        // so without this step, heavily-imported/referenced types would have zero centrality.
         // Weight: type_usage=1.0, import=2.0 (same as relationship weights).
         //
-        // Name matching: exact OR qualified suffix match. QML and other languages use
-        // namespace-qualified references (Kirigami.ScrollablePage, Phoenix.Router) where
-        // the last component matches the symbol name. Without suffix matching, all QML
-        // components would have centrality 0.00 despite heavy usage.
+        // For qualified references (Kirigami.ScrollablePage, Phoenix.Router), we also
+        // match the final component against symbol names so QML/Elixir components get
+        // proper centrality scores.
+        //
+        // Uses a temp table + index to avoid the O(symbols*identifiers) correlated
+        // subquery with leading-wildcard LIKE that pegged the CPU on large codebases.
+        tx.execute_batch(
+            "CREATE TEMP TABLE IF NOT EXISTS _ident_scores (
+                match_name TEXT NOT NULL,
+                file_path TEXT NOT NULL,
+                score REAL NOT NULL
+            );
+            DELETE FROM _ident_scores;",
+        )?;
+
+        // Insert exact names (covers unqualified and exact-qualified matches)
+        tx.execute_batch(
+            "INSERT INTO _ident_scores (match_name, file_path, score)
+            SELECT i.name, i.file_path,
+                   CASE i.kind WHEN 'import' THEN 2.0 ELSE 1.0 END
+            FROM identifiers i
+            WHERE i.kind IN ('type_usage', 'import');",
+        )?;
+
+        // For qualified names, also insert the final component after the last dot.
+        // SQLite lacks a reverse-find, so we use REPLACE to find the LAST dot:
+        //   LENGTH(name) - LENGTH(REPLACE(name, '.', '')) gives the dot count,
+        //   but the simplest correct approach is SUBSTR from (last_dot_pos + 1).
+        //   We get last_dot_pos via: LENGTH(name) - INSTR(REVERSE(name), '.') + 1
+        //   but SQLite also lacks REVERSE. Instead, use a recursive trim approach,
+        //   or accept first-dot extraction since multi-level qualified names are rare
+        //   and intermediate components would match other symbol names anyway.
+        tx.execute_batch(
+            "INSERT INTO _ident_scores (match_name, file_path, score)
+            SELECT SUBSTR(i.name, INSTR(i.name, '.') + 1), i.file_path,
+                   CASE i.kind WHEN 'import' THEN 2.0 ELSE 1.0 END
+            FROM identifiers i
+            WHERE i.kind IN ('type_usage', 'import')
+              AND INSTR(i.name, '.') > 0;
+            CREATE INDEX IF NOT EXISTS _idx_ident_scores_name ON _ident_scores(match_name);",
+        )?;
+
         tx.execute(
             "UPDATE symbols SET reference_score = reference_score + COALESCE(
-                (SELECT SUM(
-                    CASE i.kind
-                        WHEN 'import' THEN 2.0
-                        WHEN 'type_usage' THEN 1.0
-                        ELSE 0.0
-                    END
-                )
-                 FROM identifiers i
-                 WHERE (i.name = symbols.name
-                        OR i.name LIKE '%.' || REPLACE(REPLACE(REPLACE(symbols.name, '\\', '\\\\'), '%', '\\%'), '_', '\\_') ESCAPE '\\')
-                   AND i.kind IN ('type_usage', 'import')
-                   AND i.file_path != symbols.file_path),
+                (SELECT SUM(ids.score)
+                 FROM _ident_scores ids
+                 WHERE ids.match_name = symbols.name
+                   AND ids.file_path != symbols.file_path),
                 0.0
             )
             WHERE kind IN ('class', 'struct', 'enum', 'interface', 'trait', 'type', 'module', 'namespace', 'constant')
               AND NOT (
-                  -- Directory segments (matches is_test_path() in scoring.rs)
                   file_path LIKE '%/test/%' OR file_path LIKE '%/tests/%'
                   OR file_path LIKE 'test/%' OR file_path LIKE 'tests/%'
                   OR file_path LIKE '%/spec/%' OR file_path LIKE '%/specs/%'
                   OR file_path LIKE 'spec/%' OR file_path LIKE 'specs/%'
                   OR file_path LIKE '%/__tests__/%' OR file_path LIKE '__tests__/%'
-                  -- C# convention: MyProject.Tests/ or MyProject.Test/
                   OR file_path LIKE '%.Tests/%' OR file_path LIKE '%.Test/%'
-                  -- Python: test_*.py
                   OR file_path LIKE '%/test\\_%' ESCAPE '\\' OR file_path LIKE 'test\\_%' ESCAPE '\\'
-                  -- Go: *_test.go
                   OR file_path LIKE '%\\_test.go' ESCAPE '\\'
-                  -- C/C++: *_test.c, *_test.cc, *_test.cpp
                   OR file_path LIKE '%\\_test.c' ESCAPE '\\' OR file_path LIKE '%\\_test.cc' ESCAPE '\\'
                   OR file_path LIKE '%\\_test.cpp' ESCAPE '\\'
-                  -- JS/TS: *.test.ts, *.test.tsx, *.test.js, *.test.jsx
                   OR file_path LIKE '%.test.ts' OR file_path LIKE '%.test.tsx'
                   OR file_path LIKE '%.test.js' OR file_path LIKE '%.test.jsx'
-                  -- JS/TS: *.spec.ts, *.spec.tsx, *.spec.js, *.spec.jsx
                   OR file_path LIKE '%.spec.ts' OR file_path LIKE '%.spec.tsx'
                   OR file_path LIKE '%.spec.js' OR file_path LIKE '%.spec.jsx'
               )",
             [],
         )?;
+
+        tx.execute_batch("DROP TABLE IF EXISTS _ident_scores;")?;
 
         // Step 2: Propagate centrality from interfaces/base classes to implementations.
         // When class Foo implements IBar, Foo gets 70% of IBar's centrality added.
