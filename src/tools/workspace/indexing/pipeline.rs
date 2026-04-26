@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 
 use anyhow::Result;
+use futures::stream::{self, StreamExt};
 use tracing::{debug, info, trace, warn};
 
 use super::resolver;
@@ -18,16 +19,16 @@ pub(crate) struct IndexingPipelineResult {
     pub canonical_revision: Option<i64>,
 }
 
-struct ExtractedBatch {
-    all_symbols: Vec<Symbol>,
-    all_relationships: Vec<Relationship>,
-    all_pending_relationships: Vec<PendingRelationship>,
-    all_identifiers: Vec<Identifier>,
-    all_types: Vec<crate::extractors::base::TypeInfo>,
-    all_file_infos: Vec<crate::database::FileInfo>,
-    files_to_clean: Vec<String>,
-    repair_entries: Vec<(String, String)>,
-    files_processed: usize,
+pub(crate) struct ExtractedBatch {
+    pub(crate) all_symbols: Vec<Symbol>,
+    pub(crate) all_relationships: Vec<Relationship>,
+    pub(crate) all_pending_relationships: Vec<PendingRelationship>,
+    pub(crate) all_identifiers: Vec<Identifier>,
+    pub(crate) all_types: Vec<crate::extractors::base::TypeInfo>,
+    pub(crate) all_file_infos: Vec<crate::database::FileInfo>,
+    pub(crate) files_to_clean: Vec<String>,
+    pub(crate) repair_entries: Vec<(String, String)>,
+    pub(crate) files_processed: usize,
 }
 
 struct PersistBatchResult {
@@ -146,152 +147,196 @@ pub(crate) async fn run_indexing_pipeline(
 }
 
 impl ManageWorkspaceTool {
-    async fn extract_index_batch(
+    pub(crate) async fn extract_index_batch(
         &self,
         files_by_language: HashMap<String, Vec<PathBuf>>,
         workspace_root: &Path,
         state: &mut IndexingBatchState,
     ) -> Result<ExtractedBatch> {
-        let mut batch = ExtractedBatch::new();
+        // Cap concurrency at available parallelism. Each in-flight parse holds
+        // file content + AST in memory, and process_file_with_parser internally
+        // uses spawn_blocking, so polling N futures concurrently yields N CPU
+        // cores worth of parallel parsing.
+        let concurrency = std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(8);
 
-        for (language, file_paths) in files_by_language {
-            if file_paths.is_empty() {
-                continue;
-            }
+        // Flatten across languages so the executor can interleave files freely
+        // instead of being serialized per language. Tag each entry with whether
+        // a tree-sitter parser is available so we route to the right path.
+        let mut per_language_counts: HashMap<String, (usize, bool)> = HashMap::new();
+        let work: Vec<(String, PathBuf, bool)> = files_by_language
+            .into_iter()
+            .filter(|(_, paths)| !paths.is_empty())
+            .flat_map(|(language, file_paths)| {
+                let has_parser = crate::language::get_tree_sitter_language(&language).is_ok();
+                per_language_counts
+                    .entry(language.clone())
+                    .or_insert((file_paths.len(), has_parser));
+                file_paths
+                    .into_iter()
+                    .map(move |path| (language.clone(), path, has_parser))
+            })
+            .collect();
 
+        if work.is_empty() {
+            return Ok(ExtractedBatch::new());
+        }
+
+        info!(
+            "🚀 Extracting {} files in parallel (concurrency={}, languages={})",
+            work.len(),
+            concurrency,
+            per_language_counts.len()
+        );
+        for (language, (count, has_parser)) in &per_language_counts {
             debug!(
-                "Processing {} {} files with reused parser",
-                file_paths.len(),
-                language
+                "Extraction plan: {} {} files ({})",
+                count,
+                language,
+                if *has_parser { "tree-sitter parser" } else { "text-only" }
             );
+        }
 
-            if crate::language::get_tree_sitter_language(&language).is_ok() {
-                for file_path in file_paths {
-                    match self
-                        .process_file_with_parser(&file_path, &language, workspace_root)
-                        .await
-                    {
-                        Ok((
-                            symbols,
-                            relationships,
-                            pending_rels,
-                            identifiers,
-                            types,
-                            file_info,
-                        )) => {
-                            let relative_path =
-                                relative_path_for_storage(&file_path, workspace_root);
-                            state.record_file(
-                                relative_path.clone(),
-                                language.clone(),
-                                IndexedFileDisposition::Parsed,
-                                None,
-                            );
-                            batch.files_processed += 1;
+        let extract_start = std::time::Instant::now();
+        let outcomes: Vec<(String, PathBuf, ExtractOutcome)> = stream::iter(work)
+            .map(|(language, file_path, has_parser)| async move {
+                let outcome = if has_parser {
+                    ExtractOutcome::WithParser(
+                        self.process_file_with_parser(&file_path, &language, workspace_root)
+                            .await,
+                    )
+                } else {
+                    ExtractOutcome::WithoutParser(
+                        self.process_file_without_parser(&file_path, &language, workspace_root)
+                            .await,
+                    )
+                };
+                (language, file_path, outcome)
+            })
+            .buffer_unordered(concurrency)
+            .collect()
+            .await;
 
-                            trace!(
-                                "File {} extracted {} symbols, {} pending relationships",
-                                file_path.display(),
-                                symbols.len(),
-                                pending_rels.len()
-                            );
+        info!(
+            "⏱️  parallel extraction complete: {:.2}s ({} files)",
+            extract_start.elapsed().as_secs_f64(),
+            outcomes.len()
+        );
 
-                            batch.files_to_clean.push(relative_path);
-                            batch.all_symbols.extend(symbols);
-                            batch.all_relationships.extend(relationships);
-                            batch.all_pending_relationships.extend(pending_rels);
-                            batch.all_identifiers.extend(identifiers);
-                            batch.all_types.extend(types.into_values());
-                            batch.all_file_infos.push(file_info);
-
-                            if batch.files_processed.is_multiple_of(50) {
-                                debug!(
-                                    "Progress: {} files processed, {} symbols collected",
-                                    batch.files_processed,
-                                    batch.all_symbols.len()
-                                );
-                            }
-                        }
-                        Err(e) => {
-                            let relative_path =
-                                relative_path_for_storage(&file_path, workspace_root);
-                            warn!("Failed to process file {:?}: {}", file_path, e);
-                            self.queue_failed_parser_file_for_cleanup(
-                                &file_path,
-                                &language,
-                                workspace_root,
-                                &mut batch.files_to_clean,
-                                &mut batch.all_file_infos,
-                            )
-                            .await;
-                            state.record_file(
-                                relative_path.clone(),
-                                language.clone(),
-                                IndexedFileDisposition::RepairNeeded,
-                                Some(e.to_string()),
-                            );
-                            batch.repair_entries.push((relative_path, e.to_string()));
-                        }
+        // Apply outcomes sequentially: state and batch fields require &mut.
+        let mut batch = ExtractedBatch::new();
+        for (language, file_path, outcome) in outcomes {
+            let relative_path = relative_path_for_storage(&file_path, workspace_root);
+            match outcome {
+                ExtractOutcome::WithParser(Ok((
+                    symbols,
+                    relationships,
+                    pending_rels,
+                    identifiers,
+                    types,
+                    file_info,
+                ))) => {
+                    state.record_file(
+                        relative_path.clone(),
+                        language,
+                        IndexedFileDisposition::Parsed,
+                        None,
+                    );
+                    batch.files_processed += 1;
+                    trace!(
+                        "File {} extracted {} symbols, {} pending relationships",
+                        file_path.display(),
+                        symbols.len(),
+                        pending_rels.len()
+                    );
+                    batch.files_to_clean.push(relative_path);
+                    batch.all_symbols.extend(symbols);
+                    batch.all_relationships.extend(relationships);
+                    batch.all_pending_relationships.extend(pending_rels);
+                    batch.all_identifiers.extend(identifiers);
+                    batch.all_types.extend(types.into_values());
+                    batch.all_file_infos.push(file_info);
+                    if batch.files_processed.is_multiple_of(50) {
+                        debug!(
+                            "Progress: {} files processed, {} symbols collected",
+                            batch.files_processed,
+                            batch.all_symbols.len()
+                        );
                     }
                 }
-            } else {
-                debug!(
-                    "No parser for {} - indexing {} files for text search only",
-                    language,
-                    file_paths.len()
-                );
-
-                for file_path in file_paths {
-                    match self
-                        .process_file_without_parser(&file_path, &language, workspace_root)
-                        .await
-                    {
-                        Ok((symbols, relationships, file_info)) => {
-                            let relative_path =
-                                relative_path_for_storage(&file_path, workspace_root);
-                            debug!("📄 Processed file without parser: {:?}", file_path);
-                            state.record_file(
-                                relative_path.clone(),
-                                language.clone(),
-                                IndexedFileDisposition::TextOnly,
-                                None,
-                            );
-                            batch.files_processed += 1;
-                            batch.files_to_clean.push(relative_path);
-                            batch.all_symbols.extend(symbols);
-                            batch.all_relationships.extend(relationships);
-                            batch.all_file_infos.push(file_info);
-                        }
-                        Err(e) => {
-                            let relative_path =
-                                relative_path_for_storage(&file_path, workspace_root);
-                            warn!(
-                                "Failed to process file without parser {:?}: {}",
-                                file_path, e
-                            );
-                            self.queue_failed_parser_file_for_cleanup(
-                                &file_path,
-                                &language,
-                                workspace_root,
-                                &mut batch.files_to_clean,
-                                &mut batch.all_file_infos,
-                            )
-                            .await;
-                            state.record_file(
-                                relative_path.clone(),
-                                language.clone(),
-                                IndexedFileDisposition::RepairNeeded,
-                                Some(e.to_string()),
-                            );
-                            batch.repair_entries.push((relative_path, e.to_string()));
-                        }
-                    }
+                ExtractOutcome::WithParser(Err(e)) => {
+                    warn!("Failed to process file {:?}: {}", file_path, e);
+                    self.queue_failed_parser_file_for_cleanup(
+                        &file_path,
+                        &language,
+                        workspace_root,
+                        &mut batch.files_to_clean,
+                        &mut batch.all_file_infos,
+                    )
+                    .await;
+                    state.record_file(
+                        relative_path.clone(),
+                        language,
+                        IndexedFileDisposition::RepairNeeded,
+                        Some(e.to_string()),
+                    );
+                    batch.repair_entries.push((relative_path, e.to_string()));
+                }
+                ExtractOutcome::WithoutParser(Ok((symbols, relationships, file_info))) => {
+                    debug!("📄 Processed file without parser: {:?}", file_path);
+                    state.record_file(
+                        relative_path.clone(),
+                        language,
+                        IndexedFileDisposition::TextOnly,
+                        None,
+                    );
+                    batch.files_processed += 1;
+                    batch.files_to_clean.push(relative_path);
+                    batch.all_symbols.extend(symbols);
+                    batch.all_relationships.extend(relationships);
+                    batch.all_file_infos.push(file_info);
+                }
+                ExtractOutcome::WithoutParser(Err(e)) => {
+                    warn!(
+                        "Failed to process file without parser {:?}: {}",
+                        file_path, e
+                    );
+                    self.queue_failed_parser_file_for_cleanup(
+                        &file_path,
+                        &language,
+                        workspace_root,
+                        &mut batch.files_to_clean,
+                        &mut batch.all_file_infos,
+                    )
+                    .await;
+                    state.record_file(
+                        relative_path.clone(),
+                        language,
+                        IndexedFileDisposition::RepairNeeded,
+                        Some(e.to_string()),
+                    );
+                    batch.repair_entries.push((relative_path, e.to_string()));
                 }
             }
         }
 
         Ok(batch)
     }
+}
+
+enum ExtractOutcome {
+    WithParser(
+        Result<(
+            Vec<Symbol>,
+            Vec<Relationship>,
+            Vec<PendingRelationship>,
+            Vec<Identifier>,
+            HashMap<String, crate::extractors::base::TypeInfo>,
+            crate::database::FileInfo,
+        )>,
+    ),
+    WithoutParser(Result<(Vec<Symbol>, Vec<Relationship>, crate::database::FileInfo)>),
 }
 
 fn group_files_by_language(
