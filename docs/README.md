@@ -18,13 +18,7 @@ This directory contains **current** documentation for Julie. Code is the source 
 - **`DEVELOPMENT.md`** - Daily commands and development workflows
 - **`FILEWATCHER.md`** - File watcher architecture and incremental re-indexing
 - **`RELATIVE_PATHS_CONTRACT.md`** - Relative Unix-style path storage contract
-- **`TYPES_TABLE_DESIGN.md`** - Types table design for LSP-quality type intelligence
 - **`operations/embedding-sidecar.md`** - Embedding sidecar env vars, configuration, and troubleshooting
-
-## Quality Reports
-
-- **`LANGUAGE_VERIFICATION_RESULTS.md`** - Quality matrix for all 34 languages with known open issues
-- **`LANGUAGE_VERIFICATION_CHECKLIST.md`** - Reusable verification methodology for language support
 
 ## Primary Documentation
 
