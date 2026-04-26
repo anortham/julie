@@ -1,5 +1,9 @@
 //! Shared validation and formatting utilities for editing tools.
 
+const DRY_RUN_DIFF_MAX_LINES: usize = 80;
+const DRY_RUN_DIFF_HEAD_LINES: usize = 50;
+const DRY_RUN_DIFF_TAIL_LINES: usize = 20;
+
 /// Count the net bracket balance in content (open minus close for each type).
 /// Counts raw characters without skipping strings or comments.
 fn count_bracket_balance(content: &str) -> (i32, i32, i32) {
@@ -194,6 +198,37 @@ pub fn format_unified_diff(before: &str, after: &str, file_path: &str) -> String
             let (op, line) = ops[i];
             writeln!(output, "{}{}", op, line).unwrap();
         }
+    }
+
+    output
+}
+
+/// Cap dry-run diff previews so large edits do not flood the agent context.
+pub fn format_dry_run_diff(diff: &str) -> String {
+    let lines: Vec<&str> = diff.lines().collect();
+    if lines.len() <= DRY_RUN_DIFF_MAX_LINES {
+        return diff.to_string();
+    }
+
+    debug_assert!(
+        DRY_RUN_DIFF_HEAD_LINES + DRY_RUN_DIFF_TAIL_LINES < DRY_RUN_DIFF_MAX_LINES,
+        "dry-run diff head/tail split must leave room for the omission marker"
+    );
+
+    let omitted = lines.len() - DRY_RUN_DIFF_HEAD_LINES - DRY_RUN_DIFF_TAIL_LINES;
+    let mut output = String::new();
+
+    for line in &lines[..DRY_RUN_DIFF_HEAD_LINES] {
+        output.push_str(line);
+        output.push('\n');
+    }
+    output.push_str(&format!(
+        "... ({omitted} diff lines omitted; full diff has {} lines) ...\n",
+        lines.len()
+    ));
+    for line in &lines[lines.len() - DRY_RUN_DIFF_TAIL_LINES..] {
+        output.push_str(line);
+        output.push('\n');
     }
 
     output

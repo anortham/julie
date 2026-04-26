@@ -21,7 +21,9 @@ use rmcp::model::{CallToolResult, Content};
 use tree_sitter::{Node, Parser, Tree};
 
 use super::EditingTransaction;
-use super::validation::{check_bracket_balance, format_unified_diff, should_check_balance};
+use super::validation::{
+    check_bracket_balance, format_dry_run_diff, format_unified_diff, should_check_balance,
+};
 
 fn default_dry_run() -> bool {
     true
@@ -710,9 +712,10 @@ impl RewriteSymbolTool {
                 self.symbol, indexed_symbol.file_path
             );
             let span_header = format_span_header(&span_context, &indexed_symbol.file_path);
+            let preview_diff = format_dry_run_diff(&diff);
             let mut message = format!(
                 "Dry run preview (set dry_run=false to apply):\n\n{}{}",
-                span_header, diff
+                span_header, preview_diff
             );
             if let Some(ref warning) = balance_warning {
                 message.push_str(&format!("\n\n{}", warning));

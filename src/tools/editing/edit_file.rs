@@ -16,7 +16,9 @@ use crate::utils::file_utils::secure_path_resolution;
 use rmcp::model::{CallToolResult, Content};
 
 use super::EditingTransaction;
-use super::validation::{check_bracket_balance, format_unified_diff, should_check_balance};
+use super::validation::{
+    check_bracket_balance, format_dry_run_diff, format_unified_diff, should_check_balance,
+};
 
 /// A match location: character indices [start, end) in the file content.
 /// For exact matches, end - start == old_text.chars().count().
@@ -349,7 +351,11 @@ impl EditFileTool {
 
         if self.dry_run {
             debug!("edit_file dry_run for {}", self.file_path);
-            let mut msg = format!("Dry run preview (set dry_run=false to apply):\n\n{}", diff);
+            let preview_diff = format_dry_run_diff(&diff);
+            let mut msg = format!(
+                "Dry run preview (set dry_run=false to apply):\n\n{}",
+                preview_diff
+            );
             if let Some(ref warning) = balance_warning {
                 msg.push_str(&format!("\n\n{}", warning));
             }

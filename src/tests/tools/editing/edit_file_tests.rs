@@ -1,8 +1,13 @@
 //! Golden master tests for the edit_file tool.
 
-use crate::tools::editing::edit_file::apply_edit;
+use crate::handler::JulieServerHandler;
+use crate::mcp_compat::CallToolResult;
+use crate::tools::editing::edit_file::{EditFileTool, apply_edit};
+use crate::tools::workspace::ManageWorkspaceTool;
+use anyhow::Result;
 use std::fs;
 use std::path::PathBuf;
+use tempfile::TempDir;
 
 fn fixture_source(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -18,6 +23,21 @@ fn fixture_control(name: &str) -> PathBuf {
 
 fn load(path: &PathBuf) -> String {
     fs::read_to_string(path).unwrap_or_else(|e| panic!("Failed to read {}: {}", path.display(), e))
+}
+
+fn extract_text(result: &CallToolResult) -> String {
+    result
+        .content
+        .iter()
+        .filter_map(|block| {
+            serde_json::to_value(block).ok().and_then(|json| {
+                json.get("text")
+                    .and_then(|value| value.as_str())
+                    .map(|text| text.to_string())
+            })
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 #[test]
@@ -258,4 +278,78 @@ fn test_edit_file_accepts_known_fields() {
     });
     serde_json::from_value::<crate::tools::editing::edit_file::EditFileTool>(json)
         .expect("known fields must still parse");
+}
+
+#[tokio::test]
+async fn test_edit_file_dry_run_truncates_large_diff_preview() -> Result<()> {
+    let temp_dir = TempDir::new()?;
+    let src_dir = temp_dir.path().join("src");
+    fs::create_dir_all(&src_dir)?;
+    let file_path = src_dir.join("large.rs");
+
+    let original = (0..90u32)
+        .map(|i| format!("let value_{i} = {i};"))
+        .collect::<Vec<_>>()
+        .join("\n")
+        + "\n";
+    let replacement = (0..90u32)
+        .map(|i| format!("let value_{i} = {};", i + 900))
+        .collect::<Vec<_>>()
+        .join("\n");
+    fs::write(&file_path, &original)?;
+
+    let handler = JulieServerHandler::new(temp_dir.path().to_path_buf()).await?;
+    let index_tool = ManageWorkspaceTool {
+        operation: "index".to_string(),
+        workspace_id: None,
+        path: Some(temp_dir.path().to_string_lossy().to_string()),
+        name: None,
+        force: Some(false),
+        detailed: None,
+    };
+    index_tool.call_tool(&handler).await?;
+
+    let tool = EditFileTool {
+        file_path: "src/large.rs".to_string(),
+        old_text: original.trim_end().to_string(),
+        new_text: replacement,
+        dry_run: true,
+        occurrence: "first".to_string(),
+    };
+
+    let result = tool.call_tool(&handler).await?;
+    let text = extract_text(&result);
+
+    assert!(
+        text.contains("Dry run preview"),
+        "dry-run response should include preview header, got: {text}"
+    );
+    assert!(
+        text.contains("diff lines omitted") && text.contains("full diff has"),
+        "large dry-run diff should include a line-count summary, got: {text}"
+    );
+    assert!(
+        text.lines().count() < 90,
+        "dry-run response should be capped, got {} lines",
+        text.lines().count()
+    );
+    assert!(
+        !text.contains("-let value_60 = 60;"),
+        "middle removed lines should be omitted from capped preview, got: {text}"
+    );
+    assert!(
+        !text.contains("+let value_30 = 930;"),
+        "middle added lines should be omitted from capped preview, got: {text}"
+    );
+    assert!(
+        text.contains("+let value_89 = 989;"),
+        "tail of the diff should remain visible, got: {text}"
+    );
+    assert_eq!(
+        fs::read_to_string(&file_path)?,
+        original,
+        "dry-run must not modify the file"
+    );
+
+    Ok(())
 }
