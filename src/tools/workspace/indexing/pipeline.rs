@@ -627,14 +627,21 @@ async fn project_batch(
                     current_projected_revision,
                     None,
                 )?;
+                let load_start = std::time::Instant::now();
                 let symbol_contexts =
                     crate::search::projection::load_symbol_contexts_from_database(
                         &db,
                         &symbol_docs,
                     )?;
+                info!(
+                    "⏱️  projection.load_contexts: {:.2}s ({} symbols)",
+                    load_start.elapsed().as_secs_f64(),
+                    symbol_docs.len()
+                );
                 (current_projected_revision, symbol_contexts)
             };
 
+            let apply_start = std::time::Instant::now();
             let apply_result = {
                 let idx = match search_index.lock() {
                     Ok(guard) => guard,
@@ -654,6 +661,13 @@ async fn project_batch(
                     true,
                 )
             };
+            info!(
+                "⏱️  projection.apply_documents: {:.2}s ({} symbols, {} files, {} cleaned)",
+                apply_start.elapsed().as_secs_f64(),
+                symbol_docs.len(),
+                file_docs.len(),
+                files_to_clean.len()
+            );
 
             let db = match db.lock() {
                 Ok(guard) => guard,

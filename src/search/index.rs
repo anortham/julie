@@ -34,7 +34,11 @@ use crate::search::scoring::{
 };
 use crate::search::tokenizer::{CodeTokenizer, TokenizerCompatibilitySignature, split_camel_case};
 
-const WRITER_HEAP_SIZE: usize = 50_000_000; // 50MB
+// 256MB total budget. Tantivy 0.26's `Index::writer(budget)` auto-clamps thread
+// count when per-thread budget falls below the 15MB floor. At 50MB we got 3
+// threads at ~16.67MB each; 256MB gives 8 threads at 32MB each — closer to the
+// indexing throughput ceiling on multi-core boxes.
+const WRITER_HEAP_SIZE: usize = 256_000_000;
 const NL_RERANK_OVERFETCH_FACTOR: usize = 4;
 const SEARCH_COMPAT_MARKER_VERSION: u32 = 3;
 const ANNOTATION_ORIGINAL_GROUP_WEIGHT: f32 = 5.0;
