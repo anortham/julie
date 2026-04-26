@@ -71,6 +71,12 @@ pub struct VariableEmbeddingPolicy {
     pub max_ratio: f64,
 }
 
+/// Hard cap on the total number of variable symbols selected for embedding,
+/// applied AFTER per-language quotas. Prevents runaway embedding work on very
+/// large polyglot codebases where per-language ratios alone could sum to many
+/// thousands of variables (e.g. a 16-language workspace with 0.20 ratio each).
+pub const GLOBAL_VARIABLE_EMBEDDING_CAP: usize = 5_000;
+
 /// Returns true if symbols from this language are worth embedding.
 /// Non-code languages (markdown, config files, etc.) produce embeddings
 /// that dominate NL queries due to their natural-language headings.
@@ -309,9 +315,7 @@ pub fn select_budgeted_variables(
             .then_with(|| a_sym.id.cmp(&b_sym.id))
     });
 
-    // Global cap: prevent runaway embedding work on very large codebases where
-    // per-language ratios alone could sum to thousands of variables.
-    all_selected.truncate(5000);
+    all_selected.truncate(GLOBAL_VARIABLE_EMBEDDING_CAP);
 
     all_selected
         .into_iter()

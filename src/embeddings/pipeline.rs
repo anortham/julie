@@ -13,8 +13,8 @@ use tracing::{info, warn};
 use crate::database::SymbolDatabase;
 use crate::embeddings::EmbeddingProvider;
 use crate::embeddings::metadata::{
-    NON_EMBEDDABLE_LANGUAGES, VariableEmbeddingPolicy, prepare_batch_for_embedding,
-    select_budgeted_variables,
+    GLOBAL_VARIABLE_EMBEDDING_CAP, NON_EMBEDDABLE_LANGUAGES, VariableEmbeddingPolicy,
+    prepare_batch_for_embedding, select_budgeted_variables,
 };
 use crate::extractors::{RelationshipKind, Symbol, SymbolKind};
 use crate::search::language_config::LanguageConfigs;
@@ -311,14 +311,15 @@ pub fn run_embedding_pipeline_cancellable(
         .iter()
         .map(|(id, _)| id.clone())
         .collect();
-    let variable_budget_cap =
+    let per_language_cap =
         ((base_prepared.len() as f64) * VARIABLE_EMBEDDING_POLICY.max_ratio).floor() as usize;
 
     info!(
-        "Embedding pipeline variable policy: candidate_count={}, selected_count={}, budget_cap={}",
+        "Embedding pipeline variable policy: candidates={}, per_language_cap={}, global_cap={}, selected={}",
         candidate_variable_ids.len(),
+        per_language_cap,
+        GLOBAL_VARIABLE_EMBEDDING_CAP,
         selected_variable_ids.len(),
-        variable_budget_cap,
     );
 
     let mut all_prepared = base_prepared;

@@ -51,6 +51,7 @@ pub mod core {
     pub mod language; // Language detection and support tests
     pub mod memory_vectors; // Memory embedding vector storage (migration 012 + CRUD + KNN)
     pub mod paths; // Path utility tests (display_path, UNC handling)
+    pub mod performance_indexes; // SQLite performance guardrail indexes
     pub mod revision_changes; // Canonical revision file-delta persistence tests
     pub mod serde_lenient_tests; // Lenient MCP param deserializers (u32, bool, Vec<String>)
     pub mod sidecar_embedding_tests; // Embedded sidecar extraction + root path fallback tests

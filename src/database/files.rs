@@ -4,6 +4,7 @@ use super::*;
 use anyhow::{Result, anyhow};
 use blake3;
 use rusqlite::params;
+use std::collections::HashMap;
 use std::path::Path;
 use tracing::{debug, info, warn};
 
@@ -234,6 +235,49 @@ impl SymbolDatabase {
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
             Err(e) => Err(anyhow!("Database error: {}", e)),
         }
+    }
+
+    /// Get file contents for a bounded set of paths.
+    pub fn get_file_contents_by_paths(
+        &self,
+        paths: &[String],
+    ) -> Result<HashMap<String, Option<String>>> {
+        if paths.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        const CHUNK_SIZE: usize = 500;
+        let mut results = HashMap::new();
+
+        for chunk in paths.chunks(CHUNK_SIZE) {
+            let placeholders = (1..=chunk.len())
+                .map(|idx| format!("?{}", idx))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let query = format!(
+                "SELECT path, content FROM files WHERE path IN ({})",
+                placeholders
+            );
+            let mut stmt = self.conn.prepare(&query)?;
+            let params = chunk
+                .iter()
+                .map(|path| path as &dyn rusqlite::types::ToSql)
+                .collect::<Vec<_>>();
+
+            let rows = stmt.query_map(&params[..], |row| {
+                Ok((
+                    row.get::<_, String>("path")?,
+                    row.get::<_, Option<String>>("content")?,
+                ))
+            })?;
+
+            for row in rows {
+                let (path, content) = row?;
+                results.insert(path, content);
+            }
+        }
+
+        Ok(results)
     }
 
     /// Get all file contents for Tantivy index population.

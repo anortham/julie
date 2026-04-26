@@ -91,7 +91,7 @@ pub(crate) async fn run_indexing_pipeline(
     };
 
     transition_stage(&mut state, route, IndexingStage::Persisting);
-    let persist_result = persist_batch(&db, route, &batch)?;
+    let persist_result = persist_batch(&db, route, operation, &batch)?;
 
     transition_stage(&mut state, route, IndexingStage::Projecting);
     project_batch(
@@ -358,11 +358,29 @@ fn update_runtime_finish(route: &IndexRoute, state: &IndexingBatchState) {
 fn persist_batch(
     db: &std::sync::Arc<std::sync::Mutex<crate::database::SymbolDatabase>>,
     route: &IndexRoute,
+    operation: IndexingOperation,
     batch: &ExtractedBatch,
 ) -> Result<PersistBatchResult> {
     let bulk_start = std::time::Instant::now();
+    let mut db_lock = match db.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            warn!(
+                "Database mutex poisoned during canonical persistence, recovering: {}",
+                poisoned
+            );
+            poisoned.into_inner()
+        }
+    };
 
-    let canonical_revision = if !batch.files_to_clean.is_empty() {
+    let stats = db_lock.get_stats().unwrap_or_default();
+    let database_empty =
+        stats.total_files == 0 && stats.total_symbols == 0 && stats.total_relationships == 0;
+    let use_fresh_storage = matches!(operation, IndexingOperation::Full)
+        || batch.files_to_clean.is_empty()
+        || database_empty;
+
+    let canonical_revision = if !use_fresh_storage {
         info!(
             "🔐 Starting ATOMIC incremental update: {} files to clean, {} symbols, {} relationships, {} files",
             batch.files_to_clean.len(),
@@ -370,17 +388,6 @@ fn persist_batch(
             batch.all_relationships.len(),
             batch.all_file_infos.len()
         );
-
-        let mut db_lock = match db.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!(
-                    "Database mutex poisoned during atomic incremental update, recovering: {}",
-                    poisoned
-                );
-                poisoned.into_inner()
-            }
-        };
 
         db_lock.incremental_update_atomic(
             &batch.files_to_clean,
@@ -415,23 +422,23 @@ fn persist_batch(
         );
         canonical_revision
     } else {
+        if matches!(operation, IndexingOperation::Full) && !database_empty {
+            let cleanup = db_lock.delete_workspace_data()?;
+            info!(
+                workspace_id = %route.workspace_id,
+                symbols_deleted = cleanup.symbols_deleted,
+                relationships_deleted = cleanup.relationships_deleted,
+                files_deleted = cleanup.files_deleted,
+                "Cleared canonical database state for full indexing"
+            );
+        }
+
         info!(
             "🔐 Starting ATOMIC fresh bulk storage of {} files, {} symbols, {} relationships...",
             batch.all_file_infos.len(),
             batch.all_symbols.len(),
             batch.all_relationships.len(),
         );
-
-        let mut db_lock = match db.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!(
-                    "Database mutex poisoned during fresh bulk storage, recovering: {}",
-                    poisoned
-                );
-                poisoned.into_inner()
-            }
-        };
 
         db_lock.bulk_store_fresh_atomic(
             &batch.all_file_infos,
@@ -529,28 +536,107 @@ async fn project_batch(
         let db = std::sync::Arc::clone(db);
         let workspace_id = route.workspace_id.clone();
         let tantivy_result = tokio::task::spawn_blocking(move || {
-            let mut db = match db.lock() {
+            let Some(target_revision) = canonical_revision else {
+                let db = match db.lock() {
+                    Ok(guard) => guard,
+                    Err(poisoned) => {
+                        warn!("Database mutex poisoned during projection state update, recovering");
+                        poisoned.into_inner()
+                    }
+                };
+                return Ok(db
+                    .get_projection_state(
+                        crate::search::projection::TANTIVY_PROJECTION_NAME,
+                        &workspace_id,
+                    )?
+                    .unwrap_or(db.upsert_projection_state(
+                        crate::search::projection::TANTIVY_PROJECTION_NAME,
+                        &workspace_id,
+                        crate::database::ProjectionStatus::Missing,
+                        None,
+                        None,
+                        None,
+                    )?));
+            };
+
+            let (current_projected_revision, symbol_contexts) = {
+                let db = match db.lock() {
+                    Ok(guard) => guard,
+                    Err(poisoned) => {
+                        warn!("Database mutex poisoned during projection preparation, recovering");
+                        poisoned.into_inner()
+                    }
+                };
+                let current_projected_revision = db
+                    .get_projection_state(
+                        crate::search::projection::TANTIVY_PROJECTION_NAME,
+                        &workspace_id,
+                    )?
+                    .as_ref()
+                    .and_then(crate::search::projection::projection_served_revision);
+                db.upsert_projection_state(
+                    crate::search::projection::TANTIVY_PROJECTION_NAME,
+                    &workspace_id,
+                    crate::database::ProjectionStatus::Building,
+                    Some(target_revision),
+                    current_projected_revision,
+                    None,
+                )?;
+                let symbol_contexts =
+                    crate::search::projection::load_symbol_contexts_from_database(
+                        &db,
+                        &symbol_docs,
+                    )?;
+                (current_projected_revision, symbol_contexts)
+            };
+
+            let apply_result = {
+                let idx = match search_index.lock() {
+                    Ok(guard) => guard,
+                    Err(poisoned) => {
+                        warn!(
+                            "Search index mutex poisoned (prior panic during indexing), recovering"
+                        );
+                        poisoned.into_inner()
+                    }
+                };
+                crate::search::projection::apply_documents_with_context(
+                    &idx,
+                    &symbol_docs,
+                    &file_docs,
+                    &files_to_clean,
+                    &symbol_contexts,
+                    true,
+                )
+            };
+
+            let db = match db.lock() {
                 Ok(guard) => guard,
                 Err(poisoned) => {
-                    warn!("Database mutex poisoned during projection write, recovering");
+                    warn!("Database mutex poisoned during projection finish, recovering");
                     poisoned.into_inner()
                 }
             };
-            let idx = match search_index.lock() {
-                Ok(guard) => guard,
-                Err(poisoned) => {
-                    warn!("Search index mutex poisoned (prior panic during indexing), recovering");
-                    poisoned.into_inner()
-                }
-            };
-            let projection = crate::search::SearchProjection::tantivy(workspace_id);
-            projection.project_documents(
-                &mut db,
-                &idx,
-                &symbol_docs,
-                &file_docs,
-                &files_to_clean,
-                canonical_revision,
+            if let Err(err) = apply_result {
+                let detail = err.to_string();
+                let _ = db.upsert_projection_state(
+                    crate::search::projection::TANTIVY_PROJECTION_NAME,
+                    &workspace_id,
+                    crate::database::ProjectionStatus::Stale,
+                    Some(target_revision),
+                    current_projected_revision,
+                    Some(&detail),
+                );
+                return Err(err);
+            }
+
+            db.upsert_projection_state(
+                crate::search::projection::TANTIVY_PROJECTION_NAME,
+                &workspace_id,
+                crate::database::ProjectionStatus::Ready,
+                Some(target_revision),
+                Some(target_revision),
+                None,
             )
         })
         .await;
@@ -617,17 +703,18 @@ fn analyze_batch(
     route: &IndexRoute,
     db: &std::sync::Arc<std::sync::Mutex<crate::database::SymbolDatabase>>,
 ) -> Result<()> {
-    let db_lock = match db.lock() {
-        Ok(guard) => guard,
-        Err(poisoned) => {
-            warn!("Database mutex poisoned during post-indexing analysis, recovering");
-            poisoned.into_inner()
-        }
-    };
-
     let t = std::time::Instant::now();
-    if let Err(e) = db_lock.compute_reference_scores() {
-        warn!("Failed to compute reference scores: {}", e);
+    {
+        let db_lock = match db.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Database mutex poisoned during reference scoring, recovering");
+                poisoned.into_inner()
+            }
+        };
+        if let Err(e) = db_lock.compute_reference_scores() {
+            warn!("Failed to compute reference scores: {}", e);
+        }
     }
     info!(
         "⏱️  compute_reference_scores: {:.2}s",
@@ -636,8 +723,17 @@ fn analyze_batch(
 
     let language_configs = crate::search::LanguageConfigs::load_embedded();
     let t = std::time::Instant::now();
-    if let Err(e) = crate::analysis::compute_test_quality_metrics(&db_lock, &language_configs) {
-        warn!("Failed to compute test quality metrics: {}", e);
+    {
+        let db_lock = match db.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Database mutex poisoned during test quality analysis, recovering");
+                poisoned.into_inner()
+            }
+        };
+        if let Err(e) = crate::analysis::compute_test_quality_metrics(&db_lock, &language_configs) {
+            warn!("Failed to compute test quality metrics: {}", e);
+        }
     }
     info!(
         "⏱️  compute_test_quality_metrics: {:.2}s",
@@ -645,8 +741,17 @@ fn analyze_batch(
     );
 
     let t = std::time::Instant::now();
-    if let Err(e) = crate::analysis::compute_test_linkage(&db_lock) {
-        warn!("Failed to compute test linkage: {}", e);
+    {
+        let db_lock = match db.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Database mutex poisoned during test linkage analysis, recovering");
+                poisoned.into_inner()
+            }
+        };
+        if let Err(e) = crate::analysis::compute_test_linkage(&db_lock) {
+            warn!("Failed to compute test linkage: {}", e);
+        }
     }
     info!(
         "⏱️  compute_test_linkage: {:.2}s",
@@ -662,10 +767,19 @@ fn analyze_batch(
             None
         };
         let snapshot_ws_id = current_primary_id.as_deref().unwrap_or(&route.workspace_id);
-        if let Err(e) = daemon_db.snapshot_codehealth_from_db(snapshot_ws_id, &db_lock) {
-            warn!("Failed to capture codehealth snapshot: {}", e);
-        } else {
-            info!(workspace_id = %snapshot_ws_id, "Codehealth snapshot captured");
+        {
+            let db_lock = match db.lock() {
+                Ok(guard) => guard,
+                Err(poisoned) => {
+                    warn!("Database mutex poisoned during codehealth snapshot, recovering");
+                    poisoned.into_inner()
+                }
+            };
+            if let Err(e) = daemon_db.snapshot_codehealth_from_db(snapshot_ws_id, &db_lock) {
+                warn!("Failed to capture codehealth snapshot: {}", e);
+            } else {
+                info!(workspace_id = %snapshot_ws_id, "Codehealth snapshot captured");
+            }
         }
     }
 

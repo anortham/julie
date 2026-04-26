@@ -13,7 +13,7 @@ fn get_unix_timestamp() -> Result<i64> {
 }
 
 /// Current schema version - increment when adding migrations
-pub const LATEST_SCHEMA_VERSION: i32 = 21;
+pub const LATEST_SCHEMA_VERSION: i32 = 22;
 
 impl SymbolDatabase {
     // ============================================================
@@ -117,6 +117,7 @@ impl SymbolDatabase {
             19 => self.migration_019_add_revision_file_changes()?,
             20 => self.migration_020_add_symbol_annotations()?,
             21 => self.migration_021_add_early_warning_reports()?,
+            22 => self.migration_022_add_sql_performance_indexes()?,
             _ => return Err(anyhow!("Unknown migration version: {}", version)),
         }
         Ok(())
@@ -146,6 +147,7 @@ impl SymbolDatabase {
             19 => "Add revision_file_changes table",
             20 => "Add symbol_annotations table",
             21 => "Add early_warning_reports table",
+            22 => "Add SQL performance indexes",
             _ => "Unknown migration",
         };
 
@@ -177,6 +179,20 @@ impl SymbolDatabase {
             .collect::<Result<Vec<_>, _>>()?;
 
         Ok(columns.contains(&column.to_string()))
+    }
+
+    fn table_exists(&self, table: &str) -> Result<bool> {
+        self.conn
+            .query_row(
+                "SELECT EXISTS(
+                    SELECT 1
+                    FROM sqlite_master
+                    WHERE type = 'table' AND name = ?1
+                )",
+                [table],
+                |row| row.get(0),
+            )
+            .map_err(Into::into)
     }
 
     // ============================================================
@@ -920,6 +936,40 @@ impl SymbolDatabase {
         self.create_early_warning_reports_table()?;
 
         info!("Migration 021 complete: early_warning_reports table added");
+        Ok(())
+    }
+
+    fn migration_022_add_sql_performance_indexes(&self) -> Result<()> {
+        info!("Running migration 022: Add SQL performance indexes");
+
+        if self.table_exists("symbols")? {
+            self.conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_symbols_reference_score_desc
+                 ON symbols(reference_score DESC)
+                 WHERE reference_score > 0",
+                [],
+            )?;
+        }
+
+        if self.table_exists("identifiers")? {
+            self.conn.execute_batch(
+                "CREATE INDEX IF NOT EXISTS idx_identifiers_file_line_kind
+                 ON identifiers(file_path, start_line, kind);
+                 CREATE INDEX IF NOT EXISTS idx_identifiers_file_name
+                 ON identifiers(file_path, name);
+                 CREATE INDEX IF NOT EXISTS idx_identifiers_kind_containing
+                 ON identifiers(kind, containing_symbol_id);",
+            )?;
+        }
+
+        if self.table_exists("relationships")? {
+            self.conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_rel_file ON relationships(file_path)",
+                [],
+            )?;
+        }
+
+        info!("Migration 022 complete: SQL performance indexes added");
         Ok(())
     }
 }

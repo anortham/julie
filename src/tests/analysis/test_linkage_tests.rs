@@ -262,6 +262,83 @@ mod tests {
     }
 
     #[test]
+    fn test_name_match_ambiguity_guard_is_language_scoped() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        let db = SymbolDatabase::new(&db_path).unwrap();
+
+        insert_file(&db, "src/widgets.rs");
+        insert_file(&db, "tests/widgets_test.rs");
+        for index in 0..11 {
+            insert_file(&db, &format!("python/widget_{index}.py"));
+        }
+
+        db.conn
+            .execute(
+                "INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata, reference_score, visibility)
+                 VALUES ('prod_rust', 'render_widget', 'function', 'rust', 'src/widgets.rs', 1, 0, 10, 0, 0, 0, NULL, 2.0, 'public')",
+                [],
+            )
+            .unwrap();
+
+        for index in 0..11 {
+            db.conn
+                .execute(
+                    "INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata, reference_score, visibility)
+                     VALUES (?1, 'render_widget', 'function', 'python', ?2, 1, 0, 10, 0, 0, 0, NULL, 1.0, 'public')",
+                    rusqlite::params![
+                        format!("prod_python_{index}"),
+                        format!("python/widget_{index}.py")
+                    ],
+                )
+                .unwrap();
+        }
+
+        db.conn.execute_batch(r#"
+            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata, reference_score, visibility)
+            VALUES ('test_rust', 'test_render_widget', 'function', 'rust', 'tests/widgets_test.rs', 1, 0, 5, 0, 0, 0,
+                    '{"is_test": true, "test_quality": {"quality_tier": "adequate"}}', 0.0, 'private');
+
+            INSERT INTO identifiers (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, containing_symbol_id, target_symbol_id)
+            VALUES ('ident_rust', 'render_widget', 'call', 'rust', 'tests/widgets_test.rs', 3, 0, 3, 20, 'test_rust', NULL);
+        "#).unwrap();
+
+        let stats = crate::analysis::test_linkage::compute_test_linkage(&db).unwrap();
+        assert_eq!(
+            stats.symbols_covered, 1,
+            "cross-language symbols with the same name must not make a Rust fallback ambiguous"
+        );
+
+        let rust_linkage: Option<String> = db
+            .conn
+            .query_row(
+                "SELECT json_extract(metadata, '$.test_linkage') FROM symbols WHERE id = 'prod_rust'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(
+            rust_linkage.is_some(),
+            "Rust production symbol should receive same-language fallback linkage"
+        );
+
+        let python_linked_count: u32 = db
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM symbols
+                 WHERE language = 'python'
+                   AND json_extract(metadata, '$.test_linkage') IS NOT NULL",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            python_linked_count, 0,
+            "Python production symbols must not receive linkage from a Rust test"
+        );
+    }
+
+    #[test]
     fn test_class_inherits_method_linkage() {
         let temp_dir = TempDir::new().unwrap();
         let db_path = temp_dir.path().join("test.db");

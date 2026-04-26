@@ -443,10 +443,7 @@ impl ManageWorkspaceTool {
                                 tasks.contains_key(&ws_id)
                             };
 
-                            if embedding_count == 0
-                                && symbols_total > 0
-                                && !task_already_running
-                            {
+                            if embedding_count == 0 && symbols_total > 0 && !task_already_running {
                                 info!(
                                     symbols_total,
                                     "Workspace has symbols but 0 embeddings, scheduling catch-up embedding"

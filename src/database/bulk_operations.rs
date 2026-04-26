@@ -9,7 +9,8 @@ use super::revisions::record_canonical_revision_tx;
 use super::symbols::annotations::{delete_annotations_for_file, replace_annotations_batch};
 use super::*;
 use anyhow::{Result, anyhow};
-use rusqlite::params;
+use rusqlite::{Transaction, params};
+use std::collections::HashSet;
 use tracing::{debug, info, warn};
 
 fn get_unix_timestamp() -> Result<i64> {
@@ -19,12 +20,59 @@ fn get_unix_timestamp() -> Result<i64> {
         .map_err(|e| anyhow!("System time error: {}", e))
 }
 
-fn symbol_exists(
-    symbol_exists_stmt: &mut rusqlite::Statement<'_>,
-    symbol_id: &str,
-) -> Result<bool> {
-    let mut rows = symbol_exists_stmt.query(params![symbol_id])?;
-    Ok(rows.next()?.is_some())
+fn collect_referenced_symbol_ids(
+    relationships: &[Relationship],
+    identifiers: &[crate::extractors::Identifier],
+    types: &[crate::extractors::base::TypeInfo],
+) -> HashSet<String> {
+    let mut ids = HashSet::new();
+    for rel in relationships {
+        ids.insert(rel.from_symbol_id.clone());
+        ids.insert(rel.to_symbol_id.clone());
+    }
+    for identifier in identifiers {
+        if let Some(symbol_id) = &identifier.containing_symbol_id {
+            ids.insert(symbol_id.clone());
+        }
+        if let Some(symbol_id) = &identifier.target_symbol_id {
+            ids.insert(symbol_id.clone());
+        }
+    }
+    for type_info in types {
+        ids.insert(type_info.symbol_id.clone());
+    }
+    ids
+}
+
+fn load_existing_symbol_ids_tx(
+    tx: &Transaction<'_>,
+    referenced_ids: &HashSet<String>,
+) -> Result<HashSet<String>> {
+    if referenced_ids.is_empty() {
+        return Ok(HashSet::new());
+    }
+
+    const CHUNK_SIZE: usize = 500;
+    let ids: Vec<&String> = referenced_ids.iter().collect();
+    let mut existing = HashSet::new();
+    for chunk in ids.chunks(CHUNK_SIZE) {
+        let placeholders = (1..=chunk.len())
+            .map(|idx| format!("?{idx}"))
+            .collect::<Vec<_>>()
+            .join(",");
+        let query = format!("SELECT id FROM symbols WHERE id IN ({placeholders})");
+        let params = chunk
+            .iter()
+            .map(|id| *id as &dyn rusqlite::ToSql)
+            .collect::<Vec<_>>();
+
+        let mut stmt = tx.prepare(&query)?;
+        let rows = stmt.query_map(&params[..], |row| row.get::<_, String>(0))?;
+        for row in rows {
+            existing.insert(row?);
+        }
+    }
+    Ok(existing)
 }
 
 impl SymbolDatabase {
@@ -82,6 +130,9 @@ impl SymbolDatabase {
                 "idx_identifiers_containing",
                 "idx_identifiers_target",
                 "idx_identifiers_kind",
+                "idx_identifiers_file_line_kind",
+                "idx_identifiers_file_name",
+                "idx_identifiers_kind_containing",
             ];
             for index in &identifier_indexes {
                 if let Err(e) = outer_tx.execute(&format!("DROP INDEX IF EXISTS {}", index), []) {
@@ -158,6 +209,21 @@ impl SymbolDatabase {
             )?;
             outer_tx.execute(
                 "CREATE INDEX IF NOT EXISTS idx_identifiers_kind ON identifiers(kind)",
+                [],
+            )?;
+            outer_tx.execute(
+                "CREATE INDEX IF NOT EXISTS idx_identifiers_file_line_kind
+                 ON identifiers(file_path, start_line, kind)",
+                [],
+            )?;
+            outer_tx.execute(
+                "CREATE INDEX IF NOT EXISTS idx_identifiers_file_name
+                 ON identifiers(file_path, name)",
+                [],
+            )?;
+            outer_tx.execute(
+                "CREATE INDEX IF NOT EXISTS idx_identifiers_kind_containing
+                 ON identifiers(kind, containing_symbol_id)",
                 [],
             )?;
 
@@ -482,7 +548,7 @@ impl SymbolDatabase {
 
             // STEP 1: Drop indexes (WITHIN TRANSACTION)
             debug!("🗑️ Dropping relationship indexes for bulk insert optimization");
-            let indexes = ["idx_rel_from", "idx_rel_to", "idx_rel_kind"];
+            let indexes = ["idx_rel_from", "idx_rel_to", "idx_rel_kind", "idx_rel_file"];
             for index in &indexes {
                 outer_tx.execute(&format!("DROP INDEX IF EXISTS {}", index), [])?;
             }
@@ -544,6 +610,10 @@ impl SymbolDatabase {
             )?;
             outer_tx.execute(
                 "CREATE INDEX IF NOT EXISTS idx_rel_kind ON relationships(kind)",
+                [],
+            )?;
+            outer_tx.execute(
+                "CREATE INDEX IF NOT EXISTS idx_rel_file ON relationships(file_path)",
                 [],
             )?;
 
@@ -766,6 +836,11 @@ impl SymbolDatabase {
                 replace_annotations_batch(&outer_tx, new_symbols)?;
             }
 
+            let valid_symbol_ids = load_existing_symbol_ids_tx(
+                &outer_tx,
+                &collect_referenced_symbol_ids(new_relationships, new_identifiers, new_types),
+            )?;
+
             // STEP 4: Bulk insert new relationships (if any)
             if !new_relationships.is_empty() {
                 debug!("🔗 Inserting {} new relationships", new_relationships.len());
@@ -775,13 +850,11 @@ impl SymbolDatabase {
                      (id, from_symbol_id, to_symbol_id, kind, file_path, line_number, confidence, metadata)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                 )?;
-                let mut symbol_exists_stmt =
-                    outer_tx.prepare("SELECT 1 FROM symbols WHERE id = ?1 LIMIT 1")?;
 
                 for rel in new_relationships {
-                    let from_exists = symbol_exists(&mut symbol_exists_stmt, &rel.from_symbol_id)?;
-                    let to_exists = symbol_exists(&mut symbol_exists_stmt, &rel.to_symbol_id)?;
-                    if !from_exists || !to_exists {
+                    if !valid_symbol_ids.contains(&rel.from_symbol_id)
+                        || !valid_symbol_ids.contains(&rel.to_symbol_id)
+                    {
                         debug!(
                             "Skipping relationship {} -> {} (missing symbol reference)",
                             rel.from_symbol_id, rel.to_symbol_id
@@ -807,7 +880,6 @@ impl SymbolDatabase {
                     ])?;
                     inserted_relationship_count += 1;
                 }
-                drop(symbol_exists_stmt);
                 drop(stmt);
             }
 
@@ -822,12 +894,10 @@ impl SymbolDatabase {
                      target_symbol_id, confidence, code_context)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
                 )?;
-                let mut symbol_exists_stmt =
-                    outer_tx.prepare("SELECT 1 FROM symbols WHERE id = ?1 LIMIT 1")?;
 
                 for identifier in new_identifiers {
                     let containing_symbol_id = match identifier.containing_symbol_id.as_deref() {
-                        Some(symbol_id) if symbol_exists(&mut symbol_exists_stmt, symbol_id)? => {
+                        Some(symbol_id) if valid_symbol_ids.contains(symbol_id) => {
                             Some(symbol_id.to_string())
                         }
                         Some(symbol_id) => {
@@ -840,7 +910,7 @@ impl SymbolDatabase {
                         None => None,
                     };
                     let target_symbol_id = match identifier.target_symbol_id.as_deref() {
-                        Some(symbol_id) if symbol_exists(&mut symbol_exists_stmt, symbol_id)? => {
+                        Some(symbol_id) if valid_symbol_ids.contains(symbol_id) => {
                             Some(symbol_id.to_string())
                         }
                         Some(symbol_id) => {
@@ -872,7 +942,6 @@ impl SymbolDatabase {
                     ])?;
                     inserted_identifier_count += 1;
                 }
-                drop(symbol_exists_stmt);
                 drop(stmt);
             }
 
@@ -885,11 +954,9 @@ impl SymbolDatabase {
                      (symbol_id, resolved_type, generic_params, constraints, is_inferred, language, metadata, last_indexed)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                 )?;
-                let mut symbol_exists_stmt =
-                    outer_tx.prepare("SELECT 1 FROM symbols WHERE id = ?1 LIMIT 1")?;
 
                 for type_info in new_types {
-                    if !symbol_exists(&mut symbol_exists_stmt, &type_info.symbol_id)? {
+                    if !valid_symbol_ids.contains(&type_info.symbol_id) {
                         debug!(
                             "Skipping type row for missing symbol reference {}",
                             type_info.symbol_id
@@ -925,7 +992,6 @@ impl SymbolDatabase {
                     ])?;
                     inserted_type_count += 1;
                 }
-                drop(symbol_exists_stmt);
                 drop(stmt);
             }
 
@@ -1090,17 +1156,22 @@ impl SymbolDatabase {
                 "idx_symbols_file",
                 "idx_symbols_semantic",
                 "idx_symbols_parent",
+                "idx_symbols_reference_score_desc",
                 "idx_symbol_annotations_symbol_id",
                 "idx_symbol_annotations_annotation_key",
                 "idx_symbol_annotations_carrier",
                 "idx_rel_from",
                 "idx_rel_to",
                 "idx_rel_kind",
+                "idx_rel_file",
                 "idx_identifiers_name",
                 "idx_identifiers_file",
                 "idx_identifiers_containing",
                 "idx_identifiers_target",
                 "idx_identifiers_kind",
+                "idx_identifiers_file_line_kind",
+                "idx_identifiers_file_name",
+                "idx_identifiers_kind_containing",
                 "idx_types_language",
                 "idx_types_resolved",
                 "idx_types_inferred",
@@ -1226,6 +1297,11 @@ impl SymbolDatabase {
                 replace_annotations_batch(&outer_tx, &sorted_symbols)?;
             }
 
+            let valid_symbol_ids = load_existing_symbol_ids_tx(
+                &outer_tx,
+                &collect_referenced_symbol_ids(relationships, identifiers, types),
+            )?;
+
             // --- Insert relationships ---
             if !relationships.is_empty() {
                 debug!("🔗 Inserting {} relationships", relationships.len());
@@ -1235,12 +1311,10 @@ impl SymbolDatabase {
                      (id, from_symbol_id, to_symbol_id, kind, file_path, line_number, confidence, metadata)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                 )?;
-                let mut symbol_exists_stmt =
-                    sp.prepare("SELECT 1 FROM symbols WHERE id = ?1 LIMIT 1")?;
                 for rel in relationships {
-                    let from_exists = symbol_exists(&mut symbol_exists_stmt, &rel.from_symbol_id)?;
-                    let to_exists = symbol_exists(&mut symbol_exists_stmt, &rel.to_symbol_id)?;
-                    if !from_exists || !to_exists {
+                    if !valid_symbol_ids.contains(&rel.from_symbol_id)
+                        || !valid_symbol_ids.contains(&rel.to_symbol_id)
+                    {
                         debug!(
                             "Skipping relationship {} -> {} (missing symbol reference)",
                             rel.from_symbol_id, rel.to_symbol_id
@@ -1264,7 +1338,6 @@ impl SymbolDatabase {
                     ])?;
                     inserted_relationship_count += 1;
                 }
-                drop(symbol_exists_stmt);
                 drop(stmt);
                 sp.commit()?;
             }
@@ -1280,11 +1353,9 @@ impl SymbolDatabase {
                      target_symbol_id, confidence, code_context)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
                 )?;
-                let mut symbol_exists_stmt =
-                    sp.prepare("SELECT 1 FROM symbols WHERE id = ?1 LIMIT 1")?;
                 for id in identifiers {
                     let containing_symbol_id = match id.containing_symbol_id.as_deref() {
-                        Some(symbol_id) if symbol_exists(&mut symbol_exists_stmt, symbol_id)? => {
+                        Some(symbol_id) if valid_symbol_ids.contains(symbol_id) => {
                             Some(symbol_id.to_string())
                         }
                         Some(symbol_id) => {
@@ -1297,7 +1368,7 @@ impl SymbolDatabase {
                         None => None,
                     };
                     let target_symbol_id = match id.target_symbol_id.as_deref() {
-                        Some(symbol_id) if symbol_exists(&mut symbol_exists_stmt, symbol_id)? => {
+                        Some(symbol_id) if valid_symbol_ids.contains(symbol_id) => {
                             Some(symbol_id.to_string())
                         }
                         Some(symbol_id) => {
@@ -1329,7 +1400,6 @@ impl SymbolDatabase {
                     ])?;
                     inserted_identifier_count += 1;
                 }
-                drop(symbol_exists_stmt);
                 drop(stmt);
                 sp.commit()?;
             }
@@ -1343,10 +1413,8 @@ impl SymbolDatabase {
                      (symbol_id, resolved_type, generic_params, constraints, is_inferred, language, metadata, last_indexed)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                 )?;
-                let mut symbol_exists_stmt =
-                    sp.prepare("SELECT 1 FROM symbols WHERE id = ?1 LIMIT 1")?;
                 for t in types {
-                    if !symbol_exists(&mut symbol_exists_stmt, &t.symbol_id)? {
+                    if !valid_symbol_ids.contains(&t.symbol_id) {
                         debug!(
                             "Skipping type row for missing symbol reference {}",
                             t.symbol_id
@@ -1376,7 +1444,6 @@ impl SymbolDatabase {
                     ])?;
                     inserted_type_count += 1;
                 }
-                drop(symbol_exists_stmt);
                 drop(stmt);
                 sp.commit()?;
             }
@@ -1392,17 +1459,22 @@ impl SymbolDatabase {
                 "CREATE INDEX IF NOT EXISTS idx_symbols_file ON symbols(file_path)",
                 "CREATE INDEX IF NOT EXISTS idx_symbols_semantic ON symbols(semantic_group)",
                 "CREATE INDEX IF NOT EXISTS idx_symbols_parent ON symbols(parent_id)",
+                "CREATE INDEX IF NOT EXISTS idx_symbols_reference_score_desc ON symbols(reference_score DESC) WHERE reference_score > 0",
                 "CREATE INDEX IF NOT EXISTS idx_symbol_annotations_symbol_id ON symbol_annotations(symbol_id)",
                 "CREATE INDEX IF NOT EXISTS idx_symbol_annotations_annotation_key ON symbol_annotations(annotation_key)",
                 "CREATE INDEX IF NOT EXISTS idx_symbol_annotations_carrier ON symbol_annotations(carrier)",
                 "CREATE INDEX IF NOT EXISTS idx_rel_from ON relationships(from_symbol_id)",
                 "CREATE INDEX IF NOT EXISTS idx_rel_to ON relationships(to_symbol_id)",
                 "CREATE INDEX IF NOT EXISTS idx_rel_kind ON relationships(kind)",
+                "CREATE INDEX IF NOT EXISTS idx_rel_file ON relationships(file_path)",
                 "CREATE INDEX IF NOT EXISTS idx_identifiers_name ON identifiers(name)",
                 "CREATE INDEX IF NOT EXISTS idx_identifiers_file ON identifiers(file_path)",
                 "CREATE INDEX IF NOT EXISTS idx_identifiers_containing ON identifiers(containing_symbol_id)",
                 "CREATE INDEX IF NOT EXISTS idx_identifiers_target ON identifiers(target_symbol_id)",
                 "CREATE INDEX IF NOT EXISTS idx_identifiers_kind ON identifiers(kind)",
+                "CREATE INDEX IF NOT EXISTS idx_identifiers_file_line_kind ON identifiers(file_path, start_line, kind)",
+                "CREATE INDEX IF NOT EXISTS idx_identifiers_file_name ON identifiers(file_path, name)",
+                "CREATE INDEX IF NOT EXISTS idx_identifiers_kind_containing ON identifiers(kind, containing_symbol_id)",
                 "CREATE INDEX IF NOT EXISTS idx_types_language ON types(language)",
                 "CREATE INDEX IF NOT EXISTS idx_types_resolved ON types(resolved_type)",
                 "CREATE INDEX IF NOT EXISTS idx_types_inferred ON types(is_inferred)",

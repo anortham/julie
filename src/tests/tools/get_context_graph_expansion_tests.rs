@@ -522,6 +522,62 @@ mod graph_expansion_tests {
         );
     }
 
+    #[test]
+    fn test_identifier_incoming_edges_filters_kind_and_excluded_containers_before_expansion() {
+        let (_tmp, mut db) = setup_db();
+
+        let pivot_sym = make_symbol(
+            "sym_target",
+            "BuildPipeline",
+            SymbolKind::Function,
+            "src/main.rs",
+            1,
+        );
+        let included = make_symbol(
+            "sym_included",
+            "setup_handler",
+            SymbolKind::Function,
+            "src/handler.rs",
+            5,
+        );
+        let excluded = make_symbol(
+            "sym_excluded",
+            "test_handler",
+            SymbolKind::Function,
+            "src/utils.rs",
+            5,
+        );
+        db.store_symbols(&[pivot_sym.clone(), included, excluded])
+            .unwrap();
+
+        for (id, kind, container_id) in [
+            ("ident_call", "call", "sym_included"),
+            ("ident_member", "member_access", "sym_included"),
+            ("ident_excluded", "call", "sym_excluded"),
+        ] {
+            db.conn
+                .execute(
+                    "INSERT INTO identifiers (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, containing_symbol_id, target_symbol_id, confidence)
+                     VALUES (?1, 'BuildPipeline', ?2, 'rust', 'src/handler.rs', 6, 0, 6, 13, 0, 100, ?3, 'sym_target', 0.95)",
+                    rusqlite::params![id, kind, container_id],
+                )
+                .unwrap();
+        }
+
+        let excluded_container_ids = std::collections::HashSet::from(["sym_excluded".to_string()]);
+        let edges = crate::database::impact_graph::identifier_incoming_edges(
+            &db,
+            &[pivot_sym],
+            &excluded_container_ids,
+        )
+        .unwrap();
+
+        assert_eq!(edges.len(), 1);
+        assert_eq!(edges[0].container_id, "sym_included");
+        assert_eq!(edges[0].relationship_kind, RelationshipKind::Calls);
+        assert_eq!(edges[0].target_symbol_id, Some("sym_target".to_string()));
+    }
+
     /// Identifiers with names containing SQL wildcard chars (`_`, `%`) must NOT
     /// match unrelated identifiers. Regression test for the unescaped LIKE bug in
     /// `build_name_match_clause`.

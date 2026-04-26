@@ -191,6 +191,13 @@ impl SymbolDatabase {
             [],
         )?;
 
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_symbols_reference_score_desc
+             ON symbols(reference_score DESC)
+             WHERE reference_score > 0",
+            [],
+        )?;
+
         debug!("Created symbols table and indexes");
 
         Ok(())
@@ -306,6 +313,24 @@ impl SymbolDatabase {
             [],
         )?;
 
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_identifiers_file_line_kind
+             ON identifiers(file_path, start_line, kind)",
+            [],
+        )?;
+
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_identifiers_file_name
+             ON identifiers(file_path, name)",
+            [],
+        )?;
+
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_identifiers_kind_containing
+             ON identifiers(kind, containing_symbol_id)",
+            [],
+        )?;
+
         debug!("Created identifiers table and indexes");
         Ok(())
     }
@@ -383,6 +408,11 @@ impl SymbolDatabase {
 
         self.conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_rel_kind ON relationships(kind)",
+            [],
+        )?;
+
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_rel_file ON relationships(file_path)",
             [],
         )?;
 

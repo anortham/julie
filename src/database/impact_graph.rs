@@ -54,7 +54,11 @@ pub fn identifier_incoming_edges(
         .iter()
         .map(|symbol| symbol.name.clone())
         .collect();
-    let identifier_refs = db.get_identifiers_by_names(&frontier_names)?;
+    let identifier_refs = db.get_identifiers_by_names_kinds_excluding_containers(
+        &frontier_names,
+        IMPACT_IDENTIFIER_KINDS,
+        excluded_container_ids,
+    )?;
     let mut edges = Vec::with_capacity(identifier_refs.len());
 
     for iref in identifier_refs {

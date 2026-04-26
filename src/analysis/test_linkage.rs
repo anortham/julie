@@ -194,43 +194,81 @@ pub fn compute_test_linkage(db: &SymbolDatabase) -> Result<TestLinkageStats> {
         );
     }
 
-    // Step 2b: Identifier-based linkage — name-match fallback
+    // Step 2b: Identifier-based linkage, name-match fallback.
     // For identifiers without target_symbol_id, match by name against production symbols.
     // Disambiguate by file proximity (same directory tree preferred).
     //
     // Guard against cartesian explosions: on large codebases, common names like "get",
     // "run", "init" match dozens of production symbols each, producing millions of rows.
-    // Pre-compute the set of ambiguous names (matching > 10 prod symbols) and exclude
-    // them from the join.
-    //
-    // Language filter applied in Rust (not SQL) because adding it to the JOIN causes
-    // SQLite to drop idx_symbols_name in favor of idx_symbols_language.
+    // Pre-compute ambiguous names per language and exclude them from the join.
     db.conn.execute_batch(
-        "CREATE TEMP TABLE IF NOT EXISTS _ambiguous_names (name TEXT PRIMARY KEY);
-         DELETE FROM _ambiguous_names;
-         INSERT INTO _ambiguous_names (name)
-         SELECT name FROM symbols
+        "DROP TABLE IF EXISTS _ambiguous_names;
+         DROP TABLE IF EXISTS _eligible_prod_symbols;
+         DROP TABLE IF EXISTS _scorable_test_symbols;
+         CREATE TEMP TABLE _scorable_test_symbols (
+             id TEXT PRIMARY KEY,
+             name TEXT NOT NULL,
+             language TEXT NOT NULL,
+             file_path TEXT NOT NULL,
+             tier TEXT NOT NULL,
+             confidence REAL NOT NULL
+         );
+         CREATE TEMP TABLE _eligible_prod_symbols (
+             id TEXT PRIMARY KEY,
+             name TEXT NOT NULL,
+             language TEXT NOT NULL,
+             file_path TEXT NOT NULL
+         );
+         CREATE INDEX _eligible_prod_symbols_language_name
+             ON _eligible_prod_symbols(language, name);
+         CREATE TEMP TABLE _ambiguous_names (
+             language TEXT NOT NULL,
+             name TEXT NOT NULL,
+             PRIMARY KEY (language, name)
+         );
+         INSERT INTO _scorable_test_symbols (id, name, language, file_path, tier, confidence)
+         SELECT s_test.id,
+                s_test.name,
+                s_test.language,
+                s_test.file_path,
+                COALESCE(json_extract(s_test.metadata, '$.test_quality.quality_tier'), 'unknown'),
+                COALESCE(json_extract(s_test.metadata, '$.test_quality.confidence'), 0.5)
+         FROM symbols s_test
+         WHERE json_extract(s_test.metadata, '$.test_role') IN ('test_case', 'parameterized_test')
+            OR (json_extract(s_test.metadata, '$.is_test') = 1
+                AND json_extract(s_test.metadata, '$.test_role') IS NULL);
+         INSERT INTO _eligible_prod_symbols (id, name, language, file_path)
+         SELECT id, name, language, file_path
+         FROM symbols
          WHERE kind NOT IN ('import', 'export', 'module', 'namespace')
-         GROUP BY name HAVING COUNT(*) > 10;",
+           AND (json_extract(metadata, '$.is_test') IS NULL
+                OR json_extract(metadata, '$.is_test') != 1);
+         INSERT INTO _ambiguous_names (language, name)
+         SELECT language, name
+         FROM _eligible_prod_symbols
+         GROUP BY language, name
+         HAVING COUNT(*) > 10;",
     )?;
 
-    let mut stmt3 = db.conn.prepare(&format!(
+    let mut stmt3 = db.conn.prepare(
         "SELECT s_prod.id, s_prod.file_path, s_test.id, s_test.name, i.file_path AS test_file,
-                COALESCE(json_extract(s_test.metadata, '$.test_quality.quality_tier'), 'unknown'),
+                s_test.tier,
                 i.name AS ident_name,
-                s_test.language, s_prod.language,
-                COALESCE(json_extract(s_test.metadata, '$.test_quality.confidence'), 0.5)
+                s_test.confidence
          FROM identifiers i
-         JOIN symbols s_test ON i.containing_symbol_id = s_test.id
-         JOIN symbols s_prod ON s_prod.name = i.name
-         WHERE {scorable_test_filter}
-           AND i.target_symbol_id IS NULL
-           AND (json_extract(s_prod.metadata, '$.is_test') IS NULL
-                OR json_extract(s_prod.metadata, '$.is_test') != 1)
-           AND s_prod.kind NOT IN ('import', 'export', 'module', 'namespace')
-           AND i.name NOT IN (SELECT name FROM _ambiguous_names)
+         JOIN _scorable_test_symbols s_test ON i.containing_symbol_id = s_test.id
+         JOIN _eligible_prod_symbols s_prod
+           ON s_prod.name = i.name
+          AND s_prod.language = s_test.language
+         WHERE i.target_symbol_id IS NULL
+           AND NOT EXISTS (
+               SELECT 1
+               FROM _ambiguous_names ambiguous
+               WHERE ambiguous.language = s_test.language
+                 AND ambiguous.name = i.name
+           )
          ORDER BY s_prod.id, s_prod.file_path",
-    ))?;
+    )?;
 
     // Group by (test_id, identifier_name) → pick best prod match by directory proximity
     // Key is (test_id, ident_name) -- NOT (test_id, test_name) -- so each identifier
@@ -249,29 +287,13 @@ pub fn compute_test_linkage(db: &SymbolDatabase) -> Result<TestLinkageStats> {
             row.get::<_, String>(4)?, // test_file_path
             row.get::<_, String>(5)?, // tier
             row.get::<_, String>(6)?, // ident_name
-            row.get::<_, String>(7)?, // test_language
-            row.get::<_, String>(8)?, // prod_language
-            row.get::<_, f64>(9)?,    // confidence
+            row.get::<_, f64>(7)?,    // confidence
         ))
     })?;
 
     for row in rows3 {
-        let (
-            prod_id,
-            prod_path,
-            test_id,
-            test_name,
-            test_path,
-            tier,
-            ident_name,
-            test_lang,
-            prod_lang,
-            confidence,
-        ) = row?;
-        // Language filter: skip cross-language matches (e.g. Python test -> Rust symbol)
-        if test_lang != prod_lang {
-            continue;
-        }
+        let (prod_id, prod_path, test_id, test_name, test_path, tier, ident_name, confidence) =
+            row?;
         name_matches
             .entry((test_id.clone(), ident_name))
             .or_default()
@@ -334,9 +356,11 @@ pub fn compute_test_linkage(db: &SymbolDatabase) -> Result<TestLinkageStats> {
         }
     }
 
-    let _ = db
-        .conn
-        .execute_batch("DROP TABLE IF EXISTS _ambiguous_names;");
+    let _ = db.conn.execute_batch(
+        "DROP TABLE IF EXISTS _ambiguous_names;
+             DROP TABLE IF EXISTS _eligible_prod_symbols;
+             DROP TABLE IF EXISTS _scorable_test_symbols;",
+    );
 
     debug!(
         "After identifier linkage: {} production symbols linked",

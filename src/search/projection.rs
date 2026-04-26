@@ -1,6 +1,7 @@
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
+use tracing::info;
 
 use crate::database::{ProjectionState, ProjectionStatus, SymbolDatabase};
 use crate::extractors::{AnnotationMarker, Symbol};
@@ -14,7 +15,7 @@ pub struct SearchProjection {
 }
 
 #[derive(Debug, Clone, Default)]
-struct SymbolIndexContext {
+pub(crate) struct SymbolIndexContext {
     annotation_keys: Vec<String>,
     annotations_text: String,
     owner_names_text: String,
@@ -232,15 +233,31 @@ impl SearchProjection {
             None,
         )?;
 
+        let load_start = std::time::Instant::now();
         let symbol_contexts = load_symbol_contexts_from_database(db, symbol_docs)?;
-        if let Err(err) = apply_documents_with_context(
+        info!(
+            "⏱️  projection.load_contexts: {:.2}s ({} symbols)",
+            load_start.elapsed().as_secs_f64(),
+            symbol_docs.len()
+        );
+
+        let apply_start = std::time::Instant::now();
+        let apply_result = apply_documents_with_context(
             index,
             symbol_docs,
             file_docs,
             files_to_clean,
             &symbol_contexts,
             true,
-        ) {
+        );
+        info!(
+            "⏱️  projection.apply_documents: {:.2}s ({} symbols, {} files, {} cleaned)",
+            apply_start.elapsed().as_secs_f64(),
+            symbol_docs.len(),
+            file_docs.len(),
+            files_to_clean.len()
+        );
+        if let Err(err) = apply_result {
             let detail = err.to_string();
             let _ = db.upsert_projection_state(
                 self.projection,
@@ -275,7 +292,7 @@ impl SearchProjection {
     }
 }
 
-fn projection_served_revision(state: &ProjectionState) -> Option<i64> {
+pub(crate) fn projection_served_revision(state: &ProjectionState) -> Option<i64> {
     state.projected_revision.or_else(|| {
         if state.status == ProjectionStatus::Ready {
             state.canonical_revision
@@ -322,7 +339,7 @@ pub(crate) fn apply_uncommitted_documents_from_symbols(
     )
 }
 
-fn apply_documents_with_context(
+pub(crate) fn apply_documents_with_context(
     index: &SearchIndex,
     symbol_docs: &[SymbolDocument],
     file_docs: &[FileDocument],
@@ -371,7 +388,7 @@ fn symbol_contexts_from_symbols(symbols: &[Symbol]) -> HashMap<String, SymbolInd
         .collect()
 }
 
-fn load_symbol_contexts_from_database(
+pub(crate) fn load_symbol_contexts_from_database(
     db: &SymbolDatabase,
     symbol_docs: &[SymbolDocument],
 ) -> Result<HashMap<String, SymbolIndexContext>> {

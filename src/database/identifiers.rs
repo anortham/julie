@@ -264,6 +264,97 @@ impl SymbolDatabase {
         Ok(results)
     }
 
+    /// Find identifiers by name and kind while excluding known containers in SQL
+    /// when the exclusion set is small enough for SQLite bind limits.
+    pub fn get_identifiers_by_names_kinds_excluding_containers(
+        &self,
+        names: &[String],
+        kinds: &[&str],
+        excluded_container_ids: &HashSet<String>,
+    ) -> Result<Vec<IdentifierRef>> {
+        if names.is_empty() || kinds.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        const MAX_BIND_PARAMS: usize = 900;
+        const MAX_SQL_EXCLUSIONS: usize = 300;
+        let exclude_in_sql = excluded_container_ids.len() <= MAX_SQL_EXCLUSIONS;
+        let exclusion_bind_count = if exclude_in_sql {
+            excluded_container_ids.len()
+        } else {
+            0
+        };
+        let fixed_bind_count = kinds.len() + exclusion_bind_count;
+        let max_names_per_chunk = ((MAX_BIND_PARAMS.saturating_sub(fixed_bind_count)) / 3).max(1);
+        let mut results = Vec::new();
+
+        for chunk in names.chunks(max_names_per_chunk) {
+            let chunk_vec: Vec<String> = chunk.to_vec();
+            let (where_clause, mut params) = build_name_match_clause(&chunk_vec);
+
+            let kind_placeholders = kinds
+                .iter()
+                .map(|kind| {
+                    let idx = params.len() + 1;
+                    params.push(Box::new((*kind).to_string()) as Box<dyn rusqlite::ToSql>);
+                    format!("?{}", idx)
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+
+            let exclusion_clause = if exclude_in_sql && !excluded_container_ids.is_empty() {
+                let placeholders = excluded_container_ids
+                    .iter()
+                    .map(|container_id| {
+                        let idx = params.len() + 1;
+                        params.push(Box::new(container_id.clone()) as Box<dyn rusqlite::ToSql>);
+                        format!("?{}", idx)
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!(" AND containing_symbol_id NOT IN ({})", placeholders)
+            } else {
+                String::new()
+            };
+
+            let query = format!(
+                "SELECT {} FROM identifiers \
+                 WHERE {} \
+                 AND kind IN ({}) \
+                 AND containing_symbol_id IS NOT NULL{}",
+                IDENTIFIER_REF_COLUMNS, where_clause, kind_placeholders, exclusion_clause
+            );
+
+            let mut stmt = self.conn.prepare(&query)?;
+            let param_refs: Vec<&dyn rusqlite::ToSql> = params
+                .iter()
+                .map(|p| p.as_ref() as &dyn rusqlite::ToSql)
+                .collect();
+
+            let rows = stmt.query_map(&param_refs[..], |row| self.row_to_identifier_ref(row))?;
+            for row in rows {
+                let identifier = row?;
+                if !excluded_container_ids.contains(
+                    identifier
+                        .containing_symbol_id
+                        .as_deref()
+                        .unwrap_or_default(),
+                ) {
+                    results.push(identifier);
+                }
+            }
+        }
+
+        debug!(
+            "Found {} identifiers for {} names across {} kinds with {} excluded containers",
+            results.len(),
+            names.len(),
+            kinds.len(),
+            excluded_container_ids.len()
+        );
+        Ok(results)
+    }
+
     /// Check which (file_path, name) pairs have matching identifiers.
     ///
     /// Returns a HashSet of (file_path, name) pairs that exist in the identifiers table.

@@ -138,14 +138,20 @@ impl ManageWorkspaceTool {
         const MINIFIED_LONG_LINE_RATIO: f64 = 0.20;
         const LONG_LINE_THRESHOLD: usize = 500;
 
+        // Prose languages routinely contain long unwrapped lines (e.g. SKILL.md,
+        // technical docs, articles). The long-line heuristic targets minified code,
+        // not prose, so skip it for these languages. The 5 MiB hard cap still applies.
+        let skip_minified_check = matches!(language, "markdown");
+
         if content.len() > HARD_SIZE_CAP
-            || is_likely_minified_or_generated(
-                &content,
-                MINIFIED_AVG_LINE_LEN,
-                MINIFIED_MAX_LINE_LEN,
-                MINIFIED_LONG_LINE_RATIO,
-                LONG_LINE_THRESHOLD,
-            )
+            || (!skip_minified_check
+                && is_likely_minified_or_generated(
+                    &content,
+                    MINIFIED_AVG_LINE_LEN,
+                    MINIFIED_MAX_LINE_LEN,
+                    MINIFIED_LONG_LINE_RATIO,
+                    LONG_LINE_THRESHOLD,
+                ))
         {
             let reason = if content.len() > HARD_SIZE_CAP {
                 format!("{} bytes > 5MiB safety cap", content.len())

@@ -1,6 +1,9 @@
 use std::fs;
+use std::sync::Arc;
 use std::sync::atomic::Ordering;
+use std::time::{Duration, Instant};
 
+use crate::database::ProjectionStatus;
 use anyhow::Result;
 use rusqlite::OptionalExtension;
 use tempfile::TempDir;
@@ -112,6 +115,40 @@ async fn symbol_count(handler: &JulieServerHandler, route: &IndexRoute) -> Resul
         .map_err(anyhow::Error::from)
 }
 
+async fn symbol_count_for_file(
+    handler: &JulieServerHandler,
+    route: &IndexRoute,
+    file_path: &str,
+) -> Result<i64> {
+    let db = route
+        .database_for_read(handler)
+        .await?
+        .expect("database should exist for indexing pipeline tests");
+    let db = db.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    db.conn
+        .query_row(
+            "SELECT COUNT(*) FROM symbols WHERE file_path = ?1",
+            [file_path],
+            |row| row.get(0),
+        )
+        .map_err(anyhow::Error::from)
+}
+
+async fn latest_revision_kind(handler: &JulieServerHandler, route: &IndexRoute) -> Result<String> {
+    let db = route
+        .database_for_read(handler)
+        .await?
+        .expect("database should exist for indexing pipeline tests");
+    let db = db.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    db.conn
+        .query_row(
+            "SELECT kind FROM canonical_revisions ORDER BY revision DESC LIMIT 1",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(anyhow::Error::from)
+}
+
 async fn annotation_rows(
     handler: &JulieServerHandler,
     route: &IndexRoute,
@@ -220,6 +257,55 @@ async fn test_indexing_pipeline_reports_stage_history_for_parser_backed_files() 
         latest_canonical_revision(&handler, &route).await?,
         Some(1),
         "database revision should match the surfaced canonical revision"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_full_indexing_replaces_canonical_database_state() -> Result<()> {
+    let temp_dir = TempDir::new()?;
+    fs::write(temp_dir.path().join("old.rs"), "fn stale_symbol() {}\n")?;
+    fs::write(temp_dir.path().join("new.rs"), "fn fresh_symbol() {}\n")?;
+
+    let (handler, workspace_root, route) = test_handler_and_route(&temp_dir).await?;
+    run_indexing_pipeline(
+        &workspace_tool(),
+        &handler,
+        vec![workspace_root.join("old.rs")],
+        &route,
+        IndexingOperation::Incremental,
+    )
+    .await?;
+
+    assert!(
+        symbol_count_for_file(&handler, &route, "old.rs").await? > 0,
+        "initial incremental run should seed stale symbols"
+    );
+
+    let result = run_indexing_pipeline(
+        &workspace_tool(),
+        &handler,
+        vec![workspace_root.join("new.rs")],
+        &route,
+        IndexingOperation::Full,
+    )
+    .await?;
+
+    assert_eq!(result.files_processed, 1);
+    assert_eq!(
+        symbol_count_for_file(&handler, &route, "old.rs").await?,
+        0,
+        "full indexing should clear stale canonical rows before fresh storage"
+    );
+    assert!(
+        symbol_count_for_file(&handler, &route, "new.rs").await? > 0,
+        "full indexing should store newly extracted symbols"
+    );
+    assert_eq!(
+        latest_revision_kind(&handler, &route).await?,
+        "fresh",
+        "full indexing should record a fresh canonical revision"
     );
 
     Ok(())
@@ -505,6 +591,107 @@ async fn test_indexing_pipeline_keeps_search_unready_when_projection_fails() -> 
         symbol_count(&handler, &route).await?,
         1,
         "SQLite canonical state must survive a failed projection pass"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_projection_waiting_on_tantivy_lock_releases_database_mutex() -> Result<()> {
+    let temp_dir = TempDir::new()?;
+    fs::write(temp_dir.path().join("lib.rs"), "fn parser_backed() {}\n")?;
+
+    let (handler, workspace_root, route) = test_handler_and_route(&temp_dir).await?;
+    let handler = Arc::new(handler);
+    let database = route
+        .database
+        .as_ref()
+        .expect("workspace-backed route should expose database")
+        .clone();
+    let search_index = route
+        .search_index_for_write()
+        .await?
+        .expect("search index should open");
+    let search_guard = search_index
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let runtime = route
+        .indexing_runtime
+        .as_ref()
+        .expect("workspace-backed route should expose indexing runtime")
+        .clone();
+
+    let route_for_task = IndexRoute {
+        workspace_id: route.workspace_id.clone(),
+        workspace_root: route.workspace_root.clone(),
+        db_path: route.db_path.clone(),
+        tantivy_path: route.tantivy_path.clone(),
+        is_primary: route.is_primary,
+        database: Some(Arc::clone(&database)),
+        search_index: Some(Arc::clone(&search_index)),
+        indexing_runtime: Some(Arc::clone(&runtime)),
+    };
+    let workspace_file = workspace_root.join("lib.rs");
+    let handler_for_task = Arc::clone(&handler);
+    let indexing_task = tokio::spawn(async move {
+        run_indexing_pipeline(
+            &workspace_tool(),
+            handler_for_task.as_ref(),
+            vec![workspace_file],
+            &route_for_task,
+            IndexingOperation::Full,
+        )
+        .await
+    });
+
+    let stage_deadline = Instant::now() + Duration::from_secs(5);
+    while Instant::now() < stage_deadline {
+        let stage = runtime
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .snapshot()
+            .stage;
+        if stage == Some(IndexingStage::Projecting) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert_eq!(
+        runtime
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .snapshot()
+            .stage,
+        Some(IndexingStage::Projecting),
+        "pipeline should be waiting in projection while the Tantivy lock is held"
+    );
+
+    let db_deadline = Instant::now() + Duration::from_secs(1);
+    let mut released_database_mutex = false;
+    while Instant::now() < db_deadline {
+        if let Ok(db) = database.try_lock() {
+            let state = db.get_projection_state("tantivy", &route.workspace_id)?;
+            if state
+                .map(|state| state.status == ProjectionStatus::Building)
+                .unwrap_or(false)
+            {
+                released_database_mutex = true;
+                break;
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+
+    drop(search_guard);
+    let result = indexing_task.await?;
+    assert!(
+        result.is_ok(),
+        "indexing should complete after the held Tantivy lock is released: {:?}",
+        result.err()
+    );
+    assert!(
+        released_database_mutex,
+        "projection blocked on Tantivy must release the SQLite mutex after marking projection building"
     );
 
     Ok(())

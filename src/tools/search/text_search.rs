@@ -458,17 +458,35 @@ fn content_search_with_index(
     let mut verified_symbols = Vec::with_capacity(limit);
 
     if let Some(db) = db {
+        let mut filtered_results = Vec::with_capacity(search_results.len());
         for result in search_results {
-            if verified_symbols.len() >= limit {
-                break;
-            }
             if let Some(ref pattern) = filter.file_pattern {
                 if !matches_glob_pattern(&result.file_path, pattern) {
                     continue;
                 }
             }
-            match db.get_file_content(&result.file_path) {
-                Ok(Some(content)) => {
+            filtered_results.push(result);
+        }
+
+        let file_paths: Vec<String> = filtered_results
+            .iter()
+            .map(|result| result.file_path.clone())
+            .collect();
+        match db.get_file_contents_by_paths(&file_paths) {
+            Ok(contents_by_path) => {
+                for result in filtered_results {
+                    if verified_symbols.len() >= limit {
+                        break;
+                    }
+                    let Some(content) = contents_by_path.get(&result.file_path) else {
+                        verified_symbols.push(content_result_to_symbol(result));
+                        continue;
+                    };
+                    let Some(content) = content else {
+                        verified_symbols.push(content_result_to_symbol(result));
+                        continue;
+                    };
+
                     let content_lower = content.to_lowercase();
                     if query_words
                         .iter()
@@ -482,11 +500,10 @@ fn content_search_with_index(
                         );
                     }
                 }
-                Ok(None) => {
-                    verified_symbols.push(content_result_to_symbol(result));
-                }
-                Err(e) => {
-                    debug!("Could not verify content for {}: {}", result.file_path, e);
+            }
+            Err(e) => {
+                debug!("Could not verify batched content search results: {}", e);
+                for result in filtered_results.into_iter().take(limit) {
                     verified_symbols.push(content_result_to_symbol(result));
                 }
             }
