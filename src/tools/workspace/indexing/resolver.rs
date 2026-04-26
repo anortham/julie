@@ -13,9 +13,12 @@
 //! 6. **Test-file penalty** (−75) — candidates in test paths are penalized to prevent
 //!    test subclasses from stealing centrality from production symbols
 
+mod namespace;
+
 use crate::database::SymbolDatabase;
 use julie_extractors::base::{
-    PendingRelationship, Relationship, RelationshipKind, Symbol, SymbolKind,
+    PendingRelationship, Relationship, RelationshipKind, StructuredPendingRelationship, Symbol,
+    SymbolKind, UnresolvedTarget,
 };
 use julie_extractors::language::detect_language_from_extension;
 use std::collections::{HashMap, HashSet};
@@ -124,6 +127,7 @@ fn dir_of(path: &str) -> &str {
 fn score_candidate(
     candidate: &Symbol,
     pending: &PendingRelationship,
+    target: Option<&UnresolvedTarget>,
     parent_ctx: &ParentReferenceContext,
 ) -> u32 {
     if !is_resolvable_target(&candidate.kind) {
@@ -131,6 +135,10 @@ fn score_candidate(
     }
 
     let mut score: u32 = 1; // Base score for being a valid target
+    let Some(namespace_bonus) = namespace::score(candidate, pending, target, parent_ctx) else {
+        return 0;
+    };
+    score += namespace_bonus;
 
     // Strong preference for same language (cross-language calls are rare in a single project)
     if let Some(caller_lang) = language_of(&pending.file_path) {
@@ -199,15 +207,25 @@ fn score_candidate(
 
 /// Select the best candidate from a list of symbols matching a callee name.
 /// Returns None if no valid candidate exists.
+#[cfg(test)]
 pub fn select_best_candidate<'a>(
     candidates: &'a [Symbol],
     pending: &PendingRelationship,
     parent_ctx: &ParentReferenceContext,
 ) -> Option<&'a Symbol> {
+    select_best_candidate_for_target(candidates, pending, None, parent_ctx)
+}
+
+fn select_best_candidate_for_target<'a>(
+    candidates: &'a [Symbol],
+    pending: &PendingRelationship,
+    target: Option<&UnresolvedTarget>,
+    parent_ctx: &ParentReferenceContext,
+) -> Option<&'a Symbol> {
     candidates
         .iter()
         .filter_map(|c| {
-            let s = score_candidate(c, pending, parent_ctx);
+            let s = score_candidate(c, pending, target, parent_ctx);
             if s > 0 { Some((c, s)) } else { None }
         })
         .max_by_key(|(_, score)| *score)
@@ -268,6 +286,23 @@ pub fn resolve_batch(
     pendings: &[PendingRelationship],
     db: &SymbolDatabase,
 ) -> (Vec<Relationship>, ResolutionStats) {
+    let structured: Vec<StructuredPendingRelationship> = pendings
+        .iter()
+        .map(|pending| StructuredPendingRelationship {
+            pending: pending.clone(),
+            target: UnresolvedTarget::simple(pending.callee_name.clone()),
+            caller_scope_symbol_id: None,
+        })
+        .collect();
+    resolve_structured_batch(&structured, db)
+}
+
+/// Resolve structured pending relationships in batch. Uses target terminal names
+/// for lookup while preserving namespace context for candidate selection.
+pub fn resolve_structured_batch(
+    pendings: &[StructuredPendingRelationship],
+    db: &SymbolDatabase,
+) -> (Vec<Relationship>, ResolutionStats) {
     let mut stats = ResolutionStats {
         total: pendings.len(),
         ..Default::default()
@@ -282,8 +317,8 @@ pub fn resolve_batch(
         let mut seen = std::collections::HashSet::new();
         pendings
             .iter()
-            .filter(|p| seen.insert(p.callee_name.as_str()))
-            .map(|p| p.callee_name.clone())
+            .filter(|p| seen.insert(p.target.terminal_name.as_str()))
+            .map(|p| p.target.terminal_name.clone())
             .collect()
     };
 
@@ -304,21 +339,30 @@ pub fn resolve_batch(
     };
 
     // Build parent reference context for import-constrained disambiguation
-    let parent_ctx = build_parent_reference_context(&candidates_map, pendings, db);
+    let legacy_pendings: Vec<PendingRelationship> = pendings
+        .iter()
+        .map(|pending| pending.pending.clone())
+        .collect();
+    let parent_ctx = build_parent_reference_context(&candidates_map, &legacy_pendings, db);
 
     // Resolve each pending against the cached candidates
     let mut resolved = Vec::with_capacity(pendings.len());
-    for pending in pendings {
-        match candidates_map.get(&pending.callee_name) {
+    for structured in pendings {
+        match candidates_map.get(&structured.target.terminal_name) {
             Some(candidates) if !candidates.is_empty() => {
-                if let Some(target) = select_best_candidate(candidates, pending, &parent_ctx) {
-                    resolved.push(build_resolved_relationship(pending, target));
+                if let Some(target) = select_best_candidate_for_target(
+                    candidates,
+                    &structured.pending,
+                    Some(&structured.target),
+                    &parent_ctx,
+                ) {
+                    resolved.push(build_resolved_relationship(&structured.pending, target));
                     stats.resolved += 1;
                 } else {
                     stats.no_valid_candidates += 1;
                     trace!(
                         "Could not resolve '{}' - no valid target among {} candidates",
-                        pending.callee_name,
+                        structured.target.display_name,
                         candidates.len()
                     );
                 }

@@ -4,6 +4,7 @@
 use crate::extractors::{PendingRelationship, Relationship, Symbol};
 use crate::tools::workspace::commands::ManageWorkspaceTool;
 use anyhow::Result;
+use julie_extractors::base::StructuredPendingRelationship;
 use std::collections::HashMap;
 use std::path::Path;
 use tracing::{debug, trace, warn};
@@ -64,6 +65,7 @@ impl ManageWorkspaceTool {
         Vec<Symbol>,
         Vec<Relationship>,
         Vec<PendingRelationship>,
+        Vec<StructuredPendingRelationship>,
         Vec<crate::extractors::Identifier>,
         HashMap<String, crate::extractors::base::TypeInfo>,
         crate::database::FileInfo,
@@ -108,6 +110,7 @@ impl ManageWorkspaceTool {
                 Vec::new(),
                 Vec::new(),
                 Vec::new(),
+                Vec::new(),
                 HashMap::new(),
                 file_info,
             ));
@@ -123,6 +126,7 @@ impl ManageWorkspaceTool {
 
             // Return file info without symbols (file_info already created in spawn_blocking)
             return Ok((
+                Vec::new(),
                 Vec::new(),
                 Vec::new(),
                 Vec::new(),
@@ -164,6 +168,7 @@ impl ManageWorkspaceTool {
                 file_path.display()
             );
             return Ok((
+                Vec::new(),
                 Vec::new(),
                 Vec::new(),
                 Vec::new(),
@@ -218,6 +223,7 @@ impl ManageWorkspaceTool {
         file_info.symbol_count = symbols.len() as i32;
         let relationships = results.relationships;
         let pending_relationships = results.pending_relationships;
+        let structured_pending_relationships = results.structured_pending_relationships;
         let identifiers = results.identifiers;
         let types = results.types;
 
@@ -244,6 +250,7 @@ impl ManageWorkspaceTool {
             symbols,
             relationships,
             pending_relationships,
+            structured_pending_relationships,
             identifiers,
             types,
             file_info,

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 
@@ -12,6 +12,7 @@ use super::state::{IndexedFileDisposition, IndexingBatchState, IndexingOperation
 use crate::extractors::{Identifier, PendingRelationship, Relationship, Symbol};
 use crate::handler::JulieServerHandler;
 use crate::tools::workspace::commands::ManageWorkspaceTool;
+use julie_extractors::base::StructuredPendingRelationship;
 
 pub(crate) struct IndexingPipelineResult {
     pub state: IndexingBatchState,
@@ -23,6 +24,7 @@ pub(crate) struct ExtractedBatch {
     pub(crate) all_symbols: Vec<Symbol>,
     pub(crate) all_relationships: Vec<Relationship>,
     pub(crate) all_pending_relationships: Vec<PendingRelationship>,
+    pub(crate) all_structured_pending_relationships: Vec<StructuredPendingRelationship>,
     pub(crate) all_identifiers: Vec<Identifier>,
     pub(crate) all_types: Vec<crate::extractors::base::TypeInfo>,
     pub(crate) all_file_infos: Vec<crate::database::FileInfo>,
@@ -41,6 +43,7 @@ impl ExtractedBatch {
             all_symbols: Vec::new(),
             all_relationships: Vec::new(),
             all_pending_relationships: Vec::new(),
+            all_structured_pending_relationships: Vec::new(),
             all_identifiers: Vec::new(),
             all_types: Vec::new(),
             all_file_infos: Vec::new(),
@@ -105,7 +108,11 @@ pub(crate) async fn run_indexing_pipeline(
     .await?;
 
     transition_stage(&mut state, route, IndexingStage::Resolving);
-    resolve_pending_relationships(&db, &batch.all_pending_relationships);
+    resolve_pending_relationships(
+        &db,
+        &batch.all_pending_relationships,
+        &batch.all_structured_pending_relationships,
+    );
 
     transition_stage(&mut state, route, IndexingStage::Analyzing);
     analyze_batch(handler, route, &db)?;
@@ -194,7 +201,11 @@ impl ManageWorkspaceTool {
                 "Extraction plan: {} {} files ({})",
                 count,
                 language,
-                if *has_parser { "tree-sitter parser" } else { "text-only" }
+                if *has_parser {
+                    "tree-sitter parser"
+                } else {
+                    "text-only"
+                }
             );
         }
 
@@ -233,6 +244,7 @@ impl ManageWorkspaceTool {
                     symbols,
                     relationships,
                     pending_rels,
+                    structured_pending_rels,
                     identifiers,
                     types,
                     file_info,
@@ -254,6 +266,9 @@ impl ManageWorkspaceTool {
                     batch.all_symbols.extend(symbols);
                     batch.all_relationships.extend(relationships);
                     batch.all_pending_relationships.extend(pending_rels);
+                    batch
+                        .all_structured_pending_relationships
+                        .extend(structured_pending_rels);
                     batch.all_identifiers.extend(identifiers);
                     batch.all_types.extend(types.into_values());
                     batch.all_file_infos.push(file_info);
@@ -331,6 +346,7 @@ enum ExtractOutcome {
             Vec<Symbol>,
             Vec<Relationship>,
             Vec<PendingRelationship>,
+            Vec<StructuredPendingRelationship>,
             Vec<Identifier>,
             HashMap<String, crate::extractors::base::TypeInfo>,
             crate::database::FileInfo,
@@ -729,8 +745,9 @@ async fn project_batch(
 fn resolve_pending_relationships(
     db: &std::sync::Arc<std::sync::Mutex<crate::database::SymbolDatabase>>,
     pending_relationships: &[PendingRelationship],
+    structured_pending_relationships: &[StructuredPendingRelationship],
 ) {
-    if pending_relationships.is_empty() {
+    if pending_relationships.is_empty() && structured_pending_relationships.is_empty() {
         return;
     }
 
@@ -743,7 +760,31 @@ fn resolve_pending_relationships(
         }
     };
 
-    let (resolved_relationships, stats) = resolver::resolve_batch(pending_relationships, &db_lock);
+    let (resolved_relationships, stats) = if structured_pending_relationships.is_empty() {
+        resolver::resolve_batch(pending_relationships, &db_lock)
+    } else {
+        let (mut resolved, mut stats) =
+            resolver::resolve_structured_batch(structured_pending_relationships, &db_lock);
+        let structured_keys: HashSet<_> = structured_pending_relationships
+            .iter()
+            .map(|structured| pending_key(&structured.pending))
+            .collect();
+        let legacy_only: Vec<PendingRelationship> = pending_relationships
+            .iter()
+            .filter(|pending| !structured_keys.contains(&pending_key(pending)))
+            .cloned()
+            .collect();
+        if !legacy_only.is_empty() {
+            let (legacy_resolved, legacy_stats) = resolver::resolve_batch(&legacy_only, &db_lock);
+            resolved.extend(legacy_resolved);
+            stats.total += legacy_stats.total;
+            stats.resolved += legacy_stats.resolved;
+            stats.no_candidates += legacy_stats.no_candidates;
+            stats.no_valid_candidates += legacy_stats.no_valid_candidates;
+            stats.lookup_errors += legacy_stats.lookup_errors;
+        }
+        (resolved, stats)
+    };
     if !resolved_relationships.is_empty() {
         if let Err(e) = db_lock.bulk_store_relationships(&resolved_relationships) {
             warn!("Failed to store resolved relationships: {}", e);
@@ -755,6 +796,24 @@ fn resolve_pending_relationships(
         "⏱️  resolve_pending_relationships: {:.2}s",
         resolution_start.elapsed().as_secs_f64()
     );
+}
+
+fn pending_key(
+    pending: &PendingRelationship,
+) -> (
+    &str,
+    &str,
+    &crate::extractors::base::RelationshipKind,
+    &str,
+    u32,
+) {
+    (
+        pending.from_symbol_id.as_str(),
+        pending.callee_name.as_str(),
+        &pending.kind,
+        pending.file_path.as_str(),
+        pending.line_number,
+    )
 }
 
 fn analyze_batch(

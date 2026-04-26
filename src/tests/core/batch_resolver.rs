@@ -6,8 +6,8 @@
 
 use crate::database::{FileInfo, SymbolDatabase};
 use crate::extractors::base::{
-    Identifier, IdentifierKind, PendingRelationship, RelationshipKind, Symbol, SymbolKind,
-    Visibility,
+    Identifier, IdentifierKind, PendingRelationship, RelationshipKind,
+    StructuredPendingRelationship, Symbol, SymbolKind, UnresolvedTarget, Visibility,
 };
 use crate::tools::workspace::indexing::resolver;
 use tempfile::TempDir;
@@ -49,6 +49,31 @@ fn pending(from_id: &str, callee: &str, file_path: &str) -> PendingRelationship 
         line_number: 10,
         confidence: 0.8,
     }
+}
+
+/// Helper: minimal structured pending relationship
+fn structured_pending(
+    from_id: &str,
+    display_name: &str,
+    terminal_name: &str,
+    namespace_path: &[&str],
+    file_path: &str,
+) -> StructuredPendingRelationship {
+    StructuredPendingRelationship::new(
+        from_id.to_string(),
+        UnresolvedTarget {
+            display_name: display_name.to_string(),
+            terminal_name: terminal_name.to_string(),
+            receiver: None,
+            namespace_path: namespace_path.iter().map(|part| part.to_string()).collect(),
+            import_context: None,
+        },
+        None,
+        RelationshipKind::Calls,
+        file_path.to_string(),
+        10,
+        0.8,
+    )
 }
 
 /// Helper: set up a test DB with symbols across multiple files
@@ -458,4 +483,122 @@ fn test_resolve_batch_no_identifiers_falls_back_gracefully() {
     );
     assert_eq!(resolved.len(), 1);
     // Without import context, either candidate is acceptable — just verify resolution happened
+}
+
+#[test]
+fn test_resolve_structured_batch_prefers_crate_namespace_path_candidate() {
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("test.db");
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
+
+    for path in &["src/search/hybrid.rs", "src/other.rs", "src/main.rs"] {
+        db.store_file_info(&FileInfo {
+            path: path.to_string(),
+            language: "rust".to_string(),
+            hash: "h".to_string(),
+            size: 100,
+            last_modified: 1000,
+            last_indexed: 0,
+            symbol_count: 1,
+            line_count: 0,
+            content: None,
+        })
+        .unwrap();
+    }
+
+    let symbols = vec![
+        sym(
+            "target_hybrid",
+            "should_use_semantic_fallback",
+            SymbolKind::Function,
+            "rust",
+            "src/search/hybrid.rs",
+        ),
+        sym(
+            "target_decoy",
+            "should_use_semantic_fallback",
+            SymbolKind::Function,
+            "rust",
+            "src/other.rs",
+        ),
+    ];
+    db.store_symbols_transactional(&symbols).unwrap();
+
+    let pendings = vec![structured_pending(
+        "caller",
+        "crate::search::hybrid::should_use_semantic_fallback",
+        "should_use_semantic_fallback",
+        &["crate", "search", "hybrid"],
+        "src/main.rs",
+    )];
+
+    let (resolved, stats) = resolver::resolve_structured_batch(&pendings, &db);
+
+    assert_eq!(stats.total, 1);
+    assert_eq!(stats.resolved, 1);
+    assert_eq!(resolved.len(), 1);
+    assert_eq!(
+        resolved[0].to_symbol_id, "target_hybrid",
+        "crate namespace should beat same-name proximity decoys"
+    );
+}
+
+#[test]
+fn test_resolve_structured_batch_rejects_std_namespace_project_symbol() {
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("test.db");
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
+
+    db.store_file_info(&FileInfo {
+        path: "src/main.rs".to_string(),
+        language: "rust".to_string(),
+        hash: "h".to_string(),
+        size: 100,
+        last_modified: 1000,
+        last_indexed: 0,
+        symbol_count: 1,
+        line_count: 0,
+        content: None,
+    })
+    .unwrap();
+
+    let symbols = vec![sym(
+        "local_new",
+        "new",
+        SymbolKind::Function,
+        "rust",
+        "src/main.rs",
+    )];
+    db.store_symbols_transactional(&symbols).unwrap();
+
+    let pendings = vec![structured_pending(
+        "caller",
+        "std::collections::HashMap::new",
+        "new",
+        &["std", "collections", "HashMap"],
+        "src/main.rs",
+    )];
+
+    let (resolved, stats) = resolver::resolve_structured_batch(&pendings, &db);
+
+    assert_eq!(stats.total, 1);
+    assert_eq!(stats.resolved, 0);
+    assert_eq!(stats.no_valid_candidates, 1);
+    assert!(
+        resolved.is_empty(),
+        "std namespace calls should not attach to local same-name functions"
+    );
+}
+
+#[test]
+fn test_resolve_batch_legacy_wrapper_preserves_existing_behavior() {
+    let (_tmp, db) = setup_test_db();
+    let pendings = vec![pending("caller-1", "authenticate", "src/db.rs")];
+
+    let (resolved, stats) = resolver::resolve_batch(&pendings, &db);
+
+    assert_eq!(stats.total, 1);
+    assert_eq!(stats.resolved, 1);
+    assert_eq!(resolved.len(), 1);
+    assert_eq!(resolved[0].to_symbol_id, "s1");
 }

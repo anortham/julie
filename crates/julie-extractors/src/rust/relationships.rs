@@ -208,21 +208,42 @@ fn extract_call_relationships(
         }
         // Handle qualified/scoped calls: crate::module::function()
         else if func_node.kind() == "scoped_identifier" {
-            let function_name = if let Some(name_node) = func_node.child_by_field_name("name") {
-                extractor.get_base_mut().get_node_text(&name_node)
-            } else {
-                extractor.get_base_mut().get_node_text(&func_node)
-            };
-            handle_call_target(
-                extractor,
-                node,
-                &function_name,
-                UnresolvedTarget::simple(function_name.clone()),
-                symbol_map,
-                relationships,
-            );
+            if let Some(target) = scoped_identifier_to_unresolved_target(extractor, func_node) {
+                let function_name = target.terminal_name.clone();
+                handle_call_target(
+                    extractor,
+                    node,
+                    &function_name,
+                    target,
+                    symbol_map,
+                    relationships,
+                );
+            }
         }
     }
+}
+
+fn scoped_identifier_to_unresolved_target(
+    extractor: &mut RustExtractor,
+    scoped_identifier: Node,
+) -> Option<UnresolvedTarget> {
+    let display_name = extractor.get_base_mut().get_node_text(&scoped_identifier);
+    let segments: Vec<String> = display_name
+        .split("::")
+        .map(str::trim)
+        .filter(|segment| !segment.is_empty())
+        .map(ToOwned::to_owned)
+        .collect();
+    let terminal_name = segments.last()?.clone();
+    let namespace_path = segments[..segments.len().saturating_sub(1)].to_vec();
+
+    Some(UnresolvedTarget {
+        display_name,
+        terminal_name,
+        receiver: None,
+        namespace_path,
+        import_context: None,
+    })
 }
 
 /// Handle a call target - create Relationship or PendingRelationship based on target type
@@ -247,6 +268,19 @@ fn handle_call_target(
 
     let line_number = call_node.start_position().row as u32 + 1;
     let file_path = extractor.get_base_mut().file_path.clone();
+
+    if !unresolved_target.namespace_path.is_empty() {
+        let pending = extractor.get_base_mut().create_pending_relationship(
+            caller.id.clone(),
+            unresolved_target,
+            RelationshipKind::Calls,
+            &call_node,
+            Some(caller.id.clone()),
+            Some(0.7),
+        );
+        extractor.add_structured_pending_relationship(pending);
+        return;
+    }
 
     // Check if we can resolve the callee locally
     match symbol_map.get(callee_name) {

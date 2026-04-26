@@ -10,10 +10,21 @@ use crate::tools::workspace::ManageWorkspaceTool;
 use tempfile::TempDir;
 
 async fn setup_indexed_workspace(content: &str) -> Result<(TempDir, JulieServerHandler)> {
+    setup_indexed_workspace_files(&[("src/lib.rs", content)]).await
+}
+
+async fn setup_indexed_workspace_files(
+    files: &[(&str, &str)],
+) -> Result<(TempDir, JulieServerHandler)> {
     let temp_dir = TempDir::new()?;
     let workspace_path = temp_dir.path().to_path_buf();
-    fs::create_dir_all(workspace_path.join("src"))?;
-    fs::write(workspace_path.join("src").join("lib.rs"), content)?;
+    for (path, content) in files {
+        let full_path = workspace_path.join(path);
+        if let Some(parent) = full_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(full_path, content)?;
+    }
 
     let handler = JulieServerHandler::new(workspace_path.clone()).await?;
     let index_tool = ManageWorkspaceTool {
@@ -185,6 +196,72 @@ async fn test_non_call_edge_not_traversed() -> Result<()> {
     );
     assert_eq!(response.hops, 0);
     assert!(response.path.is_empty());
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_call_path_resolves_rust_crate_scoped_call_to_namespaced_target() -> Result<()> {
+    let (_temp_dir, handler) = setup_indexed_workspace_files(&[
+        (
+            "src/main.rs",
+            "mod search;\nmod other;\n\npub fn caller() {\n    crate::search::hybrid::should_use_semantic_fallback();\n}\n\npub fn std_caller() {\n    std::collections::HashMap::new();\n}\n\npub fn new() {}\n",
+        ),
+        ("src/search/mod.rs", "pub mod hybrid;\n"),
+        (
+            "src/search/hybrid.rs",
+            "pub fn should_use_semantic_fallback() {}\n",
+        ),
+        (
+            "src/other.rs",
+            "pub fn should_use_semantic_fallback() {}\n",
+        ),
+    ])
+    .await?;
+
+    let tool = CallPathTool {
+        from: "caller".to_string(),
+        to: "should_use_semantic_fallback".to_string(),
+        max_hops: 2,
+        workspace: Some("primary".to_string()),
+        from_file_path: Some("src/main.rs".to_string()),
+        to_file_path: Some("src/search/hybrid.rs".to_string()),
+    };
+
+    let result = tool.call_tool(&handler).await?;
+    let response = parse_response(&extract_text(&result));
+
+    assert!(
+        response.found,
+        "crate-scoped call should resolve to the namespaced target: {response:?}"
+    );
+    assert_eq!(response.hops, 1);
+    assert_eq!(
+        response.path,
+        vec![CallPathHop {
+            from: "caller".to_string(),
+            to: "should_use_semantic_fallback".to_string(),
+            edge: "call".to_string(),
+            file: "src/main.rs:5".to_string(),
+        }]
+    );
+
+    let std_tool = CallPathTool {
+        from: "std_caller".to_string(),
+        to: "new".to_string(),
+        max_hops: 2,
+        workspace: Some("primary".to_string()),
+        from_file_path: Some("src/main.rs".to_string()),
+        to_file_path: Some("src/main.rs".to_string()),
+    };
+
+    let std_result = std_tool.call_tool(&handler).await?;
+    let std_response = parse_response(&extract_text(&std_result));
+
+    assert!(
+        !std_response.found,
+        "std::collections::HashMap::new() must not create a call path to local new: {std_response:?}"
+    );
 
     Ok(())
 }

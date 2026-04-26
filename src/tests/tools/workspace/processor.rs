@@ -140,11 +140,7 @@ async fn test_extract_index_batch_aggregates_results_from_all_files() {
     let mut files: Vec<PathBuf> = Vec::with_capacity(file_count);
     for i in 0..file_count {
         let file_path = workspace_root.join(format!("file_{}.py", i));
-        fs::write(
-            &file_path,
-            format!("def func_{}():\n    return {}\n", i, i),
-        )
-        .unwrap();
+        fs::write(&file_path, format!("def func_{}():\n    return {}\n", i, i)).unwrap();
         files.push(file_path);
     }
 
@@ -204,7 +200,7 @@ async fn test_markdown_with_long_lines_is_not_skipped_as_minified() {
     fs::write(&file_path, &content).unwrap();
 
     let tool = workspace_tool();
-    let (symbols, _, _, _, _, _) = tool
+    let (symbols, _, _, _, _, _, _) = tool
         .process_file_with_parser(&file_path, "markdown", &workspace_root)
         .await
         .expect("markdown processing should succeed");
@@ -213,5 +209,40 @@ async fn test_markdown_with_long_lines_is_not_skipped_as_minified() {
         !symbols.is_empty(),
         "Markdown with long prose lines must be parsed, not skipped as minified. \
          Got 0 symbols, indicating the long-line heuristic incorrectly suppressed extraction."
+    );
+}
+
+#[tokio::test]
+async fn test_process_file_with_parser_preserves_structured_pending_relationships() {
+    let temp_dir = TempDir::new().unwrap();
+    let workspace_root = temp_dir.path().canonicalize().unwrap();
+    let file_path = workspace_root.join("main.rs");
+    fs::write(
+        &file_path,
+        r#"
+fn caller() {
+    crate::search::hybrid::should_use_semantic_fallback();
+}
+"#,
+    )
+    .unwrap();
+
+    let tool = workspace_tool();
+    let (_, _, _, structured_pending, _, _, _) = tool
+        .process_file_with_parser(&file_path, "rust", &workspace_root)
+        .await
+        .expect("rust processing should preserve structured pending relationships");
+
+    let pending = structured_pending
+        .iter()
+        .find(|pending| {
+            pending.target.display_name == "crate::search::hybrid::should_use_semantic_fallback"
+        })
+        .expect("scoped call should survive processor extraction as structured pending metadata");
+
+    assert_eq!(pending.target.terminal_name, "should_use_semantic_fallback");
+    assert_eq!(
+        pending.target.namespace_path,
+        vec!["crate", "search", "hybrid"]
     );
 }
