@@ -214,7 +214,10 @@ mod line_mode_stage_counts {
     #[tokio::test(flavor = "multi_thread")]
     async fn stage_file_pattern_dropped() {
         let (_dir, handler) = seed_workspace(&[
-            ("src/example.rs", "fn alpha() { let marker_abc = 1; }\n"),
+            // Space-separated marker tokens keep the fallback line matcher
+            // empty, so this remains a zero-hit stage-count test rather than
+            // a scope-rescue test.
+            ("src/example.rs", "fn alpha() { let marker abc = 1; }\n"),
             ("docs/notes.md", "# docs\n"),
         ])
         .await;
@@ -243,6 +246,7 @@ mod line_mode_stage_counts {
             result.stage_counts.file_pattern_dropped >= 1,
             "file_pattern filter should have dropped the src file"
         );
+        assert!(!result.scope_relaxed);
     }
 
     /// Scoped zero-hit with no matching paths even after a wider probe should
@@ -251,10 +255,12 @@ mod line_mode_stage_counts {
     #[tokio::test(flavor = "multi_thread")]
     async fn file_pattern_diagnostic_no_in_scope_candidates() {
         let (_dir, handler) = seed_workspace(&[
-            ("src/core.rs", "fn core() { let marker_scope = 1; }\n"),
+            // Space-separated marker tokens keep the fallback line matcher
+            // empty, so the original no-in-scope diagnostic is observable.
+            ("src/core.rs", "fn core() { let marker scope = 1; }\n"),
             (
                 "crates/other/misc.rs",
-                "fn misc() { let marker_scope = 2; }\n",
+                "fn misc() { let marker scope = 2; }\n",
             ),
         ])
         .await;
@@ -280,6 +286,7 @@ mod line_mode_stage_counts {
             result.file_pattern_diagnostic,
             Some(FilePatternDiagnostic::NoInScopeCandidates),
         );
+        assert!(!result.scope_relaxed);
     }
 
     /// Task 3: when the first scoped fetch window is saturated by higher-ranked
@@ -334,6 +341,9 @@ mod line_mode_stage_counts {
         );
         assert_eq!(result.matches[0].file_path, "src/ui/target.rs");
         assert_eq!(result.zero_hit_reason, None);
+        assert!(!result.scope_relaxed);
+        assert_eq!(result.original_file_pattern, None);
+        assert_eq!(result.original_zero_hit_reason, None);
         assert_eq!(
             result.file_pattern_diagnostic, None,
             "successful widened fetch should not leave a zero-hit diagnostic behind",

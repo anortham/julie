@@ -201,9 +201,16 @@ pub fn line_match_strategy(query: &str) -> LineMatchStrategy {
         || trimmed.contains('\'')
         || trimmed.contains('*')
         || trimmed.contains(" AND ")
-        || trimmed.contains(" OR ")
         || trimmed.contains(" NOT ")
     {
+        return LineMatchStrategy::Substring(trimmed.to_lowercase());
+    }
+
+    if let Some(terms) = clean_or_disjunction_terms(trimmed) {
+        return LineMatchStrategy::FileLevel { terms };
+    }
+
+    if trimmed.contains(" OR ") {
         return LineMatchStrategy::Substring(trimmed.to_lowercase());
     }
 
@@ -237,6 +244,57 @@ pub fn line_match_strategy(query: &str) -> LineMatchStrategy {
     } else {
         LineMatchStrategy::FileLevel { terms: required }
     }
+}
+
+pub(crate) fn clean_or_disjunction_terms(query: &str) -> Option<Vec<String>> {
+    let trimmed = query.trim();
+    if !trimmed.contains(" OR ") {
+        return None;
+    }
+
+    let branches: Vec<&str> = trimmed.split(" OR ").map(str::trim).collect();
+    if branches.len() < 2 {
+        return None;
+    }
+
+    if branches
+        .iter()
+        .any(|branch| branch.is_empty() || branch.split_whitespace().count() != 1)
+    {
+        return None;
+    }
+
+    if !branches
+        .iter()
+        .all(|branch| is_code_identifier_branch(branch))
+    {
+        return None;
+    }
+
+    Some(
+        branches
+            .iter()
+            .map(|branch| branch.to_lowercase())
+            .collect(),
+    )
+}
+
+/// Keep the boolean OR heuristic narrow. Hyphenated terms are deliberately
+/// rejected so kebab-case literals and CSS-like names stay on substring
+/// matching unless we add a more explicit parser.
+fn is_code_identifier_branch(branch: &str) -> bool {
+    let mut has_code_signal = false;
+
+    for ch in branch.chars() {
+        if !(ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.' | ':')) {
+            return false;
+        }
+        if ch.is_ascii_lowercase() || matches!(ch, '_' | '-' | '.' | ':') {
+            has_code_signal = true;
+        }
+    }
+
+    has_code_signal
 }
 
 /// Check if a line matches the given strategy
@@ -273,7 +331,57 @@ fn line_matches_literal(line: &str, pattern: &str) -> bool {
     }
 
     let line_lower = line.to_lowercase();
-    line_lower.contains(pattern)
+    if line_lower.contains(pattern) {
+        return true;
+    }
+
+    normalized_literal_patterns(pattern)
+        .iter()
+        .any(|variant| line_lower.contains(variant))
+}
+
+fn normalized_literal_patterns(pattern: &str) -> Vec<String> {
+    let mut variants = Vec::new();
+    push_unique_variant(&mut variants, pattern.replace('-', "_"), pattern);
+    push_unique_variant(&mut variants, pattern.replace('_', "-"), pattern);
+
+    let unescaped = strip_punctuation_escapes(pattern);
+    if unescaped != pattern {
+        push_unique_variant(&mut variants, unescaped.clone(), pattern);
+        push_unique_variant(&mut variants, unescaped.replace('-', "_"), pattern);
+        push_unique_variant(&mut variants, unescaped.replace('_', "-"), pattern);
+    }
+
+    variants
+}
+
+fn push_unique_variant(variants: &mut Vec<String>, candidate: String, original: &str) {
+    if candidate != original && !variants.contains(&candidate) {
+        variants.push(candidate);
+    }
+}
+
+fn strip_punctuation_escapes(pattern: &str) -> String {
+    let mut stripped = String::with_capacity(pattern.len());
+    let mut chars = pattern.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        if ch == '\\'
+            && let Some(next) = chars.peek().copied()
+            && is_escaped_punctuation(next)
+        {
+            stripped.push(next);
+            chars.next();
+            continue;
+        }
+        stripped.push(ch);
+    }
+
+    stripped
+}
+
+fn is_escaped_punctuation(ch: char) -> bool {
+    ch.is_ascii_punctuation() && ch != '\\'
 }
 
 fn tokenize_text_for_line_match(text: &str) -> HashSet<String> {

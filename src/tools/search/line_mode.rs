@@ -5,13 +5,19 @@
 
 use crate::mcp_compat::{CallToolResult, CallToolResultExt, Content};
 use anyhow::Result;
+use std::sync::{Arc, Mutex};
 use tracing::{debug, warn};
 
+use crate::database::SymbolDatabase;
 use crate::handler::JulieServerHandler;
 use crate::search::SearchFilter;
+use crate::search::index::SearchIndex;
 use crate::tools::navigation::resolution::WorkspaceTarget;
 
-use super::query::{line_match_strategy, line_matches, matches_glob_pattern};
+use super::hint_formatter::build_scope_rescue_header;
+use super::query::{
+    line_match_strategy, line_matches, looks_like_whitespace_separated_globs, matches_glob_pattern,
+};
 use super::trace::{FilePatternDiagnostic, ZeroHitReason};
 use super::types::{LineMatch, LineMatchStrategy};
 
@@ -31,6 +37,23 @@ pub(crate) struct LineModeSearchResult {
     /// [`stage_counts`].
     pub zero_hit_reason: Option<ZeroHitReason>,
     pub file_pattern_diagnostic: Option<FilePatternDiagnostic>,
+    pub scope_relaxed: bool,
+    pub original_file_pattern: Option<String>,
+    pub original_zero_hit_reason: Option<ZeroHitReason>,
+}
+
+struct LineModeFetchOutcome {
+    matches: Vec<LineMatch>,
+    relaxed: bool,
+    stage_counts: LineModeStageCounts,
+    file_pattern_diagnostic: Option<FilePatternDiagnostic>,
+}
+
+struct LineModeScopedOutcome {
+    fetch: LineModeFetchOutcome,
+    scope_relaxed: bool,
+    original_file_pattern: Option<String>,
+    original_zero_hit_reason: Option<ZeroHitReason>,
 }
 
 /// Per-stage drop counters for the `line_mode_matches` pipeline.
@@ -267,6 +290,128 @@ where
     }
 }
 
+fn run_line_mode_workspace_fetch(
+    db: Arc<Mutex<SymbolDatabase>>,
+    search_index: Arc<Mutex<SearchIndex>>,
+    query: String,
+    match_strategy: LineMatchStrategy,
+    file_pattern: Option<String>,
+    language: Option<String>,
+    exclude_test_files: bool,
+    base_limit: usize,
+) -> Result<LineModeFetchOutcome> {
+    let has_file_filter = file_pattern.is_some();
+    let filter = SearchFilter {
+        language: language.clone(),
+        kind: None,
+        file_pattern: file_pattern.clone(),
+        exclude_tests: false,
+    };
+
+    let (matches, relaxed, stage_counts, file_pattern_diagnostic) = run_line_mode_fetch_loop(
+        |fetch_limit| {
+            let index = match search_index.lock() {
+                Ok(guard) => guard,
+                Err(poisoned) => {
+                    warn!("Search index mutex poisoned, recovering: {}", poisoned);
+                    poisoned.into_inner()
+                }
+            };
+            Ok(index.search_content(&query, &filter, fetch_limit)?)
+        },
+        |file_results| {
+            let db_lock = match db.lock() {
+                Ok(guard) => guard,
+                Err(poisoned) => {
+                    warn!("Database mutex poisoned, recovering: {}", poisoned);
+                    poisoned.into_inner()
+                }
+            };
+            collect_matches_from_file_results(
+                &db_lock,
+                file_results,
+                file_pattern.as_deref(),
+                language.as_deref(),
+                exclude_test_files,
+                &match_strategy,
+                base_limit,
+            )
+        },
+        file_pattern.as_deref(),
+        base_limit,
+        has_file_filter,
+    )?;
+
+    Ok(LineModeFetchOutcome {
+        matches,
+        relaxed,
+        stage_counts,
+        file_pattern_diagnostic,
+    })
+}
+
+fn run_line_mode_with_scope_rescue(
+    db: Arc<Mutex<SymbolDatabase>>,
+    search_index: Arc<Mutex<SearchIndex>>,
+    query: String,
+    match_strategy: LineMatchStrategy,
+    file_pattern: Option<String>,
+    language: Option<String>,
+    exclude_test_files: bool,
+    base_limit: usize,
+) -> Result<LineModeScopedOutcome> {
+    let first = run_line_mode_workspace_fetch(
+        Arc::clone(&db),
+        Arc::clone(&search_index),
+        query.clone(),
+        match_strategy.clone(),
+        file_pattern.clone(),
+        language.clone(),
+        exclude_test_files,
+        base_limit,
+    )?;
+
+    let zero_hit_reason = if first.matches.is_empty() {
+        attribute_zero_hit_reason(&first.stage_counts)
+    } else {
+        None
+    };
+    let should_rescue = zero_hit_reason == Some(ZeroHitReason::FilePatternFiltered)
+        && first.file_pattern_diagnostic == Some(FilePatternDiagnostic::NoInScopeCandidates)
+        && file_pattern
+            .as_deref()
+            .is_some_and(|pattern| !looks_like_whitespace_separated_globs(pattern));
+
+    if should_rescue {
+        let fallback = run_line_mode_workspace_fetch(
+            db,
+            search_index,
+            query,
+            match_strategy,
+            None,
+            language,
+            exclude_test_files,
+            base_limit,
+        )?;
+
+        if !fallback.matches.is_empty() {
+            return Ok(LineModeScopedOutcome {
+                fetch: fallback,
+                scope_relaxed: true,
+                original_file_pattern: file_pattern,
+                original_zero_hit_reason: zero_hit_reason,
+            });
+        }
+    }
+
+    Ok(LineModeScopedOutcome {
+        fetch: first,
+        scope_relaxed: false,
+        original_file_pattern: None,
+        original_zero_hit_reason: None,
+    })
+}
+
 /// Attribute a zero-result `line_mode_matches` run to the first pipeline
 /// stage that drained the surviving candidate set to zero.
 ///
@@ -402,14 +547,8 @@ pub(crate) async fn line_mode_matches(
     };
     let match_strategy = line_match_strategy(query);
     let base_limit = limit.max(1) as usize;
-    let has_file_filter = file_pattern.is_some();
 
-    let (all_line_matches, relaxed, stage_counts, scoped_file_pattern_diagnostic): (
-        Vec<LineMatch>,
-        bool,
-        LineModeStageCounts,
-        Option<FilePatternDiagnostic>,
-    ) = match workspace_target {
+    let scoped_outcome = match workspace_target {
         WorkspaceTarget::Primary => {
             let primary_snapshot = handler.primary_workspace_snapshot().await?;
             let db = primary_snapshot.database;
@@ -424,59 +563,19 @@ pub(crate) async fn line_mode_matches(
             let file_pattern_clone = file_pattern.clone();
             let language_clone = language.clone();
 
-            tokio::task::spawn_blocking(
-                    move || -> Result<(
-                        Vec<LineMatch>,
-                        bool,
-                        LineModeStageCounts,
-                        Option<FilePatternDiagnostic>,
-                    )> {
-                        let filter = SearchFilter {
-                            language: language_clone.clone(),
-                            kind: None,
-                            file_pattern: file_pattern_clone.clone(),
-                            exclude_tests: false,
-                        };
-
-                        run_line_mode_fetch_loop(
-                            |fetch_limit| {
-                                let index = match search_index.lock() {
-                                    Ok(guard) => guard,
-                                    Err(poisoned) => {
-                                        warn!(
-                                            "Search index mutex poisoned, recovering: {}",
-                                            poisoned
-                                        );
-                                        poisoned.into_inner()
-                                    }
-                                };
-                                Ok(index.search_content(&query, &filter, fetch_limit)?)
-                            },
-                            |file_results| {
-                                let db_lock = match db.lock() {
-                                    Ok(guard) => guard,
-                                    Err(poisoned) => {
-                                        warn!("Database mutex poisoned, recovering: {}", poisoned);
-                                        poisoned.into_inner()
-                                    }
-                                };
-                                collect_matches_from_file_results(
-                                    &db_lock,
-                                    file_results,
-                                    file_pattern_clone.as_deref(),
-                                    language_clone.as_deref(),
-                                    exclude_test_files,
-                                    &match_strategy,
-                                    base_limit,
-                                )
-                            },
-                            file_pattern_clone.as_deref(),
-                            base_limit,
-                            has_file_filter,
-                        )
-                    },
+            tokio::task::spawn_blocking(move || {
+                run_line_mode_with_scope_rescue(
+                    db,
+                    search_index,
+                    query,
+                    match_strategy,
+                    file_pattern_clone,
+                    language_clone,
+                    exclude_test_files,
+                    base_limit,
                 )
-                .await??
+            })
+            .await??
         }
         WorkspaceTarget::Target(workspace_id) => {
             let db_arc = handler.get_database_for_workspace(workspace_id).await?;
@@ -488,61 +587,37 @@ pub(crate) async fn line_mode_matches(
             let ref_file_pattern = file_pattern.clone();
             let ref_language = language.clone();
 
-            tokio::task::spawn_blocking(
-                    move || -> Result<(
-                        Vec<LineMatch>,
-                        bool,
-                        LineModeStageCounts,
-                        Option<FilePatternDiagnostic>,
-                    )> {
-                        let search_index = match si_arc {
-                            Some(si) => si,
-                            None => {
-                                return Err(anyhow::anyhow!(
-                                    "Line-level content search requires a Tantivy index for workspace '{}'. Run manage_workspace(operation=\"refresh\", workspace_id=\"{}\") first.",
-                                    target_workspace_id,
-                                    target_workspace_id
-                                ));
-                            }
-                        };
-                        let filter = SearchFilter {
-                            language: ref_language.clone(),
-                            kind: None,
-                            file_pattern: ref_file_pattern.clone(),
-                            exclude_tests: false,
-                        };
+            tokio::task::spawn_blocking(move || -> Result<LineModeScopedOutcome> {
+                let search_index = match si_arc {
+                    Some(si) => si,
+                    None => {
+                        return Err(anyhow::anyhow!(
+                            "Line-level content search requires a Tantivy index for workspace '{}'. Run manage_workspace(operation=\"refresh\", workspace_id=\"{}\") first.",
+                            target_workspace_id,
+                            target_workspace_id
+                        ));
+                    }
+                };
 
-                        run_line_mode_fetch_loop(
-                            |fetch_limit| {
-                                let index = search_index
-                                    .lock()
-                                    .map_err(|e| anyhow::anyhow!("Search index lock error: {}", e))?;
-                                Ok(index.search_content(&query_clone, &filter, fetch_limit)?)
-                            },
-                            |file_results| {
-                                let ref_db = db_arc
-                                    .lock()
-                                    .map_err(|e| anyhow::anyhow!("Database lock error: {}", e))?;
-                                collect_matches_from_file_results(
-                                    &ref_db,
-                                    file_results,
-                                    ref_file_pattern.as_deref(),
-                                    ref_language.as_deref(),
-                                    exclude_test_files,
-                                    &strategy,
-                                    base_limit,
-                                )
-                            },
-                            ref_file_pattern.as_deref(),
-                            base_limit,
-                            has_file_filter,
-                        )
-                    },
+                run_line_mode_with_scope_rescue(
+                    db_arc,
+                    search_index,
+                    query_clone,
+                    strategy,
+                    ref_file_pattern,
+                    ref_language,
+                    exclude_test_files,
+                    base_limit,
                 )
-                .await
-                .map_err(|e| anyhow::anyhow!("Failed to spawn target workspace search: {}", e))??
+            })
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to spawn target workspace search: {}", e))??
         }
     };
+    let all_line_matches = scoped_outcome.fetch.matches;
+    let relaxed = scoped_outcome.fetch.relaxed;
+    let stage_counts = scoped_outcome.fetch.stage_counts;
+    let scoped_file_pattern_diagnostic = scoped_outcome.fetch.file_pattern_diagnostic;
 
     // Task 5: the second-pass filter that used to live here re-ran the
     // caller's `file_pattern`, `language`, and `exclude_tests` checks on
@@ -575,6 +650,9 @@ pub(crate) async fn line_mode_matches(
         stage_counts,
         zero_hit_reason,
         file_pattern_diagnostic,
+        scope_relaxed: scoped_outcome.scope_relaxed,
+        original_file_pattern: scoped_outcome.original_file_pattern,
+        original_zero_hit_reason: scoped_outcome.original_zero_hit_reason,
     })
 }
 
@@ -602,7 +680,25 @@ pub(crate) fn format_line_mode_output(query: &str, result: &LineModeSearchResult
             result.matches.len()
         ),
     };
-    let mut lines = vec![header];
+    let mut lines = Vec::new();
+    if result.scope_relaxed
+        && let Some(original_file_pattern) = result.original_file_pattern.as_deref()
+    {
+        if result.workspace_label == "multiple" {
+            lines.push(format!(
+                "NOTE: At least one workspace had 0 matches within file_pattern={}. Showing {} aggregated results. Scope-rescued results may be outside requested scope.",
+                original_file_pattern,
+                result.matches.len(),
+            ));
+        } else {
+            lines.push(build_scope_rescue_header(
+                original_file_pattern,
+                result.matches.len(),
+            ));
+        }
+        lines.push(String::new());
+    }
+    lines.push(header);
     lines.push(String::new());
 
     for entry in &result.matches {

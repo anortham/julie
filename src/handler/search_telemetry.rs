@@ -24,6 +24,11 @@ pub(crate) fn fast_search_metadata(
             "zero_hit_reason": result.trace.zero_hit_reason,
             "file_pattern_diagnostic": result.trace.file_pattern_diagnostic,
             "hint_kind": result.trace.hint_kind,
+            "scope_relaxed": result.trace.scope_relaxed,
+            "original_file_pattern": result.trace.original_file_pattern,
+            "original_zero_hit_reason": result.trace.original_zero_hit_reason,
+            "scope_rescue_count": result.trace.scope_rescue_count,
+            "or_disjunction_detected": result.trace.or_disjunction_detected,
         })
     });
 

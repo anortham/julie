@@ -104,15 +104,15 @@ fn extract_text_from_result(result: &crate::mcp_compat::CallToolResult) -> Strin
 #[tokio::test(flavor = "multi_thread")]
 async fn trace_zero_hit_reason_propagates_file_pattern_filtered() {
     let (_dir, handler) = seed_workspace(&[
-        ("src/core.rs", "fn core() { let marker_pattern = 1; }\n"),
+        ("src/core.rs", "fn core() { let marker scope = 1; }\n"),
         (
             "crates/other/misc.rs",
-            "fn misc() { let marker_pattern = 2; }\n",
+            "fn misc() { let marker scope = 2; }\n",
         ),
     ])
     .await;
 
-    let execution = content_search("marker_pattern", Some("src/ui/**"))
+    let execution = content_search("marker_scope", Some("src/ui/**"))
         .execute_with_trace(&handler)
         .await
         .expect("search should not error")
@@ -170,10 +170,10 @@ async fn trace_zero_hit_reason_stays_none_on_non_empty_run() {
 #[tokio::test(flavor = "multi_thread")]
 async fn trace_file_pattern_diagnostic_propagates_no_in_scope_candidates() {
     let (_dir, handler) = seed_workspace(&[
-        ("src/core.rs", "fn core() { let marker_scope = 1; }\n"),
+        ("src/core.rs", "fn core() { let marker scope = 1; }\n"),
         (
             "crates/other/misc.rs",
-            "fn misc() { let marker_scope = 2; }\n",
+            "fn misc() { let marker scope = 2; }\n",
         ),
     ])
     .await;
@@ -205,15 +205,15 @@ async fn trace_file_pattern_diagnostic_propagates_no_in_scope_candidates() {
 #[tokio::test(flavor = "multi_thread")]
 async fn trace_hint_kind_prefers_out_of_scope_for_no_in_scope_candidates() {
     let (_dir, handler) = seed_workspace(&[
-        ("src/core.rs", "fn core() { let marker_scope = 1; }\n"),
+        ("src/core.rs", "fn core() { let marker scope = 1; }\n"),
         (
             "crates/other/misc.rs",
-            "fn misc() { let marker_scope = 2; }\n",
+            "fn misc() { let marker scope = 2; }\n",
         ),
     ])
     .await;
 
-    let run = content_search("marker scope", Some("src/ui/**"))
+    let run = content_search("marker_scope", Some("src/ui/**"))
         .execute_with_trace(&handler)
         .await
         .expect("search should not error");
@@ -242,5 +242,98 @@ async fn trace_hint_kind_prefers_out_of_scope_for_no_in_scope_candidates() {
         !text.contains("Tokens: ["),
         "out-of-scope hint should beat multi-token hint, got: {}",
         text,
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn trace_scope_rescue_labels_out_of_scope_hits() {
+    let (_dir, handler) = seed_workspace(&[
+        ("src/core.rs", "fn core() { let marker_scope = 1; }\n"),
+        (
+            "crates/other/misc.rs",
+            "fn misc() { let marker_scope = 2; }\n",
+        ),
+    ])
+    .await;
+
+    let run = content_search("marker_scope", Some("src/ui/**"))
+        .execute_with_trace(&handler)
+        .await
+        .expect("search should not error");
+    let execution = run
+        .execution
+        .expect("execute_with_trace populates execution for content search");
+    let text = extract_text_from_result(&run.result);
+
+    assert_eq!(
+        execution.hits.len(),
+        2,
+        "scope rescue should return the out-of-scope hits",
+    );
+    assert!(execution.trace.scope_relaxed);
+    assert_eq!(execution.trace.scope_rescue_count, 1);
+    assert_eq!(
+        execution.trace.original_file_pattern,
+        Some("src/ui/**".to_string()),
+    );
+    assert_eq!(
+        execution.trace.original_zero_hit_reason,
+        Some(ZeroHitReason::FilePatternFiltered),
+    );
+    assert_eq!(execution.trace.zero_hit_reason, None);
+    assert_eq!(execution.trace.file_pattern_diagnostic, None);
+    assert!(
+        text.starts_with(
+            "NOTE: 0 matches within file_pattern=src/ui/**. Showing 2 results from the full codebase (outside requested scope).",
+        ),
+        "rescued output should lead with the scope label, got: {}",
+        text,
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn trace_scope_rescue_single_file_hint_mentions_get_symbols() {
+    let (_dir, handler) =
+        seed_workspace(&[("src/core.rs", "fn core() { let marker_single_file = 1; }\n")]).await;
+
+    let run = content_search("marker_single_file", Some("src/ui/view.rs"))
+        .execute_with_trace(&handler)
+        .await
+        .expect("search should not error");
+    let execution = run
+        .execution
+        .expect("execute_with_trace populates execution for content search");
+    let text = extract_text_from_result(&run.result);
+
+    assert_eq!(execution.hits.len(), 1);
+    assert!(execution.trace.scope_relaxed);
+    assert!(text.contains(
+        "Hint: for symbol structure within a specific file, use get_symbols(file_path=src/ui/view.rs).",
+    ));
+    assert!(text.contains("file_pattern is valid for text search within a known file.",));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn trace_or_disjunction_detected_flows_from_execute_content_search() {
+    let (_dir, handler) = seed_workspace(&[(
+        "src/logging.py",
+        "logging.basicConfig(format='%(asctime)s', datefmt='%Y-%m-%d')\n",
+    )])
+    .await;
+
+    let execution = content_search("logging.basicConfig OR datefmt", None)
+        .execute_with_trace(&handler)
+        .await
+        .expect("search should not error")
+        .execution
+        .expect("execute_with_trace populates execution for content search");
+
+    assert!(
+        !execution.hits.is_empty(),
+        "clean OR disjunction should still return line hits",
+    );
+    assert!(
+        execution.trace.or_disjunction_detected,
+        "execute_content_search should stamp clean OR disjunction detection on the trace",
     );
 }

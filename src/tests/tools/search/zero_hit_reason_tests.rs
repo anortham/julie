@@ -266,7 +266,7 @@ mod integration_tests {
     /// `file_pattern`. The per-file loop drops them all, and attribution
     /// lands on `FilePatternFiltered`.
     #[tokio::test(flavor = "multi_thread")]
-    async fn live_zero_hit_attributes_file_pattern_when_pattern_drops_every_candidate() {
+    async fn live_file_pattern_scope_rescue_returns_out_of_scope_matches() {
         // Two .rs files, both containing `marker_pattern`, but neither
         // under `src/ui/`. With `file_pattern=src/ui/**` the per-file
         // loop drops every candidate on file_pattern.
@@ -291,11 +291,43 @@ mod integration_tests {
         .await
         .expect("line_mode_matches");
 
-        assert!(result.matches.is_empty());
         assert_eq!(
-            result.zero_hit_reason,
+            result.matches.len(),
+            2,
+            "scope rescue should return the out-of-scope matches that Tantivy found",
+        );
+        assert!(result.scope_relaxed);
+        assert_eq!(result.original_file_pattern, Some("src/ui/**".to_string()),);
+        assert_eq!(
+            result.original_zero_hit_reason,
             Some(ZeroHitReason::FilePatternFiltered),
         );
+        assert_eq!(result.zero_hit_reason, None);
+        assert_eq!(result.file_pattern_diagnostic, None);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn live_scope_rescue_does_not_trigger_for_line_match_miss() {
+        let (_dir, handler) =
+            seed_workspace(&[("src/ui/code.rs", "fn ui() { let marker scope = 1; }\n")]).await;
+
+        let result = line_mode_matches(
+            "marker_scope",
+            &None,
+            &Some("src/ui/**".to_string()),
+            10,
+            None,
+            &WorkspaceTarget::Primary,
+            &handler,
+        )
+        .await
+        .expect("line_mode_matches");
+
+        assert!(result.matches.is_empty());
+        assert!(!result.scope_relaxed);
+        assert_eq!(result.original_file_pattern, None);
+        assert_eq!(result.original_zero_hit_reason, None);
+        assert_eq!(result.zero_hit_reason, Some(ZeroHitReason::LineMatchMiss));
     }
 
     /// Term exists only in a test file; `exclude_tests=true` drops it

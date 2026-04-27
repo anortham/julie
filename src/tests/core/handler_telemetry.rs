@@ -92,6 +92,11 @@ fn test_fast_search_metadata_captures_trace_and_intent() {
         metadata["trace"]["hint_kind"].is_null(),
         "execution without a hint should serialize hint_kind as null"
     );
+    assert_eq!(metadata["trace"]["scope_relaxed"], false);
+    assert!(metadata["trace"]["original_file_pattern"].is_null());
+    assert!(metadata["trace"]["original_zero_hit_reason"].is_null());
+    assert_eq!(metadata["trace"]["scope_rescue_count"], 0);
+    assert_eq!(metadata["trace"]["or_disjunction_detected"], false);
 }
 
 #[test]
@@ -231,6 +236,66 @@ fn test_fast_search_metadata_serializes_out_of_scope_hint_kind() {
     let metadata = search_telemetry::fast_search_metadata(&params, Some(&execution));
 
     assert_eq!(metadata["trace"]["hint_kind"], "out_of_scope_content_hint");
+}
+
+#[test]
+fn test_fast_search_metadata_serializes_scope_rescue_fields() {
+    let params = FastSearchTool {
+        query: "marker_scope".to_string(),
+        search_target: "content".to_string(),
+        file_pattern: Some("src/ui/**".to_string()),
+        limit: 10,
+        ..Default::default()
+    };
+    let mut execution = SearchExecutionResult::new(
+        Vec::new(),
+        false,
+        2,
+        "fast_search_content",
+        SearchExecutionKind::Content {
+            workspace_label: Some("primary".to_string()),
+            file_level: false,
+        },
+    );
+    execution.trace.scope_relaxed = true;
+    execution.trace.original_file_pattern = Some("src/ui/**".to_string());
+    execution.trace.original_zero_hit_reason = Some(ZeroHitReason::FilePatternFiltered);
+    execution.trace.scope_rescue_count = 1;
+
+    let metadata = search_telemetry::fast_search_metadata(&params, Some(&execution));
+
+    assert_eq!(metadata["trace"]["scope_relaxed"], true);
+    assert_eq!(metadata["trace"]["original_file_pattern"], "src/ui/**");
+    assert_eq!(
+        metadata["trace"]["original_zero_hit_reason"],
+        "file_pattern_filtered"
+    );
+    assert_eq!(metadata["trace"]["scope_rescue_count"], 1);
+}
+
+#[test]
+fn test_fast_search_metadata_serializes_or_disjunction_detection() {
+    let params = FastSearchTool {
+        query: "logging.basicConfig OR datefmt".to_string(),
+        search_target: "content".to_string(),
+        limit: 10,
+        ..Default::default()
+    };
+    let mut execution = SearchExecutionResult::new(
+        Vec::new(),
+        false,
+        0,
+        "fast_search_content",
+        SearchExecutionKind::Content {
+            workspace_label: Some("primary".to_string()),
+            file_level: true,
+        },
+    );
+    execution.trace.or_disjunction_detected = true;
+
+    let metadata = search_telemetry::fast_search_metadata(&params, Some(&execution));
+
+    assert_eq!(metadata["trace"]["or_disjunction_detected"], true);
 }
 
 #[test]

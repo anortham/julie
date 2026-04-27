@@ -214,6 +214,11 @@ pub enum HintKind {
 ///   on content zero-hits. It stays `None` for runs without that diagnosis.
 /// - `hint_kind` is set by the multi-token zero-hit hint formatter. It stays
 ///   `None` for responses that carry no prepended hint.
+/// - `scope_relaxed` and its companion fields describe searches that found no
+///   hits inside the requested `file_pattern`, then returned labeled results
+///   from the wider codebase.
+/// - `scope_rescue_count` is the number of workspace searches that triggered
+///   that rescue path. It is not a result count.
 #[derive(Debug, Clone, Serialize)]
 pub struct SearchTrace {
     pub strategy_id: String,
@@ -222,6 +227,11 @@ pub struct SearchTrace {
     pub zero_hit_reason: Option<ZeroHitReason>,
     pub file_pattern_diagnostic: Option<FilePatternDiagnostic>,
     pub hint_kind: Option<HintKind>,
+    pub scope_relaxed: bool,
+    pub original_file_pattern: Option<String>,
+    pub original_zero_hit_reason: Option<ZeroHitReason>,
+    pub scope_rescue_count: usize,
+    pub or_disjunction_detected: bool,
 }
 
 impl SearchTrace {
@@ -250,6 +260,11 @@ impl SearchTrace {
             zero_hit_reason: None,
             file_pattern_diagnostic: None,
             hint_kind: None,
+            scope_relaxed: false,
+            original_file_pattern: None,
+            original_zero_hit_reason: None,
+            scope_rescue_count: 0,
+            or_disjunction_detected: false,
         }
     }
 }

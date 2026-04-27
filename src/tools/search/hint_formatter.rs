@@ -135,6 +135,29 @@ pub fn build_out_of_scope_content_hint(query: &str, file_pattern: &str) -> Strin
     )
 }
 
+pub fn build_scope_rescue_header(file_pattern: &str, result_count: usize) -> String {
+    let mut text = format!(
+        "NOTE: 0 matches within file_pattern={file_pattern}. Showing {result_count} results from the full codebase (outside requested scope).",
+        file_pattern = file_pattern,
+        result_count = result_count,
+    );
+
+    if !contains_glob_marker(file_pattern) {
+        text.push_str(&format!(
+            "\nHint: for symbol structure within a specific file, use get_symbols(file_path={file_pattern}). file_pattern is valid for text search within a known file.",
+            file_pattern = file_pattern,
+        ));
+    }
+
+    text
+}
+
+fn contains_glob_marker(pattern: &str) -> bool {
+    pattern
+        .chars()
+        .any(|ch| matches!(ch, '*' | '?' | '[' | ']' | '{' | '}'))
+}
+
 pub fn build_content_zero_hit_hint(
     query: &str,
     file_pattern: Option<&str>,

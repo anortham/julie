@@ -451,6 +451,9 @@ impl FastSearchTool {
                     // honest value for the rendering-only struct.
                     zero_hit_reason: None,
                     file_pattern_diagnostic: None,
+                    scope_relaxed: execution.trace.scope_relaxed,
+                    original_file_pattern: execution.trace.original_file_pattern.clone(),
+                    original_zero_hit_reason: execution.trace.original_zero_hit_reason.clone(),
                 },
                 trace::SearchExecutionKind::Definitions => unreachable!("content search kind"),
                 trace::SearchExecutionKind::Files => unreachable!("content search kind"),

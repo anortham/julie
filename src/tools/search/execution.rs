@@ -181,6 +181,10 @@ async fn execute_content_search(
     // mixing variants would be noisier than useful.
     let mut last_zero_hit_reason: Option<ZeroHitReason> = None;
     let mut last_file_pattern_diagnostic: Option<FilePatternDiagnostic> = None;
+    let mut scope_relaxed = false;
+    let mut original_file_pattern: Option<String> = None;
+    let mut original_zero_hit_reason: Option<ZeroHitReason> = None;
+    let mut scope_rescue_count = 0usize;
     let file_level = line_mode::query_uses_file_level_header(params.query);
     let workspace_label = if workspaces.len() == 1 {
         match &workspaces[0].target {
@@ -210,6 +214,16 @@ async fn execute_content_search(
         }
         if last_file_pattern_diagnostic.is_none() {
             last_file_pattern_diagnostic = result.file_pattern_diagnostic;
+        }
+        if result.scope_relaxed {
+            scope_relaxed = true;
+            scope_rescue_count += 1;
+            if original_file_pattern.is_none() {
+                original_file_pattern = result.original_file_pattern.clone();
+            }
+            if original_zero_hit_reason.is_none() {
+                original_zero_hit_reason = result.original_zero_hit_reason.clone();
+            }
         }
 
         // Content (line-mode) hits carry a neutral 0.0 score intentionally.
@@ -256,6 +270,12 @@ async fn execute_content_search(
     {
         execution_result.trace.file_pattern_diagnostic = last_file_pattern_diagnostic;
     }
+    execution_result.trace.scope_relaxed = scope_relaxed;
+    execution_result.trace.original_file_pattern = original_file_pattern;
+    execution_result.trace.original_zero_hit_reason = original_zero_hit_reason;
+    execution_result.trace.scope_rescue_count = scope_rescue_count;
+    execution_result.trace.or_disjunction_detected =
+        query::clean_or_disjunction_terms(params.query).is_some();
 
     Ok(execution_result)
 }

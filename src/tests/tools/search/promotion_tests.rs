@@ -4,8 +4,8 @@
 #[cfg(test)]
 mod tests {
     use crate::tools::search::hint_formatter::{
-        build_content_zero_hit_hint, build_multi_token_zero_hit_hint, is_multi_token_query,
-        tokenize_query_for_hint,
+        build_content_zero_hit_hint, build_multi_token_zero_hit_hint, build_scope_rescue_header,
+        is_multi_token_query, tokenize_query_for_hint,
     };
     use crate::tools::search::trace::{
         FilePatternDiagnostic, HintKind, SearchExecutionKind, SearchExecutionResult, SearchTrace,
@@ -87,6 +87,11 @@ mod tests {
         assert!(trace.zero_hit_reason.is_none());
         assert!(trace.file_pattern_diagnostic.is_none());
         assert!(trace.hint_kind.is_none());
+        assert!(!trace.scope_relaxed);
+        assert!(trace.original_file_pattern.is_none());
+        assert!(trace.original_zero_hit_reason.is_none());
+        assert_eq!(trace.scope_rescue_count, 0);
+        assert!(!trace.or_disjunction_detected);
         assert_eq!(trace.result_count, 0);
         assert_eq!(trace.strategy_id, "fast_search_content");
     }
@@ -97,6 +102,11 @@ mod tests {
         trace.zero_hit_reason = Some(ZeroHitReason::LineMatchMiss);
         trace.file_pattern_diagnostic = Some(FilePatternDiagnostic::WhitespaceSeparatedMultiGlob);
         trace.hint_kind = Some(HintKind::FilePatternSyntaxHint);
+        trace.scope_relaxed = true;
+        trace.original_file_pattern = Some("src/ui/**".to_string());
+        trace.original_zero_hit_reason = Some(ZeroHitReason::FilePatternFiltered);
+        trace.scope_rescue_count = 1;
+        trace.or_disjunction_detected = true;
 
         let json = serde_json::to_value(&trace).expect("serialize trace");
         assert_eq!(json["strategy_id"], "fast_search_content");
@@ -108,6 +118,11 @@ mod tests {
             "whitespace_separated_multi_glob"
         );
         assert_eq!(json["hint_kind"], "file_pattern_syntax_hint");
+        assert_eq!(json["scope_relaxed"], true);
+        assert_eq!(json["original_file_pattern"], "src/ui/**");
+        assert_eq!(json["original_zero_hit_reason"], "file_pattern_filtered");
+        assert_eq!(json["scope_rescue_count"], 1);
+        assert_eq!(json["or_disjunction_detected"], true);
     }
 
     #[test]
@@ -334,5 +349,28 @@ mod tests {
             "expected multi-token hint, got: {}",
             text
         );
+    }
+
+    #[test]
+    fn scope_rescue_header_labels_out_of_scope_results() {
+        let text = build_scope_rescue_header("src/ui/**", 2);
+
+        assert!(text.contains(
+            "NOTE: 0 matches within file_pattern=src/ui/**. Showing 2 results from the full codebase (outside requested scope)."
+        ));
+        assert!(
+            !text.contains("get_symbols"),
+            "glob-scoped rescue should not suggest single-file structure lookup",
+        );
+    }
+
+    #[test]
+    fn scope_rescue_header_guides_single_file_patterns_to_get_symbols() {
+        let text = build_scope_rescue_header("src/handler.rs", 1);
+
+        assert!(text.contains(
+            "Hint: for symbol structure within a specific file, use get_symbols(file_path=src/handler.rs)."
+        ));
+        assert!(text.contains("file_pattern is valid for text search within a known file.",));
     }
 }

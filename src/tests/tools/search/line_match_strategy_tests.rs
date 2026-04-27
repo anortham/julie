@@ -60,6 +60,124 @@ mod line_match_strategy_tests {
     }
 
     #[test]
+    fn test_clean_or_disjunction_produces_file_level() {
+        let strategy = line_match_strategy("logging.basicConfig OR datefmt");
+        match &strategy {
+            LineMatchStrategy::FileLevel { terms } => {
+                assert_eq!(
+                    terms,
+                    &vec!["logging.basicconfig".to_string(), "datefmt".to_string()]
+                );
+            }
+            other => panic!(
+                "Expected FileLevel, got {:?}",
+                std::mem::discriminant(other)
+            ),
+        }
+    }
+
+    #[test]
+    fn test_qualified_or_disjunction_produces_file_level() {
+        let strategy = line_match_strategy("Command::Search OR Command::Refs OR Command::Tool");
+        match &strategy {
+            LineMatchStrategy::FileLevel { terms } => {
+                assert_eq!(
+                    terms,
+                    &vec![
+                        "command::search".to_string(),
+                        "command::refs".to_string(),
+                        "command::tool".to_string(),
+                    ],
+                );
+            }
+            other => panic!(
+                "Expected FileLevel, got {:?}",
+                std::mem::discriminant(other)
+            ),
+        }
+    }
+
+    #[test]
+    fn test_multi_word_or_stays_substring() {
+        let strategy = line_match_strategy("INSERT OR REPLACE symbols");
+        match strategy {
+            LineMatchStrategy::Substring(s) => assert_eq!(s, "insert or replace symbols"),
+            other => panic!(
+                "Expected Substring, got {:?}",
+                std::mem::discriminant(&other)
+            ),
+        }
+    }
+
+    #[test]
+    fn test_sql_not_null_stays_substring() {
+        let strategy = line_match_strategy("IS NOT NULL");
+        match strategy {
+            LineMatchStrategy::Substring(s) => assert_eq!(s, "is not null"),
+            other => panic!(
+                "Expected Substring, got {:?}",
+                std::mem::discriminant(&other)
+            ),
+        }
+    }
+
+    #[test]
+    fn test_do_not_edit_stays_substring() {
+        let strategy = line_match_strategy("DO NOT EDIT");
+        match strategy {
+            LineMatchStrategy::Substring(s) => assert_eq!(s, "do not edit"),
+            other => panic!(
+                "Expected Substring, got {:?}",
+                std::mem::discriminant(&other)
+            ),
+        }
+    }
+
+    #[test]
+    fn test_quoted_or_phrase_stays_substring() {
+        let strategy = line_match_strategy("\"INSERT OR REPLACE\"");
+        match strategy {
+            LineMatchStrategy::Substring(s) => assert_eq!(s, "\"insert or replace\""),
+            other => panic!(
+                "Expected Substring, got {:?}",
+                std::mem::discriminant(&other)
+            ),
+        }
+    }
+
+    #[test]
+    fn test_uppercase_sql_or_stays_substring() {
+        let strategy = line_match_strategy("INSERT OR REPLACE");
+        match strategy {
+            LineMatchStrategy::Substring(s) => assert_eq!(s, "insert or replace"),
+            other => panic!(
+                "Expected Substring, got {:?}",
+                std::mem::discriminant(&other)
+            ),
+        }
+    }
+
+    #[test]
+    fn test_kebab_or_produces_file_level() {
+        let strategy = line_match_strategy("security-signals OR audit-events");
+        match &strategy {
+            LineMatchStrategy::FileLevel { terms } => {
+                assert_eq!(
+                    terms,
+                    &vec![
+                        "security-signals".to_string(),
+                        "audit-events".to_string(),
+                    ],
+                );
+            }
+            other => panic!(
+                "Expected FileLevel, got {:?}",
+                std::mem::discriminant(other)
+            ),
+        }
+    }
+
+    #[test]
     fn test_file_level_line_matches_or_logic() {
         let strategy = LineMatchStrategy::FileLevel {
             terms: vec!["spawn_blocking".to_string(), "statistics".to_string()],
@@ -115,6 +233,36 @@ mod line_match_strategy_tests {
         assert!(
             line_matches(&strategy, "router.use('/foo', middleware);"),
             "quoted phrase verifier should match adjacent code tokens split by punctuation",
+        );
+    }
+
+    #[test]
+    fn test_hyphen_query_matches_underscored_line() {
+        let strategy = line_match_strategy("security-signals");
+
+        assert!(
+            line_matches(&strategy, "let security_signals = Signals::new();"),
+            "hyphenated query should match an underscored code identifier",
+        );
+    }
+
+    #[test]
+    fn test_underscore_query_matches_hyphenated_line() {
+        let strategy = line_match_strategy("security_signals");
+
+        assert!(
+            line_matches(&strategy, "name = \"security-signals\""),
+            "underscored query should match a hyphenated literal",
+        );
+    }
+
+    #[test]
+    fn test_backslash_stripping_matches_literal_punctuation() {
+        let strategy = line_match_strategy("\\.julie/logs");
+
+        assert!(
+            line_matches(&strategy, "tail -f .julie/logs/julie.log"),
+            "escaped punctuation query should match the literal path",
         );
     }
 }

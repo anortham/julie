@@ -10,7 +10,7 @@
 
 ## Tools
 
-- `fast_search`: Find code by text. `search_target="definitions"` promotes exact symbol matches.
+- `fast_search`: Find code by text. `search_target="definitions"` promotes exact symbol matches. `file_pattern` scopes searches to matching paths, such as `src/**/*.rs`, `tests/**`, or a specific file. For symbol structure within a specific file, prefer `get_symbols(file_path=...)` over `file_pattern`.
 - `get_symbols`: File structure without reading full content. Use `target` + `mode="minimal"` to extract one symbol.
 - `deep_dive`: Investigate a symbol: definition, callers, callees, children, types. Always use before modifying.
 - `fast_refs`: All references to a symbol. Required before any change. Use `reference_kind` to filter.
@@ -46,7 +46,7 @@ Subagents (Agent tool) do NOT receive Julie's session guidance. When dispatching
 
     ## Code Intelligence Tools (use instead of Grep/Glob/Read)
     You have Julie MCP tools. Use them instead of basic Glob/Grep/Read chains:
-    - fast_search(query, search_target="definitions") to find code
+    - fast_search(query, search_target="definitions") to find code. file_pattern scopes text/path searches; for symbol structure in one file, use get_symbols(file_path=...)
     - get_symbols(file_path) to see file structure before reading
     - deep_dive(symbol) to understand a symbol before modifying it
     - fast_refs(symbol) to find all references (REQUIRED before any change)

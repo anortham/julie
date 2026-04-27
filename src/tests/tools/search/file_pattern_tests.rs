@@ -386,6 +386,10 @@ mod boundary_normalization {
             Some(HintKind::FilePatternSyntaxHint),
         );
         assert!(
+            !execution.trace.scope_relaxed,
+            "invalid whitespace-separated glob syntax must not trigger scope rescue",
+        );
+        assert!(
             text.contains("multiple globs separated by whitespace"),
             "expected syntax hint text, got: {}",
             text,
