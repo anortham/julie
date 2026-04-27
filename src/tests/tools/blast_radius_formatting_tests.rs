@@ -72,6 +72,7 @@ fn test_format_blast_radius_includes_sections_and_overflow_marker() {
     assert!(text.contains("Deleted files"));
     assert!(text.contains("src/legacy.rs"));
     assert!(text.contains("More available: spillover_handle=br_123"));
+    assert!(text.contains("Next page: spillover_get(spillover_handle=\"br_123\")"));
 }
 
 #[test]

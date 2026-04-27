@@ -263,6 +263,10 @@ mod tests {
             output.contains("More available: spillover_handle=gc_"),
             "neighbor overflow should spill into follow-up pages: {output}"
         );
+        assert!(
+            output.contains("Next page: spillover_get(spillover_handle=\"gc_"),
+            "neighbor overflow should include a paging call hint: {output}"
+        );
     }
 
     #[test]

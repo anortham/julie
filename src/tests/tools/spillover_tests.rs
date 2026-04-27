@@ -23,6 +23,19 @@ fn extract_text(result: &CallToolResult) -> String {
 }
 
 #[test]
+fn test_spillover_format_from_option_matches_tool_default() {
+    assert_eq!(SpilloverFormat::from_option(None), SpilloverFormat::Compact);
+    assert_eq!(
+        SpilloverFormat::from_option(Some("Compact")),
+        SpilloverFormat::Compact
+    );
+    assert_eq!(
+        SpilloverFormat::from_option(Some("readable")),
+        SpilloverFormat::Readable
+    );
+}
+
+#[test]
 fn test_spillover_store_pages_rows_and_issues_next_handle() {
     let store = SpilloverStore::new(32, Duration::from_secs(60));
     let handle = store
@@ -192,6 +205,80 @@ async fn test_spillover_get_tool_formats_page_and_more_marker() -> Result<()> {
     assert!(
         text.contains("More available: spillover_handle="),
         "missing follow-up handle: {text}"
+    );
+    assert!(
+        text.contains("Next page: spillover_get(spillover_handle=\""),
+        "missing call hint: {text}"
+    );
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_spillover_get_preserves_stored_format_by_default() -> Result<()> {
+    let handler = JulieServerHandler::new_for_test().await?;
+    let handle = handler
+        .spillover_store
+        .store_rows(
+            &handler.session_metrics.session_id,
+            "gc",
+            "get_context overflow",
+            vec!["row 1".to_string()],
+            0,
+            1,
+            SpilloverFormat::Compact,
+        )
+        .expect("overflow handle");
+
+    let result = SpilloverGetTool {
+        spillover_handle: handle,
+        limit: None,
+        format: None,
+    }
+    .call_tool(&handler)
+    .await?;
+
+    let text = extract_text(&result);
+    assert!(
+        text.starts_with("get_context overflow\nrow 1"),
+        "expected compact output, got: {text}"
+    );
+    assert!(
+        !text.starts_with("get_context overflow\n\nrow 1"),
+        "format was coerced to readable: {text}"
+    );
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_spillover_get_rejects_unknown_format() -> Result<()> {
+    let handler = JulieServerHandler::new_for_test().await?;
+    let handle = handler
+        .spillover_store
+        .store_rows(
+            &handler.session_metrics.session_id,
+            "br",
+            "Blast radius overflow",
+            vec!["row 1".to_string()],
+            0,
+            1,
+            SpilloverFormat::Compact,
+        )
+        .expect("overflow handle");
+
+    let err = SpilloverGetTool {
+        spillover_handle: handle,
+        limit: None,
+        format: Some("readible".to_string()),
+    }
+    .call_tool(&handler)
+    .await
+    .expect_err("unknown format should fail");
+
+    assert!(
+        err.to_string().contains("unknown format"),
+        "unexpected error: {err}"
     );
 
     Ok(())

@@ -16,9 +16,9 @@ pub enum SpilloverFormat {
 
 impl SpilloverFormat {
     pub fn from_option(value: Option<&str>) -> Self {
-        match value.unwrap_or("readable") {
-            "compact" => Self::Compact,
-            _ => Self::Readable,
+        match value {
+            Some(v) if v.eq_ignore_ascii_case("readable") => Self::Readable,
+            _ => Self::Compact,
         }
     }
 

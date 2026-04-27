@@ -180,11 +180,9 @@ fn run_with_db(
     let page_limit = tool.limit.max(1) as usize;
     let visible_impacts: Vec<RankedImpact> =
         ranked_impacts.iter().take(page_limit).cloned().collect();
-    // Default blast_radius to compact when caller left format unset. Compact
-    // is the denser output and the better fit for agent-mediated tool chains;
-    // spillover_get keeps its readable default via SpilloverFormat::from_option
-    // (used by other tools). Unknown values error rather than silently
-    // coerce, so typos fail loudly.
+    // Keep first-page and overflow-page formats aligned. Compact is the
+    // denser default for agent-mediated tool chains. Unknown values error
+    // instead of silently coercing, so typos fail loudly.
     let format = match tool.format.as_deref() {
         Some(value) => SpilloverFormat::parse_strict(value).map_err(|msg| anyhow!(msg))?,
         None => SpilloverFormat::Compact,

@@ -1,7 +1,7 @@
 use crate::tools::impact::LikelyTests;
 use crate::tools::impact::ranking::RankedImpact;
 use crate::tools::impact::seed::SeedContext;
-use crate::tools::spillover::SpilloverFormat;
+use crate::tools::spillover::{SpilloverFormat, more_available_marker};
 
 /// Extra context that shapes the blast-radius header line.
 ///
@@ -73,7 +73,7 @@ pub fn format_blast_radius(
     }
 
     if let Some(handle) = overflow_handle {
-        sections.push(format!("More available: spillover_handle={}", handle));
+        sections.push(more_available_marker(handle));
     }
 
     sections.join(newline)

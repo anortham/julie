@@ -4,6 +4,7 @@
 //! a file map, and centrality hints into a structured text response.
 
 use super::allocation::{Allocation, NeighborMode};
+use crate::tools::spillover::more_available_marker;
 
 /// All data needed to format a get_context response.
 ///
@@ -187,7 +188,8 @@ fn format_context_readable(data: &ContextData) -> String {
 
     if let Some(handle) = &data.spillover_handle {
         out.push('\n');
-        out.push_str(&format!("More available: spillover_handle={handle}\n"));
+        out.push_str(&more_available_marker(handle));
+        out.push('\n');
     }
 
     out
@@ -246,7 +248,8 @@ fn format_context_compact(data: &ContextData) -> String {
     }
 
     if let Some(handle) = &data.spillover_handle {
-        out.push_str(&format!("More available: spillover_handle={handle}\n"));
+        out.push_str(&more_available_marker(handle));
+        out.push('\n');
     }
 
     out
