@@ -31,21 +31,36 @@ impl<T> OptimizedResponse<T> {
     }
 }
 
-/// Blacklisted file extensions - binary and temporary files to exclude from indexing
+/// Blacklisted file extensions: binary and temporary files to exclude from indexing.
+///
+/// Used by the initial-indexing discovery path (`discover_indexable_files`).
+/// Format: dot-prefixed, lowercase (e.g., `.ogg`).
 pub const BLACKLISTED_EXTENSIONS: &[&str] = &[
-    // Binary files
+    // Compiled / native binaries
     ".dll", ".exe", ".pdb", ".so", ".dylib", ".lib", ".a", ".o", ".obj", ".bin",
-    // Media files
-    ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".ico", ".svg", ".webp", ".tiff", ".mp3", ".mp4",
-    ".avi", ".mov", ".wmv", ".flv", ".webm", ".mkv", ".wav", // Archives
-    ".zip", ".rar", ".7z", ".tar", ".gz", ".bz2", ".xz", ".dmg", ".pkg",
+    ".class", ".pyc", ".pyo", ".wasm",
+    // Audio
+    ".mp3", ".wav", ".ogg", ".flac", ".aac", ".wma", ".m4a", ".opus", ".aiff",
+    ".mid", ".midi",
+    // Video
+    ".mp4", ".avi", ".mov", ".wmv", ".flv", ".webm", ".mkv", ".m4v", ".mpg",
+    ".mpeg", ".3gp",
+    // Images
+    ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".ico", ".svg", ".webp", ".tiff",
+    ".tif", ".heic", ".heif", ".psd", ".raw", ".cr2", ".nef", ".dng",
+    // Archives
+    ".zip", ".rar", ".7z", ".tar", ".gz", ".bz2", ".xz", ".zst",
+    // Disk images / packages
+    ".dmg", ".pkg", ".iso", ".deb", ".rpm", ".msi",
     // Database files
-    ".db", ".sqlite", ".sqlite3", ".mdf", ".ldf", ".bak", // Temporary files
-    ".tmp", ".temp", ".cache", ".swp", ".swo", ".lock", ".pid",
-    // Logs and other large files
-    ".log", ".dump", ".core", // Font files
-    ".ttf", ".otf", ".woff", ".woff2", ".eot", // Other binary formats
+    ".db", ".sqlite", ".sqlite3", ".mdf", ".ldf", ".bak",
+    // Fonts
+    ".ttf", ".otf", ".woff", ".woff2", ".eot",
+    // Documents (binary)
     ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
+    // Temporary / ephemeral
+    ".tmp", ".temp", ".cache", ".swp", ".swo", ".lock", ".pid",
+    ".log", ".dump", ".core",
 ];
 
 /// Blacklisted filenames — files excluded by exact name, not extension.

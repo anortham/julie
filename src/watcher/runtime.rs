@@ -216,6 +216,32 @@ impl QueueRuntime {
                 continue;
             }
 
+            // Skip files with unsupported extensions (e.g., binary media files
+            // that leaked into the repair table from earlier indexing runs).
+            // Extensionless files are allowed through — they may be valid
+            // targets like Dockerfile or Makefile.
+            let has_unsupported_ext = absolute_path
+                .extension()
+                .and_then(|e| e.to_str())
+                .is_some_and(|ext| !self.supported_extensions.contains(ext));
+            if has_unsupported_ext {
+                info!(
+                    "Clearing repair for unsupported file type: {}",
+                    repair_path
+                );
+                let db_guard = self
+                    .db
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                if let Err(err) = db_guard.clear_indexing_repair(&repair_path) {
+                    warn!(
+                        "Failed to clear repair for unsupported file {}: {}",
+                        repair_path, err
+                    );
+                }
+                continue;
+            }
+
             super::dispatch_file_event(
                 FileChangeEvent {
                     path: absolute_path,

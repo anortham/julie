@@ -1035,3 +1035,76 @@ async fn test_incremental_indexing_projection_failure_reports_repair_reason() {
         "projection failure should use the shared repair vocabulary"
     );
 }
+
+/// Regression test: hash-match early return must clear stale repair entries.
+///
+/// Bug: When `retry_persisted_repairs` dispatches a file whose content hash
+/// matches the stored hash, the handler returns early at the Blake3 check
+/// without reaching the `clear_indexing_repair` call in the extraction
+/// success path. The repair entry persists forever, causing an infinite
+/// retry loop (every 1-second cycle) that bloats logs and wastes CPU.
+#[tokio::test]
+async fn test_hash_match_clears_stale_repair_entry() {
+    let temp_dir = crate::tests::helpers::unique_temp_dir("watcher_hash_match_repair_clear");
+    let workspace_root = temp_dir.path().canonicalize().unwrap();
+
+    let test_file = workspace_root.join("stable.rs");
+    fs::write(&test_file, "fn stable_symbol() {}\n").unwrap();
+    let absolute_path = test_file.canonicalize().unwrap();
+
+    let db_path = workspace_root.join("test.db");
+    let db = Arc::new(Mutex::new(
+        SymbolDatabase::new(&db_path).expect("Failed to create test database"),
+    ));
+    let extractor_manager = Arc::new(ExtractorManager::new());
+
+    // First pass: index the file (stores hash + symbols)
+    handle_file_created_or_modified_static(
+        absolute_path.clone(),
+        &db,
+        &extractor_manager,
+        &workspace_root,
+        None,
+    )
+    .await
+    .expect("initial indexing should succeed");
+
+    // Seed a stale repair entry (simulates a previous transient failure)
+    {
+        let db_lock = db.lock().unwrap();
+        db_lock
+            .record_indexing_repair("stable.rs", "extractor_failure", Some("stale repair"))
+            .expect("seeding repair should succeed");
+    }
+
+    // Second pass: same file, unchanged content (hash will match -> early return)
+    let outcome = handle_file_created_or_modified_static(
+        absolute_path,
+        &db,
+        &extractor_manager,
+        &workspace_root,
+        None,
+    )
+    .await
+    .expect("hash-match pass should succeed");
+
+    assert_eq!(
+        outcome.repair_reason, None,
+        "hash-match should return clean outcome"
+    );
+
+    // The stale repair entry must be cleared
+    let db_lock = db.lock().unwrap();
+    let remaining: i64 = db_lock
+        .conn
+        .query_row(
+            "SELECT COUNT(*) FROM indexing_repairs WHERE path = ?1",
+            rusqlite::params!["stable.rs"],
+            |row| row.get(0),
+        )
+        .expect("repair count query should succeed");
+    assert_eq!(
+        remaining, 0,
+        "hash-match early return must clear stale repair entries to prevent infinite retry loops"
+    );
+}

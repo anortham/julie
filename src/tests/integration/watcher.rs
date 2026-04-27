@@ -948,3 +948,76 @@ async fn test_remove_event_queued_for_deleted_file() {
         "Queued event should be a Deleted type"
     );
 }
+
+/// Regression test: repair retry must skip and clear entries for unsupported
+/// file extensions (e.g., binary audio/video files).
+///
+/// Bug: `.ogg` files from initial indexing ended up in the `indexing_repairs`
+/// table with `extractor_failure`. `retry_persisted_repairs` dispatched them
+/// every cycle without checking whether the extension is supported, causing
+/// an infinite 1-second retry loop.
+#[tokio::test]
+async fn test_repair_retry_clears_unsupported_extension() {
+    use crate::database::SymbolDatabase;
+    use crate::extractors::ExtractorManager;
+    use std::sync::{Arc, Mutex};
+
+    let temp_dir = crate::tests::helpers::unique_temp_dir("watcher_repair_unsupported_ext");
+    let workspace_root = temp_dir.path().canonicalize().unwrap();
+
+    // Create a binary file that has an unsupported extension
+    let ogg_file = workspace_root.join("audio.ogg");
+    fs::write(&ogg_file, b"\x00\x01\x02binary content").unwrap();
+
+    let db_path = workspace_root.join("test.db");
+    let db = Arc::new(Mutex::new(SymbolDatabase::new(&db_path).unwrap()));
+    let extractor_manager = Arc::new(ExtractorManager::new());
+    let shared_provider = Arc::new(std::sync::RwLock::new(None));
+
+    // Seed a repair entry for the .ogg file (simulates initial indexing failure)
+    {
+        let db_lock = db.lock().unwrap();
+        db_lock
+            .conn
+            .execute(
+                "INSERT INTO indexing_repairs (path, reason, detail, updated_at)
+                 VALUES (?1, ?2, ?3, 0)",
+                rusqlite::params![
+                    "audio.ogg",
+                    "extractor_failure",
+                    "stream did not contain valid UTF-8"
+                ],
+            )
+            .expect("repair row should seed successfully");
+    }
+
+    let indexer = IncrementalIndexer::new(
+        workspace_root.clone(),
+        db.clone(),
+        extractor_manager,
+        None,
+        shared_provider,
+        crate::tools::workspace::indexing::state::IndexingRuntimeState::shared(),
+    )
+    .unwrap();
+
+    indexer
+        .process_pending_changes()
+        .await
+        .expect("pending changes should handle unsupported extensions gracefully");
+
+    // The repair entry for the .ogg file should be cleared, not retried
+    let db_lock = db.lock().unwrap();
+    let remaining: i64 = db_lock
+        .conn
+        .query_row(
+            "SELECT COUNT(*) FROM indexing_repairs WHERE path = ?1",
+            rusqlite::params!["audio.ogg"],
+            |row| row.get(0),
+        )
+        .expect("repair count query should succeed");
+    assert_eq!(
+        remaining, 0,
+        "repair entry for unsupported extension must be cleared, not retried forever"
+    );
+}

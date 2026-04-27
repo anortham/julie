@@ -108,7 +108,10 @@ pub(crate) async fn handle_file_created_or_modified_static(
                     "File {} unchanged (Blake3 hash match), skipping",
                     path.display()
                 );
-                return Ok(FileIndexOutcome::clean()); // Hash match = nothing to do
+                // Clear any stale repair entry so retry_persisted_repairs
+                // doesn't re-dispatch this file every cycle.
+                db_lock.clear_indexing_repair(&relative_path)?;
+                return Ok(FileIndexOutcome::clean());
             }
         }
     }
