@@ -1,7 +1,7 @@
 use std::fs;
 
 use tracing::info;
-use tracing_appender::{non_blocking, rolling};
+use tracing_appender::non_blocking;
 use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
 use clap::Parser;
@@ -27,14 +27,15 @@ async fn main() -> anyhow::Result<()> {
                 eprintln!("Failed to create log directory at {:?}: {}", log_dir, e);
             });
 
-            let file_appender = rolling::daily(&log_dir, "daemon.log");
-            let (non_blocking_file, _file_guard) = non_blocking(file_appender);
+            let writer = julie::logging::LocalRollingWriter::new(&log_dir, "daemon.log");
+            let (non_blocking_file, _file_guard) = non_blocking(writer);
 
             tracing_subscriber::registry()
                 .with(filter)
                 .with(
                     fmt::layer()
                         .with_writer(non_blocking_file)
+                        .with_timer(julie::logging::LocalTimer)
                         .with_target(true)
                         .with_ansi(false)
                         .with_file(true)

@@ -12,6 +12,7 @@ pub mod extractors;
 pub mod handler;
 pub mod health;
 pub mod language;
+pub mod logging;
 pub mod mcp_compat;
 pub mod search;
 pub mod startup;

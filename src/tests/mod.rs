@@ -49,6 +49,7 @@ pub mod core {
     pub mod handler_telemetry; // search telemetry and downstream target metadata tests
     pub mod incremental_update_atomic; // incremental_update_atomic write path tests (TDD)
     pub mod language; // Language detection and support tests
+    pub mod logging; // Local-time log formatting and rolling writer tests
     pub mod memory_vectors; // Memory embedding vector storage (migration 012 + CRUD + KNN)
     pub mod paths; // Path utility tests (display_path, UNC handling)
     pub mod performance_indexes; // SQLite performance guardrail indexes
