@@ -190,7 +190,7 @@ impl ManageWorkspaceTool {
             {
                 RefreshWorkspaceOutcome::Success(_) => {}
                 RefreshWorkspaceOutcome::Failure(message) => {
-                    return Ok(CallToolResult::text_content(vec![Content::text(message)]));
+                    return Ok(CallToolResult::error(vec![Content::text(message)]));
                 }
             }
         }

@@ -117,6 +117,50 @@ async fn test_default_behavior_strips_context() -> Result<()> {
 }
 
 #[tokio::test]
+async fn test_invalid_mode_returns_error() -> Result<()> {
+    let (_temp_dir, workspace_path) = create_test_rust_file()?;
+
+    let handler = JulieServerHandler::new_for_test().await?;
+    handler
+        .initialize_workspace_with_force(Some(workspace_path.clone()), true)
+        .await?;
+
+    let index_tool = ManageWorkspaceTool {
+        operation: "index".to_string(),
+        path: Some(workspace_path.clone()),
+        force: Some(false),
+        name: None,
+        workspace_id: None,
+        detailed: None,
+    };
+    index_tool.call_tool(&handler).await?;
+    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+
+    let tool = GetSymbolsTool {
+        file_path: "src/example.rs".to_string(),
+        max_depth: 1,
+        target: None,
+        limit: None,
+        mode: Some("minmal".to_string()),
+        workspace: None,
+    };
+
+    let error = tool
+        .call_tool(&handler)
+        .await
+        .expect_err("invalid mode should fail before symbol extraction");
+
+    assert!(
+        error
+            .to_string()
+            .contains("Invalid mode: 'minmal'. Expected one of: structure, minimal, full"),
+        "unexpected error: {error}"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn test_structure_mode_strips_context() -> Result<()> {
     // Explicit mode="structure" -> should strip code_context
     let (_temp_dir, workspace_path) = create_test_rust_file()?;

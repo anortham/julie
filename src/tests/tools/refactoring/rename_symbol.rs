@@ -136,6 +136,30 @@ async fn test_rename_symbol_validation_empty_names() -> Result<()> {
 }
 
 #[tokio::test]
+async fn test_rename_symbol_validation_invalid_new_name() -> Result<()> {
+    let handler = JulieServerHandler::new_for_test().await?;
+
+    let tool = RenameSymbolTool {
+        old_name: "getUserData".to_string(),
+        new_name: "fetch user data".to_string(),
+        scope: None,
+        dry_run: true,
+        workspace: None,
+    };
+
+    let result = tool.call_tool(&handler).await?;
+    let result_text = format!("{:?}", result);
+
+    assert!(
+        result_text.contains("invalid identifier"),
+        "Should reject a new_name that cannot be a code identifier: {}",
+        result_text
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn test_rename_symbol_dry_run() -> Result<()> {
     // Dry run should preview changes without modifying files
     let temp_dir = TempDir::new()?;
@@ -188,6 +212,129 @@ async fn test_rename_symbol_dry_run() -> Result<()> {
     assert!(
         !content.contains("fetchUserData"),
         "Dry run should not modify file"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_rename_symbol_file_scope_accepts_absolute_path() -> Result<()> {
+    unsafe {
+        std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+    }
+
+    let temp_dir = TempDir::new()?;
+    let test_file = temp_dir.path().join("main.rs");
+    fs::write(&test_file, "fn getUserData() { getUserData(); }")?;
+
+    let handler = JulieServerHandler::new_for_test().await?;
+    handler
+        .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
+        .await?;
+
+    let index_tool = ManageWorkspaceTool {
+        operation: "index".to_string(),
+        path: Some(temp_dir.path().to_string_lossy().to_string()),
+        force: Some(true),
+        name: None,
+        workspace_id: None,
+        detailed: None,
+    };
+    index_tool.call_tool(&handler).await?;
+
+    let tool = RenameSymbolTool {
+        old_name: "getUserData".to_string(),
+        new_name: "fetchUserData".to_string(),
+        scope: Some(format!("file:{}", test_file.to_string_lossy())),
+        dry_run: false,
+        workspace: None,
+    };
+
+    let result = tool.call_tool(&handler).await?;
+    let result_text = format!("{:?}", result);
+    let content = fs::read_to_string(&test_file)?;
+
+    assert!(
+        content.contains("fetchUserData"),
+        "Absolute file scope should rename the indexed file; result: {}",
+        result_text
+    );
+    assert!(
+        !content.contains("getUserData"),
+        "Old symbol should be gone from scoped file"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_rename_symbol_qualified_method_renames_matching_parent_definition_only() -> Result<()>
+{
+    unsafe {
+        std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+    }
+
+    let temp_dir = TempDir::new()?;
+    let test_file = temp_dir.path().join("main.rs");
+    fs::write(
+        &test_file,
+        r#"
+struct Target;
+impl Target {
+    fn getUserData(&self) {}
+}
+
+struct Other;
+impl Other {
+    fn getUserData(&self) {}
+}
+
+fn caller(target: Target, other: Other) {
+    target.getUserData();
+    other.getUserData();
+}
+"#,
+    )?;
+
+    let handler = JulieServerHandler::new_for_test().await?;
+    handler
+        .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
+        .await?;
+
+    let index_tool = ManageWorkspaceTool {
+        operation: "index".to_string(),
+        path: Some(temp_dir.path().to_string_lossy().to_string()),
+        force: Some(true),
+        name: None,
+        workspace_id: None,
+        detailed: None,
+    };
+    index_tool.call_tool(&handler).await?;
+
+    let tool = RenameSymbolTool {
+        old_name: "Target::getUserData".to_string(),
+        new_name: "fetchUserData".to_string(),
+        scope: None,
+        dry_run: false,
+        workspace: None,
+    };
+
+    let result = tool.call_tool(&handler).await?;
+    let result_text = format!("{:?}", result);
+    let content = fs::read_to_string(&test_file)?;
+
+    assert!(
+        content.contains("fn fetchUserData(&self) {}"),
+        "Target method definition should be renamed; result: {}",
+        result_text
+    );
+    assert!(
+        content.contains("impl Other {\n    fn getUserData(&self) {}"),
+        "Other method definition should not be renamed"
+    );
+    assert!(
+        content.contains("other.getUserData();"),
+        "Other method call should not be renamed"
     );
 
     Ok(())

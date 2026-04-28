@@ -473,7 +473,7 @@ impl ManageWorkspaceTool {
                     "Workspace indexing failed: {}\nCheck that the path exists and contains source files",
                     e
                 );
-                Ok(CallToolResult::text_content(vec![Content::text(message)]))
+                Ok(CallToolResult::error(vec![Content::text(message)]))
             }
         }
     }

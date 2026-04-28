@@ -15,6 +15,7 @@ use crate::mcp_compat::{CallToolResult, CallToolResultExt, Content};
 use anyhow::Result;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -51,6 +52,42 @@ use crate::tools::editing::EditingTransaction;
 
 fn default_dry_run() -> bool {
     true
+}
+
+fn is_valid_rename_identifier(name: &str) -> bool {
+    let mut chars = name.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+
+    if !(first == '_' || first == '$' || first.is_alphabetic()) {
+        return false;
+    }
+
+    chars.all(|ch| ch == '_' || ch == '$' || ch.is_alphanumeric())
+}
+
+fn replace_text_on_allowed_lines(
+    content: &str,
+    old_name: &str,
+    new_name: &str,
+    allowed_lines: Option<&HashSet<u32>>,
+) -> String {
+    let Some(allowed_lines) = allowed_lines else {
+        return content.replace(old_name, new_name);
+    };
+
+    let mut result = String::with_capacity(content.len());
+    for (index, line) in content.split_inclusive('\n').enumerate() {
+        let line_number = index as u32 + 1;
+        if allowed_lines.contains(&line_number) {
+            result.push_str(&line.replace(old_name, new_name));
+        } else {
+            result.push_str(line);
+        }
+    }
+
+    result
 }
 
 /// Rename a symbol across the entire codebase with workspace-wide updates.
@@ -146,6 +183,13 @@ impl RenameSymbolTool {
             )]));
         }
 
+        if !is_valid_rename_identifier(&self.new_name) {
+            return Ok(CallToolResult::error(vec![Content::text(format!(
+                "Error: invalid identifier for new_name '{}'. Use a single code identifier with no whitespace or punctuation.",
+                self.new_name
+            ))]));
+        }
+
         // Delegate to SmartRefactorTool's rename logic
         let smart_refactor = SmartRefactorTool {
             operation: "rename_symbol".to_string(),
@@ -197,6 +241,7 @@ impl SmartRefactorTool {
         file_path: &str,
         old_name: &str,
         new_name: &str,
+        allowed_lines: &[u32],
     ) -> Result<Vec<RenameChange>> {
         // Resolve file path relative to workspace root
         let absolute_path = if Path::new(file_path).is_absolute() {
@@ -209,8 +254,15 @@ impl SmartRefactorTool {
         let content = fs::read_to_string(&absolute_path)?;
 
         // Tree-sitter AST-aware replacement: only renames identifiers, skips strings/comments
-        let updated_content =
-            self.smart_text_replace(&content, old_name, new_name, file_path, false)?;
+        let allowed_lines: HashSet<u32> = allowed_lines.iter().copied().collect();
+        let updated_content = self.smart_text_replace_on_lines(
+            &content,
+            old_name,
+            new_name,
+            file_path,
+            false,
+            &allowed_lines,
+        )?;
 
         if updated_content == content {
             return Ok(Vec::new()); // No changes
@@ -234,6 +286,35 @@ impl SmartRefactorTool {
         file_path: &str,
         _update_comments: bool,
     ) -> Result<String> {
+        self.smart_text_replace_with_line_filter(content, old_name, new_name, file_path, None)
+    }
+
+    pub(crate) fn smart_text_replace_on_lines(
+        &self,
+        content: &str,
+        old_name: &str,
+        new_name: &str,
+        file_path: &str,
+        _update_comments: bool,
+        allowed_lines: &HashSet<u32>,
+    ) -> Result<String> {
+        self.smart_text_replace_with_line_filter(
+            content,
+            old_name,
+            new_name,
+            file_path,
+            Some(allowed_lines),
+        )
+    }
+
+    fn smart_text_replace_with_line_filter(
+        &self,
+        content: &str,
+        old_name: &str,
+        new_name: &str,
+        file_path: &str,
+        allowed_lines: Option<&HashSet<u32>>,
+    ) -> Result<String> {
         use tree_sitter::Parser;
 
         if old_name.is_empty() || old_name == new_name {
@@ -246,7 +327,12 @@ impl SmartRefactorTool {
             Err(_) => {
                 // No tree-sitter parser for this language (e.g. .env, .cfg, .ini files that
                 // Julie indexes but has no grammar for). Fall back to plain text replacement.
-                return Ok(content.replace(old_name, new_name));
+                return Ok(replace_text_on_allowed_lines(
+                    content,
+                    old_name,
+                    new_name,
+                    allowed_lines,
+                ));
             }
         };
 
@@ -267,6 +353,7 @@ impl SmartRefactorTool {
             old_name,
             new_name,
             &mut replacements,
+            allowed_lines,
         );
 
         // Apply replacements in reverse order (end to start) to preserve byte positions
@@ -288,6 +375,7 @@ impl SmartRefactorTool {
         old_name: &str,
         new_name: &str,
         replacements: &mut Vec<(usize, usize, String)>,
+        allowed_lines: Option<&HashSet<u32>>,
     ) {
         let node_kind = node.kind();
 
@@ -304,9 +392,13 @@ impl SmartRefactorTool {
         if node_kind == "identifier" || node_kind == "type_identifier" {
             let start = node.start_byte();
             let end = node.end_byte();
+            let line_number = node.start_position().row as u32 + 1;
 
             if let Ok(text) = std::str::from_utf8(&content_bytes[start..end]) {
-                if text == old_name {
+                let line_allowed = allowed_lines
+                    .map(|lines| lines.contains(&line_number))
+                    .unwrap_or(true);
+                if text == old_name && line_allowed {
                     replacements.push((start, end, new_name.to_string()));
                     return; // Don't recurse into children of identifiers
                 }
@@ -322,6 +414,7 @@ impl SmartRefactorTool {
                 old_name,
                 new_name,
                 replacements,
+                allowed_lines,
             );
         }
     }

@@ -145,7 +145,7 @@ impl ManageWorkspaceTool {
                      Error: {}",
                     workspace_id, display_name, canonical_path_str, e,
                 );
-                Ok(CallToolResult::text_content(vec![Content::text(message)]))
+                Ok(CallToolResult::error(vec![Content::text(message)]))
             }
         }
     }

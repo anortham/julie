@@ -10,7 +10,7 @@ use super::{RenameChange, SmartRefactorTool};
 use crate::extractors::{Relationship, Symbol};
 use crate::handler::JulieServerHandler;
 use crate::tools::navigation::FastRefsTool;
-use crate::tools::navigation::resolution::resolve_workspace_filter;
+use crate::tools::navigation::resolution::{parse_qualified_name, resolve_workspace_filter};
 
 impl SmartRefactorTool {
     /// Handle rename symbol operation
@@ -58,6 +58,9 @@ impl SmartRefactorTool {
             "🎯 Rename '{}' -> '{}' (scope: {}, imports: {}, comments: {}, workspace: {:?})",
             old_name, new_name, scope, update_imports, update_comments, workspace
         );
+        let replacement_old_name = parse_qualified_name(old_name)
+            .map(|(_, child)| child)
+            .unwrap_or(old_name);
 
         // Step 1: Find all references to the symbol
         let refs_tool = FastRefsTool {
@@ -96,11 +99,14 @@ impl SmartRefactorTool {
             );
         }
 
+        let workspace_root = super::resolve_workspace_root(workspace.as_deref(), handler).await?;
+
         // Apply scope filtering
         if scope != "workspace" && scope != "all" {
             if let Some(file_path) = scope.strip_prefix("file:") {
+                let normalized_file_path = normalize_scope_file_path(file_path, &workspace_root)?;
                 // Scope to specific file
-                file_locations.retain(|path, _| path == file_path);
+                file_locations.retain(|path, _| path == &normalized_file_path);
                 if file_locations.is_empty() {
                     return self.create_result(
                         "rename_symbol",
@@ -113,7 +119,7 @@ impl SmartRefactorTool {
                         )),
                     );
                 }
-                debug!("📍 Scope limited to file: {}", file_path);
+                debug!("📍 Scope limited to file: {}", normalized_file_path);
             } else {
                 return Err(anyhow::anyhow!(
                     "Invalid scope '{}'. Must be 'workspace', 'all', or 'file:<path>'",
@@ -132,18 +138,18 @@ impl SmartRefactorTool {
         );
 
         // Step 2: Apply renames file by file
-        // Resolve workspace root lazily — only needed if there are files to process
-        let workspace_root = if !file_locations.is_empty() {
-            super::resolve_workspace_root(workspace.as_deref(), handler).await?
-        } else {
-            std::path::PathBuf::new() // unused — no files to process
-        };
         let mut renamed_files: Vec<(String, Vec<RenameChange>)> = Vec::new();
         let mut errors = Vec::new();
 
-        for file_path in file_locations.keys() {
+        for (file_path, lines) in &file_locations {
             match self
-                .rename_in_file(&workspace_root, file_path, old_name, new_name)
+                .rename_in_file(
+                    &workspace_root,
+                    file_path,
+                    replacement_old_name,
+                    new_name,
+                    lines,
+                )
                 .await
             {
                 Ok(changes) => {
@@ -411,6 +417,23 @@ fn is_import_update_supported(path: &str) -> bool {
         ext,
         "js" | "ts" | "tsx" | "jsx" | "mjs" | "cjs" | "py" | "rs"
     )
+}
+
+fn normalize_scope_file_path(file_path: &str, workspace_root: &std::path::Path) -> Result<String> {
+    let input = std::path::Path::new(file_path);
+    let absolute = if input.is_absolute() {
+        input
+            .canonicalize()
+            .unwrap_or_else(|_| std::path::PathBuf::from(file_path))
+    } else {
+        workspace_root
+            .join(input)
+            .canonicalize()
+            .unwrap_or_else(|_| workspace_root.join(input))
+    };
+
+    crate::utils::paths::to_relative_unix_style(&absolute, workspace_root)
+        .or_else(|_| Ok(file_path.replace('\\', "/")))
 }
 
 /// Used by rename to find all locations that need to be updated.

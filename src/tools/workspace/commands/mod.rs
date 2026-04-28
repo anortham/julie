@@ -85,7 +85,7 @@ pub struct ManageWorkspaceTool {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
 
-    /// Force complete re-indexing, bypassing incremental check (used by: index, refresh, open). Use when indexing code changed but source files are unchanged on disk
+    /// Force complete re-indexing, bypassing incremental check (used by: index, register, refresh, open). Use when indexing code changed but source files are unchanged on disk
     #[serde(
         skip_serializing_if = "Option::is_none",
         default,

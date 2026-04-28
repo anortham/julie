@@ -2818,7 +2818,7 @@ impl JulieServerHandler {
         annotations(
             title = "Manage Workspace",
             read_only_hint = false,
-            destructive_hint = false,
+            destructive_hint = true,
             idempotent_hint = false,
             open_world_hint = false
         )

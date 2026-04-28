@@ -279,6 +279,41 @@ async fn test_edit_file_public_surface_marks_apply_destructive_and_occurrence_fi
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_manage_workspace_public_surface_is_marked_destructive() -> Result<()> {
+    let handler = JulieServerHandler::new_for_test().await?;
+
+    let (server_transport, client_transport) = tokio::io::duplex(64);
+    drop(client_transport);
+    let service =
+        serve_directly::<rmcp::RoleServer, _, _, _, _>(handler.clone(), server_transport, None);
+
+    let tools = <JulieServerHandler as ServerHandler>::list_tools(
+        &handler,
+        Some(PaginatedRequestParams::default()),
+        RequestContext::new(NumberOrString::Number(1), service.peer().clone()),
+    )
+    .await?;
+
+    let manage_workspace = tools
+        .tools
+        .iter()
+        .find(|tool| tool.name.as_ref() == "manage_workspace")
+        .expect("manage_workspace should appear in the public tool list");
+    let annotations = manage_workspace
+        .annotations
+        .as_ref()
+        .expect("manage_workspace should publish annotations");
+    assert_eq!(
+        annotations.destructive_hint,
+        Some(true),
+        "manage_workspace exposes remove, clean, and force reindex operations"
+    );
+
+    let _ = service.cancel().await;
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_edit_file_metrics_attribute_root_file_source_bytes() -> Result<()> {
     use crate::tools::workspace::ManageWorkspaceTool;
     use std::time::Duration;

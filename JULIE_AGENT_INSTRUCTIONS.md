@@ -19,7 +19,7 @@
 - `blast_radius`: Deterministic impact analysis for changed files, internal symbol IDs, or revision ranges. Returns impacts ranked by centrality and hops plus linked tests. Use before refactoring or after a change. Prefer `file_paths` when you know a symbol name or file path; `symbol_ids` are internal Julie IDs, not names like `AuthService::validate`.
 - `spillover_get`: Fetch the next page for large `get_context` or `blast_radius` result sets when a spillover handle is returned.
 - `rename_symbol`: Workspace-wide rename. Always preview with `dry_run=true` first.
-- `manage_workspace`: Index, open, add/remove workspace metadata, list, refresh, stats, and health-check workspaces. For cross-workspace work in daemon mode, call `operation="open"` first, then pass the returned `workspace_id` to search, navigation, and editing tools.
+- `manage_workspace`: Index, open, register/remove workspace metadata, list, refresh, stats, and health-check workspaces. For cross-workspace work in daemon mode, call `operation="open"` first, then pass the returned `workspace_id` to search, navigation, and editing tools.
 - `edit_file`: Edit a file without reading it first. DMP fuzzy matching for old_text. Always `dry_run=true` first.
 - `rewrite_symbol`: Rewrite a symbol by name. Operations: replace_full, replace_body, replace_signature, insert_after, insert_before, add_doc. Always `dry_run=true` first.
 

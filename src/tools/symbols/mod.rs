@@ -16,7 +16,7 @@ mod primary;
 mod target_workspace;
 
 use crate::mcp_compat::CallToolResult;
-use anyhow::Result;
+use anyhow::{Result, bail};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tracing::debug;
@@ -38,6 +38,17 @@ fn default_mode() -> Option<String> {
 
 fn default_workspace() -> Option<String> {
     Some("primary".to_string())
+}
+
+fn validated_mode(mode: Option<&str>) -> Result<&str> {
+    let mode = mode.unwrap_or("structure");
+    match mode {
+        "structure" | "minimal" | "full" => Ok(mode),
+        other => bail!(
+            "Invalid mode: '{}'. Expected one of: structure, minimal, full",
+            other
+        ),
+    }
 }
 
 //**********************//
@@ -73,6 +84,8 @@ pub struct GetSymbolsTool {
 
 impl GetSymbolsTool {
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
+        let mode = validated_mode(self.mode.as_deref())?;
+
         // Resolve workspace parameter (primary vs explicit workspace)
         let workspace_target = resolve_workspace_filter(self.workspace.as_deref(), handler).await?;
 
@@ -85,7 +98,7 @@ impl GetSymbolsTool {
                     self.max_depth,
                     self.target.as_deref(),
                     self.limit,
-                    self.mode.as_deref().unwrap_or("structure"),
+                    mode,
                     target_workspace_id,
                 )
                 .await
@@ -98,7 +111,7 @@ impl GetSymbolsTool {
                     self.max_depth,
                     self.target.as_deref(),
                     self.limit,
-                    self.mode.as_deref().unwrap_or("structure"),
+                    mode,
                 )
                 .await
             }
