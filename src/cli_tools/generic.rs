@@ -192,7 +192,7 @@ mod tests {
 
     #[test]
     fn test_deserialize_params_deep_dive() {
-        use crate::tools::DeepDiveTool;
+        use crate::tools::{DeepDiveDepth, DeepDiveTool};
 
         let params = serde_json::json!({
             "symbol": "JulieServerHandler",
@@ -202,7 +202,7 @@ mod tests {
 
         let tool: DeepDiveTool = deserialize_params("deep_dive", params).unwrap();
         assert_eq!(tool.symbol, "JulieServerHandler");
-        assert_eq!(tool.depth, "full");
+        assert_eq!(tool.depth, DeepDiveDepth::Full);
         assert_eq!(tool.context_file, Some("src/handler.rs".to_string()));
     }
 

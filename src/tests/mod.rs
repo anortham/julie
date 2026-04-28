@@ -86,6 +86,7 @@ pub mod tools {
     pub mod editing; // EditingTransaction tests (used by rename_symbol)
 
     pub mod deep_dive_primary_rebind_tests; // DeepDiveTool current-primary rebound routing tests
+    pub mod deep_dive_regression_tests; // DeepDiveTool regression tests from deep-dive review
     pub mod deep_dive_tests; // DeepDiveTool tests (formatting + data layer)
     pub mod search; // Search tool tests (line mode, quality, race conditions)
     pub mod search_context_lines;

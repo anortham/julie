@@ -8,10 +8,10 @@ use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use tracing::debug;
 
-use crate::database::SymbolDatabase;
-use crate::extractors::base::{RelationshipKind, Symbol, SymbolKind};
+use crate::database::{IdentifierRef, SymbolDatabase};
+use crate::extractors::base::{Relationship, RelationshipKind, Symbol, SymbolKind};
 use crate::search::scoring::is_test_path;
-use crate::tools::navigation::resolution::parse_qualified_name;
+use crate::tools::navigation::resolution::{file_path_matches_suffix, parse_qualified_name};
 use crate::tools::shared::NOISE_CALLEE_NAMES;
 
 /// Aggregated context for a single symbol, ready for formatting
@@ -23,10 +23,14 @@ pub struct SymbolContext {
     pub incoming: Vec<RefEntry>,
     /// Total incoming before capping
     pub incoming_total: usize,
+    /// Total incoming call refs before capping
+    pub incoming_calls_total: usize,
     /// Outgoing references: what this symbol calls/uses
     pub outgoing: Vec<RefEntry>,
     /// Total outgoing before capping
     pub outgoing_total: usize,
+    /// Total outgoing call refs before capping
+    pub outgoing_calls_total: usize,
     /// Child symbols (methods, fields) for struct/class/trait/enum
     pub children: Vec<Symbol>,
     /// Implementations of this trait/interface
@@ -65,7 +69,7 @@ pub fn find_symbol(
     // where "Phoenix.Channel" is a single symbol name, not a parent/child relationship.
     if name.contains('.') || name.contains("::") {
         let mut full_name_results = db.find_symbols_by_name(name)?;
-        full_name_results.retain(|s| s.kind != SymbolKind::Import && s.kind != SymbolKind::Export);
+        full_name_results.retain(|s| !is_lookup_stub(&s.kind));
         // Only use these if we found actual definitions (Module, Class, Trait, Function, etc.)
         let definitions: Vec<Symbol> = full_name_results
             .iter()
@@ -80,7 +84,7 @@ pub fn find_symbol(
     // Step 2: Try qualified name resolution (e.g. "SearchIndex::search_symbols" or "MyClass.method")
     if let Some((parent_name, child_name)) = parse_qualified_name(name) {
         let mut candidates = db.find_symbols_by_name(child_name)?;
-        candidates.retain(|s| s.kind != SymbolKind::Import);
+        candidates.retain(|s| !is_lookup_stub(&s.kind));
 
         // Find parent symbols by name to collect their IDs
         let parents = db.find_symbols_by_name(parent_name)?;
@@ -108,7 +112,7 @@ pub fn find_symbol(
 
     // Step 3: Fall back to full name without definition-kind filter
     let mut symbols = db.find_symbols_by_name(name)?;
-    symbols.retain(|s| s.kind != SymbolKind::Import);
+    symbols.retain(|s| !is_lookup_stub(&s.kind));
     apply_context_file_filter(symbols, context_file)
 }
 
@@ -135,14 +139,35 @@ fn apply_context_file_filter(
     if let Some(file) = context_file {
         let file_matches: Vec<Symbol> = symbols
             .iter()
-            .filter(|s| s.file_path.contains(file))
+            .filter(|s| context_file_matches(&s.file_path, file))
             .cloned()
             .collect();
-        if !file_matches.is_empty() {
-            return Ok(file_matches);
-        }
+        return Ok(file_matches);
     }
     Ok(symbols)
+}
+
+fn context_file_matches(symbol_path: &str, context_file: &str) -> bool {
+    file_path_matches_suffix(symbol_path, context_file)
+        || file_path_matches_suffix(context_file, symbol_path)
+        || context_file_matches_basename_stem(symbol_path, context_file)
+}
+
+fn context_file_matches_basename_stem(symbol_path: &str, context_file: &str) -> bool {
+    if context_file.contains(['/', '\\', '.']) {
+        return false;
+    }
+
+    let basename = symbol_path
+        .rsplit(['/', '\\'])
+        .next()
+        .unwrap_or(symbol_path);
+    let stem = basename.rsplit_once('.').map_or(basename, |(stem, _)| stem);
+    stem == context_file
+}
+
+fn is_lookup_stub(kind: &SymbolKind) -> bool {
+    matches!(kind, SymbolKind::Import | SymbolKind::Export)
 }
 
 /// Definition kinds that should be preferred in full-name lookups.
@@ -182,10 +207,14 @@ pub fn build_symbol_context(
     // === Incoming references (who references this symbol) ===
     let raw_incoming = db.get_relationships_to_symbols(&symbol_ids)?;
     let incoming_total = raw_incoming.len();
-
-    let mut incoming: Vec<RefEntry> = raw_incoming
+    let incoming_calls_total = raw_incoming
         .iter()
-        .take(incoming_cap)
+        .filter(|rel| matches!(rel.kind, RelationshipKind::Calls))
+        .count();
+
+    let incoming_rels: Vec<&Relationship> = raw_incoming.iter().take(incoming_cap).collect();
+    let mut incoming: Vec<RefEntry> = incoming_rels
+        .iter()
         .map(|rel| RefEntry {
             kind: rel.kind.clone(),
             file_path: rel.file_path.clone(),
@@ -196,25 +225,24 @@ pub fn build_symbol_context(
 
     // Always enrich refs — symbol names are useful at every depth level
     {
-        let id_map: HashMap<String, String> = raw_incoming
+        let symbol_ids: Vec<String> = incoming_rels
             .iter()
-            .map(|r| {
-                (
-                    format!("{}:{}", r.file_path, r.line_number),
-                    r.from_symbol_id.clone(),
-                )
-            })
+            .map(|rel| rel.from_symbol_id.clone())
             .collect();
-        enrich_refs(db, &mut incoming, &id_map)?;
+        enrich_refs(db, &mut incoming, &symbol_ids)?;
     }
 
     // === Outgoing references (what this symbol calls/uses) ===
     let raw_outgoing = db.get_outgoing_relationships(&symbol.id)?;
     let outgoing_total = raw_outgoing.len();
-
-    let mut outgoing: Vec<RefEntry> = raw_outgoing
+    let outgoing_calls_total = raw_outgoing
         .iter()
-        .take(outgoing_cap)
+        .filter(|rel| matches!(rel.kind, RelationshipKind::Calls))
+        .count();
+
+    let outgoing_rels: Vec<&Relationship> = raw_outgoing.iter().take(outgoing_cap).collect();
+    let mut outgoing: Vec<RefEntry> = outgoing_rels
+        .iter()
         .map(|rel| RefEntry {
             kind: rel.kind.clone(),
             file_path: rel.file_path.clone(),
@@ -224,16 +252,11 @@ pub fn build_symbol_context(
         .collect();
 
     {
-        let id_map: HashMap<String, String> = raw_outgoing
+        let symbol_ids: Vec<String> = outgoing_rels
             .iter()
-            .map(|r| {
-                (
-                    format!("{}:{}", r.file_path, r.line_number),
-                    r.to_symbol_id.clone(),
-                )
-            })
+            .map(|rel| rel.to_symbol_id.clone())
             .collect();
-        enrich_refs(db, &mut outgoing, &id_map)?;
+        enrich_refs(db, &mut outgoing, &symbol_ids)?;
     }
 
     // Filter noise callees — common names like `new`, `len`, `from` that
@@ -246,8 +269,14 @@ pub fn build_symbol_context(
     let outgoing_total = outgoing_total.saturating_sub(pre_filter_len - outgoing.len());
 
     // === Identifier fallback: catch refs that relationships miss ===
-    let (incoming, incoming_total) =
-        merge_identifier_refs(db, symbol, incoming, incoming_total, incoming_cap)?;
+    let (incoming, incoming_total, incoming_calls_total) = merge_identifier_refs(
+        db,
+        symbol,
+        incoming,
+        incoming_total,
+        incoming_calls_total,
+        incoming_cap,
+    )?;
 
     debug!(
         "deep_dive: {} incoming (of {}), {} outgoing (of {})",
@@ -298,8 +327,10 @@ pub fn build_symbol_context(
         symbol,
         incoming,
         incoming_total,
+        incoming_calls_total,
         outgoing,
         outgoing_total,
+        outgoing_calls_total,
         children,
         implementations,
         test_refs,
@@ -325,7 +356,8 @@ fn symbol_is_test(symbol: &Symbol) -> bool {
 
 /// Build test location refs by querying identifiers linked from test symbols.
 fn build_test_refs(db: &SymbolDatabase, symbol: &Symbol) -> Result<Vec<RefEntry>> {
-    let names = vec![symbol.name.clone()];
+    let names = identifier_names_for_symbol(db, symbol)?;
+    let bare_name_allowed = bare_identifier_name_allowed(symbol, &names);
     let ident_refs = db.get_identifiers_by_names(&names)?;
 
     // Batch-fetch all containing symbols in one query so metadata can drive test
@@ -350,6 +382,9 @@ fn build_test_refs(db: &SymbolDatabase, symbol: &Symbol) -> Result<Vec<RefEntry>
         .into_iter()
         .filter(|ident| {
             if ident.file_path == symbol.file_path && ident.start_line == symbol.start_line {
+                return false;
+            }
+            if !identifier_matches_symbol(ident, symbol, &names, bare_name_allowed) {
                 return false;
             }
 
@@ -413,13 +448,15 @@ fn merge_identifier_refs(
     symbol: &Symbol,
     mut incoming: Vec<RefEntry>,
     incoming_total: usize,
+    incoming_calls_total: usize,
     incoming_cap: usize,
-) -> Result<(Vec<RefEntry>, usize)> {
-    let names = vec![symbol.name.clone()];
+) -> Result<(Vec<RefEntry>, usize, usize)> {
+    let names = identifier_names_for_symbol(db, symbol)?;
+    let bare_name_allowed = bare_identifier_name_allowed(symbol, &names);
     let ident_refs = db.get_identifiers_by_names(&names)?;
 
     if ident_refs.is_empty() {
-        return Ok((incoming, incoming_total));
+        return Ok((incoming, incoming_total, incoming_calls_total));
     }
 
     // Build dedup set from existing relationship refs; kept mutable so new entries
@@ -430,7 +467,12 @@ fn merge_identifier_refs(
         .collect();
 
     let mut added = 0;
+    let mut call_added = 0;
     for ident in ident_refs {
+        if !identifier_matches_symbol(&ident, symbol, &names, bare_name_allowed) {
+            continue;
+        }
+
         // Skip identifier at the definition site itself
         if ident.file_path == symbol.file_path && ident.start_line == symbol.start_line {
             continue;
@@ -445,6 +487,9 @@ fn merge_identifier_refs(
         // Respect incoming cap
         if incoming.len() >= incoming_cap {
             added += 1; // Still count towards total
+            if ident.kind == "call" {
+                call_added += 1;
+            }
             continue;
         }
 
@@ -453,6 +498,7 @@ fn merge_identifier_refs(
             "import" => RelationshipKind::Imports,
             _ => RelationshipKind::References,
         };
+        let is_call = matches!(rel_kind, RelationshipKind::Calls);
 
         // Enrich with containing symbol if available
         let containing_symbol = ident
@@ -468,40 +514,92 @@ fn merge_identifier_refs(
         });
         existing.insert(key);
         added += 1;
+        if is_call {
+            call_added += 1;
+        }
     }
 
     let new_total = incoming_total + added;
-    Ok((incoming, new_total))
+    let new_call_total = incoming_calls_total + call_added;
+    Ok((incoming, new_total, new_call_total))
 }
 
-/// Enrich ref entries with symbol data by looking up IDs from the relationship map
-fn enrich_refs(
-    db: &SymbolDatabase,
-    refs: &mut [RefEntry],
-    id_map: &HashMap<String, String>,
-) -> Result<()> {
-    // Collect unique symbol IDs to fetch
-    let symbol_ids: Vec<String> = refs
+fn identifier_names_for_symbol(db: &SymbolDatabase, symbol: &Symbol) -> Result<Vec<String>> {
+    let mut names = Vec::new();
+    push_unique(&mut names, symbol.name.clone());
+
+    let mut qualifiers = Vec::new();
+    if let Some(parent_id) = &symbol.parent_id {
+        if let Some(parent) = db.get_symbol_by_id(parent_id)? {
+            push_unique(&mut qualifiers, parent.name);
+        }
+    }
+    if let Some(impl_type) = impl_type_name(symbol) {
+        push_unique(&mut qualifiers, impl_type.to_string());
+        push_unique(&mut qualifiers, qualified_name_leaf(impl_type).to_string());
+    }
+
+    for qualifier in qualifiers {
+        push_unique(&mut names, format!("{}::{}", qualifier, symbol.name));
+        push_unique(&mut names, format!("{}.{}", qualifier, symbol.name));
+    }
+
+    Ok(names)
+}
+
+fn push_unique(values: &mut Vec<String>, value: String) {
+    if !values.iter().any(|existing| existing == &value) {
+        values.push(value);
+    }
+}
+
+fn bare_identifier_name_allowed(symbol: &Symbol, names: &[String]) -> bool {
+    symbol.parent_id.is_none()
+        && impl_type_name(symbol).is_none()
+        && names.iter().all(|name| name == &symbol.name)
+}
+
+fn identifier_matches_symbol(
+    ident: &IdentifierRef,
+    symbol: &Symbol,
+    names: &[String],
+    bare_name_allowed: bool,
+) -> bool {
+    if ident.target_symbol_id.as_deref() == Some(symbol.id.as_str()) {
+        return true;
+    }
+    if ident.target_symbol_id.is_some() {
+        return false;
+    }
+    if bare_name_allowed && ident.name == symbol.name {
+        return true;
+    }
+    names
         .iter()
-        .filter_map(|r| {
-            let key = format!("{}:{}", r.file_path, r.line_number);
-            id_map.get(&key).filter(|id| !id.is_empty()).cloned()
-        })
+        .any(|name| name != &symbol.name && ident.name == *name)
+}
+
+/// Enrich ref entries with symbol data by looking up relationship symbol IDs.
+fn enrich_refs(db: &SymbolDatabase, refs: &mut [RefEntry], symbol_ids: &[String]) -> Result<()> {
+    // Collect unique symbol IDs to fetch
+    let unique_symbol_ids: Vec<String> = symbol_ids
+        .iter()
+        .filter(|id| !id.is_empty())
+        .cloned()
         .collect::<std::collections::HashSet<_>>()
         .into_iter()
         .collect();
 
-    if symbol_ids.is_empty() {
+    if unique_symbol_ids.is_empty() {
         return Ok(());
     }
 
-    let symbols = db.get_symbols_by_ids(&symbol_ids)?;
+    let symbols = db.get_symbols_by_ids(&unique_symbol_ids)?;
     let symbol_map: HashMap<String, Symbol> =
         symbols.into_iter().map(|s| (s.id.clone(), s)).collect();
 
-    for r in refs.iter_mut() {
-        let key = format!("{}:{}", r.file_path, r.line_number);
-        if let Some(sym_id) = id_map.get(&key) {
+    for (r, sym_id) in refs.iter_mut().zip(symbol_ids.iter()) {
+        if !sym_id.is_empty() {
             r.symbol = symbol_map.get(sym_id).cloned();
         }
     }

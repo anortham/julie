@@ -10,7 +10,7 @@ use crate::tools::search::trace::{
     ZeroHitReason,
 };
 use crate::tools::spillover::SpilloverGetTool;
-use crate::tools::{BlastRadiusTool, DeepDiveTool, GetSymbolsTool};
+use crate::tools::{BlastRadiusTool, DeepDiveDepth, DeepDiveTool, GetSymbolsTool};
 
 fn sample_symbol() -> Symbol {
     Symbol {
@@ -382,7 +382,7 @@ fn test_get_symbols_metadata_prefers_file_target_with_symbol_filter() {
 fn test_deep_dive_metadata_carries_symbol_and_context_file_target() {
     let params = DeepDiveTool {
         symbol: "search_handler".to_string(),
-        depth: "context".to_string(),
+        depth: DeepDiveDepth::Context,
         context_file: Some("src/dashboard/routes/search.rs".to_string()),
         workspace: Some("primary".to_string()),
     };

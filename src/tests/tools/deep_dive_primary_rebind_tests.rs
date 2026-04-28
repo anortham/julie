@@ -8,7 +8,7 @@ use crate::daemon::database::DaemonDatabase;
 use crate::daemon::workspace_pool::WorkspacePool;
 use crate::extractors::{Symbol, SymbolKind};
 use crate::handler::JulieServerHandler;
-use crate::tools::deep_dive::DeepDiveTool;
+use crate::tools::deep_dive::{DeepDiveDepth, DeepDiveTool};
 use crate::workspace::registry::generate_workspace_id;
 
 fn rebound_symbol() -> Symbol {
@@ -129,7 +129,7 @@ async fn test_deep_dive_primary_uses_rebound_current_primary_store() -> Result<(
 
     let result = DeepDiveTool {
         symbol: "rebound_primary_symbol".to_string(),
-        depth: "overview".to_string(),
+        depth: DeepDiveDepth::Overview,
         context_file: None,
         workspace: Some("primary".to_string()),
     }
@@ -152,7 +152,7 @@ async fn test_deep_dive_primary_rejects_swap_gap() -> Result<()> {
 
     let err = DeepDiveTool {
         symbol: "rebound_primary_symbol".to_string(),
-        depth: "overview".to_string(),
+        depth: DeepDiveDepth::Overview,
         context_file: None,
         workspace: Some("primary".to_string()),
     }

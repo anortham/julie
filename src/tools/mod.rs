@@ -17,7 +17,7 @@ pub mod symbols; // Symbol overview tools
 pub mod workspace; // Workspace management and indexing
 
 // Re-export all tools for external use
-pub use deep_dive::DeepDiveTool;
+pub use deep_dive::{DeepDiveDepth, DeepDiveTool};
 pub use get_context::GetContextTool;
 pub use impact::BlastRadiusTool;
 pub use navigation::{CallPathTool, FastRefsTool};

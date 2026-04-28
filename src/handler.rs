@@ -1734,6 +1734,14 @@ impl JulieServerHandler {
         extract_source_paths(&text)
     }
 
+    fn is_workspace_parameter_error(message: &str) -> bool {
+        message.contains("Unknown workspace")
+            || message.contains("Invalid workspace")
+            || message.contains("Workspace '")
+            || message.contains("Primary workspace swap in progress")
+            || message.contains("workspace-scoped query")
+    }
+
     /// Run auto-indexing in background (called after MCP handshake)
     async fn run_auto_indexing(&self) {
         use crate::startup::run_primary_workspace_repair;
@@ -2596,10 +2604,14 @@ impl JulieServerHandler {
         let start = std::time::Instant::now();
         let workspace_snapshot = self.require_primary_workspace_binding().ok();
         let metadata = tool_targets::deep_dive_metadata(&params);
-        let result = params
-            .call_tool(self)
-            .await
-            .map_err(|e| McpError::internal_error(format!("deep_dive failed: {}", e), None))?;
+        let result = params.call_tool(self).await.map_err(|e| {
+            let message = e.to_string();
+            if Self::is_workspace_parameter_error(&message) {
+                McpError::invalid_params(format!("deep_dive failed: {}", message), None)
+            } else {
+                McpError::internal_error(format!("deep_dive failed: {}", message), None)
+            }
+        })?;
         let output_bytes = Self::output_bytes_from_result(&result);
         let source_file_paths = Self::extract_paths_from_result(&result);
         let report = ToolCallReport {

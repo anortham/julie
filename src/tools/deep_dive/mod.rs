@@ -15,8 +15,28 @@ use crate::handler::JulieServerHandler;
 use crate::mcp_compat::{CallToolResult, CallToolResultExt, Content};
 use crate::tools::navigation::resolution::{WorkspaceTarget, resolve_workspace_filter};
 
-fn default_depth() -> String {
-    "overview".to_string()
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum DeepDiveDepth {
+    Overview,
+    Context,
+    Full,
+}
+
+impl Default for DeepDiveDepth {
+    fn default() -> Self {
+        Self::Overview
+    }
+}
+
+impl DeepDiveDepth {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Overview => "overview",
+            Self::Context => "context",
+            Self::Full => "full",
+        }
+    }
 }
 
 fn default_workspace() -> Option<String> {
@@ -35,8 +55,8 @@ pub struct DeepDiveTool {
     pub symbol: String,
 
     /// Investigation depth: "overview" (default, ~200 tokens: signature + caller/callee list), "context" (~600 tokens: adds code body), "full" (~1500 tokens: all refs, test locations, bodies). Use overview for orientation, context when you need implementation details, full for complete investigation
-    #[serde(default = "default_depth")]
-    pub depth: String,
+    #[serde(default)]
+    pub depth: DeepDiveDepth,
 
     /// Disambiguate when multiple symbols share a name (partial file path match)
     #[serde(default)]
@@ -58,18 +78,8 @@ fn ref_caps(depth: &str) -> (usize, usize) {
 
 impl DeepDiveTool {
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
-        debug!("Deep dive: {} (depth: {})", self.symbol, self.depth);
-
-        // Validate depth
-        let depth = match self.depth.as_str() {
-            "overview" | "context" | "full" => self.depth.as_str(),
-            _ => {
-                return Ok(CallToolResult::text_content(vec![Content::text(format!(
-                    "Invalid depth '{}'. Must be 'overview', 'context', or 'full'.",
-                    self.depth
-                ))]));
-            }
-        };
+        let depth = self.depth.as_str();
+        debug!("Deep dive: {} (depth: {})", self.symbol, depth);
 
         // Resolve workspace parameter
         let workspace_target = resolve_workspace_filter(self.workspace.as_deref(), handler).await?;
@@ -210,7 +220,7 @@ pub(crate) fn deep_dive_query(
     Ok(output)
 }
 
-/// When the disambiguation threshold is exceeded and most results are in the same file,
+/// When the disambiguation threshold is exceeded and all results are in the same file,
 /// auto-select the best match instead of asking for disambiguation.
 ///
 /// This handles the C++ pattern where searching for "basic_json" finds the class AND
@@ -244,8 +254,8 @@ fn auto_select_same_file_overload(
         .max_by_key(|(_, count)| **count)
         .map(|(file, count)| (*file, *count))?;
 
-    // Only auto-select when a majority of results are in the same file
-    if most_common_count <= symbols.len() / 2 {
+    // Only auto-select when every match is in one file.
+    if most_common_count != symbols.len() {
         return None;
     }
 

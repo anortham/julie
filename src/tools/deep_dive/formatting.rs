@@ -260,7 +260,13 @@ fn format_callable(out: &mut String, ctx: &SymbolContext, depth: &str) {
         .collect();
 
     if !callers.is_empty() || ctx.incoming_total > 0 {
-        format_ref_section(out, "Callers", &callers, ctx.incoming_total, depth);
+        let total = filtered_ref_total(
+            callers.len(),
+            ctx.incoming.len(),
+            ctx.incoming_total,
+            ctx.incoming_calls_total,
+        );
+        format_ref_section(out, "Callers", &callers, total, depth);
     }
 
     // Callees (outgoing Calls relationships)
@@ -271,7 +277,13 @@ fn format_callable(out: &mut String, ctx: &SymbolContext, depth: &str) {
         .collect();
 
     if !callees.is_empty() {
-        format_ref_section(out, "Callees", &callees, ctx.outgoing_total, depth);
+        let total = filtered_ref_total(
+            callees.len(),
+            ctx.outgoing.len(),
+            ctx.outgoing_total,
+            ctx.outgoing_calls_total,
+        );
+        format_ref_section(out, "Callees", &callees, total, depth);
     }
 
     // Types (outgoing Parameter/Returns relationships, deduped by name)
@@ -317,6 +329,21 @@ fn format_callable(out: &mut String, ctx: &SymbolContext, depth: &str) {
 
     format_test_locations(out, ctx, depth);
     format_body(out, ctx, depth);
+}
+
+fn filtered_ref_total(
+    displayed_filtered_count: usize,
+    displayed_all_count: usize,
+    all_total: usize,
+    filtered_total: usize,
+) -> usize {
+    if filtered_total > 0 {
+        filtered_total
+    } else if displayed_filtered_count == displayed_all_count {
+        all_total
+    } else {
+        displayed_filtered_count
+    }
 }
 
 fn format_trait_or_interface(out: &mut String, ctx: &SymbolContext, depth: &str) {
