@@ -77,14 +77,10 @@ impl ManageWorkspaceTool {
 
     /// Find workspace root by looking for common workspace markers
     pub(crate) fn find_workspace_root(&self, start_path: &Path) -> Result<PathBuf> {
-        let workspace_markers = [
-            ".git",
-            ".julie",
-            ".vscode",
-            "Cargo.toml",
-            "package.json",
-            ".project",
-        ];
+        // Trust `.julie` at the requested path, but not above it. Temp parents
+        // and daemon cache roots can contain `.julie` without owning the child.
+        let ancestor_workspace_markers =
+            [".git", ".vscode", "Cargo.toml", "package.json", ".project"];
 
         let global_julie_home = julie_home().ok();
 
@@ -116,19 +112,9 @@ impl ManageWorkspaceTool {
 
         // Walk up the directory tree looking for workspace markers
         loop {
-            for marker in &workspace_markers {
+            for marker in &ancestor_workspace_markers {
                 let marker_path = current_path.join(marker);
                 if marker_path.exists() {
-                    // Skip ~/.julie/ global config dir — it's not a workspace marker
-                    if *marker == ".julie"
-                        && Self::is_global_julie_dir(&marker_path, &global_julie_home)
-                    {
-                        debug!(
-                            "Skipping global ~/.julie/ config dir during walk-up at: {}",
-                            current_path.display()
-                        );
-                        continue;
-                    }
                     info!(
                         "🎯 Found workspace marker '{}' at: {}",
                         marker,

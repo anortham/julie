@@ -44,7 +44,7 @@ pub enum WorkspaceCommand {
         /// Workspace ID to refresh
         workspace_id: String,
     },
-    /// Open and activate a workspace for the current daemon session
+    /// Open a workspace and make it the current primary for the daemon session
     Open {
         /// Optional path to the workspace to open
         path: Option<String>,

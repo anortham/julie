@@ -1027,6 +1027,43 @@ fn test_find_workspace_root_rejects_home_julie_dir() {
     }
 }
 
+#[test]
+#[serial]
+fn test_find_workspace_root_does_not_let_parent_julie_capture_unmarked_explicit_dir() {
+    use crate::tools::workspace::ManageWorkspaceTool;
+
+    let parent_workspace = TempDir::new().expect("Failed to create parent workspace");
+    fs::create_dir_all(parent_workspace.path().join(".julie").join("indexes"))
+        .expect("Failed to create parent .julie");
+
+    let explicit_workspace = parent_workspace
+        .path()
+        .join("julie-dogfood-rewrite.fixture");
+    fs::create_dir_all(explicit_workspace.join("src"))
+        .expect("Failed to create explicit workspace");
+
+    let tool = ManageWorkspaceTool {
+        operation: "test".to_string(),
+        path: None,
+        force: None,
+        name: None,
+        workspace_id: None,
+        detailed: None,
+    };
+
+    let result = tool
+        .find_workspace_root(&explicit_workspace)
+        .expect("find_workspace_root should not error");
+
+    assert_eq!(
+        result.canonicalize().unwrap_or_else(|_| result.clone()),
+        explicit_workspace
+            .canonicalize()
+            .unwrap_or_else(|_| explicit_workspace.clone()),
+        "a parent .julie directory must not capture an explicit unmarked child workspace"
+    );
+}
+
 /// Test: agent instructions are always available (embedded at compile time)
 ///
 /// JULIE_AGENT_INSTRUCTIONS.md is product metadata embedded via include_str!,

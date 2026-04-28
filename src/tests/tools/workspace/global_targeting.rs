@@ -1445,7 +1445,7 @@ async fn test_manage_workspace_open_by_workspace_id_marks_known_workspace_active
         primary_ws,
         primary_path.clone(),
         Some(Arc::clone(&daemon_db)),
-        Some(primary_id),
+        Some(primary_id.clone()),
         None,
         None,
         None,
@@ -1483,9 +1483,18 @@ async fn test_manage_workspace_open_by_workspace_id_marks_known_workspace_active
         text.contains(&target_path_str),
         "open-by-id result should include workspace path: {text}"
     );
+    assert_eq!(
+        handler.current_workspace_id(),
+        Some(target_id.clone()),
+        "open-by-id should switch default primary routing to the opened workspace"
+    );
     assert!(
         handler.is_workspace_active(&target_id).await,
         "known workspace should be active after open"
+    );
+    assert!(
+        handler.is_workspace_active(&primary_id).await,
+        "switching primary with open should keep the previous primary active"
     );
 }
 

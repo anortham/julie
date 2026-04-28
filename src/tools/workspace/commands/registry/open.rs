@@ -166,7 +166,7 @@ impl ManageWorkspaceTool {
         let attached_matches_target = handler
             .was_workspace_attached_in_session(&target.workspace_id)
             .await;
-        if already_active && !force && (!target.is_primary || attached_matches_target) {
+        if already_active && !force && target.is_primary && attached_matches_target {
             return Ok(Self::opened_message(&target));
         }
 
@@ -196,7 +196,7 @@ impl ManageWorkspaceTool {
         }
 
         handler
-            .activate_workspace_with_root(&target.workspace_id, target.workspace_path.clone())
+            .switch_primary_workspace_with_root(&target.workspace_id, target.workspace_path.clone())
             .await?;
 
         Ok(Self::opened_message(&target))

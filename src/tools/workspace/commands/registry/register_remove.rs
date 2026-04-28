@@ -65,7 +65,7 @@ impl ManageWorkspaceTool {
                      Display Name: {}\n\
                      Path: {}\n\
                      Files: {} | Symbols: {}\n\
-                     Use manage_workspace(operation=\"open\", workspace_id=\"{}\") to activate it in this session.",
+                     Use manage_workspace(operation=\"open\", workspace_id=\"{}\") to make it current in this session.",
                     workspace_id,
                     display_name,
                     existing.path,
@@ -112,7 +112,7 @@ impl ManageWorkspaceTool {
                      Display Name: {}\n\
                      Path: {}\n\
                      {} files, {} symbols, {} relationships indexed\n\
-                     Use manage_workspace(operation=\"open\", workspace_id=\"{}\") to activate it in this session.",
+                     Use manage_workspace(operation=\"open\", workspace_id=\"{}\") to make it current in this session.",
                     workspace_id,
                     display_name,
                     canonical_path_str,

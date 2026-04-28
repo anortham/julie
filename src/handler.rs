@@ -2039,6 +2039,35 @@ impl JulieServerHandler {
         Ok(self.mark_workspace_active_internal(workspace_id))
     }
 
+    pub async fn switch_primary_workspace_with_root(
+        &self,
+        workspace_id: &str,
+        workspace_root: PathBuf,
+    ) -> Result<bool> {
+        let previous_primary_id = self
+            .session_workspace
+            .read()
+            .unwrap_or_else(|p| p.into_inner())
+            .primary_binding()
+            .map(|binding| binding.workspace_id);
+        let target_workspace_id = workspace_id.to_string();
+        let activated = self
+            .activate_workspace_with_root(&target_workspace_id, workspace_root.clone())
+            .await?;
+
+        self.update_session_workspace(move |session_workspace| {
+            let opened_workspace_id = target_workspace_id.clone();
+            session_workspace.bind_primary(target_workspace_id, workspace_root);
+            if let Some(previous_primary_id) = previous_primary_id {
+                if previous_primary_id != opened_workspace_id {
+                    session_workspace.mark_workspace_active(previous_primary_id);
+                }
+            }
+        });
+
+        Ok(activated)
+    }
+
     pub(crate) async fn workspace_storage_anchor(&self) -> Result<(PathBuf, Option<PathBuf>)> {
         let loaded_workspace = self.get_workspace().await?;
         let loaded_workspace_id = self.loaded_workspace_id();
