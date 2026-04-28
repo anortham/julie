@@ -90,6 +90,19 @@ fn test_context_args_tool_name() {
 }
 
 #[test]
+fn test_call_path_args_tool_name() {
+    let args = CallPathArgs {
+        from: "handle_request".into(),
+        to: "write_response".into(),
+        max_hops: 6,
+        workspace: None,
+        from_file_path: None,
+        to_file_path: None,
+    };
+    assert_eq!(args.tool_name(), "call_path");
+}
+
+#[test]
 fn test_blast_radius_args_tool_name() {
     let args = BlastRadiusArgs {
         rev: None,
@@ -218,6 +231,26 @@ fn test_context_to_tool_args_full() {
 }
 
 #[test]
+fn test_call_path_to_tool_args_full() {
+    let args = CallPathArgs {
+        from: "handle_request".into(),
+        to: "write_response".into(),
+        max_hops: 8,
+        workspace: Some("primary".into()),
+        from_file_path: Some("src/server.rs".into()),
+        to_file_path: Some("src/response.rs".into()),
+    };
+
+    let json = args.to_tool_args().unwrap();
+    assert_eq!(json["from"], "handle_request");
+    assert_eq!(json["to"], "write_response");
+    assert_eq!(json["max_hops"], 8);
+    assert_eq!(json["workspace"], "primary");
+    assert_eq!(json["from_file_path"], "src/server.rs");
+    assert_eq!(json["to_file_path"], "src/response.rs");
+}
+
+#[test]
 fn test_blast_radius_to_tool_args_with_files() {
     // Note: --rev is now resolved via `git diff`, so we only test
     // the non-rev path here. Rev resolution is tested separately.
@@ -225,7 +258,7 @@ fn test_blast_radius_to_tool_args_with_files() {
         rev: None,
         files: Some(vec!["src/cli.rs".into()]),
         symbols: Some(vec!["sym_1234abcd".into()]),
-        report_format: Some("markdown".into()),
+        report_format: Some("readable".into()),
     };
     let json = args.to_tool_args().unwrap();
     assert!(
@@ -236,7 +269,7 @@ fn test_blast_radius_to_tool_args_with_files() {
     assert_eq!(files[0], "src/cli.rs");
     let symbols = json["symbol_ids"].as_array().unwrap();
     assert_eq!(symbols[0], "sym_1234abcd");
-    assert_eq!(json["format"], "markdown");
+    assert_eq!(json["format"], "readable");
 }
 
 #[test]

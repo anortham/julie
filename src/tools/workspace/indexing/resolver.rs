@@ -24,29 +24,24 @@ use julie_extractors::language::detect_language_from_extension;
 use std::collections::{HashMap, HashSet};
 use tracing::{info, trace, warn};
 
-/// Pre-computed context about which caller files reference which parent type names.
-/// Keeps `score_candidate` pure (no DB access during scoring).
+/// Pre-computed parent-type references used by candidate scoring.
 pub struct ParentReferenceContext {
-    /// Map from candidate parent_id → parent symbol name
     parent_names: HashMap<String, String>,
-    /// Set of (caller_file_path, parent_name) pairs with confirmed identifier references
     file_refs: HashSet<(String, String)>,
-    /// Files known to have at least one identifier in the DB.
-    /// Used to distinguish "no match" from "no data" for negative filtering.
+    scope_refs: HashSet<(String, String)>,
     files_with_identifiers: HashSet<String>,
 }
 
 impl ParentReferenceContext {
-    /// Create an empty context (no disambiguation data available).
     pub fn empty() -> Self {
         Self {
             parent_names: HashMap::new(),
             file_refs: HashSet::new(),
+            scope_refs: HashSet::new(),
             files_with_identifiers: HashSet::new(),
         }
     }
 
-    /// Create a context with pre-computed data.
     pub fn new(
         parent_names: HashMap<String, String>,
         file_refs: HashSet<(String, String)>,
@@ -55,11 +50,16 @@ impl ParentReferenceContext {
         Self {
             parent_names,
             file_refs,
+            scope_refs: HashSet::new(),
             files_with_identifiers,
         }
     }
 
-    /// Check if a caller file references a candidate's parent type.
+    fn with_scope_refs(mut self, scope_refs: HashSet<(String, String)>) -> Self {
+        self.scope_refs = scope_refs;
+        self
+    }
+
     pub fn caller_references_parent(
         &self,
         caller_file: &str,
@@ -77,8 +77,22 @@ impl ParentReferenceContext {
             .contains(&(caller_file.to_string(), parent_name.clone()))
     }
 
-    /// Check if we have identifier data for this file.
-    /// Returns false when we have no data (can't make negative judgments).
+    pub fn caller_scope_references_parent(
+        &self,
+        caller_scope_symbol_id: Option<&str>,
+        candidate_parent_id: Option<&str>,
+    ) -> bool {
+        let (Some(scope_id), Some(parent_id)) = (caller_scope_symbol_id, candidate_parent_id)
+        else {
+            return false;
+        };
+        let Some(parent_name) = self.parent_names.get(parent_id) else {
+            return false;
+        };
+        self.scope_refs
+            .contains(&(scope_id.to_string(), parent_name.clone()))
+    }
+
     pub fn caller_has_identifiers(&self, caller_file: &str) -> bool {
         self.files_with_identifiers.contains(caller_file)
     }
@@ -117,17 +131,38 @@ fn dir_of(path: &str) -> &str {
     path.rsplit_once('/').map_or("", |(dir, _)| dir)
 }
 
-/// Score a candidate symbol for disambiguation against a pending relationship.
-/// Higher score = better match. Returns 0 if the candidate should be excluded entirely.
-///
-/// Penalties can stack: a candidate in a test file (-75) with an unmatched parent
-/// (-75) loses 150 points. A same-language candidate (161 base) drops to 11; a
-/// cross-language candidate (26 base) drops to 0 and is excluded. This is
-/// intentional: test files with unmatched parents are almost never the right target.
+fn add_parent_mentions_from_text(
+    scope_id: &str,
+    text: &str,
+    parent_name_set: &HashSet<&str>,
+    refs: &mut HashSet<(String, String)>,
+) {
+    for token in text.split(|ch: char| !(ch.is_alphanumeric() || ch == '_')) {
+        if parent_name_set.contains(token) {
+            refs.insert((scope_id.to_string(), token.to_string()));
+        }
+    }
+}
+
+fn add_symbol_parent_mentions(
+    symbol: &Symbol,
+    parent_name_set: &HashSet<&str>,
+    refs: &mut HashSet<(String, String)>,
+) {
+    if let Some(signature) = symbol.signature.as_deref() {
+        add_parent_mentions_from_text(&symbol.id, signature, parent_name_set, refs);
+    }
+    if let Some(code_context) = symbol.code_context.as_deref() {
+        add_parent_mentions_from_text(&symbol.id, code_context, parent_name_set, refs);
+    }
+}
+
+/// Score a candidate symbol for disambiguation. Higher score wins; 0 excludes it.
 fn score_candidate(
     candidate: &Symbol,
     pending: &PendingRelationship,
     target: Option<&UnresolvedTarget>,
+    caller_scope_symbol_id: Option<&str>,
     parent_ctx: &ParentReferenceContext,
 ) -> u32 {
     if !is_resolvable_target(&candidate.kind) {
@@ -140,14 +175,12 @@ fn score_candidate(
     };
     score += namespace_bonus;
 
-    // Strong preference for same language (cross-language calls are rare in a single project)
     if let Some(caller_lang) = language_of(&pending.file_path) {
         if candidate.language == caller_lang {
             score += 100;
         }
     }
 
-    // Prefer symbols in the same directory tree (closer = more likely the right target)
     let caller_dir = dir_of(&pending.file_path);
     let candidate_dir = dir_of(&candidate.file_path);
     if caller_dir == candidate_dir {
@@ -156,7 +189,6 @@ fn score_candidate(
         score += 25; // Parent/child directory
     }
 
-    // Prefer callable kinds for Calls relationships
     if pending.kind == RelationshipKind::Calls
         && matches!(
             candidate.kind,
@@ -166,7 +198,6 @@ fn score_candidate(
         score += 10;
     }
 
-    // Prefer type kinds for Instantiates relationships (DI registrations target types, not constructors)
     if pending.kind == RelationshipKind::Instantiates
         && matches!(
             candidate.kind,
@@ -176,28 +207,20 @@ fn score_candidate(
         score += 10;
     }
 
-    // Import-constrained disambiguation: if the caller file references the candidate's
-    // parent type (via identifiers), this is the strongest signal for correct resolution.
-    // Dominates all other heuristics combined (max existing: 160).
+    if target.and_then(|t| t.receiver.as_ref()).is_some()
+        && parent_ctx
+            .caller_scope_references_parent(caller_scope_symbol_id, candidate.parent_id.as_deref())
+    {
+        score += 150;
+    }
+
     if parent_ctx.caller_references_parent(&pending.file_path, candidate.parent_id.as_deref()) {
         score += 200;
     } else if candidate.parent_id.is_some() && parent_ctx.caller_has_identifiers(&pending.file_path)
     {
-        // Caller has identifiers but doesn't reference this candidate's parent type.
-        // Apply a penalty (not a hard rejection) so that:
-        // - When multiple candidates exist, the one with parent confirmation (+200) wins
-        // - When only one candidate exists (unique method name), it still resolves
-        // Hard rejection here was too aggressive: methods accessed through generics,
-        // Arc<Mutex<T>>, trait objects, or re-exports wouldn't have explicit parent
-        // references in the caller file, causing legitimate call edges to be dropped.
         score = score.saturating_sub(75);
     }
 
-    // Penalize candidates in test files. Test subclasses (e.g., `class Flask(flask.Flask)`
-    // in tests/test_config.py) can otherwise win disambiguation via path proximity when
-    // the caller is also in a test directory, causing centrality to accumulate on the
-    // wrong symbol. The -75 penalty is strong enough to override proximity (+50) but
-    // not parent-reference context (+200).
     if crate::search::scoring::is_test_path(&candidate.file_path) {
         score = score.saturating_sub(75);
     }
@@ -213,19 +236,20 @@ pub fn select_best_candidate<'a>(
     pending: &PendingRelationship,
     parent_ctx: &ParentReferenceContext,
 ) -> Option<&'a Symbol> {
-    select_best_candidate_for_target(candidates, pending, None, parent_ctx)
+    select_best_candidate_for_target(candidates, pending, None, None, parent_ctx)
 }
 
 fn select_best_candidate_for_target<'a>(
     candidates: &'a [Symbol],
     pending: &PendingRelationship,
     target: Option<&UnresolvedTarget>,
+    caller_scope_symbol_id: Option<&str>,
     parent_ctx: &ParentReferenceContext,
 ) -> Option<&'a Symbol> {
     candidates
         .iter()
         .filter_map(|c| {
-            let s = score_candidate(c, pending, target, parent_ctx);
+            let s = score_candidate(c, pending, target, caller_scope_symbol_id, parent_ctx);
             if s > 0 { Some((c, s)) } else { None }
         })
         .max_by_key(|(_, score)| *score)
@@ -277,11 +301,7 @@ impl ResolutionStats {
     }
 }
 
-/// Resolve pending relationships in batch: group by callee_name, query once per
-/// unique name, then disambiguate per pending relationship.
-///
-/// This is O(unique_callee_names) DB queries instead of O(total_pendings) —
-/// a massive win when many relationships share the same callee name.
+/// Resolve pending relationships in batch.
 pub fn resolve_batch(
     pendings: &[PendingRelationship],
     db: &SymbolDatabase,
@@ -312,7 +332,6 @@ pub fn resolve_structured_batch(
         return (Vec::new(), stats);
     }
 
-    // Collect unique callee names
     let unique_names: Vec<String> = {
         let mut seen = std::collections::HashSet::new();
         pendings
@@ -328,7 +347,6 @@ pub fn resolve_structured_batch(
         unique_names.len()
     );
 
-    // Single batch query for all unique names
     let candidates_map = match db.find_symbols_by_names_batch(&unique_names) {
         Ok(map) => map,
         Err(e) => {
@@ -338,14 +356,17 @@ pub fn resolve_structured_batch(
         }
     };
 
-    // Build parent reference context for import-constrained disambiguation
     let legacy_pendings: Vec<PendingRelationship> = pendings
         .iter()
         .map(|pending| pending.pending.clone())
         .collect();
-    let parent_ctx = build_parent_reference_context(&candidates_map, &legacy_pendings, db);
+    let caller_scope_ids: Vec<&str> = pendings
+        .iter()
+        .filter_map(|pending| pending.caller_scope_symbol_id.as_deref())
+        .collect();
+    let parent_ctx =
+        build_parent_reference_context(&candidates_map, &legacy_pendings, &caller_scope_ids, db);
 
-    // Resolve each pending against the cached candidates
     let mut resolved = Vec::with_capacity(pendings.len());
     for structured in pendings {
         match candidates_map.get(&structured.target.terminal_name) {
@@ -354,6 +375,7 @@ pub fn resolve_structured_batch(
                     candidates,
                     &structured.pending,
                     Some(&structured.target),
+                    structured.caller_scope_symbol_id.as_deref(),
                     &parent_ctx,
                 ) {
                     resolved.push(build_resolved_relationship(&structured.pending, target));
@@ -377,15 +399,12 @@ pub fn resolve_structured_batch(
 }
 
 /// Build parent reference context for import-constrained disambiguation.
-///
-/// Checks which caller files reference which candidate parent types (via identifiers),
-/// enabling the resolver to prefer candidates whose parent type the caller actually uses.
 fn build_parent_reference_context(
     candidates_map: &HashMap<String, Vec<Symbol>>,
     pendings: &[PendingRelationship],
+    caller_scope_ids: &[&str],
     db: &SymbolDatabase,
 ) -> ParentReferenceContext {
-    // 1. Collect unique parent_ids from all candidates
     let parent_ids: Vec<String> = {
         let mut seen = HashSet::new();
         candidates_map
@@ -401,7 +420,6 @@ fn build_parent_reference_context(
         return ParentReferenceContext::empty();
     }
 
-    // 2. Resolve parent_ids to names
     let parent_symbols = match db.get_symbols_by_ids(&parent_ids) {
         Ok(syms) => syms,
         Err(e) => {
@@ -419,7 +437,6 @@ fn build_parent_reference_context(
         return ParentReferenceContext::empty();
     }
 
-    // 3. Collect unique caller file_paths and unique parent names
     let caller_files: Vec<&str> = {
         let mut seen = HashSet::new();
         pendings
@@ -429,12 +446,16 @@ fn build_parent_reference_context(
             .collect()
     };
 
-    let unique_parent_names: Vec<&str> = {
-        let set: HashSet<&str> = parent_names.values().map(|n| n.as_str()).collect();
-        set.into_iter().collect()
+    let parent_name_queries: Vec<String> = {
+        let mut seen = HashSet::new();
+        parent_names
+            .values()
+            .filter(|name| seen.insert(name.as_str()))
+            .cloned()
+            .collect()
     };
+    let unique_parent_names: Vec<&str> = parent_name_queries.iter().map(String::as_str).collect();
 
-    // 4. Query identifiers: which (file, parent_name) pairs exist?
     let file_refs = match db.get_identifier_presence(&caller_files, &unique_parent_names) {
         Ok(refs) => refs,
         Err(e) => {
@@ -446,8 +467,6 @@ fn build_parent_reference_context(
         }
     };
 
-    // 5. Query which caller files have any identifiers at all.
-    // Needed to distinguish "no match" (reject phantom edges) from "no data" (allow fallback).
     let files_with_identifiers = match db.has_identifiers_for_files(&caller_files) {
         Ok(files) => files,
         Err(e) => {
@@ -459,5 +478,52 @@ fn build_parent_reference_context(
         }
     };
 
+    let parent_name_set: HashSet<&str> = parent_name_queries.iter().map(String::as_str).collect();
+    let mut scope_refs = if caller_scope_ids.is_empty() {
+        HashSet::new()
+    } else {
+        let scope_ids: HashSet<&str> = caller_scope_ids.iter().copied().collect();
+        match db.get_identifiers_by_names(&parent_name_queries) {
+            Ok(refs) => refs
+                .into_iter()
+                .filter_map(|identifier| {
+                    let scope_id = identifier.containing_symbol_id?;
+                    (scope_ids.contains(scope_id.as_str())
+                        && parent_name_set.contains(identifier.name.as_str()))
+                    .then_some((scope_id, identifier.name))
+                })
+                .collect(),
+            Err(e) => {
+                warn!(
+                    "Failed to query scoped identifier presence for disambiguation: {}",
+                    e
+                );
+                HashSet::new()
+            }
+        }
+    };
+
+    if !caller_scope_ids.is_empty() {
+        let scope_ids: Vec<String> = {
+            let mut seen = HashSet::new();
+            caller_scope_ids
+                .iter()
+                .filter(|id| seen.insert(**id))
+                .map(|id| (*id).to_string())
+                .collect()
+        };
+        match db.get_symbols_by_ids(&scope_ids) {
+            Ok(symbols) => {
+                for symbol in symbols {
+                    add_symbol_parent_mentions(&symbol, &parent_name_set, &mut scope_refs);
+                }
+            }
+            Err(e) => {
+                warn!("Failed to query caller symbols for disambiguation: {}", e);
+            }
+        }
+    }
+
     ParentReferenceContext::new(parent_names, file_refs, files_with_identifiers)
+        .with_scope_refs(scope_refs)
 }

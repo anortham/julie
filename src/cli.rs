@@ -2,8 +2,8 @@ use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
 use crate::cli_tools::subcommands::{
-    BlastRadiusArgs, ContextArgs, GenericToolArgs, GlobalToolFlags, RefsArgs, SearchArgs,
-    SignalsArgs, SymbolsArgs, WorkspaceArgs,
+    BlastRadiusArgs, CallPathArgs, ContextArgs, GenericToolArgs, GlobalToolFlags, RefsArgs,
+    SearchArgs, SignalsArgs, SymbolsArgs, WorkspaceArgs,
 };
 use crate::workspace::startup_hint::{WorkspaceStartupHint, WorkspaceStartupSource};
 
@@ -55,6 +55,8 @@ pub enum Command {
     Symbols(SymbolsArgs),
     /// Get token-budgeted context for a concept or task
     Context(ContextArgs),
+    /// Trace one shortest call-graph path between two symbols
+    CallPath(CallPathArgs),
     /// Analyze blast radius of changes
     BlastRadius(BlastRadiusArgs),
     /// Manage workspaces (index, list, stats, health, etc.)

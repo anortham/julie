@@ -478,9 +478,9 @@
 
       <div class="card tool-card animate-on-scroll" data-delay="900">
         <div class="tool-name">blast_radius</div>
-        <div class="tool-desc">Impact analysis for changed symbols, files, or revisions</div>
-        <div class="terminal" aria-label="blast_radius showing impacted callers and tests for a changed function">
-          <div><span class="prompt">$ </span><span class="command">blast_radius(symbol_ids=["AuthService::validate"])</span></div>
+        <div class="tool-desc">Impact analysis for changed files, internal symbol IDs, or revisions</div>
+        <div class="terminal" aria-label="blast_radius showing impacted callers and tests for a changed file">
+          <div><span class="prompt">$ </span><span class="command">julie-server blast-radius --files src/auth/login_flow.rs</span></div>
           <div><span class="result">47 impacted symbols</span></div>
           <div><span class="result">&nbsp; High: login_flow.rs:LoginHandler::handle</span></div>
           <div><span class="result">&nbsp; Tests: auth_tests.rs, session_api.rs</span></div>
@@ -493,7 +493,7 @@
         <div class="tool-name">call_path</div>
         <div class="tool-desc">One shortest call-graph path between two symbols</div>
         <div class="terminal" aria-label="call_path tracing from UI action to database write">
-          <div><span class="prompt">$ </span><span class="command">call_path("LoginButton::onClick", "insert_session")</span></div>
+          <div><span class="prompt">$ </span><span class="command">julie-server call-path "LoginButton::onClick" "insert_session"</span></div>
           <div><span class="result">found:</span> <span class="highlight">true</span> <span class="result">hops:</span> 2</div>
           <div><span class="result">&nbsp; onClick → AuthService::login</span></div>
           <div><span class="result">&nbsp; AuthService::login → insert_session</span></div>

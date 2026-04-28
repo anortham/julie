@@ -1,7 +1,7 @@
 use crate::tools::impact::LikelyTests;
 use crate::tools::impact::ranking::RankedImpact;
 use crate::tools::impact::seed::SeedContext;
-use crate::tools::spillover::{SpilloverFormat, more_available_marker};
+use crate::tools::spillover::{SpilloverFormat, SpilloverStore, more_available_marker};
 
 /// Extra context that shapes the blast-radius header line.
 ///
@@ -12,6 +12,15 @@ pub struct BlastRadiusHeader {
     /// Inclusive `(from, to)` database revision range driving the seed, if
     /// the caller asked for a revision-range blast radius.
     pub revision_range: Option<(i64, i64)>,
+    /// True when deleted files are present. Julie does not keep historical
+    /// caller graphs for removed files, so that section is path-only.
+    pub deleted_files_path_only: bool,
+    /// Spillover handle for high-impact rows beyond the first visible page.
+    pub impact_overflow_handle: Option<String>,
+    /// Spillover handle for likely-test paths beyond the visible cap.
+    pub likely_test_paths_overflow_handle: Option<String>,
+    /// Spillover handle for related test symbols beyond the visible cap.
+    pub related_test_symbols_overflow_handle: Option<String>,
 }
 
 pub fn format_blast_radius(
@@ -19,7 +28,6 @@ pub fn format_blast_radius(
     impacts: &[RankedImpact],
     likely_tests: &LikelyTests,
     deleted_files: &[String],
-    overflow_handle: Option<&str>,
     format: SpilloverFormat,
     header: BlastRadiusHeader,
 ) -> String {
@@ -49,6 +57,8 @@ pub fn format_blast_radius(
             "Likely tests",
             &likely_tests.likely_test_paths,
             likely_tests.likely_test_paths_total,
+            "likely-test paths",
+            header.likely_test_paths_overflow_handle.as_deref(),
         ));
     }
 
@@ -57,11 +67,18 @@ pub fn format_blast_radius(
             "Related test symbols",
             &likely_tests.related_test_symbols,
             likely_tests.related_test_symbols_total,
+            "related test symbols",
+            header.related_test_symbols_overflow_handle.as_deref(),
         ));
     }
 
     if !deleted_files.is_empty() {
         let mut deleted_block = String::from("Deleted files\n");
+        if header.deleted_files_path_only {
+            deleted_block.push_str(
+                "Note: deleted-file impact is path-only because historical callers are unavailable after the file has been removed.\n",
+            );
+        }
         deleted_block.push_str(
             &deleted_files
                 .iter()
@@ -72,14 +89,20 @@ pub fn format_blast_radius(
         sections.push(deleted_block);
     }
 
-    if let Some(handle) = overflow_handle {
+    if let Some(handle) = header.impact_overflow_handle.as_deref() {
         sections.push(more_available_marker(handle));
     }
 
     sections.join(newline)
 }
 
-fn tests_block(heading: &str, entries: &[String], total: usize) -> String {
+fn tests_block(
+    heading: &str,
+    entries: &[String],
+    total: usize,
+    overflow_label: &str,
+    overflow_handle: Option<&str>,
+) -> String {
     let mut block = format!("{}\n", heading);
     block.push_str(
         &entries
@@ -95,7 +118,18 @@ fn tests_block(heading: &str, entries: &[String], total: usize) -> String {
     let shown = entries.len();
     let effective_total = total.max(shown);
     if effective_total > shown {
-        block.push_str(&format!("\n- …and {} more", effective_total - shown));
+        let remaining = effective_total - shown;
+        match overflow_handle {
+            Some(handle) => {
+                block.push_str(&format!(
+                    "\n- …and {remaining} more {overflow_label} available\n{}",
+                    more_available_marker(handle)
+                ));
+            }
+            None => {
+                block.push_str(&format!("\n- …and {remaining} more"));
+            }
+        }
     }
     block
 }
@@ -115,6 +149,26 @@ pub fn impact_rows(impacts: &[RankedImpact], start_index: usize) -> Vec<String> 
             )
         })
         .collect()
+}
+
+pub(super) fn store_list_overflow(
+    spillover_store: &SpilloverStore,
+    session_id: &str,
+    prefix: &str,
+    title: &str,
+    entries: &[String],
+    visible_limit: usize,
+    format: SpilloverFormat,
+) -> Option<String> {
+    if entries.len() <= visible_limit {
+        return None;
+    }
+
+    let rows = entries[visible_limit..]
+        .iter()
+        .map(|entry| format!("- {}", entry))
+        .collect();
+    spillover_store.store_rows(session_id, prefix, title, rows, 0, visible_limit, format)
 }
 
 fn header_line(seed_context: &SeedContext, header: &BlastRadiusHeader) -> String {

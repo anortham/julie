@@ -190,6 +190,59 @@ fn test_context_short_flags() {
 }
 
 // ---------------------------------------------------------------------------
+// call-path
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_call_path_all_flags() {
+    let args = CallPathArgs::parse_from([
+        "call-path",
+        "handle_request",
+        "write_response",
+        "--max-hops",
+        "8",
+        "--target-workspace",
+        "primary",
+        "--from-file",
+        "src/server.rs",
+        "--to-file",
+        "src/response.rs",
+    ]);
+
+    assert_eq!(args.from, "handle_request");
+    assert_eq!(args.to, "write_response");
+    assert_eq!(args.max_hops, 8);
+    assert_eq!(args.workspace.as_deref(), Some("primary"));
+    assert_eq!(args.from_file_path.as_deref(), Some("src/server.rs"));
+    assert_eq!(args.to_file_path.as_deref(), Some("src/response.rs"));
+}
+
+#[test]
+fn test_call_path_global_workspace_and_target_workspace_parse() {
+    use crate::cli::{Cli, Command};
+
+    let cli = Cli::try_parse_from([
+        "julie-server",
+        "--workspace",
+        ".",
+        "call-path",
+        "handle_request",
+        "write_response",
+        "--target-workspace",
+        "primary",
+    ])
+    .unwrap();
+
+    assert_eq!(cli.workspace.as_deref(), Some(std::path::Path::new(".")));
+    match cli.command {
+        Some(Command::CallPath(args)) => {
+            assert_eq!(args.workspace.as_deref(), Some("primary"));
+        }
+        _ => panic!("expected call-path command"),
+    }
+}
+
+// ---------------------------------------------------------------------------
 // blast-radius
 // ---------------------------------------------------------------------------
 
@@ -212,27 +265,51 @@ fn test_blast_radius_all_flags() {
         "--files",
         "src/cli.rs,src/main.rs",
         "--symbols",
-        "Command,Cli",
+        "sym_command_123,sym_cli_456",
         "--report-format",
-        "markdown",
+        "readable",
     ]);
     assert_eq!(args.rev.as_deref(), Some("HEAD~3"));
     let files = args.files.unwrap();
     assert_eq!(files, vec!["src/cli.rs", "src/main.rs"]);
     let symbols = args.symbols.unwrap();
-    assert_eq!(symbols, vec!["Command", "Cli"]);
-    assert_eq!(args.report_format.as_deref(), Some("markdown"));
+    assert_eq!(symbols, vec!["sym_command_123", "sym_cli_456"]);
+    assert_eq!(args.report_format.as_deref(), Some("readable"));
 }
 
 #[test]
 fn test_blast_radius_short_flags() {
-    let args =
-        BlastRadiusArgs::parse_from(["blast-radius", "-r", "abc123", "-f", "a.rs", "-s", "Foo"]);
+    let args = BlastRadiusArgs::parse_from([
+        "blast-radius",
+        "-r",
+        "abc123",
+        "-f",
+        "a.rs",
+        "-s",
+        "sym_foo_123",
+    ]);
     assert_eq!(args.rev.as_deref(), Some("abc123"));
     let files = args.files.unwrap();
     assert_eq!(files, vec!["a.rs"]);
     let symbols = args.symbols.unwrap();
-    assert_eq!(symbols, vec!["Foo"]);
+    assert_eq!(symbols, vec!["sym_foo_123"]);
+}
+
+#[test]
+fn test_blast_radius_help_describes_internal_symbol_ids() {
+    use crate::cli::Cli;
+
+    let mut cmd = Cli::command();
+    let blast_radius = cmd
+        .find_subcommand_mut("blast-radius")
+        .expect("blast-radius subcommand should exist");
+    let help = blast_radius.render_long_help().to_string();
+
+    assert!(help.contains("Internal symbol IDs to analyze"));
+    assert!(help.contains("Prefer --files when you know a symbol name"));
+    assert!(help.contains("julie-server blast-radius --files src/cli.rs"));
+    assert!(help.contains("julie-server blast-radius --symbols sym_1234abcd"));
+    assert!(!help.contains("FastSearchTool"));
 }
 
 #[test]
@@ -270,6 +347,27 @@ fn test_cli_blast_radius_report_format_flag_is_separate() {
     }
 
     assert_eq!(cli.tool_flags.effective_format(), OutputFormat::Text);
+}
+
+#[test]
+fn test_cli_blast_radius_report_format_rejects_global_output_values() {
+    use crate::cli::Cli;
+
+    let error = match Cli::try_parse_from([
+        "julie-server",
+        "blast-radius",
+        "--report-format",
+        "markdown",
+    ]) {
+        Ok(_) => panic!("report-format should only accept blast-radius text layouts"),
+        Err(error) => error,
+    };
+
+    let text = error.to_string();
+    assert!(
+        text.contains("compact") && text.contains("readable"),
+        "error should explain accepted report formats: {text}"
+    );
 }
 
 // ---------------------------------------------------------------------------

@@ -191,6 +191,97 @@ fn blast_radius_tool_accepts_stringified_include_tests() {
 }
 
 #[test]
+fn blast_radius_tool_schema_describes_inputs() {
+    use crate::tools::impact::BlastRadiusTool;
+
+    let schema = serde_json::to_value(schemars::schema_for!(BlastRadiusTool)).unwrap();
+    let properties = schema
+        .get("properties")
+        .and_then(serde_json::Value::as_object)
+        .expect("BlastRadiusTool schema should expose input properties");
+
+    let expected_fragments: [(&str, &[&str]); 9] = [
+        ("symbol_ids", &["symbol ids"]),
+        ("file_paths", &["changed files"]),
+        ("from_revision", &["julie database revision"]),
+        ("to_revision", &["julie database revision"]),
+        ("max_depth", &["relationship hops"]),
+        ("limit", &["visible impact rows"]),
+        ("include_tests", &["likely tests"]),
+        ("format", &["compact", "readable"]),
+        ("workspace", &["workspace target"]),
+    ];
+
+    for (field, fragments) in expected_fragments {
+        let description = properties
+            .get(field)
+            .and_then(|property| property.get("description"))
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("");
+        let description_lower = description.to_ascii_lowercase();
+        for fragment in fragments {
+            assert!(
+                description_lower.contains(fragment),
+                "schema description for {field} should mention `{fragment}`: {description}"
+            );
+        }
+    }
+}
+
+#[test]
+fn call_path_tool_schema_describes_inputs() {
+    use crate::tools::navigation::call_path::CallPathTool;
+
+    let schema = serde_json::to_value(schemars::schema_for!(CallPathTool)).unwrap();
+    let properties = schema
+        .get("properties")
+        .and_then(serde_json::Value::as_object)
+        .expect("CallPathTool schema should expose input properties");
+
+    let expected_fragments: [(&str, &[&str]); 6] = [
+        ("from", &["start", "symbol"]),
+        ("to", &["target", "symbol"]),
+        ("from_file_path", &["file", "hint"]),
+        ("to_file_path", &["file", "hint"]),
+        ("workspace", &["workspace"]),
+        ("max_hops", &["1", "32"]),
+    ];
+
+    for (field, fragments) in expected_fragments {
+        let description = properties
+            .get(field)
+            .and_then(|property| property.get("description"))
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("");
+        let description_lower = description.to_ascii_lowercase();
+        for fragment in fragments {
+            assert!(
+                description_lower.contains(fragment),
+                "schema description for {field} should mention `{fragment}`: {description}"
+            );
+        }
+    }
+
+    let max_hops_schema = properties
+        .get("max_hops")
+        .expect("max_hops should be in the CallPathTool schema");
+    assert_eq!(
+        max_hops_schema
+            .get("minimum")
+            .and_then(|value| value.as_u64()),
+        Some(1),
+        "schema should expose the lower max_hops bound"
+    );
+    assert_eq!(
+        max_hops_schema
+            .get("maximum")
+            .and_then(|value| value.as_u64()),
+        Some(32),
+        "schema should expose the upper max_hops bound"
+    );
+}
+
+#[test]
 fn get_context_tool_accepts_stringified_task_signals() {
     use crate::tools::get_context::GetContextTool;
 

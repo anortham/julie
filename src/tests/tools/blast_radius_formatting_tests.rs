@@ -57,9 +57,11 @@ fn test_format_blast_radius_includes_sections_and_overflow_marker() {
         &impacts,
         &likely_tests,
         &seed_context.deleted_files,
-        Some("br_123"),
         SpilloverFormat::Readable,
-        BlastRadiusHeader::default(),
+        BlastRadiusHeader {
+            impact_overflow_handle: Some("br_123".to_string()),
+            ..BlastRadiusHeader::default()
+        },
     );
 
     assert!(text.contains("Blast radius from 1 changed file, 1 seed symbol"));
@@ -88,10 +90,10 @@ fn test_format_header_includes_revision_range_when_set() {
         &[],
         &likely_tests,
         &[],
-        None,
         SpilloverFormat::Compact,
         BlastRadiusHeader {
             revision_range: Some((42, 48)),
+            ..BlastRadiusHeader::default()
         },
     );
 
@@ -128,7 +130,6 @@ fn test_likely_tests_overflow_marker_appears_when_truncated() {
         &[],
         &likely_tests,
         &[],
-        None,
         SpilloverFormat::Compact,
         BlastRadiusHeader::default(),
     );
@@ -161,7 +162,6 @@ fn test_related_test_symbols_overflow_marker_independent_of_paths() {
         &[],
         &likely_tests,
         &[],
-        None,
         SpilloverFormat::Compact,
         BlastRadiusHeader::default(),
     );

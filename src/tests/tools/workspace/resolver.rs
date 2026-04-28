@@ -5,13 +5,17 @@
 
 #[cfg(test)]
 mod resolver_tests {
+    use crate::database::{FileInfo, SymbolDatabase};
     use crate::tools::workspace::indexing::resolver::{
-        ParentReferenceContext, build_resolved_relationship, select_best_candidate,
+        ParentReferenceContext, build_resolved_relationship, resolve_structured_batch,
+        select_best_candidate,
     };
     use julie_extractors::base::{
-        PendingRelationship, RelationshipKind, Symbol, SymbolKind, Visibility,
+        Identifier, IdentifierKind, PendingRelationship, RelationshipKind,
+        StructuredPendingRelationship, Symbol, SymbolKind, UnresolvedTarget, Visibility,
     };
     use std::collections::{HashMap, HashSet};
+    use tempfile::TempDir;
 
     /// Helper to create a minimal Symbol for testing
     fn make_symbol(name: &str, kind: SymbolKind, language: &str, file_path: &str) -> Symbol {
@@ -49,6 +53,45 @@ mod resolver_tests {
             file_path: file_path.to_string(),
             line_number: 42,
             confidence: 0.8,
+        }
+    }
+
+    fn make_file_info(path: &str, language: &str) -> FileInfo {
+        FileInfo {
+            path: path.to_string(),
+            language: language.to_string(),
+            hash: format!("hash_{path}"),
+            size: 100,
+            last_modified: 1000,
+            last_indexed: 0,
+            symbol_count: 1,
+            line_count: 0,
+            content: None,
+        }
+    }
+
+    fn make_identifier(
+        name: &str,
+        kind: IdentifierKind,
+        file_path: &str,
+        containing_symbol_id: Option<&str>,
+    ) -> Identifier {
+        Identifier {
+            id: format!("id_{}_{}", name, file_path.replace('/', "_")),
+            name: name.to_string(),
+            kind,
+            language: "rust".to_string(),
+            file_path: file_path.to_string(),
+            start_line: 1,
+            start_column: 0,
+            end_line: 1,
+            end_column: name.len() as u32,
+            start_byte: 0,
+            end_byte: name.len() as u32,
+            containing_symbol_id: containing_symbol_id.map(str::to_string),
+            target_symbol_id: None,
+            confidence: 1.0,
+            code_context: None,
         }
     }
 
@@ -441,6 +484,191 @@ mod resolver_tests {
             "Auth/AuthenticateResult.cs",
             "Should prefer the candidate whose parent type is referenced by the caller file"
         );
+    }
+
+    #[test]
+    fn test_receiver_scoped_type_context_beats_same_file_method() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        let mut db = SymbolDatabase::new(&db_path).unwrap();
+
+        for path in ["src/handler.rs", "src/tools/navigation/call_path.rs"] {
+            db.store_file_info(&make_file_info(path, "rust")).unwrap();
+        }
+
+        let mut handler_parent = make_symbol(
+            "JulieServerHandler",
+            SymbolKind::Struct,
+            "rust",
+            "src/handler.rs",
+        );
+        handler_parent.id = "handler_type".to_string();
+        let mut tool_parent = make_symbol(
+            "CallPathTool",
+            SymbolKind::Struct,
+            "rust",
+            "src/tools/navigation/call_path.rs",
+        );
+        tool_parent.id = "call_path_tool".to_string();
+        let mut handler_method = make_child_symbol(
+            "call_tool",
+            SymbolKind::Method,
+            "rust",
+            "src/handler.rs",
+            "handler_type",
+        );
+        handler_method.id = "handler_call_tool".to_string();
+        let mut caller_method = make_child_symbol(
+            "call_path",
+            SymbolKind::Method,
+            "rust",
+            "src/handler.rs",
+            "handler_type",
+        );
+        caller_method.id = "handler_call_path".to_string();
+        let mut tool_method = make_child_symbol(
+            "call_tool",
+            SymbolKind::Method,
+            "rust",
+            "src/tools/navigation/call_path.rs",
+            "call_path_tool",
+        );
+        tool_method.id = "call_path_call_tool".to_string();
+
+        db.store_symbols_transactional(&[
+            handler_parent,
+            tool_parent,
+            handler_method,
+            caller_method,
+            tool_method,
+        ])
+        .unwrap();
+
+        db.bulk_store_identifiers(
+            &[
+                make_identifier(
+                    "JulieServerHandler",
+                    IdentifierKind::TypeUsage,
+                    "src/handler.rs",
+                    None,
+                ),
+                make_identifier(
+                    "CallPathTool",
+                    IdentifierKind::TypeUsage,
+                    "src/handler.rs",
+                    Some("handler_call_path"),
+                ),
+            ],
+            "test_workspace",
+        )
+        .unwrap();
+
+        let pending = StructuredPendingRelationship::new(
+            "handler_call_path".to_string(),
+            UnresolvedTarget {
+                display_name: "params.call_tool".to_string(),
+                terminal_name: "call_tool".to_string(),
+                receiver: Some("params".to_string()),
+                namespace_path: Vec::new(),
+                import_context: None,
+            },
+            Some("handler_call_path".to_string()),
+            RelationshipKind::Calls,
+            "src/handler.rs".to_string(),
+            2468,
+            0.9,
+        );
+
+        let (resolved, stats) = resolve_structured_batch(&[pending], &db);
+
+        assert_eq!(stats.resolved, 1);
+        assert_eq!(resolved.len(), 1);
+        assert_eq!(resolved[0].to_symbol_id, "call_path_call_tool");
+    }
+
+    #[test]
+    fn test_receiver_signature_type_context_beats_same_file_method() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        let mut db = SymbolDatabase::new(&db_path).unwrap();
+
+        for path in ["src/handler.rs", "src/tools/navigation/call_path.rs"] {
+            db.store_file_info(&make_file_info(path, "rust")).unwrap();
+        }
+
+        let mut handler_parent = make_symbol(
+            "JulieServerHandler",
+            SymbolKind::Struct,
+            "rust",
+            "src/handler.rs",
+        );
+        handler_parent.id = "handler_type".to_string();
+        let mut tool_parent = make_symbol(
+            "CallPathTool",
+            SymbolKind::Struct,
+            "rust",
+            "src/tools/navigation/call_path.rs",
+        );
+        tool_parent.id = "call_path_tool".to_string();
+        let mut handler_method = make_child_symbol(
+            "call_tool",
+            SymbolKind::Method,
+            "rust",
+            "src/handler.rs",
+            "handler_type",
+        );
+        handler_method.id = "handler_call_tool".to_string();
+        let mut caller_method = make_child_symbol(
+            "call_path",
+            SymbolKind::Method,
+            "rust",
+            "src/handler.rs",
+            "handler_type",
+        );
+        caller_method.id = "handler_call_path".to_string();
+        caller_method.signature = Some(
+            "async fn call_path(&self, Parameters(params): Parameters<crate::tools::navigation::CallPathTool>)"
+                .to_string(),
+        );
+        let mut tool_method = make_child_symbol(
+            "call_tool",
+            SymbolKind::Method,
+            "rust",
+            "src/tools/navigation/call_path.rs",
+            "call_path_tool",
+        );
+        tool_method.id = "call_path_call_tool".to_string();
+
+        db.store_symbols_transactional(&[
+            handler_parent,
+            tool_parent,
+            handler_method,
+            caller_method,
+            tool_method,
+        ])
+        .unwrap();
+
+        let pending = StructuredPendingRelationship::new(
+            "handler_call_path".to_string(),
+            UnresolvedTarget {
+                display_name: "params.call_tool".to_string(),
+                terminal_name: "call_tool".to_string(),
+                receiver: Some("params".to_string()),
+                namespace_path: Vec::new(),
+                import_context: None,
+            },
+            Some("handler_call_path".to_string()),
+            RelationshipKind::Calls,
+            "src/handler.rs".to_string(),
+            2468,
+            0.9,
+        );
+
+        let (resolved, stats) = resolve_structured_batch(&[pending], &db);
+
+        assert_eq!(stats.resolved, 1);
+        assert_eq!(resolved.len(), 1);
+        assert_eq!(resolved[0].to_symbol_id, "call_path_call_tool");
     }
 
     #[test]

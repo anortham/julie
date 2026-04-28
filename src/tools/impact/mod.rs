@@ -16,9 +16,9 @@ use crate::database::{IdentifierRef, SymbolDatabase};
 use crate::handler::JulieServerHandler;
 use crate::search::scoring::is_test_path;
 use crate::tools::navigation::resolution::{WorkspaceTarget, resolve_workspace_filter};
-use crate::tools::spillover::SpilloverFormat;
+use crate::tools::spillover::{SpilloverFormat, SpilloverStore};
 
-use self::formatting::{BlastRadiusHeader, format_blast_radius, impact_rows};
+use self::formatting::{BlastRadiusHeader, format_blast_radius, impact_rows, store_list_overflow};
 use self::ranking::RankedImpact;
 use self::seed::SeedContext;
 
@@ -38,49 +38,58 @@ fn default_workspace() -> Option<String> {
     Some("primary".to_string())
 }
 
-/// Cap on how many paths/names we surface under Likely tests / Related test
-/// symbols. Shared across both collections so formatter output stays bounded.
+/// Cap on visible paths/names under Likely tests / Related test symbols.
+/// Overflow entries are stored in spillover pages.
 const LIKELY_TESTS_LIMIT: usize = 10;
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct BlastRadiusTool {
+    /// Symbol ids to seed the impact walk. Use ids from search or navigation tools.
     #[serde(
         default,
         deserialize_with = "crate::utils::serde_lenient::deserialize_vec_string_lenient"
     )]
     pub symbol_ids: Vec<String>,
+    /// Changed files to use as seeds. Julie resolves current symbols in each path.
     #[serde(
         default,
         deserialize_with = "crate::utils::serde_lenient::deserialize_vec_string_lenient"
     )]
     pub file_paths: Vec<String>,
+    /// Start Julie database revision number for a revision-range seed. Requires `to_revision`.
     #[serde(
         default,
         deserialize_with = "crate::utils::serde_lenient::deserialize_option_i64_lenient"
     )]
     pub from_revision: Option<i64>,
+    /// End Julie database revision number. Requires `from_revision` and must be greater.
     #[serde(
         default,
         deserialize_with = "crate::utils::serde_lenient::deserialize_option_i64_lenient"
     )]
     pub to_revision: Option<i64>,
+    /// Maximum relationship hops to walk outward from seed symbols.
     #[serde(
         default = "default_max_depth",
         deserialize_with = "crate::utils::serde_lenient::deserialize_u32_lenient"
     )]
     pub max_depth: u32,
+    /// Maximum visible impact rows in the first response. Extra rows use spillover.
     #[serde(
         default = "default_limit",
         deserialize_with = "crate::utils::serde_lenient::deserialize_u32_lenient"
     )]
     pub limit: u32,
+    /// Include likely tests and related test symbols when Julie can infer them.
     #[serde(
         default = "default_include_tests",
         deserialize_with = "crate::utils::serde_lenient::deserialize_bool_lenient"
     )]
     pub include_tests: bool,
+    /// Output format. Accepted values: `compact` and `readable`.
     #[serde(default)]
     pub format: Option<String>,
+    /// Workspace target. Use `primary` or a workspace id opened through `manage_workspace`.
     #[serde(default = "default_workspace")]
     pub workspace: Option<String>,
 }
@@ -110,6 +119,19 @@ pub struct LikelyTests {
 impl LikelyTests {
     pub fn is_empty(&self) -> bool {
         self.likely_test_paths.is_empty() && self.related_test_symbols.is_empty()
+    }
+
+    fn visible(&self, limit: usize) -> Self {
+        let mut visible = self.clone();
+        visible.likely_test_paths_total = self
+            .likely_test_paths_total
+            .max(self.likely_test_paths.len());
+        visible.related_test_symbols_total = self
+            .related_test_symbols_total
+            .max(self.related_test_symbols.len());
+        visible.likely_test_paths.truncate(limit);
+        visible.related_test_symbols.truncate(limit);
+        visible
     }
 }
 
@@ -165,7 +187,7 @@ fn run_with_db(
     tool: &BlastRadiusTool,
     db: &SymbolDatabase,
     workspace_id: &str,
-    spillover_store: &crate::tools::spillover::SpilloverStore,
+    spillover_store: &SpilloverStore,
     session_id: &str,
 ) -> Result<String> {
     let seed_context = seed::resolve_seed_context(tool, db, workspace_id)?;
@@ -187,7 +209,7 @@ fn run_with_db(
         Some(value) => SpilloverFormat::parse_strict(value).map_err(|msg| anyhow!(msg))?,
         None => SpilloverFormat::Compact,
     };
-    let overflow_handle = if ranked_impacts.len() > page_limit {
+    let impact_overflow_handle = if ranked_impacts.len() > page_limit {
         spillover_store.store_rows(
             session_id,
             "br",
@@ -200,20 +222,42 @@ fn run_with_db(
     } else {
         None
     };
+    let likely_test_paths_overflow_handle = store_list_overflow(
+        spillover_store,
+        session_id,
+        "brltp",
+        "Blast radius likely-test paths overflow",
+        &likely_tests.likely_test_paths,
+        LIKELY_TESTS_LIMIT,
+        format,
+    );
+    let related_test_symbols_overflow_handle = store_list_overflow(
+        spillover_store,
+        session_id,
+        "brlts",
+        "Blast radius related test symbols overflow",
+        &likely_tests.related_test_symbols,
+        LIKELY_TESTS_LIMIT,
+        format,
+    );
+    let visible_likely_tests = likely_tests.visible(LIKELY_TESTS_LIMIT);
 
     let header = BlastRadiusHeader {
         revision_range: match (tool.from_revision, tool.to_revision) {
             (Some(from), Some(to)) => Some((from, to)),
             _ => None,
         },
+        deleted_files_path_only: !seed_context.deleted_files.is_empty(),
+        impact_overflow_handle,
+        likely_test_paths_overflow_handle,
+        related_test_symbols_overflow_handle,
     };
 
     Ok(format_blast_radius(
         &seed_context,
         &visible_impacts,
-        &likely_tests,
+        &visible_likely_tests,
         &seed_context.deleted_files,
-        overflow_handle.as_deref(),
         format,
         header,
     ))
@@ -233,6 +277,10 @@ fn collect_likely_tests(
         .collect();
     let seed_ids: HashSet<String> = seed_context
         .seed_symbols
+        .iter()
+        .map(|symbol| symbol.id.clone())
+        .collect();
+    let relevant_ids: HashSet<String> = relevant_symbols
         .iter()
         .map(|symbol| symbol.id.clone())
         .collect();
@@ -275,7 +323,7 @@ fn collect_likely_tests(
     }
 
     if !tests.is_empty() {
-        truncate(&mut tests);
+        finalize_likely_tests(&mut tests);
         return Ok(tests);
     }
 
@@ -305,7 +353,7 @@ fn collect_likely_tests(
     }
 
     if !tests.likely_test_paths.is_empty() {
-        truncate(&mut tests);
+        finalize_likely_tests(&mut tests);
         return Ok(tests);
     }
 
@@ -332,7 +380,7 @@ fn collect_likely_tests(
         .filter(|iref| {
             iref.target_symbol_id
                 .as_ref()
-                .is_some_and(|target| seed_ids.contains(target))
+                .is_some_and(|target| relevant_ids.contains(target))
         })
         .cloned()
         .collect();
@@ -375,7 +423,7 @@ fn collect_likely_tests(
     }
 
     if !tests.is_empty() {
-        truncate(&mut tests);
+        finalize_likely_tests(&mut tests);
         return Ok(tests);
     }
 
@@ -406,7 +454,7 @@ fn collect_likely_tests(
         }
     }
 
-    truncate(&mut tests);
+    finalize_likely_tests(&mut tests);
     Ok(tests)
 }
 
@@ -416,14 +464,11 @@ fn push_unique(values: &mut Vec<String>, seen: &mut HashSet<String>, candidate: 
     }
 }
 
-fn truncate(tests: &mut LikelyTests) {
-    // Capture pre-truncate totals so the formatter can emit an overflow marker
-    // per collection without re-counting. Independent caps: paths and
-    // symbol names never share a budget.
+fn finalize_likely_tests(tests: &mut LikelyTests) {
+    // Capture totals so the formatter can emit an overflow marker per
+    // collection. Independent caps: paths and symbol names never share a budget.
     tests.likely_test_paths_total = tests.likely_test_paths.len();
     tests.related_test_symbols_total = tests.related_test_symbols.len();
-    tests.likely_test_paths.truncate(LIKELY_TESTS_LIMIT);
-    tests.related_test_symbols.truncate(LIKELY_TESTS_LIMIT);
 }
 
 fn sort_identifier_refs(refs: &mut [IdentifierRef]) {

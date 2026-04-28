@@ -64,16 +64,18 @@ pub fn walk_impacts(
             }
         }
 
-        // Identifier-based expansion: fill in callers that only appear in the
-        // identifiers table (TypeScript type usages, calls, imports). Merge
-        // AFTER relationship edges so first-seen wins — relationship edges
-        // take priority over identifier-derived ones.
+        // Identifier-based expansion fills in callers that only appear in the
+        // identifiers table (TypeScript type usages, calls, imports). Pick the
+        // strongest identifier edge per source, then merge after relationship
+        // rows so stored relationships keep priority over fallback edges.
         let identifier_edges = identifier_incoming_edges(db, &frontier_symbols, &visited)?;
         let fallback_target_id = if frontier_ids.len() == 1 {
             frontier_ids.first().cloned()
         } else {
             None
         };
+        let mut best_identifier_by_source: HashMap<String, (RelationshipKind, Option<String>)> =
+            HashMap::new();
         for edge in identifier_edges {
             if visited.contains(&edge.container_id) {
                 continue;
@@ -82,7 +84,16 @@ pub fn walk_impacts(
                 edge.relationship_kind,
                 edge.target_symbol_id.or_else(|| fallback_target_id.clone()),
             );
-            best_by_source.entry(edge.container_id).or_insert(candidate);
+            let should_replace = best_identifier_by_source
+                .get(&edge.container_id)
+                .is_none_or(|current| relation_order(&candidate) < relation_order(current));
+
+            if should_replace {
+                best_identifier_by_source.insert(edge.container_id, candidate);
+            }
+        }
+        for (source_id, candidate) in best_identifier_by_source {
+            best_by_source.entry(source_id).or_insert(candidate);
         }
 
         if best_by_source.is_empty() {
@@ -145,6 +156,7 @@ pub fn walk_impacts(
 fn normalized_kind(relationship: &Relationship) -> Option<RelationshipKind> {
     match relationship.kind {
         RelationshipKind::Calls => Some(RelationshipKind::Calls),
+        RelationshipKind::Extends => Some(RelationshipKind::Extends),
         RelationshipKind::Overrides => Some(RelationshipKind::Overrides),
         RelationshipKind::Implements => Some(RelationshipKind::Implements),
         RelationshipKind::Instantiates => Some(RelationshipKind::Instantiates),

@@ -5,7 +5,7 @@ use anyhow::{Result, anyhow};
 use super::BlastRadiusTool;
 use crate::database::RevisionChangeKind;
 use crate::database::SymbolDatabase;
-use crate::extractors::Symbol;
+use crate::extractors::{Symbol, SymbolKind};
 
 #[derive(Debug, Clone)]
 pub struct SeedContext {
@@ -48,7 +48,7 @@ pub fn resolve_seed_context(
 
     for file_path in &tool.file_paths {
         changed_files.push(file_path.clone());
-        seed_symbols.extend(db.get_symbols_for_file(file_path)?);
+        seed_symbols.extend(file_seed_symbols(db, file_path)?);
     }
 
     if let (Some(from_revision), Some(to_revision)) = (tool.from_revision, tool.to_revision) {
@@ -59,7 +59,7 @@ pub fn resolve_seed_context(
                 RevisionChangeKind::Deleted => deleted_files.push(change.file_path),
                 RevisionChangeKind::Added | RevisionChangeKind::Modified => {
                     changed_files.push(change.file_path.clone());
-                    seed_symbols.extend(db.get_symbols_for_file(&change.file_path)?);
+                    seed_symbols.extend(file_seed_symbols(db, &change.file_path)?);
                 }
             }
         }
@@ -84,6 +84,27 @@ pub fn resolve_seed_context(
         changed_files,
         deleted_files,
     })
+}
+
+fn file_seed_symbols(db: &SymbolDatabase, file_path: &str) -> Result<Vec<Symbol>> {
+    Ok(db
+        .get_symbols_for_file(file_path)?
+        .into_iter()
+        .filter(|symbol| is_file_path_seed_kind(&symbol.kind))
+        .collect())
+}
+
+fn is_file_path_seed_kind(kind: &SymbolKind) -> bool {
+    !matches!(
+        kind,
+        SymbolKind::Import
+            | SymbolKind::Export
+            | SymbolKind::Field
+            | SymbolKind::EnumMember
+            | SymbolKind::Property
+            | SymbolKind::Variable
+            | SymbolKind::Constant
+    )
 }
 
 fn validate_request(tool: &BlastRadiusTool) -> Result<()> {

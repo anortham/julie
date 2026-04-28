@@ -246,7 +246,29 @@ fn scoped_identifier_to_unresolved_target(
     })
 }
 
-/// Handle a call target - create Relationship or PendingRelationship based on target type
+fn add_structured_pending_call(
+    extractor: &mut RustExtractor,
+    caller: &Symbol,
+    call_node: Node,
+    unresolved_target: UnresolvedTarget,
+    confidence: f32,
+) {
+    let pending = extractor.get_base_mut().create_pending_relationship(
+        caller.id.clone(),
+        unresolved_target,
+        RelationshipKind::Calls,
+        &call_node,
+        Some(caller.id.clone()),
+        Some(confidence),
+    );
+    extractor.add_structured_pending_relationship(pending);
+}
+
+fn receiver_is_self(target: &UnresolvedTarget) -> bool {
+    matches!(target.receiver.as_deref(), Some("self"))
+}
+
+/// Handle a call target and decide whether it can be resolved inside this file.
 fn handle_call_target(
     extractor: &mut RustExtractor,
     call_node: Node,
@@ -270,33 +292,19 @@ fn handle_call_target(
     let file_path = extractor.get_base_mut().file_path.clone();
 
     if !unresolved_target.namespace_path.is_empty() {
-        let pending = extractor.get_base_mut().create_pending_relationship(
-            caller.id.clone(),
-            unresolved_target,
-            RelationshipKind::Calls,
-            &call_node,
-            Some(caller.id.clone()),
-            Some(0.7),
-        );
-        extractor.add_structured_pending_relationship(pending);
+        add_structured_pending_call(extractor, caller, call_node, unresolved_target, 0.7);
         return;
     }
 
     // Check if we can resolve the callee locally
     match symbol_map.get(callee_name) {
         Some(called_symbol) if called_symbol.kind == SymbolKind::Import => {
-            // Target is an Import symbol - need cross-file resolution
-            // Don't create relationship pointing to Import (useless for trace_call_path)
-            // Instead, create a PendingRelationship with the callee name
-            let pending = extractor.get_base_mut().create_pending_relationship(
-                caller.id.clone(),
-                unresolved_target,
-                RelationshipKind::Calls,
-                &call_node,
-                Some(caller.id.clone()),
-                Some(0.8),
-            );
-            extractor.add_structured_pending_relationship(pending);
+            add_structured_pending_call(extractor, caller, call_node, unresolved_target, 0.8);
+        }
+        Some(_)
+            if unresolved_target.receiver.is_some() && !receiver_is_self(&unresolved_target) =>
+        {
+            add_structured_pending_call(extractor, caller, call_node, unresolved_target, 0.7);
         }
         Some(called_symbol) => {
             // Target is a local function/method - create resolved Relationship
@@ -318,17 +326,7 @@ fn handle_call_target(
             });
         }
         None => {
-            // Target not found in local symbols - likely a method on imported type
-            // Create PendingRelationship for cross-file resolution
-            let pending = extractor.get_base_mut().create_pending_relationship(
-                caller.id.clone(),
-                unresolved_target,
-                RelationshipKind::Calls,
-                &call_node,
-                Some(caller.id.clone()),
-                Some(0.7),
-            );
-            extractor.add_structured_pending_relationship(pending);
+            add_structured_pending_call(extractor, caller, call_node, unresolved_target, 0.7);
         }
     }
 }

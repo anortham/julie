@@ -79,6 +79,77 @@ fn caller() {
 }
 
 #[test]
+fn test_receiver_method_call_stays_pending_when_local_method_shares_name() {
+    let code = r#"
+struct Handler;
+struct CallPathTool;
+
+impl Handler {
+    fn call_tool(&self) {}
+
+    async fn call_path(&self, params: CallPathTool) {
+        params.call_tool(self).await;
+    }
+}
+"#;
+    let (symbols, relationships, structured_pending) = extract_with_relationships(code);
+
+    let local_call_tool = symbols
+        .iter()
+        .find(|symbol| symbol.name == "call_tool")
+        .expect("local call_tool method should be extracted");
+    assert!(
+        !relationships
+            .iter()
+            .any(|relationship| relationship.kind == RelationshipKind::Calls
+                && relationship.to_symbol_id == local_call_tool.id),
+        "receiver-qualified params.call_tool() must not resolve to the local call_tool method"
+    );
+
+    let pending = structured_pending
+        .iter()
+        .find(|pending| pending.target.display_name == "params.call_tool")
+        .expect("receiver-qualified call should create structured pending target metadata");
+    assert_eq!(pending.target.terminal_name, "call_tool");
+    assert_eq!(pending.target.receiver.as_deref(), Some("params"));
+    assert!(pending.target.namespace_path.is_empty());
+}
+
+#[test]
+fn test_self_receiver_method_call_resolves_local_method() {
+    let code = r#"
+struct Handler;
+
+impl Handler {
+    fn call_tool(&self) {}
+
+    fn call_path(&self) {
+        self.call_tool();
+    }
+}
+"#;
+    let (symbols, relationships, structured_pending) = extract_with_relationships(code);
+
+    let local_call_tool = symbols
+        .iter()
+        .find(|symbol| symbol.name == "call_tool")
+        .expect("local call_tool method should be extracted");
+    assert!(
+        relationships
+            .iter()
+            .any(|relationship| relationship.kind == RelationshipKind::Calls
+                && relationship.to_symbol_id == local_call_tool.id),
+        "self.call_tool() should resolve to the local method"
+    );
+    assert!(
+        !structured_pending
+            .iter()
+            .any(|pending| pending.target.display_name == "self.call_tool"),
+        "self.call_tool() should not go through cross-file pending resolution"
+    );
+}
+
+#[test]
 fn test_std_hashmap_new_scoped_call_preserves_namespace_without_local_resolution() {
     let code = r#"
 fn new() {}

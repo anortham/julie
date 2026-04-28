@@ -14,7 +14,8 @@ use crate::mcp_compat::CallToolResult;
 
 use super::CliToolCommand;
 use super::subcommands::{
-    BlastRadiusArgs, ContextArgs, GenericToolArgs, RefsArgs, SearchArgs, SymbolsArgs, WorkspaceArgs,
+    BlastRadiusArgs, CallPathArgs, ContextArgs, GenericToolArgs, RefsArgs, SearchArgs, SymbolsArgs,
+    WorkspaceArgs,
 };
 
 fn resolve_git_diff_file_paths(rev: &str) -> Result<Vec<String>> {
@@ -286,6 +287,44 @@ impl CliToolCommand for ContextArgs {
             max_hops: self.max_hops,
             prefer_tests: if self.prefer_tests { Some(true) } else { None },
         };
+        tool.call_tool(handler).await
+    }
+}
+
+// ---------------------------------------------------------------------------
+// call-path -> call_path
+// ---------------------------------------------------------------------------
+
+#[async_trait]
+impl CliToolCommand for CallPathArgs {
+    fn tool_name(&self) -> &'static str {
+        "call_path"
+    }
+
+    fn to_tool_args(&self) -> Result<Value> {
+        let mut args = serde_json::json!({
+            "from": self.from,
+            "to": self.to,
+            "max_hops": self.max_hops,
+        });
+
+        if let Some(ref workspace) = self.workspace {
+            args["workspace"] = Value::String(workspace.clone());
+        }
+        if let Some(ref path) = self.from_file_path {
+            args["from_file_path"] = Value::String(path.clone());
+        }
+        if let Some(ref path) = self.to_file_path {
+            args["to_file_path"] = Value::String(path.clone());
+        }
+
+        Ok(args)
+    }
+
+    async fn call_standalone(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
+        use crate::tools::navigation::CallPathTool;
+
+        let tool: CallPathTool = serde_json::from_value(self.to_tool_args()?)?;
         tool.call_tool(handler).await
     }
 }

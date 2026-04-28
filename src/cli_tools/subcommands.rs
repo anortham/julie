@@ -187,17 +187,58 @@ pub struct ContextArgs {
 }
 
 // ---------------------------------------------------------------------------
+// call-path
+// ---------------------------------------------------------------------------
+
+/// Trace one shortest call-graph path between two symbols.
+///
+/// Examples:
+///   julie-server call-path "LoginButton::onClick" "insert_session"
+///   julie-server call-path handle_request write_response --from-file src/server.rs --to-file src/response.rs
+#[derive(Debug, Clone, Parser)]
+pub struct CallPathArgs {
+    /// Source symbol name
+    pub from: String,
+
+    /// Target symbol name
+    pub to: String,
+
+    /// Maximum relationship hops to traverse
+    #[arg(long, default_value = "6")]
+    pub max_hops: u32,
+
+    /// Tool workspace target: primary or a workspace id opened through manage_workspace
+    #[arg(id = "target_workspace", long = "target-workspace")]
+    pub workspace: Option<String>,
+
+    /// File path hint for the source symbol when names are ambiguous
+    #[arg(long = "from-file")]
+    pub from_file_path: Option<String>,
+
+    /// File path hint for the target symbol when names are ambiguous
+    #[arg(long = "to-file")]
+    pub to_file_path: Option<String>,
+}
+
+// ---------------------------------------------------------------------------
 // blast-radius
 // ---------------------------------------------------------------------------
 
-/// Analyze what would break if symbols or files change.
+/// Analyze what would break if files, internal symbol IDs, or revisions change.
 ///
 /// Examples:
 ///   julie-server blast-radius --files src/cli.rs
-///   julie-server blast-radius --symbols FastSearchTool --report-format readable
+///   julie-server blast-radius --symbols sym_1234abcd --report-format readable
 ///   julie-server blast-radius --format markdown
 ///   julie-server blast-radius --rev HEAD~3
 #[derive(Debug, Clone, Parser)]
+#[command(after_help = "Examples:
+  julie-server blast-radius --files src/cli.rs
+  julie-server blast-radius --symbols sym_1234abcd --report-format readable
+  julie-server blast-radius --format markdown
+  julie-server blast-radius --rev HEAD~3
+
+Prefer --files when you know a symbol name or file path. --symbols accepts internal Julie symbol IDs only.")]
 pub struct BlastRadiusArgs {
     /// Git revision or range (e.g. HEAD~3, abc123..def456)
     #[arg(short = 'r', long)]
@@ -207,12 +248,13 @@ pub struct BlastRadiusArgs {
     #[arg(short = 'f', long, value_delimiter = ',')]
     pub files: Option<Vec<String>>,
 
-    /// Symbol names to analyze (comma-separated)
+    /// Internal symbol IDs to analyze (comma-separated).
+    /// Prefer --files when you know a symbol name or file path.
     #[arg(short = 's', long, value_delimiter = ',')]
     pub symbols: Option<Vec<String>>,
 
     /// Blast-radius text layout: readable or compact
-    #[arg(long = "report-format")]
+    #[arg(long = "report-format", value_parser = ["readable", "compact"])]
     pub report_format: Option<String>,
 }
 
@@ -284,9 +326,10 @@ pub struct SignalsArgs {
 /// Examples:
 ///   julie-server tool fast_search --params '{"query":"main","search_target":"definitions"}'
 ///   julie-server tool deep_dive --params '{"symbol":"Command","depth":"full"}'
+///   julie-server tool call_path --params '{"from":"handle_request","to":"write_response"}'
 #[derive(Debug, Clone, Parser)]
 pub struct GenericToolArgs {
-    /// Tool name (e.g. fast_search, deep_dive, get_symbols, blast_radius)
+    /// Tool name (e.g. fast_search, deep_dive, get_symbols, call_path, blast_radius)
     pub name: String,
 
     /// JSON-encoded tool parameters

@@ -16,8 +16,11 @@ use crate::tools::deep_dive::data::find_symbol;
 use super::lock_db;
 use super::resolution::{WorkspaceTarget, file_path_matches_suffix, resolve_workspace_filter};
 
+const DEFAULT_MAX_HOPS: u32 = 6;
+const MAX_HOPS: u32 = 32;
+
 fn default_max_hops() -> u32 {
-    6
+    DEFAULT_MAX_HOPS
 }
 
 fn default_workspace() -> Option<String> {
@@ -29,17 +32,24 @@ fn default_workspace() -> Option<String> {
 /// BFS traverses Calls, Instantiates, and Overrides relationships only.
 /// Extends/Implements/TypeUsage/Reference edges are not followed.
 pub struct CallPathTool {
+    /// Source symbol name to start from. Use a qualified name when shared names are ambiguous.
     pub from: String,
+    /// Target symbol name to reach. Multiple target matches are allowed and searched together.
     pub to: String,
+    /// Maximum relationship hops to traverse. Accepted range: 1 through 32.
+    #[schemars(range(min = 1, max = 32))]
     #[serde(
         default = "default_max_hops",
         deserialize_with = "crate::utils::serde_lenient::deserialize_u32_lenient"
     )]
     pub max_hops: u32,
+    /// Workspace target. Use `primary` or a workspace id opened through `manage_workspace`.
     #[serde(default = "default_workspace")]
     pub workspace: Option<String>,
+    /// Optional source file hint used to disambiguate the `from` symbol.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub from_file_path: Option<String>,
+    /// Optional target file hint used to disambiguate the `to` symbol.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub to_file_path: Option<String>,
 }
@@ -61,6 +71,10 @@ pub struct CallPathHop {
     pub to: String,
     pub edge: String,
     pub file: String,
+    #[serde(default)]
+    pub target_file: String,
+    #[serde(default)]
+    pub target_start_line: u32,
 }
 
 struct WorkspaceQueryTarget {
@@ -229,7 +243,15 @@ fn bfs_shortest_path(
             if confidence_cmp != std::cmp::Ordering::Equal {
                 return confidence_cmp;
             }
-            left.line_number.cmp(&right.line_number)
+            let line_cmp = left.line_number.cmp(&right.line_number);
+            if line_cmp != std::cmp::Ordering::Equal {
+                return line_cmp;
+            }
+            let target_cmp = left.to_symbol_id.cmp(&right.to_symbol_id);
+            if target_cmp != std::cmp::Ordering::Equal {
+                return target_cmp;
+            }
+            left.id.cmp(&right.id)
         });
 
         let mut next_frontier = Vec::new();
@@ -302,6 +324,8 @@ fn build_hops(
             to: to_symbol.name.clone(),
             edge: edge_label(&relationship.kind).to_string(),
             file: format!("{}:{}", relationship.file_path, relationship.line_number),
+            target_file: to_symbol.file_path.clone(),
+            target_start_line: to_symbol.start_line,
         });
     }
 
@@ -309,6 +333,21 @@ fn build_hops(
 }
 
 impl CallPathTool {
+    fn response_result(response: &CallPathResponse) -> Result<CallToolResult> {
+        Ok(CallToolResult::text_content(vec![Content::text(
+            serde_json::to_string_pretty(response)?,
+        )]))
+    }
+
+    fn diagnostic_response(diagnostic: impl Into<String>) -> CallPathResponse {
+        CallPathResponse {
+            found: false,
+            hops: 0,
+            path: Vec::new(),
+            diagnostic: Some(diagnostic.into()),
+        }
+    }
+
     async fn resolve_workspace_target(
         &self,
         handler: &JulieServerHandler,
@@ -328,17 +367,24 @@ impl CallPathTool {
 
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
         if self.from.is_empty() || self.to.is_empty() {
-            return Ok(CallToolResult::text_content(vec![Content::text(
-                "Error: both 'from' and 'to' are required".to_string(),
-            )]));
+            return Self::response_result(&Self::diagnostic_response(
+                "both 'from' and 'to' are required",
+            ));
         }
-        if self.max_hops == 0 {
-            return Ok(CallToolResult::text_content(vec![Content::text(
-                "Error: max_hops must be at least 1".to_string(),
-            )]));
+        if !(1..=MAX_HOPS).contains(&self.max_hops) {
+            return Self::response_result(&Self::diagnostic_response(format!(
+                "max_hops must be in the range 1..={MAX_HOPS}"
+            )));
         }
 
-        let target = self.resolve_workspace_target(handler).await?;
+        let target = match self.resolve_workspace_target(handler).await {
+            Ok(target) => target,
+            Err(error) => {
+                return Self::response_result(&Self::diagnostic_response(format!(
+                    "Workspace resolution failed: {error}"
+                )));
+            }
+        };
         let from = self.from.clone();
         let to = self.to.clone();
         let max_hops = self.max_hops;
@@ -389,18 +435,8 @@ impl CallPathTool {
 
         let response = match response {
             Ok(Ok(response)) => response,
-            Ok(Err(error)) => {
-                return Ok(CallToolResult::text_content(vec![Content::text(format!(
-                    "Error: {}",
-                    error
-                ))]));
-            }
-            Err(error) => {
-                return Ok(CallToolResult::text_content(vec![Content::text(format!(
-                    "Error: call_path worker failed: {}",
-                    error
-                ))]));
-            }
+            Ok(Err(error)) => Self::diagnostic_response(error.to_string()),
+            Err(error) => Self::diagnostic_response(format!("call_path worker failed: {error}")),
         };
 
         debug!(
@@ -408,8 +444,6 @@ impl CallPathTool {
             self.from, self.to, response.found, response.hops
         );
 
-        Ok(CallToolResult::text_content(vec![Content::text(
-            serde_json::to_string_pretty(&response)?,
-        )]))
+        Self::response_result(&response)
     }
 }

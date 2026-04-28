@@ -268,14 +268,18 @@ Julie indexes your workspace automatically on first connection (~2-5s for most p
   - Walks calls, instantiations, and overrides only, returns the hop chain with edge kinds
   - Handles disconnected pairs with a clear "no path" result
   - Supports `from_file_path` / `to_file_path` disambiguation for shared names
+  - CLI: `julie-server call-path "LoginButton::onClick" "insert_session"`
+  - CLI with file hints: `julie-server call-path handle_request write_response --from-file src/server.rs --to-file src/response.rs`
 - `get_symbols` - Smart file reading with 70-90% token savings
   - View file structure without reading full content
   - Extract specific symbols with complete code bodies
   - Structure/minimal/full reading modes
-- `blast_radius` - Deterministic impact analysis for changed files, symbols, or revision ranges
+- `blast_radius` - Deterministic impact analysis for changed files, internal symbol IDs, or revision ranges
   - Returns ranked impacted symbols, likely tests, deleted files, and spillover handles for long lists
-  - Seed with `file_paths`, `symbol_ids`, or Julie revision numbers
+  - Seed with `file_paths`, internal `symbol_ids`, or Julie revision numbers
+  - Prefer `file_paths` when you know a symbol name or file path
   - Use before refactoring or after a change to see affected callers and tests
+  - CLI: `julie-server blast-radius --files src/auth/login_flow.rs`
 - `spillover_get` - Fetch the next page for large `get_context` or `blast_radius` results
   - Reuses the stored spillover handle instead of rerunning the underlying query
 

@@ -40,10 +40,11 @@ pub fn relationship_priority(kind: &RelationshipKind) -> u8 {
         RelationshipKind::Calls => 0,
         RelationshipKind::Overrides => 1,
         RelationshipKind::Implements => 2,
-        RelationshipKind::Instantiates => 3,
-        RelationshipKind::References => 4,
-        RelationshipKind::Imports => 5,
-        _ => 6,
+        RelationshipKind::Extends => 3,
+        RelationshipKind::Instantiates => 4,
+        RelationshipKind::References => 5,
+        RelationshipKind::Imports => 6,
+        _ => 7,
     }
 }
 
@@ -94,6 +95,7 @@ fn relationship_label(kind: &RelationshipKind) -> &'static str {
         RelationshipKind::Calls => "direct caller",
         RelationshipKind::Overrides => "override",
         RelationshipKind::Implements => "implementation",
+        RelationshipKind::Extends => "subclass",
         RelationshipKind::Instantiates => "constructor path",
         RelationshipKind::References => "reference",
         RelationshipKind::Imports => "importer",
