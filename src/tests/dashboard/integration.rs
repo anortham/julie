@@ -1,10 +1,12 @@
 use std::sync::Arc;
 use std::sync::RwLock;
 use std::sync::atomic::AtomicBool;
+use std::time::Duration;
 use std::time::Instant;
 
 use axum::body::Body;
 use axum::http::Request;
+use tokio_stream::StreamExt;
 use tower::ServiceExt;
 
 use crate::daemon::database::DaemonDatabase;
@@ -791,6 +793,37 @@ async fn test_dashboard_404_for_missing_static() {
         404,
         "GET /static/nonexistent.js should return 404, got {}",
         response.status()
+    );
+}
+
+#[tokio::test]
+async fn test_activity_stream_flushes_initial_frame() {
+    let state = test_state();
+    let config = DashboardConfig::default();
+    let app = create_router(state, config).unwrap();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/events/activity")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status().as_u16(), 200);
+    let mut stream = response.into_body().into_data_stream();
+    let first_chunk = tokio::time::timeout(Duration::from_millis(100), stream.next())
+        .await
+        .expect("activity SSE should flush an initial frame")
+        .expect("activity SSE should yield a first frame")
+        .expect("activity SSE frame should be readable");
+    let frame = std::str::from_utf8(&first_chunk).expect("SSE frame should be UTF-8");
+
+    assert!(
+        frame.contains("connected"),
+        "expected initial activity SSE frame to confirm connection, got {frame:?}"
     );
 }
 

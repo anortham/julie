@@ -3,7 +3,7 @@
 use std::convert::Infallible;
 
 use axum::extract::State;
-use axum::response::sse::{Event, Sse};
+use axum::response::sse::{Event, KeepAlive, Sse};
 use tokio_stream::StreamExt;
 use tokio_stream::wrappers::BroadcastStream;
 
@@ -15,6 +15,9 @@ pub async fn activity_stream(
     State(state): State<AppState>,
 ) -> Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>> {
     let rx = state.dashboard.subscribe();
+    let initial = tokio_stream::once(Ok::<Event, Infallible>(
+        Event::default().comment("connected"),
+    ));
     let stream = BroadcastStream::new(rx).filter_map(|result| match result {
         Ok(DashboardEvent::ToolCall { tool_name, workspace, duration_ms }) => {
             let ws_short = workspace.split('_').next().unwrap_or(&workspace);
@@ -33,5 +36,5 @@ pub async fn activity_stream(
             None
         }
     });
-    Sse::new(stream)
+    Sse::new(initial.chain(stream)).keep_alive(KeepAlive::default())
 }
