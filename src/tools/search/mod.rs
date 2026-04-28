@@ -43,6 +43,9 @@ use crate::health::SystemStatus;
 use crate::tools::navigation::resolution::WorkspaceTarget;
 use crate::tools::shared::OptimizedResponse;
 
+const MIN_LIMIT: u32 = 1;
+const MAX_LIMIT: u32 = 500;
+
 //******************//
 //   Search Tools   //
 //******************//
@@ -64,7 +67,7 @@ pub struct FastSearchTool {
     /// Maximum results (default: 10, range: 1-500)
     #[serde(
         default = "default_limit",
-        deserialize_with = "crate::utils::serde_lenient::deserialize_u32_lenient"
+        deserialize_with = "deserialize_limit_lenient_clamped"
     )]
     pub limit: u32,
     /// Context lines before/after a content match (default: 1). Not supported for search_target="files" (rejected if set)
@@ -100,7 +103,7 @@ struct FastSearchToolSerde {
     file_pattern: Option<String>,
     #[serde(
         default = "default_limit",
-        deserialize_with = "crate::utils::serde_lenient::deserialize_u32_lenient"
+        deserialize_with = "deserialize_limit_lenient_clamped"
     )]
     limit: u32,
     #[serde(default, deserialize_with = "deserialize_presence_tracked_option_u32")]
@@ -147,6 +150,19 @@ impl<'de> Deserialize<'de> for FastSearchTool {
 fn default_limit() -> u32 {
     10 // Reduced from 15 with enhanced scoring (better quality = fewer results needed)
 }
+
+fn clamp_limit(limit: u32) -> u32 {
+    limit.clamp(MIN_LIMIT, MAX_LIMIT)
+}
+
+fn deserialize_limit_lenient_clamped<'de, D>(deserializer: D) -> std::result::Result<u32, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let limit = crate::utils::serde_lenient::deserialize_u32_lenient(deserializer)?;
+    Ok(clamp_limit(limit))
+}
+
 fn default_workspace() -> Option<String> {
     Some("primary".to_string())
 }
@@ -201,6 +217,10 @@ pub struct FastSearchExecution {
 }
 
 impl FastSearchTool {
+    pub(crate) fn effective_limit(&self) -> u32 {
+        clamp_limit(self.limit)
+    }
+
     pub(crate) fn validated_search_target(&self) -> Result<SearchTarget> {
         let search_target = SearchTarget::parse(&self.search_target)?;
         if search_target == SearchTarget::Files && self.context_lines.is_some() {
@@ -225,6 +245,7 @@ impl FastSearchTool {
 
         // Resolve workspace target once (used for health check and search routing)
         let workspace_target = self.resolve_workspace_filter(handler).await?;
+        let effective_limit = self.effective_limit();
 
         // Extract workspace ID for health check
         let target_workspace_id = match &workspace_target {
@@ -378,7 +399,7 @@ impl FastSearchTool {
                     query: &self.query,
                     language: &self.language,
                     file_pattern: &self.file_pattern,
-                    limit: self.limit,
+                    limit: effective_limit,
                     search_target: &self.search_target,
                     context_lines: self.context_lines,
                     exclude_tests: self.exclude_tests,
@@ -415,6 +436,27 @@ impl FastSearchTool {
                 };
                 return Ok(FastSearchExecution {
                     result: CallToolResult::text_content(vec![Content::text(message)]),
+                    execution: Some(execution),
+                });
+            }
+
+            if self.return_format == "locations" {
+                let optimized =
+                    OptimizedResponse::with_total(execution.hits.clone(), execution.total_results);
+                let mut output = formatting::format_content_locations_only(&self.query, &optimized);
+                if execution.trace.scope_relaxed
+                    && let Some(original_file_pattern) =
+                        execution.trace.original_file_pattern.as_deref()
+                {
+                    output = format!(
+                        "NOTE: 0 matches within file_pattern={}. Showing {} results from the full codebase (outside requested scope).\n\n{}",
+                        original_file_pattern,
+                        optimized.results.len(),
+                        output
+                    );
+                }
+                return Ok(FastSearchExecution {
+                    result: CallToolResult::text_content(vec![Content::text(output)]),
                     execution: Some(execution),
                 });
             }
@@ -465,7 +507,7 @@ impl FastSearchTool {
             });
         }
 
-        // Definition search → Tantivy symbol mode
+        // Definition and file search both require Tantivy.
         match &workspace_target {
             WorkspaceTarget::Primary => {
                 let primary_id = handler.require_primary_workspace_identity()?;
@@ -474,7 +516,7 @@ impl FastSearchTool {
                     .await?
                     .is_none()
                 {
-                    let message = "Definition search requires a Tantivy index for the current primary workspace. Run manage_workspace(operation=\"refresh\") first.";
+                    let message = missing_index_message(search_target, None);
                     return Ok(FastSearchExecution {
                         result: CallToolResult::text_content(vec![Content::text(message)]),
                         execution: None,
@@ -484,10 +526,7 @@ impl FastSearchTool {
             WorkspaceTarget::Target(id) => {
                 handler.get_database_for_workspace(id).await?;
                 if handler.get_search_index_for_workspace(id).await?.is_none() {
-                    let message = format!(
-                        "Definition search requires a Tantivy index for workspace '{}'. Run manage_workspace(operation=\"refresh\", workspace_id=\"{}\") first.",
-                        id, id
-                    );
+                    let message = missing_index_message(search_target, Some(id));
                     return Ok(FastSearchExecution {
                         result: CallToolResult::text_content(vec![Content::text(message)]),
                         execution: None,
@@ -506,10 +545,7 @@ impl FastSearchTool {
                     .await?
                     .is_none()
             {
-                let message = format!(
-                    "Definition search requires a Tantivy index for workspace '{}'. Run manage_workspace(operation=\"refresh\", workspace_id=\"{}\") first.",
-                    target_workspace_id, target_workspace_id
-                );
+                let message = missing_index_message(search_target, Some(target_workspace_id));
                 return Ok(FastSearchExecution {
                     result: CallToolResult::text_content(vec![Content::text(message)]),
                     execution: None,
@@ -522,7 +558,7 @@ impl FastSearchTool {
                 query: &self.query,
                 language: &self.language,
                 file_pattern: &self.file_pattern,
-                limit: self.limit,
+                limit: effective_limit,
                 search_target: &self.search_target,
                 context_lines: self.context_lines,
                 exclude_tests: self.exclude_tests,
@@ -636,5 +672,22 @@ impl FastSearchTool {
             handler,
         )
         .await
+    }
+}
+
+fn missing_index_message(search_target: SearchTarget, workspace_id: Option<&str>) -> String {
+    let prefix = match search_target {
+        SearchTarget::Content => "Line-level content search",
+        SearchTarget::Definitions => "Definition search",
+        SearchTarget::Files => "File search",
+    };
+
+    match workspace_id {
+        Some(id) => format!(
+            "{prefix} requires a Tantivy index for workspace '{id}'. Run manage_workspace(operation=\"refresh\", workspace_id=\"{id}\") first."
+        ),
+        None => format!(
+            "{prefix} requires a Tantivy index for the current primary workspace. Run manage_workspace(operation=\"refresh\") first."
+        ),
     }
 }

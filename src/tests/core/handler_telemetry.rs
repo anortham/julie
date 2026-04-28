@@ -100,6 +100,22 @@ fn test_fast_search_metadata_captures_trace_and_intent() {
 }
 
 #[test]
+fn test_fast_search_metadata_captures_workspace_param() {
+    let params = FastSearchTool {
+        query: "search_handler".to_string(),
+        search_target: "definitions".to_string(),
+        workspace: Some("target-workspace".to_string()),
+        limit: 0,
+        ..Default::default()
+    };
+
+    let metadata = search_telemetry::fast_search_metadata(&params, None);
+
+    assert_eq!(metadata["workspace"], "target-workspace");
+    assert_eq!(metadata["limit"], 1);
+}
+
+#[test]
 fn test_fast_search_metadata_serializes_zero_hit_reason() {
     let params = FastSearchTool {
         query: "nonexistent".to_string(),

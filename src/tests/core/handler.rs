@@ -492,3 +492,61 @@ async fn test_record_tool_call_uses_binding_snapshot_for_metrics_attribution() -
 
     Ok(())
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_metrics_workspace_binding_uses_target_workspace_param() -> Result<()> {
+    use crate::daemon::database::DaemonDatabase;
+    use crate::daemon::workspace_pool::WorkspacePool;
+    use crate::workspace::registry::generate_workspace_id;
+
+    let temp_dir = TempDir::new()?;
+    let indexes_dir = temp_dir.path().join("indexes");
+    std::fs::create_dir_all(&indexes_dir)?;
+
+    let primary_root = temp_dir.path().join("primary");
+    let target_root = temp_dir.path().join("target");
+    std::fs::create_dir_all(&primary_root)?;
+    std::fs::create_dir_all(&target_root)?;
+
+    let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db"))?);
+    let pool = Arc::new(WorkspacePool::new(
+        indexes_dir,
+        Some(Arc::clone(&daemon_db)),
+        None,
+        None,
+    ));
+
+    let primary_path = primary_root.canonicalize()?;
+    let primary_path_str = primary_path.to_string_lossy().to_string();
+    let primary_id = generate_workspace_id(&primary_path_str)?;
+    daemon_db.upsert_workspace(&primary_id, &primary_path_str, "ready")?;
+    let primary_ws = pool.get_or_init(&primary_id, primary_path.clone()).await?;
+
+    let target_path = target_root.canonicalize()?;
+    let target_path_str = target_path.to_string_lossy().to_string();
+    let target_id = generate_workspace_id(&target_path_str)?;
+    daemon_db.upsert_workspace(&target_id, &target_path_str, "ready")?;
+
+    let handler = JulieServerHandler::new_with_shared_workspace(
+        primary_ws,
+        primary_path,
+        Some(Arc::clone(&daemon_db)),
+        Some(primary_id),
+        None,
+        None,
+        None,
+        None,
+        Some(Arc::clone(&pool)),
+    )
+    .await?;
+
+    let binding = handler
+        .metrics_workspace_binding_for_workspace_param(Some(&target_id))
+        .await
+        .expect("target workspace binding should resolve");
+
+    assert_eq!(binding.workspace_id, target_id);
+    assert_eq!(binding.workspace_root, target_path);
+
+    Ok(())
+}

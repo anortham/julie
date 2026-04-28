@@ -251,6 +251,32 @@ pub fn format_file_locations_only(query: &str, response: &OptimizedResponse<Sear
     output.trim_end().to_string()
 }
 
+pub fn format_content_locations_only(
+    query: &str,
+    response: &OptimizedResponse<SearchHit>,
+) -> String {
+    let mut output = String::new();
+    let count = response.results.len();
+    let total = response.total_found;
+
+    if count == total {
+        output.push_str(&format!("{count} locations for \"{query}\":\n"));
+    } else {
+        output.push_str(&format!(
+            "{count} locations for \"{query}\" (showing {count} of {total}):\n"
+        ));
+    }
+
+    for hit in &response.results {
+        match hit.line {
+            Some(line) => output.push_str(&format!("  {}:{}\n", hit.file, line)),
+            None => output.push_str(&format!("  {}\n", hit.file)),
+        }
+    }
+
+    output.trim_end().to_string()
+}
+
 pub fn format_file_search_results(query: &str, response: &OptimizedResponse<SearchHit>) -> String {
     let mut output = String::new();
     write_file_header(&mut output, "file matches", query, response);

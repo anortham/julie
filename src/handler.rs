@@ -1693,6 +1693,25 @@ impl JulieServerHandler {
         });
     }
 
+    pub(crate) async fn metrics_workspace_binding_for_workspace_param(
+        &self,
+        workspace_param: Option<&str>,
+    ) -> Option<PrimaryWorkspaceBinding> {
+        let workspace_id = workspace_param.unwrap_or("primary");
+        if workspace_id == "primary" {
+            return self.require_primary_workspace_binding().ok();
+        }
+
+        let workspace_root = self
+            .get_workspace_root_for_target(workspace_id)
+            .await
+            .unwrap_or_else(|_| self.current_workspace_root());
+        Some(PrimaryWorkspaceBinding {
+            workspace_id: workspace_id.to_string(),
+            workspace_root,
+        })
+    }
+
     /// Extract output byte count from a CallToolResult.
     fn output_bytes_from_result(result: &CallToolResult) -> u64 {
         result
@@ -2401,7 +2420,9 @@ impl JulieServerHandler {
     ) -> Result<CallToolResult, McpError> {
         debug!("⚡ Fast search: {:?}", params);
         let start = std::time::Instant::now();
-        let workspace_snapshot = self.require_primary_workspace_binding().ok();
+        let workspace_snapshot = self
+            .metrics_workspace_binding_for_workspace_param(params.workspace.as_deref())
+            .await;
         let executed = params
             .execute_with_trace(self)
             .await

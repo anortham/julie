@@ -344,7 +344,9 @@ fn definition_search_with_index(
 
         // Filter BEFORE truncating so test symbols don't consume limit slots
         filter_test_symbols(&mut symbols, filter.exclude_tests);
-        let pre_trunc = symbols.len();
+        let all_filtered_ids: std::collections::HashSet<String> =
+            symbols.iter().map(|s| s.id.clone()).collect();
+        let mut pre_trunc = symbols.len();
         symbols.truncate(limit);
 
         // LAST STEP: Prepend high-centrality definitions from SQLite that the
@@ -363,6 +365,10 @@ fn definition_search_with_index(
                 Ok(db_defs) => {
                     let existing_ids: std::collections::HashSet<String> =
                         symbols.iter().map(|s| s.id.clone()).collect();
+                    let additional_rescue_total = db_defs
+                        .iter()
+                        .filter(|s| !all_filtered_ids.contains(&s.id))
+                        .count();
                     let candidates: Vec<_> = db_defs
                         .into_iter()
                         .filter(|s| !existing_ids.contains(&s.id))
@@ -405,6 +411,9 @@ fn definition_search_with_index(
                     if !prepend.is_empty() {
                         // Apply same test filter as main results
                         filter_test_symbols(&mut prepend, filter.exclude_tests);
+                        pre_trunc = pre_trunc
+                            .saturating_add(additional_rescue_total)
+                            .max(prepend.len().saturating_add(symbols.len()));
                         prepend.append(&mut symbols);
                         symbols = prepend;
                         symbols.truncate(limit);
