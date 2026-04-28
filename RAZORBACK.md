@@ -21,6 +21,17 @@ radius.
 If a harness cannot choose models or reasoning per agent, use `inherit` and note
 that limitation in the plan or worker report.
 
+For Codex, this routing table is a clear task-specific reason to pass
+`spawn_agent(model=..., reasoning_effort=...)` when the current session supports
+per-agent selection. Do not leave `model` unset when a supported route exists.
+Inherit only when the route itself says `inherit`, no route exists, or the
+harness cannot select the mapped model or reasoning effort.
+
+Test-audit work can use the mechanical or implementation tier when it is
+checklist-driven coverage enumeration. Use the strategy or escalation tier when
+the audit requires judgment about weak tests, hidden invariants, scoring
+semantics, shared workspace behavior, or correctness risk.
+
 ## Worker Eligibility
 
 Use implementation-tier workers only when all are true:
