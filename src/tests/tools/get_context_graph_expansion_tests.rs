@@ -318,6 +318,111 @@ mod graph_expansion_tests {
     }
 
     #[test]
+    fn test_expand_graph_propagates_identifier_lookup_errors() {
+        let (_tmp, mut db) = setup_db();
+
+        let symbols = vec![make_symbol(
+            "sym_target",
+            "target_fn",
+            SymbolKind::Function,
+            "src/main.rs",
+            1,
+        )];
+        db.store_symbols(&symbols).unwrap();
+        db.conn.execute("DROP TABLE identifiers", []).unwrap();
+
+        let pivots = vec![make_pivot("sym_target", "target_fn", 5.0)];
+        let err = match expand_graph(&pivots, &db) {
+            Ok(_) => panic!("identifier read failures should not be hidden"),
+            Err(err) => err,
+        };
+
+        assert!(
+            err.to_string().contains("identifiers"),
+            "error should mention the failed identifier lookup: {err}"
+        );
+    }
+
+    #[test]
+    fn test_expand_graph_orders_equal_scores_by_location_and_name() {
+        let (_tmp, mut db) = setup_db();
+
+        let symbols = vec![
+            make_symbol(
+                "sym_target",
+                "target_fn",
+                SymbolKind::Function,
+                "src/main.rs",
+                1,
+            ),
+            make_symbol(
+                "sym_zeta",
+                "zeta_handler",
+                SymbolKind::Function,
+                "src/utils.rs",
+                20,
+            ),
+            make_symbol(
+                "sym_alpha",
+                "alpha_handler",
+                SymbolKind::Function,
+                "src/handler.rs",
+                10,
+            ),
+            make_symbol(
+                "sym_engine",
+                "engine_handler",
+                SymbolKind::Function,
+                "src/engine.rs",
+                30,
+            ),
+        ];
+        db.store_symbols(&symbols).unwrap();
+
+        let rels = vec![
+            make_rel(
+                "r_zeta",
+                "sym_zeta",
+                "sym_target",
+                RelationshipKind::Calls,
+                "src/utils.rs",
+                20,
+            ),
+            make_rel(
+                "r_alpha",
+                "sym_alpha",
+                "sym_target",
+                RelationshipKind::Calls,
+                "src/handler.rs",
+                10,
+            ),
+            make_rel(
+                "r_engine",
+                "sym_engine",
+                "sym_target",
+                RelationshipKind::Calls,
+                "src/engine.rs",
+                30,
+            ),
+        ];
+        db.store_relationships(&rels).unwrap();
+
+        let pivots = vec![make_pivot("sym_target", "target_fn", 5.0)];
+        let expansion = expand_graph(&pivots, &db).unwrap();
+        let names: Vec<&str> = expansion
+            .neighbors
+            .iter()
+            .map(|neighbor| neighbor.symbol.name.as_str())
+            .collect();
+
+        assert_eq!(
+            names,
+            vec!["engine_handler", "alpha_handler", "zeta_handler"],
+            "equal reference scores should use stable file/line/name ordering"
+        );
+    }
+
+    #[test]
     fn test_expand_graph_excludes_pivots_from_neighbors() {
         let (_tmp, mut db) = setup_db();
 

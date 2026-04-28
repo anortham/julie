@@ -206,9 +206,9 @@ pub fn select_pivots_with_code_fallback(
 
     let code_count = results.iter().filter(|r| is_code_candidate(r)).count();
 
-    // Fast path: if all results are code candidates or too few alternatives exist,
+    // Fast path: if all results are code candidates or no code alternative exists,
     // standard selection is sufficient — no fallback possible, skip the clone.
-    if code_count >= results.len() || code_count < 2 {
+    if code_count >= results.len() || code_count == 0 {
         return select_pivots(results, reference_scores);
     }
 

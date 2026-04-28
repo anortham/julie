@@ -200,6 +200,190 @@ mod tests {
             output.contains("parse_payload"),
             "second-hop symbol should be included when the first hop is thin: {output}"
         );
+        assert!(
+            !output.contains("  process_request src/handler.rs:1"),
+            "second-hop expansion should not re-add the original pivot as a neighbor: {output}"
+        );
+    }
+
+    #[test]
+    fn test_run_pipeline_with_task_signals_seeds_entry_symbol_missing_from_search_results() {
+        let mut symbols = Vec::new();
+        for idx in 0..35 {
+            let name = format!("router_noise_{idx}");
+            let body = format!("fn {name}() {{\n    route_request();\n}}");
+            symbols.push(make_symbol(
+                &format!("noise_{idx}"),
+                &name,
+                &format!("src/noise_{idx}.rs"),
+                &body,
+            ));
+        }
+        symbols.push(make_symbol(
+            "target_entry",
+            "critical_entry",
+            "src/critical.rs",
+            "fn critical_entry() {\n    handle_critical_path();\n}",
+        ));
+
+        let (_db_dir, _index_dir, db, index) = setup_env(&symbols, &[]);
+        let signals = TaskSignals {
+            entry_symbols: vec!["crate::critical_entry".to_string()],
+            ..TaskSignals::default()
+        };
+
+        let output = run_pipeline_with_options(
+            "router request",
+            None,
+            None,
+            None,
+            Some("readable".to_string()),
+            &db,
+            &index,
+            None,
+            Some(&signals),
+            None,
+            None,
+        )
+        .unwrap();
+
+        assert!(
+            output.contains("-- Pivot: critical_entry ---"),
+            "entry_symbols should seed named symbols even when query search misses them: {output}"
+        );
+    }
+
+    #[test]
+    fn test_run_pipeline_applies_file_pattern_to_task_seeded_symbols() {
+        let symbols = vec![
+            make_symbol(
+                "target_entry",
+                "critical_entry",
+                "src/critical.rs",
+                "fn critical_entry() {\n    handle_critical_path();\n}",
+            ),
+            make_symbol(
+                "excluded_entry",
+                "critical_entry",
+                "src/generated/critical.rs",
+                "fn critical_entry() {\n    generated_path();\n}",
+            ),
+        ];
+        let (_db_dir, _index_dir, db, index) = setup_env(&symbols, &[]);
+        let signals = TaskSignals {
+            entry_symbols: vec!["critical_entry".to_string()],
+            ..TaskSignals::default()
+        };
+
+        let output = run_pipeline_with_options(
+            "router request",
+            None,
+            None,
+            Some("src/critical.rs".to_string()),
+            Some("readable".to_string()),
+            &db,
+            &index,
+            None,
+            Some(&signals),
+            None,
+            None,
+        )
+        .unwrap();
+
+        assert!(
+            output.contains("src/critical.rs:1"),
+            "matching task-seeded symbol should survive file_pattern: {output}"
+        );
+        assert!(
+            !output.contains("src/generated/critical.rs"),
+            "task-seeded symbols should not bypass file_pattern: {output}"
+        );
+    }
+
+    #[test]
+    fn test_run_pipeline_seeds_edited_file_by_indexed_path_suffix() {
+        let symbols = vec![make_symbol(
+            "target_entry",
+            "critical_entry",
+            "src/critical.rs",
+            "fn critical_entry() {\n    handle_critical_path();\n}",
+        )];
+        let (_db_dir, _index_dir, db, index) = setup_env(&symbols, &[]);
+        let signals = TaskSignals {
+            edited_files: vec!["critical.rs".to_string()],
+            ..TaskSignals::default()
+        };
+
+        let output = run_pipeline_with_options(
+            "query_without_matches",
+            None,
+            None,
+            None,
+            Some("readable".to_string()),
+            &db,
+            &index,
+            None,
+            Some(&signals),
+            None,
+            None,
+        )
+        .unwrap();
+
+        assert!(
+            output.contains("-- Pivot: critical_entry ---"),
+            "edited_files should seed symbols when the signal is a suffix of the indexed path: {output}"
+        );
+    }
+
+    #[test]
+    fn test_run_pipeline_reports_identifier_callers_in_pivot_summary() {
+        let symbols = vec![
+            make_symbol(
+                "target",
+                "BuildPipeline",
+                "src/pipeline.rs",
+                "fn BuildPipeline() {\n    compile_steps();\n}",
+            ),
+            make_symbol(
+                "caller",
+                "setup_handler",
+                "src/handler.rs",
+                "fn setup_handler() {\n    BuildPipeline();\n}",
+            ),
+        ];
+        let (_db_dir, _index_dir, db, index) = setup_env(&symbols, &[]);
+        db.conn
+            .execute(
+                "INSERT INTO identifiers (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, containing_symbol_id, target_symbol_id, confidence)
+                 VALUES ('ident_call', 'BuildPipeline', 'call', 'rust', 'src/handler.rs', 2, 4, 2, 17, 0, 100, 'caller', 'target', 0.95)",
+                [],
+            )
+            .unwrap();
+
+        let signals = TaskSignals {
+            entry_symbols: vec!["BuildPipeline".to_string()],
+            ..TaskSignals::default()
+        };
+
+        let output = run_pipeline_with_options(
+            "BuildPipeline",
+            None,
+            None,
+            None,
+            Some("readable".to_string()),
+            &db,
+            &index,
+            None,
+            Some(&signals),
+            None,
+            None,
+        )
+        .unwrap();
+
+        assert!(
+            output.contains("Callers (1): setup_handler"),
+            "identifier-only callers should appear in the pivot caller summary: {output}"
+        );
     }
 
     #[test]

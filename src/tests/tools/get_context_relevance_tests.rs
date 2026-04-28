@@ -185,6 +185,45 @@ mod tests {
     }
 
     #[test]
+    fn test_fallback_keeps_single_code_candidate_when_primary_is_non_actionable() {
+        let results = vec![
+            make_result(
+                "doc_1",
+                "workspace_routing_overview",
+                "function",
+                "docs/workspace-routing.md",
+                10.0,
+            ),
+            make_result(
+                "memory_1",
+                "workspace_routing_checkpoint",
+                "module",
+                ".memories/2026-02-25/checkpoint.md",
+                9.0,
+            ),
+            make_result(
+                "code_1",
+                "resolve_workspace_routing",
+                "function",
+                "src/workspace/resolver.rs",
+                2.0,
+            ),
+        ];
+
+        let mut ref_scores = HashMap::new();
+        ref_scores.insert("doc_1".to_string(), 100_000_000.0);
+
+        let pivots = select_pivots_with_code_fallback(results, &ref_scores);
+
+        assert_eq!(
+            pivots.len(),
+            1,
+            "a single actionable code candidate is enough fallback material"
+        );
+        assert_eq!(pivots[0].result.id, "code_1");
+    }
+
+    #[test]
     fn test_select_pivots_deboosts_auxiliary_paths_vs_src_code() {
         let results = vec![
             make_result(

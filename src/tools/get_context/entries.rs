@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use anyhow::Result;
 
@@ -31,12 +31,27 @@ fn fetch_pivot_batch_data(
 
     let incoming_rels = db.get_relationships_to_symbols(pivot_ids)?;
     let outgoing_rels = db.get_outgoing_relationships_for_symbols(pivot_ids)?;
+    let pivot_id_set: HashSet<String> = pivot_ids.iter().cloned().collect();
+    let pivot_symbols: Vec<Symbol> = pivot_ids
+        .iter()
+        .filter_map(|pivot_id| full_symbols.get(pivot_id).cloned())
+        .collect();
+    let identifier_edges = crate::database::impact_graph::identifier_incoming_edges(
+        db,
+        &pivot_symbols,
+        &pivot_id_set,
+    )?;
 
     let mut related_ids: Vec<String> = incoming_rels
         .iter()
         .map(|rel| rel.from_symbol_id.clone())
         .collect();
     related_ids.extend(outgoing_rels.iter().map(|rel| rel.to_symbol_id.clone()));
+    related_ids.extend(
+        identifier_edges
+            .iter()
+            .map(|edge| edge.container_id.clone()),
+    );
     related_ids.sort();
     related_ids.dedup();
 
@@ -68,6 +83,14 @@ fn fetch_pivot_batch_data(
             .entry(rel.to_symbol_id.clone())
             .or_default()
             .push(rel.from_symbol_id.clone());
+    }
+    for edge in &identifier_edges {
+        if let Some(target_symbol_id) = &edge.target_symbol_id {
+            incoming_by_pivot
+                .entry(target_symbol_id.clone())
+                .or_default()
+                .push(edge.container_id.clone());
+        }
     }
 
     let mut outgoing_by_pivot: HashMap<String, Vec<String>> = HashMap::new();

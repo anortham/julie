@@ -64,6 +64,7 @@ pub(crate) fn get_context_metadata(params: &GetContextTool) -> Value {
         "language": params.language,
         "file_pattern": params.file_pattern,
         "max_tokens": params.max_tokens,
+        "format": params.format,
         "edited_files": params.edited_files,
         "entry_symbols": params.entry_symbols,
         "stack_trace": params.stack_trace,

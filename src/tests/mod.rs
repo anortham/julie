@@ -127,6 +127,7 @@ pub mod tools {
     pub mod get_context_quality_tests; // get_context fixed-query quality regression tests
     pub mod get_context_relevance_tests; // get_context fallback relevance guardrail tests
     pub mod get_context_scoring_tests; // get_context namespace/module de-boost scoring tests
+    pub mod get_context_target_workspace_metrics_tests; // get_context target-workspace telemetry attribution tests
     pub mod get_context_task_inputs_tests; // get_context task-shaped scoring, second-hop, and spillover tests
     pub mod get_context_tests; // get_context tool pipeline tests (pivot selection, scoring)
     pub mod get_context_token_budget_tests; // get_context token truncation tests // get_context run_pipeline fallback relevance tests

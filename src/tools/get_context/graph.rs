@@ -109,14 +109,12 @@ fn expand_graph_from_ids(
 
     // Identifier-based neighbor expansion fills in languages whose calls and
     // type usages live in the identifiers table instead of relationships.
-    if let Ok(identifier_edges) =
-        crate::database::impact_graph::identifier_incoming_edges(db, symbols, &pivot_ids)
-    {
-        for edge in identifier_edges {
-            neighbor_map
-                .entry(edge.container_id)
-                .or_insert((edge.relationship_kind, NeighborDirection::Incoming));
-        }
+    let identifier_edges =
+        crate::database::impact_graph::identifier_incoming_edges(db, symbols, &pivot_ids)?;
+    for edge in identifier_edges {
+        neighbor_map
+            .entry(edge.container_id)
+            .or_insert((edge.relationship_kind, NeighborDirection::Incoming));
     }
 
     if neighbor_map.is_empty() {
@@ -148,6 +146,10 @@ fn expand_graph_from_ids(
         b.reference_score
             .partial_cmp(&a.reference_score)
             .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.symbol.file_path.cmp(&b.symbol.file_path))
+            .then_with(|| a.symbol.start_line.cmp(&b.symbol.start_line))
+            .then_with(|| a.symbol.name.cmp(&b.symbol.name))
+            .then_with(|| a.symbol.id.cmp(&b.symbol.id))
     });
 
     Ok(GraphExpansion { neighbors })

@@ -30,9 +30,10 @@ use crate::search::schema::{
     SchemaCompatibilitySignature, SchemaFields, compatibility_signature, create_schema,
 };
 use crate::search::scoring::{
-    apply_important_patterns_boost, apply_nl_path_prior, is_nl_like_query,
+    apply_important_patterns_boost, apply_nl_path_prior, is_nl_like_query, is_test_path,
 };
 use crate::search::tokenizer::{CodeTokenizer, TokenizerCompatibilitySignature, split_camel_case};
+use crate::tools::search::matches_glob_pattern;
 
 // 256MB total budget. Tantivy 0.26's `Index::writer(budget)` auto-clamps thread
 // count when per-thread budget falls below the 15MB floor. At 50MB we got 3
@@ -114,6 +115,38 @@ pub struct SearchFilter {
     pub kind: Option<String>,
     pub file_pattern: Option<String>,
     pub exclude_tests: bool,
+}
+
+impl SearchFilter {
+    pub fn matches_symbol_result(&self, result: &SymbolSearchResult) -> bool {
+        if let Some(language) = self.language.as_deref() {
+            if result.language != language {
+                return false;
+            }
+        }
+
+        if let Some(kind) = self.kind.as_deref() {
+            if result.kind != kind {
+                return false;
+            }
+        }
+
+        if let Some(pattern) = self.file_pattern.as_deref() {
+            if !matches_glob_pattern(&result.file_path, pattern) {
+                return false;
+            }
+        }
+
+        if self.exclude_tests && is_test_path(&result.file_path) {
+            return false;
+        }
+
+        true
+    }
+}
+
+fn symbol_result_matches_filter(result: &SymbolSearchResult, filter: &SearchFilter) -> bool {
+    filter.matches_symbol_result(result)
 }
 
 /// A symbol search result with relevance score.
@@ -459,7 +492,7 @@ impl SearchIndex {
         };
 
         let searcher = self.reader.searcher();
-        let candidate_limit = Self::rerank_candidate_limit(query_str, limit);
+        let candidate_limit = Self::symbol_candidate_limit(query_str, filter, limit);
         let top_docs = searcher.search(
             &query,
             &TopDocs::with_limit(candidate_limit).order_by_score(),
@@ -523,6 +556,8 @@ impl SearchIndex {
                 score,
             });
         }
+
+        results.retain(|result| symbol_result_matches_filter(result, filter));
 
         // Apply important_patterns boost if language configs are available
         if let Some(configs) = &self.language_configs {
@@ -592,7 +627,7 @@ impl SearchIndex {
         };
 
         let searcher = self.reader.searcher();
-        let candidate_limit = Self::rerank_candidate_limit(query_str, limit);
+        let candidate_limit = Self::symbol_candidate_limit(query_str, filter, limit);
         let top_docs = searcher.search(
             &query,
             &TopDocs::with_limit(candidate_limit).order_by_score(),
@@ -613,6 +648,8 @@ impl SearchIndex {
                 score,
             });
         }
+
+        results.retain(|result| symbol_result_matches_filter(result, filter));
 
         // Apply important_patterns boost if language configs are available
         if let Some(configs) = &self.language_configs {
@@ -1258,6 +1295,16 @@ impl SearchIndex {
         }
 
         limit.saturating_mul(NL_RERANK_OVERFETCH_FACTOR)
+    }
+
+    fn symbol_candidate_limit(query_str: &str, filter: &SearchFilter, limit: usize) -> usize {
+        let rerank_limit = Self::rerank_candidate_limit(query_str, limit);
+        if limit == 0 || (filter.file_pattern.is_none() && !filter.exclude_tests) {
+            return rerank_limit;
+        }
+
+        let filtered_limit = limit.saturating_mul(20).clamp(50, 1000);
+        rerank_limit.max(filtered_limit)
     }
 
     fn file_candidate_limit(query_str: &str, limit: usize) -> usize {

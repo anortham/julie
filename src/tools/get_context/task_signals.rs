@@ -3,7 +3,8 @@ use std::collections::{HashMap, HashSet};
 use anyhow::Result;
 
 use crate::database::SymbolDatabase;
-use crate::search::index::SymbolSearchResult;
+use crate::extractors::base::Symbol;
+use crate::search::index::{SearchFilter, SymbolSearchResult};
 
 #[derive(Debug, Clone, Default)]
 pub struct TaskSignals {
@@ -190,6 +191,228 @@ pub fn path_matches_signal(actual_path: &str, signal_path: &str) -> bool {
     actual_path == signal_path
         || actual_path.ends_with(signal_path)
         || signal_path.ends_with(actual_path)
+}
+
+pub(crate) fn merge_task_signal_seed_results(
+    results: &mut Vec<SymbolSearchResult>,
+    db: &SymbolDatabase,
+    filter: &SearchFilter,
+    signals: &TaskSignals,
+) -> Result<()> {
+    if signals.is_empty() {
+        return Ok(());
+    }
+
+    let top_score = results
+        .iter()
+        .map(|result| result.score)
+        .fold(0.0_f32, f32::max);
+    let had_search_results = !results.is_empty();
+    let mut result_positions: HashMap<String, usize> = results
+        .iter()
+        .enumerate()
+        .map(|(index, result)| (result.id.clone(), index))
+        .collect();
+
+    for seed in collect_task_signal_seed_symbols(db, signals)? {
+        let score = score_for_seed(seed.priority, top_score, had_search_results);
+        let result = symbol_to_search_result(seed.symbol, score);
+        if filter.matches_symbol_result(&result) {
+            if let Some(index) = result_positions.get(&result.id).copied() {
+                results[index].score = results[index].score.max(result.score);
+                continue;
+            }
+
+            result_positions.insert(result.id.clone(), results.len());
+            results.push(result);
+        }
+    }
+
+    Ok(())
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum SeedPriority {
+    BroadFile,
+    StackLine,
+    Explicit,
+}
+
+struct SeededSymbol {
+    symbol: Symbol,
+    priority: SeedPriority,
+}
+
+fn collect_task_signal_seed_symbols(
+    db: &SymbolDatabase,
+    signals: &TaskSignals,
+) -> Result<Vec<SeededSymbol>> {
+    const MAX_FILE_SIGNAL_SEEDS_PER_FILE: usize = 12;
+
+    let mut seeds: HashMap<String, SeededSymbol> = HashMap::new();
+
+    for path in &signals.edited_files {
+        for symbol in symbols_for_signal_path(db, path)?
+            .into_iter()
+            .take(MAX_FILE_SIGNAL_SEEDS_PER_FILE)
+        {
+            merge_seed(&mut seeds, symbol, SeedPriority::BroadFile);
+        }
+    }
+
+    for path in &signals.stack_trace_files {
+        let matching_lines = signals
+            .stack_trace_lines
+            .iter()
+            .find(|(signal_path, _)| path_matches_signal(path, signal_path))
+            .map(|(_, lines)| lines.as_slice())
+            .unwrap_or(&[]);
+        for symbol in symbols_for_signal_path(db, path)?
+            .into_iter()
+            .take(MAX_FILE_SIGNAL_SEEDS_PER_FILE)
+        {
+            let priority = if matching_lines
+                .iter()
+                .any(|line| symbol.start_line.abs_diff(*line) <= 2)
+            {
+                SeedPriority::StackLine
+            } else {
+                SeedPriority::BroadFile
+            };
+            merge_seed(&mut seeds, symbol, priority);
+        }
+    }
+
+    let mut names = signal_symbol_names(signals);
+    names.sort();
+    names.dedup();
+    let by_name = db.find_symbols_by_names_batch(&names)?;
+    for name in &names {
+        if let Some(name_symbols) = by_name.get(name) {
+            for symbol in name_symbols {
+                merge_seed(&mut seeds, symbol.clone(), SeedPriority::Explicit);
+            }
+        }
+    }
+
+    let linked_symbol_ids: Vec<String> = signals
+        .failing_test_linked_symbol_ids
+        .iter()
+        .cloned()
+        .collect();
+    for symbol in db.get_symbols_by_ids(&linked_symbol_ids)? {
+        merge_seed(&mut seeds, symbol, SeedPriority::Explicit);
+    }
+
+    let mut seed_list: Vec<SeededSymbol> = seeds.into_values().collect();
+    seed_list.sort_by(|a, b| {
+        b.priority
+            .cmp(&a.priority)
+            .then_with(|| a.symbol.file_path.cmp(&b.symbol.file_path))
+            .then_with(|| a.symbol.start_line.cmp(&b.symbol.start_line))
+            .then_with(|| a.symbol.name.cmp(&b.symbol.name))
+            .then_with(|| a.symbol.id.cmp(&b.symbol.id))
+    });
+    Ok(seed_list)
+}
+
+fn merge_seed(seeds: &mut HashMap<String, SeededSymbol>, symbol: Symbol, priority: SeedPriority) {
+    match seeds.get_mut(&symbol.id) {
+        Some(existing) if priority > existing.priority => {
+            existing.priority = priority;
+        }
+        Some(_) => {}
+        None => {
+            seeds.insert(symbol.id.clone(), SeededSymbol { symbol, priority });
+        }
+    }
+}
+
+fn score_for_seed(priority: SeedPriority, top_score: f32, had_search_results: bool) -> f32 {
+    match priority {
+        SeedPriority::Explicit => top_score.max(1.0),
+        SeedPriority::StackLine if had_search_results => top_score * 0.75,
+        SeedPriority::StackLine => 0.75,
+        SeedPriority::BroadFile if had_search_results => top_score * 0.35,
+        SeedPriority::BroadFile => 0.35,
+    }
+}
+
+fn symbols_for_signal_path(db: &SymbolDatabase, path: &str) -> Result<Vec<Symbol>> {
+    let mut symbols = Vec::new();
+    let mut seen_ids = HashSet::new();
+
+    let mut candidate_paths: Vec<String> = db
+        .get_all_indexed_files()?
+        .into_iter()
+        .filter(|indexed_path| path_matches_signal(indexed_path, path))
+        .collect();
+
+    if candidate_paths.is_empty() {
+        candidate_paths = signal_path_variants(path);
+    }
+    candidate_paths.sort();
+    candidate_paths.dedup();
+
+    for candidate_path in candidate_paths {
+        for symbol in db.get_symbols_for_file(&candidate_path)? {
+            if seen_ids.insert(symbol.id.clone()) {
+                symbols.push(symbol);
+            }
+        }
+    }
+
+    Ok(symbols)
+}
+
+fn signal_path_variants(path: &str) -> Vec<String> {
+    let normalized = path.replace('\\', "/");
+    let trimmed = normalized.trim_start_matches("./").trim_start_matches('/');
+    let mut variants = vec![normalized.clone(), trimmed.to_string()];
+
+    let parts: Vec<&str> = trimmed.split('/').filter(|part| !part.is_empty()).collect();
+    for start in 0..parts.len() {
+        variants.push(parts[start..].join("/"));
+    }
+
+    variants.retain(|variant| !variant.is_empty());
+    variants.sort();
+    variants.dedup();
+    variants
+}
+
+fn signal_symbol_names(signals: &TaskSignals) -> Vec<String> {
+    let mut names = Vec::new();
+    names.extend(signals.entry_symbols.iter().cloned());
+    names.extend(
+        signals
+            .entry_symbols
+            .iter()
+            .filter_map(|symbol| symbol_leaf(symbol)),
+    );
+    names.extend(signals.entry_symbol_leaves.iter().cloned());
+    names.extend(signals.stack_trace_symbols.iter().cloned());
+    names.extend(
+        signals
+            .stack_trace_symbols
+            .iter()
+            .filter_map(|symbol| symbol_leaf(symbol)),
+    );
+    names
+}
+
+fn symbol_to_search_result(symbol: Symbol, score: f32) -> SymbolSearchResult {
+    SymbolSearchResult {
+        id: symbol.id,
+        name: symbol.name,
+        signature: symbol.signature.unwrap_or_default(),
+        doc_comment: symbol.doc_comment.unwrap_or_default(),
+        file_path: symbol.file_path,
+        kind: symbol.kind.to_string(),
+        language: symbol.language,
+        start_line: symbol.start_line,
+        score,
+    }
 }
 
 /// Populate `signals.failing_test_linked_symbol_ids` with symbols whose

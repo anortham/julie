@@ -19,7 +19,6 @@ use super::index::{SearchFilter, SearchIndex, SymbolSearchResults};
 use super::weights::SearchWeightProfile;
 use crate::database::SymbolDatabase;
 use crate::embeddings::EmbeddingProvider;
-use crate::tools::search::query::matches_glob_pattern;
 
 /// Merge two ranked lists of search results using Reciprocal Rank Fusion.
 ///
@@ -284,29 +283,7 @@ pub fn hybrid_search(
 }
 
 fn matches_filter(result: &SymbolSearchResult, filter: &SearchFilter) -> bool {
-    if let Some(language) = &filter.language {
-        if result.language != *language {
-            return false;
-        }
-    }
-
-    if let Some(kind) = &filter.kind {
-        if result.kind != *kind {
-            return false;
-        }
-    }
-
-    if let Some(file_pattern) = &filter.file_pattern {
-        if !matches_glob_pattern(&result.file_path, file_pattern) {
-            return false;
-        }
-    }
-
-    if filter.exclude_tests && crate::search::scoring::is_test_path(&result.file_path) {
-        return false;
-    }
-
-    true
+    filter.matches_symbol_result(result)
 }
 
 /// Internal: run the semantic search pipeline (embed → KNN → convert).

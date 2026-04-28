@@ -11,7 +11,7 @@ use crate::tools::search::trace::{
     ZeroHitReason,
 };
 use crate::tools::spillover::SpilloverGetTool;
-use crate::tools::{BlastRadiusTool, DeepDiveDepth, DeepDiveTool, GetSymbolsTool};
+use crate::tools::{BlastRadiusTool, DeepDiveDepth, DeepDiveTool, GetContextTool, GetSymbolsTool};
 
 fn sample_symbol() -> Symbol {
     Symbol {
@@ -430,6 +430,37 @@ fn test_spillover_get_metadata_carries_handle_and_limit() {
     assert_eq!(metadata["spillover_handle"], "br_123");
     assert_eq!(metadata["limit"], 5);
     assert_eq!(metadata["format"], "compact");
+}
+
+#[test]
+fn test_get_context_metadata_carries_format_and_task_inputs() {
+    let params = GetContextTool {
+        query: "workspace routing".to_string(),
+        max_tokens: Some(2400),
+        workspace: Some("target-workspace".to_string()),
+        language: Some("rust".to_string()),
+        file_pattern: Some("src/**/*.rs".to_string()),
+        format: Some("readable".to_string()),
+        edited_files: Some(vec!["src/handler.rs".to_string()]),
+        entry_symbols: Some(vec!["JulieServerHandler::get_context".to_string()]),
+        stack_trace: Some("src/handler.rs:2656".to_string()),
+        failing_test: Some("get_context_metadata".to_string()),
+        max_hops: Some(2),
+        prefer_tests: Some(true),
+    };
+
+    let metadata = tool_targets::get_context_metadata(&params);
+
+    assert_eq!(metadata["query"], "workspace routing");
+    assert_eq!(metadata["format"], "readable");
+    assert_eq!(metadata["workspace"], "target-workspace");
+    assert_eq!(metadata["edited_files"][0], "src/handler.rs");
+    assert_eq!(
+        metadata["entry_symbols"][0],
+        "JulieServerHandler::get_context"
+    );
+    assert_eq!(metadata["max_hops"], 2);
+    assert_eq!(metadata["prefer_tests"], true);
 }
 
 #[test]

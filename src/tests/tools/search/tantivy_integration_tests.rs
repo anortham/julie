@@ -111,6 +111,98 @@ mod tests {
     }
 
     #[test]
+    fn test_symbol_search_applies_file_pattern_filter() {
+        let (_dir, index) = create_test_index();
+
+        index
+            .add_symbol(&SymbolDocument {
+                id: "1".into(),
+                name: "target_context_symbol".into(),
+                signature: "pub fn target_context_symbol()".into(),
+                doc_comment: "shared filter token".into(),
+                code_body: String::new(),
+                file_path: "src/target/context.rs".into(),
+                kind: "function".into(),
+                language: "rust".into(),
+                start_line: 1,
+            })
+            .unwrap();
+
+        index
+            .add_symbol(&SymbolDocument {
+                id: "2".into(),
+                name: "outside_context_symbol".into(),
+                signature: "pub fn outside_context_symbol()".into(),
+                doc_comment: "shared filter token".into(),
+                code_body: String::new(),
+                file_path: "src/outside/context.rs".into(),
+                kind: "function".into(),
+                language: "rust".into(),
+                start_line: 1,
+            })
+            .unwrap();
+        index.commit().unwrap();
+
+        let filter = SearchFilter {
+            file_pattern: Some("src/target/**".into()),
+            ..Default::default()
+        };
+        let results = index
+            .search_symbols("shared filter token", &filter, 10)
+            .unwrap()
+            .results;
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].file_path, "src/target/context.rs");
+    }
+
+    #[test]
+    fn test_symbol_search_excludes_tests_when_requested() {
+        let (_dir, index) = create_test_index();
+
+        index
+            .add_symbol(&SymbolDocument {
+                id: "1".into(),
+                name: "production_context_symbol".into(),
+                signature: "pub fn production_context_symbol()".into(),
+                doc_comment: "shared production token".into(),
+                code_body: String::new(),
+                file_path: "src/context.rs".into(),
+                kind: "function".into(),
+                language: "rust".into(),
+                start_line: 1,
+            })
+            .unwrap();
+
+        index
+            .add_symbol(&SymbolDocument {
+                id: "2".into(),
+                name: "test_context_symbol".into(),
+                signature: "fn test_context_symbol()".into(),
+                doc_comment: "shared production token".into(),
+                code_body: String::new(),
+                file_path: "tests/context_test.rs".into(),
+                kind: "function".into(),
+                language: "rust".into(),
+                start_line: 1,
+            })
+            .unwrap();
+        index.commit().unwrap();
+
+        let filter = SearchFilter {
+            exclude_tests: true,
+            ..Default::default()
+        };
+        let results = index
+            .search_symbols("shared production token", &filter, 10)
+            .unwrap()
+            .results;
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].file_path, "src/context.rs");
+    }
+
+    #[test]
     fn test_name_match_ranks_highest() {
         let (_dir, index) = create_test_index();
 

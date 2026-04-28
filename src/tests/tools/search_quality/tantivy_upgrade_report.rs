@@ -1,13 +1,11 @@
 use super::comparison::{
     QueryResultDelta, RankJump, SearchHitSnapshot, SearchSnapshot, SnapshotDiff, TopResultChange,
-    capture_fixture_snapshot_from_file, diff_snapshots, load_query_set, load_snapshot_from_path,
-    write_snapshot_to_path,
+    capture_fixture_snapshot_from_file, diff_snapshots, load_query_set, write_snapshot_to_path,
 };
 use std::path::PathBuf;
 
 const QUERY_SET_RELATIVE_PATH: &str = "fixtures/search-quality/tantivy-upgrade-queries.json";
-const BASELINE_RELATIVE_PATH: &str = "docs/plans/2026-04-19-tantivy-0.26-baseline.json";
-const REPORT_RELATIVE_PATH: &str = "docs/plans/2026-04-19-tantivy-0.26-comparison-report.md";
+const BASELINE_RELATIVE_PATH: &str = "target/search-quality/tantivy-0.26-baseline.json";
 const MIN_RANK_JUMP: usize = 3;
 
 fn project_path(relative_path: &str) -> PathBuf {
@@ -256,14 +254,17 @@ async fn test_tantivy_upgrade_harness_fixture_snapshot_and_diff() {
 #[tokio::test(flavor = "multi_thread")]
 async fn test_tantivy_upgrade_baseline_comparison_report_generation() {
     let query_set_path = project_path(QUERY_SET_RELATIVE_PATH);
-    let baseline_path = project_path(BASELINE_RELATIVE_PATH);
-    let report_path = project_path(REPORT_RELATIVE_PATH);
-
-    let baseline = load_snapshot_from_path(&baseline_path)
-        .expect("Should load checked-in Tantivy 0.26 baseline snapshot");
     let current = capture_fixture_snapshot_from_file(&query_set_path)
         .await
         .expect("Should capture current Tantivy 0.26 snapshot");
+    let mut baseline = current.clone();
+    baseline.metadata.capture_source = "synthetic_test_baseline".to_string();
+    baseline
+        .queries
+        .first_mut()
+        .expect("fixture should include at least one query")
+        .top_results
+        .reverse();
     let diff = diff_snapshots(&baseline, &current, MIN_RANK_JUMP);
 
     let report_markdown = render_comparison_report(&baseline, &current, &diff, MIN_RANK_JUMP);
@@ -289,6 +290,8 @@ async fn test_tantivy_upgrade_baseline_comparison_report_generation() {
         "Report should include drift classification section"
     );
 
+    let temp_dir = tempfile::TempDir::new().expect("Should create report temp dir");
+    let report_path = temp_dir.path().join("tantivy-0.26-comparison-report.md");
     std::fs::write(&report_path, &report_markdown)
         .expect("Should write comparison report markdown");
     let written =

@@ -2659,7 +2659,9 @@ impl JulieServerHandler {
     ) -> Result<CallToolResult, McpError> {
         debug!("📦 Get context: {:?}", params);
         let start = std::time::Instant::now();
-        let workspace_snapshot = self.require_primary_workspace_binding().ok();
+        let workspace_snapshot = self
+            .metrics_workspace_binding_for_workspace_param(params.workspace.as_deref())
+            .await;
         let metadata = tool_targets::get_context_metadata(&params);
         let result = params
             .call_tool(self)

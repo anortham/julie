@@ -11,7 +11,9 @@ pub use super::graph::{
 };
 pub use super::scoring::{Pivot, select_pivots};
 use super::second_hop::{merge_expansions, select_second_hop_seeds, should_expand_second_hop};
-use super::task_signals::{TaskSignals, hydrate_failing_test_links};
+use super::task_signals::{
+    TaskSignals, hydrate_failing_test_links, merge_task_signal_seed_results,
+};
 use crate::database::SymbolDatabase;
 use crate::handler::JulieServerHandler;
 use crate::tools::navigation::resolution::{WorkspaceTarget, resolve_workspace_filter};
@@ -71,7 +73,7 @@ pub fn run_pipeline_with_options(
         exclude_tests: false,
     };
     let profile = crate::search::weights::SearchWeightProfile::get_context();
-    let search_results = crate::search::hybrid::hybrid_search(
+    let mut search_results = crate::search::hybrid::hybrid_search(
         query,
         &filter,
         30,
@@ -80,6 +82,7 @@ pub fn run_pipeline_with_options(
         embedding_provider,
         Some(profile),
     )?;
+    merge_task_signal_seed_results(&mut search_results.results, db, &filter, &resolved_signals)?;
     let output_format = super::formatting::OutputFormat::from_option(format.as_deref());
 
     if search_results.results.is_empty() {
@@ -115,7 +118,11 @@ pub fn run_pipeline_with_options(
     };
 
     let expansion = expand_graph(&pivots, db)?;
-    let expansion = if should_expand_second_hop(&resolved_signals, &expansion) {
+    let pivot_id_set: std::collections::HashSet<&str> = pivots
+        .iter()
+        .map(|pivot| pivot.result.id.as_str())
+        .collect();
+    let mut expansion = if should_expand_second_hop(&resolved_signals, &expansion) {
         let second_hop_seeds = select_second_hop_seeds(&expansion, resolved_signals.prefer_tests);
         if second_hop_seeds.is_empty() {
             expansion
@@ -125,6 +132,9 @@ pub fn run_pipeline_with_options(
     } else {
         expansion
     };
+    expansion
+        .neighbors
+        .retain(|neighbor| !pivot_id_set.contains(neighbor.symbol.id.as_str()));
 
     let budget = match max_tokens {
         Some(tokens) => TokenBudget::new(tokens),
