@@ -18,6 +18,8 @@ fn target_metadata(symbol_name: Option<&str>, file_path: Option<&str>, line: Opt
 pub(crate) fn fast_refs_metadata(params: &FastRefsTool) -> Value {
     json!({
         "symbol": params.symbol,
+        "include_definition": params.include_definition,
+        "limit": params.limit,
         "reference_kind": params.reference_kind,
         "workspace": params.workspace,
         "target": target_metadata(Some(&params.symbol), None, None),

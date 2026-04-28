@@ -174,9 +174,13 @@ impl CliToolCommand for RefsArgs {
     fn to_tool_args(&self) -> Result<Value> {
         let mut args = serde_json::json!({
             "symbol": self.symbol,
+            "include_definition": self.include_definition,
             "limit": self.limit,
         });
 
+        if let Some(ref workspace) = self.workspace {
+            args["workspace"] = Value::String(workspace.clone());
+        }
         if let Some(ref kind) = self.kind {
             args["reference_kind"] = Value::String(kind.clone());
         }
@@ -187,13 +191,7 @@ impl CliToolCommand for RefsArgs {
     async fn call_standalone(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
         use crate::tools::FastRefsTool;
 
-        let tool = FastRefsTool {
-            symbol: self.symbol.clone(),
-            include_definition: true,
-            limit: self.limit,
-            workspace: None,
-            reference_kind: self.kind.clone(),
-        };
+        let tool: FastRefsTool = serde_json::from_value(self.to_tool_args()?)?;
         tool.call_tool(handler).await
     }
 }

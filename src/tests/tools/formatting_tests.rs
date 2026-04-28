@@ -153,6 +153,38 @@ fn test_truncate_signature_keeps_total_length_within_limit() {
 }
 
 #[test]
+fn test_truncate_signature_handles_unicode_without_panic() {
+    let long_sig = format!("pub fn x{}()", "é".repeat(60));
+    let defs = vec![make_test_symbol(
+        "src/lib.rs",
+        1,
+        SymbolKind::Function,
+        Some(long_sig.as_str()),
+    )];
+
+    let output = std::panic::catch_unwind(|| {
+        format_lean_refs_results("test_fn", &defs, &[], &HashMap::new())
+    })
+    .expect("format_lean_refs_results should not panic on non-ASCII signatures");
+
+    let signature = output
+        .lines()
+        .find_map(|line| line.split("→ ").nth(1))
+        .expect("formatted output should include truncated signature");
+
+    assert!(
+        signature.ends_with("..."),
+        "signature should be truncated: {signature}"
+    );
+    assert!(
+        signature.chars().count() <= 60,
+        "truncated signature should respect the 60-char cap, got {} chars: {}",
+        signature.chars().count(),
+        signature
+    );
+}
+
+#[test]
 fn test_lean_refs_separates_imports_from_definitions() {
     let class_def = make_test_symbol(
         "src/services/user.rs",

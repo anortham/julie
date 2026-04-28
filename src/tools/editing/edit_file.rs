@@ -33,8 +33,59 @@ fn default_dry_run() -> bool {
     true
 }
 
-fn default_occurrence() -> String {
-    "first".to_string()
+fn default_occurrence() -> EditOccurrence {
+    EditOccurrence::First
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum EditOccurrence {
+    First,
+    Last,
+    All,
+}
+
+impl EditOccurrence {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            EditOccurrence::First => "first",
+            EditOccurrence::Last => "last",
+            EditOccurrence::All => "all",
+        }
+    }
+}
+
+#[cfg(test)]
+type BeforeCommitHook = Box<dyn Fn(&std::path::Path) + Send + Sync + 'static>;
+
+#[cfg(test)]
+static BEFORE_COMMIT_HOOK: std::sync::Mutex<Option<BeforeCommitHook>> = std::sync::Mutex::new(None);
+
+#[cfg(test)]
+pub(crate) fn set_before_commit_hook_for_test(
+    hook: impl Fn(&std::path::Path) + Send + Sync + 'static,
+) {
+    *BEFORE_COMMIT_HOOK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(Box::new(hook));
+}
+
+#[cfg(test)]
+pub(crate) fn clear_before_commit_hook_for_test() {
+    *BEFORE_COMMIT_HOOK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
+}
+
+#[cfg(test)]
+fn run_before_commit_hook_for_test(path: &std::path::Path) {
+    let hook = BEFORE_COMMIT_HOOK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .take();
+    if let Some(hook) = hook {
+        hook(path);
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
@@ -58,7 +109,7 @@ pub struct EditFileTool {
 
     /// Which occurrence to replace: "first" (default), "last", or "all"
     #[serde(default = "default_occurrence")]
-    pub occurrence: String,
+    pub occurrence: EditOccurrence,
 }
 
 /// Pure function: apply an edit to content string. Returns modified content.
@@ -328,7 +379,7 @@ impl EditFileTool {
             &original_content,
             &self.old_text,
             &self.new_text,
-            &self.occurrence,
+            self.occurrence.as_str(),
         ) {
             Ok(content) => content,
             Err(e) => {
@@ -366,8 +417,10 @@ impl EditFileTool {
         // NOTE: do NOT call update_file_hash after writing. The watcher must see the
         // hash mismatch to trigger symbol re-extraction. Updating the hash here would
         // poison watcher change-detection and leave the index permanently stale.
+        #[cfg(test)]
+        run_before_commit_hook_for_test(&resolved_path);
         let txn = EditingTransaction::begin(&resolved_str)?;
-        txn.commit(&modified_content)?;
+        txn.commit_if_unchanged(&modified_content, &original_content)?;
 
         debug!("edit_file applied to {}", self.file_path);
         let mut msg = format!("Applied edit to {}:\n\n{}", self.file_path, diff);

@@ -158,7 +158,11 @@ impl SymbolDatabase {
             let query = format!(
                 "SELECT DISTINCT r.id, r.from_symbol_id, r.to_symbol_id, r.kind, r.file_path, r.line_number, r.confidence, r.metadata
                  FROM relationships r
-                 INNER JOIN identifiers i ON r.file_path = i.file_path AND r.line_number = i.start_line
+                 -- Tie the relationship to the exact identifier occurrence, not any identifier for the same target.
+                 INNER JOIN identifiers i
+                   ON r.to_symbol_id = i.target_symbol_id
+                  AND r.file_path = i.file_path
+                  AND r.line_number = i.start_line
                  WHERE r.to_symbol_id IN ({})
                    AND i.kind = ?{}",
                 id_placeholders.join(", "),

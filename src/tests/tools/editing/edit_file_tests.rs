@@ -2,7 +2,10 @@
 
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::CallToolResult;
-use crate::tools::editing::edit_file::{EditFileTool, apply_edit};
+use crate::tools::editing::edit_file::{
+    EditFileTool, EditOccurrence, apply_edit, clear_before_commit_hook_for_test,
+    set_before_commit_hook_for_test,
+};
 use crate::tools::workspace::ManageWorkspaceTool;
 use anyhow::Result;
 use std::fs;
@@ -267,6 +270,24 @@ fn test_edit_file_rejects_unknown_workspace_field() {
 }
 
 #[test]
+fn test_edit_file_rejects_invalid_occurrence_field() {
+    let json = serde_json::json!({
+        "file_path": "src/foo.rs",
+        "old_text": "old",
+        "new_text": "new",
+        "occurrence": "middle",
+    });
+
+    let result: Result<EditFileTool, _> = serde_json::from_value(json);
+
+    let err = result.expect_err("invalid occurrence should be rejected during deserialization");
+    assert!(
+        err.to_string().contains("middle") || err.to_string().contains("occurrence"),
+        "error should mention the invalid occurrence, got: {err}"
+    );
+}
+
+#[test]
 fn test_edit_file_accepts_known_fields() {
     // Sanity: deny_unknown_fields must not reject known fields.
     let json = serde_json::json!({
@@ -278,6 +299,67 @@ fn test_edit_file_accepts_known_fields() {
     });
     serde_json::from_value::<crate::tools::editing::edit_file::EditFileTool>(json)
         .expect("known fields must still parse");
+}
+
+struct ClearEditFileHook;
+
+impl Drop for ClearEditFileHook {
+    fn drop(&mut self) {
+        clear_before_commit_hook_for_test();
+    }
+}
+
+#[tokio::test]
+#[serial_test::serial(edit_file_commit_hook)]
+async fn test_edit_file_apply_rejects_changed_target_before_commit() -> Result<()> {
+    let temp_dir = TempDir::new()?;
+    let src_dir = temp_dir.path().join("src");
+    fs::create_dir_all(&src_dir)?;
+    let file_path = src_dir.join("main.rs");
+    let original = "fn main() {\n    before();\n}\n";
+    let intervening = "fn main() {\n    external_change();\n}\n";
+    fs::write(&file_path, original)?;
+
+    let _hook_guard = ClearEditFileHook;
+    set_before_commit_hook_for_test({
+        move |resolved_path| {
+            fs::write(resolved_path, intervening)
+                .expect("test hook should write intervening content");
+        }
+    });
+
+    let handler = JulieServerHandler::new(temp_dir.path().to_path_buf()).await?;
+    let index_tool = ManageWorkspaceTool {
+        operation: "index".to_string(),
+        workspace_id: None,
+        path: Some(temp_dir.path().to_string_lossy().to_string()),
+        name: None,
+        force: Some(false),
+        detailed: None,
+    };
+    index_tool.call_tool(&handler).await?;
+    let tool = EditFileTool {
+        file_path: "src/main.rs".to_string(),
+        old_text: "before();".to_string(),
+        new_text: "after();".to_string(),
+        dry_run: false,
+        occurrence: EditOccurrence::First,
+    };
+
+    let result = tool.call_tool(&handler).await;
+
+    let err = result.expect_err("apply should reject a target changed during the edit");
+    assert!(
+        err.to_string().contains("File changed during edit"),
+        "error should explain the stale target, got: {err}"
+    );
+    assert_eq!(
+        fs::read_to_string(&file_path)?,
+        intervening,
+        "intervening file content should be preserved"
+    );
+
+    Ok(())
 }
 
 #[tokio::test]
@@ -314,7 +396,7 @@ async fn test_edit_file_dry_run_truncates_large_diff_preview() -> Result<()> {
         old_text: original.trim_end().to_string(),
         new_text: replacement,
         dry_run: true,
-        occurrence: "first".to_string(),
+        occurrence: EditOccurrence::First,
     };
 
     let result = tool.call_tool(&handler).await?;

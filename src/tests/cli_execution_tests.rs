@@ -59,6 +59,8 @@ fn test_search_args_tool_name() {
 fn test_refs_args_tool_name() {
     let args = RefsArgs {
         symbol: "Foo".into(),
+        include_definition: true,
+        workspace: None,
         kind: None,
         limit: 10,
     };
@@ -183,6 +185,8 @@ fn test_search_to_tool_args_full() {
 fn test_refs_to_tool_args_with_filters() {
     let args = RefsArgs {
         symbol: "Command".into(),
+        include_definition: true,
+        workspace: None,
         kind: Some("call".into()),
         limit: 25,
     };
@@ -675,6 +679,8 @@ fn test_daemon_call_error_transport_is_send_sync() {
 fn test_refs_to_tool_args_no_file_filters() {
     let args = RefsArgs {
         symbol: "Command".into(),
+        include_definition: true,
+        workspace: None,
         kind: None,
         limit: 10,
     };

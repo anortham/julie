@@ -14,12 +14,15 @@ use crate::search::similarity::SimilarEntry;
 fn truncate_signature(sig: &str, max_len: usize) -> String {
     let first_line = sig.lines().next().unwrap_or(sig).trim();
 
-    if first_line.len() <= max_len {
+    if first_line.chars().count() <= max_len {
         first_line.to_string()
     } else if max_len <= 3 {
         ".".repeat(max_len)
     } else {
-        format!("{}...", &first_line[..max_len - 3])
+        format!(
+            "{}...",
+            first_line.chars().take(max_len - 3).collect::<String>()
+        )
     }
 }
 

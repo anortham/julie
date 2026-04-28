@@ -457,6 +457,9 @@ impl FastRefsTool {
             .first()
             .map(|d| d.id.clone())
             .unwrap_or_default();
+        let resolved_definition_ids: HashSet<String> =
+            definitions.iter().map(|d| d.id.clone()).collect();
+        let qualified_lookup = parent_filter.is_some();
 
         let identifier_refs = tokio::task::spawn_blocking(move || {
             let db_lock = super::lock_db(&db_arc_for_identifiers, "fast_refs identifiers");
@@ -487,6 +490,16 @@ impl FastRefsTool {
                     continue; // Prefer existing relationship (richer data)
                 }
 
+                if qualified_lookup
+                    && !ident
+                        .target_symbol_id
+                        .as_deref()
+                        .map(|target_id| resolved_definition_ids.contains(target_id))
+                        .unwrap_or(false)
+                {
+                    continue;
+                }
+
                 // Convert IdentifierKind string to RelationshipKind
                 let rel_kind = match ident.kind.as_str() {
                     "call" => RelationshipKind::Calls,
@@ -506,6 +519,7 @@ impl FastRefsTool {
                     confidence: ident.confidence,
                     metadata: None,
                 });
+                existing_refs.insert(key);
                 added += 1;
             }
 

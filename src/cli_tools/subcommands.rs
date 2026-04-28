@@ -115,13 +115,26 @@ pub struct RefsArgs {
     /// Symbol name (supports qualified names like Processor::process)
     pub symbol: String,
 
-    /// Narrow by reference kind: call, variable_ref, type_usage, member_access, import
-    #[arg(short = 'k', long)]
-    pub kind: Option<String>,
+    /// Include definitions in results (default: true)
+    #[arg(
+        long,
+        default_value_t = true,
+        action = clap::ArgAction::Set,
+        value_parser = clap::builder::BoolishValueParser::new()
+    )]
+    pub include_definition: bool,
 
     /// Maximum references (default: 10)
     #[arg(short = 'n', long, default_value = "10")]
     pub limit: u32,
+
+    /// Tool workspace target: primary or a workspace id opened through manage_workspace
+    #[arg(id = "target_workspace", long = "target-workspace")]
+    pub workspace: Option<String>,
+
+    /// Narrow by reference kind: call, variable_ref, type_usage, member_access, import
+    #[arg(short = 'k', long)]
+    pub kind: Option<String>,
 }
 
 // ---------------------------------------------------------------------------

@@ -182,10 +182,18 @@ async fn run_metrics_writer(mut rx: tokio::sync::mpsc::Receiver<MetricsTask>) {
         // Compute source_bytes from the workspace DB, then use it for both writes.
         let mut source_bytes: Option<u64> = None;
         let mut resolved_workspace = task.workspace.read().await.clone();
-        if resolved_workspace.is_none() {
-            if let (Some(pool), Some(workspace_id)) =
-                (&task.workspace_pool, task.workspace_id.as_ref())
-            {
+        if let (Some(pool), Some(workspace_id)) = (&task.workspace_pool, task.workspace_id.as_ref())
+        {
+            let matches_requested_workspace = resolved_workspace.as_ref().is_some_and(|ws| {
+                let db_path = metrics_db_path_for_workspace(
+                    ws.index_root_override.as_deref(),
+                    &task.current_workspace_root,
+                    workspace_id,
+                );
+                db_path.exists()
+            });
+
+            if resolved_workspace.is_none() || !matches_requested_workspace {
                 resolved_workspace = pool.get(workspace_id).await.map(|ws| (*ws).clone());
             }
         }
@@ -2476,7 +2484,9 @@ impl JulieServerHandler {
     ) -> Result<CallToolResult, McpError> {
         debug!("⚡ Fast find references: {:?}", params);
         let start = std::time::Instant::now();
-        let workspace_snapshot = self.require_primary_workspace_binding().ok();
+        let workspace_snapshot = self
+            .metrics_workspace_binding_for_workspace_param(params.workspace.as_deref())
+            .await;
         let metadata = tool_targets::fast_refs_metadata(&params);
         let result = params
             .call_tool(self)
@@ -2846,7 +2856,7 @@ impl JulieServerHandler {
         annotations(
             title = "Edit File",
             read_only_hint = false,
-            destructive_hint = false,
+            destructive_hint = true,
             idempotent_hint = false,
             open_world_hint = false
         )
@@ -2867,7 +2877,7 @@ impl JulieServerHandler {
             .await
             .map_err(|e| McpError::internal_error(format!("edit_file failed: {}", e), None))?;
         let output_bytes = Self::output_bytes_from_result(&result);
-        let source_file_paths = Self::extract_paths_from_result(&result);
+        let source_file_paths = vec![params.file_path.clone()];
         let report = ToolCallReport {
             result_count: None,
             source_bytes: None,

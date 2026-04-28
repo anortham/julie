@@ -121,6 +121,35 @@ mod tests {
             .unwrap();
     }
 
+    /// Insert a raw identifier into the test database with an explicit target link.
+    fn insert_identifier_with_target(
+        db: &SymbolDatabase,
+        name: &str,
+        kind: &str,
+        file: &str,
+        line: u32,
+        containing_symbol_id: Option<&str>,
+        target_symbol_id: Option<&str>,
+        confidence: f32,
+    ) {
+        db.conn
+            .execute(
+                "INSERT INTO identifiers (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, containing_symbol_id, target_symbol_id, confidence)
+                 VALUES (?1, ?2, ?3, 'rust', ?4, ?5, 0, ?5, 10, 0, 100, ?6, ?7, ?8)",
+                rusqlite::params![
+                    format!("ident_{}_{}_{}_{}_{}", name, kind, file, line, confidence.to_bits()),
+                    name,
+                    kind,
+                    file,
+                    line,
+                    containing_symbol_id,
+                    target_symbol_id,
+                    confidence,
+                ],
+            )
+            .unwrap();
+    }
+
     /// The function under test calls into the target-workspace logic
     /// with a raw SymbolDatabase, bypassing the handler/workspace machinery.
     ///
@@ -133,15 +162,24 @@ mod tests {
         reference_kind: Option<&str>,
     ) -> (Vec<Symbol>, Vec<Relationship>) {
         use crate::extractors::base::RelationshipKind;
+        use crate::tools::navigation::resolution::parse_qualified_name;
         use crate::utils::cross_language_intelligence::generate_naming_variants;
 
+        let symbol_owned = symbol.to_string();
+        let (effective_symbol, parent_filter) = match parse_qualified_name(&symbol_owned) {
+            Some((parent, child)) => (child.to_string(), Some(parent.to_string())),
+            None => (symbol_owned.clone(), None),
+        };
+
         // Strategy 1: Exact name lookup
-        let mut defs = db.get_symbols_by_name(symbol).unwrap_or_default();
+        let mut defs = db
+            .get_symbols_by_name(&effective_symbol)
+            .unwrap_or_default();
 
         // Strategy 2: Cross-language naming variants
-        let variants = generate_naming_variants(symbol);
+        let variants = generate_naming_variants(&effective_symbol);
         for variant in &variants {
-            if *variant != symbol {
+            if *variant != effective_symbol {
                 if let Ok(variant_symbols) = db.get_symbols_by_name(variant) {
                     for sym in variant_symbols {
                         if sym.name == *variant {
@@ -152,24 +190,77 @@ mod tests {
             }
         }
 
+        if let Some(ref parent_name) = parent_filter {
+            let parent_ids: Vec<String> = defs
+                .iter()
+                .filter_map(|s| s.parent_id.clone())
+                .collect::<std::collections::HashSet<_>>()
+                .into_iter()
+                .collect();
+
+            if !parent_ids.is_empty() {
+                let parents = db.get_symbols_by_ids(&parent_ids).unwrap_or_default();
+                let matching_parent_ids: std::collections::HashSet<String> = parents
+                    .into_iter()
+                    .filter(|p| p.name == *parent_name)
+                    .map(|p| p.id)
+                    .collect();
+
+                defs.retain(|s| {
+                    s.parent_id
+                        .as_deref()
+                        .map(|pid| matching_parent_ids.contains(pid))
+                        .unwrap_or(false)
+                });
+            } else {
+                defs.clear();
+            }
+        }
+
         // Deduplicate definitions
         defs.sort_by(|a, b| a.id.cmp(&b.id));
         defs.dedup_by(|a, b| a.id == b.id);
 
+        let mut import_refs: Vec<Relationship> = Vec::new();
+        defs.retain(|sym| {
+            if sym.kind == SymbolKind::Import {
+                import_refs.push(Relationship {
+                    id: format!("import_{}_{}", sym.file_path, sym.start_line),
+                    from_symbol_id: sym.id.clone(),
+                    to_symbol_id: String::new(),
+                    kind: RelationshipKind::Imports,
+                    file_path: sym.file_path.clone(),
+                    line_number: sym.start_line,
+                    confidence: 1.0,
+                    metadata: None,
+                });
+                false
+            } else {
+                true
+            }
+        });
+
         // Strategy 3: Relationships to symbols
         let definition_ids: Vec<String> = defs.iter().map(|d| d.id.clone()).collect();
-        let mut refs: Vec<Relationship> = if let Some(kind) = reference_kind {
+
+        let mut refs: Vec<Relationship> = match reference_kind {
+            Some(kind) if kind != "import" => Vec::new(),
+            _ => import_refs,
+        };
+
+        let relationship_refs: Vec<Relationship> = if let Some(kind) = reference_kind {
             db.get_relationships_to_symbols_filtered_by_kind(&definition_ids, kind)
                 .unwrap_or_default()
         } else {
             db.get_relationships_to_symbols(&definition_ids)
                 .unwrap_or_default()
         };
+        refs.extend(relationship_refs);
 
         // Strategy 4: Identifier-based reference discovery
-        let mut all_names = vec![symbol.to_string()];
+        let mut all_names = vec![effective_symbol.clone()];
         for v in &variants {
-            if *v != symbol {
+            if *v != effective_symbol {
                 all_names.push(v.clone());
             }
         }
@@ -201,6 +292,8 @@ mod tests {
             let rel_kind = match ident.kind.as_str() {
                 "call" => RelationshipKind::Calls,
                 "import" => RelationshipKind::Imports,
+                "type_usage" => RelationshipKind::Uses,
+                "member_access" => RelationshipKind::References,
                 _ => RelationshipKind::References,
             };
 
@@ -402,22 +495,24 @@ mod tests {
 
         // Insert corresponding identifiers for the kind filtering to work
         // (get_relationships_to_symbols_filtered_by_kind joins with identifiers table)
-        insert_identifier(
+        insert_identifier_with_target(
             &db,
             "Widget",
             "call",
             "src/caller.rs",
             15,
             Some("caller_fn"),
+            Some("sym-widget"),
             0.9,
         );
-        insert_identifier(
+        insert_identifier_with_target(
             &db,
             "Widget",
             "import",
             "src/importer.rs",
             3,
             Some("importer"),
+            Some("sym-widget"),
             1.0,
         );
 
@@ -474,6 +569,148 @@ mod tests {
             2,
             "without filter, should find 2 identifier refs"
         );
+    }
+
+    #[test]
+    fn test_relationship_kind_filter_uses_matching_identifier_target() {
+        let files = &[
+            "src/lib.rs",
+            "src/caller.rs",
+            "src/other.rs",
+            "src/shared.rs",
+        ];
+        let (_tmp, mut db) = setup_db(files);
+
+        let widget = make_symbol("sym-widget", "Widget", "src/lib.rs", 1);
+        let gadget = make_symbol("sym-gadget", "Gadget", "src/lib.rs", 2);
+        db.store_symbols(&[widget, gadget]).unwrap();
+
+        store_caller_symbol(&mut db, "caller_fn", "src/caller.rs", 12);
+        store_caller_symbol(&mut db, "other_fn", "src/other.rs", 12);
+
+        let call_rel = make_relationship(
+            "rel_call",
+            "caller_fn",
+            "sym-widget",
+            "src/shared.rs",
+            8,
+            RelationshipKind::Calls,
+            0.9,
+        );
+        let unrelated_rel = make_relationship(
+            "rel_type",
+            "other_fn",
+            "sym-gadget",
+            "src/shared.rs",
+            8,
+            RelationshipKind::References,
+            0.8,
+        );
+        db.store_relationships(&[call_rel, unrelated_rel]).unwrap();
+
+        insert_identifier_with_target(
+            &db,
+            "Widget",
+            "call",
+            "src/shared.rs",
+            8,
+            Some("caller_fn"),
+            Some("sym-widget"),
+            0.9,
+        );
+        insert_identifier_with_target(
+            &db,
+            "Gadget",
+            "type_usage",
+            "src/shared.rs",
+            8,
+            Some("other_fn"),
+            Some("sym-gadget"),
+            0.8,
+        );
+
+        let refs = db
+            .get_relationships_to_symbols_filtered_by_kind(
+                &["sym-widget".to_string(), "sym-gadget".to_string()],
+                "call",
+            )
+            .unwrap();
+
+        assert_eq!(
+            refs.len(),
+            1,
+            "kind filter should only return the call relationship, got {:?}",
+            refs.iter().map(|r| r.id.as_str()).collect::<Vec<_>>()
+        );
+        assert_eq!(refs[0].id, "rel_call");
+        assert_eq!(refs[0].to_symbol_id, "sym-widget");
+    }
+
+    #[test]
+    fn test_relationship_kind_filter_scopes_to_identifier_occurrence() {
+        let files = &["src/lib.rs", "src/call_site.rs", "src/type_site.rs"];
+        let (_tmp, mut db) = setup_db(files);
+
+        let widget = make_symbol("sym-widget", "Widget", "src/lib.rs", 1);
+        db.store_symbols(&[widget]).unwrap();
+
+        store_caller_symbol(&mut db, "call_site", "src/call_site.rs", 12);
+        store_caller_symbol(&mut db, "type_site", "src/type_site.rs", 27);
+
+        let call_rel = make_relationship(
+            "rel_call",
+            "call_site",
+            "sym-widget",
+            "src/call_site.rs",
+            12,
+            RelationshipKind::Calls,
+            0.95,
+        );
+        let type_rel = make_relationship(
+            "rel_type",
+            "type_site",
+            "sym-widget",
+            "src/type_site.rs",
+            27,
+            RelationshipKind::References,
+            0.75,
+        );
+        db.store_relationships(&[call_rel, type_rel]).unwrap();
+
+        insert_identifier_with_target(
+            &db,
+            "Widget",
+            "call",
+            "src/call_site.rs",
+            12,
+            Some("call_site"),
+            Some("sym-widget"),
+            0.95,
+        );
+        insert_identifier_with_target(
+            &db,
+            "Widget",
+            "type_usage",
+            "src/type_site.rs",
+            27,
+            Some("type_site"),
+            Some("sym-widget"),
+            0.75,
+        );
+
+        let refs = db
+            .get_relationships_to_symbols_filtered_by_kind(&["sym-widget".to_string()], "call")
+            .unwrap();
+
+        assert_eq!(
+            refs.len(),
+            1,
+            "kind filter should only return the call occurrence, got {:?}",
+            refs.iter().map(|r| r.id.as_str()).collect::<Vec<_>>()
+        );
+        assert_eq!(refs[0].id, "rel_call");
+        assert_eq!(refs[0].file_path, "src/call_site.rs");
+        assert_eq!(refs[0].line_number, 12);
     }
 
     // =========================================================================
@@ -597,7 +834,7 @@ mod tests {
         assert_eq!(import_ref.kind, RelationshipKind::Imports);
 
         let type_ref = refs.iter().find(|r| r.file_path == "src/c.rs").unwrap();
-        assert_eq!(type_ref.kind, RelationshipKind::References);
+        assert_eq!(type_ref.kind, RelationshipKind::Uses);
     }
 
     // =========================================================================
@@ -749,6 +986,269 @@ pub fn caller_two() {
         // References may be empty if the tree-sitter extractor doesn't capture call
         // relationships in this simple case -- that's fine, we're testing the signature
         // and that it doesn't panic.
+    }
+
+    /// Regression coverage for the target-workspace path.
+    /// This checks the actual implementation, not the local test helper.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_find_references_in_target_workspace_parity() {
+        use crate::handler::JulieServerHandler;
+        use crate::tools::navigation::target_workspace;
+        use std::fs;
+
+        let primary_dir = TempDir::new().unwrap();
+        let primary_path = primary_dir.path().to_path_buf();
+        let primary_src = primary_path.join("src");
+        fs::create_dir_all(&primary_src).unwrap();
+        fs::write(primary_src.join("primary.rs"), "pub struct Primary {}").unwrap();
+
+        let target_dir = TempDir::new().unwrap();
+        let target_path = target_dir.path().to_path_buf();
+        let target_src = target_path.join("src");
+        fs::create_dir_all(&target_src).unwrap();
+        fs::write(target_src.join("engine.rs"), "pub struct Engine {}").unwrap();
+        fs::write(target_src.join("pipeline.rs"), "pub struct Pipeline {}").unwrap();
+        fs::write(target_src.join("engine_usage.rs"), "fn use_engine() {}").unwrap();
+        fs::write(target_src.join("pipeline_usage.rs"), "fn use_pipeline() {}").unwrap();
+        fs::write(target_src.join("imports.rs"), "use crate::Thing;").unwrap();
+
+        let handler = JulieServerHandler::new_for_test().await.unwrap();
+        handler
+            .initialize_workspace_with_force(Some(primary_path.to_string_lossy().to_string()), true)
+            .await
+            .unwrap();
+
+        let workspace = handler.get_workspace().await.unwrap().unwrap();
+        let workspace_id =
+            crate::workspace::registry::generate_workspace_id(&target_path.to_string_lossy())
+                .expect("Should compute workspace ID from target path");
+
+        let ref_db_path = workspace.workspace_db_path(&workspace_id);
+        fs::create_dir_all(ref_db_path.parent().unwrap()).unwrap();
+        {
+            let mut ref_db = SymbolDatabase::new(&ref_db_path).unwrap();
+            ref_db
+                .bulk_store_symbols(
+                    &[
+                        Symbol {
+                            id: "class-engine".to_string(),
+                            name: "Engine".to_string(),
+                            kind: SymbolKind::Class,
+                            language: "rust".to_string(),
+                            file_path: target_src.join("engine.rs").to_string_lossy().to_string(),
+                            signature: Some("struct Engine".to_string()),
+                            start_line: 1,
+                            start_column: 0,
+                            end_line: 1,
+                            end_column: 20,
+                            start_byte: 0,
+                            end_byte: 20,
+                            doc_comment: None,
+                            visibility: None,
+                            parent_id: None,
+                            metadata: None,
+                            semantic_group: None,
+                            confidence: None,
+                            code_context: None,
+                            content_type: None,
+                            annotations: Vec::new(),
+                        },
+                        Symbol {
+                            id: "method-engine-process".to_string(),
+                            name: "process".to_string(),
+                            kind: SymbolKind::Method,
+                            language: "rust".to_string(),
+                            file_path: target_src.join("engine.rs").to_string_lossy().to_string(),
+                            signature: Some("pub fn process()".to_string()),
+                            start_line: 5,
+                            start_column: 0,
+                            end_line: 9,
+                            end_column: 1,
+                            start_byte: 0,
+                            end_byte: 40,
+                            doc_comment: None,
+                            visibility: None,
+                            parent_id: Some("class-engine".to_string()),
+                            metadata: None,
+                            semantic_group: None,
+                            confidence: None,
+                            code_context: None,
+                            content_type: None,
+                            annotations: Vec::new(),
+                        },
+                        Symbol {
+                            id: "class-pipeline".to_string(),
+                            name: "Pipeline".to_string(),
+                            kind: SymbolKind::Class,
+                            language: "rust".to_string(),
+                            file_path: target_src.join("pipeline.rs").to_string_lossy().to_string(),
+                            signature: Some("struct Pipeline".to_string()),
+                            start_line: 1,
+                            start_column: 0,
+                            end_line: 1,
+                            end_column: 22,
+                            start_byte: 0,
+                            end_byte: 22,
+                            doc_comment: None,
+                            visibility: None,
+                            parent_id: None,
+                            metadata: None,
+                            semantic_group: None,
+                            confidence: None,
+                            code_context: None,
+                            content_type: None,
+                            annotations: Vec::new(),
+                        },
+                        Symbol {
+                            id: "method-pipeline-process".to_string(),
+                            name: "process".to_string(),
+                            kind: SymbolKind::Method,
+                            language: "rust".to_string(),
+                            file_path: target_src.join("pipeline.rs").to_string_lossy().to_string(),
+                            signature: Some("pub fn process()".to_string()),
+                            start_line: 5,
+                            start_column: 0,
+                            end_line: 9,
+                            end_column: 1,
+                            start_byte: 0,
+                            end_byte: 40,
+                            doc_comment: None,
+                            visibility: None,
+                            parent_id: Some("class-pipeline".to_string()),
+                            metadata: None,
+                            semantic_group: None,
+                            confidence: None,
+                            code_context: None,
+                            content_type: None,
+                            annotations: Vec::new(),
+                        },
+                        Symbol {
+                            id: "import-thing".to_string(),
+                            name: "Thing".to_string(),
+                            kind: SymbolKind::Import,
+                            language: "rust".to_string(),
+                            file_path: target_src.join("imports.rs").to_string_lossy().to_string(),
+                            signature: Some("use crate::Thing".to_string()),
+                            start_line: 1,
+                            start_column: 0,
+                            end_line: 1,
+                            end_column: 18,
+                            start_byte: 0,
+                            end_byte: 18,
+                            doc_comment: None,
+                            visibility: None,
+                            parent_id: None,
+                            metadata: None,
+                            semantic_group: None,
+                            confidence: None,
+                            code_context: None,
+                            content_type: None,
+                            annotations: Vec::new(),
+                        },
+                    ],
+                    &workspace_id,
+                )
+                .unwrap();
+        }
+
+        {
+            let ref_db = SymbolDatabase::new(&ref_db_path).unwrap();
+            ref_db
+                .conn
+                .execute("PRAGMA foreign_keys = OFF", [])
+                .unwrap();
+            insert_identifier_with_target(
+                &ref_db,
+                "process",
+                "call",
+                &target_src.join("engine_usage.rs").to_string_lossy(),
+                10,
+                None,
+                Some("method-engine-process"),
+                0.92,
+            );
+            insert_identifier_with_target(
+                &ref_db,
+                "process",
+                "call",
+                &target_src.join("engine_usage.rs").to_string_lossy(),
+                10,
+                None,
+                Some("method-engine-process"),
+                0.91,
+            );
+            insert_identifier_with_target(
+                &ref_db,
+                "process",
+                "call",
+                &target_src.join("pipeline_usage.rs").to_string_lossy(),
+                12,
+                None,
+                Some("method-pipeline-process"),
+                0.91,
+            );
+            insert_identifier(
+                &ref_db,
+                "Thing",
+                "type_usage",
+                &target_src.join("imports.rs").to_string_lossy(),
+                2,
+                None,
+                0.73,
+            );
+        }
+
+        let (defs_engine, refs_engine) = target_workspace::find_references_in_target_workspace(
+            &handler,
+            workspace_id.clone(),
+            "Engine::process",
+            10,
+            None,
+        )
+        .await
+        .expect("qualified lookup should succeed");
+
+        assert_eq!(
+            defs_engine.len(),
+            1,
+            "qualified lookup should return one child definition"
+        );
+        assert_eq!(defs_engine[0].id, "method-engine-process");
+        assert_eq!(
+            refs_engine.len(),
+            1,
+            "qualified lookup should keep only Engine::process identifier refs"
+        );
+        assert_eq!(
+            refs_engine[0].file_path,
+            target_src.join("engine_usage.rs").to_string_lossy(),
+            "qualified lookup should not return the other parent's call"
+        );
+
+        let (defs_thing, refs_thing) = target_workspace::find_references_in_target_workspace(
+            &handler,
+            workspace_id,
+            "Thing",
+            10,
+            None,
+        )
+        .await
+        .expect("import lookup should succeed");
+
+        assert!(
+            defs_thing.is_empty(),
+            "import symbols should not remain in definitions"
+        );
+        assert!(
+            refs_thing
+                .iter()
+                .any(|r| r.kind == RelationshipKind::Imports),
+            "import symbols should become import references"
+        );
+        assert!(
+            refs_thing.iter().any(|r| r.kind == RelationshipKind::Uses),
+            "type_usage identifiers should map to RelationshipKind::Uses"
+        );
     }
 
     // =========================================================================

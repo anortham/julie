@@ -4,6 +4,7 @@ use crate::handler::tool_targets;
 use crate::search::index::{FileMatchKind, FileSearchResult};
 use crate::tools::editing::rewrite_symbol::RewriteSymbolTool;
 use crate::tools::navigation::CallPathTool;
+use crate::tools::navigation::FastRefsTool;
 use crate::tools::search::FastSearchTool;
 use crate::tools::search::trace::{
     FilePatternDiagnostic, HintKind, SearchExecutionKind, SearchExecutionResult, SearchHit,
@@ -113,6 +114,26 @@ fn test_fast_search_metadata_captures_workspace_param() {
 
     assert_eq!(metadata["workspace"], "target-workspace");
     assert_eq!(metadata["limit"], 1);
+}
+
+#[test]
+fn test_fast_refs_metadata_captures_result_shaping_fields() {
+    let params = FastRefsTool {
+        symbol: "Command".to_string(),
+        include_definition: false,
+        limit: 25,
+        workspace: Some("target-workspace".to_string()),
+        reference_kind: Some("call".to_string()),
+    };
+
+    let metadata = tool_targets::fast_refs_metadata(&params);
+
+    assert_eq!(metadata["symbol"], "Command");
+    assert_eq!(metadata["include_definition"], false);
+    assert_eq!(metadata["limit"], 25);
+    assert_eq!(metadata["workspace"], "target-workspace");
+    assert_eq!(metadata["reference_kind"], "call");
+    assert_eq!(metadata["target"]["target_symbol_name"], "Command");
 }
 
 #[test]

@@ -3,7 +3,9 @@
 //! Validates that each named wrapper and the generic tool command parse
 //! arguments correctly, including defaults, long flags, and short flags.
 
+use crate::cli_tools::CliToolCommand;
 use crate::cli_tools::subcommands::*;
+use crate::tools::FastRefsTool;
 use clap::{CommandFactory, Parser};
 
 // ---------------------------------------------------------------------------
@@ -83,14 +85,37 @@ fn test_refs_defaults() {
     assert_eq!(args.symbol, "Command");
     assert!(args.kind.is_none());
     assert_eq!(args.limit, 10);
+    assert!(args.workspace.is_none());
+    assert!(args.include_definition);
 }
 
 #[test]
 fn test_refs_all_flags() {
-    let args = RefsArgs::parse_from(["refs", "FastSearchTool", "--kind", "call", "--limit", "25"]);
+    let args = RefsArgs::parse_from([
+        "refs",
+        "FastSearchTool",
+        "--kind",
+        "call",
+        "--limit",
+        "25",
+        "--target-workspace",
+        "target-workspace",
+        "--include-definition",
+        "false",
+    ]);
     assert_eq!(args.symbol, "FastSearchTool");
     assert_eq!(args.kind.as_deref(), Some("call"));
     assert_eq!(args.limit, 25);
+    assert_eq!(args.workspace.as_deref(), Some("target-workspace"));
+    assert!(!args.include_definition);
+
+    let tool_args = args.to_tool_args().unwrap();
+    assert_eq!(tool_args["workspace"], "target-workspace");
+    assert_eq!(tool_args["include_definition"], false);
+
+    let tool: FastRefsTool = serde_json::from_value(tool_args).unwrap();
+    assert_eq!(tool.workspace.as_deref(), Some("target-workspace"));
+    assert!(!tool.include_definition);
 }
 
 #[test]
