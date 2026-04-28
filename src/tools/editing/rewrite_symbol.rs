@@ -597,10 +597,12 @@ impl RewriteSymbolTool {
             secure_path_resolution(&indexed_symbol.file_path, &target.workspace_root)?;
         let resolved_str = resolved_path.to_string_lossy().to_string();
 
-        let current_hash =
-            crate::database::calculate_file_hash(&resolved_path).map_err(|error| {
-                anyhow!("Cannot hash file '{}': {}", indexed_symbol.file_path, error)
-            })?;
+        let original_content = std::fs::read_to_string(&resolved_path).map_err(|error| {
+            anyhow!("Cannot read file '{}': {}", indexed_symbol.file_path, error)
+        })?;
+        let current_hash = blake3::hash(original_content.as_bytes())
+            .to_hex()
+            .to_string();
         {
             let db = target
                 .db
@@ -614,10 +616,6 @@ impl RewriteSymbolTool {
                 ))]));
             }
         }
-
-        let original_content = std::fs::read_to_string(&resolved_path).map_err(|error| {
-            anyhow!("Cannot read file '{}': {}", indexed_symbol.file_path, error)
-        })?;
         let live = live_symbol_context(
             &indexed_symbol,
             &indexed_symbol.file_path,
@@ -724,7 +722,7 @@ impl RewriteSymbolTool {
         }
 
         let transaction = EditingTransaction::begin(&resolved_str)?;
-        transaction.commit(&modified_content)?;
+        transaction.commit_if_unchanged(&modified_content, &original_content)?;
 
         debug!(
             "rewrite_symbol {} applied to {}",

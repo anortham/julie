@@ -54,6 +54,28 @@ impl EditingTransaction {
 
     /// Commit new content to the file atomically
     pub fn commit(mut self, content: &str) -> Result<()> {
+        self.commit_inner(content, None)
+    }
+
+    /// Commit new content only if the target still matches the expected content.
+    pub fn commit_if_unchanged(mut self, content: &str, expected_current: &str) -> Result<()> {
+        self.commit_inner(content, Some(expected_current))
+    }
+
+    fn commit_inner(&mut self, content: &str, expected_current: Option<&str>) -> Result<()> {
+        let existing_permissions = if self.file_path.exists() {
+            let permissions = fs::metadata(&self.file_path)?.permissions();
+            if permissions.readonly() {
+                return Err(anyhow::anyhow!(
+                    "Cannot write to readonly file: {}",
+                    self.file_path.display()
+                ));
+            }
+            Some(permissions)
+        } else {
+            None
+        };
+
         // Generate unique temp file name
         let base_name = self
             .file_path
@@ -66,6 +88,19 @@ impl EditingTransaction {
         // Write to temp file first
         fs::write(&temp_path, content)?;
         self.temp_file_path = Some(temp_path.clone());
+        if let Some(permissions) = existing_permissions {
+            fs::set_permissions(&temp_path, permissions)?;
+        }
+
+        if let Some(expected) = expected_current {
+            let current = fs::read_to_string(&self.file_path)?;
+            if current != expected {
+                return Err(anyhow::anyhow!(
+                    "File changed during edit: {}",
+                    self.file_path.display()
+                ));
+            }
+        }
 
         // Atomic rename (this is the commit point)
         fs::rename(&temp_path, &self.file_path)?;

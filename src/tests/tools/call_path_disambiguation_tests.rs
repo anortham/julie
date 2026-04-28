@@ -3,6 +3,7 @@ use std::fs;
 
 use crate::handler::JulieServerHandler;
 use crate::tools::navigation::call_path::{CallPathResponse, CallPathTool};
+use crate::tools::navigation::resolution::file_path_matches_suffix;
 use crate::tools::workspace::ManageWorkspaceTool;
 use tempfile::TempDir;
 
@@ -55,6 +56,28 @@ fn extract_text(result: &crate::mcp_compat::CallToolResult) -> String {
 
 fn try_parse_response(text: &str) -> Option<CallPathResponse> {
     serde_json::from_str(text).ok()
+}
+
+#[test]
+fn test_file_path_suffix_filter_normalizes_user_input() {
+    let path = "src/lib.rs";
+
+    for filter in ["src/lib.rs", "./src/lib.rs", "src\\lib.rs", "src//lib.rs"] {
+        assert!(
+            file_path_matches_suffix(path, filter),
+            "expected normalized filter {filter:?} to match {path:?}"
+        );
+    }
+
+    assert!(file_path_matches_suffix("lib.rs", "lib.rs"));
+    assert!(file_path_matches_suffix(
+        "src/tools/handler.rs",
+        "handler.rs"
+    ));
+    assert!(!file_path_matches_suffix(
+        "src/tools/foohandler.rs",
+        "handler.rs"
+    ));
 }
 
 // ---------------------------------------------------------------------------

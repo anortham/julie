@@ -192,5 +192,25 @@ pub fn compare_symbols_by_priority_and_context(
 /// Prevents false positives from bare `ends_with`: `"handler.rs"` matches
 /// `"src/tools/handler.rs"` (preceded by `/`) but NOT `"foohandler.rs"`.
 pub fn file_path_matches_suffix(path: &str, filter: &str) -> bool {
+    let path = normalize_path_suffix(path);
+    let filter = normalize_path_suffix(filter);
+
     path == filter || path.ends_with(&format!("/{}", filter))
+}
+
+fn normalize_path_suffix(value: &str) -> String {
+    let mut components = Vec::new();
+
+    for component in value.split(['/', '\\']) {
+        match component {
+            "" | "." => {}
+            ".." if components.last().is_some_and(|last| *last != "..") => {
+                components.pop();
+            }
+            ".." => components.push(component),
+            segment => components.push(segment),
+        }
+    }
+
+    components.join("/")
 }

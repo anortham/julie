@@ -77,6 +77,66 @@ mod transactional_editing_tests {
     }
 
     #[tokio::test]
+    async fn test_single_file_transaction_rejects_readonly_target() -> Result<()> {
+        let fixture = TransactionalTestFixture::new()?;
+        let file_path = fixture.create_test_file("readonly.txt", "original content")?;
+
+        let mut perms = fs::metadata(&file_path)?.permissions();
+        perms.set_readonly(true);
+        fs::set_permissions(&file_path, perms)?;
+
+        let transaction = EditingTransaction::begin(file_path.to_str().unwrap())?;
+        let result = transaction.commit("modified content");
+
+        let mut restore_perms = fs::metadata(&file_path)?.permissions();
+        restore_perms.set_readonly(false);
+        fs::set_permissions(&file_path, restore_perms)?;
+
+        assert!(result.is_err(), "readonly commit should fail");
+        assert_eq!(fs::read_to_string(&file_path)?, "original content");
+        fixture.verify_no_backup_files()?;
+
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn test_single_file_transaction_preserves_existing_permissions() -> Result<()> {
+        use std::os::unix::fs::PermissionsExt;
+
+        let fixture = TransactionalTestFixture::new()?;
+        let file_path = fixture.create_test_file("tool.sh", "#!/bin/sh\n")?;
+        fs::set_permissions(&file_path, fs::Permissions::from_mode(0o755))?;
+
+        let transaction = EditingTransaction::begin(file_path.to_str().unwrap())?;
+        transaction.commit("#!/bin/sh\necho ok\n")?;
+
+        let mode = fs::metadata(&file_path)?.permissions().mode() & 0o777;
+        assert_eq!(mode, 0o755, "commit should preserve executable mode");
+        assert_eq!(fs::read_to_string(&file_path)?, "#!/bin/sh\necho ok\n");
+        fixture.verify_no_backup_files()?;
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_single_file_transaction_rejects_changed_target_before_commit() -> Result<()> {
+        let fixture = TransactionalTestFixture::new()?;
+        let file_path = fixture.create_test_file("test.txt", "original content")?;
+
+        let transaction = EditingTransaction::begin(file_path.to_str().unwrap())?;
+        fs::write(&file_path, "external content")?;
+
+        let result = transaction.commit_if_unchanged("agent content", "original content");
+
+        assert!(result.is_err(), "changed target commit should fail");
+        assert_eq!(fs::read_to_string(&file_path)?, "external content");
+        fixture.verify_no_backup_files()?;
+
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn test_single_file_transaction_rollback() -> Result<()> {
         println!("🧪 Testing single file transaction rollback...");
 
