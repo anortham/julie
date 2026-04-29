@@ -164,10 +164,7 @@ mod line_match_strategy_tests {
             LineMatchStrategy::FileLevel { terms } => {
                 assert_eq!(
                     terms,
-                    &vec![
-                        "security-signals".to_string(),
-                        "audit-events".to_string(),
-                    ],
+                    &vec!["security-signals".to_string(), "audit-events".to_string(),],
                 );
             }
             other => panic!(

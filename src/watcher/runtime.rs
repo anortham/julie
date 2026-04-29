@@ -225,10 +225,7 @@ impl QueueRuntime {
                 .and_then(|e| e.to_str())
                 .is_some_and(|ext| !self.supported_extensions.contains(ext));
             if has_unsupported_ext {
-                info!(
-                    "Clearing repair for unsupported file type: {}",
-                    repair_path
-                );
+                info!("Clearing repair for unsupported file type: {}", repair_path);
                 let db_guard = self
                     .db
                     .lock()

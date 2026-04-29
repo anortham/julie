@@ -157,5 +157,8 @@ fn test_rolling_writer_keeps_old_file_on_rotation_failure() {
     // old handle or the None path. The key invariant is no panic and
     // current_date stays at the old value so the next write retries.
     let result = writer.write(b"after\n");
-    assert!(result.is_ok(), "Write should not fail even on rotation error");
+    assert!(
+        result.is_ok(),
+        "Write should not fail even on rotation error"
+    );
 }
