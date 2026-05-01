@@ -420,7 +420,7 @@ impl FastSearchTool {
 
             if execution.hits.is_empty() {
                 // Content zero-hit hint precedence:
-                // syntax hint > out-of-scope hint > multi-token hint.
+                // syntax hint > out-of-scope hint > file target > definitions target > multi-token.
                 let message = if let Some((hint_kind, text)) =
                     hint_formatter::build_content_zero_hit_hint(
                         &self.query,
@@ -439,7 +439,7 @@ impl FastSearchTool {
                 } else {
                     format!(
                         "🔍 No lines found matching: '{}'\n\
-                        💡 Try search_target=\"definitions\" if looking for a symbol name, or broaden file_pattern/language filters",
+                        💡 Try search_target=\"files\" for a path-like query, search_target=\"definitions\" for a symbol name, or broaden file_pattern/language filters",
                         self.query
                     )
                 };

@@ -195,6 +195,12 @@ pub enum HintKind {
     /// Content search found no candidate files inside the requested
     /// `file_pattern` scope.
     OutOfScopeContentHint,
+    /// Query shape looks like a path or file name, so `files` is the better
+    /// search target.
+    FileTargetHint,
+    /// Query shape looks like a symbol lookup, so `definitions` is the better
+    /// search target.
+    DefinitionsTargetHint,
     /// Multi-token content search produced zero hits; formatter prepended a
     /// per-token breakdown hint.
     MultiTokenHint,
@@ -212,8 +218,8 @@ pub enum HintKind {
 ///     * definitions search that returned hits.
 /// - `file_pattern_diagnostic` is set for `file_pattern`-specific root causes
 ///   on content zero-hits. It stays `None` for runs without that diagnosis.
-/// - `hint_kind` is set by the multi-token zero-hit hint formatter. It stays
-///   `None` for responses that carry no prepended hint.
+/// - `hint_kind` is set by the zero-hit hint formatter. It stays `None` for
+///   responses that carry no prepended hint.
 /// - `scope_relaxed` and its companion fields describe searches that found no
 ///   hits inside the requested `file_pattern`, then returned labeled results
 ///   from the wider codebase.

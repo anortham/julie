@@ -158,6 +158,168 @@ fn contains_glob_marker(pattern: &str) -> bool {
         .any(|ch| matches!(ch, '*' | '?' | '[' | ']' | '{' | '}'))
 }
 
+fn build_target_hint(query: &str, target: &str, description: &str) -> String {
+    format!(
+        "0 content matches for \"{query}\".\n\
+         \n\
+         This looks like {description}. Try: fast_search(query=\"{query}\", search_target=\"{target}\")",
+        query = query,
+        target = target,
+        description = description,
+    )
+}
+
+fn build_file_target_hint(query: &str) -> String {
+    build_target_hint(query, "files", "a path or file name")
+}
+
+fn build_definitions_target_hint(query: &str) -> String {
+    build_target_hint(query, "definitions", "a symbol name")
+}
+
+fn has_path_separator(query: &str) -> bool {
+    query.contains('/') || query.contains('\\')
+}
+
+fn has_directory_marker(query: &str) -> bool {
+    query.starts_with("./")
+        || query.starts_with("../")
+        || query.starts_with(".\\")
+        || query.starts_with("..\\")
+        || query.starts_with("~/")
+}
+
+fn has_known_file_extension(query: &str) -> bool {
+    let Some((stem, extension)) = query.rsplit_once('.') else {
+        return false;
+    };
+    if stem.is_empty() {
+        return false;
+    }
+
+    let extension = extension.to_ascii_lowercase();
+    matches!(
+        extension.as_str(),
+        "rs" | "ts"
+            | "tsx"
+            | "js"
+            | "jsx"
+            | "py"
+            | "java"
+            | "cs"
+            | "vb"
+            | "php"
+            | "rb"
+            | "swift"
+            | "kt"
+            | "kts"
+            | "scala"
+            | "go"
+            | "c"
+            | "h"
+            | "hh"
+            | "hpp"
+            | "cc"
+            | "cpp"
+            | "cxx"
+            | "lua"
+            | "zig"
+            | "vue"
+            | "qml"
+            | "dart"
+            | "r"
+            | "sql"
+            | "html"
+            | "htm"
+            | "css"
+            | "scss"
+            | "less"
+            | "sass"
+            | "json"
+            | "jsonc"
+            | "toml"
+            | "yaml"
+            | "yml"
+            | "md"
+            | "markdown"
+            | "txt"
+            | "rst"
+            | "adoc"
+            | "ini"
+            | "cfg"
+            | "conf"
+            | "env"
+            | "sh"
+            | "bash"
+            | "ps1"
+            | "bat"
+            | "cmd"
+            | "csv"
+            | "tsv"
+            | "xml"
+            | "lock"
+            | "gradle"
+            | "properties"
+            | "ex"
+            | "exs"
+            | "el"
+    )
+}
+
+fn is_path_like_query(query: &str) -> bool {
+    let trimmed = query.trim();
+    !trimmed.is_empty()
+        && (has_path_separator(trimmed)
+            || has_directory_marker(trimmed)
+            || has_known_file_extension(trimmed))
+}
+
+fn has_dotted_identifier(query: &str) -> bool {
+    let trimmed = query.trim();
+    trimmed.contains('.')
+        && !has_path_separator(trimmed)
+        && trimmed.split('.').all(|segment| {
+            !segment.is_empty()
+                && segment
+                    .chars()
+                    .all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+        })
+}
+
+fn has_camel_case_shape(query: &str) -> bool {
+    let trimmed = query.trim();
+    trimmed.chars().any(|ch| ch.is_ascii_uppercase())
+        && trimmed.chars().any(|ch| ch.is_ascii_lowercase())
+        && !trimmed.contains(' ')
+}
+
+fn has_snake_case_shape(query: &str) -> bool {
+    let trimmed = query.trim();
+    !trimmed.contains(' ')
+        && trimmed.contains('_')
+        && trimmed
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+}
+
+fn zero_hit_reason_supports_symbol_hint(reason: Option<&ZeroHitReason>) -> bool {
+    matches!(
+        reason,
+        Some(ZeroHitReason::LineMatchMiss | ZeroHitReason::TantivyNoCandidates)
+    )
+}
+
+fn is_symbol_like_query(query: &str, zero_hit_reason: Option<&ZeroHitReason>) -> bool {
+    let trimmed = query.trim();
+    zero_hit_reason_supports_symbol_hint(zero_hit_reason)
+        && !trimmed.is_empty()
+        && (trimmed.contains("::")
+            || trimmed.ends_with('(')
+            || has_dotted_identifier(trimmed)
+            || has_camel_case_shape(trimmed)
+            || has_snake_case_shape(trimmed))
+}
+
 pub fn build_content_zero_hit_hint(
     query: &str,
     file_pattern: Option<&str>,
@@ -181,6 +343,17 @@ pub fn build_content_zero_hit_hint(
         return Some((
             HintKind::OutOfScopeContentHint,
             build_out_of_scope_content_hint(query, file_pattern),
+        ));
+    }
+
+    if is_path_like_query(query) {
+        return Some((HintKind::FileTargetHint, build_file_target_hint(query)));
+    }
+
+    if is_symbol_like_query(query, zero_hit_reason) {
+        return Some((
+            HintKind::DefinitionsTargetHint,
+            build_definitions_target_hint(query),
         ));
     }
 

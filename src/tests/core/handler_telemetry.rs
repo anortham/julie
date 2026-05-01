@@ -285,6 +285,66 @@ fn test_fast_search_metadata_serializes_hint_kind() {
 }
 
 #[test]
+fn task2_target_hints_serializes_trace_metadata() {
+    let cases = [
+        (
+            "fixtures/real-world/php/index.php",
+            HintKind::FileTargetHint,
+            "file_target_hint",
+        ),
+        (
+            "src/tools/search/mod.rs",
+            HintKind::FileTargetHint,
+            "file_target_hint",
+        ),
+        (
+            "ArgAction::SetTrue",
+            HintKind::DefinitionsTargetHint,
+            "definitions_target_hint",
+        ),
+        (
+            "OS.has_feature",
+            HintKind::DefinitionsTargetHint,
+            "definitions_target_hint",
+        ),
+        (
+            "format_line_mode_output",
+            HintKind::DefinitionsTargetHint,
+            "definitions_target_hint",
+        ),
+        (
+            "fast_refs_metadata(",
+            HintKind::DefinitionsTargetHint,
+            "definitions_target_hint",
+        ),
+    ];
+
+    for (query, hint_kind, expected) in cases {
+        let params = FastSearchTool {
+            query: query.to_string(),
+            search_target: "content".to_string(),
+            limit: 10,
+            ..Default::default()
+        };
+        let mut execution = SearchExecutionResult::new(
+            Vec::new(),
+            false,
+            0,
+            "fast_search_content",
+            SearchExecutionKind::Content {
+                workspace_label: Some("primary".to_string()),
+                file_level: false,
+            },
+        );
+        execution.trace.hint_kind = Some(hint_kind);
+
+        let metadata = search_telemetry::fast_search_metadata(&params, Some(&execution));
+
+        assert_eq!(metadata["trace"]["hint_kind"], expected);
+    }
+}
+
+#[test]
 fn test_fast_search_metadata_serializes_out_of_scope_hint_kind() {
     let params = FastSearchTool {
         query: "marker scope".to_string(),

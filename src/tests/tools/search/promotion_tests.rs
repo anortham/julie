@@ -13,11 +13,13 @@ mod tests {
     };
 
     #[test]
-    fn hint_kind_serializes_snake_case() {
+    fn task2_target_hints_serializes_snake_case() {
         for (variant, expected) in [
             (HintKind::MultiTokenHint, "multi_token_hint"),
             (HintKind::FilePatternSyntaxHint, "file_pattern_syntax_hint"),
             (HintKind::OutOfScopeContentHint, "out_of_scope_content_hint"),
+            (HintKind::FileTargetHint, "file_target_hint"),
+            (HintKind::DefinitionsTargetHint, "definitions_target_hint"),
         ] {
             let json = serde_json::to_value(&variant).expect("serialize hint kind");
             assert_eq!(
@@ -349,6 +351,57 @@ mod tests {
             "expected multi-token hint, got: {}",
             text
         );
+    }
+
+    #[test]
+    fn task2_target_hints_selects_file_and_definitions_targets() {
+        let cases = [
+            ("fixtures/real-world/php/index.php", None, "files"),
+            ("src/tools/search/mod.rs", None, "files"),
+            (
+                "ArgAction::SetTrue",
+                Some(ZeroHitReason::LineMatchMiss),
+                "definitions",
+            ),
+            (
+                "OS.has_feature",
+                Some(ZeroHitReason::TantivyNoCandidates),
+                "definitions",
+            ),
+            (
+                "format_line_mode_output",
+                Some(ZeroHitReason::LineMatchMiss),
+                "definitions",
+            ),
+            (
+                "fast_refs_metadata(",
+                Some(ZeroHitReason::TantivyNoCandidates),
+                "definitions",
+            ),
+        ];
+
+        for (query, zero_hit_reason, target) in cases {
+            let hint = build_content_zero_hit_hint(
+                query,
+                None,
+                None,
+                None,
+                zero_hit_reason.as_ref(),
+                None,
+            )
+            .expect("shape-based zero-hit should build a hint");
+
+            let expected_call = format!(
+                "fast_search(query=\"{}\", search_target=\"{}\")",
+                query, target
+            );
+            assert!(
+                hint.1.contains(&expected_call),
+                "expected {} hint text, got: {}",
+                expected_call,
+                hint.1
+            );
+        }
     }
 
     #[test]
