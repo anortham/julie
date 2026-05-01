@@ -309,7 +309,7 @@ mod integration_tests {
     #[tokio::test(flavor = "multi_thread")]
     async fn live_scope_rescue_does_not_trigger_for_line_match_miss() {
         let (_dir, handler) =
-            seed_workspace(&[("src/ui/code.rs", "fn ui() { let marker scope = 1; }\n")]).await;
+            seed_workspace(&[("src/ui/code.rs", "fn ui() { let scope marker = 1; }\n")]).await;
 
         let result = line_mode_matches(
             "marker_scope",

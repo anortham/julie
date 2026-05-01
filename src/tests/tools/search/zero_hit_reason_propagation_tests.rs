@@ -104,10 +104,10 @@ fn extract_text_from_result(result: &crate::mcp_compat::CallToolResult) -> Strin
 #[tokio::test(flavor = "multi_thread")]
 async fn trace_zero_hit_reason_propagates_file_pattern_filtered() {
     let (_dir, handler) = seed_workspace(&[
-        ("src/core.rs", "fn core() { let marker scope = 1; }\n"),
+        ("src/core.rs", "fn core() { let scope marker = 1; }\n"),
         (
             "crates/other/misc.rs",
-            "fn misc() { let marker scope = 2; }\n",
+            "fn misc() { let scope marker = 2; }\n",
         ),
     ])
     .await;
@@ -170,10 +170,10 @@ async fn trace_zero_hit_reason_stays_none_on_non_empty_run() {
 #[tokio::test(flavor = "multi_thread")]
 async fn trace_file_pattern_diagnostic_propagates_no_in_scope_candidates() {
     let (_dir, handler) = seed_workspace(&[
-        ("src/core.rs", "fn core() { let marker scope = 1; }\n"),
+        ("src/core.rs", "fn core() { let scope marker = 1; }\n"),
         (
             "crates/other/misc.rs",
-            "fn misc() { let marker scope = 2; }\n",
+            "fn misc() { let scope marker = 2; }\n",
         ),
     ])
     .await;
@@ -201,14 +201,14 @@ async fn trace_file_pattern_diagnostic_propagates_no_in_scope_candidates() {
 /// Task 4: once live telemetry showed `NoInScopeCandidates` was a real bucket,
 /// content zero-hits in that bucket should prepend the dedicated out-of-scope
 /// hint and persist `hint_kind` on the public trace. This must beat the older
-/// multi-token hint for queries like `marker scope`.
+/// multi-token hint for queries like `marker_scope`.
 #[tokio::test(flavor = "multi_thread")]
 async fn trace_hint_kind_prefers_out_of_scope_for_no_in_scope_candidates() {
     let (_dir, handler) = seed_workspace(&[
-        ("src/core.rs", "fn core() { let marker scope = 1; }\n"),
+        ("src/core.rs", "fn core() { let scope marker = 1; }\n"),
         (
             "crates/other/misc.rs",
-            "fn misc() { let marker scope = 2; }\n",
+            "fn misc() { let scope marker = 2; }\n",
         ),
     ])
     .await;
