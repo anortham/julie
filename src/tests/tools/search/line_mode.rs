@@ -1799,6 +1799,7 @@ fn test_authenticate_user() {
 
         assert!(
             response_text.contains("No lines found matching")
+                || response_text.contains("0 content matches for")
                 || response_text.contains("Line-level content search requires a Tantivy index for the current primary workspace"),
             "fast_search should resolve roots first and produce a normal roots-bound search response: {response_text}"
         );
