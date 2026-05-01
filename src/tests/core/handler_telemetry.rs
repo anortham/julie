@@ -1,4 +1,8 @@
+use std::fs;
+use std::time::Duration;
+
 use crate::extractors::{Symbol, SymbolKind};
+use crate::handler::JulieServerHandler;
 use crate::handler::search_telemetry;
 use crate::handler::tool_targets;
 use crate::search::index::{FileMatchKind, FileSearchResult};
@@ -10,8 +14,10 @@ use crate::tools::search::trace::{
     FilePatternDiagnostic, HintKind, SearchExecutionKind, SearchExecutionResult, SearchHit,
     ZeroHitReason,
 };
+use crate::tools::ManageWorkspaceTool;
 use crate::tools::spillover::SpilloverGetTool;
 use crate::tools::{BlastRadiusTool, DeepDiveDepth, DeepDiveTool, GetContextTool, GetSymbolsTool};
+use tempfile::TempDir;
 
 fn sample_symbol() -> Symbol {
     Symbol {
@@ -49,6 +55,61 @@ fn sample_file_hit() -> SearchHit {
         },
         "workspace-a".to_string(),
     )
+}
+
+async fn seed_workspace(files: &[(&str, &str)]) -> (TempDir, JulieServerHandler) {
+    unsafe {
+        std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "0");
+    }
+
+    let temp_dir = TempDir::new().expect("tempdir");
+    let workspace_path = temp_dir.path().to_path_buf();
+
+    for (rel_path, content) in files {
+        let full = workspace_path.join(rel_path);
+        if let Some(parent) = full.parent() {
+            fs::create_dir_all(parent).expect("create parent dirs");
+        }
+        fs::write(full, content).expect("write file");
+    }
+
+    let handler = JulieServerHandler::new_for_test()
+        .await
+        .expect("handler for test");
+    handler
+        .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
+        .await
+        .expect("initialize workspace");
+
+    let index_tool = ManageWorkspaceTool {
+        operation: "index".to_string(),
+        path: Some(workspace_path.to_string_lossy().to_string()),
+        force: Some(false),
+        name: None,
+        workspace_id: None,
+        detailed: None,
+    };
+    index_tool
+        .call_tool(&handler)
+        .await
+        .expect("index workspace");
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    (temp_dir, handler)
+}
+
+fn search_tool(query: &str, search_target: &str) -> FastSearchTool {
+    FastSearchTool {
+        query: query.to_string(),
+        search_target: search_target.to_string(),
+        language: None,
+        file_pattern: None,
+        limit: 10,
+        context_lines: Some(0),
+        exclude_tests: None,
+        workspace: Some("primary".to_string()),
+        return_format: "full".to_string(),
+    }
 }
 
 #[test]
@@ -98,6 +159,98 @@ fn test_fast_search_metadata_captures_trace_and_intent() {
     assert!(metadata["trace"]["original_zero_hit_reason"].is_null());
     assert_eq!(metadata["trace"]["scope_rescue_count"], 0);
     assert_eq!(metadata["trace"]["or_disjunction_detected"], false);
+}
+
+#[tokio::test]
+async fn test_fast_search_metadata_serializes_content_strategy_and_target_hint_fields() {
+    let (_temp_dir, handler) = seed_workspace(&[(
+        "src/lib.rs",
+        "pub fn search_handler() { let marker_token = 1; }\n",
+    )])
+    .await;
+
+    let cases = [
+        ("marker_token", "Substring", None, 1_u64),
+        ("alpha beta", "FileLevel", None, 0_u64),
+        ("src/tools/search/mod.rs", "Substring", Some("files"), 0_u64),
+        ("ArgAction::SetTrue", "Substring", Some("definitions"), 0_u64),
+    ];
+
+    for (query, expected_strategy, expected_target_hint, expected_hit_count) in cases {
+        let tool = search_tool(query, "content");
+        let execution = tool
+            .execute_with_trace(&handler)
+            .await
+            .expect("content search should not error")
+            .execution
+            .expect("execute_with_trace should populate execution for content search");
+        let metadata = search_telemetry::fast_search_metadata(&tool, Some(&execution));
+        let trace = metadata["trace"]
+            .as_object()
+            .expect("trace metadata should be an object");
+
+        assert!(
+            trace.contains_key("line_match_strategy"),
+            "line_match_strategy should be serialized for {query}"
+        );
+        assert_eq!(
+            metadata["trace"]["line_match_strategy"],
+            expected_strategy,
+            "unexpected line match strategy for {query}"
+        );
+        assert!(
+            trace.contains_key("target_hint"),
+            "target_hint should be serialized for {query}"
+        );
+        match expected_target_hint {
+            Some(expected) => assert_eq!(
+                metadata["trace"]["target_hint"],
+                expected,
+                "unexpected target hint for {query}"
+            ),
+            None => assert!(
+                metadata["trace"]["target_hint"].is_null(),
+                "target hint should be null for {query}"
+            ),
+        }
+        assert_eq!(
+            metadata["trace"]["returned_hit_count"].as_u64(),
+            Some(expected_hit_count),
+            "unexpected returned hit count for {query}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn test_fast_search_metadata_serializes_definition_exact_match_field() {
+    let (_temp_dir, handler) = seed_workspace(&[(
+        "src/lib.rs",
+        "pub fn search_handler() {}\npub fn search_index() {}\n",
+    )])
+    .await;
+
+    let tool = search_tool("search_handler", "definitions");
+    let execution = tool
+        .execute_with_trace(&handler)
+        .await
+        .expect("definition search should not error")
+        .execution
+        .expect("execute_with_trace should populate execution for definition search");
+    assert!(
+        !execution.hits.is_empty(),
+        "expected exact-match definition search to return at least one hit"
+    );
+
+    let metadata = search_telemetry::fast_search_metadata(&tool, Some(&execution));
+    let trace = metadata["trace"]
+        .as_object()
+        .expect("trace metadata should be an object");
+
+    assert!(
+        trace.contains_key("definition_exact_match"),
+        "definition_exact_match should be serialized for definitions searches"
+    );
+    assert_eq!(metadata["trace"]["definition_exact_match"], true);
 }
 
 #[test]

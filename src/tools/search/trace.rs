@@ -206,6 +206,14 @@ pub enum HintKind {
     MultiTokenHint,
 }
 
+pub(crate) fn target_hint_label(hint_kind: &HintKind) -> Option<&'static str> {
+    match hint_kind {
+        HintKind::FileTargetHint => Some("files"),
+        HintKind::DefinitionsTargetHint => Some("definitions"),
+        _ => None,
+    }
+}
+
 /// Trace describing the executed search strategy, result count, and diagnostic
 /// metadata.
 ///
@@ -220,6 +228,13 @@ pub enum HintKind {
 ///   on content zero-hits. It stays `None` for runs without that diagnosis.
 /// - `hint_kind` is set by the zero-hit hint formatter. It stays `None` for
 ///   responses that carry no prepended hint.
+/// - `line_match_strategy` records the content line-match strategy label used
+///   by line-mode searches.
+/// - `definition_exact_match` is true when the definitions result set would
+///   render the promoted exact-match formatter path.
+/// - `target_hint` records the search target hinted by a zero-hit content
+///   response. It stays `None` for hints that do not steer toward files or
+///   definitions.
 /// - `scope_relaxed` and its companion fields describe searches that found no
 ///   hits inside the requested `file_pattern`, then returned labeled results
 ///   from the wider codebase.
@@ -233,6 +248,9 @@ pub struct SearchTrace {
     pub zero_hit_reason: Option<ZeroHitReason>,
     pub file_pattern_diagnostic: Option<FilePatternDiagnostic>,
     pub hint_kind: Option<HintKind>,
+    pub line_match_strategy: Option<String>,
+    pub definition_exact_match: bool,
+    pub target_hint: Option<String>,
     pub scope_relaxed: bool,
     pub original_file_pattern: Option<String>,
     pub original_zero_hit_reason: Option<ZeroHitReason>,
@@ -266,6 +284,9 @@ impl SearchTrace {
             zero_hit_reason: None,
             file_pattern_diagnostic: None,
             hint_kind: None,
+            line_match_strategy: None,
+            definition_exact_match: false,
+            target_hint: None,
             scope_relaxed: false,
             original_file_pattern: None,
             original_zero_hit_reason: None,
@@ -284,6 +305,7 @@ impl SearchExecutionResult {
     ) -> Self {
         let mut trace = SearchTrace::from_hits(strategy_id, &[]);
         trace.file_pattern_diagnostic = Some(file_pattern_diagnostic);
+        trace.target_hint = target_hint_label(&hint_kind).map(str::to_string);
         trace.hint_kind = Some(hint_kind);
 
         Self {

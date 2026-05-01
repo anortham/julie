@@ -434,6 +434,7 @@ impl FastSearchTool {
                         execution.trace.file_pattern_diagnostic =
                             Some(trace::FilePatternDiagnostic::WhitespaceSeparatedMultiGlob);
                     }
+                    execution.trace.target_hint = trace::target_hint_label(&hint_kind).map(str::to_string);
                     execution.trace.hint_kind = Some(hint_kind);
                     text
                 } else {
@@ -562,7 +563,7 @@ impl FastSearchTool {
             }
         }
 
-        let execution = execution::execute_search(
+        let mut execution = execution::execute_search(
             execution::SearchExecutionParams {
                 query: &self.query,
                 language: &self.language,
@@ -615,6 +616,9 @@ impl FastSearchTool {
         let symbols = execution.definition_symbols();
 
         let optimized = OptimizedResponse::with_total(symbols, execution.total_results);
+        execution.trace.definition_exact_match = optimized.results.iter().any(|symbol| {
+            formatting::is_definition_name_match(&symbol.name, &self.query.to_lowercase())
+        });
 
         if optimized.results.is_empty() {
             let message = format!(

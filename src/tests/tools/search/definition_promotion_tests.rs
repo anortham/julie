@@ -7,7 +7,7 @@
 mod tests {
     use crate::extractors::base::{Symbol, SymbolKind, Visibility};
     use crate::tools::search::formatting::{
-        format_definition_search_results, format_lean_search_results,
+        format_definition_search_results, format_lean_search_results, is_definition_name_match,
     };
     use crate::tools::shared::OptimizedResponse;
 
@@ -172,6 +172,33 @@ mod tests {
         assert!(output.contains("src/utils.rs"));
         // All symbols are exact matches, so no "Other matches:" section
         assert!(!output.contains("Other matches:"));
+    }
+
+    #[test]
+    fn test_qualified_definition_name_uses_the_shared_exact_match_rule() {
+        assert!(
+            is_definition_name_match("Phoenix.Router", "router"),
+            "qualified name detection should match the final component"
+        );
+
+        let symbols = vec![make_symbol(
+            "Phoenix.Router",
+            SymbolKind::Class,
+            "src/router.rs",
+            8,
+            Some("pub struct Phoenix.Router"),
+            Some(Visibility::Public),
+            Some("pub struct Phoenix.Router { ... }"),
+        )];
+
+        let response = OptimizedResponse::new(symbols);
+        let output = format_definition_search_results("Router", &response);
+
+        assert!(
+            output.starts_with("Definition found: Router"),
+            "qualified exact matches should use the promoted definition format, got:\n{}",
+            output
+        );
     }
 
     #[test]

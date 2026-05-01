@@ -308,7 +308,7 @@ pub fn format_file_search_results(query: &str, response: &OptimizedResponse<Sear
 
 /// Check if a symbol name matches a query for definition formatting.
 /// Matches exact name OR last component of a dot-qualified name.
-fn is_definition_name_match(symbol_name: &str, query_lower: &str) -> bool {
+pub(crate) fn is_definition_name_match(symbol_name: &str, query_lower: &str) -> bool {
     let name_lower = symbol_name.to_lowercase();
     if name_lower == query_lower {
         return true;

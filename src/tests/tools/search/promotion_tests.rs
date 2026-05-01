@@ -89,6 +89,9 @@ mod tests {
         assert!(trace.zero_hit_reason.is_none());
         assert!(trace.file_pattern_diagnostic.is_none());
         assert!(trace.hint_kind.is_none());
+        assert!(trace.line_match_strategy.is_none());
+        assert!(!trace.definition_exact_match);
+        assert!(trace.target_hint.is_none());
         assert!(!trace.scope_relaxed);
         assert!(trace.original_file_pattern.is_none());
         assert!(trace.original_zero_hit_reason.is_none());
@@ -111,6 +114,7 @@ mod tests {
         trace.or_disjunction_detected = true;
 
         let json = serde_json::to_value(&trace).expect("serialize trace");
+        let trace_json = json.as_object().expect("trace should serialize to an object");
         assert_eq!(json["strategy_id"], "fast_search_content");
         assert_eq!(json["result_count"], 0);
         assert!(json.get("promoted").is_none());
@@ -120,6 +124,12 @@ mod tests {
             "whitespace_separated_multi_glob"
         );
         assert_eq!(json["hint_kind"], "file_pattern_syntax_hint");
+        assert!(trace_json.contains_key("line_match_strategy"));
+        assert!(trace_json.contains_key("definition_exact_match"));
+        assert!(trace_json.contains_key("target_hint"));
+        assert!(json["line_match_strategy"].is_null());
+        assert_eq!(json["definition_exact_match"], false);
+        assert!(json["target_hint"].is_null());
         assert_eq!(json["scope_relaxed"], true);
         assert_eq!(json["original_file_pattern"], "src/ui/**");
         assert_eq!(json["original_zero_hit_reason"], "file_pattern_filtered");

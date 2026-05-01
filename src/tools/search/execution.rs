@@ -185,6 +185,7 @@ async fn execute_content_search(
     let mut original_file_pattern: Option<String> = None;
     let mut original_zero_hit_reason: Option<ZeroHitReason> = None;
     let mut scope_rescue_count = 0usize;
+    let mut line_match_strategy: Option<String> = None;
     let file_level = line_mode::query_uses_file_level_header(params.query);
     let workspace_label = if workspaces.len() == 1 {
         match &workspaces[0].target {
@@ -224,6 +225,13 @@ async fn execute_content_search(
             if original_zero_hit_reason.is_none() {
                 original_zero_hit_reason = result.original_zero_hit_reason.clone();
             }
+        }
+        if line_match_strategy.is_none() {
+            line_match_strategy = Some(match &result.strategy {
+                super::types::LineMatchStrategy::Substring(_) => "Substring".to_string(),
+                super::types::LineMatchStrategy::Tokens { .. } => "Tokens".to_string(),
+                super::types::LineMatchStrategy::FileLevel { .. } => "FileLevel".to_string(),
+            });
         }
 
         // Content (line-mode) hits carry a neutral 0.0 score intentionally.
@@ -276,6 +284,7 @@ async fn execute_content_search(
     execution_result.trace.scope_rescue_count = scope_rescue_count;
     execution_result.trace.or_disjunction_detected =
         query::clean_or_disjunction_terms(params.query).is_some();
+    execution_result.trace.line_match_strategy = line_match_strategy;
 
     Ok(execution_result)
 }
