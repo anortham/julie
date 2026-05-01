@@ -356,32 +356,46 @@ mod tests {
     #[test]
     fn task2_target_hints_selects_file_and_definitions_targets() {
         let cases = [
-            ("fixtures/real-world/php/index.php", None, "files"),
-            ("src/tools/search/mod.rs", None, "files"),
+            (
+                "fixtures/real-world/php/index.php",
+                None,
+                HintKind::FileTargetHint,
+                "files",
+            ),
+            (
+                "src/tools/search/mod.rs",
+                None,
+                HintKind::FileTargetHint,
+                "files",
+            ),
             (
                 "ArgAction::SetTrue",
                 Some(ZeroHitReason::LineMatchMiss),
+                HintKind::DefinitionsTargetHint,
                 "definitions",
             ),
             (
                 "OS.has_feature",
                 Some(ZeroHitReason::TantivyNoCandidates),
+                HintKind::DefinitionsTargetHint,
                 "definitions",
             ),
             (
                 "format_line_mode_output",
                 Some(ZeroHitReason::LineMatchMiss),
+                HintKind::DefinitionsTargetHint,
                 "definitions",
             ),
             (
                 "fast_refs_metadata(",
                 Some(ZeroHitReason::TantivyNoCandidates),
+                HintKind::DefinitionsTargetHint,
                 "definitions",
             ),
         ];
 
-        for (query, zero_hit_reason, target) in cases {
-            let hint = build_content_zero_hit_hint(
+        for (query, zero_hit_reason, expected_kind, target) in cases {
+            let (hint_kind, hint_text) = build_content_zero_hit_hint(
                 query,
                 None,
                 None,
@@ -391,17 +405,38 @@ mod tests {
             )
             .expect("shape-based zero-hit should build a hint");
 
+            assert_eq!(hint_kind, expected_kind, "unexpected hint kind for {query}");
             let expected_call = format!(
                 "fast_search(query=\"{}\", search_target=\"{}\")",
                 query, target
             );
             assert!(
-                hint.1.contains(&expected_call),
+                hint_text.contains(&expected_call),
                 "expected {} hint text, got: {}",
                 expected_call,
-                hint.1
+                hint_text
             );
         }
+    }
+
+    #[test]
+    fn task2_plain_multi_token_concept_queries_still_get_multi_token_hints() {
+        let (hint_kind, hint_text) = build_content_zero_hit_hint(
+            "retry backoff jitter",
+            None,
+            None,
+            None,
+            Some(&ZeroHitReason::LineMatchMiss),
+            None,
+        )
+        .expect("plain concept zero-hit should still produce a hint");
+
+        assert_eq!(hint_kind, HintKind::MultiTokenHint);
+        assert!(
+            hint_text.contains("Tokens: ["),
+            "expected multi-token hint text, got: {}",
+            hint_text
+        );
     }
 
     #[test]
