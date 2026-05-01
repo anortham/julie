@@ -338,6 +338,8 @@ fn line_matches_literal(line: &str, pattern: &str) -> bool {
     normalized_literal_patterns(pattern)
         .iter()
         .any(|variant| line_lower.contains(variant))
+        || pattern.chars().any(|ch| ch.is_ascii_punctuation())
+            && line_matches_tokenized_phrase_without_punctuation(line, pattern)
 }
 
 fn normalized_literal_patterns(pattern: &str) -> Vec<String> {
@@ -431,6 +433,44 @@ fn line_matches_tokenized_phrase(line: &str, phrase: &str) -> bool {
     line_tokens
         .windows(phrase_tokens.len())
         .any(|window| window == phrase_tokens.as_slice())
+}
+
+fn line_matches_tokenized_phrase_without_punctuation(line: &str, phrase: &str) -> bool {
+    let phrase_tokens = tokenize_text_sequence(phrase)
+        .into_iter()
+        .filter(|token| !token.chars().all(|ch| ch.is_ascii_punctuation()))
+        .collect::<Vec<_>>();
+    if phrase_tokens.is_empty() {
+        return false;
+    }
+
+    let line_tokens = tokenize_text_sequence(line)
+        .into_iter()
+        .filter(|token| !token.chars().all(|ch| ch.is_ascii_punctuation()))
+        .collect::<Vec<_>>();
+    if line_tokens.len() < phrase_tokens.len() {
+        return false;
+    }
+
+    token_sequence_contains_subsequence(&line_tokens, &phrase_tokens)
+}
+
+fn token_sequence_contains_subsequence(haystack: &[String], needle: &[String]) -> bool {
+    if needle.is_empty() {
+        return false;
+    }
+
+    let mut needle_index = 0;
+    for token in haystack {
+        if token == &needle[needle_index] {
+            needle_index += 1;
+            if needle_index == needle.len() {
+                return true;
+            }
+        }
+    }
+
+    false
 }
 
 fn term_matches_tokens(term: &str, line_tokens: &HashSet<String>) -> bool {

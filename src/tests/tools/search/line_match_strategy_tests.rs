@@ -262,4 +262,85 @@ mod line_match_strategy_tests {
             "escaped punctuation query should match the literal path",
         );
     }
+
+    #[test]
+    fn test_punctuation_heavy_queries_match_literal_substrings() {
+        let os_strategy = line_match_strategy("OS.has_feature");
+        let arg_action_strategy = line_match_strategy("ArgAction::SetTrue");
+        let unwrap_strategy = line_match_strategy("target_symbol_id.unwrap_or");
+        let tool_name_strategy = line_match_strategy("tool_name(&self)");
+
+        assert!(matches!(os_strategy, LineMatchStrategy::Substring(_)));
+        assert!(matches!(
+            arg_action_strategy,
+            LineMatchStrategy::Substring(_)
+        ));
+        assert!(matches!(unwrap_strategy, LineMatchStrategy::Substring(_)));
+        assert!(matches!(
+            tool_name_strategy,
+            LineMatchStrategy::Substring(_)
+        ));
+
+        assert!(
+            line_matches(&os_strategy, "if os.has_feature("),
+            "dot-heavy query should still match the exact literal shape",
+        );
+        assert!(
+            line_matches(&arg_action_strategy, "ArgAction::SetTrue,"),
+            "Rust-style enum path should match as a literal substring",
+        );
+        assert!(
+            line_matches(
+                &unwrap_strategy,
+                "let target_symbol_id = target_symbol_id.unwrap_or(\"unknown\");"
+            ),
+            "call-shaped query should match the exact literal substring",
+        );
+        assert!(
+            line_matches(&tool_name_strategy, "fn tool_name(&self) -> &'static str {"),
+            "call-shaped query with self should match the exact literal substring",
+        );
+    }
+
+    #[test]
+    fn test_punctuation_heavy_queries_match_separator_variants_via_tokens() {
+        let os_strategy = line_match_strategy("OS.has_feature");
+        let arg_action_strategy = line_match_strategy("ArgAction::SetTrue");
+        let unwrap_strategy = line_match_strategy("target_symbol_id.unwrap_or");
+        let tool_name_strategy = line_match_strategy("tool_name(&self)");
+
+        assert!(matches!(os_strategy, LineMatchStrategy::Substring(_)));
+        assert!(matches!(
+            arg_action_strategy,
+            LineMatchStrategy::Substring(_)
+        ));
+        assert!(matches!(unwrap_strategy, LineMatchStrategy::Substring(_)));
+        assert!(matches!(
+            tool_name_strategy,
+            LineMatchStrategy::Substring(_)
+        ));
+
+        assert!(
+            line_matches(&os_strategy, "if OS::has_feature() {"),
+            "dot-heavy query should survive separator normalization",
+        );
+        assert!(
+            line_matches(&arg_action_strategy, "ArgAction.SetTrue"),
+            "double-colon query should survive separator normalization",
+        );
+        assert!(
+            line_matches(
+                &unwrap_strategy,
+                "let next = target_symbol_id.unwrap_or_else(|| next_symbol_id);"
+            ),
+            "call-shaped query should survive tokenized matching when the suffix changes",
+        );
+        assert!(
+            line_matches(
+                &tool_name_strategy,
+                "fn tool_name(self: &Self) -> &'static str {"
+            ),
+            "self receiver syntax should survive tokenized matching",
+        );
+    }
 }
