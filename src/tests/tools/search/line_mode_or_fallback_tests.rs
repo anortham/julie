@@ -214,10 +214,10 @@ mod line_mode_stage_counts {
     #[tokio::test(flavor = "multi_thread")]
     async fn stage_file_pattern_dropped() {
         let (_dir, handler) = seed_workspace(&[
-            // Space-separated marker tokens keep the fallback line matcher
-            // empty, so this remains a zero-hit stage-count test rather than
-            // a scope-rescue test.
-            ("src/example.rs", "fn alpha() { let marker abc = 1; }\n"),
+            // Reversed marker tokens keep the fallback line matcher empty,
+            // so this remains a zero-hit stage-count test rather than a
+            // scope-rescue test.
+            ("src/example.rs", "fn alpha() { let abc marker = 1; }\n"),
             ("docs/notes.md", "# docs\n"),
         ])
         .await;
@@ -255,12 +255,12 @@ mod line_mode_stage_counts {
     #[tokio::test(flavor = "multi_thread")]
     async fn file_pattern_diagnostic_no_in_scope_candidates() {
         let (_dir, handler) = seed_workspace(&[
-            // Space-separated marker tokens keep the fallback line matcher
-            // empty, so the original no-in-scope diagnostic is observable.
-            ("src/core.rs", "fn core() { let marker scope = 1; }\n"),
+            // Reversed marker tokens keep the fallback line matcher empty,
+            // so the original no-in-scope diagnostic is observable.
+            ("src/core.rs", "fn core() { let scope marker = 1; }\n"),
             (
                 "crates/other/misc.rs",
-                "fn misc() { let marker scope = 2; }\n",
+                "fn misc() { let scope marker = 2; }\n",
             ),
         ])
         .await;
