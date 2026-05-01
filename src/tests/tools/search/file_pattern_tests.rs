@@ -412,4 +412,56 @@ mod boundary_normalization {
             text,
         );
     }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn whitespace_separated_globs_emit_syntax_hint_and_trace_diagnostic_for_definitions_target(
+    ) {
+        let handler = JulieServerHandler::new_for_test()
+            .await
+            .expect("handler for test");
+        let tool = FastSearchTool {
+            query: "calculate_total".to_string(),
+            language: None,
+            file_pattern: Some("src/** docs/**".to_string()),
+            limit: 20,
+            search_target: "definitions".to_string(),
+            context_lines: None,
+            exclude_tests: None,
+            workspace: Some("primary".to_string()),
+            return_format: "full".to_string(),
+        };
+
+        let run = tool
+            .execute_with_trace(&handler)
+            .await
+            .expect("search should not error");
+        let execution = run
+            .execution
+            .expect("execute_with_trace must populate execution for request-level diagnostics");
+        let text = extract_text_from_result(&run.result);
+
+        assert!(execution.hits.is_empty(), "invalid pattern should stay zero-hit");
+        assert_eq!(execution.total_results, 0);
+        assert!(!execution.relaxed);
+        assert_eq!(execution.trace.strategy_id, "fast_search_input_diagnostic");
+        assert!(matches!(execution.kind, SearchExecutionKind::Definitions));
+        assert_eq!(
+            execution.trace.file_pattern_diagnostic,
+            Some(FilePatternDiagnostic::WhitespaceSeparatedMultiGlob),
+        );
+        assert_eq!(
+            execution.trace.hint_kind,
+            Some(HintKind::FilePatternSyntaxHint),
+        );
+        assert!(
+            text.contains("multiple globs separated by whitespace"),
+            "expected syntax hint text, got: {}",
+            text,
+        );
+        assert!(
+            text.contains("Use ',' or '|'"),
+            "expected separator guidance, got: {}",
+            text,
+        );
+    }
 }
