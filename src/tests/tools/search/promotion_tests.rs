@@ -114,7 +114,9 @@ mod tests {
         trace.or_disjunction_detected = true;
 
         let json = serde_json::to_value(&trace).expect("serialize trace");
-        let trace_json = json.as_object().expect("trace should serialize to an object");
+        let trace_json = json
+            .as_object()
+            .expect("trace should serialize to an object");
         assert_eq!(json["strategy_id"], "fast_search_content");
         assert_eq!(json["result_count"], 0);
         assert!(json.get("promoted").is_none());

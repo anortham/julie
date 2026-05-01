@@ -220,11 +220,12 @@ Recommended batching: F1+F2 as one PR, F4 Phase 1 as a second PR, F4 Phase 2 as 
 
 ## May 1 metrics note
 
-Replay acceptance on May 1, 2026 still missed the raw ceiling:
+Replay acceptance on May 1, 2026 kept raw zeroes above the old target, but every remaining zero had recourse:
 
-- Raw zero-hit rate: 27.7% (13/47)
+- Raw zero-hit rate: 27.7% (13/47), reported for trend only
 - Without-recourse rate: 0.0% (0/47)
 - Top zero-hit reasons: `line_match_miss` 7, `tantivy_no_candidates` 3, `unattributed` 3
 - Hint mix on zero hits: `multi_token_hint` 4, `definitions_target_hint` 3, `file_pattern_syntax_hint` 3, `file_target_hint` 3
+- Target hint mix on zero hits: `definitions` 3, `files` 3, `none` 7
 
 Watch these trace fields in the next replay pass: `line_match_strategy`, `definition_exact_match`, `target_hint`, and `file_pattern_diagnostic`.

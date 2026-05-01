@@ -434,7 +434,8 @@ impl FastSearchTool {
                         execution.trace.file_pattern_diagnostic =
                             Some(trace::FilePatternDiagnostic::WhitespaceSeparatedMultiGlob);
                     }
-                    execution.trace.target_hint = trace::target_hint_label(&hint_kind).map(str::to_string);
+                    execution.trace.target_hint =
+                        trace::target_hint_label(&hint_kind).map(str::to_string);
                     execution.trace.hint_kind = Some(hint_kind);
                     text
                 } else {

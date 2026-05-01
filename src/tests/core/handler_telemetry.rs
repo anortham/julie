@@ -6,6 +6,7 @@ use crate::handler::JulieServerHandler;
 use crate::handler::search_telemetry;
 use crate::handler::tool_targets;
 use crate::search::index::{FileMatchKind, FileSearchResult};
+use crate::tools::ManageWorkspaceTool;
 use crate::tools::editing::rewrite_symbol::RewriteSymbolTool;
 use crate::tools::navigation::CallPathTool;
 use crate::tools::navigation::FastRefsTool;
@@ -14,7 +15,6 @@ use crate::tools::search::trace::{
     FilePatternDiagnostic, HintKind, SearchExecutionKind, SearchExecutionResult, SearchHit,
     ZeroHitReason,
 };
-use crate::tools::ManageWorkspaceTool;
 use crate::tools::spillover::SpilloverGetTool;
 use crate::tools::{BlastRadiusTool, DeepDiveDepth, DeepDiveTool, GetContextTool, GetSymbolsTool};
 use tempfile::TempDir;
@@ -173,7 +173,12 @@ async fn test_fast_search_metadata_serializes_content_strategy_and_target_hint_f
         ("marker_token", "Substring", None, 1_u64),
         ("alpha beta", "FileLevel", None, 0_u64),
         ("src/tools/search/mod.rs", "Substring", Some("files"), 0_u64),
-        ("ArgAction::SetTrue", "Substring", Some("definitions"), 0_u64),
+        (
+            "ArgAction::SetTrue",
+            "Substring",
+            Some("definitions"),
+            0_u64,
+        ),
     ];
 
     for (query, expected_strategy, expected_target_hint, expected_hit_count) in cases {
@@ -194,8 +199,7 @@ async fn test_fast_search_metadata_serializes_content_strategy_and_target_hint_f
             "line_match_strategy should be serialized for {query}"
         );
         assert_eq!(
-            metadata["trace"]["line_match_strategy"],
-            expected_strategy,
+            metadata["trace"]["line_match_strategy"], expected_strategy,
             "unexpected line match strategy for {query}"
         );
         assert!(
@@ -204,8 +208,7 @@ async fn test_fast_search_metadata_serializes_content_strategy_and_target_hint_f
         );
         match expected_target_hint {
             Some(expected) => assert_eq!(
-                metadata["trace"]["target_hint"],
-                expected,
+                metadata["trace"]["target_hint"], expected,
                 "unexpected target hint for {query}"
             ),
             None => assert!(
