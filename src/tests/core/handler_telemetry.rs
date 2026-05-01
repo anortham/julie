@@ -225,6 +225,41 @@ fn test_fast_search_metadata_serializes_scoped_file_pattern_diagnostic() {
 }
 
 #[test]
+fn test_fast_search_metadata_serializes_request_level_file_pattern_diagnostic() {
+    let params = FastSearchTool {
+        query: "calculate_total".to_string(),
+        search_target: "definitions".to_string(),
+        file_pattern: Some("src/** docs/**".to_string()),
+        limit: 10,
+        ..Default::default()
+    };
+    let mut execution = SearchExecutionResult::new(
+        Vec::new(),
+        false,
+        0,
+        "fast_search_input_diagnostic",
+        SearchExecutionKind::Definitions,
+    );
+    execution.trace.file_pattern_diagnostic =
+        Some(FilePatternDiagnostic::WhitespaceSeparatedMultiGlob);
+    execution.trace.hint_kind = Some(HintKind::FilePatternSyntaxHint);
+
+    let metadata = search_telemetry::fast_search_metadata(&params, Some(&execution));
+
+    assert_eq!(
+        metadata["trace"]["strategy"],
+        "fast_search_input_diagnostic"
+    );
+    assert_eq!(metadata["trace"]["returned_hit_count"], 0);
+    assert_eq!(
+        metadata["trace"]["file_pattern_diagnostic"],
+        "whitespace_separated_multi_glob"
+    );
+    assert_eq!(metadata["trace"]["hint_kind"], "file_pattern_syntax_hint");
+    assert!(metadata["trace"]["zero_hit_reason"].is_null());
+}
+
+#[test]
 fn test_fast_search_metadata_serializes_hint_kind() {
     let params = FastSearchTool {
         query: "retry backoff jitter".to_string(),

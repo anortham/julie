@@ -220,7 +220,7 @@ mod boundary_normalization {
     use tempfile::TempDir;
 
     use crate::handler::JulieServerHandler;
-    use crate::tools::search::trace::{FilePatternDiagnostic, HintKind};
+    use crate::tools::search::trace::{FilePatternDiagnostic, HintKind, SearchExecutionKind};
     use crate::tools::{FastSearchTool, ManageWorkspaceTool};
 
     /// Fingerprint of a search result set. Ignores score (which may shift due
@@ -351,7 +351,9 @@ mod boundary_normalization {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn whitespace_separated_globs_emit_syntax_hint_and_trace_diagnostic() {
-        let (_temp_dir, handler) = seed_workspace().await;
+        let handler = JulieServerHandler::new_for_test()
+            .await
+            .expect("handler for test");
         let tool = FastSearchTool {
             query: "calculate_total".to_string(),
             language: None,
@@ -370,13 +372,23 @@ mod boundary_normalization {
             .expect("search should not error");
         let execution = run
             .execution
-            .expect("execute_with_trace must populate execution for content search");
+            .expect("execute_with_trace must populate execution for request-level diagnostics");
         let text = extract_text_from_result(&run.result);
 
         assert!(
             execution.hits.is_empty(),
             "invalid pattern should stay zero-hit"
         );
+        assert_eq!(execution.total_results, 0);
+        assert!(!execution.relaxed);
+        assert_eq!(execution.trace.strategy_id, "fast_search_input_diagnostic");
+        assert!(matches!(
+            execution.kind,
+            SearchExecutionKind::Content {
+                workspace_label: None,
+                file_level: false,
+            }
+        ));
         assert_eq!(
             execution.trace.file_pattern_diagnostic,
             Some(FilePatternDiagnostic::WhitespaceSeparatedMultiGlob),

@@ -1,6 +1,7 @@
 use crate::tools::ManageWorkspaceTool;
 use crate::tools::search::FastSearchTool;
 use crate::tools::search::target::SearchTarget;
+use crate::tools::search::trace::{FilePatternDiagnostic, HintKind, SearchExecutionKind};
 use crate::{handler::JulieServerHandler, mcp_compat::CallToolResult};
 use std::fs;
 use std::path::Path;
@@ -289,6 +290,49 @@ async fn fast_search_files_file_pattern_does_not_starve_scoped_hits() {
         !output.contains("No files found"),
         "scoped file search should not claim there were no files, got: {output}"
     );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn request_level_whitespace_separated_globs_return_syntax_hint_for_files_target() {
+    let handler = JulieServerHandler::new_for_test()
+        .await
+        .expect("handler for test");
+
+    let run = FastSearchTool {
+        query: "mod.rs".to_string(),
+        language: None,
+        file_pattern: Some("src/** docs/**".to_string()),
+        limit: 10,
+        search_target: "files".to_string(),
+        context_lines: None,
+        exclude_tests: None,
+        workspace: Some("primary".to_string()),
+        return_format: "full".to_string(),
+    }
+    .execute_with_trace(&handler)
+    .await
+    .expect("file search should not error");
+
+    let execution = run
+        .execution
+        .expect("execute_with_trace must populate execution for request-level diagnostics");
+    let text = extract_text_from_result(&run.result);
+
+    assert!(execution.hits.is_empty());
+    assert_eq!(execution.total_results, 0);
+    assert!(!execution.relaxed);
+    assert_eq!(execution.trace.strategy_id, "fast_search_input_diagnostic");
+    assert!(matches!(execution.kind, SearchExecutionKind::Files));
+    assert_eq!(
+        execution.trace.file_pattern_diagnostic,
+        Some(FilePatternDiagnostic::WhitespaceSeparatedMultiGlob)
+    );
+    assert_eq!(
+        execution.trace.hint_kind,
+        Some(HintKind::FilePatternSyntaxHint)
+    );
+    assert!(text.contains("multiple globs separated by whitespace"));
+    assert!(text.contains("Use ',' or '|'"));
 }
 
 #[tokio::test(flavor = "multi_thread")]

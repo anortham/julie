@@ -21,6 +21,7 @@ pub use self::types::{LineMatch, LineMatchStrategy};
 pub(crate) mod execution;
 pub(crate) mod formatting; // Exposed for testing
 pub(crate) mod hint_formatter;
+pub(crate) mod input_diagnostics;
 pub(crate) mod line_mode;
 mod nl_embeddings;
 pub(crate) mod query;
@@ -242,6 +243,14 @@ impl FastSearchTool {
             "🔍 Fast search: {} (target: {})",
             self.query, self.search_target
         );
+
+        if let Some(diagnostic) = input_diagnostics::build_request_level_file_pattern_diagnostic(
+            &self.query,
+            self.file_pattern.as_deref(),
+            search_target,
+        ) {
+            return Ok(diagnostic);
+        }
 
         // Resolve workspace target once (used for health check and search routing)
         let workspace_target = self.resolve_workspace_filter(handler).await?;

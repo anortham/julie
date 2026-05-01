@@ -269,6 +269,27 @@ impl SearchTrace {
     }
 }
 
+impl SearchExecutionResult {
+    pub(crate) fn input_diagnostic(
+        strategy_id: impl Into<String>,
+        kind: SearchExecutionKind,
+        file_pattern_diagnostic: FilePatternDiagnostic,
+        hint_kind: HintKind,
+    ) -> Self {
+        let mut trace = SearchTrace::from_hits(strategy_id, &[]);
+        trace.file_pattern_diagnostic = Some(file_pattern_diagnostic);
+        trace.hint_kind = Some(hint_kind);
+
+        Self {
+            hits: Vec::new(),
+            relaxed: false,
+            total_results: 0,
+            trace,
+            kind,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum SearchExecutionKind {
     Definitions,
