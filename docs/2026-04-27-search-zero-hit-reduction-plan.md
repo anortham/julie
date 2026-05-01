@@ -217,3 +217,14 @@ F1 and F4 operate on different metrics. F1 reduces **raw** zero-hit rate (it res
 **Implementation order:** F1 is the highest-impact single change (raw rate). F4 Phase 1 is the highest-impact change on true rate. F2 is text-only and ships alongside F1. F4 Phase 2 is a small enhancement once Phase 1 is in.
 
 Recommended batching: F1+F2 as one PR, F4 Phase 1 as a second PR, F4 Phase 2 as a third.
+
+## May 1 metrics note
+
+Replay acceptance on May 1, 2026 still missed the raw ceiling:
+
+- Raw zero-hit rate: 27.7% (13/47)
+- Without-recourse rate: 0.0% (0/47)
+- Top zero-hit reasons: `line_match_miss` 7, `tantivy_no_candidates` 3, `unattributed` 3
+- Hint mix on zero hits: `multi_token_hint` 4, `definitions_target_hint` 3, `file_pattern_syntax_hint` 3, `file_target_hint` 3
+
+Watch these trace fields in the next replay pass: `line_match_strategy`, `definition_exact_match`, `target_hint`, and `file_pattern_diagnostic`.

@@ -61,6 +61,7 @@ text_search_impl()                       [src/tools/search/text_search.rs]
   |     |
   |     +-- route on search_target:
   |     |     "definitions" --> search_symbols()
+  |     |     "files"       --> search_files()
   |     |     "content"     --> search_content()
   |     |
   |     +-- SearchIndex methods:          [src/search/index.rs]
@@ -88,11 +89,12 @@ text_search_impl()                       [src/tools/search/text_search.rs]
 Results (Vec<Symbol>, relaxed: bool)
 ```
 
-### Two Search Targets
+### Three Search Targets
 
-**"definitions"** -- searches symbol documents (functions, classes, structs).
-Tantivy returns ranked matches. Each result is enriched with `code_context`
-from SQLite (Tantivy indexes `code_body` for search but does not store it).
+**"definitions"** -- searches symbol documents by name, signature, and doc
+text. Use it for symbol names and call-shaped identifiers. Tantivy returns
+ranked matches. Each result is enriched with `code_context` from SQLite
+(Tantivy indexes `code_body` for search but does not store it).
 
 **"content"** -- searches file content documents (grep-like). Tantivy acts as a
 candidate retrieval stage (fetches 5x the limit). Each candidate is
@@ -100,6 +102,10 @@ post-verified against actual file content from SQLite to eliminate false
 positives from `CodeTokenizer` over-splitting. For example, `"Blake3 hash"`
 tokenizes to `["blake", "3", "hash"]`, which could match files containing
 unrelated "3" and "hash" -- post-verification catches this.
+
+**"files"** -- searches file-path and basename documents. Use it for path
+fragments, basenames, and file extensions. It is the right target when the
+query is about where a file lives, not what text is inside it.
 
 ---
 
