@@ -343,4 +343,17 @@ mod line_match_strategy_tests {
             "self receiver syntax should survive tokenized matching",
         );
     }
+
+    #[test]
+    fn test_punctuation_heavy_queries_do_not_match_unrelated_separated_tokens() {
+        let os_strategy = line_match_strategy("OS.has_feature");
+
+        assert!(
+            !line_matches(
+                &os_strategy,
+                "let os = platform_os(); let has_feature = feature_flags.enabled;"
+            ),
+            "separator fallback should not match unrelated tokens that are split across expressions",
+        );
+    }
 }
