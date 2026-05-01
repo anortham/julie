@@ -414,8 +414,7 @@ mod boundary_normalization {
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn whitespace_separated_globs_emit_syntax_hint_and_trace_diagnostic_for_definitions_target(
-    ) {
+    async fn whitespace_globs_definitions_target_emit_syntax_hint() {
         let handler = JulieServerHandler::new_for_test()
             .await
             .expect("handler for test");
@@ -440,7 +439,10 @@ mod boundary_normalization {
             .expect("execute_with_trace must populate execution for request-level diagnostics");
         let text = extract_text_from_result(&run.result);
 
-        assert!(execution.hits.is_empty(), "invalid pattern should stay zero-hit");
+        assert!(
+            execution.hits.is_empty(),
+            "invalid pattern should stay zero-hit"
+        );
         assert_eq!(execution.total_results, 0);
         assert!(!execution.relaxed);
         assert_eq!(execution.trace.strategy_id, "fast_search_input_diagnostic");
