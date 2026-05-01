@@ -96,16 +96,32 @@ pub(crate) fn build_data_plane(primary: &PrimaryWorkspaceHealth) -> Result<DataP
                         debug!(
                             "Primary symbol database busy during health snapshot; assuming data present"
                         );
-                        CanonicalStoreHealth {
-                            level: HealthLevel::Degraded,
-                            symbol_count: 1,
-                            file_count: 0,
-                            relationship_count: 0,
-                            embedding_count: 0,
-                            db_size_mb: 0.0,
-                            languages: Vec::new(),
-                            detail: "SQLite database is busy; counts are temporarily unavailable"
-                                .to_string(),
+                        if let Some(stats) = state.cached_stats.as_ref() {
+                            CanonicalStoreHealth {
+                                level: HealthLevel::Degraded,
+                                symbol_count: stats.symbol_count,
+                                file_count: stats.file_count,
+                                relationship_count: 0,
+                                embedding_count: stats.embedding_count,
+                                db_size_mb: 0.0,
+                                languages: Vec::new(),
+                                detail:
+                                    "SQLite database is busy; using cached daemon registry stats"
+                                        .to_string(),
+                            }
+                        } else {
+                            CanonicalStoreHealth {
+                                level: HealthLevel::Degraded,
+                                symbol_count: 1,
+                                file_count: 0,
+                                relationship_count: 0,
+                                embedding_count: 0,
+                                db_size_mb: 0.0,
+                                languages: Vec::new(),
+                                detail:
+                                    "SQLite database is busy; counts are temporarily unavailable"
+                                        .to_string(),
+                            }
                         }
                     }
                 },

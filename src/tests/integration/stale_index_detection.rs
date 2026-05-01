@@ -679,6 +679,60 @@ async fn test_deleted_file_detected_on_reconnect() -> Result<()> {
     Ok(())
 }
 
+/// Given: A workspace has a deleted file left in SQLite
+/// When: startup repair runs
+/// Expected: The orphan row is removed and the next startup check is clean
+#[tokio::test]
+#[serial_test::serial(embedding_env)]
+async fn test_startup_repair_cleans_deleted_file_and_clears_next_check() -> Result<()> {
+    unsafe {
+        std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+    }
+
+    let temp_dir = TempDir::new()?;
+    let workspace_path = temp_dir.path();
+
+    let src_dir = workspace_path.join("src");
+    fs::create_dir_all(&src_dir)?;
+    fs::write(src_dir.join("a.rs"), "fn a() {}\n")?;
+    fs::write(src_dir.join("b.rs"), "fn b() {}\n")?;
+    fs::write(src_dir.join("c.rs"), "fn c() {}\n")?;
+
+    let handler = create_test_handler(workspace_path).await?;
+    index_workspace(&handler, workspace_path).await?;
+
+    fs::remove_file(src_dir.join("b.rs"))?;
+
+    let repair = crate::startup::run_primary_workspace_repair(&handler).await?;
+    let repair = repair.expect("deleted file should trigger startup repair");
+    assert!(
+        repair.reasons.contains(
+            &crate::tools::workspace::indexing::state::IndexingRepairReason::DeletedFiles
+        ),
+        "repair reasons should include deleted_files: {:?}",
+        repair.reasons
+    );
+
+    let db = handler.primary_database().await?;
+    let files = {
+        let db = db.lock().unwrap();
+        db.get_all_indexed_files()?
+    };
+    assert!(
+        !files.contains(&"src/b.rs".to_string()),
+        "deleted file should be removed from SQLite: {:?}",
+        files
+    );
+
+    let needs_indexing = crate::startup::check_if_indexing_needed(&handler).await?;
+    assert!(
+        !needs_indexing,
+        "startup repair should clear the deleted-file condition"
+    );
+
+    Ok(())
+}
+
 #[tokio::test]
 async fn test_check_if_indexing_needed_prefers_shared_anchor_over_local_julie_tree() -> Result<()> {
     use crate::daemon::database::DaemonDatabase;

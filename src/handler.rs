@@ -1776,25 +1776,7 @@ impl JulieServerHandler {
                     .map(std::string::ToString::to_string)
                     .collect::<Vec<_>>()
                     .join(", ");
-                info!(%reasons, "📚 Workspace needs indexing - starting auto-indexing");
-
-                let index_tool = ManageWorkspaceTool {
-                    operation: "index".to_string(),
-                    path: None, // Use default workspace path
-                    name: None,
-                    workspace_id: None,
-                    force: Some(false),
-                    detailed: None,
-                };
-
-                if let Err(e) = index_tool.call_tool_with_options(self, false).await {
-                    warn!(
-                        "⚠️ Background auto-indexing failed: {} (use manage_workspace tool to retry)",
-                        e
-                    );
-                } else {
-                    info!("✅ Background auto-indexing completed successfully");
-                }
+                info!(%reasons, "✅ Background auto-indexing completed startup repair");
             }
             Ok(None) => {
                 info!("✅ Workspace already indexed - skipping auto-indexing");

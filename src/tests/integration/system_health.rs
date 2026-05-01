@@ -2,17 +2,21 @@
 mod tests {
     use std::fs;
     use std::path::PathBuf;
+    use std::sync::Arc;
+    use std::sync::mpsc;
 
     use anyhow::Result;
     use serial_test::serial;
     use tempfile::TempDir;
 
+    use crate::daemon::database::DaemonDatabase;
     use crate::database::ProjectionStatus;
     use crate::database::types::FileInfo;
     use crate::extractors::{Symbol, SymbolKind};
     use crate::handler::JulieServerHandler;
     use crate::health::{
-        HealthChecker, HealthLevel, ProjectionFreshness, ProjectionState, SystemStatus,
+        HealthChecker, HealthLevel, PrimaryWorkspaceHealth, ProjectionFreshness, ProjectionState,
+        SystemStatus, build_data_plane,
     };
     use crate::mcp_compat::CallToolResult;
     use crate::tests::test_helpers::create_test_file;
@@ -259,7 +263,14 @@ mod tests {
         let (_guard, _temp_dir, handler, _workspace_path, workspace_id) =
             prepare_indexed_workspace().await?;
 
-        let db = handler.get_database_for_workspace(&workspace_id).await?;
+        let db = {
+            let workspace = handler.workspace.read().await;
+            workspace
+                .as_ref()
+                .and_then(|workspace| workspace.db.as_ref())
+                .cloned()
+                .expect("primary workspace db should be loaded")
+        };
         {
             let db = db.lock().unwrap();
             assert_eq!(db.get_current_canonical_revision(&workspace_id)?, Some(1));
@@ -315,6 +326,75 @@ mod tests {
         let status = HealthChecker::get_status_message(&handler).await?;
         assert!(status.contains("lagging"), "{status}");
         assert!(status.contains("revision 1/2"), "{status}");
+
+        Ok(())
+    }
+
+    #[serial(embedding_env)]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_system_health_uses_daemon_registry_counts_when_symbol_db_is_busy() -> Result<()> {
+        let (_guard, temp_dir, mut handler, workspace_path, workspace_id) =
+            prepare_indexed_workspace().await?;
+
+        let daemon_db_path = temp_dir.path().join("daemon.db");
+        let daemon_db = Arc::new(DaemonDatabase::open(&daemon_db_path)?);
+        daemon_db.upsert_workspace(&workspace_id, &workspace_path.to_string_lossy(), "ready")?;
+        daemon_db.update_workspace_stats(
+            &workspace_id,
+            42,
+            7,
+            Some("nomic-ai/CodeRankEmbed"),
+            Some(5),
+            Some(123),
+        )?;
+        let row = daemon_db
+            .get_workspace(&workspace_id)?
+            .expect("daemon registry row should exist");
+        assert_eq!(row.symbol_count, Some(42));
+        assert_eq!(row.file_count, Some(7));
+        handler.daemon_db = Some(Arc::clone(&daemon_db));
+
+        let primary = HealthChecker::primary_workspace_health(&handler).await?;
+        let db = match &primary {
+            PrimaryWorkspaceHealth::Ready(state) => {
+                let stats = state
+                    .cached_stats
+                    .as_ref()
+                    .expect("cached daemon registry stats should be attached");
+                assert_eq!(stats.symbol_count, 42);
+                assert_eq!(stats.file_count, 7);
+                state
+                    .database
+                    .as_ref()
+                    .cloned()
+                    .expect("primary workspace db should be attached")
+            }
+            PrimaryWorkspaceHealth::ColdStart => panic!("primary workspace should be ready"),
+        };
+        let (locked_tx, locked_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        let lock_thread = std::thread::spawn(move || {
+            let _busy_guard = db.lock().unwrap();
+            locked_tx.send(()).unwrap();
+            release_rx.recv().unwrap();
+        });
+        locked_rx.recv().unwrap();
+
+        let data_plane = build_data_plane(&primary)?;
+        release_tx.send(()).unwrap();
+        lock_thread.join().unwrap();
+
+        assert_eq!(data_plane.canonical_store.symbol_count, 42);
+        assert_eq!(data_plane.canonical_store.file_count, 7);
+        assert_eq!(data_plane.canonical_store.embedding_count, 5);
+        assert!(
+            data_plane
+                .canonical_store
+                .detail
+                .contains("cached daemon registry stats"),
+            "{}",
+            data_plane.canonical_store.detail
+        );
 
         Ok(())
     }

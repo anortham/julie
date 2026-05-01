@@ -10,6 +10,7 @@ use crate::workspace::startup_hint::WorkspaceStartupSource;
 use anyhow::{Context, Result};
 use std::collections::HashSet;
 use std::path::Path;
+use std::time::Duration;
 use std::time::SystemTime;
 use tracing::{debug, info, warn};
 
@@ -105,6 +106,7 @@ pub(crate) async fn run_primary_workspace_repair(
                         runtime.record_repair_reason(*reason);
                     }
                 }
+                cancel_primary_embedding_task(handler).await;
 
                 let index_tool = ManageWorkspaceTool {
                     operation: "index".to_string(),
@@ -115,7 +117,7 @@ pub(crate) async fn run_primary_workspace_repair(
                     detailed: None,
                 };
 
-                index_tool.call_tool_with_options(handler, false).await?;
+                index_tool.call_tool_with_options(handler, true).await?;
                 if let Some(runtime) = indexing_runtime.as_ref() {
                     let mut runtime = runtime
                         .write()
@@ -140,6 +142,38 @@ pub(crate) async fn run_primary_workspace_repair(
     }
     resume_primary_workspace_updates(handler, pause_target).await;
     repair_result
+}
+
+async fn cancel_primary_embedding_task(handler: &JulieServerHandler) {
+    let Ok(workspace_id) = handler.require_primary_workspace_identity() else {
+        return;
+    };
+
+    let Some((cancel_flag, mut handle)) =
+        handler.embedding_tasks.lock().await.remove(&workspace_id)
+    else {
+        return;
+    };
+
+    cancel_flag.store(true, std::sync::atomic::Ordering::Release);
+    match tokio::time::timeout(Duration::from_secs(5), &mut handle).await {
+        Ok(join_result) => match join_result {
+            Ok(()) => info!(%workspace_id, "Cancelled embedding task before startup repair"),
+            Err(err) if err.is_cancelled() => {
+                info!(%workspace_id, "Embedding task was already cancelled before startup repair")
+            }
+            Err(err) => {
+                warn!(%workspace_id, "Embedding task ended with error before startup repair: {err}")
+            }
+        },
+        Err(_) => {
+            handle.abort();
+            warn!(
+                %workspace_id,
+                "Timed out waiting for embedding task cancellation before startup repair"
+            );
+        }
+    }
 }
 
 pub(crate) async fn plan_primary_workspace_repair(

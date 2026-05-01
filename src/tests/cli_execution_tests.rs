@@ -671,6 +671,108 @@ fn test_daemon_call_error_transport_is_send_sync() {
     assert_send_sync::<crate::cli_tools::daemon::DaemonCallError>();
 }
 
+#[cfg(unix)]
+#[tokio::test]
+async fn test_daemon_client_initializes_mcp_session_before_tool_call() -> anyhow::Result<()> {
+    use std::time::Duration;
+
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+    use tokio::net::UnixStream;
+
+    async fn read_json_line(
+        lines: &mut tokio::io::Lines<BufReader<tokio::net::unix::OwnedReadHalf>>,
+    ) -> anyhow::Result<serde_json::Value> {
+        let line = tokio::time::timeout(Duration::from_secs(2), lines.next_line())
+            .await
+            .expect("client should send a JSON-RPC line")?
+            .expect("client stream should remain open");
+        Ok(serde_json::from_str(&line)?)
+    }
+
+    async fn write_json_line(
+        writer: &mut tokio::net::unix::OwnedWriteHalf,
+        value: serde_json::Value,
+    ) -> anyhow::Result<()> {
+        writer
+            .write_all(serde_json::to_string(&value)?.as_bytes())
+            .await?;
+        writer.write_all(b"\n").await?;
+        writer.flush().await?;
+        Ok(())
+    }
+
+    let (client_stream, server_stream) = UnixStream::pair()?;
+    let mut client = daemon::DaemonClient::from_stream_for_test(client_stream);
+
+    let server = tokio::spawn(async move {
+        let (read_half, mut write_half) = server_stream.into_split();
+        let mut lines = BufReader::new(read_half).lines();
+
+        let initialize = read_json_line(&mut lines).await?;
+        assert_eq!(
+            initialize["method"], "initialize",
+            "CLI daemon client must initialize MCP before sending tool calls"
+        );
+        assert_eq!(
+            initialize["params"]["clientInfo"]["name"], "julie-cli",
+            "initialize should identify the CLI client"
+        );
+
+        write_json_line(
+            &mut write_half,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": initialize["id"].clone(),
+                "result": {
+                    "protocolVersion": "2025-11-25",
+                    "capabilities": {},
+                    "serverInfo": {
+                        "name": "Julie",
+                        "version": env!("CARGO_PKG_VERSION")
+                    }
+                }
+            }),
+        )
+        .await?;
+
+        let initialized = read_json_line(&mut lines).await?;
+        assert_eq!(
+            initialized["method"], "notifications/initialized",
+            "CLI daemon client should complete MCP initialization before tool calls"
+        );
+
+        let tool_call = read_json_line(&mut lines).await?;
+        assert_eq!(tool_call["method"], "tools/call");
+        assert_eq!(tool_call["params"]["name"], "fast_search");
+
+        write_json_line(
+            &mut write_half,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": tool_call["id"].clone(),
+                "result": {
+                    "content": [{"type": "text", "text": "ok"}],
+                    "isError": false
+                }
+            }),
+        )
+        .await?;
+
+        Ok::<(), anyhow::Error>(())
+    });
+
+    let result = client
+        .call_tool(
+            "fast_search",
+            serde_json::json!({"query": "FastSearchTool"}),
+        )
+        .await?;
+
+    server.await.expect("fake daemon task should not panic")?;
+    assert_eq!(result["content"][0]["text"], "ok");
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // Refs: removed file_path/file_pattern flags
 // ---------------------------------------------------------------------------

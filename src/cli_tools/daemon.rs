@@ -1,8 +1,7 @@
 //! Lightweight daemon IPC client for CLI tool execution.
 //!
-//! Reuses the same IPC endpoint and handshake protocol as the adapter,
-//! but instead of forwarding a full stdio session, sends a single JSON-RPC
-//! `tools/call` request and reads back the response.
+//! Reuses the same IPC endpoint and ready gate as the adapter, then performs
+//! the MCP initialize flow before sending a one-shot `tools/call` request.
 
 use std::path::PathBuf;
 use std::time::Duration;
@@ -10,7 +9,7 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use serde_json::Value;
 use thiserror::Error;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use crate::adapter::{ReadyOutcome, build_ipc_header, read_daemon_ready};
 use crate::daemon::ipc::{IpcClientStream, IpcConnector};
@@ -47,9 +46,18 @@ pub enum DaemonCallError {
 /// JSON-RPC `tools/call` request, reads the response, and disconnects.
 pub struct DaemonClient {
     stream: IpcClientStream,
+    mcp_initialized: bool,
 }
 
 impl DaemonClient {
+    #[cfg(test)]
+    pub(crate) fn from_stream_for_test(stream: IpcClientStream) -> Self {
+        Self {
+            stream,
+            mcp_initialized: false,
+        }
+    }
+
     /// Connect to the daemon and complete the IPC handshake.
     ///
     /// Uses `DaemonPaths` and `WorkspaceStartupHint` to locate the IPC
@@ -71,7 +79,10 @@ impl DaemonClient {
 
         // Wait for READY signal
         match read_daemon_ready(&mut stream, CLI_READY_TIMEOUT).await {
-            ReadyOutcome::Ready => Ok(Self { stream }),
+            ReadyOutcome::Ready => Ok(Self {
+                stream,
+                mcp_initialized: false,
+            }),
             ReadyOutcome::Eof => {
                 anyhow::bail!("Daemon closed connection before ready signal (may be restarting)")
             }
@@ -91,8 +102,9 @@ impl DaemonClient {
 
     /// Send a JSON-RPC `tools/call` request and return the response.
     ///
-    /// The request follows MCP's JSON-RPC format. The daemon's session handler
-    /// processes it and returns a `tools/call` response with `CallToolResult`.
+    /// The daemon's session handler is a full MCP server, so the CLI must run
+    /// `initialize` before the request instead of sending `tools/call` as the
+    /// first MCP message on the stream.
     ///
     /// Returns `DaemonCallError::ToolError` when the daemon processes the
     /// request but returns a JSON-RPC error (invalid params, workspace not
@@ -103,6 +115,8 @@ impl DaemonClient {
         tool_name: &str,
         arguments: Value,
     ) -> Result<Value, DaemonCallError> {
+        self.ensure_mcp_initialized().await?;
+
         let request = serde_json::json!({
             "jsonrpc": "2.0",
             "id": 1,
@@ -113,36 +127,9 @@ impl DaemonClient {
             }
         });
 
-        let mut request_bytes =
-            serde_json::to_vec(&request).context("Failed to serialize tool call request")?;
-        request_bytes.push(b'\n');
-
-        self.stream
-            .write_all(&request_bytes)
-            .await
-            .context("Failed to send tool call request to daemon")?;
-
-        // Read response line. The daemon sends JSON-RPC responses as
-        // newline-delimited JSON over the IPC stream.
-        let mut reader = BufReader::new(&mut self.stream);
-        let mut response_line = String::new();
-        reader
-            .read_line(&mut response_line)
-            .await
-            .context("Failed to read tool call response from daemon")?;
-
-        if response_line.is_empty() {
-            return Err(DaemonCallError::Transport(anyhow::anyhow!(
-                "Daemon closed connection without sending a response"
-            )));
-        }
-
-        let response: Value = serde_json::from_str(&response_line).with_context(|| {
-            format!(
-                "Failed to parse daemon response as JSON (first 200 chars): {}",
-                &response_line[..response_line.len().min(200)]
-            )
-        })?;
+        self.write_json_message(&request, "tool call request")
+            .await?;
+        let response = self.read_response_with_id(1, "tool call response").await?;
 
         // Extract the result or error from the JSON-RPC envelope.
         // A JSON-RPC error means the daemon processed the request and
@@ -164,13 +151,125 @@ impl DaemonClient {
             DaemonCallError::Transport(anyhow::anyhow!("Daemon response missing 'result' field"))
         })
     }
+
+    async fn ensure_mcp_initialized(&mut self) -> Result<(), DaemonCallError> {
+        if self.mcp_initialized {
+            return Ok(());
+        }
+
+        let initialize = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 0,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2025-11-25",
+                "capabilities": {},
+                "clientInfo": {
+                    "name": "julie-cli",
+                    "version": env!("CARGO_PKG_VERSION")
+                }
+            }
+        });
+        self.write_json_message(&initialize, "initialize request")
+            .await?;
+        let response = self.read_response_with_id(0, "initialize response").await?;
+        if let Some(error) = response.get("error") {
+            let message = error
+                .get("message")
+                .and_then(|m| m.as_str())
+                .unwrap_or("unknown error");
+            return Err(DaemonCallError::Transport(anyhow::anyhow!(
+                "Daemon initialize error: {message}"
+            )));
+        }
+        if response.get("result").is_none() {
+            return Err(DaemonCallError::Transport(anyhow::anyhow!(
+                "Daemon initialize response missing 'result' field"
+            )));
+        }
+
+        let initialized = serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "notifications/initialized"
+        });
+        self.write_json_message(&initialized, "initialized notification")
+            .await?;
+        self.mcp_initialized = true;
+        Ok(())
+    }
+
+    async fn write_json_message(
+        &mut self,
+        value: &Value,
+        label: &str,
+    ) -> Result<(), DaemonCallError> {
+        let mut bytes =
+            serde_json::to_vec(value).with_context(|| format!("Failed to serialize {label}"))?;
+        bytes.push(b'\n');
+        self.stream
+            .write_all(&bytes)
+            .await
+            .with_context(|| format!("Failed to send {label} to daemon"))?;
+        Ok(())
+    }
+
+    async fn read_response_with_id(
+        &mut self,
+        request_id: u64,
+        label: &str,
+    ) -> Result<Value, DaemonCallError> {
+        loop {
+            let response = self.read_json_line(label).await?;
+            let Some(id) = response.get("id") else {
+                continue;
+            };
+            if id == request_id {
+                return Ok(response);
+            }
+        }
+    }
+
+    async fn read_json_line(&mut self, label: &str) -> Result<Value, DaemonCallError> {
+        let mut response_bytes = Vec::new();
+        let mut byte = [0u8; 1];
+
+        loop {
+            match self.stream.read(&mut byte).await {
+                Ok(0) if response_bytes.is_empty() => {
+                    return Err(DaemonCallError::Transport(anyhow::anyhow!(
+                        "Daemon closed connection without sending a response"
+                    )));
+                }
+                Ok(0) => {
+                    return Err(DaemonCallError::Transport(anyhow::anyhow!(
+                        "Daemon closed connection during {label}"
+                    )));
+                }
+                Ok(_) if byte[0] == b'\n' => break,
+                Ok(_) => response_bytes.push(byte[0]),
+                Err(error) => {
+                    return Err(DaemonCallError::Transport(
+                        anyhow::Error::from(error)
+                            .context(format!("Failed to read {label} from daemon")),
+                    ));
+                }
+            }
+        }
+
+        serde_json::from_slice(&response_bytes).map_err(|error| {
+            DaemonCallError::Transport(anyhow::Error::from(error).context(format!(
+                "Failed to parse daemon {label} as JSON (first 200 bytes): {}",
+                String::from_utf8_lossy(&response_bytes[..response_bytes.len().min(200)])
+            )))
+        })
+    }
 }
 
 /// Attempt to connect to the daemon, returning None on connection failure.
 ///
 /// This is used by the fallback logic: if daemon connection fails and the
 /// user didn't explicitly request `--standalone`, we fall back to standalone
-/// mode with a stderr warning rather than hard-failing.
+/// mode with a stderr warning instead of hard-failing.
 pub async fn try_connect_daemon(startup_hint: &WorkspaceStartupHint) -> Option<DaemonClient> {
     DaemonClient::connect(startup_hint).await.ok()
 }
