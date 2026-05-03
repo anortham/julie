@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::RwLock as StdRwLock;
 use std::sync::atomic::AtomicBool;
 
 use anyhow::{Context, Result};
@@ -11,6 +12,7 @@ use tracing::{info, warn};
 use crate::daemon::session::SessionLifecycleHandle;
 use crate::dashboard::state::DashboardEvent;
 use crate::handler::JulieServerHandler;
+use crate::handler::session_workspace::SessionWorkspaceState;
 use crate::workspace::registry::generate_workspace_id;
 use crate::workspace::startup_hint::{WorkspaceStartupHint, WorkspaceStartupSource};
 
@@ -19,6 +21,7 @@ use super::embedding_service::EmbeddingService;
 use super::ipc::{DAEMON_READY_LINE, IpcStream};
 use super::watcher_pool::WatcherPool;
 use super::workspace_pool::WorkspacePool;
+use super::workspace_session_attachment::WorkspaceSessionAttachment;
 
 pub(crate) fn workspace_ids_to_disconnect(
     startup_workspace_id: &str,
@@ -255,6 +258,7 @@ pub(crate) async fn handle_ipc_session(
     watcher_pool: Option<Arc<WatcherPool>>,
 ) -> Result<()> {
     let workspace_path = workspace_startup_hint.path.clone();
+    let cleanup_startup_hint = workspace_startup_hint.clone();
 
     // Compute workspace ID from path. Use generate_workspace_id() directly
     // (produces e.g. "julie_316c0b08"). Do NOT wrap in another prefix; the
@@ -287,7 +291,7 @@ pub(crate) async fn handle_ipc_session(
                 Some(Arc::clone(embedding_service)),
                 Some(Arc::clone(restart_pending)),
                 dashboard_tx,
-                watcher_pool,
+                watcher_pool.clone(),
                 Some(Arc::clone(&pool)),
             )
             .await
@@ -304,7 +308,7 @@ pub(crate) async fn handle_ipc_session(
                 Some(Arc::clone(embedding_service)),
                 Some(Arc::clone(restart_pending)),
                 dashboard_tx,
-                watcher_pool,
+                watcher_pool.clone(),
                 Some(Arc::clone(&pool)),
             )
             .await
@@ -387,14 +391,31 @@ pub(crate) async fn handle_ipc_session(
         }
     };
 
-    pool.sync_indexed_from_db(&full_workspace_id).await;
+    let cleanup_attachment = WorkspaceSessionAttachment::new(
+        None,
+        daemon_db.clone(),
+        watcher_pool,
+        Some(Arc::clone(embedding_service)),
+        Arc::new(StdRwLock::new(SessionWorkspaceState::new(
+            cleanup_startup_hint,
+        ))),
+    );
 
     for workspace_id in workspace_ids_to_disconnect(
         &full_workspace_id,
         attached_workspace_ids,
         !defer_startup_workspace_attach,
     ) {
-        pool.disconnect_session(&workspace_id).await;
+        pool.sync_indexed_from_db(&workspace_id).await;
+        if let Err(error) = cleanup_attachment
+            .detach_workspace_resources(&workspace_id)
+            .await
+        {
+            warn!(
+                workspace_id,
+                "Failed to detach IPC workspace session resources: {error}"
+            );
+        }
     }
 
     session_result

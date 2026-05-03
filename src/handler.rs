@@ -1194,6 +1194,12 @@ impl JulieServerHandler {
             .was_workspace_attached_in_session(workspace_id)
     }
 
+    pub async fn detach_workspace_for_session(&self, workspace_id: &str) -> Result<bool> {
+        self.session_attachment()
+            .detach_workspace_once(workspace_id)
+            .await
+    }
+
     fn session_attachment(&self) -> WorkspaceSessionAttachment {
         WorkspaceSessionAttachment::new(
             self.workspace_pool.as_ref().map(Arc::clone),

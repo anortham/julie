@@ -8,6 +8,7 @@
 #[cfg(unix)]
 mod tests {
     use std::sync::Arc;
+    use std::sync::RwLock as StdRwLock;
     use std::time::Duration;
 
     use anyhow::Result;
@@ -20,10 +21,33 @@ mod tests {
     use crate::daemon::watcher_pool::WatcherPool;
     use crate::daemon::workspace_pool::WorkspacePool;
     use crate::daemon::workspace_registry_store::WorkspaceRegistryStore;
+    use crate::daemon::workspace_session_attachment::WorkspaceSessionAttachment;
     use crate::handler::JulieServerHandler;
+    use crate::handler::session_workspace::SessionWorkspaceState;
     use crate::migration::run_migration_for_workspace;
     use crate::paths::DaemonPaths;
     use crate::tools::workspace::commands::registry::cleanup::run_cleanup_sweep;
+    use crate::workspace::startup_hint::WorkspaceStartupHint;
+
+    fn session_attachment(
+        pool: Arc<WorkspacePool>,
+        daemon_db: Arc<DaemonDatabase>,
+        watcher_pool: Option<Arc<WatcherPool>>,
+        workspace_root: std::path::PathBuf,
+    ) -> WorkspaceSessionAttachment {
+        WorkspaceSessionAttachment::new(
+            Some(pool),
+            Some(daemon_db),
+            watcher_pool,
+            None,
+            Arc::new(StdRwLock::new(SessionWorkspaceState::new(
+                WorkspaceStartupHint {
+                    path: workspace_root,
+                    source: None,
+                },
+            ))),
+        )
+    }
 
     // ---------------------------------------------------------------
     // Test 1: Daemon starts, creates PID + socket, stops cleanly
@@ -329,10 +353,25 @@ mod tests {
         let ws_id = crate::workspace::registry::generate_workspace_id(&ws_path.to_string_lossy())
             .expect("generate workspace id");
 
-        pool.get_or_init(&ws_id, ws_path.clone())
+        let first_session = session_attachment(
+            Arc::clone(&pool),
+            Arc::clone(&daemon_db),
+            Some(Arc::clone(&watcher_pool)),
+            ws_path.clone(),
+        );
+        let second_session = session_attachment(
+            Arc::clone(&pool),
+            Arc::clone(&daemon_db),
+            Some(Arc::clone(&watcher_pool)),
+            ws_path.clone(),
+        );
+
+        first_session
+            .attach_workspace_once(&ws_id, ws_path.clone())
             .await
             .expect("first workspace attach should succeed");
-        pool.get_or_init(&ws_id, ws_path.clone())
+        second_session
+            .attach_workspace_once(&ws_id, ws_path.clone())
             .await
             .expect("second workspace attach should reuse the pooled workspace");
 
@@ -365,7 +404,10 @@ mod tests {
             "blocked cleanup should keep the workspace row visible"
         );
 
-        pool.disconnect_session(&ws_id).await;
+        first_session
+            .detach_workspace_once(&ws_id)
+            .await
+            .expect("first workspace detach should succeed");
         let still_blocked = run_cleanup_sweep(&registry_store, Some(&pool), Some(&watcher_pool))
             .await
             .expect("cleanup sweep should still succeed after one disconnect");
@@ -380,7 +422,10 @@ mod tests {
             still_blocked.blocked_workspaces
         );
 
-        pool.disconnect_session(&ws_id).await;
+        second_session
+            .detach_workspace_once(&ws_id)
+            .await
+            .expect("second workspace detach should succeed");
         let pruned = run_cleanup_sweep(&registry_store, Some(&pool), Some(&watcher_pool))
             .await
             .expect("cleanup sweep should prune the missing workspace once detached");
@@ -630,21 +675,35 @@ mod tests {
         );
 
         // Step 2: Create WorkspacePool with daemon_db
-        let pool = WorkspacePool::new(
+        let pool = Arc::new(WorkspacePool::new(
             indexes_dir,
             Some(Arc::clone(&daemon_db)),
             None, // no watcher pool for this test
             None, // no embedding service for this test
-        );
+        ));
 
         // Step 3: Two sessions attach to the same workspace
         let primary_id = "myproject_deadbeef";
-        let ws1 = pool
-            .get_or_init(primary_id, ws_root.path().to_path_buf())
+        let first_session = session_attachment(
+            Arc::clone(&pool),
+            Arc::clone(&daemon_db),
+            None,
+            ws_root.path().to_path_buf(),
+        );
+        let second_session = session_attachment(
+            Arc::clone(&pool),
+            Arc::clone(&daemon_db),
+            None,
+            ws_root.path().to_path_buf(),
+        );
+        first_session
+            .attach_workspace_once(primary_id, ws_root.path().to_path_buf())
             .await?;
-        let ws2 = pool
-            .get_or_init(primary_id, ws_root.path().to_path_buf())
+        second_session
+            .attach_workspace_once(primary_id, ws_root.path().to_path_buf())
             .await?;
+        let ws1 = pool.get(primary_id).await.expect("first pooled workspace");
+        let ws2 = pool.get(primary_id).await.expect("second pooled workspace");
 
         // Both sessions should share the same SymbolDatabase Arc
         assert!(
@@ -780,8 +839,8 @@ mod tests {
         );
 
         // Step 8: Sessions disconnect; session count should return to 0
-        pool.disconnect_session(primary_id).await;
-        pool.disconnect_session(primary_id).await;
+        first_session.detach_workspace_once(primary_id).await?;
+        second_session.detach_workspace_once(primary_id).await?;
 
         let ws_row = daemon_db
             .get_workspace(primary_id)?

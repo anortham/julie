@@ -153,8 +153,6 @@ mod tests {
         pool.get_or_init(&reference_id, reference_path.clone())
             .await
             .expect("preload reference workspace");
-        pool.disconnect_session(&primary_id).await;
-        pool.disconnect_session(&reference_id).await;
         wait_for_session_count(&daemon_db, &primary_id, 0).await;
         wait_for_session_count(&daemon_db, &reference_id, 0).await;
 
@@ -353,8 +351,6 @@ mod tests {
         pool.get_or_init(&reference_id, reference_path.clone())
             .await
             .expect("preload reference workspace");
-        pool.disconnect_session(&primary_id).await;
-        pool.disconnect_session(&reference_id).await;
         wait_for_session_count(&daemon_db, &primary_id, 0).await;
         wait_for_session_count(&daemon_db, &reference_id, 0).await;
 
@@ -477,7 +473,10 @@ mod tests {
 
         for workspace_id in workspace_ids_to_disconnect(&startup_id, vec![rebound_id.clone()], true)
         {
-            pool.disconnect_session(&workspace_id).await;
+            attachment
+                .detach_workspace_once(&workspace_id)
+                .await
+                .expect("detach workspace session");
         }
 
         wait_for_session_count(&daemon_db, &startup_id, 0).await;
@@ -811,7 +810,10 @@ mod tests {
             handler.session_attached_workspace_ids().await,
             true,
         ) {
-            pool.disconnect_session(&workspace_id).await;
+            handler
+                .detach_workspace_for_session(&workspace_id)
+                .await
+                .expect("detach workspace session");
         }
 
         wait_for_session_count(&daemon_db, &workspace_a_id, 0).await;
@@ -915,7 +917,10 @@ mod tests {
             handler.session_attached_workspace_ids().await,
             true,
         ) {
-            pool.disconnect_session(&workspace_id).await;
+            handler
+                .detach_workspace_for_session(&workspace_id)
+                .await
+                .expect("detach workspace session");
         }
 
         wait_for_session_count(&daemon_db, &workspace_a_id, 0).await;

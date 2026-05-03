@@ -12,6 +12,7 @@ use crate::mcp_compat::CallToolResult;
 use crate::tools::workspace::ManageWorkspaceTool;
 use crate::workspace::registry::generate_workspace_id;
 use crate::workspace::startup_hint::{WorkspaceStartupHint, WorkspaceStartupSource};
+use tracing::warn;
 
 #[derive(Debug, Deserialize)]
 pub struct RegisterWorkspaceForm {
@@ -71,13 +72,16 @@ pub(crate) async fn disconnect_dashboard_attached_workspaces(
     state: &AppState,
     handler: &JulieServerHandler,
 ) {
-    let Some(pool) = state.dashboard.workspace_pool() else {
-        return;
-    };
-
     for workspace_id in handler.session_attached_workspace_ids().await {
-        pool.sync_indexed_from_db(&workspace_id).await;
-        pool.disconnect_session(&workspace_id).await;
+        if let Some(pool) = state.dashboard.workspace_pool() {
+            pool.sync_indexed_from_db(&workspace_id).await;
+        }
+        if let Err(error) = handler.detach_workspace_for_session(&workspace_id).await {
+            warn!(
+                workspace_id,
+                "Failed to detach dashboard workspace session: {error}"
+            );
+        }
     }
 }
 

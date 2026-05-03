@@ -21,7 +21,6 @@ pub struct WorkspacePool {
     workspaces: tokio::sync::RwLock<HashMap<String, WorkspaceEntry>>,
     indexes_dir: PathBuf,
     daemon_db: Option<Arc<DaemonDatabase>>,
-    watcher_pool: Option<Arc<WatcherPool>>,
 }
 
 struct WorkspaceEntry {
@@ -38,22 +37,18 @@ impl WorkspacePool {
     /// `daemon_db` is the persistent registry database. When `Some`, workspace
     /// state (status, session counts) is persisted across daemon restarts.
     ///
-    /// `watcher_pool` is retained temporarily for disconnect compatibility
-    /// while callers migrate to `WorkspaceSessionAttachment`.
-    ///
     /// `_embedding_service` is accepted temporarily while callers migrate to
     /// `WorkspaceSessionAttachment`.
     pub fn new(
         indexes_dir: PathBuf,
         daemon_db: Option<Arc<DaemonDatabase>>,
-        watcher_pool: Option<Arc<WatcherPool>>,
+        _watcher_pool: Option<Arc<WatcherPool>>,
         _embedding_service: Option<Arc<EmbeddingService>>,
     ) -> Self {
         Self {
             workspaces: tokio::sync::RwLock::new(HashMap::new()),
             indexes_dir,
             daemon_db,
-            watcher_pool,
         }
     }
 
@@ -199,51 +194,6 @@ impl WorkspacePool {
                 if let Some(entry) = guard.get_mut(workspace_id) {
                     entry.indexed = true;
                 }
-            }
-        }
-    }
-
-    /// Decrement session count and watcher ref when a session disconnects.
-    ///
-    /// Session count is clamped to 0 (never goes negative). Watcher ref
-    /// decrement starts the grace period when the last session disconnects.
-    pub async fn disconnect_session(&self, workspace_id: &str) {
-        self.update_session_count(workspace_id, false).await;
-        if let Some(ref wp) = self.watcher_pool {
-            wp.detach(workspace_id).await;
-        }
-    }
-
-    async fn update_session_count(&self, workspace_id: &str, increment: bool) {
-        let Some(db) = self.daemon_db.as_ref().map(Arc::clone) else {
-            return;
-        };
-        let workspace_id = workspace_id.to_string();
-        let workspace_id_for_log = workspace_id.clone();
-        let op = if increment { "increment" } else { "decrement" };
-
-        let result = tokio::task::spawn_blocking(move || {
-            if increment {
-                db.increment_session_count(&workspace_id)
-            } else {
-                db.decrement_session_count(&workspace_id)
-            }
-        })
-        .await;
-
-        match result {
-            Ok(Ok(())) => {}
-            Ok(Err(e)) => {
-                warn!(
-                    workspace_id = workspace_id_for_log,
-                    "Failed to {op} workspace session count in daemon.db: {e}"
-                );
-            }
-            Err(e) => {
-                warn!(
-                    workspace_id = workspace_id_for_log,
-                    "Failed to run session count {op} in background task: {e}"
-                );
             }
         }
     }

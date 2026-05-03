@@ -682,3 +682,96 @@ async fn test_session_attachment_service_attaches_workspace_once_per_session() {
         "attached workspace IDs should contain the workspace once"
     );
 }
+
+#[tokio::test]
+async fn test_session_attachment_detach_decrements_session_count_and_watcher_ref_once() {
+    use crate::daemon::database::DaemonDatabase;
+    use crate::daemon::watcher_pool::WatcherPool;
+    use crate::daemon::workspace_session_attachment::WorkspaceSessionAttachment;
+    use crate::handler::session_workspace::SessionWorkspaceState;
+    use crate::workspace::startup_hint::WorkspaceStartupHint;
+    use std::sync::RwLock as StdRwLock;
+    use std::time::Duration;
+
+    let indexes_dir = temp_indexes_dir();
+    let workspace_root = temp_workspace_root();
+    let canonical_root = workspace_root
+        .path()
+        .canonicalize()
+        .expect("canonicalize root");
+    let workspace_id =
+        crate::workspace::registry::generate_workspace_id(&canonical_root.to_string_lossy())
+            .expect("generate workspace id");
+
+    let daemon_db = Arc::new(
+        DaemonDatabase::open(&indexes_dir.path().join("daemon.db")).expect("open daemon db"),
+    );
+    let watcher_pool = Arc::new(WatcherPool::new(Duration::from_secs(300)));
+    let pool = Arc::new(WorkspacePool::new(
+        indexes_dir.path().to_path_buf(),
+        Some(Arc::clone(&daemon_db)),
+        Some(Arc::clone(&watcher_pool)),
+        None,
+    ));
+    let session_workspace = Arc::new(StdRwLock::new(SessionWorkspaceState::new(
+        WorkspaceStartupHint {
+            path: canonical_root.clone(),
+            source: None,
+        },
+    )));
+    let attachment = WorkspaceSessionAttachment::new(
+        Some(Arc::clone(&pool)),
+        Some(Arc::clone(&daemon_db)),
+        Some(Arc::clone(&watcher_pool)),
+        None,
+        Arc::clone(&session_workspace),
+    );
+
+    assert!(
+        attachment
+            .attach_workspace_once(&workspace_id, canonical_root)
+            .await
+            .expect("attach should succeed")
+    );
+    assert!(
+        attachment
+            .detach_workspace_once(&workspace_id)
+            .await
+            .expect("first detach should succeed"),
+        "first detach should mutate session state"
+    );
+    assert!(
+        !attachment
+            .detach_workspace_once(&workspace_id)
+            .await
+            .expect("second detach should succeed"),
+        "second detach should be idempotent"
+    );
+
+    assert_eq!(
+        daemon_db
+            .get_workspace(&workspace_id)
+            .expect("read workspace row")
+            .expect("workspace row exists")
+            .session_count,
+        0,
+        "idempotent detach should decrement daemon session count once"
+    );
+    assert_eq!(
+        watcher_pool.ref_count(&workspace_id).await,
+        0,
+        "idempotent detach should decrement watcher refs once"
+    );
+    assert!(
+        watcher_pool.has_grace_deadline(&workspace_id).await,
+        "last detach should start watcher grace"
+    );
+    assert!(
+        session_workspace
+            .read()
+            .unwrap_or_else(|p| p.into_inner())
+            .session_attached_workspace_ids()
+            .is_empty(),
+        "detached workspace IDs should be removed from session state"
+    );
+}

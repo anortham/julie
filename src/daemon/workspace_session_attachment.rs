@@ -99,7 +99,7 @@ impl WorkspaceSessionAttachment {
         };
 
         let workspace = pool.get_or_init(workspace_id, workspace_root).await?;
-        self.increment_session_count(workspace_id).await;
+        self.update_session_count(workspace_id, true).await;
         if let Some(watcher_pool) = &self.watcher_pool {
             let provider = self
                 .embedding_service
@@ -118,28 +118,57 @@ impl WorkspaceSessionAttachment {
         Ok(())
     }
 
-    async fn increment_session_count(&self, workspace_id: &str) {
+    pub async fn detach_workspace_once(&self, workspace_id: &str) -> Result<bool> {
+        let was_attached = self
+            .session_workspace
+            .write()
+            .unwrap_or_else(|p| p.into_inner())
+            .mark_workspace_detached(workspace_id);
+        if !was_attached {
+            return Ok(false);
+        }
+
+        self.detach_workspace_resources(workspace_id).await?;
+        Ok(true)
+    }
+
+    pub async fn detach_workspace_resources(&self, workspace_id: &str) -> Result<()> {
+        self.update_session_count(workspace_id, false).await;
+        if let Some(watcher_pool) = &self.watcher_pool {
+            watcher_pool.detach(workspace_id).await;
+        }
+        Ok(())
+    }
+
+    async fn update_session_count(&self, workspace_id: &str, increment: bool) {
         let Some(db) = self.daemon_db.as_ref().map(Arc::clone) else {
             return;
         };
         let workspace_id = workspace_id.to_string();
         let workspace_id_for_log = workspace_id.clone();
+        let op = if increment { "increment" } else { "decrement" };
 
-        let result =
-            tokio::task::spawn_blocking(move || db.increment_session_count(&workspace_id)).await;
+        let result = tokio::task::spawn_blocking(move || {
+            if increment {
+                db.increment_session_count(&workspace_id)
+            } else {
+                db.decrement_session_count(&workspace_id)
+            }
+        })
+        .await;
 
         match result {
             Ok(Ok(())) => {}
             Ok(Err(error)) => {
                 warn!(
                     workspace_id = workspace_id_for_log,
-                    "Failed to increment workspace session count in daemon.db: {error}"
+                    "Failed to {op} workspace session count in daemon.db: {error}"
                 );
             }
             Err(error) => {
                 warn!(
                     workspace_id = workspace_id_for_log,
-                    "Session count increment task failed: {error}"
+                    "Session count {op} task failed: {error}"
                 );
             }
         }

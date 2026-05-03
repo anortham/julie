@@ -392,7 +392,10 @@ async fn test_watcher_pool_reuses_session_refs_and_starts_grace_on_last_disconne
         "grace should stay off while at least one session is attached"
     );
 
-    pool.disconnect_session("test_ws").await;
+    first_session
+        .detach_workspace_once("test_ws")
+        .await
+        .expect("first session detach should succeed");
     assert_eq!(
         watcher_pool.ref_count("test_ws").await,
         1,
@@ -403,7 +406,10 @@ async fn test_watcher_pool_reuses_session_refs_and_starts_grace_on_last_disconne
         "grace should not start until the last session disconnects"
     );
 
-    pool.disconnect_session("test_ws").await;
+    second_session
+        .detach_workspace_once("test_ws")
+        .await
+        .expect("second session detach should succeed");
     assert_eq!(
         watcher_pool.ref_count("test_ws").await,
         0,
@@ -542,7 +548,7 @@ async fn test_sync_indexed_from_db_noop_when_pending() {
 }
 
 #[tokio::test]
-async fn test_watcher_pool_detached_on_disconnect() {
+async fn test_session_attachment_detach_starts_watcher_grace() {
     use crate::daemon::watcher_pool::WatcherPool;
     use std::time::Duration;
 
@@ -566,9 +572,11 @@ async fn test_watcher_pool_detached_on_disconnect() {
         .await
         .expect("attach should initialize runtime and watcher");
 
-    pool.disconnect_session("test_ws").await;
+    attachment
+        .detach_workspace_once("test_ws")
+        .await
+        .expect("detach should release watcher");
 
-    // ref_count hit 0, grace deadline should now be set
     assert!(watcher_pool.has_grace_deadline("test_ws").await);
 }
 

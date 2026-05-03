@@ -152,6 +152,11 @@ Acceptance criteria:
 | worker-red-green | IPC cleanup disconnects startup and rebound primary attachments after service-owned attach setup. | `cargo nextest run --lib test_handle_ipc_session_cleanup_disconnects_startup_and_rebound_primary 2>&1 \| tail -30` | working-tree at `ed885ff7` | PASS | 2026-05-03T18:15:00Z |
 | affected-change | Changed-file mapping falls back to `dev`; all completed buckets passed before the daemon bucket exposed a stale watcher setup test. | `cargo xtask test changed` | working-tree at `ed885ff7` | FAIL, daemon bucket only: `test_watcher_pool_detached_on_disconnect` | 2026-05-03T18:23:00Z |
 | affected-change-retry | Daemon lifecycle/session/watchers bucket passes after updating stale watcher setup to attach through `WorkspaceSessionAttachment`. | `cargo xtask test bucket daemon` | working-tree at `ed885ff7` | PASS | 2026-05-03T18:26:00Z |
+| worker-red-green | Session attachment detach decrements daemon session count and watcher refs once, removing the workspace from session attached state. | `cargo nextest run --lib test_session_attachment_detach_decrements_session_count_and_watcher_ref_once 2>&1 \| tail -40` | working-tree at `ef0e50d0` | PASS | 2026-05-03T18:36:00Z |
+| worker-red-green | Service-owned detach starts watcher grace after the final session releases the workspace. | `cargo nextest run --lib test_session_attachment_detach_starts_watcher_grace 2>&1 \| tail -30` | working-tree at `ef0e50d0` | PASS | 2026-05-03T18:42:00Z |
+| worker-red-green | Cleanup sweep remains blocked until service-owned session detach releases all active sessions. | `cargo nextest run --lib test_cleanup_sweep_blocks_missing_workspace_until_sessions_disconnect 2>&1 \| tail -40` | working-tree at `ef0e50d0` | PASS | 2026-05-03T18:37:00Z |
+| worker-red-green | Dashboard register/open actions preserve session-count behavior after dashboard cleanup uses service-owned detach. | `cargo nextest run --lib tests::dashboard::projects_actions 2>&1 \| tail -40` | working-tree at `ef0e50d0` | PASS | 2026-05-03T18:41:00Z |
+| affected-change-retry | Daemon lifecycle/session/watchers bucket passes after removing `WorkspacePool::disconnect_session`. | `cargo xtask test bucket daemon` | working-tree at `ef0e50d0` | PASS | 2026-05-03T18:40:00Z |
 
 ## Model Routing
 

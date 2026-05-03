@@ -171,6 +171,10 @@ impl SessionWorkspaceState {
         self.attached_workspace_ids.insert(workspace_id.into())
     }
 
+    pub fn mark_workspace_detached(&mut self, workspace_id: &str) -> bool {
+        self.attached_workspace_ids.remove(workspace_id)
+    }
+
     pub fn mark_workspace_active(&mut self, workspace_id: impl Into<String>) -> bool {
         let workspace_id = workspace_id.into();
         if self.current_workspace_id().as_deref() == Some(workspace_id.as_str()) {

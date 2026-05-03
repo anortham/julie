@@ -684,7 +684,9 @@ async fn test_same_root_request_time_attach_does_not_leak_session_count() -> Res
     drop(write_half);
     drop(lines);
     let _ = service.cancel().await;
-    pool.disconnect_session(&startup_workspace_id).await;
+    handler
+        .detach_workspace_for_session(&startup_workspace_id)
+        .await?;
     wait_for_session_count(&daemon_db, &startup_workspace_id, 0).await;
     Ok(())
 }
