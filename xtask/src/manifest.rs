@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::path::Path;
 
@@ -55,6 +55,8 @@ impl TestManifest {
     }
 
     fn validate(self) -> anyhow::Result<Self> {
+        let mut command_buckets = HashMap::new();
+
         for (bucket_name, bucket) in &self.buckets {
             if bucket.commands.is_empty() {
                 bail!("bucket '{bucket_name}' must define at least one command");
@@ -86,6 +88,18 @@ impl TestManifest {
                 .is_some_and(|notes| notes.trim().is_empty())
             {
                 bail!("bucket '{bucket_name}' notes must be non-empty when present");
+            }
+
+            for command in &bucket.commands {
+                if let Some(first_bucket) = command_buckets.get(command) {
+                    if first_bucket != bucket_name {
+                        bail!(
+                            "duplicate command '{command}' found in bucket '{first_bucket}' and bucket '{bucket_name}'"
+                        );
+                    }
+                } else {
+                    command_buckets.insert(command.clone(), bucket_name.clone());
+                }
             }
         }
 

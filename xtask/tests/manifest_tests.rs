@@ -255,3 +255,31 @@ commands = ["cargo test --lib tests::core::workspace_init"]
         "pre-existing workspace_init failure/outlier"
     );
 }
+
+#[test]
+fn manifest_tests_reject_duplicate_bucket_commands() {
+    let duplicate_command = "cargo test --lib tests::cli_tests";
+    let error = TestManifest::from_str(
+        r#"
+[tiers]
+smoke = ["alpha", "beta"]
+
+[buckets.alpha]
+expected_seconds = 1
+timeout_seconds = 60
+commands = ["cargo test --lib tests::cli_tests"]
+
+[buckets.beta]
+expected_seconds = 1
+timeout_seconds = 60
+commands = ["cargo test --lib tests::cli_tests"]
+"#,
+    )
+    .unwrap_err();
+
+    let message = error.to_string();
+    assert!(message.contains("duplicate command"));
+    assert!(message.contains("'alpha'"));
+    assert!(message.contains("'beta'"));
+    assert!(message.contains(duplicate_command));
+}
