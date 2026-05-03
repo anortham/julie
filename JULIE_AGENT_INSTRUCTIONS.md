@@ -40,12 +40,15 @@
 
 ## CLI Dogfooding
 
-Use named CLI wrappers when testing tool behavior from a shell:
+Use named CLI wrappers for quick tool behavior checks before live MCP tests:
 
 - Flow tracing: `julie-server call-path "LoginButton::onClick" "insert_session" --standalone`
 - Ambiguous symbols: `julie-server call-path handle_request write_response --from-file src/server.rs --to-file src/response.rs --standalone`
 - Impact checks: `julie-server blast-radius --files src/auth/login_flow.rs --standalone`
 - Generic fallback remains available for raw MCP parameters: `julie-server tool call_path --params '{"from":"handle_request","to":"write_response"}' --standalone`
+
+Standalone CLI mode does not prove daemon transport, restart behavior, or session routing. Use daemon or MCP integration tests for those.
+When you need execution-path evidence, capture stderr mode output (`julie: mode=...`) in your verification notes.
 
 Do not use grep/find when Julie tools are available. Do not read files without get_symbols first. Do not chain multiple tools when deep_dive does it in one call.
 

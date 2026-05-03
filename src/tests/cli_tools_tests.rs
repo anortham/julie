@@ -537,3 +537,20 @@ fn test_signals_all_flags() {
     assert_eq!(args.file_pattern.as_deref(), Some("src/api/**"));
     assert_eq!(args.limit, Some(50));
 }
+
+#[test]
+fn test_agent_instructions_recommend_standalone_for_quick_dogfood_checks() {
+    let instructions_path =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("JULIE_AGENT_INSTRUCTIONS.md");
+    let instructions = std::fs::read_to_string(&instructions_path)
+        .unwrap_or_else(|e| panic!("failed to read {}: {e}", instructions_path.display()));
+
+    assert!(
+        instructions.contains("quick tool behavior checks before live MCP tests"),
+        "agent instructions must recommend standalone for quick checks before live MCP tests"
+    );
+    assert!(
+        instructions.contains("does not prove daemon transport"),
+        "agent instructions must state standalone does not prove daemon transport"
+    );
+}

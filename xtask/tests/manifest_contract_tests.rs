@@ -506,7 +506,9 @@ fn expected_bucket_metadata() -> BTreeMap<&'static str, ExpectedBucketMetadata> 
                 scope_label: "system",
                 owner: "lead",
                 expensive: false,
-                notes: Some("adapter + IPC transport parity (backed by adapter/daemon transport tests)"),
+                notes: Some(
+                    "adapter + IPC transport parity (backed by adapter/daemon transport tests)",
+                ),
             },
         ),
         (

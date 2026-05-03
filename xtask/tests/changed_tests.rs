@@ -129,9 +129,7 @@ fn changed_tests_reports_path_to_bucket_rationale() {
 
     assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
     assert_eq!(selection.bucket_names, vec!["tools-search"]);
-    assert!(output.contains(
-        "CHANGED: rationale: src/tools/search/mod.rs -> tools-search"
-    ));
+    assert!(output.contains("CHANGED: rationale: src/tools/search/mod.rs -> tools-search"));
 }
 
 #[test]
@@ -191,7 +189,8 @@ fn changed_tests_routes_transport_paths_to_transport_bucket() {
 fn changed_tests_routes_http_transport_paths_to_transport_bucket() {
     let manifest = sample_manifest();
 
-    let selection = select_changed_buckets(&manifest, &["src/daemon/http_transport.rs".to_string()]);
+    let selection =
+        select_changed_buckets(&manifest, &["src/daemon/http_transport.rs".to_string()]);
 
     assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
     assert_eq!(selection.bucket_names, vec!["transport"]);
@@ -201,7 +200,8 @@ fn changed_tests_routes_http_transport_paths_to_transport_bucket() {
 fn changed_tests_routes_workspace_runtime_paths_to_workspace_runtime_bucket() {
     let manifest = sample_manifest();
 
-    let selection = select_changed_buckets(&manifest, &["src/daemon/workspace_pool.rs".to_string()]);
+    let selection =
+        select_changed_buckets(&manifest, &["src/daemon/workspace_pool.rs".to_string()]);
 
     assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
     assert_eq!(selection.bucket_names, vec!["workspace-runtime"]);

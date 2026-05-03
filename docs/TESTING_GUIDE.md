@@ -75,6 +75,32 @@ cargo test -p julie-extractors typescript_extractor
 | dogfood | `cargo xtask test dogfood` | Search/scoring/tokenization changes |
 | full | `cargo xtask test full` | Pre-merge broad pass |
 
+## Standalone CLI Dogfood Contract
+
+Use standalone CLI runs for fast tool-behavior checks:
+
+```bash
+julie-server search "query" --target definitions --standalone --json
+```
+
+Standalone CLI runs execute tools against a local handler in the selected workspace. This catches defects such as:
+- CLI argument parsing or wrapper mapping bugs
+- tool parameter serialization bugs
+- standalone workspace bootstrap and indexing readiness bugs
+- tool behavior regressions in result content and `isError` handling
+- output formatting regressions for text/json/markdown output
+
+Standalone CLI does not prove daemon transport, restart behavior, or session routing. Those require daemon or MCP integration coverage, including:
+- daemon IPC transport and MCP handshake behavior
+- adapter forwarding and daemon fallback behavior
+- session lifecycle and reconnect flows
+- workspace routing across sessions/workspaces
+
+Execution mode evidence contract:
+- CLI execution always records mode via `CliToolOutput.mode`.
+- CLI runs print mode to stderr as `julie: mode=<mode>, elapsed=<seconds>s`.
+- JSON output stays the raw tool result for backward compatibility, so capture stderr mode lines in verification ledgers when you need proof of standalone versus daemon execution.
+
 ## Verification Ledger and Evidence Reuse
 
 Use the copy-ready ledger section in `docs/plans/verification-ledger-template.md` for plan verification evidence.

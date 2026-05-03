@@ -12,7 +12,8 @@ use std::path::PathBuf;
 use crate::cli_tools::daemon;
 use crate::cli_tools::subcommands::*;
 use crate::cli_tools::{
-    CliExecutionMode, CliToolCommand, bootstrap_standalone_handler, run_cli_tool,
+    CliExecutionMode, CliToolCommand, bootstrap_standalone_handler, render_execution_mode_evidence,
+    run_cli_tool,
 };
 
 // ---------------------------------------------------------------------------
@@ -34,6 +35,44 @@ fn test_execution_mode_display_fallback() {
     assert_eq!(
         CliExecutionMode::DaemonFallback.to_string(),
         "standalone (daemon unavailable)"
+    );
+}
+
+#[test]
+fn test_cli_execution_core_emits_mode_evidence_to_stderr_contract() {
+    let rendered = render_execution_mode_evidence(
+        CliExecutionMode::Standalone,
+        std::time::Duration::from_millis(1234),
+    );
+
+    assert_eq!(rendered, "julie: mode=standalone, elapsed=1.2s");
+}
+
+#[test]
+fn test_testing_guide_defines_standalone_dogfood_contract() {
+    let guide_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("docs/TESTING_GUIDE.md");
+    let guide = std::fs::read_to_string(&guide_path)
+        .unwrap_or_else(|e| panic!("failed to read {}: {e}", guide_path.display()));
+
+    assert!(
+        guide.contains("Standalone CLI Dogfood Contract"),
+        "testing guide must define a standalone dogfood contract section"
+    );
+    assert!(
+        guide.contains("local handler"),
+        "testing guide must state standalone uses a local handler"
+    );
+    assert!(
+        guide.contains("does not prove daemon transport"),
+        "testing guide must state standalone does not prove daemon transport"
+    );
+    assert!(
+        guide.contains("session routing"),
+        "testing guide must state standalone does not prove session routing"
+    );
+    assert!(
+        guide.contains("restart behavior"),
+        "testing guide must state standalone does not prove restart behavior"
     );
 }
 

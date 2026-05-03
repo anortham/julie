@@ -26,7 +26,7 @@ pub mod subcommands;
 pub use subcommands::*;
 
 use std::path::PathBuf;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use async_trait::async_trait;
@@ -61,6 +61,14 @@ impl std::fmt::Display for CliExecutionMode {
             CliExecutionMode::DaemonFallback => write!(f, "standalone (daemon unavailable)"),
         }
     }
+}
+
+pub(crate) fn render_execution_mode_evidence(mode: CliExecutionMode, elapsed: Duration) -> String {
+    format!(
+        "julie: mode={}, elapsed={:.1}s",
+        mode,
+        elapsed.as_secs_f64()
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -183,11 +191,7 @@ pub async fn run_cli_tool(
     };
 
     let elapsed = start.elapsed();
-    eprintln!(
-        "julie: mode={}, elapsed={:.1}s",
-        mode,
-        elapsed.as_secs_f64()
-    );
+    eprintln!("{}", render_execution_mode_evidence(mode, elapsed));
 
     Ok(CliToolOutput {
         mode,
