@@ -53,6 +53,8 @@ pub struct BucketResult {
     pub status: BucketStatus,
     pub elapsed: Duration,
     pub command_count: usize,
+    pub expected_seconds: u64,
+    pub scope_label: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -87,6 +89,7 @@ struct BucketFailure {
 struct BucketPlan {
     expected_seconds: u64,
     timeout_seconds: u64,
+    scope_label: String,
     commands: Vec<String>,
 }
 
@@ -232,12 +235,19 @@ pub fn render_manifest_listing(manifest: &TestManifest) -> String {
 
     output.push_str("\nBUCKETS\n");
     for (bucket_name, bucket) in &manifest.buckets {
-        output.push_str(&format!("- {bucket_name}\n"));
+        let expensive_marker = if bucket.expensive { " [expensive]" } else { "" };
+        output.push_str(&format!("- {bucket_name}{expensive_marker}\n"));
         output.push_str(&format!(
             "  expected_seconds = {}\n",
             bucket.expected_seconds
         ));
         output.push_str(&format!("  timeout_seconds = {}\n", bucket.timeout_seconds));
+        output.push_str(&format!("  scope_label = {}\n", bucket.scope_label));
+        output.push_str(&format!("  owner = {}\n", bucket.owner));
+        output.push_str(&format!("  expensive = {}\n", bucket.expensive));
+        if let Some(notes) = &bucket.notes {
+            output.push_str(&format!("  notes = {notes}\n"));
+        }
         for command in &bucket.commands {
             output.push_str(&format!("  command = {command}\n"));
         }
@@ -399,11 +409,26 @@ where
 }
 
 pub fn render_summary(summary: &RunSummary) -> String {
-    format!(
+    let mut output = format!(
         "SUMMARY: {} buckets passed in {}\n",
         summary.passed_buckets,
         format_duration(summary.total_elapsed)
-    )
+    );
+
+    for result in &summary.bucket_results {
+        let slow_marker = if bucket_is_slow(result) { " SLOW" } else { "" };
+        output.push_str(&format!(
+            "- {}: expected {}, actual {}, commands {}, scope {}{}\n",
+            result.bucket_name,
+            format_duration(Duration::from_secs(result.expected_seconds)),
+            format_duration(result.elapsed),
+            result.command_count,
+            result.scope_label,
+            slow_marker
+        ));
+    }
+
+    output
 }
 
 pub fn render_bucket_result(result: &BucketResult) -> String {
@@ -460,6 +485,8 @@ where
             status: BucketStatus::Failed,
             elapsed: Duration::ZERO,
             command_count: 0,
+            expected_seconds: 0,
+            scope_label: "bucket".to_string(),
         },
         message: format!("unknown test bucket `{bucket_name}`"),
     })?;
@@ -566,6 +593,8 @@ fn build_bucket_result(
         status,
         elapsed,
         command_count: bucket.commands.len(),
+        expected_seconds: bucket.expected_seconds,
+        scope_label: bucket.scope_label.clone(),
     }
 }
 
@@ -584,6 +613,8 @@ fn write_captured_on_failure<W: Write>(
                 status: BucketStatus::Failed,
                 elapsed: Duration::ZERO,
                 command_count: 0,
+                expected_seconds: 0,
+                scope_label: "bucket".to_string(),
             },
             message: error.to_string(),
         })?;
@@ -594,6 +625,8 @@ fn write_captured_on_failure<W: Write>(
                 status: BucketStatus::Failed,
                 elapsed: Duration::ZERO,
                 command_count: 0,
+                expected_seconds: 0,
+                scope_label: "bucket".to_string(),
             },
             message: error.to_string(),
         })?;
@@ -664,6 +697,14 @@ fn format_duration(duration: Duration) -> String {
     format!("{:.1}s", duration.as_secs_f64())
 }
 
+fn bucket_is_slow(result: &BucketResult) -> bool {
+    if result.expected_seconds == 0 {
+        return false;
+    }
+
+    result.elapsed.as_secs_f64() > (result.expected_seconds as f64 * 1.5)
+}
+
 fn resolve_bucket_plan(manifest: &TestManifest, bucket_name: &str) -> Option<BucketPlan> {
     manifest
         .buckets
@@ -671,6 +712,7 @@ fn resolve_bucket_plan(manifest: &TestManifest, bucket_name: &str) -> Option<Buc
         .map(|bucket| BucketPlan {
             expected_seconds: bucket.expected_seconds,
             timeout_seconds: bucket.timeout_seconds,
+            scope_label: bucket.scope_label.clone(),
             commands: bucket.commands.clone(),
         })
         .or_else(|| special_bucket_plan(bucket_name))
@@ -691,6 +733,7 @@ fn special_bucket_plan(bucket_name: &str) -> Option<BucketPlan> {
             |(_, expected_seconds, timeout_seconds, commands)| BucketPlan {
                 expected_seconds: *expected_seconds,
                 timeout_seconds: *timeout_seconds,
+                scope_label: "bucket".to_string(),
                 commands: commands
                     .iter()
                     .map(|command| (*command).to_string())

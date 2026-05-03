@@ -19,7 +19,23 @@ pub struct TestManifest {
 pub struct BucketConfig {
     pub expected_seconds: u64,
     pub timeout_seconds: u64,
+    #[serde(default = "default_scope_label")]
+    pub scope_label: String,
+    #[serde(default = "default_owner")]
+    pub owner: String,
+    #[serde(default)]
+    pub expensive: bool,
+    #[serde(default)]
+    pub notes: Option<String>,
     pub commands: Vec<String>,
+}
+
+fn default_scope_label() -> String {
+    "bucket".to_string()
+}
+
+fn default_owner() -> String {
+    "lead".to_string()
 }
 
 impl TestManifest {
@@ -54,6 +70,22 @@ impl TestManifest {
 
             if bucket.timeout_seconds < bucket.expected_seconds {
                 bail!("bucket '{bucket_name}' timeout_seconds must be >= expected_seconds");
+            }
+
+            if bucket.scope_label.trim().is_empty() {
+                bail!("bucket '{bucket_name}' scope_label must be non-empty");
+            }
+
+            if bucket.owner.trim().is_empty() {
+                bail!("bucket '{bucket_name}' owner must be non-empty");
+            }
+
+            if bucket
+                .notes
+                .as_ref()
+                .is_some_and(|notes| notes.trim().is_empty())
+            {
+                bail!("bucket '{bucket_name}' notes must be non-empty when present");
             }
         }
 

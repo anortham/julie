@@ -26,6 +26,43 @@ commands = ["cargo test --lib tests::cli_tests"]
 }
 
 #[test]
+fn manifest_tests_parse_bucket_metadata_with_defaults() {
+    let manifest = TestManifest::from_str(
+        r#"
+[tiers]
+smoke = ["legacy", "rich"]
+
+[buckets.legacy]
+expected_seconds = 1
+timeout_seconds = 60
+commands = ["cargo test --lib tests::cli_tests"]
+
+[buckets.rich]
+expected_seconds = 2
+timeout_seconds = 90
+scope_label = "integration"
+owner = "tools"
+expensive = true
+notes = "uses large fixture"
+commands = ["cargo test --lib tests::tools::search"]
+"#,
+    )
+    .unwrap();
+
+    let legacy = &manifest.buckets["legacy"];
+    assert_eq!(legacy.scope_label, "bucket");
+    assert_eq!(legacy.owner, "lead");
+    assert!(!legacy.expensive);
+    assert_eq!(legacy.notes, None);
+
+    let rich = &manifest.buckets["rich"];
+    assert_eq!(rich.scope_label, "integration");
+    assert_eq!(rich.owner, "tools");
+    assert!(rich.expensive);
+    assert_eq!(rich.notes.as_deref(), Some("uses large fixture"));
+}
+
+#[test]
 fn manifest_tests_reject_unknown_top_level_fields() {
     let error = TestManifest::from_str(
         r#"

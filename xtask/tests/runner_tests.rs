@@ -14,7 +14,7 @@ use xtask::runner::{
 };
 
 #[test]
-fn runner_tests_list_command_shows_tiers_buckets_and_timeouts() {
+fn runner_tests_list_command_shows_bucket_metadata() {
     let manifest = sample_manifest();
 
     let output = render_manifest_listing(&manifest);
@@ -22,6 +22,9 @@ fn runner_tests_list_command_shows_tiers_buckets_and_timeouts() {
     assert!(output.contains("smoke"));
     assert!(output.contains("workspace-init"));
     assert!(output.contains("timeout_seconds"));
+    assert!(output.contains("scope_label"));
+    assert!(output.contains("expensive"));
+    assert!(output.contains("[expensive]"));
     assert!(output.contains("changed"));
 }
 
@@ -72,7 +75,7 @@ fn runner_tests_timeout_error_names_the_bucket_and_budget() {
 }
 
 #[test]
-fn runner_tests_summary_output_reports_total_elapsed_time() {
+fn runner_tests_summary_reports_expected_actual_scope_and_slow_buckets() {
     let summary = RunSummary {
         bucket_names: vec!["cli".to_string(), "tools-search".to_string()],
         bucket_results: vec![
@@ -81,12 +84,16 @@ fn runner_tests_summary_output_reports_total_elapsed_time() {
                 status: BucketStatus::Passed,
                 elapsed: Duration::from_millis(12_300),
                 command_count: 1,
+                expected_seconds: 10,
+                scope_label: "smoke".to_string(),
             },
             BucketResult {
                 bucket_name: "tools-search".to_string(),
                 status: BucketStatus::Passed,
                 elapsed: Duration::from_millis(55_900),
                 command_count: 1,
+                expected_seconds: 30,
+                scope_label: "tooling".to_string(),
             },
         ],
         passed_buckets: 2,
@@ -96,8 +103,17 @@ fn runner_tests_summary_output_reports_total_elapsed_time() {
     let output = render_summary(&summary);
 
     assert!(output.contains("SUMMARY:"));
-    assert!(output.contains("passed in"));
-    assert!(output.contains("68.2s"));
+    assert!(output.contains("passed in 68.2s"));
+    assert!(output.contains("cli"));
+    assert!(output.contains("expected 10.0s"));
+    assert!(output.contains("actual 12.3s"));
+    assert!(output.contains("commands 1"));
+    assert!(output.contains("scope smoke"));
+    assert!(output.contains("tools-search"));
+    assert!(output.contains("expected 30.0s"));
+    assert!(output.contains("actual 55.9s"));
+    assert!(output.contains("scope tooling"));
+    assert!(output.contains("SLOW"));
 }
 
 #[test]
@@ -107,6 +123,8 @@ fn runner_tests_bucket_output_has_start_and_end_markers() {
         status: BucketStatus::Passed,
         elapsed: Duration::from_millis(3_100),
         command_count: 1,
+        expected_seconds: 15,
+        scope_label: "tooling".to_string(),
     });
 
     assert!(output.contains("START tools-search"));
@@ -501,26 +519,32 @@ full = ["cli", "core-database", "tools-search", "workspace-init", "search-qualit
 [buckets.cli]
 expected_seconds = 5
 timeout_seconds = 30
+scope_label = "smoke"
 commands = ["cargo test --lib tests::cli_tests"]
 
 [buckets.core-database]
 expected_seconds = 10
 timeout_seconds = 40
+scope_label = "core"
 commands = ["cargo test --lib tests::core::database"]
 
 [buckets.tools-search]
 expected_seconds = 15
 timeout_seconds = 45
+scope_label = "tooling"
 commands = ["cargo test --lib tests::tools::search"]
 
 [buckets.workspace-init]
 expected_seconds = 30
 timeout_seconds = 60
+scope_label = "system"
 commands = ["cargo test --lib tests::core::workspace_init"]
 
 [buckets.search-quality]
 expected_seconds = 90
 timeout_seconds = 270
+scope_label = "dogfood"
+expensive = true
 commands = ["cargo test --lib search_quality"]
 "#,
     )

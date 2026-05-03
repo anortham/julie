@@ -23,6 +23,7 @@ fn manifest_contract_tests_checked_in_manifest_uses_approved_first_pass_tiers() 
 fn manifest_contract_tests_checked_in_manifest_uses_exact_bucket_specs() {
     let manifest = load_checked_in_manifest();
     let expected = expected_buckets();
+    let expected_metadata = expected_bucket_metadata();
 
     assert_eq!(
         manifest.buckets.keys().cloned().collect::<Vec<_>>(),
@@ -35,6 +36,7 @@ fn manifest_contract_tests_checked_in_manifest_uses_exact_bucket_specs() {
 
     for (bucket_name, expected_bucket) in expected {
         let actual = &manifest.buckets[bucket_name];
+        let expected_metadata = &expected_metadata[bucket_name];
 
         assert_eq!(
             actual.expected_seconds, expected_bucket.expected_seconds,
@@ -47,6 +49,23 @@ fn manifest_contract_tests_checked_in_manifest_uses_exact_bucket_specs() {
         assert_eq!(
             actual.commands, expected_bucket.commands,
             "bucket `{bucket_name}` commands changed"
+        );
+        assert_eq!(
+            actual.scope_label, expected_metadata.scope_label,
+            "bucket `{bucket_name}` scope_label changed"
+        );
+        assert_eq!(
+            actual.owner, expected_metadata.owner,
+            "bucket `{bucket_name}` owner changed"
+        );
+        assert_eq!(
+            actual.expensive, expected_metadata.expensive,
+            "bucket `{bucket_name}` expensive marker changed"
+        );
+        assert_eq!(
+            actual.notes.as_deref(),
+            expected_metadata.notes,
+            "bucket `{bucket_name}` notes changed"
         );
     }
 }
@@ -315,6 +334,145 @@ fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
                 commands: &[
                     "cargo nextest run --lib tests::core::workspace_init -- --skip search_quality",
                 ],
+            },
+        ),
+    ])
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ExpectedBucketMetadata {
+    scope_label: &'static str,
+    owner: &'static str,
+    expensive: bool,
+    notes: Option<&'static str>,
+}
+
+fn expected_bucket_metadata() -> BTreeMap<&'static str, ExpectedBucketMetadata> {
+    BTreeMap::from([
+        (
+            "cli",
+            ExpectedBucketMetadata {
+                scope_label: "cli",
+                owner: "lead",
+                expensive: false,
+                notes: Some("CLI contract and execution path"),
+            },
+        ),
+        (
+            "core-database",
+            ExpectedBucketMetadata {
+                scope_label: "core",
+                owner: "lead",
+                expensive: false,
+                notes: Some("core database layer"),
+            },
+        ),
+        (
+            "core-embeddings",
+            ExpectedBucketMetadata {
+                scope_label: "core",
+                owner: "lead",
+                expensive: false,
+                notes: Some("embedding stack"),
+            },
+        ),
+        (
+            "core-fast",
+            ExpectedBucketMetadata {
+                scope_label: "core",
+                owner: "lead",
+                expensive: false,
+                notes: Some("misc fast core coverage"),
+            },
+        ),
+        (
+            "daemon",
+            ExpectedBucketMetadata {
+                scope_label: "daemon",
+                owner: "lead",
+                expensive: false,
+                notes: Some("daemon-mode protocol coverage"),
+            },
+        ),
+        (
+            "dashboard",
+            ExpectedBucketMetadata {
+                scope_label: "dashboard",
+                owner: "lead",
+                expensive: false,
+                notes: Some("dashboard route coverage"),
+            },
+        ),
+        (
+            "integration",
+            ExpectedBucketMetadata {
+                scope_label: "system",
+                owner: "lead",
+                expensive: false,
+                notes: Some("cross-cutting integration"),
+            },
+        ),
+        (
+            "search-quality",
+            ExpectedBucketMetadata {
+                scope_label: "dogfood",
+                owner: "lead",
+                expensive: true,
+                notes: Some("heavy fixture-backed relevance suite"),
+            },
+        ),
+        (
+            "tools-dogfood-repo-index",
+            ExpectedBucketMetadata {
+                scope_label: "dogfood",
+                owner: "lead",
+                expensive: true,
+                notes: Some("indexes the julie repository"),
+            },
+        ),
+        (
+            "tools-get-context",
+            ExpectedBucketMetadata {
+                scope_label: "tooling",
+                owner: "lead",
+                expensive: false,
+                notes: Some("get_context surface"),
+            },
+        ),
+        (
+            "tools-misc",
+            ExpectedBucketMetadata {
+                scope_label: "tooling",
+                owner: "lead",
+                expensive: false,
+                notes: Some("other tool surfaces"),
+            },
+        ),
+        (
+            "tools-search",
+            ExpectedBucketMetadata {
+                scope_label: "tooling",
+                owner: "lead",
+                expensive: false,
+                notes: Some("search-focused tool coverage"),
+            },
+        ),
+        (
+            "tools-workspace",
+            ExpectedBucketMetadata {
+                scope_label: "tooling",
+                owner: "lead",
+                expensive: false,
+                notes: Some("workspace management tools"),
+            },
+        ),
+        (
+            "workspace-init",
+            ExpectedBucketMetadata {
+                scope_label: "system",
+                owner: "lead",
+                expensive: false,
+                notes: Some("workspace initialization path"),
             },
         ),
     ])

@@ -16,6 +16,8 @@ full = ["cli", "core-database", "core-embeddings", "tools-get-context", "tools-s
 # CLI argument parsing, execution core, and end-to-end integration tests.
 expected_seconds = 45
 timeout_seconds = 120
+scope_label = "cli"
+notes = "CLI contract and execution path"
 commands = [
   "cargo nextest run --lib tests::cli_tests",
   "cargo nextest run --lib tests::cli_execution_tests",
@@ -29,12 +31,16 @@ commands = [
 # Core database path; modest runtime but commonly exercised.
 expected_seconds = 5
 timeout_seconds = 30
+scope_label = "core"
+notes = "core database layer"
 commands = ["cargo nextest run --lib tests::core::database -- --skip search_quality"]
 
 [buckets.core-embeddings]
 # Embedding/provider cluster; multiple modules that often move together.
 expected_seconds = 15
 timeout_seconds = 60
+scope_label = "core"
+notes = "embedding stack"
 commands = [
   "cargo nextest run --lib tests::core::embedding_provider -- --skip search_quality",
   "cargo nextest run --lib tests::core::embedding_metadata -- --skip search_quality",
@@ -49,6 +55,8 @@ commands = [
 # Large tool surface; grouped separately so rebalancing can split it cleanly later.
 expected_seconds = 10
 timeout_seconds = 45
+scope_label = "tooling"
+notes = "get_context surface"
 commands = [
   "cargo nextest run --lib tests::tools::get_context_allocation_tests -- --skip search_quality",
   "cargo nextest run --lib tests::tools::get_context_formatting_tests -- --skip search_quality",
@@ -66,6 +74,8 @@ commands = [
 # Search-focused tool modules excluding dogfood search_quality.
 expected_seconds = 25
 timeout_seconds = 90
+scope_label = "tooling"
+notes = "search-focused tool coverage"
 commands = [
   "cargo nextest run --lib tests::tools::search -- --skip search_quality",
   "cargo nextest run --lib tests::tools::search_context_lines -- --skip search_quality",
@@ -77,12 +87,16 @@ commands = [
 # Workspace management stays isolated because failures are usually easy to localize.
 expected_seconds = 40
 timeout_seconds = 120
+scope_label = "tooling"
+notes = "workspace management tools"
 commands = ["cargo nextest run --lib tests::tools::workspace -- --skip search_quality"]
 
 [buckets.tools-misc]
 # Remaining tool tests with enough shared setup to keep together for the first pass.
 expected_seconds = 60
 timeout_seconds = 210
+scope_label = "tooling"
+notes = "other tool surfaces"
 commands = [
   "cargo nextest run --lib tests::tools::get_symbols -- --skip search_quality",
   "cargo nextest run --lib tests::tools::get_symbols_target_workspace -- --skip search_quality",
@@ -106,6 +120,8 @@ commands = [
 # Fast non-search core coverage bucket; broad but still local-dev friendly.
 expected_seconds = 10
 timeout_seconds = 45
+scope_label = "core"
+notes = "misc fast core coverage"
 commands = [
   "cargo nextest run --lib tests::main_error_handling -- --skip search_quality",
   "cargo nextest run --lib tests::regression_prevention_tests -- --skip search_quality",
@@ -126,18 +142,24 @@ commands = [
 # coverage of the protocol; needs to run in CI to defend the rebind machinery.
 expected_seconds = 12
 timeout_seconds = 60
+scope_label = "daemon"
+notes = "daemon-mode protocol coverage"
 commands = ["cargo nextest run --lib tests::daemon -- --skip search_quality"]
 
 [buckets.dashboard]
 # Dashboard routes, templates, and state snapshots must stay in fast local coverage.
 expected_seconds = 12
 timeout_seconds = 60
+scope_label = "dashboard"
+notes = "dashboard route coverage"
 commands = ["cargo nextest run --lib tests::dashboard -- --skip search_quality"]
 
 [buckets.workspace-init]
 # System setup path; investigated and confirmed fast (~1.3s local). Budget updated from stale 360s.
 expected_seconds = 5
 timeout_seconds = 30
+scope_label = "system"
+notes = "workspace initialization path"
 commands = ["cargo nextest run --lib tests::core::workspace_init -- --skip search_quality"]
 
 [buckets.integration]
@@ -145,6 +167,8 @@ commands = ["cargo nextest run --lib tests::core::workspace_init -- --skip searc
 # this into system-tier-only territory, so budget it honestly.
 expected_seconds = 130
 timeout_seconds = 240
+scope_label = "system"
+notes = "cross-cutting integration"
 commands = ["cargo nextest run --lib tests::integration -- --skip search_quality"]
 
 [buckets.tools-dogfood-repo-index]
@@ -152,6 +176,9 @@ commands = ["cargo nextest run --lib tests::integration -- --skip search_quality
 # so that bucket stays fast.
 expected_seconds = 200
 timeout_seconds = 450
+scope_label = "dogfood"
+expensive = true
+notes = "indexes the julie repository"
 commands = ["cargo nextest run --lib tests::tools::get_symbols_target_filtering_dogfood -- --skip search_quality"]
 
 [buckets.search-quality]
@@ -159,4 +186,7 @@ commands = ["cargo nextest run --lib tests::tools::get_symbols_target_filtering_
 # OnceCell-shared handler: fixture loads once per binary, not per test (151s on dev).
 expected_seconds = 180
 timeout_seconds = 300
+scope_label = "dogfood"
+expensive = true
+notes = "heavy fixture-backed relevance suite"
 commands = ["cargo nextest run --lib search_quality"]
