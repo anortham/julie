@@ -1,13 +1,18 @@
 //! Daemon-owned Streamable HTTP MCP transport.
 
-use std::io;
+use std::io::{self, Write};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use axum::Router;
-use axum::http::StatusCode;
+use axum::body::Body;
+use axum::extract::State;
+use axum::http::{Request, StatusCode, header};
+use axum::middleware::{self, Next};
+use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use rmcp::Service;
 use rmcp::service::RoleServer;
@@ -33,6 +38,7 @@ pub struct HttpTransportConfig {
     pub keep_alive: Option<Duration>,
     pub sse_retry: Option<Duration>,
     pub completed_cache_ttl: Duration,
+    pub bearer_token: Option<String>,
 }
 
 impl Default for HttpTransportConfig {
@@ -45,6 +51,7 @@ impl Default for HttpTransportConfig {
             keep_alive: Some(Duration::from_secs(300)),
             sse_retry: Some(Duration::from_secs(3)),
             completed_cache_ttl: Duration::from_secs(60),
+            bearer_token: None,
         }
     }
 }
@@ -63,6 +70,7 @@ impl HttpTransportConfig {
 pub struct HttpTransportServer {
     local_addr: SocketAddr,
     discovery_path: std::path::PathBuf,
+    token_path: Option<std::path::PathBuf>,
     cancellation: CancellationToken,
     server_task: JoinHandle<()>,
 }
@@ -82,6 +90,8 @@ impl HttpTransportServer {
                 config.bind_host
             );
         }
+        validate_route_path(config.mcp_path)?;
+        validate_route_path(config.readiness_path)?;
 
         paths
             .ensure_dirs()
@@ -91,12 +101,21 @@ impl HttpTransportServer {
             .context("Failed to bind HTTP MCP transport listener")?;
         let local_addr = listener.local_addr()?;
         let cancellation = CancellationToken::new();
+        let token_path = if let Some(token) = config.bearer_token.as_deref() {
+            validate_bearer_token(token)?;
+            let token_path = paths.daemon_mcp_token();
+            write_token_file(&token_path, token)
+                .context("Failed to write HTTP MCP transport bearer token")?;
+            Some(token_path)
+        } else {
+            None
+        };
 
         let mut sdk_config = StreamableHttpServerConfig::default();
         sdk_config.sse_retry = config.sse_retry;
         sdk_config.cancellation_token = cancellation.clone();
         sdk_config.allowed_hosts = allowed_hosts_for(local_addr);
-        sdk_config.allowed_origins = vec![];
+        sdk_config.allowed_origins = allowed_origins_for(local_addr);
         sdk_config.session_store = None;
 
         let mut local_session_manager = LocalSessionManager::default();
@@ -104,9 +123,15 @@ impl HttpTransportServer {
         let session_manager = Arc::new(local_session_manager);
         let mcp_service = StreamableHttpService::new(service_factory, session_manager, sdk_config);
 
-        let router = Router::new()
+        let mut router = Router::new()
             .route(config.readiness_path, get(readiness))
             .route_service(config.mcp_path, mcp_service);
+        if let Some(token) = config.bearer_token.clone() {
+            router = router.layer(middleware::from_fn_with_state(
+                Arc::<str>::from(token),
+                require_bearer_token,
+            ));
+        }
 
         let shutdown = cancellation.clone();
         let server_task = tokio::spawn(async move {
@@ -125,11 +150,14 @@ impl HttpTransportServer {
             local_addr.port(),
             config.mcp_path,
             config.readiness_path,
-            None,
+            token_path.clone(),
         )?;
         if let Err(error) = wait_for_readiness(&endpoint, Duration::from_secs(2)).await {
             cancellation.cancel();
             let _ = server_task.await;
+            if let Some(path) = &token_path {
+                let _ = std::fs::remove_file(path);
+            }
             return Err(error).context("HTTP MCP transport did not become ready");
         }
 
@@ -146,6 +174,7 @@ impl HttpTransportServer {
         Ok(Self {
             local_addr,
             discovery_path,
+            token_path,
             cancellation,
             server_task,
         })
@@ -161,12 +190,34 @@ impl HttpTransportServer {
             .await
             .context("HTTP MCP transport task join failed")?;
         let _ = std::fs::remove_file(&self.discovery_path);
+        if let Some(path) = self.token_path {
+            let _ = std::fs::remove_file(path);
+        }
         Ok(())
     }
 }
 
 async fn readiness() -> StatusCode {
     StatusCode::NO_CONTENT
+}
+
+async fn require_bearer_token(
+    State(expected): State<Arc<str>>,
+    request: Request<Body>,
+    next: Next,
+) -> Response {
+    let authorized = request
+        .headers()
+        .get(header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "))
+        .is_some_and(|token| token == expected.as_ref());
+
+    if authorized {
+        next.run(request).await
+    } else {
+        StatusCode::UNAUTHORIZED.into_response()
+    }
 }
 
 async fn wait_for_readiness(endpoint: &TransportEndpoint, timeout: Duration) -> io::Result<()> {
@@ -202,4 +253,56 @@ fn allowed_hosts_for(local_addr: SocketAddr) -> Vec<String> {
         host.clone(),
         format!("{}:{}", host, local_addr.port()),
     ]
+}
+
+fn allowed_origins_for(local_addr: SocketAddr) -> Vec<String> {
+    vec![
+        format!("http://localhost:{}", local_addr.port()),
+        format!("http://127.0.0.1:{}", local_addr.port()),
+    ]
+}
+
+fn validate_bearer_token(token: &str) -> io::Result<()> {
+    if !token.trim().is_empty() && !token.contains('\r') && !token.contains('\n') {
+        Ok(())
+    } else {
+        Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "HTTP MCP bearer token must be non-empty and single-line",
+        ))
+    }
+}
+
+fn validate_route_path(path: &str) -> io::Result<()> {
+    if path.starts_with('/') && !path.contains('\r') && !path.contains('\n') {
+        Ok(())
+    } else {
+        Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("HTTP MCP route path must be absolute and single-line, got {path:?}"),
+        ))
+    }
+}
+
+fn write_token_file(path: &Path, token: &str) -> io::Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    let mut options = std::fs::OpenOptions::new();
+    options.create(true).write(true).truncate(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+
+    let mut file = options.open(path)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
+    }
+    writeln!(file, "{token}")?;
+    Ok(())
 }

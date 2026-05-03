@@ -20,14 +20,30 @@ mod tests {
 
     impl ServerHandler for TestMcpHandler {}
 
-    fn post_initialize(addr: SocketAddr) -> String {
+    #[derive(Default)]
+    struct InitializeRequestOptions<'a> {
+        host: Option<String>,
+        origin: Option<&'a str>,
+        bearer_token: Option<&'a str>,
+    }
+
+    fn post_initialize(addr: SocketAddr, options: InitializeRequestOptions<'_>) -> String {
         let body = r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"julie-test","version":"0.0.0"}}}"#;
-        let request = format!(
-            "POST {MCP_PATH} HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nContent-Type: application/json\r\nAccept: application/json, text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-            addr.port(),
-            body.len(),
-            body
+        let host = options
+            .host
+            .unwrap_or_else(|| format!("127.0.0.1:{}", addr.port()));
+        let mut request = format!(
+            "POST {MCP_PATH} HTTP/1.1\r\nHost: {host}\r\nContent-Type: application/json\r\nAccept: application/json, text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n",
+            body.len()
         );
+        if let Some(origin) = options.origin {
+            request.push_str(&format!("Origin: {origin}\r\n"));
+        }
+        if let Some(token) = options.bearer_token {
+            request.push_str(&format!("Authorization: Bearer {token}\r\n"));
+        }
+        request.push_str("\r\n");
+        request.push_str(body);
 
         let mut stream = TcpStream::connect(addr).unwrap();
         stream.write_all(request.as_bytes()).unwrap();
@@ -109,7 +125,7 @@ mod tests {
                 .await
                 .unwrap();
 
-        let response = post_initialize(server.local_addr());
+        let response = post_initialize(server.local_addr(), InitializeRequestOptions::default());
 
         assert!(response.starts_with("HTTP/1.1 200 OK"), "{response}");
         assert!(
@@ -117,6 +133,167 @@ mod tests {
             "{response}"
         );
         assert!(response.contains("\"protocolVersion\""), "{response}");
+
+        server.shutdown().await.unwrap();
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_http_transport_requires_bearer_token_for_mcp_requests() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DaemonPaths::with_home(dir.path().join("julie-home"));
+        let server = HttpTransportServer::bind(
+            paths,
+            HttpTransportConfig {
+                bearer_token: Some("secret-token".to_string()),
+                ..HttpTransportConfig::default()
+            },
+            || Ok(TestMcpHandler),
+        )
+        .await
+        .unwrap();
+
+        let response = post_initialize(server.local_addr(), InitializeRequestOptions::default());
+
+        assert!(
+            response.starts_with("HTTP/1.1 401 Unauthorized"),
+            "{response}"
+        );
+        assert!(!response.to_ascii_lowercase().contains("mcp-session-id:"));
+
+        server.shutdown().await.unwrap();
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_http_transport_accepts_valid_bearer_token() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DaemonPaths::with_home(dir.path().join("julie-home"));
+        let server = HttpTransportServer::bind(
+            paths.clone(),
+            HttpTransportConfig {
+                bearer_token: Some("secret-token".to_string()),
+                ..HttpTransportConfig::default()
+            },
+            || Ok(TestMcpHandler),
+        )
+        .await
+        .unwrap();
+
+        let endpoint = TransportEndpoint::read_discovery(&paths.daemon_mcp_transport()).unwrap();
+        let discovery_body = std::fs::read_to_string(paths.daemon_mcp_transport()).unwrap();
+        assert!(
+            !discovery_body.contains("secret-token"),
+            "discovery must point to the token file, not copy the bearer token"
+        );
+        let token_path = endpoint
+            .token_path()
+            .expect("token path should be published");
+        assert_eq!(
+            std::fs::read_to_string(token_path).unwrap(),
+            "secret-token\n"
+        );
+
+        let response = post_initialize(
+            server.local_addr(),
+            InitializeRequestOptions {
+                bearer_token: Some("secret-token"),
+                ..InitializeRequestOptions::default()
+            },
+        );
+
+        assert!(response.starts_with("HTTP/1.1 200 OK"), "{response}");
+        assert!(
+            response.to_ascii_lowercase().contains("mcp-session-id:"),
+            "{response}"
+        );
+
+        server.shutdown().await.unwrap();
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_http_transport_rejects_invalid_bearer_token() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DaemonPaths::with_home(dir.path().join("julie-home"));
+        let server = HttpTransportServer::bind(
+            paths,
+            HttpTransportConfig {
+                bearer_token: Some("secret-token".to_string()),
+                ..HttpTransportConfig::default()
+            },
+            || Ok(TestMcpHandler),
+        )
+        .await
+        .unwrap();
+
+        let response = post_initialize(
+            server.local_addr(),
+            InitializeRequestOptions {
+                bearer_token: Some("wrong-token"),
+                ..InitializeRequestOptions::default()
+            },
+        );
+
+        assert!(
+            response.starts_with("HTTP/1.1 401 Unauthorized"),
+            "{response}"
+        );
+
+        server.shutdown().await.unwrap();
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_http_transport_rejects_invalid_host_header() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DaemonPaths::with_home(dir.path().join("julie-home"));
+        let server = HttpTransportServer::bind(
+            paths,
+            HttpTransportConfig {
+                bearer_token: Some("secret-token".to_string()),
+                ..HttpTransportConfig::default()
+            },
+            || Ok(TestMcpHandler),
+        )
+        .await
+        .unwrap();
+
+        let response = post_initialize(
+            server.local_addr(),
+            InitializeRequestOptions {
+                host: Some("evil.example".to_string()),
+                bearer_token: Some("secret-token"),
+                ..InitializeRequestOptions::default()
+            },
+        );
+
+        assert!(response.starts_with("HTTP/1.1 403 Forbidden"), "{response}");
+
+        server.shutdown().await.unwrap();
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_http_transport_rejects_foreign_origin() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DaemonPaths::with_home(dir.path().join("julie-home"));
+        let server = HttpTransportServer::bind(
+            paths,
+            HttpTransportConfig {
+                bearer_token: Some("secret-token".to_string()),
+                ..HttpTransportConfig::default()
+            },
+            || Ok(TestMcpHandler),
+        )
+        .await
+        .unwrap();
+
+        let response = post_initialize(
+            server.local_addr(),
+            InitializeRequestOptions {
+                origin: Some("https://evil.example"),
+                bearer_token: Some("secret-token"),
+                ..InitializeRequestOptions::default()
+            },
+        );
+
+        assert!(response.starts_with("HTTP/1.1 403 Forbidden"), "{response}");
 
         server.shutdown().await.unwrap();
     }
