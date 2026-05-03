@@ -597,121 +597,13 @@ async fn project_batch(
         let db = std::sync::Arc::clone(db);
         let workspace_id = route.workspace_id.clone();
         let tantivy_result = tokio::task::spawn_blocking(move || {
-            let Some(target_revision) = canonical_revision else {
-                let db = match db.lock() {
-                    Ok(guard) => guard,
-                    Err(poisoned) => {
-                        warn!("Database mutex poisoned during projection state update, recovering");
-                        poisoned.into_inner()
-                    }
-                };
-                return Ok(db
-                    .get_projection_state(
-                        crate::search::projection::TANTIVY_PROJECTION_NAME,
-                        &workspace_id,
-                    )?
-                    .unwrap_or(db.upsert_projection_state(
-                        crate::search::projection::TANTIVY_PROJECTION_NAME,
-                        &workspace_id,
-                        crate::database::ProjectionStatus::Missing,
-                        None,
-                        None,
-                        None,
-                    )?));
-            };
-
-            let (current_projected_revision, symbol_contexts) = {
-                let db = match db.lock() {
-                    Ok(guard) => guard,
-                    Err(poisoned) => {
-                        warn!("Database mutex poisoned during projection preparation, recovering");
-                        poisoned.into_inner()
-                    }
-                };
-                let current_projected_revision = db
-                    .get_projection_state(
-                        crate::search::projection::TANTIVY_PROJECTION_NAME,
-                        &workspace_id,
-                    )?
-                    .as_ref()
-                    .and_then(crate::search::projection::projection_served_revision);
-                db.upsert_projection_state(
-                    crate::search::projection::TANTIVY_PROJECTION_NAME,
-                    &workspace_id,
-                    crate::database::ProjectionStatus::Building,
-                    Some(target_revision),
-                    current_projected_revision,
-                    None,
-                )?;
-                let load_start = std::time::Instant::now();
-                let symbol_contexts =
-                    crate::search::projection::load_symbol_contexts_from_database(
-                        &db,
-                        &symbol_docs,
-                    )?;
-                info!(
-                    "⏱️  projection.load_contexts: {:.2}s ({} symbols)",
-                    load_start.elapsed().as_secs_f64(),
-                    symbol_docs.len()
-                );
-                (current_projected_revision, symbol_contexts)
-            };
-
-            let apply_start = std::time::Instant::now();
-            let apply_result = {
-                let idx = match search_index.lock() {
-                    Ok(guard) => guard,
-                    Err(poisoned) => {
-                        warn!(
-                            "Search index mutex poisoned (prior panic during indexing), recovering"
-                        );
-                        poisoned.into_inner()
-                    }
-                };
-                crate::search::projection::apply_documents_with_context(
-                    &idx,
-                    &symbol_docs,
-                    &file_docs,
-                    &files_to_clean,
-                    &symbol_contexts,
-                    true,
-                )
-            };
-            info!(
-                "⏱️  projection.apply_documents: {:.2}s ({} symbols, {} files, {} cleaned)",
-                apply_start.elapsed().as_secs_f64(),
-                symbol_docs.len(),
-                file_docs.len(),
-                files_to_clean.len()
-            );
-
-            let db = match db.lock() {
-                Ok(guard) => guard,
-                Err(poisoned) => {
-                    warn!("Database mutex poisoned during projection finish, recovering");
-                    poisoned.into_inner()
-                }
-            };
-            if let Err(err) = apply_result {
-                let detail = err.to_string();
-                let _ = db.upsert_projection_state(
-                    crate::search::projection::TANTIVY_PROJECTION_NAME,
-                    &workspace_id,
-                    crate::database::ProjectionStatus::Stale,
-                    Some(target_revision),
-                    current_projected_revision,
-                    Some(&detail),
-                );
-                return Err(err);
-            }
-
-            db.upsert_projection_state(
-                crate::search::projection::TANTIVY_PROJECTION_NAME,
-                &workspace_id,
-                crate::database::ProjectionStatus::Ready,
-                Some(target_revision),
-                Some(target_revision),
-                None,
+            crate::search::SearchProjection::tantivy(workspace_id).project_documents_with_locks(
+                &db,
+                &search_index,
+                &symbol_docs,
+                &file_docs,
+                &files_to_clean,
+                canonical_revision,
             )
         })
         .await;

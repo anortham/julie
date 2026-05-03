@@ -181,7 +181,11 @@ mod tests {
 
         let status = HealthChecker::get_status_message(&handler).await?;
         assert!(status.contains("Partially ready"), "{status}");
-        assert!(status.contains("Tantivy projection missing"), "{status}");
+        assert!(
+            status.contains("Tantivy projection repair required"),
+            "{status}"
+        );
+        assert!(status.contains("handle is unavailable"), "{status}");
         assert!(workspace_path.exists(), "workspace should remain on disk");
 
         Ok(())
@@ -314,16 +318,17 @@ mod tests {
         assert_eq!(snapshot.data_plane.search_projection.revision_lag, Some(1));
         assert!(snapshot.data_plane.search_projection.repair_needed);
         match snapshot.readiness {
-            SystemStatus::FullyReady { symbol_count } => {
+            SystemStatus::SqliteOnly { symbol_count } => {
                 assert!(
                     symbol_count >= 1,
-                    "lagging projection should stay search-ready"
+                    "lagging projection should keep SQLite available while search readiness is closed"
                 );
             }
-            other => panic!("expected fully ready despite lagging projection, got {other:?}"),
+            other => panic!("expected sqlite-only readiness for lagging projection, got {other:?}"),
         }
 
         let status = HealthChecker::get_status_message(&handler).await?;
+        assert!(status.contains("Partially ready"), "{status}");
         assert!(status.contains("lagging"), "{status}");
         assert!(status.contains("revision 1/2"), "{status}");
 

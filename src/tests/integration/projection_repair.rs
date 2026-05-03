@@ -5,6 +5,7 @@ use tempfile::TempDir;
 use crate::database::types::FileInfo;
 use crate::database::{ProjectionStatus, SymbolDatabase};
 use crate::extractors::{Symbol, SymbolKind};
+use crate::search::projection::apply_documents;
 use crate::search::{FileDocument, SearchIndex, SearchProjection, SymbolDocument};
 
 fn make_file(path: &str, content: &str) -> FileInfo {
@@ -153,6 +154,76 @@ fn test_search_projection_rebuilds_empty_index_from_canonical_sqlite() -> Result
     );
     assert_eq!(state.canonical_revision, Some(1));
     assert_eq!(state.status.as_str(), "ready");
+    Ok(())
+}
+
+#[test]
+fn test_search_projection_rebuilds_when_missing_state_has_same_doc_count_stale_index() -> Result<()>
+{
+    let temp_dir = TempDir::new()?;
+    let db_path = temp_dir.path().join("symbols.db");
+    let index_path = temp_dir.path().join("tantivy");
+    std::fs::create_dir_all(&index_path)?;
+    let mut db = SymbolDatabase::new(&db_path)?;
+    let index = SearchIndex::open_or_create(&index_path)?;
+    let projection = SearchProjection::tantivy("ws_test");
+
+    db.bulk_store_fresh_atomic(
+        &[make_file("src/current.rs", "fn current_symbol() {}\n")],
+        &[make_symbol(
+            "sym_current",
+            "current_symbol",
+            "src/current.rs",
+        )],
+        &[],
+        &[],
+        &[],
+        "ws_test",
+    )?;
+
+    let stale_symbol = make_symbol("sym_stale", "stale_symbol", "src/stale.rs");
+    let stale_file = make_file("src/stale.rs", "fn stale_symbol() {}\n");
+    apply_documents(
+        &index,
+        &[SymbolDocument::from_symbol(&stale_symbol)],
+        &[FileDocument::from_file_info(&stale_file)],
+        &[],
+    )?;
+    assert_eq!(
+        index.num_docs(),
+        2,
+        "fixture setup should create the same number of stale docs as SQLite expects"
+    );
+    assert!(
+        db.get_projection_state("tantivy", "ws_test")?.is_none(),
+        "fixture should start without a projection ledger row"
+    );
+
+    let search_ready = AtomicBool::new(true);
+    let state = projection.ensure_current_with_gate(&mut db, &index, &search_ready)?;
+
+    assert_eq!(state.status, ProjectionStatus::Ready);
+    assert_eq!(state.canonical_revision, Some(1));
+    assert_eq!(state.projected_revision, Some(1));
+    assert!(
+        search_ready.load(Ordering::Acquire),
+        "search_ready should reopen only after rebuild serves the canonical revision"
+    );
+
+    let current_results = index.search_symbols("current_symbol", &Default::default(), 10)?;
+    assert_eq!(
+        current_results.results.len(),
+        1,
+        "missing projection state must rebuild from canonical SQLite, not trust same-count stale Tantivy docs"
+    );
+    assert_eq!(current_results.results[0].name, "current_symbol");
+
+    let stale_results = index.search_symbols("stale_symbol", &Default::default(), 10)?;
+    assert_eq!(
+        stale_results.results.len(),
+        0,
+        "rebuild should remove stale Tantivy docs that are absent from canonical SQLite"
+    );
     Ok(())
 }
 

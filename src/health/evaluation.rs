@@ -1,4 +1,4 @@
-use super::{DataPlaneHealth, HealthLevel, ProjectionState, SystemStatus};
+use super::{DataPlaneHealth, HealthLevel, ProjectionFreshness, ProjectionState, SystemStatus};
 
 pub(crate) fn overall_from_planes(
     control_level: HealthLevel,
@@ -28,7 +28,9 @@ pub(super) fn readiness_from_data_plane(data_plane: &DataPlaneHealth) -> SystemS
         && data_plane.canonical_store.level == HealthLevel::Unavailable
     {
         SystemStatus::NotReady
-    } else if data_plane.search_projection.state == ProjectionState::Ready {
+    } else if data_plane.search_projection.state == ProjectionState::Ready
+        && data_plane.search_projection.freshness == ProjectionFreshness::Current
+    {
         SystemStatus::FullyReady {
             symbol_count: data_plane.canonical_store.symbol_count.max(1),
         }

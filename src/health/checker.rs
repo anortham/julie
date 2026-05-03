@@ -216,10 +216,28 @@ impl HealthChecker {
             SystemStatus::NotReady => {
                 Ok("❌ System not ready. Run 'manage_workspace index' to initialize.".to_string())
             }
-            SystemStatus::SqliteOnly { symbol_count } => Ok(format!(
-                "🟡 Partially ready: {} symbols in SQLite, Tantivy projection missing",
-                symbol_count
-            )),
+            SystemStatus::SqliteOnly { symbol_count } => match projection.freshness {
+                ProjectionFreshness::Lagging => Ok(format!(
+                    "🟡 Partially ready: {} symbols in SQLite, Tantivy projection lagging at revision {}/{}",
+                    symbol_count,
+                    projection
+                        .projected_revision
+                        .map(|revision| revision.to_string())
+                        .unwrap_or_else(|| "unknown".to_string()),
+                    projection
+                        .canonical_revision
+                        .map(|revision| revision.to_string())
+                        .unwrap_or_else(|| "unknown".to_string()),
+                )),
+                ProjectionFreshness::RebuildRequired => Ok(format!(
+                    "🟡 Partially ready: {} symbols in SQLite, Tantivy projection repair required: {}",
+                    symbol_count, projection.detail
+                )),
+                _ => Ok(format!(
+                    "🟡 Partially ready: {} symbols in SQLite, Tantivy projection missing",
+                    symbol_count
+                )),
+            },
             SystemStatus::FullyReady { symbol_count }
                 if projection.freshness == ProjectionFreshness::Lagging =>
             {
