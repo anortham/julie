@@ -88,11 +88,17 @@
 **Approach:** Use the SDK Streamable HTTP server primitives instead of hand-rolling MCP framing. Wire SDK-supported session `init_timeout`, keep-alive, and resumability controls explicitly so daemon shutdown and stale-session behavior is testable. Use the existing Axum/Tokio shape from `src/dashboard/mod.rs::create_router` where useful, but do not mix dashboard routes and MCP routes if that muddies security. Construct `JulieServerHandler` per MCP session with the same dependency set currently passed through `handle_ipc_session`.
 
 **Acceptance criteria:**
-- [ ] Server binds only to localhost addresses, never `0.0.0.0` or external interfaces.
-- [ ] Port publication happens only after the listener is bound and ready.
-- [ ] SDK session timeout and resumability behavior is configured intentionally, not left as an accidental default.
-- [ ] Shutdown cleanup removes the HTTP transport discovery file and stops accepting new HTTP sessions.
-- [ ] Worker-scope verification passes.
+- [x] Server binds only to localhost addresses, never `0.0.0.0` or external interfaces.
+- [x] Port publication happens only after the listener is bound and ready.
+- [x] SDK session timeout and resumability behavior is configured intentionally, not left as an accidental default.
+- [x] Shutdown cleanup removes the HTTP transport discovery file and stops accepting new HTTP sessions.
+- [x] Worker-scope verification passes.
+
+**Task 2 execution notes:**
+- `src/daemon/http_transport.rs` now owns the localhost Streamable HTTP server module. It mounts the SDK `StreamableHttpService` at `/mcp` and a Julie readiness route at `/mcp/ready`.
+- The module waits for the readiness route before publishing `daemon-mcp-transport.json`, so adapters do not discover a port before the server can answer.
+- The first integration point is a generic `Service<RoleServer>` factory. Wiring it to real `JulieServerHandler` sessions needs the Task 4/5 workspace-startup header contract because `rmcp`'s server factory is synchronous while Julie's handler construction is async and workspace-specific.
+- The `transport` xtask bucket now includes `tests::daemon::http_transport`, so future diff-scoped transport gates actually run the HTTP transport tests.
 
 ### Task 3: HTTP Security Middleware
 
@@ -187,6 +193,12 @@
 | expensive-specialist | System gate for adapter transport readiness and daemon lifecycle touch points. | `cargo xtask test system 2>&1 \| tail -80` | `40932f23+dirty` | PASS, 6 buckets in 80.8s | 2026-05-03T22:04:26Z |
 | worker-red-green | Stale HTTP discovery does not block legacy IPC readiness fallback during migration. | `cargo nextest run --lib test_readiness_ready_via_ipc_when_http_discovery_is_stale 2>&1 \| tail -30` | `40932f23+dirty` | PASS, 1 test in 0.022s | 2026-05-03T22:08:55Z |
 | affected-change | Focused post-review transport bucket after IPC fallback correction. | `cargo xtask test bucket transport 2>&1 \| tail -60` | `40932f23+dirty` | PASS, 1 bucket in 4.0s | 2026-05-03T22:08:55Z |
+| worker-red-green | HTTP transport binds loopback, publishes discovery only after readiness, and cleans up discovery on shutdown. | `cargo nextest run --lib test_http_transport_binds_loopback_publishes_discovery_and_cleans_up 2>&1 \| tail -60` | `26f216da+dirty` | PASS, 1 test in 0.032s | 2026-05-03T22:20:05Z |
+| worker-red-green | HTTP transport rejects non-loopback bind hosts and does not publish failed discovery. | `cargo nextest run --lib test_http_transport_rejects_non_loopback_bind_host 2>&1 \| tail -30` | `26f216da+dirty` | PASS, 1 test in 0.014s | 2026-05-03T22:20:05Z |
+| worker-red-green | HTTP transport session policy explicitly sets SDK init timeout, keepalive, SSE retry, and route paths. | `cargo nextest run --lib test_http_transport_config_sets_sdk_session_policy_intentionally 2>&1 \| tail -30` | `26f216da+dirty` | PASS, 1 test in 0.012s | 2026-05-03T22:20:05Z |
+| worker-red-green | HTTP transport accepts an MCP `initialize` POST through the mounted `rmcp` Streamable HTTP service. | `cargo nextest run --lib test_http_transport_accepts_mcp_initialize_request 2>&1 \| tail -30` | `26f216da+dirty` | PASS, 1 test in 0.032s | 2026-05-03T22:20:05Z |
+| worker-red-green | Xtask manifest contract includes HTTP transport tests in the transport bucket. | `cargo nextest run --package xtask manifest_contract_tests_checked_in_manifest_uses_exact_bucket_specs 2>&1 \| tail -40` | `26f216da+dirty` | PASS, 1 test in 0.010s | 2026-05-03T22:20:05Z |
+| affected-change | Focused transport bucket includes adapter, IPC, and HTTP transport tests. | `cargo xtask test bucket transport 2>&1 \| tail -70` | `26f216da+dirty` | PASS, 1 bucket in 4.4s | 2026-05-03T22:20:05Z |
 
 ## Model Routing
 

@@ -6,6 +6,7 @@
 
 pub mod database;
 pub mod embedding_service;
+pub mod http_transport;
 pub mod ipc;
 pub mod ipc_session;
 pub mod lifecycle;

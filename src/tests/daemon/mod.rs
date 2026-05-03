@@ -1,6 +1,7 @@
 pub mod database;
 pub mod embedding_service;
 pub mod handler;
+pub mod http_transport;
 pub mod ipc;
 pub mod ipc_headers;
 pub mod ipc_session;

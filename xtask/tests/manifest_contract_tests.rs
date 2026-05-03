@@ -336,11 +336,12 @@ fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
         (
             "transport",
             ExpectedBucket {
-                expected_seconds: 30,
+                expected_seconds: 35,
                 timeout_seconds: 90,
                 commands: &[
                     "cargo nextest run --lib tests::adapter -- --skip search_quality",
                     "cargo nextest run --lib tests::daemon::transport -- --skip search_quality",
+                    "cargo nextest run --lib tests::daemon::http_transport -- --skip search_quality",
                     "cargo nextest run --lib tests::daemon::ipc -- --skip search_quality",
                     "cargo nextest run --lib tests::daemon::ipc_headers -- --skip search_quality",
                     "cargo nextest run --lib tests::daemon::ipc_session -- --skip search_quality",
@@ -690,7 +691,7 @@ fn expected_bucket_metadata() -> BTreeMap<&'static str, ExpectedBucketMetadata> 
                 owner: "lead",
                 expensive: false,
                 notes: Some(
-                    "adapter + IPC transport parity (backed by adapter/daemon transport tests)",
+                    "adapter + IPC/HTTP transport parity (backed by adapter/daemon transport tests)",
                 ),
             },
         ),
