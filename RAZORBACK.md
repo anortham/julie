@@ -15,12 +15,17 @@ radius.
 | Strategy | Planning, architecture, decomposition, lead review, finding triage | gpt-5.5 medium/high | Opus or Sonnet, based on risk | Strongest available reasoning model |
 | Implementation | Bounded worker tasks from a clear plan | gpt-5.4-mini xhigh | Sonnet or Haiku for boxed-in edits | Fast implementation model |
 | Mechanical | Docs, fixtures, rote edits, formatting, manifests with no gate ownership | gpt-5.4-mini low/medium | Haiku or Sonnet low-cost equivalent | Fastest reliable model |
-| Coupled implementation | Bounded but cross-file work with some coupling | gpt-5.4-mini xhigh; escalate to gpt-5.3-codex high/xhigh when tool-heavy debugging is likely | Sonnet high or Opus | Stronger implementation model |
+| Coupled implementation | Bounded cross-file work after the lead has fixed the contract | gpt-5.4-mini xhigh only for cross-file edits with no shared invariant; use gpt-5.3-codex high for shared invariants and xhigh for concurrency, restart, security, or terminal-heavy debugging | Sonnet high or Opus | Stronger implementation model |
 | Gate review | Plan plus failing test, replay, metric, or diff triage | gpt-5.3-codex high | Opus or Sonnet high | Strong review model |
 | Escalation | Code review, gate interpretation, subtle correctness, high-blast-radius refactors, weak tests, repeated worker failure | gpt-5.3-codex high for review or first escalation; gpt-5.5 high/xhigh for top-risk correctness or planning failure | Opus | Strongest available reasoning model |
 
 If a harness cannot choose models or reasoning per agent, use `inherit` and note
 that limitation in the plan or worker report.
+
+Plan docs should not copy this full routing table. They may include plan-specific
+overrides: worker eligibility, lead-owned lanes, escalation triggers, and stricter
+model requirements. If a plan repeats a global mapping and it conflicts with this
+file, `RAZORBACK.md` wins.
 
 For Codex, this routing table is a clear task-specific reason to pass
 `spawn_agent(model=..., reasoning_effort=...)` when the current session supports
@@ -40,6 +45,23 @@ gate-interpretation review, code review, and failed-worker diagnosis. Use
 diagnosis. Use `gpt-5.5 high/xhigh` when the failure suggests the plan,
 architecture, public API contract, security posture, or verification strategy
 is wrong.
+
+For Julie architecture cleanup, treat these areas as shared-invariant work by
+default: search readiness, projection state, daemon lifecycle, transport and
+security policy, watcher or session reference ownership, workspace cleanup
+safety, verification routing, and public MCP or CLI protocol compatibility.
+Use `gpt-5.3-codex high` as the default Codex worker route for bounded edits in
+those areas, `gpt-5.3-codex xhigh` for concurrency, restart or shutdown behavior,
+auth or Origin policy, and terminal-heavy debugging, and `gpt-5.5 high` for the
+lead decision when the architecture or contract is still unsettled.
+
+Changes to verification policy, xtask bucket routing, changed-file selection,
+ledger semantics, specialist-gate ownership, dependency version selection, SDK
+capability audits, transport security policy, auth or Origin or Host validation,
+and public protocol compatibility decisions are strategy or gate-review work by
+default. Implementation-tier workers may edit runner, manifest, transport, or
+dependency code only after a strategy-tier contract names the invariant and the
+worker's verification ceiling.
 
 ## Gate Ownership
 

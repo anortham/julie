@@ -1,0 +1,197 @@
+# HTTP Daemon Transport Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use razorback:subagent-driven-development when subagent delegation is available. Fall back to razorback:executing-plans for single-task, tightly-sequential, or no-delegation runs.
+
+**Goal:** Add localhost Streamable HTTP MCP as the canonical daemon transport while keeping stdio mode as a thin compatibility shim that proxies MCP bytes to the daemon.
+
+**Architecture:** Add an HTTP transport module that serves MCP over localhost using the existing `rmcp` Streamable HTTP server support and the current Tokio/Axum HTTP stack. Keep `src/daemon/ipc.rs` and `src/daemon/ipc_session.rs` working during migration, but make `src/adapter/mod.rs` target the canonical daemon endpoint and keep stdio as the MCP-client compatibility layer. The `rmcp` 1.6.0 release added transport features that overlap with this plan, so Julie should delegate Host and Origin validation, streamable HTTP session timeout behavior, and resumability support to the SDK where the APIs fit. Julie still owns daemon discovery, local token policy, lifecycle, and adapter compatibility.
+
+**Tech Stack:** Rust, Tokio, Axum 0.8, `rmcp` with `transport-streamable-http-server` after an intentional SDK audit. Current `Cargo.toml` declares `rmcp = "1.2"` while `Cargo.lock` resolves `rmcp` 1.5.0; this plan should target an explicit 1.6.0 upgrade or record why 1.5.0 remains pinned. Keep the existing daemon `WorkspacePool`, `EmbeddingService`, `WatcherPool`, `DashboardState`, and adapter forwarding code.
+
+---
+
+## File Structure
+
+- Modify `src/main.rs:12-125`: keep adapter mode as the default no-argument path, but route it through the new transport readiness and discovery flow.
+- Modify `Cargo.toml:36` and `Cargo.lock`: make the `rmcp` version decision explicit before relying on Streamable HTTP behaviors from recent SDK releases.
+- Modify `src/adapter/mod.rs:81-405`: make stdio remain a thin proxy. Replace or abstract `connect_and_handshake` so it can connect to the canonical HTTP transport while preserving current retry and immediate-disconnect behavior.
+- Modify `src/adapter/launcher.rs:33-296`: update readiness probing and port discovery for HTTP while preserving daemon launch serialization through `daemon.lock`.
+- Modify `src/daemon/mod.rs:276-733`: bind the HTTP MCP transport alongside or instead of the legacy IPC listener during the transition. Keep lifecycle and cleanup ordering intact.
+- Modify `src/daemon/ipc.rs:1-251`: keep legacy IPC types until compatibility tests prove the shim no longer needs them. Do not delete platform IPC in the first transport change.
+- Modify `src/daemon/ipc_session.rs:245-400`: extract stream-independent session construction so HTTP and IPC share `JulieServerHandler`, `WorkspacePool`, `EmbeddingService`, restart flag, dashboard events, startup hint, and watcher pool wiring.
+- Create `src/daemon/http_transport.rs`: own localhost binding, port file publication, Origin validation, token validation, MCP route construction, and server shutdown handle.
+- Modify `src/daemon/transport.rs:1-80`: evolve `TransportEndpoint` into a discovery/probe abstraction that can represent HTTP canonical transport and legacy IPC during migration.
+- Modify `src/dashboard/mod.rs:123-186` only if the dashboard router and MCP HTTP router need to be mounted on the same Axum server. Prefer separate routers if security policy differs.
+- Test `src/tests/daemon/transport.rs`: add HTTP probe and port-discovery tests.
+- Test `src/tests/adapter/retry.rs`: preserve retry behavior through the stdio shim.
+- Test `src/tests/integration/daemon_lifecycle.rs`: add one daemon-level HTTP readiness test if unit tests cannot prove port publication and shutdown cleanup.
+- Create `src/tests/daemon/http_transport.rs`: test localhost bind, Origin rejection, token rejection or acceptance, and workspace startup hint propagation.
+
+## Implementation Tasks
+
+### Task 0: SDK Capability Audit and Version Lock
+
+**Files:**
+- Modify: `Cargo.toml:36`
+- Modify: `Cargo.lock`
+- Test: `src/tests/daemon/http_transport.rs` after Task 2 creates it, or `src/tests/daemon/transport.rs` for discovery-only SDK checks
+
+**What to build:** Make the MCP Rust SDK version an intentional part of the transport work. Audit `rmcp` 1.6.0 APIs for Streamable HTTP server setup, Host validation, Origin validation, rejection logging, optional session store, resumability, `init_timeout`, HTTP/2 authority fallback, and client-side Streamable HTTP support.
+
+**Approach:** Start by running `cargo update -p rmcp -p rmcp-macros` and inspect the resulting API changes before writing Julie transport code. If the upgrade is clean, raise the declared dependency from `1.2` to an explicit compatible target such as `1.6` so future agents stop reading a stale lower-bound as the intended version. If the upgrade exposes API churn, keep the lock at 1.5.0 for this batch and record exactly which plan items remain Julie-owned because the SDK feature is not available in the pinned version.
+
+**Acceptance criteria:**
+- [ ] `cargo tree -i rmcp -e normal --depth 1` shows the intended SDK version.
+- [ ] The plan records which HTTP concerns are delegated to `rmcp` and which remain Julie-owned.
+- [ ] Existing MCP compile surface still builds after the version decision.
+- [ ] Worker-scope verification passes.
+
+### Task 1: Transport Contract and Discovery
+
+**Files:**
+- Modify: `src/daemon/transport.rs:1-80`
+- Modify: `src/paths.rs:80-151` only if a new HTTP MCP port or token path is needed instead of reusing `daemon_port`
+- Test: `src/tests/daemon/transport.rs:16-64`
+
+**What to build:** Define a transport endpoint contract that can discover and probe the canonical HTTP daemon endpoint. It should publish enough data for the adapter to connect without guessing: host, port, scheme, and token location or token value strategy.
+
+**Approach:** Keep localhost binding explicit. Do not reuse dashboard port semantics blindly unless the same server owns both dashboard and MCP routes with different security middleware. If `daemon_port` currently means dashboard HTTP port, add a separate MCP transport state file or make the state file structured enough to avoid ambiguity.
+
+**Acceptance criteria:**
+- [ ] Adapter can discover the HTTP endpoint without scanning ports.
+- [ ] Stale port files are rejected by an active readiness probe.
+- [ ] Existing IPC probe tests still pass during the migration.
+- [ ] Discovery data records the SDK transport mode and the auth material needed by the adapter, without exposing bearer tokens in logs.
+- [ ] Worker-scope verification passes.
+
+### Task 2: HTTP MCP Server Module
+
+**Files:**
+- Create: `src/daemon/http_transport.rs`
+- Modify: `src/daemon/mod.rs:7-19` for module registration
+- Modify: `src/daemon/mod.rs:276-733` for binding and cleanup
+- Test: `src/tests/daemon/http_transport.rs`
+
+**What to build:** Add a daemon-owned HTTP MCP server bound to `127.0.0.1` by default, with optional `::1` support only if tests prove equivalent local-only behavior on supported platforms. It should expose Streamable HTTP MCP using the `rmcp` transport enabled in `Cargo.toml`.
+
+**Approach:** Use the SDK Streamable HTTP server primitives instead of hand-rolling MCP framing. Wire SDK-supported session `init_timeout`, keep-alive, and resumability controls explicitly so daemon shutdown and stale-session behavior is testable. Use the existing Axum/Tokio shape from `src/dashboard/mod.rs::create_router` where useful, but do not mix dashboard routes and MCP routes if that muddies security. Construct `JulieServerHandler` per MCP session with the same dependency set currently passed through `handle_ipc_session`.
+
+**Acceptance criteria:**
+- [ ] Server binds only to localhost addresses, never `0.0.0.0` or external interfaces.
+- [ ] Port publication happens only after the listener is bound and ready.
+- [ ] SDK session timeout and resumability behavior is configured intentionally, not left as an accidental default.
+- [ ] Shutdown cleanup removes the HTTP transport discovery file and stops accepting new HTTP sessions.
+- [ ] Worker-scope verification passes.
+
+### Task 3: HTTP Security Middleware
+
+**Files:**
+- Modify: `src/daemon/http_transport.rs`
+- Test: `src/tests/daemon/http_transport.rs`
+
+**What to build:** Enforce localhost HTTP security requirements: reject non-local binds, validate `Host` and `Origin` for browser-originated requests, and require an auth token if Streamable HTTP state-changing routes can be reached by generic local web content.
+
+**Approach:** Prefer `rmcp` 1.6.0 Host and Origin validation over custom middleware, then add Julie middleware only for policy the SDK does not cover. Accept missing `Origin` for non-browser clients if token validation is present. Accept only Julie-owned origins such as the dashboard localhost origin when dashboard integration needs browser access. Generate a per-daemon token at startup, store it in a user-private state file if the adapter must read it, and require `Authorization: Bearer <token>` or an equivalent header for MCP requests.
+
+**Acceptance criteria:**
+- [ ] Requests with invalid `Host` or HTTP/2 `:authority` values are rejected before MCP handling.
+- [ ] Requests with foreign `Origin` are rejected before MCP handling.
+- [ ] Rejection logs include enough detail to debug local configuration problems without logging bearer tokens.
+- [ ] Requests without a valid token are rejected when token mode is enabled.
+- [ ] Adapter requests include the token and pass.
+- [ ] Tests assert concrete status codes and do not merely check that requests fail.
+- [ ] Worker-scope verification passes.
+
+### Task 4: Stdio Shim Over HTTP
+
+**Files:**
+- Modify: `src/adapter/mod.rs:81-405`
+- Modify: `src/adapter/launcher.rs:33-296`
+- Modify: `src/main.rs:12-125`
+- Test: `src/tests/adapter/retry.rs:12-159`
+- Test: add adapter HTTP shim tests under `src/tests/adapter/`
+
+**What to build:** Keep no-argument `julie-server` behavior as stdio MCP from the client perspective, but make it proxy to the daemon HTTP endpoint. The adapter should still ensure the daemon is ready, connect, complete any required handshake, and forward stdin/stdout bytes without changing the MCP client contract.
+
+**Approach:** Preserve `run_adapter_with` as the retry harness if possible. Swap the concrete connector from `IpcConnector` to an HTTP stream client abstraction. Use the SDK client-side Streamable HTTP transport when it fits the stdio shim. Evaluate the SDK's Unix domain socket Streamable HTTP client for macOS and Linux as a safer local transport option, but keep TCP localhost as the cross-platform baseline until Windows has an equivalent tested path. If byte-for-byte stdio forwarding cannot map cleanly to the rmcp HTTP client transport, add a small adapter-side MCP service bridge and keep the stdio contract at the process boundary.
+
+**Acceptance criteria:**
+- [ ] `main` still calls adapter mode for default invocation.
+- [ ] Existing retry tests remain meaningful and pass with the HTTP connector abstraction.
+- [ ] Stdio clients still see JSON-RPC over stdin/stdout, not HTTP details.
+- [ ] Worker-scope verification passes.
+
+### Task 5: Legacy IPC Compatibility Window
+
+**Files:**
+- Modify: `src/daemon/ipc.rs:1-251`
+- Modify: `src/daemon/ipc_session.rs:245-400`
+- Modify: `src/daemon/mod.rs:740-1034`
+- Test: `src/tests/integration/daemon_lifecycle.rs:406-454`
+- Test: `src/tests/daemon/ipc_session.rs:104-406`
+
+**What to build:** Keep legacy IPC working until the HTTP daemon transport and stdio shim are proven. Mark IPC as compatibility transport in code comments and tests, not as the preferred path.
+
+**Approach:** Extract shared MCP session setup before deleting or bypassing IPC. A bad first step would be duplicating handler construction in HTTP and IPC, because session cleanup and workspace binding bugs already have substantial tests in `src/tests/daemon/ipc_session.rs`.
+
+**Acceptance criteria:**
+- [ ] Existing IPC workspace header protocol still passes during migration.
+- [ ] Shared session setup has one path for workspace startup hint, session lifecycle cleanup, dashboard events, watcher pool, and restart flag.
+- [ ] Compatibility path can be removed in a later plan without affecting HTTP module boundaries.
+- [ ] Worker-scope verification passes.
+
+## Verification Strategy
+
+**Project source of truth:** `AGENTS.md`, `RAZORBACK.md`, `docs/TESTING_GUIDE.md`, current dependencies in `Cargo.toml`, and the MCP Rust SDK release notes for the selected `rmcp` version.
+
+**Worker red/green scope:** Workers run only the exact test they add or modify, for example `cargo nextest run --lib test_http_transport_rejects_foreign_origin 2>&1 | tail -10`, `cargo nextest run --lib test_http_transport_requires_bearer_token 2>&1 | tail -10`, `cargo nextest run --lib test_transport_probe_reports_ready_for_live_http_endpoint 2>&1 | tail -10`, or `cargo nextest run --lib test_run_adapter_with_retries_connect_failure_without_fixed_sleep 2>&1 | tail -10`.
+
+**Worker ceiling:** `cargo nextest run --lib <exact_test_name> 2>&1 | tail -10`. Workers may run at most one RED and one GREEN command per fix cycle. Workers must not run `cargo xtask test changed`, `cargo xtask test dev`, `cargo xtask test system`, `cargo xtask test reliability`, or broad `cargo nextest run --lib`.
+
+**Worker gate invariant:** Each worker report must state the concrete invariant proven, such as "foreign browser Origin is rejected with 403 before MCP session construction" or "adapter discovers a live HTTP endpoint and retries failed initial connection."
+
+**Lead affected-change scope:** After a coherent batch, the lead runs `cargo xtask test changed`.
+
+**Branch gate:** The lead runs `cargo xtask test dev` once before handoff.
+
+**Replay/metric evidence:** No replay or metric evidence is required. Hard gates are security behavior tests, adapter compatibility tests, `changed`, and `dev`.
+
+**Escalation triggers:** Run `cargo xtask test system` because daemon startup and adapter transport are changed. Run `cargo xtask test reliability` when shutdown, restart handoff, session drain, watcher lifecycle, daemon restart behavior, SDK session store behavior, or Streamable HTTP timeout behavior changes. If dashboard and MCP share one Axum server, add dashboard router tests and consider `system` mandatory even for small edits.
+
+**Assigned verification failure:** Workers stop and report when assigned verification fails, unless this plan explicitly says to update that gate.
+
+**Verification ledger:** Record invariant, command, scope label, commit SHA, result, and timestamp. For security tests, record the rejected request shape and expected status code. If the same HEAD already has a passing ledger entry for the required scope, reuse that evidence instead of rerunning the same expensive gate.
+
+## Model Routing
+
+**Project source of truth:** `RAZORBACK.md`. Do not copy the global model table into this plan. If a local sentence conflicts with `RAZORBACK.md`, `RAZORBACK.md` wins.
+
+**Plan-specific overrides:** SDK version selection, Streamable HTTP protocol compatibility, Host or Origin policy, bearer-token policy, session timeout or resumability behavior, stdio shim compatibility, and daemon lifecycle integration are strategy or coupled implementation work. Use Codex `gpt-5.5 high` for lead-owned SDK/security decisions, `gpt-5.3-codex high` for bounded transport implementation, and `gpt-5.3-codex xhigh` for auth, restart, shutdown, or terminal-heavy debugging.
+
+**Worker eligibility:** Use implementation-tier workers for isolated tests, local probe logic, and adapter retry tests. Use coupled implementation or lead-owned work for HTTP session construction, stdio compatibility, daemon lifecycle integration, Origin/token policy, and anything touching restart or shutdown.
+
+**Escalation triggers:** Escalate for security policy ambiguity, failure to map stdio byte forwarding to Streamable HTTP cleanly, repeated worker failure, shared server/dashboard coupling, or any transport behavior not covered by strong tests.
+
+**Mechanical exclusion:** Mechanical workers cannot own failing tests, replay evidence, metrics, or acceptance gates. Split docs-only edits from evidence interpretation.
+
+**Unsupported harness behavior:** If the harness cannot choose models per agent, use `inherit`, note it in the worker report, and continue.
+
+## Task Decomposition
+
+- Lead-owned lane: decide the canonical HTTP contract, security policy, and whether dashboard and MCP share an Axum server. This is architecture and security work, not a rote edit.
+- Lead-owned lane: audit and intentionally select the `rmcp` version before assigning HTTP implementation work.
+- Worker lane A: add transport discovery and probe tests with a bounded write scope in `src/daemon/transport.rs` and `src/tests/daemon/transport.rs`.
+- Worker lane B: add HTTP security tests first, then implement middleware in `src/daemon/http_transport.rs`.
+- Worker lane C: adapt stdio shim retry tests around an HTTP connector abstraction, keeping `run_adapter_with` behavior stable.
+- Worker lane D: extract shared session setup from `ipc_session.rs` only after HTTP tests define the expected dependency wiring.
+- Lead integration lane: run changed/dev gates, then system and reliability gates when the actual diff touches startup, restart, or shutdown.
+
+## Risks
+
+- Localhost HTTP is not automatically safe. Browser-originated requests can hit localhost, so Origin validation and token checks are required unless the implementation proves no state-changing route is exposed.
+- The latest relevant SDK release is `rmcp` 1.6.0, but the current lockfile resolves 1.5.0. Depending on 1.6.0 behavior before the lock is upgraded would be the same old "the model thought it was true" problem wearing a nicer hat.
+- `daemon_port` currently appears tied to dashboard HTTP. Reusing it for MCP without disambiguation would make adapter discovery brittle.
+- SDK Host and Origin validation reduce custom code, but they do not replace Julie's process-local token policy or daemon discovery contract.
+- Streamable HTTP is not byte-for-byte equivalent to the current IPC stream. If the adapter tries to blindly pipe stdio bytes into HTTP without using `rmcp` transport semantics, it will probably be wrong.
+- Sharing one Axum server with the dashboard may be convenient, but it couples public-ish dashboard browsing behavior to MCP security. Separate routers or middleware boundaries are safer.
+- Deleting IPC in the first pass is a bad idea. The current IPC tests cover workspace header and session cleanup behavior that HTTP should learn from before compatibility is removed.
