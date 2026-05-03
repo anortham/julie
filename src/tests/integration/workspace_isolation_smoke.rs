@@ -40,6 +40,19 @@ mod workspace_isolation_smoke_tests {
             .join("\n")
     }
 
+    fn response_contains_content_match(response: &str, marker: &str) -> bool {
+        response.lines().any(|line| {
+            let mut parts = line.splitn(3, ':');
+            let (Some(path), Some(line_number), Some(content)) =
+                (parts.next(), parts.next(), parts.next())
+            else {
+                return false;
+            };
+
+            !path.is_empty() && line_number.parse::<usize>().is_ok() && content.contains(marker)
+        })
+    }
+
     /// Test 1: Verify search NEVER crosses workspace boundaries
     ///
     /// This is the most critical isolation test - searching primary workspace
@@ -83,6 +96,45 @@ mod workspace_isolation_smoke_tests {
         let reference_id =
             crate::workspace::registry::generate_workspace_id(&reference_path.to_string_lossy())?;
 
+        // Positive controls: each workspace must be searchable for its own marker.
+        let search_primary_for_primary = FastSearchTool {
+            query: "PRIMARY_WORKSPACE_MARKER".to_string(),
+            language: None,
+            file_pattern: None,
+            limit: 10,
+            workspace: Some("primary".to_string()),
+            search_target: "content".to_string(),
+            context_lines: None,
+            exclude_tests: None,
+            ..Default::default()
+        };
+        let primary_control =
+            extract_text_from_result(&search_primary_for_primary.call_tool(&handler).await?);
+        assert!(
+            response_contains_content_match(&primary_control, "PRIMARY_WORKSPACE_MARKER"),
+            "Primary workspace control search should find its own marker: {}",
+            primary_control
+        );
+
+        let search_ref_for_ref = FastSearchTool {
+            query: "REFERENCE_WORKSPACE_MARKER".to_string(),
+            language: None,
+            file_pattern: None,
+            limit: 10,
+            workspace: Some(reference_id.clone()),
+            search_target: "content".to_string(),
+            context_lines: None,
+            exclude_tests: None,
+            ..Default::default()
+        };
+        let reference_control =
+            extract_text_from_result(&search_ref_for_ref.call_tool(&handler).await?);
+        assert!(
+            response_contains_content_match(&reference_control, "REFERENCE_WORKSPACE_MARKER"),
+            "Reference workspace control search should find its own marker: {}",
+            reference_control
+        );
+
         // CRITICAL TEST: Search primary for reference-only content
         let search_primary_for_ref = FastSearchTool {
             query: "REFERENCE_WORKSPACE_MARKER".to_string(),
@@ -101,7 +153,7 @@ mod workspace_isolation_smoke_tests {
 
         // Should find NOTHING - reference content must not leak into primary search
         assert!(
-            !response.contains("REFERENCE_WORKSPACE_MARKER") || response.contains("No lines found"),
+            !response_contains_content_match(&response, "REFERENCE_WORKSPACE_MARKER"),
             "PRIMARY workspace search MUST NOT find reference workspace content!\n\
              Isolation boundary violated: {}",
             response
@@ -125,7 +177,7 @@ mod workspace_isolation_smoke_tests {
 
         // Should find NOTHING - primary content must not leak into reference search
         assert!(
-            !response2.contains("PRIMARY_WORKSPACE_MARKER") || response2.contains("No lines found"),
+            !response_contains_content_match(&response2, "PRIMARY_WORKSPACE_MARKER"),
             "REFERENCE workspace search MUST NOT find primary workspace content!\n\
              Isolation boundary violated: {}",
             response2
