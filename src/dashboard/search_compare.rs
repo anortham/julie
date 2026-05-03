@@ -98,7 +98,7 @@ pub async fn run_compare(state: &AppState, days: u32) -> Result<SearchCompareVie
         });
     }
 
-    disconnect_dashboard_attached_workspaces(state, &handler).await;
+    disconnect_dashboard_attached_workspaces(&handler).await;
     cleanup_dashboard_anchor(state, &anchor_id).await;
 
     let run_id = daemon_db.insert_search_compare_run(&SearchCompareRunInput {

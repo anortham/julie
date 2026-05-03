@@ -55,36 +55,12 @@ impl WorkspaceSessionAttachment {
         workspace_id: &str,
         workspace_root: PathBuf,
     ) -> Result<bool> {
-        self.attach_workspace_once_inner(workspace_id, workspace_root, false)
-            .await
-    }
-
-    pub async fn attach_workspace_once_and_sync_indexed(
-        &self,
-        workspace_id: &str,
-        workspace_root: PathBuf,
-    ) -> Result<bool> {
-        self.attach_workspace_once_inner(workspace_id, workspace_root, true)
-            .await
-    }
-
-    async fn attach_workspace_once_inner(
-        &self,
-        workspace_id: &str,
-        workspace_root: PathBuf,
-        sync_indexed: bool,
-    ) -> Result<bool> {
         if self.was_attached(workspace_id) {
             return Ok(false);
         }
 
         self.attach_workspace_resources(workspace_id, workspace_root)
             .await?;
-        if sync_indexed {
-            if let Some(pool) = &self.workspace_pool {
-                pool.sync_indexed_from_db(workspace_id).await;
-            }
-        }
 
         Ok(self.mark_workspace_attached(workspace_id.to_string()))
     }

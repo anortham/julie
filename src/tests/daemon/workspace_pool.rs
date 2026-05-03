@@ -106,39 +106,6 @@ async fn test_get_returns_some_after_init() {
 }
 
 #[tokio::test]
-async fn test_is_indexed_returns_false_before_indexing() {
-    let indexes_dir = temp_indexes_dir();
-    let workspace_root = temp_workspace_root();
-    let pool = WorkspacePool::new(indexes_dir.path().to_path_buf(), None, None, None);
-
-    pool.get_or_init("test_ws", workspace_root.path().to_path_buf())
-        .await
-        .expect("get_or_init should succeed");
-
-    assert!(
-        !pool.is_indexed("test_ws").await,
-        "should not be indexed initially"
-    );
-}
-
-#[tokio::test]
-async fn test_mark_indexed() {
-    let indexes_dir = temp_indexes_dir();
-    let workspace_root = temp_workspace_root();
-    let pool = WorkspacePool::new(indexes_dir.path().to_path_buf(), None, None, None);
-
-    pool.get_or_init("test_ws", workspace_root.path().to_path_buf())
-        .await
-        .expect("get_or_init should succeed");
-
-    pool.mark_indexed("test_ws").await;
-    assert!(
-        pool.is_indexed("test_ws").await,
-        "should be indexed after mark_indexed"
-    );
-}
-
-#[tokio::test]
 async fn test_active_workspace_count() {
     let indexes_dir = temp_indexes_dir();
     let pool = WorkspacePool::new(indexes_dir.path().to_path_buf(), None, None, None);
@@ -478,72 +445,6 @@ async fn test_get_or_init_rejects_missing_workspace_without_creating_path_or_row
     assert!(
         daemon_db.get_workspace(workspace_id).unwrap().is_none(),
         "failed initialization must not leave a daemon registry row"
-    );
-}
-
-// ── D-H6 ─────────────────────────────────────────────────────────────────────
-// After indexing, the IPC session tear-down must call sync_indexed_from_db so
-// the pool's in-memory `indexed` flag reflects what daemon.db already knows.
-#[tokio::test]
-async fn test_sync_indexed_from_db_sets_flag_when_ready() {
-    let tmp = tempfile::TempDir::new().unwrap();
-    let daemon_db = Arc::new(DaemonDatabase::open(&tmp.path().join("daemon.db")).unwrap());
-    let indexes_dir = temp_indexes_dir();
-    let workspace_root = temp_workspace_root();
-
-    let pool = WorkspacePool::new(
-        indexes_dir.path().to_path_buf(),
-        Some(Arc::clone(&daemon_db)),
-        None,
-        None,
-    );
-
-    pool.get_or_init("sync_test_ws", workspace_root.path().to_path_buf())
-        .await
-        .expect("get_or_init should succeed");
-
-    // Not indexed in pool yet
-    assert!(!pool.is_indexed("sync_test_ws").await);
-
-    // Simulate what handle_index_command does: transition daemon.db to "ready"
-    daemon_db
-        .update_workspace_status("sync_test_ws", "ready")
-        .unwrap();
-
-    // sync_indexed_from_db must propagate the "ready" flag to the pool's in-memory state
-    pool.sync_indexed_from_db("sync_test_ws").await;
-
-    assert!(
-        pool.is_indexed("sync_test_ws").await,
-        "pool should reflect indexed=true after sync when daemon.db says ready"
-    );
-}
-
-// pool.sync_indexed_from_db must be a no-op when daemon.db says "pending"
-#[tokio::test]
-async fn test_sync_indexed_from_db_noop_when_pending() {
-    let tmp = tempfile::TempDir::new().unwrap();
-    let daemon_db = Arc::new(DaemonDatabase::open(&tmp.path().join("daemon.db")).unwrap());
-    let indexes_dir = temp_indexes_dir();
-    let workspace_root = temp_workspace_root();
-
-    let pool = WorkspacePool::new(
-        indexes_dir.path().to_path_buf(),
-        Some(Arc::clone(&daemon_db)),
-        None,
-        None,
-    );
-
-    pool.get_or_init("pending_ws", workspace_root.path().to_path_buf())
-        .await
-        .expect("get_or_init should succeed");
-
-    // daemon.db status is "pending" — sync should leave pool flag as false
-    pool.sync_indexed_from_db("pending_ws").await;
-
-    assert!(
-        !pool.is_indexed("pending_ws").await,
-        "pool should remain not-indexed when daemon.db says pending"
     );
 }
 

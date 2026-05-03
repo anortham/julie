@@ -68,14 +68,8 @@ pub(crate) async fn dashboard_handler(
     Ok((handler, anchor_dir, anchor_id))
 }
 
-pub(crate) async fn disconnect_dashboard_attached_workspaces(
-    state: &AppState,
-    handler: &JulieServerHandler,
-) {
+pub(crate) async fn disconnect_dashboard_attached_workspaces(handler: &JulieServerHandler) {
     for workspace_id in handler.session_attached_workspace_ids().await {
-        if let Some(pool) = state.dashboard.workspace_pool() {
-            pool.sync_indexed_from_db(&workspace_id).await;
-        }
         if let Err(error) = handler.detach_workspace_for_session(&workspace_id).await {
             warn!(
                 workspace_id,
@@ -113,7 +107,7 @@ async fn run_workspace_action(state: &AppState, tool: ManageWorkspaceTool) -> Pr
     };
 
     let action_result = tool.call_tool(&handler).await;
-    disconnect_dashboard_attached_workspaces(state, &handler).await;
+    disconnect_dashboard_attached_workspaces(&handler).await;
     cleanup_dashboard_anchor(state, &anchor_id).await;
 
     match action_result {

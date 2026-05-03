@@ -200,7 +200,7 @@ async fn run_search(
     .await
     .ok();
 
-    disconnect_dashboard_attached_workspaces(state, &handler).await;
+    disconnect_dashboard_attached_workspaces(&handler).await;
     cleanup_dashboard_anchor(state, &anchor_id).await;
 
     result.map(normalize_dashboard_results)

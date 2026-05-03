@@ -406,7 +406,6 @@ pub(crate) async fn handle_ipc_session(
         attached_workspace_ids,
         !defer_startup_workspace_attach,
     ) {
-        pool.sync_indexed_from_db(&workspace_id).await;
         if let Err(error) = cleanup_attachment
             .detach_workspace_resources(&workspace_id)
             .await

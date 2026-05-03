@@ -2062,7 +2062,7 @@ impl JulieServerHandler {
 
         if !attached_matches_target {
             self.session_attachment()
-                .attach_workspace_once_and_sync_indexed(workspace_id, workspace_root)
+                .attach_workspace_once(workspace_id, workspace_root)
                 .await?;
         }
 

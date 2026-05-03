@@ -25,7 +25,6 @@ pub struct WorkspacePool {
 
 struct WorkspaceEntry {
     workspace: Arc<JulieWorkspace>,
-    indexed: bool,
 }
 
 impl WorkspacePool {
@@ -154,48 +153,9 @@ impl WorkspacePool {
             workspace_id.to_string(),
             WorkspaceEntry {
                 workspace: Arc::clone(&ws),
-                indexed: false,
             },
         );
         Ok(ws)
-    }
-
-    /// Check whether a workspace has completed its initial indexing pass.
-    pub async fn is_indexed(&self, workspace_id: &str) -> bool {
-        let guard = self.workspaces.read().await;
-        guard.get(workspace_id).is_some_and(|entry| entry.indexed)
-    }
-
-    /// Mark a workspace as having completed its initial indexing pass.
-    ///
-    /// Also updates daemon.db status to "ready".
-    pub async fn mark_indexed(&self, workspace_id: &str) {
-        let mut guard = self.workspaces.write().await;
-        if let Some(entry) = guard.get_mut(workspace_id) {
-            entry.indexed = true;
-        }
-        if let Some(ref db) = self.daemon_db {
-            let _ = db.update_workspace_status(workspace_id, "ready");
-        }
-    }
-
-    /// Sync the pool's in-memory `indexed` flag from daemon.db.
-    ///
-    /// Called at IPC session tear-down: if daemon.db records the workspace as
-    /// "ready" (set by `handle_index_command` after a successful indexing pass),
-    /// the pool's in-memory `indexed` flag is set to match. This ensures
-    /// `is_indexed()` returns the correct value for subsequent sessions and
-    /// that the pool state stays consistent with the persistent registry.
-    pub async fn sync_indexed_from_db(&self, workspace_id: &str) {
-        let Some(ref db) = self.daemon_db else { return };
-        if let Ok(Some(row)) = db.get_workspace(workspace_id) {
-            if row.status == "ready" {
-                let mut guard = self.workspaces.write().await;
-                if let Some(entry) = guard.get_mut(workspace_id) {
-                    entry.indexed = true;
-                }
-            }
-        }
     }
 
     /// Number of active workspaces in the pool.
