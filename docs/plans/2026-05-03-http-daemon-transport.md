@@ -41,10 +41,16 @@
 **Approach:** Start by running `cargo update -p rmcp -p rmcp-macros` and inspect the resulting API changes before writing Julie transport code. If the upgrade is clean, raise the declared dependency from `1.2` to an explicit compatible target such as `1.6` so future agents stop reading a stale lower-bound as the intended version. If the upgrade exposes API churn, keep the lock at 1.5.0 for this batch and record exactly which plan items remain Julie-owned because the SDK feature is not available in the pinned version.
 
 **Acceptance criteria:**
-- [ ] `cargo tree -i rmcp -e normal --depth 1` shows the intended SDK version.
-- [ ] The plan records which HTTP concerns are delegated to `rmcp` and which remain Julie-owned.
-- [ ] Existing MCP compile surface still builds after the version decision.
-- [ ] Worker-scope verification passes.
+- [x] `cargo tree -i rmcp -e normal --depth 1` shows the intended SDK version.
+- [x] The plan records which HTTP concerns are delegated to `rmcp` and which remain Julie-owned.
+- [x] Existing MCP compile surface still builds after the version decision.
+- [x] Worker-scope verification passes.
+
+**Task 0 execution notes:**
+- `rmcp` and `rmcp-macros` are intentionally locked to 1.6.0. `Cargo.toml` now declares `rmcp = "1.6"` instead of the stale `1.2` lower bound.
+- Julie delegates SDK-covered Host validation, Origin validation, rejection logging, Streamable HTTP `init_timeout`, optional `SessionStore`, resumability hooks, and HTTP/2 `:authority` fallback to `rmcp` 1.6.0 where those APIs fit.
+- Julie still owns daemon endpoint discovery, localhost-only policy, bearer-token generation/storage, adapter auth header injection, lifecycle cleanup, and compatibility with the stdio MCP process boundary.
+- Enabling `transport-streamable-http-client` requires enabling the `client` feature. Without it, `rmcp` 1.6.0 fails to compile because the client Streamable HTTP module imports client-role types.
 
 ### Task 1: Transport Contract and Discovery
 
@@ -58,11 +64,16 @@
 **Approach:** Keep localhost binding explicit. Do not reuse dashboard port semantics blindly unless the same server owns both dashboard and MCP routes with different security middleware. If `daemon_port` currently means dashboard HTTP port, add a separate MCP transport state file or make the state file structured enough to avoid ambiguity.
 
 **Acceptance criteria:**
-- [ ] Adapter can discover the HTTP endpoint without scanning ports.
-- [ ] Stale port files are rejected by an active readiness probe.
-- [ ] Existing IPC probe tests still pass during the migration.
-- [ ] Discovery data records the SDK transport mode and the auth material needed by the adapter, without exposing bearer tokens in logs.
-- [ ] Worker-scope verification passes.
+- [x] Adapter can discover the HTTP endpoint without scanning ports.
+- [x] Stale port files are rejected by an active readiness probe.
+- [x] Existing IPC probe tests still pass during the migration.
+- [x] Discovery data records the SDK transport mode and the auth material needed by the adapter, without exposing bearer tokens in logs.
+- [x] Worker-scope verification passes.
+
+**Task 1 execution notes:**
+- `TransportEndpoint` now supports legacy IPC and `streamable_http` discovery documents. The document records scheme, host, port, MCP path, readiness path, and optional token path, not bearer token contents.
+- `DaemonPaths` now has dedicated MCP transport state files: `daemon-mcp-transport.json` and `daemon-mcp.token`. These are intentionally separate from the dashboard `daemon.port` file.
+- `DaemonLauncher` probes the discovered canonical transport when the PID is alive but `daemon.state` is missing or unreadable. If no structured transport discovery exists, it falls back to the legacy IPC endpoint for migration compatibility.
 
 ### Task 2: HTTP MCP Server Module
 
@@ -161,6 +172,21 @@
 **Assigned verification failure:** Workers stop and report when assigned verification fails, unless this plan explicitly says to update that gate.
 
 **Verification ledger:** Record invariant, command, scope label, commit SHA, result, and timestamp. For security tests, record the rejected request shape and expected status code. If the same HEAD already has a passing ledger entry for the required scope, reuse that evidence instead of rerunning the same expensive gate.
+
+| Scope | Invariant | Command | Commit | Result | Time |
+|-------|-----------|---------|--------|--------|------|
+| worker-red-green | Streamable HTTP discovery records mode/path auth material without copying bearer token values. | `cargo nextest run --lib test_transport_discovery_round_trips_streamable_http_without_token_value 2>&1 \| tail -40` | `40932f23+dirty` | PASS, 1 test in 0.022s | 2026-05-03T22:04:26Z |
+| worker-red-green | Live localhost HTTP readiness endpoint with token file probes as ready. | `cargo nextest run --lib test_transport_probe_reports_ready_for_live_http_endpoint 2>&1 \| tail -30` | `40932f23+dirty` | PASS, 1 test in 0.015s | 2026-05-03T22:04:26Z |
+| worker-red-green | Stale HTTP discovery port is rejected by active readiness probe. | `cargo nextest run --lib test_transport_probe_rejects_stale_http_endpoint_state 2>&1 \| tail -30` | `40932f23+dirty` | PASS, 1 test in 0.013s | 2026-05-03T22:04:26Z |
+| worker-red-green | MCP transport discovery and token files are separate from the dashboard port file. | `cargo nextest run --lib test_daemon_mcp_transport_paths_are_distinct_from_dashboard_port 2>&1 \| tail -30` | `40932f23+dirty` | PASS, 1 test in 0.019s | 2026-05-03T22:04:26Z |
+| worker-red-green | Adapter treats live HTTP discovery as daemon-ready when state file is absent. | `cargo nextest run --lib test_readiness_ready_via_http_discovery_when_no_state_file 2>&1 \| tail -35` | `40932f23+dirty` | PASS, 1 test in 0.023s | 2026-05-03T22:04:26Z |
+| worker-red-green | Adapter treats stale HTTP discovery as starting, not ready. | `cargo nextest run --lib test_readiness_starting_when_http_discovery_is_stale 2>&1 \| tail -35` | `40932f23+dirty` | PASS, 1 test in 0.014s | 2026-05-03T22:04:26Z |
+| worker-red-green | Legacy IPC endpoint round trip still works after transport enum migration. | `cargo nextest run --lib test_transport_endpoint_round_trip 2>&1 \| tail -30` | `40932f23+dirty` | PASS, 1 test in 0.015s | 2026-05-03T22:04:26Z |
+| worker-red-green | Legacy stale Unix socket probe still rejects stale socket files. | `cargo nextest run --lib test_transport_probe_rejects_stale_socket_file 2>&1 \| tail -30` | `40932f23+dirty` | PASS, 1 test in 0.011s | 2026-05-03T22:04:26Z |
+| affected-change | Diff-scoped batch gate for rmcp version lock plus transport discovery/probe changes. | `cargo xtask test changed 2>&1 \| tail -80` | `40932f23+dirty` | PASS, 22 buckets in 371.9s | 2026-05-03T22:04:26Z |
+| expensive-specialist | System gate for adapter transport readiness and daemon lifecycle touch points. | `cargo xtask test system 2>&1 \| tail -80` | `40932f23+dirty` | PASS, 6 buckets in 80.8s | 2026-05-03T22:04:26Z |
+| worker-red-green | Stale HTTP discovery does not block legacy IPC readiness fallback during migration. | `cargo nextest run --lib test_readiness_ready_via_ipc_when_http_discovery_is_stale 2>&1 \| tail -30` | `40932f23+dirty` | PASS, 1 test in 0.022s | 2026-05-03T22:08:55Z |
+| affected-change | Focused post-review transport bucket after IPC fallback correction. | `cargo xtask test bucket transport 2>&1 \| tail -60` | `40932f23+dirty` | PASS, 1 bucket in 4.0s | 2026-05-03T22:08:55Z |
 
 ## Model Routing
 

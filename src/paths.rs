@@ -147,6 +147,16 @@ impl DaemonPaths {
         self.julie_home.join("daemon.port")
     }
 
+    /// Structured discovery file for the daemon MCP Streamable HTTP endpoint.
+    pub fn daemon_mcp_transport(&self) -> PathBuf {
+        self.julie_home.join("daemon-mcp-transport.json")
+    }
+
+    /// Per-daemon bearer token read by local MCP transport clients.
+    pub fn daemon_mcp_token(&self) -> PathBuf {
+        self.julie_home.join("daemon-mcp.token")
+    }
+
     /// Daemon lifecycle state file (starting/ready/stopping)
     pub fn daemon_state(&self) -> PathBuf {
         self.julie_home.join("daemon.state")

@@ -5,8 +5,12 @@ mod tests {
     use crate::adapter::launcher::DaemonLauncher;
     use crate::adapter::launcher::DaemonReadiness;
     use crate::daemon::pid::PidFile;
+    use crate::daemon::transport::TransportEndpoint;
     use crate::paths::DaemonPaths;
     use std::fs;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    use std::thread::{self, JoinHandle};
     use std::time::Duration;
 
     #[test]
@@ -168,6 +172,95 @@ mod tests {
         let _pid_file = PidFile::create(&paths.daemon_pid()).unwrap();
         let launcher = DaemonLauncher::new(paths);
         assert_eq!(launcher.daemon_readiness(), DaemonReadiness::Starting);
+    }
+
+    fn spawn_http_readiness_server(listener: TcpListener) -> JoinHandle<()> {
+        thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = Vec::new();
+            loop {
+                let mut chunk = [0u8; 256];
+                let n = stream.read(&mut chunk).unwrap();
+                assert_ne!(n, 0, "client closed before sending full HTTP request");
+                request.extend_from_slice(&chunk[..n]);
+                if request.windows(4).any(|window| window == b"\r\n\r\n") {
+                    break;
+                }
+            }
+            let request = String::from_utf8_lossy(&request);
+            assert!(request.starts_with("GET /mcp/ready HTTP/1.1"));
+            stream
+                .write_all(b"HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n")
+                .unwrap();
+        })
+    }
+
+    #[test]
+    fn test_readiness_ready_via_http_discovery_when_no_state_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DaemonPaths::with_home(dir.path().to_path_buf());
+        fs::create_dir_all(dir.path()).unwrap();
+        let _pid_file = PidFile::create(&paths.daemon_pid()).unwrap();
+
+        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = spawn_http_readiness_server(listener);
+        let endpoint =
+            TransportEndpoint::streamable_http("127.0.0.1", port, "/mcp", "/mcp/ready", None)
+                .unwrap();
+        endpoint
+            .publish_discovery(&paths.daemon_mcp_transport())
+            .unwrap();
+
+        let launcher = DaemonLauncher::new(paths);
+        assert_eq!(launcher.daemon_readiness(), DaemonReadiness::Ready);
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn test_readiness_starting_when_http_discovery_is_stale() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DaemonPaths::with_home(dir.path().to_path_buf());
+        fs::create_dir_all(dir.path()).unwrap();
+        let _pid_file = PidFile::create(&paths.daemon_pid()).unwrap();
+
+        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        drop(listener);
+        let endpoint =
+            TransportEndpoint::streamable_http("127.0.0.1", port, "/mcp", "/mcp/ready", None)
+                .unwrap();
+        endpoint
+            .publish_discovery(&paths.daemon_mcp_transport())
+            .unwrap();
+
+        let launcher = DaemonLauncher::new(paths);
+        assert_eq!(launcher.daemon_readiness(), DaemonReadiness::Starting);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_readiness_ready_via_ipc_when_http_discovery_is_stale() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DaemonPaths::with_home(dir.path().to_path_buf());
+        fs::create_dir_all(dir.path()).unwrap();
+        let _pid_file = PidFile::create(&paths.daemon_pid()).unwrap();
+
+        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        drop(listener);
+        let endpoint =
+            TransportEndpoint::streamable_http("127.0.0.1", port, "/mcp", "/mcp/ready", None)
+                .unwrap();
+        endpoint
+            .publish_discovery(&paths.daemon_mcp_transport())
+            .unwrap();
+
+        let socket_path = paths.daemon_socket();
+        let _listener = std::os::unix::net::UnixListener::bind(&socket_path).unwrap();
+
+        let launcher = DaemonLauncher::new(paths);
+        assert_eq!(launcher.daemon_readiness(), DaemonReadiness::Ready);
     }
 
     /// IPC fallback: live PID + no state file + listening socket = Ready.

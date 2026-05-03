@@ -11,7 +11,7 @@ use fs2::FileExt;
 use tracing::{debug, info};
 
 use crate::daemon::pid::PidFile;
-use crate::daemon::transport::TransportEndpoint;
+use crate::daemon::transport::{TransportEndpoint, TransportMode};
 use crate::paths::DaemonPaths;
 
 /// Manages daemon lifecycle from the adapter's perspective: detect, launch, wait.
@@ -53,21 +53,36 @@ impl DaemonLauncher {
         PidFile::check_running(&self.paths.daemon_pid()).is_some()
     }
 
-    fn transport_endpoint(&self) -> TransportEndpoint {
-        TransportEndpoint::new(self.paths.daemon_ipc_addr())
+    pub fn transport_endpoint(&self) -> TransportEndpoint {
+        let discovery_path = self.paths.daemon_mcp_transport();
+        match TransportEndpoint::read_discovery(&discovery_path) {
+            Ok(endpoint) => endpoint,
+            Err(_) => TransportEndpoint::new(self.paths.daemon_ipc_addr()),
+        }
     }
 
-    /// Probe the IPC endpoint to check if the daemon is accepting connections.
+    /// Probe the daemon transport endpoint to check if it is accepting connections.
     /// Used as a fallback when the state file is missing (old binary, write failure).
-    fn probe_ipc_endpoint(&self) -> bool {
-        self.transport_endpoint().probe_readiness().is_ready()
+    fn probe_transport_endpoint(&self) -> bool {
+        let endpoint = self.transport_endpoint();
+        if endpoint.probe_readiness().is_ready() {
+            return true;
+        }
+
+        if endpoint.mode() != TransportMode::Ipc {
+            return TransportEndpoint::new(self.paths.daemon_ipc_addr())
+                .probe_readiness()
+                .is_ready();
+        }
+
+        false
     }
 
     /// Assess the daemon's lifecycle phase from PID + state file.
     ///
     /// Cleans up stale files as a side effect when the daemon is dead.
     /// When PID is alive but the state file is missing or unreadable (old binary,
-    /// write failure, permissions), falls back to probing the IPC endpoint.
+    /// write failure, permissions), falls back to probing the daemon transport endpoint.
     pub fn daemon_readiness(&self) -> DaemonReadiness {
         match PidFile::check_running(&self.paths.daemon_pid()) {
             None => {
@@ -83,7 +98,7 @@ impl DaemonLauncher {
                         // State file missing or unreadable (old binary, write failure).
                         // Fall back to transport probing: if the endpoint is
                         // reachable, the daemon is ready regardless of state file.
-                        if self.probe_ipc_endpoint() {
+                        if self.probe_transport_endpoint() {
                             DaemonReadiness::Ready
                         } else {
                             DaemonReadiness::Starting

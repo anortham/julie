@@ -123,6 +123,24 @@ fn test_migration_state_path() {
 }
 
 #[test]
+fn test_daemon_mcp_transport_paths_are_distinct_from_dashboard_port() {
+    let paths = DaemonPaths::with_home(PathBuf::from("/tmp/test-julie"));
+    assert_eq!(
+        paths.daemon_mcp_transport(),
+        PathBuf::from("/tmp/test-julie/daemon-mcp-transport.json")
+    );
+    assert_eq!(
+        paths.daemon_mcp_token(),
+        PathBuf::from("/tmp/test-julie/daemon-mcp.token")
+    );
+    assert_ne!(
+        paths.daemon_mcp_transport(),
+        paths.daemon_port(),
+        "MCP Streamable HTTP discovery must not reuse the dashboard port file"
+    );
+}
+
+#[test]
 fn test_custom_julie_home() {
     let paths = DaemonPaths::with_home(PathBuf::from("/tmp/test-julie"));
     assert_eq!(paths.julie_home(), PathBuf::from("/tmp/test-julie"));
