@@ -1,8 +1,8 @@
-use super::ManageWorkspaceTool;
 use super::cleanup::{
     CLEANUP_ACTION_MANUAL_DELETE, CLEANUP_REASON_USER_REQUEST, WorkspaceDeleteOutcome,
     delete_workspace_if_allowed, prune_missing_workspaces,
 };
+use super::{ManageWorkspaceTool, registry_store_for};
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::{CallToolResult, CallToolResultExt, Content};
 use crate::workspace::registry::generate_workspace_id;
@@ -22,9 +22,10 @@ impl ManageWorkspaceTool {
             let message = "Workspace registration requires daemon mode. Start the daemon with `julie daemon`.";
             return Ok(CallToolResult::error(vec![Content::text(message)]));
         };
+        let registry_store = registry_store_for(db, handler.workspace_pool.as_ref())?;
 
         if let Err(error) = prune_missing_workspaces(
-            db,
+            &registry_store,
             handler.workspace_pool.as_ref(),
             handler.watcher_pool.as_ref(),
         )
@@ -44,7 +45,7 @@ impl ManageWorkspaceTool {
             .map_err(|e| anyhow!("Failed to canonicalize workspace path '{}': {e}", path))?;
         let canonical_path_str = canonical_path.to_string_lossy().to_string();
 
-        let existing = db.get_workspace_by_path(&canonical_path_str)?;
+        let existing = registry_store.get_workspace_by_path(&canonical_path_str)?;
         let workspace_id = existing
             .as_ref()
             .map(|row| row.workspace_id.clone())
@@ -77,7 +78,7 @@ impl ManageWorkspaceTool {
             }
         }
 
-        db.upsert_workspace(&workspace_id, &canonical_path_str, "indexing")?;
+        registry_store.upsert_workspace(&workspace_id, &canonical_path_str, "indexing")?;
         info!(
             workspace_id = %workspace_id,
             path = %canonical_path_str,
@@ -89,8 +90,8 @@ impl ManageWorkspaceTool {
             .await
         {
             Ok(result) => {
-                db.update_workspace_status(&workspace_id, "ready")?;
-                db.update_workspace_stats(
+                registry_store.update_workspace_status(&workspace_id, "ready")?;
+                registry_store.update_workspace_stats(
                     &workspace_id,
                     result.symbols_total as i64,
                     result.files_total as i64,
@@ -130,7 +131,9 @@ impl ManageWorkspaceTool {
                 Ok(CallToolResult::text_content(vec![Content::text(message)]))
             }
             Err(e) => {
-                if let Err(update_err) = db.update_workspace_status(&workspace_id, "error") {
+                if let Err(update_err) =
+                    registry_store.update_workspace_status(&workspace_id, "error")
+                {
                     warn!(
                         workspace_id = %workspace_id,
                         error = %update_err,
@@ -160,9 +163,10 @@ impl ManageWorkspaceTool {
 
         // Daemon mode: use DaemonDatabase
         if let Some(ref db) = handler.daemon_db {
+            let registry_store = registry_store_for(db, handler.workspace_pool.as_ref())?;
             return Ok(
                 match delete_workspace_if_allowed(
-                    db,
+                    &registry_store,
                     handler.workspace_pool.as_ref(),
                     handler.watcher_pool.as_ref(),
                     workspace_id,

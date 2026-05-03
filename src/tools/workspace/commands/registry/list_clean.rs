@@ -1,5 +1,5 @@
-use super::ManageWorkspaceTool;
 use super::cleanup::run_cleanup_sweep;
+use super::{ManageWorkspaceTool, registry_store_for};
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::{CallToolResult, CallToolResultExt, Content};
 use anyhow::Result;
@@ -15,8 +15,9 @@ impl ManageWorkspaceTool {
 
         // Daemon mode: use DaemonDatabase
         if let Some(ref db) = handler.daemon_db {
+            let registry_store = registry_store_for(db, handler.workspace_pool.as_ref())?;
             let cleanup_warning = match run_cleanup_sweep(
-                db,
+                &registry_store,
                 handler.workspace_pool.as_ref(),
                 handler.watcher_pool.as_ref(),
             )
@@ -35,7 +36,7 @@ impl ManageWorkspaceTool {
             let active_workspace_ids: std::collections::HashSet<String> =
                 handler.active_workspace_ids().await.into_iter().collect();
 
-            let all_workspaces = match db.list_workspaces() {
+            let all_workspaces = match registry_store.list_workspaces() {
                 Ok(workspaces) => workspaces,
                 Err(e) => {
                     let message = format!("Failed to list workspaces: {}", e);
@@ -100,8 +101,9 @@ impl ManageWorkspaceTool {
 
         // Daemon mode: use DaemonDatabase
         if let Some(ref db) = handler.daemon_db {
+            let registry_store = registry_store_for(db, handler.workspace_pool.as_ref())?;
             let summary = match run_cleanup_sweep(
-                db,
+                &registry_store,
                 handler.workspace_pool.as_ref(),
                 handler.watcher_pool.as_ref(),
             )

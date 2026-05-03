@@ -1,14 +1,15 @@
 use std::collections::HashSet;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
 use tracing::{info, warn};
 
-use crate::daemon::database::{DaemonDatabase, WorkspaceRow};
+use crate::daemon::database::WorkspaceRow;
 use crate::daemon::watcher_pool::WatcherPool;
 use crate::daemon::workspace_pool::WorkspacePool;
+use crate::daemon::workspace_registry_store::WorkspaceRegistryStore;
 
 pub(crate) const CLEANUP_ACTION_AUTO_PRUNE: &str = "auto_prune";
 pub(crate) const CLEANUP_ACTION_MANUAL_DELETE: &str = "manual_delete";
@@ -53,19 +54,6 @@ pub(crate) async fn path_missing_after_grace(path: &Path, recheck_delay: Duratio
 
     tokio::time::sleep(recheck_delay).await;
     Ok(!path.try_exists()?)
-}
-
-fn index_dir_for(
-    workspace_pool: Option<&Arc<WorkspacePool>>,
-    workspace_id: &str,
-) -> Result<PathBuf> {
-    if let Some(pool) = workspace_pool {
-        return Ok(pool.indexes_dir().join(workspace_id));
-    }
-
-    Ok(crate::paths::DaemonPaths::try_new()?
-        .indexes_dir()
-        .join(workspace_id))
 }
 
 async fn watcher_ref_count(watcher_pool: Option<&Arc<WatcherPool>>, workspace_id: &str) -> usize {
@@ -189,14 +177,14 @@ pub(crate) async fn inspect_workspace_cleanup_state(
 }
 
 pub(crate) async fn delete_workspace_if_allowed(
-    daemon_db: &Arc<DaemonDatabase>,
+    registry_store: &WorkspaceRegistryStore,
     workspace_pool: Option<&Arc<WorkspacePool>>,
     watcher_pool: Option<&Arc<WatcherPool>>,
     workspace_id: &str,
     action: &str,
     reason: &str,
 ) -> Result<WorkspaceDeleteOutcome> {
-    let Some(workspace) = daemon_db.get_workspace(workspace_id)? else {
+    let Some(workspace) = registry_store.get_workspace(workspace_id)? else {
         return Ok(WorkspaceDeleteOutcome::NotFound {
             workspace_id: workspace_id.to_string(),
         });
@@ -226,13 +214,12 @@ pub(crate) async fn delete_workspace_if_allowed(
         pool.evict_workspace(&workspace.workspace_id).await;
     }
 
-    let index_dir = index_dir_for(workspace_pool, &workspace.workspace_id)?;
+    let index_dir = registry_store.index_dir_for(&workspace.workspace_id);
     if index_dir.exists() {
         tokio::fs::remove_dir_all(&index_dir).await?;
     }
 
-    daemon_db.delete_workspace(&workspace.workspace_id)?;
-    daemon_db.insert_cleanup_event(&workspace.workspace_id, &workspace.path, action, reason)?;
+    registry_store.delete_workspace_and_record_cleanup(&workspace, action, reason)?;
     info!(
         workspace_id = %workspace.workspace_id,
         path = %workspace.path,
@@ -248,11 +235,11 @@ pub(crate) async fn delete_workspace_if_allowed(
 }
 
 pub(crate) async fn prune_missing_workspaces(
-    daemon_db: &Arc<DaemonDatabase>,
+    registry_store: &WorkspaceRegistryStore,
     workspace_pool: Option<&Arc<WorkspacePool>>,
     watcher_pool: Option<&Arc<WatcherPool>>,
 ) -> Result<CleanupSweepSummary> {
-    let all_workspaces = daemon_db.list_workspaces()?;
+    let all_workspaces = registry_store.list_workspaces()?;
     let mut summary = CleanupSweepSummary::default();
 
     for workspace in all_workspaces {
@@ -288,7 +275,7 @@ pub(crate) async fn prune_missing_workspaces(
         }
 
         match delete_workspace_if_allowed(
-            daemon_db,
+            registry_store,
             workspace_pool,
             watcher_pool,
             &workspace.workspace_id,
@@ -315,23 +302,16 @@ pub(crate) async fn prune_missing_workspaces(
 }
 
 pub(crate) async fn prune_orphan_index_dirs(
-    daemon_db: &Arc<DaemonDatabase>,
-    workspace_pool: Option<&Arc<WorkspacePool>>,
+    registry_store: &WorkspaceRegistryStore,
 ) -> Result<Vec<String>> {
-    let indexes_dir = if let Some(pool) = workspace_pool {
-        pool.indexes_dir().to_path_buf()
-    } else {
-        crate::paths::DaemonPaths::try_new()?.indexes_dir()
-    };
-
-    let registered_ids: HashSet<String> = daemon_db
+    let registered_ids: HashSet<String> = registry_store
         .list_workspaces()?
         .into_iter()
         .map(|workspace| workspace.workspace_id)
         .collect();
 
     let mut removed = Vec::new();
-    let entries = match std::fs::read_dir(&indexes_dir) {
+    let entries = match std::fs::read_dir(registry_store.indexes_dir()) {
         Ok(entries) => entries,
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(removed),
         Err(err) => return Err(err.into()),
@@ -353,7 +333,7 @@ pub(crate) async fn prune_orphan_index_dirs(
 
         let dir_path = entry.path();
         tokio::fs::remove_dir_all(&dir_path).await?;
-        daemon_db.insert_cleanup_event(
+        registry_store.record_cleanup_event(
             &dir_name,
             &dir_path.to_string_lossy(),
             CLEANUP_ACTION_AUTO_PRUNE,
@@ -371,11 +351,12 @@ pub(crate) async fn prune_orphan_index_dirs(
 }
 
 pub(crate) async fn run_cleanup_sweep(
-    daemon_db: &Arc<DaemonDatabase>,
+    registry_store: &WorkspaceRegistryStore,
     workspace_pool: Option<&Arc<WorkspacePool>>,
     watcher_pool: Option<&Arc<WatcherPool>>,
 ) -> Result<CleanupSweepSummary> {
-    let mut summary = prune_missing_workspaces(daemon_db, workspace_pool, watcher_pool).await?;
-    summary.pruned_orphan_dirs = prune_orphan_index_dirs(daemon_db, workspace_pool).await?;
+    let mut summary =
+        prune_missing_workspaces(registry_store, workspace_pool, watcher_pool).await?;
+    summary.pruned_orphan_dirs = prune_orphan_index_dirs(registry_store).await?;
     Ok(summary)
 }

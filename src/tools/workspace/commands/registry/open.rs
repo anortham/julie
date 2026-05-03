@@ -3,12 +3,12 @@ use std::path::PathBuf;
 use anyhow::{Result, anyhow};
 use tracing::info;
 
-use super::ManageWorkspaceTool;
 use super::cleanup::{
     CLEANUP_ACTION_AUTO_PRUNE, CLEANUP_REASON_MISSING_PATH, WorkspaceCleanupState,
     WorkspaceDeleteOutcome, delete_workspace_if_allowed, inspect_workspace_cleanup_state,
 };
 use super::refresh_stats::RefreshWorkspaceOutcome;
+use super::{ManageWorkspaceTool, registry_store_for};
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::{CallToolResult, CallToolResultExt, Content};
 use crate::workspace::registry::generate_workspace_id;
@@ -39,6 +39,7 @@ impl ManageWorkspaceTool {
                 "Workspace open requires daemon mode. Start the daemon with `julie daemon`.";
             return Ok(CallToolResult::error(vec![Content::text(message)]));
         };
+        let registry_store = registry_store_for(db, handler.workspace_pool.as_ref())?;
 
         // A primary workspace swap is already in progress; refuse to mutate
         // session state or primary binding concurrently. The swap machinery
@@ -64,7 +65,7 @@ impl ManageWorkspaceTool {
                 .map_err(|e| anyhow!("Failed to canonicalize workspace path '{}': {e}", path))?;
             let canonical_path_str = canonical_path.to_string_lossy().to_string();
 
-            if let Some(row) = db.get_workspace_by_path(&canonical_path_str)? {
+            if let Some(row) = registry_store.get_workspace_by_path(&canonical_path_str)? {
                 let workspace_id = row.workspace_id;
                 let status = row.status;
                 let is_primary = current_primary_id.as_deref() == Some(workspace_id.as_str());
@@ -77,7 +78,7 @@ impl ManageWorkspaceTool {
                 }
             } else {
                 let workspace_id = generate_workspace_id(&canonical_path_str)?;
-                db.upsert_workspace(&workspace_id, &canonical_path_str, "pending")?;
+                registry_store.upsert_workspace(&workspace_id, &canonical_path_str, "pending")?;
                 OpenTarget {
                     is_primary: current_primary_id.as_deref() == Some(workspace_id.as_str()),
                     workspace_id,
@@ -87,7 +88,7 @@ impl ManageWorkspaceTool {
                 }
             }
         } else if let Some(workspace_id) = self.workspace_id.as_ref() {
-            let row = db
+            let row = registry_store
                 .get_workspace(workspace_id)?
                 .ok_or_else(|| anyhow!("Workspace not found: {workspace_id}"))?;
             match inspect_workspace_cleanup_state(
@@ -101,7 +102,7 @@ impl ManageWorkspaceTool {
                 WorkspaceCleanupState::Present => {}
                 WorkspaceCleanupState::MissingPrunable => {
                     let cleanup_result = delete_workspace_if_allowed(
-                        db,
+                        &registry_store,
                         handler.workspace_pool.as_ref(),
                         handler.watcher_pool.as_ref(),
                         workspace_id,
@@ -175,10 +176,10 @@ impl ManageWorkspaceTool {
                 .handle_index_command(handler, Some(target.canonical_path.clone()), force, false)
                 .await?;
 
-            let indexed_ready = handler
-                .daemon_db
-                .as_ref()
-                .and_then(|db| db.get_workspace(&target.workspace_id).ok().flatten())
+            let indexed_ready = registry_store
+                .get_workspace(&target.workspace_id)
+                .ok()
+                .flatten()
                 .is_some_and(|row| row.status == "ready");
             if !indexed_ready {
                 return Ok(result);

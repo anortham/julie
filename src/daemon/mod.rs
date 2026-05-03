@@ -17,6 +17,7 @@ pub mod shutdown_event;
 pub mod transport;
 pub mod watcher_pool;
 pub mod workspace_pool;
+pub mod workspace_registry_store;
 
 use std::io;
 use std::path::Path;
@@ -49,6 +50,7 @@ use self::session::SessionTracker;
 use self::transport::TransportEndpoint;
 use self::watcher_pool::WatcherPool;
 use self::workspace_pool::WorkspacePool;
+use self::workspace_registry_store::WorkspaceRegistryStore;
 
 /// Classify an `accept()` error as transient or fatal.
 ///
@@ -365,13 +367,14 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
     let sessions = Arc::new(SessionTracker::new());
 
     let cleanup_sweep_handle = daemon_db.as_ref().map(|daemon_db| {
-        let daemon_db = Arc::clone(daemon_db);
+        let registry_store =
+            WorkspaceRegistryStore::new(Arc::clone(daemon_db), paths.indexes_dir());
         tokio::spawn(async move {
             let mut tick = tokio::time::interval(Duration::from_secs(600));
             loop {
                 tick.tick().await;
                 match crate::tools::workspace::commands::registry::cleanup::run_cleanup_sweep(
-                    &daemon_db,
+                    &registry_store,
                     Some(&cleanup_pool),
                     Some(&watcher_pool_for_cleanup),
                 )

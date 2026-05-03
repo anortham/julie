@@ -10,6 +10,30 @@
 
 pub use super::ManageWorkspaceTool;
 
+use std::sync::Arc;
+
+use anyhow::Result;
+
+use crate::daemon::database::DaemonDatabase;
+use crate::daemon::workspace_pool::WorkspacePool;
+use crate::daemon::workspace_registry_store::WorkspaceRegistryStore;
+
+pub(crate) fn registry_store_for(
+    daemon_db: &Arc<DaemonDatabase>,
+    workspace_pool: Option<&Arc<WorkspacePool>>,
+) -> Result<WorkspaceRegistryStore> {
+    let indexes_dir = if let Some(pool) = workspace_pool {
+        pool.indexes_dir().to_path_buf()
+    } else {
+        crate::paths::DaemonPaths::try_new()?.indexes_dir()
+    };
+
+    Ok(WorkspaceRegistryStore::new(
+        Arc::clone(daemon_db),
+        indexes_dir,
+    ))
+}
+
 // Split command implementations into logical modules
 pub(crate) mod cleanup;
 mod health;

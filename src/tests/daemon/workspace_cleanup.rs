@@ -6,10 +6,12 @@ mod tests {
 
     use crate::daemon::database::DaemonDatabase;
     use crate::daemon::workspace_pool::WorkspacePool;
+    use crate::daemon::workspace_registry_store::WorkspaceRegistryStore;
     use crate::handler::JulieServerHandler;
     use crate::tools::workspace::ManageWorkspaceTool;
     use crate::tools::workspace::commands::registry::cleanup::{
-        WorkspaceCleanupState, inspect_workspace_cleanup_state, path_missing_after_grace,
+        CLEANUP_ACTION_AUTO_PRUNE, CLEANUP_REASON_MISSING_PATH, WorkspaceCleanupState,
+        inspect_workspace_cleanup_state, path_missing_after_grace, run_cleanup_sweep,
     };
     use crate::workspace::registry::generate_workspace_id;
 
@@ -135,6 +137,111 @@ mod tests {
                 .iter()
                 .any(|event| event.workspace_id == target_id && event.action == "auto_prune"),
             "auto-prune should record a cleanup event"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_open_auto_prune_and_cleanup_sweep_share_registry_delete_path() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let (daemon_db, pool, handler, _primary_id) = build_primary_bound_handler(&temp_dir).await;
+        let indexes_dir = temp_dir.path().join("indexes");
+        let registry_store =
+            WorkspaceRegistryStore::new(Arc::clone(&daemon_db), indexes_dir.clone());
+
+        let open_root = temp_dir.path().join("missing-open-workspace");
+        let sweep_root = temp_dir.path().join("missing-sweep-workspace");
+        fs::create_dir_all(&open_root).unwrap();
+        fs::create_dir_all(&sweep_root).unwrap();
+        fs::write(open_root.join("lib.rs"), "pub fn open_target() {}\n").unwrap();
+        fs::write(sweep_root.join("lib.rs"), "pub fn sweep_target() {}\n").unwrap();
+
+        let open_path = open_root.canonicalize().unwrap();
+        let sweep_path = sweep_root.canonicalize().unwrap();
+        let open_path_str = open_path.to_string_lossy().to_string();
+        let sweep_path_str = sweep_path.to_string_lossy().to_string();
+        let open_id = generate_workspace_id(&open_path_str).unwrap();
+        let sweep_id = generate_workspace_id(&sweep_path_str).unwrap();
+        daemon_db
+            .upsert_workspace(&open_id, &open_path_str, "ready")
+            .unwrap();
+        daemon_db
+            .upsert_workspace(&sweep_id, &sweep_path_str, "ready")
+            .unwrap();
+        fs::create_dir_all(indexes_dir.join(&open_id)).unwrap();
+        fs::create_dir_all(indexes_dir.join(&sweep_id)).unwrap();
+
+        fs::remove_dir_all(&open_root).unwrap();
+        fs::remove_dir_all(&sweep_root).unwrap();
+
+        let open_result = ManageWorkspaceTool {
+            operation: "open".to_string(),
+            path: None,
+            force: Some(false),
+            name: None,
+            workspace_id: Some(open_id.clone()),
+            detailed: None,
+        }
+        .call_tool(&handler)
+        .await
+        .expect("open should prune a missing inactive workspace");
+
+        let open_text = extract_text(&open_result);
+        assert!(
+            open_text.contains("Workspace Pruned"),
+            "open should report a registry prune, got: {open_text}"
+        );
+
+        let sweep_summary = run_cleanup_sweep(&registry_store, Some(&pool), None)
+            .await
+            .expect("cleanup sweep should prune missing inactive workspace");
+
+        assert_eq!(
+            sweep_summary.pruned_workspaces,
+            vec![sweep_id.clone()],
+            "cleanup sweep should report the workspace it pruned"
+        );
+        assert!(
+            daemon_db.get_workspace(&open_id).unwrap().is_none(),
+            "open auto-prune should delete the workspace row"
+        );
+        assert!(
+            daemon_db.get_workspace(&sweep_id).unwrap().is_none(),
+            "cleanup sweep should delete the workspace row"
+        );
+        assert!(
+            !indexes_dir.join(&open_id).exists(),
+            "open auto-prune should remove the index directory"
+        );
+        assert!(
+            !indexes_dir.join(&sweep_id).exists(),
+            "cleanup sweep should remove the index directory"
+        );
+
+        let events = daemon_db.list_cleanup_events(10).unwrap();
+        let missing_path_events = events
+            .iter()
+            .filter(|event| {
+                event.action == CLEANUP_ACTION_AUTO_PRUNE
+                    && event.reason == CLEANUP_REASON_MISSING_PATH
+                    && (event.workspace_id == open_id || event.workspace_id == sweep_id)
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            missing_path_events.len(),
+            2,
+            "open auto-prune and cleanup sweep should both record missing-path cleanup events"
+        );
+        assert!(
+            missing_path_events
+                .iter()
+                .any(|event| event.path == open_path_str),
+            "open auto-prune event should preserve the deleted workspace path"
+        );
+        assert!(
+            missing_path_events
+                .iter()
+                .any(|event| event.path == sweep_path_str),
+            "cleanup sweep event should preserve the deleted workspace path"
         );
     }
 

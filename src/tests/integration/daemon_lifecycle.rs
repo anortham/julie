@@ -19,6 +19,7 @@ mod tests {
     use crate::daemon::transport::TransportEndpoint;
     use crate::daemon::watcher_pool::WatcherPool;
     use crate::daemon::workspace_pool::WorkspacePool;
+    use crate::daemon::workspace_registry_store::WorkspaceRegistryStore;
     use crate::handler::JulieServerHandler;
     use crate::migration::run_migration_for_workspace;
     use crate::paths::DaemonPaths;
@@ -316,7 +317,7 @@ mod tests {
         std::fs::create_dir_all(&indexes_dir).expect("create indexes dir");
 
         let pool = Arc::new(WorkspacePool::new(
-            indexes_dir,
+            indexes_dir.clone(),
             Some(Arc::clone(&daemon_db)),
             Some(Arc::clone(&watcher_pool)),
             None,
@@ -337,7 +338,9 @@ mod tests {
 
         std::fs::remove_dir_all(&ws_path).expect("remove workspace path");
 
-        let blocked = run_cleanup_sweep(&daemon_db, Some(&pool), Some(&watcher_pool))
+        let registry_store = WorkspaceRegistryStore::new(Arc::clone(&daemon_db), indexes_dir);
+
+        let blocked = run_cleanup_sweep(&registry_store, Some(&pool), Some(&watcher_pool))
             .await
             .expect("cleanup sweep should succeed");
         assert!(
@@ -363,7 +366,7 @@ mod tests {
         );
 
         pool.disconnect_session(&ws_id).await;
-        let still_blocked = run_cleanup_sweep(&daemon_db, Some(&pool), Some(&watcher_pool))
+        let still_blocked = run_cleanup_sweep(&registry_store, Some(&pool), Some(&watcher_pool))
             .await
             .expect("cleanup sweep should still succeed after one disconnect");
         assert!(
@@ -378,7 +381,7 @@ mod tests {
         );
 
         pool.disconnect_session(&ws_id).await;
-        let pruned = run_cleanup_sweep(&daemon_db, Some(&pool), Some(&watcher_pool))
+        let pruned = run_cleanup_sweep(&registry_store, Some(&pool), Some(&watcher_pool))
             .await
             .expect("cleanup sweep should prune the missing workspace once detached");
         assert!(
