@@ -128,6 +128,10 @@ fn expected_tiers() -> BTreeMap<String, Vec<String>> {
                 "core-fast".to_string(),
                 "daemon".to_string(),
                 "dashboard".to_string(),
+                "projection".to_string(),
+                "transport".to_string(),
+                "lifecycle".to_string(),
+                "workspace-runtime".to_string(),
                 "workspace-init".to_string(),
                 "integration".to_string(),
                 "tools-dogfood-repo-index".to_string(),
@@ -145,7 +149,14 @@ fn expected_tiers() -> BTreeMap<String, Vec<String>> {
         ),
         (
             "system".to_string(),
-            vec!["workspace-init".to_string(), "integration".to_string()],
+            vec![
+                "projection".to_string(),
+                "transport".to_string(),
+                "lifecycle".to_string(),
+                "workspace-runtime".to_string(),
+                "workspace-init".to_string(),
+                "integration".to_string(),
+            ],
         ),
     ])
 }
@@ -242,11 +253,46 @@ fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
             },
         ),
         (
+            "lifecycle",
+            ExpectedBucket {
+                expected_seconds: 30,
+                timeout_seconds: 90,
+                commands: &[
+                    "cargo nextest run --lib tests::daemon::lifecycle -- --skip search_quality",
+                    "cargo nextest run --lib tests::integration::daemon_lifecycle -- --skip search_quality",
+                ],
+            },
+        ),
+        (
+            "projection",
+            ExpectedBucket {
+                expected_seconds: 45,
+                timeout_seconds: 120,
+                commands: &[
+                    "cargo nextest run --lib tests::integration::projection_repair -- --skip search_quality",
+                ],
+            },
+        ),
+        (
             "search-quality",
             ExpectedBucket {
                 expected_seconds: 180,
                 timeout_seconds: 300,
                 commands: &["cargo nextest run --lib search_quality"],
+            },
+        ),
+        (
+            "transport",
+            ExpectedBucket {
+                expected_seconds: 30,
+                timeout_seconds: 90,
+                commands: &[
+                    "cargo nextest run --lib tests::adapter -- --skip search_quality",
+                    "cargo nextest run --lib tests::daemon::transport -- --skip search_quality",
+                    "cargo nextest run --lib tests::daemon::ipc -- --skip search_quality",
+                    "cargo nextest run --lib tests::daemon::ipc_headers -- --skip search_quality",
+                    "cargo nextest run --lib tests::daemon::ipc_session -- --skip search_quality",
+                ],
             },
         ),
         (
@@ -336,6 +382,19 @@ fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
                 ],
             },
         ),
+        (
+            "workspace-runtime",
+            ExpectedBucket {
+                expected_seconds: 45,
+                timeout_seconds: 120,
+                commands: &[
+                    "cargo nextest run --lib tests::daemon::workspace_pool -- --skip search_quality",
+                    "cargo nextest run --lib tests::daemon::watcher_pool -- --skip search_quality",
+                    "cargo nextest run --lib tests::daemon::workspace_cleanup -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::workspace::registry -- --skip search_quality",
+                ],
+            },
+        ),
     ])
 }
 
@@ -413,12 +472,41 @@ fn expected_bucket_metadata() -> BTreeMap<&'static str, ExpectedBucketMetadata> 
             },
         ),
         (
+            "lifecycle",
+            ExpectedBucketMetadata {
+                scope_label: "system",
+                owner: "lead",
+                expensive: false,
+                notes: Some(
+                    "daemon lifecycle and restart handoff (backed by daemon::lifecycle + integration::daemon_lifecycle)",
+                ),
+            },
+        ),
+        (
+            "projection",
+            ExpectedBucketMetadata {
+                scope_label: "system",
+                owner: "lead",
+                expensive: false,
+                notes: Some("projection repair gate (backed by integration::projection_repair)"),
+            },
+        ),
+        (
             "search-quality",
             ExpectedBucketMetadata {
                 scope_label: "dogfood",
                 owner: "lead",
                 expensive: true,
                 notes: Some("heavy fixture-backed relevance suite"),
+            },
+        ),
+        (
+            "transport",
+            ExpectedBucketMetadata {
+                scope_label: "system",
+                owner: "lead",
+                expensive: false,
+                notes: Some("adapter + IPC transport parity (backed by adapter/daemon transport tests)"),
             },
         ),
         (
@@ -473,6 +561,17 @@ fn expected_bucket_metadata() -> BTreeMap<&'static str, ExpectedBucketMetadata> 
                 owner: "lead",
                 expensive: false,
                 notes: Some("workspace initialization path"),
+            },
+        ),
+        (
+            "workspace-runtime",
+            ExpectedBucketMetadata {
+                scope_label: "system",
+                owner: "lead",
+                expensive: false,
+                notes: Some(
+                    "workspace pool and watcher runtime ownership (backed by daemon workspace/watcher tests)",
+                ),
             },
         ),
     ])

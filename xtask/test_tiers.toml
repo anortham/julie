@@ -5,10 +5,10 @@
 smoke = ["cli", "core-database", "core-embeddings", "tools-get-context"]
 dev = ["cli", "core-database", "core-embeddings", "tools-get-context", "tools-search", "tools-workspace", "tools-misc", "core-fast", "daemon", "dashboard"]
 # System coverage kept separate from fast local buckets.
-system = ["workspace-init", "integration"]
+system = ["projection", "transport", "lifecycle", "workspace-runtime", "workspace-init", "integration"]
 # Dogfood stays isolated because it is the long pole.
 dogfood = ["tools-dogfood-repo-index", "search-quality"]
-full = ["cli", "core-database", "core-embeddings", "tools-get-context", "tools-search", "tools-workspace", "tools-misc", "core-fast", "daemon", "dashboard", "workspace-init", "integration", "tools-dogfood-repo-index", "search-quality"]
+full = ["cli", "core-database", "core-embeddings", "tools-get-context", "tools-search", "tools-workspace", "tools-misc", "core-fast", "daemon", "dashboard", "projection", "transport", "lifecycle", "workspace-runtime", "workspace-init", "integration", "tools-dogfood-repo-index", "search-quality"]
 
 [blocked_tiers]
 
@@ -153,6 +153,52 @@ timeout_seconds = 60
 scope_label = "dashboard"
 notes = "dashboard route coverage"
 commands = ["cargo nextest run --lib tests::dashboard -- --skip search_quality"]
+
+[buckets.projection]
+# Projection specialist gate while architecture work is staged.
+expected_seconds = 45
+timeout_seconds = 120
+scope_label = "system"
+notes = "projection repair gate (backed by integration::projection_repair)"
+commands = ["cargo nextest run --lib tests::integration::projection_repair -- --skip search_quality"]
+
+[buckets.transport]
+# Transport specialist gate for adapter and IPC parity slices.
+expected_seconds = 30
+timeout_seconds = 90
+scope_label = "system"
+notes = "adapter + IPC transport parity (backed by adapter/daemon transport tests)"
+commands = [
+  "cargo nextest run --lib tests::adapter -- --skip search_quality",
+  "cargo nextest run --lib tests::daemon::transport -- --skip search_quality",
+  "cargo nextest run --lib tests::daemon::ipc -- --skip search_quality",
+  "cargo nextest run --lib tests::daemon::ipc_headers -- --skip search_quality",
+  "cargo nextest run --lib tests::daemon::ipc_session -- --skip search_quality",
+]
+
+[buckets.lifecycle]
+# Lifecycle specialist gate for daemon startup, drain, and restart handoff.
+expected_seconds = 30
+timeout_seconds = 90
+scope_label = "system"
+notes = "daemon lifecycle and restart handoff (backed by daemon::lifecycle + integration::daemon_lifecycle)"
+commands = [
+  "cargo nextest run --lib tests::daemon::lifecycle -- --skip search_quality",
+  "cargo nextest run --lib tests::integration::daemon_lifecycle -- --skip search_quality",
+]
+
+[buckets.workspace-runtime]
+# Workspace runtime specialist gate for pool ownership and watcher cleanup slices.
+expected_seconds = 45
+timeout_seconds = 120
+scope_label = "system"
+notes = "workspace pool and watcher runtime ownership (backed by daemon workspace/watcher tests)"
+commands = [
+  "cargo nextest run --lib tests::daemon::workspace_pool -- --skip search_quality",
+  "cargo nextest run --lib tests::daemon::watcher_pool -- --skip search_quality",
+  "cargo nextest run --lib tests::daemon::workspace_cleanup -- --skip search_quality",
+  "cargo nextest run --lib tests::tools::workspace::registry -- --skip search_quality",
+]
 
 [buckets.workspace-init]
 # System setup path; investigated and confirmed fast (~1.3s local). Budget updated from stale 360s.

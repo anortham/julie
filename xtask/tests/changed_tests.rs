@@ -111,12 +111,12 @@ fn changed_tests_dogfood_repo_index_file_routes_to_new_bucket() {
 fn changed_tests_reports_fallback_prefix_rationale() {
     let manifest = sample_manifest();
 
-    let selection = select_changed_buckets(&manifest, &["src/adapter/mod.rs".to_string()]);
+    let selection = select_changed_buckets(&manifest, &["src/analysis/scoring.rs".to_string()]);
     let output = render_changed_selection(&selection);
 
     assert_eq!(selection.mode, ChangedSelectionMode::FallbackToDev);
     assert!(output.contains(
-        "CHANGED: rationale: src/adapter/mod.rs -> dev (fallback prefix: src/adapter/)"
+        "CHANGED: rationale: src/analysis/scoring.rs -> dev (fallback prefix: src/analysis/)"
     ));
 }
 
@@ -132,6 +132,92 @@ fn changed_tests_reports_path_to_bucket_rationale() {
     assert!(output.contains(
         "CHANGED: rationale: src/tools/search/mod.rs -> tools-search"
     ));
+}
+
+#[test]
+fn changed_tests_routes_projection_paths_to_projection_bucket() {
+    let manifest = sample_manifest();
+
+    let selection = select_changed_buckets(&manifest, &["src/search/projection.rs".to_string()]);
+
+    assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
+    assert_eq!(selection.bucket_names, vec!["projection"]);
+}
+
+#[test]
+fn changed_tests_routes_projection_pipeline_paths_to_projection_bucket() {
+    let manifest = sample_manifest();
+
+    let selection = select_changed_buckets(
+        &manifest,
+        &["src/tools/workspace/indexing/pipeline.rs".to_string()],
+    );
+
+    assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
+    assert_eq!(selection.bucket_names, vec!["projection"]);
+}
+
+#[test]
+fn changed_tests_routes_lifecycle_paths_to_lifecycle_bucket() {
+    let manifest = sample_manifest();
+
+    let selection = select_changed_buckets(&manifest, &["src/daemon/lifecycle.rs".to_string()]);
+
+    assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
+    assert_eq!(selection.bucket_names, vec!["lifecycle"]);
+}
+
+#[test]
+fn changed_tests_routes_daemon_mod_to_lifecycle_and_daemon_buckets() {
+    let manifest = sample_manifest();
+
+    let selection = select_changed_buckets(&manifest, &["src/daemon/mod.rs".to_string()]);
+
+    assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
+    assert_eq!(selection.bucket_names, vec!["lifecycle", "daemon"]);
+}
+
+#[test]
+fn changed_tests_routes_transport_paths_to_transport_bucket() {
+    let manifest = sample_manifest();
+
+    let selection = select_changed_buckets(&manifest, &["src/adapter/mod.rs".to_string()]);
+
+    assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
+    assert_eq!(selection.bucket_names, vec!["transport"]);
+}
+
+#[test]
+fn changed_tests_routes_http_transport_paths_to_transport_bucket() {
+    let manifest = sample_manifest();
+
+    let selection = select_changed_buckets(&manifest, &["src/daemon/http_transport.rs".to_string()]);
+
+    assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
+    assert_eq!(selection.bucket_names, vec!["transport"]);
+}
+
+#[test]
+fn changed_tests_routes_workspace_runtime_paths_to_workspace_runtime_bucket() {
+    let manifest = sample_manifest();
+
+    let selection = select_changed_buckets(&manifest, &["src/daemon/workspace_pool.rs".to_string()]);
+
+    assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
+    assert_eq!(selection.bucket_names, vec!["workspace-runtime"]);
+}
+
+#[test]
+fn changed_tests_routes_workspace_registry_commands_to_workspace_runtime_bucket() {
+    let manifest = sample_manifest();
+
+    let selection = select_changed_buckets(
+        &manifest,
+        &["src/tools/workspace/commands/registry/open.rs".to_string()],
+    );
+
+    assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
+    assert_eq!(selection.bucket_names, vec!["workspace-runtime"]);
 }
 
 #[test]
@@ -191,7 +277,32 @@ commands = ["cargo test --lib search_quality"]
 expected_seconds = 200
 timeout_seconds = 450
 commands = ["cargo nextest run --lib tests::tools::get_symbols_target_filtering_dogfood -- --skip search_quality"]
-"#,
+
+[buckets.projection]
+expected_seconds = 40
+timeout_seconds = 90
+commands = ["cargo nextest run --lib tests::integration::projection_repair -- --skip search_quality"]
+
+[buckets.transport]
+expected_seconds = 40
+timeout_seconds = 90
+commands = ["cargo nextest run --lib tests::daemon::transport -- --skip search_quality"]
+
+[buckets.lifecycle]
+expected_seconds = 40
+timeout_seconds = 90
+commands = ["cargo nextest run --lib tests::daemon::lifecycle -- --skip search_quality"]
+
+[buckets.daemon]
+expected_seconds = 40
+timeout_seconds = 90
+commands = ["cargo nextest run --lib tests::daemon -- --skip search_quality"]
+
+[buckets.workspace-runtime]
+expected_seconds = 40
+timeout_seconds = 90
+commands = ["cargo nextest run --lib tests::daemon::workspace_pool -- --skip search_quality"]
+    "#,
     )
     .unwrap()
 }

@@ -22,7 +22,6 @@ const DEV_FALLBACK_FILES: &[&str] = &[
 const DEV_FALLBACK_PREFIXES: &[&str] = &[
     "crates/",
     "fixtures/",
-    "src/adapter/",
     "src/analysis/",
     "src/extractors/",
     "src/handler/",
@@ -340,6 +339,74 @@ fn buckets_for_path(path: &str) -> &'static [&'static str] {
         return &["tools-get-context"];
     }
 
+    if matches_exact(
+        path,
+        &[
+            "src/search/projection.rs",
+            "src/database/projections.rs",
+            "src/health/projection.rs",
+            "src/health/evaluation.rs",
+            "src/tools/workspace/indexing/index.rs",
+            "src/tools/workspace/indexing/pipeline.rs",
+            "src/tests/integration/projection_repair.rs",
+        ],
+    ) {
+        return &["projection"];
+    }
+
+    if matches_prefix(path, &["src/adapter/", "src/tests/adapter/"])
+        || matches_exact(
+            path,
+            &[
+                "src/daemon/ipc.rs",
+                "src/daemon/ipc_session.rs",
+                "src/daemon/http_transport.rs",
+                "src/daemon/transport.rs",
+                "src/tests/daemon/ipc.rs",
+                "src/tests/daemon/ipc_headers.rs",
+                "src/tests/daemon/ipc_session.rs",
+                "src/tests/daemon/http_transport.rs",
+                "src/tests/daemon/transport.rs",
+            ],
+        )
+    {
+        return &["transport"];
+    }
+
+    if matches_exact(
+        path,
+        &[
+            "src/daemon/mod.rs",
+            "src/daemon/lifecycle.rs",
+            "src/tests/daemon/lifecycle.rs",
+            "src/tests/integration/daemon_lifecycle.rs",
+        ],
+    ) {
+        if path == "src/daemon/mod.rs" {
+            return &["lifecycle", "daemon"];
+        }
+        return &["lifecycle"];
+    }
+
+    if matches_exact(
+        path,
+        &[
+            "src/daemon/workspace_pool.rs",
+            "src/daemon/workspace_registry_store.rs",
+            "src/daemon/workspace_session_attachment.rs",
+            "src/daemon/watcher_pool.rs",
+            "src/daemon/workspace_cleanup.rs",
+            "src/workspace/registry.rs",
+            "src/tests/daemon/workspace_pool.rs",
+            "src/tests/daemon/watcher_pool.rs",
+            "src/tests/daemon/workspace_cleanup.rs",
+            "src/tests/tools/workspace/registry.rs",
+        ],
+    ) || matches_prefix(path, &["src/tools/workspace/commands/registry/"])
+    {
+        return &["workspace-runtime"];
+    }
+
     if matches_prefix(path, &["src/tools/workspace/", "src/workspace/"]) {
         return &["tools-workspace", "workspace-init"];
     }
@@ -467,11 +534,15 @@ fn sort_bucket_names(bucket_names: Vec<String>) -> Vec<String> {
         "cli",
         "core-database",
         "core-embeddings",
+        "projection",
         "tools-get-context",
         "tools-search",
         "tools-workspace",
         "tools-misc",
         "core-fast",
+        "transport",
+        "lifecycle",
+        "workspace-runtime",
         "daemon",
         "dashboard",
         "tools-dogfood-repo-index",
