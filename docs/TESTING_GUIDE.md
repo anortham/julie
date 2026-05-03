@@ -55,6 +55,13 @@ cargo xtask test full
 # List all buckets
 cargo xtask test list
 
+# Run one focused bucket as the lead
+cargo xtask test bucket <name>
+
+# Report-only inventory audit. Does not run tests.
+cargo xtask test inventory --bucket <name>
+cargo xtask test inventory --tier dev
+
 # Search matrix investigation harness
 cargo xtask search-matrix mine --days 7 --out artifacts/search-matrix/seeds-YYYY-MM-DD.json
 cargo xtask search-matrix baseline --profile smoke
@@ -74,6 +81,12 @@ cargo test -p julie-extractors typescript_extractor
 | system | `cargo xtask test system` | Startup/workspace/system changes |
 | dogfood | `cargo xtask test dogfood` | Search/scoring/tokenization changes |
 | full | `cargo xtask test full` | Pre-merge broad pass |
+
+## Focused Buckets And Inventory
+
+Leads may use `cargo xtask test bucket <name>` when a plan names a focused bucket and a full tier would waste time. This is still lead-owned verification. Workers run exact tests only and should not run bucket commands unless the plan explicitly assigns that diagnostic task.
+
+Use `cargo xtask test inventory --bucket <name>` or `cargo xtask test inventory --tier dev` to audit selected tests with `cargo nextest list`. Inventory is diagnostic evidence, not a passing test gate. It can prove overlap, duplicate selection, or non-inventoryable commands, but it does not replace an exact test, `changed`, or `dev` run.
 
 ## Standalone CLI Dogfood Contract
 

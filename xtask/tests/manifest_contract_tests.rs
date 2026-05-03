@@ -83,6 +83,27 @@ fn manifest_contract_tests_checked_in_manifest_includes_rebalancing_hints() {
     assert!(contents.contains("# Dogfood stays isolated because it is the long pole."));
 }
 
+#[test]
+fn manifest_contract_tests_get_symbols_bucket_omits_ignored_target_filtering_module() {
+    let manifest = load_checked_in_manifest();
+    let bucket = &manifest.buckets["tools-get-symbols"];
+
+    assert!(
+        !bucket
+            .commands
+            .iter()
+            .any(|command| command.contains("tests::tools::get_symbols_target_filtering::")),
+        "get_symbols_target_filtering.rs only contains ignored slow tests; dev must not select it"
+    );
+    assert!(
+        manifest.buckets["tools-dogfood-repo-index"]
+            .commands
+            .iter()
+            .any(|command| command.contains("get_symbols_target_filtering_dogfood")),
+        "non-ignored target-filtering coverage should stay isolated in dogfood"
+    );
+}
+
 fn manifest_path() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test_tiers.toml")
 }
@@ -97,12 +118,24 @@ fn expected_tiers() -> BTreeMap<String, Vec<String>> {
             "dev".to_string(),
             vec![
                 "cli".to_string(),
+                "xtask-runner".to_string(),
                 "core-database".to_string(),
                 "core-embeddings".to_string(),
                 "tools-get-context".to_string(),
-                "tools-search".to_string(),
+                "tools-search-tantivy".to_string(),
+                "tools-search-line-file".to_string(),
+                "tools-search-ranking-format".to_string(),
+                "tools-search-context".to_string(),
+                "tools-search-text".to_string(),
+                "tools-search-hybrid".to_string(),
+                "tools-search-query".to_string(),
                 "tools-workspace".to_string(),
-                "tools-misc".to_string(),
+                "tools-get-symbols".to_string(),
+                "tools-editing".to_string(),
+                "tools-navigation".to_string(),
+                "tools-refactoring".to_string(),
+                "tools-metrics".to_string(),
+                "tools-format-filter".to_string(),
                 "core-fast".to_string(),
                 "daemon".to_string(),
                 "dashboard".to_string(),
@@ -119,12 +152,24 @@ fn expected_tiers() -> BTreeMap<String, Vec<String>> {
             "full".to_string(),
             vec![
                 "cli".to_string(),
+                "xtask-runner".to_string(),
                 "core-database".to_string(),
                 "core-embeddings".to_string(),
                 "tools-get-context".to_string(),
-                "tools-search".to_string(),
+                "tools-search-tantivy".to_string(),
+                "tools-search-line-file".to_string(),
+                "tools-search-ranking-format".to_string(),
+                "tools-search-context".to_string(),
+                "tools-search-text".to_string(),
+                "tools-search-hybrid".to_string(),
+                "tools-search-query".to_string(),
                 "tools-workspace".to_string(),
-                "tools-misc".to_string(),
+                "tools-get-symbols".to_string(),
+                "tools-editing".to_string(),
+                "tools-navigation".to_string(),
+                "tools-refactoring".to_string(),
+                "tools-metrics".to_string(),
+                "tools-format-filter".to_string(),
                 "core-fast".to_string(),
                 "daemon".to_string(),
                 "dashboard".to_string(),
@@ -178,8 +223,15 @@ fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
                     "cargo nextest run --lib tests::cli_tools_tests",
                     "cargo build",
                     "cargo nextest run --lib --run-ignored only tests::cli::",
-                    "cargo test -p xtask",
                 ],
+            },
+        ),
+        (
+            "xtask-runner",
+            ExpectedBucket {
+                expected_seconds: 5,
+                timeout_seconds: 30,
+                commands: &["cargo nextest run -p xtask"],
             },
         ),
         (
@@ -211,8 +263,8 @@ fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
         (
             "core-fast",
             ExpectedBucket {
-                expected_seconds: 10,
-                timeout_seconds: 45,
+                expected_seconds: 20,
+                timeout_seconds: 60,
                 commands: &[
                     "cargo nextest run --lib tests::main_error_handling -- --skip search_quality",
                     "cargo nextest run --lib tests::regression_prevention_tests -- --skip search_quality",
@@ -308,8 +360,8 @@ fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
         (
             "tools-get-context",
             ExpectedBucket {
-                expected_seconds: 10,
-                timeout_seconds: 45,
+                expected_seconds: 35,
+                timeout_seconds: 120,
                 commands: &[
                     "cargo nextest run --lib tests::tools::get_context_allocation_tests -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::get_context_formatting_tests -- --skip search_quality",
@@ -321,44 +373,166 @@ fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
                     "cargo nextest run --lib tests::tools::get_context_scoring_tests -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::get_context_tests -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::get_context_token_budget_tests -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::get_context_primary_rebind_tests -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::get_context_target_workspace_metrics_tests -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::get_context_task_inputs_tests -- --skip search_quality",
                 ],
             },
         ),
         (
-            "tools-misc",
+            "tools-editing",
             ExpectedBucket {
-                expected_seconds: 60,
-                timeout_seconds: 210,
+                expected_seconds: 30,
+                timeout_seconds: 90,
                 commands: &[
-                    "cargo nextest run --lib tests::tools::get_symbols -- --skip search_quality",
-                    "cargo nextest run --lib tests::tools::get_symbols_target_workspace -- --skip search_quality",
-                    "cargo nextest run --lib tests::tools::get_symbols_relative_paths -- --skip search_quality",
-                    "cargo nextest run --lib tests::tools::get_symbols_smart_read -- --skip search_quality",
-                    "cargo nextest run --lib tests::tools::get_symbols_token -- --skip search_quality",
-                    "cargo nextest run --lib tests::tools::smart_read -- --skip search_quality",
-                    "cargo nextest run --lib tests::tools::editing -- --skip search_quality",
-                    "cargo nextest run --lib tests::tools::deep_dive_tests -- --skip search_quality",
-                    "cargo nextest run --lib tests::tools::refactoring -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::editing:: -- --skip search_quality",
+                ],
+            },
+        ),
+        (
+            "tools-format-filter",
+            ExpectedBucket {
+                expected_seconds: 15,
+                timeout_seconds: 60,
+                commands: &[
                     "cargo nextest run --lib tests::tools::filtering_tests -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::formatting_tests -- --skip search_quality",
-                    "cargo nextest run --lib tests::tools::target_workspace_fast_refs_tests -- --skip search_quality",
-                    "cargo nextest run --lib tools::search::query_preprocessor::tests -- --skip search_quality",
-                    "cargo nextest run --lib tests::tools::metrics -- --skip search_quality",
-                    "cargo nextest run --lib tests::tools::call_path_tests -- --skip search_quality",
-                    "cargo nextest run --lib tests::tools::call_path_disambiguation_tests -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::query_classification_tests -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::phase4_token_savings -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::smart_read -- --skip search_quality",
                 ],
             },
         ),
         (
-            "tools-search",
+            "tools-get-symbols",
             ExpectedBucket {
-                expected_seconds: 90,
+                expected_seconds: 40,
+                timeout_seconds: 120,
+                commands: &[
+                    "cargo nextest run --lib tests::tools::get_symbols:: -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::get_symbols_relative_paths -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::get_symbols_smart_read -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::get_symbols_target_workspace -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::get_symbols_token -- --skip search_quality",
+                ],
+            },
+        ),
+        (
+            "tools-metrics",
+            ExpectedBucket {
+                expected_seconds: 10,
+                timeout_seconds: 45,
+                commands: &[
+                    "cargo nextest run --lib tests::tools::metrics:: -- --skip search_quality",
+                ],
+            },
+        ),
+        (
+            "tools-navigation",
+            ExpectedBucket {
+                expected_seconds: 35,
+                timeout_seconds: 120,
+                commands: &[
+                    "cargo nextest run --lib tests::tools::deep_dive_tests -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::deep_dive_primary_rebind_tests -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::deep_dive_regression_tests -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::fast_refs_primary_rebind_tests -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::target_workspace_fast_refs_tests -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::call_path_tests -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::call_path_disambiguation_tests -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::blast_radius -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::spillover_tests -- --skip search_quality",
+                ],
+            },
+        ),
+        (
+            "tools-refactoring",
+            ExpectedBucket {
+                expected_seconds: 15,
+                timeout_seconds: 60,
+                commands: &[
+                    "cargo nextest run --lib tests::tools::refactoring:: -- --skip search_quality",
+                ],
+            },
+        ),
+        (
+            "tools-search-context",
+            ExpectedBucket {
+                expected_seconds: 15,
+                timeout_seconds: 60,
+                commands: &[
+                    "cargo nextest run --lib tests::tools::search_context_lines -- --skip search_quality",
+                ],
+            },
+        ),
+        (
+            "tools-search-hybrid",
+            ExpectedBucket {
+                expected_seconds: 25,
+                timeout_seconds: 90,
+                commands: &[
+                    "cargo nextest run --lib tests::tools::hybrid_search_tests -- --skip search_quality",
+                ],
+            },
+        ),
+        (
+            "tools-search-line-file",
+            ExpectedBucket {
+                expected_seconds: 80,
                 timeout_seconds: 180,
                 commands: &[
-                    "cargo nextest run --lib tests::tools::search:: -- --skip search_quality",
-                    "cargo nextest run --lib tests::tools::search_context_lines -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::search::line_ -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::search::file_ -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::search::primary_workspace_bug -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::search::zero_hit_reason_tests -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::search::zero_hit_reason_propagation_tests -- --skip search_quality",
+                ],
+            },
+        ),
+        (
+            "tools-search-query",
+            ExpectedBucket {
+                expected_seconds: 5,
+                timeout_seconds: 30,
+                commands: &[
+                    "cargo nextest run --lib tools::search::query_preprocessor::tests -- --skip search_quality",
+                ],
+            },
+        ),
+        (
+            "tools-search-ranking-format",
+            ExpectedBucket {
+                expected_seconds: 40,
+                timeout_seconds: 120,
+                commands: &[
+                    "cargo nextest run --lib tests::tools::search::annotation_search_tests -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::search::content_scoring_tests -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::search::definition_ -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::search::fast_search_regression_tests -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::search::lean_format_tests -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::search::promotion_tests -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::search::quality -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::search::race_condition -- --skip search_quality",
+                ],
+            },
+        ),
+        (
+            "tools-search-tantivy",
+            ExpectedBucket {
+                expected_seconds: 35,
+                timeout_seconds: 120,
+                commands: &[
+                    "cargo nextest run --lib tests::tools::search::tantivy_ -- --skip search_quality",
+                ],
+            },
+        ),
+        (
+            "tools-search-text",
+            ExpectedBucket {
+                expected_seconds: 25,
+                timeout_seconds: 90,
+                commands: &[
                     "cargo nextest run --lib tests::tools::text_search_tantivy -- --skip search_quality",
-                    "cargo nextest run --lib tests::tools::hybrid_search_tests -- --skip search_quality",
                 ],
             },
         ),
@@ -415,6 +589,15 @@ fn expected_bucket_metadata() -> BTreeMap<&'static str, ExpectedBucketMetadata> 
                 owner: "lead",
                 expensive: false,
                 notes: Some("CLI contract and execution path"),
+            },
+        ),
+        (
+            "xtask-runner",
+            ExpectedBucketMetadata {
+                scope_label: "tooling",
+                owner: "lead",
+                expensive: false,
+                notes: Some("xtask runner and manifest contract"),
             },
         ),
         (
@@ -530,21 +713,120 @@ fn expected_bucket_metadata() -> BTreeMap<&'static str, ExpectedBucketMetadata> 
             },
         ),
         (
-            "tools-misc",
+            "tools-editing",
             ExpectedBucketMetadata {
                 scope_label: "tooling",
                 owner: "lead",
                 expensive: false,
-                notes: Some("other tool surfaces"),
+                notes: Some("editing tools"),
             },
         ),
         (
-            "tools-search",
+            "tools-format-filter",
             ExpectedBucketMetadata {
                 scope_label: "tooling",
                 owner: "lead",
                 expensive: false,
-                notes: Some("search-focused tool coverage"),
+                notes: Some("formatting, filtering, and token budget helpers"),
+            },
+        ),
+        (
+            "tools-get-symbols",
+            ExpectedBucketMetadata {
+                scope_label: "tooling",
+                owner: "lead",
+                expensive: false,
+                notes: Some("get_symbols surface"),
+            },
+        ),
+        (
+            "tools-metrics",
+            ExpectedBucketMetadata {
+                scope_label: "tooling",
+                owner: "lead",
+                expensive: false,
+                notes: Some("metrics tools"),
+            },
+        ),
+        (
+            "tools-navigation",
+            ExpectedBucketMetadata {
+                scope_label: "tooling",
+                owner: "lead",
+                expensive: false,
+                notes: Some("navigation, reference, and impact tools"),
+            },
+        ),
+        (
+            "tools-refactoring",
+            ExpectedBucketMetadata {
+                scope_label: "tooling",
+                owner: "lead",
+                expensive: false,
+                notes: Some("refactoring tools"),
+            },
+        ),
+        (
+            "tools-search-context",
+            ExpectedBucketMetadata {
+                scope_label: "tooling",
+                owner: "lead",
+                expensive: false,
+                notes: Some("search context line coverage"),
+            },
+        ),
+        (
+            "tools-search-hybrid",
+            ExpectedBucketMetadata {
+                scope_label: "tooling",
+                owner: "lead",
+                expensive: false,
+                notes: Some("hybrid search coverage"),
+            },
+        ),
+        (
+            "tools-search-line-file",
+            ExpectedBucketMetadata {
+                scope_label: "tooling",
+                owner: "lead",
+                expensive: false,
+                notes: Some("line and file mode search coverage"),
+            },
+        ),
+        (
+            "tools-search-query",
+            ExpectedBucketMetadata {
+                scope_label: "tooling",
+                owner: "lead",
+                expensive: false,
+                notes: Some("search query preprocessing"),
+            },
+        ),
+        (
+            "tools-search-ranking-format",
+            ExpectedBucketMetadata {
+                scope_label: "tooling",
+                owner: "lead",
+                expensive: false,
+                notes: Some("search ranking and result formatting coverage"),
+            },
+        ),
+        (
+            "tools-search-tantivy",
+            ExpectedBucketMetadata {
+                scope_label: "tooling",
+                owner: "lead",
+                expensive: false,
+                notes: Some("tantivy-backed search coverage"),
+            },
+        ),
+        (
+            "tools-search-text",
+            ExpectedBucketMetadata {
+                scope_label: "tooling",
+                owner: "lead",
+                expensive: false,
+                notes: Some("text search coverage"),
             },
         ),
         (

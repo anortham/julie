@@ -70,6 +70,33 @@ fn docs_contract_tests_testing_guide_documents_ledger_reuse() {
 }
 
 #[test]
+fn docs_contract_tests_testing_guide_documents_bucket_command() {
+    let contents = read_repo_file("docs/TESTING_GUIDE.md");
+
+    assert!(contents.contains("cargo xtask test bucket <name>"));
+    assert!(contents.contains("cargo xtask test inventory --bucket <name>"));
+    assert!(contents.contains("cargo xtask test inventory --tier dev"));
+    assert!(contents.contains("Inventory is diagnostic evidence"));
+    assert!(contents.contains("not a passing test gate"));
+}
+
+#[test]
+fn docs_contract_tests_agent_docs_stay_in_sync() {
+    let agents = read_repo_file("AGENTS.md");
+    let claude = read_repo_file("CLAUDE.md");
+
+    for required in [
+        "cargo xtask test bucket <name>",
+        "cargo xtask test inventory --bucket <name>",
+        "Workers run exact tests only",
+        "The orchestrating session handles regression checks",
+    ] {
+        assert!(agents.contains(required), "AGENTS.md missing `{required}`");
+        assert!(claude.contains(required), "CLAUDE.md missing `{required}`");
+    }
+}
+
+#[test]
 fn docs_contract_tests_agents_points_to_ledger_template() {
     let agents = read_repo_file("AGENTS.md");
     let claude = read_repo_file("CLAUDE.md");

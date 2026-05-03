@@ -1,5 +1,6 @@
 pub mod changed;
 pub mod cli;
+pub mod inventory;
 pub mod manifest;
 pub mod runner;
 pub mod search_matrix;

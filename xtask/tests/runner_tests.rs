@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use anyhow::Result;
 use xtask::cli::{TestCommand, parse_test_command, validate_test_command};
+use xtask::inventory::InventoryTarget;
 use xtask::manifest::TestManifest;
 use xtask::runner::{
     BucketResult, BucketStatus, CommandExecutor, CommandOutcome, CommandResult,
@@ -161,6 +162,23 @@ fn runner_tests_cli_contract_supports_tiers_list_and_bucket() {
             name,
             timeout_multiplier: 3,
             coverage: false,
+        }) if name == "tools-search"
+    ));
+}
+
+#[test]
+fn runner_tests_cli_parses_inventory_command() {
+    assert!(matches!(
+        parse_test_command(["xtask", "test", "inventory", "--tier", "dev"]),
+        Ok(TestCommand::Inventory {
+            target: InventoryTarget::Tier(name),
+        }) if name == "dev"
+    ));
+
+    assert!(matches!(
+        parse_test_command(["xtask", "test", "inventory", "--bucket", "tools-search"]),
+        Ok(TestCommand::Inventory {
+            target: InventoryTarget::Bucket(name),
         }) if name == "tools-search"
     ));
 }

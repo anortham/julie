@@ -29,6 +29,27 @@ const DEV_FALLBACK_PREFIXES: &[&str] = &[
     "src/tests/helpers/",
 ];
 
+const SEARCH_TOOL_BUCKETS: &[&str] = &[
+    "tools-search-tantivy",
+    "tools-search-line-file",
+    "tools-search-ranking-format",
+    "tools-search-context",
+    "tools-search-text",
+    "tools-search-hybrid",
+    "tools-search-query",
+];
+
+const SEARCH_TOOL_BUCKETS_WITH_QUALITY: &[&str] = &[
+    "tools-search-tantivy",
+    "tools-search-line-file",
+    "tools-search-ranking-format",
+    "tools-search-context",
+    "tools-search-text",
+    "tools-search-hybrid",
+    "tools-search-query",
+    "search-quality",
+];
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ChangedSelectionMode {
     NoChanges,
@@ -250,6 +271,16 @@ fn normalize_path(path: &str) -> String {
 }
 
 fn should_ignore(path: &str) -> bool {
+    if matches_exact(
+        path,
+        &[
+            "docs/TESTING_GUIDE.md",
+            "docs/plans/verification-ledger-template.md",
+        ],
+    ) {
+        return false;
+    }
+
     matches_prefix(path, &[".julie/", ".memories/", "docs/"])
         || matches_exact(path, &[".DS_Store"])
         || path.starts_with("target/")
@@ -305,12 +336,33 @@ fn render_fallback_rationale(path: &str, rule: FallbackRule, trigger: &str) -> S
 }
 
 fn buckets_for_path(path: &str) -> &'static [&'static str] {
+    if matches_prefix(path, &["xtask/"]) {
+        return &["xtask-runner"];
+    }
+
     if matches_exact(
         path,
-        &["README.md", "AGENTS.md", "CLAUDE.md", ".cargo/config.toml"],
-    ) || matches_prefix(path, &["xtask/"])
-        || matches_exact(path, &["src/cli.rs", "src/tests/cli_tests.rs"])
-    {
+        &[
+            "README.md",
+            "AGENTS.md",
+            "CLAUDE.md",
+            ".cargo/config.toml",
+            "docs/TESTING_GUIDE.md",
+            "docs/plans/verification-ledger-template.md",
+        ],
+    ) {
+        return &["xtask-runner"];
+    }
+
+    if matches_exact(
+        path,
+        &[
+            "src/cli.rs",
+            "src/tests/cli_tests.rs",
+            "src/tests/cli_execution_tests.rs",
+            "src/tests/cli_tools_tests.rs",
+        ],
+    ) {
         return &["cli"];
     }
 
@@ -415,27 +467,22 @@ fn buckets_for_path(path: &str) -> &'static [&'static str] {
         return &["tools-workspace"];
     }
 
-    if matches_prefix(path, &["src/tools/search/"])
-        || matches_prefix(path, &["src/tests/tools/search/"])
-        || matches_exact(
-            path,
-            &[
-                "src/tests/tools/search_context_lines.rs",
-                "src/tests/tools/text_search_tantivy.rs",
-                "src/tests/tools/hybrid_search_tests.rs",
-            ],
-        )
-    {
-        if path.ends_with("query_preprocessor.rs") {
-            return &["tools-misc"];
-        }
-        return &["tools-search"];
+    if path == "src/tools/search/query_preprocessor.rs" {
+        return &["tools-search-query"];
+    }
+
+    if matches_prefix(path, &["src/tools/search/"]) {
+        return SEARCH_TOOL_BUCKETS;
+    }
+
+    if let Some(search_test_buckets) = search_test_buckets_for_path(path) {
+        return search_test_buckets;
     }
 
     if matches_prefix(path, &["src/search/"])
         || matches_prefix(path, &["src/tests/tools/search_quality/"])
     {
-        return &["tools-search", "search-quality"];
+        return SEARCH_TOOL_BUCKETS_WITH_QUALITY;
     }
 
     if matches_exact(
@@ -445,30 +492,63 @@ fn buckets_for_path(path: &str) -> &'static [&'static str] {
         return &["tools-dogfood-repo-index"];
     }
 
-    if matches_prefix(path, &["src/tools/deep_dive/", "src/tools/editing/"])
-        || matches_prefix(path, &["src/tools/metrics/", "src/tools/navigation/"])
-        || matches_prefix(path, &["src/tools/refactoring/", "src/tools/symbols/"])
-        || matches_prefix(
-            path,
-            &["src/tests/tools/editing/", "src/tests/tools/metrics/"],
-        )
-        || matches_prefix(path, &["src/tests/tools/refactoring/"])
-        || matches_exact(
-            path,
-            &[
-                "src/tests/tools/deep_dive_primary_rebind_tests.rs",
-                "src/tests/tools/deep_dive_tests.rs",
-                "src/tests/tools/fast_refs_primary_rebind_tests.rs",
-                "src/tests/tools/filtering_tests.rs",
-                "src/tests/tools/formatting_tests.rs",
-                "src/tests/tools/query_classification_tests.rs",
-                "src/tests/tools/target_workspace_fast_refs_tests.rs",
-                "src/tests/tools/smart_read.rs",
-            ],
-        )
+    if matches_prefix(path, &["src/tools/symbols/"])
         || path.starts_with("src/tests/tools/get_symbols")
     {
-        return &["tools-misc"];
+        return &["tools-get-symbols"];
+    }
+
+    if matches_prefix(path, &["src/tools/editing/", "src/tests/tools/editing/"]) {
+        return &["tools-editing"];
+    }
+
+    if matches_prefix(
+        path,
+        &[
+            "src/tools/deep_dive/",
+            "src/tools/impact/",
+            "src/tools/navigation/",
+            "src/tools/spillover/",
+        ],
+    ) || matches_exact(
+        path,
+        &[
+            "src/tests/tools/deep_dive_primary_rebind_tests.rs",
+            "src/tests/tools/deep_dive_regression_tests.rs",
+            "src/tests/tools/deep_dive_tests.rs",
+            "src/tests/tools/fast_refs_primary_rebind_tests.rs",
+            "src/tests/tools/target_workspace_fast_refs_tests.rs",
+            "src/tests/tools/call_path_tests.rs",
+            "src/tests/tools/call_path_disambiguation_tests.rs",
+            "src/tests/tools/spillover_tests.rs",
+        ],
+    ) || path.starts_with("src/tests/tools/blast_radius")
+    {
+        return &["tools-navigation"];
+    }
+
+    if matches_prefix(
+        path,
+        &["src/tools/refactoring/", "src/tests/tools/refactoring/"],
+    ) {
+        return &["tools-refactoring"];
+    }
+
+    if matches_prefix(path, &["src/tools/metrics/", "src/tests/tools/metrics/"]) {
+        return &["tools-metrics"];
+    }
+
+    if matches_exact(
+        path,
+        &[
+            "src/tests/tools/filtering_tests.rs",
+            "src/tests/tools/formatting_tests.rs",
+            "src/tests/tools/query_classification_tests.rs",
+            "src/tests/tools/phase4_token_savings.rs",
+            "src/tests/tools/smart_read.rs",
+        ],
+    ) {
+        return &["tools-format-filter"];
     }
 
     if matches_prefix(path, &["src/watcher/", "src/utils/", "src/tracing/"])
@@ -517,6 +597,68 @@ fn buckets_for_path(path: &str) -> &'static [&'static str] {
     &[]
 }
 
+fn search_test_buckets_for_path(path: &str) -> Option<&'static [&'static str]> {
+    if matches_exact(path, &["src/tests/tools/search/mod.rs"]) {
+        return Some(SEARCH_TOOL_BUCKETS);
+    }
+
+    if matches_prefix(path, &["src/tests/tools/search/tantivy_"]) {
+        return Some(&["tools-search-tantivy"]);
+    }
+
+    if matches_prefix(
+        path,
+        &[
+            "src/tests/tools/search/line_",
+            "src/tests/tools/search/file_",
+        ],
+    ) || matches_exact(
+        path,
+        &[
+            "src/tests/tools/search/primary_workspace_bug.rs",
+            "src/tests/tools/search/zero_hit_reason_tests.rs",
+            "src/tests/tools/search/zero_hit_reason_propagation_tests.rs",
+        ],
+    ) {
+        return Some(&["tools-search-line-file"]);
+    }
+
+    if matches_exact(
+        path,
+        &[
+            "src/tests/tools/search/annotation_search_tests.rs",
+            "src/tests/tools/search/content_scoring_tests.rs",
+            "src/tests/tools/search/definition_overfetch_tests.rs",
+            "src/tests/tools/search/definition_promotion_tests.rs",
+            "src/tests/tools/search/fast_search_regression_tests.rs",
+            "src/tests/tools/search/lean_format_tests.rs",
+            "src/tests/tools/search/promotion_tests.rs",
+            "src/tests/tools/search/quality.rs",
+            "src/tests/tools/search/race_condition.rs",
+        ],
+    ) {
+        return Some(&["tools-search-ranking-format"]);
+    }
+
+    if matches_exact(path, &["src/tests/tools/search_context_lines.rs"]) {
+        return Some(&["tools-search-context"]);
+    }
+
+    if matches_exact(path, &["src/tests/tools/text_search_tantivy.rs"]) {
+        return Some(&["tools-search-text"]);
+    }
+
+    if matches_exact(path, &["src/tests/tools/hybrid_search_tests.rs"]) {
+        return Some(&["tools-search-hybrid"]);
+    }
+
+    if matches_prefix(path, &["src/tests/tools/search/"]) {
+        return Some(SEARCH_TOOL_BUCKETS);
+    }
+
+    None
+}
+
 fn maybe_push_bucket(bucket_names: &mut Vec<String>, manifest: &TestManifest, bucket_name: &str) {
     if !manifest.buckets.contains_key(bucket_name) && bucket_name != "system-health" {
         return;
@@ -532,13 +674,25 @@ fn maybe_push_bucket(bucket_names: &mut Vec<String>, manifest: &TestManifest, bu
 fn sort_bucket_names(bucket_names: Vec<String>) -> Vec<String> {
     let order = [
         "cli",
+        "xtask-runner",
         "core-database",
         "core-embeddings",
         "projection",
         "tools-get-context",
-        "tools-search",
+        "tools-search-tantivy",
+        "tools-search-line-file",
+        "tools-search-ranking-format",
+        "tools-search-context",
+        "tools-search-text",
+        "tools-search-hybrid",
+        "tools-search-query",
         "tools-workspace",
-        "tools-misc",
+        "tools-get-symbols",
+        "tools-editing",
+        "tools-navigation",
+        "tools-refactoring",
+        "tools-metrics",
+        "tools-format-filter",
         "core-fast",
         "transport",
         "lifecycle",

@@ -6,6 +6,7 @@ use xtask::changed::{
     ChangedSelectionMode, collect_changed_paths, render_changed_selection, select_changed_buckets,
 };
 use xtask::cli::{CliCommand, TestCommand, parse_cli_command, validate_cli_command};
+use xtask::inventory::{ProcessInventoryExecutor, render_inventory_report, run_inventory};
 use xtask::manifest::TestManifest;
 use xtask::runner::{
     ProcessCommandExecutor, render_manifest_listing, render_summary, run_bucket, run_named_buckets,
@@ -73,6 +74,10 @@ fn main() -> anyhow::Result<()> {
                 }
                 TestCommand::List => {
                     stdout.write_all(render_manifest_listing(&manifest).as_bytes())?;
+                }
+                TestCommand::Inventory { target } => {
+                    let report = run_inventory(&manifest, &target, &ProcessInventoryExecutor)?;
+                    stdout.write_all(render_inventory_report(&report).as_bytes())?;
                 }
                 TestCommand::Tier {
                     name,

@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use anyhow::{Result, anyhow, bail};
 
+use crate::inventory::InventoryTarget;
 use crate::manifest::TestManifest;
 
 const PROGRAM_TIERS: &[&str] = &["reliability", "benchmark"];
@@ -22,6 +23,9 @@ pub enum TestCommand {
         name: String,
         timeout_multiplier: u64,
         coverage: bool,
+    },
+    Inventory {
+        target: InventoryTarget,
     },
 }
 
@@ -75,7 +79,7 @@ where
         .collect::<Vec<_>>();
 
     if args.len() < 2 || args[1] != "test" {
-        bail!("expected `cargo xtask test <changed|tier|list|bucket>`");
+        bail!("expected `cargo xtask test <changed|tier|list|bucket|inventory>`");
     }
 
     let mut tail = args.into_iter().skip(2);
@@ -106,6 +110,9 @@ where
                 coverage: options.coverage,
             })
         }
+        "inventory" => Ok(TestCommand::Inventory {
+            target: parse_inventory_target(tail.collect())?,
+        }),
         other => {
             let options = parse_options(tail.collect())?;
             Ok(TestCommand::Tier {
@@ -167,6 +174,26 @@ fn parse_search_matrix_command(args: Vec<String>) -> Result<SearchMatrixCommand>
 pub fn validate_test_command(manifest: &TestManifest, command: TestCommand) -> Result<TestCommand> {
     match command {
         TestCommand::Changed { .. } => Ok(command),
+        TestCommand::Inventory { target } => match target {
+            InventoryTarget::Tier(name) => {
+                if manifest.tiers.contains_key(&name) {
+                    Ok(TestCommand::Inventory {
+                        target: InventoryTarget::Tier(name),
+                    })
+                } else {
+                    bail!("unknown inventory tier `{name}`")
+                }
+            }
+            InventoryTarget::Bucket(name) => {
+                if manifest.buckets.contains_key(&name) {
+                    Ok(TestCommand::Inventory {
+                        target: InventoryTarget::Bucket(name),
+                    })
+                } else {
+                    bail!("unknown inventory bucket `{name}`")
+                }
+            }
+        },
         TestCommand::Tier {
             name,
             timeout_multiplier,
@@ -200,6 +227,26 @@ pub fn validate_test_command(manifest: &TestManifest, command: TestCommand) -> R
             }
         }
         other => Ok(other),
+    }
+}
+
+fn parse_inventory_target(args: Vec<String>) -> Result<InventoryTarget> {
+    let mut iter = args.into_iter();
+    let Some(flag) = iter.next() else {
+        bail!("missing inventory target; use `--tier <name>` or `--bucket <name>`");
+    };
+    let Some(name) = iter.next() else {
+        bail!("missing value for {flag}");
+    };
+
+    if iter.next().is_some() {
+        bail!("unexpected extra arguments for inventory command");
+    }
+
+    match flag.as_str() {
+        "--tier" => Ok(InventoryTarget::Tier(name)),
+        "--bucket" => Ok(InventoryTarget::Bucket(name)),
+        other => bail!("unexpected inventory target flag `{other}`"),
     }
 }
 

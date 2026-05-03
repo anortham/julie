@@ -79,7 +79,9 @@ See: **docs/TESTING_GUIDE.md** for comprehensive testing standards and SOURCE/CO
 | Command | What it does | When to use |
 |---------|--------------|-------------|
 | `cargo nextest run --lib <name>` | Run one specific test by name | Default during RED/GREEN loop |
+| `cargo xtask test bucket <name>` | Run one named bucket with command timing | Lead-owned focused gate after a coherent batch |
 | `cargo xtask test changed` | Maps the current git diff to the smallest matching bucket set, then falls back to `dev` if shared infrastructure moved | After a localized change |
+| `cargo xtask test inventory --bucket <name>` | Report selected tests and duplicate coverage without running tests | Diagnostic evidence only, never a passing gate |
 
 ### Canonical Test Tiers
 
@@ -107,6 +109,7 @@ See: **docs/TESTING_GUIDE.md** for comprehensive testing standards and SOURCE/CO
 6. **If you changed search/scoring/tokenization**: add `cargo xtask test dogfood`
 7. **For a broad pre-merge pass**: run `cargo xtask test full`
 8. **To inspect the calibrated buckets**: run `cargo xtask test list`
+9. **To audit overlap without running tests**: run `cargo xtask test inventory --bucket <name>` or `cargo xtask test inventory --tier dev`. Inventory is diagnostic evidence, not a passing test gate.
 
 ### Known Pre-Existing Failures
 
@@ -132,6 +135,7 @@ The `search_quality` bucket loads a **100MB SQLite fixture**, backfills a Tantiv
 **When running as a subagent, worker, or dispatched agent** (e.g., via subagent-driven development, worktree agents, or any delegated task):
 
 **YOU MUST:**
+- Workers run exact tests only. The orchestrating session handles regression checks.
 - Run ONLY the specific test you wrote: `cargo nextest run --lib <exact_test_name> 2>&1 | tail -10`
 - Use the narrowest possible test filter for your changed area
 - Limit yourself to **2 test runs per fix**: once to verify RED, once to verify GREEN
