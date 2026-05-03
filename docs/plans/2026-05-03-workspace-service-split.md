@@ -162,6 +162,10 @@ Acceptance criteria:
 | worker-red-green | Workspace registry command contracts remain stable after command handlers use registry and cleanup helpers. | `cargo nextest run --lib tests::tools::workspace -- --skip search_quality 2>&1 \| tail -35` | working-tree at `310dc466` | PASS | 2026-05-03T18:49:00Z |
 | worker-red-green | Dashboard project cleanup and workspace state labels use the cleanup activity facade without changing page actions. | `cargo nextest run --lib tests::dashboard::projects_actions 2>&1 \| tail -30` | working-tree at `310dc466` | PASS | 2026-05-03T18:50:00Z |
 | affected-change-retry | Daemon bucket stays green after daemon cleanup sweep uses `WorkspaceCleanupActivity`. | `cargo xtask test bucket daemon` | working-tree at `310dc466` | PASS | 2026-05-03T18:51:00Z |
+| affected-change | Clean tree after commits has no working-tree diff for `changed` to map. | `cargo xtask test changed` | `2fea73e2` | PASS, no code/test buckets matched local changes | 2026-05-03T18:53:00Z |
+| branch-gate | Dev tier passes across ordinary branch-level regression buckets. | `cargo xtask test dev` | `2fea73e2` | PASS, 22 buckets in 365.5s | 2026-05-03T18:59:00Z |
+| expensive-specialist | System tier passes workspace lifecycle, transport, runtime, init, and integration buckets. | `cargo xtask test system` | `2fea73e2` | PASS, 6 buckets in 81.1s | 2026-05-03T19:01:00Z |
+| expensive-specialist | Reliability tier passes daemon, workspace-init, and integration buckets. | `cargo xtask test reliability` | `2fea73e2` | PASS, 3 buckets in 56.2s | 2026-05-03T19:02:00Z |
 
 ## Model Routing
 
