@@ -182,6 +182,23 @@ pub fn validate_test_command(manifest: &TestManifest, command: TestCommand) -> R
                 bail!("unsupported xtask test command `{name}`")
             }
         }
+        TestCommand::Bucket {
+            name,
+            timeout_multiplier,
+            coverage,
+        } => {
+            if manifest.buckets.contains_key(&name) {
+                Ok(TestCommand::Bucket {
+                    name,
+                    timeout_multiplier,
+                    coverage,
+                })
+            } else {
+                bail!(
+                    "unknown test bucket `{name}`; run `cargo xtask test list` to see available buckets"
+                )
+            }
+        }
         other => Ok(other),
     }
 }

@@ -92,11 +92,9 @@ impl TestManifest {
 
             for command in &bucket.commands {
                 if let Some(first_bucket) = command_buckets.get(command) {
-                    if first_bucket != bucket_name {
-                        bail!(
-                            "duplicate command '{command}' found in bucket '{first_bucket}' and bucket '{bucket_name}'"
-                        );
-                    }
+                    bail!(
+                        "duplicate command '{command}' found in bucket '{first_bucket}' and bucket '{bucket_name}'"
+                    );
                 } else {
                     command_buckets.insert(command.clone(), bucket_name.clone());
                 }

@@ -283,3 +283,28 @@ commands = ["cargo test --lib tests::cli_tests"]
     assert!(message.contains("'beta'"));
     assert!(message.contains(duplicate_command));
 }
+
+#[test]
+fn manifest_tests_reject_duplicate_commands_in_same_bucket() {
+    let duplicate_command = "cargo test --lib tests::cli_tests";
+    let error = TestManifest::from_str(
+        r#"
+[tiers]
+smoke = ["alpha"]
+
+[buckets.alpha]
+expected_seconds = 1
+timeout_seconds = 60
+commands = [
+  "cargo test --lib tests::cli_tests",
+  "cargo test --lib tests::cli_tests",
+]
+"#,
+    )
+    .unwrap_err();
+
+    let message = error.to_string();
+    assert!(message.contains("duplicate command"));
+    assert!(message.contains("'alpha'"));
+    assert!(message.contains(duplicate_command));
+}

@@ -504,7 +504,7 @@ where
             message: error.to_string(),
         })?;
 
-    for raw_command in &bucket.commands {
+    for (command_index, raw_command) in bucket.commands.iter().enumerate() {
         let command = if coverage {
             &transform_command_for_coverage(raw_command)
         } else {
@@ -532,6 +532,24 @@ where
                 elapsed: command_elapsed,
             } => {
                 elapsed = bucket_started.elapsed().max(elapsed + command_elapsed);
+                write_command_timing(
+                    writer,
+                    bucket_name,
+                    command_index + 1,
+                    bucket.commands.len(),
+                    BucketStatus::Passed,
+                    command_elapsed,
+                    command,
+                )
+                .map_err(|error| BucketFailure {
+                    result: build_bucket_result(
+                        bucket_name,
+                        BucketStatus::Failed,
+                        elapsed,
+                        &bucket,
+                    ),
+                    message: error.to_string(),
+                })?;
                 if elapsed >= timeout {
                     write_captured_on_failure(writer, &captured)?;
                     let result =
@@ -548,6 +566,24 @@ where
                 exit_code,
             } => {
                 elapsed = bucket_started.elapsed().max(elapsed + command_elapsed);
+                write_command_timing(
+                    writer,
+                    bucket_name,
+                    command_index + 1,
+                    bucket.commands.len(),
+                    BucketStatus::Failed,
+                    command_elapsed,
+                    command,
+                )
+                .map_err(|error| BucketFailure {
+                    result: build_bucket_result(
+                        bucket_name,
+                        BucketStatus::Failed,
+                        elapsed,
+                        &bucket,
+                    ),
+                    message: error.to_string(),
+                })?;
                 write_captured_on_failure(writer, &captured)?;
                 let result =
                     build_bucket_result(bucket_name, BucketStatus::Failed, elapsed, &bucket);
@@ -565,6 +601,24 @@ where
                 elapsed: command_elapsed,
             } => {
                 elapsed = bucket_started.elapsed().max(elapsed + command_elapsed);
+                write_command_timing(
+                    writer,
+                    bucket_name,
+                    command_index + 1,
+                    bucket.commands.len(),
+                    BucketStatus::TimedOut,
+                    command_elapsed,
+                    command,
+                )
+                .map_err(|error| BucketFailure {
+                    result: build_bucket_result(
+                        bucket_name,
+                        BucketStatus::Failed,
+                        elapsed,
+                        &bucket,
+                    ),
+                    message: error.to_string(),
+                })?;
                 write_captured_on_failure(writer, &captured)?;
                 let result =
                     build_bucket_result(bucket_name, BucketStatus::TimedOut, elapsed, &bucket);
@@ -580,6 +634,25 @@ where
     let result = build_bucket_result(bucket_name, BucketStatus::Passed, elapsed, &bucket);
     write_bucket_end(writer, &result)?;
     Ok(result)
+}
+
+fn write_command_timing<W: Write>(
+    writer: &mut W,
+    bucket_name: &str,
+    command_index: usize,
+    command_count: usize,
+    status: BucketStatus,
+    elapsed: Duration,
+    command: &str,
+) -> std::io::Result<()> {
+    writer.write_all(
+        format!(
+            "COMMAND {bucket_name} {command_index}/{command_count} {} ({}) {command}\n",
+            status_label(status),
+            format_duration(elapsed)
+        )
+        .as_bytes(),
+    )
 }
 
 fn build_bucket_result(

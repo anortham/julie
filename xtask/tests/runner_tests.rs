@@ -178,6 +178,19 @@ fn runner_tests_cli_rejects_unsupported_subcommands() {
 }
 
 #[test]
+fn runner_tests_cli_rejects_unknown_bucket_name() {
+    let parsed = parse_test_command(["xtask", "test", "bucket", "missing-bucket"]).unwrap();
+    let error = validate_test_command(&sample_manifest(), parsed).unwrap_err();
+
+    let message = error.to_string();
+    assert!(
+        message.contains("unknown test bucket `missing-bucket`"),
+        "got: {message}"
+    );
+    assert!(message.contains("cargo xtask test list"), "got: {message}");
+}
+
+#[test]
 fn runner_tests_cli_validation_accepts_manifest_defined_tiers_without_hardcoded_list() {
     let validated = validate_test_command(
         &sample_manifest(),
@@ -352,6 +365,37 @@ fn runner_tests_passed_bucket_discards_captured_output() {
         !rendered.contains("running 50 tests"),
         "cargo banner should not leak on pass: {rendered}"
     );
+}
+
+#[test]
+fn runner_tests_bucket_output_includes_command_timings() {
+    let manifest = multi_command_manifest();
+    let executor = FakeExecutor::with_outcomes([
+        (
+            "cargo test --lib tests::tools::search::one",
+            CommandOutcome::Passed {
+                elapsed: Duration::from_millis(1_200),
+            },
+        ),
+        (
+            "cargo test --lib tests::tools::search::two",
+            CommandOutcome::Passed {
+                elapsed: Duration::from_millis(2_300),
+            },
+        ),
+    ]);
+    let mut output = Vec::new();
+
+    run_bucket(&manifest, "tools-search", 1, false, &executor, &mut output).unwrap();
+    let rendered = String::from_utf8(output).unwrap();
+
+    assert!(rendered.contains(
+        "COMMAND tools-search 1/2 PASS (1.2s) cargo test --lib tests::tools::search::one"
+    ));
+    assert!(rendered.contains(
+        "COMMAND tools-search 2/2 PASS (2.3s) cargo test --lib tests::tools::search::two"
+    ));
+    assert!(rendered.contains("END tools-search PASS"));
 }
 
 #[test]
