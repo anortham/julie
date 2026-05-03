@@ -43,6 +43,7 @@ pub struct ChangedSelection {
     pub changed_paths: Vec<String>,
     pub bucket_names: Vec<String>,
     pub fallback_paths: Vec<String>,
+    pub rationale: Vec<String>,
     pub ignored_paths: Vec<String>,
 }
 
@@ -77,6 +78,7 @@ pub fn select_changed_buckets(manifest: &TestManifest, paths: &[String]) -> Chan
     let changed_paths = normalize_paths(paths.iter().cloned().collect());
     let mut bucket_names = Vec::new();
     let mut fallback_paths = Vec::new();
+    let mut rationale = Vec::new();
     let mut ignored_paths = Vec::new();
 
     for path in &changed_paths {
@@ -85,20 +87,49 @@ pub fn select_changed_buckets(manifest: &TestManifest, paths: &[String]) -> Chan
             continue;
         }
 
-        if requires_dev_fallback(path) {
+        if let Some((rule, trigger)) = fallback_rule_for_path(path) {
             fallback_paths.push(path.clone());
+            rationale.push(render_fallback_rationale(path, rule, &trigger));
             continue;
         }
 
         let matched_buckets = buckets_for_path(path);
         if matched_buckets.is_empty() {
             fallback_paths.push(path.clone());
+            rationale.push(render_fallback_rationale(
+                path,
+                FallbackRule::Unknown,
+                "no bucket mapping matched this path",
+            ));
             continue;
         }
 
+        let mut path_bucket_names = Vec::new();
         for bucket_name in matched_buckets {
+            if manifest.buckets.contains_key(*bucket_name) || *bucket_name == "system-health" {
+                path_bucket_names.push((*bucket_name).to_string());
+            }
             maybe_push_bucket(&mut bucket_names, manifest, bucket_name);
         }
+
+        if path_bucket_names.is_empty() {
+            fallback_paths.push(path.clone());
+            rationale.push(render_fallback_rationale(
+                path,
+                FallbackRule::ManifestLevel,
+                &format!(
+                    "mapped buckets missing from manifest: {}",
+                    matched_buckets.join(", ")
+                ),
+            ));
+            continue;
+        }
+
+        rationale.push(format!(
+            "CHANGED: rationale: {} -> {}",
+            path,
+            path_bucket_names.join(", ")
+        ));
     }
 
     if !fallback_paths.is_empty() {
@@ -107,6 +138,7 @@ pub fn select_changed_buckets(manifest: &TestManifest, paths: &[String]) -> Chan
             changed_paths,
             bucket_names: manifest.tiers.get("dev").cloned().unwrap_or_default(),
             fallback_paths,
+            rationale,
             ignored_paths,
         };
     }
@@ -117,6 +149,7 @@ pub fn select_changed_buckets(manifest: &TestManifest, paths: &[String]) -> Chan
             changed_paths,
             bucket_names,
             fallback_paths,
+            rationale,
             ignored_paths,
         };
     }
@@ -126,6 +159,7 @@ pub fn select_changed_buckets(manifest: &TestManifest, paths: &[String]) -> Chan
         changed_paths,
         bucket_names: sort_bucket_names(bucket_names),
         fallback_paths,
+        rationale,
         ignored_paths,
     }
 }
@@ -144,6 +178,11 @@ pub fn render_changed_selection(selection: &ChangedSelection) -> String {
             selection.fallback_paths.join(", ")
         ),
     };
+
+    for line in &selection.rationale {
+        output.push_str(line);
+        output.push('\n');
+    }
 
     if !selection.ignored_paths.is_empty() {
         output.push_str(&format!(
@@ -217,8 +256,53 @@ fn should_ignore(path: &str) -> bool {
         || path.starts_with("target/")
 }
 
-fn requires_dev_fallback(path: &str) -> bool {
-    matches_exact(path, DEV_FALLBACK_FILES) || matches_prefix(path, DEV_FALLBACK_PREFIXES)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FallbackRule {
+    ExactFile,
+    Prefix,
+    ManifestLevel,
+    Unknown,
+}
+
+fn fallback_rule_for_path(path: &str) -> Option<(FallbackRule, String)> {
+    if let Some(exact_file) = DEV_FALLBACK_FILES
+        .iter()
+        .copied()
+        .find(|candidate| path == *candidate)
+    {
+        return Some((FallbackRule::ExactFile, exact_file.to_string()));
+    }
+
+    if let Some(prefix) = DEV_FALLBACK_PREFIXES
+        .iter()
+        .copied()
+        .find(|prefix| path.starts_with(prefix))
+    {
+        return Some((FallbackRule::Prefix, prefix.to_string()));
+    }
+
+    None
+}
+
+fn render_fallback_rationale(path: &str, rule: FallbackRule, trigger: &str) -> String {
+    match rule {
+        FallbackRule::ExactFile => format!(
+            "CHANGED: rationale: {} -> dev (fallback exact file: {})",
+            path, trigger
+        ),
+        FallbackRule::Prefix => format!(
+            "CHANGED: rationale: {} -> dev (fallback prefix: {})",
+            path, trigger
+        ),
+        FallbackRule::ManifestLevel => format!(
+            "CHANGED: rationale: {} -> dev (fallback manifest-level: {})",
+            path, trigger
+        ),
+        FallbackRule::Unknown => format!(
+            "CHANGED: rationale: {} -> dev (fallback unknown: {})",
+            path, trigger
+        ),
+    }
 }
 
 fn buckets_for_path(path: &str) -> &'static [&'static str] {

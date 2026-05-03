@@ -1,4 +1,4 @@
-use xtask::changed::{ChangedSelectionMode, select_changed_buckets};
+use xtask::changed::{ChangedSelectionMode, render_changed_selection, select_changed_buckets};
 use xtask::cli::{TestCommand, parse_test_command};
 use xtask::manifest::TestManifest;
 
@@ -105,6 +105,54 @@ fn changed_tests_dogfood_repo_index_file_routes_to_new_bucket() {
 
     assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
     assert_eq!(selection.bucket_names, vec!["tools-dogfood-repo-index"]);
+}
+
+#[test]
+fn changed_tests_reports_fallback_prefix_rationale() {
+    let manifest = sample_manifest();
+
+    let selection = select_changed_buckets(&manifest, &["src/adapter/mod.rs".to_string()]);
+    let output = render_changed_selection(&selection);
+
+    assert_eq!(selection.mode, ChangedSelectionMode::FallbackToDev);
+    assert!(output.contains(
+        "CHANGED: rationale: src/adapter/mod.rs -> dev (fallback prefix: src/adapter/)"
+    ));
+}
+
+#[test]
+fn changed_tests_reports_path_to_bucket_rationale() {
+    let manifest = sample_manifest();
+
+    let selection = select_changed_buckets(&manifest, &["src/tools/search/mod.rs".to_string()]);
+    let output = render_changed_selection(&selection);
+
+    assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
+    assert_eq!(selection.bucket_names, vec!["tools-search"]);
+    assert!(output.contains(
+        "CHANGED: rationale: src/tools/search/mod.rs -> tools-search"
+    ));
+}
+
+#[test]
+fn changed_tests_ignored_docs_only_output_remains_concise() {
+    let manifest = sample_manifest();
+
+    let selection = select_changed_buckets(
+        &manifest,
+        &[
+            "docs/PRE-RELEASE-FINDINGS.md".to_string(),
+            ".memories/checkpoints/example.md".to_string(),
+        ],
+    );
+    let output = render_changed_selection(&selection);
+
+    assert_eq!(selection.mode, ChangedSelectionMode::NoChanges);
+    assert_eq!(
+        output,
+        "CHANGED: no code/test buckets matched local changes\n\
+CHANGED: ignored non-executable paths: .memories/checkpoints/example.md, docs/PRE-RELEASE-FINDINGS.md\n"
+    );
 }
 
 fn sample_manifest() -> TestManifest {
