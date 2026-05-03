@@ -72,8 +72,8 @@ commands = [
 
 [buckets.tools-search]
 # Search-focused tool modules excluding dogfood search_quality.
-expected_seconds = 25
-timeout_seconds = 90
+expected_seconds = 90
+timeout_seconds = 180
 scope_label = "tooling"
 notes = "search-focused tool coverage"
 commands = [

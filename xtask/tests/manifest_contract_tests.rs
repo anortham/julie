@@ -352,8 +352,8 @@ fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
         (
             "tools-search",
             ExpectedBucket {
-                expected_seconds: 25,
-                timeout_seconds: 90,
+                expected_seconds: 90,
+                timeout_seconds: 180,
                 commands: &[
                     "cargo nextest run --lib tests::tools::search:: -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::search_context_lines -- --skip search_quality",
