@@ -10,8 +10,9 @@ mod tests {
     use crate::handler::JulieServerHandler;
     use crate::tools::workspace::ManageWorkspaceTool;
     use crate::tools::workspace::commands::registry::cleanup::{
-        CLEANUP_ACTION_AUTO_PRUNE, CLEANUP_REASON_MISSING_PATH, WorkspaceCleanupState,
-        inspect_workspace_cleanup_state, path_missing_after_grace, run_cleanup_sweep,
+        CLEANUP_ACTION_AUTO_PRUNE, CLEANUP_REASON_MISSING_PATH, WorkspaceCleanupActivity,
+        WorkspaceCleanupState, inspect_workspace_cleanup_state, path_missing_after_grace,
+        run_cleanup_sweep,
     };
     use crate::workspace::registry::generate_workspace_id;
 
@@ -191,7 +192,8 @@ mod tests {
             "open should report a registry prune, got: {open_text}"
         );
 
-        let sweep_summary = run_cleanup_sweep(&registry_store, Some(&pool), None)
+        let cleanup_activity = WorkspaceCleanupActivity::new(Some(&pool), None);
+        let sweep_summary = run_cleanup_sweep(&registry_store, &cleanup_activity)
             .await
             .expect("cleanup sweep should prune missing inactive workspace");
 
@@ -289,8 +291,9 @@ mod tests {
             .expect("primary workspace should exist");
         fs::remove_dir_all(&primary_row.path).unwrap();
 
+        let cleanup_activity = WorkspaceCleanupActivity::new(Some(&pool), None);
         let cleanup_state =
-            inspect_workspace_cleanup_state(&primary_row, Some(&pool), None, "auto_prune")
+            inspect_workspace_cleanup_state(&primary_row, &cleanup_activity, "auto_prune")
                 .await
                 .expect("cleanup state inspection should succeed");
 
@@ -327,8 +330,9 @@ mod tests {
             .expect("target workspace should exist");
         fs::remove_dir_all(&target_row.path).unwrap();
 
+        let cleanup_activity = WorkspaceCleanupActivity::new(Some(&pool), None);
         let cleanup_state =
-            inspect_workspace_cleanup_state(&target_row, Some(&pool), None, "auto_prune")
+            inspect_workspace_cleanup_state(&target_row, &cleanup_activity, "auto_prune")
                 .await
                 .expect("cleanup state inspection should succeed");
 

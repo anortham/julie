@@ -8,7 +8,7 @@ use super::cleanup::{
     WorkspaceDeleteOutcome, delete_workspace_if_allowed, inspect_workspace_cleanup_state,
 };
 use super::refresh_stats::RefreshWorkspaceOutcome;
-use super::{ManageWorkspaceTool, registry_store_for};
+use super::{ManageWorkspaceTool, cleanup_activity_for_handler, registry_store_for_handler};
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::{CallToolResult, CallToolResultExt, Content};
 use crate::workspace::registry::generate_workspace_id;
@@ -34,12 +34,12 @@ impl ManageWorkspaceTool {
         &self,
         handler: &JulieServerHandler,
     ) -> Result<CallToolResult> {
-        let Some(db) = handler.daemon_db.as_ref() else {
+        let Some(registry_store) = registry_store_for_handler(handler)? else {
             let message =
                 "Workspace open requires daemon mode. Start the daemon with `julie daemon`.";
             return Ok(CallToolResult::error(vec![Content::text(message)]));
         };
-        let registry_store = registry_store_for(db, handler.workspace_pool.as_ref())?;
+        let cleanup_activity = cleanup_activity_for_handler(handler);
 
         // A primary workspace swap is already in progress; refuse to mutate
         // session state or primary binding concurrently. The swap machinery
@@ -93,8 +93,7 @@ impl ManageWorkspaceTool {
                 .ok_or_else(|| anyhow!("Workspace not found: {workspace_id}"))?;
             match inspect_workspace_cleanup_state(
                 &row,
-                handler.workspace_pool.as_ref(),
-                handler.watcher_pool.as_ref(),
+                &cleanup_activity,
                 CLEANUP_ACTION_AUTO_PRUNE,
             )
             .await?
@@ -103,8 +102,7 @@ impl ManageWorkspaceTool {
                 WorkspaceCleanupState::MissingPrunable => {
                     let cleanup_result = delete_workspace_if_allowed(
                         &registry_store,
-                        handler.workspace_pool.as_ref(),
-                        handler.watcher_pool.as_ref(),
+                        &cleanup_activity,
                         workspace_id,
                         CLEANUP_ACTION_AUTO_PRUNE,
                         CLEANUP_REASON_MISSING_PATH,

@@ -2,7 +2,7 @@ use super::cleanup::{
     CLEANUP_ACTION_MANUAL_DELETE, CLEANUP_REASON_USER_REQUEST, WorkspaceDeleteOutcome,
     delete_workspace_if_allowed, prune_missing_workspaces,
 };
-use super::{ManageWorkspaceTool, registry_store_for};
+use super::{ManageWorkspaceTool, cleanup_activity_for_handler, registry_store_for_handler};
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::{CallToolResult, CallToolResultExt, Content};
 use crate::workspace::registry::generate_workspace_id;
@@ -18,19 +18,13 @@ impl ManageWorkspaceTool {
         path: &str,
         name: Option<String>,
     ) -> Result<CallToolResult> {
-        let Some(db) = handler.daemon_db.as_ref() else {
+        let Some(registry_store) = registry_store_for_handler(handler)? else {
             let message = "Workspace registration requires daemon mode. Start the daemon with `julie daemon`.";
             return Ok(CallToolResult::error(vec![Content::text(message)]));
         };
-        let registry_store = registry_store_for(db, handler.workspace_pool.as_ref())?;
+        let cleanup_activity = cleanup_activity_for_handler(handler);
 
-        if let Err(error) = prune_missing_workspaces(
-            &registry_store,
-            handler.workspace_pool.as_ref(),
-            handler.watcher_pool.as_ref(),
-        )
-        .await
-        {
+        if let Err(error) = prune_missing_workspaces(&registry_store, &cleanup_activity).await {
             warn!(
                 path = %path,
                 error = %error,
@@ -161,14 +155,12 @@ impl ManageWorkspaceTool {
     ) -> Result<CallToolResult> {
         info!("Removing workspace: {}", workspace_id);
 
-        // Daemon mode: use DaemonDatabase
-        if let Some(ref db) = handler.daemon_db {
-            let registry_store = registry_store_for(db, handler.workspace_pool.as_ref())?;
+        if let Some(registry_store) = registry_store_for_handler(handler)? {
+            let cleanup_activity = cleanup_activity_for_handler(handler);
             return Ok(
                 match delete_workspace_if_allowed(
                     &registry_store,
-                    handler.workspace_pool.as_ref(),
-                    handler.watcher_pool.as_ref(),
+                    &cleanup_activity,
                     workspace_id,
                     CLEANUP_ACTION_MANUAL_DELETE,
                     CLEANUP_REASON_USER_REQUEST,

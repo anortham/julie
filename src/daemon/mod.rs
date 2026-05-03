@@ -374,10 +374,14 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
             let mut tick = tokio::time::interval(Duration::from_secs(600));
             loop {
                 tick.tick().await;
+                let cleanup_activity =
+                    crate::tools::workspace::commands::registry::cleanup::WorkspaceCleanupActivity::new(
+                        Some(&cleanup_pool),
+                        Some(&watcher_pool_for_cleanup),
+                    );
                 match crate::tools::workspace::commands::registry::cleanup::run_cleanup_sweep(
                     &registry_store,
-                    Some(&cleanup_pool),
-                    Some(&watcher_pool_for_cleanup),
+                    &cleanup_activity,
                 )
                 .await
                 {

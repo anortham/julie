@@ -1,5 +1,5 @@
 use super::cleanup::run_cleanup_sweep;
-use super::{ManageWorkspaceTool, registry_store_for};
+use super::{ManageWorkspaceTool, cleanup_activity_for_handler, registry_store_for_handler};
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::{CallToolResult, CallToolResultExt, Content};
 use anyhow::Result;
@@ -13,15 +13,9 @@ impl ManageWorkspaceTool {
     ) -> Result<CallToolResult> {
         info!("Listing all workspaces");
 
-        // Daemon mode: use DaemonDatabase
-        if let Some(ref db) = handler.daemon_db {
-            let registry_store = registry_store_for(db, handler.workspace_pool.as_ref())?;
-            let cleanup_warning = match run_cleanup_sweep(
-                &registry_store,
-                handler.workspace_pool.as_ref(),
-                handler.watcher_pool.as_ref(),
-            )
-            .await
+        if let Some(registry_store) = registry_store_for_handler(handler)? {
+            let cleanup_activity = cleanup_activity_for_handler(handler);
+            let cleanup_warning = match run_cleanup_sweep(&registry_store, &cleanup_activity).await
             {
                 Ok(_) => None,
                 Err(error) => {
@@ -99,16 +93,9 @@ impl ManageWorkspaceTool {
     ) -> Result<CallToolResult> {
         info!("Cleaning workspaces");
 
-        // Daemon mode: use DaemonDatabase
-        if let Some(ref db) = handler.daemon_db {
-            let registry_store = registry_store_for(db, handler.workspace_pool.as_ref())?;
-            let summary = match run_cleanup_sweep(
-                &registry_store,
-                handler.workspace_pool.as_ref(),
-                handler.watcher_pool.as_ref(),
-            )
-            .await
-            {
+        if let Some(registry_store) = registry_store_for_handler(handler)? {
+            let cleanup_activity = cleanup_activity_for_handler(handler);
+            let summary = match run_cleanup_sweep(&registry_store, &cleanup_activity).await {
                 Ok(summary) => summary,
                 Err(e) => {
                     let message = format!("Failed to run workspace cleanup: {}", e);

@@ -17,6 +17,9 @@ use anyhow::Result;
 use crate::daemon::database::DaemonDatabase;
 use crate::daemon::workspace_pool::WorkspacePool;
 use crate::daemon::workspace_registry_store::WorkspaceRegistryStore;
+use crate::handler::JulieServerHandler;
+
+use self::cleanup::WorkspaceCleanupActivity;
 
 pub(crate) fn registry_store_for(
     daemon_db: &Arc<DaemonDatabase>,
@@ -32,6 +35,28 @@ pub(crate) fn registry_store_for(
         Arc::clone(daemon_db),
         indexes_dir,
     ))
+}
+
+pub(crate) fn registry_store_for_handler(
+    handler: &JulieServerHandler,
+) -> Result<Option<WorkspaceRegistryStore>> {
+    let Some(daemon_db) = handler.daemon_db.as_ref() else {
+        return Ok(None);
+    };
+
+    Ok(Some(registry_store_for(
+        daemon_db,
+        handler.workspace_pool.as_ref(),
+    )?))
+}
+
+pub(crate) fn cleanup_activity_for_handler(
+    handler: &JulieServerHandler,
+) -> WorkspaceCleanupActivity<'_> {
+    WorkspaceCleanupActivity::new(
+        handler.workspace_pool.as_ref(),
+        handler.watcher_pool.as_ref(),
+    )
 }
 
 // Split command implementations into logical modules

@@ -157,6 +157,11 @@ Acceptance criteria:
 | worker-red-green | Cleanup sweep remains blocked until service-owned session detach releases all active sessions. | `cargo nextest run --lib test_cleanup_sweep_blocks_missing_workspace_until_sessions_disconnect 2>&1 \| tail -40` | working-tree at `ef0e50d0` | PASS | 2026-05-03T18:37:00Z |
 | worker-red-green | Dashboard register/open actions preserve session-count behavior after dashboard cleanup uses service-owned detach. | `cargo nextest run --lib tests::dashboard::projects_actions 2>&1 \| tail -40` | working-tree at `ef0e50d0` | PASS | 2026-05-03T18:41:00Z |
 | affected-change-retry | Daemon lifecycle/session/watchers bucket passes after removing `WorkspacePool::disconnect_session`. | `cargo xtask test bucket daemon` | working-tree at `ef0e50d0` | PASS | 2026-05-03T18:40:00Z |
+| worker-red-green | Cleanup sweep consumes `WorkspaceCleanupActivity` instead of raw runtime and watcher pools while preserving active-session blocking. | `cargo nextest run --lib test_cleanup_sweep_blocks_missing_workspace_until_sessions_disconnect 2>&1 \| tail -50` | working-tree at `310dc466` | PASS | 2026-05-03T18:47:00Z |
+| worker-red-green | Workspace cleanup tests preserve open auto-prune, missing active block, missing inactive prune, and manual remove behavior through the cleanup activity facade. | `cargo nextest run --lib tests::daemon::workspace_cleanup 2>&1 \| tail -35` | working-tree at `310dc466` | PASS | 2026-05-03T18:48:00Z |
+| worker-red-green | Workspace registry command contracts remain stable after command handlers use registry and cleanup helpers. | `cargo nextest run --lib tests::tools::workspace -- --skip search_quality 2>&1 \| tail -35` | working-tree at `310dc466` | PASS | 2026-05-03T18:49:00Z |
+| worker-red-green | Dashboard project cleanup and workspace state labels use the cleanup activity facade without changing page actions. | `cargo nextest run --lib tests::dashboard::projects_actions 2>&1 \| tail -30` | working-tree at `310dc466` | PASS | 2026-05-03T18:50:00Z |
+| affected-change-retry | Daemon bucket stays green after daemon cleanup sweep uses `WorkspaceCleanupActivity`. | `cargo xtask test bucket daemon` | working-tree at `310dc466` | PASS | 2026-05-03T18:51:00Z |
 
 ## Model Routing
 

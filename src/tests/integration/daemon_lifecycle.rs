@@ -26,7 +26,9 @@ mod tests {
     use crate::handler::session_workspace::SessionWorkspaceState;
     use crate::migration::run_migration_for_workspace;
     use crate::paths::DaemonPaths;
-    use crate::tools::workspace::commands::registry::cleanup::run_cleanup_sweep;
+    use crate::tools::workspace::commands::registry::cleanup::{
+        WorkspaceCleanupActivity, run_cleanup_sweep,
+    };
     use crate::workspace::startup_hint::WorkspaceStartupHint;
 
     fn session_attachment(
@@ -378,8 +380,9 @@ mod tests {
         std::fs::remove_dir_all(&ws_path).expect("remove workspace path");
 
         let registry_store = WorkspaceRegistryStore::new(Arc::clone(&daemon_db), indexes_dir);
+        let cleanup_activity = WorkspaceCleanupActivity::new(Some(&pool), Some(&watcher_pool));
 
-        let blocked = run_cleanup_sweep(&registry_store, Some(&pool), Some(&watcher_pool))
+        let blocked = run_cleanup_sweep(&registry_store, &cleanup_activity)
             .await
             .expect("cleanup sweep should succeed");
         assert!(
@@ -408,7 +411,7 @@ mod tests {
             .detach_workspace_once(&ws_id)
             .await
             .expect("first workspace detach should succeed");
-        let still_blocked = run_cleanup_sweep(&registry_store, Some(&pool), Some(&watcher_pool))
+        let still_blocked = run_cleanup_sweep(&registry_store, &cleanup_activity)
             .await
             .expect("cleanup sweep should still succeed after one disconnect");
         assert!(
@@ -426,7 +429,7 @@ mod tests {
             .detach_workspace_once(&ws_id)
             .await
             .expect("second workspace detach should succeed");
-        let pruned = run_cleanup_sweep(&registry_store, Some(&pool), Some(&watcher_pool))
+        let pruned = run_cleanup_sweep(&registry_store, &cleanup_activity)
             .await
             .expect("cleanup sweep should prune the missing workspace once detached");
         assert!(

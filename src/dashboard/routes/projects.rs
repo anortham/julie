@@ -12,7 +12,8 @@ use crate::daemon::database::{WorkspaceCleanupEventRow, WorkspaceRow};
 use crate::dashboard::AppState;
 use crate::dashboard::render_template;
 use crate::tools::workspace::commands::registry::cleanup::{
-    CLEANUP_ACTION_AUTO_PRUNE, WorkspaceCleanupState, inspect_workspace_cleanup_state,
+    CLEANUP_ACTION_AUTO_PRUNE, WorkspaceCleanupActivity, WorkspaceCleanupState,
+    inspect_workspace_cleanup_state,
 };
 
 /// A single language in the distribution bar.
@@ -230,13 +231,13 @@ async fn workspace_session_state(
 ) -> WorkspaceSessionStateView {
     let (label, base_detail, current_session_count, active_session_count) =
         base_session_state(workspace, current_workspace_counts);
-    let lifecycle = inspect_workspace_cleanup_state(
-        workspace,
+    let cleanup_activity = WorkspaceCleanupActivity::new(
         state.dashboard.workspace_pool(),
         state.dashboard.watcher_pool(),
-        CLEANUP_ACTION_AUTO_PRUNE,
-    )
-    .await;
+    );
+    let lifecycle =
+        inspect_workspace_cleanup_state(workspace, &cleanup_activity, CLEANUP_ACTION_AUTO_PRUNE)
+            .await;
 
     let (path_missing, cleanup_blocked, cleanup_block_reason, path_state_label, path_detail) =
         match lifecycle {
