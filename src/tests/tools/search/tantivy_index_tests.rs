@@ -530,6 +530,53 @@ fn test_shutdown_releases_lock_for_new_index() {
 }
 
 #[test]
+fn test_release_writer_releases_lock_without_shutting_down_search() {
+    let temp = TempDir::new().unwrap();
+
+    let index_a = SearchIndex::create(temp.path()).unwrap();
+    index_a
+        .add_file_content(&FileDocument {
+            file_path: "src/old.rs".to_string(),
+            content: "fn old_symbol() {}".to_string(),
+            language: "rust".to_string(),
+        })
+        .unwrap();
+    index_a.release_writer().unwrap();
+    assert!(
+        !index_a.is_shutdown(),
+        "release_writer must not disable future writes on the same SearchIndex"
+    );
+
+    let old_results = index_a
+        .search_files("old_symbol", &Default::default(), 10)
+        .unwrap();
+    assert_eq!(
+        old_results.results.len(),
+        1,
+        "release_writer should commit and keep the reader usable"
+    );
+
+    let index_b = SearchIndex::open(temp.path()).unwrap();
+    index_b
+        .add_file_content(&FileDocument {
+            file_path: "src/new.rs".to_string(),
+            content: "fn new_symbol() {}".to_string(),
+            language: "rust".to_string(),
+        })
+        .unwrap();
+    index_b.release_writer().unwrap();
+
+    index_a
+        .add_file_content(&FileDocument {
+            file_path: "src/again.rs".to_string(),
+            content: "fn again_symbol() {}".to_string(),
+            language: "rust".to_string(),
+        })
+        .unwrap();
+    index_a.commit().unwrap();
+}
+
+#[test]
 fn test_or_fallback_returns_partial_matches() {
     // When searching for multiple terms where no single symbol contains ALL of them,
     // OR mode should still return symbols that match SOME terms, ranked by match count.

@@ -407,6 +407,22 @@ impl SearchIndex {
         Ok(())
     }
 
+    /// Commit and release the current writer without shutting down search.
+    ///
+    /// This keeps the reader usable and lets future writes recreate the writer,
+    /// while releasing Tantivy's process-wide write lock for path-backed callers.
+    pub fn release_writer(&self) -> Result<()> {
+        let mut guard = self.writer.lock().unwrap_or_else(|e| {
+            tracing::warn!("writer mutex was poisoned during writer release; recovering");
+            e.into_inner()
+        });
+        if let Some(mut writer) = guard.take() {
+            writer.commit()?;
+        }
+        self.reader.reload()?;
+        Ok(())
+    }
+
     /// Remove all documents from the index (for force re-index).
     pub fn clear_all(&self) -> Result<()> {
         let guard = self.get_or_create_writer()?;

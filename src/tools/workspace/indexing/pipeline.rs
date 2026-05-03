@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 
+use anyhow::Context;
 use anyhow::Result;
 use futures::stream::{self, StreamExt};
 use tracing::{debug, info, trace, warn};
@@ -597,14 +598,16 @@ async fn project_batch(
         let db = std::sync::Arc::clone(db);
         let workspace_id = route.workspace_id.clone();
         let tantivy_result = tokio::task::spawn_blocking(move || {
-            crate::search::SearchProjection::tantivy(workspace_id).project_documents_with_locks(
-                &db,
-                &search_index,
-                &symbol_docs,
-                &file_docs,
-                &files_to_clean,
-                canonical_revision,
-            )
+            crate::search::SearchProjection::tantivy(workspace_id)
+                .project_documents_with_locks(
+                    &db,
+                    &search_index,
+                    &symbol_docs,
+                    &file_docs,
+                    &files_to_clean,
+                    canonical_revision,
+                )
+                .context("projecting batch through SearchProjection")
         })
         .await;
 

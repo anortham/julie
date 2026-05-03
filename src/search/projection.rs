@@ -162,6 +162,7 @@ impl SearchProjection {
             );
             return Err(err);
         }
+        index.release_writer()?;
 
         let ready_state = db.upsert_projection_state(
             self.projection,
@@ -249,6 +250,7 @@ impl SearchProjection {
             );
             return Err(err);
         }
+        index.release_writer()?;
 
         db.upsert_projection_state(
             self.projection,
@@ -329,8 +331,8 @@ impl SearchProjection {
             files_to_clean.len()
         );
 
-        let db = db.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         if let Err(err) = apply_result {
+            let db = db.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
             let detail = err.to_string();
             let _ = db.upsert_projection_state(
                 self.projection,
@@ -342,7 +344,14 @@ impl SearchProjection {
             );
             return Err(err);
         }
+        {
+            let index = index
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            index.release_writer()?;
+        }
 
+        let db = db.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         db.upsert_projection_state(
             self.projection,
             &self.workspace_id,

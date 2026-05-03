@@ -6,7 +6,7 @@ use super::route::IndexRoute;
 use super::state::IndexingOperation;
 use crate::handler::JulieServerHandler;
 use crate::tools::workspace::commands::ManageWorkspaceTool;
-use anyhow::Result;
+use anyhow::{Context, Result};
 use std::path::Path;
 use std::sync::Arc;
 use tracing::{debug, info, warn};
@@ -143,14 +143,36 @@ impl ManageWorkspaceTool {
             }
         } else {
             let database = route.database_for_read(handler).await?;
-            let search_index = route.search_index_for_write().await?;
-            self.backfill_tantivy_if_needed(
-                handler,
-                &route.workspace_id,
-                database.as_ref(),
-                search_index.as_ref(),
-            )
-            .await?;
+            let search_index = route
+                .search_index_for_write()
+                .await
+                .context("opening Tantivy for startup projection backfill")?;
+            let backfill_result = self
+                .backfill_tantivy_if_needed(
+                    handler,
+                    &route.workspace_id,
+                    database.as_ref(),
+                    search_index.as_ref(),
+                )
+                .await;
+            let release_result = if let Some(search_index) = &search_index {
+                let idx = search_index
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                idx.release_writer()
+            } else {
+                Ok(())
+            };
+            if let Err(err) = backfill_result {
+                if let Err(release_err) = release_result {
+                    warn!(
+                        "Failed to release Tantivy writer after startup projection backfill error: {}",
+                        release_err
+                    );
+                }
+                return Err(err);
+            }
+            release_result.context("releasing Tantivy writer after startup projection backfill")?;
         }
 
         // Proceeding with indexing (parser pool groups files by language for 10-50x speedup)
@@ -178,7 +200,8 @@ impl ManageWorkspaceTool {
             });
         let pipeline_result =
             run_indexing_pipeline(self, handler, files_to_index, &route, indexing_operation)
-                .await?;
+                .await
+                .context("running indexing pipeline after projection backfill")?;
         let total_files = pipeline_result.files_processed;
         if pipeline_result.state.repair_needed() {
             warn!(
