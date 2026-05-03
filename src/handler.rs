@@ -920,11 +920,11 @@ impl JulieServerHandler {
         let prefer_request_roots =
             crate::startup::startup_source_prefers_request_roots(workspace_startup_hint.source);
         let mut session_workspace = SessionWorkspaceState::new(workspace_startup_hint.clone());
+        let initial_workspace_id = workspace_id.clone();
         if let Some(ref id) = workspace_id {
             if !prefer_request_roots {
                 session_workspace.bind_primary(id.clone(), workspace_root.clone());
             }
-            session_workspace.mark_workspace_attached(id.clone());
         }
 
         // Create per-project logger for daemon mode
@@ -935,8 +935,8 @@ impl JulieServerHandler {
         let (metrics_tx, metrics_rx) = tokio::sync::mpsc::channel::<MetricsTask>(512);
         tokio::spawn(run_metrics_writer(metrics_rx));
 
-        Ok(Self {
-            workspace_root,
+        let handler = Self {
+            workspace_root: workspace_root.clone(),
             session_workspace: Arc::new(StdRwLock::new(session_workspace)),
             workspace: Arc::new(RwLock::new(Some(ws_clone))),
             is_indexed: Arc::new(RwLock::new(already_indexed)),
@@ -960,7 +960,16 @@ impl JulieServerHandler {
             dashboard_tx,
             #[cfg(test)]
             test_temp_guard: None,
-        })
+        };
+
+        if let Some(id) = initial_workspace_id {
+            handler
+                .session_attachment()
+                .attach_workspace_once(&id, workspace_root)
+                .await?;
+        }
+
+        Ok(handler)
     }
 
     pub async fn new_deferred_daemon_startup_hint(
@@ -1188,6 +1197,9 @@ impl JulieServerHandler {
     fn session_attachment(&self) -> WorkspaceSessionAttachment {
         WorkspaceSessionAttachment::new(
             self.workspace_pool.as_ref().map(Arc::clone),
+            self.daemon_db.as_ref().map(Arc::clone),
+            self.watcher_pool.as_ref().map(Arc::clone),
+            self.embedding_service.as_ref().map(Arc::clone),
             Arc::clone(&self.session_workspace),
         )
     }
@@ -1247,7 +1259,15 @@ impl JulieServerHandler {
                 )
             })?
         } else {
-            pool.get_or_init(workspace_id, workspace_root).await?
+            self.session_attachment()
+                .attach_workspace_once(workspace_id, workspace_root)
+                .await?;
+            pool.get(workspace_id).await.ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Workspace '{}' was attached but is missing from the workspace pool",
+                    workspace_id
+                )
+            })?
         };
 
         let mut workspace = (*pooled_workspace).clone();

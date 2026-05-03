@@ -142,6 +142,17 @@ Acceptance criteria:
 
 **Verification ledger:** Record invariant, command, scope label, commit SHA, result, and timestamp. Reuse an existing passing ledger entry for the same HEAD and scope instead of rerunning an expensive gate.
 
+## Verification Ledger
+
+| Scope | Invariant | Command | Commit | Result | Time |
+|-------|-----------|---------|--------|--------|------|
+| worker-red-green | Runtime lookup initializes a workspace without incrementing session count or watcher refs. | `cargo nextest run --lib test_workspace_pool_get_or_init_does_not_attach_session_side_effects 2>&1 \| tail -30` | working-tree at `ed885ff7` | PASS | 2026-05-03T18:14:00Z |
+| worker-red-green | Session attachment increments watcher refs and only session attachment owns that side effect. | `cargo nextest run --lib test_session_attachment_increments_watcher_ref 2>&1 \| tail -30` | working-tree at `ed885ff7` | PASS | 2026-05-03T18:25:00Z |
+| worker-red-green | Same-root deferred reinit attaches once and does not leak a second session count. | `cargo nextest run --lib test_same_root_reinit_reuses_pool_entry_without_double_attach 2>&1 \| tail -40` | working-tree at `ed885ff7` | PASS | 2026-05-03T18:10:00Z |
+| worker-red-green | IPC cleanup disconnects startup and rebound primary attachments after service-owned attach setup. | `cargo nextest run --lib test_handle_ipc_session_cleanup_disconnects_startup_and_rebound_primary 2>&1 \| tail -30` | working-tree at `ed885ff7` | PASS | 2026-05-03T18:15:00Z |
+| affected-change | Changed-file mapping falls back to `dev`; all completed buckets passed before the daemon bucket exposed a stale watcher setup test. | `cargo xtask test changed` | working-tree at `ed885ff7` | FAIL, daemon bucket only: `test_watcher_pool_detached_on_disconnect` | 2026-05-03T18:23:00Z |
+| affected-change-retry | Daemon lifecycle/session/watchers bucket passes after updating stale watcher setup to attach through `WorkspaceSessionAttachment`. | `cargo xtask test bucket daemon` | working-tree at `ed885ff7` | PASS | 2026-05-03T18:26:00Z |
+
 ## Model Routing
 
 **Project source of truth:** `RAZORBACK.md`. Do not copy the global model table into this plan. If a local sentence conflicts with `RAZORBACK.md`, `RAZORBACK.md` wins.

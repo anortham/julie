@@ -1,8 +1,12 @@
 use std::sync::Arc;
+use std::sync::RwLock as StdRwLock;
 
 use crate::daemon::database::DaemonDatabase;
 use crate::daemon::workspace_pool::WorkspacePool;
+use crate::daemon::workspace_session_attachment::WorkspaceSessionAttachment;
+use crate::handler::session_workspace::SessionWorkspaceState;
 use crate::workspace::registry::generate_workspace_id;
+use crate::workspace::startup_hint::WorkspaceStartupHint;
 
 fn temp_indexes_dir() -> tempfile::TempDir {
     tempfile::tempdir().expect("Failed to create temp dir")
@@ -13,6 +17,20 @@ fn temp_workspace_root() -> tempfile::TempDir {
     // Create .julie directory structure so JulieWorkspace::initialize succeeds
     std::fs::create_dir_all(dir.path().join(".julie")).expect("Failed to create .julie dir");
     dir
+}
+
+fn session_attachment(
+    pool: Arc<WorkspacePool>,
+    watcher_pool: Option<Arc<crate::daemon::watcher_pool::WatcherPool>>,
+    workspace_root: std::path::PathBuf,
+) -> WorkspaceSessionAttachment {
+    let session_workspace = Arc::new(StdRwLock::new(SessionWorkspaceState::new(
+        WorkspaceStartupHint {
+            path: workspace_root,
+            source: None,
+        },
+    )));
+    WorkspaceSessionAttachment::new(Some(pool), None, watcher_pool, None, session_workspace)
 }
 
 #[tokio::test]
@@ -262,7 +280,7 @@ fn test_daemon_db_upsert_on_workspace_init() {
 }
 
 #[tokio::test]
-async fn test_watcher_pool_ref_incremented_on_get_or_init() {
+async fn test_session_attachment_increments_watcher_ref() {
     use crate::daemon::watcher_pool::WatcherPool;
     use std::time::Duration;
 
@@ -276,12 +294,57 @@ async fn test_watcher_pool_ref_incremented_on_get_or_init() {
         None,
     );
 
-    pool.get_or_init("test_ws", workspace_root.path().to_path_buf())
-        .await
-        .expect("get_or_init should succeed");
+    let attachment = session_attachment(
+        Arc::new(pool),
+        Some(Arc::clone(&watcher_pool)),
+        workspace_root.path().to_path_buf(),
+    );
 
-    // attach() was called, so ref_count should be 1
+    attachment
+        .attach_workspace_once("test_ws", workspace_root.path().to_path_buf())
+        .await
+        .expect("attach should initialize runtime and watcher");
+
     assert_eq!(watcher_pool.ref_count("test_ws").await, 1);
+}
+
+#[tokio::test]
+async fn test_workspace_pool_get_or_init_does_not_attach_session_side_effects() {
+    use crate::daemon::database::DaemonDatabase;
+    use crate::daemon::watcher_pool::WatcherPool;
+    use std::time::Duration;
+
+    let tmp = tempfile::TempDir::new().unwrap();
+    let indexes_dir = tmp.path().join("indexes");
+    std::fs::create_dir_all(&indexes_dir).unwrap();
+    let workspace_root = temp_workspace_root();
+    let daemon_db = Arc::new(DaemonDatabase::open(&tmp.path().join("daemon.db")).unwrap());
+    let watcher_pool = Arc::new(WatcherPool::new(Duration::from_secs(300)));
+    let pool = WorkspacePool::new(
+        indexes_dir,
+        Some(Arc::clone(&daemon_db)),
+        Some(Arc::clone(&watcher_pool)),
+        None,
+    );
+
+    pool.get_or_init("runtime_only_ws", workspace_root.path().to_path_buf())
+        .await
+        .expect("runtime lookup should initialize workspace");
+
+    assert_eq!(
+        daemon_db
+            .get_workspace("runtime_only_ws")
+            .unwrap()
+            .expect("workspace row should exist")
+            .session_count,
+        0,
+        "runtime lookup should not increment session count"
+    );
+    assert_eq!(
+        watcher_pool.ref_count("runtime_only_ws").await,
+        0,
+        "runtime lookup should not attach watcher refs"
+    );
 }
 
 #[tokio::test]
@@ -292,19 +355,32 @@ async fn test_watcher_pool_reuses_session_refs_and_starts_grace_on_last_disconne
     let indexes_dir = temp_indexes_dir();
     let workspace_root = temp_workspace_root();
     let watcher_pool = Arc::new(WatcherPool::new(Duration::from_secs(300)));
-    let pool = WorkspacePool::new(
+    let pool = Arc::new(WorkspacePool::new(
         indexes_dir.path().to_path_buf(),
         None,
         Some(Arc::clone(&watcher_pool)),
         None,
+    ));
+
+    let first_session = session_attachment(
+        Arc::clone(&pool),
+        Some(Arc::clone(&watcher_pool)),
+        workspace_root.path().to_path_buf(),
+    );
+    let second_session = session_attachment(
+        Arc::clone(&pool),
+        Some(Arc::clone(&watcher_pool)),
+        workspace_root.path().to_path_buf(),
     );
 
-    pool.get_or_init("test_ws", workspace_root.path().to_path_buf())
+    first_session
+        .attach_workspace_once("test_ws", workspace_root.path().to_path_buf())
         .await
-        .expect("first get_or_init should succeed");
-    pool.get_or_init("test_ws", workspace_root.path().to_path_buf())
+        .expect("first session attach should succeed");
+    second_session
+        .attach_workspace_once("test_ws", workspace_root.path().to_path_buf())
         .await
-        .expect("second get_or_init should reuse the workspace");
+        .expect("second session attach should reuse the runtime");
 
     assert_eq!(
         watcher_pool.ref_count("test_ws").await,
@@ -473,16 +549,22 @@ async fn test_watcher_pool_detached_on_disconnect() {
     let indexes_dir = temp_indexes_dir();
     let workspace_root = temp_workspace_root();
     let watcher_pool = Arc::new(WatcherPool::new(Duration::from_secs(300)));
-    let pool = WorkspacePool::new(
+    let pool = Arc::new(WorkspacePool::new(
         indexes_dir.path().to_path_buf(),
         None,
         Some(Arc::clone(&watcher_pool)),
         None,
+    ));
+    let attachment = session_attachment(
+        Arc::clone(&pool),
+        Some(Arc::clone(&watcher_pool)),
+        workspace_root.path().to_path_buf(),
     );
 
-    pool.get_or_init("test_ws", workspace_root.path().to_path_buf())
+    attachment
+        .attach_workspace_once("test_ws", workspace_root.path().to_path_buf())
         .await
-        .expect("get_or_init should succeed");
+        .expect("attach should initialize runtime and watcher");
 
     pool.disconnect_session("test_ws").await;
 

@@ -640,8 +640,13 @@ async fn test_session_attachment_service_attaches_workspace_once_per_session() {
             source: None,
         },
     )));
-    let attachment =
-        WorkspaceSessionAttachment::new(Some(Arc::clone(&pool)), Arc::clone(&session_workspace));
+    let attachment = WorkspaceSessionAttachment::new(
+        Some(Arc::clone(&pool)),
+        Some(Arc::clone(&daemon_db)),
+        Some(Arc::clone(&watcher_pool)),
+        None,
+        Arc::clone(&session_workspace),
+    );
 
     let first_attach = attachment
         .attach_workspace_once(&workspace_id, canonical_root.clone())

@@ -1,6 +1,7 @@
 mod tests {
     use std::path::PathBuf;
     use std::sync::Arc;
+    use std::sync::RwLock as StdRwLock;
     use std::sync::atomic::AtomicBool;
     use std::time::Duration;
 
@@ -14,7 +15,9 @@ mod tests {
     use crate::daemon::handle_ipc_session;
     use crate::daemon::ipc_session::workspace_ids_to_disconnect;
     use crate::daemon::workspace_pool::WorkspacePool;
+    use crate::daemon::workspace_session_attachment::WorkspaceSessionAttachment;
     use crate::handler::JulieServerHandler;
+    use crate::handler::session_workspace::SessionWorkspaceState;
     use crate::workspace::startup_hint::{WorkspaceStartupHint, WorkspaceStartupSource};
 
     fn wait_for_session_count(
@@ -447,10 +450,26 @@ mod tests {
             Some(Arc::clone(&embedding_service)),
         ));
 
-        pool.get_or_init(&startup_id, startup_path.clone())
+        let session_workspace = Arc::new(StdRwLock::new(SessionWorkspaceState::new(
+            WorkspaceStartupHint {
+                path: startup_path.clone(),
+                source: None,
+            },
+        )));
+        let attachment = WorkspaceSessionAttachment::new(
+            Some(Arc::clone(&pool)),
+            Some(Arc::clone(&daemon_db)),
+            None,
+            Some(Arc::clone(&embedding_service)),
+            session_workspace,
+        );
+
+        attachment
+            .attach_workspace_once(&startup_id, startup_path.clone())
             .await
             .expect("attach startup workspace session");
-        pool.get_or_init(&rebound_id, rebound_path.clone())
+        attachment
+            .attach_workspace_once(&rebound_id, rebound_path.clone())
             .await
             .expect("attach rebound workspace session");
         wait_for_session_count(&daemon_db, &startup_id, 1).await;

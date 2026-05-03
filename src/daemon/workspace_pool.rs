@@ -22,7 +22,6 @@ pub struct WorkspacePool {
     indexes_dir: PathBuf,
     daemon_db: Option<Arc<DaemonDatabase>>,
     watcher_pool: Option<Arc<WatcherPool>>,
-    embedding_service: Option<Arc<EmbeddingService>>,
 }
 
 struct WorkspaceEntry {
@@ -39,26 +38,22 @@ impl WorkspacePool {
     /// `daemon_db` is the persistent registry database. When `Some`, workspace
     /// state (status, session counts) is persisted across daemon restarts.
     ///
-    /// `watcher_pool` is the shared file watcher registry. When `Some`,
-    /// `IncrementalIndexer` instances are ref-counted across sessions so that
-    /// each workspace has exactly one active file watcher regardless of how
-    /// many sessions are attached.
+    /// `watcher_pool` is retained temporarily for disconnect compatibility
+    /// while callers migrate to `WorkspaceSessionAttachment`.
     ///
-    /// `embedding_service` is the shared embedding provider, passed through
-    /// to `WatcherPool::attach()` so incremental re-indexing can re-embed
-    /// changed symbols.
+    /// `_embedding_service` is accepted temporarily while callers migrate to
+    /// `WorkspaceSessionAttachment`.
     pub fn new(
         indexes_dir: PathBuf,
         daemon_db: Option<Arc<DaemonDatabase>>,
         watcher_pool: Option<Arc<WatcherPool>>,
-        embedding_service: Option<Arc<EmbeddingService>>,
+        _embedding_service: Option<Arc<EmbeddingService>>,
     ) -> Self {
         Self {
             workspaces: tokio::sync::RwLock::new(HashMap::new()),
             indexes_dir,
             daemon_db,
             watcher_pool,
-            embedding_service,
         }
     }
 
@@ -74,13 +69,9 @@ impl WorkspacePool {
     /// Uses double-checked locking: takes a read lock first (fast path),
     /// then upgrades to a write lock only when initialization is needed.
     ///
-    /// When `daemon_db` is present, the workspace is registered as `pending` and
-    /// its session count is incremented.
-    ///
-    /// When `watcher_pool` is present, `attach()` is called to increment the
-    /// watcher ref-count (and start a new `IncrementalIndexer` if needed).
-    /// Watcher failures are non-fatal: a warning is logged and initialization
-    /// continues, since file watching is a convenience, not a hard requirement.
+    /// When `daemon_db` is present, the workspace is registered as `pending`.
+    /// Session counts and watcher refs are mutated by
+    /// `WorkspaceSessionAttachment`, not by runtime lookup.
     pub async fn get_or_init(
         &self,
         workspace_id: &str,
@@ -93,16 +84,6 @@ impl WorkspacePool {
         };
 
         if let Some(ws) = cached_ws {
-            self.update_session_count(workspace_id, true).await;
-            if let Some(ref wp) = self.watcher_pool {
-                let provider = self.shared_embedding_provider();
-                if let Err(e) = wp.attach(workspace_id, &ws, provider).await {
-                    warn!(
-                        workspace_id,
-                        "Failed to attach watcher on session reuse: {}", e
-                    );
-                }
-            }
             return Ok(ws);
         }
 
@@ -112,17 +93,6 @@ impl WorkspacePool {
         // Double-check: another task may have initialized while we waited for the write lock
         if let Some(entry) = guard.get(workspace_id) {
             let ws = Arc::clone(&entry.workspace);
-            drop(guard);
-            self.update_session_count(workspace_id, true).await;
-            if let Some(ref wp) = self.watcher_pool {
-                let provider = self.shared_embedding_provider();
-                if let Err(e) = wp.attach(workspace_id, &ws, provider).await {
-                    warn!(
-                        workspace_id,
-                        "Failed to attach watcher (double-check path): {}", e
-                    );
-                }
-            }
             return Ok(ws);
         }
 
@@ -166,9 +136,8 @@ impl WorkspacePool {
             );
         }
 
-        // Register as pending so the workspace is visible in daemon.db even while
-        // initializing. The session count is incremented AFTER a successful init
-        // to avoid a permanently-leaked count if init_workspace fails.
+        // Register as pending so the workspace is visible in daemon.db even
+        // while initializing. Runtime lookup does not attach a session.
         if let Some(ref db) = self.daemon_db {
             let path_str = workspace_root.to_string_lossy();
             if let Err(e) = db.upsert_workspace(workspace_id, &path_str, "pending") {
@@ -193,18 +162,6 @@ impl WorkspacePool {
                 indexed: false,
             },
         );
-        drop(guard); // release write lock before any async follow-up work
-
-        // Increment only after successful init — safe to count now.
-        self.update_session_count(workspace_id, true).await;
-
-        if let Some(ref wp) = self.watcher_pool {
-            let provider = self.shared_embedding_provider();
-            if let Err(e) = wp.attach(workspace_id, &ws, provider).await {
-                warn!(workspace_id, "Failed to attach watcher: {}", e);
-            }
-        }
-
         Ok(ws)
     }
 
@@ -364,16 +321,6 @@ impl WorkspacePool {
             .collect();
         inputs.sort_by(|left, right| left.0.cmp(&right.0));
         inputs
-    }
-
-    /// Extract the shared embedding provider from the service (if available).
-    ///
-    /// Returns `None` when no embedding service is configured or when the
-    /// service initialized without a provider (e.g., model download failed).
-    fn shared_embedding_provider(&self) -> Option<Arc<dyn crate::embeddings::EmbeddingProvider>> {
-        self.embedding_service
-            .as_ref()
-            .and_then(|svc| svc.provider())
     }
 
     /// Initialize a `JulieWorkspace` with its index root redirected to the pool's

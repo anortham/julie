@@ -308,6 +308,7 @@ pub(crate) async fn handle_ipc_session(
                 Some(Arc::clone(&pool)),
             )
             .await
+            .context("Failed to create handler for workspace session")
         }
         .context("Failed to create handler for IPC session")?;
 
