@@ -603,3 +603,77 @@ async fn test_same_root_reinit_reuses_pool_entry_without_double_attach() {
         "pooled workspace must have an index_root_override set"
     );
 }
+
+#[tokio::test]
+async fn test_session_attachment_service_attaches_workspace_once_per_session() {
+    use crate::daemon::database::DaemonDatabase;
+    use crate::daemon::watcher_pool::WatcherPool;
+    use crate::daemon::workspace_session_attachment::WorkspaceSessionAttachment;
+    use crate::handler::session_workspace::SessionWorkspaceState;
+    use crate::workspace::startup_hint::WorkspaceStartupHint;
+    use std::sync::RwLock as StdRwLock;
+    use std::time::Duration;
+
+    let indexes_dir = temp_indexes_dir();
+    let workspace_root = temp_workspace_root();
+    let canonical_root = workspace_root
+        .path()
+        .canonicalize()
+        .expect("canonicalize root");
+    let workspace_id =
+        crate::workspace::registry::generate_workspace_id(&canonical_root.to_string_lossy())
+            .expect("generate workspace id");
+
+    let daemon_db = Arc::new(
+        DaemonDatabase::open(&indexes_dir.path().join("daemon.db")).expect("open daemon db"),
+    );
+    let watcher_pool = Arc::new(WatcherPool::new(Duration::from_secs(300)));
+    let pool = Arc::new(WorkspacePool::new(
+        indexes_dir.path().to_path_buf(),
+        Some(Arc::clone(&daemon_db)),
+        Some(Arc::clone(&watcher_pool)),
+        None,
+    ));
+    let session_workspace = Arc::new(StdRwLock::new(SessionWorkspaceState::new(
+        WorkspaceStartupHint {
+            path: canonical_root.clone(),
+            source: None,
+        },
+    )));
+    let attachment =
+        WorkspaceSessionAttachment::new(Some(Arc::clone(&pool)), Arc::clone(&session_workspace));
+
+    let first_attach = attachment
+        .attach_workspace_once(&workspace_id, canonical_root.clone())
+        .await
+        .expect("first attach should initialize workspace");
+    let second_attach = attachment
+        .attach_workspace_once(&workspace_id, canonical_root)
+        .await
+        .expect("second attach should be idempotent");
+
+    assert!(first_attach, "first attach should mutate session state");
+    assert!(!second_attach, "second attach should be a no-op");
+    assert_eq!(
+        daemon_db
+            .get_workspace(&workspace_id)
+            .expect("read workspace row")
+            .expect("workspace row exists")
+            .session_count,
+        1,
+        "idempotent attach should increment daemon session count once"
+    );
+    assert_eq!(
+        watcher_pool.ref_count(&workspace_id).await,
+        1,
+        "idempotent attach should increment watcher refs once"
+    );
+    assert_eq!(
+        session_workspace
+            .read()
+            .unwrap_or_else(|p| p.into_inner())
+            .session_attached_workspace_ids(),
+        vec![workspace_id],
+        "attached workspace IDs should contain the workspace once"
+    );
+}

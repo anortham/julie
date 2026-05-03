@@ -25,6 +25,7 @@ use tokio::sync::broadcast;
 use tracing::{debug, info, warn};
 
 use crate::daemon::session::{SessionLifecycleHandle, SessionLifecyclePhase};
+use crate::daemon::workspace_session_attachment::WorkspaceSessionAttachment;
 use crate::dashboard::state::DashboardEvent;
 
 use self::session_workspace::{PrimaryWorkspaceBinding, SessionWorkspaceState};
@@ -585,23 +586,9 @@ impl JulieServerHandler {
         &self,
         binding: &PrimaryWorkspaceBinding,
     ) -> Result<()> {
-        let Some(pool) = &self.workspace_pool else {
-            return Ok(());
-        };
-
-        if self
-            .was_workspace_attached_in_session(&binding.workspace_id)
-            .await
-        {
-            return Ok(());
-        }
-
-        pool.get_or_init(&binding.workspace_id, binding.workspace_root.clone())
+        self.session_attachment()
+            .attach_workspace_once(&binding.workspace_id, binding.workspace_root.clone())
             .await?;
-        self.session_workspace
-            .write()
-            .unwrap_or_else(|p| p.into_inner())
-            .mark_workspace_attached(binding.workspace_id.clone());
         Ok(())
     }
 
@@ -1198,6 +1185,13 @@ impl JulieServerHandler {
             .was_workspace_attached_in_session(workspace_id)
     }
 
+    fn session_attachment(&self) -> WorkspaceSessionAttachment {
+        WorkspaceSessionAttachment::new(
+            self.workspace_pool.as_ref().map(Arc::clone),
+            Arc::clone(&self.session_workspace),
+        )
+    }
+
     fn rebind_current_primary(&self, workspace_id: impl Into<String>, workspace_root: PathBuf) {
         let workspace_id = workspace_id.into();
         self.update_session_workspace(move |session_workspace| {
@@ -1225,16 +1219,18 @@ impl JulieServerHandler {
 
         *self.workspace_id.write().unwrap_or_else(|p| p.into_inner()) = workspace_id.clone();
 
+        let attached_workspace_id = workspace_id.clone().filter(|_| mark_attached);
         self.update_session_workspace(move |session_workspace| {
             if let Some(workspace_id) = workspace_id {
-                session_workspace.bind_primary(workspace_id.clone(), workspace_root);
-                if mark_attached {
-                    session_workspace.mark_workspace_attached(workspace_id);
-                }
+                session_workspace.bind_primary(workspace_id, workspace_root);
             }
 
             session_workspace.complete_primary_swap();
         });
+        if let Some(workspace_id) = attached_workspace_id {
+            self.session_attachment()
+                .mark_workspace_attached(workspace_id);
+        }
     }
 
     async fn acquire_pooled_workspace_for_rebind(
@@ -2038,15 +2034,10 @@ impl JulieServerHandler {
         let attached_matches_target = self.was_workspace_attached_in_session(workspace_id).await;
         let already_active = self.is_workspace_active(workspace_id).await;
 
-        if let Some(pool) = &self.workspace_pool {
-            if !attached_matches_target {
-                pool.get_or_init(workspace_id, workspace_root).await?;
-                pool.sync_indexed_from_db(workspace_id).await;
-                self.session_workspace
-                    .write()
-                    .unwrap_or_else(|p| p.into_inner())
-                    .mark_workspace_attached(workspace_id.to_string());
-            }
+        if !attached_matches_target {
+            self.session_attachment()
+                .attach_workspace_once_and_sync_indexed(workspace_id, workspace_root)
+                .await?;
         }
 
         if already_active {

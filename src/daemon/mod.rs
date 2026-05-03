@@ -18,6 +18,7 @@ pub mod transport;
 pub mod watcher_pool;
 pub mod workspace_pool;
 pub mod workspace_registry_store;
+pub mod workspace_session_attachment;
 
 use std::io;
 use std::path::Path;
