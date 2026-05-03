@@ -75,6 +75,21 @@ cargo test -p julie-extractors typescript_extractor
 | dogfood | `cargo xtask test dogfood` | Search/scoring/tokenization changes |
 | full | `cargo xtask test full` | Pre-merge broad pass |
 
+## Verification Ledger and Evidence Reuse
+
+Use the copy-ready ledger section in `docs/plans/verification-ledger-template.md` for plan verification evidence.
+
+Each ledger row must record:
+- invariant
+- command
+- scope label
+- commit SHA
+- result
+- timestamp (UTC)
+- evidence reused (`yes` or `no`)
+
+Evidence may be reused only at the same HEAD commit SHA and the same scope label, and only from a row that already passed. If those conditions are not true, run the command again and record a new row. This is the default rule for expensive gates such as `cargo xtask test dogfood`.
+
 ## Search Matrix Harness
 
 `cargo xtask search-matrix` is an investigation harness, not a replacement for `cargo xtask test dogfood`.

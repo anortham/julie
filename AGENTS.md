@@ -148,6 +148,12 @@ The `search_quality` bucket loads a **100MB SQLite fixture**, backfills a Tantiv
 
 **The contract:** Subagents run narrow targeted tests. The orchestrating session uses `cargo xtask test changed` during the local loop, then runs `cargo xtask test dev` once per batch of completed changes. This is not optional.
 
+### Verification Ledger Contract
+
+Plan docs should use `docs/plans/verification-ledger-template.md` for verification evidence.
+
+Reuse evidence only when the required scope label matches and the commit SHA matches the current HEAD exactly. If either value differs, rerun the command and record a new ledger row.
+
 ### Narrowing Failures With Raw Cargo Filters
 
 When an xtask tier fails and you need to zoom in, use targeted cargo filters like these:

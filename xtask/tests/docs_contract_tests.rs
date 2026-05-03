@@ -41,6 +41,48 @@ fn docs_contract_tests_readme_lists_public_xtask_commands() {
     assert_blocked_tier_caveat(&contents, &manifest);
 }
 
+#[test]
+fn docs_contract_tests_verification_ledger_template_is_operational() {
+    let contents = read_repo_file("docs/plans/verification-ledger-template.md");
+
+    assert!(contents.contains("## Verification Ledger"));
+    assert!(contents.contains("| Invariant | Command | Scope Label | Commit SHA | Result | Timestamp (UTC) | Evidence Reused |"));
+    assert!(contents.contains("empty until a command has actually run"));
+    assert!(contents.contains("## Example Rows"));
+    assert!(contents.contains("Do not copy them into plan evidence."));
+    assert!(contents.contains("cargo nextest run --lib docs_contract_tests_verification_ledger_template_is_operational 2>&1 \\| tail -10"));
+    assert!(contents.contains("cargo xtask test changed"));
+    assert!(contents.contains("cargo xtask test dogfood"));
+    assert!(contents.contains("example-sha"));
+    assert!(!contents.contains("TODO"));
+    assert!(!contents.contains("TBD"));
+    assert!(!contents.contains("fill in later"));
+}
+
+#[test]
+fn docs_contract_tests_testing_guide_documents_ledger_reuse() {
+    let contents = read_repo_file("docs/TESTING_GUIDE.md");
+
+    assert!(contents.contains("docs/plans/verification-ledger-template.md"));
+    assert!(contents.contains("same HEAD"));
+    assert!(contents.contains("reuse"));
+    assert!(contents.contains("expensive gate"));
+}
+
+#[test]
+fn docs_contract_tests_agents_points_to_ledger_template() {
+    let agents = read_repo_file("AGENTS.md");
+    let claude = read_repo_file("CLAUDE.md");
+
+    for contents in [agents, claude] {
+        assert!(contents.contains("docs/plans/verification-ledger-template.md"));
+        assert!(contents.contains("Verification Ledger"));
+        assert!(contents.contains("### TDD Cycle for All Development"));
+        assert!(contents.contains("1. **RED**: Write a failing test first"));
+        assert!(contents.contains("2. **GREEN**: Write minimal code to make test pass"));
+    }
+}
+
 fn assert_contains_public_commands(contents: &str) {
     for command in [
         "cargo xtask test changed",
