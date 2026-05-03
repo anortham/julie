@@ -1,6 +1,5 @@
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::RwLock as StdRwLock;
 use std::sync::atomic::AtomicBool;
 
 use anyhow::{Context, Result};
@@ -11,17 +10,14 @@ use tracing::{info, warn};
 
 use crate::daemon::session::SessionLifecycleHandle;
 use crate::dashboard::state::DashboardEvent;
-use crate::handler::JulieServerHandler;
-use crate::handler::session_workspace::SessionWorkspaceState;
-use crate::workspace::registry::generate_workspace_id;
 use crate::workspace::startup_hint::{WorkspaceStartupHint, WorkspaceStartupSource};
 
 use super::database::DaemonDatabase;
 use super::embedding_service::EmbeddingService;
 use super::ipc::{DAEMON_READY_LINE, IpcStream};
+use super::mcp_session::{DaemonMcpSession, DaemonSessionDependencies};
 use super::watcher_pool::WatcherPool;
 use super::workspace_pool::WorkspacePool;
-use super::workspace_session_attachment::WorkspaceSessionAttachment;
 
 pub(crate) fn workspace_ids_to_disconnect(
     startup_workspace_id: &str,
@@ -257,165 +253,65 @@ pub(crate) async fn handle_ipc_session(
     session_lifecycle: Option<SessionLifecycleHandle>,
     watcher_pool: Option<Arc<WatcherPool>>,
 ) -> Result<()> {
-    let workspace_path = workspace_startup_hint.path.clone();
-    let cleanup_startup_hint = workspace_startup_hint.clone();
+    let dependencies = Arc::new(DaemonSessionDependencies::without_session_tracker(
+        pool,
+        daemon_db.clone(),
+        Arc::clone(embedding_service),
+        Arc::clone(restart_pending),
+        dashboard_tx,
+        watcher_pool,
+    ));
+    let session = DaemonMcpSession::start(
+        dependencies,
+        session_id,
+        workspace_startup_hint,
+        session_lifecycle,
+        "IPC",
+    )
+    .await
+    .context("Failed to create handler for IPC session")?;
+    let handler = session.handler();
 
-    // Compute workspace ID from path. Use generate_workspace_id() directly
-    // (produces e.g. "julie_316c0b08"). Do NOT wrap in another prefix; the
-    // indexing pipeline also calls generate_workspace_id() and the IDs must match
-    // for daemon.db FK constraints and workspace_db_path() to resolve correctly.
-    let path_str = workspace_path.to_string_lossy().to_string();
-    let full_workspace_id =
-        generate_workspace_id(&path_str).context("Failed to generate workspace ID")?;
-
-    info!(
-        session_id = %session_id,
-        workspace_id = %full_workspace_id,
-        workspace_source = %workspace_startup_hint
-            .source
-            .map(WorkspaceStartupSource::as_header_value)
-            .unwrap_or("legacy-missing"),
-        "Getting or initializing workspace from pool"
-    );
-
-    let defer_startup_workspace_attach = matches!(
-        workspace_startup_hint.source,
-        Some(WorkspaceStartupSource::Cwd)
-    );
-
-    let session_result: Result<(Vec<String>, Result<(), anyhow::Error>)> = async {
-        let mut handler = if defer_startup_workspace_attach {
-            JulieServerHandler::new_deferred_daemon_startup_hint(
-                workspace_startup_hint,
-                daemon_db.clone(),
-                Some(Arc::clone(embedding_service)),
-                Some(Arc::clone(restart_pending)),
-                dashboard_tx,
-                watcher_pool.clone(),
-                Some(Arc::clone(&pool)),
-            )
+    // Handshake: tell the adapter the session is live so it's safe to
+    // forward client stdin. The adapter blocks on this line and only
+    // starts pulling from stdin after it arrives. If the daemon had
+    // dropped the connection at any earlier gate (stale-binary,
+    // header-read, version-mismatch) this line would never be written,
+    // the adapter would see EOF, and it would retry with stdin intact.
+    let mut stream = stream;
+    let service_result: Result<(), anyhow::Error> = async {
+        stream
+            .write_all(DAEMON_READY_LINE)
             .await
-        } else {
-            let workspace = pool
-                .get_or_init(&full_workspace_id, workspace_path.clone())
-                .await
-                .context("Failed to initialize workspace in pool")?;
-            JulieServerHandler::new_with_shared_workspace_startup_hint(
-                workspace,
-                workspace_startup_hint,
-                daemon_db.clone(),
-                Some(full_workspace_id.clone()),
-                Some(Arc::clone(embedding_service)),
-                Some(Arc::clone(restart_pending)),
-                dashboard_tx,
-                watcher_pool.clone(),
-                Some(Arc::clone(&pool)),
-            )
+            .map_err(|e| anyhow::anyhow!("Failed to write daemon ready signal: {}", e))?;
+        stream
+            .flush()
             .await
-            .context("Failed to create handler for workspace session")
-        }
-        .context("Failed to create handler for IPC session")?;
+            .map_err(|e| anyhow::anyhow!("Failed to flush daemon ready signal: {}", e))?;
 
-        if let Some(session_lifecycle) = session_lifecycle {
-            handler.attach_session_lifecycle(session_lifecycle);
-        }
-
-        let project_log = handler.project_log.clone();
-
-        if let Some(ref log) = project_log {
-            log.session_start(session_id);
-        }
-
-        handler.mark_session_serving();
-
-        // Handshake: tell the adapter the session is live so it's safe to
-        // forward client stdin. The adapter blocks on this line and only
-        // starts pulling from stdin after it arrives. If the daemon had
-        // dropped the connection at any earlier gate (stale-binary,
-        // header-read, version-mismatch) this line would never be written,
-        // the adapter would see EOF, and it would retry with stdin intact.
-        let mut stream = stream;
-        let service_result: Result<(), anyhow::Error> = async {
-            stream
-                .write_all(DAEMON_READY_LINE)
-                .await
-                .map_err(|e| anyhow::anyhow!("Failed to write daemon ready signal: {}", e))?;
-            stream
-                .flush()
-                .await
-                .map_err(|e| anyhow::anyhow!("Failed to flush daemon ready signal: {}", e))?;
-
-            match handler.clone().serve(stream).await {
-                Ok(service) => match service.waiting().await {
-                    Ok(_reason) => {
-                        info!(session_id = %session_id, "MCP session completed normally");
-                        Ok(())
-                    }
-                    Err(e) => {
-                        warn!(session_id = %session_id, "MCP session ended with error: {}", e);
-                        Err(anyhow::anyhow!("MCP session error: {}", e))
-                    }
-                },
-                Err(e) => {
-                    warn!(session_id = %session_id, "MCP serve failed: {}", e);
-                    Err(anyhow::anyhow!("MCP serve failed: {}", e))
+        match handler.serve(stream).await {
+            Ok(service) => match service.waiting().await {
+                Ok(_reason) => {
+                    info!(session_id = %session_id, "MCP session completed normally");
+                    Ok(())
                 }
+                Err(e) => {
+                    warn!(session_id = %session_id, "MCP session ended with error: {}", e);
+                    Err(anyhow::anyhow!("MCP session error: {}", e))
+                }
+            },
+            Err(e) => {
+                warn!(session_id = %session_id, "MCP serve failed: {}", e);
+                Err(anyhow::anyhow!("MCP serve failed: {}", e))
             }
         }
-        .await;
-
-        if let Err(ref e) = service_result {
-            warn!(session_id = %session_id, "Session terminated before/within serve: {}", e);
-        }
-
-        handler.mark_session_closing();
-
-        if let Some(ref log) = project_log {
-            log.session_end(session_id);
-        }
-
-        let attached_workspace_ids = handler.session_attached_workspace_ids().await;
-        Ok((attached_workspace_ids, service_result))
     }
     .await;
 
-    let (session_result, attached_workspace_ids) = match session_result {
-        Ok((ids, result)) => (result, ids),
-        Err(error) => {
-            let attached = if defer_startup_workspace_attach {
-                Vec::new()
-            } else {
-                vec![full_workspace_id.clone()]
-            };
-            (Err(error), attached)
-        }
-    };
-
-    let cleanup_attachment = WorkspaceSessionAttachment::new(
-        None,
-        daemon_db.clone(),
-        watcher_pool,
-        Some(Arc::clone(embedding_service)),
-        Arc::new(StdRwLock::new(SessionWorkspaceState::new(
-            cleanup_startup_hint,
-        ))),
-    );
-
-    for workspace_id in workspace_ids_to_disconnect(
-        &full_workspace_id,
-        attached_workspace_ids,
-        !defer_startup_workspace_attach,
-    ) {
-        if let Err(error) = cleanup_attachment
-            .detach_workspace_resources(&workspace_id)
-            .await
-        {
-            warn!(
-                workspace_id,
-                "Failed to detach IPC workspace session resources: {error}"
-            );
-        }
+    if let Err(ref e) = service_result {
+        warn!(session_id = %session_id, "Session terminated before/within serve: {}", e);
     }
 
-    session_result
+    session.finish().await;
+    service_result
 }

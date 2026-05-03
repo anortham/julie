@@ -97,7 +97,8 @@
 **Task 2 execution notes:**
 - `src/daemon/http_transport.rs` now owns the localhost Streamable HTTP server module. It mounts the SDK `StreamableHttpService` at `/mcp` and a Julie readiness route at `/mcp/ready`.
 - The module waits for the readiness route before publishing `daemon-mcp-transport.json`, so adapters do not discover a port before the server can answer.
-- The first integration point is a generic `Service<RoleServer>` factory. Wiring it to real `JulieServerHandler` sessions needs the Task 4/5 workspace-startup header contract because `rmcp`'s server factory is synchronous while Julie's handler construction is async and workspace-specific.
+- The first integration point is a generic `Service<RoleServer>` factory. A real `HttpJulieService` wrapper now exists in `src/daemon/mcp_session.rs`; it lazily builds `JulieServerHandler` on `initialize` after reading HTTP request headers from `RequestContext.extensions`.
+- The real wrapper is intentionally not exposed from daemon startup yet. HTTP sessions still need the same stale-binary and version gates that IPC currently applies before accepting a production session.
 - The `transport` xtask bucket now includes `tests::daemon::http_transport`, so future diff-scoped transport gates actually run the HTTP transport tests.
 
 ### Task 3: HTTP Security Middleware
@@ -158,10 +159,17 @@
 **Approach:** Extract shared MCP session setup before deleting or bypassing IPC. A bad first step would be duplicating handler construction in HTTP and IPC, because session cleanup and workspace binding bugs already have substantial tests in `src/tests/daemon/ipc_session.rs`.
 
 **Acceptance criteria:**
-- [ ] Existing IPC workspace header protocol still passes during migration.
-- [ ] Shared session setup has one path for workspace startup hint, session lifecycle cleanup, dashboard events, watcher pool, and restart flag.
+- [x] Existing IPC workspace header protocol still passes during migration.
+- [x] Shared session setup has one path for workspace startup hint, session lifecycle cleanup, dashboard events, watcher pool, and restart flag.
 - [ ] Compatibility path can be removed in a later plan without affecting HTTP module boundaries.
-- [ ] Worker-scope verification passes.
+- [x] Worker-scope verification passes.
+
+**Task 5 execution notes:**
+- `src/daemon/mcp_session.rs` now owns shared daemon MCP session construction and cleanup. IPC and HTTP share `DaemonMcpSession::start` for workspace startup hints, `WorkspacePool`, `EmbeddingService`, restart flag, dashboard events, watcher pool, project log session lifecycle, and workspace resource detach.
+- `src/daemon/ipc_session.rs` now keeps IPC-only header parsing, ready-line handshake, and stream serving. Handler construction and cleanup moved to the shared module.
+- `HttpJulieService` implements `rmcp::Service<RoleServer>` directly. It creates a Julie daemon session tracker entry synchronously, reads `http::request::Parts` from `RequestContext.extensions` on `initialize`, rejects missing or invalid Julie workspace headers with JSON-RPC `-32602`, and delegates later requests/notifications to the cached `JulieServerHandler`.
+- Cleanup for HTTP currently runs from `Drop` because `rmcp::Service<RoleServer>` has no explicit close hook. The SDK does call `SessionManager::close_session`, so the next daemon-wiring slice should either keep this tested Drop behavior or wrap `LocalSessionManager` if we need deterministic async cleanup tied to the SDK close call.
+- `HttpJulieService` is tested but not yet constructed by production daemon startup. The dead-code annotations on the HTTP wrapper path are intentional until Task 4 wires the stdio shim and the daemon exposes canonical HTTP sessions under the same restart/version gates as IPC.
 
 ## Verification Strategy
 
@@ -211,6 +219,13 @@
 | worker-red-green | SDK Host validation rejects invalid Host with 403 before MCP handling. | `cargo nextest run --lib test_http_transport_rejects_invalid_host_header 2>&1 \| tail -45` | `d4b57a6f+dirty` | PASS, 1 test in 0.013s | 2026-05-03T22:26:17Z |
 | worker-red-green | SDK Origin validation rejects foreign Origin with 403 before MCP handling. | `cargo nextest run --lib test_http_transport_rejects_foreign_origin 2>&1 \| tail -45` | `d4b57a6f+dirty` | PASS, 1 test in 0.013s | 2026-05-03T22:26:17Z |
 | affected-change | Focused transport bucket after HTTP security middleware. | `cargo xtask test bucket transport 2>&1 \| tail -70` | `d4b57a6f+dirty` | PASS, 1 bucket in 4.3s | 2026-05-03T22:26:17Z |
+| worker-red-green | Missing HTTP Julie workspace header returns JSON-RPC invalid params and removes the daemon session tracker entry. | `cargo nextest run --lib test_http_julie_session_requires_workspace_header_before_initialize 2>&1 \| tail -50` | `c15f2f69+dirty` | PASS, 1 test in 0.054s | 2026-05-03T22:52:10Z |
+| worker-red-green | Valid HTTP Julie workspace headers attach the workspace and DELETE cleans up session count plus daemon tracker state. | `cargo nextest run --lib test_http_julie_session_uses_workspace_headers_and_cleans_up_on_delete 2>&1 \| tail -50` | `c15f2f69+dirty` | PASS, 1 test in 0.103s | 2026-05-03T22:52:10Z |
+| worker-red-green | Invalid HTTP Julie workspace source header returns JSON-RPC invalid params and removes the daemon session tracker entry. | `cargo nextest run --lib test_http_julie_session_rejects_invalid_workspace_source_header 2>&1 \| tail -80` | `c15f2f69+dirty` | PASS, 1 test in 0.041s | 2026-05-03T22:53:00Z |
+| worker-red-green | Existing IPC malformed-stream cleanup still detaches secondary workspace resources after shared session extraction. | `cargo nextest run --lib test_handle_ipc_session_cleans_up_secondary_workspaces_on_serve_error 2>&1 \| tail -80` | `c15f2f69+dirty` | PASS, 1 test in 0.111s | 2026-05-03T22:52:10Z |
+| worker-red-green | Existing IPC weak-CWD startup still avoids pre-binding the startup workspace after shared session extraction. | `cargo nextest run --lib test_handle_ipc_session_weak_cwd_startup_is_not_attached_before_first_bind 2>&1 \| tail -80` | `c15f2f69+dirty` | PASS, 1 test in 0.120s | 2026-05-03T22:52:10Z |
+| worker-red-green | HTTP session wrapper and shared IPC session extraction compile without warnings. | `cargo check 2>&1 \| tail -60` | `c15f2f69+dirty` | PASS, no warnings | 2026-05-03T22:54:10Z |
+| affected-change | Focused transport bucket after shared daemon MCP session wrapper extraction. | `cargo xtask test bucket transport 2>&1 \| tail -80` | `c15f2f69+dirty` | PASS, 1 bucket in 4.6s | 2026-05-03T22:54:10Z |
 
 ## Model Routing
 

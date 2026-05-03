@@ -10,6 +10,7 @@ pub mod http_transport;
 pub mod ipc;
 pub mod ipc_session;
 pub mod lifecycle;
+pub mod mcp_session;
 pub mod pid;
 pub mod project_log;
 pub mod session;
