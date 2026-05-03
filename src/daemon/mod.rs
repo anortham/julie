@@ -21,15 +21,12 @@ pub mod workspace_pool;
 use std::io;
 use std::path::Path;
 use std::sync::Arc;
-use std::sync::RwLock as StdRwLock;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, SystemTime};
 
 use anyhow::{Context, Result};
 #[cfg(unix)]
 use libc;
-use tokio::sync::Notify;
-use tokio::sync::broadcast;
+use tokio::sync::{Notify, broadcast};
 use tracing::{error, info, warn};
 
 use crate::dashboard::state::DashboardEvent;
@@ -44,9 +41,8 @@ use self::ipc::IpcListener;
 pub(crate) use self::ipc_session::parse_ipc_headers_block;
 pub(crate) use self::ipc_session::{PrefixedIpcStream, handle_ipc_session, read_ipc_headers};
 use self::lifecycle::{
-    DisconnectLifecycleAction, IncomingSessionAction, LifecycleEvent, LifecyclePhase,
-    ShutdownCause, flag_restart_pending_for_restart, publish_phase, stale_binary_accept_action,
-    stale_binary_disconnect_action, store_phase, transition, version_gate_action,
+    DaemonLifecycleController, DisconnectLifecycleAction, IncomingSessionAction, LifecyclePhase,
+    ShutdownCause, stale_binary_accept_action, stale_binary_disconnect_action, version_gate_action,
 };
 use self::pid::PidFile;
 use self::session::SessionTracker;
@@ -285,9 +281,7 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
     let pid_file =
         PidFile::create_exclusive(&paths.daemon_pid()).context("Failed to start daemon")?;
     info!(pid = std::process::id(), "Daemon PID file created");
-    let mut phase = LifecyclePhase::Starting;
-    let daemon_phase = Arc::new(StdRwLock::new(phase));
-    publish_phase(daemon_phase.as_ref(), &daemon_state_path, phase);
+    let lifecycle = DaemonLifecycleController::new(daemon_state_path.clone());
 
     // Open persistent daemon database, resetting stale session counts from
     // any previous run (crash recovery) and pruning old tool call records.
@@ -347,7 +341,6 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
     // If the binary is rebuilt while the daemon is running, the next session
     // disconnect will detect the mismatch and trigger a graceful restart.
     let startup_binary_mtime = binary_mtime();
-    let restart_pending = Arc::new(AtomicBool::new(false));
     if startup_binary_mtime.is_some() {
         info!("Binary mtime captured for stale-binary detection");
     } else {
@@ -404,12 +397,6 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
         })
     });
 
-    // Notify used by the accept loop to trigger graceful shutdown when the
-    // last session disconnects and the binary is stale. This replaces the
-    // Unix-only SIGTERM-to-self pattern with a cross-platform mechanism that
-    // feeds into the same cleanup path below.
-    let restart_notify = Arc::new(Notify::new());
-
     // Named event for graceful shutdown from `julie stop` / `julie restart`.
     // On Windows, ctrl_c() requires a console (which CREATE_NO_WINDOW daemons
     // lack), so this named event is the primary graceful shutdown mechanism.
@@ -445,8 +432,8 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
     let dashboard_state = crate::dashboard::state::DashboardState::new_with_watcher_pool(
         Arc::clone(&sessions),
         daemon_db.clone(),
-        Arc::clone(&restart_pending),
-        Arc::clone(&daemon_phase),
+        lifecycle.restart_pending_handle(),
+        lifecycle.phase_handle(),
         std::time::Instant::now(),
         Some(Arc::clone(&embedding_service)),
         Some(Arc::clone(&watcher_pool_for_handlers)),
@@ -520,8 +507,7 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
         endpoint = %paths.daemon_ipc_addr().display(),
         "Daemon listening for IPC connections"
     );
-    phase = transition(phase, LifecycleEvent::StartupComplete);
-    publish_phase(daemon_phase.as_ref(), &daemon_state_path, phase);
+    lifecycle.startup_complete();
 
     // Spawn the background embedding provider initialization task. This runs
     // concurrently with the accept loop so the daemon becomes IPC-ready in
@@ -648,9 +634,10 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
     }
 
     // Accept loop with graceful shutdown
+    let restart_notify = lifecycle.restart_notify();
     let (result, shutdown_cause) = tokio::select! {
-        res = accept_loop(&listener, &pool, &sessions, &daemon_db, &embedding_service, startup_binary_mtime, &restart_pending, &restart_notify, dashboard_tx, watcher_pool_for_handlers, &daemon_phase, &daemon_state_path) => {
-            let cause = if restart_pending.load(Ordering::Relaxed) {
+        res = accept_loop(&listener, &pool, &sessions, &daemon_db, &embedding_service, startup_binary_mtime, lifecycle.clone(), dashboard_tx, watcher_pool_for_handlers) => {
+            let cause = if lifecycle.restart_pending() {
                 ShutdownCause::RestartRequired
             } else {
                 ShutdownCause::Signal
@@ -679,14 +666,7 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
     // on SIGTERM, which can corrupt in-flight writes or leave daemon.db in an
     // inconsistent state.
     let remaining = sessions.active_count();
-    phase = transition(
-        phase,
-        LifecycleEvent::ShutdownRequested {
-            cause: shutdown_cause,
-            active_sessions: remaining,
-        },
-    );
-    publish_phase(daemon_phase.as_ref(), &daemon_state_path, phase);
+    let phase = lifecycle.request_shutdown(shutdown_cause, remaining);
     if remaining > 0 {
         info!(
             active_sessions = remaining,
@@ -702,9 +682,8 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
             );
         }
     }
-    if let LifecyclePhase::Draining { cause } = phase {
-        phase = LifecyclePhase::Stopping { cause };
-        publish_phase(daemon_phase.as_ref(), &daemon_state_path, phase);
+    if matches!(phase, LifecyclePhase::Draining { .. }) {
+        lifecycle.sessions_drained();
     }
 
     info!(
@@ -744,12 +723,9 @@ async fn accept_loop(
     daemon_db: &Option<Arc<DaemonDatabase>>,
     embedding_service: &Arc<EmbeddingService>,
     startup_binary_mtime: Option<SystemTime>,
-    restart_pending: &Arc<AtomicBool>,
-    restart_notify: &Arc<Notify>,
+    lifecycle: DaemonLifecycleController,
     dashboard_tx: broadcast::Sender<DashboardEvent>,
     watcher_pool: Arc<WatcherPool>,
-    daemon_phase: &Arc<StdRwLock<LifecyclePhase>>,
-    daemon_state_path: &std::path::Path,
 ) -> Result<()> {
     loop {
         let stream = match listener.accept().await {
@@ -777,10 +753,9 @@ async fn accept_loop(
         let sessions = Arc::clone(sessions);
         let daemon_db = daemon_db.clone();
         let embedding_service = Arc::clone(embedding_service);
-        let restart_pending = Arc::clone(restart_pending);
-        let restart_notify = Arc::clone(restart_notify);
+        let restart_pending = lifecycle.restart_pending_handle();
         let dashboard_tx = dashboard_tx.clone();
-        let daemon_phase = Arc::clone(daemon_phase);
+        let lifecycle = lifecycle.clone();
         let active_sessions = sessions.active_count();
         let binary_is_stale = startup_binary_mtime
             .zip(binary_mtime())
@@ -788,18 +763,12 @@ async fn accept_loop(
         match stale_binary_accept_action(
             binary_is_stale,
             active_sessions,
-            restart_pending.load(Ordering::Relaxed),
+            lifecycle.restart_pending(),
         ) {
             IncomingSessionAction::Accept => {}
             IncomingSessionAction::AcceptWithRestartPending(reason) => {
-                let transition = flag_restart_pending_for_restart(
-                    &restart_pending,
-                    daemon_state_path,
-                    *daemon_phase.read().unwrap_or_else(|p| p.into_inner()),
-                    active_sessions,
-                    ShutdownCause::RestartRequired,
-                );
-                store_phase(daemon_phase.as_ref(), transition.next_phase);
+                let transition =
+                    lifecycle.mark_restart_pending(active_sessions, ShutdownCause::RestartRequired);
                 if transition.first_request {
                     warn!(
                         ?reason,
@@ -809,24 +778,12 @@ async fn accept_loop(
                 }
             }
             IncomingSessionAction::ShutdownForRestart(reason) => {
-                let _ = flag_restart_pending_for_restart(
-                    &restart_pending,
-                    daemon_state_path,
-                    *daemon_phase.read().unwrap_or_else(|p| p.into_inner()),
-                    active_sessions,
-                    ShutdownCause::RestartRequired,
-                );
-                store_phase(
-                    daemon_phase.as_ref(),
-                    LifecyclePhase::Stopping {
-                        cause: ShutdownCause::RestartRequired,
-                    },
-                );
+                lifecycle.mark_restart_pending(active_sessions, ShutdownCause::RestartRequired);
                 warn!(
                     ?reason,
                     "Binary is stale and no active sessions. Shutting down for restart."
                 );
-                restart_notify.notify_one();
+                lifecycle.notify_restart();
                 drop(stream);
                 return Ok(());
             }
@@ -877,32 +834,14 @@ async fn accept_loop(
                     ?reason,
                     "Version mismatch with no active sessions. Shutting down for restart."
                 );
-                let _ = flag_restart_pending_for_restart(
-                    &restart_pending,
-                    daemon_state_path,
-                    *daemon_phase.read().unwrap_or_else(|p| p.into_inner()),
-                    active_sessions,
-                    ShutdownCause::RestartRequired,
-                );
-                store_phase(
-                    daemon_phase.as_ref(),
-                    LifecyclePhase::Stopping {
-                        cause: ShutdownCause::RestartRequired,
-                    },
-                );
-                restart_notify.notify_one();
+                lifecycle.mark_restart_pending(active_sessions, ShutdownCause::RestartRequired);
+                lifecycle.notify_restart();
                 drop(stream);
                 return Ok(());
             }
             IncomingSessionAction::RejectForRestart(reason) => {
-                let transition = flag_restart_pending_for_restart(
-                    &restart_pending,
-                    daemon_state_path,
-                    *daemon_phase.read().unwrap_or_else(|p| p.into_inner()),
-                    active_sessions,
-                    ShutdownCause::RestartRequired,
-                );
-                store_phase(daemon_phase.as_ref(), transition.next_phase);
+                let transition =
+                    lifecycle.mark_restart_pending(active_sessions, ShutdownCause::RestartRequired);
                 if transition.first_request {
                     warn!(
                         adapter_version = headers.version.as_deref().unwrap_or("<none>"),
@@ -922,14 +861,8 @@ async fn accept_loop(
                 continue;
             }
             IncomingSessionAction::AcceptWithRestartPending(reason) => {
-                let transition = flag_restart_pending_for_restart(
-                    &restart_pending,
-                    daemon_state_path,
-                    *daemon_phase.read().unwrap_or_else(|p| p.into_inner()),
-                    active_sessions,
-                    ShutdownCause::RestartRequired,
-                );
-                store_phase(daemon_phase.as_ref(), transition.next_phase);
+                let transition =
+                    lifecycle.mark_restart_pending(active_sessions, ShutdownCause::RestartRequired);
                 warn!(
                     adapter_version = headers.version.as_deref().unwrap_or("<none>"),
                     daemon_version,
@@ -957,7 +890,6 @@ async fn accept_loop(
         );
 
         let watcher_pool_for_session = Arc::clone(&watcher_pool);
-        let daemon_state_path = daemon_state_path.to_path_buf();
         tokio::spawn(async move {
             let dashboard_tx_disconnect = dashboard_tx.clone();
             if let Err(e) = handle_ipc_session(
@@ -993,41 +925,28 @@ async fn accept_loop(
                 .is_some_and(|(startup_mtime, current_mtime)| current_mtime > startup_mtime);
             match stale_binary_disconnect_action(
                 binary_is_stale,
-                restart_pending.load(Ordering::Relaxed),
+                lifecycle.restart_pending(),
                 remaining,
             ) {
                 DisconnectLifecycleAction::None => {}
                 DisconnectLifecycleAction::MarkRestartPending(reason) => {
-                    let transition = flag_restart_pending_for_restart(
-                        &restart_pending,
-                        &daemon_state_path,
-                        *daemon_phase.read().unwrap_or_else(|p| p.into_inner()),
-                        remaining,
-                        ShutdownCause::RestartRequired,
-                    );
-                    store_phase(daemon_phase.as_ref(), transition.next_phase);
+                    let transition =
+                        lifecycle.mark_restart_pending(remaining, ShutdownCause::RestartRequired);
                     if transition.first_request {
                         warn!(?reason, "Binary rebuild detected at session disconnect.");
                     }
                 }
                 DisconnectLifecycleAction::TriggerShutdown(cause) => {
-                    let transition = flag_restart_pending_for_restart(
-                        &restart_pending,
-                        &daemon_state_path,
-                        *daemon_phase.read().unwrap_or_else(|p| p.into_inner()),
-                        remaining,
-                        cause,
-                    );
-                    store_phase(daemon_phase.as_ref(), transition.next_phase);
+                    lifecycle.mark_restart_pending(remaining, cause);
                 }
             }
 
             // Version mismatches and stale-binary detection both flow through
             // restart_pending. Once the last session disconnects, exit through
             // the normal cleanup path so the adapter can spawn a fresh daemon.
-            if remaining == 0 && restart_pending.load(Ordering::Relaxed) {
+            if remaining == 0 && lifecycle.restart_pending() {
                 info!("Last session disconnected and restart is pending. Triggering restart.");
-                restart_notify.notify_one();
+                lifecycle.notify_restart();
             }
         });
     }

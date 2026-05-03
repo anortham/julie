@@ -1,8 +1,8 @@
 use crate::daemon::lifecycle::{
-    DaemonStatus, DisconnectLifecycleAction, IncomingSessionAction, LifecycleEvent, LifecyclePhase,
-    RestartHandoffAction, RestartReason, ShutdownCause, check_status, restart_handoff_action,
-    stale_binary_accept_action, stale_binary_disconnect_action, stop_daemon, transition,
-    version_gate_action,
+    DaemonLifecycleController, DaemonStatus, DisconnectLifecycleAction, IncomingSessionAction,
+    LifecycleEvent, LifecyclePhase, RestartHandoffAction, RestartReason, ShutdownCause,
+    check_status, restart_handoff_action, stale_binary_accept_action,
+    stale_binary_disconnect_action, stop_daemon, transition, version_gate_action,
 };
 use crate::daemon::pid::PidFile;
 use crate::paths::DaemonPaths;
@@ -199,4 +199,85 @@ fn test_restart_handoff_action_exhausts_on_last_attempt() {
             reason: RestartReason::ImmediateDisconnect,
         }
     );
+}
+
+#[test]
+fn test_controller_startup_complete_publishes_ready_state() {
+    let dir = tempfile::tempdir().unwrap();
+    let state_path = dir.path().join("daemon.state");
+    let controller = DaemonLifecycleController::new(state_path.clone());
+
+    assert_eq!(controller.phase(), LifecyclePhase::Starting);
+    assert_eq!(fs::read_to_string(&state_path).unwrap(), "starting");
+
+    let phase = controller.startup_complete();
+
+    assert_eq!(phase, LifecyclePhase::Ready);
+    assert_eq!(controller.phase(), LifecyclePhase::Ready);
+    assert_eq!(fs::read_to_string(&state_path).unwrap(), "ready");
+}
+
+#[test]
+fn test_controller_restart_pending_is_idempotent_with_active_sessions() {
+    let dir = tempfile::tempdir().unwrap();
+    let state_path = dir.path().join("daemon.state");
+    let controller = DaemonLifecycleController::new(state_path.clone());
+    controller.startup_complete();
+
+    let first = controller.mark_restart_pending(2, ShutdownCause::RestartRequired);
+    let second = controller.mark_restart_pending(2, ShutdownCause::RestartRequired);
+
+    assert!(first.first_request);
+    assert!(!second.first_request);
+    assert!(controller.restart_pending());
+    assert_eq!(
+        first.next_phase,
+        LifecyclePhase::Draining {
+            cause: ShutdownCause::RestartRequired,
+        }
+    );
+    assert_eq!(second.next_phase, first.next_phase);
+    assert_eq!(controller.phase(), first.next_phase);
+    assert_eq!(fs::read_to_string(&state_path).unwrap(), "draining");
+}
+
+#[test]
+fn test_controller_restart_pending_without_active_sessions_publishes_stopping() {
+    let dir = tempfile::tempdir().unwrap();
+    let state_path = dir.path().join("daemon.state");
+    let controller = DaemonLifecycleController::new(state_path.clone());
+    controller.startup_complete();
+
+    let transition = controller.mark_restart_pending(0, ShutdownCause::RestartRequired);
+
+    assert!(transition.first_request);
+    assert!(controller.restart_pending());
+    assert_eq!(
+        transition.next_phase,
+        LifecyclePhase::Stopping {
+            cause: ShutdownCause::RestartRequired,
+        }
+    );
+    assert_eq!(controller.phase(), transition.next_phase);
+    assert_eq!(fs::read_to_string(&state_path).unwrap(), "stopping");
+}
+
+#[test]
+fn test_controller_sessions_drained_transitions_to_stopping() {
+    let dir = tempfile::tempdir().unwrap();
+    let state_path = dir.path().join("daemon.state");
+    let controller = DaemonLifecycleController::new(state_path.clone());
+    controller.startup_complete();
+    controller.mark_restart_pending(1, ShutdownCause::RestartRequired);
+
+    let phase = controller.sessions_drained();
+
+    assert_eq!(
+        phase,
+        LifecyclePhase::Stopping {
+            cause: ShutdownCause::RestartRequired,
+        }
+    );
+    assert_eq!(controller.phase(), phase);
+    assert_eq!(fs::read_to_string(&state_path).unwrap(), "stopping");
 }

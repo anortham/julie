@@ -5,9 +5,10 @@ use crate::paths::DaemonPaths;
 #[cfg(unix)]
 use libc;
 use serde::Serialize;
-use std::path::Path;
-use std::sync::RwLock;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, RwLock};
+use tokio::sync::Notify;
 use tracing::{info, warn};
 
 /// Current state of the Julie daemon process.
@@ -141,6 +142,89 @@ pub enum DisconnectLifecycleAction {
 pub struct RestartPendingTransition {
     pub first_request: bool,
     pub next_phase: LifecyclePhase,
+}
+
+#[derive(Debug, Clone)]
+pub struct DaemonLifecycleController {
+    phase: Arc<RwLock<LifecyclePhase>>,
+    restart_pending: Arc<AtomicBool>,
+    restart_notify: Arc<Notify>,
+    state_path: Arc<PathBuf>,
+}
+
+impl DaemonLifecycleController {
+    pub fn new(state_path: PathBuf) -> Self {
+        let controller = Self {
+            phase: Arc::new(RwLock::new(LifecyclePhase::Starting)),
+            restart_pending: Arc::new(AtomicBool::new(false)),
+            restart_notify: Arc::new(Notify::new()),
+            state_path: Arc::new(state_path),
+        };
+        controller.publish(LifecyclePhase::Starting);
+        controller
+    }
+
+    pub fn phase_handle(&self) -> Arc<RwLock<LifecyclePhase>> {
+        Arc::clone(&self.phase)
+    }
+
+    pub fn restart_pending_handle(&self) -> Arc<AtomicBool> {
+        Arc::clone(&self.restart_pending)
+    }
+
+    pub fn restart_notify(&self) -> Arc<Notify> {
+        Arc::clone(&self.restart_notify)
+    }
+
+    pub fn phase(&self) -> LifecyclePhase {
+        *self.phase.read().unwrap_or_else(|p| p.into_inner())
+    }
+
+    pub fn restart_pending(&self) -> bool {
+        self.restart_pending.load(Ordering::Relaxed)
+    }
+
+    pub fn startup_complete(&self) -> LifecyclePhase {
+        self.apply_event(LifecycleEvent::StartupComplete)
+    }
+
+    pub fn request_shutdown(&self, cause: ShutdownCause, active_sessions: usize) -> LifecyclePhase {
+        self.apply_event(LifecycleEvent::ShutdownRequested {
+            cause,
+            active_sessions,
+        })
+    }
+
+    pub fn sessions_drained(&self) -> LifecyclePhase {
+        self.apply_event(LifecycleEvent::SessionsDrained)
+    }
+
+    pub fn mark_restart_pending(
+        &self,
+        active_sessions: usize,
+        cause: ShutdownCause,
+    ) -> RestartPendingTransition {
+        let first_request = !self.restart_pending.swap(true, Ordering::Relaxed);
+        let next_phase = self.request_shutdown(cause, active_sessions);
+        RestartPendingTransition {
+            first_request,
+            next_phase,
+        }
+    }
+
+    pub fn notify_restart(&self) {
+        self.restart_notify.notify_one();
+    }
+
+    fn apply_event(&self, event: LifecycleEvent) -> LifecyclePhase {
+        let next_phase = transition(self.phase(), event);
+        self.publish(next_phase);
+        next_phase
+    }
+
+    fn publish(&self, phase: LifecyclePhase) {
+        publish_phase(self.phase.as_ref(), &self.state_path, phase);
+    }
 }
 
 /// Apply a lifecycle event to the current daemon phase.
