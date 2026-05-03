@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, RwLock as StdRwLock};
+use std::time::SystemTime;
 
 use anyhow::{Context, Result};
 use axum::http::request::Parts;
@@ -16,6 +17,10 @@ use tracing::{info, warn};
 use crate::daemon::database::DaemonDatabase;
 use crate::daemon::embedding_service::EmbeddingService;
 use crate::daemon::ipc_session::workspace_ids_to_disconnect;
+use crate::daemon::lifecycle::{
+    DaemonLifecycleController, IncomingSessionAction, ShutdownCause, stale_binary_accept_action,
+    version_gate_action,
+};
 use crate::daemon::session::{SessionLifecycleHandle, SessionTracker};
 use crate::daemon::watcher_pool::WatcherPool;
 use crate::daemon::workspace_pool::WorkspacePool;
@@ -26,12 +31,42 @@ use crate::handler::session_workspace::SessionWorkspaceState;
 use crate::workspace::registry::generate_workspace_id;
 use crate::workspace::startup_hint::{WorkspaceStartupHint, WorkspaceStartupSource};
 
-#[allow(dead_code)]
 pub(crate) const HEADER_JULIE_WORKSPACE: &str = "x-julie-workspace";
-#[allow(dead_code)]
 pub(crate) const HEADER_JULIE_WORKSPACE_SOURCE: &str = "x-julie-workspace-source";
-#[allow(dead_code)]
 pub(crate) const HEADER_JULIE_VERSION: &str = "x-julie-version";
+
+#[derive(Clone)]
+pub(crate) struct HttpSessionAdmission {
+    lifecycle: DaemonLifecycleController,
+    startup_binary_mtime: Option<SystemTime>,
+    current_binary_mtime: Arc<dyn Fn() -> Option<SystemTime> + Send + Sync>,
+}
+
+impl HttpSessionAdmission {
+    pub(crate) fn new(
+        lifecycle: DaemonLifecycleController,
+        startup_binary_mtime: Option<SystemTime>,
+        current_binary_mtime: impl Fn() -> Option<SystemTime> + Send + Sync + 'static,
+    ) -> Self {
+        Self {
+            lifecycle,
+            startup_binary_mtime,
+            current_binary_mtime: Arc::new(current_binary_mtime),
+        }
+    }
+}
+
+fn restart_required_error() -> McpError {
+    McpError::internal_error(
+        "Julie daemon restart required; reconnect after daemon restarts",
+        None,
+    )
+}
+
+struct HttpSessionRegistration {
+    session_id: String,
+    session_lifecycle: Option<SessionLifecycleHandle>,
+}
 
 #[derive(Clone)]
 pub(crate) struct DaemonSessionDependencies {
@@ -41,12 +76,11 @@ pub(crate) struct DaemonSessionDependencies {
     restart_pending: Arc<AtomicBool>,
     dashboard_tx: Option<broadcast::Sender<DashboardEvent>>,
     watcher_pool: Option<Arc<WatcherPool>>,
-    #[allow(dead_code)]
     sessions: Option<Arc<SessionTracker>>,
+    http_admission: Option<HttpSessionAdmission>,
 }
 
 impl DaemonSessionDependencies {
-    #[allow(dead_code)]
     pub(crate) fn new(
         pool: Arc<WorkspacePool>,
         daemon_db: Option<Arc<DaemonDatabase>>,
@@ -64,6 +98,7 @@ impl DaemonSessionDependencies {
             dashboard_tx,
             watcher_pool,
             sessions: Some(sessions),
+            http_admission: None,
         }
     }
 
@@ -83,7 +118,13 @@ impl DaemonSessionDependencies {
             dashboard_tx,
             watcher_pool,
             sessions: None,
+            http_admission: None,
         }
+    }
+
+    pub(crate) fn with_http_admission(mut self, admission: HttpSessionAdmission) -> Self {
+        self.http_admission = Some(admission);
+        self
     }
 
     fn project_cleanup_attachment(
@@ -261,38 +302,150 @@ impl DaemonMcpSession {
     }
 }
 
-#[allow(dead_code)]
 pub(crate) struct HttpJulieService {
     dependencies: Arc<DaemonSessionDependencies>,
-    session_id: String,
-    session_lifecycle: Option<SessionLifecycleHandle>,
+    session_registration: tokio::sync::Mutex<Option<HttpSessionRegistration>>,
     session: tokio::sync::Mutex<Option<DaemonMcpSession>>,
 }
 
-#[allow(dead_code)]
 impl HttpJulieService {
     pub(crate) fn new(dependencies: Arc<DaemonSessionDependencies>) -> Self {
-        let (session_id, session_lifecycle) = dependencies
+        Self {
+            dependencies,
+            session_registration: tokio::sync::Mutex::new(None),
+            session: tokio::sync::Mutex::new(None),
+        }
+    }
+
+    fn active_sessions_before_current(&self) -> usize {
+        self.dependencies
+            .sessions
+            .as_ref()
+            .map(|sessions| sessions.active_count())
+            .unwrap_or(0)
+    }
+
+    fn register_session(&self) -> HttpSessionRegistration {
+        self.dependencies
             .sessions
             .as_ref()
             .map(|sessions| {
                 let session_id = sessions.add_session();
                 let lifecycle = sessions.lifecycle_handle(&session_id);
-                if let Some(tx) = &dependencies.dashboard_tx {
+                if let Some(tx) = &self.dependencies.dashboard_tx {
                     let _ = tx.send(DashboardEvent::SessionChange {
                         active_count: sessions.active_count(),
                     });
                 }
-                (session_id, Some(lifecycle))
+                HttpSessionRegistration {
+                    session_id,
+                    session_lifecycle: Some(lifecycle),
+                }
             })
-            .unwrap_or_else(|| (uuid::Uuid::new_v4().to_string(), None));
+            .unwrap_or_else(|| HttpSessionRegistration {
+                session_id: uuid::Uuid::new_v4().to_string(),
+                session_lifecycle: None,
+            })
+    }
 
-        Self {
-            dependencies,
-            session_id,
-            session_lifecycle,
-            session: tokio::sync::Mutex::new(None),
+    fn remove_session_registration(&self, registration: &HttpSessionRegistration) {
+        if let Some(sessions) = &self.dependencies.sessions {
+            sessions.remove_session(&registration.session_id);
+            if let Some(tx) = &self.dependencies.dashboard_tx {
+                let _ = tx.send(DashboardEvent::SessionChange {
+                    active_count: sessions.active_count(),
+                });
+            }
         }
+    }
+
+    fn apply_admission_action(
+        &self,
+        admission: &HttpSessionAdmission,
+        active_sessions: usize,
+        action: IncomingSessionAction,
+        gate: &str,
+        adapter_version: Option<&str>,
+    ) -> Result<(), McpError> {
+        match action {
+            IncomingSessionAction::Accept => Ok(()),
+            IncomingSessionAction::AcceptWithRestartPending(reason) => {
+                let transition = admission
+                    .lifecycle
+                    .mark_restart_pending(active_sessions, ShutdownCause::RestartRequired);
+                warn!(
+                    ?reason,
+                    gate,
+                    active_sessions,
+                    first_request = transition.first_request,
+                    "HTTP session accepted while daemon restart is pending"
+                );
+                Ok(())
+            }
+            IncomingSessionAction::ShutdownForRestart(reason) => {
+                admission
+                    .lifecycle
+                    .mark_restart_pending(active_sessions, ShutdownCause::RestartRequired);
+                warn!(
+                    adapter_version = adapter_version.unwrap_or("<none>"),
+                    daemon_version = env!("CARGO_PKG_VERSION"),
+                    ?reason,
+                    gate,
+                    "Rejecting HTTP session and triggering daemon restart"
+                );
+                admission.lifecycle.notify_restart();
+                Err(restart_required_error())
+            }
+            IncomingSessionAction::RejectForRestart(reason) => {
+                let transition = admission
+                    .lifecycle
+                    .mark_restart_pending(active_sessions, ShutdownCause::RestartRequired);
+                warn!(
+                    adapter_version = adapter_version.unwrap_or("<none>"),
+                    daemon_version = env!("CARGO_PKG_VERSION"),
+                    ?reason,
+                    gate,
+                    first_request = transition.first_request,
+                    "Rejecting HTTP session while daemon waits to restart"
+                );
+                Err(restart_required_error())
+            }
+        }
+    }
+
+    fn admit_initialize(&self, context: &RequestContext<RoleServer>) -> Result<(), McpError> {
+        let Some(admission) = &self.dependencies.http_admission else {
+            return Ok(());
+        };
+
+        let active_sessions = self.active_sessions_before_current();
+        let binary_is_stale = admission
+            .startup_binary_mtime
+            .zip((admission.current_binary_mtime.as_ref())())
+            .is_some_and(|(startup_mtime, current_mtime)| current_mtime > startup_mtime);
+        self.apply_admission_action(
+            admission,
+            active_sessions,
+            stale_binary_accept_action(
+                binary_is_stale,
+                active_sessions,
+                admission.lifecycle.restart_pending(),
+            ),
+            "stale-binary",
+            None,
+        )?;
+
+        let adapter_version = context
+            .extensions
+            .get::<Parts>()
+            .and_then(|parts| header_value(parts, HEADER_JULIE_VERSION));
+        self.apply_admission_action(
+            admission,
+            active_sessions,
+            version_gate_action(adapter_version, env!("CARGO_PKG_VERSION"), active_sessions),
+            "version",
+            adapter_version,
+        )
     }
 
     async fn handler_for_request(
@@ -311,17 +464,23 @@ impl HttpJulieService {
             ));
         }
 
+        self.admit_initialize(context)?;
         let startup_hint = workspace_startup_hint_from_context(context)?;
+        let registration = self.register_session();
         let session = DaemonMcpSession::start(
             Arc::clone(&self.dependencies),
-            self.session_id.clone(),
+            registration.session_id.clone(),
             startup_hint,
-            self.session_lifecycle.clone(),
+            registration.session_lifecycle.clone(),
             "HTTP",
         )
         .await
-        .map_err(|error| McpError::invalid_params(error.to_string(), None))?;
+        .map_err(|error| {
+            self.remove_session_registration(&registration);
+            McpError::invalid_params(error.to_string(), None)
+        })?;
         let handler = session.handler();
+        *self.session_registration.lock().await = Some(registration);
         *guard = Some(session);
         Ok(handler)
     }
@@ -329,13 +488,13 @@ impl HttpJulieService {
 
 impl Drop for HttpJulieService {
     fn drop(&mut self) {
-        if let Some(sessions) = &self.dependencies.sessions {
-            sessions.remove_session(&self.session_id);
-            if let Some(tx) = &self.dependencies.dashboard_tx {
-                let _ = tx.send(DashboardEvent::SessionChange {
-                    active_count: sessions.active_count(),
-                });
-            }
+        let registration = self
+            .session_registration
+            .try_lock()
+            .ok()
+            .and_then(|mut guard| guard.take());
+        if let Some(registration) = &registration {
+            self.remove_session_registration(registration);
         }
 
         let session = self

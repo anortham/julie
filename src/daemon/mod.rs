@@ -40,6 +40,7 @@ use crate::workspace::registry::generate_workspace_id;
 
 use self::database::DaemonDatabase;
 use self::embedding_service::EmbeddingService;
+use self::http_transport::{HttpTransportConfig, HttpTransportServer, generate_bearer_token};
 use self::ipc::IpcListener;
 #[cfg(test)]
 pub(crate) use self::ipc_session::parse_ipc_headers_block;
@@ -48,6 +49,7 @@ use self::lifecycle::{
     DaemonLifecycleController, DisconnectLifecycleAction, IncomingSessionAction, LifecyclePhase,
     ShutdownCause, stale_binary_accept_action, stale_binary_disconnect_action, version_gate_action,
 };
+use self::mcp_session::{DaemonSessionDependencies, HttpJulieService, HttpSessionAdmission};
 use self::pid::PidFile;
 use self::session::SessionTracker;
 use self::transport::TransportEndpoint;
@@ -455,6 +457,38 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
     // Cloned cheaply (Arc-backed) and passed to each IPC session for live-feed events.
     let dashboard_tx: broadcast::Sender<DashboardEvent> = dashboard_state.sender();
 
+    let http_session_dependencies = Arc::new(
+        DaemonSessionDependencies::new(
+            Arc::clone(&pool),
+            daemon_db.clone(),
+            Arc::clone(&embedding_service),
+            lifecycle.restart_pending_handle(),
+            Some(dashboard_tx.clone()),
+            Some(Arc::clone(&watcher_pool_for_handlers)),
+            Arc::clone(&sessions),
+        )
+        .with_http_admission(HttpSessionAdmission::new(
+            lifecycle.clone(),
+            startup_binary_mtime,
+            binary_mtime,
+        )),
+    );
+    let http_service_dependencies = Arc::clone(&http_session_dependencies);
+    let http_transport = HttpTransportServer::bind(
+        paths.clone(),
+        HttpTransportConfig {
+            bearer_token: Some(generate_bearer_token()),
+            ..HttpTransportConfig::default()
+        },
+        move || {
+            Ok(HttpJulieService::new(Arc::clone(
+                &http_service_dependencies,
+            )))
+        },
+    )
+    .await
+    .context("Failed to bind HTTP MCP transport")?;
+
     let dashboard_config = crate::dashboard::DashboardConfig::default();
     let dashboard_router = crate::dashboard::create_router(dashboard_state, dashboard_config)
         .context("Failed to initialize dashboard templates")?;
@@ -708,6 +742,10 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
 
     embedding_service.shutdown();
     info!("Embedding service shut down");
+
+    if let Err(e) = http_transport.shutdown().await {
+        warn!("Failed to shut down HTTP MCP transport cleanly: {e:#}");
+    }
 
     listener.cleanup();
     let _ = std::fs::remove_file(paths.daemon_port());

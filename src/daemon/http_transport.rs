@@ -29,6 +29,14 @@ use crate::paths::DaemonPaths;
 pub const MCP_PATH: &str = "/mcp";
 pub const READINESS_PATH: &str = "/mcp/ready";
 
+pub(crate) fn generate_bearer_token() -> String {
+    format!(
+        "{}{}",
+        uuid::Uuid::new_v4().simple(),
+        uuid::Uuid::new_v4().simple()
+    )
+}
+
 #[derive(Debug, Clone)]
 pub struct HttpTransportConfig {
     pub bind_host: IpAddr,

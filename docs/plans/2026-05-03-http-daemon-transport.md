@@ -145,6 +145,34 @@
 - [ ] Stdio clients still see JSON-RPC over stdin/stdout, not HTTP details.
 - [ ] Worker-scope verification passes.
 
+### Task 4a: Daemon HTTP Startup and Admission Gates
+
+**Files:**
+- Modify: `src/daemon/mod.rs`
+- Modify: `src/daemon/http_transport.rs`
+- Modify: `src/daemon/mcp_session.rs`
+- Test: `src/tests/daemon/server.rs`
+- Test: `src/tests/daemon/http_transport.rs`
+
+**What to build:** Start the real Streamable HTTP MCP transport from `run_daemon` using `HttpJulieService`, publish the HTTP discovery file and private token during daemon startup, and make HTTP session admission honor the same stale-binary and adapter-version gates IPC currently applies before registering a session.
+
+**Approach:** Bind the HTTP transport after shared daemon state exists and before `startup_complete`, so discovery means the daemon can accept real MCP HTTP sessions. Generate a per-daemon bearer token, write only the token file path to discovery, and pass `DaemonSessionDependencies` into the SDK service factory. Keep HTTP session registration deferred until `initialize` passes workspace-header parsing and admission gates, so failed initialize requests do not leak dashboard/session state. Reuse `stale_binary_accept_action` and `version_gate_action` through a small admission helper in `mcp_session.rs` rather than copying the gate logic into HTTP-specific code.
+
+**Acceptance criteria:**
+- [x] `run_daemon` publishes a live Streamable HTTP discovery file with a private token file.
+- [x] HTTP discovery and token files are removed during daemon shutdown.
+- [x] HTTP initialize with a mismatched `x-julie-version` returns a JSON-RPC error and does not register a daemon session.
+- [x] HTTP initialize while the daemon binary is stale follows the same accept/restart-pending/shutdown decisions as IPC.
+- [x] IPC compatibility tests still pass after sharing the admission helper.
+- [x] Worker-scope verification passes.
+
+**Task 4a execution notes:**
+- `run_daemon` now binds the real Streamable HTTP MCP transport before daemon startup completes. It publishes `daemon-mcp-transport.json` only after readiness probes pass and writes a per-daemon bearer token to `daemon-mcp.token`.
+- HTTP startup uses `HttpJulieService` with the same `WorkspacePool`, `DaemonDatabase`, `EmbeddingService`, restart flag, dashboard events, watcher pool, and session tracker as IPC.
+- `HttpSessionAdmission` reuses `stale_binary_accept_action` and `version_gate_action`. Rejected HTTP initializes return JSON-RPC `-32603`, mark restart pending, and do not publish dashboard session changes or start workspace sessions.
+- Julie session tracker registration is deferred until initialize passes admission and workspace-header parsing. This keeps rejected HTTP sessions out of dashboard/session state while still tracking accepted sessions during workspace startup and cleanup.
+- `HttpTransportServer::shutdown` removes the HTTP discovery and token files. `run_daemon` calls that shutdown handle during daemon cleanup.
+
 ### Task 5: Legacy IPC Compatibility Window
 
 **Files:**
@@ -169,7 +197,7 @@
 - `src/daemon/ipc_session.rs` now keeps IPC-only header parsing, ready-line handshake, and stream serving. Handler construction and cleanup moved to the shared module.
 - `HttpJulieService` implements `rmcp::Service<RoleServer>` directly. It creates a Julie daemon session tracker entry synchronously, reads `http::request::Parts` from `RequestContext.extensions` on `initialize`, rejects missing or invalid Julie workspace headers with JSON-RPC `-32602`, and delegates later requests/notifications to the cached `JulieServerHandler`.
 - Cleanup for HTTP currently runs from `Drop` because `rmcp::Service<RoleServer>` has no explicit close hook. The SDK does call `SessionManager::close_session`, so the next daemon-wiring slice should either keep this tested Drop behavior or wrap `LocalSessionManager` if we need deterministic async cleanup tied to the SDK close call.
-- `HttpJulieService` is tested but not yet constructed by production daemon startup. The dead-code annotations on the HTTP wrapper path are intentional until Task 4 wires the stdio shim and the daemon exposes canonical HTTP sessions under the same restart/version gates as IPC.
+- `HttpJulieService` is now constructed by production daemon startup for the canonical HTTP endpoint. Task 4 still owns the stdio shim that will connect adapters to that endpoint.
 
 ## Verification Strategy
 
@@ -226,6 +254,12 @@
 | worker-red-green | Existing IPC weak-CWD startup still avoids pre-binding the startup workspace after shared session extraction. | `cargo nextest run --lib test_handle_ipc_session_weak_cwd_startup_is_not_attached_before_first_bind 2>&1 \| tail -80` | `c15f2f69+dirty` | PASS, 1 test in 0.120s | 2026-05-03T22:52:10Z |
 | worker-red-green | HTTP session wrapper and shared IPC session extraction compile without warnings. | `cargo check 2>&1 \| tail -60` | `c15f2f69+dirty` | PASS, no warnings | 2026-05-03T22:54:10Z |
 | affected-change | Focused transport bucket after shared daemon MCP session wrapper extraction. | `cargo xtask test bucket transport 2>&1 \| tail -80` | `c15f2f69+dirty` | PASS, 1 bucket in 4.6s | 2026-05-03T22:54:10Z |
+| worker-red-green | `run_daemon` publishes live Streamable HTTP discovery with a private token path and readiness probe succeeds. | `cargo nextest run --lib test_daemon_publishes_http_transport_discovery_with_private_token 2>&1 \| tail -80` | `73b124c4+dirty` | PASS, 1 test in 8.922s | 2026-05-03T23:31:44Z |
+| worker-red-green | HTTP version mismatch rejects initialize before workspace startup and without dashboard session state. | `cargo nextest run --lib test_http_julie_session_ 2>&1 \| tail -120` | `73b124c4+dirty` | PASS, 6 tests in 0.110s | 2026-05-03T23:31:44Z |
+| worker-red-green | HTTP transport and admission tests pass as a focused module slice. | `cargo nextest run --lib tests::daemon::http_transport 2>&1 \| tail -120` | `73b124c4+dirty` | PASS, 15 tests in 0.119s | 2026-05-03T23:31:44Z |
+| worker-red-green | HTTP daemon startup and admission changes compile without warnings. | `cargo check 2>&1 \| tail -120` | `73b124c4+dirty` | PASS, no warnings | 2026-05-03T23:31:44Z |
+| affected-change | Diff-scoped gate after daemon HTTP startup and admission wiring. | `cargo xtask test changed 2>&1 \| tail -160` | `73b124c4+dirty` | PASS, transport, lifecycle, and daemon buckets in 38.4s | 2026-05-03T23:31:44Z |
+| branch-gate | Dev gate for completed HTTP daemon startup and admission batch. | `cargo xtask test dev 2>&1 \| tail -180` | `73b124c4+dirty` | PASS, 22 buckets in 368.3s | 2026-05-03T23:31:44Z |
 
 ## Model Routing
 

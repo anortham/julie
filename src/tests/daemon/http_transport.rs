@@ -6,24 +6,27 @@ mod tests {
     use std::net::{SocketAddr, TcpStream};
     use std::sync::Arc;
     use std::sync::atomic::AtomicBool;
-    use std::time::Duration;
+    use std::time::{Duration, SystemTime};
     use std::{io::Read, io::Write};
 
     use anyhow::Context;
     use rmcp::ServerHandler;
+    use tokio::sync::broadcast;
 
     use crate::daemon::database::DaemonDatabase;
     use crate::daemon::embedding_service::EmbeddingService;
     use crate::daemon::http_transport::{
         HttpTransportConfig, HttpTransportServer, MCP_PATH, READINESS_PATH,
     };
+    use crate::daemon::lifecycle::DaemonLifecycleController;
     use crate::daemon::mcp_session::{
         DaemonSessionDependencies, HEADER_JULIE_VERSION, HEADER_JULIE_WORKSPACE,
-        HEADER_JULIE_WORKSPACE_SOURCE, HttpJulieService,
+        HEADER_JULIE_WORKSPACE_SOURCE, HttpJulieService, HttpSessionAdmission,
     };
     use crate::daemon::session::SessionTracker;
     use crate::daemon::transport::{TransportEndpoint, TransportMode, TransportProbe};
     use crate::daemon::workspace_pool::WorkspacePool;
+    use crate::dashboard::state::DashboardEvent;
     use crate::paths::DaemonPaths;
     use crate::workspace::startup_hint::WorkspaceStartupSource;
 
@@ -142,10 +145,34 @@ mod tests {
         daemon_db: Arc<DaemonDatabase>,
         dependencies: Arc<DaemonSessionDependencies>,
         sessions: Arc<SessionTracker>,
+        lifecycle: DaemonLifecycleController,
     }
 
     impl RealServiceFixture {
         fn new() -> Self {
+            Self::new_with_admission(None, || None)
+        }
+
+        fn new_with_admission(
+            startup_binary_mtime: Option<SystemTime>,
+            current_binary_mtime: impl Fn() -> Option<SystemTime> + Send + Sync + 'static,
+        ) -> Self {
+            Self::new_with_options(startup_binary_mtime, current_binary_mtime, None)
+        }
+
+        fn new_with_dashboard() -> (Self, broadcast::Receiver<DashboardEvent>) {
+            let (dashboard_tx, dashboard_rx) = broadcast::channel(8);
+            (
+                Self::new_with_options(None, || None, Some(dashboard_tx)),
+                dashboard_rx,
+            )
+        }
+
+        fn new_with_options(
+            startup_binary_mtime: Option<SystemTime>,
+            current_binary_mtime: impl Fn() -> Option<SystemTime> + Send + Sync + 'static,
+            dashboard_tx: Option<broadcast::Sender<DashboardEvent>>,
+        ) -> Self {
             let home = tempfile::tempdir().unwrap();
             let workspace_root = tempfile::tempdir().unwrap();
             std::fs::create_dir_all(workspace_root.path().join(".julie"))
@@ -165,15 +192,23 @@ mod tests {
                 Some(Arc::clone(&embedding_service)),
             ));
             let sessions = Arc::new(SessionTracker::new());
-            let dependencies = Arc::new(DaemonSessionDependencies::new(
-                pool,
-                Some(Arc::clone(&daemon_db)),
-                embedding_service,
-                Arc::new(AtomicBool::new(false)),
-                None,
-                None,
-                Arc::clone(&sessions),
-            ));
+            let lifecycle = DaemonLifecycleController::new(paths.daemon_state());
+            let dependencies = Arc::new(
+                DaemonSessionDependencies::new(
+                    pool,
+                    Some(Arc::clone(&daemon_db)),
+                    embedding_service,
+                    Arc::new(AtomicBool::new(false)),
+                    dashboard_tx,
+                    None,
+                    Arc::clone(&sessions),
+                )
+                .with_http_admission(HttpSessionAdmission::new(
+                    lifecycle.clone(),
+                    startup_binary_mtime,
+                    current_binary_mtime,
+                )),
+            );
 
             Self {
                 _home: home,
@@ -182,6 +217,7 @@ mod tests {
                 daemon_db,
                 dependencies,
                 sessions,
+                lifecycle,
             }
         }
 
@@ -511,6 +547,157 @@ mod tests {
         }
         panic!(
             "invalid initialize should remove its daemon session tracker entry, active={}",
+            fixture.sessions.active_count()
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_http_julie_session_rejects_version_mismatch_before_workspace_start() {
+        let fixture = RealServiceFixture::new();
+        let workspace_id = fixture.workspace_id();
+        let dependencies = Arc::clone(&fixture.dependencies);
+        let server = HttpTransportServer::bind(
+            fixture.paths.clone(),
+            HttpTransportConfig::default(),
+            move || Ok(HttpJulieService::new(Arc::clone(&dependencies))),
+        )
+        .await
+        .unwrap();
+
+        let response = post_initialize(
+            server.local_addr(),
+            InitializeRequestOptions {
+                workspace: Some(fixture.workspace_root.path()),
+                workspace_source: Some(WorkspaceStartupSource::Cli),
+                version: Some("0.0.0-mismatch"),
+                ..InitializeRequestOptions::default()
+            },
+        );
+
+        assert!(response.starts_with("HTTP/1.1 200 OK"), "{response}");
+        assert!(
+            response.contains(r#""code":-32603"#),
+            "version mismatch must be reported as a JSON-RPC internal error: {response}"
+        );
+        assert!(
+            response.contains("restart"),
+            "version mismatch should tell the adapter to reconnect after restart: {response}"
+        );
+        assert!(
+            fixture.lifecycle.restart_pending(),
+            "version mismatch should mark the daemon for restart"
+        );
+        let workspace_row = fixture.daemon_db.get_workspace(&workspace_id).unwrap();
+        assert!(
+            workspace_row
+                .as_ref()
+                .map(|row| row.session_count == 0)
+                .unwrap_or(true),
+            "version mismatch must not start a workspace session, row={workspace_row:?}"
+        );
+        for _ in 0..100 {
+            if fixture.sessions.active_count() == 0 {
+                server.shutdown().await.unwrap();
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+        panic!(
+            "version-mismatched initialize should remove its daemon session tracker entry, active={}",
+            fixture.sessions.active_count()
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_http_julie_session_version_mismatch_does_not_emit_dashboard_session_change() {
+        let (fixture, mut dashboard_rx) = RealServiceFixture::new_with_dashboard();
+        let dependencies = Arc::clone(&fixture.dependencies);
+        let server = HttpTransportServer::bind(
+            fixture.paths.clone(),
+            HttpTransportConfig::default(),
+            move || Ok(HttpJulieService::new(Arc::clone(&dependencies))),
+        )
+        .await
+        .unwrap();
+
+        let response = post_initialize(
+            server.local_addr(),
+            InitializeRequestOptions {
+                workspace: Some(fixture.workspace_root.path()),
+                workspace_source: Some(WorkspaceStartupSource::Cli),
+                version: Some("0.0.0-mismatch"),
+                ..InitializeRequestOptions::default()
+            },
+        );
+
+        assert!(
+            response.contains(r#""code":-32603"#),
+            "version mismatch must reject initialize before dashboard session state changes: {response}"
+        );
+        tokio::time::sleep(Duration::from_millis(25)).await;
+        assert!(
+            dashboard_rx.try_recv().is_err(),
+            "rejected initialize must not publish dashboard session changes"
+        );
+
+        server.shutdown().await.unwrap();
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_http_julie_session_rejects_stale_binary_before_workspace_start() {
+        let fixture = RealServiceFixture::new_with_admission(Some(SystemTime::UNIX_EPOCH), || {
+            Some(SystemTime::UNIX_EPOCH + Duration::from_secs(1))
+        });
+        let workspace_id = fixture.workspace_id();
+        let dependencies = Arc::clone(&fixture.dependencies);
+        let server = HttpTransportServer::bind(
+            fixture.paths.clone(),
+            HttpTransportConfig::default(),
+            move || Ok(HttpJulieService::new(Arc::clone(&dependencies))),
+        )
+        .await
+        .unwrap();
+
+        let response = post_initialize(
+            server.local_addr(),
+            InitializeRequestOptions {
+                workspace: Some(fixture.workspace_root.path()),
+                workspace_source: Some(WorkspaceStartupSource::Cli),
+                version: Some(env!("CARGO_PKG_VERSION")),
+                ..InitializeRequestOptions::default()
+            },
+        );
+
+        assert!(response.starts_with("HTTP/1.1 200 OK"), "{response}");
+        assert!(
+            response.contains(r#""code":-32603"#),
+            "stale binary must be reported as a JSON-RPC internal error: {response}"
+        );
+        assert!(
+            response.contains("restart"),
+            "stale binary should tell the adapter to reconnect after restart: {response}"
+        );
+        assert!(
+            fixture.lifecycle.restart_pending(),
+            "stale binary should mark the daemon for restart"
+        );
+        let workspace_row = fixture.daemon_db.get_workspace(&workspace_id).unwrap();
+        assert!(
+            workspace_row
+                .as_ref()
+                .map(|row| row.session_count == 0)
+                .unwrap_or(true),
+            "stale binary must not start a workspace session, row={workspace_row:?}"
+        );
+        for _ in 0..100 {
+            if fixture.sessions.active_count() == 0 {
+                server.shutdown().await.unwrap();
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+        panic!(
+            "stale-binary initialize should remove its daemon session tracker entry, active={}",
             fixture.sessions.active_count()
         );
     }
