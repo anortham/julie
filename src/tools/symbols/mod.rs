@@ -51,6 +51,26 @@ fn validated_mode(mode: Option<&str>) -> Result<&str> {
     }
 }
 
+fn file_not_found_message(file_path: &str, target: Option<&str>) -> String {
+    let mut message = format!("❌ File not found: {}", file_path);
+    if let Some(target_name) = target {
+        message.push_str(&format!(
+            "\n💡 Try deep_dive(symbol=\"{}\") to find it without needing the file path",
+            target_name
+        ));
+    } else {
+        let filename = std::path::Path::new(file_path)
+            .file_name()
+            .map(|f| f.to_string_lossy().to_string())
+            .unwrap_or_else(|| file_path.to_string());
+        message.push_str(&format!(
+            "\n💡 Try fast_search(query=\"{}\", search_target=\"definitions\") to locate the file",
+            filename
+        ));
+    }
+    message
+}
+
 //**********************//
 //   Get Symbols Tool   //
 //**********************//

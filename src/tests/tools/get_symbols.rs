@@ -406,17 +406,24 @@ async fn test_get_symbols_file_not_found_error() -> Result<()> {
         workspace: None,
     };
 
-    let result_not_found = tool_not_found.call_tool(&handler).await?;
-    let text_not_found = extract_text_from_result(&result_not_found);
+    let result_not_found = tool_not_found.call_tool(&handler).await;
+
+    // Missing files should fail as an error now, not silently return an
+    // empty symbol result.
+    assert!(result_not_found.is_err(), "missing file should fail");
+    let err_text = result_not_found
+        .err()
+        .expect("error should exist")
+        .to_string();
 
     // Should explicitly say "File not found"
     assert!(
-        text_not_found.contains("File not found"),
+        err_text.contains("File not found"),
         "Should say 'File not found' for non-existent files, got: {}",
-        text_not_found
+        err_text
     );
     assert!(
-        text_not_found.contains("❌"),
+        err_text.contains("❌"),
         "Should include error emoji for visibility"
     );
 
