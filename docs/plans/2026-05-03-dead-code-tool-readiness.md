@@ -1,8 +1,8 @@
 # Dead Code Tool Readiness
 
 **Source baseline:** `docs/plans/2026-05-03-dead-code-audit-baseline.md`
-**Workspace:** `dead-code-audit-cleanup_4f5b083c`
-**Commit:** working tree based on `84b83c06`
+**Workspace:** `http-daemon-transport_a9c9c040`
+**Commit:** `49028afa`
 
 ## Decision
 
@@ -14,12 +14,13 @@ The audit workflow is useful, but the signal is still too noisy for an agent-fac
 
 | Decision Label | Count | Notes |
 | --- | ---: | --- |
-| `delete` | 4 | `WorkspaceEntry.indexed`, `WorkspacePool::is_indexed`, `WorkspacePool::mark_indexed`, `WorkspacePool::sync_indexed_from_db` |
-| `merge-into-caller` | 2 | `attach_workspace_once_and_sync_indexed`, unused dashboard cleanup `AppState` parameter |
-| `keep` | 5 | Projection served revision, uncommitted projection apply path, workspace indexing snapshot, indexing file-count helpers |
-| `graph-gap` | 3 | Unqualified same-file calls, watcher/product calls, constructor-style `new` methods |
-| `needs-design-review` | 4 | Adapter forwarding and lifecycle restart helpers should wait for HTTP transport or a targeted lifecycle cleanup |
-| `test-fossil` | 4 | WorkspacePool indexed-flag tests were removed with the fossil behavior |
+| `delete` | 8 | `WorkspaceEntry.indexed`, `WorkspacePool::is_indexed`, `WorkspacePool::mark_indexed`, `WorkspacePool::sync_indexed_from_db`, `flag_restart_pending_for_restart`, `WorkspacePool::active_count`, `WorkspacePool::new` migration args, `WatcherPool::increment_ref` |
+| `merge-into-caller` | 4 | `attach_workspace_once_and_sync_indexed`, unused dashboard cleanup `AppState` parameter, lifecycle `store_phase`, `WatcherPool::decrement_ref` |
+| `make-private` | 2 | Daemon state-file write helpers stayed available to daemon tests but left the public lifecycle API |
+| `keep` | 13 | Projection served revision, uncommitted projection apply path, workspace indexing snapshot, indexing file-count helpers, and legacy IPC adapter helpers kept during the HTTP compatibility window |
+| `graph-gap` | 6 | Unqualified same-file calls, constructor-style `new` methods, enum/type usage, same-named method conflation, watcher/session lifecycle edges, and extractor-heavy blast-radius output |
+| `needs-design-review` | 2 | Projection helper cleanup waits for projection invariant ownership; legacy IPC removal waits for a dedicated transport-removal plan |
+| `test-fossil` | 8 | Workspace indexed-flag tests, restart-pending state helper tests, WorkspacePool map-count tests, and WatcherPool raw ref-count tests |
 
 ## Useful Evidence
 
@@ -27,6 +28,7 @@ The audit workflow is useful, but the signal is still too noisy for an agent-fac
 - `fast_refs` plus content search is necessary because graph gaps are common.
 - `julie-server signals` is useful for graph-quality leads, but its current top output is fixture-heavy for this repo.
 - Candidate filtering by architecture stage kept the review sane. The raw inventory is too broad to act on directly.
+- Rewriting fossil tests to assert product behavior was more valuable than simply deleting tests. The WorkspacePool and WatcherPool passes are the clearest examples.
 
 ## Noisy Evidence
 
@@ -34,6 +36,8 @@ The audit workflow is useful, but the signal is still too noisy for an agent-fac
 - Structs and enums often appear as zero-ref symbols even when imports or type usage prove they are product surface.
 - Generic method names like `new`, `fmt`, `as_str`, and `empty` are mostly noise without file-path and caller context.
 - Fixture entry-point signals are useful for code intelligence work, but not for Julie cleanup.
+- `fast_refs` can conflate same-named methods when asked for a qualified symbol that no longer exists or is stale in the index.
+- `blast_radius` can produce unrelated high-centrality extractor output when the seed resolution is noisy. That output is useful as a graph-quality warning, not deletion evidence.
 
 ## Product Shape
 
@@ -46,6 +50,7 @@ The first product version should:
 - label every candidate as candidate evidence, not deletion advice
 - include graph-gap reasons in the output when identifier hits conflict with relationship refs
 - expose `--json` for plan ledgers
+- include a "tests preserve this symbol" section that names the tests and suggests product-behavior replacements
 - stay out of the MCP handler until repeated cleanup sessions prove the output is stable
 
 ## Graph Gaps To Feed Back
@@ -53,10 +58,19 @@ The first product version should:
 - Same-file unqualified calls can make real helpers look unused, as with `projection_served_revision`.
 - Public constructor-style methods are badly overreported.
 - Trait, registry, macro, and dynamic dispatch roles need explicit keep signals.
-- Watcher and session attachment ref-count methods need better relationship edges through service call paths.
+- Same-named methods need stronger disambiguation, especially after a symbol has just been deleted.
+- File-seeded blast-radius needs better seed resolution diagnostics when returned callers are obviously unrelated to the changed file.
+- Watcher and session attachment lifecycle edges need better relationship edges through service call paths.
 
 ## Result Of This Pass
 
-The pass found and removed one real fossil cluster: the workspace pool's in-memory indexed flag. That flag had survived because tests referenced it, but product code no longer read it after the workspace service split. Removing it deleted stale synchronization calls in IPC, dashboard cleanup, handler session attachment, and three fossil tests.
+This pass found and removed four real fossil clusters:
 
-The audit earned its keep as a cleanup workflow. It has not earned an MCP surface yet.
+- the workspace pool's in-memory indexed flag and sync helpers
+- a lifecycle restart-pending helper preserved only by old state tests
+- WorkspacePool constructor migration args and a map-count accessor preserved only by tests
+- WatcherPool raw ref-count hooks preserved only by tests after session attachment became the product lifecycle
+
+The best cleanup wins came from replacing fossil tests with product-behavior tests, not just deleting code. The worst evidence came from graph outputs that looked authoritative until raw `rg` proved they were wrong or stale.
+
+The audit earned its keep as a cleanup workflow. It has not earned an MCP surface yet. Build the CLI/report version first, then let repeated cleanup passes prove whether the labels are stable enough for an MCP tool.
