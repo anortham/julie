@@ -31,6 +31,11 @@
           {{ (source_bytes / 1024) | round(precision=1) }}KB examined /
           {{ (output_bytes / 1024) | round(precision=1) }}KB returned
         </p>
+        {% if input_bytes > 0 %}
+          <p style="color: var(--julie-text-muted); font-size: 0.68rem; margin-top: 0.15rem;">
+            {{ (input_bytes / 1024) | round(precision=1) }}KB Julie request bytes
+          </p>
+        {% endif %}
       {% elif output_bytes > 0 %}
         <p class="value-text">
           {% if output_bytes >= 1048576 %}{{ (output_bytes / 1048576) | round(precision=1) }} MB
@@ -55,6 +60,9 @@
           {% elif success_rate >= 95.0 %}var(--julie-warning)
           {% else %}var(--julie-danger){% endif %};">
           {{ success_rate | round(precision=1) }}%
+        </p>
+        <p style="color: var(--julie-text-muted); font-size: 0.68rem; margin-top: 0.3rem;">
+          {{ failure_count }} failed of {{ success_total }} calls
         </p>
       {% else %}
         <p class="value-text" style="color: var(--julie-text-muted);">&mdash;</p>

@@ -15,7 +15,15 @@
       <tbody>
         {% for tool in tools %}
           <tr>
-            <td class="mono">{{ tool.tool_name }}</td>
+            <td>
+              <div class="mono">{{ tool.tool_name }}</div>
+              <div style="color: var(--julie-text-muted); font-size: 0.72rem; margin-top: 0.25rem;">
+                {{ tool.request_bytes_text }}
+              </div>
+              <div style="color: var(--julie-text-muted); font-size: 0.72rem;">
+                {{ tool.activity_bytes_text }}
+              </div>
+            </td>
             <td style="text-align: right; color: var(--julie-primary); font-weight: 600;">
               {{ tool.call_count }}
             </td>
