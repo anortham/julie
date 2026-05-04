@@ -241,6 +241,7 @@ impl DaemonDatabase {
 
     fn migration_005_add_tool_call_input_bytes(conn: &mut Connection) -> Result<()> {
         info!("daemon.db migration 005: add input_bytes to tool_calls");
+        let has_tool_calls = table_exists_in(conn, "tool_calls")?;
         let has_input_bytes: bool = {
             let mut stmt = conn.prepare("PRAGMA table_info(tool_calls)")?;
             let mut rows = stmt.query([])?;
@@ -255,9 +256,32 @@ impl DaemonDatabase {
             found
         };
         let tx = conn.transaction()?;
-        if !has_input_bytes {
+        if !has_tool_calls {
+            tx.execute_batch(
+                "CREATE TABLE tool_calls (
+                    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                    workspace_id  TEXT NOT NULL,
+                    session_id    TEXT NOT NULL,
+                    timestamp     INTEGER NOT NULL,
+                    tool_name     TEXT NOT NULL,
+                    duration_ms   REAL NOT NULL,
+                    result_count  INTEGER,
+                    source_bytes  INTEGER,
+                    input_bytes   INTEGER,
+                    output_bytes  INTEGER,
+                    success       INTEGER NOT NULL DEFAULT 1,
+                    metadata      TEXT
+                );",
+            )?;
+        } else if !has_input_bytes {
             tx.execute("ALTER TABLE tool_calls ADD COLUMN input_bytes INTEGER", [])?;
         }
+        tx.execute_batch(
+            "CREATE INDEX IF NOT EXISTS idx_tool_calls_timestamp ON tool_calls(timestamp);
+             CREATE INDEX IF NOT EXISTS idx_tool_calls_tool_name  ON tool_calls(tool_name);
+             CREATE INDEX IF NOT EXISTS idx_tool_calls_session    ON tool_calls(session_id);
+             CREATE INDEX IF NOT EXISTS idx_tool_calls_workspace  ON tool_calls(workspace_id);",
+        )?;
         tx.execute(
             "INSERT OR REPLACE INTO schema_version (version, applied_at)
              VALUES (5, unixepoch())",
@@ -1099,6 +1123,15 @@ impl DaemonDatabase {
 
         result
     }
+}
+
+fn table_exists_in(conn: &Connection, table_name: &str) -> Result<bool> {
+    let count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?1",
+        params![table_name],
+        |row| row.get(0),
+    )?;
+    Ok(count > 0)
 }
 
 // -----------------------------------------------------------------------------
