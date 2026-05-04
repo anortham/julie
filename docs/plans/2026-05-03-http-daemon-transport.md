@@ -130,8 +130,10 @@
 
 **Files:**
 - Modify: `src/adapter/mod.rs:81-405`
+- Add: `src/adapter/http_stdio.rs`
 - Modify: `src/adapter/launcher.rs:33-296`
 - Modify: `src/main.rs:12-125`
+- Modify: `Cargo.toml` and `Cargo.lock` for the `rmcp` reqwest Streamable HTTP client feature.
 - Test: `src/tests/adapter/retry.rs:12-159`
 - Test: add adapter HTTP shim tests under `src/tests/adapter/`
 
@@ -140,10 +142,16 @@
 **Approach:** Preserve `run_adapter_with` as the retry harness if possible. Swap the concrete connector from `IpcConnector` to an HTTP stream client abstraction. Use the SDK client-side Streamable HTTP transport when it fits the stdio shim. Evaluate the SDK's Unix domain socket Streamable HTTP client for macOS and Linux as a safer local transport option, but keep TCP localhost as the cross-platform baseline until Windows has an equivalent tested path. If byte-for-byte stdio forwarding cannot map cleanly to the rmcp HTTP client transport, add a small adapter-side MCP service bridge and keep the stdio contract at the process boundary.
 
 **Acceptance criteria:**
-- [ ] `main` still calls adapter mode for default invocation.
-- [ ] Existing retry tests remain meaningful and pass with the HTTP connector abstraction.
-- [ ] Stdio clients still see JSON-RPC over stdin/stdout, not HTTP details.
-- [ ] Worker-scope verification passes.
+- [x] `main` still calls adapter mode for default invocation.
+- [x] Existing retry tests remain meaningful and pass with the HTTP connector abstraction.
+- [x] Stdio clients still see JSON-RPC over stdin/stdout, not HTTP details.
+- [x] Worker-scope verification passes.
+
+**Task 4 execution notes:**
+- `run_adapter` now ensures daemon readiness, reads canonical transport discovery, and uses the HTTP stdio shim when `daemon-mcp-transport.json` reports Streamable HTTP. Legacy IPC remains the fallback path during migration.
+- `src/adapter/http_stdio.rs` owns HTTP client config, bearer-token loading, `x-julie-*` header injection, retry replay for immediate restart handoff, and newline-delimited JSON-RPC forwarding at the stdio process boundary.
+- The shim uses the `rmcp` Streamable HTTP client transport with the reqwest feature enabled. It is a message-level bridge, not a blind byte pipe, so it can forward server requests such as `roots/list` while a client request is still in flight.
+- Adapter HTTP tests cover token/header config, stdout newline framing, multi-request ordering, restart-error hiding, empty-token rejection, and the roots request round trip that would deadlock in a half-duplex bridge.
 
 ### Task 4a: Daemon HTTP Startup and Admission Gates
 
@@ -260,6 +268,10 @@
 | worker-red-green | HTTP daemon startup and admission changes compile without warnings. | `cargo check 2>&1 \| tail -120` | `73b124c4+dirty` | PASS, no warnings | 2026-05-03T23:31:44Z |
 | affected-change | Diff-scoped gate after daemon HTTP startup and admission wiring. | `cargo xtask test changed 2>&1 \| tail -160` | `73b124c4+dirty` | PASS, transport, lifecycle, and daemon buckets in 38.4s | 2026-05-03T23:31:44Z |
 | branch-gate | Dev gate for completed HTTP daemon startup and admission batch. | `cargo xtask test dev 2>&1 \| tail -180` | `73b124c4+dirty` | PASS, 22 buckets in 368.3s | 2026-05-03T23:31:44Z |
+| worker-red-green | HTTP stdio shim injects bearer token and workspace headers, preserves newline JSON-RPC framing, replays restart handoff, and handles `roots/list` without deadlock. | `cargo nextest run --lib tests::adapter::http_stdio 2>&1 \| tail -120` | `fc55bf24+dirty` | PASS, 6 tests in 0.033s | 2026-05-04T00:07:11Z |
+| worker-red-green | HTTP stdio shim and reqwest client feature compile without warnings after test-only helper cleanup. | `cargo build 2>&1 \| tail -80` | `fc55bf24+dirty` | PASS, no warnings | 2026-05-04T00:07:11Z |
+| affected-change | Diff-scoped gate after HTTP stdio shim and reqwest client feature. `changed` fell back to dev because `Cargo.toml` and `Cargo.lock` changed. | `cargo xtask test changed 2>&1 \| tail -160` | `fc55bf24+dirty` | PASS, 22 buckets in 372.5s | 2026-05-04T00:07:11Z |
+| affected-change | Focused transport bucket after HTTP stdio shim, covering adapter retry tests plus daemon HTTP, IPC, and transport tests. | `cargo xtask test bucket transport 2>&1 \| tail -120` | `fc55bf24+dirty` | PASS, 1 bucket in 4.7s | 2026-05-04T00:07:11Z |
 
 ## Model Routing
 

@@ -1,9 +1,9 @@
 //! Adapter: the thin process that MCP clients spawn.
 //!
-//! The adapter auto-starts the daemon if not running, connects to the IPC
-//! socket, sends a workspace header, then bidirectionally forwards bytes
-//! between stdin/stdout and the daemon. From the MCP client's perspective,
-//! it looks exactly like a stdio MCP server.
+//! The adapter auto-starts the daemon if not running, connects to the daemon's
+//! canonical MCP transport, then forwards stdin/stdout JSON-RPC between the MCP
+//! client and daemon. From the MCP client's perspective, it looks exactly like
+//! a stdio MCP server.
 
 pub mod launcher;
 
@@ -15,15 +15,22 @@ use tracing::{error, info, warn};
 
 use crate::daemon::ipc::{DAEMON_READY_LINE, IpcClientStream, IpcConnector};
 use crate::daemon::lifecycle::{RestartHandoffAction, RestartReason, restart_handoff_action};
+use crate::daemon::transport::TransportMode;
 use crate::paths::DaemonPaths;
 use crate::workspace::startup_hint::WorkspaceStartupHint;
 
+mod http_stdio;
+
+#[cfg(test)]
+pub(crate) use http_stdio::{forward_http_stdio_transport, http_client_config_for_endpoint};
+
+use self::http_stdio::run_http_adapter;
 use self::launcher::DaemonLauncher;
 
 /// How long the adapter waits for the daemon's ready signal after sending
 /// headers. The daemon writes the signal after clearing all accept-path
 /// gates but before calling rmcp's `serve`, which for a non-deferred
-/// startup hint sits behind `WorkspacePool::get_or_init` — i.e. DB open,
+/// startup hint sits behind `WorkspacePool::get_or_init`, i.e. DB open,
 /// file scan, and (cold) index build. On a large workspace that work can
 /// take tens of seconds, so the budget has to be generous. 30 s matches
 /// the MCP client's typical `initialize` timeout: if the daemon can't
@@ -81,6 +88,15 @@ pub(crate) enum ForwardOutcome {
 pub async fn run_adapter(startup_hint: WorkspaceStartupHint) -> Result<()> {
     let paths = DaemonPaths::new();
     let launcher = DaemonLauncher::new(paths.clone());
+
+    tokio::task::block_in_place(|| launcher.ensure_daemon_ready())
+        .context("Failed to ensure daemon is ready")?;
+    if matches!(
+        launcher.transport_endpoint().mode(),
+        TransportMode::StreamableHttp
+    ) {
+        return run_http_adapter(startup_hint, launcher).await;
+    }
 
     run_adapter_with(
         || {
@@ -213,7 +229,7 @@ async fn connect_and_handshake(
     // All non-Ready outcomes are retryable transport failures: the stream is
     // dropped, run_adapter_with's retry loop reconnects, and client stdin is
     // still untouched (this is the whole point of the handshake). There is no
-    // "legacy fallback" — an older daemon that doesn't know the READY
+    // "legacy fallback"; an older daemon that doesn't know the READY
     // protocol will look like a timeout or unexpected-line, which is
     // symptomatically correct: the client sees a failed attempt, the adapter
     // bumps the retry counter, and when the retry either reaches a new

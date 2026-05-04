@@ -33,7 +33,7 @@ embeddings-sidecar = []
 julie-extractors = { path = "crates/julie-extractors" }
 
 # MCP Server SDK - Official Anthropic SDK
-rmcp = { version = "1.6", features = ["server", "client", "transport-io", "transport-streamable-http-server", "transport-streamable-http-client", "macros"] }
+rmcp = { version = "1.6", features = ["server", "client", "transport-io", "transport-streamable-http-server", "transport-streamable-http-client", "transport-streamable-http-client-reqwest", "macros"] }
 schemars = "1.0"  # For JsonSchema derives in tool parameters
 
 # Async recursion support
