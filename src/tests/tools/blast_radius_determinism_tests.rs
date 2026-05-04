@@ -649,6 +649,7 @@ async fn test_walk_impacts_caps_identifier_fanout_for_common_names() -> Result<(
 
     let mut files = vec![make_file("src/seed.ts", "hash_seed")];
     let mut symbols = vec![make_symbol("seed", "new", "src/seed.ts", None)];
+    let mut relationships = Vec::new();
     let mut identifiers = Vec::new();
 
     for i in 0..12 {
@@ -671,6 +672,15 @@ async fn test_walk_impacts_caps_identifier_fanout_for_common_names() -> Result<(
             (i + 1) as u32,
             0.80,
         ));
+        if i < 5 {
+            relationships.push(make_relationship(
+                &format!("rel_{i:02}"),
+                &caller_id,
+                "seed",
+                RelationshipKind::Calls,
+                &file_path,
+            ));
+        }
     }
 
     let db = handler.primary_database().await?;
@@ -679,7 +689,7 @@ async fn test_walk_impacts_caps_identifier_fanout_for_common_names() -> Result<(
         guard.bulk_store_fresh_atomic(
             &files,
             &symbols,
-            &Vec::<Relationship>::new(),
+            &relationships,
             &identifiers,
             &[],
             workspace_id.as_str(),
@@ -699,9 +709,27 @@ async fn test_walk_impacts_caps_identifier_fanout_for_common_names() -> Result<(
 
         assert_eq!(
             impacts.len(),
-            5,
-            "identifier expansion should cap common-name fanout per name"
+            10,
+            "relationship-backed callers should not consume the identifier fallback fanout budget"
         );
+        for i in 0..5 {
+            let relationship_id = format!("caller_{i:02}");
+            assert!(
+                impacts
+                    .iter()
+                    .any(|candidate| candidate.symbol.id == relationship_id),
+                "relationship caller {relationship_id} should be retained"
+            );
+        }
+        for i in 5..10 {
+            let identifier_id = format!("caller_{i:02}");
+            assert!(
+                impacts
+                    .iter()
+                    .any(|candidate| candidate.symbol.id == identifier_id),
+                "identifier-only caller {identifier_id} should be retained within the fallback cap"
+            );
+        }
     }
 
     Ok(())

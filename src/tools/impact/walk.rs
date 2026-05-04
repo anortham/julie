@@ -149,6 +149,9 @@ pub fn walk_impacts_with_budget(
 
         let mut identifier_name_counts: HashMap<String, usize> = HashMap::new();
         for (source_id, candidate) in identifier_candidates {
+            if best_by_source.contains_key(&source_id) {
+                continue;
+            }
             let fanout_name = candidate
                 .target_id
                 .as_ref()
@@ -161,7 +164,7 @@ pub fn walk_impacts_with_budget(
                 continue;
             }
             *fanout_count += 1;
-            best_by_source.entry(source_id).or_insert(candidate);
+            best_by_source.insert(source_id, candidate);
         }
 
         if best_by_source.is_empty() {
