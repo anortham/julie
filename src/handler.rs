@@ -2681,11 +2681,18 @@ impl JulieServerHandler {
         debug!("✏️ Rename symbol: {:?}", params);
         let start = std::time::Instant::now();
         let workspace_snapshot = self.require_primary_workspace_binding().ok();
-        let metadata = tool_targets::rename_symbol_metadata(&params);
+        let metadata = params
+            .metrics_metadata(self)
+            .await
+            .unwrap_or_else(|_| tool_targets::rename_symbol_metadata(&params));
         let source_file_paths = params.scope.clone().into_iter().collect::<Vec<_>>();
         let result = match params.call_tool(self).await {
             Ok(result) => result,
             Err(e) => {
+                let metadata = tool_targets::with_failure_kind(
+                    metadata.clone(),
+                    crate::tools::refactoring::failure_kind(&e),
+                );
                 let message = format!("rename_symbol failed: {}", e);
                 self.record_tool_failure(
                     "rename_symbol",
@@ -2795,11 +2802,44 @@ impl JulieServerHandler {
         );
         let start = std::time::Instant::now();
         let workspace_snapshot = self.require_primary_workspace_binding().ok();
-        let metadata = tool_targets::edit_file_metadata(&params);
+        let metadata = match params.success_metrics_metadata(self) {
+            Ok(metadata) => tool_targets::merge_object(
+                metadata,
+                serde_json::json!({
+                    "file": params.file_path.clone(),
+                    "target": {
+                        "target_symbol_name": serde_json::Value::Null,
+                        "target_file_path": params.file_path.clone(),
+                        "target_line": serde_json::Value::Null,
+                    }
+                }),
+            ),
+            Err(e) => {
+                let metadata = tool_targets::with_failure_kind(
+                    tool_targets::edit_file_metadata(&params),
+                    crate::tools::editing::edit_file::failure_kind(&e),
+                );
+                let message = format!("edit_file failed: {}", e);
+                self.record_tool_failure(
+                    "edit_file",
+                    start.elapsed(),
+                    workspace_snapshot.as_ref(),
+                    metadata,
+                    vec![params.file_path.clone()],
+                    Some(params.request_input_bytes()),
+                    &message,
+                );
+                return Err(McpError::internal_error(message, None));
+            }
+        };
         let input_bytes = Self::input_bytes_from_metadata(&metadata);
         let result = match params.call_tool(self).await {
             Ok(result) => result,
             Err(e) => {
+                let metadata = tool_targets::with_failure_kind(
+                    metadata,
+                    crate::tools::editing::edit_file::failure_kind(&e),
+                );
                 let message = format!("edit_file failed: {}", e);
                 self.record_tool_failure(
                     "edit_file",
@@ -2857,11 +2897,28 @@ impl JulieServerHandler {
         } else {
             None
         };
-        let metadata = tool_targets::rewrite_symbol_metadata(&params);
-        let source_file_paths = params.file_path.clone().into_iter().collect::<Vec<_>>();
+        let metadata = params
+            .success_metrics_metadata(self)
+            .await
+            .map(|success_metadata| {
+                tool_targets::merge_object(
+                    tool_targets::rewrite_symbol_metadata(&params),
+                    success_metadata,
+                )
+            })
+            .unwrap_or_else(|_| tool_targets::rewrite_symbol_metadata(&params));
+        let source_file_paths = metadata
+            .get("file_path")
+            .and_then(serde_json::Value::as_str)
+            .map(|path| vec![path.to_string()])
+            .unwrap_or_else(|| params.file_path.clone().into_iter().collect::<Vec<_>>());
         let result = match params.call_tool(self).await {
             Ok(result) => result,
             Err(e) => {
+                let metadata = tool_targets::with_failure_kind(
+                    metadata.clone(),
+                    crate::tools::editing::rewrite_symbol::failure_kind(&e),
+                );
                 let message = format!("rewrite_symbol failed: {}", e);
                 self.record_tool_failure(
                     "rewrite_symbol",
@@ -2876,7 +2933,11 @@ impl JulieServerHandler {
             }
         };
         let output_bytes = Self::output_bytes_from_result(&result);
-        let source_file_paths = Self::extract_paths_from_result(&result);
+        let source_file_paths = metadata
+            .get("file_path")
+            .and_then(serde_json::Value::as_str)
+            .map(|path| vec![path.to_string()])
+            .unwrap_or_else(|| Self::extract_paths_from_result(&result));
         let report = ToolCallReport {
             result_count: None,
             input_bytes: Self::input_bytes_from_metadata(&metadata),

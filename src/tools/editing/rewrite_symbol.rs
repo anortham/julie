@@ -7,6 +7,7 @@
 use anyhow::{Result, anyhow};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
 use std::path::Path;
 use tracing::debug;
 
@@ -101,6 +102,46 @@ struct WorkspaceEditTarget {
 struct LiveSymbolContext {
     live_symbol: Symbol,
     tree: Tree,
+}
+
+struct RewriteApplication {
+    indexed_symbol: Symbol,
+    resolved_path: String,
+    original_content: String,
+    modified_content: String,
+    span_context: SpanContext,
+    symbol_span_bytes: usize,
+    live_start_line: u32,
+    live_end_line: u32,
+    match_count: usize,
+}
+
+#[derive(Debug)]
+pub(crate) struct RewriteSymbolFailure {
+    pub kind: &'static str,
+    pub message: String,
+}
+
+impl std::fmt::Display for RewriteSymbolFailure {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for RewriteSymbolFailure {}
+
+fn rewrite_symbol_error(kind: &'static str, message: impl Into<String>) -> anyhow::Error {
+    anyhow!(RewriteSymbolFailure {
+        kind,
+        message: message.into(),
+    })
+}
+
+pub(crate) fn failure_kind(error: &anyhow::Error) -> &'static str {
+    error
+        .downcast_ref::<RewriteSymbolFailure>()
+        .map(|error| error.kind)
+        .unwrap_or("execution_error")
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -457,6 +498,26 @@ fn format_span_header(ctx: &SpanContext, file_path: &str) -> String {
 }
 
 impl RewriteSymbolTool {
+    pub(crate) fn request_input_bytes(&self) -> u64 {
+        serde_json::to_vec(self)
+            .map(|bytes| bytes.len() as u64)
+            .unwrap_or(0)
+    }
+
+    pub(crate) fn base_metrics_metadata(&self) -> Value {
+        let input_bytes = self.request_input_bytes();
+        json!({
+            "kind": "rewrite_symbol",
+            "dry_run": self.dry_run,
+            "applied": false,
+            "input_bytes": input_bytes,
+            "operation": self.operation,
+            "symbol": self.symbol,
+            "content_bytes": self.content.len(),
+            "match_count": serde_json::Value::Null,
+        })
+    }
+
     async fn resolve_workspace_target(
         &self,
         handler: &JulieServerHandler,
@@ -476,20 +537,26 @@ impl RewriteSymbolTool {
         }
     }
 
-    pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
+    async fn prepare_rewrite(&self, handler: &JulieServerHandler) -> Result<RewriteApplication> {
         let requested_symbol = self.symbol.clone();
         let (parsed_symbol_name, line_hint) = parse_symbol_line_hint(&requested_symbol);
 
         if parsed_symbol_name.is_empty() {
-            return Err(anyhow!("symbol name is required"));
+            return Err(rewrite_symbol_error(
+                "validation",
+                "symbol name is required",
+            ));
         }
         if self.content.is_empty() {
-            return Err(anyhow!("content is required"));
+            return Err(rewrite_symbol_error("validation", "content is required"));
         }
         if !validate_operation(&self.operation) {
-            return Err(anyhow!(
-                "operation must be one of replace_full, replace_body, replace_signature, insert_after, insert_before, add_doc; got '{}'",
-                self.operation
+            return Err(rewrite_symbol_error(
+                "validation",
+                format!(
+                    "operation must be one of replace_full, replace_body, replace_signature, insert_after, insert_before, add_doc; got '{}'",
+                    self.operation
+                ),
             ));
         }
 
@@ -528,29 +595,37 @@ impl RewriteSymbolTool {
         if matches.is_empty() {
             if let Some(line) = line_hint {
                 if let Some(ref file_path) = file_path_for_error {
-                    return Err(anyhow!(
-                        "symbol '{}' not found at line {} in '{}'. Use fast_search or get_symbols to verify the location.",
-                        symbol_name,
-                        line,
-                        file_path
+                    return Err(rewrite_symbol_error(
+                        "symbol_not_found",
+                        format!(
+                            "symbol '{}' not found at line {} in '{}'. Use fast_search or get_symbols to verify the location.",
+                            symbol_name, line, file_path
+                        ),
                     ));
                 }
-                return Err(anyhow!(
-                    "symbol '{}' not found at line {} in index. Use fast_search or get_symbols to verify the name.",
-                    symbol_name,
-                    line
+                return Err(rewrite_symbol_error(
+                    "symbol_not_found",
+                    format!(
+                        "symbol '{}' not found at line {} in index. Use fast_search or get_symbols to verify the name.",
+                        symbol_name, line
+                    ),
                 ));
             }
             if let Some(ref file_path) = file_path_for_error {
-                return Err(anyhow!(
-                    "symbol '{}' not found in '{}'. Use fast_search or get_symbols to verify the location.",
-                    symbol_name,
-                    file_path
+                return Err(rewrite_symbol_error(
+                    "symbol_not_found",
+                    format!(
+                        "symbol '{}' not found in '{}'. Use fast_search or get_symbols to verify the location.",
+                        symbol_name, file_path
+                    ),
                 ));
             }
-            return Err(anyhow!(
-                "symbol '{}' not found in index. Use fast_search or get_symbols to verify the name.",
-                symbol_name
+            return Err(rewrite_symbol_error(
+                "symbol_not_found",
+                format!(
+                    "symbol '{}' not found in index. Use fast_search or get_symbols to verify the name.",
+                    symbol_name
+                ),
             ));
         }
 
@@ -583,12 +658,15 @@ impl RewriteSymbolTool {
             } else {
                 "Provide file_path or symbol@line to disambiguate"
             };
-            return Err(anyhow!(
-                "'{}' matches {} symbols. {}:\n{}",
-                symbol_name,
-                matches.len(),
-                hint,
-                locations
+            return Err(rewrite_symbol_error(
+                "ambiguous_symbol",
+                format!(
+                    "'{}' matches {} symbols. {}:\n{}",
+                    symbol_name,
+                    matches.len(),
+                    hint,
+                    locations
+                ),
             ));
         }
 
@@ -610,7 +688,7 @@ impl RewriteSymbolTool {
                 .map_err(|error| anyhow!("Database lock error: {}", error))?;
             if let Err(error) = check_file_freshness(&db, &indexed_symbol.file_path, &current_hash)
             {
-                return Err(error);
+                return Err(rewrite_symbol_error("stale_index", error.to_string()));
             }
         }
         let live = live_symbol_context(
@@ -630,12 +708,17 @@ impl RewriteSymbolTool {
                 ) {
                     Ok(Some(r)) => r,
                     Ok(None) => {
-                        return Err(anyhow!(
-                            "Operation '{}' did not resolve a byte range",
-                            self.operation
+                        return Err(rewrite_symbol_error(
+                            "unsupported_operation",
+                            format!(
+                                "Operation '{}' did not resolve a byte range",
+                                self.operation
+                            ),
                         ));
                     }
-                    Err(e) => return Err(e),
+                    Err(e) => {
+                        return Err(rewrite_symbol_error("unsupported_operation", e.to_string()));
+                    }
                 };
                 let old_content = original_content[range.start..range.end].to_string();
                 let start_line = original_content[..range.start].lines().count() + 1;
@@ -654,9 +737,9 @@ impl RewriteSymbolTool {
             }
             "insert_before" | "add_doc" => {
                 if self.operation == "add_doc" && live.live_symbol.doc_comment.is_some() {
-                    return Err(anyhow!(
-                        "symbol '{}' already has documentation",
-                        self.symbol
+                    return Err(rewrite_symbol_error(
+                        "already_documented",
+                        format!("symbol '{}' already has documentation", self.symbol),
                     ));
                 }
                 let byte = live.live_symbol.start_byte as usize;
@@ -673,36 +756,98 @@ impl RewriteSymbolTool {
             _ => unreachable!(),
         };
 
-        if modified_content == original_content {
+        let symbol_span_bytes = (live.live_symbol.end_byte as usize)
+            .saturating_sub(live.live_symbol.start_byte as usize);
+        Ok(RewriteApplication {
+            indexed_symbol,
+            resolved_path: resolved_str,
+            original_content,
+            modified_content,
+            span_context,
+            symbol_span_bytes,
+            live_start_line: live.live_symbol.start_line,
+            live_end_line: live.live_symbol.end_line,
+            match_count: 1,
+        })
+    }
+
+    pub(crate) async fn success_metrics_metadata(
+        &self,
+        handler: &JulieServerHandler,
+    ) -> Result<Value> {
+        let application = self.prepare_rewrite(handler).await?;
+        let diff = format_unified_diff(
+            &application.original_content,
+            &application.modified_content,
+            &application.indexed_symbol.file_path,
+        );
+        let changed_bytes = super::edit_file::changed_region_bytes(
+            &application.original_content,
+            &application.modified_content,
+        );
+        let mut metadata = self.base_metrics_metadata();
+        if let Some(object) = metadata.as_object_mut() {
+            object.insert(
+                "file_path".to_string(),
+                json!(application.indexed_symbol.file_path),
+            );
+            object.insert(
+                "file_size_bytes".to_string(),
+                json!(application.original_content.len()),
+            );
+            object.insert(
+                "symbol_span_bytes".to_string(),
+                json!(application.symbol_span_bytes),
+            );
+            object.insert("diff_bytes".to_string(), json!(diff.len()));
+            object.insert("changed_bytes".to_string(), json!(changed_bytes));
+            object.insert("match_count".to_string(), json!(application.match_count));
+            object.insert(
+                "applied".to_string(),
+                json!(
+                    !self.dry_run && application.modified_content != application.original_content
+                ),
+            );
+        }
+        Ok(metadata)
+    }
+
+    pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
+        let application = self.prepare_rewrite(handler).await?;
+
+        if application.modified_content == application.original_content {
             let message = format!(
                 "No changes: {} with supplied content would not modify the file. Symbol '{}' at {}:{}-{} is already in the requested state.",
                 self.operation,
                 self.symbol,
-                indexed_symbol.file_path,
-                live.live_symbol.start_line,
-                live.live_symbol.end_line
+                application.indexed_symbol.file_path,
+                application.live_start_line,
+                application.live_end_line
             );
             return Ok(CallToolResult::text_content(vec![Content::text(message)]));
         }
 
-        let balance_warning = if should_check_balance(&indexed_symbol.file_path) {
-            check_bracket_balance(&original_content, &modified_content)
+        let balance_warning = if should_check_balance(&application.indexed_symbol.file_path) {
+            check_bracket_balance(&application.original_content, &application.modified_content)
         } else {
             None
         };
 
         let diff = format_unified_diff(
-            &original_content,
-            &modified_content,
-            &indexed_symbol.file_path,
+            &application.original_content,
+            &application.modified_content,
+            &application.indexed_symbol.file_path,
         );
 
         if self.dry_run {
             debug!(
                 "rewrite_symbol dry_run for {} in {}",
-                self.symbol, indexed_symbol.file_path
+                self.symbol, application.indexed_symbol.file_path
             );
-            let span_header = format_span_header(&span_context, &indexed_symbol.file_path);
+            let span_header = format_span_header(
+                &application.span_context,
+                &application.indexed_symbol.file_path,
+            );
             let preview_diff = format_dry_run_diff(&diff);
             let mut message = format!(
                 "Dry run preview (set dry_run=false to apply):\n\n{}{}",
@@ -714,16 +859,17 @@ impl RewriteSymbolTool {
             return Ok(CallToolResult::text_content(vec![Content::text(message)]));
         }
 
-        let transaction = EditingTransaction::begin(&resolved_str)?;
-        transaction.commit_if_unchanged(&modified_content, &original_content)?;
+        let transaction = EditingTransaction::begin(&application.resolved_path)?;
+        transaction
+            .commit_if_unchanged(&application.modified_content, &application.original_content)?;
 
         debug!(
             "rewrite_symbol {} applied to {}",
-            self.operation, indexed_symbol.file_path
+            self.operation, application.indexed_symbol.file_path
         );
         let mut message = format!(
             "Applied {} on '{}' in {}:\n\n{}",
-            self.operation, self.symbol, indexed_symbol.file_path, diff
+            self.operation, self.symbol, application.indexed_symbol.file_path, diff
         );
         if let Some(warning) = balance_warning {
             message.push_str(&format!("\n\n{}", warning));

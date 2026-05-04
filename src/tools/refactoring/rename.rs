@@ -3,14 +3,109 @@
 use crate::mcp_compat::CallToolResult;
 use anyhow::Result;
 use serde_json::Value as JsonValue;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use tracing::debug;
 
-use super::{RenameChange, SmartRefactorTool};
+use super::{RenameChange, RenameSymbolTool, SmartRefactorTool, compute_line_changes};
 use crate::extractors::{Relationship, Symbol};
 use crate::handler::JulieServerHandler;
 use crate::tools::navigation::FastRefsTool;
 use crate::tools::navigation::resolution::{parse_qualified_name, resolve_workspace_filter};
+
+impl RenameSymbolTool {
+    pub(crate) fn request_input_bytes(&self) -> u64 {
+        serde_json::to_vec(self)
+            .map(|bytes| bytes.len() as u64)
+            .unwrap_or(0)
+    }
+
+    pub(crate) async fn metrics_metadata(&self, handler: &JulieServerHandler) -> Result<JsonValue> {
+        let workspace = self
+            .workspace
+            .clone()
+            .or_else(|| Some("primary".to_string()));
+        let replacement_old_name = parse_qualified_name(&self.old_name)
+            .map(|(_, child)| child)
+            .unwrap_or(&self.old_name);
+
+        let refs_tool = FastRefsTool {
+            symbol: self.old_name.clone(),
+            include_definition: true,
+            limit: 1000,
+            workspace: workspace.clone(),
+            reference_kind: None,
+        };
+        let workspace_target =
+            resolve_workspace_filter(refs_tool.workspace.as_deref(), handler).await?;
+        let primary_db = match &workspace_target {
+            crate::tools::navigation::resolution::WorkspaceTarget::Primary => {
+                Some(handler.primary_database().await?)
+            }
+            crate::tools::navigation::resolution::WorkspaceTarget::Target(_) => None,
+        };
+        let (definitions, references) = refs_tool
+            .find_references_and_definitions(handler, workspace_target, primary_db)
+            .await?;
+
+        let mut file_locations = build_file_locations(&definitions, &references);
+        let reference_count: usize = file_locations.values().map(Vec::len).sum();
+        let workspace_root = super::resolve_workspace_root(workspace.as_deref(), handler).await?;
+        let scope = self.scope.as_deref().unwrap_or("workspace");
+
+        if scope != "workspace" && scope != "all" {
+            if let Some(file_path) = scope.strip_prefix("file:") {
+                let normalized_file_path = normalize_scope_file_path(file_path, &workspace_root)?;
+                file_locations.retain(|path, _| path == &normalized_file_path);
+            }
+        }
+
+        let engine = SmartRefactorTool {
+            operation: "rename_symbol".to_string(),
+            params: "{}".to_string(),
+            dry_run: true,
+        };
+        let mut changed_file_count = 0usize;
+        let mut changed_line_count = 0usize;
+
+        for (file_path, lines) in &file_locations {
+            let absolute_path = if std::path::Path::new(file_path).is_absolute() {
+                std::path::PathBuf::from(file_path)
+            } else {
+                workspace_root.join(file_path)
+            };
+            let content = std::fs::read_to_string(&absolute_path)?;
+            let allowed_lines: HashSet<u32> = lines.iter().copied().collect();
+            let updated_content = engine.smart_text_replace_on_lines(
+                &content,
+                replacement_old_name,
+                &self.new_name,
+                file_path,
+                false,
+                &allowed_lines,
+            )?;
+            if updated_content != content {
+                changed_file_count += 1;
+                changed_line_count += compute_line_changes(&content, &updated_content)
+                    .into_iter()
+                    .filter(|change| change.line_number > 0)
+                    .count();
+            }
+        }
+
+        Ok(serde_json::json!({
+            "kind": "rename_symbol",
+            "dry_run": self.dry_run,
+            "applied": !self.dry_run && changed_file_count > 0,
+            "input_bytes": self.request_input_bytes(),
+            "old_name": self.old_name,
+            "new_name": self.new_name,
+            "scope": scope,
+            "reference_count": reference_count,
+            "changed_file_count": changed_file_count,
+            "changed_line_count": changed_line_count,
+        }))
+    }
+}
 
 impl SmartRefactorTool {
     /// Handle rename symbol operation

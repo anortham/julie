@@ -22,6 +22,72 @@ fn json_object(value: Value) -> rmcp::model::JsonObject {
         .clone()
 }
 
+async fn latest_tool_metric(
+    handler: &JulieServerHandler,
+    tool_name: &str,
+) -> Result<(i64, serde_json::Value)> {
+    let db_arc = {
+        let workspace = handler.workspace.read().await;
+        workspace
+            .as_ref()
+            .and_then(|workspace| workspace.db.as_ref())
+            .expect("indexed workspace should have a database")
+            .clone()
+    };
+
+    tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        loop {
+            let row = {
+                let db = db_arc.lock().expect("workspace db should lock");
+                let mut stmt = db.conn.prepare(
+                    "SELECT success, metadata
+                     FROM tool_calls
+                     WHERE tool_name = ?1
+                     ORDER BY id DESC LIMIT 1",
+                )?;
+                let mut rows = stmt.query(rusqlite::params![tool_name])?;
+                rows.next()?
+                    .map(|row| {
+                        Ok::<(i64, Option<String>), rusqlite::Error>((row.get(0)?, row.get(1)?))
+                    })
+                    .transpose()?
+            };
+
+            if let Some((success, metadata)) = row {
+                let metadata = metadata
+                    .as_deref()
+                    .and_then(|text| serde_json::from_str::<serde_json::Value>(text).ok())
+                    .unwrap_or(serde_json::Value::Null);
+                break Ok::<(i64, serde_json::Value), anyhow::Error>((success, metadata));
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await?
+}
+
+async fn call_public_tool(
+    handler: &JulieServerHandler,
+    tool_name: &str,
+    arguments: serde_json::Value,
+    request_id: i64,
+) -> Result<bool> {
+    let (server_transport, client_transport) = tokio::io::duplex(64);
+    drop(client_transport);
+    let service =
+        serve_directly::<rmcp::RoleServer, _, _, _, _>(handler.clone(), server_transport, None);
+    let request =
+        CallToolRequestParams::new(tool_name.to_string()).with_arguments(json_object(arguments));
+    let result = <JulieServerHandler as ServerHandler>::call_tool(
+        handler,
+        request,
+        RequestContext::new(NumberOrString::Number(request_id), service.peer().clone()),
+    )
+    .await;
+    let _ = service.cancel().await;
+    Ok(result.is_ok())
+}
+
 fn collect_schema_enum_strings(root: &Value, schema: &Value, values: &mut Vec<String>) {
     if let Some(enum_values) = schema.get("enum").and_then(Value::as_array) {
         values.extend(
@@ -557,6 +623,230 @@ async fn test_edit_file_validation_errors_are_recorded_as_failures() -> Result<(
     );
 
     let _ = service.cancel().await;
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_edit_file_metrics_include_input_and_edit_outcome() -> Result<()> {
+    use crate::tools::workspace::ManageWorkspaceTool;
+
+    let temp_dir = TempDir::new()?;
+    std::fs::write(temp_dir.path().join("README.md"), "hello\n")?;
+    let handler = JulieServerHandler::new(temp_dir.path().to_path_buf()).await?;
+    ManageWorkspaceTool {
+        operation: "index".to_string(),
+        workspace_id: None,
+        path: Some(temp_dir.path().to_string_lossy().to_string()),
+        name: None,
+        force: Some(false),
+        detailed: None,
+    }
+    .call_tool(&handler)
+    .await?;
+
+    let succeeded = call_public_tool(
+        &handler,
+        "edit_file",
+        serde_json::json!({
+            "file_path": "README.md",
+            "old_text": "hello",
+            "new_text": "goodbye",
+            "dry_run": true
+        }),
+        2101,
+    )
+    .await?;
+    assert!(succeeded, "edit_file dry run should succeed");
+
+    let (success, metadata) = latest_tool_metric(&handler, "edit_file").await?;
+    assert_eq!(success, 1);
+    assert_eq!(metadata["kind"], "edit_file");
+    assert_eq!(metadata["dry_run"], true);
+    assert_eq!(metadata["applied"], false);
+    assert!(metadata["input_bytes"].as_u64().unwrap() > 0);
+    assert_eq!(metadata["file_size_bytes"], 6);
+    assert_eq!(metadata["old_text_bytes"], 5);
+    assert_eq!(metadata["new_text_bytes"], 7);
+    assert!(metadata["diff_bytes"].as_u64().unwrap() > 0);
+    assert!(metadata["changed_bytes"].as_u64().unwrap() > 0);
+    assert_eq!(metadata["occurrence"], "first");
+    assert_eq!(metadata["match_mode"], "exact");
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_edit_file_apply_metrics_record_conversion_outcome() -> Result<()> {
+    use crate::tools::workspace::ManageWorkspaceTool;
+
+    let temp_dir = TempDir::new()?;
+    let file_path = temp_dir.path().join("README.md");
+    std::fs::write(&file_path, "hello\n")?;
+    let handler = JulieServerHandler::new(temp_dir.path().to_path_buf()).await?;
+    ManageWorkspaceTool {
+        operation: "index".to_string(),
+        workspace_id: None,
+        path: Some(temp_dir.path().to_string_lossy().to_string()),
+        name: None,
+        force: Some(false),
+        detailed: None,
+    }
+    .call_tool(&handler)
+    .await?;
+
+    let succeeded = call_public_tool(
+        &handler,
+        "edit_file",
+        serde_json::json!({
+            "file_path": "README.md",
+            "old_text": "hello",
+            "new_text": "goodbye",
+            "dry_run": false
+        }),
+        2102,
+    )
+    .await?;
+    assert!(succeeded, "edit_file apply should succeed");
+    assert_eq!(std::fs::read_to_string(file_path)?, "goodbye\n");
+
+    let (success, metadata) = latest_tool_metric(&handler, "edit_file").await?;
+    assert_eq!(success, 1);
+    assert_eq!(metadata["dry_run"], false);
+    assert_eq!(metadata["applied"], true);
+    assert!(metadata["changed_bytes"].as_u64().unwrap() > 0);
+    assert!(metadata["diff_bytes"].as_u64().unwrap() > 0);
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_rewrite_symbol_metrics_include_symbol_span_and_failure_kind() -> Result<()> {
+    use crate::tools::workspace::ManageWorkspaceTool;
+
+    let temp_dir = TempDir::new()?;
+    std::fs::create_dir_all(temp_dir.path().join("src"))?;
+    std::fs::write(
+        temp_dir.path().join("src/lib.rs"),
+        "pub fn target() { println!(\"old\"); }\npub fn collide() {}\npub fn collide() {}\n",
+    )?;
+    let handler = JulieServerHandler::new(temp_dir.path().to_path_buf()).await?;
+    ManageWorkspaceTool {
+        operation: "index".to_string(),
+        workspace_id: None,
+        path: Some(temp_dir.path().to_string_lossy().to_string()),
+        name: None,
+        force: Some(false),
+        detailed: None,
+    }
+    .call_tool(&handler)
+    .await?;
+
+    let succeeded = call_public_tool(
+        &handler,
+        "rewrite_symbol",
+        serde_json::json!({
+            "symbol": "target",
+            "operation": "replace_full",
+            "content": "pub fn target() { println!(\"new\"); }",
+            "dry_run": true
+        }),
+        2103,
+    )
+    .await?;
+    assert!(succeeded, "rewrite_symbol dry run should succeed");
+
+    let (success, metadata) = latest_tool_metric(&handler, "rewrite_symbol").await?;
+    assert_eq!(success, 1);
+    assert_eq!(metadata["kind"], "rewrite_symbol");
+    assert_eq!(metadata["dry_run"], true);
+    assert_eq!(metadata["applied"], false);
+    assert_eq!(metadata["operation"], "replace_full");
+    assert_eq!(metadata["symbol"], "target");
+    assert_eq!(metadata["match_count"], 1);
+    assert!(metadata["input_bytes"].as_u64().unwrap() > 0);
+    assert!(metadata["file_size_bytes"].as_u64().unwrap() > 0);
+    assert!(metadata["symbol_span_bytes"].as_u64().unwrap() > 0);
+    assert!(metadata["content_bytes"].as_u64().unwrap() > 0);
+    assert!(metadata["diff_bytes"].as_u64().unwrap() > 0);
+    assert!(metadata["changed_bytes"].as_u64().unwrap() > 0);
+
+    let succeeded = call_public_tool(
+        &handler,
+        "rewrite_symbol",
+        serde_json::json!({
+            "symbol": "collide",
+            "operation": "replace_full",
+            "content": "pub fn collide() {}",
+            "dry_run": true
+        }),
+        2105,
+    )
+    .await?;
+    assert!(!succeeded, "ambiguous rewrite_symbol should fail");
+
+    let (success, metadata) = tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        loop {
+            let row = latest_tool_metric(&handler, "rewrite_symbol").await?;
+            if row.1["symbol"] == "collide" {
+                break Ok::<(i64, serde_json::Value), anyhow::Error>(row);
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await??;
+    assert_eq!(success, 0);
+    assert_eq!(metadata["kind"], "rewrite_symbol");
+    assert_eq!(metadata["operation"], "replace_full");
+    assert_eq!(metadata["symbol"], "collide");
+    assert_eq!(metadata["failure_kind"], "ambiguous_symbol");
+    assert!(metadata["content_bytes"].as_u64().unwrap() > 0);
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_rename_symbol_metrics_include_reference_and_change_counts() -> Result<()> {
+    use crate::tools::workspace::ManageWorkspaceTool;
+
+    let temp_dir = TempDir::new()?;
+    std::fs::write(
+        temp_dir.path().join("main.rs"),
+        "fn getUserData() { getUserData(); }\n",
+    )?;
+    let handler = JulieServerHandler::new(temp_dir.path().to_path_buf()).await?;
+    ManageWorkspaceTool {
+        operation: "index".to_string(),
+        workspace_id: None,
+        path: Some(temp_dir.path().to_string_lossy().to_string()),
+        name: None,
+        force: Some(false),
+        detailed: None,
+    }
+    .call_tool(&handler)
+    .await?;
+
+    let succeeded = call_public_tool(
+        &handler,
+        "rename_symbol",
+        serde_json::json!({
+            "old_name": "getUserData",
+            "new_name": "fetchUserData",
+            "dry_run": true
+        }),
+        2104,
+    )
+    .await?;
+    assert!(succeeded, "rename_symbol dry run should succeed");
+
+    let (success, metadata) = latest_tool_metric(&handler, "rename_symbol").await?;
+    assert_eq!(success, 1);
+    assert_eq!(metadata["kind"], "rename_symbol");
+    assert_eq!(metadata["dry_run"], true);
+    assert_eq!(metadata["scope"], "workspace");
+    assert!(metadata["reference_count"].as_u64().unwrap() > 0);
+    assert_eq!(metadata["changed_file_count"], 1);
+    assert!(metadata["changed_line_count"].as_u64().unwrap() > 0);
+
     Ok(())
 }
 

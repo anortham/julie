@@ -15,6 +15,21 @@ fn target_metadata(symbol_name: Option<&str>, file_path: Option<&str>, line: Opt
     })
 }
 
+pub(crate) fn merge_object(mut base: Value, additions: Value) -> Value {
+    if let (Some(base), Some(additions)) = (base.as_object_mut(), additions.as_object()) {
+        for (key, value) in additions {
+            base.insert(key.clone(), value.clone());
+        }
+        Value::Object(base.clone())
+    } else {
+        additions
+    }
+}
+
+pub(crate) fn with_failure_kind(base: Value, failure_kind: &str) -> Value {
+    merge_object(base, json!({ "failure_kind": failure_kind }))
+}
+
 pub(crate) fn fast_refs_metadata(params: &FastRefsTool) -> Value {
     json!({
         "symbol": params.symbol,
@@ -102,9 +117,12 @@ pub(crate) fn blast_radius_metadata(params: &BlastRadiusTool) -> Value {
 
 pub(crate) fn rename_symbol_metadata(params: &RenameSymbolTool) -> Value {
     json!({
-        "old": params.old_name,
-        "new": params.new_name,
+        "kind": "rename_symbol",
         "dry_run": params.dry_run,
+        "applied": false,
+        "input_bytes": serde_json::to_vec(params).map(|bytes| bytes.len() as u64).unwrap_or(0),
+        "old_name": params.old_name,
+        "new_name": params.new_name,
         "scope": params.scope,
         "workspace": params.workspace,
         "target": target_metadata(Some(&params.old_name), params.scope.as_deref(), None),
@@ -112,21 +130,22 @@ pub(crate) fn rename_symbol_metadata(params: &RenameSymbolTool) -> Value {
 }
 
 pub(crate) fn edit_file_metadata(params: &EditFileTool) -> Value {
-    json!({
-        "file": params.file_path,
-        "occurrence": params.occurrence,
-        "dry_run": params.dry_run,
-        "target": target_metadata(None, Some(&params.file_path), None),
-    })
+    merge_object(
+        params.base_metrics_metadata(),
+        json!({
+            "file": params.file_path,
+            "target": target_metadata(None, Some(&params.file_path), None),
+        }),
+    )
 }
 
 pub(crate) fn rewrite_symbol_metadata(params: &RewriteSymbolTool) -> Value {
-    json!({
-        "symbol": params.symbol,
-        "operation": params.operation,
-        "dry_run": params.dry_run,
-        "workspace": params.workspace,
-        "file_path": params.file_path,
-        "target": target_metadata(Some(&params.symbol), params.file_path.as_deref(), None),
-    })
+    merge_object(
+        params.base_metrics_metadata(),
+        json!({
+            "workspace": params.workspace,
+            "file_path": params.file_path,
+            "target": target_metadata(Some(&params.symbol), params.file_path.as_deref(), None),
+        }),
+    )
 }

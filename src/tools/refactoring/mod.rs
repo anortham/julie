@@ -67,6 +67,34 @@ fn is_valid_rename_identifier(name: &str) -> bool {
     chars.all(|ch| ch == '_' || ch == '$' || ch.is_alphanumeric())
 }
 
+#[derive(Debug)]
+pub(crate) struct RenameSymbolFailure {
+    pub kind: &'static str,
+    pub message: String,
+}
+
+impl std::fmt::Display for RenameSymbolFailure {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for RenameSymbolFailure {}
+
+fn rename_symbol_error(kind: &'static str, message: impl Into<String>) -> anyhow::Error {
+    anyhow::anyhow!(RenameSymbolFailure {
+        kind,
+        message: message.into(),
+    })
+}
+
+pub(crate) fn failure_kind(error: &anyhow::Error) -> &'static str {
+    error
+        .downcast_ref::<RenameSymbolFailure>()
+        .map(|error| error.kind)
+        .unwrap_or("execution_error")
+}
+
 fn replace_text_on_allowed_lines(
     content: &str,
     old_name: &str,
@@ -172,21 +200,26 @@ impl RenameSymbolTool {
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
         // Validation
         if self.old_name.is_empty() || self.new_name.is_empty() {
-            return Err(anyhow::anyhow!(
-                "old_name and new_name are required and cannot be empty"
+            return Err(rename_symbol_error(
+                "validation",
+                "old_name and new_name are required and cannot be empty",
             ));
         }
 
         if self.old_name == self.new_name {
-            return Err(anyhow::anyhow!(
-                "old_name and new_name are identical - no rename needed"
+            return Err(rename_symbol_error(
+                "validation",
+                "old_name and new_name are identical - no rename needed",
             ));
         }
 
         if !is_valid_rename_identifier(&self.new_name) {
-            return Err(anyhow::anyhow!(
-                "invalid identifier for new_name '{}'. Use a single code identifier with no whitespace or punctuation.",
-                self.new_name
+            return Err(rename_symbol_error(
+                "validation",
+                format!(
+                    "invalid identifier for new_name '{}'. Use a single code identifier with no whitespace or punctuation.",
+                    self.new_name
+                ),
             ));
         }
 

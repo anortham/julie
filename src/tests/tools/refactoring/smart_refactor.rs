@@ -158,9 +158,11 @@ class UserService {
         };
 
         let handler = JulieServerHandler::new_for_test().await.unwrap();
-        let result = tool.call_tool(&handler).await.unwrap();
-
-        let response = extract_text_from_result(&result);
+        let response = tool
+            .call_tool(&handler)
+            .await
+            .expect_err("empty names should be rejected")
+            .to_string();
         assert!(response.contains("required") || response.contains("empty"));
     }
 
@@ -175,9 +177,11 @@ class UserService {
         };
 
         let handler = JulieServerHandler::new_for_test().await.unwrap();
-        let result = tool.call_tool(&handler).await.unwrap();
-
-        let response = extract_text_from_result(&result);
+        let response = tool
+            .call_tool(&handler)
+            .await
+            .expect_err("identical names should be rejected")
+            .to_string();
         assert!(response.contains("identical"));
     }
 

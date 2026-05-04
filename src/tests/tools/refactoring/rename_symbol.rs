@@ -92,11 +92,11 @@ async fn test_rename_symbol_validation_same_name() -> Result<()> {
         workspace: None,
     };
 
-    let result = tool.call_tool(&handler).await;
-
-    // Should return Ok with error message
-    assert!(result.is_ok(), "Should return Ok with error message");
-    let result_text = format!("{:?}", result);
+    let result_text = tool
+        .call_tool(&handler)
+        .await
+        .expect_err("same old/new names should be rejected")
+        .to_string();
     assert!(
         result_text.contains("same") || result_text.contains("identical"),
         "Should reject same old/new names: {}",
@@ -123,9 +123,11 @@ async fn test_rename_symbol_validation_empty_names() -> Result<()> {
         workspace: None,
     };
 
-    let result = tool.call_tool(&handler).await;
-    assert!(result.is_ok(), "Should return Ok with error message");
-    let result_text = format!("{:?}", result);
+    let result_text = tool
+        .call_tool(&handler)
+        .await
+        .expect_err("empty names should be rejected")
+        .to_string();
     assert!(
         result_text.contains("empty") || result_text.contains("required"),
         "Should reject empty old_name: {}",
@@ -147,8 +149,11 @@ async fn test_rename_symbol_validation_invalid_new_name() -> Result<()> {
         workspace: None,
     };
 
-    let result = tool.call_tool(&handler).await?;
-    let result_text = format!("{:?}", result);
+    let result_text = tool
+        .call_tool(&handler)
+        .await
+        .expect_err("invalid new_name should be rejected")
+        .to_string();
 
     assert!(
         result_text.contains("invalid identifier"),

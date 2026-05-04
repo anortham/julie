@@ -8,6 +8,7 @@ use anyhow::{Result, anyhow};
 use diff_match_patch_rs::{Compat, DiffMatchPatch, Ops};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
 use tracing::debug;
 
 use crate::handler::JulieServerHandler;
@@ -27,6 +28,57 @@ use super::validation::{
 struct MatchSpan {
     start: usize,
     end: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EditMatchMode {
+    Exact,
+    TrimmedLines,
+    Fuzzy,
+}
+
+impl EditMatchMode {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Exact => "exact",
+            Self::TrimmedLines => "trimmed_lines",
+            Self::Fuzzy => "fuzzy",
+        }
+    }
+}
+
+#[derive(Debug)]
+struct EditApplication {
+    modified_content: String,
+    match_mode: EditMatchMode,
+}
+
+#[derive(Debug)]
+pub(crate) struct EditFileFailure {
+    pub kind: &'static str,
+    pub message: String,
+}
+
+impl std::fmt::Display for EditFileFailure {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for EditFileFailure {}
+
+fn edit_file_error(kind: &'static str, message: impl Into<String>) -> anyhow::Error {
+    anyhow!(EditFileFailure {
+        kind,
+        message: message.into(),
+    })
+}
+
+pub(crate) fn failure_kind(error: &anyhow::Error) -> &'static str {
+    error
+        .downcast_ref::<EditFileFailure>()
+        .map(|error| error.kind)
+        .unwrap_or("execution_error")
 }
 
 fn default_dry_run() -> bool {
@@ -120,17 +172,29 @@ pub fn apply_edit(
     new_text: &str,
     occurrence: &str,
 ) -> Result<String> {
+    Ok(apply_edit_with_metrics(content, old_text, new_text, occurrence)?.modified_content)
+}
+
+fn apply_edit_with_metrics(
+    content: &str,
+    old_text: &str,
+    new_text: &str,
+    occurrence: &str,
+) -> Result<EditApplication> {
     if old_text.is_empty() {
-        return Err(anyhow!("old_text cannot be empty"));
+        return Err(edit_file_error("validation", "old_text cannot be empty"));
     }
 
-    let spans = find_all_matches(content, old_text)?;
+    let (spans, match_mode) = find_all_matches_with_mode(content, old_text)?;
 
     if spans.is_empty() {
-        return Err(anyhow!(
-            "No match found for the provided old_text ({} chars). \
+        return Err(edit_file_error(
+            "match_not_found",
+            format!(
+                "No match found for the provided old_text ({} chars). \
              Verify the text exists in the file.",
-            old_text.len()
+                old_text.len()
+            ),
         ));
     }
 
@@ -139,9 +203,12 @@ pub fn apply_edit(
         "last" => vec![*spans.last().unwrap()],
         "all" => spans,
         _ => {
-            return Err(anyhow!(
-                "Invalid occurrence '{}': must be 'first', 'last', or 'all'",
-                occurrence
+            return Err(edit_file_error(
+                "validation",
+                format!(
+                    "Invalid occurrence '{}': must be 'first', 'last', or 'all'",
+                    occurrence
+                ),
             ));
         }
     };
@@ -154,7 +221,10 @@ pub fn apply_edit(
         result_chars.splice(span.start..span.end, new_chars.iter().copied());
     }
 
-    Ok(result_chars.into_iter().collect())
+    Ok(EditApplication {
+        modified_content: result_chars.into_iter().collect(),
+        match_mode,
+    })
 }
 
 /// Find all match spans for old_text in content.
@@ -165,31 +235,37 @@ pub fn apply_edit(
 /// 3. DMP bitap fuzzy matching (character-level tolerance, ≤32 chars only)
 ///
 /// Returns MatchSpans sorted by start position ascending.
-fn find_all_matches(content: &str, old_text: &str) -> Result<Vec<MatchSpan>> {
+fn find_all_matches_with_mode(
+    content: &str,
+    old_text: &str,
+) -> Result<(Vec<MatchSpan>, EditMatchMode)> {
     let old_char_len = old_text.chars().count();
 
     // Phase 1: exact substring (any length, always tried first)
     let exact_positions = find_exact_matches(content, old_text);
     if !exact_positions.is_empty() {
-        return Ok(exact_positions
-            .into_iter()
-            .map(|pos| MatchSpan {
-                start: pos,
-                end: pos + old_char_len,
-            })
-            .collect());
+        return Ok((
+            exact_positions
+                .into_iter()
+                .map(|pos| MatchSpan {
+                    start: pos,
+                    end: pos + old_char_len,
+                })
+                .collect(),
+            EditMatchMode::Exact,
+        ));
     }
 
     // Phase 2: trimmed-line matching (handles indentation and trailing whitespace)
     let trimmed = find_matches_by_trimmed_lines(content, old_text);
     if !trimmed.is_empty() {
-        return Ok(trimmed);
+        return Ok((trimmed, EditMatchMode::TrimmedLines));
     }
 
     // Phase 3: DMP bitap fuzzy (≤32 chars, handles minor typos)
     const DMP_BITAP_LIMIT: usize = 32;
     if old_char_len > DMP_BITAP_LIMIT {
-        return Ok(Vec::new());
+        return Ok((Vec::new(), EditMatchMode::Fuzzy));
     }
 
     let dmp = DiffMatchPatch::new();
@@ -211,7 +287,7 @@ fn find_all_matches(content: &str, old_text: &str) -> Result<Vec<MatchSpan>> {
         }
     }
 
-    Ok(spans)
+    Ok((spans, EditMatchMode::Fuzzy))
 }
 
 /// After DMP bitap finds a fuzzy match at `pos`, compute the actual end position
@@ -358,9 +434,65 @@ fn find_matches_by_trimmed_lines(content: &str, old_text: &str) -> Vec<MatchSpan
 }
 
 impl EditFileTool {
+    pub(crate) fn request_input_bytes(&self) -> u64 {
+        serde_json::to_vec(self)
+            .map(|bytes| bytes.len() as u64)
+            .unwrap_or(0)
+    }
+
+    pub(crate) fn base_metrics_metadata(&self) -> Value {
+        let input_bytes = self.request_input_bytes();
+        json!({
+            "kind": "edit_file",
+            "dry_run": self.dry_run,
+            "applied": false,
+            "input_bytes": input_bytes,
+            "old_text_bytes": self.old_text.len(),
+            "new_text_bytes": self.new_text.len(),
+            "occurrence": self.occurrence.as_str(),
+        })
+    }
+
+    pub(crate) fn success_metrics_metadata(&self, handler: &JulieServerHandler) -> Result<Value> {
+        let workspace_root = handler.require_primary_workspace_root()?;
+        let resolved_path = secure_path_resolution(&self.file_path, &workspace_root)?;
+        let original_content = std::fs::read_to_string(&resolved_path)
+            .map_err(|error| anyhow!("Cannot read file '{}': {}", self.file_path, error))?;
+        let application = apply_edit_with_metrics(
+            &original_content,
+            &self.old_text,
+            &self.new_text,
+            self.occurrence.as_str(),
+        )?;
+        let diff = format_unified_diff(
+            &original_content,
+            &application.modified_content,
+            &self.file_path,
+        );
+        let changed_bytes = changed_region_bytes(&original_content, &application.modified_content);
+        let mut metadata = self.base_metrics_metadata();
+        if let Some(object) = metadata.as_object_mut() {
+            object.insert("file_size_bytes".to_string(), json!(original_content.len()));
+            object.insert("diff_bytes".to_string(), json!(diff.len()));
+            object.insert("changed_bytes".to_string(), json!(changed_bytes));
+            object.insert(
+                "match_mode".to_string(),
+                json!(application.match_mode.as_str()),
+            );
+            object.insert(
+                "applied".to_string(),
+                json!(!self.dry_run && application.modified_content != original_content),
+            );
+        }
+        Ok(metadata)
+    }
+
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
         if self.old_text.is_empty() {
-            return Err(anyhow!("old_text is required and cannot be empty"));
+            return Err(edit_file_error(
+                "validation",
+                "old_text is required and cannot be empty",
+            ));
         }
 
         // Resolve and validate file path (security check)
@@ -424,4 +556,27 @@ impl EditFileTool {
         }
         Ok(CallToolResult::text_content(vec![Content::text(msg)]))
     }
+}
+
+pub(crate) fn changed_region_bytes(original: &str, modified: &str) -> usize {
+    if original == modified {
+        return 0;
+    }
+    let original_bytes = original.as_bytes();
+    let modified_bytes = modified.as_bytes();
+    let prefix = original_bytes
+        .iter()
+        .zip(modified_bytes.iter())
+        .take_while(|(left, right)| left == right)
+        .count();
+    let mut original_suffix = original_bytes.len();
+    let mut modified_suffix = modified_bytes.len();
+    while original_suffix > prefix
+        && modified_suffix > prefix
+        && original_bytes[original_suffix - 1] == modified_bytes[modified_suffix - 1]
+    {
+        original_suffix -= 1;
+        modified_suffix -= 1;
+    }
+    (original_suffix - prefix).max(modified_suffix - prefix)
 }
