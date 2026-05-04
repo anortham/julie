@@ -36,6 +36,7 @@ fn fresh_database_creates_sql_performance_indexes() {
         "idx_identifiers_file_line_kind",
         "idx_identifiers_file_name",
         "idx_identifiers_kind_containing",
+        "idx_identifiers_name_kind_containing",
     ] {
         assert!(
             identifier_indexes.contains(&expected.to_string()),
@@ -90,9 +91,26 @@ fn migration_adds_sql_performance_indexes_to_existing_database() {
         identifier_indexes.contains(&"idx_identifiers_kind_containing".to_string()),
         "migration should add identifier kind-containing index"
     );
+    assert!(
+        identifier_indexes.contains(&"idx_identifiers_name_kind_containing".to_string()),
+        "migration should add identifier name-kind-containing index"
+    );
 
     assert!(
         index_names(&db, "symbols").contains(&"idx_symbols_reference_score_desc".to_string()),
         "migration should add reference-score index"
+    );
+}
+
+#[test]
+fn test_identifier_name_kind_container_index_exists() {
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("index_exists.db");
+    let db = SymbolDatabase::new(&db_path).unwrap();
+
+    let identifier_indexes = index_names(&db, "identifiers");
+    assert!(
+        identifier_indexes.contains(&"idx_identifiers_name_kind_containing".to_string()),
+        "missing idx_identifiers_name_kind_containing: {identifier_indexes:?}"
     );
 }

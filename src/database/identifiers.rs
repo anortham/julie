@@ -285,61 +285,145 @@ impl SymbolDatabase {
             0
         };
         let fixed_bind_count = kinds.len() + exclusion_bind_count;
-        let max_names_per_chunk = ((MAX_BIND_PARAMS.saturating_sub(fixed_bind_count)) / 3).max(1);
+        let max_exact_names_per_chunk = MAX_BIND_PARAMS.saturating_sub(fixed_bind_count).max(1);
+        let max_prefix_names_per_chunk =
+            ((MAX_BIND_PARAMS.saturating_sub(fixed_bind_count)) / 2).max(1);
+        let max_names_per_chunk = max_exact_names_per_chunk.min(max_prefix_names_per_chunk);
         let mut results = Vec::new();
+        let mut seen = HashSet::new();
 
         for chunk in names.chunks(max_names_per_chunk) {
             let chunk_vec: Vec<String> = chunk.to_vec();
-            let (where_clause, mut params) = build_name_match_clause(&chunk_vec);
-
-            let kind_placeholders = kinds
-                .iter()
-                .map(|kind| {
-                    let idx = params.len() + 1;
-                    params.push(Box::new((*kind).to_string()) as Box<dyn rusqlite::ToSql>);
-                    format!("?{}", idx)
-                })
-                .collect::<Vec<_>>()
-                .join(", ");
-
-            let exclusion_clause = if exclude_in_sql && !excluded_container_ids.is_empty() {
-                let placeholders = excluded_container_ids
-                    .iter()
-                    .map(|container_id| {
-                        let idx = params.len() + 1;
-                        params.push(Box::new(container_id.clone()) as Box<dyn rusqlite::ToSql>);
-                        format!("?{}", idx)
-                    })
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                format!(" AND containing_symbol_id NOT IN ({})", placeholders)
+            let exact_placeholders = chunk_vec.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+            let kind_placeholders = kinds.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+            let exclusion_placeholders = if exclude_in_sql && !excluded_container_ids.is_empty() {
+                Some(
+                    excluded_container_ids
+                        .iter()
+                        .map(|_| "?")
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                )
             } else {
-                String::new()
+                None
             };
 
-            let query = format!(
-                "SELECT {} FROM identifiers \
-                 WHERE {} \
-                 AND kind IN ({}) \
-                 AND containing_symbol_id IS NOT NULL{}",
-                IDENTIFIER_REF_COLUMNS, where_clause, kind_placeholders, exclusion_clause
+            // Query 1: exact-name lookup, tuned for the (name, kind, containing) index.
+            let exact_exclusion_clause = exclusion_placeholders
+                .as_ref()
+                .map(|placeholders| format!(" AND containing_symbol_id NOT IN ({placeholders})"))
+                .unwrap_or_default();
+            let exact_query = format!(
+                "SELECT {columns} FROM identifiers \
+                 WHERE name IN ({exact_names}) \
+                 AND kind IN ({kinds}) \
+                 AND containing_symbol_id IS NOT NULL{exclusion}",
+                columns = IDENTIFIER_REF_COLUMNS,
+                exact_names = exact_placeholders,
+                kinds = kind_placeholders,
+                exclusion = exact_exclusion_clause
             );
-
-            let mut stmt = self.conn.prepare(&query)?;
-            let param_refs: Vec<&dyn rusqlite::ToSql> = params
+            let mut exact_params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+            for name in &chunk_vec {
+                exact_params.push(Box::new(name.clone()));
+            }
+            for kind in kinds {
+                exact_params.push(Box::new((*kind).to_string()));
+            }
+            if exclude_in_sql {
+                for container_id in excluded_container_ids {
+                    exact_params.push(Box::new(container_id.clone()));
+                }
+            }
+            let mut exact_stmt = self.conn.prepare(&exact_query)?;
+            let exact_param_refs: Vec<&dyn rusqlite::ToSql> = exact_params
                 .iter()
-                .map(|p| p.as_ref() as &dyn rusqlite::ToSql)
+                .map(|value| value.as_ref() as &dyn rusqlite::ToSql)
                 .collect();
-
-            let rows = stmt.query_map(&param_refs[..], |row| self.row_to_identifier_ref(row))?;
-            for row in rows {
+            let exact_rows = exact_stmt
+                .query_map(&exact_param_refs[..], |row| self.row_to_identifier_ref(row))?;
+            for row in exact_rows {
                 let identifier = row?;
-                if !excluded_container_ids.contains(
+                if excluded_container_ids.contains(
                     identifier
                         .containing_symbol_id
                         .as_deref()
                         .unwrap_or_default(),
                 ) {
+                    continue;
+                }
+                let dedupe_key = (
+                    identifier.name.clone(),
+                    identifier.file_path.clone(),
+                    identifier.start_line,
+                    identifier.containing_symbol_id.clone(),
+                    identifier.target_symbol_id.clone(),
+                    identifier.kind.clone(),
+                );
+                if seen.insert(dedupe_key) {
+                    results.push(identifier);
+                }
+            }
+
+            // Query 2: qualified-prefix lookup (name::... and name....).
+            let mut prefix_conditions = Vec::with_capacity(chunk_vec.len() * 2);
+            let mut prefix_params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+            for name in &chunk_vec {
+                prefix_conditions.push("name LIKE ? ESCAPE '\\'".to_string());
+                prefix_params.push(Box::new(format!("{}::%", escape_sql_like(name))));
+                prefix_conditions.push("name LIKE ? ESCAPE '\\'".to_string());
+                prefix_params.push(Box::new(format!("{}.%", escape_sql_like(name))));
+            }
+
+            let prefix_exclusion_clause = exclusion_placeholders
+                .as_ref()
+                .map(|placeholders| format!(" AND containing_symbol_id NOT IN ({placeholders})"))
+                .unwrap_or_default();
+            let prefix_query = format!(
+                "SELECT {columns} FROM identifiers \
+                 WHERE ({prefix_clause}) \
+                 AND kind IN ({kinds}) \
+                 AND containing_symbol_id IS NOT NULL{exclusion}",
+                columns = IDENTIFIER_REF_COLUMNS,
+                prefix_clause = prefix_conditions.join(" OR "),
+                kinds = kind_placeholders,
+                exclusion = prefix_exclusion_clause
+            );
+            for kind in kinds {
+                prefix_params.push(Box::new((*kind).to_string()));
+            }
+            if exclude_in_sql {
+                for container_id in excluded_container_ids {
+                    prefix_params.push(Box::new(container_id.clone()));
+                }
+            }
+            let mut prefix_stmt = self.conn.prepare(&prefix_query)?;
+            let prefix_param_refs: Vec<&dyn rusqlite::ToSql> = prefix_params
+                .iter()
+                .map(|value| value.as_ref() as &dyn rusqlite::ToSql)
+                .collect();
+            let prefix_rows = prefix_stmt.query_map(&prefix_param_refs[..], |row| {
+                self.row_to_identifier_ref(row)
+            })?;
+            for row in prefix_rows {
+                let identifier = row?;
+                if excluded_container_ids.contains(
+                    identifier
+                        .containing_symbol_id
+                        .as_deref()
+                        .unwrap_or_default(),
+                ) {
+                    continue;
+                }
+                let dedupe_key = (
+                    identifier.name.clone(),
+                    identifier.file_path.clone(),
+                    identifier.start_line,
+                    identifier.containing_symbol_id.clone(),
+                    identifier.target_symbol_id.clone(),
+                    identifier.kind.clone(),
+                );
+                if seen.insert(dedupe_key) {
                     results.push(identifier);
                 }
             }

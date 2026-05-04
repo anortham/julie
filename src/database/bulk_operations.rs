@@ -133,6 +133,7 @@ impl SymbolDatabase {
                 "idx_identifiers_file_line_kind",
                 "idx_identifiers_file_name",
                 "idx_identifiers_kind_containing",
+                "idx_identifiers_name_kind_containing",
             ];
             for index in &identifier_indexes {
                 if let Err(e) = outer_tx.execute(&format!("DROP INDEX IF EXISTS {}", index), []) {
@@ -224,6 +225,11 @@ impl SymbolDatabase {
             outer_tx.execute(
                 "CREATE INDEX IF NOT EXISTS idx_identifiers_kind_containing
                  ON identifiers(kind, containing_symbol_id)",
+                [],
+            )?;
+            outer_tx.execute(
+                "CREATE INDEX IF NOT EXISTS idx_identifiers_name_kind_containing
+                 ON identifiers(name, kind, containing_symbol_id)",
                 [],
             )?;
 
@@ -1172,6 +1178,7 @@ impl SymbolDatabase {
                 "idx_identifiers_file_line_kind",
                 "idx_identifiers_file_name",
                 "idx_identifiers_kind_containing",
+                "idx_identifiers_name_kind_containing",
                 "idx_types_language",
                 "idx_types_resolved",
                 "idx_types_inferred",
@@ -1475,6 +1482,7 @@ impl SymbolDatabase {
                 "CREATE INDEX IF NOT EXISTS idx_identifiers_file_line_kind ON identifiers(file_path, start_line, kind)",
                 "CREATE INDEX IF NOT EXISTS idx_identifiers_file_name ON identifiers(file_path, name)",
                 "CREATE INDEX IF NOT EXISTS idx_identifiers_kind_containing ON identifiers(kind, containing_symbol_id)",
+                "CREATE INDEX IF NOT EXISTS idx_identifiers_name_kind_containing ON identifiers(name, kind, containing_symbol_id)",
                 "CREATE INDEX IF NOT EXISTS idx_types_language ON types(language)",
                 "CREATE INDEX IF NOT EXISTS idx_types_resolved ON types(resolved_type)",
                 "CREATE INDEX IF NOT EXISTS idx_types_inferred ON types(is_inferred)",

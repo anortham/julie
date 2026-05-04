@@ -23,7 +23,9 @@ use crate::mcp_compat::CallToolResult;
 use crate::tools::impact::BlastRadiusTool;
 use crate::tools::impact::ranking::rank_impacts;
 use crate::tools::impact::seed::resolve_seed_context;
-use crate::tools::impact::walk::{ImpactCandidate, walk_impacts};
+use crate::tools::impact::walk::{
+    ImpactCandidate, WalkBudget, walk_impacts, walk_impacts_with_budget,
+};
 
 fn make_file(path: &str, hash: &str) -> FileInfo {
     FileInfo {
@@ -635,6 +637,160 @@ async fn test_walk_impacts_identifier_edges_choose_strongest_kind_without_replac
             relationship_caller.relationship_kind,
             RelationshipKind::References,
             "relationship table edges must outrank identifier fallback edges"
+        );
+    }
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_walk_impacts_caps_identifier_fanout_for_common_names() -> Result<()> {
+    let (_temp_dir, handler, workspace_id) = setup_handler().await?;
+
+    let mut files = vec![make_file("src/seed.ts", "hash_seed")];
+    let mut symbols = vec![make_symbol("seed", "new", "src/seed.ts", None)];
+    let mut identifiers = Vec::new();
+
+    for i in 0..12 {
+        let caller_id = format!("caller_{i:02}");
+        let file_path = format!("src/caller_{i:02}.ts");
+        files.push(make_file(&file_path, &format!("hash_{i:02}")));
+        symbols.push(make_symbol(
+            &caller_id,
+            &format!("caller{i:02}"),
+            &file_path,
+            None,
+        ));
+        identifiers.push(make_identifier(
+            &format!("ident_{i:02}"),
+            "new",
+            &file_path,
+            Some(&caller_id),
+            Some("seed"),
+            IdentifierKind::Call,
+            (i + 1) as u32,
+            0.80,
+        ));
+    }
+
+    let db = handler.primary_database().await?;
+    {
+        let mut guard = db.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        guard.bulk_store_fresh_atomic(
+            &files,
+            &symbols,
+            &Vec::<Relationship>::new(),
+            &identifiers,
+            &[],
+            workspace_id.as_str(),
+        )?;
+        guard.compute_reference_scores()?;
+
+        let seed_symbols = guard.get_symbols_by_ids(&["seed".to_string()])?;
+        let (impacts, _stats) = walk_impacts_with_budget(
+            &guard,
+            &seed_symbols,
+            1,
+            WalkBudget {
+                max_frontier_per_depth: 128,
+                max_identifier_fanout_per_name: 5,
+            },
+        )?;
+
+        assert_eq!(
+            impacts.len(),
+            5,
+            "identifier expansion should cap common-name fanout per name"
+        );
+    }
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_blast_radius_limit_bounds_depth_frontier() -> Result<()> {
+    let (_temp_dir, handler, workspace_id) = setup_handler().await?;
+
+    let mut files = vec![make_file("src/seed.ts", "hash_seed")];
+    let mut symbols = vec![make_symbol("seed", "seedFn", "src/seed.ts", None)];
+    let mut relationships = Vec::new();
+
+    for i in 0..130 {
+        let first_id = format!("first_{i:03}");
+        let second_id = format!("second_{i:03}");
+        let first_path = format!("src/first_{i:03}.ts");
+        let second_path = format!("src/second_{i:03}.ts");
+
+        files.push(make_file(&first_path, &format!("hash_first_{i:03}")));
+        files.push(make_file(&second_path, &format!("hash_second_{i:03}")));
+        symbols.push(make_symbol(
+            &first_id,
+            &format!("first{i:03}"),
+            &first_path,
+            None,
+        ));
+        symbols.push(make_symbol(
+            &second_id,
+            &format!("second{i:03}"),
+            &second_path,
+            None,
+        ));
+        relationships.push(make_relationship(
+            &format!("rel_first_{i:03}"),
+            &first_id,
+            "seed",
+            RelationshipKind::Calls,
+            &first_path,
+        ));
+        relationships.push(make_relationship(
+            &format!("rel_second_{i:03}"),
+            &second_id,
+            &first_id,
+            RelationshipKind::Calls,
+            &second_path,
+        ));
+    }
+
+    let db = handler.primary_database().await?;
+    {
+        let mut guard = db.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        guard.bulk_store_fresh_atomic(
+            &files,
+            &symbols,
+            &relationships,
+            &Vec::<Identifier>::new(),
+            &[],
+            workspace_id.as_str(),
+        )?;
+        guard.compute_reference_scores()?;
+
+        let seed_symbols = guard.get_symbols_by_ids(&["seed".to_string()])?;
+        let (impacts, _stats) = walk_impacts_with_budget(
+            &guard,
+            &seed_symbols,
+            2,
+            WalkBudget {
+                max_frontier_per_depth: 40,
+                max_identifier_fanout_per_name: 500,
+            },
+        )?;
+
+        let depth_one = impacts
+            .iter()
+            .filter(|candidate| candidate.distance == 1)
+            .count();
+        let depth_two = impacts
+            .iter()
+            .filter(|candidate| candidate.distance == 2)
+            .count();
+
+        assert_eq!(
+            depth_one, 40,
+            "depth-1 frontier should be clipped to the configured limit"
+        );
+        assert_eq!(
+            depth_two, 40,
+            "depth-2 frontier should stay bounded by the same limit"
         );
     }
 

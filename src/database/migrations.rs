@@ -977,7 +977,9 @@ impl SymbolDatabase {
                  CREATE INDEX IF NOT EXISTS idx_identifiers_file_name
                  ON identifiers(file_path, name);
                  CREATE INDEX IF NOT EXISTS idx_identifiers_kind_containing
-                 ON identifiers(kind, containing_symbol_id);",
+                 ON identifiers(kind, containing_symbol_id);
+                 CREATE INDEX IF NOT EXISTS idx_identifiers_name_kind_containing
+                 ON identifiers(name, kind, containing_symbol_id);",
             )?;
         }
 

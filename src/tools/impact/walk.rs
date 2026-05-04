@@ -16,14 +16,52 @@ pub struct ImpactCandidate {
     pub via_symbol_name: String,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct WalkBudget {
+    pub max_frontier_per_depth: usize,
+    pub max_identifier_fanout_per_name: usize,
+}
+
+impl Default for WalkBudget {
+    fn default() -> Self {
+        Self {
+            max_frontier_per_depth: 250,
+            max_identifier_fanout_per_name: 100,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct WalkStats {
+    pub depths_visited: u32,
+    pub capped_depths: u32,
+    pub dropped_identifier_edges: usize,
+    pub total_relationship_edges_considered: usize,
+    pub total_identifier_edges_considered: usize,
+}
+
 pub fn walk_impacts(
     db: &SymbolDatabase,
     seed_symbols: &[Symbol],
     max_depth: u32,
 ) -> Result<Vec<ImpactCandidate>> {
+    let (impacts, _stats) =
+        walk_impacts_with_budget(db, seed_symbols, max_depth, WalkBudget::default())?;
+    Ok(impacts)
+}
+
+pub fn walk_impacts_with_budget(
+    db: &SymbolDatabase,
+    seed_symbols: &[Symbol],
+    max_depth: u32,
+    budget: WalkBudget,
+) -> Result<(Vec<ImpactCandidate>, WalkStats)> {
     if seed_symbols.is_empty() || max_depth == 0 {
-        return Ok(Vec::new());
+        return Ok((Vec::new(), WalkStats::default()));
     }
+
+    let max_frontier_per_depth = budget.max_frontier_per_depth.max(1);
+    let max_identifier_fanout_per_name = budget.max_identifier_fanout_per_name.max(1);
 
     let mut frontier_symbols: Vec<Symbol> = seed_symbols.to_vec();
     let mut frontier_ids: Vec<String> = frontier_symbols
@@ -36,15 +74,17 @@ pub fn walk_impacts(
         .collect();
     let mut visited: HashSet<String> = frontier_ids.iter().cloned().collect();
     let mut impacts = Vec::new();
+    let mut stats = WalkStats::default();
 
     for distance in 1..=max_depth {
         if frontier_ids.is_empty() {
             break;
         }
+        stats.depths_visited = distance;
 
         let relationships = db.get_relationships_to_symbols(&frontier_ids)?;
-        let mut best_by_source: HashMap<String, (RelationshipKind, Option<String>)> =
-            HashMap::new();
+        stats.total_relationship_edges_considered += relationships.len();
+        let mut best_by_source: HashMap<String, CandidateEdge> = HashMap::new();
 
         for rel in relationships {
             let Some(kind) = normalized_kind(&rel) else {
@@ -54,11 +94,14 @@ pub fn walk_impacts(
                 continue;
             }
 
-            let candidate = (kind, Some(rel.to_symbol_id.clone()));
+            let candidate = CandidateEdge {
+                relationship_kind: kind,
+                target_id: Some(rel.to_symbol_id.clone()),
+                resolved_target: true,
+            };
             let should_replace = best_by_source
                 .get(&rel.from_symbol_id)
                 .is_none_or(|current| relation_order(&candidate) < relation_order(current));
-
             if should_replace {
                 best_by_source.insert(rel.from_symbol_id.clone(), candidate);
             }
@@ -66,33 +109,58 @@ pub fn walk_impacts(
 
         // Identifier-based expansion fills in callers that only appear in the
         // identifiers table (TypeScript type usages, calls, imports). Pick the
-        // strongest identifier edge per source, then merge after relationship
-        // rows so stored relationships keep priority over fallback edges.
+        // strongest identifier edge per source, cap per-name fanout, then merge
+        // after relationship rows so stored relationships keep priority.
         let identifier_edges = identifier_incoming_edges(db, &frontier_symbols, &visited)?;
+        stats.total_identifier_edges_considered += identifier_edges.len();
         let fallback_target_id = if frontier_ids.len() == 1 {
             frontier_ids.first().cloned()
         } else {
             None
         };
-        let mut best_identifier_by_source: HashMap<String, (RelationshipKind, Option<String>)> =
-            HashMap::new();
+
+        let mut best_identifier_by_source: HashMap<String, CandidateEdge> = HashMap::new();
         for edge in identifier_edges {
             if visited.contains(&edge.container_id) {
                 continue;
             }
-            let candidate = (
-                edge.relationship_kind,
-                edge.target_symbol_id.or_else(|| fallback_target_id.clone()),
-            );
+            let target_id = edge.target_symbol_id.or_else(|| fallback_target_id.clone());
+            let candidate = CandidateEdge {
+                relationship_kind: edge.relationship_kind,
+                target_id: target_id.clone(),
+                resolved_target: target_id.is_some(),
+            };
             let should_replace = best_identifier_by_source
                 .get(&edge.container_id)
                 .is_none_or(|current| relation_order(&candidate) < relation_order(current));
-
             if should_replace {
                 best_identifier_by_source.insert(edge.container_id, candidate);
             }
         }
-        for (source_id, candidate) in best_identifier_by_source {
+
+        let mut identifier_candidates: Vec<(String, CandidateEdge)> =
+            best_identifier_by_source.into_iter().collect();
+        identifier_candidates.sort_by(|left, right| {
+            relation_order(&left.1)
+                .cmp(&relation_order(&right.1))
+                .then_with(|| left.1.target_id.cmp(&right.1.target_id))
+                .then_with(|| left.0.cmp(&right.0))
+        });
+
+        let mut identifier_name_counts: HashMap<String, usize> = HashMap::new();
+        for (source_id, candidate) in identifier_candidates {
+            let fanout_name = candidate
+                .target_id
+                .as_ref()
+                .and_then(|target_id| frontier_names.get(target_id))
+                .cloned()
+                .unwrap_or_else(|| "__unresolved__".to_string());
+            let fanout_count = identifier_name_counts.entry(fanout_name).or_insert(0);
+            if *fanout_count >= max_identifier_fanout_per_name {
+                stats.dropped_identifier_edges += 1;
+                continue;
+            }
+            *fanout_count += 1;
             best_by_source.entry(source_id).or_insert(candidate);
         }
 
@@ -100,7 +168,8 @@ pub fn walk_impacts(
             break;
         }
 
-        let source_ids: Vec<String> = best_by_source.keys().cloned().collect();
+        let mut source_ids: Vec<String> = best_by_source.keys().cloned().collect();
+        source_ids.sort();
         let symbols = db.get_symbols_by_ids(&source_ids)?;
         let symbol_map: HashMap<String, Symbol> = symbols
             .into_iter()
@@ -110,34 +179,41 @@ pub fn walk_impacts(
         let reference_scores = db.get_reference_scores(&source_id_refs)?;
 
         let mut depth_impacts = Vec::new();
-
         for source_id in source_ids {
             let Some(symbol) = symbol_map.get(&source_id).cloned() else {
                 continue;
             };
-            let Some((relationship_kind, target_id)) = best_by_source.remove(&source_id) else {
+            let Some(candidate_edge) = best_by_source.remove(&source_id) else {
                 continue;
             };
-
             visited.insert(source_id.clone());
 
-            depth_impacts.push(ImpactCandidate {
-                symbol,
-                distance,
-                relationship_kind,
-                reference_score: reference_scores.get(&source_id).copied().unwrap_or(0.0),
-                via_symbol_name: target_id
-                    .as_ref()
-                    .and_then(|id| frontier_names.get(id))
-                    .cloned()
-                    .unwrap_or_else(|| "changed code".to_string()),
+            depth_impacts.push(ImpactWithResolution {
+                resolved_target: candidate_edge.resolved_target,
+                impact: ImpactCandidate {
+                    symbol,
+                    distance,
+                    relationship_kind: candidate_edge.relationship_kind,
+                    reference_score: reference_scores.get(&source_id).copied().unwrap_or(0.0),
+                    via_symbol_name: candidate_edge
+                        .target_id
+                        .as_ref()
+                        .and_then(|id| frontier_names.get(id))
+                        .cloned()
+                        .unwrap_or_else(|| "changed code".to_string()),
+                },
             });
         }
 
         depth_impacts.sort_by(|left, right| impact_order(left).cmp(&impact_order(right)));
+        if depth_impacts.len() > max_frontier_per_depth {
+            stats.capped_depths += 1;
+            depth_impacts.truncate(max_frontier_per_depth);
+        }
+
         frontier_symbols = depth_impacts
             .iter()
-            .map(|candidate| candidate.symbol.clone())
+            .map(|candidate| candidate.impact.symbol.clone())
             .collect();
         frontier_ids = frontier_symbols
             .iter()
@@ -147,10 +223,10 @@ pub fn walk_impacts(
             .iter()
             .map(|symbol| (symbol.id.clone(), symbol.name.clone()))
             .collect();
-        impacts.extend(depth_impacts);
+        impacts.extend(depth_impacts.into_iter().map(|candidate| candidate.impact));
     }
 
-    Ok(impacts)
+    Ok((impacts, stats))
 }
 
 fn normalized_kind(relationship: &Relationship) -> Option<RelationshipKind> {
@@ -166,19 +242,37 @@ fn normalized_kind(relationship: &Relationship) -> Option<RelationshipKind> {
     }
 }
 
-fn relation_order(candidate: &(RelationshipKind, Option<String>)) -> (u8, &str) {
+#[derive(Debug, Clone)]
+struct CandidateEdge {
+    relationship_kind: RelationshipKind,
+    target_id: Option<String>,
+    resolved_target: bool,
+}
+
+#[derive(Debug, Clone)]
+struct ImpactWithResolution {
+    impact: ImpactCandidate,
+    resolved_target: bool,
+}
+
+fn relation_order(candidate: &CandidateEdge) -> (u8, u8, &str) {
     (
-        relationship_priority(&candidate.0),
-        candidate.1.as_deref().unwrap_or(""),
+        relationship_priority(&candidate.relationship_kind),
+        if candidate.resolved_target { 0 } else { 1 },
+        candidate.target_id.as_deref().unwrap_or(""),
     )
 }
 
-fn impact_order(candidate: &ImpactCandidate) -> (u8, std::cmp::Reverse<u64>, &str, u32, &str) {
+fn impact_order(
+    candidate: &ImpactWithResolution,
+) -> (u8, u8, std::cmp::Reverse<u64>, &str, u32, &str, &str) {
     (
-        relationship_priority(&candidate.relationship_kind),
-        std::cmp::Reverse(candidate.reference_score.to_bits()),
-        candidate.symbol.file_path.as_str(),
-        candidate.symbol.start_line,
-        candidate.symbol.name.as_str(),
+        relationship_priority(&candidate.impact.relationship_kind),
+        if candidate.resolved_target { 0 } else { 1 },
+        std::cmp::Reverse(candidate.impact.reference_score.to_bits()),
+        candidate.impact.symbol.file_path.as_str(),
+        candidate.impact.symbol.start_line,
+        candidate.impact.symbol.name.as_str(),
+        candidate.impact.symbol.id.as_str(),
     )
 }

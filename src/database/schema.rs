@@ -331,6 +331,12 @@ impl SymbolDatabase {
             [],
         )?;
 
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_identifiers_name_kind_containing
+             ON identifiers(name, kind, containing_symbol_id)",
+            [],
+        )?;
+
         debug!("Created identifiers table and indexes");
         Ok(())
     }
