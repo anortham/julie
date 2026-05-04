@@ -192,10 +192,13 @@ async fn test_java_interface_method_replace_signature_explicit_error() -> Result
         dry_run: false,
     };
 
-    let result = tool.call_tool(&handler).await?;
-    let text = extract_text(&result);
+    let text = tool
+        .call_tool(&handler)
+        .await
+        .expect_err("replace_signature on a Java interface method should fail")
+        .to_string();
     assert!(
-        text.contains("Error:"),
+        text.contains("replace_signature is not supported"),
         "Java interface method replace_signature should return an error, got: {text}"
     );
 
@@ -491,8 +494,11 @@ async fn test_rust_trait_method_replace_body_error_with_field_names() -> Result<
         dry_run: false,
     };
 
-    let result = tool.call_tool(&handler).await?;
-    let text = extract_text(&result);
+    let text = tool
+        .call_tool(&handler)
+        .await
+        .expect_err("replace_body on a bodyless Rust trait method should fail")
+        .to_string();
     assert!(
         text.contains("node has fields:"),
         "Error should list actual node field names, got: {text}"

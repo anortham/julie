@@ -768,8 +768,11 @@ async fn test_replace_body_error_lists_actual_field_names() -> Result<()> {
         dry_run: false,
     };
 
-    let result = tool.call_tool(&handler).await?;
-    let text = extract_text(&result);
+    let text = tool
+        .call_tool(&handler)
+        .await
+        .expect_err("replace_body on a bodyless Rust trait method should fail")
+        .to_string();
     assert!(
         text.contains("node has fields:"),
         "Error should list actual node field names, got: {text}"
