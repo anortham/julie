@@ -322,50 +322,20 @@ pub fn restart_handoff_action(
 /// Write the daemon lifecycle state to the state file.
 ///
 /// Best effort: failure to write is advisory and must not crash the daemon.
-pub fn write_daemon_state(path: &Path, state: &str) {
+pub(crate) fn write_daemon_state(path: &Path, state: &str) {
     if let Err(e) = std::fs::write(path, state) {
         warn!("Failed to write daemon state '{}': {}", state, e);
     }
 }
 
 /// Write a lifecycle phase through the state-file mapping.
-pub fn write_daemon_phase(path: &Path, phase: LifecyclePhase) {
+pub(crate) fn write_daemon_phase(path: &Path, phase: LifecyclePhase) {
     write_daemon_state(path, phase.state_file_value());
 }
 
-pub fn store_phase(target: &RwLock<LifecyclePhase>, phase: LifecyclePhase) {
+fn publish_phase(target: &RwLock<LifecyclePhase>, path: &Path, phase: LifecyclePhase) {
     *target.write().unwrap_or_else(|p| p.into_inner()) = phase;
-}
-
-pub fn publish_phase(target: &RwLock<LifecyclePhase>, path: &Path, phase: LifecyclePhase) {
-    store_phase(target, phase);
     write_daemon_phase(path, phase);
-}
-
-/// Record a restart request and transition the daemon into draining or stopping.
-pub fn flag_restart_pending_for_restart(
-    restart_pending: &AtomicBool,
-    daemon_state_path: &Path,
-    current_phase: LifecyclePhase,
-    active_sessions: usize,
-    cause: ShutdownCause,
-) -> RestartPendingTransition {
-    let first_request = !restart_pending.load(Ordering::Relaxed);
-    restart_pending.store(true, Ordering::Relaxed);
-    let next_phase = transition(
-        current_phase,
-        LifecycleEvent::ShutdownRequested {
-            cause,
-            active_sessions,
-        },
-    );
-    if first_request {
-        write_daemon_phase(daemon_state_path, next_phase);
-    }
-    RestartPendingTransition {
-        first_request,
-        next_phase,
-    }
 }
 
 /// Check whether the daemon is currently running by inspecting the PID file.

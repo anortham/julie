@@ -263,6 +263,28 @@ fn test_controller_restart_pending_without_active_sessions_publishes_stopping() 
 }
 
 #[test]
+fn test_controller_restart_pending_preserves_existing_shutdown_phase() {
+    let dir = tempfile::tempdir().unwrap();
+    let state_path = dir.path().join("daemon.state");
+    let controller = DaemonLifecycleController::new(state_path.clone());
+    controller.startup_complete();
+    controller.request_shutdown(ShutdownCause::Signal, 0);
+
+    let transition = controller.mark_restart_pending(2, ShutdownCause::RestartRequired);
+
+    assert!(transition.first_request);
+    assert!(controller.restart_pending());
+    assert_eq!(
+        transition.next_phase,
+        LifecyclePhase::Stopping {
+            cause: ShutdownCause::Signal,
+        }
+    );
+    assert_eq!(controller.phase(), transition.next_phase);
+    assert_eq!(fs::read_to_string(&state_path).unwrap(), "stopping");
+}
+
+#[test]
 fn test_controller_sessions_drained_transitions_to_stopping() {
     let dir = tempfile::tempdir().unwrap();
     let state_path = dir.path().join("daemon.state");

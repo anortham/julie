@@ -69,7 +69,7 @@ These are useful graph-quality leads, not cleanup targets for this plan.
 | Indexing | `IndexingBatchState::parsed_file_count` at `src/tools/workspace/indexing/state.rs:335` | Cfg-test marker | `keep` | Integration tests assert meaningful parse/text/repair counts. |
 | Indexing | `IndexingBatchState::text_only_file_count` at `src/tools/workspace/indexing/state.rs:340` | Cfg-test marker | `keep` | Same as above. |
 | Indexing | `IndexingBatchState::repair_file_count` at `src/tools/workspace/indexing/state.rs:344` | Zero relationship refs | `keep` | Production logs use this count in indexing pipeline and index command. |
-| Lifecycle | `flag_restart_pending_for_restart` at `src/daemon/lifecycle.rs:346` | Test-only relationship refs | `needs-design-review` | Lifecycle helper is test-only, but restart transition coverage is high-risk. Leave for a targeted lifecycle cleanup. |
+| Lifecycle | `flag_restart_pending_for_restart` at `src/daemon/lifecycle.rs:346` | Test-only relationship refs | `delete` | After `DaemonLifecycleController::mark_restart_pending` became the runtime owner, the helper was only a test fossil. Meaningful coverage moved to controller tests before deletion. |
 | Watcher | `WatcherPool::increment_ref` at `src/daemon/watcher_pool.rs:57` | Test-only relationship refs | `graph-gap` | Product session attachment uses watcher ref changes through service paths; method-level graph misses this pattern. |
 | Adapter/transport | `forward_streams` at `src/adapter/mod.rs:317` | Test-only relationship refs | `needs-design-review` | Defer until the HTTP transport plan has parity tests. |
 | Adapter/transport | `ReadyOutcome`, `ForwardOutcome`, `BranchOutcome` at `src/adapter/mod.rs` | Zero relationship refs | `needs-design-review` | Defer with adapter transport candidates. |
@@ -85,6 +85,7 @@ These are useful graph-quality leads, not cleanup targets for this plan.
 | `WorkspacePool::is_indexed` | `rg "\.is_indexed\(" src` showed only tests. | Candidate for deletion |
 | `WorkspacePool::sync_indexed_from_db` | `fast_refs` showed product call sites, but all only set `WorkspaceEntry.indexed`, which has no product reader. | Candidate for deletion with call-site cleanup |
 | `indexing_snapshot` | `rg` showed product use from cleanup and dashboard state. | `keep` |
+| `flag_restart_pending_for_restart` | `fast_refs` showed only old state tests. Controller tests already covered active-session draining, zero-session stopping, and idempotence; the remaining shutdown-phase invariant moved to `test_controller_restart_pending_preserves_existing_shutdown_phase`. | `delete`, test fossil |
 
 ## Current Cleanup Scope
 
@@ -109,6 +110,7 @@ Projection API cleanup is plausible but riskier because `SearchProjection::proje
 | `WorkspacePool::sync_indexed_from_db` | `delete` | Removed method and call sites | Product call sites only synced the removed in-memory flag. | `cargo nextest run --lib tests::daemon::workspace_pool` passed |
 | `WorkspaceSessionAttachment::attach_workspace_once_and_sync_indexed` | `merge-into-caller` | Replaced with `attach_workspace_once` | Its only extra behavior was calling `sync_indexed_from_db`. | IPC and dashboard focused tests passed |
 | `disconnect_dashboard_attached_workspaces` state parameter | `merge-into-caller` | Removed unused `AppState` parameter | State was only used to reach the removed pool sync. | Dashboard focused test passed |
+| `flag_restart_pending_for_restart` | `delete` | Removed helper and fossil state tests | `DaemonLifecycleController::mark_restart_pending` owns restart-pending transitions; `fast_refs` showed only tests after controller migration. | `cargo nextest run --lib tests::daemon::lifecycle tests::daemon::state` passed |
 
 ## Verification Ledger
 
@@ -119,3 +121,6 @@ Projection API cleanup is plausible but riskier because `SearchProjection::proje
 | worker-red-green | IPC cleanup still detaches startup and rebound primary workspaces after removing pool sync. | `cargo nextest run --lib test_handle_ipc_session_cleanup_disconnects_startup_and_rebound_primary 2>&1 \| tail -40` | working-tree at `84b83c06` | PASS | 2026-05-03T19:41:00Z |
 | worker-red-green | WorkspacePool module behavior stays green after deleting stale indexed flag tests and methods. | `cargo nextest run --lib tests::daemon::workspace_pool 2>&1 \| tail -50` | working-tree at `84b83c06` | PASS, 16 tests | 2026-05-03T19:42:00Z |
 | affected-change | Changed-file gate passes after workspace-runtime cleanup; runner fell back to dev because `src/handler.rs` is an exact-file fallback. | `cargo xtask test changed` | working-tree at `84b83c06` | PASS, 22 buckets in 375.6s | 2026-05-03T19:50:00Z |
+| worker-red-green | Lifecycle controller preserves an existing stopping phase when restart-pending is marked after a richer shutdown cause. | `cargo nextest run --lib test_controller_restart_pending_preserves_existing_shutdown_phase 2>&1 \| tail -80` | working-tree at `203dd6cd` | RED then PASS after setup matched the stopping invariant | 2026-05-04T00:24:00Z |
+| worker-red-green | Daemon lifecycle and state tests pass after deleting the restart-pending test fossil helper. | `cargo nextest run --lib tests::daemon::lifecycle tests::daemon::state 2>&1 \| tail -120` | working-tree at `203dd6cd` | PASS, 26 tests in 10.088s | 2026-05-04T00:23:41Z |
+| affected-change | Reliability gate passes after lifecycle fossil cleanup. | `cargo xtask test reliability 2>&1 \| tail -160` | working-tree at `203dd6cd` | PASS, 3 buckets in 55.3s | 2026-05-04T00:23:41Z |

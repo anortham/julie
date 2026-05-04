@@ -114,6 +114,11 @@ Do not rely on zero reference score as proof. Dynamic entry points, trait hooks,
 - [ ] Stale workspace pool helpers are removed only after registry/runtime/watcher tests pass.
 - [ ] Lead runs `cargo xtask test reliability` when cleanup touches daemon, adapter, watcher, restart, or workspace lifecycle behavior.
 
+**Task 4 execution notes so far:**
+- Adapter/IPC candidates from the baseline were re-checked after HTTP stdio parity. `forward_streams`, `ReadyOutcome`, `ForwardOutcome`, `BranchOutcome`, `forward_bytes`, `connect_and_handshake`, `read_daemon_ready`, and `build_ipc_header` are keep or graph-gap cases while legacy IPC remains a migration fallback.
+- `flag_restart_pending_for_restart` was a real lifecycle test fossil after `DaemonLifecycleController::mark_restart_pending` became the runtime owner. The remaining shutdown-phase invariant moved to a controller test before the helper and old state tests were deleted.
+- `store_phase` was merged into the private lifecycle publish helper, and state-file write helpers were narrowed to `pub(crate)` for daemon state tests.
+
 ### Task 5: Product Tool Readiness Decision
 
 **Files:**
