@@ -728,13 +728,13 @@ async fn test_delete_handler_trusts_caller_no_toctou() {
     );
 }
 
-/// Fix C (HOL blocking): after a dedup re-queue, subsequent events for OTHER files
-/// must still be processed in the same tick.
+/// Fix C (HOL blocking): after dropping a deduped event, subsequent events for OTHER
+/// files must still be processed in the same tick.
 ///
 /// With the old `break`: file_a is dedup-skipped and re-queued, then the inner loop
 /// breaks — file_b never gets processed in that tick.
 ///
-/// With the fix `continue`: file_a is re-queued, the loop continues to file_b,
+/// With the fix `continue`: file_a is dropped, the loop continues to file_b,
 /// and file_b is processed in the same tick.
 #[tokio::test]
 async fn test_dedup_requeue_does_not_block_subsequent_events() {
@@ -765,7 +765,7 @@ async fn test_dedup_requeue_does_not_block_subsequent_events() {
         });
     }
 
-    // file_a is "recently processed" — dedup should skip it and re-queue it
+    // file_a is "recently processed", dedup should skip and drop it.
     let mut last_processed = std::collections::HashMap::<std::path::PathBuf, SystemTime>::new();
     last_processed.insert(file_a.clone(), SystemTime::now());
 
@@ -793,8 +793,8 @@ async fn test_dedup_requeue_does_not_block_subsequent_events() {
             .unwrap_or(false);
 
         if should_skip {
-            // Fix C: continue (was 'break') so events behind the deduped one proceed
-            queue.lock().await.push_back(event);
+            // Fix C: continue (was 'break') so events behind the deduped one proceed.
+            // New behavior: deduped events are dropped, not re-queued.
             continue;
         }
 
@@ -814,11 +814,11 @@ async fn test_dedup_requeue_does_not_block_subsequent_events() {
         "file_b should be processed even when file_a is re-queued for dedup. \
          If this fails, the old 'break' behavior is back (HOL blocking)."
     );
-    // file_a should still be in the queue waiting for the next tick
+    // file_a should be dropped because it was already processed recently
     let q = queue.lock().await;
     assert!(
-        q.iter().any(|e| e.path == file_a),
-        "file_a should remain in queue for the next tick"
+        !q.iter().any(|e| e.path == file_a),
+        "file_a duplicate should be dropped, not left in queue"
     );
 }
 

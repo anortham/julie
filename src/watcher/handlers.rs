@@ -75,7 +75,7 @@ pub(crate) async fn handle_file_created_or_modified_static(
     workspace_root: &Path,
     search_index: Option<&Arc<std::sync::Mutex<SearchIndex>>>,
 ) -> Result<FileIndexOutcome> {
-    info!("Processing file: {}", path.display());
+    debug!("Processing file: {}", path.display());
 
     // 1. Read file content and calculate hash
     let content = tokio::fs::read(&path)
@@ -143,7 +143,7 @@ pub(crate) async fn handle_file_created_or_modified_static(
         }
     };
 
-    info!(
+    debug!(
         "Extracted {} symbols, {} identifiers, {} relationships from {} ({})",
         results.symbols.len(),
         results.identifiers.len(),
@@ -294,7 +294,7 @@ pub(crate) async fn handle_file_created_or_modified_static(
         true // No search index configured — nothing to fail
     };
 
-    info!("Successfully indexed {}", path.display());
+    debug!("Successfully indexed {}", path.display());
     if tantivy_ok {
         Ok(FileIndexOutcome::clean())
     } else {

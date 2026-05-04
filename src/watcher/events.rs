@@ -1,4 +1,5 @@
 use crate::watcher::filtering;
+use crate::watcher::queue;
 use crate::watcher::types::{FileChangeEvent, FileChangeType};
 use anyhow::Result;
 use ignore::gitignore::Gitignore;
@@ -7,7 +8,7 @@ use notify::{Event, EventKind};
 use std::collections::{HashSet, VecDeque};
 use std::path::Path;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::SystemTime;
 use tokio::sync::Mutex as TokioMutex;
 use tracing::debug;
@@ -16,6 +17,7 @@ use tracing::debug;
 ///
 /// `needs_rescan` is set to true if the queue overflows (>1000 events). The caller
 /// should trigger a workspace-wide staleness check when this flag is observed.
+#[cfg(test)]
 pub async fn process_file_system_event(
     supported_extensions: &HashSet<String>,
     gitignore: &Gitignore,
@@ -24,8 +26,90 @@ pub async fn process_file_system_event(
     event: Event,
     needs_rescan: &Arc<AtomicBool>,
 ) -> Result<()> {
-    debug!("Processing file system event: {:?}", event);
+    process_file_system_event_internal(
+        supported_extensions,
+        gitignore,
+        workspace_root,
+        index_queue,
+        event,
+        needs_rescan,
+        None,
+        None,
+    )
+    .await
+}
 
+/// Process a file system event and skip queueing while watcher dispatch is paused.
+///
+/// Relevant events seen while paused trigger `needs_rescan` and bump `paused_event_count`,
+/// but are intentionally dropped from the queue to avoid overflow during catch-up indexing.
+pub async fn process_file_system_event_with_pause(
+    supported_extensions: &HashSet<String>,
+    gitignore: &Gitignore,
+    workspace_root: &Path,
+    index_queue: std::sync::Arc<TokioMutex<VecDeque<FileChangeEvent>>>,
+    event: Event,
+    needs_rescan: &Arc<AtomicBool>,
+    pause_flag: &AtomicBool,
+    paused_event_count: Option<&AtomicUsize>,
+) -> Result<()> {
+    process_file_system_event_internal(
+        supported_extensions,
+        gitignore,
+        workspace_root,
+        index_queue,
+        event,
+        needs_rescan,
+        Some(pause_flag),
+        paused_event_count,
+    )
+    .await
+}
+
+async fn process_file_system_event_internal(
+    supported_extensions: &HashSet<String>,
+    gitignore: &Gitignore,
+    workspace_root: &Path,
+    index_queue: std::sync::Arc<TokioMutex<VecDeque<FileChangeEvent>>>,
+    event: Event,
+    needs_rescan: &Arc<AtomicBool>,
+    pause_flag: Option<&AtomicBool>,
+    paused_event_count: Option<&AtomicUsize>,
+) -> Result<()> {
+    debug!("Processing file system event: {:?}", event);
+    let change_events =
+        classify_file_system_event(supported_extensions, gitignore, workspace_root, event);
+
+    if change_events.is_empty() {
+        return Ok(());
+    }
+
+    if pause_flag.is_some_and(|flag| flag.load(Ordering::Acquire)) {
+        needs_rescan.store(true, Ordering::Release);
+        if let Some(counter) = paused_event_count {
+            counter.fetch_add(change_events.len(), Ordering::AcqRel);
+        }
+        debug!(
+            dropped_events = change_events.len(),
+            "Watcher paused, dropping relevant events and scheduling repair scan"
+        );
+        return Ok(());
+    }
+
+    for change_event in change_events {
+        queue_file_change(index_queue.clone(), change_event, needs_rescan).await;
+    }
+
+    Ok(())
+}
+
+fn classify_file_system_event(
+    supported_extensions: &HashSet<String>,
+    gitignore: &Gitignore,
+    workspace_root: &Path,
+    event: Event,
+) -> Vec<FileChangeEvent> {
+    let mut queued = Vec::new();
     match event.kind {
         EventKind::Create(_) => {
             for path in event.paths {
@@ -35,12 +119,11 @@ pub async fn process_file_system_event(
                     gitignore,
                     workspace_root,
                 ) {
-                    let change_event = FileChangeEvent {
+                    queued.push(FileChangeEvent {
                         path: path.clone(),
                         change_type: FileChangeType::Created,
                         timestamp: SystemTime::now(),
-                    };
-                    queue_file_change(index_queue.clone(), change_event, needs_rescan).await;
+                    });
                 }
             }
         }
@@ -62,12 +145,11 @@ pub async fn process_file_system_event(
                     workspace_root,
                 );
                 if from_relevant || to_relevant {
-                    let change_event = FileChangeEvent {
+                    queued.push(FileChangeEvent {
                         path: to.clone(),
                         change_type: FileChangeType::Renamed { from, to },
                         timestamp: SystemTime::now(),
-                    };
-                    queue_file_change(index_queue.clone(), change_event, needs_rescan).await;
+                    });
                 }
             }
         }
@@ -80,12 +162,11 @@ pub async fn process_file_system_event(
                     gitignore,
                     workspace_root,
                 ) {
-                    let change_event = FileChangeEvent {
+                    queued.push(FileChangeEvent {
                         path: path.clone(),
                         change_type: FileChangeType::Deleted,
                         timestamp: SystemTime::now(),
-                    };
-                    queue_file_change(index_queue.clone(), change_event, needs_rescan).await;
+                    });
                 }
             }
         }
@@ -98,12 +179,11 @@ pub async fn process_file_system_event(
                     gitignore,
                     workspace_root,
                 ) {
-                    let change_event = FileChangeEvent {
+                    queued.push(FileChangeEvent {
                         path: path.clone(),
                         change_type: FileChangeType::Created,
                         timestamp: SystemTime::now(),
-                    };
-                    queue_file_change(index_queue.clone(), change_event, needs_rescan).await;
+                    });
                 }
             }
         }
@@ -123,12 +203,11 @@ pub async fn process_file_system_event(
                         gitignore,
                         workspace_root,
                     ) {
-                        let change_event = FileChangeEvent {
+                        queued.push(FileChangeEvent {
                             path: path.clone(),
                             change_type: FileChangeType::Modified,
                             timestamp: SystemTime::now(),
-                        };
-                        queue_file_change(index_queue.clone(), change_event, needs_rescan).await;
+                        });
                     }
                 } else if filtering::should_process_deletion(
                     &path,
@@ -136,12 +215,11 @@ pub async fn process_file_system_event(
                     gitignore,
                     workspace_root,
                 ) {
-                    let change_event = FileChangeEvent {
+                    queued.push(FileChangeEvent {
                         path: path.clone(),
                         change_type: FileChangeType::Deleted,
                         timestamp: SystemTime::now(),
-                    };
-                    queue_file_change(index_queue.clone(), change_event, needs_rescan).await;
+                    });
                 }
             }
         }
@@ -153,12 +231,11 @@ pub async fn process_file_system_event(
                     gitignore,
                     workspace_root,
                 ) {
-                    let change_event = FileChangeEvent {
+                    queued.push(FileChangeEvent {
                         path: path.clone(),
                         change_type: FileChangeType::Modified,
                         timestamp: SystemTime::now(),
-                    };
-                    queue_file_change(index_queue.clone(), change_event, needs_rescan).await;
+                    });
                 }
             }
         }
@@ -170,12 +247,11 @@ pub async fn process_file_system_event(
                     gitignore,
                     workspace_root,
                 ) {
-                    let change_event = FileChangeEvent {
+                    queued.push(FileChangeEvent {
                         path: path.clone(),
                         change_type: FileChangeType::Deleted,
                         timestamp: SystemTime::now(),
-                    };
-                    queue_file_change(index_queue.clone(), change_event, needs_rescan).await;
+                    });
                 }
             }
         }
@@ -184,16 +260,14 @@ pub async fn process_file_system_event(
         }
     }
 
-    Ok(())
+    queued
 }
 
-const MAX_QUEUE_SIZE: usize = 1000;
-
-/// Queue a file change event, capping the queue at MAX_QUEUE_SIZE.
+/// Queue a file change event with per-path coalescing and overflow headroom drain.
 ///
-/// If the queue is full, the oldest events are drained and `needs_rescan` is set.
-/// The background processor checks this flag after the queue drains and runs a
-/// staleness pass to catch any events that were lost in the overflow.
+/// Events for the same affected path are merged so repeated activity does not
+/// consume additional queue slots. Distinct events respect the queue cap and
+/// drain to `OVERFLOW_TARGET_SIZE` when a new event would overflow.
 async fn queue_file_change(
     index_queue: std::sync::Arc<TokioMutex<VecDeque<FileChangeEvent>>>,
     event: FileChangeEvent,
@@ -201,19 +275,15 @@ async fn queue_file_change(
 ) {
     debug!("Queueing file change: {:?}", event);
     let mut queue = index_queue.lock().await;
-    if queue.len() >= MAX_QUEUE_SIZE {
-        // Drain oldest events to stay within cap. A burst this large likely
-        // means a large directory operation (checkout, unzip). Set the rescan
-        // flag so the processor re-checks all indexed files for staleness
-        // after the queue drains, recovering any dropped Create/Delete events.
-        let drain_count = queue.len() - MAX_QUEUE_SIZE + 1;
-        queue.drain(..drain_count);
+    let outcome = queue::enqueue_file_change(&mut queue, event);
+    if outcome.drained > 0 {
         needs_rescan.store(true, Ordering::Release);
         tracing::warn!(
-            "Watcher queue exceeded {} items; dropped {} oldest events — rescan scheduled",
-            MAX_QUEUE_SIZE,
-            drain_count,
+            max_size = queue::MAX_QUEUE_SIZE,
+            target_size = queue::OVERFLOW_TARGET_SIZE,
+            dropped = outcome.drained,
+            final_len = queue.len(),
+            "Watcher queue overflow drain applied; rescan scheduled"
         );
     }
-    queue.push_back(event);
 }

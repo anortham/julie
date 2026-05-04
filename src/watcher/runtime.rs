@@ -5,15 +5,17 @@ use crate::tools::workspace::indexing::state::{
     IndexingOperation, IndexingRepairReason, SharedIndexingRuntime,
 };
 use anyhow::Result;
+use ignore::gitignore::Gitignore;
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, Instant, SystemTime};
 use tokio::sync::Mutex as TokioMutex;
 use tracing::{debug, info, warn};
 
 const EXTRACTOR_REPAIR_RETRY_INTERVAL: Duration = Duration::from_secs(30);
+const DUPLICATE_DEBOUNCE_WINDOW: Duration = Duration::from_secs(1);
 
 #[derive(Clone)]
 pub(super) struct QueueRuntime {
@@ -183,6 +185,18 @@ impl QueueRuntime {
             return 0;
         }
 
+        let gitignore = match super::filtering::build_gitignore_matcher(&self.workspace_root) {
+            Ok(gitignore) => Some(gitignore),
+            Err(err) => {
+                warn!(
+                    "Repair retry failed to build gitignore matcher for {}: {}",
+                    self.workspace_root.display(),
+                    err
+                );
+                None
+            }
+        };
+
         self.indexing_runtime
             .write()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -216,16 +230,11 @@ impl QueueRuntime {
                 continue;
             }
 
-            // Skip files with unsupported extensions (e.g., binary media files
-            // that leaked into the repair table from earlier indexing runs).
-            // Extensionless files are allowed through — they may be valid
-            // targets like Dockerfile or Makefile.
-            let has_unsupported_ext = absolute_path
-                .extension()
-                .and_then(|e| e.to_str())
-                .is_some_and(|ext| !self.supported_extensions.contains(ext));
-            if has_unsupported_ext {
-                info!("Clearing repair for unsupported file type: {}", repair_path);
+            if !self.repair_path_is_retryable(&absolute_path, gitignore.as_ref()) {
+                info!(
+                    "Clearing repair for file unsupported by watcher extraction: {}",
+                    repair_path
+                );
                 let db_guard = self
                     .db
                     .lock()
@@ -283,6 +292,39 @@ impl QueueRuntime {
         runtime.finish_operation();
 
         replayed
+    }
+
+    fn repair_path_is_retryable(
+        &self,
+        absolute_path: &Path,
+        gitignore: Option<&Gitignore>,
+    ) -> bool {
+        if !Self::path_has_registered_extractor(absolute_path) {
+            return false;
+        }
+
+        let Some(gitignore) = gitignore else {
+            return true;
+        };
+
+        super::filtering::should_index_file(
+            absolute_path,
+            &self.supported_extensions,
+            gitignore,
+            &self.workspace_root,
+        )
+    }
+
+    fn path_has_registered_extractor(path: &Path) -> bool {
+        let Some(language) = path
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .and_then(crate::extractors::language::detect_language_from_extension)
+        else {
+            return false;
+        };
+
+        crate::extractors::registry::registry_entry(language).is_ok()
     }
 
     async fn retry_dirty_tantivy(&self) {
@@ -404,6 +446,9 @@ impl QueueRuntime {
         }
 
         let mut processed_count = 0usize;
+        let mut dropped_duplicates = 0usize;
+        let mut deletes = 0usize;
+        let mut renames = 0usize;
         let max_this_tick = queue_size;
         let mut iterations = 0usize;
 
@@ -417,40 +462,53 @@ impl QueueRuntime {
             };
             iterations += 1;
 
-            let should_skip = {
+            let should_drop_duplicate = {
                 let mut last_processed = self.last_processed.lock().await;
                 let now = SystemTime::now();
 
-                if let Some(last_time) = last_processed.get(&event.path) {
-                    if let Ok(elapsed) = now.duration_since(*last_time) {
-                        if elapsed < Duration::from_secs(1) {
-                            debug!(
-                                "Skipping duplicate event for {:?} (processed {}ms ago)",
-                                event.path,
-                                elapsed.as_millis()
-                            );
-                            true
+                match event.change_type {
+                    FileChangeType::Created | FileChangeType::Modified => {
+                        if let Some(last_time) = last_processed.get(&event.path) {
+                            if let Ok(elapsed) = now.duration_since(*last_time) {
+                                if elapsed < DUPLICATE_DEBOUNCE_WINDOW {
+                                    debug!(
+                                        "Dropping duplicate event for {:?} (processed {}ms ago)",
+                                        event.path,
+                                        elapsed.as_millis()
+                                    );
+                                    true
+                                } else {
+                                    last_processed.insert(event.path.clone(), now);
+                                    false
+                                }
+                            } else {
+                                last_processed.insert(event.path.clone(), now);
+                                false
+                            }
                         } else {
                             last_processed.insert(event.path.clone(), now);
                             false
                         }
-                    } else {
+                    }
+                    FileChangeType::Deleted | FileChangeType::Renamed { .. } => {
                         last_processed.insert(event.path.clone(), now);
                         false
                     }
-                } else {
-                    last_processed.insert(event.path.clone(), now);
-                    false
                 }
             };
 
-            if should_skip {
-                let mut queue = self.index_queue.lock().await;
-                queue.push_back(event);
+            if should_drop_duplicate {
+                dropped_duplicates += 1;
                 continue;
             }
 
-            info!("Background task processing: {:?}", event.path);
+            match event.change_type {
+                FileChangeType::Deleted => deletes += 1,
+                FileChangeType::Renamed { .. } => renames += 1,
+                FileChangeType::Created | FileChangeType::Modified => {}
+            }
+
+            debug!("Background task processing: {:?}", event.path);
 
             let provider_snapshot = self
                 .embedding_provider
@@ -476,6 +534,19 @@ impl QueueRuntime {
             }
 
             processed_count += 1;
+        }
+
+        let remaining_queue_len = self.index_queue.lock().await.len();
+        if processed_count > 0
+            || dropped_duplicates > 0
+            || deletes > 0
+            || renames > 0
+            || remaining_queue_len > 0
+        {
+            info!(
+                processed = processed_count,
+                dropped_duplicates, deletes, renames, remaining_queue_len, "Watcher batch summary"
+            );
         }
 
         {
@@ -517,14 +588,15 @@ impl QueueRuntime {
             "Queue overflow detected, running repair scan for stale and new files"
         );
 
-        let indexed_files = {
+        let repair_started = Instant::now();
+        let indexed_hashes = {
             let db_guard = self
                 .db
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
-            db_guard.get_all_indexed_files().unwrap_or_default()
+            db_guard.get_file_hashes_for_workspace().unwrap_or_default()
         };
-        let indexed_set: HashSet<String> = indexed_files.iter().cloned().collect();
+        let indexed_set: HashSet<String> = indexed_hashes.keys().cloned().collect();
 
         let workspace_files = match crate::startup::scan_workspace_files(&self.workspace_root) {
             Ok(files) => files,
@@ -539,6 +611,30 @@ impl QueueRuntime {
                     .write()
                     .unwrap_or_else(|poisoned| poisoned.into_inner())
                     .set_watcher_rescan_pending(true);
+                self.indexing_runtime
+                    .write()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner())
+                    .finish_operation();
+                return;
+            }
+        };
+        let gitignore = match super::filtering::build_gitignore_matcher(&self.workspace_root) {
+            Ok(gitignore) => gitignore,
+            Err(err) => {
+                warn!(
+                    "Repair scan failed to build gitignore matcher for {}: {}",
+                    self.workspace_root.display(),
+                    err
+                );
+                self.needs_rescan.store(true, Ordering::Release);
+                self.indexing_runtime
+                    .write()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner())
+                    .set_watcher_rescan_pending(true);
+                self.indexing_runtime
+                    .write()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner())
+                    .finish_operation();
                 return;
             }
         };
@@ -549,52 +645,91 @@ impl QueueRuntime {
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .clone();
 
-        for rel_path in &indexed_files {
-            let abs_path = self.workspace_root.join(std::path::Path::new(rel_path));
-            let change_type = if abs_path.is_file() {
-                FileChangeType::Modified
-            } else {
-                FileChangeType::Deleted
-            };
-            let repair_event = FileChangeEvent {
-                path: abs_path,
-                change_type,
-                timestamp: SystemTime::now(),
-            };
-            super::dispatch_file_event(
-                repair_event,
-                &self.db,
-                &self.extractor_manager,
-                &self.search_index,
-                &provider_snapshot,
-                &self.workspace_root,
-                &self.lang_configs,
-                &self.tantivy_dirty,
-                &self.indexing_runtime,
-            )
-            .await;
-        }
+        let mut checked_indexed_files = 0usize;
+        let mut skipped_unchanged_files = 0usize;
+        let mut deleted_files = 0usize;
+        let mut modified_files = 0usize;
+        let mut new_files = 0usize;
+        let mut failed_hash_reads = 0usize;
+        let mut dispatched_events = 0usize;
 
-        let mut new_file_count = 0usize;
-        for rel_path in workspace_files.difference(&indexed_set) {
+        for (rel_path, stored_hash) in &indexed_hashes {
+            checked_indexed_files += 1;
             let abs_path = self.workspace_root.join(std::path::Path::new(rel_path));
             if !abs_path.is_file() {
+                super::dispatch_file_event(
+                    FileChangeEvent {
+                        path: abs_path,
+                        change_type: FileChangeType::Deleted,
+                        timestamp: SystemTime::now(),
+                    },
+                    &self.db,
+                    &self.extractor_manager,
+                    &self.search_index,
+                    &provider_snapshot,
+                    &self.workspace_root,
+                    &self.lang_configs,
+                    &self.tantivy_dirty,
+                    &self.indexing_runtime,
+                )
+                .await;
+                deleted_files += 1;
+                dispatched_events += 1;
                 continue;
             }
 
-            if let Some(ext) = abs_path.extension().and_then(|ext| ext.to_str()) {
-                if !self.supported_extensions.contains(ext) {
-                    continue;
+            match crate::database::calculate_file_hash(&abs_path) {
+                Ok(current_hash) if current_hash != *stored_hash => {
+                    super::dispatch_file_event(
+                        FileChangeEvent {
+                            path: abs_path,
+                            change_type: FileChangeType::Modified,
+                            timestamp: SystemTime::now(),
+                        },
+                        &self.db,
+                        &self.extractor_manager,
+                        &self.search_index,
+                        &provider_snapshot,
+                        &self.workspace_root,
+                        &self.lang_configs,
+                        &self.tantivy_dirty,
+                        &self.indexing_runtime,
+                    )
+                    .await;
+                    modified_files += 1;
+                    dispatched_events += 1;
+                }
+                Ok(_) => {
+                    skipped_unchanged_files += 1;
+                }
+                Err(err) => {
+                    failed_hash_reads += 1;
+                    warn!(
+                        "Repair scan hash read failed for {}: {}",
+                        abs_path.display(),
+                        err
+                    );
                 }
             }
+        }
 
-            let repair_event = FileChangeEvent {
-                path: abs_path,
-                change_type: FileChangeType::Created,
-                timestamp: SystemTime::now(),
-            };
+        for rel_path in workspace_files.difference(&indexed_set) {
+            let abs_path = self.workspace_root.join(std::path::Path::new(rel_path));
+            if !super::filtering::should_index_file(
+                &abs_path,
+                &self.supported_extensions,
+                &gitignore,
+                &self.workspace_root,
+            ) {
+                continue;
+            }
+
             super::dispatch_file_event(
-                repair_event,
+                FileChangeEvent {
+                    path: abs_path,
+                    change_type: FileChangeType::Created,
+                    timestamp: SystemTime::now(),
+                },
                 &self.db,
                 &self.extractor_manager,
                 &self.search_index,
@@ -605,16 +740,24 @@ impl QueueRuntime {
                 &self.indexing_runtime,
             )
             .await;
-            new_file_count += 1;
+            new_files += 1;
+            dispatched_events += 1;
         }
 
         info!(
-            "Post-overflow repair scan: checked {} indexed files, discovered {} new files",
-            indexed_files.len(),
-            new_file_count
+            checked_indexed_files,
+            skipped_unchanged_files,
+            deleted_files,
+            modified_files,
+            new_files,
+            failed_hash_reads,
+            elapsed_ms = repair_started.elapsed().as_millis(),
+            "Post-overflow repair scan summary"
         );
 
-        self.commit_search_index("repair scan").await;
+        if dispatched_events > 0 {
+            self.commit_search_index("repair scan").await;
+        }
         self.indexing_runtime
             .write()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
