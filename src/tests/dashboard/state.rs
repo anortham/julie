@@ -490,8 +490,6 @@ async fn test_dashboard_health_snapshot_reports_projection_revision_lag() {
     let pool = Arc::new(WorkspacePool::new(
         temp_dir.path().join("indexes"),
         Some(Arc::clone(&daemon_db)),
-        None,
-        None,
     ));
     let workspace = pool
         .get_or_init(&workspace_id, workspace_root.clone())

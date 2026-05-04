@@ -51,8 +51,6 @@ async fn test_get_context_target_workspace_uses_requested_binding_for_metrics_at
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir,
         Some(Arc::clone(&daemon_db)),
-        None,
-        None,
     ));
 
     let primary_path = primary_root.canonicalize()?;

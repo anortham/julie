@@ -212,8 +212,6 @@ async fn test_get_symbols_relative_path_uses_rebound_current_primary_root() -> R
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir,
         Some(Arc::clone(&daemon_db)),
-        None,
-        None,
     ));
 
     let original_path = original_root.canonicalize()?;
@@ -334,8 +332,6 @@ async fn test_get_symbols_primary_uses_rebound_current_primary_root() -> Result<
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir,
         Some(Arc::clone(&daemon_db)),
-        None,
-        None,
     ));
 
     let original_path = original_root.canonicalize()?;
@@ -452,8 +448,6 @@ async fn test_get_symbols_primary_wrapper_resolves_roots_before_reading() -> Res
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir,
         Some(Arc::clone(&daemon_db)),
-        None,
-        None,
     ));
 
     let startup_path = startup_root.canonicalize()?;

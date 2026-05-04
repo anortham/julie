@@ -188,8 +188,6 @@ mod tests {
             let pool = Arc::new(WorkspacePool::new(
                 paths.indexes_dir(),
                 Some(Arc::clone(&daemon_db)),
-                None,
-                Some(Arc::clone(&embedding_service)),
             ));
             let sessions = Arc::new(SessionTracker::new());
             let lifecycle = DaemonLifecycleController::new(paths.daemon_state());

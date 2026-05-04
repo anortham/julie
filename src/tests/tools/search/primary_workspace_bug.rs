@@ -206,8 +206,6 @@ async fn test_text_search_definitions_explicit_rebound_workspace_uses_current_pr
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir,
         Some(Arc::clone(&daemon_db)),
-        None,
-        None,
     ));
 
     let original_path = original_root.canonicalize()?;

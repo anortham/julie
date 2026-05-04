@@ -547,8 +547,6 @@ async fn test_record_tool_call_uses_binding_snapshot_for_metrics_attribution() -
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir.clone(),
         Some(Arc::clone(&daemon_db)),
-        None,
-        None,
     ));
 
     let original_path = original_root.canonicalize()?;
@@ -711,8 +709,6 @@ async fn test_metrics_workspace_binding_uses_target_workspace_param() -> Result<
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir,
         Some(Arc::clone(&daemon_db)),
-        None,
-        None,
     ));
 
     let primary_path = primary_root.canonicalize()?;
@@ -781,8 +777,6 @@ async fn test_fast_refs_target_workspace_uses_requested_binding_for_metrics_attr
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir.clone(),
         Some(Arc::clone(&daemon_db)),
-        None,
-        None,
     ));
 
     let primary_path = primary_root.canonicalize()?;

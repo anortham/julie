@@ -37,7 +37,7 @@ fn session_attachment(
 async fn test_get_or_init_creates_workspace_on_first_call() {
     let indexes_dir = temp_indexes_dir();
     let workspace_root = temp_workspace_root();
-    let pool = WorkspacePool::new(indexes_dir.path().to_path_buf(), None, None, None);
+    let pool = WorkspacePool::new(indexes_dir.path().to_path_buf(), None);
 
     let ws = pool
         .get_or_init("test_ws", workspace_root.path().to_path_buf())
@@ -56,7 +56,7 @@ async fn test_get_or_init_creates_workspace_on_first_call() {
 async fn test_get_or_init_returns_same_instance_on_second_call() {
     let indexes_dir = temp_indexes_dir();
     let workspace_root = temp_workspace_root();
-    let pool = WorkspacePool::new(indexes_dir.path().to_path_buf(), None, None, None);
+    let pool = WorkspacePool::new(indexes_dir.path().to_path_buf(), None);
 
     let ws1 = pool
         .get_or_init("test_ws", workspace_root.path().to_path_buf())
@@ -80,7 +80,7 @@ async fn test_get_or_init_returns_same_instance_on_second_call() {
 #[tokio::test]
 async fn test_get_returns_none_for_unknown_workspace() {
     let indexes_dir = temp_indexes_dir();
-    let pool = WorkspacePool::new(indexes_dir.path().to_path_buf(), None, None, None);
+    let pool = WorkspacePool::new(indexes_dir.path().to_path_buf(), None);
 
     let result = pool.get("nonexistent").await;
     assert!(
@@ -93,7 +93,7 @@ async fn test_get_returns_none_for_unknown_workspace() {
 async fn test_get_returns_some_after_init() {
     let indexes_dir = temp_indexes_dir();
     let workspace_root = temp_workspace_root();
-    let pool = WorkspacePool::new(indexes_dir.path().to_path_buf(), None, None, None);
+    let pool = WorkspacePool::new(indexes_dir.path().to_path_buf(), None);
 
     // Initialize workspace
     pool.get_or_init("test_ws", workspace_root.path().to_path_buf())
@@ -106,44 +106,46 @@ async fn test_get_returns_some_after_init() {
 }
 
 #[tokio::test]
-async fn test_active_workspace_count() {
+async fn test_get_or_init_keeps_distinct_ids_and_reuses_existing_workspace() {
     let indexes_dir = temp_indexes_dir();
-    let pool = WorkspacePool::new(indexes_dir.path().to_path_buf(), None, None, None);
+    let pool = WorkspacePool::new(indexes_dir.path().to_path_buf(), None);
 
-    assert_eq!(
-        pool.active_count().await,
-        0,
-        "should start with 0 workspaces"
+    assert!(
+        pool.get("ws1").await.is_none(),
+        "pool should start without ws1"
     );
 
     let root1 = temp_workspace_root();
-    pool.get_or_init("ws1", root1.path().to_path_buf())
+    let ws1 = pool
+        .get_or_init("ws1", root1.path().to_path_buf())
         .await
         .expect("first init should succeed");
-    assert_eq!(pool.active_count().await, 1);
 
     let root2 = temp_workspace_root();
-    pool.get_or_init("ws2", root2.path().to_path_buf())
+    let ws2 = pool
+        .get_or_init("ws2", root2.path().to_path_buf())
         .await
         .expect("second init should succeed");
-    assert_eq!(pool.active_count().await, 2);
 
-    // Re-init of existing workspace should not increase count
-    pool.get_or_init("ws1", root1.path().to_path_buf())
+    assert!(
+        !Arc::ptr_eq(&ws1, &ws2),
+        "different workspace ids should produce different workspace instances"
+    );
+
+    let ws1_again = pool
+        .get_or_init("ws1", root1.path().to_path_buf())
         .await
         .expect("re-init should succeed");
-    assert_eq!(pool.active_count().await, 2);
+    assert!(
+        Arc::ptr_eq(&ws1, &ws1_again),
+        "re-init of an existing workspace id should reuse the cached workspace"
+    );
 }
 
 #[tokio::test]
 async fn test_concurrent_get_or_init_different_workspaces() {
     let indexes_dir = temp_indexes_dir();
-    let pool = Arc::new(WorkspacePool::new(
-        indexes_dir.path().to_path_buf(),
-        None,
-        None,
-        None,
-    ));
+    let pool = Arc::new(WorkspacePool::new(indexes_dir.path().to_path_buf(), None));
 
     let root1 = temp_workspace_root();
     let root2 = temp_workspace_root();
@@ -173,7 +175,10 @@ async fn test_concurrent_get_or_init_different_workspaces() {
         "different workspaces should have different db instances"
     );
 
-    assert_eq!(pool.active_count().await, 2);
+    let cached_a = pool.get("ws_a").await.expect("ws_a should be cached");
+    let cached_b = pool.get("ws_b").await.expect("ws_b should be cached");
+    assert!(Arc::ptr_eq(&ws_a, &cached_a));
+    assert!(Arc::ptr_eq(&ws_b, &cached_b));
 }
 
 #[tokio::test]
@@ -183,9 +188,10 @@ async fn test_workspace_pool_accepts_daemon_db() {
     let indexes_dir = tmp.path().join("indexes");
     std::fs::create_dir_all(&indexes_dir).unwrap();
 
-    // Constructor must accept daemon_db -- pool starts empty
-    let pool = WorkspacePool::new(indexes_dir.clone(), Some(daemon_db.clone()), None, None);
-    assert_eq!(pool.active_count().await, 0);
+    // Constructor must accept daemon_db and preserve pool configuration.
+    let pool = WorkspacePool::new(indexes_dir.clone(), Some(daemon_db.clone()));
+    assert_eq!(pool.indexes_dir(), indexes_dir.as_path());
+    assert!(pool.get("missing").await.is_none());
 }
 
 #[tokio::test]
@@ -206,12 +212,7 @@ async fn test_get_or_init_migrates_project_local_index_to_shared_indexes() {
         .join("indexes")
         .join(&workspace_id);
 
-    let pool = WorkspacePool::new(
-        indexes_dir.clone(),
-        Some(Arc::clone(&daemon_db)),
-        None,
-        None,
-    );
+    let pool = WorkspacePool::new(indexes_dir.clone(), Some(Arc::clone(&daemon_db)));
 
     pool.get_or_init(&workspace_id, workspace_root.path().to_path_buf())
         .await
@@ -254,12 +255,7 @@ async fn test_session_attachment_increments_watcher_ref() {
     let indexes_dir = temp_indexes_dir();
     let workspace_root = temp_workspace_root();
     let watcher_pool = Arc::new(WatcherPool::new(Duration::from_secs(300)));
-    let pool = WorkspacePool::new(
-        indexes_dir.path().to_path_buf(),
-        None,
-        Some(Arc::clone(&watcher_pool)),
-        None,
-    );
+    let pool = WorkspacePool::new(indexes_dir.path().to_path_buf(), None);
 
     let attachment = session_attachment(
         Arc::new(pool),
@@ -287,12 +283,7 @@ async fn test_workspace_pool_get_or_init_does_not_attach_session_side_effects() 
     let workspace_root = temp_workspace_root();
     let daemon_db = Arc::new(DaemonDatabase::open(&tmp.path().join("daemon.db")).unwrap());
     let watcher_pool = Arc::new(WatcherPool::new(Duration::from_secs(300)));
-    let pool = WorkspacePool::new(
-        indexes_dir,
-        Some(Arc::clone(&daemon_db)),
-        Some(Arc::clone(&watcher_pool)),
-        None,
-    );
+    let pool = WorkspacePool::new(indexes_dir, Some(Arc::clone(&daemon_db)));
 
     pool.get_or_init("runtime_only_ws", workspace_root.path().to_path_buf())
         .await
@@ -322,12 +313,7 @@ async fn test_watcher_pool_reuses_session_refs_and_starts_grace_on_last_disconne
     let indexes_dir = temp_indexes_dir();
     let workspace_root = temp_workspace_root();
     let watcher_pool = Arc::new(WatcherPool::new(Duration::from_secs(300)));
-    let pool = Arc::new(WorkspacePool::new(
-        indexes_dir.path().to_path_buf(),
-        None,
-        Some(Arc::clone(&watcher_pool)),
-        None,
-    ));
+    let pool = Arc::new(WorkspacePool::new(indexes_dir.path().to_path_buf(), None));
 
     let first_session = session_attachment(
         Arc::clone(&pool),
@@ -402,7 +388,7 @@ async fn test_session_count_not_incremented_on_init_failure() {
     let fake_root = tmp.path().join("not_a_dir");
     std::fs::write(&fake_root, b"I am a file").unwrap();
 
-    let pool = WorkspacePool::new(indexes_dir, Some(Arc::clone(&daemon_db)), None, None);
+    let pool = WorkspacePool::new(indexes_dir, Some(Arc::clone(&daemon_db)));
 
     let result = pool.get_or_init("leak_test_ws", fake_root).await;
     assert!(
@@ -430,7 +416,7 @@ async fn test_get_or_init_rejects_missing_workspace_without_creating_path_or_row
 
     let missing_root = tmp.path().join("missing-workspace");
     let workspace_id = "missing_ws";
-    let pool = WorkspacePool::new(indexes_dir, Some(Arc::clone(&daemon_db)), None, None);
+    let pool = WorkspacePool::new(indexes_dir, Some(Arc::clone(&daemon_db)));
 
     let result = pool.get_or_init(workspace_id, missing_root.clone()).await;
 
@@ -456,12 +442,7 @@ async fn test_session_attachment_detach_starts_watcher_grace() {
     let indexes_dir = temp_indexes_dir();
     let workspace_root = temp_workspace_root();
     let watcher_pool = Arc::new(WatcherPool::new(Duration::from_secs(300)));
-    let pool = Arc::new(WorkspacePool::new(
-        indexes_dir.path().to_path_buf(),
-        None,
-        Some(Arc::clone(&watcher_pool)),
-        None,
-    ));
+    let pool = Arc::new(WorkspacePool::new(indexes_dir.path().to_path_buf(), None));
     let attachment = session_attachment(
         Arc::clone(&pool),
         Some(Arc::clone(&watcher_pool)),
@@ -492,8 +473,6 @@ async fn test_get_does_not_block_on_unrelated_session_count_update() {
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir,
         Some(Arc::clone(&daemon_db)),
-        None,
-        None,
     ));
     let root1 = temp_workspace_root();
     pool.get_or_init("ws1", root1.path().to_path_buf())

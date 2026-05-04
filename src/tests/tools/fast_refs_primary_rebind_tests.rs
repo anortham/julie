@@ -220,8 +220,6 @@ async fn setup_rebound_primary_fast_refs_handler()
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir,
         Some(Arc::clone(&daemon_db)),
-        None,
-        None,
     ));
 
     let original_path = original_root.canonicalize()?;

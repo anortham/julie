@@ -83,8 +83,6 @@ async fn setup_known_reference_search_workspace() -> (tempfile::TempDir, JulieSe
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir,
         Some(Arc::clone(&daemon_db)),
-        None,
-        None,
     ));
 
     let primary_path = primary_root.canonicalize().unwrap();
@@ -306,8 +304,6 @@ async fn test_manage_workspace_list_labels_current_active_and_known_workspaces()
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir,
         Some(Arc::clone(&daemon_db)),
-        None,
-        None,
     ));
 
     let primary_path = primary_root.canonicalize().unwrap();
@@ -420,8 +416,6 @@ async fn test_manage_workspace_list_uses_session_primary_binding_for_current_lab
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir,
         Some(Arc::clone(&daemon_db)),
-        None,
-        None,
     ));
 
     let legacy_primary_path = legacy_primary_root.canonicalize().unwrap();
@@ -513,8 +507,6 @@ async fn test_manage_workspace_list_triggers_roots_resolution_when_primary_missi
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir,
         Some(Arc::clone(&daemon_db)),
-        None,
-        None,
     ));
 
     let startup_path = startup_root.canonicalize().unwrap();
@@ -631,8 +623,6 @@ async fn test_manage_workspace_stats_include_all_known_workspaces() {
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir,
         Some(Arc::clone(&daemon_db)),
-        None,
-        None,
     ));
 
     let primary_path = primary_root.canonicalize().unwrap();
@@ -737,8 +727,6 @@ async fn test_manage_workspace_stats_neutral_gap_returns_registry_summary_withou
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir,
         Some(Arc::clone(&daemon_db)),
-        None,
-        None,
     ));
 
     let primary_path = primary_root.canonicalize().unwrap();
@@ -809,8 +797,6 @@ async fn test_manage_workspace_stats_explicit_target_succeeds_without_bound_prim
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir,
         Some(Arc::clone(&daemon_db)),
-        None,
-        None,
     ));
 
     let startup_path = startup_root.canonicalize().unwrap();
@@ -894,8 +880,6 @@ async fn test_manage_workspace_refresh_by_workspace_id_succeeds_without_bound_pr
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir,
         Some(Arc::clone(&daemon_db)),
-        None,
-        None,
     ));
 
     let startup_path = startup_root.canonicalize().unwrap();
@@ -976,8 +960,6 @@ async fn test_manage_workspace_open_by_workspace_id_succeeds_without_bound_prima
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir,
         Some(Arc::clone(&daemon_db)),
-        None,
-        None,
     ));
 
     let startup_path = startup_root.canonicalize().unwrap();
@@ -1066,8 +1048,6 @@ async fn test_remove_workspace_uses_global_index_dir_shape() {
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir,
         Some(Arc::clone(&daemon_db)),
-        None,
-        None,
     ));
 
     let primary_path = primary_root.canonicalize().unwrap();
@@ -1244,8 +1224,6 @@ async fn test_manage_workspace_open_registers_missing_workspace_and_returns_work
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir,
         Some(Arc::clone(&daemon_db)),
-        None,
-        None,
     ));
 
     let primary_path = primary_root.canonicalize().unwrap();
@@ -1338,8 +1316,6 @@ async fn test_manage_workspace_register_does_not_mutate_primary_binding_during_r
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir,
         Some(Arc::clone(&daemon_db)),
-        None,
-        None,
     ));
 
     let legacy_primary_path = legacy_primary_root.canonicalize().unwrap();
@@ -1430,8 +1406,6 @@ async fn test_manage_workspace_open_by_workspace_id_marks_known_workspace_active
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir,
         Some(Arc::clone(&daemon_db)),
-        None,
-        None,
     ));
 
     let primary_path = primary_root.canonicalize().unwrap();
@@ -1512,8 +1486,6 @@ async fn test_manage_workspace_open_does_not_activate_workspace_when_refresh_fai
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir,
         Some(Arc::clone(&daemon_db)),
-        None,
-        None,
     ));
 
     let primary_path = primary_root.canonicalize().unwrap();
@@ -1583,8 +1555,6 @@ async fn test_manage_workspace_open_is_idempotent_for_active_workspace() {
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir,
         Some(Arc::clone(&daemon_db)),
-        None,
-        None,
     ));
 
     let primary_path = primary_root.canonicalize().unwrap();
@@ -1662,8 +1632,6 @@ async fn test_manage_workspace_open_short_circuits_when_active() {
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir,
         Some(Arc::clone(&daemon_db)),
-        None,
-        None,
     ));
 
     let primary_path = primary_root.canonicalize().unwrap();
@@ -1740,8 +1708,6 @@ async fn test_manage_workspace_open_force_active_workspace_runs_refresh() {
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir,
         Some(Arc::clone(&daemon_db)),
-        None,
-        None,
     ));
 
     let primary_path = primary_root.canonicalize().unwrap();
@@ -1827,8 +1793,6 @@ async fn test_manage_workspace_open_uses_session_primary_binding_over_legacy_wor
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir,
         Some(Arc::clone(&daemon_db)),
-        None,
-        None,
     ));
 
     let primary_path = primary_root.canonicalize().unwrap();
@@ -1917,8 +1881,6 @@ async fn test_manage_workspace_index_rebind_uses_workspace_pool_session_state() 
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir,
         Some(Arc::clone(&daemon_db)),
-        None,
-        None,
     ));
 
     let workspace_a_path = workspace_a_root.canonicalize().unwrap();
@@ -2027,8 +1989,6 @@ async fn test_manage_workspace_index_path_rebind_updates_daemon_stats_for_new_pr
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir,
         Some(Arc::clone(&daemon_db)),
-        None,
-        None,
     ));
 
     let workspace_a_path = workspace_a_root.canonicalize().unwrap();
@@ -2111,8 +2071,6 @@ async fn test_manage_workspace_index_path_succeeds_without_bound_primary_in_defe
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir,
         Some(Arc::clone(&daemon_db)),
-        None,
-        None,
     ));
 
     let startup_path = startup_root.canonicalize().unwrap();
@@ -2189,8 +2147,6 @@ async fn test_manage_workspace_index_path_succeeds_without_bound_primary_in_defe
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir,
         Some(Arc::clone(&daemon_db)),
-        None,
-        None,
     ));
 
     let startup_path = startup_root.canonicalize().unwrap();
@@ -2263,8 +2219,6 @@ async fn test_manage_workspace_open_rebound_primary_still_attaches_pool() {
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir,
         Some(Arc::clone(&daemon_db)),
-        None,
-        None,
     ));
 
     let workspace_a_path = workspace_a_root.canonicalize().unwrap();
@@ -2402,8 +2356,6 @@ async fn test_manage_workspace_list_succeeds_in_deferred_session_without_primary
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir.clone(),
         Some(Arc::clone(&daemon_db)),
-        None,
-        None,
     ));
 
     // Pre-register two workspaces so list has something to show.
@@ -2472,8 +2424,6 @@ async fn test_manage_workspace_remove_succeeds_in_deferred_session_without_prima
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir.clone(),
         Some(Arc::clone(&daemon_db)),
-        None,
-        None,
     ));
 
     let removable_path = removable_root.canonicalize().unwrap();
@@ -2537,8 +2487,6 @@ async fn test_manage_workspace_register_succeeds_in_deferred_session_without_pri
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir.clone(),
         Some(Arc::clone(&daemon_db)),
-        None,
-        None,
     ));
 
     let handler = make_deferred_handler_no_primary(
@@ -2599,8 +2547,6 @@ async fn test_manage_workspace_add_is_rejected_as_unknown_operation() {
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir.clone(),
         Some(Arc::clone(&daemon_db)),
-        None,
-        None,
     ));
 
     let handler = make_deferred_handler_no_primary(
@@ -2660,8 +2606,6 @@ async fn build_primary_bound_handler_for_swap_guard_test()
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir,
         Some(Arc::clone(&daemon_db)),
-        None,
-        None,
     ));
 
     let primary_path = primary_root.canonicalize().unwrap();
@@ -2796,8 +2740,6 @@ async fn test_manage_workspace_register_in_deferred_cwd_session_via_server_handl
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir,
         Some(Arc::clone(&daemon_db)),
-        None,
-        None,
     ));
 
     let startup_path = startup_root.canonicalize().unwrap();

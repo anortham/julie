@@ -450,8 +450,6 @@ async fn test_rewrite_symbol_uses_current_primary_db_after_rebind() -> Result<()
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir,
         Some(Arc::clone(&daemon_db)),
-        None,
-        None,
     ));
 
     let original_path = original_root.canonicalize()?;
@@ -580,8 +578,6 @@ async fn test_rewrite_symbol_keeps_primary_binding_snapshot_across_swap_window()
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir,
         Some(Arc::clone(&daemon_db)),
-        None,
-        None,
     ));
 
     let original_path = original_root.canonicalize()?;

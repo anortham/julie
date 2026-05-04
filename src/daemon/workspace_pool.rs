@@ -6,8 +6,6 @@ use anyhow::{Context, Result};
 use tracing::{info, warn};
 
 use crate::daemon::database::DaemonDatabase;
-use crate::daemon::embedding_service::EmbeddingService;
-use crate::daemon::watcher_pool::WatcherPool;
 use crate::tools::workspace::indexing::state::IndexingRuntimeSnapshot;
 use crate::workspace::JulieWorkspace;
 
@@ -35,15 +33,7 @@ impl WorkspacePool {
     ///
     /// `daemon_db` is the persistent registry database. When `Some`, workspace
     /// state (status, session counts) is persisted across daemon restarts.
-    ///
-    /// `_embedding_service` is accepted temporarily while callers migrate to
-    /// `WorkspaceSessionAttachment`.
-    pub fn new(
-        indexes_dir: PathBuf,
-        daemon_db: Option<Arc<DaemonDatabase>>,
-        _watcher_pool: Option<Arc<WatcherPool>>,
-        _embedding_service: Option<Arc<EmbeddingService>>,
-    ) -> Self {
+    pub fn new(indexes_dir: PathBuf, daemon_db: Option<Arc<DaemonDatabase>>) -> Self {
         Self {
             workspaces: tokio::sync::RwLock::new(HashMap::new()),
             indexes_dir,
@@ -156,12 +146,6 @@ impl WorkspacePool {
             },
         );
         Ok(ws)
-    }
-
-    /// Number of active workspaces in the pool.
-    pub async fn active_count(&self) -> usize {
-        let guard = self.workspaces.read().await;
-        guard.len()
     }
 
     pub fn indexes_dir(&self) -> &std::path::Path {

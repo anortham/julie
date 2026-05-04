@@ -20,7 +20,7 @@ fn temp_workspace_root() -> tempfile::TempDir {
 async fn test_new_with_shared_workspace_creates_handler() {
     let indexes_dir = temp_indexes_dir();
     let workspace_root = temp_workspace_root();
-    let pool = WorkspacePool::new(indexes_dir.path().to_path_buf(), None, None, None);
+    let pool = WorkspacePool::new(indexes_dir.path().to_path_buf(), None);
 
     let ws = pool
         .get_or_init("test_ws", workspace_root.path().to_path_buf())
@@ -67,7 +67,7 @@ async fn handler_construction_uses_startup_hint_for_current_root() {
 async fn test_new_with_shared_workspace_preserves_startup_hint() {
     let indexes_dir = temp_indexes_dir();
     let workspace_root = temp_workspace_root();
-    let pool = WorkspacePool::new(indexes_dir.path().to_path_buf(), None, None, None);
+    let pool = WorkspacePool::new(indexes_dir.path().to_path_buf(), None);
     let startup_hint = WorkspaceStartupHint {
         path: workspace_root.path().to_path_buf(),
         source: Some(WorkspaceStartupSource::Cli),
@@ -104,7 +104,7 @@ async fn test_new_with_shared_workspace_preserves_startup_hint() {
 async fn test_shared_workspace_handler_has_own_metrics() {
     let indexes_dir = temp_indexes_dir();
     let workspace_root = temp_workspace_root();
-    let pool = WorkspacePool::new(indexes_dir.path().to_path_buf(), None, None, None);
+    let pool = WorkspacePool::new(indexes_dir.path().to_path_buf(), None);
 
     let ws = pool
         .get_or_init("test_ws", workspace_root.path().to_path_buf())
@@ -156,7 +156,7 @@ async fn test_shared_workspace_handler_has_own_metrics() {
 async fn test_shared_workspace_handler_shares_database() {
     let indexes_dir = temp_indexes_dir();
     let workspace_root = temp_workspace_root();
-    let pool = WorkspacePool::new(indexes_dir.path().to_path_buf(), None, None, None);
+    let pool = WorkspacePool::new(indexes_dir.path().to_path_buf(), None);
 
     let ws = pool
         .get_or_init("test_ws", workspace_root.path().to_path_buf())
@@ -206,7 +206,7 @@ async fn test_shared_workspace_handler_shares_database() {
 async fn test_handler_is_indexed_when_workspace_has_symbols() {
     let indexes_dir = temp_indexes_dir();
     let workspace_root = temp_workspace_root();
-    let pool = WorkspacePool::new(indexes_dir.path().to_path_buf(), None, None, None);
+    let pool = WorkspacePool::new(indexes_dir.path().to_path_buf(), None);
 
     let ws = pool
         .get_or_init("test_ws", workspace_root.path().to_path_buf())
@@ -293,7 +293,7 @@ async fn test_handler_primary_binding_paths_update_session_lifecycle_phase() {
 async fn test_handler_not_indexed_when_workspace_empty() {
     let indexes_dir = temp_indexes_dir();
     let workspace_root = temp_workspace_root();
-    let pool = WorkspacePool::new(indexes_dir.path().to_path_buf(), None, None, None);
+    let pool = WorkspacePool::new(indexes_dir.path().to_path_buf(), None);
 
     let ws = pool
         .get_or_init("test_ws", workspace_root.path().to_path_buf())
@@ -325,7 +325,7 @@ async fn test_handler_not_indexed_when_workspace_empty() {
 async fn test_active_workspace_set_is_seeded_from_primary() {
     let indexes_dir = temp_indexes_dir();
     let workspace_root = temp_workspace_root();
-    let pool = WorkspacePool::new(indexes_dir.path().to_path_buf(), None, None, None);
+    let pool = WorkspacePool::new(indexes_dir.path().to_path_buf(), None);
 
     let ws = pool
         .get_or_init("primary_ws", workspace_root.path().to_path_buf())
@@ -354,7 +354,7 @@ async fn test_active_workspace_set_is_seeded_from_primary() {
 async fn test_active_workspace_set_tracks_secondary_activation() {
     let indexes_dir = temp_indexes_dir();
     let workspace_root = temp_workspace_root();
-    let pool = WorkspacePool::new(indexes_dir.path().to_path_buf(), None, None, None);
+    let pool = WorkspacePool::new(indexes_dir.path().to_path_buf(), None);
 
     let ws = pool
         .get_or_init("primary_ws", workspace_root.path().to_path_buf())
@@ -426,8 +426,6 @@ async fn test_deferred_primary_init_without_force_populates_pool() {
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir.path().to_path_buf(),
         Some(Arc::clone(&daemon_db)),
-        None,
-        Some(Arc::clone(&embedding_service)),
     ));
     let restart_pending = Arc::new(AtomicBool::new(false));
 
@@ -521,8 +519,6 @@ async fn test_same_root_reinit_reuses_pool_entry_without_double_attach() {
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir.path().to_path_buf(),
         Some(Arc::clone(&daemon_db)),
-        None,
-        Some(Arc::clone(&embedding_service)),
     ));
     let restart_pending = Arc::new(AtomicBool::new(false));
 
@@ -631,8 +627,6 @@ async fn test_session_attachment_service_attaches_workspace_once_per_session() {
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir.path().to_path_buf(),
         Some(Arc::clone(&daemon_db)),
-        Some(Arc::clone(&watcher_pool)),
-        None,
     ));
     let session_workspace = Arc::new(StdRwLock::new(SessionWorkspaceState::new(
         WorkspaceStartupHint {
@@ -710,8 +704,6 @@ async fn test_session_attachment_detach_decrements_session_count_and_watcher_ref
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir.path().to_path_buf(),
         Some(Arc::clone(&daemon_db)),
-        Some(Arc::clone(&watcher_pool)),
-        None,
     ));
     let session_workspace = Arc::new(StdRwLock::new(SessionWorkspaceState::new(
         WorkspaceStartupHint {

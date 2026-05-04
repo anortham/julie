@@ -751,8 +751,6 @@ async fn test_check_if_indexing_needed_prefers_shared_anchor_over_local_julie_tr
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir.clone(),
         Some(Arc::clone(&daemon_db)),
-        None,
-        None,
     ));
 
     let workspace_path = workspace_root.canonicalize()?;
@@ -835,8 +833,6 @@ async fn test_check_if_indexing_needed_uses_rebound_current_primary_snapshot() -
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir,
         Some(Arc::clone(&daemon_db)),
-        None,
-        None,
     ));
 
     let original_path = original_root.canonicalize()?;
@@ -948,8 +944,6 @@ async fn test_current_primary_index_route_uses_rebound_current_primary_snapshot(
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir.clone(),
         Some(Arc::clone(&daemon_db)),
-        None,
-        None,
     ));
 
     let loaded_path = loaded_root.canonicalize()?;

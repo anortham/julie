@@ -303,7 +303,7 @@ mod tests {
         let ws_root = tempfile::tempdir().expect("tempdir for workspace");
         std::fs::create_dir_all(ws_root.path().join(".julie")).expect("create .julie");
 
-        let pool = WorkspacePool::new(indexes_tmp.path().to_path_buf(), None, None, None);
+        let pool = WorkspacePool::new(indexes_tmp.path().to_path_buf(), None);
 
         // First session: get_or_init
         let ws1 = pool
@@ -325,11 +325,10 @@ mod tests {
             "Both sessions should share the same database Arc"
         );
 
-        // Pool should report exactly 1 active workspace (not 2).
-        assert_eq!(
-            pool.active_count().await,
-            1,
-            "Pool should have 1 workspace, not 2"
+        let cached = pool.get("shared_ws").await.expect("shared_ws cached");
+        assert!(
+            Arc::ptr_eq(&ws1, &cached),
+            "pool cache should keep the shared workspace instance"
         );
     }
 
@@ -345,8 +344,6 @@ mod tests {
         let pool = Arc::new(WorkspacePool::new(
             indexes_dir.clone(),
             Some(Arc::clone(&daemon_db)),
-            Some(Arc::clone(&watcher_pool)),
-            None,
         ));
 
         let ws_root = tempfile::tempdir().expect("tempdir for workspace");
@@ -681,8 +678,6 @@ mod tests {
         let pool = Arc::new(WorkspacePool::new(
             indexes_dir,
             Some(Arc::clone(&daemon_db)),
-            None, // no watcher pool for this test
-            None, // no embedding service for this test
         ));
 
         // Step 3: Two sessions attach to the same workspace

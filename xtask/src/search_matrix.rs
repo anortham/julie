@@ -204,12 +204,7 @@ async fn run_baseline_async(
         .profiles
         .get(profile)
         .ok_or_else(|| anyhow!("unknown search-matrix profile `{profile}`"))?;
-    let pool = Arc::new(WorkspacePool::new(
-        daemon_paths.indexes_dir(),
-        None,
-        None,
-        None,
-    ));
+    let pool = Arc::new(WorkspacePool::new(daemon_paths.indexes_dir(), None));
 
     let mut executions = Vec::new();
     let mut skipped_repos = Vec::new();

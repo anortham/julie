@@ -792,8 +792,6 @@ fn index_ready_repo(
         let pool = Arc::new(WorkspacePool::new(
             indexes_dir,
             Some(Arc::clone(&daemon_db)),
-            None,
-            None,
         ));
         let handler = JulieServerHandler::new_deferred_daemon_startup_hint(
             julie::workspace::startup_hint::WorkspaceStartupHint {

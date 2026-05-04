@@ -44,8 +44,6 @@ async fn test_primary_force_refresh_uses_full_index_path() {
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir,
         Some(Arc::clone(&daemon_db)),
-        None,
-        None,
     ));
 
     let primary_path = primary_root.canonicalize().unwrap();
@@ -122,8 +120,6 @@ async fn test_manage_workspace_refresh_force_uses_rebound_session_primary_root()
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir,
         Some(Arc::clone(&daemon_db)),
-        None,
-        None,
     ));
 
     let original_primary_path = original_primary_root.canonicalize().unwrap();
@@ -217,8 +213,6 @@ async fn test_daemon_rebound_primary_storage_anchor_keeps_shared_index_root() {
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir.clone(),
         Some(Arc::clone(&daemon_db)),
-        None,
-        None,
     ));
 
     let startup_path = startup_root.canonicalize().unwrap();
@@ -276,8 +270,6 @@ async fn test_roots_list_error_falls_back_to_startup_hint() {
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir,
         Some(Arc::clone(&daemon_db)),
-        None,
-        None,
     ));
 
     let startup_path = startup_root.canonicalize().unwrap();
@@ -379,8 +371,6 @@ async fn test_manage_workspace_refresh_force_reference_keeps_reference_snapshot_
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir,
         Some(Arc::clone(&daemon_db)),
-        None,
-        None,
     ));
 
     let loaded_primary_path = loaded_primary_root.canonicalize().unwrap();
@@ -490,8 +480,6 @@ async fn test_workspace_index_route_for_reference_keeps_reference_storage_under_
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir.clone(),
         Some(Arc::clone(&daemon_db)),
-        None,
-        None,
     ));
 
     let loaded_primary_path = loaded_primary_root.canonicalize().unwrap();
@@ -575,8 +563,6 @@ async fn test_manage_workspace_index_non_force_uses_rebound_session_primary_root
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir,
         Some(Arc::clone(&daemon_db)),
-        None,
-        None,
     ));
 
     let loaded_primary_path = loaded_primary_root.canonicalize().unwrap();
@@ -727,8 +713,6 @@ async fn test_manage_workspace_refresh_non_force_uses_rebound_session_primary_ro
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir,
         Some(Arc::clone(&daemon_db)),
-        None,
-        None,
     ));
 
     let loaded_primary_path = loaded_primary_root.canonicalize().unwrap();

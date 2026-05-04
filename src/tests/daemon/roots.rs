@@ -132,8 +132,6 @@ async fn test_initialized_weak_cwd_eagerly_probes_and_binds_roots() -> Result<()
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir.path().to_path_buf(),
         Some(Arc::clone(&daemon_db)),
-        None,
-        Some(Arc::clone(&embedding_service)),
     ));
     let restart_pending = Arc::new(AtomicBool::new(false));
 
@@ -264,8 +262,6 @@ async fn test_manage_workspace_index_uses_roots_over_cwd_hint() -> Result<()> {
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir.path().to_path_buf(),
         Some(Arc::clone(&daemon_db)),
-        None,
-        Some(Arc::clone(&embedding_service)),
     ));
     let restart_pending = Arc::new(AtomicBool::new(false));
 
@@ -404,8 +400,6 @@ async fn test_roots_attach_failure_does_not_leave_stuck_primary_binding() -> Res
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir.path().to_path_buf(),
         Some(Arc::clone(&daemon_db)),
-        None,
-        Some(Arc::clone(&embedding_service)),
     ));
     let restart_pending = Arc::new(AtomicBool::new(false));
 
@@ -518,8 +512,6 @@ async fn test_first_request_roots_failure_falls_back_to_startup_hint_without_ini
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir.path().to_path_buf(),
         Some(Arc::clone(&daemon_db)),
-        None,
-        Some(Arc::clone(&embedding_service)),
     ));
     let restart_pending = Arc::new(AtomicBool::new(false));
 
@@ -623,8 +615,6 @@ async fn test_same_root_request_time_attach_does_not_leak_session_count() -> Res
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir.path().to_path_buf(),
         Some(Arc::clone(&daemon_db)),
-        None,
-        Some(Arc::clone(&embedding_service)),
     ));
     let restart_pending = Arc::new(AtomicBool::new(false));
 
@@ -716,8 +706,6 @@ async fn test_roots_list_changed_marks_session_dirty_until_next_request() -> Res
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir.path().to_path_buf(),
         Some(Arc::clone(&daemon_db)),
-        None,
-        Some(Arc::clone(&embedding_service)),
     ));
     let restart_pending = Arc::new(AtomicBool::new(false));
 
@@ -886,8 +874,6 @@ async fn test_roots_list_changed_retries_after_failed_refresh() -> Result<()> {
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir.path().to_path_buf(),
         Some(Arc::clone(&daemon_db)),
-        None,
-        Some(Arc::clone(&embedding_service)),
     ));
     let restart_pending = Arc::new(AtomicBool::new(false));
 
@@ -1064,8 +1050,6 @@ async fn test_roots_list_changed_roots_list_failure_does_not_serve_stale_primary
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir.path().to_path_buf(),
         Some(Arc::clone(&daemon_db)),
-        None,
-        Some(Arc::clone(&embedding_service)),
     ));
     let restart_pending = Arc::new(AtomicBool::new(false));
 
@@ -1211,8 +1195,6 @@ async fn test_roots_list_changed_empty_refresh_reconciles_to_startup_hint() -> R
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir.path().to_path_buf(),
         Some(Arc::clone(&daemon_db)),
-        None,
-        Some(Arc::clone(&embedding_service)),
     ));
     let restart_pending = Arc::new(AtomicBool::new(false));
 
@@ -1354,8 +1336,6 @@ async fn test_roots_list_changed_startup_hint_fallback_preserves_active_secondar
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir.path().to_path_buf(),
         Some(Arc::clone(&daemon_db)),
-        None,
-        Some(Arc::clone(&embedding_service)),
     ));
     let restart_pending = Arc::new(AtomicBool::new(false));
 
@@ -1487,8 +1467,6 @@ async fn test_secondary_scoped_request_does_not_consume_dirty_roots() -> Result<
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir.path().to_path_buf(),
         Some(Arc::clone(&daemon_db)),
-        None,
-        Some(Arc::clone(&embedding_service)),
     ));
     let restart_pending = Arc::new(AtomicBool::new(false));
 
@@ -1656,8 +1634,6 @@ async fn test_fast_search_reference_definitions_first_request_succeeds_without_p
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir.path().to_path_buf(),
         Some(Arc::clone(&daemon_db)),
-        None,
-        Some(Arc::clone(&embedding_service)),
     ));
     let restart_pending = Arc::new(AtomicBool::new(false));
 
@@ -1803,8 +1779,6 @@ async fn test_fast_search_startup_workspace_id_first_request_succeeds_without_pr
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir.path().to_path_buf(),
         Some(Arc::clone(&daemon_db)),
-        None,
-        Some(Arc::clone(&embedding_service)),
     ));
     let restart_pending = Arc::new(AtomicBool::new(false));
 
@@ -1951,8 +1925,6 @@ async fn test_manage_workspace_stats_secondary_target_does_not_consume_dirty_roo
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir.path().to_path_buf(),
         Some(Arc::clone(&daemon_db)),
-        None,
-        Some(Arc::clone(&embedding_service)),
     ));
     let restart_pending = Arc::new(AtomicBool::new(false));
 
@@ -2112,8 +2084,6 @@ async fn test_roots_list_changed_unbound_empty_refresh_settles_dirty_state() -> 
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir.path().to_path_buf(),
         Some(Arc::clone(&daemon_db)),
-        None,
-        Some(Arc::clone(&embedding_service)),
     ));
     let restart_pending = Arc::new(AtomicBool::new(false));
 
@@ -2249,8 +2219,6 @@ async fn test_roots_list_changed_explicit_startup_does_not_rebind() -> Result<()
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir.path().to_path_buf(),
         Some(Arc::clone(&daemon_db)),
-        None,
-        Some(Arc::clone(&embedding_service)),
     ));
     let restart_pending = Arc::new(AtomicBool::new(false));
 
@@ -2366,8 +2334,6 @@ async fn test_roots_list_changed_env_startup_does_not_rebind() -> Result<()> {
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir.path().to_path_buf(),
         Some(Arc::clone(&daemon_db)),
-        None,
-        Some(Arc::clone(&embedding_service)),
     ));
     let restart_pending = Arc::new(AtomicBool::new(false));
 
@@ -2479,8 +2445,6 @@ async fn test_roots_list_changed_resolves_deferred_auto_index() -> Result<()> {
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir.path().to_path_buf(),
         Some(Arc::clone(&daemon_db)),
-        None,
-        Some(Arc::clone(&embedding_service)),
     ));
     let restart_pending = Arc::new(AtomicBool::new(false));
 

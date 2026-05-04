@@ -175,8 +175,6 @@ async fn state_with_projection_lag() -> (DashboardState, tempfile::TempDir, Stri
     let pool = Arc::new(WorkspacePool::new(
         temp_dir.path().join("indexes"),
         Some(Arc::clone(&daemon_db)),
-        None,
-        None,
     ));
     let workspace = pool
         .get_or_init(&workspace_id, workspace_root.clone())
@@ -258,8 +256,6 @@ async fn state_with_signal_workspace() -> (DashboardState, tempfile::TempDir, St
     let pool = Arc::new(WorkspacePool::new(
         temp_dir.path().join("indexes"),
         Some(Arc::clone(&daemon_db)),
-        None,
-        None,
     ));
     let workspace = pool
         .get_or_init(&workspace_id, workspace_root.clone())
@@ -345,8 +341,6 @@ async fn state_with_search_workspace(
     let pool = Arc::new(WorkspacePool::new(
         temp_dir.path().join("indexes"),
         Some(Arc::clone(&daemon_db)),
-        None,
-        None,
     ));
     let workspace = pool
         .get_or_init(&workspace_id, workspace_root.clone())
@@ -998,8 +992,6 @@ async fn test_status_live_exposes_indexing_health_snapshot() {
     let pool = Arc::new(WorkspacePool::new(
         temp_dir.path().join("indexes"),
         Some(Arc::clone(&daemon_db)),
-        None,
-        None,
     ));
     let workspace = pool
         .get_or_init(&workspace_id, workspace_root.clone())

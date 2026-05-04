@@ -1099,8 +1099,6 @@ async fn test_manage_workspace_health_uses_rebound_session_primary() {
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir.clone(),
         Some(Arc::clone(&daemon_db)),
-        None,
-        None,
     ));
 
     let loaded_primary_path = loaded_primary_root.canonicalize().unwrap();
@@ -1249,8 +1247,6 @@ async fn test_manage_workspace_health_keeps_primary_snapshot_after_completed_swa
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir.clone(),
         Some(Arc::clone(&daemon_db)),
-        None,
-        None,
     ));
 
     let original_path = original_root.canonicalize().unwrap();
@@ -1399,8 +1395,6 @@ async fn test_manage_workspace_health_detailed_uses_rebound_session_primary() {
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir.clone(),
         Some(Arc::clone(&daemon_db)),
-        None,
-        None,
     ));
 
     let loaded_primary_path = loaded_primary_root.canonicalize().unwrap();
@@ -1716,8 +1710,6 @@ async fn test_manage_workspace_health_triggers_roots_resolution_when_primary_mis
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir,
         Some(Arc::clone(&daemon_db)),
-        None,
-        None,
     ));
 
     let startup_path = startup_root.canonicalize().unwrap();

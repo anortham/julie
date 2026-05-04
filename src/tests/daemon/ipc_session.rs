@@ -72,8 +72,6 @@ mod tests {
         let pool = Arc::new(WorkspacePool::new(
             indexes_dir.path().to_path_buf(),
             Some(Arc::clone(&daemon_db)),
-            None,
-            Some(Arc::clone(&embedding_service)),
         ));
 
         let workspace = pool
@@ -143,8 +141,6 @@ mod tests {
         let pool = Arc::new(WorkspacePool::new(
             indexes_dir.path().to_path_buf(),
             Some(daemon_db_for_pool),
-            None,
-            Some(Arc::clone(&embedding_service)),
         ));
 
         pool.get_or_init(&primary_id, primary_path.clone())
@@ -235,8 +231,6 @@ mod tests {
         let pool = Arc::new(WorkspacePool::new(
             indexes_dir.path().to_path_buf(),
             Some(Arc::clone(&daemon_db)),
-            None,
-            Some(Arc::clone(&embedding_service)),
         ));
 
         let (client_stream, server_stream) = UnixStream::pair().expect("stream pair");
@@ -341,8 +335,6 @@ mod tests {
         let pool = Arc::new(WorkspacePool::new(
             indexes_dir.path().to_path_buf(),
             Some(Arc::clone(&daemon_db)),
-            None,
-            Some(Arc::clone(&embedding_service)),
         ));
 
         pool.get_or_init(&primary_id, primary_path.clone())
@@ -442,8 +434,6 @@ mod tests {
         let pool = Arc::new(WorkspacePool::new(
             indexes_dir.path().to_path_buf(),
             Some(Arc::clone(&daemon_db)),
-            None,
-            Some(Arc::clone(&embedding_service)),
         ));
 
         let session_workspace = Arc::new(StdRwLock::new(SessionWorkspaceState::new(
@@ -527,8 +517,6 @@ mod tests {
         let pool = Arc::new(WorkspacePool::new(
             indexes_dir.path().to_path_buf(),
             Some(Arc::clone(&daemon_db)),
-            None,
-            Some(Arc::clone(&embedding_service)),
         ));
 
         let pooled_a_for_handler_one = pool
@@ -656,8 +644,6 @@ mod tests {
         let pool = Arc::new(WorkspacePool::new(
             indexes_dir.path().to_path_buf(),
             Some(Arc::clone(&daemon_db)),
-            None,
-            Some(Arc::clone(&embedding_service)),
         ));
 
         let pooled_a = pool
@@ -757,8 +743,6 @@ mod tests {
         let pool = Arc::new(WorkspacePool::new(
             indexes_dir.path().to_path_buf(),
             Some(Arc::clone(&daemon_db)),
-            None,
-            Some(Arc::clone(&embedding_service)),
         ));
 
         let pooled_a = pool
@@ -865,8 +849,6 @@ mod tests {
         let pool = Arc::new(WorkspacePool::new(
             indexes_dir.path().to_path_buf(),
             Some(Arc::clone(&daemon_db)),
-            None,
-            Some(Arc::clone(&embedding_service)),
         ));
 
         let pooled_a = pool

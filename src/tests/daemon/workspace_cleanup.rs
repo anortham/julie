@@ -35,8 +35,6 @@ mod tests {
         let pool = Arc::new(WorkspacePool::new(
             indexes_dir,
             Some(Arc::clone(&daemon_db)),
-            None,
-            None,
         ));
 
         let primary_path = primary_root.canonicalize().unwrap();

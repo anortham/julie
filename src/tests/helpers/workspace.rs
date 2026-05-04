@@ -61,8 +61,6 @@ pub async fn create_isolated_storage_handler(
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir,
         Some(Arc::clone(&daemon_db)),
-        None,
-        None,
     ));
 
     let mut handler = JulieServerHandler::new(workspace_root).await?;

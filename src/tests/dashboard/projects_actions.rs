@@ -36,8 +36,6 @@ fn action_ready_state() -> (
     let workspace_pool = Arc::new(WorkspacePool::new(
         temp_dir.path().join("indexes"),
         Some(Arc::clone(&daemon_db)),
-        Some(Arc::clone(&watcher_pool)),
-        None,
     ));
     let sessions = Arc::new(SessionTracker::new());
     let state = DashboardState::new_with_watcher_pool(

@@ -333,8 +333,6 @@ fn processPayment() {
         let pool = Arc::new(WorkspacePool::new(
             indexes_dir,
             Some(Arc::clone(&daemon_db)),
-            None,
-            None,
         ));
 
         let original_path = original_root.canonicalize()?;
@@ -454,8 +452,6 @@ fn processPayment() {
         let pool = Arc::new(WorkspacePool::new(
             indexes_dir,
             Some(Arc::clone(&daemon_db)),
-            None,
-            None,
         ));
 
         let original_path = original_root.canonicalize()?;
@@ -776,8 +772,6 @@ fn processPayment() {
         let pool = Arc::new(WorkspacePool::new(
             indexes_dir,
             Some(Arc::clone(&daemon_db)),
-            None,
-            None,
         ));
 
         let original_path = original_root.canonicalize()?;
@@ -1674,8 +1668,6 @@ fn test_authenticate_user() {
         let pool = Arc::new(WorkspacePool::new(
             indexes_dir,
             Some(Arc::clone(&daemon_db)),
-            None,
-            None,
         ));
 
         let startup_path = startup_root.canonicalize()?;

@@ -361,12 +361,7 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
     let watcher_pool_for_handlers = Arc::clone(&watcher_pool);
     let watcher_pool_for_cleanup = Arc::clone(&watcher_pool);
 
-    let pool = Arc::new(WorkspacePool::new(
-        paths.indexes_dir(),
-        daemon_db.clone(),
-        Some(watcher_pool),
-        Some(Arc::clone(&embedding_service)),
-    ));
+    let pool = Arc::new(WorkspacePool::new(paths.indexes_dir(), daemon_db.clone()));
     let cleanup_pool = Arc::clone(&pool);
     let sessions = Arc::new(SessionTracker::new());
 

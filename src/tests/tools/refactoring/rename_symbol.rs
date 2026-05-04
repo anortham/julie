@@ -436,8 +436,6 @@ async fn test_rename_symbol_primary_resolves_rebound_current_primary_root() -> R
     let pool = Arc::new(WorkspacePool::new(
         indexes_dir,
         Some(Arc::clone(&daemon_db)),
-        None,
-        None,
     ));
 
     let original_path = original_root.canonicalize()?;

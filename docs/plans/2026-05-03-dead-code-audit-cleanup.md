@@ -118,6 +118,9 @@ Do not rely on zero reference score as proof. Dynamic entry points, trait hooks,
 - Adapter/IPC candidates from the baseline were re-checked after HTTP stdio parity. `forward_streams`, `ReadyOutcome`, `ForwardOutcome`, `BranchOutcome`, `forward_bytes`, `connect_and_handshake`, `read_daemon_ready`, and `build_ipc_header` are keep or graph-gap cases while legacy IPC remains a migration fallback.
 - `flag_restart_pending_for_restart` was a real lifecycle test fossil after `DaemonLifecycleController::mark_restart_pending` became the runtime owner. The remaining shutdown-phase invariant moved to a controller test before the helper and old state tests were deleted.
 - `store_phase` was merged into the private lifecycle publish helper, and state-file write helpers were narrowed to `pub(crate)` for daemon state tests.
+- `WorkspacePool::new` no longer accepts migration-only watcher or embedding arguments. Session lifecycle ownership lives in `WorkspaceSessionAttachment`; the pool now only owns shared workspace instances and daemon registry persistence.
+- `WorkspacePool::active_count` was a test fossil. Tests now assert observable cache behavior through `get` and `get_or_init` instead of exposing the pool map length.
+- Julie graph evidence had two useful misses during this pass. `fast_refs(WorkspacePool::active_count)` initially conflated same-named methods, and `blast_radius(src/daemon/workspace_pool.rs)` returned extractor-heavy unrelated callers. Raw `rg` and focused tests were the deciding evidence.
 
 ### Task 5: Product Tool Readiness Decision
 
