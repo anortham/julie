@@ -47,6 +47,14 @@ fn escape_sql_like(s: &str) -> String {
     out
 }
 
+fn prefix_upper_bound(prefix: &str) -> String {
+    let mut bytes = prefix.as_bytes().to_vec();
+    if let Some(last) = bytes.last_mut() {
+        *last = last.saturating_add(1);
+    }
+    String::from_utf8(bytes).unwrap_or_else(|_| format!("{prefix}\u{10ffff}"))
+}
+
 /// Build WHERE clause that matches both exact names AND qualified names (e.g. Type::method).
 /// Identifiers are stored as qualified calls like "CodeTokenizer::new" but agents search
 /// for just "CodeTokenizer". This generates:
@@ -287,7 +295,7 @@ impl SymbolDatabase {
         let fixed_bind_count = kinds.len() + exclusion_bind_count;
         let max_exact_names_per_chunk = MAX_BIND_PARAMS.saturating_sub(fixed_bind_count).max(1);
         let max_prefix_names_per_chunk =
-            ((MAX_BIND_PARAMS.saturating_sub(fixed_bind_count)) / 2).max(1);
+            ((MAX_BIND_PARAMS.saturating_sub(fixed_bind_count)) / 4).max(1);
         let max_names_per_chunk = max_exact_names_per_chunk.min(max_prefix_names_per_chunk);
         let mut results = Vec::new();
         let mut seen = HashSet::new();
@@ -366,13 +374,20 @@ impl SymbolDatabase {
             }
 
             // Query 2: qualified-prefix lookup (name::... and name....).
+            // Use range probes instead of LIKE so SQLite can bound each
+            // prefix with the name-first composite index.
             let mut prefix_conditions = Vec::with_capacity(chunk_vec.len() * 2);
             let mut prefix_params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
             for name in &chunk_vec {
-                prefix_conditions.push("name LIKE ? ESCAPE '\\'".to_string());
-                prefix_params.push(Box::new(format!("{}::%", escape_sql_like(name))));
-                prefix_conditions.push("name LIKE ? ESCAPE '\\'".to_string());
-                prefix_params.push(Box::new(format!("{}.%", escape_sql_like(name))));
+                let colon_prefix = format!("{name}::");
+                prefix_conditions.push("(name >= ? AND name < ?)".to_string());
+                prefix_params.push(Box::new(colon_prefix.clone()));
+                prefix_params.push(Box::new(prefix_upper_bound(&colon_prefix)));
+
+                let dot_prefix = format!("{name}.");
+                prefix_conditions.push("(name >= ? AND name < ?)".to_string());
+                prefix_params.push(Box::new(dot_prefix.clone()));
+                prefix_params.push(Box::new(prefix_upper_bound(&dot_prefix)));
             }
 
             let prefix_exclusion_clause = exclusion_placeholders
