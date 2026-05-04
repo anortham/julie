@@ -24,17 +24,32 @@ fn test_migration_013_tool_calls_has_expected_columns() {
     let db_path = tmp.path().join("test.db");
     let db = SymbolDatabase::new(&db_path).unwrap();
 
-    let col_count: i32 = db
-        .conn
-        .query_row(
-            "SELECT COUNT(*) FROM pragma_table_info('tool_calls')",
-            [],
-            |row| row.get(0),
-        )
-        .unwrap();
+    let columns: Vec<String> = {
+        let mut stmt = db
+            .conn
+            .prepare("SELECT name FROM pragma_table_info('tool_calls') ORDER BY cid")
+            .unwrap();
+        stmt.query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap()
+    };
     assert_eq!(
-        col_count, 10,
-        "tool_calls should have 10 columns (id + 9 data columns)"
+        columns,
+        vec![
+            "id",
+            "session_id",
+            "timestamp",
+            "tool_name",
+            "duration_ms",
+            "result_count",
+            "source_bytes",
+            "input_bytes",
+            "output_bytes",
+            "success",
+            "metadata",
+        ],
+        "tool_calls columns should include input_bytes for request-size telemetry"
     );
 }
 
