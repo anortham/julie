@@ -1,20 +1,46 @@
 use crate::daemon::watcher_pool::WatcherPool;
+use crate::tools::workspace::indexing::state::IndexingRuntimeState;
+use crate::workspace::{JulieWorkspace, WorkspaceConfig};
+use std::path::PathBuf;
 use std::time::Duration;
+
+fn workspace_without_watcher(root: impl Into<PathBuf>) -> JulieWorkspace {
+    let root = root.into();
+    JulieWorkspace {
+        julie_dir: root.join(".julie"),
+        root,
+        db: None,
+        search_index: None,
+        watcher: None,
+        embedding_provider: None,
+        embedding_runtime_status: None,
+        config: WorkspaceConfig::default(),
+        index_root_override: None,
+        indexing_runtime: IndexingRuntimeState::shared(),
+    }
+}
+
+async fn attach_without_watcher(pool: &WatcherPool, workspace_id: &str) {
+    let workspace = workspace_without_watcher(std::env::temp_dir().join(workspace_id));
+    pool.attach(workspace_id, &workspace, None)
+        .await
+        .expect("attach without db/search should still update ref count");
+}
 
 #[tokio::test]
 async fn test_watcher_pool_attach_detach_ref_count() {
     let pool = WatcherPool::new(Duration::from_secs(300));
 
-    pool.increment_ref("ws1").await;
+    attach_without_watcher(&pool, "ws1").await;
     assert_eq!(pool.ref_count("ws1").await, 1);
 
-    pool.increment_ref("ws1").await;
+    attach_without_watcher(&pool, "ws1").await;
     assert_eq!(pool.ref_count("ws1").await, 2);
 
-    pool.decrement_ref("ws1").await;
+    pool.detach("ws1").await;
     assert_eq!(pool.ref_count("ws1").await, 1);
 
-    pool.decrement_ref("ws1").await;
+    pool.detach("ws1").await;
     assert_eq!(pool.ref_count("ws1").await, 0);
     // Grace deadline should now be set
     assert!(pool.has_grace_deadline("ws1").await);
@@ -23,12 +49,12 @@ async fn test_watcher_pool_attach_detach_ref_count() {
 #[tokio::test]
 async fn test_watcher_pool_reattach_cancels_grace() {
     let pool = WatcherPool::new(Duration::from_secs(300));
-    pool.increment_ref("ws1").await;
-    pool.decrement_ref("ws1").await;
+    attach_without_watcher(&pool, "ws1").await;
+    pool.detach("ws1").await;
     assert!(pool.has_grace_deadline("ws1").await);
 
     // Reattach should cancel the grace deadline
-    pool.increment_ref("ws1").await;
+    attach_without_watcher(&pool, "ws1").await;
     assert!(!pool.has_grace_deadline("ws1").await);
     assert_eq!(pool.ref_count("ws1").await, 1);
 }
@@ -37,8 +63,8 @@ async fn test_watcher_pool_reattach_cancels_grace() {
 async fn test_reaper_removes_expired_entries() {
     // Use a very short grace period for testing
     let pool = WatcherPool::new(Duration::from_millis(50));
-    pool.increment_ref("ws1").await;
-    pool.decrement_ref("ws1").await;
+    attach_without_watcher(&pool, "ws1").await;
+    pool.detach("ws1").await;
     assert!(pool.has_grace_deadline("ws1").await);
 
     // Wait for grace period to expire
@@ -52,21 +78,21 @@ async fn test_reaper_removes_expired_entries() {
 }
 
 #[tokio::test]
-async fn test_decrement_ref_below_zero_clamps() {
+async fn test_detach_below_zero_clamps() {
     let pool = WatcherPool::new(Duration::from_secs(300));
-    pool.increment_ref("ws1").await;
-    pool.decrement_ref("ws1").await;
-    // Extra decrement should not underflow
-    pool.decrement_ref("ws1").await;
+    attach_without_watcher(&pool, "ws1").await;
+    pool.detach("ws1").await;
+    // Extra detach should not underflow
+    pool.detach("ws1").await;
     assert_eq!(pool.ref_count("ws1").await, 0);
 }
 
 #[tokio::test]
 async fn test_reaper_leaves_entries_within_grace() {
     let pool = WatcherPool::new(Duration::from_secs(300));
-    pool.increment_ref("ws1").await;
-    pool.decrement_ref("ws1").await;
-    // Don't wait — grace period hasn't expired yet
+    attach_without_watcher(&pool, "ws1").await;
+    pool.detach("ws1").await;
+    // Don't wait, grace period hasn't expired yet
     let reaped = pool.reap_expired().await;
     assert!(reaped.is_empty());
     // Entry should still be there
@@ -83,19 +109,17 @@ async fn test_update_all_provider_empty_pool() {
     assert_eq!(count, 0, "empty pool should return 0 watchers updated");
 }
 
-/// `update_all_provider` should also be a no-op when entries exist via
-/// `increment_ref` (which doesn't create the inner `IncrementalIndexer`).
-/// The actual file watcher only gets created on `attach`, which requires
-/// a real workspace + db. The plain `increment_ref` path leaves
-/// `entry.watcher == None`, so update_all_provider should skip those.
+/// `update_all_provider` should also be a no-op when entries exist without an
+/// inner `IncrementalIndexer`.
 #[tokio::test]
 async fn test_update_all_provider_skips_entries_without_watcher() {
     let pool = WatcherPool::new(Duration::from_secs(300));
-    pool.increment_ref("ws1").await;
-    pool.increment_ref("ws2").await;
+    attach_without_watcher(&pool, "ws1").await;
+    attach_without_watcher(&pool, "ws2").await;
 
-    // Both entries exist but neither has an IncrementalIndexer (no attach
-    // was called). update_all_provider should iterate cleanly and return 0.
+    // Both entries exist but neither has an IncrementalIndexer because the
+    // dummy workspaces have no db/search index. update_all_provider should
+    // iterate cleanly and return 0.
     let count = pool.update_all_provider(None).await;
     assert_eq!(
         count, 0,

@@ -22,7 +22,7 @@
   - Own attach/detach semantics for sessions, active workspace IDs, and loaded workspace binding transitions.
   - Coordinate `WorkspacePool` runtime refs with `WatcherPool` refs without making either type know command policy.
 - Modify: `src/daemon/watcher_pool.rs`
-  - Keep watcher ownership here: `increment_ref`, `decrement_ref`, `attach`, `detach`, `reap_expired`, `pause_workspace`, and `resume_workspace`.
+  - Keep watcher ownership here: `attach`, `detach`, `reap_expired`, `pause_workspace`, and `resume_workspace`.
   - Do not move registry cleanup or primary workspace switching policy into watcher code.
 - Modify: `src/tools/workspace/commands/registry/open.rs`
   - Route registry lookup, auto-prune, runtime init, and session attachment through the split services.

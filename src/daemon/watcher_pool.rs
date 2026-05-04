@@ -51,50 +51,6 @@ impl WatcherPool {
         }
     }
 
-    /// Increment the reference count for a workspace.
-    ///
-    /// Creates a new entry if none exists. Cancels any pending grace deadline.
-    pub async fn increment_ref(&self, workspace_id: &str) {
-        let mut guard = self.entries.write().await;
-        let entry = guard
-            .entry(workspace_id.to_string())
-            .or_insert(WatcherEntry {
-                watcher: None,
-                ref_count: 0,
-                grace_deadline: None,
-            });
-        entry.ref_count += 1;
-        entry.grace_deadline = None; // cancel any pending grace period
-        info!(
-            workspace_id,
-            ref_count = entry.ref_count,
-            "Watcher ref_count incremented"
-        );
-    }
-
-    /// Decrement the reference count for a workspace.
-    ///
-    /// If `ref_count` hits 0, a grace period deadline is set. The entry is
-    /// not removed immediately — the reaper handles cleanup after the deadline.
-    /// Clamped at 0: extra decrements are safe no-ops.
-    pub async fn decrement_ref(&self, workspace_id: &str) {
-        let mut guard = self.entries.write().await;
-        if let Some(entry) = guard.get_mut(workspace_id) {
-            entry.ref_count = entry.ref_count.saturating_sub(1);
-            if entry.ref_count == 0 {
-                entry.grace_deadline = Some(Instant::now() + self.grace_period);
-                info!(workspace_id, "Watcher grace period started");
-            } else {
-                info!(
-                    workspace_id,
-                    ref_count = entry.ref_count,
-                    "Watcher ref_count decremented"
-                );
-            }
-        }
-        // If the entry doesn't exist, the decrement is a no-op.
-    }
-
     /// Returns the current reference count for a workspace (0 if not tracked).
     pub async fn ref_count(&self, workspace_id: &str) -> usize {
         let guard = self.entries.read().await;
@@ -184,7 +140,21 @@ impl WatcherPool {
 
     /// Detach a session. Starts the grace period when ref_count hits 0.
     pub async fn detach(&self, workspace_id: &str) {
-        self.decrement_ref(workspace_id).await;
+        let mut guard = self.entries.write().await;
+        if let Some(entry) = guard.get_mut(workspace_id) {
+            entry.ref_count = entry.ref_count.saturating_sub(1);
+            if entry.ref_count == 0 {
+                entry.grace_deadline = Some(Instant::now() + self.grace_period);
+                info!(workspace_id, "Watcher grace period started");
+            } else {
+                info!(
+                    workspace_id,
+                    ref_count = entry.ref_count,
+                    "Watcher ref_count decremented"
+                );
+            }
+        }
+        // If the entry doesn't exist, the detach is a no-op.
     }
 
     /// Push a new embedding provider into every active watcher's shared

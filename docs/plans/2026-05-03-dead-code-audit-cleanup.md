@@ -121,6 +121,7 @@ Do not rely on zero reference score as proof. Dynamic entry points, trait hooks,
 - `WorkspacePool::new` no longer accepts migration-only watcher or embedding arguments. Session lifecycle ownership lives in `WorkspaceSessionAttachment`; the pool now only owns shared workspace instances and daemon registry persistence.
 - `WorkspacePool::active_count` was a test fossil. Tests now assert observable cache behavior through `get` and `get_or_init` instead of exposing the pool map length.
 - Julie graph evidence had two useful misses during this pass. `fast_refs(WorkspacePool::active_count)` initially conflated same-named methods, and `blast_radius(src/daemon/workspace_pool.rs)` returned extractor-heavy unrelated callers. Raw `rg` and focused tests were the deciding evidence.
+- `WatcherPool::increment_ref` and `WatcherPool::decrement_ref` were removed from the public API. `attach` now owns increments, `detach` owns saturated decrement and grace-period startup, and tests use the product lifecycle instead of raw ref-count hooks.
 
 ### Task 5: Product Tool Readiness Decision
 
