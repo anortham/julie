@@ -19,6 +19,13 @@ use super::mcp_session::{DaemonMcpSession, DaemonSessionDependencies};
 use super::watcher_pool::WatcherPool;
 use super::workspace_pool::WorkspacePool;
 
+// Legacy IPC session helpers.
+//
+// HTTP and IPC share daemon MCP session construction through
+// `DaemonMcpSession`; this module keeps only the IPC header protocol,
+// ready-line handshake, and stream serving path needed for migration
+// compatibility.
+
 pub(crate) fn workspace_ids_to_disconnect(
     startup_workspace_id: &str,
     attached_workspace_ids: Vec<String>,

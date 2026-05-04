@@ -1,4 +1,4 @@
-//! IPC transport abstraction for daemon-adapter communication.
+//! Legacy IPC transport abstraction for daemon-adapter compatibility.
 //!
 //! On Unix, this wraps `tokio::net::UnixListener` / `tokio::net::UnixStream`.
 //! On Windows, this wraps tokio named pipes (`NamedPipeServer` / `NamedPipeClient`).
@@ -152,7 +152,7 @@ mod windows {
         /// for the next caller and returns the connected one.
         ///
         /// The replacement pipe is created BEFORE waiting for a client so that
-        /// a failed `create()` leaves the listener in a consistent state — the
+        /// a failed `create()` leaves the listener in a consistent state. The
         /// original (listening) instance is still in `next_server` and a retry
         /// is safe. Creating after `connect()` would leave `next_server` holding
         /// a connected (not listening) pipe if `create()` then failed.
@@ -246,6 +246,6 @@ pub use windows::{IpcClientStream, IpcConnector, IpcListener, IpcStream};
 /// EOF with stdin untouched and retry via the existing run_adapter_with
 /// retry loop. Without this handshake, tokio::select! in the adapter's
 /// byte-forwarder could consume initialize bytes from stdin, try to write
-/// them to a now-closed socket, and lose them — the bug documented in the
+/// them to a now-closed socket, and lose them. This is the bug documented in the
 /// checkpoint at .memories/2026-04-16/*.
 pub const DAEMON_READY_LINE: &[u8] = b"DAEMON_READY\n";

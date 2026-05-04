@@ -197,7 +197,7 @@
 **Acceptance criteria:**
 - [x] Existing IPC workspace header protocol still passes during migration.
 - [x] Shared session setup has one path for workspace startup hint, session lifecycle cleanup, dashboard events, watcher pool, and restart flag.
-- [ ] Compatibility path can be removed in a later plan without affecting HTTP module boundaries.
+- [x] Compatibility path can be removed in a later plan without affecting HTTP module boundaries.
 - [x] Worker-scope verification passes.
 
 **Task 5 execution notes:**
@@ -206,6 +206,7 @@
 - `HttpJulieService` implements `rmcp::Service<RoleServer>` directly. It creates a Julie daemon session tracker entry synchronously, reads `http::request::Parts` from `RequestContext.extensions` on `initialize`, rejects missing or invalid Julie workspace headers with JSON-RPC `-32602`, and delegates later requests/notifications to the cached `JulieServerHandler`.
 - Cleanup for HTTP currently runs from `Drop` because `rmcp::Service<RoleServer>` has no explicit close hook. The SDK does call `SessionManager::close_session`, so the next daemon-wiring slice should either keep this tested Drop behavior or wrap `LocalSessionManager` if we need deterministic async cleanup tied to the SDK close call.
 - `HttpJulieService` is now constructed by production daemon startup for the canonical HTTP endpoint. Task 4 still owns the stdio shim that will connect adapters to that endpoint.
+- IPC module comments now explicitly mark IPC as a migration compatibility transport. The HTTP stdio shim owns the canonical adapter path, so a later IPC-removal plan can delete `ipc.rs`, `ipc_session.rs`, and the legacy accept loop without touching `src/adapter/http_stdio.rs` boundaries.
 
 ## Verification Strategy
 
@@ -272,6 +273,7 @@
 | worker-red-green | HTTP stdio shim and reqwest client feature compile without warnings after test-only helper cleanup. | `cargo build 2>&1 \| tail -80` | `fc55bf24+dirty` | PASS, no warnings | 2026-05-04T00:07:11Z |
 | affected-change | Diff-scoped gate after HTTP stdio shim and reqwest client feature. `changed` fell back to dev because `Cargo.toml` and `Cargo.lock` changed. | `cargo xtask test changed 2>&1 \| tail -160` | `fc55bf24+dirty` | PASS, 22 buckets in 372.5s | 2026-05-04T00:07:11Z |
 | affected-change | Focused transport bucket after HTTP stdio shim, covering adapter retry tests plus daemon HTTP, IPC, and transport tests. | `cargo xtask test bucket transport 2>&1 \| tail -120` | `fc55bf24+dirty` | PASS, 1 bucket in 4.7s | 2026-05-04T00:07:11Z |
+| worker-red-green | IPC compatibility comments and Task 5 boundary documentation compile without warnings. | `cargo check 2>&1 \| tail -80` | `ee9c1b4d+dirty` | PASS, no warnings | 2026-05-04T00:12:46Z |
 
 ## Model Routing
 

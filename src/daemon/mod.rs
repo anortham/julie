@@ -1,8 +1,8 @@
-//! Julie daemon: persistent background process serving MCP over IPC.
+//! Julie daemon: persistent background process serving MCP sessions.
 //!
-//! The daemon multiplexes many adapter sessions over IPC (Unix socket or Windows named pipe).
-//! Each connection sends a `WORKSPACE:/path\n` header, then speaks MCP
-//! JSON-RPC over the remaining stream.
+//! The canonical adapter path is Streamable HTTP over localhost. Legacy IPC
+//! remains available during the migration window for older adapters and
+//! fallback readiness checks.
 
 pub mod database;
 pub mod embedding_service;
@@ -59,7 +59,7 @@ use self::workspace_registry_store::WorkspaceRegistryStore;
 
 /// Classify an `accept()` error as transient or fatal.
 ///
-/// Transient errors — connection resets, interrupts, and fd-exhaustion — should
+/// Transient errors, connection resets, interrupts, and fd-exhaustion, should
 /// be logged and retried. Fatal errors (unexpected listener state) should stop
 /// the accept loop.
 pub(crate) fn is_transient_accept_error(e: &io::Error) -> bool {
@@ -86,7 +86,7 @@ pub(crate) fn is_transient_accept_error(e: &io::Error) -> bool {
     }
 }
 
-/// Wait for all active IPC sessions to finish, with a deadline.
+/// Wait for all active daemon sessions to finish, with a deadline.
 ///
 /// Returns `true` if sessions drained cleanly, `false` if the timeout elapsed
 /// while sessions were still active.
@@ -270,12 +270,11 @@ fn migrate_stale_workspace_ids(daemon_db: &DaemonDatabase, indexes_dir: &Path) {
     }
 }
 
-/// Run the Julie daemon: bind IPC socket, accept connections, serve MCP.
+/// Run the Julie daemon: bind transports, accept connections, serve MCP.
 ///
 /// This function blocks until a shutdown signal (SIGTERM/SIGINT) is received.
-/// Each incoming IPC connection is handled in its own tokio task. The daemon
-/// is workspace-agnostic; the workspace path arrives per-session via the
-/// IPC header protocol.
+/// HTTP is the canonical MCP transport. IPC is kept as a compatibility
+/// transport during migration and still uses the old workspace header protocol.
 pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Result<()> {
     paths
         .ensure_dirs()
@@ -440,7 +439,7 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
     // Pass the EmbeddingService Arc directly so DashboardState reads its
     // state live. With lazy init, the service starts in Initializing and
     // transitions to Ready (or Unavailable) once the background task
-    // finishes — the dashboard reflects this without a restart.
+    // finishes, and the dashboard reflects this without a restart.
     let dashboard_state = crate::dashboard::state::DashboardState::new_with_watcher_pool(
         Arc::clone(&sessions),
         daemon_db.clone(),
@@ -562,7 +561,7 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
     // `EmbeddingService::wait_until_settled` with a bounded timeout rather
     // than hanging indefinitely. See Task 2 of
     // docs/plans/2026-04-09-daemon-lazy-embedding-init.md for the rationale
-    // and failure-mode analysis, especially the `Err(join_err)` arm — that
+    // and failure-mode analysis, especially the `Err(join_err)` arm. That
     // arm is critical: without it, a panicking init task would leave the
     // service stuck in `Initializing` forever and every future
     // `wait_until_settled` would time out rather than report the real
@@ -624,7 +623,7 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
                 }
                 Ok((Some(provider), None)) => {
                     // create_embedding_provider invariants say this should
-                    // never happen — success always produces a runtime
+                    // never happen. Success always produces a runtime
                     // status. Handle it defensively by publishing Ready
                     // with a synthesized status so the provider is still
                     // usable.
@@ -780,7 +779,7 @@ async fn accept_loop(
             Ok(s) => s,
             Err(e) if is_transient_accept_error(&e) => {
                 // Transient OS error (connection reset, EINTR, fd exhaustion, etc.).
-                // Log and retry — killing the daemon for EMFILE would be wrong.
+                // Log and retry. Killing the daemon for EMFILE would be wrong.
                 warn!(error = %e, "Transient IPC accept error, retrying");
                 // Back off briefly on fd exhaustion to let pressure ease
                 #[cfg(unix)]
