@@ -402,7 +402,7 @@ Skills ship as `SKILL.md` files in `.claude/skills/`. Most modern AI coding harn
 - **Graph centrality ranking** using pre-computed reference scores from the relationship graph
 - **SQLite storage** for symbols, identifiers, relationships, types, and file metadata
 - **Per-workspace isolation** with separate databases and indexes
-- **Daemon + adapter pattern** — `julie-server` auto-starts a background daemon and forwards stdio to it via IPC (Unix socket). Multiple MCP clients share one daemon process with shared indexes, embedding provider, and file watchers
+- **Daemon + adapter pattern** — `julie-server` auto-starts a background daemon and bridges stdio MCP traffic to its localhost Streamable HTTP endpoint. Multiple MCP clients share one daemon process with shared indexes, embedding provider, and file watchers
 - **MCP protocol** over stdio (JSON-RPC)
 - **Embedding pipeline** with GPU-accelerated Python sidecar (CUDA/DirectML/MPS/CPU), shared across sessions in daemon mode
 
@@ -488,8 +488,8 @@ src/
 ├── handler.rs       # MCP tool handler (rmcp ServerHandler)
 ├── cli.rs           # CLI argument parsing and workspace resolution
 ├── startup.rs       # Workspace initialization and staleness detection
-├── adapter/         # Thin stdio adapter: auto-starts daemon, forwards bytes via IPC
-├── daemon/          # Background daemon: shared indexes, IPC server, lifecycle management
+├── adapter/         # Thin stdio adapter: auto-starts daemon, bridges to HTTP MCP
+├── daemon/          # Background daemon: shared indexes, HTTP MCP server, lifecycle management
 ├── dashboard/       # Web dashboard (htmx + Tera templates, served by daemon)
 ├── extractors/      # Language-specific symbol extraction (34 languages)
 ├── analysis/        # Post-indexing analysis (test quality metrics)

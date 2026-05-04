@@ -410,14 +410,10 @@ fn buckets_for_path(path: &str) -> &'static [&'static str] {
         || matches_exact(
             path,
             &[
-                "src/daemon/ipc.rs",
-                "src/daemon/ipc_session.rs",
                 "src/daemon/http_transport.rs",
                 "src/daemon/transport.rs",
-                "src/tests/daemon/ipc.rs",
-                "src/tests/daemon/ipc_headers.rs",
-                "src/tests/daemon/ipc_session.rs",
                 "src/tests/daemon/http_transport.rs",
+                "src/tests/daemon/mcp_session.rs",
                 "src/tests/daemon/transport.rs",
             ],
         )

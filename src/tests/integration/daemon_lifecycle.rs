@@ -1,6 +1,6 @@
 //! Integration tests for the daemon + adapter system.
 //!
-//! Verifies end-to-end daemon lifecycle, workspace pool sharing, IPC
+//! Verifies end-to-end daemon lifecycle, workspace pool sharing,
 //! workspace header protocol, index migration, and handler tool operation
 //! against a shared workspace.
 
@@ -12,10 +12,8 @@ mod tests {
     use std::time::Duration;
 
     use anyhow::Result;
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     use crate::daemon::database::DaemonDatabase;
-    use crate::daemon::ipc::{IpcConnector, IpcListener};
     use crate::daemon::lifecycle::stop_daemon;
     use crate::daemon::transport::TransportEndpoint;
     use crate::daemon::watcher_pool::WatcherPool;
@@ -52,7 +50,7 @@ mod tests {
     }
 
     // ---------------------------------------------------------------
-    // Test 1: Daemon starts, creates PID + socket, stops cleanly
+    // Test 1: Daemon starts, creates PID, stops cleanly
     // ---------------------------------------------------------------
 
     /// Poll for a file to appear, up to a deadline.
@@ -76,26 +74,25 @@ mod tests {
     ) -> anyhow::Result<()> {
         let deadline = tokio::time::Instant::now() + timeout;
         let state_path = paths.daemon_state();
-        let transport = TransportEndpoint::new(paths.daemon_ipc_addr());
-        let ipc_addr = transport.path().to_path_buf();
+        let transport_path = paths.daemon_mcp_transport();
 
         loop {
             if daemon_handle.is_finished() {
                 match daemon_handle.await {
                     Ok(Ok(())) => anyhow::bail!(
-                        "daemon exited before readiness; state_path={}, ipc_addr={}",
+                        "daemon exited before readiness; state_path={}, transport_path={}",
                         state_path.display(),
-                        ipc_addr.display()
+                        transport_path.display()
                     ),
                     Ok(Err(err)) => anyhow::bail!(
-                        "daemon exited before readiness: {err:#}; state_path={}, ipc_addr={}",
+                        "daemon exited before readiness: {err:#}; state_path={}, transport_path={}",
                         state_path.display(),
-                        ipc_addr.display()
+                        transport_path.display()
                     ),
                     Err(err) => anyhow::bail!(
-                        "daemon task ended before readiness: {err}; state_path={}, ipc_addr={}",
+                        "daemon task ended before readiness: {err}; state_path={}, transport_path={}",
                         state_path.display(),
-                        ipc_addr.display()
+                        transport_path.display()
                     ),
                 }
             }
@@ -104,7 +101,11 @@ mod tests {
                 .map(|contents| contents.trim() == "ready")
                 .unwrap_or(false);
 
-            if ready_state || transport.connect().await.is_ok() {
+            let ready_transport = TransportEndpoint::read_discovery(&transport_path)
+                .map(|endpoint| endpoint.probe_readiness().is_ready())
+                .unwrap_or(false);
+
+            if ready_state || ready_transport {
                 return Ok(());
             }
 
@@ -113,11 +114,11 @@ mod tests {
                     .map(|contents| contents.trim().to_owned())
                     .unwrap_or_else(|_| "<missing>".to_string());
                 anyhow::bail!(
-                    "daemon did not become ready within {:?}; state={}, state_path={}, ipc_addr={}",
+                    "daemon did not become ready within {:?}; state={}, state_path={}, transport_path={}",
                     timeout,
                     state,
                     state_path.display(),
-                    ipc_addr.display()
+                    transport_path.display()
                 );
             }
 
@@ -126,7 +127,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn test_daemon_starts_creates_pid_and_socket_then_stops() {
+    async fn test_daemon_starts_creates_pid_then_stops() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let paths = DaemonPaths::with_home(tmp.path().to_path_buf());
         paths.ensure_dirs().expect("ensure_dirs");
@@ -149,9 +150,7 @@ mod tests {
         let pid: u32 = pid_str.trim().parse().expect("PID should be numeric");
         assert_eq!(pid, std::process::id(), "PID should match our process");
 
-        // Socket-path existence is a flaky proxy under suite load. The daemon
-        // writes `ready` immediately after IPC bind, and a live IPC connect is
-        // the real signal that matters.
+        // State file plus HTTP readiness is the daemon startup contract.
         wait_for_daemon_ready(
             &paths,
             &mut daemon_handle,
@@ -159,8 +158,6 @@ mod tests {
         )
         .await
         .expect("daemon should become ready within 30s");
-
-        let socket_path = paths.daemon_socket();
 
         // In this test the daemon runs as an in-process task, so abort it
         // directly instead of sending SIGTERM to the current test process.
@@ -178,10 +175,6 @@ mod tests {
             stop_result
         );
         assert!(
-            !socket_path.exists(),
-            "Socket file should be removed during cleanup"
-        );
-        assert!(
             !paths.daemon_state().exists(),
             "Daemon state file should be removed during cleanup"
         );
@@ -195,8 +188,8 @@ mod tests {
     /// lazy embedding init plan): even when `create_embedding_provider`
     /// blocks for a long time (Python sidecar + torch + model load on
     /// production hardware, simulated here via `JULIE_EMBEDDING_TEST_DELAY_MS`),
-    /// the daemon must reach `ready` state and bind the IPC listener
-    /// concurrently — not after the embedding init completes.
+    /// the daemon must reach `ready` state and publish the HTTP transport
+    /// concurrently, not after the embedding init completes.
     ///
     /// This test simulates a 2 second slow init and asserts that the
     /// `daemon.state` file contains `ready` well before that 2 seconds
@@ -447,62 +440,7 @@ mod tests {
     }
 
     // ---------------------------------------------------------------
-    // Test 3: IPC workspace header protocol
-    // ---------------------------------------------------------------
-
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn test_ipc_workspace_header_protocol() {
-        let tmp = tempfile::tempdir().expect("tempdir");
-        let socket_path = tmp.path().join("test_header.sock");
-
-        // Bind a listener
-        let listener = IpcListener::bind(&socket_path)
-            .await
-            .expect("bind listener");
-
-        // Spawn a "server" that reads the workspace header byte-by-byte
-        // (same protocol as the daemon: read until newline, parse WORKSPACE: prefix).
-        let server = tokio::spawn(async move {
-            let mut stream = listener.accept().await.expect("accept");
-
-            // Read header byte-by-byte until newline
-            let mut header_bytes = Vec::new();
-            let mut buf = [0u8; 1];
-            loop {
-                stream.read_exact(&mut buf).await.expect("read byte");
-                if buf[0] == b'\n' {
-                    break;
-                }
-                header_bytes.push(buf[0]);
-            }
-
-            let header_str = String::from_utf8(header_bytes).expect("valid UTF-8");
-            let path = header_str
-                .strip_prefix("WORKSPACE:")
-                .expect("header should start with WORKSPACE:");
-
-            path.to_string()
-        });
-
-        // Connect from "client" and send the workspace header
-        let workspace_path = "/tmp/test-project";
-        let mut client = IpcConnector::connect(&socket_path).await.expect("connect");
-        let header = format!("WORKSPACE:{}\n", workspace_path);
-        client
-            .write_all(header.as_bytes())
-            .await
-            .expect("send header");
-
-        // Verify the server parsed the correct path
-        let parsed = server.await.expect("server task");
-        assert_eq!(
-            parsed, workspace_path,
-            "Server should parse the workspace path from the header"
-        );
-    }
-
-    // ---------------------------------------------------------------
-    // Test 4: Migration end-to-end
+    // Test 3: Migration end-to-end
     // ---------------------------------------------------------------
 
     #[test]

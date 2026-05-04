@@ -16,10 +16,9 @@ use tracing::{info, warn};
 
 use crate::daemon::database::DaemonDatabase;
 use crate::daemon::embedding_service::EmbeddingService;
-use crate::daemon::ipc_session::workspace_ids_to_disconnect;
 use crate::daemon::lifecycle::{
-    DaemonLifecycleController, IncomingSessionAction, ShutdownCause, stale_binary_accept_action,
-    version_gate_action,
+    DaemonLifecycleController, DisconnectLifecycleAction, IncomingSessionAction, ShutdownCause,
+    stale_binary_accept_action, stale_binary_disconnect_action, version_gate_action,
 };
 use crate::daemon::session::{SessionLifecycleHandle, SessionTracker};
 use crate::daemon::watcher_pool::WatcherPool;
@@ -34,6 +33,21 @@ use crate::workspace::startup_hint::{WorkspaceStartupHint, WorkspaceStartupSourc
 pub(crate) const HEADER_JULIE_WORKSPACE: &str = "x-julie-workspace";
 pub(crate) const HEADER_JULIE_WORKSPACE_SOURCE: &str = "x-julie-workspace-source";
 pub(crate) const HEADER_JULIE_VERSION: &str = "x-julie-version";
+
+pub(crate) fn workspace_ids_to_disconnect(
+    startup_workspace_id: &str,
+    attached_workspace_ids: Vec<String>,
+    startup_workspace_was_attached: bool,
+) -> Vec<String> {
+    let mut disconnect_ids = attached_workspace_ids;
+    if startup_workspace_was_attached && !disconnect_ids.iter().any(|id| id == startup_workspace_id)
+    {
+        disconnect_ids.push(startup_workspace_id.to_string());
+    }
+    disconnect_ids.sort();
+    disconnect_ids.dedup();
+    disconnect_ids
+}
 
 #[derive(Clone)]
 pub(crate) struct HttpSessionAdmission {
@@ -98,26 +112,6 @@ impl DaemonSessionDependencies {
             dashboard_tx,
             watcher_pool,
             sessions: Some(sessions),
-            http_admission: None,
-        }
-    }
-
-    pub(crate) fn without_session_tracker(
-        pool: Arc<WorkspacePool>,
-        daemon_db: Option<Arc<DaemonDatabase>>,
-        embedding_service: Arc<EmbeddingService>,
-        restart_pending: Arc<AtomicBool>,
-        dashboard_tx: Option<broadcast::Sender<DashboardEvent>>,
-        watcher_pool: Option<Arc<WatcherPool>>,
-    ) -> Self {
-        Self {
-            pool,
-            daemon_db,
-            embedding_service,
-            restart_pending,
-            dashboard_tx,
-            watcher_pool,
-            sessions: None,
             http_admission: None,
         }
     }
@@ -349,13 +343,55 @@ impl HttpJulieService {
     }
 
     fn remove_session_registration(&self, registration: &HttpSessionRegistration) {
-        if let Some(sessions) = &self.dependencies.sessions {
+        let remaining = if let Some(sessions) = &self.dependencies.sessions {
             sessions.remove_session(&registration.session_id);
+            let remaining = sessions.active_count();
             if let Some(tx) = &self.dependencies.dashboard_tx {
                 let _ = tx.send(DashboardEvent::SessionChange {
-                    active_count: sessions.active_count(),
+                    active_count: remaining,
                 });
             }
+            remaining
+        } else {
+            0
+        };
+        self.apply_disconnect_action(remaining);
+    }
+
+    fn apply_disconnect_action(&self, remaining: usize) {
+        let Some(admission) = &self.dependencies.http_admission else {
+            return;
+        };
+
+        let binary_is_stale = admission
+            .startup_binary_mtime
+            .zip((admission.current_binary_mtime.as_ref())())
+            .is_some_and(|(startup_mtime, current_mtime)| current_mtime > startup_mtime);
+        match stale_binary_disconnect_action(
+            binary_is_stale,
+            admission.lifecycle.restart_pending(),
+            remaining,
+        ) {
+            DisconnectLifecycleAction::None => {}
+            DisconnectLifecycleAction::MarkRestartPending(reason) => {
+                let transition = admission
+                    .lifecycle
+                    .mark_restart_pending(remaining, ShutdownCause::RestartRequired);
+                if transition.first_request {
+                    warn!(
+                        ?reason,
+                        "Binary rebuild detected at HTTP session disconnect."
+                    );
+                }
+            }
+            DisconnectLifecycleAction::TriggerShutdown(cause) => {
+                admission.lifecycle.mark_restart_pending(remaining, cause);
+            }
+        }
+
+        if remaining == 0 && admission.lifecycle.restart_pending() {
+            info!("Last HTTP session disconnected and restart is pending. Triggering restart.");
+            admission.lifecycle.notify_restart();
         }
     }
 

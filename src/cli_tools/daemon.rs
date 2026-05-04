@@ -1,24 +1,22 @@
-//! Lightweight daemon IPC client for CLI tool execution.
+//! Lightweight daemon HTTP client for CLI tool execution.
 //!
-//! Reuses the same IPC endpoint and ready gate as the adapter, then performs
-//! the MCP initialize flow before sending a one-shot `tools/call` request.
+//! Reuses the same daemon Streamable HTTP discovery and header contract as the
+//! stdio adapter, then uses rmcp's client service to call tools.
 
 use std::path::PathBuf;
-use std::time::Duration;
 
 use anyhow::{Context, Result};
+use rmcp::model::{CallToolRequestParams, ClientInfo, Implementation, JsonObject};
+use rmcp::service::{RoleClient, RunningService, ServiceError};
+use rmcp::transport::StreamableHttpClientTransport;
+use rmcp::{ServiceExt, model::CallToolResult};
 use serde_json::Value;
 use thiserror::Error;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-use crate::adapter::{ReadyOutcome, build_ipc_header, read_daemon_ready};
-use crate::daemon::ipc::{IpcClientStream, IpcConnector};
+use crate::daemon::http_client::http_client_config_for_endpoint;
+use crate::daemon::transport::TransportEndpoint;
 use crate::paths::DaemonPaths;
 use crate::workspace::startup_hint::WorkspaceStartupHint;
-
-/// Timeout for the daemon's READY handshake signal during CLI invocations.
-/// Shorter than the adapter's 30s since CLI users expect snappy responses.
-const CLI_READY_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Errors from daemon tool calls. Distinguishes transport failures (where
 /// standalone fallback is appropriate) from tool-level errors (where the
@@ -42,65 +40,36 @@ pub enum DaemonCallError {
 
 /// A single-shot daemon client for CLI tool calls.
 ///
-/// Connects to the daemon IPC endpoint, performs the handshake, sends one
-/// JSON-RPC `tools/call` request, reads the response, and disconnects.
+/// Connects to the daemon HTTP MCP endpoint, lets rmcp perform initialization,
+/// sends one `tools/call` request, reads the response, and disconnects.
 pub struct DaemonClient {
-    stream: IpcClientStream,
-    mcp_initialized: bool,
+    service: RunningService<RoleClient, ClientInfo>,
 }
 
 impl DaemonClient {
-    #[cfg(test)]
-    pub(crate) fn from_stream_for_test(stream: IpcClientStream) -> Self {
-        Self {
-            stream,
-            mcp_initialized: false,
-        }
-    }
-
-    /// Connect to the daemon and complete the IPC handshake.
+    /// Connect to the daemon and complete the HTTP MCP initialize handshake.
     ///
-    /// Uses `DaemonPaths` and `WorkspaceStartupHint` to locate the IPC
-    /// endpoint and build the header, same as the adapter does.
+    /// Uses `DaemonPaths` and `WorkspaceStartupHint` to locate the HTTP
+    /// endpoint and build the same headers the adapter sends.
     pub async fn connect(startup_hint: &WorkspaceStartupHint) -> Result<Self> {
         let paths = DaemonPaths::new();
-        let ipc_addr = paths.daemon_ipc_addr();
-
-        let mut stream = IpcConnector::connect(&ipc_addr).await.with_context(|| {
-            format!("Failed to connect to daemon IPC at {}", ipc_addr.display())
+        let discovery_path = paths.daemon_mcp_transport();
+        let endpoint = TransportEndpoint::read_discovery(&discovery_path).with_context(|| {
+            format!(
+                "Failed to read daemon HTTP MCP discovery at {}",
+                discovery_path.display()
+            )
         })?;
-
-        // Send the same IPC header the adapter sends
-        let header = build_ipc_header(startup_hint);
-        stream
-            .write_all(header.as_bytes())
+        let config = http_client_config_for_endpoint(&endpoint, startup_hint)?;
+        let transport = StreamableHttpClientTransport::from_config(config);
+        let service = cli_client_info()
+            .serve(transport)
             .await
-            .context("Failed to send IPC headers to daemon")?;
-
-        // Wait for READY signal
-        match read_daemon_ready(&mut stream, CLI_READY_TIMEOUT).await {
-            ReadyOutcome::Ready => Ok(Self {
-                stream,
-                mcp_initialized: false,
-            }),
-            ReadyOutcome::Eof => {
-                anyhow::bail!("Daemon closed connection before ready signal (may be restarting)")
-            }
-            ReadyOutcome::Timeout => anyhow::bail!(
-                "Daemon did not respond within {:?} (may be overloaded or stale)",
-                CLI_READY_TIMEOUT
-            ),
-            ReadyOutcome::Unexpected(line) => anyhow::bail!(
-                "Daemon sent unexpected handshake line: {:?}",
-                String::from_utf8_lossy(&line)
-            ),
-            ReadyOutcome::IoError(e) => {
-                Err(anyhow::Error::from(e)).context("I/O error during daemon handshake")
-            }
-        }
+            .context("Failed to initialize daemon HTTP MCP client")?;
+        Ok(Self { service })
     }
 
-    /// Send a JSON-RPC `tools/call` request and return the response.
+    /// Send an MCP `tools/call` request and return the response.
     ///
     /// The daemon's session handler is a full MCP server, so the CLI must run
     /// `initialize` before the request instead of sending `tools/call` as the
@@ -115,153 +84,68 @@ impl DaemonClient {
         tool_name: &str,
         arguments: Value,
     ) -> Result<Value, DaemonCallError> {
-        self.ensure_mcp_initialized().await?;
-
-        let request = serde_json::json!({
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "tools/call",
-            "params": {
-                "name": tool_name,
-                "arguments": arguments
-            }
-        });
-
-        self.write_json_message(&request, "tool call request")
-            .await?;
-        let response = self.read_response_with_id(1, "tool call response").await?;
-
-        // Extract the result or error from the JSON-RPC envelope.
-        // A JSON-RPC error means the daemon processed the request and
-        // rejected it (invalid params, tool error, etc.). This is NOT a
-        // transport failure, so standalone fallback would be wrong.
-        if let Some(error) = response.get("error") {
-            let message = error
-                .get("message")
-                .and_then(|m| m.as_str())
-                .unwrap_or("unknown error")
-                .to_string();
-            return Err(DaemonCallError::ToolError {
-                message,
-                raw: error.clone(),
-            });
-        }
-
-        response.get("result").cloned().ok_or_else(|| {
-            DaemonCallError::Transport(anyhow::anyhow!("Daemon response missing 'result' field"))
-        })
-    }
-
-    async fn ensure_mcp_initialized(&mut self) -> Result<(), DaemonCallError> {
-        if self.mcp_initialized {
-            return Ok(());
-        }
-
-        let initialize = serde_json::json!({
-            "jsonrpc": "2.0",
-            "id": 0,
-            "method": "initialize",
-            "params": {
-                "protocolVersion": "2025-11-25",
-                "capabilities": {},
-                "clientInfo": {
-                    "name": "julie-cli",
-                    "version": env!("CARGO_PKG_VERSION")
-                }
-            }
-        });
-        self.write_json_message(&initialize, "initialize request")
-            .await?;
-        let response = self.read_response_with_id(0, "initialize response").await?;
-        if let Some(error) = response.get("error") {
-            let message = error
-                .get("message")
-                .and_then(|m| m.as_str())
-                .unwrap_or("unknown error");
-            return Err(DaemonCallError::Transport(anyhow::anyhow!(
-                "Daemon initialize error: {message}"
-            )));
-        }
-        if response.get("result").is_none() {
-            return Err(DaemonCallError::Transport(anyhow::anyhow!(
-                "Daemon initialize response missing 'result' field"
-            )));
-        }
-
-        let initialized = serde_json::json!({
-            "jsonrpc": "2.0",
-            "method": "notifications/initialized"
-        });
-        self.write_json_message(&initialized, "initialized notification")
-            .await?;
-        self.mcp_initialized = true;
-        Ok(())
-    }
-
-    async fn write_json_message(
-        &mut self,
-        value: &Value,
-        label: &str,
-    ) -> Result<(), DaemonCallError> {
-        let mut bytes =
-            serde_json::to_vec(value).with_context(|| format!("Failed to serialize {label}"))?;
-        bytes.push(b'\n');
-        self.stream
-            .write_all(&bytes)
+        let arguments = tool_arguments_from_value(arguments)?;
+        let result = self
+            .service
+            .call_tool(CallToolRequestParams::new(tool_name.to_string()).with_arguments(arguments))
             .await
-            .with_context(|| format!("Failed to send {label} to daemon"))?;
-        Ok(())
+            .map_err(map_call_tool_error)?;
+        serialize_call_tool_result(result)
     }
+}
 
-    async fn read_response_with_id(
-        &mut self,
-        request_id: u64,
-        label: &str,
-    ) -> Result<Value, DaemonCallError> {
-        loop {
-            let response = self.read_json_line(label).await?;
-            let Some(id) = response.get("id") else {
-                continue;
-            };
-            if id == request_id {
-                return Ok(response);
-            }
-        }
+fn cli_client_info() -> ClientInfo {
+    let mut info = ClientInfo::default();
+    info.client_info = Implementation::new("julie-cli", env!("CARGO_PKG_VERSION"));
+    info
+}
+
+fn tool_arguments_from_value(arguments: Value) -> Result<JsonObject, DaemonCallError> {
+    match arguments {
+        Value::Object(arguments) => Ok(arguments),
+        other => Err(DaemonCallError::Transport(anyhow::anyhow!(
+            "Daemon tool arguments must be a JSON object, got {}",
+            other_type_name(&other)
+        ))),
     }
+}
 
-    async fn read_json_line(&mut self, label: &str) -> Result<Value, DaemonCallError> {
-        let mut response_bytes = Vec::new();
-        let mut byte = [0u8; 1];
+fn serialize_call_tool_result(result: CallToolResult) -> Result<Value, DaemonCallError> {
+    serde_json::to_value(result).map_err(|error| {
+        DaemonCallError::Transport(
+            anyhow::Error::from(error).context("Failed to serialize daemon tool result"),
+        )
+    })
+}
 
-        loop {
-            match self.stream.read(&mut byte).await {
-                Ok(0) if response_bytes.is_empty() => {
-                    return Err(DaemonCallError::Transport(anyhow::anyhow!(
-                        "Daemon closed connection without sending a response"
-                    )));
-                }
-                Ok(0) => {
-                    return Err(DaemonCallError::Transport(anyhow::anyhow!(
-                        "Daemon closed connection during {label}"
-                    )));
-                }
-                Ok(_) if byte[0] == b'\n' => break,
-                Ok(_) => response_bytes.push(byte[0]),
-                Err(error) => {
-                    return Err(DaemonCallError::Transport(
-                        anyhow::Error::from(error)
-                            .context(format!("Failed to read {label} from daemon")),
-                    ));
-                }
-            }
+fn map_call_tool_error(error: ServiceError) -> DaemonCallError {
+    match error {
+        ServiceError::McpError(error) => {
+            let message = error.message.to_string();
+            let raw = serde_json::to_value(&error).unwrap_or_else(|_| {
+                serde_json::json!({
+                    "message": message,
+                })
+            });
+            DaemonCallError::ToolError { message, raw }
         }
+        other => DaemonCallError::Transport(anyhow::Error::from(other)),
+    }
+}
 
-        serde_json::from_slice(&response_bytes).map_err(|error| {
-            DaemonCallError::Transport(anyhow::Error::from(error).context(format!(
-                "Failed to parse daemon {label} as JSON (first 200 bytes): {}",
-                String::from_utf8_lossy(&response_bytes[..response_bytes.len().min(200)])
-            )))
-        })
+#[cfg(test)]
+pub(crate) fn map_call_tool_error_for_test(error: ServiceError) -> DaemonCallError {
+    map_call_tool_error(error)
+}
+
+fn other_type_name(value: &Value) -> &'static str {
+    match value {
+        Value::Null => "null",
+        Value::Bool(_) => "boolean",
+        Value::Number(_) => "number",
+        Value::String(_) => "string",
+        Value::Array(_) => "array",
+        Value::Object(_) => "object",
     }
 }
 
@@ -274,25 +158,15 @@ pub async fn try_connect_daemon(startup_hint: &WorkspaceStartupHint) -> Option<D
     DaemonClient::connect(startup_hint).await.ok()
 }
 
-/// Check whether a daemon appears to be running by probing the IPC socket.
+/// Check whether a daemon appears to be running by probing HTTP discovery.
 ///
-/// This is a quick filesystem check, not a full connection. Used by the
+/// This is a quick readiness probe, not a full MCP connection. Used by the
 /// execution core to decide whether to attempt daemon mode.
 pub fn daemon_appears_running() -> bool {
     let paths = DaemonPaths::new();
-    let ipc_addr = paths.daemon_ipc_addr();
-
-    #[cfg(unix)]
-    {
-        ipc_addr.exists()
-    }
-
-    #[cfg(windows)]
-    {
-        // On Windows, named pipes don't show up on the filesystem.
-        // Try a synchronous probe.
-        std::fs::metadata(&ipc_addr).is_ok()
-    }
+    TransportEndpoint::read_discovery(&paths.daemon_mcp_transport())
+        .map(|endpoint| endpoint.probe_readiness().is_ready())
+        .unwrap_or(false)
 }
 
 /// Ensure the daemon is running before attempting to connect.
@@ -307,7 +181,7 @@ pub fn ensure_daemon_ready() -> Result<()> {
         .context("Failed to ensure daemon is ready for CLI tool call")
 }
 
-/// The workspace root as resolved from CLI args, for IPC header construction.
+/// The workspace root as resolved from CLI args, for daemon HTTP headers.
 pub fn build_startup_hint(workspace_root: PathBuf) -> WorkspaceStartupHint {
     WorkspaceStartupHint {
         path: workspace_root,

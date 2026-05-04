@@ -5,7 +5,7 @@ mod tests {
     use std::net::{IpAddr, Ipv4Addr};
     use std::net::{SocketAddr, TcpStream};
     use std::sync::Arc;
-    use std::sync::atomic::AtomicBool;
+    use std::sync::atomic::{AtomicBool, Ordering};
     use std::time::{Duration, SystemTime};
     use std::{io::Read, io::Write};
 
@@ -739,6 +739,68 @@ mod tests {
         wait_for_session_count(&fixture.daemon_db, &workspace_id, 0).await;
         for _ in 0..100 {
             if fixture.sessions.active_count() == 0 {
+                server.shutdown().await.unwrap();
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+        panic!(
+            "DELETE should remove its daemon session tracker entry, active={}",
+            fixture.sessions.active_count()
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_http_julie_session_delete_triggers_restart_when_binary_became_stale() {
+        let stale_now = Arc::new(AtomicBool::new(false));
+        let stale_now_for_probe = Arc::clone(&stale_now);
+        let fixture =
+            RealServiceFixture::new_with_admission(Some(SystemTime::UNIX_EPOCH), move || {
+                if stale_now_for_probe.load(Ordering::SeqCst) {
+                    Some(SystemTime::UNIX_EPOCH + Duration::from_secs(1))
+                } else {
+                    Some(SystemTime::UNIX_EPOCH)
+                }
+            });
+        let workspace_id = fixture.workspace_id();
+        let dependencies = Arc::clone(&fixture.dependencies);
+        let server = HttpTransportServer::bind(
+            fixture.paths.clone(),
+            HttpTransportConfig::default(),
+            move || Ok(HttpJulieService::new(Arc::clone(&dependencies))),
+        )
+        .await
+        .unwrap();
+
+        let response = post_initialize(
+            server.local_addr(),
+            InitializeRequestOptions {
+                workspace: Some(fixture.workspace_root.path()),
+                workspace_source: Some(WorkspaceStartupSource::Cli),
+                version: Some(env!("CARGO_PKG_VERSION")),
+                ..InitializeRequestOptions::default()
+            },
+        );
+        assert!(response.starts_with("HTTP/1.1 200 OK"), "{response}");
+        let session_id = response_header(&response, "mcp-session-id")
+            .unwrap_or_else(|| panic!("initialize must return a session id: {response}"))
+            .to_string();
+        wait_for_session_count(&fixture.daemon_db, &workspace_id, 1).await;
+
+        stale_now.store(true, Ordering::SeqCst);
+        let delete_response = delete_session(server.local_addr(), &session_id, None);
+
+        assert!(
+            delete_response.starts_with("HTTP/1.1 202 Accepted"),
+            "{delete_response}"
+        );
+        wait_for_session_count(&fixture.daemon_db, &workspace_id, 0).await;
+        for _ in 0..100 {
+            if fixture.sessions.active_count() == 0 {
+                assert!(
+                    fixture.lifecycle.restart_pending(),
+                    "last HTTP session disconnect should mark stale daemon for restart"
+                );
                 server.shutdown().await.unwrap();
                 return;
             }

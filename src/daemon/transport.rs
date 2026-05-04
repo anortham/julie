@@ -1,4 +1,4 @@
-//! Narrow transport contract for daemon readiness, bind, and connect behavior.
+//! Narrow transport contract for daemon HTTP readiness behavior.
 
 use std::io::{self, Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
@@ -6,8 +6,6 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
-
-use super::ipc::{IpcClientStream, IpcConnector, IpcListener};
 
 /// Contract-level readiness outcome for a daemon endpoint.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -25,7 +23,6 @@ impl TransportProbe {
 /// Transport mode advertised in daemon discovery.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TransportMode {
-    Ipc,
     StreamableHttp,
 }
 
@@ -33,9 +30,6 @@ pub enum TransportMode {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "mode", rename_all = "snake_case")]
 pub enum TransportEndpoint {
-    Ipc {
-        endpoint: PathBuf,
-    },
     StreamableHttp {
         scheme: String,
         host: String,
@@ -48,10 +42,6 @@ pub enum TransportEndpoint {
 }
 
 impl TransportEndpoint {
-    pub fn new(endpoint: PathBuf) -> Self {
-        Self::Ipc { endpoint }
-    }
-
     pub fn streamable_http(
         host: impl Into<String>,
         port: u16,
@@ -72,42 +62,26 @@ impl TransportEndpoint {
     }
 
     pub fn mode(&self) -> TransportMode {
-        match self {
-            Self::Ipc { .. } => TransportMode::Ipc,
-            Self::StreamableHttp { .. } => TransportMode::StreamableHttp,
-        }
-    }
-
-    pub fn path(&self) -> &Path {
-        match self {
-            Self::Ipc { endpoint } => endpoint,
-            Self::StreamableHttp { .. } => {
-                panic!("HTTP transport endpoints do not have an IPC path")
-            }
-        }
+        TransportMode::StreamableHttp
     }
 
     pub fn mcp_url(&self) -> Option<String> {
-        match self {
-            Self::StreamableHttp {
-                scheme,
-                host,
-                port,
-                mcp_path,
-                ..
-            } => Some(format!(
-                "{scheme}://{}:{port}{mcp_path}",
-                host_header_host(host)
-            )),
-            Self::Ipc { .. } => None,
-        }
+        let Self::StreamableHttp {
+            scheme,
+            host,
+            port,
+            mcp_path,
+            ..
+        } = self;
+        Some(format!(
+            "{scheme}://{}:{port}{mcp_path}",
+            host_header_host(host)
+        ))
     }
 
     pub fn token_path(&self) -> Option<&Path> {
-        match self {
-            Self::StreamableHttp { token_path, .. } => token_path.as_deref(),
-            Self::Ipc { .. } => None,
-        }
+        let Self::StreamableHttp { token_path, .. } = self;
+        token_path.as_deref()
     }
 
     pub fn publish_discovery(&self, path: &Path) -> io::Result<()> {
@@ -130,51 +104,8 @@ impl TransportEndpoint {
         Ok(endpoint)
     }
 
-    pub async fn bind_listener(&self) -> io::Result<IpcListener> {
-        match self {
-            Self::Ipc { .. } => IpcListener::bind(self.path()).await,
-            Self::StreamableHttp { .. } => Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "HTTP daemon transport does not bind through IPC listener API",
-            )),
-        }
-    }
-
-    pub async fn connect(&self) -> io::Result<IpcClientStream> {
-        match self {
-            Self::Ipc { .. } => IpcConnector::connect(self.path()).await,
-            Self::StreamableHttp { .. } => Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "HTTP daemon transport does not connect through IPC stream API",
-            )),
-        }
-    }
-
     pub fn probe_readiness(&self) -> TransportProbe {
-        match self {
-            Self::Ipc { .. } => self.probe_ipc_readiness(),
-            Self::StreamableHttp { .. } => self.probe_http_readiness(),
-        }
-    }
-
-    fn probe_ipc_readiness(&self) -> TransportProbe {
-        #[cfg(unix)]
-        {
-            if std::os::unix::net::UnixStream::connect(self.path()).is_ok() {
-                TransportProbe::Ready
-            } else {
-                TransportProbe::NotReady
-            }
-        }
-
-        #[cfg(windows)]
-        {
-            if named_pipe_exists(self.path()) {
-                TransportProbe::Ready
-            } else {
-                TransportProbe::NotReady
-            }
-        }
+        self.probe_http_readiness()
     }
 
     fn probe_http_readiness(&self) -> TransportProbe {
@@ -191,10 +122,7 @@ impl TransportEndpoint {
             readiness_path,
             token_path,
             ..
-        } = self
-        else {
-            return Ok(false);
-        };
+        } = self;
 
         let addr = (host.as_str(), *port)
             .to_socket_addrs()?
@@ -262,43 +190,36 @@ impl TransportEndpoint {
     }
 
     fn validate(&self) -> io::Result<()> {
-        match self {
-            Self::Ipc { endpoint } if endpoint.as_os_str().is_empty() => Err(io::Error::new(
+        let Self::StreamableHttp {
+            scheme,
+            host,
+            port,
+            mcp_path,
+            readiness_path,
+            ..
+        } = self;
+
+        if scheme != "http" {
+            return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                "IPC endpoint path cannot be empty",
-            )),
-            Self::Ipc { .. } => Ok(()),
-            Self::StreamableHttp {
-                scheme,
-                host,
-                port,
-                mcp_path,
-                readiness_path,
-                ..
-            } => {
-                if scheme != "http" {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidInput,
-                        "daemon HTTP transport must use http scheme",
-                    ));
-                }
-                if !is_local_http_host(host) {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidInput,
-                        format!("daemon HTTP transport host must be localhost, got {host}"),
-                    ));
-                }
-                if *port == 0 {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidInput,
-                        "daemon HTTP transport port cannot be 0 in discovery",
-                    ));
-                }
-                validate_http_path(mcp_path)?;
-                validate_http_path(readiness_path)?;
-                Ok(())
-            }
+                "daemon HTTP transport must use http scheme",
+            ));
         }
+        if !is_local_http_host(host) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("daemon HTTP transport host must be localhost, got {host}"),
+            ));
+        }
+        if *port == 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "daemon HTTP transport port cannot be 0 in discovery",
+            ));
+        }
+        validate_http_path(mcp_path)?;
+        validate_http_path(readiness_path)?;
+        Ok(())
     }
 }
 
@@ -331,31 +252,4 @@ fn host_header_host(host: &str) -> String {
     } else {
         host.to_string()
     }
-}
-
-/// Check if a Windows named pipe exists without connecting to it.
-///
-/// Uses `WaitNamedPipeW` with a 1ms timeout so readiness probes do not consume
-/// a pipe instance before the daemon enters its accept loop.
-#[cfg(windows)]
-fn named_pipe_exists(pipe_path: &Path) -> bool {
-    use std::ffi::OsStr;
-    use std::os::windows::ffi::OsStrExt;
-
-    unsafe extern "system" {
-        fn WaitNamedPipeW(lpNamedPipeName: *const u16, nTimeOut: u32) -> i32;
-    }
-
-    let wide: Vec<u16> = OsStr::new(pipe_path)
-        .encode_wide()
-        .chain(std::iter::once(0))
-        .collect();
-
-    let result = unsafe { WaitNamedPipeW(wide.as_ptr(), 1) };
-    if result != 0 {
-        return true;
-    }
-
-    let err = io::Error::last_os_error();
-    err.raw_os_error() == Some(121)
 }

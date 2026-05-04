@@ -17,9 +17,9 @@ The audit workflow is useful, but the signal is still too noisy for an agent-fac
 | `delete` | 8 | `WorkspaceEntry.indexed`, `WorkspacePool::is_indexed`, `WorkspacePool::mark_indexed`, `WorkspacePool::sync_indexed_from_db`, `flag_restart_pending_for_restart`, `WorkspacePool::active_count`, `WorkspacePool::new` migration args, `WatcherPool::increment_ref` |
 | `merge-into-caller` | 4 | `attach_workspace_once_and_sync_indexed`, unused dashboard cleanup `AppState` parameter, lifecycle `store_phase`, `WatcherPool::decrement_ref` |
 | `make-private` | 2 | Daemon state-file write helpers stayed available to daemon tests but left the public lifecycle API |
-| `keep` | 13 | Projection served revision, uncommitted projection apply path, workspace indexing snapshot, indexing file-count helpers, and legacy IPC adapter helpers kept during the HTTP compatibility window |
+| `keep` | 13 | Projection served revision, uncommitted projection apply path, workspace indexing snapshot, indexing file-count helpers, and legacy IPC adapter helpers that were kept only during the HTTP compatibility window |
 | `graph-gap` | 6 | Unqualified same-file calls, constructor-style `new` methods, enum/type usage, same-named method conflation, watcher/session lifecycle edges, and extractor-heavy blast-radius output |
-| `needs-design-review` | 2 | Projection helper cleanup waits for projection invariant ownership; legacy IPC removal waits for a dedicated transport-removal plan |
+| `needs-design-review` | 2 | Projection helper cleanup waits for projection invariant ownership; legacy IPC removal was resolved by `docs/plans/2026-05-04-remove-legacy-ipc.md` |
 | `test-fossil` | 8 | Workspace indexed-flag tests, restart-pending state helper tests, WorkspacePool map-count tests, and WatcherPool raw ref-count tests |
 
 ## Useful Evidence

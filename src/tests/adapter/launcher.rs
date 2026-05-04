@@ -1,4 +1,4 @@
-//! Tests for the adapter's DaemonLauncher (auto-start daemon, socket wait).
+//! Tests for the adapter's DaemonLauncher (auto-start daemon, HTTP readiness).
 
 #[cfg(test)]
 mod tests {
@@ -51,36 +51,6 @@ mod tests {
         assert!(!paths.daemon_pid().exists());
     }
 
-    #[cfg(unix)]
-    #[test]
-    fn test_wait_for_socket_returns_ok_when_socket_exists() {
-        let dir = tempfile::tempdir().unwrap();
-        let paths = DaemonPaths::with_home(dir.path().to_path_buf());
-        let socket_path = paths.daemon_socket();
-
-        // Create a real Unix listener to produce a socket file
-        let listener = std::os::unix::net::UnixListener::bind(&socket_path).unwrap();
-        let _keep = listener; // keep alive
-
-        let launcher = DaemonLauncher::new(paths);
-        let result = launcher.wait_for_socket(Duration::from_millis(200));
-        assert!(result.is_ok(), "Should succeed when socket file exists");
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn test_wait_for_socket_times_out_when_no_socket() {
-        let dir = tempfile::tempdir().unwrap();
-        let paths = DaemonPaths::with_home(dir.path().to_path_buf());
-
-        let launcher = DaemonLauncher::new(paths);
-        let result = launcher.wait_for_socket(Duration::from_millis(200));
-        assert!(
-            result.is_err(),
-            "Should fail when socket file never appears"
-        );
-    }
-
     #[test]
     fn test_launcher_uses_correct_paths() {
         let dir = tempfile::tempdir().unwrap();
@@ -88,37 +58,6 @@ mod tests {
         let launcher = DaemonLauncher::new(paths.clone());
         // Verify the launcher's paths match what we gave it
         assert_eq!(launcher.paths().julie_home(), paths.julie_home());
-    }
-
-    /// D-H4: socket file exists but no daemon is listening (stale from a crash).
-    /// wait_for_socket must attempt an actual connect, not just check file existence.
-    #[cfg(unix)]
-    #[test]
-    fn test_wait_for_socket_rejects_stale_socket_file() {
-        let dir = tempfile::tempdir().unwrap();
-        let paths = DaemonPaths::with_home(dir.path().to_path_buf());
-        let socket_path = paths.daemon_socket();
-
-        // Bind a real listener (creates the socket file), then immediately drop it.
-        // The socket file remains on disk but no one is listening — stale socket.
-        {
-            let _listener = std::os::unix::net::UnixListener::bind(&socket_path).unwrap();
-            // drops here: fd closed, socket file remains
-        }
-
-        assert!(
-            socket_path.exists(),
-            "stale socket file should persist after listener drop"
-        );
-
-        let launcher = DaemonLauncher::new(paths);
-        // With the old file-exists check: returns Ok immediately (false positive).
-        // With the fixed connect attempt: times out and returns Err (correct).
-        let result = launcher.wait_for_socket(Duration::from_millis(300));
-        assert!(
-            result.is_err(),
-            "Should fail when socket file exists but no daemon is listening"
-        );
     }
 
     #[test]
@@ -240,7 +179,7 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn test_readiness_ready_via_ipc_when_http_discovery_is_stale() {
+    fn test_readiness_starting_when_http_discovery_is_stale_even_if_legacy_socket_exists() {
         let dir = tempfile::tempdir().unwrap();
         let paths = DaemonPaths::with_home(dir.path().to_path_buf());
         fs::create_dir_all(dir.path()).unwrap();
@@ -256,19 +195,18 @@ mod tests {
             .publish_discovery(&paths.daemon_mcp_transport())
             .unwrap();
 
-        let socket_path = paths.daemon_socket();
+        let socket_path = dir.path().join("legacy-daemon.sock");
         let _listener = std::os::unix::net::UnixListener::bind(&socket_path).unwrap();
 
         let launcher = DaemonLauncher::new(paths);
-        assert_eq!(launcher.daemon_readiness(), DaemonReadiness::Ready);
+        assert_eq!(launcher.daemon_readiness(), DaemonReadiness::Starting);
     }
 
-    /// IPC fallback: live PID + no state file + listening socket = Ready.
-    /// Covers version-skew (old daemon binary without state file support) and
-    /// write_daemon_state failures.
+    /// HTTP-only readiness: live PID + no state file + legacy listening socket
+    /// stays Starting. Version-skew must not silently fall back to legacy transport.
     #[cfg(unix)]
     #[test]
-    fn test_readiness_ready_via_ipc_fallback_when_no_state_file() {
+    fn test_readiness_starting_when_no_state_file_even_if_legacy_socket_exists() {
         let dir = tempfile::tempdir().unwrap();
         let paths = DaemonPaths::with_home(dir.path().to_path_buf());
         fs::create_dir_all(dir.path()).unwrap();
@@ -276,13 +214,14 @@ mod tests {
         // Simulate a live daemon PID
         let _pid_file = PidFile::create(&paths.daemon_pid()).unwrap();
 
-        // Create a real Unix listener on the daemon socket path (simulates a listening daemon)
-        let socket_path = paths.daemon_socket();
+        // Create a real Unix listener at the old daemon socket path shape.
+        let socket_path = dir.path().join("legacy-daemon.sock");
         let _listener = std::os::unix::net::UnixListener::bind(&socket_path).unwrap();
 
-        // No state file at all, but IPC is reachable
+        // No state file at all, and the legacy socket is reachable.
+        // HTTP discovery remains the readiness contract.
         let launcher = DaemonLauncher::new(paths);
-        assert_eq!(launcher.daemon_readiness(), DaemonReadiness::Ready);
+        assert_eq!(launcher.daemon_readiness(), DaemonReadiness::Starting);
     }
 
     #[test]

@@ -2,7 +2,7 @@
 //!
 //! The launcher checks for a running daemon via PID file, acquires an advisory
 //! lock to prevent races between multiple adapters, spawns the daemon as a
-//! detached background process, and waits for the IPC endpoint to become ready.
+//! detached background process, and waits for the HTTP endpoint to become ready.
 
 use std::io;
 use std::time::{Duration, Instant};
@@ -11,7 +11,7 @@ use fs2::FileExt;
 use tracing::{debug, info};
 
 use crate::daemon::pid::PidFile;
-use crate::daemon::transport::{TransportEndpoint, TransportMode};
+use crate::daemon::transport::TransportEndpoint;
 use crate::paths::DaemonPaths;
 
 /// Manages daemon lifecycle from the adapter's perspective: detect, launch, wait.
@@ -53,29 +53,16 @@ impl DaemonLauncher {
         PidFile::check_running(&self.paths.daemon_pid()).is_some()
     }
 
-    pub fn transport_endpoint(&self) -> TransportEndpoint {
-        let discovery_path = self.paths.daemon_mcp_transport();
-        match TransportEndpoint::read_discovery(&discovery_path) {
-            Ok(endpoint) => endpoint,
-            Err(_) => TransportEndpoint::new(self.paths.daemon_ipc_addr()),
-        }
+    pub fn transport_endpoint(&self) -> io::Result<TransportEndpoint> {
+        TransportEndpoint::read_discovery(&self.paths.daemon_mcp_transport())
     }
 
     /// Probe the daemon transport endpoint to check if it is accepting connections.
-    /// Used as a fallback when the state file is missing (old binary, write failure).
+    /// Used when the state file is missing or unreadable.
     fn probe_transport_endpoint(&self) -> bool {
-        let endpoint = self.transport_endpoint();
-        if endpoint.probe_readiness().is_ready() {
-            return true;
-        }
-
-        if endpoint.mode() != TransportMode::Ipc {
-            return TransportEndpoint::new(self.paths.daemon_ipc_addr())
-                .probe_readiness()
-                .is_ready();
-        }
-
-        false
+        self.transport_endpoint()
+            .map(|endpoint| endpoint.probe_readiness().is_ready())
+            .unwrap_or(false)
     }
 
     /// Assess the daemon's lifecycle phase from PID + state file.
@@ -95,8 +82,8 @@ impl DaemonLauncher {
                     Ok(s) if s.trim() == "draining" => DaemonReadiness::Ready,
                     Ok(s) if s.trim() == "stopping" => DaemonReadiness::Stopping,
                     _ => {
-                        // State file missing or unreadable (old binary, write failure).
-                        // Fall back to transport probing: if the endpoint is
+                        // State file missing or unreadable.
+                        // Probe the HTTP transport: if the endpoint is
                         // reachable, the daemon is ready regardless of state file.
                         if self.probe_transport_endpoint() {
                             DaemonReadiness::Ready
@@ -117,8 +104,8 @@ impl DaemonLauncher {
     /// races.
     pub fn ensure_daemon_ready(&self) -> io::Result<()> {
         // Fast path (no lock): if daemon is already ready, skip the lock.
-        // If the daemon transitions to stopping between this check and
-        // connect_and_handshake, run_adapter's retry loop catches it.
+        // If the daemon transitions to stopping between this check and the
+        // HTTP adapter connection, run_adapter's retry loop catches it.
         if matches!(self.daemon_readiness(), DaemonReadiness::Ready) {
             debug!("Daemon already ready (fast path)");
             return Ok(());
@@ -300,13 +287,5 @@ impl DaemonLauncher {
         cmd.spawn()?;
 
         Ok(())
-    }
-
-    /// Poll for the IPC endpoint to become reachable, with exponential backoff.
-    ///
-    /// Steps: 50ms, 100ms, 200ms, 400ms, 500ms (capped), 500ms, ...
-    /// Returns `Err` if the total timeout elapses before the endpoint is ready.
-    pub fn wait_for_socket(&self, timeout: Duration) -> io::Result<()> {
-        self.transport_endpoint().wait_for_readiness(timeout)
     }
 }

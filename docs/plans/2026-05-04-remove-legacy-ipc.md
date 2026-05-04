@@ -167,6 +167,32 @@
 
 **Verification ledger:** Record invariant, command, scope label, commit SHA, result, and timestamp. Reuse same-HEAD scoped evidence instead of rerunning expensive gates.
 
+## Execution Notes
+
+- CLI daemon execution now uses the same Streamable HTTP client configuration helper as the adapter, including workspace, workspace source, Julie version, and bearer-token headers.
+- `TransportEndpoint` is HTTP-only. Legacy discovery documents with `"mode": "ipc"` are rejected instead of silently falling back.
+- The daemon IPC listener, accept loop, header protocol, ready-line handshake, and stream-serving modules were deleted. Stale-binary disconnect behavior moved to HTTP session cleanup.
+- `workspace_ids_to_disconnect` moved to `src/daemon/mcp_session.rs` with session-level tests before `src/daemon/ipc_session.rs` was deleted.
+- The adapter module now keeps only the HTTP stdio bridge. `ForwardOutcome` remains because the HTTP bridge uses it to distinguish a normal session end from an immediate daemon disconnect.
+- `cargo xtask test changed` selected the full `dev` bucket set for this diff and passed in 367.2s. I did not rerun `cargo xtask test dev` separately because that would repeat the same 22 bucket commands without adding coverage.
+
+## Verification Ledger
+
+| Scope | Invariant | Command | Revision | Result | Timestamp |
+| --- | --- | --- | --- | --- | --- |
+| worker-red-green | Launcher stays `Starting` when HTTP discovery is stale even if a legacy Unix socket exists. | `cargo nextest run --lib test_readiness_starting_when_http_discovery_is_stale_even_if_legacy_socket_exists 2>&1 \| tail -30` | `04c93a17+dirty` | PASS, 1 test in 0.023s | 2026-05-04T01:54:58Z |
+| worker-red-green | Launcher stays `Starting` when only a live PID and legacy socket exist. | `cargo nextest run --lib test_readiness_starting_when_no_state_file_even_if_legacy_socket_exists 2>&1 \| tail -30` | `04c93a17+dirty` | PASS, 1 test in 0.013s | 2026-05-04T01:54:58Z |
+| worker-red-green | Daemon MCP discovery paths remain distinct from the dashboard port file. | `cargo nextest run --lib test_daemon_mcp_transport_paths_are_distinct_from_dashboard_port 2>&1 \| tail -30` | `04c93a17+dirty` | PASS, 1 test in 0.012s | 2026-05-04T01:54:58Z |
+| worker-red-green | Legacy IPC discovery documents are rejected after the HTTP-only transport collapse. | `cargo nextest run --lib test_transport_discovery_rejects_legacy_ipc_mode 2>&1 \| tail -30` | `04c93a17+dirty` | PASS, 1 test in 0.014s | 2026-05-04T01:54:58Z |
+| worker-red-green | Session cleanup still disconnects startup and rebound workspace resources in deterministic order. | `cargo nextest run --lib workspace_ids_to_disconnect 2>&1 \| tail -30` | `04c93a17+dirty` | PASS, 3 tests in 0.014s | 2026-05-04T01:54:58Z |
+| worker-red-green | HTTP session DELETE triggers stale-binary restart when the last session disconnects. | `cargo nextest run --lib test_http_julie_session_delete_triggers_restart_when_binary_became_stale 2>&1 \| tail -30` | `04c93a17+dirty` | PASS, 1 test in 0.106s | 2026-05-04T01:54:58Z |
+| worker-red-green | Daemon lifecycle still starts, publishes PID, and stops without IPC cleanup. | `cargo nextest run --lib test_daemon_starts_creates_pid_then_stops 2>&1 \| tail -40` | `04c93a17+dirty` | PASS, 1 test in 8.709s | 2026-05-04T01:54:58Z |
+| worker-red-green | Daemon startup publishes HTTP discovery with private token material. | `cargo nextest run --lib test_daemon_publishes_http_transport_discovery_with_private_token 2>&1 \| tail -40` | `04c93a17+dirty` | PASS, 1 test in 8.635s | 2026-05-04T01:54:58Z |
+| worker-red-green | xtask manifest contract accepts the HTTP-only transport bucket notes and command set. | `cargo nextest run -p xtask manifest_contract_tests_checked_in_manifest_uses_exact_bucket_specs 2>&1 \| tail -40` | `04c93a17+dirty` | PASS, 1 test in 0.010s | 2026-05-04T01:54:58Z |
+| affected-change | Diff-selected calibrated gate passes. The selected bucket set matched the checked-in `dev` tier. | `cargo xtask test changed 2>&1 \| tail -120` | `04c93a17+dirty` | PASS, 22 buckets in 367.2s | 2026-05-04T01:54:58Z |
+| specialist-gate | Reliability gate passes after deleting daemon transport/session code. | `cargo xtask test reliability 2>&1 \| tail -120` | `04c93a17+dirty` | PASS, 3 buckets in 54.2s | 2026-05-04T01:54:58Z |
+| specialist-gate | Transport bucket covers adapter, daemon discovery, HTTP transport, and MCP session cleanup without deleted IPC modules. | `cargo xtask test bucket transport 2>&1 \| tail -120` | `04c93a17+dirty` | PASS, 1 bucket in 2.4s | 2026-05-04T01:54:58Z |
+
 ## Model Routing
 
 **Project source of truth:** `RAZORBACK.md`.

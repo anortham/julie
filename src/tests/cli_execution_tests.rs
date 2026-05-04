@@ -537,6 +537,63 @@ fn test_build_startup_hint_sets_cli_source() {
     assert_eq!(hint.source, Some(WorkspaceStartupSource::Cli));
 }
 
+#[test]
+fn test_cli_http_client_config_uses_workspace_headers_and_token() {
+    use axum::http::HeaderName;
+
+    use crate::daemon::http_client::http_client_config_for_endpoint;
+    use crate::daemon::mcp_session::{
+        HEADER_JULIE_VERSION, HEADER_JULIE_WORKSPACE, HEADER_JULIE_WORKSPACE_SOURCE,
+    };
+    use crate::daemon::transport::TransportEndpoint;
+
+    let dir = tempfile::tempdir().unwrap();
+    let token_path = dir.path().join("daemon-mcp.token");
+    std::fs::write(&token_path, "cli-secret\n").unwrap();
+    let endpoint = TransportEndpoint::streamable_http(
+        "127.0.0.1",
+        9123,
+        "/mcp",
+        "/mcp/ready",
+        Some(token_path),
+    )
+    .unwrap();
+    let startup_hint = daemon::build_startup_hint(dir.path().join("workspace"));
+
+    let config = http_client_config_for_endpoint(&endpoint, &startup_hint)
+        .expect("HTTP endpoint should produce CLI daemon client config");
+
+    assert_eq!(config.uri.as_ref(), "http://127.0.0.1:9123/mcp");
+    assert_eq!(config.auth_header.as_deref(), Some("cli-secret"));
+    assert_eq!(
+        config
+            .custom_headers
+            .get(&HeaderName::from_static(HEADER_JULIE_WORKSPACE))
+            .unwrap()
+            .to_str()
+            .unwrap(),
+        startup_hint.path.to_string_lossy()
+    );
+    assert_eq!(
+        config
+            .custom_headers
+            .get(&HeaderName::from_static(HEADER_JULIE_WORKSPACE_SOURCE))
+            .unwrap()
+            .to_str()
+            .unwrap(),
+        "cli"
+    );
+    assert_eq!(
+        config
+            .custom_headers
+            .get(&HeaderName::from_static(HEADER_JULIE_VERSION))
+            .unwrap()
+            .to_str()
+            .unwrap(),
+        env!("CARGO_PKG_VERSION")
+    );
+}
+
 // ---------------------------------------------------------------------------
 // run_cli_tool: standalone with missing workspace
 // ---------------------------------------------------------------------------
@@ -710,106 +767,48 @@ fn test_daemon_call_error_transport_is_send_sync() {
     assert_send_sync::<crate::cli_tools::daemon::DaemonCallError>();
 }
 
-#[cfg(unix)]
-#[tokio::test]
-async fn test_daemon_client_initializes_mcp_session_before_tool_call() -> anyhow::Result<()> {
-    use std::time::Duration;
+#[test]
+fn test_daemon_mcp_error_maps_to_tool_error() {
+    use rmcp::model::{ErrorCode, ErrorData};
+    use rmcp::service::ServiceError;
 
-    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-    use tokio::net::UnixStream;
+    use crate::cli_tools::daemon::{DaemonCallError, map_call_tool_error_for_test};
 
-    async fn read_json_line(
-        lines: &mut tokio::io::Lines<BufReader<tokio::net::unix::OwnedReadHalf>>,
-    ) -> anyhow::Result<serde_json::Value> {
-        let line = tokio::time::timeout(Duration::from_secs(2), lines.next_line())
-            .await
-            .expect("client should send a JSON-RPC line")?
-            .expect("client stream should remain open");
-        Ok(serde_json::from_str(&line)?)
+    let error = ErrorData::new(
+        ErrorCode::INVALID_PARAMS,
+        "missing query",
+        Some(serde_json::json!({"field": "query"})),
+    );
+
+    let mapped = map_call_tool_error_for_test(ServiceError::McpError(error));
+
+    match mapped {
+        DaemonCallError::ToolError { message, raw } => {
+            assert_eq!(message, "missing query");
+            assert_eq!(raw["data"]["field"], "query");
+        }
+        DaemonCallError::Transport(error) => {
+            panic!("daemon MCP errors must not be treated as fallback transport errors: {error}")
+        }
     }
+}
 
-    async fn write_json_line(
-        writer: &mut tokio::net::unix::OwnedWriteHalf,
-        value: serde_json::Value,
-    ) -> anyhow::Result<()> {
-        writer
-            .write_all(serde_json::to_string(&value)?.as_bytes())
-            .await?;
-        writer.write_all(b"\n").await?;
-        writer.flush().await?;
-        Ok(())
+#[test]
+fn test_daemon_transport_error_stays_transport_error() {
+    use rmcp::service::ServiceError;
+
+    use crate::cli_tools::daemon::{DaemonCallError, map_call_tool_error_for_test};
+
+    let mapped = map_call_tool_error_for_test(ServiceError::TransportClosed);
+
+    match mapped {
+        DaemonCallError::Transport(error) => {
+            assert_eq!(error.to_string(), "Transport closed");
+        }
+        DaemonCallError::ToolError { message, .. } => {
+            panic!("transport failure must remain eligible for standalone fallback: {message}")
+        }
     }
-
-    let (client_stream, server_stream) = UnixStream::pair()?;
-    let mut client = daemon::DaemonClient::from_stream_for_test(client_stream);
-
-    let server = tokio::spawn(async move {
-        let (read_half, mut write_half) = server_stream.into_split();
-        let mut lines = BufReader::new(read_half).lines();
-
-        let initialize = read_json_line(&mut lines).await?;
-        assert_eq!(
-            initialize["method"], "initialize",
-            "CLI daemon client must initialize MCP before sending tool calls"
-        );
-        assert_eq!(
-            initialize["params"]["clientInfo"]["name"], "julie-cli",
-            "initialize should identify the CLI client"
-        );
-
-        write_json_line(
-            &mut write_half,
-            serde_json::json!({
-                "jsonrpc": "2.0",
-                "id": initialize["id"].clone(),
-                "result": {
-                    "protocolVersion": "2025-11-25",
-                    "capabilities": {},
-                    "serverInfo": {
-                        "name": "Julie",
-                        "version": env!("CARGO_PKG_VERSION")
-                    }
-                }
-            }),
-        )
-        .await?;
-
-        let initialized = read_json_line(&mut lines).await?;
-        assert_eq!(
-            initialized["method"], "notifications/initialized",
-            "CLI daemon client should complete MCP initialization before tool calls"
-        );
-
-        let tool_call = read_json_line(&mut lines).await?;
-        assert_eq!(tool_call["method"], "tools/call");
-        assert_eq!(tool_call["params"]["name"], "fast_search");
-
-        write_json_line(
-            &mut write_half,
-            serde_json::json!({
-                "jsonrpc": "2.0",
-                "id": tool_call["id"].clone(),
-                "result": {
-                    "content": [{"type": "text", "text": "ok"}],
-                    "isError": false
-                }
-            }),
-        )
-        .await?;
-
-        Ok::<(), anyhow::Error>(())
-    });
-
-    let result = client
-        .call_tool(
-            "fast_search",
-            serde_json::json!({"query": "FastSearchTool"}),
-        )
-        .await?;
-
-    server.await.expect("fake daemon task should not panic")?;
-    assert_eq!(result["content"][0]["text"], "ok");
-    Ok(())
 }
 
 // ---------------------------------------------------------------------------

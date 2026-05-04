@@ -6,6 +6,8 @@
 
 **Architecture:** Add an HTTP transport module that serves MCP over localhost using the existing `rmcp` Streamable HTTP server support and the current Tokio/Axum HTTP stack. Keep `src/daemon/ipc.rs` and `src/daemon/ipc_session.rs` working during migration, but make `src/adapter/mod.rs` target the canonical daemon endpoint and keep stdio as the MCP-client compatibility layer. The `rmcp` 1.6.0 release added transport features that overlap with this plan, so Julie should delegate Host and Origin validation, streamable HTTP session timeout behavior, and resumability support to the SDK where the APIs fit. Julie still owns daemon discovery, local token policy, lifecycle, and adapter compatibility.
 
+**Update 2026-05-04:** The compatibility window from this plan is now closed by `docs/plans/2026-05-04-remove-legacy-ipc.md`. Legacy IPC references below are historical execution notes. The daemon MCP transport is now localhost Streamable HTTP, with stdio kept only as the external MCP-client adapter boundary.
+
 **Tech Stack:** Rust, Tokio, Axum 0.8, `rmcp` with `transport-streamable-http-server` after an intentional SDK audit. Current `Cargo.toml` declares `rmcp = "1.2"` while `Cargo.lock` resolves `rmcp` 1.5.0; this plan should target an explicit 1.6.0 upgrade or record why 1.5.0 remains pinned. Keep the existing daemon `WorkspacePool`, `EmbeddingService`, `WatcherPool`, `DashboardState`, and adapter forwarding code.
 
 ---

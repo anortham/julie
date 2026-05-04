@@ -52,36 +52,6 @@ fn test_workspace_tantivy_path() {
 }
 
 #[test]
-fn test_daemon_socket_path() {
-    let paths = DaemonPaths::new();
-    let julie_home = dirs::home_dir().unwrap().join(".julie");
-    #[cfg(unix)]
-    assert_eq!(paths.daemon_socket(), julie_home.join("daemon.sock"));
-    // On Windows, pipe name is scoped to julie_home via hash
-    #[cfg(windows)]
-    assert!(
-        paths
-            .daemon_pipe_name()
-            .starts_with(r"\\.\pipe\julie-daemon-")
-    );
-}
-
-#[test]
-fn test_daemon_ipc_addr_isolation() {
-    // Different julie_home dirs must produce different IPC addresses
-    let paths_a = DaemonPaths::with_home(PathBuf::from("/tmp/julie-a"));
-    let paths_b = DaemonPaths::with_home(PathBuf::from("/tmp/julie-b"));
-    assert_ne!(
-        paths_a.daemon_ipc_addr(),
-        paths_b.daemon_ipc_addr(),
-        "Different julie_home dirs must have different IPC addresses"
-    );
-    // Same julie_home must produce the same address (deterministic)
-    let paths_a2 = DaemonPaths::with_home(PathBuf::from("/tmp/julie-a"));
-    assert_eq!(paths_a.daemon_ipc_addr(), paths_a2.daemon_ipc_addr());
-}
-
-#[test]
 fn test_daemon_pid_path() {
     let paths = DaemonPaths::new();
     let expected = dirs::home_dir().unwrap().join(".julie").join("daemon.pid");
@@ -170,19 +140,21 @@ fn test_default_impl() {
     assert_eq!(default_paths.julie_home(), new_paths.julie_home());
 }
 
-/// Shutdown event name uses the same hash as the IPC pipe name.
 #[cfg(windows)]
 #[test]
-fn test_daemon_shutdown_event_uses_same_hash_as_pipe() {
-    let paths = DaemonPaths::with_home(PathBuf::from(r"C:\Users\test\.julie"));
-    let pipe_name = paths.daemon_pipe_name();
-    let event_name = paths.daemon_shutdown_event();
+fn test_daemon_shutdown_event_is_scoped_to_julie_home() {
+    let paths_a = DaemonPaths::with_home(PathBuf::from(r"C:\Users\test-a\.julie"));
+    let paths_b = DaemonPaths::with_home(PathBuf::from(r"C:\Users\test-b\.julie"));
+    let paths_a_again = DaemonPaths::with_home(PathBuf::from(r"C:\Users\test-a\.julie"));
 
-    // Extract the hex hash from each: "...-{hash}" suffix
-    let pipe_hash = pipe_name.rsplit('-').next().unwrap();
-    let event_hash = event_name.rsplit('-').next().unwrap();
+    assert_ne!(
+        paths_a.daemon_shutdown_event(),
+        paths_b.daemon_shutdown_event(),
+        "Different JULIE_HOME values must have different shutdown events"
+    );
     assert_eq!(
-        pipe_hash, event_hash,
-        "Pipe and event must share the same home-dir hash"
+        paths_a.daemon_shutdown_event(),
+        paths_a_again.daemon_shutdown_event(),
+        "Shutdown event names must be deterministic for one JULIE_HOME"
     );
 }

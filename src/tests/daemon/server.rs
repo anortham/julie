@@ -97,7 +97,7 @@ async fn test_daemon_starts_and_creates_pid_file() {
     let paths = DaemonPaths::with_home(tmp.path().to_path_buf());
     paths.ensure_dirs().expect("Failed to create dirs");
 
-    // Spawn the daemon in a background task; it will block on accept loop.
+    // Spawn the daemon in a background task; it will block on shutdown.
     let paths_clone = paths.clone();
     let handle = tokio::spawn(async move { daemon::run_daemon(paths_clone, 0, true).await });
 
@@ -115,17 +115,6 @@ async fn test_daemon_starts_and_creates_pid_file() {
     let pid_contents = std::fs::read_to_string(&pid_path).expect("read PID file");
     let pid: u32 = pid_contents.trim().parse().expect("PID should be numeric");
     assert_eq!(pid, std::process::id(), "PID should match current process");
-
-    // Socket file should exist (IPC binds after embedding init completes)
-    #[cfg(unix)]
-    {
-        let socket_path = paths.daemon_socket();
-        assert!(
-            wait_for_file(&socket_path, Duration::from_secs(30)).await,
-            "Socket file should appear within 30s at {}",
-            socket_path.display()
-        );
-    }
 
     // Send a shutdown signal to stop the daemon.
     // We abort the task since we can't easily send SIGTERM to ourselves in a test.
@@ -193,53 +182,6 @@ async fn test_daemon_publishes_http_transport_discovery_with_private_token() {
     let _ = handle.await;
     let _ = std::fs::remove_file(paths.daemon_pid());
     let _ = crate::daemon::lifecycle::stop_daemon(&paths);
-}
-
-// ── D-C3 ──────────────────────────────────────────────────────────────────────
-// Transient OS errors from accept() (EMFILE, ConnectionReset, Interrupted)
-// must be classified as non-fatal so the accept loop survives them.
-#[test]
-fn test_transient_accept_errors_are_classified_correctly() {
-    use std::io;
-
-    // ConnectionReset: client vanished before accept completed — transient
-    assert!(daemon::is_transient_accept_error(&io::Error::from(
-        io::ErrorKind::ConnectionReset
-    )));
-    // Interrupted (EINTR): always transient
-    assert!(daemon::is_transient_accept_error(&io::Error::from(
-        io::ErrorKind::Interrupted
-    )));
-    // ConnectionAborted: transient
-    assert!(daemon::is_transient_accept_error(&io::Error::from(
-        io::ErrorKind::ConnectionAborted
-    )));
-    // NotFound / PermissionDenied / BrokenPipe: NOT transient (structural errors)
-    assert!(!daemon::is_transient_accept_error(&io::Error::from(
-        io::ErrorKind::NotFound
-    )));
-    assert!(!daemon::is_transient_accept_error(&io::Error::from(
-        io::ErrorKind::PermissionDenied
-    )));
-    assert!(!daemon::is_transient_accept_error(&io::Error::from(
-        io::ErrorKind::BrokenPipe
-    )));
-}
-
-// EMFILE (fd exhaustion) must also be classified as transient
-#[cfg(unix)]
-#[test]
-fn test_emfile_is_transient_accept_error() {
-    let e = std::io::Error::from_raw_os_error(libc::EMFILE);
-    assert!(
-        daemon::is_transient_accept_error(&e),
-        "EMFILE should be classified as transient"
-    );
-    let e = std::io::Error::from_raw_os_error(libc::ENFILE);
-    assert!(
-        daemon::is_transient_accept_error(&e),
-        "ENFILE should be classified as transient"
-    );
 }
 
 // ── D-H1 ──────────────────────────────────────────────────────────────────────

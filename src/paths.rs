@@ -58,43 +58,11 @@ impl DaemonPaths {
         self.workspace_index_dir(workspace_id).join("tantivy")
     }
 
-    /// Unix domain socket path (macOS/Linux)
-    #[cfg(unix)]
-    pub fn daemon_socket(&self) -> PathBuf {
-        self.julie_home.join("daemon.sock")
-    }
-
-    /// Named pipe name (Windows)
-    #[cfg(windows)]
-    pub fn daemon_pipe_name(&self) -> String {
-        self.daemon_ipc_addr().to_string_lossy().into_owned()
-    }
-
-    /// Platform-specific IPC address for the daemon.
-    /// Returns socket path on Unix, named pipe path on Windows.
-    ///
-    /// On Windows, the pipe name incorporates a hash of `julie_home` so that
-    /// different installations (or test instances with temp dirs) get isolated
-    /// pipe endpoints, matching the Unix behavior where each `julie_home` gets
-    /// its own socket file.
-    pub fn daemon_ipc_addr(&self) -> PathBuf {
-        #[cfg(unix)]
-        {
-            self.julie_home.join("daemon.sock")
-        }
-        #[cfg(windows)]
-        {
-            PathBuf::from(format!(
-                r"\\.\pipe\julie-daemon-{:016x}",
-                self.julie_home_hash()
-            ))
-        }
-    }
-
     /// Named event for graceful daemon shutdown (Windows).
     ///
     /// `julie stop` signals this event; the daemon waits on it alongside
-    /// ctrl_c. Uses the same home-dir hash as the IPC pipe for consistency.
+    /// ctrl_c. The event name includes a stable home-dir hash so different
+    /// JULIE_HOME values do not share shutdown events.
     #[cfg(windows)]
     pub fn daemon_shutdown_event(&self) -> String {
         format!(
@@ -103,7 +71,7 @@ impl DaemonPaths {
         )
     }
 
-    /// FNV-1a hash of `julie_home`, used for IPC pipe names and event names.
+    /// FNV-1a hash of `julie_home`, used for Windows shutdown event names.
     ///
     /// Stable across Rust versions (unlike `DefaultHasher`).
     #[cfg(windows)]

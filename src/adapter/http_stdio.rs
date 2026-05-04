@@ -1,10 +1,8 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 
 use anyhow::{Context, Result};
-use axum::http::{HeaderName, HeaderValue};
 use rmcp::model::{ClientJsonRpcMessage, JsonRpcMessage, RequestId, ServerJsonRpcMessage};
 use rmcp::service::RoleClient;
-use rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig;
 use rmcp::transport::{StreamableHttpClientTransport, Transport};
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
 use tokio::sync::mpsc;
@@ -12,11 +10,8 @@ use tracing::{error, info};
 
 use crate::adapter::ForwardOutcome;
 use crate::adapter::launcher::DaemonLauncher;
+use crate::daemon::http_client::http_client_config_for_endpoint;
 use crate::daemon::lifecycle::{RestartHandoffAction, RestartReason, restart_handoff_action};
-use crate::daemon::mcp_session::{
-    HEADER_JULIE_VERSION, HEADER_JULIE_WORKSPACE, HEADER_JULIE_WORKSPACE_SOURCE,
-};
-use crate::daemon::transport::TransportEndpoint;
 use crate::workspace::startup_hint::WorkspaceStartupHint;
 
 pub(crate) async fn run_http_adapter(
@@ -33,10 +28,32 @@ pub(crate) async fn run_http_adapter(
         tokio::task::block_in_place(|| launcher.ensure_daemon_ready())
             .context("Failed to ensure daemon is ready")?;
 
-        let config = match http_client_config_for_endpoint(
-            &launcher.transport_endpoint(),
-            &startup_hint,
-        ) {
+        let endpoint = match launcher.transport_endpoint() {
+            Ok(endpoint) => endpoint,
+            Err(error) => {
+                match restart_handoff_action(
+                    attempt,
+                    MAX_RETRIES,
+                    RestartReason::TransportUnavailable,
+                ) {
+                    RestartHandoffAction::Retry { reason } => {
+                        info!(
+                            ?reason,
+                            attempt = attempt + 1,
+                            error = %error,
+                            "HTTP adapter transport discovery failed during daemon restart handoff, retrying"
+                        );
+                        continue;
+                    }
+                    RestartHandoffAction::Exhausted { .. } => {
+                        return Err(anyhow::Error::from(error))
+                            .context("Failed to discover HTTP daemon transport after retries");
+                    }
+                }
+            }
+        };
+
+        let config = match http_client_config_for_endpoint(&endpoint, &startup_hint) {
             Ok(config) => config,
             Err(error) => {
                 match restart_handoff_action(
@@ -105,45 +122,6 @@ pub(crate) async fn run_http_adapter(
     }
 
     unreachable!("retry loop either returns success or exits with an error")
-}
-
-pub(crate) fn http_client_config_for_endpoint(
-    endpoint: &TransportEndpoint,
-    startup_hint: &WorkspaceStartupHint,
-) -> Result<StreamableHttpClientTransportConfig> {
-    let uri = endpoint
-        .mcp_url()
-        .context("daemon transport discovery did not contain an HTTP MCP URL")?;
-    let mut headers = HashMap::new();
-    let workspace_path = startup_hint.path.to_string_lossy();
-    headers.insert(
-        HeaderName::from_static(HEADER_JULIE_WORKSPACE),
-        HeaderValue::from_str(workspace_path.as_ref())
-            .context("workspace path is not valid as an HTTP header")?,
-    );
-    if let Some(source) = startup_hint.source {
-        headers.insert(
-            HeaderName::from_static(HEADER_JULIE_WORKSPACE_SOURCE),
-            HeaderValue::from_static(source.as_header_value()),
-        );
-    }
-    headers.insert(
-        HeaderName::from_static(HEADER_JULIE_VERSION),
-        HeaderValue::from_static(env!("CARGO_PKG_VERSION")),
-    );
-
-    let mut config = StreamableHttpClientTransportConfig::with_uri(uri).custom_headers(headers);
-    if let Some(token_path) = endpoint.token_path() {
-        let token = std::fs::read_to_string(token_path).with_context(|| {
-            format!("Failed to read HTTP MCP token at {}", token_path.display())
-        })?;
-        let token = token.trim();
-        if token.is_empty() || token.contains('\r') || token.contains('\n') {
-            anyhow::bail!("HTTP MCP token file is empty or malformed");
-        }
-        config = config.auth_header(token.to_string());
-    }
-    Ok(config)
 }
 
 #[cfg(test)]

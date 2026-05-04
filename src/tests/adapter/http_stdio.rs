@@ -14,9 +14,8 @@ mod tests {
     use tokio::sync::mpsc;
     use tokio::time::{Duration, timeout};
 
-    use crate::adapter::{
-        ForwardOutcome, forward_http_stdio_transport, http_client_config_for_endpoint,
-    };
+    use crate::adapter::{ForwardOutcome, forward_http_stdio_transport};
+    use crate::daemon::http_client::http_client_config_for_endpoint;
     use crate::daemon::mcp_session::{
         HEADER_JULIE_VERSION, HEADER_JULIE_WORKSPACE, HEADER_JULIE_WORKSPACE_SOURCE,
     };

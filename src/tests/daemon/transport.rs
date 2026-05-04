@@ -8,13 +8,6 @@ mod tests {
     use std::path::Path;
     use std::thread::{self, JoinHandle};
 
-    #[cfg(unix)]
-    fn temp_socket_path() -> (tempfile::TempDir, std::path::PathBuf) {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("transport.sock");
-        (dir, path)
-    }
-
     fn write_token(path: &Path, token: &str) {
         std::fs::write(path, token).unwrap();
     }
@@ -42,63 +35,6 @@ mod tests {
                 .write_all(b"HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n")
                 .unwrap();
         })
-    }
-
-    #[tokio::test]
-    #[cfg(unix)]
-    async fn test_transport_endpoint_round_trip() {
-        use tokio::io::{AsyncReadExt, AsyncWriteExt};
-
-        let (_dir, path) = temp_socket_path();
-        let endpoint = TransportEndpoint::new(path.clone());
-        let listener = endpoint.bind_listener().await.unwrap();
-
-        let server = tokio::spawn(async move {
-            let mut stream = listener.accept().await.unwrap();
-            let mut buf = [0u8; 4];
-            stream.read_exact(&mut buf).await.unwrap();
-            assert_eq!(&buf, b"ping");
-            stream.write_all(b"pong").await.unwrap();
-        });
-
-        let mut client = endpoint.connect().await.unwrap();
-        client.write_all(b"ping").await.unwrap();
-
-        let mut buf = [0u8; 4];
-        client.read_exact(&mut buf).await.unwrap();
-        assert_eq!(&buf, b"pong");
-
-        server.await.unwrap();
-    }
-
-    #[test]
-    #[cfg(unix)]
-    fn test_transport_probe_reports_ready_for_live_socket() {
-        let (_dir, path) = temp_socket_path();
-        let _listener = std::os::unix::net::UnixListener::bind(&path).unwrap();
-        let endpoint = TransportEndpoint::new(path);
-        assert_eq!(endpoint.probe_readiness(), TransportProbe::Ready);
-    }
-
-    #[test]
-    #[cfg(unix)]
-    fn test_transport_probe_rejects_stale_socket_file() {
-        let (_dir, path) = temp_socket_path();
-        {
-            let _listener = std::os::unix::net::UnixListener::bind(&path).unwrap();
-        }
-
-        let endpoint = TransportEndpoint::new(path);
-        assert_eq!(endpoint.probe_readiness(), TransportProbe::NotReady);
-    }
-
-    #[test]
-    #[cfg(unix)]
-    fn test_transport_wait_for_readiness_times_out_when_endpoint_is_unavailable() {
-        let (_dir, path) = temp_socket_path();
-        let endpoint = TransportEndpoint::new(path);
-        let result = endpoint.wait_for_readiness(std::time::Duration::from_millis(200));
-        assert!(result.is_err());
     }
 
     #[test]
@@ -167,5 +103,25 @@ mod tests {
                 .unwrap();
 
         assert_eq!(endpoint.probe_readiness(), TransportProbe::NotReady);
+    }
+
+    #[test]
+    fn test_transport_discovery_rejects_legacy_ipc_mode() {
+        let dir = tempfile::tempdir().unwrap();
+        let state_path = dir.path().join("daemon-mcp-transport.json");
+        std::fs::write(
+            &state_path,
+            serde_json::json!({
+                "mode": "ipc",
+                "endpoint": dir.path().join("daemon.sock"),
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        let error = TransportEndpoint::read_discovery(&state_path)
+            .expect_err("legacy IPC discovery should be rejected");
+
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
     }
 }

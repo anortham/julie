@@ -1,14 +1,11 @@
 //! Julie daemon: persistent background process serving MCP sessions.
 //!
-//! The canonical adapter path is Streamable HTTP over localhost. Legacy IPC
-//! remains available during the migration window for older adapters and
-//! fallback readiness checks.
+//! The canonical adapter path is Streamable HTTP over localhost.
 
 pub mod database;
 pub mod embedding_service;
+pub mod http_client;
 pub mod http_transport;
-pub mod ipc;
-pub mod ipc_session;
 pub mod lifecycle;
 pub mod mcp_session;
 pub mod pid;
@@ -22,16 +19,13 @@ pub mod workspace_pool;
 pub mod workspace_registry_store;
 pub mod workspace_session_attachment;
 
-use std::io;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use anyhow::{Context, Result};
-#[cfg(unix)]
-use libc;
 use tokio::sync::{Notify, broadcast};
-use tracing::{error, info, warn};
+use tracing::{info, warn};
 
 use crate::dashboard::state::DashboardEvent;
 
@@ -41,50 +35,13 @@ use crate::workspace::registry::generate_workspace_id;
 use self::database::DaemonDatabase;
 use self::embedding_service::EmbeddingService;
 use self::http_transport::{HttpTransportConfig, HttpTransportServer, generate_bearer_token};
-use self::ipc::IpcListener;
-#[cfg(test)]
-pub(crate) use self::ipc_session::parse_ipc_headers_block;
-pub(crate) use self::ipc_session::{PrefixedIpcStream, handle_ipc_session, read_ipc_headers};
-use self::lifecycle::{
-    DaemonLifecycleController, DisconnectLifecycleAction, IncomingSessionAction, LifecyclePhase,
-    ShutdownCause, stale_binary_accept_action, stale_binary_disconnect_action, version_gate_action,
-};
+use self::lifecycle::{DaemonLifecycleController, LifecyclePhase, ShutdownCause};
 use self::mcp_session::{DaemonSessionDependencies, HttpJulieService, HttpSessionAdmission};
 use self::pid::PidFile;
 use self::session::SessionTracker;
-use self::transport::TransportEndpoint;
 use self::watcher_pool::WatcherPool;
 use self::workspace_pool::WorkspacePool;
 use self::workspace_registry_store::WorkspaceRegistryStore;
-
-/// Classify an `accept()` error as transient or fatal.
-///
-/// Transient errors, connection resets, interrupts, and fd-exhaustion, should
-/// be logged and retried. Fatal errors (unexpected listener state) should stop
-/// the accept loop.
-pub(crate) fn is_transient_accept_error(e: &io::Error) -> bool {
-    match e.kind() {
-        // Client vanished before the accept completed, or EINTR hit the syscall
-        io::ErrorKind::ConnectionReset
-        | io::ErrorKind::ConnectionAborted
-        | io::ErrorKind::Interrupted => true,
-        _ => {
-            if let Some(raw) = e.raw_os_error() {
-                // EMFILE / ENFILE: per-process or system-wide fd exhaustion (Unix)
-                #[cfg(unix)]
-                if raw == libc::EMFILE || raw == libc::ENFILE {
-                    return true;
-                }
-                // WSAEMFILE (10024): too many open sockets (Windows)
-                #[cfg(windows)]
-                if raw == 10024 {
-                    return true;
-                }
-            }
-            false
-        }
-    }
-}
 
 /// Wait for all active daemon sessions to finish, with a deadline.
 ///
@@ -270,11 +227,10 @@ fn migrate_stale_workspace_ids(daemon_db: &DaemonDatabase, indexes_dir: &Path) {
     }
 }
 
-/// Run the Julie daemon: bind transports, accept connections, serve MCP.
+/// Run the Julie daemon: bind HTTP transport, accept connections, serve MCP.
 ///
 /// This function blocks until a shutdown signal (SIGTERM/SIGINT) is received.
-/// HTTP is the canonical MCP transport. IPC is kept as a compatibility
-/// transport during migration and still uses the old workspace header protocol.
+/// HTTP is the daemon MCP transport.
 pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Result<()> {
     paths
         .ensure_dirs()
@@ -332,7 +288,7 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
     // Construct the shared embedding service in `Initializing` state. The
     // real provider bootstrap (Python sidecar + PyTorch + CodeRankEmbed model
     // load, ~36-39s on typical hardware) runs as a background task spawned
-    // below, AFTER the IPC listener is bound and `ready` state is published.
+    // below, after HTTP transport is bound and `ready` state is published.
     // This keeps the daemon off the critical path so MCP clients (e.g.
     // Claude Code, whose MCP_TIMEOUT defaults to 30s) don't time out on the
     // first connection after a cold start. See
@@ -340,7 +296,7 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
     // full rationale.
     let embedding_service = Arc::new(EmbeddingService::initializing());
     info!(
-        "Shared embedding service constructed in Initializing state; background init will start after IPC bind"
+        "Shared embedding service constructed in Initializing state; background init will start after HTTP transport bind"
     );
 
     // Capture binary mtime at startup for stale-binary detection.
@@ -448,7 +404,7 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
     );
 
     // Extract the broadcast sender before dashboard_state is moved into the router.
-    // Cloned cheaply (Arc-backed) and passed to each IPC session for live-feed events.
+    // Cloned cheaply (Arc-backed) and passed to each HTTP session for live-feed events.
     let dashboard_tx: broadcast::Sender<DashboardEvent> = dashboard_state.sender();
 
     let http_session_dependencies = Arc::new(
@@ -511,9 +467,8 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
 
     // Auto-open browser unless suppressed. Runs in a background task so
     // `opener::open` (which shells out to `cmd /c start <url>` on Windows
-    // and can take 1-3s on a cold system) doesn't block the IPC listener
-    // bind below. Browser launch is purely a UX nicety; it has no bearing
-    // on daemon readiness.
+    // and can take 1-3s on a cold system) doesn't block daemon readiness.
+    // Browser launch is purely a UX nicety.
     if !no_dashboard {
         let url = dashboard_url.clone();
         tokio::spawn(async move {
@@ -530,26 +485,11 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
         }
     });
 
-    // Bind the IPC listener AFTER all initialization is complete. On Windows,
-    // the adapter probes the named pipe to detect readiness, and that probe
-    // consumes a pipe instance. If the pipe is bound before the accept loop
-    // starts (e.g., during the 8+ second embedding model load), the probe eats
-    // the only instance and the real connection gets ERROR_PIPE_BUSY (231).
-    let transport = TransportEndpoint::new(paths.daemon_ipc_addr());
-    let listener = transport
-        .bind_listener()
-        .await
-        .context("Failed to bind IPC endpoint")?;
-
-    info!(
-        endpoint = %paths.daemon_ipc_addr().display(),
-        "Daemon listening for IPC connections"
-    );
     lifecycle.startup_complete();
 
     // Spawn the background embedding provider initialization task. This runs
-    // concurrently with the accept loop so the daemon becomes IPC-ready in
-    // <2s even though `create_embedding_provider` itself takes ~36-39s
+    // concurrently with HTTP session handling so the daemon becomes ready
+    // quickly even though `create_embedding_provider` itself can take tens of seconds
     // (Python sidecar + torch + model load). Downstream callers that need
     // the provider (spawn_workspace_embedding, nl_embeddings, watchers, the
     // dashboard) are all daemon-mode aware and wait on
@@ -671,17 +611,8 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
         });
     }
 
-    // Accept loop with graceful shutdown
     let restart_notify = lifecycle.restart_notify();
     let (result, shutdown_cause) = tokio::select! {
-        res = accept_loop(&listener, &pool, &sessions, &daemon_db, &embedding_service, startup_binary_mtime, lifecycle.clone(), dashboard_tx, watcher_pool_for_handlers) => {
-            let cause = if lifecycle.restart_pending() {
-                ShutdownCause::RestartRequired
-            } else {
-                ShutdownCause::Signal
-            };
-            (res, cause)
-        },
         res = shutdown_signal() => {
             if let Err(e) = res {
                 warn!("Signal handler setup failed: {}", e);
@@ -741,7 +672,6 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
         warn!("Failed to shut down HTTP MCP transport cleanly: {e:#}");
     }
 
-    listener.cleanup();
     let _ = std::fs::remove_file(paths.daemon_port());
 
     if let Err(e) = pid_file.cleanup() {
@@ -751,247 +681,6 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
 
     info!("Daemon stopped");
     result
-}
-
-/// Accept IPC connections in a loop, spawning a task for each.
-///
-/// When the last session disconnects and the on-disk binary has been rebuilt
-/// since this daemon started, the loop exits cleanly. The adapter will
-/// auto-start a fresh daemon with the new binary on the next connection.
-async fn accept_loop(
-    listener: &IpcListener,
-    pool: &Arc<WorkspacePool>,
-    sessions: &Arc<SessionTracker>,
-    daemon_db: &Option<Arc<DaemonDatabase>>,
-    embedding_service: &Arc<EmbeddingService>,
-    startup_binary_mtime: Option<SystemTime>,
-    lifecycle: DaemonLifecycleController,
-    dashboard_tx: broadcast::Sender<DashboardEvent>,
-    watcher_pool: Arc<WatcherPool>,
-) -> Result<()> {
-    loop {
-        let stream = match listener.accept().await {
-            Ok(s) => s,
-            Err(e) if is_transient_accept_error(&e) => {
-                // Transient OS error (connection reset, EINTR, fd exhaustion, etc.).
-                // Log and retry. Killing the daemon for EMFILE would be wrong.
-                warn!(error = %e, "Transient IPC accept error, retrying");
-                // Back off briefly on fd exhaustion to let pressure ease
-                #[cfg(unix)]
-                if let Some(raw) = e.raw_os_error() {
-                    if raw == libc::EMFILE || raw == libc::ENFILE {
-                        tokio::time::sleep(Duration::from_millis(100)).await;
-                    }
-                }
-                continue;
-            }
-            Err(e) => {
-                error!(error = %e, "Fatal IPC accept error, stopping accept loop");
-                return Err(anyhow::anyhow!("IPC accept failed: {}", e));
-            }
-        };
-
-        let pool = Arc::clone(pool);
-        let sessions = Arc::clone(sessions);
-        let daemon_db = daemon_db.clone();
-        let embedding_service = Arc::clone(embedding_service);
-        let restart_pending = lifecycle.restart_pending_handle();
-        let dashboard_tx = dashboard_tx.clone();
-        let lifecycle = lifecycle.clone();
-        let active_sessions = sessions.active_count();
-        let binary_is_stale = startup_binary_mtime
-            .zip(binary_mtime())
-            .is_some_and(|(startup_mtime, current_mtime)| current_mtime > startup_mtime);
-        match stale_binary_accept_action(
-            binary_is_stale,
-            active_sessions,
-            lifecycle.restart_pending(),
-        ) {
-            IncomingSessionAction::Accept => {}
-            IncomingSessionAction::AcceptWithRestartPending(reason) => {
-                let transition =
-                    lifecycle.mark_restart_pending(active_sessions, ShutdownCause::RestartRequired);
-                if transition.first_request {
-                    warn!(
-                        ?reason,
-                        active_sessions,
-                        "Binary has been rebuilt since daemon started. Daemon will restart when all sessions disconnect."
-                    );
-                }
-            }
-            IncomingSessionAction::ShutdownForRestart(reason) => {
-                lifecycle.mark_restart_pending(active_sessions, ShutdownCause::RestartRequired);
-                warn!(
-                    ?reason,
-                    "Binary is stale and no active sessions. Shutting down for restart."
-                );
-                lifecycle.notify_restart();
-                drop(stream);
-                return Ok(());
-            }
-            IncomingSessionAction::RejectForRestart(reason) => {
-                warn!(
-                    ?reason,
-                    "Rejecting new session while daemon prepares to restart."
-                );
-                drop(stream);
-                continue;
-            }
-        }
-
-        // Read IPC headers BEFORE registering the session. This lets us
-        // check for version mismatches while the daemon might still be idle
-        // (0 sessions), enabling immediate shutdown + restart instead of
-        // serving a full session with stale code.
-        let mut stream = stream;
-        let parsed_headers =
-            match tokio::time::timeout(Duration::from_secs(5), read_ipc_headers(&mut stream)).await
-            {
-                Ok(Ok(h)) => h,
-                Ok(Err(e)) => {
-                    warn!("Failed to read IPC headers, dropping connection: {e}");
-                    continue;
-                }
-                Err(_) => {
-                    warn!("IPC header read timed out (5s), dropping connection");
-                    continue;
-                }
-            };
-        let headers = parsed_headers.headers;
-        let workspace_startup_hint = headers.workspace_startup_hint();
-        let workspace_path = workspace_startup_hint.path.clone();
-        info!(workspace = %workspace_path.display(), "IPC headers received");
-
-        // Check version mismatch BEFORE adding the session. This catches
-        // plugin updates where the binary mtime didn't change (e.g. Windows
-        // file lock prevented re-extraction over the running executable).
-        let daemon_version = env!("CARGO_PKG_VERSION");
-        let active_sessions = sessions.active_count();
-        match version_gate_action(headers.version.as_deref(), daemon_version, active_sessions) {
-            IncomingSessionAction::Accept => {}
-            IncomingSessionAction::ShutdownForRestart(reason) => {
-                warn!(
-                    adapter_version = headers.version.as_deref().unwrap_or("<none>"),
-                    daemon_version,
-                    ?reason,
-                    "Version mismatch with no active sessions. Shutting down for restart."
-                );
-                lifecycle.mark_restart_pending(active_sessions, ShutdownCause::RestartRequired);
-                lifecycle.notify_restart();
-                drop(stream);
-                return Ok(());
-            }
-            IncomingSessionAction::RejectForRestart(reason) => {
-                let transition =
-                    lifecycle.mark_restart_pending(active_sessions, ShutdownCause::RestartRequired);
-                if transition.first_request {
-                    warn!(
-                        adapter_version = headers.version.as_deref().unwrap_or("<none>"),
-                        daemon_version,
-                        ?reason,
-                        "Adapter/daemon version mismatch. Rejecting new session; daemon will restart when current sessions disconnect."
-                    );
-                } else {
-                    warn!(
-                        adapter_version = headers.version.as_deref().unwrap_or("<none>"),
-                        daemon_version,
-                        ?reason,
-                        "Rejecting adapter session while daemon waits to restart."
-                    );
-                }
-                drop(stream);
-                continue;
-            }
-            IncomingSessionAction::AcceptWithRestartPending(reason) => {
-                let transition =
-                    lifecycle.mark_restart_pending(active_sessions, ShutdownCause::RestartRequired);
-                warn!(
-                    adapter_version = headers.version.as_deref().unwrap_or("<none>"),
-                    daemon_version,
-                    ?reason,
-                    first_request = transition.first_request,
-                    "Unexpected version-gate lifecycle action; rejecting session."
-                );
-                drop(stream);
-                continue;
-            }
-        }
-
-        let session_stream = PrefixedIpcStream::new(stream, parsed_headers.buffered_bytes);
-
-        let session_id = sessions.add_session();
-        let session_lifecycle = sessions.lifecycle_handle(&session_id);
-        let _ = dashboard_tx.send(DashboardEvent::SessionChange {
-            active_count: sessions.active_count(),
-        });
-
-        info!(
-            session_id = %session_id,
-            active = sessions.active_count(),
-            "New IPC session accepted"
-        );
-
-        let watcher_pool_for_session = Arc::clone(&watcher_pool);
-        tokio::spawn(async move {
-            let dashboard_tx_disconnect = dashboard_tx.clone();
-            if let Err(e) = handle_ipc_session(
-                session_stream,
-                pool,
-                &session_id,
-                &daemon_db,
-                &embedding_service,
-                &restart_pending,
-                Some(dashboard_tx),
-                workspace_startup_hint,
-                Some(session_lifecycle),
-                Some(watcher_pool_for_session),
-            )
-            .await
-            {
-                error!(session_id = %session_id, "IPC session error: {}", e);
-            }
-
-            sessions.remove_session(&session_id);
-            let remaining = sessions.active_count();
-            let _ = dashboard_tx_disconnect.send(DashboardEvent::SessionChange {
-                active_count: remaining,
-            });
-            info!(
-                session_id = %session_id,
-                remaining,
-                "IPC session ended"
-            );
-
-            let binary_is_stale = startup_binary_mtime
-                .zip(binary_mtime())
-                .is_some_and(|(startup_mtime, current_mtime)| current_mtime > startup_mtime);
-            match stale_binary_disconnect_action(
-                binary_is_stale,
-                lifecycle.restart_pending(),
-                remaining,
-            ) {
-                DisconnectLifecycleAction::None => {}
-                DisconnectLifecycleAction::MarkRestartPending(reason) => {
-                    let transition =
-                        lifecycle.mark_restart_pending(remaining, ShutdownCause::RestartRequired);
-                    if transition.first_request {
-                        warn!(?reason, "Binary rebuild detected at session disconnect.");
-                    }
-                }
-                DisconnectLifecycleAction::TriggerShutdown(cause) => {
-                    lifecycle.mark_restart_pending(remaining, cause);
-                }
-            }
-
-            // Version mismatches and stale-binary detection both flow through
-            // restart_pending. Once the last session disconnects, exit through
-            // the normal cleanup path so the adapter can spawn a fresh daemon.
-            if remaining == 0 && lifecycle.restart_pending() {
-                info!("Last session disconnected and restart is pending. Triggering restart.");
-                lifecycle.notify_restart();
-            }
-        });
-    }
 }
 
 /// Wait for a shutdown signal (SIGTERM or SIGINT on Unix).

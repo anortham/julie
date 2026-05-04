@@ -385,8 +385,6 @@ pub fn stop_daemon(paths: &DaemonPaths) -> anyhow::Result<()> {
                 if !PidFile::is_process_alive(pid) {
                     let _ = std::fs::remove_file(paths.daemon_pid());
                     let _ = std::fs::remove_file(paths.daemon_state());
-                    #[cfg(unix)]
-                    let _ = std::fs::remove_file(paths.daemon_socket());
                     info!("Daemon stopped");
                     return Ok(());
                 }
@@ -404,8 +402,6 @@ pub fn stop_daemon(paths: &DaemonPaths) -> anyhow::Result<()> {
         None => {
             let _ = std::fs::remove_file(paths.daemon_pid());
             let _ = std::fs::remove_file(paths.daemon_state());
-            #[cfg(unix)]
-            let _ = std::fs::remove_file(paths.daemon_socket());
             info!("Daemon is not running (cleaned stale files if any)");
             Ok(())
         }

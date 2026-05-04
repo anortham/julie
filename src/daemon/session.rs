@@ -1,6 +1,6 @@
 //! Session tracking for idle detection and control-plane visibility.
 //!
-//! Tracks active IPC sessions so the daemon can detect when it has been idle
+//! Tracks active MCP sessions so the daemon can detect when it has been idle
 //! (zero sessions) for graceful shutdown or resource reclamation, while also
 //! surfacing coarse lifecycle phases for the dashboard.
 
@@ -61,7 +61,7 @@ struct SessionRecord {
     current_workspace_id: Option<String>,
 }
 
-/// Tracks active IPC sessions connected to the daemon.
+/// Tracks active MCP sessions connected to the daemon.
 ///
 /// Thread-safe via `RwLock`. Each session gets a UUID on connect;
 /// the UUID is removed when the session ends (normally or on error).
