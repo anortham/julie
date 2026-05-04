@@ -454,4 +454,4 @@ These are project knowledge, not ephemeral. If you create a checkpoint or plan, 
 
 ---
 
-**Last Updated:** 2026-04-26 | **Status:** Production Ready (v7.5.0, workspace lifecycle + 34 languages)
+**Last Updated:** 2026-05-04 | **Status:** Production Ready (v7.6.0, HTTP transport + workspace lifecycle + 34 languages)

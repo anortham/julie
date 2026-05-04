@@ -116,7 +116,7 @@ async fn main() -> anyhow::Result<()> {
         }
 
         None => {
-            // Adapter mode: auto-start daemon, forward stdio to IPC
+            // Adapter mode: auto-start daemon, forward stdio to HTTP MCP.
             julie::adapter::run_adapter(startup_hint).await?;
         }
     }

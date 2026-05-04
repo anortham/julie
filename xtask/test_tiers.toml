@@ -242,9 +242,9 @@ commands = [
 ]
 
 [buckets.daemon]
-# Daemon-mode tests: handler construction, IPC headers, IPC session lifecycle,
-# MCP roots flow, and SessionWorkspaceState invariants. Real duplex-stream
-# coverage of the protocol; needs to run in CI to defend the rebind machinery.
+# Daemon-mode tests: handler construction, HTTP session lifecycle,
+# MCP roots flow, and SessionWorkspaceState invariants. Real transport/session
+# coverage needs to run in CI to defend the rebind machinery.
 expected_seconds = 12
 timeout_seconds = 60
 scope_label = "daemon"
