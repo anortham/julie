@@ -360,9 +360,7 @@ fn find_matches_by_trimmed_lines(content: &str, old_text: &str) -> Vec<MatchSpan
 impl EditFileTool {
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
         if self.old_text.is_empty() {
-            return Ok(CallToolResult::text_content(vec![Content::text(
-                "Error: old_text is required and cannot be empty".to_string(),
-            )]));
+            return Err(anyhow!("old_text is required and cannot be empty"));
         }
 
         // Resolve and validate file path (security check)
@@ -383,10 +381,7 @@ impl EditFileTool {
         ) {
             Ok(content) => content,
             Err(e) => {
-                return Ok(CallToolResult::text_content(vec![Content::text(format!(
-                    "Error: {}",
-                    e
-                ))]));
+                return Err(anyhow!("{e}"));
             }
         };
 

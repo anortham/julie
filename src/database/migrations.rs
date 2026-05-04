@@ -13,7 +13,7 @@ fn get_unix_timestamp() -> Result<i64> {
 }
 
 /// Current schema version - increment when adding migrations
-pub const LATEST_SCHEMA_VERSION: i32 = 22;
+pub const LATEST_SCHEMA_VERSION: i32 = 23;
 
 impl SymbolDatabase {
     // ============================================================
@@ -118,6 +118,7 @@ impl SymbolDatabase {
             20 => self.migration_020_add_symbol_annotations()?,
             21 => self.migration_021_add_early_warning_reports()?,
             22 => self.migration_022_add_sql_performance_indexes()?,
+            23 => self.migration_023_add_tool_call_input_bytes()?,
             _ => return Err(anyhow!("Unknown migration version: {}", version)),
         }
         Ok(())
@@ -148,6 +149,7 @@ impl SymbolDatabase {
             20 => "Add symbol_annotations table",
             21 => "Add early_warning_reports table",
             22 => "Add SQL performance indexes",
+            23 => "Add input_bytes to tool_calls",
             _ => "Unknown migration",
         };
 
@@ -768,6 +770,7 @@ impl SymbolDatabase {
                 duration_ms REAL NOT NULL,
                 result_count INTEGER,
                 source_bytes INTEGER,
+                input_bytes INTEGER,
                 output_bytes INTEGER,
                 success INTEGER NOT NULL DEFAULT 1,
                 metadata TEXT
@@ -828,6 +831,22 @@ impl SymbolDatabase {
         )?;
 
         info!("Migration 015 complete: indexing_repairs table added");
+        Ok(())
+    }
+
+    fn migration_023_add_tool_call_input_bytes(&self) -> Result<()> {
+        info!("Running migration 023: Add input_bytes to tool_calls");
+        if !self.table_exists("tool_calls")? {
+            debug!("tool_calls table does not exist, skipping migration 023");
+            return Ok(());
+        }
+        if self.has_column("tool_calls", "input_bytes")? {
+            debug!("tool_calls.input_bytes already exists, skipping migration 023");
+            return Ok(());
+        }
+        self.conn
+            .execute("ALTER TABLE tool_calls ADD COLUMN input_bytes INTEGER", [])?;
+        info!("Migration 023 complete: input_bytes column added to tool_calls");
         Ok(())
     }
 

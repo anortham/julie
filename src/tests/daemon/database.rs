@@ -768,6 +768,106 @@ mod tests {
         assert_eq!(succeeded2, 0, "no ws2 calls succeeded");
     }
 
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_tool_success_rate_counts_recorded_handler_failures() {
+        use crate::daemon::workspace_pool::WorkspacePool;
+        use crate::handler::JulieServerHandler;
+        use crate::tools::metrics::session::ToolCallReport;
+        use crate::tools::workspace::ManageWorkspaceTool;
+        use crate::workspace::registry::generate_workspace_id;
+        use std::sync::Arc;
+        use std::time::Duration as StdDuration;
+        use tempfile::TempDir;
+        use tokio::time::Duration;
+
+        let temp_dir = TempDir::new().unwrap();
+        let indexes_dir = temp_dir.path().join("indexes");
+        std::fs::create_dir_all(&indexes_dir).unwrap();
+
+        let workspace_root = temp_dir.path().join("workspace");
+        std::fs::create_dir_all(workspace_root.join("src")).unwrap();
+        std::fs::write(workspace_root.join("src/lib.rs"), "pub fn ok() {}\n").unwrap();
+
+        let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).unwrap());
+        let pool = Arc::new(WorkspacePool::new(
+            indexes_dir,
+            Some(Arc::clone(&daemon_db)),
+        ));
+
+        let workspace_path = workspace_root.canonicalize().unwrap();
+        let workspace_path_str = workspace_path.to_string_lossy().to_string();
+        let workspace_id = generate_workspace_id(&workspace_path_str).unwrap();
+        daemon_db
+            .upsert_workspace(&workspace_id, &workspace_path_str, "ready")
+            .unwrap();
+        let workspace = pool
+            .get_or_init(&workspace_id, workspace_path.clone())
+            .await
+            .unwrap();
+
+        let handler = JulieServerHandler::new_with_shared_workspace(
+            workspace,
+            workspace_path,
+            Some(Arc::clone(&daemon_db)),
+            Some(workspace_id.clone()),
+            None,
+            None,
+            None,
+            None,
+            Some(Arc::clone(&pool)),
+        )
+        .await
+        .unwrap();
+
+        let index_tool = ManageWorkspaceTool {
+            operation: "index".to_string(),
+            workspace_id: None,
+            path: Some(workspace_path_str),
+            name: None,
+            force: Some(false),
+            detailed: None,
+        };
+        index_tool.call_tool(&handler).await.unwrap();
+
+        let snapshot = handler.require_primary_workspace_binding().unwrap();
+        let success_report = ToolCallReport {
+            result_count: Some(1),
+            input_bytes: Some(16),
+            source_bytes: None,
+            output_bytes: 8,
+            metadata: serde_json::json!({"test":"success"}),
+            source_file_paths: vec!["src/lib.rs".to_string()],
+        };
+        handler.record_tool_call(
+            "get_symbols",
+            StdDuration::from_millis(2),
+            &success_report,
+            Some(&snapshot),
+        );
+        handler.record_tool_failure(
+            "get_symbols",
+            StdDuration::from_millis(1),
+            Some(&snapshot),
+            serde_json::json!({"mode":"not-a-real-mode"}),
+            vec!["src/lib.rs".to_string()],
+            Some(24),
+            "get_symbols failed: Invalid mode",
+        );
+
+        tokio::time::timeout(Duration::from_secs(3), async {
+            loop {
+                let (total, succeeded) = daemon_db.get_tool_success_rate(&workspace_id, 7).unwrap();
+                if total >= 2 {
+                    assert_eq!(succeeded, 1, "one success + one failure should be tracked");
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("timed out waiting for daemon metrics");
+    }
+
     #[test]
     fn test_migrate_workspace_ids_empty_map() {
         let (db, _tmp) = create_test_db();

@@ -481,20 +481,16 @@ impl RewriteSymbolTool {
         let (parsed_symbol_name, line_hint) = parse_symbol_line_hint(&requested_symbol);
 
         if parsed_symbol_name.is_empty() {
-            return Ok(CallToolResult::text_content(vec![Content::text(
-                "Error: symbol name is required".to_string(),
-            )]));
+            return Err(anyhow!("symbol name is required"));
         }
         if self.content.is_empty() {
-            return Ok(CallToolResult::text_content(vec![Content::text(
-                "Error: content is required".to_string(),
-            )]));
+            return Err(anyhow!("content is required"));
         }
         if !validate_operation(&self.operation) {
-            return Ok(CallToolResult::text_content(vec![Content::text(format!(
-                "Error: operation must be one of replace_full, replace_body, replace_signature, insert_after, insert_before, add_doc; got '{}'",
+            return Err(anyhow!(
+                "operation must be one of replace_full, replace_body, replace_signature, insert_after, insert_before, add_doc; got '{}'",
                 self.operation
-            ))]));
+            ));
         }
 
         let target = self.resolve_workspace_target(handler).await?;
@@ -532,26 +528,30 @@ impl RewriteSymbolTool {
         if matches.is_empty() {
             if let Some(line) = line_hint {
                 if let Some(ref file_path) = file_path_for_error {
-                    return Ok(CallToolResult::text_content(vec![Content::text(format!(
-                        "Error: symbol '{}' not found at line {} in '{}'. Use fast_search or get_symbols to verify the location.",
-                        symbol_name, line, file_path
-                    ))]));
+                    return Err(anyhow!(
+                        "symbol '{}' not found at line {} in '{}'. Use fast_search or get_symbols to verify the location.",
+                        symbol_name,
+                        line,
+                        file_path
+                    ));
                 }
-                return Ok(CallToolResult::text_content(vec![Content::text(format!(
-                    "Error: symbol '{}' not found at line {} in index. Use fast_search or get_symbols to verify the name.",
-                    symbol_name, line
-                ))]));
+                return Err(anyhow!(
+                    "symbol '{}' not found at line {} in index. Use fast_search or get_symbols to verify the name.",
+                    symbol_name,
+                    line
+                ));
             }
             if let Some(ref file_path) = file_path_for_error {
-                return Ok(CallToolResult::text_content(vec![Content::text(format!(
-                    "Error: symbol '{}' not found in '{}'. Use fast_search or get_symbols to verify the location.",
-                    symbol_name, file_path
-                ))]));
+                return Err(anyhow!(
+                    "symbol '{}' not found in '{}'. Use fast_search or get_symbols to verify the location.",
+                    symbol_name,
+                    file_path
+                ));
             }
-            return Ok(CallToolResult::text_content(vec![Content::text(format!(
-                "Error: symbol '{}' not found in index. Use fast_search or get_symbols to verify the name.",
+            return Err(anyhow!(
+                "symbol '{}' not found in index. Use fast_search or get_symbols to verify the name.",
                 symbol_name
-            ))]));
+            ));
         }
 
         if matches.len() > 1 {
@@ -583,13 +583,13 @@ impl RewriteSymbolTool {
             } else {
                 "Provide file_path or symbol@line to disambiguate"
             };
-            return Ok(CallToolResult::text_content(vec![Content::text(format!(
-                "Error: '{}' matches {} symbols. {}:\n{}",
+            return Err(anyhow!(
+                "'{}' matches {} symbols. {}:\n{}",
                 symbol_name,
                 matches.len(),
                 hint,
                 locations
-            ))]));
+            ));
         }
 
         let indexed_symbol = matches.into_iter().next().expect("one symbol");
@@ -610,10 +610,7 @@ impl RewriteSymbolTool {
                 .map_err(|error| anyhow!("Database lock error: {}", error))?;
             if let Err(error) = check_file_freshness(&db, &indexed_symbol.file_path, &current_hash)
             {
-                return Ok(CallToolResult::text_content(vec![Content::text(format!(
-                    "Error: {}",
-                    error
-                ))]));
+                return Err(error);
             }
         }
         let live = live_symbol_context(
@@ -638,11 +635,7 @@ impl RewriteSymbolTool {
                             self.operation
                         ));
                     }
-                    Err(e) => {
-                        return Ok(CallToolResult::text_content(vec![Content::text(format!(
-                            "Error: {e}"
-                        ))]));
-                    }
+                    Err(e) => return Err(e),
                 };
                 let old_content = original_content[range.start..range.end].to_string();
                 let start_line = original_content[..range.start].lines().count() + 1;
@@ -661,10 +654,10 @@ impl RewriteSymbolTool {
             }
             "insert_before" | "add_doc" => {
                 if self.operation == "add_doc" && live.live_symbol.doc_comment.is_some() {
-                    return Ok(CallToolResult::text_content(vec![Content::text(format!(
-                        "Error: symbol '{}' already has documentation",
+                    return Err(anyhow!(
+                        "symbol '{}' already has documentation",
                         self.symbol
-                    ))]));
+                    ));
                 }
                 let byte = live.live_symbol.start_byte as usize;
                 let line = original_content[..byte].lines().count() + 1;

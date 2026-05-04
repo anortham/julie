@@ -323,8 +323,11 @@ async fn test_rewrite_symbol_rejects_existing_doc_comment() -> Result<()> {
         dry_run: false,
     };
 
-    let result = tool.call_tool(&handler).await?;
-    let text = extract_text(&result);
+    let text = tool
+        .call_tool(&handler)
+        .await
+        .expect_err("existing docs should be rejected")
+        .to_string();
     assert!(
         text.contains("already has documentation"),
         "Expected doc rejection, got: {text}"
@@ -352,8 +355,11 @@ async fn test_rewrite_symbol_rejects_stale_index() -> Result<()> {
         dry_run: false,
     };
 
-    let result = tool.call_tool(&handler).await?;
-    let text = extract_text(&result);
+    let text = tool
+        .call_tool(&handler)
+        .await
+        .expect_err("stale index should be rejected")
+        .to_string();
     assert!(
         text.contains("changed since last indexing"),
         "Expected stale-index rejection, got: {text}"
@@ -376,8 +382,11 @@ async fn test_rewrite_symbol_not_found() -> Result<()> {
         dry_run: false,
     };
 
-    let result = tool.call_tool(&handler).await?;
-    let text = extract_text(&result);
+    let text = tool
+        .call_tool(&handler)
+        .await
+        .expect_err("missing symbol should be rejected")
+        .to_string();
     assert!(
         text.contains("not found"),
         "Expected not-found error, got: {text}"
@@ -409,8 +418,11 @@ async fn test_rewrite_symbol_requires_file_path_for_ambiguous_match() -> Result<
         dry_run: false,
     };
 
-    let result = tool.call_tool(&handler).await?;
-    let text = extract_text(&result);
+    let text = tool
+        .call_tool(&handler)
+        .await
+        .expect_err("ambiguous symbol should be rejected")
+        .to_string();
     assert!(
         text.contains("Provide file_path or symbol@line"),
         "Expected ambiguity error, got: {text}"
@@ -717,8 +729,11 @@ async fn test_replace_signature_no_body_returns_explicit_error() -> Result<()> {
         dry_run: false,
     };
 
-    let result = tool.call_tool(&handler).await?;
-    let text = extract_text(&result);
+    let text = tool
+        .call_tool(&handler)
+        .await
+        .expect_err("replace_signature on a bodyless symbol should fail")
+        .to_string();
     assert!(
         text.contains("replace_signature is not supported"),
         "Expected explicit error for trait method with no body, got: {text}"
@@ -1013,11 +1028,14 @@ async fn test_rewrite_symbol_file_path_bogus_filter_returns_not_found() -> Resul
         dry_run: true,
     };
 
-    let result = tool.call_tool(&handler).await?;
-    let text = extract_text(&result);
+    let text = tool
+        .call_tool(&handler)
+        .await
+        .expect_err("bogus file_path suffix should be rejected")
+        .to_string();
 
     assert!(
-        text.contains("Error:") && text.contains("not found"),
+        text.contains("not found"),
         "Expected not-found error for bogus suffix filter, got: {text}"
     );
 

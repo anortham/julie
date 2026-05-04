@@ -172,22 +172,22 @@ impl RenameSymbolTool {
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
         // Validation
         if self.old_name.is_empty() || self.new_name.is_empty() {
-            return Ok(CallToolResult::text_content(vec![Content::text(
-                "Error: old_name and new_name are required and cannot be empty".to_string(),
-            )]));
+            return Err(anyhow::anyhow!(
+                "old_name and new_name are required and cannot be empty"
+            ));
         }
 
         if self.old_name == self.new_name {
-            return Ok(CallToolResult::text_content(vec![Content::text(
-                "Error: old_name and new_name are identical - no rename needed".to_string(),
-            )]));
+            return Err(anyhow::anyhow!(
+                "old_name and new_name are identical - no rename needed"
+            ));
         }
 
         if !is_valid_rename_identifier(&self.new_name) {
-            return Ok(CallToolResult::error(vec![Content::text(format!(
-                "Error: invalid identifier for new_name '{}'. Use a single code identifier with no whitespace or punctuation.",
+            return Err(anyhow::anyhow!(
+                "invalid identifier for new_name '{}'. Use a single code identifier with no whitespace or punctuation.",
                 self.new_name
-            ))]));
+            ));
         }
 
         // Delegate to SmartRefactorTool's rename logic

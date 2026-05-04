@@ -11,6 +11,7 @@ pub struct ToolCallSummary {
     pub tool_name: String,
     pub call_count: u64,
     pub avg_duration_ms: f64,
+    pub total_input_bytes: u64,
     pub total_source_bytes: u64,
     pub total_output_bytes: u64,
 }
@@ -20,6 +21,7 @@ pub struct ToolCallSummary {
 pub struct HistorySummary {
     pub session_count: u64,
     pub total_calls: u64,
+    pub total_input_bytes: u64,
     pub total_source_bytes: u64,
     pub total_output_bytes: u64,
     pub per_tool: Vec<ToolCallSummary>,
@@ -38,13 +40,39 @@ impl SymbolDatabase {
         success: bool,
         metadata: Option<&str>,
     ) -> Result<()> {
+        self.insert_tool_call_with_input_bytes(
+            session_id,
+            tool_name,
+            duration_ms,
+            result_count,
+            source_bytes,
+            None,
+            output_bytes,
+            success,
+            metadata,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn insert_tool_call_with_input_bytes(
+        &self,
+        session_id: &str,
+        tool_name: &str,
+        duration_ms: f64,
+        result_count: Option<u32>,
+        source_bytes: Option<u64>,
+        input_bytes: Option<u64>,
+        output_bytes: Option<u64>,
+        success: bool,
+        metadata: Option<&str>,
+    ) -> Result<()> {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)?
             .as_secs() as i64;
 
         self.conn.execute(
-            "INSERT INTO tool_calls (session_id, timestamp, tool_name, duration_ms, result_count, source_bytes, output_bytes, success, metadata)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            "INSERT INTO tool_calls (session_id, timestamp, tool_name, duration_ms, result_count, source_bytes, input_bytes, output_bytes, success, metadata)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             params![
                 session_id,
                 now,
@@ -52,6 +80,7 @@ impl SymbolDatabase {
                 duration_ms,
                 result_count.map(|v| v as i64),
                 source_bytes.map(|v| v as i64),
+                input_bytes.map(|v| v as i64),
                 output_bytes.map(|v| v as i64),
                 if success { 1 } else { 0 },
                 metadata,
@@ -62,7 +91,7 @@ impl SymbolDatabase {
 
     pub fn query_session_summary(&self, session_id: &str) -> Result<Vec<ToolCallSummary>> {
         let mut stmt = self.conn.prepare(
-            "SELECT tool_name, COUNT(*), AVG(duration_ms), COALESCE(SUM(source_bytes), 0), COALESCE(SUM(output_bytes), 0)
+            "SELECT tool_name, COUNT(*), AVG(duration_ms), COALESCE(SUM(input_bytes), 0), COALESCE(SUM(source_bytes), 0), COALESCE(SUM(output_bytes), 0)
              FROM tool_calls
              WHERE session_id = ?1
              GROUP BY tool_name
@@ -75,8 +104,9 @@ impl SymbolDatabase {
                     tool_name: row.get(0)?,
                     call_count: row.get::<_, i64>(1)? as u64,
                     avg_duration_ms: row.get(2)?,
-                    total_source_bytes: row.get::<_, i64>(3)? as u64,
-                    total_output_bytes: row.get::<_, i64>(4)? as u64,
+                    total_input_bytes: row.get::<_, i64>(3)? as u64,
+                    total_source_bytes: row.get::<_, i64>(4)? as u64,
+                    total_output_bytes: row.get::<_, i64>(5)? as u64,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -102,14 +132,14 @@ impl SymbolDatabase {
             |row| row.get(0),
         )?;
 
-        let (total_source, total_output): (i64, i64) = self.conn.query_row(
-            "SELECT COALESCE(SUM(source_bytes), 0), COALESCE(SUM(output_bytes), 0) FROM tool_calls WHERE timestamp >= ?1",
+        let (total_input, total_source, total_output): (i64, i64, i64) = self.conn.query_row(
+            "SELECT COALESCE(SUM(input_bytes), 0), COALESCE(SUM(source_bytes), 0), COALESCE(SUM(output_bytes), 0) FROM tool_calls WHERE timestamp >= ?1",
             params![cutoff],
-            |row| Ok((row.get(0)?, row.get(1)?)),
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         )?;
 
         let mut stmt = self.conn.prepare(
-            "SELECT tool_name, COUNT(*), AVG(duration_ms), COALESCE(SUM(source_bytes), 0), COALESCE(SUM(output_bytes), 0)
+            "SELECT tool_name, COUNT(*), AVG(duration_ms), COALESCE(SUM(input_bytes), 0), COALESCE(SUM(source_bytes), 0), COALESCE(SUM(output_bytes), 0)
              FROM tool_calls WHERE timestamp >= ?1
              GROUP BY tool_name ORDER BY COUNT(*) DESC",
         )?;
@@ -119,8 +149,9 @@ impl SymbolDatabase {
                     tool_name: row.get(0)?,
                     call_count: row.get::<_, i64>(1)? as u64,
                     avg_duration_ms: row.get(2)?,
-                    total_source_bytes: row.get::<_, i64>(3)? as u64,
-                    total_output_bytes: row.get::<_, i64>(4)? as u64,
+                    total_input_bytes: row.get::<_, i64>(3)? as u64,
+                    total_source_bytes: row.get::<_, i64>(4)? as u64,
+                    total_output_bytes: row.get::<_, i64>(5)? as u64,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -141,6 +172,7 @@ impl SymbolDatabase {
         Ok(HistorySummary {
             session_count: session_count as u64,
             total_calls: total_calls as u64,
+            total_input_bytes: total_input as u64,
             total_source_bytes: total_source as u64,
             total_output_bytes: total_output as u64,
             per_tool,

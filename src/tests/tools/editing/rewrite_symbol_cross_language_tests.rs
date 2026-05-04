@@ -454,8 +454,11 @@ async fn test_rust_trait_method_replace_signature_explicit_error_and_file_unchan
         dry_run: false,
     };
 
-    let result = tool.call_tool(&handler).await?;
-    let text = extract_text(&result);
+    let text = tool
+        .call_tool(&handler)
+        .await
+        .expect_err("replace_signature on a bodyless Rust trait method should fail")
+        .to_string();
     assert!(
         text.contains("replace_signature is not supported"),
         "Must return explicit error for Rust trait method with no body, got: {text}"

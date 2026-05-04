@@ -82,6 +82,9 @@ impl DaemonDatabase {
         if current < 4 {
             Self::migration_004_add_search_compare_tables(conn)?;
         }
+        if current < 5 {
+            Self::migration_005_add_tool_call_input_bytes(conn)?;
+        }
 
         Ok(())
     }
@@ -134,6 +137,7 @@ impl DaemonDatabase {
                 duration_ms   REAL NOT NULL,
                 result_count  INTEGER,
                 source_bytes  INTEGER,
+                input_bytes   INTEGER,
                 output_bytes  INTEGER,
                 success       INTEGER NOT NULL DEFAULT 1,
                 metadata      TEXT
@@ -232,6 +236,35 @@ impl DaemonDatabase {
         )?;
         tx.commit()?;
         info!("daemon.db migration 004 complete");
+        Ok(())
+    }
+
+    fn migration_005_add_tool_call_input_bytes(conn: &mut Connection) -> Result<()> {
+        info!("daemon.db migration 005: add input_bytes to tool_calls");
+        let has_input_bytes: bool = {
+            let mut stmt = conn.prepare("PRAGMA table_info(tool_calls)")?;
+            let mut rows = stmt.query([])?;
+            let mut found = false;
+            while let Some(row) = rows.next()? {
+                let name: String = row.get(1)?;
+                if name == "input_bytes" {
+                    found = true;
+                    break;
+                }
+            }
+            found
+        };
+        let tx = conn.transaction()?;
+        if !has_input_bytes {
+            tx.execute("ALTER TABLE tool_calls ADD COLUMN input_bytes INTEGER", [])?;
+        }
+        tx.execute(
+            "INSERT OR REPLACE INTO schema_version (version, applied_at)
+             VALUES (5, unixepoch())",
+            [],
+        )?;
+        tx.commit()?;
+        info!("daemon.db migration 005 complete");
         Ok(())
     }
 
@@ -552,12 +585,40 @@ impl DaemonDatabase {
         success: bool,
         metadata: Option<&str>,
     ) -> Result<()> {
+        self.insert_tool_call_with_input_bytes(
+            workspace_id,
+            session_id,
+            tool_name,
+            duration_ms,
+            result_count,
+            source_bytes,
+            None,
+            output_bytes,
+            success,
+            metadata,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn insert_tool_call_with_input_bytes(
+        &self,
+        workspace_id: &str,
+        session_id: &str,
+        tool_name: &str,
+        duration_ms: f64,
+        result_count: Option<u32>,
+        source_bytes: Option<u64>,
+        input_bytes: Option<u64>,
+        output_bytes: Option<u64>,
+        success: bool,
+        metadata: Option<&str>,
+    ) -> Result<()> {
         let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
         conn.execute(
             "INSERT INTO tool_calls
                 (workspace_id, session_id, timestamp, tool_name, duration_ms,
-                 result_count, source_bytes, output_bytes, success, metadata)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                 result_count, source_bytes, input_bytes, output_bytes, success, metadata)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
             params![
                 workspace_id,
                 session_id,
@@ -566,6 +627,7 @@ impl DaemonDatabase {
                 duration_ms,
                 result_count.map(|v| v as i64),
                 source_bytes.map(|v| v as i64),
+                input_bytes.map(|v| v as i64),
                 output_bytes.map(|v| v as i64),
                 if success { 1 } else { 0 },
                 metadata,
@@ -614,17 +676,17 @@ impl DaemonDatabase {
 
         // Only aggregate rows with source tracking so the "context saved"
         // ratio isn't diluted by older rows that predate source_bytes recording.
-        let (total_source, total_output): (i64, i64) = conn.query_row(
-            "SELECT COALESCE(SUM(source_bytes), 0), COALESCE(SUM(output_bytes), 0)
+        let (total_input, total_source, total_output): (i64, i64, i64) = conn.query_row(
+            "SELECT COALESCE(SUM(input_bytes), 0), COALESCE(SUM(source_bytes), 0), COALESCE(SUM(output_bytes), 0)
              FROM tool_calls
              WHERE workspace_id = ?1 AND timestamp >= ?2 AND source_bytes IS NOT NULL",
             params![workspace_id, cutoff],
-            |row| Ok((row.get(0)?, row.get(1)?)),
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         )?;
 
         let mut stmt = conn.prepare(
             "SELECT tool_name, COUNT(*), AVG(duration_ms),
-                    COALESCE(SUM(source_bytes), 0), COALESCE(SUM(output_bytes), 0)
+                    COALESCE(SUM(input_bytes), 0), COALESCE(SUM(source_bytes), 0), COALESCE(SUM(output_bytes), 0)
              FROM tool_calls WHERE workspace_id = ?1 AND timestamp >= ?2
              GROUP BY tool_name ORDER BY COUNT(*) DESC",
         )?;
@@ -634,8 +696,9 @@ impl DaemonDatabase {
                     tool_name: row.get(0)?,
                     call_count: row.get::<_, i64>(1)? as u64,
                     avg_duration_ms: row.get(2)?,
-                    total_source_bytes: row.get::<_, i64>(3)? as u64,
-                    total_output_bytes: row.get::<_, i64>(4)? as u64,
+                    total_input_bytes: row.get::<_, i64>(3)? as u64,
+                    total_source_bytes: row.get::<_, i64>(4)? as u64,
+                    total_output_bytes: row.get::<_, i64>(5)? as u64,
                 })
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -657,6 +720,7 @@ impl DaemonDatabase {
         Ok(HistorySummary {
             session_count: session_count as u64,
             total_calls: total_calls as u64,
+            total_input_bytes: total_input as u64,
             total_source_bytes: total_source as u64,
             total_output_bytes: total_output as u64,
             per_tool,

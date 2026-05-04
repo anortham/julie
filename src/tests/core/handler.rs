@@ -390,6 +390,264 @@ async fn test_edit_file_metrics_attribute_root_file_source_bytes() -> Result<()>
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_tool_failure_metrics_records_failed_handler_call() -> Result<()> {
+    use crate::tools::workspace::ManageWorkspaceTool;
+    use std::time::Duration;
+
+    let temp_dir = TempDir::new()?;
+    std::fs::create_dir_all(temp_dir.path().join("src"))?;
+    std::fs::write(temp_dir.path().join("src/lib.rs"), "pub fn hi() {}\n")?;
+
+    let handler = JulieServerHandler::new(temp_dir.path().to_path_buf()).await?;
+    let index_tool = ManageWorkspaceTool {
+        operation: "index".to_string(),
+        workspace_id: None,
+        path: Some(temp_dir.path().to_string_lossy().to_string()),
+        name: None,
+        force: Some(false),
+        detailed: None,
+    };
+    index_tool.call_tool(&handler).await?;
+
+    let (server_transport, client_transport) = tokio::io::duplex(64);
+    drop(client_transport);
+    let service =
+        serve_directly::<rmcp::RoleServer, _, _, _, _>(handler.clone(), server_transport, None);
+
+    let request =
+        CallToolRequestParams::new("get_symbols").with_arguments(json_object(serde_json::json!({
+            "file_path": "src/lib.rs",
+            "mode": "not-a-real-mode"
+        })));
+    let result = <JulieServerHandler as ServerHandler>::call_tool(
+        &handler,
+        request,
+        RequestContext::new(NumberOrString::Number(2001), service.peer().clone()),
+    )
+    .await;
+    assert!(result.is_err(), "get_symbols should fail for invalid mode");
+
+    let db_arc = {
+        let workspace = handler.workspace.read().await;
+        workspace
+            .as_ref()
+            .and_then(|workspace| workspace.db.as_ref())
+            .expect("indexed workspace should have a database")
+            .clone()
+    };
+
+    let recorded = tokio::time::timeout(Duration::from_secs(1), async {
+        loop {
+            let row = {
+                let db = db_arc.lock().expect("workspace db should lock");
+                let mut stmt = db.conn.prepare(
+                    "SELECT tool_name, success, output_bytes, metadata
+                     FROM tool_calls
+                     WHERE tool_name = 'get_symbols'
+                     ORDER BY id DESC LIMIT 1",
+                )?;
+                let mut rows = stmt.query([])?;
+                rows.next()?
+                    .map(|row| {
+                        Ok::<(String, i64, Option<i64>, Option<String>), rusqlite::Error>((
+                            row.get(0)?,
+                            row.get(1)?,
+                            row.get(2)?,
+                            row.get(3)?,
+                        ))
+                    })
+                    .transpose()?
+            };
+
+            if let Some(row) = row {
+                break Ok::<(String, i64, Option<i64>, Option<String>), anyhow::Error>(row);
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await??;
+
+    assert_eq!(recorded.0, "get_symbols");
+    assert_eq!(recorded.1, 0, "failure row should set success=0");
+    assert_eq!(recorded.2, Some(0), "failure row should set output_bytes=0");
+    let metadata = recorded.3.expect("failure row should include metadata");
+    assert!(
+        metadata.contains("error.message"),
+        "failure metadata should include error.message"
+    );
+
+    let _ = service.cancel().await;
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_edit_file_validation_errors_are_recorded_as_failures() -> Result<()> {
+    use crate::tools::workspace::ManageWorkspaceTool;
+    use std::time::Duration;
+
+    let temp_dir = TempDir::new()?;
+    std::fs::write(temp_dir.path().join("README.md"), "hello\n")?;
+
+    let handler = JulieServerHandler::new(temp_dir.path().to_path_buf()).await?;
+    let index_tool = ManageWorkspaceTool {
+        operation: "index".to_string(),
+        workspace_id: None,
+        path: Some(temp_dir.path().to_string_lossy().to_string()),
+        name: None,
+        force: Some(false),
+        detailed: None,
+    };
+    index_tool.call_tool(&handler).await?;
+
+    let (server_transport, client_transport) = tokio::io::duplex(64);
+    drop(client_transport);
+    let service =
+        serve_directly::<rmcp::RoleServer, _, _, _, _>(handler.clone(), server_transport, None);
+
+    let request =
+        CallToolRequestParams::new("edit_file").with_arguments(json_object(serde_json::json!({
+            "file_path": "README.md",
+            "old_text": "",
+            "new_text": "bye",
+            "dry_run": true
+        })));
+    let result = <JulieServerHandler as ServerHandler>::call_tool(
+        &handler,
+        request,
+        RequestContext::new(NumberOrString::Number(2002), service.peer().clone()),
+    )
+    .await;
+    assert!(
+        result.is_err(),
+        "edit_file validation failure should be returned as an MCP error"
+    );
+
+    let db_arc = {
+        let workspace = handler.workspace.read().await;
+        workspace
+            .as_ref()
+            .and_then(|workspace| workspace.db.as_ref())
+            .expect("indexed workspace should have a database")
+            .clone()
+    };
+
+    let success_flag = tokio::time::timeout(Duration::from_secs(1), async {
+        loop {
+            let value = {
+                let db = db_arc.lock().expect("workspace db should lock");
+                db.conn
+                    .query_row(
+                        "SELECT success FROM tool_calls WHERE tool_name = 'edit_file' ORDER BY id DESC LIMIT 1",
+                        [],
+                        |row| row.get::<_, i64>(0),
+                    )
+                    .ok()
+            };
+            if let Some(success) = value {
+                break Ok::<i64, anyhow::Error>(success);
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await??;
+
+    assert_eq!(
+        success_flag, 0,
+        "validation error should record a failed metrics row"
+    );
+
+    let _ = service.cancel().await;
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_deep_dive_failure_metrics_records_failed_handler_call() -> Result<()> {
+    use crate::tools::workspace::ManageWorkspaceTool;
+    use std::time::Duration;
+
+    let temp_dir = TempDir::new()?;
+    std::fs::create_dir_all(temp_dir.path().join("src"))?;
+    std::fs::write(temp_dir.path().join("src/lib.rs"), "pub fn hi() {}\n")?;
+
+    let handler = JulieServerHandler::new(temp_dir.path().to_path_buf()).await?;
+    let index_tool = ManageWorkspaceTool {
+        operation: "index".to_string(),
+        workspace_id: None,
+        path: Some(temp_dir.path().to_string_lossy().to_string()),
+        name: None,
+        force: Some(false),
+        detailed: None,
+    };
+    index_tool.call_tool(&handler).await?;
+
+    let (server_transport, client_transport) = tokio::io::duplex(64);
+    drop(client_transport);
+    let service =
+        serve_directly::<rmcp::RoleServer, _, _, _, _>(handler.clone(), server_transport, None);
+
+    let request =
+        CallToolRequestParams::new("deep_dive").with_arguments(json_object(serde_json::json!({
+            "symbol": "hi",
+            "workspace": "missing-workspace-id"
+        })));
+    let result = <JulieServerHandler as ServerHandler>::call_tool(
+        &handler,
+        request,
+        RequestContext::new(NumberOrString::Number(2003), service.peer().clone()),
+    )
+    .await;
+    assert!(
+        result.is_err(),
+        "deep_dive should fail for unknown workspace id"
+    );
+
+    let db_arc = {
+        let workspace = handler.workspace.read().await;
+        workspace
+            .as_ref()
+            .and_then(|workspace| workspace.db.as_ref())
+            .expect("indexed workspace should have a database")
+            .clone()
+    };
+
+    let recorded = tokio::time::timeout(Duration::from_secs(1), async {
+        loop {
+            let row = {
+                let db = db_arc.lock().expect("workspace db should lock");
+                let mut stmt = db.conn.prepare(
+                    "SELECT success, metadata
+                     FROM tool_calls
+                     WHERE tool_name = 'deep_dive'
+                     ORDER BY id DESC LIMIT 1",
+                )?;
+                let mut rows = stmt.query([])?;
+                rows.next()?
+                    .map(|row| {
+                        Ok::<(i64, Option<String>), rusqlite::Error>((row.get(0)?, row.get(1)?))
+                    })
+                    .transpose()?
+            };
+
+            if let Some(row) = row {
+                break Ok::<(i64, Option<String>), anyhow::Error>(row);
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await??;
+
+    assert_eq!(recorded.0, 0, "failure row should set success=0");
+    let metadata = recorded.1.expect("failure row should include metadata");
+    assert!(
+        metadata.contains("error.message"),
+        "failure metadata should include error.message"
+    );
+
+    let _ = service.cancel().await;
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn checkpoint_active_workspace_wal_returns_none_before_initialization() -> Result<()> {
     let handler = JulieServerHandler::new_for_test().await?;
 

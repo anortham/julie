@@ -86,6 +86,7 @@ impl ToolKind {
 /// Metrics captured from inside a tool's call_tool method.
 pub struct ToolCallReport {
     pub result_count: Option<u32>,
+    pub input_bytes: Option<u64>,
     pub source_bytes: Option<u64>,
     pub output_bytes: u64,
     pub metadata: serde_json::Value,
@@ -97,6 +98,7 @@ impl ToolCallReport {
     pub fn empty() -> Self {
         Self {
             result_count: None,
+            input_bytes: None,
             source_bytes: None,
             output_bytes: 0,
             metadata: serde_json::Value::Null,

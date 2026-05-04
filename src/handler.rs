@@ -1,6 +1,8 @@
 #[path = "handler/search_telemetry.rs"]
 pub(crate) mod search_telemetry;
 pub mod session_workspace;
+#[path = "handler/tool_metrics.rs"]
+pub(crate) mod tool_metrics;
 #[path = "handler/tool_targets.rs"]
 pub(crate) mod tool_targets;
 
@@ -37,31 +39,12 @@ use crate::workspace::startup_hint::WorkspaceStartupSource;
 use tokio::sync::RwLock;
 
 // Import tool parameter types
-use crate::tools::metrics::session::{
-    SessionMetrics, ToolCallReport, ToolKind, extract_source_paths,
-};
+use self::tool_metrics::{MetricsTask, run_metrics_writer};
+use crate::tools::metrics::session::{SessionMetrics, ToolCallReport, extract_source_paths};
 use crate::tools::{
     BlastRadiusTool, DeepDiveTool, FastRefsTool, FastSearchTool, GetContextTool, GetSymbolsTool,
     ManageWorkspaceTool, RenameSymbolTool, SpilloverGetTool,
 };
-
-/// Data for a single metrics write, sent via bounded channel to the background writer.
-/// Avoids spawning a new task per tool call (M03).
-struct MetricsTask {
-    workspace: Arc<RwLock<Option<JulieWorkspace>>>,
-    workspace_pool: Option<Arc<crate::daemon::workspace_pool::WorkspacePool>>,
-    current_workspace_root: PathBuf,
-    session_metrics: Arc<SessionMetrics>,
-    session_id: String,
-    tool_name: String,
-    duration_ms: f64,
-    result_count: Option<u32>,
-    source_file_paths: Vec<String>,
-    output_bytes: u64,
-    metadata_str: Option<String>,
-    daemon_db: Option<Arc<crate::daemon::database::DaemonDatabase>>,
-    workspace_id: Option<String>,
-}
 
 pub(crate) struct PrimaryWorkspaceSnapshot {
     pub binding: PrimaryWorkspaceBinding,
@@ -174,145 +157,6 @@ pub(crate) fn metrics_db_path_for_workspace(
             .join(workspace_id)
             .join("db")
             .join("symbols.db")
-    }
-}
-
-/// Single background task that drains the metrics channel and writes to SQLite.
-async fn run_metrics_writer(mut rx: tokio::sync::mpsc::Receiver<MetricsTask>) {
-    while let Some(task) = rx.recv().await {
-        // Compute source_bytes from the workspace DB, then use it for both writes.
-        let mut source_bytes: Option<u64> = None;
-        let mut resolved_workspace = task.workspace.read().await.clone();
-        if let (Some(pool), Some(workspace_id)) = (&task.workspace_pool, task.workspace_id.as_ref())
-        {
-            let matches_requested_workspace = resolved_workspace.as_ref().is_some_and(|ws| {
-                let db_path = metrics_db_path_for_workspace(
-                    ws.index_root_override.as_deref(),
-                    &task.current_workspace_root,
-                    workspace_id,
-                );
-                db_path.exists()
-            });
-
-            if resolved_workspace.is_none() || !matches_requested_workspace {
-                resolved_workspace = pool.get(workspace_id).await.map(|ws| (*ws).clone());
-            }
-        }
-
-        if let Some(ws) = resolved_workspace.as_ref() {
-            if let Some(ref workspace_id) = task.workspace_id {
-                let db_path = metrics_db_path_for_workspace(
-                    ws.index_root_override.as_deref(),
-                    &task.current_workspace_root,
-                    workspace_id,
-                );
-                if db_path.exists() {
-                    if let Ok(db) = SymbolDatabase::new(db_path) {
-                        source_bytes = if !task.source_file_paths.is_empty() {
-                            let path_refs: Vec<&str> =
-                                task.source_file_paths.iter().map(|s| s.as_str()).collect();
-                            db.get_total_file_sizes(&path_refs).ok()
-                        } else {
-                            None
-                        };
-                        if let Some(sb) = source_bytes {
-                            task.session_metrics
-                                .total_source_bytes
-                                .fetch_add(sb, std::sync::atomic::Ordering::Relaxed);
-                        }
-                        let _ = db.insert_tool_call(
-                            &task.session_id,
-                            &task.tool_name,
-                            task.duration_ms,
-                            task.result_count,
-                            source_bytes,
-                            Some(task.output_bytes),
-                            true,
-                            task.metadata_str.as_deref(),
-                        );
-                    }
-                }
-            } else if let Some(db_arc) = &ws.db {
-                if let Ok(db) = db_arc.lock() {
-                    source_bytes = if !task.source_file_paths.is_empty() {
-                        let path_refs: Vec<&str> =
-                            task.source_file_paths.iter().map(|s| s.as_str()).collect();
-                        db.get_total_file_sizes(&path_refs).ok()
-                    } else {
-                        None
-                    };
-                    if let Some(sb) = source_bytes {
-                        task.session_metrics
-                            .total_source_bytes
-                            .fetch_add(sb, std::sync::atomic::Ordering::Relaxed);
-                    }
-                    let _ = db.insert_tool_call(
-                        &task.session_id,
-                        &task.tool_name,
-                        task.duration_ms,
-                        task.result_count,
-                        source_bytes,
-                        Some(task.output_bytes),
-                        true,
-                        task.metadata_str.as_deref(),
-                    );
-                }
-            }
-        } else if let Some(ref workspace_id) = task.workspace_id {
-            let db_path =
-                metrics_db_path_for_workspace(None, &task.current_workspace_root, workspace_id);
-            if db_path.exists() {
-                if let Ok(db) = SymbolDatabase::new(db_path) {
-                    source_bytes = if !task.source_file_paths.is_empty() {
-                        let path_refs: Vec<&str> =
-                            task.source_file_paths.iter().map(|s| s.as_str()).collect();
-                        db.get_total_file_sizes(&path_refs).ok()
-                    } else {
-                        None
-                    };
-                    if let Some(sb) = source_bytes {
-                        task.session_metrics
-                            .total_source_bytes
-                            .fetch_add(sb, std::sync::atomic::Ordering::Relaxed);
-                    }
-                    let _ = db.insert_tool_call(
-                        &task.session_id,
-                        &task.tool_name,
-                        task.duration_ms,
-                        task.result_count,
-                        source_bytes,
-                        Some(task.output_bytes),
-                        true,
-                        task.metadata_str.as_deref(),
-                    );
-                }
-            }
-        }
-
-        if let Some(daemon_db) = task.daemon_db {
-            let workspace_id = task.workspace_id.unwrap_or_default();
-            let session_id = task.session_id;
-            let tool_name = task.tool_name;
-            let duration_ms = task.duration_ms;
-            let result_count = task.result_count;
-            let output_bytes = task.output_bytes;
-            let metadata_str = task.metadata_str;
-            tokio::task::spawn_blocking(move || {
-                if let Err(e) = daemon_db.insert_tool_call(
-                    &workspace_id,
-                    &session_id,
-                    &tool_name,
-                    duration_ms,
-                    result_count,
-                    source_bytes,
-                    Some(output_bytes),
-                    true,
-                    metadata_str.as_deref(),
-                ) {
-                    warn!("Failed to write tool call to daemon.db: {}", e);
-                }
-            });
-        }
     }
 }
 
@@ -1661,68 +1505,6 @@ impl JulieServerHandler {
         }
     }
 
-    /// Record a completed tool call. Bumps in-memory atomics synchronously,
-    /// then spawns async task for source_bytes lookup + SQLite write.
-    pub(crate) fn record_tool_call(
-        &self,
-        tool_name: &str,
-        duration: std::time::Duration,
-        report: &ToolCallReport,
-        workspace_snapshot: Option<&PrimaryWorkspaceBinding>,
-    ) {
-        let duration_us = duration.as_micros() as u64;
-        let output_bytes = report.output_bytes;
-        let workspace_id = workspace_snapshot
-            .map(|binding| binding.workspace_id.clone())
-            .or_else(|| self.current_workspace_id());
-        let workspace_root = workspace_snapshot
-            .map(|binding| binding.workspace_root.clone())
-            .unwrap_or_else(|| self.current_workspace_root());
-
-        // Bump in-memory atomics synchronously (source_bytes=0 for now, updated async)
-        if let Some(kind) = ToolKind::from_name(tool_name) {
-            self.session_metrics
-                .record(kind, duration_us, 0, output_bytes);
-        }
-
-        // Write to per-project log (daemon mode only)
-        if let Some(ref log) = self.project_log {
-            log.tool_call(tool_name, duration.as_secs_f64() * 1000.0, output_bytes);
-        }
-
-        // Emit live-feed event to dashboard SSE subscribers (if any).
-        if let Some(ref tx) = self.dashboard_tx {
-            let _ = tx.send(DashboardEvent::ToolCall {
-                tool_name: tool_name.to_string(),
-                workspace: workspace_id.clone().unwrap_or_default(),
-                duration_ms: duration.as_secs_f64() * 1000.0,
-            });
-        }
-
-        // Offload source-bytes lookup + SQLite writes to the bounded background channel.
-        // try_send drops the record on backpressure rather than spawning unbounded tasks.
-        let metadata = report.metadata.to_string();
-        let _ = self.metrics_tx.try_send(MetricsTask {
-            workspace: self.workspace.clone(),
-            workspace_pool: self.workspace_pool.clone(),
-            current_workspace_root: workspace_root,
-            session_metrics: self.session_metrics.clone(),
-            session_id: self.session_metrics.session_id.clone(),
-            tool_name: tool_name.to_string(),
-            duration_ms: duration.as_secs_f64() * 1000.0,
-            result_count: report.result_count,
-            source_file_paths: report.source_file_paths.clone(),
-            output_bytes,
-            metadata_str: if metadata == "null" {
-                None
-            } else {
-                Some(metadata)
-            },
-            daemon_db: self.daemon_db.clone(),
-            workspace_id,
-        });
-    }
-
     pub(crate) async fn metrics_workspace_binding_for_workspace_param(
         &self,
         workspace_param: Option<&str>,
@@ -2438,10 +2220,23 @@ impl JulieServerHandler {
         let workspace_snapshot = self
             .metrics_workspace_binding_for_workspace_param(params.workspace.as_deref())
             .await;
-        let executed = params
-            .execute_with_trace(self)
-            .await
-            .map_err(|e| McpError::internal_error(format!("fast_search failed: {}", e), None))?;
+        let executed = match params.execute_with_trace(self).await {
+            Ok(executed) => executed,
+            Err(e) => {
+                let metadata = search_telemetry::fast_search_metadata(&params, None);
+                let message = format!("fast_search failed: {}", e);
+                self.record_tool_failure(
+                    "fast_search",
+                    start.elapsed(),
+                    workspace_snapshot.as_ref(),
+                    metadata.clone(),
+                    Vec::new(),
+                    Self::input_bytes_from_metadata(&metadata),
+                    &message,
+                );
+                return Err(McpError::internal_error(message, None));
+            }
+        };
         let metadata = search_telemetry::fast_search_metadata(&params, executed.execution.as_ref());
         let result = executed.result;
         let output_bytes = Self::output_bytes_from_result(&result);
@@ -2452,6 +2247,7 @@ impl JulieServerHandler {
                 .execution
                 .as_ref()
                 .map(|result| result.total_results.min(u32::MAX as usize) as u32),
+            input_bytes: Self::input_bytes_from_metadata(&metadata),
             source_bytes: None,
             output_bytes,
             metadata,
@@ -2487,14 +2283,27 @@ impl JulieServerHandler {
             .metrics_workspace_binding_for_workspace_param(params.workspace.as_deref())
             .await;
         let metadata = tool_targets::fast_refs_metadata(&params);
-        let result = params
-            .call_tool(self)
-            .await
-            .map_err(|e| McpError::internal_error(format!("fast_refs failed: {}", e), None))?;
+        let result = match params.call_tool(self).await {
+            Ok(result) => result,
+            Err(e) => {
+                let message = format!("fast_refs failed: {}", e);
+                self.record_tool_failure(
+                    "fast_refs",
+                    start.elapsed(),
+                    workspace_snapshot.as_ref(),
+                    metadata.clone(),
+                    Vec::new(),
+                    Self::input_bytes_from_metadata(&metadata),
+                    &message,
+                );
+                return Err(McpError::internal_error(message, None));
+            }
+        };
         let output_bytes = Self::output_bytes_from_result(&result);
         let source_file_paths = Self::extract_paths_from_result(&result);
         let report = ToolCallReport {
             result_count: None,
+            input_bytes: Self::input_bytes_from_metadata(&metadata),
             source_bytes: None,
             output_bytes,
             metadata,
@@ -2532,14 +2341,31 @@ impl JulieServerHandler {
             None
         };
         let metadata = tool_targets::call_path_metadata(&params);
-        let result = params
-            .call_tool(self)
-            .await
-            .map_err(|e| McpError::internal_error(format!("call_path failed: {}", e), None))?;
+        let source_file_paths = [params.from_file_path.clone(), params.to_file_path.clone()]
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>();
+        let result = match params.call_tool(self).await {
+            Ok(result) => result,
+            Err(e) => {
+                let message = format!("call_path failed: {}", e);
+                self.record_tool_failure(
+                    "call_path",
+                    start.elapsed(),
+                    workspace_snapshot.as_ref(),
+                    metadata.clone(),
+                    source_file_paths.clone(),
+                    Self::input_bytes_from_metadata(&metadata),
+                    &message,
+                );
+                return Err(McpError::internal_error(message, None));
+            }
+        };
         let output_bytes = Self::output_bytes_from_result(&result);
         let source_file_paths = Self::extract_paths_from_result(&result);
         let report = ToolCallReport {
             result_count: None,
+            input_bytes: Self::input_bytes_from_metadata(&metadata),
             source_bytes: None,
             output_bytes,
             metadata,
@@ -2573,13 +2399,27 @@ impl JulieServerHandler {
         let start = std::time::Instant::now();
         let workspace_snapshot = self.require_primary_workspace_binding().ok();
         let metadata = tool_targets::get_symbols_metadata(&params);
+        let input_bytes = Self::input_bytes_from_metadata(&metadata);
         let source_file_paths = vec![params.file_path.clone()];
-        let result = params
-            .call_tool(self)
-            .await
-            .map_err(|e| McpError::internal_error(format!("get_symbols failed: {}", e), None))?;
+        let result = match params.call_tool(self).await {
+            Ok(result) => result,
+            Err(e) => {
+                let message = format!("get_symbols failed: {}", e);
+                self.record_tool_failure(
+                    "get_symbols",
+                    start.elapsed(),
+                    workspace_snapshot.as_ref(),
+                    metadata,
+                    source_file_paths,
+                    input_bytes,
+                    &message,
+                );
+                return Err(McpError::internal_error(message, None));
+            }
+        };
         let report = ToolCallReport {
             result_count: None,
+            input_bytes: Self::input_bytes_from_metadata(&metadata),
             source_bytes: None,
             output_bytes: Self::output_bytes_from_result(&result),
             metadata,
@@ -2613,18 +2453,32 @@ impl JulieServerHandler {
         let start = std::time::Instant::now();
         let workspace_snapshot = self.require_primary_workspace_binding().ok();
         let metadata = tool_targets::deep_dive_metadata(&params);
-        let result = params.call_tool(self).await.map_err(|e| {
-            let message = e.to_string();
-            if Self::is_workspace_parameter_error(&message) {
-                McpError::invalid_params(format!("deep_dive failed: {}", message), None)
-            } else {
-                McpError::internal_error(format!("deep_dive failed: {}", message), None)
+        let result = match params.call_tool(self).await {
+            Ok(result) => result,
+            Err(e) => {
+                let message = e.to_string();
+                let full_message = format!("deep_dive failed: {}", message);
+                self.record_tool_failure(
+                    "deep_dive",
+                    start.elapsed(),
+                    workspace_snapshot.as_ref(),
+                    metadata.clone(),
+                    params.context_file.clone().into_iter().collect::<Vec<_>>(),
+                    Self::input_bytes_from_metadata(&metadata),
+                    &full_message,
+                );
+                return if Self::is_workspace_parameter_error(&message) {
+                    Err(McpError::invalid_params(full_message, None))
+                } else {
+                    Err(McpError::internal_error(full_message, None))
+                };
             }
-        })?;
+        };
         let output_bytes = Self::output_bytes_from_result(&result);
         let source_file_paths = Self::extract_paths_from_result(&result);
         let report = ToolCallReport {
             result_count: None,
+            input_bytes: Self::input_bytes_from_metadata(&metadata),
             source_bytes: None,
             output_bytes,
             metadata,
@@ -2662,14 +2516,28 @@ impl JulieServerHandler {
             .metrics_workspace_binding_for_workspace_param(params.workspace.as_deref())
             .await;
         let metadata = tool_targets::get_context_metadata(&params);
-        let result = params
-            .call_tool(self)
-            .await
-            .map_err(|e| McpError::internal_error(format!("get_context failed: {}", e), None))?;
+        let source_file_paths = params.edited_files.clone().unwrap_or_default();
+        let result = match params.call_tool(self).await {
+            Ok(result) => result,
+            Err(e) => {
+                let message = format!("get_context failed: {}", e);
+                self.record_tool_failure(
+                    "get_context",
+                    start.elapsed(),
+                    workspace_snapshot.as_ref(),
+                    metadata.clone(),
+                    source_file_paths.clone(),
+                    Self::input_bytes_from_metadata(&metadata),
+                    &message,
+                );
+                return Err(McpError::internal_error(message, None));
+            }
+        };
         let output_bytes = Self::output_bytes_from_result(&result);
         let source_file_paths = Self::extract_paths_from_result(&result);
         let report = ToolCallReport {
             result_count: None,
+            input_bytes: Self::input_bytes_from_metadata(&metadata),
             source_bytes: None,
             output_bytes,
             metadata,
@@ -2703,14 +2571,28 @@ impl JulieServerHandler {
         let start = std::time::Instant::now();
         let workspace_snapshot = self.require_primary_workspace_binding().ok();
         let metadata = tool_targets::blast_radius_metadata(&params);
-        let result = params
-            .call_tool(self)
-            .await
-            .map_err(|e| McpError::internal_error(format!("blast_radius failed: {}", e), None))?;
+        let source_file_paths = params.file_paths.clone();
+        let result = match params.call_tool(self).await {
+            Ok(result) => result,
+            Err(e) => {
+                let message = format!("blast_radius failed: {}", e);
+                self.record_tool_failure(
+                    "blast_radius",
+                    start.elapsed(),
+                    workspace_snapshot.as_ref(),
+                    metadata.clone(),
+                    source_file_paths.clone(),
+                    Self::input_bytes_from_metadata(&metadata),
+                    &message,
+                );
+                return Err(McpError::internal_error(message, None));
+            }
+        };
         let output_bytes = Self::output_bytes_from_result(&result);
         let source_file_paths = Self::extract_paths_from_result(&result);
         let report = ToolCallReport {
             result_count: None,
+            input_bytes: Self::input_bytes_from_metadata(&metadata),
             source_bytes: None,
             output_bytes,
             metadata,
@@ -2744,14 +2626,27 @@ impl JulieServerHandler {
         let start = std::time::Instant::now();
         let workspace_snapshot = self.require_primary_workspace_binding().ok();
         let metadata = tool_targets::spillover_get_metadata(&params);
-        let result = params
-            .call_tool(self)
-            .await
-            .map_err(|e| McpError::internal_error(format!("spillover_get failed: {}", e), None))?;
+        let result = match params.call_tool(self).await {
+            Ok(result) => result,
+            Err(e) => {
+                let message = format!("spillover_get failed: {}", e);
+                self.record_tool_failure(
+                    "spillover_get",
+                    start.elapsed(),
+                    workspace_snapshot.as_ref(),
+                    metadata.clone(),
+                    Vec::new(),
+                    Self::input_bytes_from_metadata(&metadata),
+                    &message,
+                );
+                return Err(McpError::internal_error(message, None));
+            }
+        };
         let output_bytes = Self::output_bytes_from_result(&result);
         let source_file_paths = Self::extract_paths_from_result(&result);
         let report = ToolCallReport {
             result_count: None,
+            input_bytes: Self::input_bytes_from_metadata(&metadata),
             source_bytes: None,
             output_bytes,
             metadata,
@@ -2787,14 +2682,28 @@ impl JulieServerHandler {
         let start = std::time::Instant::now();
         let workspace_snapshot = self.require_primary_workspace_binding().ok();
         let metadata = tool_targets::rename_symbol_metadata(&params);
-        let result = params
-            .call_tool(self)
-            .await
-            .map_err(|e| McpError::internal_error(format!("rename_symbol failed: {}", e), None))?;
+        let source_file_paths = params.scope.clone().into_iter().collect::<Vec<_>>();
+        let result = match params.call_tool(self).await {
+            Ok(result) => result,
+            Err(e) => {
+                let message = format!("rename_symbol failed: {}", e);
+                self.record_tool_failure(
+                    "rename_symbol",
+                    start.elapsed(),
+                    workspace_snapshot.as_ref(),
+                    metadata.clone(),
+                    source_file_paths.clone(),
+                    Self::input_bytes_from_metadata(&metadata),
+                    &message,
+                );
+                return Err(McpError::internal_error(message, None));
+            }
+        };
         let output_bytes = Self::output_bytes_from_result(&result);
         let source_file_paths = Self::extract_paths_from_result(&result);
         let report = ToolCallReport {
             result_count: None,
+            input_bytes: Self::input_bytes_from_metadata(&metadata),
             source_bytes: None,
             output_bytes,
             metadata,
@@ -2830,11 +2739,25 @@ impl JulieServerHandler {
         let start = std::time::Instant::now();
         let workspace_snapshot = self.require_primary_workspace_binding().ok();
         let metadata = serde_json::json!({ "operation": params.operation });
-        let result = params.call_tool(self).await.map_err(|e| {
-            McpError::internal_error(format!("manage_workspace failed: {}", e), None)
-        })?;
+        let result = match params.call_tool(self).await {
+            Ok(result) => result,
+            Err(e) => {
+                let message = format!("manage_workspace failed: {}", e);
+                self.record_tool_failure(
+                    "manage_workspace",
+                    start.elapsed(),
+                    workspace_snapshot.as_ref(),
+                    metadata.clone(),
+                    params.path.clone().into_iter().collect::<Vec<_>>(),
+                    Self::input_bytes_from_metadata(&metadata),
+                    &message,
+                );
+                return Err(McpError::internal_error(message, None));
+            }
+        };
         let report = ToolCallReport {
             result_count: None,
+            input_bytes: Self::input_bytes_from_metadata(&metadata),
             source_bytes: None,
             output_bytes: Self::output_bytes_from_result(&result),
             metadata,
@@ -2873,14 +2796,28 @@ impl JulieServerHandler {
         let start = std::time::Instant::now();
         let workspace_snapshot = self.require_primary_workspace_binding().ok();
         let metadata = tool_targets::edit_file_metadata(&params);
-        let result = params
-            .call_tool(self)
-            .await
-            .map_err(|e| McpError::internal_error(format!("edit_file failed: {}", e), None))?;
+        let input_bytes = Self::input_bytes_from_metadata(&metadata);
+        let result = match params.call_tool(self).await {
+            Ok(result) => result,
+            Err(e) => {
+                let message = format!("edit_file failed: {}", e);
+                self.record_tool_failure(
+                    "edit_file",
+                    start.elapsed(),
+                    workspace_snapshot.as_ref(),
+                    metadata,
+                    vec![params.file_path.clone()],
+                    input_bytes,
+                    &message,
+                );
+                return Err(McpError::internal_error(message, None));
+            }
+        };
         let output_bytes = Self::output_bytes_from_result(&result);
         let source_file_paths = vec![params.file_path.clone()];
         let report = ToolCallReport {
             result_count: None,
+            input_bytes: Self::input_bytes_from_metadata(&metadata),
             source_bytes: None,
             output_bytes,
             metadata,
@@ -2921,14 +2858,28 @@ impl JulieServerHandler {
             None
         };
         let metadata = tool_targets::rewrite_symbol_metadata(&params);
-        let result = params
-            .call_tool(self)
-            .await
-            .map_err(|e| McpError::internal_error(format!("rewrite_symbol failed: {}", e), None))?;
+        let source_file_paths = params.file_path.clone().into_iter().collect::<Vec<_>>();
+        let result = match params.call_tool(self).await {
+            Ok(result) => result,
+            Err(e) => {
+                let message = format!("rewrite_symbol failed: {}", e);
+                self.record_tool_failure(
+                    "rewrite_symbol",
+                    start.elapsed(),
+                    workspace_snapshot.as_ref(),
+                    metadata.clone(),
+                    source_file_paths.clone(),
+                    Self::input_bytes_from_metadata(&metadata),
+                    &message,
+                );
+                return Err(McpError::internal_error(message, None));
+            }
+        };
         let output_bytes = Self::output_bytes_from_result(&result);
         let source_file_paths = Self::extract_paths_from_result(&result);
         let report = ToolCallReport {
             result_count: None,
+            input_bytes: Self::input_bytes_from_metadata(&metadata),
             source_bytes: None,
             output_bytes,
             metadata,
