@@ -9,6 +9,7 @@ use crate::tools::workspace::commands::ManageWorkspaceTool;
 use anyhow::{Context, Result};
 use std::path::Path;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 use tracing::{debug, info, warn};
 
 /// Result of workspace indexing — distinguishes files processed from DB totals.
@@ -175,6 +176,29 @@ impl ManageWorkspaceTool {
             release_result.context("releasing Tantivy writer after startup projection backfill")?;
         }
 
+        if !force_reindex && files_to_index.is_empty() && orphans_cleaned == 0 {
+            let (total_symbols, total_files_in_db, total_relationships, canonical_revision) =
+                current_index_totals(handler, &route).await?;
+            handler
+                .indexing_status
+                .search_ready
+                .store(true, Ordering::Release);
+            info!(
+                "✅ Indexing skipped: no changed files; {} symbols, {} files, {} relationships already stored in SQLite",
+                total_symbols, total_files_in_db, total_relationships
+            );
+
+            return Ok(IndexResult {
+                files_processed: 0,
+                orphans_cleaned,
+                canonical_revision,
+                files_total: total_files_in_db,
+                symbols_total: total_symbols,
+                relationships_total: total_relationships,
+                duration_ms: index_start.elapsed().as_millis() as u64,
+            });
+        }
+
         // Proceeding with indexing (parser pool groups files by language for 10-50x speedup)
         debug!("🐛 [INDEX TRACE S] About to call run_indexing_pipeline");
         let indexing_operation = route
@@ -216,31 +240,8 @@ impl ManageWorkspaceTool {
         // 🚀 NEW ARCHITECTURE: Get final counts from DATABASE, not memory!
         // 🔴 CRITICAL FIX: Query the correct database for target vs primary workspaces.
         // Target workspaces have their own separate databases at indexes/{workspace_id}/db/symbols.db
-        let (total_symbols, total_files_in_db, total_relationships) = {
-            let db_to_query = route.database_for_read(handler).await?;
-
-            // Query the correct database
-            if let Some(db_arc) = db_to_query {
-                let db = match db_arc.lock() {
-                    Ok(guard) => guard,
-                    Err(poisoned) => {
-                        warn!(
-                            "Database mutex poisoned during final count query, recovering: {}",
-                            poisoned
-                        );
-                        poisoned.into_inner()
-                    }
-                };
-                let stats = db.get_stats().unwrap_or_default();
-                (
-                    stats.total_symbols as usize,
-                    stats.total_files as usize,
-                    stats.total_relationships as usize,
-                )
-            } else {
-                (0, 0, 0)
-            }
-        };
+        let (total_symbols, total_files_in_db, total_relationships, _) =
+            current_index_totals(handler, &route).await?;
 
         info!(
             "✅ Indexing complete: {} symbols, {} files, {} relationships stored in SQLite",
@@ -293,4 +294,34 @@ impl ManageWorkspaceTool {
 
         Ok(())
     }
+}
+
+async fn current_index_totals(
+    handler: &JulieServerHandler,
+    route: &IndexRoute,
+) -> Result<(usize, usize, usize, Option<i64>)> {
+    let db_to_query = route.database_for_read(handler).await?;
+
+    let Some(db_arc) = db_to_query else {
+        return Ok((0, 0, 0, None));
+    };
+
+    let db = match db_arc.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            warn!(
+                "Database mutex poisoned during final count query, recovering: {}",
+                poisoned
+            );
+            poisoned.into_inner()
+        }
+    };
+    let stats = db.get_stats().unwrap_or_default();
+    let canonical_revision = db.get_current_canonical_revision(&route.workspace_id)?;
+    Ok((
+        stats.total_symbols as usize,
+        stats.total_files as usize,
+        stats.total_relationships as usize,
+        canonical_revision,
+    ))
 }
