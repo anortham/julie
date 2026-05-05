@@ -4,6 +4,8 @@
 // Comprehensive test coverage matching the quality of TypeScript/Rust extractors
 // Target: 400+ lines with edge cases, special syntax, and real-world validation
 
+pub mod relationships;
+
 #[cfg(test)]
 mod markdown_extractor_tests {
     #![allow(unused_imports)]
@@ -195,9 +197,11 @@ But no headings at all.
 
         let symbols = extract_symbols(markdown);
 
-        // Depending on implementation, might be 0 or might extract something
-        // At minimum, should not crash
-        assert!(symbols.len() >= 0, "Should handle content-only markdown");
+        assert_eq!(
+            symbols.len(),
+            0,
+            "Content-only markdown should not invent section symbols"
+        );
     }
 
     #[test]

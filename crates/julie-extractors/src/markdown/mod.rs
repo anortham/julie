@@ -4,7 +4,9 @@
 /// 1. Semantic search across documentation
 /// 2. goto definition for heading navigation
 /// 3. Knowledge graph connections between code and docs
-use crate::base::{BaseExtractor, Identifier, Symbol, SymbolKind};
+mod relationships;
+
+use crate::base::{BaseExtractor, Identifier, Relationship, Symbol, SymbolKind};
 use std::path::Path;
 use tree_sitter::Tree;
 
@@ -342,5 +344,9 @@ impl MarkdownExtractor {
     pub fn extract_identifiers(&mut self, _tree: &Tree, _symbols: &[Symbol]) -> Vec<Identifier> {
         // Markdown is documentation - no code identifiers
         Vec::new()
+    }
+
+    pub fn extract_relationships(&mut self, _tree: &Tree, symbols: &[Symbol]) -> Vec<Relationship> {
+        relationships::extract_relationships(&self.base, symbols)
     }
 }

@@ -75,7 +75,6 @@ pub(crate) fn extract_unicode_property_name(property_text: &str) -> Option<Strin
 }
 
 /// Extract group number from a numeric backreference like \1 or \2
-#[cfg(test)]
 pub(crate) fn extract_group_number(backref_text: &str) -> Option<String> {
     if let Some(start) = backref_text.find('\\') {
         let rest = &backref_text[start + 1..];

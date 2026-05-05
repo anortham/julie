@@ -34,17 +34,18 @@
       "file_path": "fixtures/extraction/css/basic/source.css",
       "start_line": 5,
       "start_column": 0,
-      "end_line": 8,
+      "end_line": 9,
       "end_column": 1,
       "start_byte": 34,
-      "end_byte": 78,
-      "signature": ".button,\n#save { color: var(--accent) }",
+      "end_byte": 109,
+      "signature": ".button,\n#save { color: var(--accent); animation: spin 1s linear }",
       "doc_comment": null,
       "visibility": "Public",
       "parent_key": null,
       "metadata": {
         "properties": [
-          "color: var(--accent);"
+          "color: var(--accent);",
+          "animation: spin 1s linear;"
         ],
         "selector": ".button,\n#save",
         "type": "css-rule"
@@ -55,21 +56,21 @@
       "content_type": null
     },
     {
-      "key": "fixtures/extraction/css/basic/source.css:.button:11:4",
+      "key": "fixtures/extraction/css/basic/source.css:.button:12:4",
       "name": ".button",
       "kind": "property",
       "language": "css",
       "file_path": "fixtures/extraction/css/basic/source.css",
-      "start_line": 11,
+      "start_line": 12,
       "start_column": 4,
-      "end_line": 13,
+      "end_line": 14,
       "end_column": 5,
-      "start_byte": 112,
-      "end_byte": 157,
+      "start_byte": 143,
+      "end_byte": 188,
       "signature": ".button { display: inline-flex }",
       "doc_comment": null,
       "visibility": "Public",
-      "parent_key": "fixtures/extraction/css/basic/source.css:@media (min-width: 40rem):10:0",
+      "parent_key": "fixtures/extraction/css/basic/source.css:@media (min-width: 40rem):11:0",
       "metadata": {
         "properties": [
           "display: inline-flex;"
@@ -111,17 +112,42 @@
       "content_type": null
     },
     {
-      "key": "fixtures/extraction/css/basic/source.css:@media (min-width: 40rem):10:0",
+      "key": "fixtures/extraction/css/basic/source.css:@keyframes spin:17:0",
+      "name": "@keyframes spin",
+      "kind": "function",
+      "language": "css",
+      "file_path": "fixtures/extraction/css/basic/source.css",
+      "start_line": 17,
+      "start_column": 0,
+      "end_line": 24,
+      "end_column": 1,
+      "start_byte": 192,
+      "end_byte": 283,
+      "signature": "@keyframes spin {\n    from {\n        opacity: 0;\n    }\n    to {\n        opacity: 1;\n    }\n}",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": null,
+      "metadata": {
+        "animationName": "spin",
+        "type": "keyframes"
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/css/basic/source.css:@media (min-width: 40rem):11:0",
       "name": "@media (min-width: 40rem)",
       "kind": "variable",
       "language": "css",
       "file_path": "fixtures/extraction/css/basic/source.css",
-      "start_line": 10,
+      "start_line": 11,
       "start_column": 0,
-      "end_line": 14,
+      "end_line": 15,
       "end_column": 1,
-      "start_byte": 80,
-      "end_byte": 159,
+      "start_byte": 111,
+      "end_byte": 190,
       "signature": "@media (min-width: 40rem) {\n    .button {\n        display: inline-flex;\n    }\n}",
       "doc_comment": null,
       "visibility": "Public",
@@ -136,23 +162,48 @@
       "content_type": null
     }
   ],
-  "relationships": [],
+  "relationships": [
+    {
+      "from_key": "fixtures/extraction/css/basic/source.css:.button,\n#save:5:0",
+      "to_key": "fixtures/extraction/css/basic/source.css:--accent:2:4",
+      "kind": "references",
+      "file_path": "fixtures/extraction/css/basic/source.css",
+      "line_number": 7,
+      "confidence": "1.000",
+      "metadata": {
+        "referenceName": "--accent",
+        "referenceType": "custom-property"
+      }
+    },
+    {
+      "from_key": "fixtures/extraction/css/basic/source.css:.button,\n#save:5:0",
+      "to_key": "fixtures/extraction/css/basic/source.css:@keyframes spin:17:0",
+      "kind": "references",
+      "file_path": "fixtures/extraction/css/basic/source.css",
+      "line_number": 8,
+      "confidence": "1.000",
+      "metadata": {
+        "referenceName": "spin",
+        "referenceType": "keyframes"
+      }
+    }
+  ],
   "pending_relationships": [],
   "structured_pending_relationships": [],
   "identifiers": [
     {
-      "key": "fixtures/extraction/css/basic/source.css:button:member_access:11:4",
+      "key": "fixtures/extraction/css/basic/source.css:button:member_access:12:4",
       "name": "button",
       "kind": "member_access",
       "language": "css",
       "file_path": "fixtures/extraction/css/basic/source.css",
-      "start_line": 11,
+      "start_line": 12,
       "start_column": 4,
-      "end_line": 11,
+      "end_line": 12,
       "end_column": 11,
-      "start_byte": 112,
-      "end_byte": 119,
-      "containing_key": "fixtures/extraction/css/basic/source.css:.button:11:4",
+      "start_byte": 143,
+      "end_byte": 150,
+      "containing_key": "fixtures/extraction/css/basic/source.css:.button:12:4",
       "target_key": null,
       "confidence": "1.000"
     },

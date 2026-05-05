@@ -5,10 +5,20 @@
 .button,
 #save {
     color: var(--accent);
+    animation: spin 1s linear;
 }
 
 @media (min-width: 40rem) {
     .button {
         display: inline-flex;
+    }
+}
+
+@keyframes spin {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
     }
 }

@@ -8,16 +8,13 @@ Implementation plans and evidence ledgers may link here, but they do not get to 
 
 ## Current Verdict
 
-Status: **not achieved**.
+Status: **not achieved as a release claim**.
 
 The 2026-05-05 code at `0b7a2f36` passed the offline release-candidate gates and live restart dogfood for the corrected review findings. That is good evidence for the fixes in that batch, but it is not enough to call the tree-sitter layer best-in-class.
 
-The current blocker is that capability accounting now tells the truth about some gaps instead of closing them. Truthful accounting is required, but it is not the destination. In particular:
+The current working branch closes the implementation gaps that made this document say "not achieved": capability accounting now has separate target and implemented rows, and native relationship output exists for Vue SFCs, regex backreferences, CSS references, Markdown local heading links, and YAML aliases.
 
-- `vue` currently has no relationship output. A Vue single-file component is a code-bearing component format, so that is a target gap, not a valid final exception.
-- `regex` currently has no relationship output. Capture groups and backreferences are reference-bearing language features, so that is a target gap, not a valid final exception.
-- The capability matrix records implemented capabilities, but it does not yet encode a separate desired target capability set. Without that split, a language can still "pass" by lowering its claims.
-- The historical plan evidence proves specific commits and scopes. It does not prove this quality bar unless the commit SHA, scope label, and target requirements all match.
+This still cannot be called achieved until the fixed-target release gates below pass at the current commit SHA, followed by live MCP dogfood after a release rebuild and restart. The historical plan evidence proves specific older commits and scopes. It does not prove this quality bar unless the commit SHA, scope label, and target requirements all match.
 
 ## Fixed Target
 
@@ -163,10 +160,7 @@ These are known gaps against the fixed target. This list is allowed to grow as t
 
 | Gap | Status | Required closure |
 | --- | --- | --- |
-| Target capability matrix does not exist separately from implementation capability matrix | Open | Add target, implemented, gap status, exception reason, and evidence fields. Tests must fail when implementation rows lower the target silently. |
-| `vue` has no relationship output | Open | Implement and golden-test Vue SFC relationships for component use, template bindings/events, script references, and external structured pending references where provable. |
-| `regex` has no relationship output | Open | Implement and golden-test capture group to numeric/named backreference relationships, or document a specific parser limitation and keep the gap open until resolved. |
-| Query/declarative and documentation/data target review is incomplete | Open | Review `css`, `markdown`, `yaml`, `json`, and `toml` for native reference features. Encode target capabilities explicitly instead of treating current no-relationship output as final. |
+| Fixed-target release evidence has not been recorded at the current commit SHA | Open | Run and record the fixed-target gates for the current HEAD: formatter, extractor bucket, parser-upgrade bucket, changed tier, dev tier, dogfood tier, full tier, release build, and live MCP restart dogfood. |
 
 ## Verification Ledger
 

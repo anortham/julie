@@ -1,4 +1,7 @@
+defaults: &defaults
+  active: true
+
 worker:
+  <<: *defaults
   id: 1
   name: fixture
-  active: true

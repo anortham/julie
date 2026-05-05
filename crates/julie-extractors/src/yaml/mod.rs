@@ -14,7 +14,9 @@
 /// - Docker Compose files
 /// - Ansible playbooks
 /// - Configuration files
-use crate::base::{BaseExtractor, Identifier, IdentifierKind, Symbol, SymbolKind};
+mod relationships;
+
+use crate::base::{BaseExtractor, Identifier, IdentifierKind, Relationship, Symbol, SymbolKind};
 use std::path::Path;
 
 pub struct YamlExtractor {
@@ -193,6 +195,14 @@ impl YamlExtractor {
     ) -> Vec<Identifier> {
         self.walk_tree_for_aliases(tree.root_node(), symbols);
         self.base.identifiers.clone()
+    }
+
+    pub fn extract_relationships(
+        &mut self,
+        tree: &tree_sitter::Tree,
+        symbols: &[Symbol],
+    ) -> Vec<Relationship> {
+        relationships::extract_relationships(&self.base, tree, symbols)
     }
 
     /// Walk the tree looking for alias nodes (*name) and create VariableRef identifiers

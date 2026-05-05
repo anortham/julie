@@ -15,8 +15,9 @@
       "signature": "Named group 'id': (?<id>\\d+)",
       "doc_comment": null,
       "visibility": "Public",
-      "parent_key": "fixtures/extraction/regex/basic/source.regex:^(?<name>[A-Za-z]+)-(?<id>\\d+)$\n:1:0",
+      "parent_key": "fixtures/extraction/regex/basic/source.regex:^(?<name>[A-Za-z]+)-(?<id>\\d+)-\\k<name>-(foo)-\\3$\n:1:0",
       "metadata": {
+        "captureIndex": 2,
         "capturing": "false",
         "named": "id",
         "pattern": "(?<id>\\d+)",
@@ -42,11 +43,39 @@
       "signature": "Named group 'name': (?<name>[A-Za-z]+)",
       "doc_comment": null,
       "visibility": "Public",
-      "parent_key": "fixtures/extraction/regex/basic/source.regex:^(?<name>[A-Za-z]+)-(?<id>\\d+)$\n:1:0",
+      "parent_key": "fixtures/extraction/regex/basic/source.regex:^(?<name>[A-Za-z]+)-(?<id>\\d+)-\\k<name>-(foo)-\\3$\n:1:0",
       "metadata": {
+        "captureIndex": 1,
         "capturing": "false",
         "named": "name",
         "pattern": "(?<name>[A-Za-z]+)",
+        "type": "group"
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/regex/basic/source.regex:(foo):1:40",
+      "name": "(foo)",
+      "kind": "class",
+      "language": "regex",
+      "file_path": "fixtures/extraction/regex/basic/source.regex",
+      "start_line": 1,
+      "start_column": 40,
+      "end_line": 1,
+      "end_column": 45,
+      "start_byte": 40,
+      "end_byte": 45,
+      "signature": "Group: (foo)",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": "fixtures/extraction/regex/basic/source.regex:^(?<name>[A-Za-z]+)-(?<id>\\d+)-\\k<name>-(foo)-\\3$\n:1:0",
+      "metadata": {
+        "captureIndex": 3,
+        "capturing": "true",
+        "pattern": "(foo)",
         "type": "group"
       },
       "annotations": [],
@@ -81,8 +110,8 @@
       "content_type": null
     },
     {
-      "key": "fixtures/extraction/regex/basic/source.regex:^(?<name>[A-Za-z]+)-(?<id>\\d+)$\n:1:0",
-      "name": "^(?<name>[A-Za-z]+)-(?<id>\\d+)$\n",
+      "key": "fixtures/extraction/regex/basic/source.regex:^(?<name>[A-Za-z]+)-(?<id>\\d+)-\\k<name>-(foo)-\\3$\n:1:0",
+      "name": "^(?<name>[A-Za-z]+)-(?<id>\\d+)-\\k<name>-(foo)-\\3$\n",
       "kind": "variable",
       "language": "regex",
       "file_path": "fixtures/extraction/regex/basic/source.regex",
@@ -91,14 +120,14 @@
       "end_line": 2,
       "end_column": 0,
       "start_byte": 0,
-      "end_byte": 32,
-      "signature": "^(?<name>[A-Za-z]+)-(?<id>\\d+)$\n",
+      "end_byte": 50,
+      "signature": "^(?<name>[A-Za-z]+)-(?<id>\\d+)-\\k<name>-(foo)-\\3$\n",
       "doc_comment": null,
       "visibility": "Public",
       "parent_key": null,
       "metadata": {
-        "complexity": "14",
-        "pattern": "^(?<name>[A-Za-z]+)-(?<id>\\d+)$\n",
+        "complexity": "16",
+        "pattern": "^(?<name>[A-Za-z]+)-(?<id>\\d+)-\\k<name>-(foo)-\\3$\n",
         "type": "regex-pattern"
       },
       "annotations": [],
@@ -107,7 +136,32 @@
       "content_type": null
     }
   ],
-  "relationships": [],
+  "relationships": [
+    {
+      "from_key": "fixtures/extraction/regex/basic/source.regex:^(?<name>[A-Za-z]+)-(?<id>\\d+)-\\k<name>-(foo)-\\3$\n:1:0",
+      "to_key": "fixtures/extraction/regex/basic/source.regex:(?<name>[A-Za-z]+):1:1",
+      "kind": "references",
+      "file_path": "fixtures/extraction/regex/basic/source.regex",
+      "line_number": 1,
+      "confidence": "1.000",
+      "metadata": {
+        "name": "name",
+        "referenceType": "named-backreference"
+      }
+    },
+    {
+      "from_key": "fixtures/extraction/regex/basic/source.regex:^(?<name>[A-Za-z]+)-(?<id>\\d+)-\\k<name>-(foo)-\\3$\n:1:0",
+      "to_key": "fixtures/extraction/regex/basic/source.regex:(foo):1:40",
+      "kind": "references",
+      "file_path": "fixtures/extraction/regex/basic/source.regex",
+      "line_number": 1,
+      "confidence": "1.000",
+      "metadata": {
+        "captureIndex": 3,
+        "referenceType": "numeric-backreference"
+      }
+    }
+  ],
   "pending_relationships": [],
   "structured_pending_relationships": [],
   "identifiers": [
@@ -124,6 +178,22 @@
       "start_byte": 20,
       "end_byte": 30,
       "containing_key": "fixtures/extraction/regex/basic/source.regex:(?<id>\\d+):1:20",
+      "target_key": null,
+      "confidence": "1.000"
+    },
+    {
+      "key": "fixtures/extraction/regex/basic/source.regex:name:call:1:31",
+      "name": "name",
+      "kind": "call",
+      "language": "regex",
+      "file_path": "fixtures/extraction/regex/basic/source.regex",
+      "start_line": 1,
+      "start_column": 31,
+      "end_line": 1,
+      "end_column": 39,
+      "start_byte": 31,
+      "end_byte": 39,
+      "containing_key": "fixtures/extraction/regex/basic/source.regex:^(?<name>[A-Za-z]+)-(?<id>\\d+)-\\k<name>-(foo)-\\3$\n:1:0",
       "target_key": null,
       "confidence": "1.000"
     },
@@ -164,6 +234,15 @@
       "metadata": null
     },
     {
+      "symbol_key": "fixtures/extraction/regex/basic/source.regex:(foo):1:40",
+      "resolved_type": "regex:group",
+      "generic_params": null,
+      "constraints": null,
+      "is_inferred": true,
+      "language": "regex",
+      "metadata": null
+    },
+    {
       "symbol_key": "fixtures/extraction/regex/basic/source.regex:[A-Za-z]:1:9",
       "resolved_type": "regex:character-class",
       "generic_params": null,
@@ -173,7 +252,7 @@
       "metadata": null
     },
     {
-      "symbol_key": "fixtures/extraction/regex/basic/source.regex:^(?<name>[A-Za-z]+)-(?<id>\\d+)$\n:1:0",
+      "symbol_key": "fixtures/extraction/regex/basic/source.regex:^(?<name>[A-Za-z]+)-(?<id>\\d+)-\\k<name>-(foo)-\\3$\n:1:0",
       "resolved_type": "regex:regex-pattern",
       "generic_params": null,
       "constraints": null,

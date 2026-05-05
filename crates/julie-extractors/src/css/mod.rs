@@ -12,9 +12,10 @@ mod helpers;
 mod identifiers;
 mod media;
 mod properties;
+mod relationships;
 mod rules;
 
-use crate::base::{BaseExtractor, Identifier, Symbol};
+use crate::base::{BaseExtractor, Identifier, Relationship, Symbol};
 use animations::AnimationExtractor;
 use at_rules::AtRuleExtractor;
 use identifiers::IdentifierExtractor;
@@ -150,5 +151,9 @@ impl CSSExtractor {
     /// Following the Rust extractor reference implementation pattern
     pub fn extract_identifiers(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Identifier> {
         IdentifierExtractor::extract_identifiers(&mut self.base, tree, symbols)
+    }
+
+    pub fn extract_relationships(&mut self, _tree: &Tree, symbols: &[Symbol]) -> Vec<Relationship> {
+        relationships::extract_relationships(&self.base, symbols)
     }
 }

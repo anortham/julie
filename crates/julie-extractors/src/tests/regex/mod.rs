@@ -6,6 +6,7 @@ pub mod flags;
 pub mod groups;
 pub mod helpers;
 pub mod identifiers;
+pub mod relationships;
 pub mod signatures;
 
 use crate::base::{SymbolKind, Visibility};

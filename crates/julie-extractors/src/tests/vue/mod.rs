@@ -3,6 +3,7 @@
 
 // Submodule declarations
 pub mod parsing;
+pub mod relationships;
 
 use crate::base::SymbolKind;
 use crate::vue::VueExtractor;

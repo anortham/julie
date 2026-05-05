@@ -107,6 +107,14 @@ pub const DATA_ONLY_CAPABILITIES: LanguageCapabilities = LanguageCapabilities {
     types: false,
 };
 
+pub const RELATIONSHIP_DATA_CAPABILITIES: LanguageCapabilities = LanguageCapabilities {
+    symbols: true,
+    relationships: true,
+    pending_relationships: false,
+    identifiers: true,
+    types: false,
+};
+
 const EMPTY: &[DocCommentStyle] = &[];
 const C_DOCS: &[DocCommentStyle] = &[DocCommentStyle::TripleSlash];
 const GO_DOCS: &[DocCommentStyle] = &[
@@ -268,7 +276,7 @@ const LANGUAGE_SPECS: &[LanguageSpec] = &[
         "css",
         &["css"],
         "tree-sitter-css",
-        DATA_ONLY_CAPABILITIES,
+        RELATIONSHIP_DATA_CAPABILITIES,
         parser_css,
         CSS_DOCS,
     ),
@@ -276,7 +284,7 @@ const LANGUAGE_SPECS: &[LanguageSpec] = &[
         "vue",
         &["vue"],
         "tree-sitter-html",
-        NO_RELATIONSHIP_CAPABILITIES,
+        FULL_CAPABILITIES,
         parser_html,
         HTML_DOCS,
     ),
@@ -436,7 +444,7 @@ const LANGUAGE_SPECS: &[LanguageSpec] = &[
         "regex",
         &["regex"],
         "tree-sitter-regex",
-        NO_RELATIONSHIP_CAPABILITIES,
+        NO_PENDING_CAPABILITIES,
         parser_regex,
         EMPTY,
     ),
@@ -444,7 +452,7 @@ const LANGUAGE_SPECS: &[LanguageSpec] = &[
         "markdown",
         &["md", "markdown"],
         "tree-sitter-md",
-        DATA_ONLY_CAPABILITIES,
+        RELATIONSHIP_DATA_CAPABILITIES,
         parser_markdown,
         EMPTY,
     ),
@@ -468,7 +476,7 @@ const LANGUAGE_SPECS: &[LanguageSpec] = &[
         "yaml",
         &["yml", "yaml"],
         "tree-sitter-yaml",
-        DATA_ONLY_CAPABILITIES,
+        RELATIONSHIP_DATA_CAPABILITIES,
         parser_yaml,
         EMPTY,
     ),

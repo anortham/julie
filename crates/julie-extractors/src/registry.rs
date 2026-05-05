@@ -184,6 +184,38 @@ macro_rules! define_data_only_extractors {
     };
 }
 
+macro_rules! define_relationship_data_extractors {
+    ($(($fn_name:ident, $language:literal, $extractor:path)),+ $(,)?) => {
+        $(
+            fn $fn_name(
+                tree: &Tree,
+                file_path: &str,
+                content: &str,
+                workspace_root: &Path,
+            ) -> Result<ExtractionResults, anyhow::Error> {
+                let mut ext = <$extractor>::new(
+                    $language.to_string(),
+                    file_path.to_string(),
+                    content.to_string(),
+                    workspace_root,
+                );
+                let symbols = ext.extract_symbols(tree);
+                let relationships = ext.extract_relationships(tree, &symbols);
+                let identifiers = ext.extract_identifiers(tree, &symbols);
+                Ok(ExtractionResults {
+                    symbols,
+                    relationships,
+                    pending_relationships: Vec::new(),
+                    structured_pending_relationships: Vec::new(),
+                    identifiers,
+                    types: HashMap::new(),
+                    parse_diagnostics: Vec::new(),
+                })
+            }
+        )+
+    };
+}
+
 define_full_language_extractors![(extract_elixir, "elixir", crate::elixir::ElixirExtractor)];
 
 define_structured_full_language_extractors![
@@ -645,16 +677,19 @@ define_no_pending_extractors![
     (extract_regex, "regex", crate::regex::RegexExtractor)
 ];
 
-define_data_only_extractors![
+define_relationship_data_extractors![
     (extract_css, "css", crate::css::CSSExtractor),
     (
         extract_markdown,
         "markdown",
         crate::markdown::MarkdownExtractor
     ),
-    (extract_json, "json", crate::json::JsonExtractor),
-    (extract_toml, "toml", crate::toml::TomlExtractor),
     (extract_yaml, "yaml", crate::yaml::YamlExtractor)
+];
+
+define_data_only_extractors![
+    (extract_json, "json", crate::json::JsonExtractor),
+    (extract_toml, "toml", crate::toml::TomlExtractor)
 ];
 
 fn extract_vue(
@@ -673,11 +708,12 @@ fn extract_vue(
     let relationships = ext.extract_relationships(Some(tree), &symbols);
     let identifiers = ext.extract_identifiers(&symbols);
     let types = ext.infer_types(&symbols);
+    let structured_pending_relationships = ext.extract_structured_pending_relationships(&symbols);
     Ok(ExtractionResults {
         symbols,
         relationships,
         pending_relationships: Vec::new(),
-        structured_pending_relationships: Vec::new(),
+        structured_pending_relationships,
         identifiers,
         types: convert_types_map(types, "vue"),
         parse_diagnostics: Vec::new(),

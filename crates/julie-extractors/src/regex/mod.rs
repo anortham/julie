@@ -4,10 +4,11 @@ pub(crate) mod groups;
 pub(crate) mod helpers;
 pub(crate) mod identifiers;
 mod patterns;
+mod relationships;
 pub(crate) mod signatures;
 
 use crate::base::{BaseExtractor, Identifier, Relationship, Symbol, SymbolKind};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use tree_sitter::{Node, Tree};
 
 pub struct RegexExtractor {
@@ -28,7 +29,16 @@ impl RegexExtractor {
 
     pub fn extract_symbols(&mut self, tree: &Tree) -> Vec<Symbol> {
         let mut symbols = Vec::new();
-        self.visit_node(tree.root_node(), &mut symbols, None);
+        let referenced_capture_numbers =
+            relationships::referenced_capture_numbers(&self.base, tree);
+        let mut capture_index = 0;
+        self.visit_node(
+            tree.root_node(),
+            &mut symbols,
+            None,
+            &referenced_capture_numbers,
+            &mut capture_index,
+        );
         symbols
     }
 
@@ -37,6 +47,8 @@ impl RegexExtractor {
         node: Node,
         symbols: &mut Vec<Symbol>,
         parent_id: Option<String>,
+        referenced_capture_numbers: &HashSet<usize>,
+        capture_index: &mut usize,
     ) -> Option<String> {
         let symbol = match node.kind() {
             // Top-level patterns: only extract if no parent (root-level)
@@ -53,10 +65,30 @@ impl RegexExtractor {
             }
             // Groups: only keep named capturing groups
             "named_capturing_group" => {
-                patterns::extract_group(&mut self.base, node, parent_id.clone())
+                *capture_index += 1;
+                patterns::extract_group(&mut self.base, node, parent_id.clone()).map(
+                    |mut symbol| {
+                        add_capture_index(&mut symbol, *capture_index);
+                        symbol
+                    },
+                )
+            }
+            // Keep anonymous capture groups only when numeric backrefs make them reference targets
+            "anonymous_capturing_group" | "capturing_group" => {
+                *capture_index += 1;
+                if referenced_capture_numbers.contains(capture_index) {
+                    patterns::extract_group(&mut self.base, node, parent_id.clone()).map(
+                        |mut symbol| {
+                            add_capture_index(&mut symbol, *capture_index);
+                            symbol
+                        },
+                    )
+                } else {
+                    None
+                }
             }
             // Skip unnamed/non-capturing groups (noise)
-            "group" | "capturing_group" | "non_capturing_group" => None,
+            "group" | "non_capturing_group" => None,
             // Skip quantifiers (noise)
             "quantifier" | "quantified_expression" => None,
             // Skip anchors (noise)
@@ -102,21 +134,20 @@ impl RegexExtractor {
         // Recursively visit children
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
-            self.visit_node(child, symbols, current_parent_id.clone());
+            self.visit_node(
+                child,
+                symbols,
+                current_parent_id.clone(),
+                referenced_capture_numbers,
+                capture_index,
+            );
         }
 
         current_parent_id
     }
 
-    pub fn extract_relationships(
-        &mut self,
-        _tree: &Tree,
-        _symbols: &[Symbol],
-    ) -> Vec<Relationship> {
-        // For now, return empty relationships
-        // In a full implementation, this would extract relationships between
-        // backreferences and their corresponding groups, etc.
-        Vec::new()
+    pub fn extract_relationships(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Relationship> {
+        relationships::extract_relationships(&self.base, tree, symbols)
     }
 
     pub fn infer_types(&self, symbols: &[Symbol]) -> HashMap<String, String> {
@@ -138,4 +169,12 @@ impl RegexExtractor {
     pub fn extract_identifiers(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Identifier> {
         identifiers::extract_identifiers(&mut self.base, tree, symbols)
     }
+}
+
+fn add_capture_index(symbol: &mut Symbol, capture_index: usize) {
+    let metadata = symbol.metadata.get_or_insert_with(HashMap::new);
+    metadata.insert(
+        "captureIndex".to_string(),
+        serde_json::Value::Number((capture_index as u64).into()),
+    );
 }

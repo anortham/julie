@@ -9,7 +9,7 @@ mod yaml_extractor_tests {
     #![allow(unused_imports)]
     #![allow(unused_variables)]
 
-    use crate::base::{Symbol, SymbolKind};
+    use crate::base::{Relationship, RelationshipKind, Symbol, SymbolKind};
     use crate::yaml::YamlExtractor;
     use std::path::PathBuf;
     use tree_sitter::Parser;
@@ -33,6 +33,21 @@ mod yaml_extractor_tests {
             &workspace_root,
         );
         extractor.extract_symbols(&tree)
+    }
+
+    fn extract_symbols_and_relationships(code: &str) -> (Vec<Symbol>, Vec<Relationship>) {
+        let workspace_root = PathBuf::from("/tmp/test");
+        let mut parser = init_parser();
+        let tree = parser.parse(code, None).expect("Failed to parse code");
+        let mut extractor = YamlExtractor::new(
+            "yaml".to_string(),
+            "test.yaml".to_string(),
+            code.to_string(),
+            &workspace_root,
+        );
+        let symbols = extractor.extract_symbols(&tree);
+        let relationships = extractor.extract_relationships(&tree, &symbols);
+        (symbols, relationships)
     }
 
     // ========================================================================
@@ -233,10 +248,9 @@ spec:
 
         let symbols = extract_symbols(yaml);
 
-        // Ansible playbooks use lists with mappings
         assert!(
-            symbols.len() >= 0,
-            "Should handle Ansible playbook structure"
+            symbols.iter().any(|symbol| symbol.name == "tasks"),
+            "Should extract the tasks mapping from an Ansible playbook"
         );
     }
 
@@ -298,10 +312,21 @@ production:
   database: prod_db
 "#;
 
-        let symbols = extract_symbols(yaml);
+        let (symbols, relationships) = extract_symbols_and_relationships(yaml);
 
-        // Should handle anchors and aliases
-        assert!(symbols.len() >= 0, "Should handle YAML anchors and aliases");
+        let defaults = symbols
+            .iter()
+            .find(|symbol| symbol.name == "defaults")
+            .expect("anchor owner should be extracted");
+
+        assert!(
+            relationships.iter().any(|relationship| {
+                relationship.kind == RelationshipKind::References
+                    && relationship.to_symbol_id == defaults.id
+            }),
+            "YAML aliases should reference the anchored mapping, got: {:?}",
+            relationships
+        );
     }
 
     #[test]

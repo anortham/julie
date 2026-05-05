@@ -17,10 +17,11 @@ struct CapabilityRow {
     parser_crate: String,
     extensions: Vec<String>,
     dependency_status: String,
+    target_capabilities: CapabilityFlags,
     capabilities: CapabilityFlags,
     fixtures: Vec<FixtureRow>,
     #[serde(default)]
-    relationship_fixture_exception: Option<String>,
+    capability_gaps: Vec<CapabilityGap>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -37,6 +38,15 @@ struct FixtureRow {
     name: String,
     source: String,
     expected: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct CapabilityGap {
+    capability: String,
+    status: String,
+    reason: String,
+    required_closure: String,
+    evidence: String,
 }
 
 #[test]
@@ -171,10 +181,9 @@ fn capability_matrix_requires_relationship_fixture_evidence() {
             .iter()
             .any(|fixture| fixture_exercises_relationships(&root, fixture));
         let exception = row
-            .relationship_fixture_exception
-            .as_deref()
-            .map(str::trim)
-            .filter(|reason| !reason.is_empty());
+            .capability_gaps
+            .iter()
+            .find(|gap| gap.capability == "relationships" && gap.status == "exception");
 
         assert!(
             row.capabilities.relationships || exception.is_none(),
@@ -199,12 +208,68 @@ fn capability_matrix_requires_relationship_fixture_evidence() {
 }
 
 #[test]
-fn regex_capabilities_do_not_advertise_stubbed_relationships() {
+fn capability_matrix_requires_target_capabilities() {
+    let root = workspace_root();
+    let matrix = load_matrix(&root);
+
+    for row in matrix.languages {
+        validate_target_capability(&row, "symbols", row.target_capabilities.symbols);
+        validate_target_capability(&row, "relationships", row.target_capabilities.relationships);
+        validate_target_capability(
+            &row,
+            "pending_relationships",
+            row.target_capabilities.pending_relationships,
+        );
+        validate_target_capability(&row, "identifiers", row.target_capabilities.identifiers);
+        validate_target_capability(&row, "types", row.target_capabilities.types);
+
+        for gap in &row.capability_gaps {
+            assert!(
+                matches!(
+                    gap.capability.as_str(),
+                    "symbols" | "relationships" | "pending_relationships" | "identifiers" | "types"
+                ),
+                "{} has an unknown capability gap: {}",
+                row.language,
+                gap.capability
+            );
+            assert!(
+                matches!(gap.status.as_str(), "open" | "exception"),
+                "{} has unsupported gap status {} for {}",
+                row.language,
+                gap.status,
+                gap.capability
+            );
+            assert!(
+                !gap.reason.trim().is_empty(),
+                "{} {} gap is missing a reason",
+                row.language,
+                gap.capability
+            );
+            assert!(
+                !gap.required_closure.trim().is_empty(),
+                "{} {} gap is missing required closure text",
+                row.language,
+                gap.capability
+            );
+            assert!(
+                root.join(&gap.evidence).exists(),
+                "{} {} gap evidence path does not exist: {}",
+                row.language,
+                gap.capability,
+                gap.evidence
+            );
+        }
+    }
+}
+
+#[test]
+fn regex_capabilities_advertise_golden_relationships() {
     let capabilities = capabilities_for_language("regex").unwrap();
 
     assert!(
-        !capabilities.relationships,
-        "regex extract_relationships currently returns no relationships; keep the capability false until a golden fixture proves relationship extraction"
+        capabilities.relationships,
+        "regex has golden-tested named and numeric backreference relationship extraction"
     );
 }
 
@@ -232,6 +297,50 @@ fn load_matrix(root: &Path) -> CapabilityMatrix {
             err
         )
     })
+}
+
+fn validate_target_capability(row: &CapabilityRow, capability: &str, target_enabled: bool) {
+    let implemented = implemented_capability(row, capability);
+    let gap = row
+        .capability_gaps
+        .iter()
+        .find(|gap| gap.capability == capability);
+
+    if !target_enabled {
+        assert!(
+            !implemented,
+            "{} implements {} even though the target marks it non-applicable",
+            row.language, capability
+        );
+        return;
+    }
+
+    if implemented {
+        assert!(
+            gap.is_none(),
+            "{} implements target capability {} but still records a gap",
+            row.language,
+            capability
+        );
+    } else {
+        assert!(
+            gap.is_some(),
+            "{} target capability {} is true but implementation is false and no gap is recorded",
+            row.language,
+            capability
+        );
+    }
+}
+
+fn implemented_capability(row: &CapabilityRow, capability: &str) -> bool {
+    match capability {
+        "symbols" => row.capabilities.symbols,
+        "relationships" => row.capabilities.relationships,
+        "pending_relationships" => row.capabilities.pending_relationships,
+        "identifiers" => row.capabilities.identifiers,
+        "types" => row.capabilities.types,
+        other => panic!("unknown capability {other}"),
+    }
 }
 
 fn fixture_exercises_relationships(root: &Path, fixture: &FixtureRow) -> bool {

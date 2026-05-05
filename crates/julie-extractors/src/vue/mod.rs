@@ -5,6 +5,7 @@
 //
 // Implementation of Vue extractor with comprehensive Vue SFC feature support
 
+use crate::base::relationship_resolution::StructuredPendingRelationship;
 use crate::base::{BaseExtractor, Identifier, Relationship, Symbol, SymbolKind};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -15,6 +16,7 @@ mod component;
 mod helpers;
 mod identifiers;
 pub(crate) mod parsing;
+mod relationships;
 mod script;
 mod script_setup;
 mod style;
@@ -110,10 +112,16 @@ impl VueExtractor {
     pub fn extract_relationships(
         &mut self,
         _tree: Option<&Tree>,
-        _symbols: &[Symbol],
+        symbols: &[Symbol],
     ) -> Vec<Relationship> {
-        // implementation returns empty for now - follow the same approach
-        Vec::new()
+        relationships::extract_relationships(&self.base, symbols)
+    }
+
+    pub fn extract_structured_pending_relationships(
+        &mut self,
+        symbols: &[Symbol],
+    ) -> Vec<StructuredPendingRelationship> {
+        relationships::extract_structured_pending_relationships(&self.base, symbols)
     }
 
     /// Infer types from Vue SFC

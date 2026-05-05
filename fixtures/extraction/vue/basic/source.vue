@@ -1,5 +1,6 @@
 <template>
   <section class="worker">
+    <HeaderBar />
     <h1>{{ title }}</h1>
   </section>
 </template>
