@@ -6,7 +6,7 @@ Julie calls the tree-sitter layer best-in-class only when extraction output is a
 
 ## Current Verdict
 
-Status: offline release-candidate gates pass in the working tree. Do not treat this as final release evidence until the changes are committed, the ledger below is filled against the exact release commit SHA, and live MCP dogfood passes after a release rebuild and restart.
+Status: offline release-candidate gates and live restart dogfood pass for code commit `0b7a2f36`. Treat `0b7a2f36` as the dogfooded release-candidate code SHA; rerun the release gates and live dogfood if code changes after that commit.
 
 The tree-sitter upgrade work has materially improved parser coverage, golden fixtures, parser-upgrade gates, relationship precision, live dogfood repair, and semantic index invalidation. The current working tree fixes the latest review findings:
 
@@ -131,6 +131,20 @@ Record release evidence with the template in [verification-ledger-template.md](p
 
 | Invariant | Command | Scope Label | Commit SHA | Result | Timestamp (UTC) | Evidence Reused |
 | --- | --- | --- | --- | --- | --- | --- |
+| Formatter | `cargo fmt --check` | formatter | `0b7a2f36` | Passed | 2026-05-05T16:35:22Z | No |
+| Diff whitespace | `git diff --check` | diff-hygiene | `0b7a2f36` | Passed | 2026-05-05T16:35:22Z | No |
+| Extractor golden and capability matrix | `cargo xtask test bucket extractors` | extractors | `0b7a2f36` | Passed 1 bucket in 1.1s | 2026-05-05T16:35:22Z | No |
+| Parser upgrade contract | `cargo xtask test bucket parser-upgrade` | parser-upgrade | `0b7a2f36` | Passed 1 bucket in 1.7s | 2026-05-05T16:35:22Z | No |
+| Changed-code regression tier | `cargo xtask test changed` | changed | `0b7a2f36` | Passed 22 buckets in 537.5s | 2026-05-05T16:35:22Z | No |
+| Startup, workspace, daemon, integration tier | `cargo xtask test system` | system | `0b7a2f36` | Passed 6 buckets in 142.7s | 2026-05-05T16:35:22Z | No |
+| Search and dogfood tier | `cargo xtask test dogfood` | dogfood | `0b7a2f36` | Passed 2 buckets in 206.7s | 2026-05-05T16:35:22Z | No |
+| Full release-candidate tier | `cargo xtask test full` | full | `0b7a2f36` | Passed 30 buckets in 868.9s | 2026-05-05T16:35:22Z | No |
+| Release binary build | `cargo build --release` | release-build | `0b7a2f36` | Passed in 2m 51s | 2026-05-05T16:35:22Z | No |
+| Live MCP health after rebuild and restart | `manage_workspace health detailed=true` | live-health | `0b7a2f36` | READY: daemon serving, projection current 3970/3970, 34252 symbols, 32945 relationships, 7009 vectors | 2026-05-05T16:42:28Z | No |
+| Live production call graph | `call_path extract_symbols_static extract_canonical` | live-call-path | `0b7a2f36` | Found one-hop production call edge through `src/tools/workspace/indexing/extractor.rs:24` to `crates/julie-extractors/src/pipeline.rs:8` | 2026-05-05T16:42:28Z | No |
+| Live references for extraction API | `fast_refs extract_canonical` | live-fast-refs | `0b7a2f36` | Found definition plus 20 visible references, including public API projection and real-world contract callers | 2026-05-05T16:42:28Z | No |
+| Live semantic state in SQLite | `sqlite3 ~/.julie/indexes/julie_528d4264/db/symbols.db` | live-sqlite-state | `0b7a2f36` | Schema version 24, semantic engine `2026-05-05.reference-identifier-v3`, Tantivy projection ready at 3970/3970, 7009 vector rowids | 2026-05-05T16:42:28Z | No |
+| Live non-force refresh | `manage_workspace refresh workspace_id=julie_528d4264` | live-refresh | `0b7a2f36` | Already up-to-date at canonical revision 3970; no repeated full reindex | 2026-05-05T16:42:28Z | No |
 
 ## Exceptions
 
