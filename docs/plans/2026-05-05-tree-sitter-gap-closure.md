@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use razorback:subagent-driven-development when subagent delegation is available. Fall back to razorback:executing-plans for single-task, tightly-sequential, or no-delegation runs.
 
-**Goal:** Close the remaining dogfood gaps from the 2026-05-05 verification pass so Julie's tree-sitter extraction and graph navigation can honestly meet the best-in-class bar.
+**Goal:** Close the dogfood gaps from the 2026-05-05 verification pass against the then-current tree-sitter contract.
 
-**Architecture:** Keep the original best-in-class plan as the master contract, and treat this as a focused delta plan. Relationship precision gets the main correctness lane. Navigation, health wording, and agent instruction fixes are separate product-quality lanes with narrow tests.
+**Architecture:** Treat this as a focused historical delta plan. The fixed best-in-class target now lives in [TREE_SITTER_QUALITY_BAR.md](../TREE_SITTER_QUALITY_BAR.md); this plan records how the 2026-05-05 review findings were closed. Relationship precision gets the main correctness lane. Navigation, health wording, and agent instruction fixes are separate product-quality lanes with narrow tests.
 
 **Tech Stack:** Rust, tree-sitter, `julie-extractors`, SQLite relationship storage, Julie navigation tools, `cargo nextest`, Julie xtask test buckets.
 
@@ -19,7 +19,7 @@ Baseline verified at `c01b9516` on 2026-05-05:
 - `cargo xtask test full` passed 30 buckets in 825.6s.
 - Live Julie health returned to `FULLY READY` after test-induced catch-up settled.
 
-These gates proved the new golden harness, capability matrix, parser-upgrade gate, real-world contract, parse-diagnostic safety, system tests, and dogfood search-quality gate. They did not prove the remaining relationship precision rollout or the specific live navigation bug found during dogfooding.
+These gates proved the new golden harness, current capability matrix, parser-upgrade gate, real-world contract, parse-diagnostic safety, system tests, and dogfood search-quality gate. They did not prove the fixed best-in-class target, because that target now requires desired capabilities to be tracked separately from implemented capabilities.
 
 Gap-closure evidence at `c01b9516 + working tree` on 2026-05-05:
 
@@ -47,7 +47,7 @@ Post-restart live MCP dogfood on 2026-05-05:
 
 ## Findings To Close
 
-1. **Closed: relationship precision is now reviewed and covered across the relationship-capable inventory.** Unsafe receiver-qualified or duplicate-name local resolution now stays unresolved or pending unless the extractor has enough scope evidence.
+1. **Closed for the 2026-05-05 review scope: relationship precision is now reviewed and covered across the relationship-capable inventory.** Unsafe receiver-qualified or duplicate-name local resolution now stays unresolved or pending unless the extractor has enough scope evidence.
 2. **Closed: `call_path` now follows the production re-export chain.** `crate::extractors::extract_canonical` resolves through `pub use julie_extractors::*` and the workspace crate root re-export to [crates/julie-extractors/src/pipeline.rs](../../crates/julie-extractors/src/pipeline.rs:8).
 3. **Closed: `LanguageSpec` conflation was real, sparse refs were expected.** The bug was exact definition lookup falling back to naming variants and returning `language_spec`; exact definitions now suppress variant-definition noise.
 4. **Closed: health language wording now says indexed workspace languages.** The output no longer implies that text fallback and missing `jsx` are support-matrix facts.
@@ -57,6 +57,8 @@ Post-restart live MCP dogfood on 2026-05-05:
 ## Follow-Up Findings
 
 1. **Closed: semantic index invalidation across binary upgrades.** A rebuilt/restarted daemon can no longer silently keep old derived graph data when source mtimes and hashes are unchanged. The workspace DB stores `semantic_index_engine`; missing or stale values trigger an effective full re-index and startup repair reports `semantic_version_changed`.
+2. **Open against the fixed best-in-class target: the target capability matrix is not separated from the implemented capability matrix.** This means a language can still pass current tests by truthfully saying a feature is absent, even when the target requires that feature.
+3. **Open against the fixed best-in-class target: Vue and regex relationship extraction remain implementation gaps.** They were corrected as current capability claims, not completed as target capabilities.
 
 ## File Structure
 

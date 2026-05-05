@@ -15,6 +15,7 @@
 - No language subset counts as complete. Every registry entry must have a row in the capability matrix and at least one golden extraction case before parser dependency upgrades are accepted.
 - Variants count. `tsx`, `jsx`, and `vue` are not covered merely because `typescript`, `javascript`, and `html` pass.
 - Missing capability must be explicit and tested. A row may say a capability is intentionally unsupported, but the harness must assert that status so it cannot become accidental silence.
+- Truthful capability accounting is not the same thing as best-in-class. If a language has native reference semantics and Julie does not extract them yet, that is an open gap, not a final exception.
 - Golden tests must use `extract_canonical`, because that is the production extraction path. Direct extractor tests can remain useful, but they do not satisfy the parser-upgrade gate.
 - Wrong graph edges are worse than missing graph edges. Ambiguous local relationship resolution should emit pending relationships or lower-confidence unresolved data instead of a confident edge to the wrong symbol.
 - Dependency upgrades are whole-inventory decisions. Each parser crate is either updated, verified current, or explicitly held with a reason and evidence.
@@ -31,7 +32,7 @@
 
 ## Dogfood Findings, 2026-05-05
 
-**Current release verdict:** See [TREE_SITTER_QUALITY_BAR.md](../TREE_SITTER_QUALITY_BAR.md). This section is historical dogfood context, not release evidence.
+**Current release verdict:** Not achieved. See [TREE_SITTER_QUALITY_BAR.md](../TREE_SITTER_QUALITY_BAR.md) for the fixed target and current open gaps. This section is historical dogfood context, not release evidence.
 
 **Verification evidence at `c01b9516`:**
 - `cargo xtask test bucket extractors` passed in 36.1s.
@@ -54,18 +55,18 @@
 
 **Follow-up owner:** [2026-05-05-tree-sitter-gap-closure.md](2026-05-05-tree-sitter-gap-closure.md).
 
-**Closure update, 2026-05-05:** Gap-closure work has fixed the relationship precision rollout, the `extract_symbols_static -> extract_canonical` call-path miss, the `LanguageSpec` exact-match noise, health wording, missing injected gate instructions, the post-restart semantic index invalidation gap that kept old derived relationships until forced refresh, and a Rust enum-variant reference extraction gap found during live dogfood. The focused closure plan remains the evidence ledger for final gate results.
+**Closure update, 2026-05-05:** Gap-closure work fixed the relationship precision rollout, the `extract_symbols_static -> extract_canonical` call-path miss, the `LanguageSpec` exact-match noise, health wording, missing injected gate instructions, the post-restart semantic index invalidation gap that kept old derived relationships until forced refresh, and a Rust enum-variant reference extraction gap found during live dogfood. That closed the review findings for the then-current contract. It did not close the fixed best-in-class target now documented in [TREE_SITTER_QUALITY_BAR.md](../TREE_SITTER_QUALITY_BAR.md).
 
 ## Language Accounting
 
 The plan covers these registry entries:
 
-| Capability group | Language entries |
+| Target group | Language entries |
 | --- | --- |
-| Full extraction | `rust`, `c`, `cpp`, `go`, `zig`, `typescript`, `tsx`, `javascript`, `jsx`, `python`, `java`, `csharp`, `vbnet`, `php`, `ruby`, `swift`, `kotlin`, `scala`, `dart`, `elixir`, `bash`, `powershell`, `gdscript` |
-| Pending relationships, no type output | `lua`, `qml`, `r` |
-| No pending relationships | `html`, `vue`, `razor`, `sql`, `regex` |
-| Data-only extraction | `css`, `markdown`, `json`, `toml`, `yaml` |
+| General programming languages | `rust`, `c`, `cpp`, `go`, `zig`, `typescript`, `tsx`, `javascript`, `jsx`, `python`, `java`, `csharp`, `vbnet`, `php`, `ruby`, `swift`, `kotlin`, `scala`, `dart`, `elixir`, `bash`, `powershell`, `gdscript`, `lua`, `r` |
+| Component and template languages | `vue`, `razor`, `qml`, `html` |
+| Query and declarative languages | `sql`, `css`, `regex` |
+| Documentation and data languages | `markdown`, `json`, `toml`, `yaml` |
 
 `text` is not tree-sitter-backed, but watcher/index parity must still cover text-only fallback files because the initial index and watcher currently disagree about unsupported and extensionless files.
 
@@ -135,13 +136,13 @@ The plan covers these registry entries:
 
 **What to build:** Add the first complete golden fixture inventory. This is not a subset rollout. Every parser-backed registry entry gets at least one case in the first pass.
 
-**Approach:** Keep each fixture small but meaningful. Full extraction languages must include at least one named definition, one nested or parented symbol when the language supports it, one identifier, one local relationship or structured pending relationship, and one type/asserted absence based on capability. Data-only languages must assert their intended symbols and identifiers, plus explicit absence of unsupported outputs. Variants need variant-specific syntax: `tsx` must include JSX, `jsx` must include JSX, and `vue` must include single-file component structure.
+**Approach:** Keep each fixture small but meaningful. Programming languages must include at least one named definition, one nested or parented symbol when the language supports it, one identifier, one local relationship or structured pending relationship, and one type/asserted absence based on the fixed target. Component, template, query, declarative, documentation, and data languages must assert the references native to those formats instead of accepting empty graph output by default. Variants need variant-specific syntax: `tsx` must include JSX, `jsx` must include JSX, and `vue` must include single-file component structure.
 
 **Acceptance criteria:**
-- [ ] All `Full extraction` rows have symbol, span, parent or explicit flat-structure assertion, identifier, relationship or structured pending relationship, and type expectation.
-- [ ] `lua`, `qml`, and `r` have pending relationship coverage and explicit no-type expectation.
-- [ ] `html`, `vue`, `razor`, `sql`, and `regex` have no-pending expectation and meaningful available outputs.
-- [ ] `css`, `markdown`, `json`, `toml`, and `yaml` have data-only expectations and explicit absence of unsupported outputs.
+- [ ] All programming-language rows have symbol, span, parent or explicit flat-structure assertion, identifier, relationship or structured pending relationship, and type expectation or explicit no-type target reason.
+- [ ] Component and template rows have structure, local graph output where provable, and structured pending output for external component, resource, binding, or handler references.
+- [ ] Query and declarative rows have domain definitions and domain references, including SQL dependencies, CSS native references where present, and regex capture/backreference relationships.
+- [ ] Documentation and data rows have structure, identifiers or keys, and link, anchor, alias, or explicit no-reference target reasons.
 - [ ] Fixture count equals or exceeds registry entry count.
 - [ ] Worker-scope verification passes: `cargo nextest run -p julie-extractors golden` and `cargo nextest run -p julie-extractors capability_matrix`.
 
