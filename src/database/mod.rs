@@ -2,9 +2,11 @@
 //!
 //! Refactored into focused modules for maintainability (<500 lines each)
 
-use anyhow::{Result, anyhow};
+use anyhow::{Context, Result, anyhow};
+use fs2::FileExt;
 use rusqlite::{Connection, Row};
 use std::collections::HashMap;
+use std::fs::{File, OpenOptions};
 use std::path::{Path, PathBuf};
 use std::sync::Once;
 use tracing::{debug, info, warn};
@@ -72,6 +74,7 @@ impl SymbolDatabase {
         register_sqlite_vec();
 
         let file_path = db_path.as_ref().to_path_buf();
+        let _init_lock = acquire_database_init_lock(&file_path)?;
 
         info!("Initializing SQLite database at: {}", file_path.display());
 
@@ -208,6 +211,38 @@ impl SymbolDatabase {
 
         Ok((busy, log, checkpointed))
     }
+}
+
+fn acquire_database_init_lock(db_path: &Path) -> Result<File> {
+    let lock_path = database_init_lock_path(db_path)?;
+    let lock_file = OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(false)
+        .open(&lock_path)
+        .with_context(|| format!("Failed to open database init lock {}", lock_path.display()))?;
+
+    debug!(
+        "Acquiring database init lock for {} at {}",
+        db_path.display(),
+        lock_path.display()
+    );
+    lock_file.lock_exclusive().with_context(|| {
+        format!(
+            "Failed to acquire database init lock {}",
+            lock_path.display()
+        )
+    })?;
+    Ok(lock_file)
+}
+
+fn database_init_lock_path(db_path: &Path) -> Result<PathBuf> {
+    let parent = db_path.parent().unwrap_or_else(|| Path::new("."));
+    let file_name = db_path
+        .file_name()
+        .ok_or_else(|| anyhow!("Database path has no file name: {}", db_path.display()))?
+        .to_string_lossy();
+    Ok(parent.join(format!(".{file_name}.init.lock")))
 }
 
 // 🚨 CRITICAL: Implement Drop to checkpoint WAL on database close
