@@ -46,6 +46,8 @@ cargo clippy                   # Lint
 
 **Version bumps:** When changing the version in `Cargo.toml`, also update the version displayed on the gh-pages site (`docs/` or the site source). All three must stay in sync: `Cargo.toml`, `plugin.json` (via CI), and the gh-pages site.
 
+**Release notes:** Every tagged release needs substantive GitHub release notes. Do not rely on the workflow's boilerplate body. Cover the user-visible changes, important fixes, dogfood and test evidence, upgrade or operational notes, and any honest caveats. If the workflow creates a generic release page, replace it with real notes using `gh release edit <tag> --notes-file <file>` before calling the release done.
+
 ---
 
 ## 🔴 CRITICAL: TDD Methodology (Non-Negotiable)
