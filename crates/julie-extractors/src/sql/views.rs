@@ -26,7 +26,7 @@ impl SqlExtractor {
         for node in term_nodes {
             let mut children = Vec::new();
             for i in 0..node.child_count() {
-                if let Some(child) = node.child(i) {
+                if let Some(child) = node.child(i as u32) {
                     children.push(child);
                 }
             }

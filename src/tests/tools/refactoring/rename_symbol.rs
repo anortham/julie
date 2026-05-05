@@ -3,12 +3,28 @@
 //! Tests verify workspace-wide symbol renaming with flat parameters
 
 use crate::handler::JulieServerHandler;
+use crate::mcp_compat::CallToolResult;
 use crate::tools::refactoring::RenameSymbolTool;
 use crate::tools::workspace::ManageWorkspaceTool;
 use anyhow::Result;
 use std::fs;
 use std::sync::Arc;
 use tempfile::TempDir;
+
+fn extract_text(result: &CallToolResult) -> String {
+    result
+        .content
+        .iter()
+        .filter_map(|block| {
+            serde_json::to_value(block).ok().and_then(|json| {
+                json.get("text")
+                    .and_then(|value| value.as_str())
+                    .map(|text| text.to_string())
+            })
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
 
 #[tokio::test]
 async fn test_rename_symbol_basic() -> Result<()> {
@@ -70,6 +86,56 @@ async fn test_rename_symbol_basic() -> Result<()> {
         result_text.contains("applied") && result_text.contains("change"),
         "Result should confirm applied changes, got: {}",
         result_text
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_rename_symbol_reports_parse_error_without_modifying_file() -> Result<()> {
+    unsafe {
+        std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+    }
+
+    let temp_dir = TempDir::new()?;
+    let test_file = temp_dir.path().join("main.rs");
+    let source = "fn getUserData() {\n    let value = ;\n}\n";
+    fs::write(&test_file, source)?;
+
+    let handler = JulieServerHandler::new_for_test().await?;
+    handler
+        .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
+        .await?;
+
+    let index_tool = ManageWorkspaceTool {
+        operation: "index".to_string(),
+        path: Some(temp_dir.path().to_string_lossy().to_string()),
+        force: Some(true),
+        name: None,
+        workspace_id: None,
+        detailed: None,
+    };
+    index_tool.call_tool(&handler).await?;
+
+    let tool = RenameSymbolTool {
+        old_name: "getUserData".to_string(),
+        new_name: "fetchUserData".to_string(),
+        scope: None,
+        dry_run: false,
+        workspace: None,
+    };
+
+    let result = tool.call_tool(&handler).await?;
+    let text = extract_text(&result);
+
+    assert!(
+        text.contains("parse error"),
+        "rename_symbol should report parse-error safety failure, got: {text}"
+    );
+    assert_eq!(
+        fs::read_to_string(&test_file)?,
+        source,
+        "rename_symbol must not modify files whose AST has parse errors"
     );
 
     Ok(())

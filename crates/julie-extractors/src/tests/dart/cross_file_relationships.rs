@@ -21,7 +21,7 @@ mod tests {
     fn init_dart_parser() -> Parser {
         let mut parser = Parser::new();
         parser
-            .set_language(&harper_tree_sitter_dart::LANGUAGE.into())
+            .set_language(&tree_sitter_dart::LANGUAGE.into())
             .expect("Error loading Dart grammar");
         parser
     }

@@ -14,49 +14,45 @@ name = "julie_extractors"
 path = "src/lib.rs"
 
 [dependencies]
-# Tree-sitter for parsing (latest version to match harper-dart)
-# ⚠️  WARNING: DO NOT CHANGE THESE TREE-SITTER VERSIONS! ⚠️
-# ⚠️  CHANGING THESE WILL BREAK EVERYTHING DUE TO API INCOMPATIBILITIES ⚠️
-# ⚠️  WE SPENT HOURS GETTING THESE VERSIONS TO WORK TOGETHER ⚠️
-tree-sitter = "0.25"
-tree-sitter-bash = "0.23"
-tree-sitter-c = "0.24"
-tree-sitter-cpp = "0.23"
-tree-sitter-c-sharp = "0.23"
-tree-sitter-css = "0.23"
-tree-sitter-go = "0.23"
-tree-sitter-html = "0.23"
-tree-sitter-java = "0.23"
-tree-sitter-javascript = "0.23"
-# ⚠️  WARNING: THESE PARSER VERSIONS ARE LOCKED TO TREE-SITTER 0.25 ⚠️
-tree-sitter-kotlin-ng = "1.1.0"  # ⚠️ DO NOT CHANGE - USES MODERN API ⚠️
-tree-sitter-lua = "0.2"
-tree-sitter-php = "0.24"
-tree-sitter-python = "0.23"
+# Tree-sitter parser inventory is audited in docs/TREE_SITTER_UPGRADES.md.
+tree-sitter = "0.26.8"
+tree-sitter-bash = "0.25.1"
+tree-sitter-c = "0.24.2"
+tree-sitter-cpp = "0.23.4"
+tree-sitter-c-sharp = "0.23.5"
+tree-sitter-css = "0.25.0"
+tree-sitter-go = "0.25.0"
+tree-sitter-html = "0.23.2"
+tree-sitter-java = "0.23.5"
+tree-sitter-javascript = "0.25.0"
+tree-sitter-kotlin-ng = "1.1.0"
+tree-sitter-lua = "0.5.0"
+tree-sitter-php = "0.24.2"
+tree-sitter-python = "0.25.0"
 tree-sitter-r = "1.2.0"
-tree-sitter-ruby = "0.23"
+tree-sitter-ruby = "0.23.1"
 tree-sitter-elixir = "0.3"
-tree-sitter-rust = "0.24"
-tree-sitter-swift = "0.7"
-tree-sitter-typescript = "0.23"
+tree-sitter-rust = "0.24.2"
+tree-sitter-swift = "0.7.2"
+tree-sitter-typescript = "0.23.2"
 
-tree-sitter-scala = "0.25"
+tree-sitter-scala = "0.26.0"
 
-tree-sitter-gdscript = "5.0"
-tree-sitter-qmljs = { git = "https://github.com/yuja/tree-sitter-qmljs" }
-tree-sitter-regex = "0.23"
-tree-sitter-razor = { git = "https://github.com/tris203/tree-sitter-razor" }
-tree-sitter-powershell = { git = "https://github.com/airbus-cert/tree-sitter-powershell" }
+tree-sitter-gdscript = "6.1.0"
+tree-sitter-qmljs = { git = "https://github.com/yuja/tree-sitter-qmljs", rev = "606a66b96a13ef30ed5c7ec7e5adc20a9a40157a" }
+tree-sitter-regex = "0.25.0"
+tree-sitter-razor = { git = "https://github.com/tris203/tree-sitter-razor", rev = "a3399c26610817c6d32c7643793caf3729cfb6d2" }
+tree-sitter-powershell = { git = "https://github.com/airbus-cert/tree-sitter-powershell", rev = "d398441825243b00e317e87e1829b9d6a3e54ce0" }
 
-harper-tree-sitter-dart = "0.0.5"  # ⚠️ DO NOT CHANGE - REQUIRES TREE-SITTER 0.25.6+ ⚠️
-tree-sitter-sequel = "0.3.10"
+tree-sitter-dart = "0.2.0"
+tree-sitter-sequel = "0.3.11"
 tree-sitter-zig = "1.1.2"
 
 # Documentation and configuration languages
-tree-sitter-md = "0.5.1"
+tree-sitter-md = "0.5.3"
 tree-sitter-json = "0.24.8"
 tree-sitter-toml-ng = "0.7.0"
-tree-sitter-yaml = "0.7"
+tree-sitter-yaml = "0.7.2"
 tree-sitter-vb-dotnet = { git = "https://github.com/LuisCarreras/tree-sitter-vb-dotnet", rev = "25dca4ac1456c691e2381a2d76151ef432aefc9e" }
 
 # Serialization (for Symbol, Identifier, Relationship types)

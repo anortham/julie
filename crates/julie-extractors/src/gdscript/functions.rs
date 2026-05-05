@@ -66,11 +66,11 @@ pub(super) fn extract_function_definition(
 
         // Find func index and look for name after it
         for i in 0..parent_node.child_count() {
-            if let Some(child) = parent_node.child(i) {
+            if let Some(child) = parent_node.child(i as u32) {
                 if child.id() == node.id() {
                     // Found func node, look for name after it
                     for j in (i + 1)..parent_node.child_count() {
-                        if let Some(sibling) = parent_node.child(j) {
+                        if let Some(sibling) = parent_node.child(j as u32) {
                             if sibling.kind() == "name" {
                                 name_node = Some(sibling);
                                 break;

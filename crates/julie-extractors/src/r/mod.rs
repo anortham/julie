@@ -144,9 +144,6 @@ const NON_S3_DOT_FUNCTIONS: &[&str] = &[
 pub struct RExtractor {
     base: BaseExtractor,
     symbols: Vec<Symbol>,
-    /// Pending relationships that need cross-file resolution after workspace indexing
-    pending_relationships: Vec<PendingRelationship>,
-    structured_pending_relationships: Vec<crate::base::StructuredPendingRelationship>,
 }
 
 impl RExtractor {
@@ -159,8 +156,6 @@ impl RExtractor {
         Self {
             base: BaseExtractor::new(language, file_path, content, workspace_root),
             symbols: Vec::new(),
-            pending_relationships: Vec::new(),
-            structured_pending_relationships: Vec::new(),
         }
     }
 
@@ -404,7 +399,7 @@ impl RExtractor {
                 if count == 0 {
                     return false;
                 }
-                match func_def.child(count - 1) {
+                match func_def.child((count - 1) as u32) {
                     Some(b) => b,
                     None => return false,
                 }
@@ -512,18 +507,17 @@ impl RExtractor {
         &mut self,
         pending: crate::base::StructuredPendingRelationship,
     ) {
-        self.pending_relationships.push(pending.pending.clone());
-        self.structured_pending_relationships.push(pending);
+        self.base.add_structured_pending_relationship(pending);
     }
 
     /// Get all pending relationships collected during extraction
     pub fn get_pending_relationships(&self) -> Vec<PendingRelationship> {
-        self.pending_relationships.clone()
+        self.base.get_pending_relationships()
     }
 
     pub fn get_structured_pending_relationships(
         &self,
     ) -> Vec<crate::base::StructuredPendingRelationship> {
-        self.structured_pending_relationships.clone()
+        self.base.get_structured_pending_relationships()
     }
 }

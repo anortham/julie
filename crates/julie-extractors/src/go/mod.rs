@@ -22,9 +22,6 @@ use tree_sitter::{Node, Tree};
 /// - Interface implementations and embedding
 pub struct GoExtractor {
     base: BaseExtractor,
-    /// Pending relationships that need cross-file resolution after workspace indexing
-    pending_relationships: Vec<PendingRelationship>,
-    structured_pending_relationships: Vec<StructuredPendingRelationship>,
 }
 
 impl GoExtractor {
@@ -36,34 +33,32 @@ impl GoExtractor {
     ) -> Self {
         Self {
             base: BaseExtractor::new(language, file_path, content, workspace_root),
-            pending_relationships: Vec::new(),
-            structured_pending_relationships: Vec::new(),
         }
     }
 
     /// Get pending relationships that need cross-file resolution
     pub fn get_pending_relationships(&self) -> Vec<PendingRelationship> {
-        self.pending_relationships.clone()
+        self.base.get_pending_relationships()
     }
 
     /// Add a pending relationship (used during extraction)
     pub fn add_pending_relationship(&mut self, pending: PendingRelationship) {
-        self.pending_relationships.push(pending);
+        self.base.add_pending_relationship(pending);
     }
 
     pub fn add_structured_pending_relationship(&mut self, pending: StructuredPendingRelationship) {
-        self.pending_relationships.push(pending.pending.clone());
-        self.structured_pending_relationships.push(pending);
+        self.base.add_structured_pending_relationship(pending);
     }
 
     pub fn get_structured_pending_relationships(&self) -> Vec<StructuredPendingRelationship> {
-        self.structured_pending_relationships.clone()
+        self.base.get_structured_pending_relationships()
     }
 
     /// Extract symbols from Go source code - direct port from reference logic
     pub fn extract_symbols(&mut self, tree: &Tree) -> Vec<Symbol> {
         let mut symbols = Vec::new();
         self.walk_tree(tree.root_node(), &mut symbols, None);
+        self.recover_function_symbols_from_source(&mut symbols);
 
         // Prioritize functions over fields with the same name (reference logic)
         self.prioritize_functions_over_fields(symbols)
@@ -213,10 +208,6 @@ impl GoExtractor {
     }
 
     fn build_symbol_map<'a>(&self, symbols: &'a [Symbol]) -> HashMap<String, &'a Symbol> {
-        let mut symbol_map = HashMap::new();
-        for symbol in symbols {
-            symbol_map.insert(symbol.name.clone(), symbol);
-        }
-        symbol_map
+        crate::base::ScopedSymbolIndex::unique_symbol_map(symbols)
     }
 }

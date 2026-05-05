@@ -28,8 +28,6 @@ pub struct ElixirExtractor {
     pub(crate) module_stack: Vec<String>,
     /// Collected @spec annotations keyed by function name
     pub(crate) specs: HashMap<String, String>,
-    /// Pending relationships that need cross-file resolution
-    pending_relationships: Vec<crate::base::PendingRelationship>,
 }
 
 impl ElixirExtractor {
@@ -43,7 +41,6 @@ impl ElixirExtractor {
             base: BaseExtractor::new(language, file_path, content, workspace_root),
             module_stack: Vec::new(),
             specs: HashMap::new(),
-            pending_relationships: Vec::new(),
         }
     }
 
@@ -123,6 +120,6 @@ impl ElixirExtractor {
     }
 
     pub fn get_pending_relationships(&self) -> Vec<crate::base::PendingRelationship> {
-        self.pending_relationships.clone()
+        self.base.get_pending_relationships()
     }
 }

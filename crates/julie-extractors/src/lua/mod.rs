@@ -29,8 +29,6 @@ pub struct LuaExtractor {
     base: BaseExtractor,
     symbols: Vec<Symbol>,
     pub(crate) relationships: Vec<Relationship>,
-    pending_relationships: Vec<PendingRelationship>,
-    structured_pending_relationships: Vec<StructuredPendingRelationship>,
 }
 
 impl LuaExtractor {
@@ -44,16 +42,13 @@ impl LuaExtractor {
             base: BaseExtractor::new(language, file_path, content, workspace_root),
             symbols: Vec::new(),
             relationships: Vec::new(),
-            pending_relationships: Vec::new(),
-            structured_pending_relationships: Vec::new(),
         }
     }
 
     pub fn extract_symbols(&mut self, tree: &Tree) -> Vec<Symbol> {
         self.symbols.clear();
         self.relationships.clear();
-        self.pending_relationships.clear();
-        self.structured_pending_relationships.clear();
+        self.base.clear_pending_relationships();
 
         // Use core module to traverse and extract symbols
         core::traverse_tree(&mut self.symbols, &mut self.base, tree.root_node(), None);
@@ -96,16 +91,15 @@ impl LuaExtractor {
         &mut self,
         pending: StructuredPendingRelationship,
     ) {
-        self.pending_relationships.push(pending.pending.clone());
-        self.structured_pending_relationships.push(pending);
+        self.base.add_structured_pending_relationship(pending);
     }
 
     /// Get all pending relationships collected during extraction
     pub fn get_pending_relationships(&self) -> Vec<PendingRelationship> {
-        self.pending_relationships.clone()
+        self.base.get_pending_relationships()
     }
 
     pub fn get_structured_pending_relationships(&self) -> Vec<StructuredPendingRelationship> {
-        self.structured_pending_relationships.clone()
+        self.base.get_structured_pending_relationships()
     }
 }

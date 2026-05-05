@@ -518,7 +518,7 @@ async fn test_overflow_repair_skips_unchanged_indexed_files() {
 }
 
 #[tokio::test]
-async fn test_overflow_repair_processes_changed_deleted_and_new_supported_only() {
+async fn test_overflow_repair_processes_changed_deleted_new_supported_and_text_only() {
     use crate::database::SymbolDatabase;
     use crate::extractors::ExtractorManager;
     use crate::watcher::handlers::handle_file_created_or_modified_static;
@@ -566,6 +566,11 @@ async fn test_overflow_repair_processes_changed_deleted_and_new_supported_only()
     fs::write(&new_supported, "fn fresh_symbol() {}\n").unwrap();
     fs::write(workspace_root.join(".dockerignore"), "target/\n").unwrap();
     fs::write(workspace_root.join("flake.nix"), "{ }\n").unwrap();
+    fs::write(
+        workspace_root.join("pnpm-lock.yaml"),
+        "lockfileVersion: '9.0'\n",
+    )
+    .unwrap();
 
     indexer.needs_rescan.store(true, Ordering::Release);
     indexer.process_pending_changes().await.unwrap();
@@ -604,20 +609,28 @@ async fn test_overflow_repair_processes_changed_deleted_and_new_supported_only()
         "repair scan should index newly discovered supported files",
     );
     assert!(
-        !indexed_files.contains(&".dockerignore".to_string()),
-        "unsupported extensionless files must not be dispatched as Created during repair",
+        indexed_files.contains(&".dockerignore".to_string()),
+        "extensionless text files should be indexed as text-only during repair",
     );
     assert!(
-        !indexed_files.contains(&"flake.nix".to_string()),
-        "unsupported extensions must not be dispatched as Created during repair",
+        indexed_files.contains(&"flake.nix".to_string()),
+        "unsupported textual extensions should be indexed as text-only during repair",
+    );
+    assert!(
+        !indexed_files.contains(&"pnpm-lock.yaml".to_string()),
+        "blacklisted filenames must not be dispatched as Created during repair",
     );
     assert!(
         !repairs.iter().any(|repair| repair.path == ".dockerignore"),
-        "repair scan must not dispatch .dockerignore and create extractor-failure repairs",
+        "repair scan must not create extractor-failure repairs for text-only .dockerignore",
     );
     assert!(
         !repairs.iter().any(|repair| repair.path == "flake.nix"),
-        "repair scan must not dispatch .nix files and create extractor-failure repairs",
+        "repair scan must not create extractor-failure repairs for text-only .nix files",
+    );
+    assert!(
+        !repairs.iter().any(|repair| repair.path == "pnpm-lock.yaml"),
+        "repair scan must not create repairs for blacklisted files",
     );
 }
 

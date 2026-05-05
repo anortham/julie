@@ -1,5 +1,13 @@
 use crate::extract_canonical;
+use crate::language::{
+    detect_language_from_extension, language_spec, language_specs,
+    supported_extensions as language_supported_extensions,
+    supported_languages as language_supported_languages,
+};
 use crate::manager::ExtractorManager;
+use crate::registry::supported_languages as registry_supported_languages;
+use crate::{BaseExtractor, PendingRelationship, RelationshipKind};
+use std::collections::BTreeSet;
 use std::path::PathBuf;
 
 #[test]
@@ -234,4 +242,89 @@ int mainFunction() {
             "manager extract_all should match canonical compatibility pending output for {file_path}"
         );
     }
+}
+
+#[test]
+fn test_language_specs_drive_public_metadata_surfaces() {
+    let spec_languages: Vec<_> = language_specs().iter().map(|spec| spec.name).collect();
+    let registry_languages = registry_supported_languages();
+
+    assert_eq!(
+        registry_languages, spec_languages,
+        "registry language order should come from the language spec table"
+    );
+    assert_eq!(
+        language_supported_languages(),
+        spec_languages.as_slice(),
+        "public supported languages should come from the language spec table"
+    );
+
+    let spec_extensions: BTreeSet<_> = language_specs()
+        .iter()
+        .flat_map(|spec| spec.extensions.iter().copied())
+        .collect();
+    let public_extensions: BTreeSet<_> = language_supported_extensions().iter().copied().collect();
+    assert_eq!(
+        public_extensions, spec_extensions,
+        "public supported extensions should come from the language spec table"
+    );
+
+    for spec in language_specs() {
+        assert_eq!(
+            language_spec(spec.name).map(|found| found.name),
+            Some(spec.name),
+            "canonical language should resolve its own spec"
+        );
+        for alias in spec.aliases {
+            assert_eq!(
+                language_spec(alias).map(|found| found.name),
+                Some(spec.name),
+                "alias {alias} should resolve to {}",
+                spec.name
+            );
+        }
+        for extension in spec.extensions {
+            assert_eq!(
+                detect_language_from_extension(extension),
+                Some(spec.name),
+                "extension {extension} should resolve to {}",
+                spec.name
+            );
+        }
+    }
+
+    assert_eq!(language_spec("jsx").map(|spec| spec.name), Some("jsx"));
+    assert_eq!(language_spec("tsx").map(|spec| spec.name), Some("tsx"));
+    assert_eq!(language_spec("vue").map(|spec| spec.name), Some("vue"));
+    assert_eq!(language_spec("vbnet").map(|spec| spec.name), Some("vbnet"));
+    assert_eq!(detect_language_from_extension("vb"), Some("vbnet"));
+}
+
+#[test]
+fn test_base_extractor_owns_pending_relationship_storage() {
+    let workspace_root = PathBuf::from("/test/workspace");
+    let mut base = BaseExtractor::new(
+        "rust".to_string(),
+        "/test/workspace/src/lib.rs".to_string(),
+        "fn main() {}".to_string(),
+        &workspace_root,
+    );
+    let pending = PendingRelationship {
+        from_symbol_id: "caller".to_string(),
+        callee_name: "external".to_string(),
+        kind: RelationshipKind::Calls,
+        file_path: "src/lib.rs".to_string(),
+        line_number: 1,
+        confidence: 0.75,
+    };
+
+    base.add_pending_relationship(pending.clone());
+
+    assert_eq!(base.get_pending_relationships(), vec![pending]);
+    assert_eq!(base.get_structured_pending_relationships(), Vec::new());
+
+    base.clear_pending_relationships();
+
+    assert!(base.get_pending_relationships().is_empty());
+    assert!(base.get_structured_pending_relationships().is_empty());
 }

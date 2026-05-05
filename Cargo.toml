@@ -41,7 +41,7 @@ async-recursion = "1.1"
 
 # Tree-sitter core (for tools/refactoring and tools/workspace/indexing)
 # Language-specific parsers moved to julie-extractors crate
-tree-sitter = "0.25"
+tree-sitter = "0.26.8"
 
 # Async runtime
 tokio = { version = "1.47.1", features = ["full"] }

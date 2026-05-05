@@ -1,43 +1,40 @@
 # Dependencies Management
 
-**Last Updated:** 2026-03-25
+**Last Updated:** 2026-05-05
 
-## Tree-Sitter Version WARNING
+## Tree-Sitter Dependencies
 
-### ⚠️ ABSOLUTELY DO NOT CHANGE TREE-SITTER VERSIONS ⚠️
+Tree-sitter parser output is a data contract for Julie. Parser dependencies are no longer frozen, but they are not casual upgrades either. Any change to `tree-sitter`, a parser crate version, or a parser git revision must go through the parser-upgrade gate.
 
-**LOCKED AND TESTED VERSIONS:**
-- `tree-sitter = "0.25"` (REQUIRED for harper-tree-sitter-dart)
-- `tree-sitter-kotlin-ng = "1.1.0"` (modern Kotlin parser, in `crates/julie-extractors/Cargo.toml`)
-- `harper-tree-sitter-dart = "0.0.5"` (modern Dart parser, in `crates/julie-extractors/Cargo.toml`)
+Current baseline:
 
-**CHANGING THESE WILL CAUSE:**
-- ❌ API incompatibilities between different tree-sitter versions
-- ❌ Native library linking conflicts
-- ❌ Hours of debugging version hell
-- ❌ Complete build failures
-- ❌ Breaking all extractors
+- `tree-sitter = "0.26.8"`
+- Parser crate inventory and decisions live in `docs/TREE_SITTER_UPGRADES.md`
+- Parser metadata for each registry language lives in `crates/julie-extractors/src/language_spec.rs`
+- Capability and fixture coverage live in `fixtures/extraction/capabilities.json`
 
-**IF YOU MUST CHANGE VERSIONS:**
-1. Update ALL parser crates simultaneously
-2. Test every single extractor
-3. Update API calls if needed (0.20 vs 0.25 APIs differ)
-4. Verify no native library conflicts
-5. Test on all platforms
+Required parser-change workflow:
+
+1. Verify the current upstream crate or git revision before editing manifests.
+2. Update `docs/TREE_SITTER_UPGRADES.md` with the decision and evidence.
+3. Update `LanguageSpec` and `fixtures/extraction/capabilities.json` when parser crate names or statuses change.
+4. Run narrow failing tests first for any grammar drift.
+5. Run `cargo xtask test bucket parser-upgrade`.
+
+Git parser dependencies must be pinned with `rev`. Floating branch dependencies are not acceptable for parser infrastructure.
 
 ## Adding New Dependencies
 
-**CRITICAL: ALWAYS verify dependency versions first!**
-
 Before adding any dependency:
-1. Use crates.io search: https://crates.io/search?q=CRATE_NAME
-2. Use web search to verify API and examples
-3. Check current documentation for breaking changes
-4. Does it break single binary deployment?
-5. Does it require external libraries?
-6. Is it cross-platform compatible?
-7. Does it impact startup time significantly?
 
-**Examples:**
-- Before: `tokio = "1.47.1"` → Verify on crates.io before upgrading
-- Before: `blake3 = "1.5"` → Verify on crates.io before upgrading
+1. Verify the version on crates.io or the upstream source.
+2. Check current documentation for API or platform requirements.
+3. Confirm it does not break single-binary deployment.
+4. Confirm it does not require unavailable external libraries.
+5. Check cross-platform compatibility.
+6. Consider startup time and binary size impact.
+
+Examples:
+
+- Before changing `tokio`, verify the current version and migration notes.
+- Before changing `tree-sitter-*`, update the parser ledger and run the parser-upgrade bucket.

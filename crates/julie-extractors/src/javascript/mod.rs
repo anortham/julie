@@ -27,9 +27,6 @@ use tree_sitter::Tree;
 
 pub struct JavaScriptExtractor {
     base: BaseExtractor,
-    /// Pending relationships that need cross-file resolution after workspace indexing
-    pending_relationships: Vec<PendingRelationship>,
-    structured_pending_relationships: Vec<StructuredPendingRelationship>,
 }
 
 impl JavaScriptExtractor {
@@ -41,8 +38,6 @@ impl JavaScriptExtractor {
     ) -> Self {
         Self {
             base: BaseExtractor::new(language, file_path, content, workspace_root),
-            pending_relationships: Vec::new(),
-            structured_pending_relationships: Vec::new(),
         }
     }
 
@@ -68,15 +63,16 @@ impl JavaScriptExtractor {
     /// This handles cross-file function calls that need resolution
     fn extract_pending_relationships(&mut self, tree: &Tree, symbols: &[Symbol]) {
         let symbol_map: std::collections::HashMap<String, &Symbol> =
-            symbols.iter().map(|s| (s.name.clone(), s)).collect();
+            crate::base::ScopedSymbolIndex::unique_symbol_map(symbols);
 
-        self.walk_for_pending_calls(tree.root_node(), &symbol_map);
+        self.walk_for_pending_calls(tree.root_node(), symbols, &symbol_map);
     }
 
     /// Walk the tree looking for function calls that reference imported symbols
     fn walk_for_pending_calls(
         &mut self,
         node: tree_sitter::Node,
+        symbols: &[Symbol],
         symbol_map: &std::collections::HashMap<String, &Symbol>,
     ) {
         // Look for call expressions
@@ -93,7 +89,7 @@ impl JavaScriptExtractor {
                         // This is a call to an imported function - create pending relationship
                         // Find the containing function
                         if let Some(caller_symbol) =
-                            self.find_containing_function_in_symbols(node, symbol_map)
+                            self.find_containing_function_in_symbols(node, symbols, symbol_map)
                         {
                             let pending = self.base.create_pending_relationship(
                                 caller_symbol.id.clone(),
@@ -110,7 +106,7 @@ impl JavaScriptExtractor {
                         // Unknown function - could be from another file
                         // Check if it's being called from within a function
                         if let Some(caller_symbol) =
-                            self.find_containing_function_in_symbols(node, symbol_map)
+                            self.find_containing_function_in_symbols(node, symbols, symbol_map)
                         {
                             let pending = self.base.create_pending_relationship(
                                 caller_symbol.id.clone(),
@@ -131,7 +127,7 @@ impl JavaScriptExtractor {
         // Recursively process children
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
-            self.walk_for_pending_calls(child, symbol_map);
+            self.walk_for_pending_calls(child, symbols, symbol_map);
         }
     }
 
@@ -139,8 +135,13 @@ impl JavaScriptExtractor {
     fn find_containing_function_in_symbols<'a>(
         &self,
         node: tree_sitter::Node,
+        symbols: &'a [Symbol],
         symbol_map: &'a std::collections::HashMap<String, &'a Symbol>,
     ) -> Option<&'a Symbol> {
+        if let Some(symbol) = self.base.find_containing_symbol(&node, symbols) {
+            return Some(symbol);
+        }
+
         let mut current = node.parent();
 
         while let Some(current_node) = current {
@@ -519,20 +520,19 @@ impl JavaScriptExtractor {
 
     /// Get pending relationships that need cross-file resolution
     pub fn get_pending_relationships(&self) -> Vec<PendingRelationship> {
-        self.pending_relationships.clone()
+        self.base.get_pending_relationships()
     }
 
     pub fn get_structured_pending_relationships(&self) -> Vec<StructuredPendingRelationship> {
-        self.structured_pending_relationships.clone()
+        self.base.get_structured_pending_relationships()
     }
 
     /// Add a pending relationship (used during extraction)
     pub fn add_pending_relationship(&mut self, pending: PendingRelationship) {
-        self.pending_relationships.push(pending);
+        self.base.add_pending_relationship(pending);
     }
 
     pub fn add_structured_pending_relationship(&mut self, pending: StructuredPendingRelationship) {
-        self.pending_relationships.push(pending.pending.clone());
-        self.structured_pending_relationships.push(pending);
+        self.base.add_structured_pending_relationship(pending);
     }
 }

@@ -134,6 +134,34 @@ const result = service.getUserData();
     Ok(())
 }
 
+#[test]
+fn test_ast_aware_rename_rejects_parse_error_tree() -> Result<()> {
+    let source = r#"
+class UserService {
+    run() {
+        const value =
+    }
+}
+"#;
+
+    let tool = SmartRefactorTool {
+        operation: "rename_symbol".to_string(),
+        params: r#"{"old_name": "UserService", "new_name": "AccountService"}"#.to_string(),
+        dry_run: false,
+    };
+
+    let error = tool
+        .smart_text_replace(source, "UserService", "AccountService", "test.ts", false)
+        .expect_err("AST-aware rename must reject parse-error trees");
+
+    assert!(
+        error.to_string().contains("parse error"),
+        "expected parse-error rejection, got: {error}"
+    );
+
+    Ok(())
+}
+
 // Regression: files with unknown/unsupported extension (e.g. .env, .cfg, .ini) have no
 // tree-sitter parser. smart_text_replace should fall back to plain text replacement
 // rather than returning an error.

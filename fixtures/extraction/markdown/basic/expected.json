@@ -1,0 +1,32 @@
+{
+  "symbols": [
+    {
+      "key": "fixtures/extraction/markdown/basic/source.md:Worker Guide:1:0",
+      "name": "Worker Guide",
+      "kind": "module",
+      "language": "markdown",
+      "file_path": "fixtures/extraction/markdown/basic/source.md",
+      "start_line": 1,
+      "start_column": 0,
+      "end_line": 10,
+      "end_column": 0,
+      "start_byte": 0,
+      "end_byte": 117,
+      "signature": null,
+      "doc_comment": "Use `run_worker` to process a worker id.\n\n\n```rust\nfn helper(value: i32) -> i32 {\n    value + 1\n}\n```\n",
+      "visibility": null,
+      "parent_key": null,
+      "metadata": {},
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": "documentation"
+    }
+  ],
+  "relationships": [],
+  "pending_relationships": [],
+  "structured_pending_relationships": [],
+  "identifiers": [],
+  "types": [],
+  "parse_diagnostics": []
+}

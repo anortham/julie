@@ -41,6 +41,45 @@ impl SymbolDatabase {
         Ok(())
     }
 
+    pub fn store_file_parse_diagnostics(
+        &self,
+        file_path: &str,
+        diagnostics: &[crate::extractors::base::ParseDiagnostic],
+    ) -> Result<()> {
+        let payload = if diagnostics.is_empty() {
+            None
+        } else {
+            Some(serde_json::to_vec(diagnostics)?)
+        };
+
+        self.conn.execute(
+            "UPDATE files SET parse_cache = ?2 WHERE path = ?1",
+            params![file_path, payload],
+        )?;
+
+        Ok(())
+    }
+
+    pub fn get_file_parse_diagnostics(
+        &self,
+        file_path: &str,
+    ) -> Result<Vec<crate::extractors::base::ParseDiagnostic>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT parse_cache FROM files WHERE path = ?1")?;
+        let mut rows = stmt.query(params![file_path])?;
+
+        let Some(row) = rows.next()? else {
+            return Ok(Vec::new());
+        };
+        let payload: Option<Vec<u8>> = row.get(0)?;
+        let Some(payload) = payload else {
+            return Ok(Vec::new());
+        };
+
+        Ok(serde_json::from_slice(&payload)?)
+    }
+
     /// Bulk file storage for initial indexing
     ///
     /// Uses optimized bulk insert pattern:

@@ -28,9 +28,6 @@ mod symbols;
 pub struct RubyExtractor {
     base: BaseExtractor,
     current_visibility: Visibility,
-    /// Pending relationships that need cross-file resolution after workspace indexing
-    pending_relationships: Vec<crate::base::PendingRelationship>,
-    structured_pending_relationships: Vec<StructuredPendingRelationship>,
 }
 
 impl RubyExtractor {
@@ -38,8 +35,6 @@ impl RubyExtractor {
         Self {
             base: BaseExtractor::new("ruby".to_string(), file_path, content, workspace_root),
             current_visibility: Visibility::Public,
-            pending_relationships: Vec::new(),
-            structured_pending_relationships: Vec::new(),
         }
     }
 
@@ -306,16 +301,15 @@ impl RubyExtractor {
         &mut self,
         pending: StructuredPendingRelationship,
     ) {
-        self.pending_relationships.push(pending.pending.clone());
-        self.structured_pending_relationships.push(pending);
+        self.base.add_structured_pending_relationship(pending);
     }
 
     /// Get all pending relationships collected during extraction
     pub fn get_pending_relationships(&self) -> Vec<crate::base::PendingRelationship> {
-        self.pending_relationships.clone()
+        self.base.get_pending_relationships()
     }
 
     pub fn get_structured_pending_relationships(&self) -> Vec<StructuredPendingRelationship> {
-        self.structured_pending_relationships.clone()
+        self.base.get_structured_pending_relationships()
     }
 }

@@ -1,64 +1,20 @@
 use crate::base::ExtractionResults;
 use crate::factory::convert_types_map;
+use crate::language;
+pub use crate::language::LanguageCapabilities;
 use anyhow::anyhow;
 use std::collections::HashMap;
 use std::path::Path;
+use std::sync::OnceLock;
 use tree_sitter::Tree;
 
 type ExtractFn = fn(&Tree, &str, &str, &Path) -> Result<ExtractionResults, anyhow::Error>;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct LanguageCapabilities {
-    pub symbols: bool,
-    pub relationships: bool,
-    pub pending_relationships: bool,
-    pub identifiers: bool,
-    pub types: bool,
-}
 
 #[derive(Debug, Clone, Copy)]
 pub struct LanguageRegistryEntry {
     pub language: &'static str,
     pub capabilities: LanguageCapabilities,
     pub extract: ExtractFn,
-}
-
-const FULL_CAPABILITIES: LanguageCapabilities = LanguageCapabilities {
-    symbols: true,
-    relationships: true,
-    pending_relationships: true,
-    identifiers: true,
-    types: true,
-};
-
-const NO_PENDING_CAPABILITIES: LanguageCapabilities = LanguageCapabilities {
-    pending_relationships: false,
-    ..FULL_CAPABILITIES
-};
-
-const PENDING_NO_TYPES_CAPABILITIES: LanguageCapabilities = LanguageCapabilities {
-    types: false,
-    ..FULL_CAPABILITIES
-};
-
-const DATA_ONLY_CAPABILITIES: LanguageCapabilities = LanguageCapabilities {
-    symbols: true,
-    relationships: false,
-    pending_relationships: false,
-    identifiers: true,
-    types: false,
-};
-
-const fn entry(
-    language: &'static str,
-    capabilities: LanguageCapabilities,
-    extract: ExtractFn,
-) -> LanguageRegistryEntry {
-    LanguageRegistryEntry {
-        language,
-        capabilities,
-        extract,
-    }
 }
 
 macro_rules! define_full_language_extractors {
@@ -88,6 +44,7 @@ macro_rules! define_full_language_extractors {
                     structured_pending_relationships: Vec::new(),
                     identifiers,
                     types: convert_types_map(types, $language),
+        parse_diagnostics: Vec::new(),
                 })
             }
         )+
@@ -122,6 +79,7 @@ macro_rules! define_structured_full_language_extractors {
                     structured_pending_relationships,
                     identifiers,
                     types: convert_types_map(types, $language),
+        parse_diagnostics: Vec::new(),
                 })
             }
         )+
@@ -155,6 +113,7 @@ macro_rules! define_structured_full_file_extractors {
                     structured_pending_relationships,
                     identifiers,
                     types: convert_types_map(types, $language),
+        parse_diagnostics: Vec::new(),
                 })
             }
         )+
@@ -187,6 +146,7 @@ macro_rules! define_no_pending_extractors {
                     structured_pending_relationships: Vec::new(),
                     identifiers,
                     types: convert_types_map(types, $language),
+        parse_diagnostics: Vec::new(),
                 })
             }
         )+
@@ -217,6 +177,7 @@ macro_rules! define_data_only_extractors {
                     structured_pending_relationships: Vec::new(),
                     identifiers,
                     types: HashMap::new(),
+        parse_diagnostics: Vec::new(),
                 })
             }
         )+
@@ -264,6 +225,7 @@ fn extract_java(
         structured_pending_relationships,
         identifiers,
         types: convert_types_map(types, "java"),
+        parse_diagnostics: Vec::new(),
     })
 }
 
@@ -292,6 +254,7 @@ fn extract_csharp(
         structured_pending_relationships,
         identifiers,
         types: convert_types_map(types, "csharp"),
+        parse_diagnostics: Vec::new(),
     })
 }
 
@@ -320,6 +283,7 @@ fn extract_kotlin(
         structured_pending_relationships,
         identifiers,
         types: convert_types_map(types, "kotlin"),
+        parse_diagnostics: Vec::new(),
     })
 }
 
@@ -348,6 +312,7 @@ fn extract_swift(
         structured_pending_relationships,
         identifiers,
         types: convert_types_map(types, "swift"),
+        parse_diagnostics: Vec::new(),
     })
 }
 
@@ -376,6 +341,7 @@ fn extract_php(
         structured_pending_relationships,
         identifiers,
         types: convert_types_map(types, "php"),
+        parse_diagnostics: Vec::new(),
     })
 }
 
@@ -404,6 +370,7 @@ fn extract_scala(
         structured_pending_relationships,
         identifiers,
         types: convert_types_map(types, "scala"),
+        parse_diagnostics: Vec::new(),
     })
 }
 
@@ -432,6 +399,7 @@ fn extract_typescript(
         structured_pending_relationships,
         identifiers,
         types: convert_types_map(types, "typescript"),
+        parse_diagnostics: Vec::new(),
     })
 }
 
@@ -460,6 +428,7 @@ fn extract_tsx(
         structured_pending_relationships,
         identifiers,
         types: convert_types_map(types, "tsx"),
+        parse_diagnostics: Vec::new(),
     })
 }
 
@@ -488,6 +457,7 @@ fn extract_javascript(
         structured_pending_relationships,
         identifiers,
         types: convert_types_map(types, "javascript"),
+        parse_diagnostics: Vec::new(),
     })
 }
 
@@ -516,6 +486,7 @@ fn extract_jsx(
         structured_pending_relationships,
         identifiers,
         types: convert_types_map(types, "jsx"),
+        parse_diagnostics: Vec::new(),
     })
 }
 
@@ -544,6 +515,7 @@ fn extract_bash(
         structured_pending_relationships,
         identifiers,
         types: convert_types_map(types, "bash"),
+        parse_diagnostics: Vec::new(),
     })
 }
 
@@ -572,6 +544,7 @@ fn extract_powershell(
         structured_pending_relationships,
         identifiers,
         types: convert_types_map(types, "powershell"),
+        parse_diagnostics: Vec::new(),
     })
 }
 
@@ -599,6 +572,7 @@ fn extract_lua(
         structured_pending_relationships,
         identifiers,
         types: HashMap::new(),
+        parse_diagnostics: Vec::new(),
     })
 }
 
@@ -626,6 +600,7 @@ fn extract_qml(
         structured_pending_relationships,
         identifiers,
         types: HashMap::new(),
+        parse_diagnostics: Vec::new(),
     })
 }
 
@@ -653,6 +628,7 @@ fn extract_r(
         structured_pending_relationships,
         identifiers,
         types: HashMap::new(),
+        parse_diagnostics: Vec::new(),
     })
 }
 
@@ -704,57 +680,81 @@ fn extract_vue(
         structured_pending_relationships: Vec::new(),
         identifiers,
         types: convert_types_map(types, "vue"),
+        parse_diagnostics: Vec::new(),
     })
 }
 
-const REGISTRY: &[LanguageRegistryEntry] = &[
-    entry("rust", FULL_CAPABILITIES, extract_rust),
-    entry("c", FULL_CAPABILITIES, extract_c),
-    entry("cpp", FULL_CAPABILITIES, extract_cpp),
-    entry("go", FULL_CAPABILITIES, extract_go),
-    entry("zig", FULL_CAPABILITIES, extract_zig),
-    entry("typescript", FULL_CAPABILITIES, extract_typescript),
-    entry("tsx", FULL_CAPABILITIES, extract_tsx),
-    entry("javascript", FULL_CAPABILITIES, extract_javascript),
-    entry("jsx", FULL_CAPABILITIES, extract_jsx),
-    entry("html", NO_PENDING_CAPABILITIES, extract_html),
-    entry("css", DATA_ONLY_CAPABILITIES, extract_css),
-    entry("vue", NO_PENDING_CAPABILITIES, extract_vue),
-    entry("python", FULL_CAPABILITIES, extract_python),
-    entry("java", FULL_CAPABILITIES, extract_java),
-    entry("csharp", FULL_CAPABILITIES, extract_csharp),
-    entry("vbnet", FULL_CAPABILITIES, extract_vbnet),
-    entry("php", FULL_CAPABILITIES, extract_php),
-    entry("ruby", FULL_CAPABILITIES, extract_ruby),
-    entry("swift", FULL_CAPABILITIES, extract_swift),
-    entry("kotlin", FULL_CAPABILITIES, extract_kotlin),
-    entry("scala", FULL_CAPABILITIES, extract_scala),
-    entry("dart", FULL_CAPABILITIES, extract_dart),
-    entry("elixir", FULL_CAPABILITIES, extract_elixir),
-    entry("lua", PENDING_NO_TYPES_CAPABILITIES, extract_lua),
-    entry("qml", PENDING_NO_TYPES_CAPABILITIES, extract_qml),
-    entry("r", PENDING_NO_TYPES_CAPABILITIES, extract_r),
-    entry("bash", FULL_CAPABILITIES, extract_bash),
-    entry("powershell", FULL_CAPABILITIES, extract_powershell),
-    entry("gdscript", FULL_CAPABILITIES, extract_gdscript),
-    entry("razor", NO_PENDING_CAPABILITIES, extract_razor),
-    entry("sql", NO_PENDING_CAPABILITIES, extract_sql),
-    entry("regex", NO_PENDING_CAPABILITIES, extract_regex),
-    entry("markdown", DATA_ONLY_CAPABILITIES, extract_markdown),
-    entry("json", DATA_ONLY_CAPABILITIES, extract_json),
-    entry("toml", DATA_ONLY_CAPABILITIES, extract_toml),
-    entry("yaml", DATA_ONLY_CAPABILITIES, extract_yaml),
+const EXTRACTORS: &[(&str, ExtractFn)] = &[
+    ("rust", extract_rust),
+    ("c", extract_c),
+    ("cpp", extract_cpp),
+    ("go", extract_go),
+    ("zig", extract_zig),
+    ("typescript", extract_typescript),
+    ("tsx", extract_tsx),
+    ("javascript", extract_javascript),
+    ("jsx", extract_jsx),
+    ("html", extract_html),
+    ("css", extract_css),
+    ("vue", extract_vue),
+    ("python", extract_python),
+    ("java", extract_java),
+    ("csharp", extract_csharp),
+    ("vbnet", extract_vbnet),
+    ("php", extract_php),
+    ("ruby", extract_ruby),
+    ("swift", extract_swift),
+    ("kotlin", extract_kotlin),
+    ("scala", extract_scala),
+    ("dart", extract_dart),
+    ("elixir", extract_elixir),
+    ("lua", extract_lua),
+    ("qml", extract_qml),
+    ("r", extract_r),
+    ("bash", extract_bash),
+    ("powershell", extract_powershell),
+    ("gdscript", extract_gdscript),
+    ("razor", extract_razor),
+    ("sql", extract_sql),
+    ("regex", extract_regex),
+    ("markdown", extract_markdown),
+    ("json", extract_json),
+    ("toml", extract_toml),
+    ("yaml", extract_yaml),
 ];
 
-pub fn registry_entry(language: &str) -> Result<&'static LanguageRegistryEntry, anyhow::Error> {
+fn registry() -> &'static [LanguageRegistryEntry] {
+    static REGISTRY: OnceLock<Vec<LanguageRegistryEntry>> = OnceLock::new();
     REGISTRY
+        .get_or_init(|| {
+            language::language_specs()
+                .iter()
+                .map(|spec| {
+                    let extract = EXTRACTORS
+                        .iter()
+                        .find(|(language, _)| *language == spec.name)
+                        .map(|(_, extract)| *extract)
+                        .unwrap_or_else(|| panic!("missing extractor for {}", spec.name));
+                    LanguageRegistryEntry {
+                        language: spec.name,
+                        capabilities: spec.capabilities,
+                        extract,
+                    }
+                })
+                .collect()
+        })
+        .as_slice()
+}
+
+pub fn registry_entry(language: &str) -> Result<&'static LanguageRegistryEntry, anyhow::Error> {
+    registry()
         .iter()
         .find(|entry| entry.language == language)
         .ok_or_else(|| anyhow!("No extractor available for language '{}'", language))
 }
 
 pub fn supported_languages() -> Vec<&'static str> {
-    REGISTRY.iter().map(|entry| entry.language).collect()
+    language::supported_languages().to_vec()
 }
 
 pub fn extract_for_language(

@@ -1,0 +1,210 @@
+{
+  "symbols": [
+    {
+      "key": "fixtures/extraction/css/basic/source.css:--accent:2:4",
+      "name": "--accent",
+      "kind": "property",
+      "language": "css",
+      "file_path": "fixtures/extraction/css/basic/source.css",
+      "start_line": 2,
+      "start_column": 4,
+      "end_line": 2,
+      "end_column": 12,
+      "start_byte": 12,
+      "end_byte": 20,
+      "signature": "--accent: ",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": "fixtures/extraction/css/basic/source.css::root:1:0",
+      "metadata": {
+        "property": "--accent",
+        "type": "custom-property",
+        "value": ""
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/css/basic/source.css:.button,\n#save:5:0",
+      "name": ".button,\n#save",
+      "kind": "property",
+      "language": "css",
+      "file_path": "fixtures/extraction/css/basic/source.css",
+      "start_line": 5,
+      "start_column": 0,
+      "end_line": 8,
+      "end_column": 1,
+      "start_byte": 34,
+      "end_byte": 78,
+      "signature": ".button,\n#save { color: var(--accent) }",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": null,
+      "metadata": {
+        "properties": [
+          "color: var(--accent);"
+        ],
+        "selector": ".button,\n#save",
+        "type": "css-rule"
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/css/basic/source.css:.button:11:4",
+      "name": ".button",
+      "kind": "property",
+      "language": "css",
+      "file_path": "fixtures/extraction/css/basic/source.css",
+      "start_line": 11,
+      "start_column": 4,
+      "end_line": 13,
+      "end_column": 5,
+      "start_byte": 112,
+      "end_byte": 157,
+      "signature": ".button { display: inline-flex }",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": "fixtures/extraction/css/basic/source.css:@media (min-width: 40rem):10:0",
+      "metadata": {
+        "properties": [
+          "display: inline-flex;"
+        ],
+        "selector": ".button",
+        "type": "css-rule"
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/css/basic/source.css::root:1:0",
+      "name": ":root",
+      "kind": "property",
+      "language": "css",
+      "file_path": "fixtures/extraction/css/basic/source.css",
+      "start_line": 1,
+      "start_column": 0,
+      "end_line": 3,
+      "end_column": 1,
+      "start_byte": 0,
+      "end_byte": 32,
+      "signature": ":root { --accent: #0f766e }",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": null,
+      "metadata": {
+        "properties": [
+          "--accent: #0f766e;"
+        ],
+        "selector": ":root",
+        "type": "css-rule"
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/css/basic/source.css:@media (min-width: 40rem):10:0",
+      "name": "@media (min-width: 40rem)",
+      "kind": "variable",
+      "language": "css",
+      "file_path": "fixtures/extraction/css/basic/source.css",
+      "start_line": 10,
+      "start_column": 0,
+      "end_line": 14,
+      "end_column": 1,
+      "start_byte": 80,
+      "end_byte": 159,
+      "signature": "@media (min-width: 40rem) {\n    .button {\n        display: inline-flex;\n    }\n}",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": null,
+      "metadata": {
+        "query": "@media (min-width: 40rem)",
+        "type": "media-rule"
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    }
+  ],
+  "relationships": [],
+  "pending_relationships": [],
+  "structured_pending_relationships": [],
+  "identifiers": [
+    {
+      "key": "fixtures/extraction/css/basic/source.css:button:member_access:11:4",
+      "name": "button",
+      "kind": "member_access",
+      "language": "css",
+      "file_path": "fixtures/extraction/css/basic/source.css",
+      "start_line": 11,
+      "start_column": 4,
+      "end_line": 11,
+      "end_column": 11,
+      "start_byte": 112,
+      "end_byte": 119,
+      "containing_key": "fixtures/extraction/css/basic/source.css:.button:11:4",
+      "target_key": null,
+      "confidence": "1.000"
+    },
+    {
+      "key": "fixtures/extraction/css/basic/source.css:button:member_access:5:0",
+      "name": "button",
+      "kind": "member_access",
+      "language": "css",
+      "file_path": "fixtures/extraction/css/basic/source.css",
+      "start_line": 5,
+      "start_column": 0,
+      "end_line": 5,
+      "end_column": 7,
+      "start_byte": 34,
+      "end_byte": 41,
+      "containing_key": "fixtures/extraction/css/basic/source.css:.button,\n#save:5:0",
+      "target_key": null,
+      "confidence": "1.000"
+    },
+    {
+      "key": "fixtures/extraction/css/basic/source.css:save:member_access:6:0",
+      "name": "save",
+      "kind": "member_access",
+      "language": "css",
+      "file_path": "fixtures/extraction/css/basic/source.css",
+      "start_line": 6,
+      "start_column": 0,
+      "end_line": 6,
+      "end_column": 5,
+      "start_byte": 43,
+      "end_byte": 48,
+      "containing_key": "fixtures/extraction/css/basic/source.css:.button,\n#save:5:0",
+      "target_key": null,
+      "confidence": "1.000"
+    },
+    {
+      "key": "fixtures/extraction/css/basic/source.css:var:call:7:11",
+      "name": "var",
+      "kind": "call",
+      "language": "css",
+      "file_path": "fixtures/extraction/css/basic/source.css",
+      "start_line": 7,
+      "start_column": 11,
+      "end_line": 7,
+      "end_column": 14,
+      "start_byte": 62,
+      "end_byte": 65,
+      "containing_key": "fixtures/extraction/css/basic/source.css:.button,\n#save:5:0",
+      "target_key": null,
+      "confidence": "1.000"
+    }
+  ],
+  "types": [],
+  "parse_diagnostics": []
+}

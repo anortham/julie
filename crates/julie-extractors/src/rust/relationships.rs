@@ -1,9 +1,12 @@
-use super::helpers::{extract_impl_target_names, find_containing_function};
+use super::helpers::extract_impl_target_names;
 /// Rust relationship extraction
 /// - Trait implementations
 /// - Type references in fields
 /// - Function calls
-use crate::base::{Relationship, RelationshipKind, Symbol, SymbolKind, UnresolvedTarget};
+use crate::base::{
+    LocalTargetResolution, Relationship, RelationshipKind, ScopedSymbolIndex, Symbol,
+    UnresolvedTarget,
+};
 use crate::rust::RustExtractor;
 use std::collections::HashMap;
 use tree_sitter::{Node, Tree};
@@ -16,9 +19,17 @@ pub(super) fn extract_relationships(
 ) -> Vec<Relationship> {
     let mut relationships = Vec::new();
     let symbol_map: HashMap<String, &Symbol> =
-        symbols.iter().map(|s| (s.name.clone(), s)).collect();
+        crate::base::ScopedSymbolIndex::unique_symbol_map(symbols);
+    let symbol_index = ScopedSymbolIndex::new(symbols);
 
-    walk_tree_for_relationships(extractor, tree.root_node(), &symbol_map, &mut relationships);
+    walk_tree_for_relationships(
+        extractor,
+        tree.root_node(),
+        &symbol_map,
+        symbols,
+        &symbol_index,
+        &mut relationships,
+    );
     relationships
 }
 
@@ -26,6 +37,8 @@ fn walk_tree_for_relationships(
     extractor: &mut RustExtractor,
     node: Node,
     symbol_map: &HashMap<String, &Symbol>,
+    symbols: &[Symbol],
+    symbol_index: &ScopedSymbolIndex<'_>,
     relationships: &mut Vec<Relationship>,
 ) {
     match node.kind() {
@@ -36,7 +49,7 @@ fn walk_tree_for_relationships(
             extract_type_relationships(extractor, node, symbol_map, relationships);
         }
         "call_expression" => {
-            extract_call_relationships(extractor, node, symbol_map, relationships);
+            extract_call_relationships(extractor, node, symbols, symbol_index, relationships);
         }
         _ => {}
     }
@@ -44,7 +57,14 @@ fn walk_tree_for_relationships(
     // Recursively process children
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        walk_tree_for_relationships(extractor, child, symbol_map, relationships);
+        walk_tree_for_relationships(
+            extractor,
+            child,
+            symbol_map,
+            symbols,
+            symbol_index,
+            relationships,
+        );
     }
 }
 
@@ -162,7 +182,8 @@ fn extract_field_type_references(
 fn extract_call_relationships(
     extractor: &mut RustExtractor,
     node: Node,
-    symbol_map: &HashMap<String, &Symbol>,
+    symbols: &[Symbol],
+    symbol_index: &ScopedSymbolIndex<'_>,
     relationships: &mut Vec<Relationship>,
 ) {
     let function_node = node.child_by_field_name("function");
@@ -189,7 +210,8 @@ fn extract_call_relationships(
                     node,
                     &method_name,
                     target,
-                    symbol_map,
+                    symbols,
+                    symbol_index,
                     relationships,
                 );
             }
@@ -202,7 +224,8 @@ fn extract_call_relationships(
                 node,
                 &function_name,
                 UnresolvedTarget::simple(function_name.clone()),
-                symbol_map,
+                symbols,
+                symbol_index,
                 relationships,
             );
         }
@@ -215,7 +238,8 @@ fn extract_call_relationships(
                     node,
                     &function_name,
                     target,
-                    symbol_map,
+                    symbols,
+                    symbol_index,
                     relationships,
                 );
             }
@@ -253,7 +277,7 @@ fn add_structured_pending_call(
     unresolved_target: UnresolvedTarget,
     confidence: f32,
 ) {
-    let pending = extractor.get_base_mut().create_pending_relationship(
+    let mut pending = extractor.get_base_mut().create_pending_relationship(
         caller.id.clone(),
         unresolved_target,
         RelationshipKind::Calls,
@@ -261,11 +285,8 @@ fn add_structured_pending_call(
         Some(caller.id.clone()),
         Some(confidence),
     );
+    pending.pending.callee_name = pending.target.terminal_name.clone();
     extractor.add_structured_pending_relationship(pending);
-}
-
-fn receiver_is_self(target: &UnresolvedTarget) -> bool {
-    matches!(target.receiver.as_deref(), Some("self"))
 }
 
 /// Handle a call target and decide whether it can be resolved inside this file.
@@ -274,17 +295,15 @@ fn handle_call_target(
     call_node: Node,
     callee_name: &str,
     unresolved_target: UnresolvedTarget,
-    symbol_map: &HashMap<String, &Symbol>,
+    symbols: &[Symbol],
+    symbol_index: &ScopedSymbolIndex<'_>,
     relationships: &mut Vec<Relationship>,
 ) {
-    // Find the calling function context
-    let calling_function = find_containing_function(extractor.get_base_mut(), call_node);
-    let caller_symbol = calling_function
-        .as_ref()
-        .and_then(|name| symbol_map.get(name));
-
-    // No caller context means we can't create a meaningful relationship
-    let Some(caller) = caller_symbol else {
+    let caller = extractor
+        .get_base_mut()
+        .find_containing_symbol(&call_node, symbols)
+        .cloned();
+    let Some(caller) = caller else {
         return;
     };
 
@@ -292,21 +311,22 @@ fn handle_call_target(
     let file_path = extractor.get_base_mut().file_path.clone();
 
     if !unresolved_target.namespace_path.is_empty() {
-        add_structured_pending_call(extractor, caller, call_node, unresolved_target, 0.7);
+        add_structured_pending_call(extractor, &caller, call_node, unresolved_target, 0.7);
         return;
     }
 
-    // Check if we can resolve the callee locally
-    match symbol_map.get(callee_name) {
-        Some(called_symbol) if called_symbol.kind == SymbolKind::Import => {
-            add_structured_pending_call(extractor, caller, call_node, unresolved_target, 0.8);
+    match symbol_index.resolve_call_target(
+        callee_name,
+        Some(&caller),
+        unresolved_target.receiver.as_deref(),
+    ) {
+        LocalTargetResolution::Import(_) => {
+            add_structured_pending_call(extractor, &caller, call_node, unresolved_target, 0.8);
         }
-        Some(_)
-            if unresolved_target.receiver.is_some() && !receiver_is_self(&unresolved_target) =>
-        {
-            add_structured_pending_call(extractor, caller, call_node, unresolved_target, 0.7);
+        LocalTargetResolution::ReceiverQualified => {
+            add_structured_pending_call(extractor, &caller, call_node, unresolved_target, 0.7);
         }
-        Some(called_symbol) => {
+        LocalTargetResolution::Resolved(called_symbol) => {
             // Target is a local function/method - create resolved Relationship
             relationships.push(Relationship {
                 id: format!(
@@ -325,8 +345,8 @@ fn handle_call_target(
                 metadata: None,
             });
         }
-        None => {
-            add_structured_pending_call(extractor, caller, call_node, unresolved_target, 0.7);
+        LocalTargetResolution::Ambiguous | LocalTargetResolution::Missing => {
+            add_structured_pending_call(extractor, &caller, call_node, unresolved_target, 0.7);
         }
     }
 }

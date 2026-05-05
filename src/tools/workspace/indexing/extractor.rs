@@ -34,11 +34,4 @@ impl ManageWorkspaceTool {
 
         Ok(results)
     }
-
-    /// Determine if we should extract symbols from a file based on language
-    ///
-    /// CSS and HTML are indexed for text search only - no symbol extraction
-    pub(crate) fn should_extract_symbols(&self, language: &str) -> bool {
-        !matches!(language, "css" | "html")
-    }
 }

@@ -3,6 +3,7 @@
 
 use crate::extractors::{PendingRelationship, Relationship, Symbol};
 use crate::tools::workspace::commands::ManageWorkspaceTool;
+use crate::tools::workspace::indexing::file_policy::{ExtractionMode, determine_extraction_mode};
 use anyhow::Result;
 use julie_extractors::base::StructuredPendingRelationship;
 use std::collections::HashMap;
@@ -68,6 +69,7 @@ impl ManageWorkspaceTool {
         Vec<StructuredPendingRelationship>,
         Vec<crate::extractors::Identifier>,
         HashMap<String, crate::extractors::base::TypeInfo>,
+        Vec<crate::extractors::base::ParseDiagnostic>,
         crate::database::FileInfo,
     )> {
         // 🚨 CRITICAL FIX: Wrap ALL blocking filesystem I/O in spawn_blocking to prevent tokio deadlock
@@ -102,70 +104,11 @@ impl ManageWorkspaceTool {
 
         tracing::trace!("✅ spawn_blocking completed for: {:?}", file_path);
 
-        // Skip empty files for symbol extraction
-        if content.trim().is_empty() {
-            // Return empty symbol list but include file_info (already created in spawn_blocking)
-            return Ok((
-                Vec::new(),
-                Vec::new(),
-                Vec::new(),
-                Vec::new(),
-                Vec::new(),
-                HashMap::new(),
-                file_info,
-            ));
-        }
-
-        // Skip symbol extraction for CSS/HTML (text search only)
-        if !self.should_extract_symbols(language) {
+        if determine_extraction_mode(language, &content) == ExtractionMode::TextOnly {
             debug!(
-                "⏭️  Skipping symbol extraction for {} file (text search only): {}",
-                language,
-                file_path.display()
-            );
-
-            // Return file info without symbols (file_info already created in spawn_blocking)
-            return Ok((
-                Vec::new(),
-                Vec::new(),
-                Vec::new(),
-                Vec::new(),
-                Vec::new(),
-                HashMap::new(),
-                file_info,
-            ));
-        }
-
-        const HARD_SIZE_CAP: usize = 5_000_000; // 5 MiB absolute safety rail
-        const MINIFIED_AVG_LINE_LEN: usize = 200;
-        const MINIFIED_MAX_LINE_LEN: usize = 20_000;
-        const MINIFIED_LONG_LINE_RATIO: f64 = 0.20;
-        const LONG_LINE_THRESHOLD: usize = 500;
-
-        // Prose languages routinely contain long unwrapped lines (e.g. SKILL.md,
-        // technical docs, articles). The long-line heuristic targets minified code,
-        // not prose, so skip it for these languages. The 5 MiB hard cap still applies.
-        let skip_minified_check = matches!(language, "markdown");
-
-        if content.len() > HARD_SIZE_CAP
-            || (!skip_minified_check
-                && is_likely_minified_or_generated(
-                    &content,
-                    MINIFIED_AVG_LINE_LEN,
-                    MINIFIED_MAX_LINE_LEN,
-                    MINIFIED_LONG_LINE_RATIO,
-                    LONG_LINE_THRESHOLD,
-                ))
-        {
-            let reason = if content.len() > HARD_SIZE_CAP {
-                format!("{} bytes > 5MiB safety cap", content.len())
-            } else {
-                "detected as minified/generated (long line heuristic)".to_string()
-            };
-            warn!(
-                "⏭️  Skipping symbol extraction for {}: {} - indexing for text search only",
-                reason,
-                file_path.display()
+                "⏭️  Switching to text-only indexing for {} ({})",
+                file_path.display(),
+                language
             );
             return Ok((
                 Vec::new(),
@@ -174,6 +117,7 @@ impl ManageWorkspaceTool {
                 Vec::new(),
                 Vec::new(),
                 HashMap::new(),
+                Vec::new(),
                 file_info,
             ));
         }
@@ -226,6 +170,7 @@ impl ManageWorkspaceTool {
         let structured_pending_relationships = results.structured_pending_relationships;
         let identifiers = results.identifiers;
         let types = results.types;
+        let parse_diagnostics = results.parse_diagnostics;
 
         // Only log if there are many symbols to avoid spam
         if symbols.len() > 10 {
@@ -253,6 +198,7 @@ impl ManageWorkspaceTool {
             structured_pending_relationships,
             identifiers,
             types,
+            parse_diagnostics,
             file_info,
         ))
     }
@@ -308,43 +254,4 @@ impl ManageWorkspaceTool {
         // No symbols extracted (no parser available), but file_info created in spawn_blocking above
         Ok((Vec::new(), Vec::new(), file_info))
     }
-}
-
-fn is_likely_minified_or_generated(
-    content: &str,
-    avg_threshold: usize,
-    max_threshold: usize,
-    long_ratio_threshold: f64,
-    long_line_len: usize,
-) -> bool {
-    let mut line_count: usize = 0;
-    let mut long_lines: usize = 0;
-    let mut max_line: usize = 0;
-
-    for line in content.lines() {
-        let len = line.len();
-        line_count += 1;
-        if len > max_line {
-            max_line = len;
-        }
-        if len > long_line_len {
-            long_lines += 1;
-        }
-    }
-
-    if line_count == 0 {
-        return false;
-    }
-
-    if max_line > max_threshold {
-        return true;
-    }
-
-    let avg_line = content.len() / line_count;
-    if avg_line > avg_threshold {
-        return true;
-    }
-
-    let ratio = long_lines as f64 / line_count as f64;
-    ratio > long_ratio_threshold
 }

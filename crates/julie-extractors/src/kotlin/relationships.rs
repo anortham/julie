@@ -240,7 +240,7 @@ pub(super) fn extract_call_relationships(
 ) {
     // Build a map of symbols by name for quick lookup
     let symbol_map: HashMap<String, &Symbol> =
-        symbols.iter().map(|s| (s.name.clone(), s)).collect();
+        crate::base::ScopedSymbolIndex::unique_symbol_map(symbols);
 
     // Find call expression nodes in this subtree
     walk_tree_for_calls(extractor, node, &symbol_map, symbols, relationships);

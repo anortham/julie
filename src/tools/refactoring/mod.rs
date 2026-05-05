@@ -375,6 +375,20 @@ impl SmartRefactorTool {
         let tree = parser
             .parse(content, None)
             .ok_or_else(|| anyhow::anyhow!("Failed to parse {} file", language))?;
+        let parse_diagnostics = crate::extractors::pipeline::parse_diagnostics_for_tree(&tree);
+        if let Some(diagnostic) = parse_diagnostics.first() {
+            return Err(rename_symbol_error(
+                "parse_error",
+                format!(
+                    "AST-aware rename refused {} because the live tree has a parse error at {}:{}-{}:{}",
+                    file_path,
+                    diagnostic.start_line,
+                    diagnostic.start_column,
+                    diagnostic.end_line,
+                    diagnostic.end_column
+                ),
+            ));
+        }
 
         // AST-AWARE REPLACEMENT: Walk tree to find identifier nodes
         let mut replacements: Vec<(usize, usize, String)> = Vec::new();

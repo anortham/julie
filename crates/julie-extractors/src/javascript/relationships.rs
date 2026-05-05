@@ -5,7 +5,10 @@
 //!
 //! Adapted from TypeScript extractor (JavaScript and TypeScript share AST structure)
 
-use crate::base::{Relationship, RelationshipKind, Symbol, SymbolKind, UnresolvedTarget};
+use crate::base::{
+    LocalTargetResolution, Relationship, RelationshipKind, ScopedSymbolIndex, Symbol, SymbolKind,
+    UnresolvedTarget,
+};
 use crate::javascript::JavaScriptExtractor;
 use tree_sitter::{Node, Tree};
 
@@ -16,7 +19,14 @@ pub(crate) fn extract_relationships(
     symbols: &[Symbol],
 ) -> Vec<Relationship> {
     let mut relationships = Vec::new();
-    extract_call_relationships(extractor, tree.root_node(), symbols, &mut relationships);
+    let symbol_index = ScopedSymbolIndex::new(symbols);
+    extract_call_relationships(
+        extractor,
+        tree.root_node(),
+        symbols,
+        &symbol_index,
+        &mut relationships,
+    );
     extract_inheritance_relationships(extractor, tree.root_node(), symbols, &mut relationships);
     relationships
 }
@@ -26,20 +36,29 @@ fn extract_call_relationships(
     extractor: &mut JavaScriptExtractor,
     node: Node,
     symbols: &[Symbol],
+    symbol_index: &ScopedSymbolIndex<'_>,
     relationships: &mut Vec<Relationship>,
 ) {
     // Look for call expressions
     if node.kind() == "call_expression" {
         if let Some(function_node) = node.child_by_field_name("function") {
-            let function_name = extractor.base().get_node_text(&function_node);
+            let target = extract_call_target(extractor, function_node);
 
             // Find the calling function (containing function)
-            if let Some(caller_symbol) = find_containing_function(node, symbols) {
-                // Find the called function symbol
-                if let Some(called_symbol) = symbols
-                    .iter()
-                    .find(|s| s.name == function_name && matches!(s.kind, SymbolKind::Function))
-                {
+            if let Some(caller_symbol) = find_containing_callable_symbol(node, symbols) {
+                let resolved_symbol = match symbol_index.resolve_call_target(
+                    &target.terminal_name,
+                    Some(caller_symbol),
+                    target.receiver.as_deref(),
+                ) {
+                    LocalTargetResolution::Resolved(symbol) => Some(symbol),
+                    _ if target.receiver.is_none() => {
+                        unique_callable_symbol(symbols, &target.terminal_name)
+                    }
+                    _ => None,
+                };
+
+                if let Some(called_symbol) = resolved_symbol {
                     let relationship = Relationship {
                         id: format!(
                             "{}_{}_{:?}_{}",
@@ -65,8 +84,61 @@ fn extract_call_relationships(
     // Recursively process children
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        extract_call_relationships(extractor, child, symbols, relationships);
+        extract_call_relationships(extractor, child, symbols, symbol_index, relationships);
     }
+}
+
+fn unique_callable_symbol<'a>(symbols: &'a [Symbol], name: &str) -> Option<&'a Symbol> {
+    let mut matches = symbols.iter().filter(|symbol| {
+        symbol.name == name
+            && matches!(
+                symbol.kind,
+                SymbolKind::Function | SymbolKind::Method | SymbolKind::Constructor
+            )
+    });
+    let symbol = matches.next()?;
+    matches.next().is_none().then_some(symbol)
+}
+
+fn find_containing_callable_symbol<'a>(node: Node, symbols: &'a [Symbol]) -> Option<&'a Symbol> {
+    let byte = node.start_byte() as u32;
+    symbols
+        .iter()
+        .filter(|symbol| {
+            matches!(
+                symbol.kind,
+                SymbolKind::Function | SymbolKind::Method | SymbolKind::Constructor
+            ) && symbol.start_byte <= byte
+                && symbol.end_byte >= byte
+        })
+        .min_by_key(|symbol| symbol.end_byte - symbol.start_byte)
+}
+
+fn extract_call_target(extractor: &JavaScriptExtractor, function_node: Node) -> UnresolvedTarget {
+    if function_node.kind() == "member_expression" {
+        let receiver = function_node
+            .child_by_field_name("object")
+            .map(|node| extractor.base().get_node_text(&node));
+        let terminal_name = function_node
+            .child_by_field_name("property")
+            .map(|node| extractor.base().get_node_text(&node))
+            .unwrap_or_else(|| extractor.base().get_node_text(&function_node));
+        let display_name = receiver
+            .as_ref()
+            .map(|receiver| format!("{receiver}.{terminal_name}"))
+            .unwrap_or_else(|| terminal_name.clone());
+
+        return UnresolvedTarget {
+            display_name,
+            terminal_name,
+            receiver,
+            namespace_path: Vec::new(),
+            import_context: None,
+        };
+    }
+
+    let terminal_name = extractor.base().get_node_text(&function_node);
+    UnresolvedTarget::simple(terminal_name)
 }
 
 /// Extract inheritance relationships (extends)
@@ -249,31 +321,4 @@ fn collect_explicit_superclass_targets(
             break;
         }
     }
-}
-
-/// Helper to find the function that contains a given node
-pub(crate) fn find_containing_function<'a>(
-    node: Node,
-    symbols: &'a [Symbol],
-) -> Option<&'a Symbol> {
-    let mut current = Some(node);
-
-    while let Some(current_node) = current {
-        let position = current_node.start_position();
-        let pos_line = (position.row + 1) as u32;
-
-        // Find function symbols that contain this position
-        for symbol in symbols {
-            if matches!(symbol.kind, SymbolKind::Function)
-                && symbol.start_line <= pos_line
-                && symbol.end_line >= pos_line
-            {
-                return Some(symbol);
-            }
-        }
-
-        current = current_node.parent();
-    }
-
-    None
 }

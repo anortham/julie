@@ -107,6 +107,76 @@ fn test_method_call_relationships() {
 }
 
 #[test]
+fn test_this_receiver_call_resolves_to_same_class_method() {
+    let code = r#"
+    class A {
+        render() {}
+        caller() {
+            this.render();
+        }
+    }
+
+    class B {
+        render() {}
+    }
+    "#;
+    let mut parser = tree_sitter::Parser::new();
+    parser
+        .set_language(&tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into())
+        .unwrap();
+    let tree = parser.parse(code, None).unwrap();
+
+    let workspace_root = PathBuf::from("/tmp/test");
+
+    let mut extractor = TypeScriptExtractor::new(
+        "typescript".to_string(),
+        "test.ts".to_string(),
+        code.to_string(),
+        &workspace_root,
+    );
+    let symbols = extractor.extract_symbols(&tree);
+    let relationships = extract_relationships(&mut extractor, &tree, &symbols);
+
+    let class_a = symbols
+        .iter()
+        .find(|symbol| symbol.name == "A")
+        .expect("A class symbol");
+    let class_b = symbols
+        .iter()
+        .find(|symbol| symbol.name == "B")
+        .expect("B class symbol");
+    let caller = symbols
+        .iter()
+        .find(|symbol| symbol.name == "caller")
+        .expect("caller method symbol");
+    let a_render = symbols
+        .iter()
+        .find(|symbol| symbol.name == "render" && symbol.parent_id.as_deref() == Some(&class_a.id))
+        .expect("A.render method symbol");
+    let b_render = symbols
+        .iter()
+        .find(|symbol| symbol.name == "render" && symbol.parent_id.as_deref() == Some(&class_b.id))
+        .expect("B.render method symbol");
+
+    assert!(
+        relationships.iter().any(|relationship| {
+            relationship.kind == RelationshipKind::Calls
+                && relationship.from_symbol_id == caller.id
+                && relationship.to_symbol_id == a_render.id
+        }),
+        "this.render() should resolve to A.render"
+    );
+    assert!(
+        !relationships.iter().any(|relationship| {
+            relationship.kind == RelationshipKind::Calls
+                && relationship.from_symbol_id == caller.id
+                && relationship.to_symbol_id == b_render.id
+        }),
+        "this.render() must not resolve to B.render"
+    );
+}
+
+#[test]
 fn test_extract_inheritance_relationships() {
     let code = r#"
     class Animal {}

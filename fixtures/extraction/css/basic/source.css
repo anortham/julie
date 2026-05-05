@@ -1,0 +1,14 @@
+:root {
+    --accent: #0f766e;
+}
+
+.button,
+#save {
+    color: var(--accent);
+}
+
+@media (min-width: 40rem) {
+    .button {
+        display: inline-flex;
+    }
+}

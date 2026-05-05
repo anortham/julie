@@ -1,13 +1,13 @@
 // Dart Extractor - Import and Export Directives
 //
 // Extracts import/export statements from Dart source files.
-// The harper-tree-sitter-dart grammar parses these as:
+// The Dart grammar parses these as:
 //   import_or_export
 //     library_import -> import_specification -> configurable_uri -> uri -> string_literal
 //     library_export -> configurable_uri -> uri -> string_literal
 //
 // Note: This grammar does NOT correctly parse `as`, `show`, `hide`, `library`,
-// or `part` directives — they produce ERROR nodes. We extract what the parser
+// or `part` directives; they produce ERROR nodes. We extract what the parser
 // gives us (basic import/export with URI).
 
 use super::helpers::{find_child_by_type, get_node_text};

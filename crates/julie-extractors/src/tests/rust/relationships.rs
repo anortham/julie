@@ -150,6 +150,71 @@ impl Handler {
 }
 
 #[test]
+fn test_self_receiver_method_call_uses_same_impl_parent_when_names_duplicate() {
+    let code = r#"
+struct A;
+struct B;
+
+impl A {
+    fn render(&self) {}
+
+    fn caller(&self) {
+        self.render();
+    }
+}
+
+impl B {
+    fn render(&self) {}
+}
+"#;
+    let (symbols, relationships, structured_pending) = extract_with_relationships(code);
+
+    let struct_a = symbols
+        .iter()
+        .find(|symbol| symbol.name == "A")
+        .expect("A struct should be extracted");
+    let struct_b = symbols
+        .iter()
+        .find(|symbol| symbol.name == "B")
+        .expect("B struct should be extracted");
+    let caller = symbols
+        .iter()
+        .find(|symbol| symbol.name == "caller")
+        .expect("caller method should be extracted");
+    let a_render = symbols
+        .iter()
+        .find(|symbol| symbol.name == "render" && symbol.parent_id.as_deref() == Some(&struct_a.id))
+        .expect("A.render should be extracted");
+    let b_render = symbols
+        .iter()
+        .find(|symbol| symbol.name == "render" && symbol.parent_id.as_deref() == Some(&struct_b.id))
+        .expect("B.render should be extracted");
+
+    assert!(
+        relationships.iter().any(|relationship| {
+            relationship.kind == RelationshipKind::Calls
+                && relationship.from_symbol_id == caller.id
+                && relationship.to_symbol_id == a_render.id
+        }),
+        "self.render() should resolve to A.render"
+    );
+    assert!(
+        !relationships.iter().any(|relationship| {
+            relationship.kind == RelationshipKind::Calls
+                && relationship.from_symbol_id == caller.id
+                && relationship.to_symbol_id == b_render.id
+        }),
+        "self.render() must not resolve to B.render"
+    );
+    assert!(
+        !structured_pending
+            .iter()
+            .any(|pending| pending.target.display_name == "self.render"),
+        "self.render() has enough local scope evidence and should not be pending"
+    );
+}
+
+#[test]
 fn test_std_hashmap_new_scoped_call_preserves_namespace_without_local_resolution() {
     let code = r#"
 fn new() {}

@@ -1,4 +1,7 @@
 use crate::manager::ExtractorManager;
+use crate::pipeline::{
+    configured_parser_for_language, extract_jsonl_canonical_with_parser_factory,
+};
 use md5;
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -67,4 +70,38 @@ fn test_extract_all_jsonl_emits_file_global_positions_and_unique_ids() {
             "JSONL IDs should hash the normalized stored location"
         );
     }
+}
+
+#[test]
+fn test_jsonl_extraction_configures_one_parser_for_the_file() {
+    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let file_path = "fixtures/events.jsonl";
+    let content = concat!(
+        r#"{"type":"feature","message":"one"}"#,
+        "\n",
+        r#"{"type":"bug","message":"two"}"#,
+        "\n",
+        r#"{"type":"task","message":"three"}"#
+    );
+    let mut parser_factory_calls = 0;
+
+    let results =
+        extract_jsonl_canonical_with_parser_factory(file_path, content, &workspace_root, || {
+            parser_factory_calls += 1;
+            configured_parser_for_language("json")
+        })
+        .expect("jsonl extraction should succeed with injected parser factory");
+
+    assert_eq!(
+        parser_factory_calls, 1,
+        "JSONL extraction should configure one parser per file"
+    );
+    assert_eq!(
+        results
+            .symbols
+            .iter()
+            .filter(|symbol| symbol.name == "type")
+            .count(),
+        3
+    );
 }

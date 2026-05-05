@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
-use super::types::{PendingRelationship, RelationshipKind};
+use super::types::{PendingRelationship, RelationshipKind, Symbol, SymbolKind};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct UnresolvedTarget {
@@ -97,4 +98,131 @@ impl PendingRelationship {
             confidence,
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum LocalTargetResolution<'a> {
+    Resolved(&'a Symbol),
+    Import(&'a Symbol),
+    Ambiguous,
+    ReceiverQualified,
+    Missing,
+}
+
+impl<'a> LocalTargetResolution<'a> {
+    pub fn as_symbol(self) -> Option<&'a Symbol> {
+        match self {
+            LocalTargetResolution::Resolved(symbol) | LocalTargetResolution::Import(symbol) => {
+                Some(symbol)
+            }
+            LocalTargetResolution::Ambiguous
+            | LocalTargetResolution::ReceiverQualified
+            | LocalTargetResolution::Missing => None,
+        }
+    }
+}
+
+pub struct ScopedSymbolIndex<'a> {
+    by_name: HashMap<&'a str, Vec<&'a Symbol>>,
+}
+
+impl<'a> ScopedSymbolIndex<'a> {
+    pub fn new(symbols: &'a [Symbol]) -> Self {
+        let mut by_name: HashMap<&'a str, Vec<&'a Symbol>> = HashMap::new();
+        for symbol in symbols {
+            by_name
+                .entry(symbol.name.as_str())
+                .or_default()
+                .push(symbol);
+        }
+        Self { by_name }
+    }
+
+    pub fn unique_symbol_map(symbols: &'a [Symbol]) -> HashMap<String, &'a Symbol> {
+        let index = Self::new(symbols);
+        index
+            .by_name
+            .into_iter()
+            .filter_map(|(name, candidates)| match candidates.as_slice() {
+                [symbol] => Some((name.to_string(), *symbol)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    pub fn first_by_name(&self, name: &str) -> Option<&'a Symbol> {
+        self.by_name
+            .get(name)
+            .and_then(|candidates| candidates.first().copied())
+    }
+
+    pub fn resolve_call_target(
+        &self,
+        terminal_name: &str,
+        caller: Option<&Symbol>,
+        receiver: Option<&str>,
+    ) -> LocalTargetResolution<'a> {
+        let Some(candidates) = self.by_name.get(terminal_name) else {
+            return LocalTargetResolution::Missing;
+        };
+
+        if receiver.is_some_and(|receiver| !is_self_receiver(receiver)) {
+            return LocalTargetResolution::ReceiverQualified;
+        }
+
+        let callable: Vec<&Symbol> = candidates
+            .iter()
+            .copied()
+            .filter(|symbol| is_callable_or_import(&symbol.kind))
+            .collect();
+        if callable.is_empty() {
+            return LocalTargetResolution::Missing;
+        }
+
+        if receiver.is_some() {
+            return resolve_self_receiver_target(&callable, caller);
+        }
+
+        unique_candidate(&callable)
+    }
+}
+
+fn resolve_self_receiver_target<'a>(
+    candidates: &[&'a Symbol],
+    caller: Option<&Symbol>,
+) -> LocalTargetResolution<'a> {
+    let Some(caller_parent_id) = caller.and_then(|caller| caller.parent_id.as_deref()) else {
+        return unique_candidate(candidates);
+    };
+
+    let same_parent: Vec<&Symbol> = candidates
+        .iter()
+        .copied()
+        .filter(|symbol| symbol.parent_id.as_deref() == Some(caller_parent_id))
+        .collect();
+    if same_parent.is_empty() {
+        return LocalTargetResolution::Missing;
+    }
+
+    unique_candidate(&same_parent)
+}
+
+fn unique_candidate<'a>(candidates: &[&'a Symbol]) -> LocalTargetResolution<'a> {
+    match candidates {
+        [] => LocalTargetResolution::Missing,
+        [symbol] if symbol.kind == SymbolKind::Import => LocalTargetResolution::Import(symbol),
+        [symbol] => LocalTargetResolution::Resolved(symbol),
+        _ => LocalTargetResolution::Ambiguous,
+    }
+}
+
+fn is_self_receiver(receiver: &str) -> bool {
+    matches!(receiver, "self" | "this" | "Self" | "super")
+}
+
+fn is_callable_or_import(kind: &SymbolKind) -> bool {
+    matches!(
+        kind,
+        SymbolKind::Function | SymbolKind::Method | SymbolKind::Constructor | SymbolKind::Import
+    )
 }

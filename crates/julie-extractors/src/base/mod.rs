@@ -23,11 +23,13 @@ pub mod types;
 // Re-export key types for external use
 pub use annotations::normalize_annotations;
 pub use extractor::BaseExtractor;
-pub use relationship_resolution::{StructuredPendingRelationship, UnresolvedTarget};
+pub use relationship_resolution::{
+    LocalTargetResolution, ScopedSymbolIndex, StructuredPendingRelationship, UnresolvedTarget,
+};
 pub use span::{NormalizedSpan, RecordOffset, normalize_file_path};
 pub use tree_methods::{find_child_by_type, find_child_by_types};
 pub use types::{
     AnnotationMarker, ContextConfig, ExtractionResults, Identifier, IdentifierKind,
-    PendingRelationship, Relationship, RelationshipKind, Symbol, SymbolKind, SymbolOptions,
-    TestRole, TypeInfo, Visibility,
+    ParseDiagnostic, ParseDiagnosticKind, PendingRelationship, Relationship, RelationshipKind,
+    Symbol, SymbolKind, SymbolOptions, TestRole, TypeInfo, Visibility,
 };

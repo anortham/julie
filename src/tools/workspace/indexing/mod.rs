@@ -12,6 +12,7 @@
 
 pub(crate) mod embeddings;
 pub(crate) mod extractor;
+pub(crate) mod file_policy;
 pub(crate) mod incremental;
 pub(crate) mod index;
 pub(crate) mod pipeline;

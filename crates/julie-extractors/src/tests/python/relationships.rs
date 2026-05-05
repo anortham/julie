@@ -144,6 +144,74 @@ def callee():
 }
 
 #[test]
+fn test_self_receiver_call_resolves_to_same_class_method() {
+    let code = r#"
+class A:
+    def render(self):
+        pass
+
+    def caller(self):
+        self.render()
+
+class B:
+    def render(self):
+        pass
+"#;
+    let mut parser = tree_sitter::Parser::new();
+    parser
+        .set_language(&tree_sitter_python::LANGUAGE.into())
+        .unwrap();
+    let tree = parser.parse(code, None).unwrap();
+
+    let workspace_root = PathBuf::from("/tmp/test");
+    let mut extractor = crate::python::PythonExtractor::new(
+        "test.py".to_string(),
+        code.to_string(),
+        &workspace_root,
+    );
+    let symbols = extractor.extract_symbols(&tree);
+    let relationships = extractor.extract_relationships(&tree, &symbols);
+
+    let class_a = symbols
+        .iter()
+        .find(|symbol| symbol.name == "A")
+        .expect("Should extract class A");
+    let class_b = symbols
+        .iter()
+        .find(|symbol| symbol.name == "B")
+        .expect("Should extract class B");
+    let caller = symbols
+        .iter()
+        .find(|symbol| symbol.name == "caller")
+        .expect("Should extract caller method");
+    let a_render = symbols
+        .iter()
+        .find(|symbol| symbol.name == "render" && symbol.parent_id.as_deref() == Some(&class_a.id))
+        .expect("Should extract A.render");
+    let b_render = symbols
+        .iter()
+        .find(|symbol| symbol.name == "render" && symbol.parent_id.as_deref() == Some(&class_b.id))
+        .expect("Should extract B.render");
+
+    assert!(
+        relationships.iter().any(|relationship| {
+            relationship.kind == RelationshipKind::Calls
+                && relationship.from_symbol_id == caller.id
+                && relationship.to_symbol_id == a_render.id
+        }),
+        "self.render() should resolve to A.render"
+    );
+    assert!(
+        !relationships.iter().any(|relationship| {
+            relationship.kind == RelationshipKind::Calls
+                && relationship.from_symbol_id == caller.id
+                && relationship.to_symbol_id == b_render.id
+        }),
+        "self.render() must not resolve to B.render"
+    );
+}
+
+#[test]
 fn test_extract_relationships_empty_code() {
     let code = "";
     let mut parser = tree_sitter::Parser::new();

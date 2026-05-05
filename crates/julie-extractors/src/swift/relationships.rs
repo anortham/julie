@@ -272,7 +272,7 @@ impl SwiftExtractor {
     ) {
         // Build a map of symbols by name for quick lookup
         let symbol_map: HashMap<String, &Symbol> =
-            symbols.iter().map(|s| (s.name.clone(), s)).collect();
+            crate::base::ScopedSymbolIndex::unique_symbol_map(symbols);
 
         // Extract the function/method name being called
         let function_name = self.extract_call_target_name(node);

@@ -13,7 +13,7 @@ pub(super) fn extract_variable_type(
     // Look for type annotation as sibling after the name
     let mut name_index = None;
     for i in 0..parent_node.child_count() {
-        if let Some(child) = parent_node.child(i) {
+        if let Some(child) = parent_node.child(i as u32) {
             if child.id() == name_node.id() {
                 name_index = Some(i);
                 break;
@@ -25,7 +25,7 @@ pub(super) fn extract_variable_type(
 
     // Look for type annotation after name
     for i in (name_index + 1)..parent_node.child_count() {
-        if let Some(child) = parent_node.child(i) {
+        if let Some(child) = parent_node.child(i as u32) {
             if child.kind() == "type" {
                 if let Some(identifier_node) = find_child_by_type(&child, "identifier") {
                     return Some(base.get_node_text(&identifier_node));
@@ -39,9 +39,9 @@ pub(super) fn extract_variable_type(
 
     // If no explicit type, try to infer from assignment
     for i in (name_index + 1)..parent_node.child_count() {
-        if let Some(child) = parent_node.child(i) {
+        if let Some(child) = parent_node.child(i as u32) {
             if child.kind() == "=" {
-                if let Some(value_node) = parent_node.child(i + 1) {
+                if let Some(value_node) = parent_node.child((i + 1) as u32) {
                     return Some(infer_type_from_expression(base, value_node));
                 }
             }

@@ -97,6 +97,7 @@ pub mod tools {
 
     pub mod workspace {
         pub mod discovery; // Vendor pattern detection and .julieignore auto-generation tests
+        pub mod file_policy; // Shared watcher/indexer extraction and path policy parity tests
         pub mod global_targeting; // Explicit workspace open/activation tests
         pub mod index_embedding_tests; // Embedding pipeline fixes: embedding_count reflects DB total
         pub mod isolation; // Workspace isolation tests
@@ -171,6 +172,7 @@ pub mod integration {
     pub mod lock_contention; // Lock contention regression tests
     pub mod projection_repair;
     pub mod query_preprocessor_tests; // Query preprocessor comprehensive test suite (TDD)
+    pub mod real_world_contract; // Real-world parser-upgrade expected output contracts
     pub mod real_world_validation; // Real-world code validation tests
     pub mod search_regression_tests; // Regression tests for recurring search issues (glob patterns, Tantivy query semantics, limit/ranking)
     #[cfg(feature = "embeddings-sidecar")]

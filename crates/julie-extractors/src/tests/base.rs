@@ -295,7 +295,7 @@ fn test_get_node_text_normal_function_name() {
     // Find the identifier child (the function name "hello")
     let mut name_node = None;
     for i in 0..func_item.child_count() {
-        let child = func_item.child(i).unwrap();
+        let child = func_item.child(i as u32).unwrap();
         if child.kind() == "identifier" {
             name_node = Some(child);
             break;
@@ -667,7 +667,7 @@ fn test_find_doc_comment_rust_triple_slash() {
     // Find the function_item node (it should be the last named child after the comment)
     let mut func_node = None;
     for i in 0..root.named_child_count() {
-        let child = root.named_child(i).unwrap();
+        let child = root.named_child(i as u32).unwrap();
         if child.kind() == "function_item" {
             func_node = Some(child);
             break;
@@ -741,7 +741,7 @@ fn test_find_doc_comment_multiline() {
 
     let mut func_node = None;
     for i in 0..root.named_child_count() {
-        let child = root.named_child(i).unwrap();
+        let child = root.named_child(i as u32).unwrap();
         if child.kind() == "function_item" {
             func_node = Some(child);
             break;
@@ -795,7 +795,7 @@ fn test_find_doc_comment_explicit_option_overrides_auto_detection() {
 
     let mut func_node = None;
     for i in 0..root.named_child_count() {
-        let child = root.named_child(i).unwrap();
+        let child = root.named_child(i as u32).unwrap();
         if child.kind() == "function_item" {
             func_node = Some(child);
             break;
@@ -950,7 +950,7 @@ fn test_create_identifier_without_containing_symbol_id() {
     // Use the function name node as the identifier target (just to test None path)
     let mut name_node = None;
     for i in 0..func_item.child_count() {
-        let child = func_item.child(i).unwrap();
+        let child = func_item.child(i as u32).unwrap();
         if child.kind() == "identifier" {
             name_node = Some(child);
             break;
@@ -1031,7 +1031,7 @@ fn test_create_identifier_stored_in_identifiers_vec() {
     // Use the function name node to create two identifiers
     let mut name_node = None;
     for i in 0..func_item.child_count() {
-        let child = func_item.child(i).unwrap();
+        let child = func_item.child(i as u32).unwrap();
         if child.kind() == "identifier" {
             name_node = Some(child);
             break;
@@ -1075,7 +1075,7 @@ fn test_find_doc_comment_block_comment() {
     // Find the function_item node
     let mut func_node = None;
     for i in 0..root.named_child_count() {
-        let child = root.named_child(i).unwrap();
+        let child = root.named_child(i as u32).unwrap();
         if child.kind() == "function_item" {
             func_node = Some(child);
             break;
@@ -1120,7 +1120,7 @@ fn test_find_doc_comment_attribute_doc_not_captured() {
 
     let mut func_node = None;
     for i in 0..root.named_child_count() {
-        let child = root.named_child(i).unwrap();
+        let child = root.named_child(i as u32).unwrap();
         if child.kind() == "function_item" {
             func_node = Some(child);
             break;
@@ -1162,7 +1162,7 @@ fn test_find_doc_comment_blank_line_separated_still_captured() {
 
     let mut func_node = None;
     for i in 0..root.named_child_count() {
-        let child = root.named_child(i).unwrap();
+        let child = root.named_child(i as u32).unwrap();
         if child.kind() == "function_item" {
             func_node = Some(child);
             break;

@@ -108,16 +108,8 @@ impl super::GoExtractor {
         node: Node,
         symbol_map: &HashMap<String, &Symbol>,
     ) -> Option<String> {
-        // CRITICAL FIX: Only search symbols from THIS FILE, not all files
-        // Bug was: searching all symbols in DB caused wrong file symbols to match
-        let file_symbols: Vec<Symbol> = symbol_map
-            .values()
-            .filter(|s| s.file_path == self.base.file_path)
-            .map(|&s| s.clone())
-            .collect();
-
         self.base
-            .find_containing_symbol(&node, &file_symbols)
+            .find_containing_symbol_from_map(&node, symbol_map)
             .map(|s| s.id.clone())
     }
 }

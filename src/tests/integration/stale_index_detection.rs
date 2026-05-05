@@ -579,6 +579,33 @@ fn test_scan_workspace_files_respects_gitignore() -> Result<()> {
     Ok(())
 }
 
+#[test]
+fn test_scan_workspace_files_includes_unknown_text_extensions() -> Result<()> {
+    let temp_dir = TempDir::new()?;
+    let root = temp_dir.path();
+    fs::write(
+        root.join("flake.nix"),
+        "{ description = \"text source\"; }\n",
+    )?;
+    fs::write(
+        root.join("diagram.svg"),
+        "<svg><text>ignored</text></svg>\n",
+    )?;
+
+    let files = crate::startup::scan_workspace_files(root)?;
+
+    assert!(
+        files.contains("flake.nix"),
+        "unknown text extensions should participate in startup and repair scans"
+    );
+    assert!(
+        !files.contains("diagram.svg"),
+        "blacklisted text extensions should stay excluded from scans"
+    );
+
+    Ok(())
+}
+
 /// Test 7: scan_workspace_files returns Unix-style paths (Windows bug fix)
 /// Given: Files in nested directories
 /// When: scan_workspace_files() is called

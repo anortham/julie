@@ -28,9 +28,6 @@ use tree_sitter::Tree;
 
 pub struct BashExtractor {
     pub(super) base: BaseExtractor,
-    /// Pending relationships that need cross-file resolution after workspace indexing
-    pending_relationships: Vec<PendingRelationship>,
-    structured_pending_relationships: Vec<StructuredPendingRelationship>,
 }
 
 impl BashExtractor {
@@ -42,8 +39,6 @@ impl BashExtractor {
     ) -> Self {
         Self {
             base: BaseExtractor::new(language, file_path, content, workspace_root),
-            pending_relationships: Vec::new(),
-            structured_pending_relationships: Vec::new(),
         }
     }
 
@@ -242,16 +237,15 @@ impl BashExtractor {
         &mut self,
         pending: StructuredPendingRelationship,
     ) {
-        self.pending_relationships.push(pending.pending.clone());
-        self.structured_pending_relationships.push(pending);
+        self.base.add_structured_pending_relationship(pending);
     }
 
     /// Get all pending relationships collected during extraction
     pub fn get_pending_relationships(&self) -> Vec<PendingRelationship> {
-        self.pending_relationships.clone()
+        self.base.get_pending_relationships()
     }
 
     pub fn get_structured_pending_relationships(&self) -> Vec<StructuredPendingRelationship> {
-        self.structured_pending_relationships.clone()
+        self.base.get_structured_pending_relationships()
     }
 }

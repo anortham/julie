@@ -12,7 +12,7 @@ use std::path::PathBuf;
 fn init_parser() -> tree_sitter::Parser {
     let mut parser = tree_sitter::Parser::new();
     parser
-        .set_language(&harper_tree_sitter_dart::LANGUAGE.into())
+        .set_language(&tree_sitter_dart::LANGUAGE.into())
         .expect("Error loading Dart grammar");
     parser
 }

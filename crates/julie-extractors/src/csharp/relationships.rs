@@ -226,7 +226,7 @@ fn extract_constructor_parameter_relationships(
     // A class only needs one Uses edge per type, regardless of how many constructors use it.
     let file_path = extractor.get_base().file_path.clone();
     let symbol_map: std::collections::HashMap<String, &Symbol> =
-        symbols.iter().map(|s| (s.name.clone(), s)).collect();
+        crate::base::ScopedSymbolIndex::unique_symbol_map(symbols);
 
     // Collect already-existing Uses targets for this class (from earlier constructors)
     let mut seen: std::collections::HashSet<String> = relationships
@@ -353,26 +353,10 @@ fn handle_call_target(
 
     // Build a symbol_map for quick lookup
     let symbol_map: std::collections::HashMap<String, &Symbol> =
-        symbols.iter().map(|s| (s.name.clone(), s)).collect();
+        crate::base::ScopedSymbolIndex::unique_symbol_map(symbols);
 
-    // Find the calling method context - look upward in the tree for parent method
-    let mut parent = call_node.parent();
-    let mut caller_symbol = None;
-    while let Some(p) = parent {
-        if p.kind() == "method_declaration" || p.kind() == "local_function_statement" {
-            // Get the method name
-            let mut p_cursor = p.walk();
-            if let Some(name_node) = p.children(&mut p_cursor).find(|c| c.kind() == "identifier") {
-                let method_name = base.get_node_text(&name_node);
-                caller_symbol = symbol_map.get(&method_name).copied();
-                break;
-            }
-        }
-        parent = p.parent();
-    }
-
-    // No caller context means we can't create a meaningful relationship
-    let Some(caller) = caller_symbol else {
+    let caller = base.find_containing_symbol(&call_node, symbols).cloned();
+    let Some(caller) = caller else {
         return;
     };
 

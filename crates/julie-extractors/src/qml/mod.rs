@@ -15,9 +15,6 @@ use tree_sitter::Tree;
 pub struct QmlExtractor {
     base: BaseExtractor,
     symbols: Vec<Symbol>,
-    /// Pending relationships that need cross-file resolution after workspace indexing
-    pending_relationships: Vec<PendingRelationship>,
-    structured_pending_relationships: Vec<StructuredPendingRelationship>,
 }
 
 impl QmlExtractor {
@@ -30,8 +27,6 @@ impl QmlExtractor {
         Self {
             base: BaseExtractor::new(language, file_path, content, workspace_root),
             symbols: Vec::new(),
-            pending_relationships: Vec::new(),
-            structured_pending_relationships: Vec::new(),
         }
     }
 
@@ -261,7 +256,7 @@ impl QmlExtractor {
     /// This handles cross-file function calls that need resolution
     fn extract_pending_relationships(&mut self, tree: &Tree, symbols: &[Symbol]) {
         let symbol_map: std::collections::HashMap<String, &Symbol> =
-            symbols.iter().map(|s| (s.name.clone(), s)).collect();
+            crate::base::ScopedSymbolIndex::unique_symbol_map(symbols);
 
         self.walk_for_pending_calls(tree.root_node(), &symbol_map);
     }
@@ -351,21 +346,20 @@ impl QmlExtractor {
 
     /// Get pending relationships that need cross-file resolution
     pub fn get_pending_relationships(&self) -> Vec<PendingRelationship> {
-        self.pending_relationships.clone()
+        self.base.get_pending_relationships()
     }
 
     /// Add a pending relationship (used during extraction)
     pub fn add_pending_relationship(&mut self, pending: PendingRelationship) {
-        self.pending_relationships.push(pending);
+        self.base.add_pending_relationship(pending);
     }
 
     pub fn add_structured_pending_relationship(&mut self, pending: StructuredPendingRelationship) {
-        self.pending_relationships.push(pending.pending.clone());
-        self.structured_pending_relationships.push(pending);
+        self.base.add_structured_pending_relationship(pending);
     }
 
     pub fn get_structured_pending_relationships(&self) -> Vec<StructuredPendingRelationship> {
-        self.structured_pending_relationships.clone()
+        self.base.get_structured_pending_relationships()
     }
 
     fn build_unresolved_target(

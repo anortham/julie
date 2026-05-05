@@ -1,8 +1,10 @@
 /// Relationship extraction
 /// Handles inheritance relationships and function call relationships
-use super::super::base::{Relationship, RelationshipKind, Symbol, SymbolKind, UnresolvedTarget};
+use super::super::base::{
+    LocalTargetResolution, Relationship, RelationshipKind, ScopedSymbolIndex, Symbol, SymbolKind,
+    UnresolvedTarget,
+};
 use super::{PythonExtractor, helpers};
-use std::collections::HashMap;
 use tree_sitter::{Node, Tree};
 
 /// Extract relationships from Python code
@@ -13,12 +15,16 @@ pub(crate) fn extract_relationships(
 ) -> Vec<Relationship> {
     let mut relationships = Vec::new();
 
-    // Create symbol map for fast lookups by name
-    let symbol_map: HashMap<String, &Symbol> =
-        symbols.iter().map(|s| (s.name.clone(), s)).collect();
+    let symbol_index = ScopedSymbolIndex::new(symbols);
 
     // Recursively visit all nodes to extract relationships
-    visit_node_for_relationships(extractor, tree.root_node(), &symbol_map, &mut relationships);
+    visit_node_for_relationships(
+        extractor,
+        tree.root_node(),
+        symbols,
+        &symbol_index,
+        &mut relationships,
+    );
 
     relationships
 }
@@ -27,15 +33,16 @@ pub(crate) fn extract_relationships(
 fn visit_node_for_relationships(
     extractor: &mut PythonExtractor,
     node: Node,
-    symbol_map: &HashMap<String, &Symbol>,
+    symbols: &[Symbol],
+    symbol_index: &ScopedSymbolIndex<'_>,
     relationships: &mut Vec<Relationship>,
 ) {
     match node.kind() {
         "class_definition" => {
-            extract_class_relationships(extractor, node, symbol_map, relationships);
+            extract_class_relationships(extractor, node, symbol_index, relationships);
         }
         "call" => {
-            extract_call_relationships(extractor, node, symbol_map, relationships);
+            extract_call_relationships(extractor, node, symbols, symbol_index, relationships);
         }
         _ => {}
     }
@@ -43,7 +50,7 @@ fn visit_node_for_relationships(
     // Recursively visit all children
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        visit_node_for_relationships(extractor, child, symbol_map, relationships);
+        visit_node_for_relationships(extractor, child, symbols, symbol_index, relationships);
     }
 }
 
@@ -51,7 +58,7 @@ fn visit_node_for_relationships(
 fn extract_class_relationships(
     extractor: &mut PythonExtractor,
     node: Node,
-    symbol_map: &HashMap<String, &Symbol>,
+    symbol_index: &ScopedSymbolIndex<'_>,
     relationships: &mut Vec<Relationship>,
 ) {
     let base = extractor.base();
@@ -63,7 +70,7 @@ fn extract_class_relationships(
     };
 
     let class_name = base.get_node_text(&name_node);
-    let class_symbol = match symbol_map.get(&class_name) {
+    let class_symbol = match symbol_index.first_by_name(&class_name) {
         Some(symbol) => symbol,
         None => return,
     };
@@ -73,7 +80,7 @@ fn extract_class_relationships(
         let bases = helpers::extract_argument_list(extractor, &superclasses_node);
 
         for base_name in bases {
-            if let Some(base_symbol) = symbol_map.get(&base_name) {
+            if let Some(base_symbol) = symbol_index.first_by_name(&base_name) {
                 // Determine relationship kind: implements for interfaces/protocols, extends for classes
                 let relationship_kind = if base_symbol.kind == SymbolKind::Interface {
                     RelationshipKind::Implements
@@ -108,29 +115,32 @@ fn extract_class_relationships(
 fn extract_call_relationships(
     extractor: &mut PythonExtractor,
     node: Node,
-    symbol_map: &HashMap<String, &Symbol>,
+    symbols: &[Symbol],
+    symbol_index: &ScopedSymbolIndex<'_>,
     relationships: &mut Vec<Relationship>,
 ) {
-    let base = extractor.base();
-
     // For a call node, extract the function/method being called
     if let Some(function_node) = node.child_by_field_name("function") {
-        let target = extract_target_from_call(base, &function_node);
+        let target = extract_target_from_call(extractor.base(), &function_node);
         let called_method_name = target.terminal_name.clone();
 
         if !called_method_name.is_empty() {
             // Find the enclosing function/method that contains this call
-            if let Some(caller_symbol) = find_containing_function(extractor, node, symbol_map) {
+            if let Some(caller_symbol) = extractor.base().find_containing_symbol(&node, symbols) {
                 let line_number = (node.start_position().row + 1) as u32;
-                let file_path = base.file_path.clone();
+                let file_path = extractor.base().file_path.clone();
 
                 // Check if we can resolve the callee locally
-                match symbol_map.get(&called_method_name) {
-                    Some(called_symbol) if called_symbol.kind == SymbolKind::Import => {
+                match symbol_index.resolve_call_target(
+                    &called_method_name,
+                    Some(caller_symbol),
+                    target.receiver.as_deref(),
+                ) {
+                    LocalTargetResolution::Import(_) => {
                         // Target is an Import symbol - need cross-file resolution
                         // Don't create relationship pointing to Import (useless for trace_call_path)
                         // Instead, create a PendingRelationship with the callee name
-                        let pending = base.create_pending_relationship(
+                        let pending = extractor.base().create_pending_relationship(
                             caller_symbol.id.clone(),
                             target.clone(),
                             RelationshipKind::Calls,
@@ -140,7 +150,7 @@ fn extract_call_relationships(
                         );
                         extractor.add_structured_pending_relationship(pending);
                     }
-                    Some(called_symbol) => {
+                    LocalTargetResolution::Resolved(called_symbol) => {
                         // Target is a local function/method - create resolved Relationship
                         let relationship = Relationship {
                             id: format!(
@@ -161,10 +171,12 @@ fn extract_call_relationships(
 
                         relationships.push(relationship);
                     }
-                    None => {
+                    LocalTargetResolution::Ambiguous
+                    | LocalTargetResolution::ReceiverQualified
+                    | LocalTargetResolution::Missing => {
                         // Target not found in local symbols - likely a method on imported type
                         // Create PendingRelationship for cross-file resolution
-                        let pending = base.create_pending_relationship(
+                        let pending = extractor.base().create_pending_relationship(
                             caller_symbol.id.clone(),
                             target,
                             RelationshipKind::Calls,
@@ -214,27 +226,4 @@ fn extract_target_from_call(
         }
         _ => UnresolvedTarget::simple(String::new()),
     }
-}
-
-/// Find the containing function of a node
-fn find_containing_function<'a>(
-    extractor: &PythonExtractor,
-    node: Node,
-    symbol_map: &HashMap<String, &'a Symbol>,
-) -> Option<&'a Symbol> {
-    let base = extractor.base();
-
-    // Walk up the tree to find the containing function or method
-    let mut current = node;
-    while let Some(parent) = current.parent() {
-        if parent.kind() == "function_definition" || parent.kind() == "async_function_definition" {
-            // Found a function, extract its name
-            if let Some(name_node) = parent.child_by_field_name("name") {
-                let function_name = base.get_node_text(&name_node);
-                return symbol_map.get(&function_name).copied();
-            }
-        }
-        current = parent;
-    }
-    None
 }

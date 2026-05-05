@@ -3,7 +3,8 @@
 //! This module provides utilities for determining which files should be indexed
 //! based on extension and ignore patterns.
 
-use crate::tools::shared::{BLACKLISTED_DIRECTORIES, BLACKLISTED_FILENAMES};
+use crate::tools::shared::BLACKLISTED_DIRECTORIES;
+use crate::tools::workspace::indexing::file_policy;
 use anyhow::Result;
 use ignore::gitignore::{Gitignore, GitignoreBuilder};
 use std::collections::HashSet;
@@ -174,16 +175,7 @@ pub fn should_index_file(
     if !path.is_file() {
         return false;
     }
-    if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
-        if BLACKLISTED_FILENAMES.contains(&file_name) {
-            return false;
-        }
-    }
-    if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
-        if !supported_extensions.contains(ext) {
-            return false;
-        }
-    } else {
+    if !file_policy::should_watch_path(path, supported_extensions) {
         return false;
     }
     if contains_blacklisted_directory_relative(path, Some(workspace_root)) {
@@ -206,16 +198,7 @@ pub fn should_process_deletion(
     gitignore: &Gitignore,
     workspace_root: &Path,
 ) -> bool {
-    if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
-        if BLACKLISTED_FILENAMES.contains(&file_name) {
-            return false;
-        }
-    }
-    if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
-        if !supported_extensions.contains(ext) {
-            return false;
-        }
-    } else {
+    if !file_policy::should_process_deleted_path(path, supported_extensions) {
         return false;
     }
     if contains_blacklisted_directory_relative(path, Some(workspace_root)) {
@@ -550,8 +533,8 @@ mod tests {
             root
         ));
 
-        // Unsupported extension — rejected
-        assert!(!should_index_file(
+        // Unsupported but textual extension accepted for watcher/discovery parity
+        assert!(should_index_file(
             &root.join("src/app.txt"),
             &extensions,
             &gitignore,
@@ -610,8 +593,8 @@ mod tests {
             root
         ));
 
-        // Unsupported extension — skip
-        assert!(!should_process_deletion(
+        // Unsupported textual paths may have been indexed as text-only, so delete them
+        assert!(should_process_deletion(
             &root.join("readme.txt"),
             &extensions,
             &gitignore,

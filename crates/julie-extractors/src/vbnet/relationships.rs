@@ -449,7 +449,7 @@ fn extract_call_relationships(
 
     let base = extractor.get_base();
     let symbol_map: std::collections::HashMap<String, &Symbol> =
-        symbols.iter().map(|s| (s.name.clone(), s)).collect();
+        crate::base::ScopedSymbolIndex::unique_symbol_map(symbols);
 
     let mut parent = node.parent();
     let mut caller_symbol = None;

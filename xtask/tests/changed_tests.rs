@@ -117,6 +117,55 @@ fn changed_tests_dogfood_repo_index_file_routes_to_new_bucket() {
 }
 
 #[test]
+fn changed_tests_extractor_crate_paths_select_extractors_bucket() {
+    let manifest = sample_manifest();
+
+    let selection = select_changed_buckets(
+        &manifest,
+        &[
+            "crates/julie-extractors/src/rust/mod.rs".to_string(),
+            "crates/julie-extractors/src/tests/rust/mod.rs".to_string(),
+        ],
+    );
+
+    assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
+    assert_eq!(selection.bucket_names, vec!["extractors"]);
+    assert!(selection.fallback_paths.is_empty());
+}
+
+#[test]
+fn changed_tests_extraction_fixtures_select_parser_upgrade_bucket() {
+    let manifest = sample_manifest();
+
+    let selection = select_changed_buckets(
+        &manifest,
+        &["fixtures/extraction/rust/basic/expected.json".to_string()],
+    );
+
+    assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
+    assert_eq!(selection.bucket_names, vec!["parser-upgrade"]);
+    assert!(selection.fallback_paths.is_empty());
+}
+
+#[test]
+fn changed_tests_tree_sitter_dependency_paths_select_parser_upgrade_bucket() {
+    let manifest = sample_manifest();
+
+    let selection = select_changed_buckets(
+        &manifest,
+        &[
+            "Cargo.toml".to_string(),
+            "Cargo.lock".to_string(),
+            "crates/julie-extractors/Cargo.toml".to_string(),
+        ],
+    );
+
+    assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
+    assert_eq!(selection.bucket_names, vec!["parser-upgrade"]);
+    assert!(selection.fallback_paths.is_empty());
+}
+
+#[test]
 fn changed_tests_reports_fallback_prefix_rationale() {
     let manifest = sample_manifest();
 
@@ -473,6 +522,21 @@ commands = ["cargo test --lib search_quality"]
 expected_seconds = 200
 timeout_seconds = 450
 commands = ["cargo nextest run --lib tests::tools::get_symbols_target_filtering_dogfood -- --skip search_quality"]
+
+[buckets.extractors]
+expected_seconds = 30
+timeout_seconds = 90
+commands = [
+  "cargo nextest run -p julie-extractors golden",
+  "cargo nextest run -p julie-extractors capability_matrix",
+]
+
+[buckets.parser-upgrade]
+expected_seconds = 60
+timeout_seconds = 180
+commands = [
+  "cargo nextest run -p julie-extractors -E 'test(golden) | test(capability_matrix) | test(parser_upgrade)'",
+]
 
 [buckets.projection]
 expected_seconds = 40

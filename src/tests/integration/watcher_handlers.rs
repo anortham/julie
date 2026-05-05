@@ -100,6 +100,161 @@ fn caller() -> i32 {
     );
 }
 
+#[tokio::test]
+async fn test_incremental_indexing_resolves_cross_file_pending_relationships() {
+    let temp_dir = crate::tests::helpers::unique_temp_dir("watcher_pending_resolution");
+    let workspace_root = temp_dir.path().canonicalize().unwrap();
+
+    let caller_file = workspace_root.join("caller.rs");
+    fs::write(
+        &caller_file,
+        r#"
+fn caller() {}
+"#,
+    )
+    .unwrap();
+    let caller_abs = caller_file.canonicalize().unwrap();
+
+    let callee_file = workspace_root.join("search").join("hybrid.rs");
+    fs::create_dir_all(callee_file.parent().unwrap()).unwrap();
+    fs::write(
+        &callee_file,
+        r#"
+pub fn should_use_semantic_fallback() {}
+"#,
+    )
+    .unwrap();
+    let callee_abs = callee_file.canonicalize().unwrap();
+
+    let db_path = workspace_root.join("test.db");
+    let db = Arc::new(Mutex::new(
+        SymbolDatabase::new(&db_path).expect("Failed to create test database"),
+    ));
+    let extractor_manager = Arc::new(ExtractorManager::new());
+
+    handle_file_created_or_modified_static(
+        callee_abs,
+        &db,
+        &extractor_manager,
+        &workspace_root,
+        None,
+    )
+    .await
+    .expect("callee file indexing should succeed");
+
+    handle_file_created_or_modified_static(
+        caller_abs.clone(),
+        &db,
+        &extractor_manager,
+        &workspace_root,
+        None,
+    )
+    .await
+    .expect("initial caller file indexing should succeed");
+
+    fs::write(
+        &caller_file,
+        r#"
+fn caller() {
+    crate::search::hybrid::should_use_semantic_fallback();
+}
+"#,
+    )
+    .unwrap();
+
+    handle_file_created_or_modified_static(
+        caller_abs,
+        &db,
+        &extractor_manager,
+        &workspace_root,
+        None,
+    )
+    .await
+    .expect("caller update introducing cross-file call should succeed");
+
+    let db_lock = db.lock().unwrap();
+    let resolved_calls: i64 = db_lock
+        .conn
+        .query_row(
+            "SELECT COUNT(*)
+             FROM relationships rel
+             INNER JOIN symbols src ON src.id = rel.from_symbol_id
+             INNER JOIN symbols dst ON dst.id = rel.to_symbol_id
+             WHERE src.name = 'caller'
+               AND dst.name = 'should_use_semantic_fallback'
+               AND rel.kind = 'calls'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+
+    assert!(
+        resolved_calls > 0,
+        "watcher updates must resolve/store cross-file pending calls just like batch indexing"
+    );
+}
+
+#[tokio::test]
+async fn test_incremental_indexing_oversized_parser_file_switches_to_text_only_without_repair() {
+    let temp_dir = crate::tests::helpers::unique_temp_dir("watcher_oversized_text_only");
+    let workspace_root = temp_dir.path().canonicalize().unwrap();
+
+    let file_path = workspace_root.join("main.rs");
+    fs::write(
+        &file_path,
+        r#"
+fn original_symbol() {}
+"#,
+    )
+    .unwrap();
+    let absolute_path = file_path.canonicalize().unwrap();
+
+    let db_path = workspace_root.join("test.db");
+    let db = Arc::new(Mutex::new(
+        SymbolDatabase::new(&db_path).expect("Failed to create test database"),
+    ));
+    let extractor_manager = Arc::new(ExtractorManager::new());
+
+    let initial_outcome = handle_file_created_or_modified_static(
+        absolute_path.clone(),
+        &db,
+        &extractor_manager,
+        &workspace_root,
+        None,
+    )
+    .await
+    .expect("initial indexing should succeed");
+    assert!(
+        initial_outcome.repair_reason.is_none(),
+        "initial parse-backed indexing should not trigger repair"
+    );
+
+    let oversized = format!("fn gigantic() {{\n{}\n}}\n", "a".repeat(5_000_010));
+    fs::write(&file_path, oversized).unwrap();
+
+    let outcome = handle_file_created_or_modified_static(
+        absolute_path,
+        &db,
+        &extractor_manager,
+        &workspace_root,
+        None,
+    )
+    .await
+    .expect("oversized update should be handled");
+
+    assert!(
+        outcome.repair_reason.is_none(),
+        "oversized parser-backed files should downgrade to text-only, not extractor repair"
+    );
+
+    let db_lock = db.lock().unwrap();
+    let symbols = db_lock.get_symbols_for_file("main.rs").unwrap();
+    assert!(
+        symbols.is_empty(),
+        "oversized update should clear parser symbols and keep file as text-only"
+    );
+}
+
 /// Regression test for Bug: Incremental indexing path mismatch causes duplicate symbols
 ///
 /// Bug: handle_file_created_or_modified_static receives absolute paths from the
@@ -550,7 +705,26 @@ async fn test_file_rename_keeps_source_indexed_when_destination_reindex_fails() 
     .await
     .expect("Initial indexing should succeed");
 
-    let new_file = workspace_root.join("new_name.txt");
+    let new_file = workspace_root.join("new_name.rs");
+    fs::write(&new_file, "fn destination_symbol() {}\n").unwrap();
+    let initial_new_absolute = new_file.canonicalize().unwrap();
+
+    handle_file_created_or_modified_static(
+        initial_new_absolute,
+        &db,
+        &extractor_manager,
+        &workspace_root,
+        None,
+    )
+    .await
+    .expect("Initial destination indexing should succeed");
+
+    fs::remove_file(&new_file).unwrap();
+    fs::write(
+        &old_file,
+        "// Parser-backed destination content with no symbols should fail safely\n",
+    )
+    .unwrap();
     fs::rename(&old_file, &new_file).unwrap();
     let new_absolute = new_file.canonicalize().unwrap();
 
@@ -574,11 +748,13 @@ async fn test_file_rename_keeps_source_indexed_when_destination_reindex_fails() 
     );
     assert_eq!(old_symbols[0].name, "old_function");
 
-    let new_symbols = db_lock.get_symbols_for_file("new_name.txt").unwrap();
-    assert!(
-        new_symbols.is_empty(),
-        "failed destination should not replace the source index"
+    let new_symbols = db_lock.get_symbols_for_file("new_name.rs").unwrap();
+    assert_eq!(
+        new_symbols.len(),
+        1,
+        "failed destination should preserve its previous index"
     );
+    assert_eq!(new_symbols[0].name, "destination_symbol");
 }
 
 #[tokio::test]
@@ -665,8 +841,8 @@ async fn test_extractor_failure_is_persisted_durably() {
     let temp_dir = crate::tests::helpers::unique_temp_dir("watcher_extractor_failure_repair");
     let workspace_root = temp_dir.path().canonicalize().unwrap();
 
-    let test_file = workspace_root.join("broken.txt");
-    fs::write(&test_file, "plain text without a supported extractor\n").unwrap();
+    let test_file = workspace_root.join("broken.rs");
+    fs::write(&test_file, "fn stable_symbol() {}\n").unwrap();
     let absolute_path = test_file.canonicalize().unwrap();
 
     let db_path = workspace_root.join("test.db");
@@ -674,6 +850,22 @@ async fn test_extractor_failure_is_persisted_durably() {
         SymbolDatabase::new(&db_path).expect("Failed to create test database"),
     ));
     let extractor_manager = Arc::new(ExtractorManager::new());
+
+    handle_file_created_or_modified_static(
+        absolute_path.clone(),
+        &db,
+        &extractor_manager,
+        &workspace_root,
+        None,
+    )
+    .await
+    .expect("initial parser-backed indexing should succeed");
+
+    fs::write(
+        &test_file,
+        "// Parser-backed content with no symbols should trip the drop-safeguard\n",
+    )
+    .unwrap();
 
     let outcome = handle_file_created_or_modified_static(
         absolute_path,
@@ -688,7 +880,7 @@ async fn test_extractor_failure_is_persisted_durably() {
     assert_eq!(
         outcome.repair_reason,
         Some(IndexingRepairReason::ExtractorFailure),
-        "unsupported extractor path should use the extractor-failure repair reason"
+        "parser-backed empty extraction after existing symbols should persist repair"
     );
 
     drop(db);
@@ -698,7 +890,7 @@ async fn test_extractor_failure_is_persisted_durably() {
         .conn
         .query_row(
             "SELECT reason, detail FROM indexing_repairs WHERE path = ?1",
-            rusqlite::params!["broken.txt"],
+            rusqlite::params!["broken.rs"],
             |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?)),
         )
         .expect("repair state should persist across database reopen");
@@ -709,7 +901,7 @@ async fn test_extractor_failure_is_persisted_durably() {
             .1
             .as_deref()
             .unwrap_or_default()
-            .contains("Unsupported file extension"),
+            .contains("refused to drop"),
         "repair detail should preserve the extractor failure context"
     );
 }

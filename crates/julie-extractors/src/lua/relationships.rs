@@ -5,11 +5,7 @@ use tree_sitter::{Node, Tree};
 
 /// Extract relationships such as function call edges from the Lua AST.
 pub(super) fn extract_relationships(extractor: &mut LuaExtractor, tree: &Tree, symbols: &[Symbol]) {
-    let symbol_map: HashMap<&str, &Symbol> = symbols
-        .iter()
-        .filter(|symbol| matches!(symbol.kind, SymbolKind::Function | SymbolKind::Method))
-        .map(|symbol| (symbol.name.as_str(), symbol))
-        .collect();
+    let symbol_map = crate::base::ScopedSymbolIndex::unique_symbol_map(symbols);
 
     traverse_tree_for_relationships(extractor, tree.root_node(), &symbol_map, symbols);
 }
@@ -17,7 +13,7 @@ pub(super) fn extract_relationships(extractor: &mut LuaExtractor, tree: &Tree, s
 fn traverse_tree_for_relationships<'a>(
     extractor: &mut LuaExtractor,
     node: Node<'a>,
-    symbol_map: &HashMap<&'a str, &'a Symbol>,
+    symbol_map: &HashMap<String, &'a Symbol>,
     symbols: &[Symbol],
 ) {
     if node.kind() == "function_call" {
@@ -55,10 +51,32 @@ fn process_function_call(
     node: Node,
     callee_name: &str,
     full_expr: Option<&str>,
-    symbol_map: &HashMap<&str, &Symbol>,
+    symbol_map: &HashMap<String, &Symbol>,
 ) {
     if let Some(caller_symbol) = find_enclosing_function(node, extractor.base(), symbol_map) {
-        match symbol_map.get(callee_name) {
+        let target = if let Some(full_expr) = full_expr {
+            let normalized = full_expr.replace(':', ".");
+            let receiver = normalized
+                .rsplit_once('.')
+                .map(|(receiver, _)| receiver.to_string());
+            UnresolvedTarget {
+                display_name: normalized,
+                terminal_name: callee_name.to_string(),
+                receiver,
+                namespace_path: Vec::new(),
+                import_context: None,
+            }
+        } else {
+            UnresolvedTarget::simple(callee_name.to_string())
+        };
+        let can_resolve_locally = target
+            .receiver
+            .as_deref()
+            .is_none_or(|receiver| matches!(receiver, "self"));
+
+        match symbol_map.get(callee_name).filter(|symbol| {
+            can_resolve_locally && matches!(symbol.kind, SymbolKind::Function | SymbolKind::Method)
+        }) {
             Some(callee_symbol) => {
                 // Target is a local function - create resolved Relationship
                 if caller_symbol.id != callee_symbol.id {
@@ -76,21 +94,6 @@ fn process_function_call(
             None => {
                 // Target not found in local symbols - likely a cross-file call
                 // Create PendingRelationship for cross-file resolution
-                let target = if let Some(full_expr) = full_expr {
-                    let normalized = full_expr.replace(':', ".");
-                    let receiver = normalized
-                        .rsplit_once('.')
-                        .map(|(receiver, _)| receiver.to_string());
-                    UnresolvedTarget {
-                        display_name: normalized,
-                        terminal_name: callee_name.to_string(),
-                        receiver,
-                        namespace_path: Vec::new(),
-                        import_context: None,
-                    }
-                } else {
-                    UnresolvedTarget::simple(callee_name.to_string())
-                };
                 let pending = extractor.base().create_pending_relationship(
                     caller_symbol.id.clone(),
                     target,
@@ -108,7 +111,7 @@ fn process_function_call(
 fn find_enclosing_function<'a>(
     mut node: Node<'a>,
     base: &BaseExtractor,
-    symbol_map: &HashMap<&'a str, &'a Symbol>,
+    symbol_map: &HashMap<String, &'a Symbol>,
 ) -> Option<&'a Symbol> {
     while let Some(parent) = node.parent() {
         match parent.kind() {

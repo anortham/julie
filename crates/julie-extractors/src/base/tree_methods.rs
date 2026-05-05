@@ -15,7 +15,7 @@ impl BaseExtractor {
         visitor(node, depth);
 
         for i in 0..node.child_count() {
-            if let Some(child) = node.child(i) {
+            if let Some(child) = node.child(i as u32) {
                 self.walk_tree(&child, visitor, depth + 1);
             }
         }
@@ -40,7 +40,7 @@ impl BaseExtractor {
         }
 
         for i in 0..node.child_count() {
-            if let Some(child) = node.child(i) {
+            if let Some(child) = node.child(i as u32) {
                 self.find_nodes_by_type_recursive(&child, node_type, nodes);
             }
         }
@@ -67,7 +67,7 @@ impl BaseExtractor {
     pub fn get_children_of_type<'a>(&self, node: &Node<'a>, child_type: &str) -> Vec<Node<'a>> {
         let mut children = Vec::new();
         for i in 0..node.child_count() {
-            if let Some(child) = node.child(i) {
+            if let Some(child) = node.child(i as u32) {
                 if child.kind() == child_type {
                     children.push(child);
                 }
@@ -102,7 +102,7 @@ impl BaseExtractor {
 
         // Recursively traverse children with error handling
         for i in 0..node.child_count() {
-            if let Some(child) = node.child(i) {
+            if let Some(child) = node.child(i as u32) {
                 match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     self.traverse_tree(&child, callback)
                 })) {
@@ -119,7 +119,7 @@ impl BaseExtractor {
     /// Find first child by type - exact port of findChildByType
     pub fn find_child_by_type<'a>(&self, node: &Node<'a>, child_type: &str) -> Option<Node<'a>> {
         for i in 0..node.child_count() {
-            if let Some(child) = node.child(i) {
+            if let Some(child) = node.child(i as u32) {
                 if child.kind() == child_type {
                     return Some(child);
                 }
@@ -132,7 +132,7 @@ impl BaseExtractor {
     pub fn find_children_by_type<'a>(&self, node: &Node<'a>, child_type: &str) -> Vec<Node<'a>> {
         let mut results = Vec::new();
         for i in 0..node.child_count() {
-            if let Some(child) = node.child(i) {
+            if let Some(child) = node.child(i as u32) {
                 if child.kind() == child_type {
                     results.push(child);
                 }
@@ -144,7 +144,7 @@ impl BaseExtractor {
     /// Find child by multiple types - exact port of findChildByTypes
     pub fn find_child_by_types<'a>(&self, node: &Node<'a>, types: &[&str]) -> Option<Node<'a>> {
         for i in 0..node.child_count() {
-            if let Some(child) = node.child(i) {
+            if let Some(child) = node.child(i as u32) {
                 if types.contains(&child.kind()) {
                     return Some(child);
                 }
@@ -166,7 +166,7 @@ impl BaseExtractor {
 /// Find the first child node matching `child_type`.
 pub fn find_child_by_type<'a>(node: &Node<'a>, child_type: &str) -> Option<Node<'a>> {
     for i in 0..node.child_count() {
-        if let Some(child) = node.child(i) {
+        if let Some(child) = node.child(i as u32) {
             if child.kind() == child_type {
                 return Some(child);
             }
@@ -178,7 +178,7 @@ pub fn find_child_by_type<'a>(node: &Node<'a>, child_type: &str) -> Option<Node<
 /// Find the first child node matching any of `types`.
 pub fn find_child_by_types<'a>(node: &Node<'a>, types: &[&str]) -> Option<Node<'a>> {
     for i in 0..node.child_count() {
-        if let Some(child) = node.child(i) {
+        if let Some(child) = node.child(i as u32) {
             if types.contains(&child.kind()) {
                 return Some(child);
             }

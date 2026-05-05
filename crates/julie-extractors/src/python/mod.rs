@@ -43,17 +43,12 @@ static VAR_ANNOTATION_RE: LazyLock<Regex> =
 /// Python extractor for extracting symbols and relationships from Python source code
 pub struct PythonExtractor {
     base: BaseExtractor,
-    /// Pending relationships that need cross-file resolution after workspace indexing
-    pending_relationships: Vec<crate::base::PendingRelationship>,
-    structured_pending_relationships: Vec<StructuredPendingRelationship>,
 }
 
 impl PythonExtractor {
     pub fn new(file_path: String, content: String, workspace_root: &std::path::Path) -> Self {
         Self {
             base: BaseExtractor::new("python".to_string(), file_path, content, workspace_root),
-            pending_relationships: Vec::new(),
-            structured_pending_relationships: Vec::new(),
         }
     }
 
@@ -172,16 +167,15 @@ impl PythonExtractor {
         &mut self,
         pending: StructuredPendingRelationship,
     ) {
-        self.pending_relationships.push(pending.pending.clone());
-        self.structured_pending_relationships.push(pending);
+        self.base.add_structured_pending_relationship(pending);
     }
 
     /// Get all pending relationships collected during extraction
     pub fn get_pending_relationships(&self) -> Vec<crate::base::PendingRelationship> {
-        self.pending_relationships.clone()
+        self.base.get_pending_relationships()
     }
 
     pub fn get_structured_pending_relationships(&self) -> Vec<StructuredPendingRelationship> {
-        self.structured_pending_relationships.clone()
+        self.base.get_structured_pending_relationships()
     }
 }

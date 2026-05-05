@@ -17,8 +17,8 @@ pub(super) fn extract_field(
         return None;
     }
 
-    // Find the type and identifier
-    let type_node = find_child_by_type(node, "type_identifier")?;
+    let type_node =
+        find_child_by_type(node, "type").or_else(|| find_child_by_type(node, "type_identifier"))?;
     let identifier_list_node = find_child_by_type(node, "initialized_identifier_list")?;
 
     // Get the first initialized_identifier (fields can have multiple like "String a, b, c;")
@@ -58,7 +58,11 @@ pub(super) fn extract_field(
     } else {
         format!("{} ", modifiers.join(" "))
     };
-    let nullable_suffix = if is_nullable { "?" } else { "" };
+    let nullable_suffix = if is_nullable && !field_type.ends_with('?') {
+        "?"
+    } else {
+        ""
+    };
     let field_signature = format!(
         "{}{}{} {}",
         modifier_prefix, field_type, nullable_suffix, field_name

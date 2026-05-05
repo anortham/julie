@@ -156,16 +156,9 @@ fn find_containing_symbol_id(
     node: Node,
     symbol_map: &HashMap<String, &Symbol>,
 ) -> Option<String> {
-    // CRITICAL FIX: Only search symbols from THIS FILE
-    let file_symbols: Vec<Symbol> = symbol_map
-        .values()
-        .filter(|s| s.file_path == extractor.base().file_path)
-        .map(|&s| s.clone())
-        .collect();
-
     extractor
         .base()
-        .find_containing_symbol(&node, &file_symbols)
+        .find_containing_symbol_from_map(&node, symbol_map)
         .map(|s| s.id.clone())
 }
 

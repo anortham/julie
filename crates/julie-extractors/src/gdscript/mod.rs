@@ -32,8 +32,6 @@ pub struct GDScriptExtractor {
     pending_inheritance: HashMap<String, String>, // className -> baseClassName
     processed_positions: HashSet<String>,         // Track processed node positions
     current_class_context: Option<String>,        // Current class ID for scope tracking
-    pending_relationships: Vec<PendingRelationship>, // Cross-file relationships needing resolution
-    structured_pending_relationships: Vec<StructuredPendingRelationship>,
 }
 
 impl GDScriptExtractor {
@@ -48,8 +46,6 @@ impl GDScriptExtractor {
             pending_inheritance: HashMap::new(),
             processed_positions: HashSet::new(),
             current_class_context: None,
-            pending_relationships: Vec::new(),
-            structured_pending_relationships: Vec::new(),
         }
     }
 
@@ -66,7 +62,7 @@ impl GDScriptExtractor {
         // Check for top-level extends statement (creates implicit class)
         let mut implicit_class_id: Option<String> = None;
         for i in 0..root_node.child_count() {
-            if let Some(child) = root_node.child(i) {
+            if let Some(child) = root_node.child(i as u32) {
                 if child.kind() == "extends_statement" {
                     if let Some(type_node) = helpers::find_child_by_type(&child, "type") {
                         let base_class_name = self.base.get_node_text(&type_node);
@@ -300,14 +296,14 @@ impl GDScriptExtractor {
 
             // Traverse children with current symbol as parent
             for i in 0..node.child_count() {
-                if let Some(child) = node.child(i) {
+                if let Some(child) = node.child(i as u32) {
                     self.traverse_node(child, Some(&symbol_id), symbols);
                 }
             }
         } else {
             // Traverse children with current parent
             for i in 0..node.child_count() {
-                if let Some(child) = node.child(i) {
+                if let Some(child) = node.child(i as u32) {
                     self.traverse_node(child, parent_id, symbols);
                 }
             }
@@ -368,16 +364,15 @@ impl GDScriptExtractor {
         &mut self,
         pending: StructuredPendingRelationship,
     ) {
-        self.pending_relationships.push(pending.pending.clone());
-        self.structured_pending_relationships.push(pending);
+        self.base.add_structured_pending_relationship(pending);
     }
 
     /// Get all pending relationships collected during extraction
     pub fn get_pending_relationships(&self) -> Vec<PendingRelationship> {
-        self.pending_relationships.clone()
+        self.base.get_pending_relationships()
     }
 
     pub fn get_structured_pending_relationships(&self) -> Vec<StructuredPendingRelationship> {
-        self.structured_pending_relationships.clone()
+        self.base.get_structured_pending_relationships()
     }
 }

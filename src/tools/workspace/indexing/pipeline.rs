@@ -13,7 +13,7 @@ use super::state::{IndexedFileDisposition, IndexingBatchState, IndexingOperation
 use crate::extractors::{Identifier, PendingRelationship, Relationship, Symbol};
 use crate::handler::JulieServerHandler;
 use crate::tools::workspace::commands::ManageWorkspaceTool;
-use julie_extractors::base::StructuredPendingRelationship;
+use julie_extractors::base::{ParseDiagnostic, StructuredPendingRelationship};
 
 pub(crate) struct IndexingPipelineResult {
     pub state: IndexingBatchState,
@@ -29,6 +29,7 @@ pub(crate) struct ExtractedBatch {
     pub(crate) all_identifiers: Vec<Identifier>,
     pub(crate) all_types: Vec<crate::extractors::base::TypeInfo>,
     pub(crate) all_file_infos: Vec<crate::database::FileInfo>,
+    pub(crate) parse_diagnostics_by_file: Vec<(String, Vec<ParseDiagnostic>)>,
     pub(crate) files_to_clean: Vec<String>,
     pub(crate) repair_entries: Vec<(String, String)>,
     pub(crate) files_processed: usize,
@@ -48,6 +49,7 @@ impl ExtractedBatch {
             all_identifiers: Vec::new(),
             all_types: Vec::new(),
             all_file_infos: Vec::new(),
+            parse_diagnostics_by_file: Vec::new(),
             files_to_clean: Vec::new(),
             repair_entries: Vec::new(),
             files_processed: 0,
@@ -248,6 +250,7 @@ impl ManageWorkspaceTool {
                     structured_pending_rels,
                     identifiers,
                     types,
+                    parse_diagnostics,
                     file_info,
                 ))) => {
                     state.record_file(
@@ -263,7 +266,7 @@ impl ManageWorkspaceTool {
                         symbols.len(),
                         pending_rels.len()
                     );
-                    batch.files_to_clean.push(relative_path);
+                    batch.files_to_clean.push(relative_path.clone());
                     batch.all_symbols.extend(symbols);
                     batch.all_relationships.extend(relationships);
                     batch.all_pending_relationships.extend(pending_rels);
@@ -272,6 +275,9 @@ impl ManageWorkspaceTool {
                         .extend(structured_pending_rels);
                     batch.all_identifiers.extend(identifiers);
                     batch.all_types.extend(types.into_values());
+                    batch
+                        .parse_diagnostics_by_file
+                        .push((relative_path.clone(), parse_diagnostics));
                     batch.all_file_infos.push(file_info);
                     if batch.files_processed.is_multiple_of(50) {
                         debug!(
@@ -350,6 +356,7 @@ enum ExtractOutcome {
             Vec<StructuredPendingRelationship>,
             Vec<Identifier>,
             HashMap<String, crate::extractors::base::TypeInfo>,
+            Vec<ParseDiagnostic>,
             crate::database::FileInfo,
         )>,
     ),
@@ -467,6 +474,7 @@ fn persist_batch(
             .map(|file_info| file_info.path.clone())
             .collect();
         db_lock.clear_indexing_repairs(&successful_paths)?;
+        store_parse_diagnostics(&db_lock, batch)?;
         for (path, detail) in &batch.repair_entries {
             db_lock.record_indexing_repair(
                 path,
@@ -517,6 +525,7 @@ fn persist_batch(
             .map(|file_info| file_info.path.clone())
             .collect();
         db_lock.clear_indexing_repairs(&successful_paths)?;
+        store_parse_diagnostics(&db_lock, batch)?;
         for (path, detail) in &batch.repair_entries {
             db_lock.record_indexing_repair(
                 path,
@@ -541,6 +550,16 @@ fn persist_batch(
     );
 
     Ok(PersistBatchResult { canonical_revision })
+}
+
+fn store_parse_diagnostics(
+    db: &crate::database::SymbolDatabase,
+    batch: &ExtractedBatch,
+) -> Result<()> {
+    for (path, diagnostics) in &batch.parse_diagnostics_by_file {
+        db.store_file_parse_diagnostics(path, diagnostics)?;
+    }
+    Ok(())
 }
 
 async fn project_batch(
@@ -637,7 +656,7 @@ async fn project_batch(
     Ok(())
 }
 
-fn resolve_pending_relationships(
+pub(crate) fn resolve_pending_relationships(
     db: &std::sync::Arc<std::sync::Mutex<crate::database::SymbolDatabase>>,
     pending_relationships: &[PendingRelationship],
     structured_pending_relationships: &[StructuredPendingRelationship],

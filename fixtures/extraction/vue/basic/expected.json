@@ -1,0 +1,158 @@
+{
+  "symbols": [
+    {
+      "key": "fixtures/extraction/vue/basic/source.vue:Source:1:1",
+      "name": "Source",
+      "kind": "class",
+      "language": "vue",
+      "file_path": "fixtures/extraction/vue/basic/source.vue",
+      "start_line": 1,
+      "start_column": 1,
+      "end_line": 19,
+      "end_column": 1,
+      "start_byte": 0,
+      "end_byte": 0,
+      "signature": "<Source />",
+      "doc_comment": "Vue Single File Component: Source",
+      "visibility": "Public",
+      "parent_key": null,
+      "metadata": {
+        "sections": "template,script,style",
+        "type": "vue-sfc"
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/vue/basic/source.vue:format:9:10",
+      "name": "format",
+      "kind": "function",
+      "language": "vue",
+      "file_path": "fixtures/extraction/vue/basic/source.vue",
+      "start_line": 9,
+      "start_column": 10,
+      "end_line": 11,
+      "end_column": 2,
+      "start_byte": 0,
+      "end_byte": 0,
+      "signature": "function format(value: string)",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": null,
+      "metadata": {
+        "type": "function"
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/vue/basic/source.vue:title:7:7",
+      "name": "title",
+      "kind": "variable",
+      "language": "vue",
+      "file_path": "fixtures/extraction/vue/basic/source.vue",
+      "start_line": 7,
+      "start_column": 7,
+      "end_line": 7,
+      "end_column": 31,
+      "start_byte": 0,
+      "end_byte": 0,
+      "signature": "const title",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": null,
+      "metadata": {
+        "compositionApi": "format",
+        "type": "variable"
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/vue/basic/source.vue:worker:15:2",
+      "name": "worker",
+      "kind": "property",
+      "language": "vue",
+      "file_path": "fixtures/extraction/vue/basic/source.vue",
+      "start_line": 15,
+      "start_column": 2,
+      "end_line": 15,
+      "end_column": 8,
+      "start_byte": 0,
+      "end_byte": 0,
+      "signature": ".worker",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": null,
+      "metadata": {},
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    }
+  ],
+  "relationships": [],
+  "pending_relationships": [],
+  "structured_pending_relationships": [],
+  "identifiers": [
+    {
+      "key": "fixtures/extraction/vue/basic/source.vue:format:call:8:14",
+      "name": "format",
+      "kind": "call",
+      "language": "vue",
+      "file_path": "fixtures/extraction/vue/basic/source.vue",
+      "start_line": 8,
+      "start_column": 14,
+      "end_line": 8,
+      "end_column": 20,
+      "start_byte": 14,
+      "end_byte": 20,
+      "containing_key": "fixtures/extraction/vue/basic/source.vue:Source:1:1",
+      "target_key": null,
+      "confidence": "1.000"
+    },
+    {
+      "key": "fixtures/extraction/vue/basic/source.vue:trim:call:11:15",
+      "name": "trim",
+      "kind": "call",
+      "language": "vue",
+      "file_path": "fixtures/extraction/vue/basic/source.vue",
+      "start_line": 11,
+      "start_column": 15,
+      "end_line": 11,
+      "end_column": 19,
+      "start_byte": 89,
+      "end_byte": 93,
+      "containing_key": "fixtures/extraction/vue/basic/source.vue:Source:1:1",
+      "target_key": null,
+      "confidence": "1.000"
+    }
+  ],
+  "types": [
+    {
+      "symbol_key": "fixtures/extraction/vue/basic/source.vue:Source:1:1",
+      "resolved_type": "vue-sfc",
+      "generic_params": null,
+      "constraints": null,
+      "is_inferred": true,
+      "language": "vue",
+      "metadata": null
+    },
+    {
+      "symbol_key": "fixtures/extraction/vue/basic/source.vue:title:7:7",
+      "resolved_type": "variable",
+      "generic_params": null,
+      "constraints": null,
+      "is_inferred": true,
+      "language": "vue",
+      "metadata": null
+    }
+  ],
+  "parse_diagnostics": []
+}

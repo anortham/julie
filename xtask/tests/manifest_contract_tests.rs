@@ -281,6 +281,17 @@ fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
             },
         ),
         (
+            "extractors",
+            ExpectedBucket {
+                expected_seconds: 30,
+                timeout_seconds: 90,
+                commands: &[
+                    "cargo nextest run -p julie-extractors golden",
+                    "cargo nextest run -p julie-extractors capability_matrix",
+                ],
+            },
+        ),
+        (
             "daemon",
             ExpectedBucket {
                 expected_seconds: 12,
@@ -294,6 +305,17 @@ fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
                 expected_seconds: 12,
                 timeout_seconds: 60,
                 commands: &["cargo nextest run --lib tests::dashboard -- --skip search_quality"],
+            },
+        ),
+        (
+            "parser-upgrade",
+            ExpectedBucket {
+                expected_seconds: 60,
+                timeout_seconds: 180,
+                commands: &[
+                    "cargo nextest run -p julie-extractors -E 'test(golden) | test(capability_matrix) | test(parser_upgrade)'",
+                    "cargo nextest run --lib real_world_parser_upgrade_contracts_assert_expected_outputs",
+                ],
             },
         ),
         (
@@ -627,6 +649,15 @@ fn expected_bucket_metadata() -> BTreeMap<&'static str, ExpectedBucketMetadata> 
             },
         ),
         (
+            "extractors",
+            ExpectedBucketMetadata {
+                scope_label: "extractors",
+                owner: "lead",
+                expensive: false,
+                notes: Some("extractor golden and capability matrix"),
+            },
+        ),
+        (
             "daemon",
             ExpectedBucketMetadata {
                 scope_label: "daemon",
@@ -642,6 +673,15 @@ fn expected_bucket_metadata() -> BTreeMap<&'static str, ExpectedBucketMetadata> 
                 owner: "lead",
                 expensive: false,
                 notes: Some("dashboard route coverage"),
+            },
+        ),
+        (
+            "parser-upgrade",
+            ExpectedBucketMetadata {
+                scope_label: "extractors",
+                owner: "lead",
+                expensive: false,
+                notes: Some("parser dependency upgrade gate"),
             },
         ),
         (

@@ -369,6 +369,75 @@ async fn test_rewrite_symbol_rejects_stale_index() -> Result<()> {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_rewrite_symbol_rejects_parse_error_inside_target_span() -> Result<()> {
+    let source =
+        "pub fn damaged() {\n    let value = ;\n}\n\npub fn intact() {\n    println!(\"ok\");\n}\n";
+    let (temp_dir, handler, _rel_path) = setup_indexed_workspace(source).await?;
+
+    let tool = crate::tools::editing::rewrite_symbol::RewriteSymbolTool {
+        symbol: "damaged".to_string(),
+        operation: "replace_body".to_string(),
+        content: "{\n    let value = 1;\n}".to_string(),
+        file_path: Some("src/test.rs".to_string()),
+        workspace: Some("primary".to_string()),
+        dry_run: false,
+    };
+
+    let text = tool
+        .call_tool(&handler)
+        .await
+        .expect_err("parse errors inside target symbol must be rejected")
+        .to_string();
+    assert!(
+        text.contains("parse error"),
+        "Expected parse-error rejection, got: {text}"
+    );
+
+    let on_disk = fs::read_to_string(temp_dir.path().join("src").join("test.rs"))?;
+    assert_eq!(
+        on_disk, source,
+        "rewrite_symbol must not modify files when target span has parse errors"
+    );
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_rewrite_symbol_allows_parse_error_outside_target_span() -> Result<()> {
+    let source =
+        "pub fn intact() {\n    println!(\"ok\");\n}\n\npub fn damaged() {\n    let value = ;\n}\n";
+    let (temp_dir, handler, _rel_path) = setup_indexed_workspace(source).await?;
+
+    let tool = crate::tools::editing::rewrite_symbol::RewriteSymbolTool {
+        symbol: "intact".to_string(),
+        operation: "replace_body".to_string(),
+        content: "{\n    println!(\"still ok\");\n}".to_string(),
+        file_path: Some("src/test.rs".to_string()),
+        workspace: Some("primary".to_string()),
+        dry_run: false,
+    };
+
+    let result = tool.call_tool(&handler).await?;
+    let text = extract_text(&result);
+    assert!(
+        text.contains("Applied replace_body"),
+        "parse errors outside target span should not block safe rewrite, got: {text}"
+    );
+
+    let on_disk = fs::read_to_string(temp_dir.path().join("src").join("test.rs"))?;
+    assert!(
+        on_disk.contains("println!(\"still ok\")"),
+        "target body should be updated despite unrelated parse error: {on_disk}"
+    );
+    assert!(
+        on_disk.contains("let value = ;"),
+        "unrelated malformed code should be left untouched: {on_disk}"
+    );
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_rewrite_symbol_not_found() -> Result<()> {
     let source = "pub fn greet() {\n    println!(\"hello\");\n}\n";
     let (_temp_dir, handler, _rel_path) = setup_indexed_workspace(source).await?;

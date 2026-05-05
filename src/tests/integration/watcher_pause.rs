@@ -68,8 +68,8 @@ async fn test_paused_event_ingestion_sets_rescan_without_queueing() {
 
     // Ignored files should stay ignored during paused ingestion.
     needs_rescan.store(false, Ordering::Release);
-    let ignored_file = temp_dir.path().join("ignored.txt");
-    fs::write(&ignored_file, "ignored").unwrap();
+    let ignored_file = temp_dir.path().join("pnpm-lock.yaml");
+    fs::write(&ignored_file, "lockfileVersion: '9.0'\n").unwrap();
 
     process_file_system_event_with_pause(
         &extensions,

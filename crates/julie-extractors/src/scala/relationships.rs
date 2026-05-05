@@ -145,7 +145,7 @@ pub(super) fn extract_call_relationships(
     relationships: &mut Vec<Relationship>,
 ) {
     let symbol_map: HashMap<String, &Symbol> =
-        symbols.iter().map(|s| (s.name.clone(), s)).collect();
+        crate::base::ScopedSymbolIndex::unique_symbol_map(symbols);
 
     walk_tree_for_calls(extractor, node, &symbol_map, symbols, relationships);
 }

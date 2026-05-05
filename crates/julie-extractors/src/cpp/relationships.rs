@@ -14,12 +14,7 @@ pub(super) fn extract_relationships(
     symbols: &[Symbol],
 ) -> Vec<Relationship> {
     let mut relationships = Vec::new();
-    let mut symbol_map = HashMap::new();
-
-    // Create a lookup map for symbols by name
-    for symbol in symbols {
-        symbol_map.insert(symbol.name.clone(), symbol);
-    }
+    let symbol_map = crate::base::ScopedSymbolIndex::unique_symbol_map(symbols);
 
     // Walk the tree looking for relationships
     walk_tree_for_relationships(extractor, tree.root_node(), &symbol_map, &mut relationships);

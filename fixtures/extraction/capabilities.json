@@ -1,0 +1,830 @@
+{
+  "languages": [
+    {
+      "language": "rust",
+      "parser_crate": "tree-sitter-rust",
+      "extensions": [
+        "rs"
+      ],
+      "dependency_status": "current",
+      "capabilities": {
+        "symbols": true,
+        "relationships": true,
+        "pending_relationships": true,
+        "identifiers": true,
+        "types": true
+      },
+      "fixtures": [
+        {
+          "name": "basic",
+          "source": "fixtures/extraction/rust/basic/source.rs",
+          "expected": "fixtures/extraction/rust/basic/expected.json"
+        }
+      ]
+    },
+    {
+      "language": "c",
+      "parser_crate": "tree-sitter-c",
+      "extensions": [
+        "c",
+        "h"
+      ],
+      "dependency_status": "current",
+      "capabilities": {
+        "symbols": true,
+        "relationships": true,
+        "pending_relationships": true,
+        "identifiers": true,
+        "types": true
+      },
+      "fixtures": [
+        {
+          "name": "basic",
+          "source": "fixtures/extraction/c/basic/source.c",
+          "expected": "fixtures/extraction/c/basic/expected.json"
+        }
+      ]
+    },
+    {
+      "language": "cpp",
+      "parser_crate": "tree-sitter-cpp",
+      "extensions": [
+        "cpp",
+        "cc",
+        "cxx",
+        "c++",
+        "hpp",
+        "hh",
+        "hxx",
+        "h++"
+      ],
+      "dependency_status": "current",
+      "capabilities": {
+        "symbols": true,
+        "relationships": true,
+        "pending_relationships": true,
+        "identifiers": true,
+        "types": true
+      },
+      "fixtures": [
+        {
+          "name": "basic",
+          "source": "fixtures/extraction/cpp/basic/source.cpp",
+          "expected": "fixtures/extraction/cpp/basic/expected.json"
+        }
+      ]
+    },
+    {
+      "language": "go",
+      "parser_crate": "tree-sitter-go",
+      "extensions": [
+        "go"
+      ],
+      "dependency_status": "current",
+      "capabilities": {
+        "symbols": true,
+        "relationships": true,
+        "pending_relationships": true,
+        "identifiers": true,
+        "types": true
+      },
+      "fixtures": [
+        {
+          "name": "basic",
+          "source": "fixtures/extraction/go/basic/source.go",
+          "expected": "fixtures/extraction/go/basic/expected.json"
+        },
+        {
+          "name": "malformed_recovery",
+          "source": "fixtures/extraction/go/malformed_recovery/source.go",
+          "expected": "fixtures/extraction/go/malformed_recovery/expected.json"
+        }
+      ]
+    },
+    {
+      "language": "zig",
+      "parser_crate": "tree-sitter-zig",
+      "extensions": [
+        "zig"
+      ],
+      "dependency_status": "current",
+      "capabilities": {
+        "symbols": true,
+        "relationships": true,
+        "pending_relationships": true,
+        "identifiers": true,
+        "types": true
+      },
+      "fixtures": [
+        {
+          "name": "basic",
+          "source": "fixtures/extraction/zig/basic/source.zig",
+          "expected": "fixtures/extraction/zig/basic/expected.json"
+        }
+      ]
+    },
+    {
+      "language": "typescript",
+      "parser_crate": "tree-sitter-typescript",
+      "extensions": [
+        "ts",
+        "mts",
+        "cts"
+      ],
+      "dependency_status": "current",
+      "capabilities": {
+        "symbols": true,
+        "relationships": true,
+        "pending_relationships": true,
+        "identifiers": true,
+        "types": true
+      },
+      "fixtures": [
+        {
+          "name": "basic",
+          "source": "fixtures/extraction/typescript/basic/source.ts",
+          "expected": "fixtures/extraction/typescript/basic/expected.json"
+        }
+      ]
+    },
+    {
+      "language": "tsx",
+      "parser_crate": "tree-sitter-typescript",
+      "extensions": [
+        "tsx"
+      ],
+      "dependency_status": "current",
+      "capabilities": {
+        "symbols": true,
+        "relationships": true,
+        "pending_relationships": true,
+        "identifiers": true,
+        "types": true
+      },
+      "fixtures": [
+        {
+          "name": "basic",
+          "source": "fixtures/extraction/tsx/basic/source.tsx",
+          "expected": "fixtures/extraction/tsx/basic/expected.json"
+        }
+      ]
+    },
+    {
+      "language": "javascript",
+      "parser_crate": "tree-sitter-javascript",
+      "extensions": [
+        "js",
+        "mjs",
+        "cjs"
+      ],
+      "dependency_status": "current",
+      "capabilities": {
+        "symbols": true,
+        "relationships": true,
+        "pending_relationships": true,
+        "identifiers": true,
+        "types": true
+      },
+      "fixtures": [
+        {
+          "name": "basic",
+          "source": "fixtures/extraction/javascript/basic/source.js",
+          "expected": "fixtures/extraction/javascript/basic/expected.json"
+        }
+      ]
+    },
+    {
+      "language": "jsx",
+      "parser_crate": "tree-sitter-javascript",
+      "extensions": [
+        "jsx"
+      ],
+      "dependency_status": "current",
+      "capabilities": {
+        "symbols": true,
+        "relationships": true,
+        "pending_relationships": true,
+        "identifiers": true,
+        "types": true
+      },
+      "fixtures": [
+        {
+          "name": "basic",
+          "source": "fixtures/extraction/jsx/basic/source.jsx",
+          "expected": "fixtures/extraction/jsx/basic/expected.json"
+        }
+      ]
+    },
+    {
+      "language": "html",
+      "parser_crate": "tree-sitter-html",
+      "extensions": [
+        "html",
+        "htm"
+      ],
+      "dependency_status": "current",
+      "capabilities": {
+        "symbols": true,
+        "relationships": true,
+        "pending_relationships": false,
+        "identifiers": true,
+        "types": true
+      },
+      "fixtures": [
+        {
+          "name": "basic",
+          "source": "fixtures/extraction/html/basic/source.html",
+          "expected": "fixtures/extraction/html/basic/expected.json"
+        }
+      ]
+    },
+    {
+      "language": "css",
+      "parser_crate": "tree-sitter-css",
+      "extensions": [
+        "css"
+      ],
+      "dependency_status": "current",
+      "capabilities": {
+        "symbols": true,
+        "relationships": false,
+        "pending_relationships": false,
+        "identifiers": true,
+        "types": false
+      },
+      "fixtures": [
+        {
+          "name": "basic",
+          "source": "fixtures/extraction/css/basic/source.css",
+          "expected": "fixtures/extraction/css/basic/expected.json"
+        }
+      ]
+    },
+    {
+      "language": "vue",
+      "parser_crate": "tree-sitter-html",
+      "extensions": [
+        "vue"
+      ],
+      "dependency_status": "current",
+      "capabilities": {
+        "symbols": true,
+        "relationships": true,
+        "pending_relationships": false,
+        "identifiers": true,
+        "types": true
+      },
+      "fixtures": [
+        {
+          "name": "basic",
+          "source": "fixtures/extraction/vue/basic/source.vue",
+          "expected": "fixtures/extraction/vue/basic/expected.json"
+        }
+      ]
+    },
+    {
+      "language": "python",
+      "parser_crate": "tree-sitter-python",
+      "extensions": [
+        "py",
+        "pyi",
+        "pyw"
+      ],
+      "dependency_status": "current",
+      "capabilities": {
+        "symbols": true,
+        "relationships": true,
+        "pending_relationships": true,
+        "identifiers": true,
+        "types": true
+      },
+      "fixtures": [
+        {
+          "name": "basic",
+          "source": "fixtures/extraction/python/basic/source.py",
+          "expected": "fixtures/extraction/python/basic/expected.json"
+        }
+      ]
+    },
+    {
+      "language": "java",
+      "parser_crate": "tree-sitter-java",
+      "extensions": [
+        "java"
+      ],
+      "dependency_status": "current",
+      "capabilities": {
+        "symbols": true,
+        "relationships": true,
+        "pending_relationships": true,
+        "identifiers": true,
+        "types": true
+      },
+      "fixtures": [
+        {
+          "name": "basic",
+          "source": "fixtures/extraction/java/basic/source.java",
+          "expected": "fixtures/extraction/java/basic/expected.json"
+        }
+      ]
+    },
+    {
+      "language": "csharp",
+      "parser_crate": "tree-sitter-c-sharp",
+      "extensions": [
+        "cs"
+      ],
+      "dependency_status": "current",
+      "capabilities": {
+        "symbols": true,
+        "relationships": true,
+        "pending_relationships": true,
+        "identifiers": true,
+        "types": true
+      },
+      "fixtures": [
+        {
+          "name": "basic",
+          "source": "fixtures/extraction/csharp/basic/source.cs",
+          "expected": "fixtures/extraction/csharp/basic/expected.json"
+        }
+      ]
+    },
+    {
+      "language": "vbnet",
+      "parser_crate": "tree-sitter-vb-dotnet",
+      "extensions": [
+        "vb"
+      ],
+      "dependency_status": "git_pinned",
+      "capabilities": {
+        "symbols": true,
+        "relationships": true,
+        "pending_relationships": true,
+        "identifiers": true,
+        "types": true
+      },
+      "fixtures": [
+        {
+          "name": "basic",
+          "source": "fixtures/extraction/vbnet/basic/source.vb",
+          "expected": "fixtures/extraction/vbnet/basic/expected.json"
+        }
+      ]
+    },
+    {
+      "language": "php",
+      "parser_crate": "tree-sitter-php",
+      "extensions": [
+        "php",
+        "phtml"
+      ],
+      "dependency_status": "current",
+      "capabilities": {
+        "symbols": true,
+        "relationships": true,
+        "pending_relationships": true,
+        "identifiers": true,
+        "types": true
+      },
+      "fixtures": [
+        {
+          "name": "basic",
+          "source": "fixtures/extraction/php/basic/source.php",
+          "expected": "fixtures/extraction/php/basic/expected.json"
+        }
+      ]
+    },
+    {
+      "language": "ruby",
+      "parser_crate": "tree-sitter-ruby",
+      "extensions": [
+        "rb",
+        "rbw"
+      ],
+      "dependency_status": "current",
+      "capabilities": {
+        "symbols": true,
+        "relationships": true,
+        "pending_relationships": true,
+        "identifiers": true,
+        "types": true
+      },
+      "fixtures": [
+        {
+          "name": "basic",
+          "source": "fixtures/extraction/ruby/basic/source.rb",
+          "expected": "fixtures/extraction/ruby/basic/expected.json"
+        }
+      ]
+    },
+    {
+      "language": "swift",
+      "parser_crate": "tree-sitter-swift",
+      "extensions": [
+        "swift"
+      ],
+      "dependency_status": "current",
+      "capabilities": {
+        "symbols": true,
+        "relationships": true,
+        "pending_relationships": true,
+        "identifiers": true,
+        "types": true
+      },
+      "fixtures": [
+        {
+          "name": "basic",
+          "source": "fixtures/extraction/swift/basic/source.swift",
+          "expected": "fixtures/extraction/swift/basic/expected.json"
+        }
+      ]
+    },
+    {
+      "language": "kotlin",
+      "parser_crate": "tree-sitter-kotlin-ng",
+      "extensions": [
+        "kt",
+        "kts"
+      ],
+      "dependency_status": "current",
+      "capabilities": {
+        "symbols": true,
+        "relationships": true,
+        "pending_relationships": true,
+        "identifiers": true,
+        "types": true
+      },
+      "fixtures": [
+        {
+          "name": "basic",
+          "source": "fixtures/extraction/kotlin/basic/source.kt",
+          "expected": "fixtures/extraction/kotlin/basic/expected.json"
+        }
+      ]
+    },
+    {
+      "language": "scala",
+      "parser_crate": "tree-sitter-scala",
+      "extensions": [
+        "scala",
+        "sc"
+      ],
+      "dependency_status": "current",
+      "capabilities": {
+        "symbols": true,
+        "relationships": true,
+        "pending_relationships": true,
+        "identifiers": true,
+        "types": true
+      },
+      "fixtures": [
+        {
+          "name": "basic",
+          "source": "fixtures/extraction/scala/basic/source.scala",
+          "expected": "fixtures/extraction/scala/basic/expected.json"
+        }
+      ]
+    },
+    {
+      "language": "dart",
+      "parser_crate": "tree-sitter-dart",
+      "extensions": [
+        "dart"
+      ],
+      "dependency_status": "current",
+      "capabilities": {
+        "symbols": true,
+        "relationships": true,
+        "pending_relationships": true,
+        "identifiers": true,
+        "types": true
+      },
+      "fixtures": [
+        {
+          "name": "basic",
+          "source": "fixtures/extraction/dart/basic/source.dart",
+          "expected": "fixtures/extraction/dart/basic/expected.json"
+        }
+      ]
+    },
+    {
+      "language": "elixir",
+      "parser_crate": "tree-sitter-elixir",
+      "extensions": [
+        "ex",
+        "exs"
+      ],
+      "dependency_status": "current",
+      "capabilities": {
+        "symbols": true,
+        "relationships": true,
+        "pending_relationships": true,
+        "identifiers": true,
+        "types": true
+      },
+      "fixtures": [
+        {
+          "name": "basic",
+          "source": "fixtures/extraction/elixir/basic/source.ex",
+          "expected": "fixtures/extraction/elixir/basic/expected.json"
+        }
+      ]
+    },
+    {
+      "language": "lua",
+      "parser_crate": "tree-sitter-lua",
+      "extensions": [
+        "lua"
+      ],
+      "dependency_status": "current",
+      "capabilities": {
+        "symbols": true,
+        "relationships": true,
+        "pending_relationships": true,
+        "identifiers": true,
+        "types": false
+      },
+      "fixtures": [
+        {
+          "name": "basic",
+          "source": "fixtures/extraction/lua/basic/source.lua",
+          "expected": "fixtures/extraction/lua/basic/expected.json"
+        }
+      ]
+    },
+    {
+      "language": "qml",
+      "parser_crate": "tree-sitter-qmljs",
+      "extensions": [
+        "qml"
+      ],
+      "dependency_status": "git_pinned",
+      "capabilities": {
+        "symbols": true,
+        "relationships": true,
+        "pending_relationships": true,
+        "identifiers": true,
+        "types": false
+      },
+      "fixtures": [
+        {
+          "name": "basic",
+          "source": "fixtures/extraction/qml/basic/source.qml",
+          "expected": "fixtures/extraction/qml/basic/expected.json"
+        }
+      ]
+    },
+    {
+      "language": "r",
+      "parser_crate": "tree-sitter-r",
+      "extensions": [
+        "r",
+        "R"
+      ],
+      "dependency_status": "current",
+      "capabilities": {
+        "symbols": true,
+        "relationships": true,
+        "pending_relationships": true,
+        "identifiers": true,
+        "types": false
+      },
+      "fixtures": [
+        {
+          "name": "basic",
+          "source": "fixtures/extraction/r/basic/source.r",
+          "expected": "fixtures/extraction/r/basic/expected.json"
+        }
+      ]
+    },
+    {
+      "language": "bash",
+      "parser_crate": "tree-sitter-bash",
+      "extensions": [
+        "sh",
+        "bash"
+      ],
+      "dependency_status": "current",
+      "capabilities": {
+        "symbols": true,
+        "relationships": true,
+        "pending_relationships": true,
+        "identifiers": true,
+        "types": true
+      },
+      "fixtures": [
+        {
+          "name": "basic",
+          "source": "fixtures/extraction/bash/basic/source.sh",
+          "expected": "fixtures/extraction/bash/basic/expected.json"
+        }
+      ]
+    },
+    {
+      "language": "powershell",
+      "parser_crate": "tree-sitter-powershell",
+      "extensions": [
+        "ps1",
+        "psm1",
+        "psd1"
+      ],
+      "dependency_status": "git_pinned",
+      "capabilities": {
+        "symbols": true,
+        "relationships": true,
+        "pending_relationships": true,
+        "identifiers": true,
+        "types": true
+      },
+      "fixtures": [
+        {
+          "name": "basic",
+          "source": "fixtures/extraction/powershell/basic/source.ps1",
+          "expected": "fixtures/extraction/powershell/basic/expected.json"
+        }
+      ]
+    },
+    {
+      "language": "gdscript",
+      "parser_crate": "tree-sitter-gdscript",
+      "extensions": [
+        "gd"
+      ],
+      "dependency_status": "current",
+      "capabilities": {
+        "symbols": true,
+        "relationships": true,
+        "pending_relationships": true,
+        "identifiers": true,
+        "types": true
+      },
+      "fixtures": [
+        {
+          "name": "basic",
+          "source": "fixtures/extraction/gdscript/basic/source.gd",
+          "expected": "fixtures/extraction/gdscript/basic/expected.json"
+        }
+      ]
+    },
+    {
+      "language": "razor",
+      "parser_crate": "tree-sitter-razor",
+      "extensions": [
+        "razor",
+        "cshtml"
+      ],
+      "dependency_status": "git_pinned",
+      "capabilities": {
+        "symbols": true,
+        "relationships": true,
+        "pending_relationships": false,
+        "identifiers": true,
+        "types": true
+      },
+      "fixtures": [
+        {
+          "name": "basic",
+          "source": "fixtures/extraction/razor/basic/source.razor",
+          "expected": "fixtures/extraction/razor/basic/expected.json"
+        }
+      ]
+    },
+    {
+      "language": "sql",
+      "parser_crate": "tree-sitter-sequel",
+      "extensions": [
+        "sql"
+      ],
+      "dependency_status": "current",
+      "capabilities": {
+        "symbols": true,
+        "relationships": true,
+        "pending_relationships": false,
+        "identifiers": true,
+        "types": true
+      },
+      "fixtures": [
+        {
+          "name": "basic",
+          "source": "fixtures/extraction/sql/basic/source.sql",
+          "expected": "fixtures/extraction/sql/basic/expected.json"
+        }
+      ]
+    },
+    {
+      "language": "regex",
+      "parser_crate": "tree-sitter-regex",
+      "extensions": [
+        "regex"
+      ],
+      "dependency_status": "current",
+      "capabilities": {
+        "symbols": true,
+        "relationships": true,
+        "pending_relationships": false,
+        "identifiers": true,
+        "types": true
+      },
+      "fixtures": [
+        {
+          "name": "basic",
+          "source": "fixtures/extraction/regex/basic/source.regex",
+          "expected": "fixtures/extraction/regex/basic/expected.json"
+        }
+      ]
+    },
+    {
+      "language": "markdown",
+      "parser_crate": "tree-sitter-md",
+      "extensions": [
+        "md",
+        "markdown"
+      ],
+      "dependency_status": "current",
+      "capabilities": {
+        "symbols": true,
+        "relationships": false,
+        "pending_relationships": false,
+        "identifiers": true,
+        "types": false
+      },
+      "fixtures": [
+        {
+          "name": "basic",
+          "source": "fixtures/extraction/markdown/basic/source.md",
+          "expected": "fixtures/extraction/markdown/basic/expected.json"
+        }
+      ]
+    },
+    {
+      "language": "json",
+      "parser_crate": "tree-sitter-json",
+      "extensions": [
+        "json",
+        "jsonl",
+        "jsonc"
+      ],
+      "dependency_status": "current",
+      "capabilities": {
+        "symbols": true,
+        "relationships": false,
+        "pending_relationships": false,
+        "identifiers": true,
+        "types": false
+      },
+      "fixtures": [
+        {
+          "name": "basic",
+          "source": "fixtures/extraction/json/basic/source.json",
+          "expected": "fixtures/extraction/json/basic/expected.json"
+        }
+      ]
+    },
+    {
+      "language": "toml",
+      "parser_crate": "tree-sitter-toml-ng",
+      "extensions": [
+        "toml"
+      ],
+      "dependency_status": "current",
+      "capabilities": {
+        "symbols": true,
+        "relationships": false,
+        "pending_relationships": false,
+        "identifiers": true,
+        "types": false
+      },
+      "fixtures": [
+        {
+          "name": "basic",
+          "source": "fixtures/extraction/toml/basic/source.toml",
+          "expected": "fixtures/extraction/toml/basic/expected.json"
+        }
+      ]
+    },
+    {
+      "language": "yaml",
+      "parser_crate": "tree-sitter-yaml",
+      "extensions": [
+        "yml",
+        "yaml"
+      ],
+      "dependency_status": "current",
+      "capabilities": {
+        "symbols": true,
+        "relationships": false,
+        "pending_relationships": false,
+        "identifiers": true,
+        "types": false
+      },
+      "fixtures": [
+        {
+          "name": "basic",
+          "source": "fixtures/extraction/yaml/basic/source.yaml",
+          "expected": "fixtures/extraction/yaml/basic/expected.json"
+        }
+      ]
+    }
+  ]
+}

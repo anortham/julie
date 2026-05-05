@@ -152,22 +152,11 @@ fn find_containing_symbol_id(
     node: Node,
     symbol_map: &HashMap<String, &Symbol>,
 ) -> Option<String> {
-    // CRITICAL FIX: Only search symbols from THIS FILE, not all files
-    // Bug was: searching all symbols in DB caused wrong file symbols to match
-    let file_symbols: Vec<Symbol> = symbol_map
-        .values()
-        .filter(|s| {
-            s.file_path == base.file_path
-                // PowerShell-specific: Skip command symbols (they're calls, not containers)
-                // Only consider functions, methods, and classes as potential containers
-                && matches!(s.kind, SymbolKind::Function | SymbolKind::Method | SymbolKind::Class)
-                // PowerShell-specific: Skip single-line symbols (they're likely command calls)
-                // A true containing symbol must have a range (start_line < end_line)
-                && s.start_line < s.end_line
-        })
-        .map(|&s| s.clone())
-        .collect();
-
-    base.find_containing_symbol(&node, &file_symbols)
-        .map(|s| s.id.clone())
+    base.find_containing_symbol_from_map_filtered(&node, symbol_map, |symbol| {
+        matches!(
+            symbol.kind,
+            SymbolKind::Function | SymbolKind::Method | SymbolKind::Class
+        ) && symbol.start_line < symbol.end_line
+    })
+    .map(|s| s.id.clone())
 }

@@ -544,6 +544,52 @@ async fn test_workspace_initialization() {
 }
 
 #[tokio::test]
+async fn test_workspace_index_records_parse_diagnostics_for_recovered_file() -> anyhow::Result<()> {
+    unsafe {
+        std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+    }
+    unsafe {
+        std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "1");
+    }
+
+    let temp_dir = TempDir::new().unwrap();
+    fs::write(
+        temp_dir.path().join("main.rs"),
+        "fn recovered() {\n    let value = ;\n}\n",
+    )?;
+
+    let handler = JulieServerHandler::new_for_test().await?;
+    handler
+        .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
+        .await?;
+
+    let index_tool = ManageWorkspaceTool {
+        operation: "index".to_string(),
+        path: Some(temp_dir.path().to_string_lossy().to_string()),
+        force: Some(true),
+        name: None,
+        workspace_id: None,
+        detailed: None,
+    };
+    index_tool.call_tool(&handler).await?;
+
+    let db = handler.primary_database().await?;
+    let diagnostics = {
+        let db = db.lock().unwrap();
+        db.get_file_parse_diagnostics("main.rs")?
+    };
+
+    assert!(
+        diagnostics.iter().any(
+            |diagnostic| diagnostic.kind == crate::extractors::base::ParseDiagnosticKind::Error
+        ),
+        "workspace indexing should persist parse diagnostics for recovered malformed files: {diagnostics:?}"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn test_workspace_detection() {
     unsafe {
         std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");

@@ -329,18 +329,3 @@ pub(super) fn extract_doc_from_attribute(base: &BaseExtractor, node: Node) -> Op
     }
     None
 }
-
-/// Find the containing function for a given node
-pub(super) fn find_containing_function(base: &BaseExtractor, node: Node) -> Option<String> {
-    let mut parent = node.parent();
-
-    while let Some(p) = parent {
-        if p.kind() == "function_item" {
-            let name_node = p.child_by_field_name("name");
-            return name_node.map(|n| base.get_node_text(&n));
-        }
-        parent = p.parent();
-    }
-
-    None
-}

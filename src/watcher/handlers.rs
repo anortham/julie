@@ -5,10 +5,14 @@
 
 use crate::database::SymbolDatabase;
 use crate::extractors::ExtractorManager;
-use crate::language; // Centralized language support
 use crate::search::SearchIndex;
+use crate::tools::workspace::indexing::file_policy::{
+    ExtractionMode, detect_language_for_indexing, determine_extraction_mode,
+};
+use crate::tools::workspace::indexing::pipeline::resolve_pending_relationships;
 use crate::tools::workspace::indexing::state::IndexingRepairReason;
 use anyhow::{Context, Result};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tracing::{debug, error, info, warn};
@@ -116,31 +120,64 @@ pub(crate) async fn handle_file_created_or_modified_static(
         }
     }
 
-    // 4. Detect language and extract ALL data (symbols + identifiers + types + relationships)
-    let language = Path::new(&relative_path)
-        .extension()
-        .and_then(|ext| ext.to_str())
-        .and_then(|ext| language::detect_language_from_extension(ext))
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| "unknown".to_string());
-    let content_str = String::from_utf8_lossy(&content);
+    // 4. Detect language and apply the same extraction contract as batch indexing.
+    let language = detect_language_for_indexing(Path::new(&relative_path));
+    let content_str = String::from_utf8_lossy(&content).into_owned();
+    let extraction_mode = determine_extraction_mode(&language, &content_str);
 
-    let results = match extractor_manager.extract_all(&relative_path, &content_str, workspace_root)
-    {
-        Ok(results) => results,
-        Err(e) => {
-            error!("Extraction failed for {}: {}", relative_path, e);
-            persist_repair_state(
-                db,
-                &relative_path,
-                IndexingRepairReason::ExtractorFailure,
-                Some(&e.to_string()),
-            );
-            return Ok(FileIndexOutcome::repair_needed(
-                true,
-                IndexingRepairReason::ExtractorFailure,
-            ));
+    let results = match extraction_mode {
+        ExtractionMode::ParserBacked => {
+            let relative_path_clone = relative_path.clone();
+            let content_clone = content_str.clone();
+            let workspace_root_clone = workspace_root.to_path_buf();
+            let extractor_manager = Arc::clone(extractor_manager);
+            match tokio::task::spawn_blocking(move || {
+                extractor_manager.extract_all(
+                    &relative_path_clone,
+                    &content_clone,
+                    &workspace_root_clone,
+                )
+            })
+            .await
+            {
+                Ok(Ok(results)) => results,
+                Ok(Err(e)) => {
+                    error!("Extraction failed for {}: {}", relative_path, e);
+                    persist_repair_state(
+                        db,
+                        &relative_path,
+                        IndexingRepairReason::ExtractorFailure,
+                        Some(&e.to_string()),
+                    );
+                    return Ok(FileIndexOutcome::repair_needed(
+                        true,
+                        IndexingRepairReason::ExtractorFailure,
+                    ));
+                }
+                Err(e) => {
+                    error!("Extraction task panicked for {}: {}", relative_path, e);
+                    persist_repair_state(
+                        db,
+                        &relative_path,
+                        IndexingRepairReason::ExtractorFailure,
+                        Some(&format!("spawn_blocking panic: {e}")),
+                    );
+                    return Ok(FileIndexOutcome::repair_needed(
+                        true,
+                        IndexingRepairReason::ExtractorFailure,
+                    ));
+                }
+            }
         }
+        ExtractionMode::TextOnly => crate::extractors::ExtractionResults {
+            symbols: Vec::new(),
+            relationships: Vec::new(),
+            pending_relationships: Vec::new(),
+            structured_pending_relationships: Vec::new(),
+            types: HashMap::new(),
+            identifiers: Vec::new(),
+            parse_diagnostics: Vec::new(),
+        },
     };
 
     debug!(
@@ -151,6 +188,10 @@ pub(crate) async fn handle_file_created_or_modified_static(
         path.display(),
         language
     );
+
+    let pending_relationships = results.pending_relationships.clone();
+    let structured_pending_relationships = results.structured_pending_relationships.clone();
+    let parse_diagnostics = results.parse_diagnostics.clone();
 
     // 5. Update SQLite database atomically (symbols + identifiers + types + relationships)
     {
@@ -168,7 +209,10 @@ pub(crate) async fn handle_file_created_or_modified_static(
         let existing_symbols = db_lock.get_symbols_for_file(&relative_path)?;
 
         // Safeguard against data loss
-        if results.symbols.is_empty() && !existing_symbols.is_empty() {
+        if extraction_mode == ExtractionMode::ParserBacked
+            && results.symbols.is_empty()
+            && !existing_symbols.is_empty()
+        {
             let detail = format!(
                 "refused to drop {} existing symbols after empty extraction result",
                 existing_symbols.len()
@@ -206,8 +250,7 @@ pub(crate) async fn handle_file_created_or_modified_static(
             .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
             .map(|d| d.as_secs() as i64)
             .unwrap_or(0);
-        let file_content_str = String::from_utf8_lossy(&content).into_owned();
-        let line_count = file_content_str.lines().count() as i32;
+        let line_count = content_str.lines().count() as i32;
         let file_info = crate::database::FileInfo {
             path: file_info_rel_path,
             language: language.clone(),
@@ -217,7 +260,7 @@ pub(crate) async fn handle_file_created_or_modified_static(
             last_indexed: 0,
             symbol_count: 0,
             line_count,
-            content: Some(file_content_str),
+            content: Some(content_str.clone()),
         };
 
         // Convert types HashMap to Vec for bulk storage
@@ -238,8 +281,15 @@ pub(crate) async fn handle_file_created_or_modified_static(
 
         // Update file hash after successful atomic update
         db_lock.update_file_hash(&relative_path, &new_hash_str)?;
+        db_lock.store_file_parse_diagnostics(&relative_path, &parse_diagnostics)?;
         db_lock.clear_indexing_repair(&relative_path)?;
     }
+
+    resolve_pending_relationships(
+        db,
+        &pending_relationships,
+        &structured_pending_relationships,
+    );
 
     // 6. Update Tantivy search index (if available)
     // CRITICAL: Must re-add BOTH symbol docs AND file content doc after removal.
@@ -249,7 +299,7 @@ pub(crate) async fn handle_file_created_or_modified_static(
         let symbols = results.symbols.clone();
         let file_content_doc = crate::search::FileDocument {
             file_path: relative_path.clone(),
-            content: content_str.to_string(),
+            content: content_str.clone(),
             language: language.clone(),
         };
         let file_to_clean = relative_path.clone();

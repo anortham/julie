@@ -50,6 +50,7 @@ mod tests {
             structured_pending_relationships,
             types: HashMap::new(),
             identifiers,
+            parse_diagnostics: Vec::new(),
         }
     }
 

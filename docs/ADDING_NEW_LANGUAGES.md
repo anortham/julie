@@ -10,10 +10,14 @@ When adding a new language (e.g., "mylang"), you MUST update these files:
 
 - [ ] **1. Create extractor module** - `crates/julie-extractors/src/mylang.rs` or `crates/julie-extractors/src/mylang/mod.rs`
 - [ ] **2. Declare module** - Add `pub mod mylang;` to `crates/julie-extractors/src/lib.rs`
-- [ ] **3. Add language detection** - Add extension mapping in `crates/julie-extractors/src/language.rs` (both `detect_language_from_extension` and `get_tree_sitter_language`)
-- [ ] **4. Register in factory** - Add match arm in `crates/julie-extractors/src/factory.rs`
-- [ ] **5. Add tree-sitter parser** - Add to `crates/julie-extractors/Cargo.toml`
-- [ ] **6. Create comprehensive tests** - At least 100 test cases in `crates/julie-extractors/src/tests/mylang/`
+- [ ] **3. Add parser dependency** - Add to `crates/julie-extractors/Cargo.toml` and `docs/TREE_SITTER_UPGRADES.md`
+- [ ] **4. Add `LanguageSpec` row** - Add name, aliases, extensions, parser crate, capabilities, parser function, and doc comment styles in `crates/julie-extractors/src/language_spec.rs`
+- [ ] **5. Add language detection** - Verify `crates/julie-extractors/src/language.rs` surfaces the new spec correctly
+- [ ] **6. Register canonical extraction** - Add the registry extraction helper and entry in `crates/julie-extractors/src/registry.rs`
+- [ ] **7. Add capability matrix row** - Update `fixtures/extraction/capabilities.json`
+- [ ] **8. Add golden fixture** - Add at least one production-path case under `fixtures/extraction/mylang/`
+- [ ] **9. Add focused tests** - Create real behavior tests in `crates/julie-extractors/src/tests/mylang/`
+- [ ] **10. Add real-world contract** - Add a representative case in `src/tests/integration/real_world_contract.rs` when a real fixture exists
 
 ## Detailed Instructions
 
@@ -76,11 +80,32 @@ Also re-export any public types if needed:
 pub use mylang::MyLangExtractor;
 ```
 
-### 3. Add Language Detection
+### 3. Add Tree-Sitter Parser
+
+**Location**: `crates/julie-extractors/Cargo.toml`
+
+Add the tree-sitter parser crate:
+
+```toml
+[dependencies]
+tree-sitter-mylang = "x.y.z"  # Verify latest on crates.io first.
+```
+
+Also add a row to `docs/TREE_SITTER_UPGRADES.md` with the previous version, current version, latest checked version, decision, and evidence. Git parser dependencies must use a pinned `rev`.
+
+### 4. Add LanguageSpec
+
+**Location**: `crates/julie-extractors/src/language_spec.rs`
+
+Add a `LanguageSpec` row. This is the canonical source for supported language names, aliases, extensions, parser crates, parser functions, doc comment styles, and capability flags.
+
+The language name must be stable and must match the registry entry, capability matrix row, golden fixture directory, and tool-facing language string.
+
+### 5. Add Language Detection
 
 **Location**: `crates/julie-extractors/src/language.rs`
 
-Add the file extension mapping in `detect_language_from_extension`:
+Language detection is spec-driven. Confirm the extension mapping is exposed through `detect_language_from_extension`:
 
 ```rust
 pub fn detect_language_from_extension(extension: &str) -> Option<&'static str> {
@@ -96,7 +121,7 @@ pub fn detect_language_from_extension(extension: &str) -> Option<&'static str> {
 }
 ```
 
-Add the tree-sitter parser registration in `get_tree_sitter_language`:
+Confirm the parser registration is exposed through `get_tree_sitter_language`:
 
 ```rust
 pub fn get_tree_sitter_language(language: &str) -> Result<tree_sitter::Language> {
@@ -108,13 +133,13 @@ pub fn get_tree_sitter_language(language: &str) -> Result<tree_sitter::Language>
 }
 ```
 
-Also add `"mylang"` to the `supported_languages()` list and its extensions to `supported_extensions()`.
+Also confirm `"mylang"` appears in `supported_languages()` and its extensions appear in `supported_extensions()`.
 
 **Note**: `src/tools/workspace/language.rs` delegates directly to `detect_language_from_extension` from this module. You do NOT need to edit the workspace language.rs file.
 
 **CRITICAL**: The language string returned here MUST match the registry entry in step 4.
 
-### 4. Register in the Canonical Registry
+### 6. Register in the Canonical Registry
 
 **Location**: `crates/julie-extractors/src/registry.rs`
 
@@ -166,20 +191,30 @@ register_language!(
 
 **Pattern to follow**: Look at existing registry entries plus their `extract_<language>()` helpers. `extract_canonical()` and `ExtractorManager::extract_all()` are the supported public entrypoints; the old parsed-tree factory helper is test-only.
 
-### 5. Add Tree-Sitter Parser
+### 7. Add Capability Matrix Row
 
-**Location**: `crates/julie-extractors/Cargo.toml`
+**Location**: `fixtures/extraction/capabilities.json`
 
-Add the tree-sitter parser crate:
+Add exactly one row for the new registry language. The capability flags must match `capabilities_for_language()`, and the `parser_crate` must match `LanguageSpec`.
 
-```toml
-[dependencies]
-tree-sitter-mylang = "x.y.z"  # Find latest version on crates.io
+The capability matrix tests fail if a registry entry has no row or if a row has no golden fixture.
+
+### 8. Add Golden Fixture
+
+**Location**: `fixtures/extraction/mylang/`
+
+Add at least one fixture that runs through `extract_canonical`, not a direct extractor helper. Include meaningful expected output for symbols, relationships, pending relationships, identifiers, types, parse diagnostics, signatures, doc comments, and parent links when the language supports them.
+
+Use:
+
+```bash
+UPDATE_GOLDEN=1 cargo nextest run -p julie-extractors golden
+cargo nextest run -p julie-extractors golden
 ```
 
-The `get_tree_sitter_language` registration in step 3 handles the Rust-side binding.
+Review the generated expected JSON. Do not accept missing symbols or empty relationships just because the file is small.
 
-### 6. Create Comprehensive Tests
+### 9. Create Focused Tests
 
 **Location**: `crates/julie-extractors/src/tests/mylang/`
 
@@ -201,7 +236,7 @@ mod tests {
         // Test implementation...
     }
 
-    // Add 100+ tests covering:
+    // Add focused tests covering:
     // - Basic constructs (functions, classes, variables)
     // - Edge cases (nested structures, special characters)
     // - Real-world code samples
@@ -215,19 +250,24 @@ Register the test module in `crates/julie-extractors/src/tests/mod.rs`:
 pub mod mylang;  // Add this
 ```
 
+### 10. Add Real-World Contract
+
+**Location**: `src/tests/integration/real_world_contract.rs`
+
+When a representative fixture exists under `fixtures/real-world/`, add a contract row for the new language. Keep expected values stable and high-signal: at least one key symbol and one representative identifier when the extractor supports identifiers.
+
 ## Validation
 
-### Factory Consistency Test
-
-The factory module has a built-in test that validates all languages are registered:
+Run the narrowest tests while developing, then run the extractor gates before handoff:
 
 ```bash
-cargo test -p julie-extractors factory_consistency_tests
+cargo nextest run -p julie-extractors <exact_test_name>
+cargo nextest run -p julie-extractors golden
+cargo nextest run -p julie-extractors capability_matrix
+cargo xtask test bucket parser-upgrade
 ```
 
-This test will **FAIL** if:
-- A language is in `ExtractorManager::supported_languages()` but missing from the factory
-- A language in the factory returns "No extractor available" error
+The `parser-upgrade` bucket is required for any parser dependency change, parser git revision change, grammar-driven extractor adaptation, or golden expected-output update caused by parser drift.
 
 ### Manual Testing
 
@@ -243,30 +283,30 @@ This test will **FAIL** if:
 
 ## Common Mistakes
 
-### Mismatch Between Language Detection and Factory
+### Mismatch Between LanguageSpec and Registry
 
 ```rust
-// language.rs
+// language_spec.rs
 "ml" => Some("my-lang"),  // Returns "my-lang"
 
-// factory.rs
+// registry.rs
 "mylang" => { ... }  // Expects "mylang" - MISMATCH!
 ```
 
-**Fix**: Use consistent language strings across all three locations.
+**Fix**: Use one stable language string across `LanguageSpec`, registry, capability matrix, golden fixture directories, and tests.
 
-### Missing Factory Case
+### Missing Registry Entry
 
-Adding language detection without factory registration results in:
+Adding language detection without registry registration results in:
 ```
 Error: No extractor available for language 'mylang' (file: test.ml)
 ```
 
-**Fix**: Always add both language detection AND factory case together.
+**Fix**: Always add `LanguageSpec`, language detection, registry extraction, capability matrix, and golden fixture coverage together.
 
 ### Using Old Return Type
 
-The factory returns `ExtractionResults`, not a `(Vec<Symbol>, Vec<Relationship>)` tuple.
+The registry returns `ExtractionResults`, not a `(Vec<Symbol>, Vec<Relationship>)` tuple.
 
 ```rust
 // WRONG
@@ -278,11 +318,5 @@ let symbols = results.symbols;
 let relationships = results.relationships;
 ```
 
-## Future Improvements
-
-**Centralization Opportunity**: Consider consolidating language registration into a single macro or configuration file to eliminate the need to update multiple locations.
-
----
-
-**Last Updated**: 2026-03-25
+**Last Updated**: 2026-05-05
 **Maintained By**: Julie Development Team

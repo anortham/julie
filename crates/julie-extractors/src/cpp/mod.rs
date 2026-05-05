@@ -32,9 +32,6 @@ pub struct CppExtractor {
     base: BaseExtractor,
     processed_nodes: HashSet<String>,
     additional_symbols: Vec<Symbol>,
-    /// Pending relationships that need cross-file resolution after workspace indexing
-    pending_relationships: Vec<PendingRelationship>,
-    structured_pending_relationships: Vec<StructuredPendingRelationship>,
 }
 
 impl CppExtractor {
@@ -43,28 +40,25 @@ impl CppExtractor {
             base: BaseExtractor::new("cpp".to_string(), file_path, content, workspace_root),
             processed_nodes: HashSet::new(),
             additional_symbols: Vec::new(),
-            pending_relationships: Vec::new(),
-            structured_pending_relationships: Vec::new(),
         }
     }
 
     /// Get pending relationships that need cross-file resolution
     pub fn get_pending_relationships(&self) -> Vec<PendingRelationship> {
-        self.pending_relationships.clone()
+        self.base.get_pending_relationships()
     }
 
     pub fn get_structured_pending_relationships(&self) -> Vec<StructuredPendingRelationship> {
-        self.structured_pending_relationships.clone()
+        self.base.get_structured_pending_relationships()
     }
 
     /// Add a pending relationship (used during extraction)
     pub fn add_structured_pending_relationship(&mut self, pending: StructuredPendingRelationship) {
-        self.pending_relationships.push(pending.pending.clone());
-        self.structured_pending_relationships.push(pending);
+        self.base.add_structured_pending_relationship(pending);
     }
 
     pub fn add_pending_relationship(&mut self, pending: PendingRelationship) {
-        self.pending_relationships.push(pending);
+        self.base.add_pending_relationship(pending);
     }
 
     // Accessor for base extractor (used by submodules)

@@ -29,6 +29,36 @@ fn extract_identifier_from_node(
     symbol_map: &HashMap<String, &Symbol>,
 ) {
     match node.kind() {
+        "call_expression" => {
+            if let Some(target_node) = call_target_name_node(node.child_by_field_name("function")) {
+                let name = get_node_text(&target_node);
+                let containing_symbol_id = find_containing_symbol_id(base, node, symbol_map);
+                base.create_identifier(
+                    &target_node,
+                    name,
+                    IdentifierKind::Call,
+                    containing_symbol_id,
+                );
+            }
+        }
+
+        "member_expression" | "null_aware_member_expression" => {
+            if is_call_function_node(node) {
+                return;
+            }
+
+            if let Some(property_node) = node.child_by_field_name("property") {
+                let name = get_node_text(&property_node);
+                let containing_symbol_id = find_containing_symbol_id(base, node, symbol_map);
+                base.create_identifier(
+                    &property_node,
+                    name,
+                    IdentifierKind::MemberAccess,
+                    containing_symbol_id,
+                );
+            }
+        }
+
         "member_access" => {
             if let Some(id_node) = find_child_by_type(&node, "identifier") {
                 let name = get_node_text(&id_node);
@@ -102,13 +132,13 @@ fn extract_identifier_from_node(
 /// context where `type_identifier` is the name is `type_alias`:
 ///
 ///   typedef Callback = void Function(Event event);
-///          ^^^^^^^^ type_identifier (declaration name — skip)
+///          ^^^^^^^^ type_identifier (declaration name - skip)
 ///
 /// Other type_identifier appearances are references (superclass, field types,
 /// parameter types, generic args, etc.) and should be extracted as TypeUsage.
 fn is_type_declaration_name(node: &Node) -> bool {
     if let Some(parent) = node.parent() {
-        // type_alias: `typedef Callback = ...` — the first type_identifier is the name
+        // type_alias: `typedef Callback = ...` - the first type_identifier is the name
         if parent.kind() == "type_alias" {
             // Check if this is the first type_identifier child of the type_alias
             let mut cursor = parent.walk();
@@ -122,17 +152,39 @@ fn is_type_declaration_name(node: &Node) -> bool {
     false
 }
 
+fn call_target_name_node(function_node: Option<Node>) -> Option<Node> {
+    let function_node = function_node?;
+    match function_node.kind() {
+        "identifier" => Some(function_node),
+        "member_expression" | "null_aware_member_expression" => {
+            function_node.child_by_field_name("property")
+        }
+        "instantiation_expression" => {
+            call_target_name_node(function_node.child_by_field_name("function"))
+        }
+        _ => None,
+    }
+}
+
+fn is_call_function_node(node: Node) -> bool {
+    let Some(parent) = node.parent() else {
+        return false;
+    };
+
+    if parent.kind() != "call_expression" {
+        return false;
+    }
+
+    parent
+        .child_by_field_name("function")
+        .is_some_and(|function_node| function_node.id() == node.id())
+}
+
 fn find_containing_symbol_id(
     base: &BaseExtractor,
     node: Node,
     symbol_map: &HashMap<String, &Symbol>,
 ) -> Option<String> {
-    let file_symbols: Vec<Symbol> = symbol_map
-        .values()
-        .filter(|s| s.file_path == base.file_path)
-        .map(|&s| s.clone())
-        .collect();
-
-    base.find_containing_symbol(&node, &file_symbols)
+    base.find_containing_symbol_from_map(&node, symbol_map)
         .map(|s| s.id.clone())
 }

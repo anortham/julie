@@ -136,24 +136,20 @@ impl ManageWorkspaceTool {
             return Ok(false);
         }
 
-        // If no extension, check if it's likely a text file by reading first few bytes
-        if extension.is_empty() {
-            return self.is_likely_text_file(file_path);
+        // Vendor analysis intentionally counts broadly by extension so empty
+        // fixture files and binary-ish build outputs can still reveal vendor
+        // directory patterns. Final indexing below uses the stricter shared
+        // text/supported-extension policy.
+        if skip_minified_check && !extension.is_empty() {
+            return Ok(true);
         }
 
-        // Index any non-blacklisted file
-        Ok(true)
-    }
-
-    /// Heuristic: does this file look like a text file by content?
-    ///
-    /// Thin wrapper around the shared `crate::utils::file_utils::is_likely_text_file`
-    /// so the indexer and the startup freshness scan use identical logic for
-    /// extensionless files. Errors from the underlying probe are intentionally
-    /// swallowed into `Ok(false)` here to preserve the previous `Result`-based
-    /// signature without changing behavior.
-    pub(crate) fn is_likely_text_file(&self, file_path: &Path) -> Result<bool> {
-        Ok(crate::utils::file_utils::is_likely_text_file(file_path))
+        Ok(
+            crate::tools::workspace::indexing::file_policy::should_index_path_candidate(
+                file_path,
+                crate::tools::workspace::indexing::file_policy::supported_extensions_for_indexing(),
+            ),
+        )
     }
 
     /// Check if a file is minified (generated code we should skip)

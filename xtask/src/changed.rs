@@ -295,6 +295,10 @@ enum FallbackRule {
 }
 
 fn fallback_rule_for_path(path: &str) -> Option<(FallbackRule, String)> {
+    if is_extractor_path(path) || is_parser_upgrade_path(path) {
+        return None;
+    }
+
     if let Some(exact_file) = DEV_FALLBACK_FILES
         .iter()
         .copied()
@@ -338,6 +342,14 @@ fn render_fallback_rationale(path: &str, rule: FallbackRule, trigger: &str) -> S
 fn buckets_for_path(path: &str) -> &'static [&'static str] {
     if matches_prefix(path, &["xtask/"]) {
         return &["xtask-runner"];
+    }
+
+    if is_parser_upgrade_path(path) {
+        return &["parser-upgrade"];
+    }
+
+    if is_extractor_path(path) {
+        return &["extractors"];
     }
 
     if matches_exact(
@@ -673,6 +685,8 @@ fn sort_bucket_names(bucket_names: Vec<String>) -> Vec<String> {
         "xtask-runner",
         "core-database",
         "core-embeddings",
+        "extractors",
+        "parser-upgrade",
         "projection",
         "tools-get-context",
         "tools-search-tantivy",
@@ -710,6 +724,23 @@ fn sort_bucket_names(bucket_names: Vec<String>) -> Vec<String> {
             .unwrap_or(order.len())
     });
     sorted
+}
+
+fn is_extractor_path(path: &str) -> bool {
+    matches_prefix(path, &["crates/julie-extractors/"])
+        && path != "crates/julie-extractors/Cargo.toml"
+}
+
+fn is_parser_upgrade_path(path: &str) -> bool {
+    matches_prefix(path, &["fixtures/extraction/"])
+        || matches_exact(
+            path,
+            &[
+                "Cargo.toml",
+                "Cargo.lock",
+                "crates/julie-extractors/Cargo.toml",
+            ],
+        )
 }
 
 fn matches_exact(path: &str, candidates: &[&str]) -> bool {

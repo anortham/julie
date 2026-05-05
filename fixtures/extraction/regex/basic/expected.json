@@ -1,0 +1,186 @@
+{
+  "symbols": [
+    {
+      "key": "fixtures/extraction/regex/basic/source.regex:(?<id>\\d+):1:20",
+      "name": "(?<id>\\d+)",
+      "kind": "class",
+      "language": "regex",
+      "file_path": "fixtures/extraction/regex/basic/source.regex",
+      "start_line": 1,
+      "start_column": 20,
+      "end_line": 1,
+      "end_column": 30,
+      "start_byte": 20,
+      "end_byte": 30,
+      "signature": "Named group 'id': (?<id>\\d+)",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": "fixtures/extraction/regex/basic/source.regex:^(?<name>[A-Za-z]+)-(?<id>\\d+)$\n:1:0",
+      "metadata": {
+        "capturing": "false",
+        "named": "id",
+        "pattern": "(?<id>\\d+)",
+        "type": "group"
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/regex/basic/source.regex:(?<name>[A-Za-z]+):1:1",
+      "name": "(?<name>[A-Za-z]+)",
+      "kind": "class",
+      "language": "regex",
+      "file_path": "fixtures/extraction/regex/basic/source.regex",
+      "start_line": 1,
+      "start_column": 1,
+      "end_line": 1,
+      "end_column": 19,
+      "start_byte": 1,
+      "end_byte": 19,
+      "signature": "Named group 'name': (?<name>[A-Za-z]+)",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": "fixtures/extraction/regex/basic/source.regex:^(?<name>[A-Za-z]+)-(?<id>\\d+)$\n:1:0",
+      "metadata": {
+        "capturing": "false",
+        "named": "name",
+        "pattern": "(?<name>[A-Za-z]+)",
+        "type": "group"
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/regex/basic/source.regex:[A-Za-z]:1:9",
+      "name": "[A-Za-z]",
+      "kind": "class",
+      "language": "regex",
+      "file_path": "fixtures/extraction/regex/basic/source.regex",
+      "start_line": 1,
+      "start_column": 9,
+      "end_line": 1,
+      "end_column": 17,
+      "start_byte": 9,
+      "end_byte": 17,
+      "signature": "Character class: [A-Za-z]",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": "fixtures/extraction/regex/basic/source.regex:(?<name>[A-Za-z]+):1:1",
+      "metadata": {
+        "negated": "false",
+        "pattern": "[A-Za-z]",
+        "type": "character-class"
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/regex/basic/source.regex:^(?<name>[A-Za-z]+)-(?<id>\\d+)$\n:1:0",
+      "name": "^(?<name>[A-Za-z]+)-(?<id>\\d+)$\n",
+      "kind": "variable",
+      "language": "regex",
+      "file_path": "fixtures/extraction/regex/basic/source.regex",
+      "start_line": 1,
+      "start_column": 0,
+      "end_line": 2,
+      "end_column": 0,
+      "start_byte": 0,
+      "end_byte": 32,
+      "signature": "^(?<name>[A-Za-z]+)-(?<id>\\d+)$\n",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": null,
+      "metadata": {
+        "complexity": "14",
+        "pattern": "^(?<name>[A-Za-z]+)-(?<id>\\d+)$\n",
+        "type": "regex-pattern"
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    }
+  ],
+  "relationships": [],
+  "pending_relationships": [],
+  "structured_pending_relationships": [],
+  "identifiers": [
+    {
+      "key": "fixtures/extraction/regex/basic/source.regex:id:member_access:1:20",
+      "name": "id",
+      "kind": "member_access",
+      "language": "regex",
+      "file_path": "fixtures/extraction/regex/basic/source.regex",
+      "start_line": 1,
+      "start_column": 20,
+      "end_line": 1,
+      "end_column": 30,
+      "start_byte": 20,
+      "end_byte": 30,
+      "containing_key": "fixtures/extraction/regex/basic/source.regex:(?<id>\\d+):1:20",
+      "target_key": null,
+      "confidence": "1.000"
+    },
+    {
+      "key": "fixtures/extraction/regex/basic/source.regex:name:member_access:1:1",
+      "name": "name",
+      "kind": "member_access",
+      "language": "regex",
+      "file_path": "fixtures/extraction/regex/basic/source.regex",
+      "start_line": 1,
+      "start_column": 1,
+      "end_line": 1,
+      "end_column": 19,
+      "start_byte": 1,
+      "end_byte": 19,
+      "containing_key": "fixtures/extraction/regex/basic/source.regex:(?<name>[A-Za-z]+):1:1",
+      "target_key": null,
+      "confidence": "1.000"
+    }
+  ],
+  "types": [
+    {
+      "symbol_key": "fixtures/extraction/regex/basic/source.regex:(?<id>\\d+):1:20",
+      "resolved_type": "regex:group",
+      "generic_params": null,
+      "constraints": null,
+      "is_inferred": true,
+      "language": "regex",
+      "metadata": null
+    },
+    {
+      "symbol_key": "fixtures/extraction/regex/basic/source.regex:(?<name>[A-Za-z]+):1:1",
+      "resolved_type": "regex:group",
+      "generic_params": null,
+      "constraints": null,
+      "is_inferred": true,
+      "language": "regex",
+      "metadata": null
+    },
+    {
+      "symbol_key": "fixtures/extraction/regex/basic/source.regex:[A-Za-z]:1:9",
+      "resolved_type": "regex:character-class",
+      "generic_params": null,
+      "constraints": null,
+      "is_inferred": true,
+      "language": "regex",
+      "metadata": null
+    },
+    {
+      "symbol_key": "fixtures/extraction/regex/basic/source.regex:^(?<name>[A-Za-z]+)-(?<id>\\d+)$\n:1:0",
+      "resolved_type": "regex:regex-pattern",
+      "generic_params": null,
+      "constraints": null,
+      "is_inferred": true,
+      "language": "regex",
+      "metadata": null
+    }
+  ],
+  "parse_diagnostics": []
+}

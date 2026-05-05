@@ -42,3 +42,13 @@ fn test_go_line_comment_remains_doc_comment() {
             .is_some_and(|comment| comment.contains("Foo docs"))
     );
 }
+
+#[test]
+fn test_javascript_triple_slash_comment_is_not_java_doc_comment() {
+    let doc = symbol_doc_comment(
+        "src/app.js",
+        "/// Java-style docs should not apply here\nfunction foo() {\n  return 1;\n}\n",
+        "foo",
+    );
+    assert_eq!(doc, None);
+}

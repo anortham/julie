@@ -1,0 +1,199 @@
+{
+  "symbols": [
+    {
+      "key": "fixtures/extraction/razor/basic/source.razor:@page:1:0",
+      "name": "@page",
+      "kind": "import",
+      "language": "razor",
+      "file_path": "fixtures/extraction/razor/basic/source.razor",
+      "start_line": 1,
+      "start_column": 0,
+      "end_line": 1,
+      "end_column": 15,
+      "start_byte": 0,
+      "end_byte": 15,
+      "signature": "@page \"/worker\"",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": null,
+      "metadata": {
+        "directiveName": "page",
+        "directiveValue": "\"/worker\"",
+        "type": "razor-directive"
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/razor/basic/source.razor:Format:8:4",
+      "name": "Format",
+      "kind": "method",
+      "language": "razor",
+      "file_path": "fixtures/extraction/razor/basic/source.razor",
+      "start_line": 8,
+      "start_column": 4,
+      "end_line": 11,
+      "end_column": 5,
+      "start_byte": 92,
+      "end_byte": 168,
+      "signature": "private string Format(string value)",
+      "doc_comment": null,
+      "visibility": "Private",
+      "parent_key": null,
+      "metadata": {
+        "attributes": "",
+        "modifiers": "private",
+        "parameters": "(string value)",
+        "returnType": "string",
+        "type": "method"
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/razor/basic/source.razor:Title:6:12",
+      "name": "Title",
+      "kind": "variable",
+      "language": "razor",
+      "file_path": "fixtures/extraction/razor/basic/source.razor",
+      "start_line": 6,
+      "start_column": 12,
+      "end_line": 6,
+      "end_column": 35,
+      "start_byte": 62,
+      "end_byte": 85,
+      "signature": "string Title = \"Worker\"",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": "fixtures/extraction/razor/basic/source.razor:Title:6:4",
+      "metadata": {
+        "initializer": "\"Worker\"",
+        "type": "variable-declaration",
+        "variableType": "string"
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/razor/basic/source.razor:Title:6:4",
+      "name": "Title",
+      "kind": "variable",
+      "language": "razor",
+      "file_path": "fixtures/extraction/razor/basic/source.razor",
+      "start_line": 6,
+      "start_column": 4,
+      "end_line": 6,
+      "end_column": 36,
+      "start_byte": 54,
+      "end_byte": 86,
+      "signature": "private string Title",
+      "doc_comment": null,
+      "visibility": "Private",
+      "parent_key": null,
+      "metadata": {
+        "attributes": "",
+        "fieldType": "string",
+        "modifiers": "private",
+        "type": "field"
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    }
+  ],
+  "relationships": [
+    {
+      "from_key": "fixtures/extraction/razor/basic/source.razor:Format:8:4",
+      "to_key": "unresolved:method:value.Trim",
+      "kind": "calls",
+      "file_path": "fixtures/extraction/razor/basic/source.razor",
+      "line_number": 10,
+      "confidence": "0.900",
+      "metadata": {
+        "method": "value.Trim"
+      }
+    }
+  ],
+  "pending_relationships": [],
+  "structured_pending_relationships": [],
+  "identifiers": [
+    {
+      "key": "fixtures/extraction/razor/basic/source.razor:Format:call:3:5",
+      "name": "Format",
+      "kind": "call",
+      "language": "razor",
+      "file_path": "fixtures/extraction/razor/basic/source.razor",
+      "start_line": 3,
+      "start_column": 5,
+      "end_line": 3,
+      "end_column": 11,
+      "start_byte": 22,
+      "end_byte": 28,
+      "containing_key": null,
+      "target_key": null,
+      "confidence": "1.000"
+    },
+    {
+      "key": "fixtures/extraction/razor/basic/source.razor:Trim:call:10:21",
+      "name": "Trim",
+      "kind": "call",
+      "language": "razor",
+      "file_path": "fixtures/extraction/razor/basic/source.razor",
+      "start_line": 10,
+      "start_column": 21,
+      "end_line": 10,
+      "end_column": 25,
+      "start_byte": 155,
+      "end_byte": 159,
+      "containing_key": "fixtures/extraction/razor/basic/source.razor:Format:8:4",
+      "target_key": null,
+      "confidence": "1.000"
+    }
+  ],
+  "types": [
+    {
+      "symbol_key": "fixtures/extraction/razor/basic/source.razor:@page:1:0",
+      "resolved_type": "unknown",
+      "generic_params": null,
+      "constraints": null,
+      "is_inferred": true,
+      "language": "razor",
+      "metadata": null
+    },
+    {
+      "symbol_key": "fixtures/extraction/razor/basic/source.razor:Format:8:4",
+      "resolved_type": "string",
+      "generic_params": null,
+      "constraints": null,
+      "is_inferred": true,
+      "language": "razor",
+      "metadata": null
+    },
+    {
+      "symbol_key": "fixtures/extraction/razor/basic/source.razor:Title:6:12",
+      "resolved_type": "string",
+      "generic_params": null,
+      "constraints": null,
+      "is_inferred": true,
+      "language": "razor",
+      "metadata": null
+    },
+    {
+      "symbol_key": "fixtures/extraction/razor/basic/source.razor:Title:6:4",
+      "resolved_type": "string",
+      "generic_params": null,
+      "constraints": null,
+      "is_inferred": true,
+      "language": "razor",
+      "metadata": null
+    }
+  ],
+  "parse_diagnostics": []
+}

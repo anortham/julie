@@ -14,7 +14,7 @@ pub(super) fn extract_relationships(
 ) -> Vec<Relationship> {
     let mut relationships = Vec::new();
     let symbol_map: HashMap<String, &Symbol> =
-        symbols.iter().map(|s| (s.name.clone(), s)).collect();
+        crate::base::ScopedSymbolIndex::unique_symbol_map(symbols);
 
     walk_for_relationships(
         extractor,
@@ -110,15 +110,16 @@ fn extract_use_relationship(
             metadata: None,
         });
     } else {
-        // Unresolved — pending relationship for cross-file resolution
-        extractor.pending_relationships.push(PendingRelationship {
-            from_symbol_id: from_symbol.id.clone(),
-            callee_name: target,
-            kind: RelationshipKind::Uses,
-            file_path: extractor.base.file_path.clone(),
-            line_number: (node.start_position().row + 1) as u32,
-            confidence: 0.8,
-        });
+        extractor
+            .base
+            .add_pending_relationship(PendingRelationship {
+                from_symbol_id: from_symbol.id.clone(),
+                callee_name: target,
+                kind: RelationshipKind::Uses,
+                file_path: extractor.base.file_path.clone(),
+                line_number: (node.start_position().row + 1) as u32,
+                confidence: 0.8,
+            });
     }
 }
 
@@ -250,15 +251,16 @@ fn extract_call_relationship(
             metadata: None,
         });
     } else {
-        // Unresolved — pending relationship for cross-file resolution
-        extractor.pending_relationships.push(PendingRelationship {
-            from_symbol_id: caller.id.clone(),
-            callee_name: fn_name.to_string(),
-            kind: RelationshipKind::Calls,
-            file_path: extractor.base.file_path.clone(),
-            line_number,
-            confidence: 0.7,
-        });
+        extractor
+            .base
+            .add_pending_relationship(PendingRelationship {
+                from_symbol_id: caller.id.clone(),
+                callee_name: fn_name.to_string(),
+                kind: RelationshipKind::Calls,
+                file_path: extractor.base.file_path.clone(),
+                line_number,
+                confidence: 0.7,
+            });
     }
 }
 

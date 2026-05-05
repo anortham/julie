@@ -166,11 +166,41 @@ impl BaseExtractor {
         node: &Node,
         symbols: &'a [Symbol],
     ) -> Option<&'a Symbol> {
+        Self::find_containing_symbol_from_iter(node, symbols.iter())
+    }
+
+    pub fn find_containing_symbol_from_map<'a>(
+        &self,
+        node: &Node,
+        symbol_map: &HashMap<String, &'a Symbol>,
+    ) -> Option<&'a Symbol> {
+        self.find_containing_symbol_from_map_filtered(node, symbol_map, |_| true)
+    }
+
+    pub fn find_containing_symbol_from_map_filtered<'a>(
+        &self,
+        node: &Node,
+        symbol_map: &HashMap<String, &'a Symbol>,
+        include_symbol: impl Fn(&Symbol) -> bool,
+    ) -> Option<&'a Symbol> {
+        Self::find_containing_symbol_from_iter(
+            node,
+            symbol_map
+                .values()
+                .copied()
+                .filter(|symbol| symbol.file_path == self.file_path && include_symbol(symbol)),
+        )
+    }
+
+    fn find_containing_symbol_from_iter<'a>(
+        node: &Node,
+        symbols: impl IntoIterator<Item = &'a Symbol>,
+    ) -> Option<&'a Symbol> {
         let position = node.start_position();
 
         // Find symbols that contain this position
         let mut containing_symbols: Vec<&Symbol> = symbols
-            .iter()
+            .into_iter()
             .filter(|s| {
                 let pos_line = (position.row + 1) as u32;
                 let pos_column = position.column as u32;
@@ -234,7 +264,7 @@ impl BaseExtractor {
     pub fn extract_visibility(&self, node: &Node) -> Option<Visibility> {
         // Look for visibility modifiers in child nodes
         for i in 0..node.child_count() {
-            if let Some(child) = node.child(i) {
+            if let Some(child) = node.child(i as u32) {
                 match child.kind() {
                     "public" => return Some(Visibility::Public),
                     "private" => return Some(Visibility::Private),

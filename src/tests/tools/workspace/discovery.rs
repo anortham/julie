@@ -915,3 +915,39 @@ fn test_should_index_file_accepts_normal_yaml_toml() {
         assert!(result.unwrap(), "{} should be accepted", filename);
     }
 }
+
+#[test]
+fn test_should_index_file_accepts_unknown_text_extension() {
+    let tool = create_tool();
+    let blacklisted_exts: HashSet<&str> = BLACKLISTED_EXTENSIONS.iter().copied().collect();
+    let max_file_size = 1024 * 1024;
+    let temp_dir = tempfile::TempDir::new().unwrap();
+    let path = temp_dir.path().join("flake.nix");
+    std::fs::write(&path, "{ description = \"text source\"; }\n").unwrap();
+
+    let result = tool.should_index_file(&path, &blacklisted_exts, max_file_size, false);
+
+    assert!(result.is_ok());
+    assert!(
+        result.unwrap(),
+        "unknown text extensions should remain indexable as text-only files"
+    );
+}
+
+#[test]
+fn test_should_index_file_rejects_unknown_binary_extension() {
+    let tool = create_tool();
+    let blacklisted_exts: HashSet<&str> = BLACKLISTED_EXTENSIONS.iter().copied().collect();
+    let max_file_size = 1024 * 1024;
+    let temp_dir = tempfile::TempDir::new().unwrap();
+    let path = temp_dir.path().join("payload.custom");
+    std::fs::write(&path, [0, 159, 146, 150, 0, 1, 2, 3]).unwrap();
+
+    let result = tool.should_index_file(&path, &blacklisted_exts, max_file_size, false);
+
+    assert!(result.is_ok());
+    assert!(
+        !result.unwrap(),
+        "unknown binary extensions should not be indexed just because they have an extension"
+    );
+}

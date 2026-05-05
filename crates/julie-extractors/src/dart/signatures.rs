@@ -21,20 +21,12 @@ pub(super) fn extract_class_signature(node: &Node) -> Option<String> {
 
     let extends_clause = find_child_by_type(node, "superclass");
     let extends_text = if let Some(extends_node) = extends_clause {
-        // Extract the full superclass including generics (e.g., "State<MyPage>")
-        if let Some(type_node) = find_child_by_type(&extends_node, "type_identifier") {
-            let mut superclass_type = get_node_text(&type_node);
+        let superclass_type = extract_superclass_type_text(&extends_node);
 
-            // Check for generic type arguments
-            if let Some(type_args_node) = type_node.next_sibling() {
-                if type_args_node.kind() == "type_arguments" {
-                    superclass_type.push_str(&get_node_text(&type_args_node));
-                }
-            }
-
-            format!(" extends {}", superclass_type)
-        } else {
+        if superclass_type.is_empty() {
             String::new()
+        } else {
+            format!(" extends {}", superclass_type)
         }
     } else {
         String::new()
@@ -42,7 +34,19 @@ pub(super) fn extract_class_signature(node: &Node) -> Option<String> {
 
     let implements_clause = find_child_by_type(node, "interfaces");
     let implements_text = implements_clause
-        .map(|n| format!(" implements {}", get_node_text(&n)))
+        .map(|n| {
+            let interfaces = get_node_text(&n);
+            let interfaces = interfaces
+                .trim()
+                .strip_prefix("implements")
+                .unwrap_or(interfaces.trim())
+                .trim();
+            if interfaces.is_empty() {
+                String::new()
+            } else {
+                format!(" implements {}", interfaces)
+            }
+        })
         .unwrap_or_default();
 
     // Extract mixin clauses (with clause) - these are nested within superclass
@@ -60,24 +64,62 @@ pub(super) fn extract_class_signature(node: &Node) -> Option<String> {
     ))
 }
 
+fn extract_superclass_type_text(extends_node: &Node) -> String {
+    let source = get_node_text(extends_node);
+    let source = source.trim();
+    let after_extends = source
+        .strip_prefix("extends")
+        .unwrap_or(source)
+        .trim_start();
+    split_before_top_level_keyword(after_extends, "with")
+        .trim()
+        .to_string()
+}
+
+fn split_before_top_level_keyword<'a>(source: &'a str, keyword: &str) -> &'a str {
+    let mut angle_depth = 0usize;
+    let mut byte_index = 0usize;
+
+    for ch in source.chars() {
+        match ch {
+            '<' => angle_depth += 1,
+            '>' => angle_depth = angle_depth.saturating_sub(1),
+            _ => {}
+        }
+
+        if angle_depth == 0 && source[byte_index..].starts_with(keyword) {
+            let before = source[..byte_index].chars().next_back();
+            let after = source[byte_index + keyword.len()..].chars().next();
+            if before.is_none_or(char::is_whitespace) && after.is_none_or(char::is_whitespace) {
+                return &source[..byte_index];
+            }
+        }
+
+        byte_index += ch.len_utf8();
+    }
+
+    source
+}
+
 /// Extract function signature with return type, parameters, and async modifier
 pub(super) fn extract_function_signature(node: &Node, content: &str) -> Option<String> {
     let name_node = find_child_by_type(node, "identifier");
     let name = name_node.map(|n| get_node_text(&n))?;
 
-    // Get return type (can be type_identifier or void_type)
-    let return_type_node = find_child_by_type(node, "type_identifier")
+    let return_type_node = find_child_by_type(node, "type")
+        .or_else(|| find_child_by_type(node, "type_identifier"))
         .or_else(|| find_child_by_type(node, "void_type"));
 
     let mut return_type = return_type_node
         .map(|n| get_node_text(&n))
         .unwrap_or_default();
 
-    // Check for generic type arguments (e.g., Future<String>)
     if let Some(type_node) = return_type_node {
-        if let Some(type_args_node) = type_node.next_sibling() {
-            if type_args_node.kind() == "type_arguments" {
-                return_type.push_str(&get_node_text(&type_args_node));
+        if type_node.kind() != "type" {
+            if let Some(type_args_node) = type_node.next_sibling() {
+                if type_args_node.kind() == "type_arguments" {
+                    return_type.push_str(&get_node_text(&type_args_node));
+                }
             }
         }
     }

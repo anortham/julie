@@ -151,14 +151,8 @@ impl SqlExtractor {
         node: tree_sitter::Node,
         symbol_map: &HashMap<String, &Symbol>,
     ) -> Option<String> {
-        let file_symbols: Vec<Symbol> = symbol_map
-            .values()
-            .filter(|s| s.file_path == self.base.file_path)
-            .map(|&s| s.clone())
-            .collect();
-
         self.base
-            .find_containing_symbol(&node, &file_symbols)
+            .find_containing_symbol_from_map(&node, symbol_map)
             .map(|s| s.id.clone())
     }
 }

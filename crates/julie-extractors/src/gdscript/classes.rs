@@ -21,14 +21,14 @@ pub(super) fn extract_class_name_statement(
     if let Some(parent) = node.parent() {
         // Look for annotations before this class_name_statement
         for i in 0..parent.child_count() {
-            if let Some(child) = parent.child(i) {
+            if let Some(child) = parent.child(i as u32) {
                 if child.kind() == "class_name_statement"
                     && base.get_node_text(&child) == base.get_node_text(&node)
                 {
                     // Found our node, now look backwards for annotations
                     if i > 0 {
                         for j in (0..i).rev() {
-                            if let Some(prev_child) = parent.child(j) {
+                            if let Some(prev_child) = parent.child(j as u32) {
                                 if prev_child.kind() == "annotation" {
                                     let annotation_text = base.get_node_text(&prev_child);
                                     signature = format!("{}\n{}", annotation_text, signature);
@@ -89,7 +89,7 @@ pub(super) fn extract_class_definition(
     // Find the index of the current class node
     let mut class_index = None;
     for i in 0..parent_node.child_count() {
-        if let Some(child) = parent_node.child(i) {
+        if let Some(child) = parent_node.child(i as u32) {
             if child.id() == node.id() {
                 class_index = Some(i);
                 break;
@@ -100,7 +100,7 @@ pub(super) fn extract_class_definition(
     // Look for 'name' node after the 'class' node
     if let Some(idx) = class_index {
         for i in (idx + 1)..parent_node.child_count() {
-            if let Some(child) = parent_node.child(i) {
+            if let Some(child) = parent_node.child(i as u32) {
                 if child.kind() == "name" {
                     name_node = Some(child);
                     break;
@@ -143,7 +143,9 @@ pub(super) fn collect_inheritance_info(
 ) {
     // Look for adjacent class_name_statement and extends_statement pairs
     for i in 0..node.child_count() {
-        if let (Some(current_child), Some(next_child)) = (node.child(i), node.child(i + 1)) {
+        if let (Some(current_child), Some(next_child)) =
+            (node.child(i as u32), node.child((i + 1) as u32))
+        {
             // Check for class_name followed by extends
             if current_child.kind() == "class_name_statement"
                 && next_child.kind() == "extends_statement"
@@ -180,7 +182,7 @@ pub(super) fn collect_inheritance_info(
 
     // Recursively collect from children
     for i in 0..node.child_count() {
-        if let Some(child) = node.child(i) {
+        if let Some(child) = node.child(i as u32) {
             collect_inheritance_info(base, child, pending_inheritance);
         }
     }

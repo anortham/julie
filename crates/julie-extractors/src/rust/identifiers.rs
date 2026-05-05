@@ -161,14 +161,6 @@ fn find_containing_symbol_id(
     symbol_map: &HashMap<String, &Symbol>,
 ) -> Option<String> {
     let base = extractor.get_base_mut();
-    // CRITICAL FIX: Only search symbols from THIS FILE, not all files
-    // Bug was: searching all symbols in DB caused wrong file symbols to match
-    let file_symbols: Vec<Symbol> = symbol_map
-        .values()
-        .filter(|s| s.file_path == base.file_path)
-        .map(|&s| s.clone())
-        .collect();
-
-    base.find_containing_symbol(&node, &file_symbols)
+    base.find_containing_symbol_from_map(&node, symbol_map)
         .map(|s| s.id.clone())
 }

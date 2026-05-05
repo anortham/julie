@@ -28,6 +28,7 @@
 pub mod base;
 mod factory;
 pub mod language;
+mod language_spec;
 pub mod manager;
 pub mod pipeline;
 pub mod registry;
@@ -80,8 +81,8 @@ pub mod zig;
 // Re-export the public API - Core types
 pub use base::{
     AnnotationMarker, ContextConfig, ExtractionResults, Identifier, IdentifierKind,
-    PendingRelationship, Relationship, RelationshipKind, Symbol, SymbolKind, SymbolOptions,
-    TestRole, TypeInfo, Visibility, normalize_annotations,
+    ParseDiagnostic, ParseDiagnosticKind, PendingRelationship, Relationship, RelationshipKind,
+    Symbol, SymbolKind, SymbolOptions, TestRole, TypeInfo, Visibility, normalize_annotations,
 };
 
 // Re-export the public API - canonical extraction functions

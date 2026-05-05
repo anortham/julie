@@ -259,6 +259,28 @@ scope_label = "dashboard"
 notes = "dashboard route coverage"
 commands = ["cargo nextest run --lib tests::dashboard -- --skip search_quality"]
 
+[buckets.extractors]
+# Production-path extractor contract and registry capability coverage.
+expected_seconds = 30
+timeout_seconds = 90
+scope_label = "extractors"
+notes = "extractor golden and capability matrix"
+commands = [
+  "cargo nextest run -p julie-extractors golden",
+  "cargo nextest run -p julie-extractors capability_matrix",
+]
+
+[buckets.parser-upgrade]
+# Parser dependency changes must pass the golden corpus plus the parser-upgrade gate.
+expected_seconds = 60
+timeout_seconds = 180
+scope_label = "extractors"
+notes = "parser dependency upgrade gate"
+commands = [
+  "cargo nextest run -p julie-extractors -E 'test(golden) | test(capability_matrix) | test(parser_upgrade)'",
+  "cargo nextest run --lib real_world_parser_upgrade_contracts_assert_expected_outputs",
+]
+
 [buckets.projection]
 # Projection specialist gate while architecture work is staged.
 expected_seconds = 45

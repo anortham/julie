@@ -26,6 +26,31 @@ use super::validation::{
     check_bracket_balance, format_dry_run_diff, format_unified_diff, should_check_balance,
 };
 
+fn diagnostic_touches_range(
+    diagnostic: &crate::extractors::base::ParseDiagnostic,
+    start: usize,
+    end: usize,
+) -> bool {
+    let diagnostic_start = diagnostic.start_byte as usize;
+    let diagnostic_end = diagnostic.end_byte as usize;
+
+    if diagnostic_start == diagnostic_end {
+        return start <= diagnostic_start && diagnostic_start <= end;
+    }
+
+    diagnostic_start < end && diagnostic_end > start
+}
+
+fn first_parse_diagnostic_touching_range(
+    tree: &Tree,
+    start: usize,
+    end: usize,
+) -> Option<crate::extractors::base::ParseDiagnostic> {
+    crate::extractors::pipeline::parse_diagnostics_for_tree(tree)
+        .into_iter()
+        .find(|diagnostic| diagnostic_touches_range(diagnostic, start, end))
+}
+
 fn default_dry_run() -> bool {
     true
 }
@@ -334,6 +359,23 @@ fn live_symbol_context(
     };
 
     let tree = parse_live_tree(file_path, content)?;
+    if let Some(diagnostic) = first_parse_diagnostic_touching_range(
+        &tree,
+        live_symbol.start_byte as usize,
+        live_symbol.end_byte as usize,
+    ) {
+        return Err(rewrite_symbol_error(
+            "parse_error",
+            format!(
+                "Live parse has a parse error inside symbol '{}' in '{}' at {}:{}-{}. Refusing AST rewrite.",
+                live_symbol.name,
+                file_path,
+                diagnostic.start_line,
+                diagnostic.start_column,
+                diagnostic.end_line
+            ),
+        ));
+    }
     Ok(LiveSymbolContext { live_symbol, tree })
 }
 

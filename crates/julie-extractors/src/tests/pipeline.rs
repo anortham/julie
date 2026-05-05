@@ -1,4 +1,5 @@
 use crate::ExtractionResults;
+use crate::base::ParseDiagnosticKind;
 use crate::factory::extract_symbols_and_relationships;
 use crate::tests::helpers::init_parser;
 use std::path::{Path, PathBuf};
@@ -175,6 +176,56 @@ def caller() -> int:
             !legacy.types.is_empty(),
             !canonical.types.is_empty(),
             "legacy and canonical types presence should match for {language}"
+        );
+    }
+}
+
+#[test]
+fn test_extract_canonical_records_parse_diagnostics_without_dropping_recovered_symbols() {
+    let workspace_root = PathBuf::from("/test/workspace");
+    let content = r#"
+package main
+
+type Empty struct{}
+
+type EmbeddedStruct struct {
+    Empty
+    value int
+}
+
+type MissingBrace struct {
+    field int
+
+func VariadicFunction(format string, args ...interface{}) {
+    fmt.Printf(format, args...)
+}
+"#;
+
+    let results = crate::pipeline::extract_canonical("src/recovery.go", content, &workspace_root)
+        .expect("canonical extraction should recover partial Go syntax");
+
+    assert!(
+        !results.parse_diagnostics.is_empty(),
+        "malformed recovered parse should record parse diagnostics"
+    );
+    assert!(
+        results
+            .parse_diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.kind == ParseDiagnosticKind::Error),
+        "malformed recovered parse should include an error diagnostic: {:?}",
+        results.parse_diagnostics
+    );
+
+    let names: Vec<_> = results
+        .symbols
+        .iter()
+        .map(|symbol| symbol.name.as_str())
+        .collect();
+    for expected_name in ["Empty", "EmbeddedStruct", "VariadicFunction"] {
+        assert!(
+            names.contains(&expected_name),
+            "recovered parse should keep symbol {expected_name:?}; got {names:?}"
         );
     }
 }

@@ -8,8 +8,11 @@ use std::collections::HashMap;
 use tracing::debug;
 use tree_sitter::Node;
 
+use super::relationship_resolution::StructuredPendingRelationship;
 use super::span::{NormalizedSpan, normalize_file_path};
-use super::types::{ContextConfig, Identifier, Relationship, Symbol, TypeInfo};
+use super::types::{
+    ContextConfig, Identifier, PendingRelationship, Relationship, Symbol, TypeInfo,
+};
 
 /// Base implementation for language extractors
 ///
@@ -20,6 +23,8 @@ pub struct BaseExtractor {
     pub content: String,
     pub symbol_map: HashMap<String, Symbol>,
     pub relationships: Vec<Relationship>,
+    pub pending_relationships: Vec<PendingRelationship>,
+    pub structured_pending_relationships: Vec<StructuredPendingRelationship>,
     pub type_info: HashMap<String, TypeInfo>,
     pub identifiers: Vec<Identifier>, // NEW: Reference extraction for LSP-quality tools
     pub context_config: ContextConfig,
@@ -50,10 +55,34 @@ impl BaseExtractor {
             content,
             symbol_map: HashMap::new(),
             relationships: Vec::new(),
+            pending_relationships: Vec::new(),
+            structured_pending_relationships: Vec::new(),
             type_info: HashMap::new(),
             identifiers: Vec::new(), // NEW: Initialize empty identifier list
             context_config: ContextConfig::default(),
         }
+    }
+
+    pub fn add_pending_relationship(&mut self, pending: PendingRelationship) {
+        self.pending_relationships.push(pending);
+    }
+
+    pub fn add_structured_pending_relationship(&mut self, pending: StructuredPendingRelationship) {
+        self.pending_relationships.push(pending.pending.clone());
+        self.structured_pending_relationships.push(pending);
+    }
+
+    pub fn get_pending_relationships(&self) -> Vec<PendingRelationship> {
+        self.pending_relationships.clone()
+    }
+
+    pub fn get_structured_pending_relationships(&self) -> Vec<StructuredPendingRelationship> {
+        self.structured_pending_relationships.clone()
+    }
+
+    pub fn clear_pending_relationships(&mut self) {
+        self.pending_relationships.clear();
+        self.structured_pending_relationships.clear();
     }
 
     /// Get text from a tree-sitter node - exact port of getNodeText
@@ -74,51 +103,9 @@ impl BaseExtractor {
     pub fn find_doc_comment(&self, node: &Node) -> Option<String> {
         let mut comments = Vec::new();
 
-        // Helper function to check if text is a doc comment
         let is_doc_comment = |text: &str| {
-            let trimmed = text.trim_start();
-            let lang_lower = self.language.to_lowercase();
-            let is_go = lang_lower == "go";
-            let is_sql = lang_lower.contains("sql");
-            let is_lua = lang_lower.contains("lua");
-            let is_rust = lang_lower.contains("rust");
-            let is_csharp = lang_lower.contains("csharp");
-            let is_swift = lang_lower.contains("swift");
-            let is_kotlin = lang_lower.contains("kotlin");
-            let is_java = lang_lower.contains("java");
-            let is_c_family = lang_lower == "c" || lang_lower.contains("cpp");
-            let is_html_family = lang_lower.contains("html") || lang_lower.contains("vue");
-            let is_bash = lang_lower.contains("bash");
-            let is_ruby = lang_lower.contains("ruby");
-            let is_r = lang_lower == "r";
-            let is_razor = lang_lower.contains("razor");
-            let is_dart = lang_lower.contains("dart");
-            let is_gdscript = lang_lower.contains("gdscript");
-            let is_zig = lang_lower.contains("zig");
-            let is_css = lang_lower.contains("css");
-
-            trimmed.starts_with("/**")
-                || (trimmed.starts_with("/*") && (is_go || is_sql || is_lua || is_css))
-                || (trimmed.starts_with("<!--") && is_html_family)
-                || (trimmed.starts_with("///")
-                    && (is_rust
-                        || is_csharp
-                        || is_swift
-                        || is_kotlin
-                        || is_java
-                        || is_c_family
-                        || is_dart
-                        || is_razor
-                        || is_zig))
-                || (trimmed.starts_with("//") && is_go)
-                || trimmed.starts_with("---") // Lua LuaDoc
-                || (trimmed.starts_with("--") && is_lua) // Lua -- continuation lines in LuaDoc
-                || trimmed.starts_with("--[[") // Lua block comment
-                || (is_sql && trimmed.starts_with("--"))
-                || (is_r && trimmed.starts_with("#'"))
-                || ((is_ruby || is_bash) && trimmed.starts_with("#"))
-                || (is_razor && trimmed.starts_with("@*")) // Razor doc comments
-                || (is_gdscript && trimmed.starts_with("##")) // GDScript doc comments
+            crate::language::language_spec(&self.language)
+                .is_some_and(|spec| spec.is_doc_comment(text))
         };
 
         // First try to find comments as siblings of this node

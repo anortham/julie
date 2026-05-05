@@ -78,18 +78,23 @@ pub(super) fn extract_mixin(
     let name_node = find_child_by_type(node, "identifier")?;
     let name = get_node_text(&name_node);
 
-    // Check for "on" clause (constrained mixin)
-    let on_node = find_child_by_type(node, "on");
-    let type_node = find_child_by_type(node, "type_identifier");
+    let source = get_node_text(node);
+    let has_on_constraint = source.contains(" on ");
+    let type_node =
+        find_child_by_type(node, "type").or_else(|| find_child_by_type(node, "type_identifier"));
 
-    let signature = if let (Some(_on), Some(type_n)) = (on_node, type_node) {
+    let signature = if let (true, Some(type_n)) = (has_on_constraint, type_node) {
         let constraint_type = get_node_text(&type_n);
         format!("mixin {} on {}", name, constraint_type)
     } else {
         format!("mixin {}", name)
     };
 
-    let constraint_type_name = type_node.map(|n| get_node_text(&n));
+    let constraint_type_name = if has_on_constraint {
+        type_node.map(|n| get_node_text(&n))
+    } else {
+        None
+    };
 
     let mut symbol = base.create_symbol(
         node,
@@ -128,18 +133,23 @@ pub(super) fn extract_extension(
     let name_node = find_child_by_type(node, "identifier")?;
     let name = get_node_text(&name_node);
 
-    // Check for "on" clause (type being extended)
-    let on_node = find_child_by_type(node, "on");
-    let type_node = find_child_by_type(node, "type_identifier");
+    let source = get_node_text(node);
+    let has_on_clause = source.contains(" on ");
+    let type_node =
+        find_child_by_type(node, "type").or_else(|| find_child_by_type(node, "type_identifier"));
 
-    let signature = if let (Some(_on), Some(type_n)) = (on_node, type_node) {
+    let signature = if let (true, Some(type_n)) = (has_on_clause, type_node) {
         let extended_type = get_node_text(&type_n);
         format!("extension {} on {}", name, extended_type)
     } else {
         format!("extension {}", name)
     };
 
-    let extended_type_name = type_node.map(|n| get_node_text(&n));
+    let extended_type_name = if has_on_clause {
+        type_node.map(|n| get_node_text(&n))
+    } else {
+        None
+    };
 
     let mut symbol = base.create_symbol(
         node,

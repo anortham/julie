@@ -10,6 +10,25 @@ use std::collections::HashMap;
 use super::relationship_resolution::StructuredPendingRelationship;
 use super::span::NormalizedSpan;
 
+/// Tree-sitter parse recovery diagnostic kind.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ParseDiagnosticKind {
+    Error,
+    Missing,
+}
+
+/// Span for syntax recovery produced by tree-sitter.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ParseDiagnostic {
+    pub kind: ParseDiagnosticKind,
+    pub start_line: u32,
+    pub start_column: u32,
+    pub end_line: u32,
+    pub end_column: u32,
+    pub start_byte: u32,
+    pub end_byte: u32,
+}
+
 /// Role classification for test-related symbols.
 ///
 /// Distinguishes test cases (scorable for quality) from fixtures and containers
@@ -528,4 +547,5 @@ pub struct ExtractionResults {
     pub structured_pending_relationships: Vec<StructuredPendingRelationship>,
     pub types: HashMap<String, TypeInfo>,
     pub identifiers: Vec<Identifier>, // Include identifiers for LSP-quality tools
+    pub parse_diagnostics: Vec<ParseDiagnostic>,
 }

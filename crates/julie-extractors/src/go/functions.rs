@@ -1,10 +1,101 @@
 use crate::base::{Symbol, SymbolKind, SymbolOptions, Visibility};
 use crate::test_detection::is_test_symbol;
+use regex::Regex;
 use std::collections::HashMap;
+use std::sync::LazyLock;
 use tree_sitter::Node;
 
 /// Function and method extraction for Go
 impl super::GoExtractor {
+    pub(super) fn recover_function_symbols_from_source(&mut self, symbols: &mut Vec<Symbol>) {
+        static GO_FUNCTION_SIGNATURE_RE: LazyLock<Regex> = LazyLock::new(|| {
+            Regex::new(r"(?m)^(?P<indent>[ \t]*)func\s+(?P<name>[A-Za-z_]\w*)\s*(?P<params>\([^)\n]*\))(?:\s+(?P<return_type>[^{\n]+))?(?:\s*\{)?")
+                .expect("Go function recovery regex should compile")
+        });
+
+        let content = self.base.content.clone();
+        for captures in GO_FUNCTION_SIGNATURE_RE.captures_iter(&content) {
+            let Some(name_match) = captures.name("name") else {
+                continue;
+            };
+            let name = name_match.as_str().to_string();
+            let (start_line, start_column) = line_column_for_byte(&content, name_match.start());
+
+            let already_extracted = symbols.iter().any(|symbol| {
+                symbol.kind == SymbolKind::Function
+                    && symbol.name == name
+                    && symbol.start_line == start_line
+            });
+            if already_extracted {
+                continue;
+            }
+
+            let Some(full_match) = captures.get(0) else {
+                continue;
+            };
+            let (end_line, end_column) = line_column_for_byte(&content, full_match.end());
+            let signature = full_match
+                .as_str()
+                .trim()
+                .trim_end_matches('{')
+                .trim()
+                .to_string();
+            let span = crate::base::NormalizedSpan {
+                start_line,
+                start_column,
+                end_line,
+                end_column,
+                start_byte: name_match.start() as u32,
+                end_byte: full_match.end() as u32,
+            };
+            let id = self.base.generate_id_for_span(&name, &span);
+            let mut metadata = HashMap::new();
+            if is_test_symbol(
+                "go",
+                &name,
+                &self.base.file_path,
+                &SymbolKind::Function,
+                &[],
+                None,
+            ) {
+                metadata.insert("is_test".to_string(), serde_json::Value::Bool(true));
+            }
+            let symbol = Symbol {
+                id: id.clone(),
+                name: name.clone(),
+                kind: SymbolKind::Function,
+                language: self.base.language.clone(),
+                file_path: self.base.file_path.clone(),
+                start_line,
+                start_column,
+                end_line,
+                end_column,
+                start_byte: span.start_byte,
+                end_byte: span.end_byte,
+                signature: Some(signature),
+                doc_comment: None,
+                visibility: if self.is_public(&name) {
+                    Some(Visibility::Public)
+                } else {
+                    Some(Visibility::Private)
+                },
+                parent_id: None,
+                metadata: Some(metadata),
+                annotations: Vec::new(),
+                semantic_group: None,
+                confidence: Some(0.8),
+                code_context: self.base.extract_code_context(
+                    start_line.saturating_sub(1) as usize,
+                    end_line.saturating_sub(1) as usize,
+                ),
+                content_type: None,
+            };
+
+            self.base.symbol_map.insert(id, symbol.clone());
+            symbols.push(symbol);
+        }
+    }
+
     pub(super) fn extract_function(
         &mut self,
         node: Node,
@@ -299,4 +390,16 @@ impl super::GoExtractor {
 
         None
     }
+}
+
+fn line_column_for_byte(content: &str, byte: usize) -> (u32, u32) {
+    let prefix = content.get(..byte).unwrap_or(content);
+    let line = prefix.bytes().filter(|byte| *byte == b'\n').count() as u32 + 1;
+    let column = prefix
+        .rsplit_once('\n')
+        .map(|(_, line)| line)
+        .unwrap_or(prefix)
+        .chars()
+        .count() as u32;
+    (line, column)
 }

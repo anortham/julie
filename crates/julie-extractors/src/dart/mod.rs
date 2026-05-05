@@ -31,8 +31,6 @@ static TYPE_SIGNATURE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(\w+)
 /// Dart language extractor that handles Dart-specific constructs including Flutter
 pub struct DartExtractor {
     pub(crate) base: BaseExtractor,
-    pending_relationships: Vec<PendingRelationship>,
-    structured_pending_relationships: Vec<StructuredPendingRelationship>,
     same_file_calls: Vec<(String, String, u32)>,
     /// Byte offsets of `block` nodes already consumed as Dart 3 modifier class bodies.
     /// Prevents double-visiting when the program-level iteration hits the same block.
@@ -48,8 +46,6 @@ impl DartExtractor {
     ) -> Self {
         Self {
             base: BaseExtractor::new(language, file_path, content, workspace_root),
-            pending_relationships: Vec::new(),
-            structured_pending_relationships: Vec::new(),
             same_file_calls: Vec::new(),
             consumed_blocks: HashSet::new(),
         }
@@ -78,7 +74,7 @@ impl DartExtractor {
         let current_parent_id = parent_id.map(|id| id.to_string());
 
         match node.kind() {
-            "class_definition" => {
+            "class_definition" | "class_declaration" => {
                 symbol =
                     functions::extract_class(&mut self.base, &node, current_parent_id.as_deref());
             }
@@ -161,7 +157,7 @@ impl DartExtractor {
                 }
             }
             "mixin_declaration" => {
-                // Dart 3 `mixin class Foo {}` — try mixin class recovery first.
+                // Dart 3 `mixin class Foo {}`: try mixin class recovery first.
                 // Tree-sitter produces two different structures for this depending on
                 // context; recover_mixin_class_declaration handles both.
                 if let Some(class_sym) = recover_mixin_class_declaration(
@@ -238,9 +234,9 @@ impl DartExtractor {
             }
             "ERROR" | "expression_statement" => {
                 if node.parent().map_or(false, |p| p.kind() == "program") {
-                    // Dart 3 class modifier recovery: harper-tree-sitter-dart doesn't
-                    // support base/sealed/final/interface modifiers and produces ERROR
-                    // nodes for them. Recover class symbols from the ERROR content.
+                    // Dart 3 class modifier recovery: some parser releases produce
+                    // ERROR nodes for base/sealed/final/interface classes. Recover
+                    // class symbols from the ERROR content.
                     if let Some(class_sym) = recover_dart3_modifier_class(
                         &mut self.base,
                         &node,
@@ -273,12 +269,12 @@ impl DartExtractor {
                                 }
                             }
                         }
-                        // Skip normal child recursion for this ERROR node — we handled it
+                        // Skip normal child recursion for this ERROR node; we handled it.
                         return;
                     }
 
-                    // harper-tree-sitter-dart misparsees enhanced enums: the body after the first
-                    // enum_constant spills into ERROR and expression_statement siblings at
+                    // Some parser releases split enhanced enum bodies after the first
+                    // enum_constant into ERROR and expression_statement siblings at
                     // program level. Recover symbols generically by detecting enum context.
                     if let Some(enum_id) = find_enum_context_parent(&node, symbols) {
                         recover_enum_symbols_from_error(
@@ -338,7 +334,7 @@ impl DartExtractor {
 
     fn extract_pending_relationships(&mut self, tree: &Tree, symbols: &[Symbol]) {
         let symbol_map: HashMap<String, &Symbol> =
-            symbols.iter().map(|s| (s.name.clone(), s)).collect();
+            crate::base::ScopedSymbolIndex::unique_symbol_map(symbols);
         self.walk_for_pending_calls(tree.root_node(), &symbol_map);
     }
 
@@ -378,28 +374,27 @@ impl DartExtractor {
     }
 
     pub fn get_pending_relationships(&self) -> Vec<PendingRelationship> {
-        self.pending_relationships.clone()
+        self.base.get_pending_relationships()
     }
 
     pub fn add_pending_relationship(&mut self, pending: PendingRelationship) {
-        self.pending_relationships.push(pending);
+        self.base.add_pending_relationship(pending);
     }
 
     pub fn add_structured_pending_relationship(&mut self, pending: StructuredPendingRelationship) {
-        self.pending_relationships.push(pending.pending.clone());
-        self.structured_pending_relationships.push(pending);
+        self.base.add_structured_pending_relationship(pending);
     }
 
     pub fn get_structured_pending_relationships(&self) -> Vec<StructuredPendingRelationship> {
-        self.structured_pending_relationships.clone()
+        self.base.get_structured_pending_relationships()
     }
 }
 
 // === Dart 3 Class Modifier Recovery ===
 //
-// harper-tree-sitter-dart (v0.0.5) doesn't support Dart 3 class modifiers
-// (base, sealed, final, interface). These produce ERROR nodes with a
-// recognizable internal structure:
+// Some Dart parser releases produce ERROR nodes for Dart 3 class modifiers
+// (base, sealed, final, interface). These have a recognizable internal
+// structure:
 //
 //   ERROR[type_identifier("base"), identifier("class"), identifier("ClassName")]
 //   ERROR[final_builtin("final"), type_identifier("class"), ..., identifier("ClassName")]
@@ -549,9 +544,9 @@ fn recover_dart3_modifier_class(
 // When a Dart 3 modifier class has generic type parameters, e.g.:
 //   sealed class AsyncValue<T> { ... }
 //
-// harper-tree-sitter-dart (v0.0.5) cannot parse the `<T>` as a generic and
-// instead treats `AsyncValue<T>` as a relational expression (less-than
-// comparison). This produces a completely different program-level structure:
+// Some Dart parser releases cannot parse the `<T>` as a generic and instead
+// treat `AsyncValue<T>` as a relational expression. This produces a completely
+// different program-level structure:
 //
 //   type_identifier("sealed")          <- modifier sits outside the ERROR
 //   initialized_identifier_list        <- "class" parsed as variable name
@@ -779,9 +774,9 @@ fn recover_mixin_class_declaration<'a>(
 // === Generic Enhanced Enum Error Recovery ===
 
 /// Walk backward through previous siblings to find an enum_declaration.
-/// harper-tree-sitter-dart splits enhanced enum bodies across sibling nodes at
-/// the program level, so ERROR / expression_statement nodes that immediately
-/// follow an enum_declaration likely contain the rest of that enum's body.
+/// Some parser releases split enhanced enum bodies across sibling nodes at the
+/// program level, so ERROR / expression_statement nodes that immediately follow
+/// an enum_declaration likely contain the rest of that enum's body.
 fn find_enum_context_parent(node: &Node, symbols: &[Symbol]) -> Option<String> {
     let mut prev = node.prev_sibling();
     while let Some(sib) = prev {

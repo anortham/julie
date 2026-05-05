@@ -311,7 +311,7 @@ pub(super) fn extract_call_relationships(
 
         // Create a symbol map for fast lookups
         let symbol_map: HashMap<String, &Symbol> =
-            symbols.iter().map(|s| (s.name.clone(), s)).collect();
+            crate::base::ScopedSymbolIndex::unique_symbol_map(symbols);
 
         // Check if we can resolve the callee locally
         match symbol_map.get(&called_function_name) {
@@ -436,7 +436,7 @@ fn find_containing_function<'a>(
             if let Some(name_node) = parent.child_by_field_name("name") {
                 let function_name = base.get_node_text(&name_node);
                 let symbol_map: HashMap<String, &Symbol> =
-                    symbols.iter().map(|s| (s.name.clone(), s)).collect();
+                    crate::base::ScopedSymbolIndex::unique_symbol_map(symbols);
                 return symbol_map.get(&function_name).copied();
             }
         }

@@ -554,13 +554,22 @@ class UserRepository:
         assert!(connect_method.is_some());
         assert!(get_user_method.is_some());
 
-        // Check method call relationships
+        // Without type-flow evidence, receiver-qualified calls must stay pending
+        // instead of pointing at the only method with the same terminal name.
         let get_user_calls_connect = relationships.iter().find(|r| {
             r.kind == RelationshipKind::Calls
                 && r.from_symbol_id == get_user_method.unwrap().id
                 && r.to_symbol_id == connect_method.unwrap().id
         });
-        assert!(get_user_calls_connect.is_some());
+        assert!(get_user_calls_connect.is_none());
+
+        let pending = extractor.get_structured_pending_relationships();
+        let connect_pending = pending.iter().find(|pending| {
+            pending.pending.kind == RelationshipKind::Calls
+                && pending.pending.from_symbol_id == get_user_method.unwrap().id
+                && pending.target.display_name == "self.db.connect"
+        });
+        assert!(connect_pending.is_some());
     }
 
     #[test]

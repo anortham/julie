@@ -88,6 +88,59 @@ fn test_language_detection_by_extension() {
     }
 }
 
+#[test]
+fn test_watcher_filtering_keeps_text_only_and_extensionless_paths_in_sync() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let workspace_root = temp_dir.path();
+    let gitignore = filtering::build_gitignore_matcher(workspace_root).unwrap();
+    let supported_extensions = filtering::build_supported_extensions();
+
+    let extensionless = workspace_root.join("README");
+    fs::write(&extensionless, "plain text\n").unwrap();
+    assert!(
+        filtering::should_index_file(
+            &extensionless,
+            &supported_extensions,
+            &gitignore,
+            workspace_root
+        ),
+        "extensionless text files should be indexed for watcher/discovery parity"
+    );
+
+    let text_only = workspace_root.join("notes.txt");
+    fs::write(&text_only, "plain text\n").unwrap();
+    assert!(
+        filtering::should_index_file(
+            &text_only,
+            &supported_extensions,
+            &gitignore,
+            workspace_root
+        ),
+        "unsupported text extensions should be indexed for watcher/discovery parity"
+    );
+
+    fs::remove_file(&extensionless).unwrap();
+    fs::remove_file(&text_only).unwrap();
+    assert!(
+        filtering::should_process_deletion(
+            &extensionless,
+            &supported_extensions,
+            &gitignore,
+            workspace_root
+        ),
+        "extensionless paths that were indexed must be deletable by watcher"
+    );
+    assert!(
+        filtering::should_process_deletion(
+            &text_only,
+            &supported_extensions,
+            &gitignore,
+            workspace_root
+        ),
+        "text-only paths that were indexed must be deletable by watcher"
+    );
+}
+
 #[tokio::test]
 #[serial_test::serial]
 #[ignore] // Flaky in test environment - file watcher events unreliable in parallel test runs

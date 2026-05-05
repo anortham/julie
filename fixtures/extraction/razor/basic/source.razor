@@ -1,0 +1,12 @@
+@page "/worker"
+
+<h1>@Format(Title)</h1>
+
+@code {
+    private string Title = "Worker";
+
+    private string Format(string value)
+    {
+        return value.Trim();
+    }
+}

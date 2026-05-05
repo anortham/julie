@@ -24,6 +24,7 @@ impl ExtractionResults {
             structured_pending_relationships: Vec::new(),
             types: HashMap::new(),
             identifiers: Vec::new(),
+            parse_diagnostics: Vec::new(),
         }
     }
 
@@ -36,6 +37,7 @@ impl ExtractionResults {
             .append(&mut other.structured_pending_relationships);
         self.types.extend(other.types);
         self.identifiers.append(&mut other.identifiers);
+        self.parse_diagnostics.append(&mut other.parse_diagnostics);
     }
 
     pub fn apply_record_offset(&mut self, offset: RecordOffset) {
@@ -75,6 +77,13 @@ impl ExtractionResults {
 
         for pending_relationship in &mut self.structured_pending_relationships {
             pending_relationship.pending.line_number += offset.line_delta;
+        }
+
+        for diagnostic in &mut self.parse_diagnostics {
+            diagnostic.start_line += offset.line_delta;
+            diagnostic.end_line += offset.line_delta;
+            diagnostic.start_byte += offset.byte_delta;
+            diagnostic.end_byte += offset.byte_delta;
         }
     }
 
