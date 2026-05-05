@@ -25,8 +25,8 @@ use std::collections::HashMap;
 #[cfg(feature = "embeddings-sidecar")]
 use std::ffi::OsString;
 use std::fs;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, atomic::AtomicUsize};
 #[cfg(feature = "embeddings-sidecar")]
 use std::time::{Duration, Instant};
 use tempfile::TempDir;
@@ -52,6 +52,42 @@ impl EmbeddingProvider for NoopEmbeddingProvider {
             runtime: "pytorch-sidecar".to_string(),
             device: "cpu".to_string(),
             model_name: "noop".to_string(),
+            dimensions: 384,
+        }
+    }
+}
+
+#[derive(Default)]
+struct BatchMarkerEmbeddingProvider {
+    calls: AtomicUsize,
+}
+
+impl EmbeddingProvider for BatchMarkerEmbeddingProvider {
+    fn embed_query(&self, _text: &str) -> anyhow::Result<Vec<f32>> {
+        Ok(vec![0.0_f32; 384])
+    }
+
+    fn embed_batch(&self, texts: &[String]) -> anyhow::Result<Vec<Vec<f32>>> {
+        let marker = (self.calls.fetch_add(1, Ordering::SeqCst) + 1) as f32;
+        Ok(texts
+            .iter()
+            .map(|_| {
+                let mut vector = vec![0.0_f32; 384];
+                vector[0] = marker;
+                vector
+            })
+            .collect())
+    }
+
+    fn dimensions(&self) -> usize {
+        384
+    }
+
+    fn device_info(&self) -> DeviceInfo {
+        DeviceInfo {
+            runtime: "pytorch-sidecar".to_string(),
+            device: "cpu".to_string(),
+            model_name: "batch-marker".to_string(),
             dimensions: 384,
         }
     }
@@ -99,6 +135,28 @@ async fn embedding_count_for_primary(handler: &JulieServerHandler) -> i64 {
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .embedding_count()
         .unwrap()
+}
+
+async fn first_embedding_value_for_symbol(handler: &JulieServerHandler, name: &str) -> f32 {
+    let workspace = handler
+        .get_workspace()
+        .await
+        .unwrap()
+        .expect("workspace should be initialized");
+    let db = workspace.db.as_ref().expect("workspace db should exist");
+    let db = db.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let symbol = db
+        .find_symbols_by_name(name)
+        .unwrap()
+        .into_iter()
+        .next()
+        .unwrap_or_else(|| panic!("symbol {name} should exist"));
+    db.get_embedding(&symbol.id)
+        .unwrap()
+        .unwrap_or_else(|| panic!("symbol {name} should have an embedding"))
+        .first()
+        .copied()
+        .expect("embedding should not be empty")
 }
 
 async fn send_json_line(writer: &mut (impl AsyncWriteExt + Unpin), value: &serde_json::Value) {
@@ -600,7 +658,7 @@ async fn test_workspace_index_records_parse_diagnostics_for_recovered_file() -> 
     let index_tool = ManageWorkspaceTool {
         operation: "index".to_string(),
         path: Some(temp_dir.path().to_string_lossy().to_string()),
-        force: Some(true),
+        force: Some(false),
         name: None,
         workspace_id: None,
         detailed: None,
@@ -2674,6 +2732,105 @@ async fn test_incremental_indexing_forces_reindex_when_index_engine_version_is_s
     assert_eq!(
         stored_version, SEMANTIC_INDEX_ENGINE_VERSION,
         "stored semantic engine version should match the current code stamp"
+    );
+}
+
+#[tokio::test]
+#[serial_test::serial(embedding_env)]
+async fn test_startup_empty_database_repair_runs_embeddings_after_initial_index() {
+    let temp_dir = TempDir::new().unwrap();
+    let test_file = temp_dir.path().join("main.rs");
+    fs::write(&test_file, "fn alpha() {}\nfn beta() {}\n").unwrap();
+
+    let handler = JulieServerHandler::new_for_test().await.unwrap();
+    handler
+        .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
+        .await
+        .unwrap();
+
+    {
+        let mut ws_guard = handler.workspace.write().await;
+        let ws = ws_guard.as_mut().expect("workspace should be initialized");
+        ws.embedding_provider = Some(Arc::new(NoopEmbeddingProvider));
+    }
+
+    assert_eq!(
+        embedding_count_for_primary(&handler).await,
+        0,
+        "fresh workspace should start without embeddings"
+    );
+
+    let plan = run_primary_workspace_repair(&handler)
+        .await
+        .unwrap()
+        .expect("empty database should produce a startup repair plan");
+    assert!(
+        plan.reasons.contains(
+            &crate::tools::workspace::indexing::state::IndexingRepairReason::EmptyDatabase
+        ),
+        "startup repair should report an empty database"
+    );
+
+    wait_for_embedding_tasks_to_finish(&handler).await;
+    assert!(
+        embedding_count_for_primary(&handler).await > 0,
+        "startup empty-database repair should embed the newly indexed symbols"
+    );
+}
+
+#[tokio::test]
+#[serial_test::serial(embedding_env)]
+async fn test_startup_stale_file_repair_refreshes_embeddings_for_changed_file() {
+    let temp_dir = TempDir::new().unwrap();
+    let test_file = temp_dir.path().join("main.rs");
+    fs::write(&test_file, "fn alpha() -> i32 { 1 }\n").unwrap();
+
+    let handler = JulieServerHandler::new_for_test().await.unwrap();
+    handler
+        .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
+        .await
+        .unwrap();
+
+    {
+        let mut ws_guard = handler.workspace.write().await;
+        let ws = ws_guard.as_mut().expect("workspace should be initialized");
+        ws.embedding_provider = Some(Arc::new(BatchMarkerEmbeddingProvider::default()));
+    }
+
+    let index_tool = ManageWorkspaceTool {
+        operation: "index".to_string(),
+        path: Some(temp_dir.path().to_string_lossy().to_string()),
+        force: Some(false),
+        name: None,
+        workspace_id: None,
+        detailed: None,
+    };
+    index_tool.call_tool(&handler).await.unwrap();
+    wait_for_embedding_tasks_to_finish(&handler).await;
+    assert_eq!(
+        first_embedding_value_for_symbol(&handler, "alpha").await,
+        1.0,
+        "initial embedding should come from the first embedding batch"
+    );
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    fs::write(&test_file, "fn alpha() -> i64 { 1 }\n").unwrap();
+
+    let plan = run_primary_workspace_repair(&handler)
+        .await
+        .unwrap()
+        .expect("stale file should produce a startup repair plan");
+    assert!(
+        plan.reasons
+            .contains(&crate::tools::workspace::indexing::state::IndexingRepairReason::StaleFiles),
+        "startup repair should report stale files"
+    );
+
+    wait_for_embedding_tasks_to_finish(&handler).await;
+    assert_eq!(
+        first_embedding_value_for_symbol(&handler, "alpha").await,
+        2.0,
+        "startup stale-file repair should refresh the changed file in a second embedding batch"
     );
 }
 

@@ -120,9 +120,19 @@ pub(crate) async fn run_primary_workspace_repair(
                     detailed: None,
                 };
 
-                let skip_embeddings = !plan
-                    .reasons
-                    .contains(&IndexingRepairReason::SemanticVersionChanged);
+                let repair_rebuilds_embedding_inputs = plan.reasons.iter().any(|reason| {
+                    matches!(
+                        reason,
+                        IndexingRepairReason::EmptyDatabase
+                            | IndexingRepairReason::StaleFiles
+                            | IndexingRepairReason::NewFiles
+                            | IndexingRepairReason::DeletedFiles
+                            | IndexingRepairReason::ExtractorFailure
+                            | IndexingRepairReason::WatcherOverflow
+                            | IndexingRepairReason::SemanticVersionChanged
+                    )
+                });
+                let skip_embeddings = !repair_rebuilds_embedding_inputs;
                 index_tool
                     .call_tool_with_options(handler, skip_embeddings)
                     .await?;

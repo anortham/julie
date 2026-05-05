@@ -727,6 +727,16 @@ impl SymbolDatabase {
                 let mut total_rels_deleted = 0;
 
                 for file_path in files_to_clean {
+                    // Embeddings are part of the indexed representation for a file.
+                    // Drop them before replacing symbols so stable symbol IDs cannot
+                    // keep stale vectors after an incremental re-index.
+                    outer_tx.execute(
+                        "DELETE FROM symbol_vectors WHERE symbol_id IN (
+                            SELECT id FROM symbols WHERE file_path = ?1
+                        )",
+                        params![file_path],
+                    )?;
+
                     // Delete relationships first
                     debug!("Deleting relationships for file: {}", file_path);
                     let rels_deleted = outer_tx.execute(
