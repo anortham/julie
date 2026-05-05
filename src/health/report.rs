@@ -74,7 +74,7 @@ impl SystemHealthSnapshot {
                 self.data_plane.canonical_store.relationship_count
             ));
             report.push_str(&format!(
-                "• {} languages supported: {}\n",
+                "• Indexed workspace languages ({}): {}\n",
                 self.data_plane.canonical_store.languages.len(),
                 display_languages(&self.data_plane.canonical_store.languages)
             ));

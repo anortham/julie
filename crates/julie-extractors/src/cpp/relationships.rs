@@ -1,7 +1,10 @@
 //! Relationship extraction for C++
 //! Handles inheritance and function call relationships
 
-use crate::base::{Relationship, RelationshipKind, Symbol, UnresolvedTarget};
+use crate::base::{
+    LocalTargetResolution, Relationship, RelationshipKind, ScopedSymbolIndex, Symbol,
+    UnresolvedTarget,
+};
 use std::collections::HashMap;
 use tree_sitter::{Node, Tree};
 
@@ -14,10 +17,17 @@ pub(super) fn extract_relationships(
     symbols: &[Symbol],
 ) -> Vec<Relationship> {
     let mut relationships = Vec::new();
+    let scoped_index = ScopedSymbolIndex::new(symbols);
     let symbol_map = crate::base::ScopedSymbolIndex::unique_symbol_map(symbols);
 
     // Walk the tree looking for relationships
-    walk_tree_for_relationships(extractor, tree.root_node(), &symbol_map, &mut relationships);
+    walk_tree_for_relationships(
+        extractor,
+        tree.root_node(),
+        &symbol_map,
+        &scoped_index,
+        &mut relationships,
+    );
 
     relationships
 }
@@ -27,6 +37,7 @@ fn walk_tree_for_relationships(
     extractor: &mut super::CppExtractor,
     node: Node,
     symbol_map: &HashMap<String, &Symbol>,
+    scoped_index: &ScopedSymbolIndex<'_>,
     relationships: &mut Vec<Relationship>,
 ) {
     match node.kind() {
@@ -35,14 +46,14 @@ fn walk_tree_for_relationships(
             relationships.extend(inheritance);
         }
         "call_expression" | "function_call" => {
-            extract_call_relationships(extractor, node, symbol_map, relationships);
+            extract_call_relationships(extractor, node, symbol_map, scoped_index, relationships);
         }
         _ => {}
     }
 
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        walk_tree_for_relationships(extractor, child, symbol_map, relationships);
+        walk_tree_for_relationships(extractor, child, symbol_map, scoped_index, relationships);
     }
 }
 
@@ -121,6 +132,7 @@ fn extract_call_relationships(
     extractor: &mut super::CppExtractor,
     call_node: Node,
     symbol_map: &HashMap<String, &Symbol>,
+    scoped_index: &ScopedSymbolIndex<'_>,
     relationships: &mut Vec<Relationship>,
 ) {
     let base = extractor.get_base_mut();
@@ -128,17 +140,35 @@ fn extract_call_relationships(
     // Get the function name being called
     // For C++, call_expression has a "function" field which is the called entity
     if let Some(func_node) = call_node.child_by_field_name("function") {
-        // Extract the function/method name from the function node
-        let callee_name = match func_node.kind() {
+        // Extract the unresolved call target from the function node.
+        let target = match func_node.kind() {
             // Direct function call: helper() or std::vector::push_back()
-            "identifier" => base.get_node_text(&func_node),
+            "identifier" => UnresolvedTarget::simple(base.get_node_text(&func_node)),
             // Method call: obj.method() or ptr->method()
             "field_expression" | "pointer_expression" => {
                 // Get the rightmost identifier (the method name)
                 // For field_expression: obj.method
                 // For pointer_expression: ptr->method
                 if let Some(field_node) = func_node.child_by_field_name("field") {
-                    base.get_node_text(&field_node)
+                    let terminal_name = base.get_node_text(&field_node);
+                    let expression_text = base.get_node_text(&func_node);
+                    let receiver = expression_text
+                        .rsplit_once("->")
+                        .or_else(|| expression_text.rsplit_once('.'))
+                        .map(|(left, _)| left.trim().to_string())
+                        .filter(|left| !left.is_empty());
+
+                    if let Some(receiver) = receiver {
+                        UnresolvedTarget {
+                            display_name: expression_text,
+                            terminal_name,
+                            receiver: Some(receiver),
+                            namespace_path: Vec::new(),
+                            import_context: None,
+                        }
+                    } else {
+                        UnresolvedTarget::simple(terminal_name)
+                    }
                 } else {
                     return; // Can't extract field name
                 }
@@ -154,7 +184,7 @@ fn extract_call_relationships(
                         break;
                     }
                 }
-                name
+                UnresolvedTarget::simple(name)
             }
             // For other cases, try to extract any identifier in the function node
             _ => {
@@ -170,16 +200,17 @@ fn extract_call_relationships(
                 if name.is_empty() {
                     return; // Can't extract name
                 }
-                name
+                UnresolvedTarget::simple(name)
             }
         };
 
-        if !callee_name.is_empty() {
+        if !target.terminal_name.is_empty() {
             handle_call_target(
                 extractor,
                 call_node,
-                &callee_name,
+                target,
                 symbol_map,
+                scoped_index,
                 relationships,
             );
         }
@@ -190,8 +221,9 @@ fn extract_call_relationships(
 fn handle_call_target(
     extractor: &mut super::CppExtractor,
     call_node: Node,
-    callee_name: &str,
+    target: UnresolvedTarget,
     symbol_map: &HashMap<String, &Symbol>,
+    scoped_index: &ScopedSymbolIndex<'_>,
     relationships: &mut Vec<Relationship>,
 ) {
     // Find the containing function for this call
@@ -210,36 +242,45 @@ fn handle_call_target(
     let file_path = extractor.get_base_mut().file_path.clone();
 
     // Check if we can resolve the callee locally
-    if let Some(called_symbol) = symbol_map.get(callee_name) {
-        // Target is a local function - create resolved Relationship
-        relationships.push(Relationship {
-            id: format!(
-                "{}_{}_{:?}_{}",
-                caller_id,
-                called_symbol.id,
+    match scoped_index.resolve_call_target(
+        &target.terminal_name,
+        Some(caller_symbol),
+        target.receiver.as_deref(),
+    ) {
+        LocalTargetResolution::Resolved(called_symbol) => {
+            relationships.push(Relationship {
+                id: format!(
+                    "{}_{}_{:?}_{}",
+                    caller_id,
+                    called_symbol.id,
+                    RelationshipKind::Calls,
+                    call_node.start_position().row
+                ),
+                from_symbol_id: caller_id,
+                to_symbol_id: called_symbol.id.clone(),
+                kind: RelationshipKind::Calls,
+                file_path,
+                line_number: call_node.start_position().row as u32 + 1,
+                confidence: 0.9,
+                metadata: None,
+            });
+        }
+        LocalTargetResolution::Import(_)
+        | LocalTargetResolution::Ambiguous
+        | LocalTargetResolution::Missing
+        | LocalTargetResolution::ReceiverQualified => {
+            // Target not found/ambiguous in local symbols - keep unresolved for
+            // cross-file resolution.
+            let pending = extractor.get_base_mut().create_pending_relationship(
+                caller_id.clone(),
+                target,
                 RelationshipKind::Calls,
-                call_node.start_position().row
-            ),
-            from_symbol_id: caller_id,
-            to_symbol_id: called_symbol.id.clone(),
-            kind: RelationshipKind::Calls,
-            file_path,
-            line_number: call_node.start_position().row as u32 + 1,
-            confidence: 0.9,
-            metadata: None,
-        });
-    } else {
-        // Target not found in local symbols - likely a function from included header
-        // Create PendingRelationship for cross-file resolution
-        let pending = extractor.get_base_mut().create_pending_relationship(
-            caller_id.clone(),
-            UnresolvedTarget::simple(callee_name.to_string()),
-            RelationshipKind::Calls,
-            &call_node,
-            Some(caller_id),
-            Some(0.7),
-        );
-        extractor.add_structured_pending_relationship(pending);
+                &call_node,
+                Some(caller_id),
+                Some(0.7),
+            );
+            extractor.add_structured_pending_relationship(pending);
+        }
     }
 }
 

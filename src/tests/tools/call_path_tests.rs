@@ -470,6 +470,110 @@ async fn test_call_path_resolves_rust_crate_scoped_call_to_namespaced_target() -
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_call_path_resolves_reexported_crate_call_to_definition_target() -> Result<()> {
+    let (_temp_dir, handler) = setup_indexed_workspace_files(&[
+        (
+            "src/lib.rs",
+            "pub mod extractors;\npub mod indexing;\npub mod pipeline;\n",
+        ),
+        (
+            "src/extractors.rs",
+            "pub use crate::pipeline::extract_canonical;\n",
+        ),
+        (
+            "src/indexing.rs",
+            "pub fn extract_symbols_static() {\n    crate::extractors::extract_canonical();\n}\n",
+        ),
+        ("src/pipeline.rs", "pub fn extract_canonical() {}\n"),
+    ])
+    .await?;
+
+    let tool = CallPathTool {
+        from: "extract_symbols_static".to_string(),
+        to: "extract_canonical".to_string(),
+        max_hops: 2,
+        workspace: Some("primary".to_string()),
+        from_file_path: Some("src/indexing.rs".to_string()),
+        to_file_path: Some("src/pipeline.rs".to_string()),
+    };
+
+    let result = tool.call_tool(&handler).await?;
+    let response = parse_response(&extract_text(&result));
+
+    assert!(
+        response.found,
+        "re-exported crate call should resolve to the definition target: {response:?}"
+    );
+    assert_eq!(response.hops, 1);
+    assert_eq!(
+        response.path,
+        vec![CallPathHop {
+            from: "extract_symbols_static".to_string(),
+            to: "extract_canonical".to_string(),
+            edge: "call".to_string(),
+            file: "src/indexing.rs:2".to_string(),
+            target_file: "src/pipeline.rs".to_string(),
+            target_start_line: 1,
+        }]
+    );
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_call_path_resolves_workspace_crate_glob_reexport_to_definition_target() -> Result<()>
+{
+    let (_temp_dir, handler) = setup_indexed_workspace_files(&[
+        ("src/lib.rs", "pub mod extractors;\npub mod indexing;\n"),
+        ("src/extractors/mod.rs", "pub use julie_extractors::*;\n"),
+        (
+            "src/indexing.rs",
+            "pub fn extract_symbols_static() {\n    crate::extractors::extract_canonical();\n}\n",
+        ),
+        (
+            "crates/julie-extractors/src/lib.rs",
+            "pub use pipeline::extract_canonical;\npub mod pipeline;\n",
+        ),
+        (
+            "crates/julie-extractors/src/pipeline.rs",
+            "pub fn extract_canonical() {}\n",
+        ),
+    ])
+    .await?;
+
+    let tool = CallPathTool {
+        from: "extract_symbols_static".to_string(),
+        to: "extract_canonical".to_string(),
+        max_hops: 2,
+        workspace: Some("primary".to_string()),
+        from_file_path: Some("src/indexing.rs".to_string()),
+        to_file_path: Some("crates/julie-extractors/src/pipeline.rs".to_string()),
+    };
+
+    let result = tool.call_tool(&handler).await?;
+    let response = parse_response(&extract_text(&result));
+
+    assert!(
+        response.found,
+        "workspace crate glob re-export should resolve to the definition target: {response:?}"
+    );
+    assert_eq!(response.hops, 1);
+    assert_eq!(
+        response.path,
+        vec![CallPathHop {
+            from: "extract_symbols_static".to_string(),
+            to: "extract_canonical".to_string(),
+            edge: "call".to_string(),
+            file: "src/indexing.rs:2".to_string(),
+            target_file: "crates/julie-extractors/src/pipeline.rs".to_string(),
+            target_start_line: 1,
+        }]
+    );
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_call_path_hops_include_target_definition_identity() -> Result<()> {
     let source = "pub fn start() {\n    leaf();\n}\n\npub fn leaf() {}\n";
     let (_temp_dir, handler) = setup_indexed_workspace(source).await?;

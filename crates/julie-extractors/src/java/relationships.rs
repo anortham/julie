@@ -1,5 +1,8 @@
 /// Inheritance, implementation, and call relationship extraction
-use crate::base::{Relationship, RelationshipKind, Symbol, SymbolKind, UnresolvedTarget};
+use crate::base::{
+    LocalTargetResolution, Relationship, RelationshipKind, ScopedSymbolIndex, Symbol, SymbolKind,
+    UnresolvedTarget,
+};
 use crate::java::JavaExtractor;
 use serde_json;
 use std::collections::HashMap;
@@ -143,23 +146,30 @@ pub(super) fn extract_call_relationships(
     symbols: &[Symbol],
     relationships: &mut Vec<Relationship>,
 ) {
-    // Build a map of symbols by name for quick lookup
-    let symbol_map: HashMap<String, &Symbol> =
-        crate::base::ScopedSymbolIndex::unique_symbol_map(symbols);
+    let symbol_index = ScopedSymbolIndex::new(symbols);
+    let symbol_map = ScopedSymbolIndex::unique_symbol_map(symbols);
 
     // Find method invocation nodes in this subtree
-    walk_tree_for_calls(extractor, node, &symbol_map, symbols, relationships);
+    walk_tree_for_calls(
+        extractor,
+        node,
+        &symbol_index,
+        &symbol_map,
+        symbols,
+        relationships,
+    );
 }
 
 fn walk_tree_for_calls(
     extractor: &mut JavaExtractor,
     node: Node,
+    symbol_index: &ScopedSymbolIndex<'_>,
     symbol_map: &HashMap<String, &Symbol>,
     all_symbols: &[Symbol],
     relationships: &mut Vec<Relationship>,
 ) {
     if node.kind() == "method_invocation" {
-        extract_method_call_relationship(extractor, node, symbol_map, all_symbols, relationships);
+        extract_method_call_relationship(extractor, node, symbol_index, all_symbols, relationships);
     }
 
     if node.kind() == "object_creation_expression" {
@@ -175,14 +185,21 @@ fn walk_tree_for_calls(
     // Recursively process children
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        walk_tree_for_calls(extractor, child, symbol_map, all_symbols, relationships);
+        walk_tree_for_calls(
+            extractor,
+            child,
+            symbol_index,
+            symbol_map,
+            all_symbols,
+            relationships,
+        );
     }
 }
 
 fn extract_method_call_relationship(
     extractor: &mut JavaExtractor,
     node: Node,
-    symbol_map: &HashMap<String, &Symbol>,
+    symbol_index: &ScopedSymbolIndex<'_>,
     all_symbols: &[Symbol],
     relationships: &mut Vec<Relationship>,
 ) {
@@ -205,11 +222,15 @@ fn extract_method_call_relationship(
         return;
     };
 
-    // Find the calling function context
-    let calling_function = find_containing_function(extractor, node, all_symbols);
-    let caller_symbol = calling_function
-        .as_ref()
-        .and_then(|name| symbol_map.get(name));
+    let caller_symbol = extractor
+        .base()
+        .find_containing_symbol(&node, all_symbols)
+        .filter(|symbol| {
+            matches!(
+                symbol.kind,
+                SymbolKind::Function | SymbolKind::Method | SymbolKind::Constructor
+            )
+        });
 
     // No caller context means we can't create a meaningful relationship
     let Some(caller) = caller_symbol else {
@@ -218,24 +239,15 @@ fn extract_method_call_relationship(
 
     let line_number = node.start_position().row as u32 + 1;
     let file_path = extractor.base().file_path.clone();
+    let target = unresolved_call_target(extractor, node, &method_name);
 
     // Check if we can resolve the callee locally
-    match symbol_map.get(method_name.as_str()) {
-        Some(called_symbol) if called_symbol.kind == SymbolKind::Import => {
-            // Target is an Import symbol - need cross-file resolution
-            // Don't create relationship pointing to Import (useless for trace_call_path)
-            // Instead, create a PendingRelationship with the method name
-            let pending = extractor.base().create_pending_relationship(
-                caller.id.clone(),
-                unresolved_call_target(extractor, node, &method_name),
-                RelationshipKind::Calls,
-                &node,
-                Some(caller.id.clone()),
-                Some(0.8),
-            );
-            extractor.add_structured_pending_relationship(pending);
-        }
-        Some(called_symbol) => {
+    match symbol_index.resolve_call_target(
+        &target.terminal_name,
+        Some(caller),
+        target.receiver.as_deref(),
+    ) {
+        LocalTargetResolution::Resolved(called_symbol) => {
             // Target is a local method - create resolved Relationship
             relationships.push(Relationship {
                 id: format!(
@@ -254,12 +266,25 @@ fn extract_method_call_relationship(
                 metadata: None,
             });
         }
-        None => {
+        LocalTargetResolution::Import(_) => {
+            let pending = extractor.base().create_pending_relationship(
+                caller.id.clone(),
+                target,
+                RelationshipKind::Calls,
+                &node,
+                Some(caller.id.clone()),
+                Some(0.8),
+            );
+            extractor.add_structured_pending_relationship(pending);
+        }
+        LocalTargetResolution::Ambiguous
+        | LocalTargetResolution::ReceiverQualified
+        | LocalTargetResolution::Missing => {
             // Target not found in local symbols - likely a method on imported type
             // Create PendingRelationship for cross-file resolution
             let pending = extractor.base().create_pending_relationship(
                 caller.id.clone(),
-                unresolved_call_target(extractor, node, &method_name),
+                target,
                 RelationshipKind::Calls,
                 &node,
                 Some(caller.id.clone()),
@@ -303,11 +328,15 @@ fn extract_constructor_call_relationship(
         return;
     };
 
-    // Find the calling function context
-    let calling_function = find_containing_function(extractor, node, all_symbols);
-    let caller_symbol = calling_function
-        .as_ref()
-        .and_then(|name| symbol_map.get(name));
+    let caller_symbol = extractor
+        .base()
+        .find_containing_symbol(&node, all_symbols)
+        .filter(|symbol| {
+            matches!(
+                symbol.kind,
+                SymbolKind::Function | SymbolKind::Method | SymbolKind::Constructor
+            )
+        });
 
     let Some(caller) = caller_symbol else {
         return;
@@ -397,47 +426,4 @@ fn unresolved_call_target(
     }
 
     UnresolvedTarget::simple(fallback_name.to_string())
-}
-
-/// Find the method that contains this node
-fn find_containing_function(
-    extractor: &JavaExtractor,
-    node: Node,
-    symbols: &[Symbol],
-) -> Option<String> {
-    let base = extractor.base();
-    let file_path = &base.file_path;
-
-    // Walk up the tree to find a method_declaration node
-    let mut current = Some(node);
-    while let Some(n) = current {
-        if n.kind() == "method_declaration" {
-            // Extract method name from the declaration
-            let method_name = {
-                let mut found_name = None;
-                let mut cursor = n.walk();
-                for child in n.children(&mut cursor) {
-                    if child.kind() == "identifier" {
-                        found_name = Some(base.get_node_text(&child));
-                        break;
-                    }
-                }
-                found_name
-            };
-
-            if let Some(name) = method_name {
-                // Verify this symbol exists in our symbol list
-                if symbols
-                    .iter()
-                    .any(|s| s.name == name && &s.file_path == file_path)
-                {
-                    return Some(name);
-                }
-            }
-            break;
-        }
-        current = n.parent();
-    }
-
-    None
 }

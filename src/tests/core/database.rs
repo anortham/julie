@@ -977,6 +977,29 @@ fn test_migration_version_table_exists() {
 }
 
 #[test]
+fn test_migration_024_index_engine_state_round_trip() {
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("test.db");
+    let db = SymbolDatabase::new(&db_path).unwrap();
+
+    db.set_index_engine_version("workspace-a", "semantic_index_engine", "version-a")
+        .unwrap();
+
+    let stored = db
+        .get_index_engine_version("workspace-a", "semantic_index_engine")
+        .unwrap();
+    assert_eq!(stored.as_deref(), Some("version-a"));
+    assert!(
+        db.index_engine_version_matches("workspace-a", "semantic_index_engine", "version-a")
+            .unwrap()
+    );
+    assert!(
+        !db.index_engine_version_matches("workspace-a", "semantic_index_engine", "version-b")
+            .unwrap()
+    );
+}
+
+#[test]
 fn test_migration_adds_content_column() {
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("test.db");

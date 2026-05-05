@@ -166,6 +166,15 @@
       "metadata": {
         "interface": "Job"
       }
+    },
+    {
+      "from_key": "fixtures/extraction/java/basic/source.java:run:14:4",
+      "to_key": "fixtures/extraction/java/basic/source.java:helper:18:4",
+      "kind": "calls",
+      "file_path": "fixtures/extraction/java/basic/source.java",
+      "line_number": 15,
+      "confidence": "0.900",
+      "metadata": null
     }
   ],
   "pending_relationships": [],

@@ -347,23 +347,26 @@ impl FastRefsTool {
 
         let symbol = effective_symbol.clone();
         let db_arc_for_variants = db_arc.clone();
+        let has_exact_definitions = !definitions.is_empty();
 
         let variant_matches = tokio::task::spawn_blocking(move || {
             let db_lock = super::lock_db(&db_arc_for_variants, "fast_refs variant lookup");
             let mut matches = Vec::new();
 
-            for variant in variants {
-                if variant != symbol {
-                    // Avoid duplicate searches
-                    if let Ok(variant_symbols) = db_lock.get_symbols_by_name(&variant) {
-                        for s in variant_symbols {
-                            // Exact match on variant name
-                            if s.name == variant {
-                                debug!(
-                                    "✨ Found cross-language match: {} (variant: {})",
-                                    s.name, variant
-                                );
-                                matches.push(s);
+            if !has_exact_definitions {
+                for variant in variants {
+                    if variant != symbol {
+                        // Avoid duplicate searches
+                        if let Ok(variant_symbols) = db_lock.get_symbols_by_name(&variant) {
+                            for s in variant_symbols {
+                                // Exact match on variant name
+                                if s.name == variant {
+                                    debug!(
+                                        "✨ Found cross-language match: {} (variant: {})",
+                                        s.name, variant
+                                    );
+                                    matches.push(s);
+                                }
                             }
                         }
                     }

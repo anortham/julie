@@ -45,6 +45,7 @@ pub(crate) enum IndexingRepairReason {
     ProjectionFailure,
     WatcherOverflow,
     TantivyDirty,
+    SemanticVersionChanged,
 }
 
 impl IndexingRepairReason {
@@ -58,6 +59,7 @@ impl IndexingRepairReason {
             Self::ProjectionFailure => "projection_failure",
             Self::WatcherOverflow => "watcher_overflow",
             Self::TantivyDirty => "tantivy_dirty",
+            Self::SemanticVersionChanged => "semantic_version_changed",
         }
     }
 
@@ -71,6 +73,7 @@ impl IndexingRepairReason {
             "projection_failure" => Some(Self::ProjectionFailure),
             "watcher_overflow" => Some(Self::WatcherOverflow),
             "tantivy_dirty" => Some(Self::TantivyDirty),
+            "semantic_version_changed" => Some(Self::SemanticVersionChanged),
             _ => None,
         }
     }

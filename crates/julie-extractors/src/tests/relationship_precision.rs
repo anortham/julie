@@ -37,6 +37,15 @@ fn symbol(
     }
 }
 
+fn symbol_with_is_definition(id: &str, name: &str, is_definition: bool, start_line: u32) -> Symbol {
+    let mut symbol = symbol(id, name, SymbolKind::Function, None, start_line);
+    symbol.metadata = Some(HashMap::from([(
+        "isDefinition".to_string(),
+        serde_json::Value::String(is_definition.to_string()),
+    )]));
+    symbol
+}
+
 #[test]
 fn test_scoped_symbol_index_resolves_self_receiver_to_same_parent_method() {
     let class_a = symbol("class-a", "A", SymbolKind::Class, None, 1);
@@ -59,6 +68,18 @@ fn test_scoped_symbol_index_resolves_self_receiver_to_same_parent_method() {
         resolution.as_symbol().map(|symbol| symbol.id.as_str()),
         Some(a_render.id.as_str())
     );
+}
+
+#[test]
+fn test_scoped_symbol_index_this_receiver_without_parent_scope_stays_unresolved() {
+    let caller = symbol("caller", "caller", SymbolKind::Function, None, 3);
+    let local_render = symbol("render", "render", SymbolKind::Function, None, 4);
+    let symbols = vec![caller.clone(), local_render];
+
+    let index = ScopedSymbolIndex::new(&symbols);
+    let resolution = index.resolve_call_target("render", Some(&caller), Some("this"));
+
+    assert!(matches!(resolution, LocalTargetResolution::Missing));
 }
 
 #[test]
@@ -86,6 +107,36 @@ fn test_scoped_symbol_index_marks_duplicate_unqualified_calls_ambiguous() {
 
     let index = ScopedSymbolIndex::new(&symbols);
     let resolution = index.resolve_call_target("render", Some(&caller), None);
+
+    assert!(matches!(resolution, LocalTargetResolution::Ambiguous));
+}
+
+#[test]
+fn test_scoped_symbol_index_prefers_unique_definition_over_declaration() {
+    let declaration = symbol_with_is_definition("helper-decl", "helper", false, 5);
+    let definition = symbol_with_is_definition("helper-def", "helper", true, 11);
+    let caller = symbol("caller", "worker_run", SymbolKind::Function, None, 7);
+    let symbols = vec![declaration, definition.clone(), caller.clone()];
+
+    let index = ScopedSymbolIndex::new(&symbols);
+    let resolution = index.resolve_call_target("helper", Some(&caller), None);
+
+    assert_eq!(
+        resolution.as_symbol().map(|symbol| symbol.id.as_str()),
+        Some(definition.id.as_str())
+    );
+}
+
+#[test]
+fn test_scoped_symbol_index_marks_same_scope_overloads_ambiguous_for_self_receiver() {
+    let class_a = symbol("class-a", "A", SymbolKind::Class, None, 1);
+    let caller = symbol("caller", "render", SymbolKind::Method, Some("class-a"), 3);
+    let overload_one = symbol("render-1", "render", SymbolKind::Method, Some("class-a"), 4);
+    let overload_two = symbol("render-2", "render", SymbolKind::Method, Some("class-a"), 5);
+    let symbols = vec![class_a, caller.clone(), overload_one, overload_two];
+
+    let index = ScopedSymbolIndex::new(&symbols);
+    let resolution = index.resolve_call_target("render", Some(&caller), Some("self"));
 
     assert!(matches!(resolution, LocalTargetResolution::Ambiguous));
 }

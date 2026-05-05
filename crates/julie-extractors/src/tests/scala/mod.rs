@@ -624,6 +624,110 @@ object Main {
 }
 
 #[test]
+fn test_scala_receiver_qualified_call_does_not_resolve_to_unqualified_local_method() {
+    let code = r#"
+object Worker {
+  def compute(): Int = 1
+
+  def run(): Int = {
+    helper.compute()
+  }
+}
+"#;
+    let mut parser = init_parser();
+    let tree = parser.parse(code, None).unwrap();
+    let workspace_root = PathBuf::from("/tmp/test");
+    let mut extractor = ScalaExtractor::new(
+        "scala".to_string(),
+        "test.scala".to_string(),
+        code.to_string(),
+        &workspace_root,
+    );
+    let symbols = extractor.extract_symbols(&tree);
+    let relationships = extractor.extract_relationships(&tree, &symbols);
+    let run = symbols
+        .iter()
+        .find(|s| s.name == "run")
+        .expect("Should extract run");
+    let compute = symbols
+        .iter()
+        .find(|s| s.name == "compute")
+        .expect("Should extract compute");
+
+    let wrong_resolved_edge = relationships.iter().any(|relationship| {
+        relationship.kind == crate::base::RelationshipKind::Calls
+            && relationship.from_symbol_id == run.id
+            && relationship.to_symbol_id == compute.id
+    });
+    assert!(
+        !wrong_resolved_edge,
+        "receiver-qualified call helper.compute() must not resolve to local compute() by name only"
+    );
+
+    let pending = extractor
+        .get_structured_pending_relationships()
+        .into_iter()
+        .find(|pending| pending.target.display_name == "helper.compute")
+        .expect("Should keep helper.compute() as a structured pending relationship");
+
+    assert_eq!(pending.target.terminal_name, "compute");
+    assert_eq!(pending.target.receiver.as_deref(), Some("helper"));
+}
+
+#[test]
+fn test_scala_unqualified_call_with_argument_resolves_to_local_method_once() {
+    let code = r#"
+object Worker {
+  val id: Int = 1
+
+  def run(): Int = helper(id)
+
+  private def helper(value: Int): Int = value + 1
+}
+"#;
+    let mut parser = init_parser();
+    let tree = parser.parse(code, None).unwrap();
+    let workspace_root = PathBuf::from("/tmp/test");
+    let mut extractor = ScalaExtractor::new(
+        "scala".to_string(),
+        "test.scala".to_string(),
+        code.to_string(),
+        &workspace_root,
+    );
+    let symbols = extractor.extract_symbols(&tree);
+    let relationships = extractor.extract_relationships(&tree, &symbols);
+    let run = symbols
+        .iter()
+        .find(|s| s.name == "run")
+        .expect("Should extract run");
+    let helper = symbols
+        .iter()
+        .find(|s| s.name == "helper")
+        .expect("Should extract helper");
+
+    let helper_call_count = relationships
+        .iter()
+        .filter(|relationship| {
+            relationship.kind == crate::base::RelationshipKind::Calls
+                && relationship.from_symbol_id == run.id
+                && relationship.to_symbol_id == helper.id
+        })
+        .count();
+    assert_eq!(
+        helper_call_count, 1,
+        "unqualified helper(id) should produce one resolved call"
+    );
+
+    assert!(
+        extractor
+            .get_structured_pending_relationships()
+            .into_iter()
+            .all(|pending| pending.target.display_name != "helper.id"),
+        "helper(id) argument must not be treated as receiver-qualified helper.id"
+    );
+}
+
+#[test]
 fn test_scala_structured_pending_inheritance_preserves_target() {
     let code = r#"
 class Worker extends ExternalService {

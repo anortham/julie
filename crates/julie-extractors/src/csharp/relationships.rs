@@ -1,6 +1,9 @@
 // C# Relationship Extraction
 
-use crate::base::{Relationship, RelationshipKind, Symbol, SymbolKind, UnresolvedTarget};
+use crate::base::{
+    LocalTargetResolution, Relationship, RelationshipKind, ScopedSymbolIndex, Symbol, SymbolKind,
+    UnresolvedTarget,
+};
 use crate::csharp::CSharpExtractor;
 use crate::csharp::member_type_relationships::{
     extract_field_type_relationships, extract_parameter_type_name,
@@ -337,7 +340,8 @@ fn extract_call_relationships(
     };
 
     if !method_name.is_empty() {
-        handle_call_target(extractor, node, &method_name, symbols, relationships);
+        let target = unresolved_call_target(extractor, node, &method_name);
+        handle_call_target(extractor, node, target, symbols, relationships);
     }
 }
 
@@ -345,15 +349,12 @@ fn extract_call_relationships(
 fn handle_call_target(
     extractor: &mut CSharpExtractor,
     call_node: tree_sitter::Node,
-    callee_name: &str,
+    target: UnresolvedTarget,
     symbols: &[Symbol],
     relationships: &mut Vec<Relationship>,
 ) {
     let base = extractor.get_base();
-
-    // Build a symbol_map for quick lookup
-    let symbol_map: std::collections::HashMap<String, &Symbol> =
-        crate::base::ScopedSymbolIndex::unique_symbol_map(symbols);
+    let symbol_index = ScopedSymbolIndex::new(symbols);
 
     let caller = base.find_containing_symbol(&call_node, symbols).cloned();
     let Some(caller) = caller else {
@@ -364,22 +365,12 @@ fn handle_call_target(
     let file_path = base.file_path.clone();
 
     // Check if we can resolve the callee locally
-    match symbol_map.get(callee_name) {
-        Some(called_symbol) if called_symbol.kind == SymbolKind::Import => {
-            // Target is an Import symbol - need cross-file resolution
-            // Don't create relationship pointing to Import (useless for trace_call_path)
-            // Instead, create a PendingRelationship with the callee name
-            let pending = extractor.get_base().create_pending_relationship(
-                caller.id.clone(),
-                unresolved_call_target(extractor, call_node, callee_name),
-                RelationshipKind::Calls,
-                &call_node,
-                Some(caller.id.clone()),
-                Some(0.8),
-            );
-            extractor.add_structured_pending_relationship(pending);
-        }
-        Some(called_symbol) => {
+    match symbol_index.resolve_call_target(
+        &target.terminal_name,
+        Some(&caller),
+        target.receiver.as_deref(),
+    ) {
+        LocalTargetResolution::Resolved(called_symbol) => {
             // Target is a local method - create resolved Relationship
             relationships.push(Relationship {
                 id: format!(
@@ -398,12 +389,25 @@ fn handle_call_target(
                 metadata: None,
             });
         }
-        None => {
+        LocalTargetResolution::Import(_) => {
+            let pending = extractor.get_base().create_pending_relationship(
+                caller.id.clone(),
+                target,
+                RelationshipKind::Calls,
+                &call_node,
+                Some(caller.id.clone()),
+                Some(0.8),
+            );
+            extractor.add_structured_pending_relationship(pending);
+        }
+        LocalTargetResolution::Ambiguous
+        | LocalTargetResolution::ReceiverQualified
+        | LocalTargetResolution::Missing => {
             // Target not found in local symbols - likely a method on imported type
             // Create PendingRelationship for cross-file resolution
             let pending = extractor.get_base().create_pending_relationship(
                 caller.id.clone(),
-                unresolved_call_target(extractor, call_node, callee_name),
+                target,
                 RelationshipKind::Calls,
                 &call_node,
                 Some(caller.id.clone()),
@@ -419,6 +423,13 @@ fn unresolved_call_target(
     node: tree_sitter::Node,
     fallback_name: &str,
 ) -> UnresolvedTarget {
+    if node.kind() == "invocation_expression" {
+        let mut cursor = node.walk();
+        if let Some(first_child) = node.children(&mut cursor).next() {
+            return unresolved_call_target(extractor, first_child, fallback_name);
+        }
+    }
+
     let mut identifiers = Vec::new();
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {

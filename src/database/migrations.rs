@@ -13,7 +13,7 @@ fn get_unix_timestamp() -> Result<i64> {
 }
 
 /// Current schema version - increment when adding migrations
-pub const LATEST_SCHEMA_VERSION: i32 = 23;
+pub const LATEST_SCHEMA_VERSION: i32 = 24;
 
 impl SymbolDatabase {
     // ============================================================
@@ -119,6 +119,7 @@ impl SymbolDatabase {
             21 => self.migration_021_add_early_warning_reports()?,
             22 => self.migration_022_add_sql_performance_indexes()?,
             23 => self.migration_023_add_tool_call_input_bytes()?,
+            24 => self.migration_024_add_index_engine_state()?,
             _ => return Err(anyhow!("Unknown migration version: {}", version)),
         }
         Ok(())
@@ -150,6 +151,7 @@ impl SymbolDatabase {
             21 => "Add early_warning_reports table",
             22 => "Add SQL performance indexes",
             23 => "Add input_bytes to tool_calls",
+            24 => "Add index_engine_state table",
             _ => "Unknown migration",
         };
 
@@ -847,6 +849,13 @@ impl SymbolDatabase {
         self.conn
             .execute("ALTER TABLE tool_calls ADD COLUMN input_bytes INTEGER", [])?;
         info!("Migration 023 complete: input_bytes column added to tool_calls");
+        Ok(())
+    }
+
+    fn migration_024_add_index_engine_state(&self) -> Result<()> {
+        info!("Running migration 024: Add index_engine_state table");
+        self.create_index_engine_state_table()?;
+        info!("Migration 024 complete: index_engine_state table added");
         Ok(())
     }
 

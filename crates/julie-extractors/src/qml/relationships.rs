@@ -3,6 +3,7 @@
 
 use crate::base::{Relationship, RelationshipKind, Symbol, SymbolKind};
 use crate::qml::QmlExtractor;
+use std::collections::HashMap;
 use tree_sitter::{Node, Tree};
 
 /// Extract all relationships from QML code
@@ -12,7 +13,14 @@ pub(super) fn extract_relationships(
     symbols: &[Symbol],
 ) -> Vec<Relationship> {
     let mut relationships = Vec::new();
-    extract_call_relationships(extractor, tree.root_node(), symbols, &mut relationships);
+    let symbol_map = crate::base::ScopedSymbolIndex::unique_symbol_map(symbols);
+    extract_call_relationships(
+        extractor,
+        tree.root_node(),
+        symbols,
+        &symbol_map,
+        &mut relationships,
+    );
     extract_instantiation_relationships(extractor, tree.root_node(), symbols, &mut relationships);
     extract_property_binding_relationships(
         extractor,
@@ -28,48 +36,60 @@ fn extract_call_relationships(
     extractor: &QmlExtractor,
     node: Node,
     symbols: &[Symbol],
+    symbol_map: &HashMap<String, &Symbol>,
     relationships: &mut Vec<Relationship>,
 ) {
     // Match JavaScript call expressions (QML uses TypeScript/JavaScript grammar)
     if node.kind() == "call_expression" {
         if let Some(function_node) = node.child_by_field_name("function") {
-            let function_name = match function_node.kind() {
-                "identifier" => extractor.base.get_node_text(&function_node),
+            let (function_name, receiver) = match function_node.kind() {
+                "identifier" => (extractor.base.get_node_text(&function_node), None),
                 "member_expression" => {
                     // For member_expression like object.method(), extract just the method name
                     if let Some(property) = function_node.child_by_field_name("property") {
-                        extractor.base.get_node_text(&property)
+                        (
+                            extractor.base.get_node_text(&property),
+                            function_node
+                                .child_by_field_name("object")
+                                .map(|node| extractor.base.get_node_text(&node)),
+                        )
                     } else {
-                        extractor.base.get_node_text(&function_node)
+                        (extractor.base.get_node_text(&function_node), None)
                     }
                 }
-                _ => extractor.base.get_node_text(&function_node),
+                _ => (extractor.base.get_node_text(&function_node), None),
             };
 
             // Find the containing function (caller)
             if let Some(caller_symbol) = find_containing_function(node, symbols) {
-                // Find the called function symbol
-                if let Some(called_symbol) = symbols.iter().find(|s| {
-                    s.name == function_name
-                        && (s.kind == SymbolKind::Function || s.kind == SymbolKind::Event)
-                }) {
-                    let relationship = Relationship {
-                        id: format!(
-                            "{}_{}_{:?}_{}",
-                            caller_symbol.id,
-                            called_symbol.id,
-                            RelationshipKind::Calls,
-                            node.start_position().row
-                        ),
-                        from_symbol_id: caller_symbol.id.clone(),
-                        to_symbol_id: called_symbol.id.clone(),
-                        kind: RelationshipKind::Calls,
-                        file_path: extractor.base.file_path.clone(),
-                        line_number: (node.start_position().row + 1) as u32,
-                        confidence: 1.0,
-                        metadata: None,
-                    };
-                    relationships.push(relationship);
+                if let Some(called_symbol) = symbol_map
+                    .get(function_name.as_str())
+                    .filter(|s| s.kind == SymbolKind::Function || s.kind == SymbolKind::Event)
+                {
+                    if receiver_can_resolve_locally(
+                        receiver.as_deref(),
+                        caller_symbol,
+                        called_symbol,
+                        symbols,
+                    ) {
+                        let relationship = Relationship {
+                            id: format!(
+                                "{}_{}_{:?}_{}",
+                                caller_symbol.id,
+                                called_symbol.id,
+                                RelationshipKind::Calls,
+                                node.start_position().row
+                            ),
+                            from_symbol_id: caller_symbol.id.clone(),
+                            to_symbol_id: called_symbol.id.clone(),
+                            kind: RelationshipKind::Calls,
+                            file_path: extractor.base.file_path.clone(),
+                            line_number: (node.start_position().row + 1) as u32,
+                            confidence: 1.0,
+                            metadata: None,
+                        };
+                        relationships.push(relationship);
+                    }
                 }
             }
         }
@@ -78,8 +98,41 @@ fn extract_call_relationships(
     // Recursively process children
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        extract_call_relationships(extractor, child, symbols, relationships);
+        extract_call_relationships(extractor, child, symbols, symbol_map, relationships);
     }
+}
+
+fn receiver_can_resolve_locally(
+    receiver: Option<&str>,
+    caller_symbol: &Symbol,
+    called_symbol: &Symbol,
+    symbols: &[Symbol],
+) -> bool {
+    let Some(receiver) = receiver else {
+        return true;
+    };
+
+    let Some(receiver_symbol) = symbols.iter().find(|symbol| {
+        symbol.name == receiver
+            && symbol.kind == SymbolKind::Property
+            && symbol
+                .signature
+                .as_deref()
+                .is_some_and(|signature| signature.starts_with("id:"))
+    }) else {
+        return false;
+    };
+
+    let receiver_parent_id = receiver_symbol.parent_id.as_deref();
+    let caller_scope_id = if caller_symbol.kind == SymbolKind::Class {
+        Some(caller_symbol.id.as_str())
+    } else {
+        caller_symbol.parent_id.as_deref()
+    };
+
+    receiver_parent_id.is_some()
+        && receiver_parent_id == caller_scope_id
+        && called_symbol.parent_id.as_deref() == receiver_parent_id
 }
 
 /// Extract component instantiation relationships (Rectangle {}, Button {}, etc.)

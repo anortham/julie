@@ -25,7 +25,7 @@ use crate::base::{
     BaseExtractor, Identifier, PendingRelationship, Relationship, StructuredPendingRelationship,
     Symbol,
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use tree_sitter::{Node, Tree};
 
 /// Java extractor for extracting symbols and relationships from Java source code
@@ -108,6 +108,7 @@ impl JavaExtractor {
     pub fn extract_relationships(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Relationship> {
         let mut relationships = Vec::new();
         self.visit_node_for_relationships(tree.root_node(), symbols, &mut relationships);
+        dedupe_relationships(&mut relationships);
         relationships
     }
 
@@ -165,4 +166,9 @@ impl JavaExtractor {
     pub(crate) fn base_mut(&mut self) -> &mut BaseExtractor {
         &mut self.base
     }
+}
+
+fn dedupe_relationships(relationships: &mut Vec<Relationship>) {
+    let mut seen = HashSet::new();
+    relationships.retain(|relationship| seen.insert(relationship.id.clone()));
 }

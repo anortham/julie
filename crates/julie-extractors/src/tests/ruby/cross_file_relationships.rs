@@ -325,4 +325,54 @@ end
             "Should have relationship from caller to helper"
         );
     }
+
+    #[test]
+    fn test_receiver_qualified_call_does_not_resolve_to_unqualified_local_method() {
+        let code = r#"
+def compute
+  42
+end
+
+def run
+  helper = ExternalHelper.new
+  helper.compute()
+end
+"#;
+
+        let results = extract_full("src/receiver_qualified.rb", code);
+        let run = results
+            .symbols
+            .iter()
+            .find(|s| s.name == "run")
+            .expect("Should extract run");
+        let compute = results
+            .symbols
+            .iter()
+            .find(|s| s.name == "compute")
+            .expect("Should extract compute");
+
+        let wrong_resolved_edge = results.relationships.iter().any(|relationship| {
+            relationship.kind == RelationshipKind::Calls
+                && relationship.from_symbol_id == run.id
+                && relationship.to_symbol_id == compute.id
+        });
+        assert!(
+            !wrong_resolved_edge,
+            "receiver-qualified call helper.compute() must not resolve to local compute() by name only"
+        );
+
+        let structured_pending = results
+            .structured_pending_relationships
+            .iter()
+            .find(|pending| pending.target.display_name == "helper.compute")
+            .expect("Should keep helper.compute() as a structured pending relationship");
+        assert_eq!(
+            structured_pending.target.receiver.as_deref(),
+            Some("helper")
+        );
+        assert!(
+            !structured_pending.target.terminal_name.is_empty(),
+            "Structured pending target should keep a terminal call name"
+        );
+    }
 }

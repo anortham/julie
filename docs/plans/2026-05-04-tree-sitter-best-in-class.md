@@ -29,6 +29,31 @@
 - The extractor suite is broad, but golden production-path coverage is thin: `crates/julie-extractors/src/tests` has many tests, while only a small number call `extract_canonical`.
 - Real-world validation currently checks symbol non-emptiness in [src/tests/integration/real_world_validation.rs](/Users/murphy/source/julie/src/tests/integration/real_world_validation.rs:279), which is smoke coverage, not extraction-contract coverage.
 
+## Dogfood Findings, 2026-05-05
+
+**Verification evidence at `c01b9516`:**
+- `cargo xtask test bucket extractors` passed in 36.1s.
+- `cargo xtask test bucket parser-upgrade` passed in 1.3s.
+- `cargo xtask test full` passed 30 buckets in 825.6s, including system and dogfood gates.
+- Live Julie health returned to `FULLY READY` after test-induced catch-up settled: 32,728 symbols, 23,450 relationships, projection revision 3512/3512, MPS embeddings initialized.
+
+**Best-in-class status:** not yet achieved. The core golden, parser-upgrade, parse-diagnostic, and broad regression gates are real and green, but the dogfood pass found remaining correctness and product-quality gaps.
+
+**Blocking gap: Task 6 relationship precision is incomplete.**
+- `ScopedSymbolIndex::resolve_call_target` is adopted directly in Rust, Python, JavaScript, and TypeScript relationship extractors.
+- Many other relationship-capable extractors still use name-only lookup patterns such as `symbols.iter().find(|s| s.name == ...)` or `HashMap<String, &Symbol>`.
+- Some of those lookups are type or inheritance edges and may be acceptable after review, but the plan's acceptance bar was whole-inventory scope-aware handling for ambiguous local relationship resolution. That bar has not been proven across every relationship-capable language.
+
+**Live Julie dogfood bugs and polish gaps:**
+- `fast_refs(extract_canonical)` sees the production indexing call at [src/tools/workspace/indexing/extractor.rs](/Users/murphy/source/julie/src/tools/workspace/indexing/extractor.rs:24), but `call_path(extract_symbols_static -> extract_canonical)` returns no path. This is a graph traversal or symbol-resolution gap around cross-crate/re-export call edges.
+- `fast_refs("LanguageSpec")` returns sparse and slightly conflated results for the `LanguageSpec` struct, the `language_spec` function, and the module. This needs investigation before deciding whether it is a real type-reference indexing bug or acceptable sparse usage.
+- Health output reports 36 supported languages including `text` and omits `jsx`, while the tree-sitter capability matrix has `jsx` and intentionally excludes non-tree-sitter `text`. The behavior may be correct, but the wording is confusing.
+- `JULIE_AGENT_INSTRUCTIONS.md` does not explicitly mention the new `extractors` and `parser-upgrade` gates, even though `AGENTS.md` and `CLAUDE.md` do.
+
+**Follow-up owner:** [2026-05-05-tree-sitter-gap-closure.md](/Users/murphy/source/julie/docs/plans/2026-05-05-tree-sitter-gap-closure.md).
+
+**Closure update, 2026-05-05:** Gap-closure work has fixed the relationship precision rollout, the `extract_symbols_static -> extract_canonical` call-path miss, the `LanguageSpec` exact-match noise, health wording, missing injected gate instructions, the post-restart semantic index invalidation gap that kept old derived relationships until forced refresh, and a Rust enum-variant reference extraction gap found during live dogfood. The focused closure plan remains the evidence ledger for final gate results.
+
 ## Language Accounting
 
 The plan covers these registry entries:

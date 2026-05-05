@@ -191,6 +191,15 @@
       "metadata": {
         "baseType": "Job"
       }
+    },
+    {
+      "from_key": "fixtures/extraction/kotlin/basic/source.kt:run:8:4",
+      "to_key": "fixtures/extraction/kotlin/basic/source.kt:helper:12:4",
+      "kind": "calls",
+      "file_path": "fixtures/extraction/kotlin/basic/source.kt",
+      "line_number": 9,
+      "confidence": "0.900",
+      "metadata": null
     }
   ],
   "pending_relationships": [],

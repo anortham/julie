@@ -1,4 +1,4 @@
-use super::{ParentReferenceContext, language_of};
+use super::{ParentReferenceContext, scoring::language_of};
 use julie_extractors::base::{PendingRelationship, Symbol, UnresolvedTarget};
 
 pub(super) fn score(
@@ -42,7 +42,7 @@ pub(super) fn score(
     Some(0)
 }
 
-fn rust_module_path_from_file(path: &str) -> Vec<String> {
+pub(super) fn rust_module_path_from_file(path: &str) -> Vec<String> {
     let without_ext = path.strip_suffix(".rs").unwrap_or(path);
     let mut parts: Vec<String> = without_ext
         .split('/')
@@ -64,7 +64,10 @@ fn rust_module_path_from_file(path: &str) -> Vec<String> {
     parts
 }
 
-fn path_ends_with_segments(path_segments: &[String], namespace_segments: &[String]) -> bool {
+pub(super) fn path_ends_with_segments(
+    path_segments: &[String],
+    namespace_segments: &[String],
+) -> bool {
     path_segments.len() >= namespace_segments.len()
         && path_segments[path_segments.len() - namespace_segments.len()..]
             .iter()

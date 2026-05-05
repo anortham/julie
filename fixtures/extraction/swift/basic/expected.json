@@ -169,6 +169,15 @@
       "metadata": {
         "baseType": "Job"
       }
+    },
+    {
+      "from_key": "fixtures/extraction/swift/basic/source.swift:run:8:4",
+      "to_key": "fixtures/extraction/swift/basic/source.swift:helper:13:0",
+      "kind": "calls",
+      "file_path": "fixtures/extraction/swift/basic/source.swift",
+      "line_number": 9,
+      "confidence": "0.900",
+      "metadata": null
     }
   ],
   "pending_relationships": [],

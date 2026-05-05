@@ -178,12 +178,14 @@ mod tests {
 
         // Strategy 2: Cross-language naming variants
         let variants = generate_naming_variants(&effective_symbol);
-        for variant in &variants {
-            if *variant != effective_symbol {
-                if let Ok(variant_symbols) = db.get_symbols_by_name(variant) {
-                    for sym in variant_symbols {
-                        if sym.name == *variant {
-                            defs.push(sym);
+        if defs.is_empty() {
+            for variant in &variants {
+                if *variant != effective_symbol {
+                    if let Ok(variant_symbols) = db.get_symbols_by_name(variant) {
+                        for sym in variant_symbols {
+                            if sym.name == *variant {
+                                defs.push(sym);
+                            }
                         }
                     }
                 }
@@ -452,6 +454,42 @@ mod tests {
         assert_eq!(
             refs[0].file_path, "src/a.rs",
             "highest confidence ref should be first"
+        );
+    }
+
+    #[test]
+    fn test_target_workspace_exact_definition_suppresses_variant_definition_noise() {
+        let files = &["src/language_spec.rs"];
+        let (_tmp, mut db) = setup_db(files);
+
+        let type_symbol = make_symbol(
+            "sym-language-spec",
+            "LanguageSpec",
+            "src/language_spec.rs",
+            10,
+        );
+        let function_symbol = make_symbol(
+            "sym-language-spec-fn",
+            "language_spec",
+            "src/language_spec.rs",
+            20,
+        );
+        db.store_symbols(&[type_symbol, function_symbol]).unwrap();
+
+        let (defs, refs) = find_refs_in_db(&db, "LanguageSpec", 10, None);
+        let definition_names = defs
+            .iter()
+            .map(|symbol| symbol.name.as_str())
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            definition_names,
+            vec!["LanguageSpec"],
+            "exact symbol lookup should not mix in naming-variant definitions when an exact definition exists"
+        );
+        assert!(
+            refs.is_empty(),
+            "the regression fixture stores definitions only, not references"
         );
     }
 

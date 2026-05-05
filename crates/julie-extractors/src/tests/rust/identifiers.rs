@@ -104,3 +104,47 @@ fn example() {
         calls.iter().map(|c| &c.name).collect::<Vec<_>>()
     );
 }
+
+#[test]
+fn test_enum_variant_scoped_identifiers_are_type_usages() {
+    let code = r#"
+enum IndexingRepairReason {
+    SemanticVersionChanged,
+    StaleFiles,
+}
+
+impl IndexingRepairReason {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::SemanticVersionChanged => "semantic_version_changed",
+            Self::StaleFiles => "stale_files",
+        }
+    }
+}
+
+fn mark(reasons: &mut Vec<IndexingRepairReason>) {
+    reasons.push(IndexingRepairReason::SemanticVersionChanged);
+}
+"#;
+    let (_symbols, identifiers) = extract_all(code);
+    let variant_usages: Vec<&Identifier> = identifiers
+        .iter()
+        .filter(|id| id.name == "SemanticVersionChanged" && id.kind == IdentifierKind::TypeUsage)
+        .collect();
+
+    assert_eq!(
+        variant_usages.len(),
+        2,
+        "Should extract enum variant usages from Self::Variant and Enum::Variant, got: {:?}",
+        identifiers
+            .iter()
+            .map(|id| (&id.name, &id.kind, id.start_line))
+            .collect::<Vec<_>>()
+    );
+    assert!(
+        variant_usages
+            .iter()
+            .all(|id| id.containing_symbol_id.is_some()),
+        "Enum variant usages should retain containing symbols"
+    );
+}

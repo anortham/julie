@@ -330,4 +330,49 @@ main
                 .collect::<Vec<_>>()
         );
     }
+
+    #[test]
+    fn test_duplicate_local_function_names_do_not_create_resolved_call() {
+        let code = r#"#!/bin/bash
+
+helper() {
+    echo "first"
+}
+
+helper() {
+    echo "second"
+}
+
+main() {
+    helper
+}
+"#;
+
+        let results = extract_full("ambiguous.sh", code);
+        let main = results
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == "main")
+            .expect("main symbol should be extracted");
+
+        let resolved_calls: Vec<_> = results
+            .relationships
+            .iter()
+            .filter(|relationship| relationship.kind == RelationshipKind::Calls)
+            .collect();
+        assert!(
+            resolved_calls.is_empty(),
+            "Ambiguous duplicate local call targets should not create resolved calls"
+        );
+
+        let structured_pending = results
+            .structured_pending_relationships
+            .iter()
+            .find(|pending| {
+                pending.pending.kind == RelationshipKind::Calls
+                    && pending.target.terminal_name == "helper"
+            })
+            .expect("ambiguous local command call should become structured pending");
+        assert_eq!(structured_pending.pending.from_symbol_id, main.id);
+    }
 }

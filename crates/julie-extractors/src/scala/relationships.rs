@@ -3,7 +3,8 @@
 //! Handles extends/implements relationships and function call relationships.
 
 use crate::base::{
-    BaseExtractor, Relationship, RelationshipKind, Symbol, SymbolKind, UnresolvedTarget,
+    BaseExtractor, LocalTargetResolution, Relationship, RelationshipKind, ScopedSymbolIndex,
+    Symbol, SymbolKind, UnresolvedTarget,
 };
 use crate::scala::ScalaExtractor;
 use serde_json::Value;
@@ -144,33 +145,32 @@ pub(super) fn extract_call_relationships(
     symbols: &[Symbol],
     relationships: &mut Vec<Relationship>,
 ) {
-    let symbol_map: HashMap<String, &Symbol> =
-        crate::base::ScopedSymbolIndex::unique_symbol_map(symbols);
+    let symbol_index = ScopedSymbolIndex::new(symbols);
 
-    walk_tree_for_calls(extractor, node, &symbol_map, symbols, relationships);
+    walk_tree_for_calls(extractor, node, &symbol_index, symbols, relationships);
 }
 
 fn walk_tree_for_calls(
     extractor: &mut ScalaExtractor,
     node: Node,
-    symbol_map: &HashMap<String, &Symbol>,
+    symbol_index: &ScopedSymbolIndex<'_>,
     all_symbols: &[Symbol],
     relationships: &mut Vec<Relationship>,
 ) {
     if node.kind() == "call_expression" {
-        extract_single_call(extractor, node, symbol_map, all_symbols, relationships);
+        extract_single_call(extractor, node, symbol_index, all_symbols, relationships);
     }
 
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        walk_tree_for_calls(extractor, child, symbol_map, all_symbols, relationships);
+        walk_tree_for_calls(extractor, child, symbol_index, all_symbols, relationships);
     }
 }
 
 fn extract_single_call(
     extractor: &mut ScalaExtractor,
     node: Node,
-    symbol_map: &HashMap<String, &Symbol>,
+    symbol_index: &ScopedSymbolIndex<'_>,
     all_symbols: &[Symbol],
     relationships: &mut Vec<Relationship>,
 ) {
@@ -203,23 +203,23 @@ fn extract_single_call(
         return;
     };
 
-    let calling_function = find_containing_function(extractor, node, all_symbols);
-    let caller_symbol = calling_function
-        .as_ref()
-        .and_then(|name| symbol_map.get(name));
-
-    let Some(caller) = caller_symbol else {
+    let Some(caller) = extractor.base().find_containing_symbol(&node, all_symbols) else {
         return;
     };
 
+    let target = unresolved_call_target(extractor, node, &function_name);
     let line_number = node.start_position().row as u32 + 1;
     let file_path = extractor.base().file_path.clone();
 
-    match symbol_map.get(function_name.as_str()) {
-        Some(called_symbol) if called_symbol.kind == SymbolKind::Import => {
+    match symbol_index.resolve_call_target(
+        function_name.as_str(),
+        Some(caller),
+        target.receiver.as_deref(),
+    ) {
+        LocalTargetResolution::Import(_) => {
             let pending = extractor.base().create_pending_relationship(
                 caller.id.clone(),
-                unresolved_call_target(extractor, node, &function_name),
+                target,
                 RelationshipKind::Calls,
                 &node,
                 Some(caller.id.clone()),
@@ -227,7 +227,7 @@ fn extract_single_call(
             );
             extractor.add_structured_pending_relationship(pending);
         }
-        Some(called_symbol) => {
+        LocalTargetResolution::Resolved(called_symbol) => {
             relationships.push(Relationship {
                 id: format!(
                     "{}_{}_{:?}_{}",
@@ -245,10 +245,12 @@ fn extract_single_call(
                 metadata: None,
             });
         }
-        None => {
+        LocalTargetResolution::Ambiguous
+        | LocalTargetResolution::ReceiverQualified
+        | LocalTargetResolution::Missing => {
             let pending = extractor.base().create_pending_relationship(
                 caller.id.clone(),
-                unresolved_call_target(extractor, node, &function_name),
+                target,
                 RelationshipKind::Calls,
                 &node,
                 Some(caller.id.clone()),
@@ -264,10 +266,16 @@ fn unresolved_call_target(
     node: Node,
     fallback_name: &str,
 ) -> UnresolvedTarget {
-    let mut identifiers = Vec::new();
-    collect_identifiers(extractor, node, &mut identifiers);
+    let field_expression = node
+        .children(&mut node.walk())
+        .find(|child| child.kind() == "field_expression");
 
-    if identifiers.len() >= 2 {
+    if let Some(field_expression) = field_expression {
+        let mut identifiers = Vec::new();
+        collect_identifiers(extractor, field_expression, &mut identifiers);
+        if identifiers.len() < 2 {
+            return UnresolvedTarget::simple(fallback_name.to_string());
+        }
         let terminal_name = identifiers
             .pop()
             .unwrap_or_else(|| fallback_name.to_string());
@@ -299,37 +307,4 @@ fn collect_identifiers(extractor: &ScalaExtractor, node: Node, identifiers: &mut
     for child in node.children(&mut cursor) {
         collect_identifiers(extractor, child, identifiers);
     }
-}
-
-/// Find the function that contains this node
-fn find_containing_function(
-    extractor: &ScalaExtractor,
-    node: Node,
-    symbols: &[Symbol],
-) -> Option<String> {
-    let base = extractor.base();
-    let file_path = &base.file_path;
-
-    let mut current = Some(node);
-    while let Some(n) = current {
-        if matches!(n.kind(), "function_definition" | "function_declaration") {
-            let function_name = n
-                .child_by_field_name("name")
-                .or_else(|| n.children(&mut n.walk()).find(|c| c.kind() == "identifier"))
-                .map(|c| base.get_node_text(&c));
-
-            if let Some(name) = function_name {
-                if symbols
-                    .iter()
-                    .any(|s| s.name == name && &s.file_path == file_path)
-                {
-                    return Some(name);
-                }
-            }
-            break;
-        }
-        current = n.parent();
-    }
-
-    None
 }

@@ -169,6 +169,15 @@
   ],
   "relationships": [
     {
+      "from_key": "fixtures/extraction/vbnet/basic/source.vb:Run:11:8",
+      "to_key": "fixtures/extraction/vbnet/basic/source.vb:Helper:15:8",
+      "kind": "calls",
+      "file_path": "fixtures/extraction/vbnet/basic/source.vb",
+      "line_number": 12,
+      "confidence": "0.900",
+      "metadata": null
+    },
+    {
       "from_key": "fixtures/extraction/vbnet/basic/source.vb:Worker:6:4",
       "to_key": "fixtures/extraction/vbnet/basic/source.vb:IJob:2:4",
       "kind": "implements",

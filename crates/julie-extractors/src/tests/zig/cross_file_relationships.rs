@@ -334,4 +334,49 @@ fn caller() void {
             "Local function calls should create resolved Relationships"
         );
     }
+
+    #[test]
+    fn test_receiver_qualified_call_does_not_resolve_to_unrelated_local_function() {
+        let code = r#"
+fn helper() void {
+}
+
+fn caller() void {
+    util.helper();
+}
+"#;
+
+        let results = extract_full("src/receiver_qualified.zig", code);
+        let caller = results
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == "caller")
+            .expect("caller symbol should be extracted");
+        let helper = results
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == "helper")
+            .expect("helper symbol should be extracted");
+
+        let wrong_local_resolution = results.relationships.iter().any(|relationship| {
+            relationship.kind == RelationshipKind::Calls
+                && relationship.from_symbol_id == caller.id
+                && relationship.to_symbol_id == helper.id
+        });
+        assert!(
+            !wrong_local_resolution,
+            "Receiver-qualified util.helper() should not resolve to local helper()"
+        );
+
+        let structured_pending = results
+            .structured_pending_relationships
+            .iter()
+            .find(|pending| {
+                pending.pending.kind == RelationshipKind::Calls
+                    && pending.target.terminal_name == "helper"
+                    && pending.target.receiver.as_deref() == Some("util")
+            })
+            .expect("receiver-qualified unresolved call should create structured pending");
+        assert_eq!(structured_pending.pending.from_symbol_id, caller.id);
+    }
 }

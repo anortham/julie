@@ -13,6 +13,9 @@ use std::fs;
 use std::sync::Arc;
 use tempfile::TempDir;
 
+use crate::tools::workspace::indexing::engine_version::{
+    SEMANTIC_INDEX_ENGINE_COMPONENT, SEMANTIC_INDEX_ENGINE_VERSION,
+};
 use crate::tools::workspace::indexing::route::{IndexRoute, IndexRouteRepairReason};
 use crate::tools::workspace::indexing::state::IndexingRepairReason;
 
@@ -61,6 +64,62 @@ async fn test_fresh_index_no_reindex_needed() -> Result<()> {
     assert!(
         repair_plan.is_none(),
         "Fresh index should not need re-indexing; repair plan: {repair_plan:?}"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+#[serial_test::serial(embedding_env)]
+async fn test_primary_workspace_repair_plan_reports_semantic_version_changed() -> Result<()> {
+    use std::fs::File;
+    use std::time::{Duration, SystemTime};
+
+    unsafe {
+        std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+    }
+
+    let temp_dir = TempDir::new()?;
+    let workspace_path = temp_dir.path();
+
+    let test_file = workspace_path.join("test.rs");
+    fs::write(&test_file, "fn hello() {}\n")?;
+
+    let handler = create_test_handler(workspace_path).await?;
+    index_workspace(&handler, workspace_path).await?;
+
+    let backdated = SystemTime::UNIX_EPOCH + Duration::from_secs(1);
+    File::options()
+        .write(true)
+        .open(&test_file)?
+        .set_modified(backdated)?;
+
+    let workspace_id = handler.require_primary_workspace_identity()?;
+    let (db, _) = handler.primary_database_and_search_index().await?;
+    {
+        let db = db.lock().unwrap();
+        db.set_index_engine_version(
+            &workspace_id,
+            SEMANTIC_INDEX_ENGINE_COMPONENT,
+            "stale-test-version",
+        )?;
+    }
+
+    let repair_plan = crate::startup::plan_primary_workspace_repair(&handler)
+        .await?
+        .expect("stale semantic engine version should produce a repair plan");
+
+    assert!(
+        repair_plan
+            .reasons
+            .contains(&IndexingRepairReason::SemanticVersionChanged),
+        "repair plan should report semantic-version drift explicitly: {repair_plan:?}"
+    );
+    assert!(
+        !repair_plan
+            .reasons
+            .contains(&IndexingRepairReason::StaleFiles),
+        "backdated source file should keep this regression focused on semantic-version drift"
     );
 
     Ok(())
@@ -931,6 +990,11 @@ async fn test_check_if_indexing_needed_uses_rebound_current_primary_snapshot() -
             annotations: Vec::new(),
         };
         rebound_db.bulk_store_fresh_atomic(&[file_info], &[symbol], &[], &[], &[], &rebound_id)?;
+        rebound_db.set_index_engine_version(
+            &rebound_id,
+            SEMANTIC_INDEX_ENGINE_COMPONENT,
+            SEMANTIC_INDEX_ENGINE_VERSION,
+        )?;
     }
 
     handler.set_current_primary_binding(rebound_id, rebound_path);

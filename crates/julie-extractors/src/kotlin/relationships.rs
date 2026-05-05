@@ -4,7 +4,8 @@
 //! and method/function call relationships.
 
 use crate::base::{
-    BaseExtractor, Relationship, RelationshipKind, Symbol, SymbolKind, UnresolvedTarget,
+    BaseExtractor, LocalTargetResolution, Relationship, RelationshipKind, ScopedSymbolIndex,
+    Symbol, SymbolKind, UnresolvedTarget,
 };
 use crate::kotlin::KotlinExtractor;
 use serde_json::Value;
@@ -238,36 +239,40 @@ pub(super) fn extract_call_relationships(
     symbols: &[Symbol],
     relationships: &mut Vec<Relationship>,
 ) {
-    // Build a map of symbols by name for quick lookup
-    let symbol_map: HashMap<String, &Symbol> =
-        crate::base::ScopedSymbolIndex::unique_symbol_map(symbols);
+    let symbol_index = ScopedSymbolIndex::new(symbols);
 
     // Find call expression nodes in this subtree
-    walk_tree_for_calls(extractor, node, &symbol_map, symbols, relationships);
+    walk_tree_for_calls(extractor, node, &symbol_index, symbols, relationships);
 }
 
 fn walk_tree_for_calls(
     extractor: &mut KotlinExtractor,
     node: Node,
-    symbol_map: &HashMap<String, &Symbol>,
+    symbol_index: &ScopedSymbolIndex<'_>,
     all_symbols: &[Symbol],
     relationships: &mut Vec<Relationship>,
 ) {
     if node.kind() == "call_expression" {
-        extract_function_call_relationship(extractor, node, symbol_map, all_symbols, relationships);
+        extract_function_call_relationship(
+            extractor,
+            node,
+            symbol_index,
+            all_symbols,
+            relationships,
+        );
     }
 
     // Recursively process children
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        walk_tree_for_calls(extractor, child, symbol_map, all_symbols, relationships);
+        walk_tree_for_calls(extractor, child, symbol_index, all_symbols, relationships);
     }
 }
 
 fn extract_function_call_relationship(
     extractor: &mut KotlinExtractor,
     node: Node,
-    symbol_map: &HashMap<String, &Symbol>,
+    symbol_index: &ScopedSymbolIndex<'_>,
     all_symbols: &[Symbol],
     relationships: &mut Vec<Relationship>,
 ) {
@@ -304,27 +309,23 @@ fn extract_function_call_relationship(
         return;
     };
 
-    // Find the calling function context
-    let calling_function = find_containing_function(extractor, node, all_symbols);
-    let caller_symbol = calling_function
-        .as_ref()
-        .and_then(|name| symbol_map.get(name));
-
-    // No caller context means we can't create a meaningful relationship
-    let Some(caller) = caller_symbol else {
+    let Some(caller) = extractor.base().find_containing_symbol(&node, all_symbols) else {
         return;
     };
 
+    let target = unresolved_call_target(extractor, node, &function_name);
     let line_number = node.start_position().row as u32 + 1;
     let file_path = extractor.base().file_path.clone();
 
-    // Check if we can resolve the callee locally
-    match symbol_map.get(function_name.as_str()) {
-        Some(called_symbol) if called_symbol.kind == SymbolKind::Import => {
-            // Target is an Import symbol - need cross-file resolution
+    match symbol_index.resolve_call_target(
+        function_name.as_str(),
+        Some(caller),
+        target.receiver.as_deref(),
+    ) {
+        LocalTargetResolution::Import(_) => {
             let pending = extractor.base().create_pending_relationship(
                 caller.id.clone(),
-                unresolved_call_target(extractor, node, &function_name),
+                target,
                 RelationshipKind::Calls,
                 &node,
                 Some(caller.id.clone()),
@@ -332,8 +333,7 @@ fn extract_function_call_relationship(
             );
             extractor.add_structured_pending_relationship(pending);
         }
-        Some(called_symbol) => {
-            // Target is a local function - create resolved Relationship
+        LocalTargetResolution::Resolved(called_symbol) => {
             relationships.push(Relationship {
                 id: format!(
                     "{}_{}_{:?}_{}",
@@ -351,12 +351,12 @@ fn extract_function_call_relationship(
                 metadata: None,
             });
         }
-        None => {
-            // Target not found in local symbols - likely a method on imported type
-            // Create PendingRelationship for cross-file resolution
+        LocalTargetResolution::Ambiguous
+        | LocalTargetResolution::ReceiverQualified
+        | LocalTargetResolution::Missing => {
             let pending = extractor.base().create_pending_relationship(
                 caller.id.clone(),
-                unresolved_call_target(extractor, node, &function_name),
+                target,
                 RelationshipKind::Calls,
                 &node,
                 Some(caller.id.clone()),
@@ -410,47 +410,4 @@ fn unresolved_call_target(
     }
 
     UnresolvedTarget::simple(fallback_name.to_string())
-}
-
-/// Find the function that contains this node
-fn find_containing_function(
-    extractor: &KotlinExtractor,
-    node: Node,
-    symbols: &[Symbol],
-) -> Option<String> {
-    let base = extractor.base();
-    let file_path = &base.file_path;
-
-    // Walk up the tree to find a function_declaration node
-    let mut current = Some(node);
-    while let Some(n) = current {
-        if n.kind() == "function_declaration" {
-            // Extract function name from the declaration
-            let function_name = {
-                let mut found_name = None;
-                let mut cursor = n.walk();
-                for child in n.children(&mut cursor) {
-                    if child.kind() == "identifier" {
-                        found_name = Some(base.get_node_text(&child));
-                        break;
-                    }
-                }
-                found_name
-            };
-
-            if let Some(name) = function_name {
-                // Verify this symbol exists in our symbol list
-                if symbols
-                    .iter()
-                    .any(|s| s.name == name && &s.file_path == file_path)
-                {
-                    return Some(name);
-                }
-            }
-            break;
-        }
-        current = n.parent();
-    }
-
-    None
 }

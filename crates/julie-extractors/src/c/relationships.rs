@@ -3,7 +3,10 @@
 //! This module handles extraction of relationships between symbols, such as function calls
 //! and header file imports.
 
-use crate::base::{Relationship, RelationshipKind, Symbol, SymbolKind, UnresolvedTarget};
+use crate::base::{
+    LocalTargetResolution, Relationship, RelationshipKind, ScopedSymbolIndex, Symbol,
+    UnresolvedTarget,
+};
 use crate::c::CExtractor;
 use std::collections::HashMap;
 
@@ -39,40 +42,49 @@ fn extract_function_call_relationships(
     symbols: &[Symbol],
     relationships: &mut Vec<Relationship>,
 ) {
-    if let Some(function_node) = node.child_by_field_name("function") {
-        if function_node.kind() == "identifier" {
-            let function_name = extractor.get_base_mut().get_node_text(&function_node);
+    let Some(function_node) = node.child_by_field_name("function") else {
+        return;
+    };
+    if function_node.kind() != "identifier" {
+        return;
+    }
 
-            if let Some(called_symbol) = symbols
-                .iter()
-                .find(|s| s.name == function_name && s.kind == SymbolKind::Function)
-            {
-                // Target function found locally - create resolved Relationship
-                if let Some(containing_symbol) = find_containing_symbol(extractor, node, symbols) {
-                    relationships.push(extractor.get_base_mut().create_relationship(
-                        containing_symbol.id.clone(),
-                        called_symbol.id.clone(),
-                        RelationshipKind::Calls,
-                        &node,
-                        None,
-                        None,
-                    ));
-                }
-            } else {
-                // Target not found in local symbols - likely a function from included header
-                // Create PendingRelationship for cross-file resolution
-                if let Some(containing_symbol) = find_containing_symbol(extractor, node, symbols) {
-                    let pending = extractor.get_base_mut().create_pending_relationship(
-                        containing_symbol.id.clone(),
-                        UnresolvedTarget::simple(function_name),
-                        RelationshipKind::Calls,
-                        &node,
-                        Some(containing_symbol.id.clone()),
-                        Some(0.7),
-                    );
-                    extractor.add_structured_pending_relationship(pending);
-                }
-            }
+    let function_name = extractor.get_base_mut().get_node_text(&function_node);
+    let Some(containing_symbol) = find_containing_symbol(extractor, node, symbols) else {
+        return;
+    };
+
+    let unresolved_target = UnresolvedTarget::simple(function_name);
+    let scoped_index = ScopedSymbolIndex::new(symbols);
+
+    match scoped_index.resolve_call_target(
+        &unresolved_target.terminal_name,
+        Some(containing_symbol),
+        unresolved_target.receiver.as_deref(),
+    ) {
+        LocalTargetResolution::Resolved(called_symbol) => {
+            relationships.push(extractor.get_base_mut().create_relationship(
+                containing_symbol.id.clone(),
+                called_symbol.id.clone(),
+                RelationshipKind::Calls,
+                &node,
+                None,
+                None,
+            ));
+        }
+        LocalTargetResolution::Import(_)
+        | LocalTargetResolution::Ambiguous
+        | LocalTargetResolution::Missing
+        | LocalTargetResolution::ReceiverQualified => {
+            let pending = extractor.get_base_mut().create_pending_relationship(
+                containing_symbol.id.clone(),
+                unresolved_target,
+                RelationshipKind::Calls,
+                &node,
+                Some(containing_symbol.id.clone()),
+                Some(0.7),
+            );
+            extractor.add_structured_pending_relationship(pending);
         }
     }
 }

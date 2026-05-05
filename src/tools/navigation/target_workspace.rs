@@ -60,16 +60,18 @@ pub async fn find_references_in_target_workspace(
         let variants = generate_naming_variants(&effective_symbol);
         debug!("Cross-language search variants: {:?}", variants);
 
-        for variant in &variants {
-            if *variant != effective_symbol {
-                if let Ok(variant_symbols) = ref_db.get_symbols_by_name(variant) {
-                    for sym in variant_symbols {
-                        if sym.name == *variant {
-                            debug!(
-                                "Found cross-language match: {} (variant: {})",
-                                sym.name, variant
-                            );
-                            defs.push(sym);
+        if defs.is_empty() {
+            for variant in &variants {
+                if *variant != effective_symbol {
+                    if let Ok(variant_symbols) = ref_db.get_symbols_by_name(variant) {
+                        for sym in variant_symbols {
+                            if sym.name == *variant {
+                                debug!(
+                                    "Found cross-language match: {} (variant: {})",
+                                    sym.name, variant
+                                );
+                                defs.push(sym);
+                            }
                         }
                     }
                 }

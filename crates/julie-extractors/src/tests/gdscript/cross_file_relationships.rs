@@ -412,4 +412,52 @@ func caller():
             );
         }
     }
+
+    #[test]
+    fn test_receiver_qualified_call_does_not_resolve_to_unrelated_local_function() {
+        let code = r#"
+func helper():
+    pass
+
+func caller(other):
+    other.helper()
+"#;
+
+        let results = extract_full("src/receiver_qualified.gd", code);
+        let caller = results
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == "caller")
+            .expect("caller symbol should be extracted");
+        let helper = results
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == "helper")
+            .expect("helper symbol should be extracted");
+
+        let wrong_local_resolution = results.relationships.iter().any(|relationship| {
+            relationship.kind == RelationshipKind::Calls
+                && relationship.from_symbol_id == caller.id
+                && relationship.to_symbol_id == helper.id
+        });
+        assert!(
+            !wrong_local_resolution,
+            "Receiver-qualified other.helper() should not resolve to local helper()"
+        );
+
+        let structured_pending = extract_structured_pending("src/receiver_qualified.gd", code);
+        let receiver_qualified_pending = structured_pending.iter().find(|pending| {
+            pending.pending.kind == RelationshipKind::Calls
+                && pending.target.terminal_name == "helper"
+                && pending.target.receiver.as_deref() == Some("other")
+        });
+        assert!(
+            receiver_qualified_pending.is_some()
+                || results
+                    .relationships
+                    .iter()
+                    .all(|relationship| relationship.kind != RelationshipKind::Calls),
+            "receiver-qualified calls should not produce a wrong confident local edge"
+        );
+    }
 }

@@ -1,9 +1,10 @@
 //! Main workspace indexing orchestration
 //! Coordinates file discovery, processing, and Tantivy search indexing
 
+use super::engine_version::{SEMANTIC_INDEX_ENGINE_COMPONENT, SEMANTIC_INDEX_ENGINE_VERSION};
 use super::pipeline::run_indexing_pipeline;
 use super::route::IndexRoute;
-use super::state::IndexingOperation;
+use super::state::{IndexingOperation, IndexingRepairReason};
 use crate::handler::JulieServerHandler;
 use crate::tools::workspace::commands::ManageWorkspaceTool;
 use anyhow::{Context, Result};
@@ -87,17 +88,29 @@ impl ManageWorkspaceTool {
             all_discovered_files.len()
         );
 
+        let semantic_engine_refresh_needed =
+            semantic_index_engine_refresh_needed(handler, &route).await?;
+        if semantic_engine_refresh_needed {
+            info!(
+                workspace_id = %route.workspace_id,
+                component = SEMANTIC_INDEX_ENGINE_COMPONENT,
+                expected_version = SEMANTIC_INDEX_ENGINE_VERSION,
+                "Index semantic version changed or missing; forcing full re-index"
+            );
+        }
+        let effective_force_reindex = force_reindex || semantic_engine_refresh_needed;
+
         // 🚀 INCREMENTAL UPDATE: Filter files that need re-indexing based on hash changes
         debug!(
             "🐛 [INDEX TRACE E] About to filter files, force_reindex={}",
-            force_reindex
+            effective_force_reindex
         );
-        let (files_to_index, orphans_cleaned) = if force_reindex {
+        let (files_to_index, orphans_cleaned) = if effective_force_reindex {
             debug!(
                 "Force reindex mode - processing all {} files",
                 all_discovered_files.len()
             );
-            debug!("🐛 [INDEX TRACE E1] Using all files (force_reindex=true)");
+            debug!("🐛 [INDEX TRACE E1] Using all files (effective_force_reindex=true)");
             (all_discovered_files, 0)
         } else {
             debug!("🐛 [INDEX TRACE E2] Calling filter_changed_files");
@@ -129,7 +142,7 @@ impl ManageWorkspaceTool {
         // ═══════════════════════════════════════════════════════════════════
         // TANTIVY: Force re-index clears index; normal startup backfills
         // ═══════════════════════════════════════════════════════════════════
-        if force_reindex {
+        if effective_force_reindex {
             if let Some(search_index) = route.search_index_for_write().await? {
                 tokio::task::spawn_blocking(move || {
                     if let Ok(idx) = search_index.lock() {
@@ -176,7 +189,7 @@ impl ManageWorkspaceTool {
             release_result.context("releasing Tantivy writer after startup projection backfill")?;
         }
 
-        if !force_reindex && files_to_index.is_empty() && orphans_cleaned == 0 {
+        if !effective_force_reindex && files_to_index.is_empty() && orphans_cleaned == 0 {
             let (total_symbols, total_files_in_db, total_relationships, canonical_revision) =
                 current_index_totals(handler, &route).await?;
             handler
@@ -205,6 +218,9 @@ impl ManageWorkspaceTool {
             .indexing_runtime
             .as_ref()
             .and_then(|runtime| {
+                if effective_force_reindex {
+                    return None;
+                }
                 let snapshot = runtime
                     .read()
                     .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -216,7 +232,7 @@ impl ManageWorkspaceTool {
                 }
             })
             .unwrap_or_else(|| {
-                if force_reindex {
+                if effective_force_reindex {
                     IndexingOperation::Full
                 } else {
                     IndexingOperation::Incremental
@@ -236,6 +252,8 @@ impl ManageWorkspaceTool {
             );
         }
         debug!("🐛 [INDEX TRACE T] run_indexing_pipeline completed");
+
+        record_current_index_engine_version(handler, &route).await?;
 
         // 🚀 NEW ARCHITECTURE: Get final counts from DATABASE, not memory!
         // 🔴 CRITICAL FIX: Query the correct database for target vs primary workspaces.
@@ -294,6 +312,74 @@ impl ManageWorkspaceTool {
 
         Ok(())
     }
+}
+
+async fn semantic_index_engine_refresh_needed(
+    handler: &JulieServerHandler,
+    route: &IndexRoute,
+) -> Result<bool> {
+    let db_to_query = route.database_for_read(handler).await?;
+
+    let Some(db_arc) = db_to_query else {
+        return Ok(false);
+    };
+
+    let db = match db_arc.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            warn!(
+                "Database mutex poisoned during semantic engine version check, recovering: {}",
+                poisoned
+            );
+            poisoned.into_inner()
+        }
+    };
+    let stats = db.get_stats()?;
+    let has_persisted_index_state =
+        stats.total_files > 0 || stats.total_symbols > 0 || stats.total_relationships > 0;
+    if !has_persisted_index_state {
+        return Ok(false);
+    }
+
+    Ok(!db.index_engine_version_matches(
+        &route.workspace_id,
+        SEMANTIC_INDEX_ENGINE_COMPONENT,
+        SEMANTIC_INDEX_ENGINE_VERSION,
+    )?)
+}
+
+async fn record_current_index_engine_version(
+    handler: &JulieServerHandler,
+    route: &IndexRoute,
+) -> Result<()> {
+    let Some(db_arc) = route.database_for_write(handler).await? else {
+        return Ok(());
+    };
+
+    let db = match db_arc.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            warn!(
+                "Database mutex poisoned while storing semantic engine version, recovering: {}",
+                poisoned
+            );
+            poisoned.into_inner()
+        }
+    };
+    db.set_index_engine_version(
+        &route.workspace_id,
+        SEMANTIC_INDEX_ENGINE_COMPONENT,
+        SEMANTIC_INDEX_ENGINE_VERSION,
+    )?;
+
+    if let Some(runtime) = route.indexing_runtime.as_ref() {
+        runtime
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clear_repair_reason(IndexingRepairReason::SemanticVersionChanged);
+    }
+
+    Ok(())
 }
 
 async fn current_index_totals(

@@ -147,11 +147,49 @@ fn extract_identifier_from_node(
             }
         }
 
+        "scoped_identifier" => {
+            if is_inside_call_function(node) {
+                return;
+            }
+
+            if let Some(name_node) = node.child_by_field_name("name") {
+                let name = {
+                    let base = extractor.get_base_mut();
+                    base.get_node_text(&name_node)
+                };
+                let containing_symbol_id = find_containing_symbol_id(extractor, node, symbol_map);
+
+                {
+                    let base = extractor.get_base_mut();
+                    base.create_identifier(
+                        &name_node,
+                        name,
+                        IdentifierKind::TypeUsage,
+                        containing_symbol_id,
+                    );
+                }
+            }
+        }
+
         _ => {
             // Skip other node types for now
             // Future: type_usage, import statements, etc.
         }
     }
+}
+
+fn is_inside_call_function(node: tree_sitter::Node) -> bool {
+    let mut current = node;
+    while let Some(parent) = current.parent() {
+        if parent.kind() == "call_expression" {
+            if let Some(function_node) = parent.child_by_field_name("function") {
+                return node.start_byte() >= function_node.start_byte()
+                    && node.end_byte() <= function_node.end_byte();
+            }
+        }
+        current = parent;
+    }
+    false
 }
 
 /// Find the ID of the symbol that contains this node

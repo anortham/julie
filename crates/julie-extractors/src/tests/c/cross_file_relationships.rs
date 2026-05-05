@@ -231,4 +231,49 @@ int caller() {
             "Should have relationship from caller to helper"
         );
     }
+
+    #[test]
+    fn test_ambiguous_duplicate_local_function_names_do_not_create_resolved_call() {
+        let code = r#"
+int helper() {
+    return 1;
+}
+
+int helper() {
+    return 2;
+}
+
+int caller() {
+    return helper();
+}
+"#;
+
+        let results = extract_full("src/ambiguous.c", code);
+        let caller = results
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == "caller")
+            .expect("caller symbol should be extracted");
+
+        let resolved_calls: Vec<_> = results
+            .relationships
+            .iter()
+            .filter(|relationship| relationship.kind == RelationshipKind::Calls)
+            .collect();
+        assert!(
+            resolved_calls.is_empty(),
+            "Ambiguous duplicate local call targets should not create resolved calls"
+        );
+
+        let structured_pending = results
+            .structured_pending_relationships
+            .iter()
+            .find(|pending| {
+                pending.pending.kind == RelationshipKind::Calls
+                    && pending.target.terminal_name == "helper"
+            })
+            .expect("ambiguous local call should become a structured pending relationship");
+        assert_eq!(structured_pending.pending.from_symbol_id, caller.id);
+        assert_eq!(structured_pending.target.receiver, None);
+    }
 }

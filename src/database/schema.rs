@@ -20,6 +20,7 @@ impl SymbolDatabase {
         self.create_canonical_revisions_table()?;
         self.create_revision_file_changes_table()?;
         self.create_projection_states_table()?;
+        self.create_index_engine_state_table()?;
         self.create_files_table()?;
         self.create_indexing_repairs_table()?;
         self.create_symbols_table()?;

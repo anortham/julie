@@ -164,6 +164,15 @@
       "metadata": {
         "baseType": "Job"
       }
+    },
+    {
+      "from_key": "fixtures/extraction/scala/basic/source.scala:run:8:2",
+      "to_key": "fixtures/extraction/scala/basic/source.scala:helper:10:2",
+      "kind": "calls",
+      "file_path": "fixtures/extraction/scala/basic/source.scala",
+      "line_number": 8,
+      "confidence": "0.900",
+      "metadata": null
     }
   ],
   "pending_relationships": [],

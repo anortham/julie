@@ -162,13 +162,39 @@ impl super::GoExtractor {
             }
             let caller = caller_symbol.unwrap();
 
-            // Check if we can resolve the callee locally
+            // Receiver-qualified calls (pkg.fn, obj.method) should not resolve to a local
+            // symbol by terminal name alone.
+            if let Some(receiver) = target.receiver.as_deref() {
+                let is_stdlib_package = symbol_map
+                    .get(receiver)
+                    .filter(|symbol| symbol.kind == SymbolKind::Import)
+                    .and_then(|symbol| symbol.signature.as_deref())
+                    .and_then(import_path_from_signature)
+                    .is_some_and(is_stdlib_import_path);
+
+                if is_stdlib_package {
+                    return;
+                }
+
+                let pending = self.base.create_pending_relationship(
+                    caller.id.clone(),
+                    target,
+                    RelationshipKind::Calls,
+                    &node,
+                    Some(caller.id.clone()),
+                    Some(0.7),
+                );
+                self.add_structured_pending_relationship(pending);
+                return;
+            }
+
+            // Check if we can resolve the direct callee locally
             match symbol_map.get(&callee_name) {
                 Some(called_symbol) if called_symbol.kind == SymbolKind::Import => {
                     // Target is an Import symbol - need cross-file resolution
                     let pending = self.base.create_pending_relationship(
                         caller.id.clone(),
-                        target.clone(),
+                        target,
                         RelationshipKind::Calls,
                         &node,
                         Some(caller.id.clone()),
@@ -188,22 +214,6 @@ impl super::GoExtractor {
                     ));
                 }
                 None => {
-                    // Target not found in local symbols. Package-qualified calls may still be
-                    // methods on imported packages, so keep those pending unless the import is
-                    // an obvious stdlib package.
-                    if let Some(receiver) = target.receiver.as_deref() {
-                        let is_stdlib_package = symbol_map
-                            .get(receiver)
-                            .filter(|symbol| symbol.kind == SymbolKind::Import)
-                            .and_then(|symbol| symbol.signature.as_deref())
-                            .and_then(import_path_from_signature)
-                            .is_some_and(is_stdlib_import_path);
-
-                        if is_stdlib_package {
-                            return;
-                        }
-                    }
-
                     let pending = self.base.create_pending_relationship(
                         caller.id.clone(),
                         target,

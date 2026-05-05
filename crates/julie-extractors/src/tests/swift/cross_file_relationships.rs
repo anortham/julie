@@ -507,4 +507,79 @@ class Foo: BaseModel, Codable {
             .expect("Should create pending relationship for Codable");
         assert_eq!(codable_pending.kind, RelationshipKind::Implements);
     }
+
+    #[test]
+    fn test_receiver_qualified_call_does_not_resolve_to_unqualified_local_method() {
+        let code = r#"
+class Worker {
+    func compute(x: Int) -> Int {
+        return 1
+    }
+
+    func run() -> Int {
+        let helper = ExternalHelper()
+        return helper.compute(x: 1)
+    }
+}
+"#;
+
+        let results = extract_full("Worker.swift", code);
+        let run = results
+            .symbols
+            .iter()
+            .find(|s| s.name == "run")
+            .expect("Should extract run");
+        let compute = results
+            .symbols
+            .iter()
+            .find(|s| s.name == "compute")
+            .expect("Should extract compute");
+
+        let wrong_resolved_edge = results.relationships.iter().any(|relationship| {
+            relationship.kind == RelationshipKind::Calls
+                && relationship.from_symbol_id == run.id
+                && relationship.to_symbol_id == compute.id
+        });
+        assert!(
+            !wrong_resolved_edge,
+            "receiver-qualified call helper.compute() must not resolve to local compute() by name only"
+        );
+
+        let structured_pending = results
+            .structured_pending_relationships
+            .iter()
+            .find(|pending| {
+                pending.pending.kind == RelationshipKind::Calls
+                    && pending.pending.from_symbol_id == run.id
+                    && pending.target.terminal_name == "compute"
+            })
+            .unwrap_or_else(|| {
+                panic!(
+                    "Should keep helper.compute() as a structured pending relationship. pending={:?} structured={:?}",
+                    results
+                        .pending_relationships
+                        .iter()
+                        .map(|p| (&p.from_symbol_id, &p.callee_name, p.kind.clone()))
+                        .collect::<Vec<_>>(),
+                    results
+                        .structured_pending_relationships
+                        .iter()
+                        .map(|p| {
+                            (
+                                &p.pending.from_symbol_id,
+                                &p.target.display_name,
+                                &p.target.terminal_name,
+                                &p.target.receiver,
+                                p.pending.kind.clone(),
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                )
+            });
+        assert_eq!(structured_pending.target.terminal_name, "compute");
+        assert_eq!(
+            structured_pending.target.receiver.as_deref(),
+            Some("helper")
+        );
+    }
 }

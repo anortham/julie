@@ -112,6 +112,22 @@ class Calculator {
             "Should create resolved relationship for local function call"
         );
 
+        let resolved_call_count = relationships
+            .iter()
+            .filter(|r| {
+                r.kind == RelationshipKind::Calls
+                    && symbols
+                        .iter()
+                        .find(|s| s.id == r.to_symbol_id)
+                        .map(|s| s.name.as_str())
+                        == Some("helper")
+            })
+            .count();
+        assert_eq!(
+            resolved_call_count, 1,
+            "local function call should produce one resolved relationship"
+        );
+
         // Should NOT create a pending relationship for local calls
         let pending_local = pending.iter().find(|p| p.callee_name == "helper");
         assert!(
@@ -586,5 +602,64 @@ enum class SyncState : ExternalProtocol {
             .expect("Should create pending relationship for ExternalProtocol");
 
         assert_eq!(pending_rel.kind, RelationshipKind::Implements);
+    }
+
+    #[test]
+    fn test_receiver_qualified_call_does_not_resolve_to_unqualified_local_method() {
+        let code = r#"
+class Worker {
+    fun compute(): Int {
+        return 1
+    }
+
+    fun run(): Int {
+        val helper = ExternalHelper()
+        return helper.compute()
+    }
+}
+"#;
+
+        let mut parser = init_parser();
+        let tree = parser.parse(code, None).unwrap();
+
+        let workspace_root = PathBuf::from("/tmp/test");
+        let mut extractor = KotlinExtractor::new(
+            "kotlin".to_string(),
+            "Worker.kt".to_string(),
+            code.to_string(),
+            &workspace_root,
+        );
+
+        let symbols = extractor.extract_symbols(&tree);
+        let relationships = extractor.extract_relationships(&tree, &symbols);
+        let run = symbols
+            .iter()
+            .find(|s| s.name == "run")
+            .expect("Should extract run");
+        let compute = symbols
+            .iter()
+            .find(|s| s.name == "compute")
+            .expect("Should extract compute");
+
+        let wrong_resolved_edge = relationships.iter().any(|relationship| {
+            relationship.kind == RelationshipKind::Calls
+                && relationship.from_symbol_id == run.id
+                && relationship.to_symbol_id == compute.id
+        });
+        assert!(
+            !wrong_resolved_edge,
+            "receiver-qualified call helper.compute() must not resolve to local compute() by name only"
+        );
+
+        let structured_pending = extractor
+            .get_structured_pending_relationships()
+            .into_iter()
+            .find(|pending| pending.target.display_name == "helper.compute")
+            .expect("Should keep helper.compute() as a structured pending relationship");
+        assert_eq!(structured_pending.target.terminal_name, "compute");
+        assert_eq!(
+            structured_pending.target.receiver.as_deref(),
+            Some("helper")
+        );
     }
 }

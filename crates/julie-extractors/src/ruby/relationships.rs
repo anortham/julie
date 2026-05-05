@@ -1,8 +1,10 @@
 use super::helpers::{extract_method_name_from_call, extract_name_from_node};
 /// Relationship extraction for Ruby symbols
 /// Handles inheritance, module inclusion, and other symbol relationships
-use crate::base::{Relationship, RelationshipKind, Symbol, UnresolvedTarget};
-use std::collections::HashMap;
+use crate::base::{
+    LocalTargetResolution, Relationship, RelationshipKind, ScopedSymbolIndex, Symbol,
+    UnresolvedTarget,
+};
 use tree_sitter::Node;
 
 /// Extract all relationships from a tree
@@ -12,16 +14,13 @@ pub(super) fn extract_relationships(
     symbols: &[Symbol],
 ) -> Vec<Relationship> {
     let mut relationships = Vec::new();
-
-    // Create symbol map for fast lookups by name
-    let symbol_map: HashMap<String, &Symbol> =
-        crate::base::ScopedSymbolIndex::unique_symbol_map(symbols);
+    let symbol_index = ScopedSymbolIndex::new(symbols);
 
     extract_relationships_from_node(
         extractor,
         tree.root_node(),
         symbols,
-        &symbol_map,
+        &symbol_index,
         &mut relationships,
     );
     relationships
@@ -32,7 +31,7 @@ fn extract_relationships_from_node(
     extractor: &mut super::RubyExtractor,
     node: Node,
     symbols: &[Symbol],
-    symbol_map: &HashMap<String, &Symbol>,
+    symbol_index: &ScopedSymbolIndex<'_>,
     relationships: &mut Vec<Relationship>,
 ) {
     match node.kind() {
@@ -44,7 +43,7 @@ fn extract_relationships_from_node(
             extract_module_inclusion_relationships(extractor, node, symbols, relationships);
         }
         "call" => {
-            extract_call_relationships(extractor, node, symbol_map, relationships);
+            extract_call_relationships(extractor, node, symbols, symbol_index, relationships);
         }
         _ => {}
     }
@@ -52,7 +51,7 @@ fn extract_relationships_from_node(
     // Recursively process children
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        extract_relationships_from_node(extractor, child, symbols, symbol_map, relationships);
+        extract_relationships_from_node(extractor, child, symbols, symbol_index, relationships);
     }
 }
 
@@ -214,7 +213,8 @@ fn process_include_extend_call(
 fn extract_call_relationships(
     extractor: &mut super::RubyExtractor,
     node: Node,
-    symbol_map: &HashMap<String, &Symbol>,
+    symbols: &[Symbol],
+    symbol_index: &ScopedSymbolIndex<'_>,
     relationships: &mut Vec<Relationship>,
 ) {
     let base = extractor.base();
@@ -224,37 +224,39 @@ fn extract_call_relationships(
         if !method_name_opt.is_empty() {
             let target = extract_pending_target(base, node, &method_name_opt);
             // Find the enclosing function/method that contains this call
-            if let Some(caller_symbol) = find_containing_function(base, node, symbol_map) {
+            if let Some(caller_symbol) = base.find_containing_symbol(&node, symbols) {
                 let line_number = (node.start_position().row + 1) as u32;
                 let file_path = base.file_path.clone();
 
-                // Check if we can resolve the callee locally
-                match symbol_map.get(&method_name_opt) {
-                    Some(_) => {
-                        // Target is a local function/method - create resolved Relationship
-                        if let Some(called_symbol) = symbol_map.get(&method_name_opt) {
-                            let relationship = Relationship {
-                                id: format!(
-                                    "{}_{}_{:?}_{}",
-                                    caller_symbol.id,
-                                    called_symbol.id,
-                                    RelationshipKind::Calls,
-                                    node.start_position().row
-                                ),
-                                from_symbol_id: caller_symbol.id.clone(),
-                                to_symbol_id: called_symbol.id.clone(),
-                                kind: RelationshipKind::Calls,
-                                file_path,
-                                line_number,
-                                confidence: 0.9, // Higher confidence for resolved calls
-                                metadata: None,
-                            };
+                match symbol_index.resolve_call_target(
+                    &method_name_opt,
+                    Some(caller_symbol),
+                    target.receiver.as_deref(),
+                ) {
+                    LocalTargetResolution::Resolved(called_symbol) => {
+                        let relationship = Relationship {
+                            id: format!(
+                                "{}_{}_{:?}_{}",
+                                caller_symbol.id,
+                                called_symbol.id,
+                                RelationshipKind::Calls,
+                                node.start_position().row
+                            ),
+                            from_symbol_id: caller_symbol.id.clone(),
+                            to_symbol_id: called_symbol.id.clone(),
+                            kind: RelationshipKind::Calls,
+                            file_path,
+                            line_number,
+                            confidence: 0.9,
+                            metadata: None,
+                        };
 
-                            relationships.push(relationship);
-                        }
+                        relationships.push(relationship);
                     }
-                    None => {
-                        // Callee not found locally - create pending relationship
+                    LocalTargetResolution::Import(_)
+                    | LocalTargetResolution::Ambiguous
+                    | LocalTargetResolution::ReceiverQualified
+                    | LocalTargetResolution::Missing => {
                         let pending = base.create_pending_relationship(
                             caller_symbol.id.clone(),
                             target,
@@ -269,31 +271,6 @@ fn extract_call_relationships(
             }
         }
     }
-}
-
-/// Find the containing function/method for a call node
-fn find_containing_function(
-    base: &crate::base::BaseExtractor,
-    node: Node,
-    symbol_map: &HashMap<String, &Symbol>,
-) -> Option<Symbol> {
-    let mut current = Some(node);
-
-    while let Some(n) = current {
-        if matches!(n.kind(), "method" | "singleton_method") {
-            // Found a method definition - get its name
-            if let Some(name_node) = n.child_by_field_name("name") {
-                let method_name = base.get_node_text(&name_node);
-                if let Some(symbol) = symbol_map.get(&method_name) {
-                    return Some((*symbol).clone());
-                }
-            }
-        }
-
-        current = n.parent();
-    }
-
-    None
 }
 
 fn extract_pending_target(

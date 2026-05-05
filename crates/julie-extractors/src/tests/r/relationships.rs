@@ -389,4 +389,62 @@ process_record <- function(record) {
             "Member access should create PendingRelationships, not resolved Relationships"
         );
     }
+
+    #[test]
+    fn test_ambiguous_duplicate_function_names_do_not_create_resolved_calls() {
+        let r_code = r#"
+caller <- function(value) {
+  duplicate(value)
+}
+
+duplicate <- function(x) {
+  x + 1
+}
+
+duplicate <- function(x) {
+  x + 2
+}
+"#;
+
+        let tree = crate::tests::helpers::init_parser(r_code, "r");
+        let workspace_root = std::path::PathBuf::from("/tmp/test");
+        let mut extractor = crate::r::RExtractor::new(
+            "r".to_string(),
+            "test.R".to_string(),
+            r_code.to_string(),
+            &workspace_root,
+        );
+
+        let symbols = extractor.extract_symbols(&tree);
+        let relationships = extractor.extract_relationships(&tree, &symbols);
+        let pending = extractor.get_structured_pending_relationships();
+
+        let caller = symbols
+            .iter()
+            .find(|s| s.name == "caller" && s.kind == SymbolKind::Function)
+            .expect("Should find caller function");
+
+        let resolved_calls_from_caller: Vec<&Relationship> = relationships
+            .iter()
+            .filter(|r| r.kind == RelationshipKind::Calls && r.from_symbol_id == caller.id)
+            .collect();
+
+        assert!(
+            resolved_calls_from_caller.is_empty(),
+            "Ambiguous duplicate targets should not produce resolved call edges, found: {:?}",
+            resolved_calls_from_caller
+                .iter()
+                .map(|r| &r.to_symbol_id)
+                .collect::<Vec<_>>()
+        );
+
+        assert!(
+            pending.iter().any(|p| {
+                p.pending.kind == RelationshipKind::Calls
+                    && p.pending.from_symbol_id == caller.id
+                    && p.target.terminal_name == "duplicate"
+            }),
+            "Ambiguous duplicate call should be recorded as a pending relationship"
+        );
+    }
 }

@@ -1,7 +1,9 @@
 // R Relationship Extraction
 // Extracts relationships between R symbols: function calls, library usage, pipes
 
-use crate::base::{Relationship, RelationshipKind, Symbol, SymbolKind, UnresolvedTarget};
+use crate::base::{
+    Relationship, RelationshipKind, ScopedSymbolIndex, Symbol, SymbolKind, UnresolvedTarget,
+};
 use crate::r::RExtractor;
 use tree_sitter::{Node, Tree};
 
@@ -11,9 +13,22 @@ pub(super) fn extract_relationships(
     tree: &Tree,
     symbols: &[Symbol],
 ) -> Vec<Relationship> {
+    let symbol_index = ScopedSymbolIndex::new(symbols);
     let mut relationships = Vec::new();
-    extract_call_relationships(extractor, tree.root_node(), symbols, &mut relationships);
-    extract_pipe_relationships(extractor, tree.root_node(), symbols, &mut relationships);
+    extract_call_relationships(
+        extractor,
+        tree.root_node(),
+        symbols,
+        &symbol_index,
+        &mut relationships,
+    );
+    extract_pipe_relationships(
+        extractor,
+        tree.root_node(),
+        symbols,
+        &symbol_index,
+        &mut relationships,
+    );
     extract_member_access_relationships(extractor, tree.root_node(), symbols, &mut relationships);
     relationships
 }
@@ -23,6 +38,7 @@ fn extract_call_relationships(
     extractor: &mut RExtractor,
     node: Node,
     symbols: &[Symbol],
+    symbol_index: &ScopedSymbolIndex,
     relationships: &mut Vec<Relationship>,
 ) {
     // R function calls are represented as "call" nodes
@@ -52,11 +68,22 @@ fn extract_call_relationships(
 
             // Find the containing function (caller)
             if let Some(caller_symbol) = find_containing_function(extractor, node, symbols) {
+                let target = unresolved_call_target(extractor, function_node, &function_name);
+                let local_target = if target.namespace_path.is_empty() {
+                    symbol_index
+                        .resolve_call_target(
+                            &target.terminal_name,
+                            Some(caller_symbol),
+                            target.receiver.as_deref(),
+                        )
+                        .as_symbol()
+                        .filter(|symbol| symbol.kind == SymbolKind::Function)
+                } else {
+                    None
+                };
+
                 // Find the called function symbol (might be user-defined or built-in)
-                if let Some(called_symbol) = symbols
-                    .iter()
-                    .find(|s| s.name == function_name && s.kind == SymbolKind::Function)
-                {
+                if let Some(called_symbol) = local_target {
                     let relationship = Relationship {
                         id: format!(
                             "{}_{}_{:?}_{}",
@@ -79,7 +106,7 @@ fn extract_call_relationships(
                     // for cross-file resolution
                     let pending = extractor.base.create_pending_relationship(
                         caller_symbol.id.clone(),
-                        unresolved_call_target(extractor, function_node, &function_name),
+                        target,
                         RelationshipKind::Calls,
                         &node,
                         Some(caller_symbol.id.clone()),
@@ -96,7 +123,7 @@ fn extract_call_relationships(
     // Recursively process children
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        extract_call_relationships(extractor, child, symbols, relationships);
+        extract_call_relationships(extractor, child, symbols, symbol_index, relationships);
     }
 }
 
@@ -105,6 +132,7 @@ fn extract_pipe_relationships(
     extractor: &mut RExtractor,
     node: Node,
     symbols: &[Symbol],
+    symbol_index: &ScopedSymbolIndex,
     relationships: &mut Vec<Relationship>,
 ) {
     // Pipe operators in R are binary operators
@@ -120,15 +148,28 @@ fn extract_pipe_relationships(
                         // Extract the function being called
                         if let Some(function_node) = right_child.child(0) {
                             let function_name = extractor.base.get_node_text(&function_node);
+                            let target =
+                                unresolved_call_target(extractor, function_node, &function_name);
 
                             // Find containing function
                             if let Some(containing_symbol) =
                                 find_containing_function(extractor, node, symbols)
                             {
+                                let local_target = if target.namespace_path.is_empty() {
+                                    symbol_index
+                                        .resolve_call_target(
+                                            &target.terminal_name,
+                                            Some(containing_symbol),
+                                            target.receiver.as_deref(),
+                                        )
+                                        .as_symbol()
+                                        .filter(|symbol| symbol.kind == SymbolKind::Function)
+                                } else {
+                                    None
+                                };
+
                                 // Check if the piped function is defined locally
-                                if let Some(called_symbol) = symbols.iter().find(|s| {
-                                    s.name == function_name && s.kind == SymbolKind::Function
-                                }) {
+                                if let Some(called_symbol) = local_target {
                                     let relationship = Relationship {
                                         id: format!(
                                             "{}_{}_{:?}_{}",
@@ -150,7 +191,7 @@ fn extract_pipe_relationships(
                                     // Not found locally - create PendingRelationship
                                     let pending = extractor.base.create_pending_relationship(
                                         containing_symbol.id.clone(),
-                                        UnresolvedTarget::simple(function_name.clone()),
+                                        target,
                                         RelationshipKind::Calls,
                                         &node,
                                         Some(containing_symbol.id.clone()),
@@ -169,7 +210,7 @@ fn extract_pipe_relationships(
     // Recursively process children
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        extract_pipe_relationships(extractor, child, symbols, relationships);
+        extract_pipe_relationships(extractor, child, symbols, symbol_index, relationships);
     }
 }
 

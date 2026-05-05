@@ -1,5 +1,8 @@
 use super::helpers;
-use crate::base::{Relationship, RelationshipKind, Symbol, SymbolKind, UnresolvedTarget};
+use crate::base::{
+    LocalTargetResolution, Relationship, RelationshipKind, ScopedSymbolIndex, Symbol, SymbolKind,
+    UnresolvedTarget,
+};
 use crate::vbnet::VbNetExtractor;
 use tree_sitter::Tree;
 
@@ -448,21 +451,16 @@ fn extract_call_relationships(
     }
 
     let base = extractor.get_base();
-    let symbol_map: std::collections::HashMap<String, &Symbol> =
-        crate::base::ScopedSymbolIndex::unique_symbol_map(symbols);
-
-    let mut parent = node.parent();
-    let mut caller_symbol = None;
-    while let Some(p) = parent {
-        if p.kind() == "method_declaration" || p.kind() == "abstract_method_declaration" {
-            if let Some(name_node) = p.child_by_field_name("name") {
-                let mn = base.get_node_text(&name_node);
-                caller_symbol = symbol_map.get(&mn).copied();
-                break;
-            }
-        }
-        parent = p.parent();
-    }
+    let symbol_index = ScopedSymbolIndex::new(symbols);
+    let target = unresolved_call_target(extractor, node, &method_name);
+    let caller_symbol = base
+        .find_containing_symbol(&node, symbols)
+        .filter(|symbol| {
+            matches!(
+                symbol.kind,
+                SymbolKind::Function | SymbolKind::Method | SymbolKind::Constructor
+            )
+        });
 
     let Some(caller) = caller_symbol else {
         return;
@@ -471,19 +469,12 @@ fn extract_call_relationships(
     let line_number = node.start_position().row as u32 + 1;
     let file_path = base.file_path.clone();
 
-    match symbol_map.get(&method_name) {
-        Some(called_symbol) if called_symbol.kind == SymbolKind::Import => {
-            let pending = extractor.get_base().create_pending_relationship(
-                caller.id.clone(),
-                unresolved_call_target(extractor, node, &method_name),
-                RelationshipKind::Calls,
-                &node,
-                Some(caller.id.clone()),
-                Some(0.8),
-            );
-            extractor.add_structured_pending_relationship(pending);
-        }
-        Some(called_symbol) => {
+    match symbol_index.resolve_call_target(
+        &target.terminal_name,
+        Some(caller),
+        target.receiver.as_deref(),
+    ) {
+        LocalTargetResolution::Resolved(called_symbol) => {
             relationships.push(Relationship {
                 id: format!(
                     "{}_{}_{:?}_{}",
@@ -501,10 +492,23 @@ fn extract_call_relationships(
                 metadata: None,
             });
         }
-        None => {
+        LocalTargetResolution::Import(_) => {
             let pending = extractor.get_base().create_pending_relationship(
                 caller.id.clone(),
-                unresolved_call_target(extractor, node, &method_name),
+                target,
+                RelationshipKind::Calls,
+                &node,
+                Some(caller.id.clone()),
+                Some(0.8),
+            );
+            extractor.add_structured_pending_relationship(pending);
+        }
+        LocalTargetResolution::Ambiguous
+        | LocalTargetResolution::ReceiverQualified
+        | LocalTargetResolution::Missing => {
+            let pending = extractor.get_base().create_pending_relationship(
+                caller.id.clone(),
+                target,
                 RelationshipKind::Calls,
                 &node,
                 Some(caller.id.clone()),

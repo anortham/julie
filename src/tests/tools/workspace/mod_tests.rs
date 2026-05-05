@@ -8,6 +8,9 @@ use crate::mcp_compat::CallToolResult;
 use crate::tools::workspace::ManageWorkspaceTool;
 #[cfg(feature = "embeddings-sidecar")]
 use crate::tools::workspace::indexing::embeddings::spawn_workspace_embedding;
+use crate::tools::workspace::indexing::engine_version::{
+    SEMANTIC_INDEX_ENGINE_COMPONENT, SEMANTIC_INDEX_ENGINE_VERSION,
+};
 use crate::workspace::JulieWorkspace;
 use rmcp::{
     ServerHandler,
@@ -1535,6 +1538,10 @@ async fn test_manage_workspace_health_detailed_uses_rebound_session_primary() {
             && report.contains("Projection Freshness: REBUILD REQUIRED"),
         "detailed health should use rebound current-primary projection state instead of stale loaded workspace state: {report}"
     );
+    assert!(
+        report.contains("Indexed workspace languages (1): rust"),
+        "detailed health should describe indexed workspace languages, not the tree-sitter support matrix: {report}"
+    );
 }
 
 #[tokio::test]
@@ -2495,6 +2502,148 @@ fn function_two() {
             );
         }
     }
+}
+
+#[tokio::test]
+async fn test_incremental_indexing_forces_reindex_when_index_engine_version_is_stale() {
+    unsafe {
+        std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+    }
+
+    let temp_dir = TempDir::new().unwrap();
+    let test_file = temp_dir.path().join("main.rs");
+    fs::write(&test_file, "fn alpha() { beta(); }\nfn beta() {}\n").unwrap();
+
+    let handler = JulieServerHandler::new_for_test().await.unwrap();
+    handler
+        .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
+        .await
+        .unwrap();
+
+    let tool = ManageWorkspaceTool {
+        operation: "index".to_string(),
+        path: Some(temp_dir.path().to_string_lossy().to_string()),
+        force: Some(true),
+        name: None,
+        workspace_id: None,
+        detailed: None,
+    };
+
+    let result = tool.call_tool(&handler).await.unwrap();
+    let message = extract_text_from_result(&result);
+    assert!(
+        message.contains("Workspace indexing complete"),
+        "initial index should succeed: {message}"
+    );
+
+    let workspace_id = handler
+        .current_workspace_id()
+        .expect("test handler should have a workspace id");
+    let (initial_revision, initial_relationships) = {
+        let workspace = handler
+            .get_workspace()
+            .await
+            .unwrap()
+            .expect("workspace should be initialized");
+        let db = workspace.db.as_ref().expect("workspace db should exist");
+        let db_lock = db.lock().unwrap();
+        let initial_revision = db_lock
+            .get_current_canonical_revision(&workspace_id)
+            .unwrap()
+            .expect("initial index should record a canonical revision");
+        let initial_relationships: i64 = db_lock
+            .conn
+            .query_row("SELECT COUNT(*) FROM relationships", [], |row| row.get(0))
+            .unwrap();
+        assert!(
+            initial_relationships > 0,
+            "test fixture should produce at least one relationship"
+        );
+        (initial_revision, initial_relationships)
+    };
+
+    {
+        let workspace = handler
+            .get_workspace()
+            .await
+            .unwrap()
+            .expect("workspace should be initialized");
+        let db = workspace.db.as_ref().expect("workspace db should exist");
+        let db_lock = db.lock().unwrap();
+        db_lock
+            .conn
+            .execute("DELETE FROM relationships", [])
+            .unwrap();
+        let relationship_count: i64 = db_lock
+            .conn
+            .query_row("SELECT COUNT(*) FROM relationships", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(
+            relationship_count, 0,
+            "manual corruption should remove relationship rows before stale-version repair"
+        );
+        db_lock
+            .set_index_engine_version(
+                &workspace_id,
+                SEMANTIC_INDEX_ENGINE_COMPONENT,
+                "stale-test-version",
+            )
+            .unwrap();
+    }
+
+    let incremental_tool = ManageWorkspaceTool {
+        operation: "index".to_string(),
+        path: Some(temp_dir.path().to_string_lossy().to_string()),
+        force: Some(false),
+        name: None,
+        workspace_id: None,
+        detailed: None,
+    };
+
+    let result = incremental_tool.call_tool(&handler).await.unwrap();
+    let message = extract_text_from_result(&result);
+    assert!(
+        message.contains("Workspace indexing complete"),
+        "incremental index should complete: {message}"
+    );
+
+    let workspace = handler
+        .get_workspace()
+        .await
+        .unwrap()
+        .expect("workspace should be initialized");
+    let db = workspace.db.as_ref().expect("workspace db should exist");
+    let db_lock = db.lock().unwrap();
+    let updated_revision = db_lock
+        .get_current_canonical_revision(&workspace_id)
+        .unwrap()
+        .expect("stale engine reindex should record a canonical revision");
+    assert!(
+        updated_revision > initial_revision,
+        "stale semantic engine version should force a reindex even when file hashes are unchanged"
+    );
+
+    let restored_relationships: i64 = db_lock
+        .conn
+        .query_row("SELECT COUNT(*) FROM relationships", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(
+        restored_relationships, initial_relationships,
+        "stale semantic engine version should rebuild derived relationship rows"
+    );
+
+    let stored_version = db_lock
+        .get_index_engine_version(&workspace_id, SEMANTIC_INDEX_ENGINE_COMPONENT)
+        .unwrap()
+        .expect("successful reindex should store the current semantic engine version");
+    assert_ne!(
+        stored_version, "stale-test-version",
+        "successful reindex should update the stored semantic engine version"
+    );
+    assert_eq!(
+        stored_version, SEMANTIC_INDEX_ENGINE_VERSION,
+        "stored semantic engine version should match the current code stamp"
+    );
 }
 
 /// Regression test: refresh with no file changes should NOT trigger the full

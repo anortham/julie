@@ -402,4 +402,39 @@ void main() {
             pending_helper_calls.len()
         );
     }
+
+    #[test]
+    fn test_receiver_qualified_call_does_not_resolve_to_unrelated_local_method() {
+        let code = r#"
+class Service {
+  void helper() {}
+
+  void run() {
+    other.helper();
+  }
+}
+"#;
+
+        let results = extract_full("lib/service.dart", code);
+        let run = results
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == "run")
+            .expect("Should extract run method");
+        let helper = results
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == "helper")
+            .expect("Should extract helper method");
+
+        let wrong_local_call = results.relationships.iter().any(|relationship| {
+            relationship.kind == RelationshipKind::Calls
+                && relationship.from_symbol_id == run.id
+                && relationship.to_symbol_id == helper.id
+        });
+        assert!(
+            !wrong_local_call,
+            "receiver-qualified other.helper() must not resolve to local Service.helper()"
+        );
+    }
 }

@@ -1,4 +1,7 @@
-use crate::base::{Relationship, RelationshipKind, Symbol, SymbolKind, UnresolvedTarget};
+use crate::base::{
+    LocalTargetResolution, Relationship, RelationshipKind, ScopedSymbolIndex, Symbol, SymbolKind,
+    UnresolvedTarget,
+};
 use serde_json;
 use std::collections::HashMap;
 use tree_sitter::Node;
@@ -270,9 +273,7 @@ impl SwiftExtractor {
         symbols: &[Symbol],
         relationships: &mut Vec<Relationship>,
     ) {
-        // Build a map of symbols by name for quick lookup
-        let symbol_map: HashMap<String, &Symbol> =
-            crate::base::ScopedSymbolIndex::unique_symbol_map(symbols);
+        let symbol_index = ScopedSymbolIndex::new(symbols);
 
         // Extract the function/method name being called
         let function_name = self.extract_call_target_name(node);
@@ -281,24 +282,20 @@ impl SwiftExtractor {
             return;
         };
 
-        // Find the calling function context
-        let calling_function = self.find_containing_function(node, symbols);
-        let caller_symbol = calling_function
-            .as_ref()
-            .and_then(|name| symbol_map.get(name));
-
-        // No caller context means we can't create a meaningful relationship
-        let Some(caller) = caller_symbol else {
+        let Some(caller) = self.base.find_containing_symbol(&node, symbols) else {
             return;
         };
 
+        let target = self.unresolved_call_target(node, &function_name);
         let line_number = node.start_position().row as u32 + 1;
         let file_path = self.base.file_path.clone();
 
-        // Check if we can resolve the callee locally
-        match symbol_map.get(function_name.as_str()) {
-            Some(called_symbol) => {
-                // Target is a local function/method - create resolved Relationship
+        match symbol_index.resolve_call_target(
+            function_name.as_str(),
+            Some(caller),
+            target.receiver.as_deref(),
+        ) {
+            LocalTargetResolution::Resolved(called_symbol) => {
                 relationships.push(Relationship {
                     id: format!(
                         "{}_{}_{:?}_{}",
@@ -316,12 +313,13 @@ impl SwiftExtractor {
                     metadata: None,
                 });
             }
-            None => {
-                // Target not found in local symbols - likely a method on imported type or cross-file call
-                // Create PendingRelationship for cross-file resolution
+            LocalTargetResolution::Import(_)
+            | LocalTargetResolution::Ambiguous
+            | LocalTargetResolution::ReceiverQualified
+            | LocalTargetResolution::Missing => {
                 let pending = self.base.create_pending_relationship(
                     caller.id.clone(),
-                    self.unresolved_call_target(node, &function_name),
+                    target,
                     RelationshipKind::Calls,
                     &node,
                     Some(caller.id.clone()),
@@ -333,6 +331,22 @@ impl SwiftExtractor {
     }
 
     fn unresolved_call_target(&self, node: Node, fallback_name: &str) -> UnresolvedTarget {
+        let call_text = self.base.get_node_text(&node);
+        let call_head = call_text.split('(').next().unwrap_or(call_text.as_str());
+        if let Some((receiver, terminal_name)) = call_head.rsplit_once('.') {
+            let receiver = receiver.trim();
+            let terminal_name = terminal_name.trim();
+            if !receiver.is_empty() && !terminal_name.is_empty() {
+                return UnresolvedTarget {
+                    display_name: format!("{receiver}.{terminal_name}"),
+                    terminal_name: terminal_name.to_string(),
+                    receiver: Some(receiver.to_string()),
+                    namespace_path: Vec::new(),
+                    import_context: None,
+                };
+            }
+        }
+
         let mut identifiers = Vec::new();
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
@@ -380,7 +394,7 @@ impl SwiftExtractor {
                 // Direct function call
                 Some(self.base.get_node_text(&first_child))
             }
-            "postfix_expression" => {
+            "postfix_expression" | "navigation_expression" => {
                 // Method call or qualified call
                 self.extract_rightmost_call_identifier(first_child)
             }
@@ -394,10 +408,11 @@ impl SwiftExtractor {
         let mut cursor = node.walk();
 
         for child in node.children(&mut cursor) {
-            if child.kind() == "simple_identifier" {
+            if child.kind() == "simple_identifier" || child.kind() == "identifier" {
                 result = Some(self.base.get_node_text(&child));
             } else if child.kind() == "postfix_expression"
                 || child.kind() == "member_access_expression"
+                || child.kind() == "navigation_expression"
             {
                 // Recursively look in nested expressions
                 if let Some(inner) = self.extract_rightmost_call_identifier(child) {
@@ -407,46 +422,5 @@ impl SwiftExtractor {
         }
 
         result
-    }
-
-    /// Find the function/method that contains this node
-    fn find_containing_function(&self, node: Node, symbols: &[Symbol]) -> Option<String> {
-        let file_path = &self.base.file_path;
-
-        // Walk up the tree to find a function_declaration or init_declaration
-        let mut current = Some(node);
-        while let Some(n) = current {
-            match n.kind() {
-                "function_declaration" | "init_declaration" | "deinit_declaration" => {
-                    // Extract function/method name
-                    let func_name = {
-                        let mut found_name = None;
-                        let mut cursor = n.walk();
-                        for child in n.children(&mut cursor) {
-                            if child.kind() == "simple_identifier" {
-                                found_name = Some(self.base.get_node_text(&child));
-                                break;
-                            }
-                        }
-                        found_name
-                    };
-
-                    if let Some(name) = func_name {
-                        // Verify this symbol exists in our symbol list
-                        if symbols
-                            .iter()
-                            .any(|s| s.name == name && &s.file_path == file_path)
-                        {
-                            return Some(name);
-                        }
-                    }
-                    break;
-                }
-                _ => {}
-            }
-            current = n.parent();
-        }
-
-        None
     }
 }

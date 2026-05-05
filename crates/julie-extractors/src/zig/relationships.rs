@@ -1,5 +1,6 @@
 use crate::base::{
-    BaseExtractor, Relationship, RelationshipKind, Symbol, SymbolKind, UnresolvedTarget,
+    BaseExtractor, LocalTargetResolution, Relationship, RelationshipKind, ScopedSymbolIndex,
+    Symbol, SymbolKind, UnresolvedTarget,
 };
 use crate::zig::ZigExtractor;
 use tree_sitter::{Node, Tree};
@@ -179,41 +180,22 @@ fn extract_function_call_relationships(
     }
 
     if let Some(unresolved_target) = unresolved_target {
-        let called_func_name = unresolved_target.terminal_name.clone();
-        // Find the calling function first
-        let mut current = node.parent();
-        let caller_symbol = loop {
-            match current {
-                Some(parent)
-                    if matches!(
-                        parent.kind(),
-                        "function_declaration" | "function_definition"
-                    ) =>
-                {
-                    if let Some(caller_name_node) = base.find_child_by_type(&parent, "identifier") {
-                        let caller_name = base.get_node_text(&caller_name_node);
-                        break symbols
-                            .iter()
-                            .find(|s| s.name == caller_name && s.kind == SymbolKind::Function);
-                    }
-                    break None;
-                }
-                Some(parent) => current = parent.parent(),
-                None => break None,
-            }
-        };
+        let caller_symbol = base
+            .find_containing_symbol(&node, symbols)
+            .filter(|symbol| symbol.kind == SymbolKind::Function);
+        let scoped_index = ScopedSymbolIndex::new(symbols);
 
         if let Some(caller_symbol) = caller_symbol {
             // Now check if the called function exists locally
-            let called_symbol = symbols
-                .iter()
-                .find(|s| s.name == called_func_name && s.kind == SymbolKind::Function);
-
             let line_number = (node.start_position().row + 1) as u32;
             let file_path = base.file_path.clone();
 
-            match called_symbol {
-                Some(called_symbol) => {
+            match scoped_index.resolve_call_target(
+                &unresolved_target.terminal_name,
+                Some(caller_symbol),
+                unresolved_target.receiver.as_deref(),
+            ) {
+                LocalTargetResolution::Resolved(called_symbol) => {
                     // Called function found locally - create resolved relationship
                     if caller_symbol.id != called_symbol.id {
                         relationships.push(Relationship {
@@ -234,7 +216,10 @@ fn extract_function_call_relationships(
                         });
                     }
                 }
-                None => {
+                LocalTargetResolution::Import(_)
+                | LocalTargetResolution::Ambiguous
+                | LocalTargetResolution::Missing
+                | LocalTargetResolution::ReceiverQualified => {
                     // Called function not found locally - likely from another file
                     // Create pending relationship for cross-file resolution
                     let pending = extractor.get_base_mut().create_pending_relationship(

@@ -225,6 +225,53 @@ End Class
     }
 
     #[test]
+    fn test_receiver_qualified_call_does_not_resolve_to_unrelated_local_method() {
+        let code = r#"
+Public Class Service
+    Public Sub Process()
+    End Sub
+
+    Public Sub Run()
+        helper.Process()
+    End Sub
+End Class
+"#;
+
+        let results = extract_full("src/Service.vb", code);
+        let run = results
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == "Run")
+            .expect("Should extract Run method");
+        let process = results
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == "Process")
+            .expect("Should extract Process method");
+
+        let wrong_local_call = results.relationships.iter().any(|relationship| {
+            relationship.kind == RelationshipKind::Calls
+                && relationship.from_symbol_id == run.id
+                && relationship.to_symbol_id == process.id
+        });
+        assert!(
+            !wrong_local_call,
+            "receiver-qualified helper.Process() must not resolve to local Service.Process()"
+        );
+
+        let structured_pending = results
+            .structured_pending_relationships
+            .iter()
+            .find(|pending| pending.target.display_name == "helper.Process")
+            .expect("receiver-qualified VB calls should emit structured pending targets");
+        assert_eq!(structured_pending.target.terminal_name, "Process");
+        assert_eq!(
+            structured_pending.target.receiver.as_deref(),
+            Some("helper")
+        );
+    }
+
+    #[test]
     fn test_vb_constructor_and_member_types_create_uses_relationship() {
         let code = r#"
 Public Interface ILogger

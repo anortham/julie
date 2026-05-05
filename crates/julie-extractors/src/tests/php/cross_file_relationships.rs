@@ -365,6 +365,54 @@ class Helper {
     }
 
     #[test]
+    fn test_receiver_qualified_call_does_not_resolve_to_unrelated_local_method() {
+        let code = r#"<?php
+class Service {
+    public function work() {
+        return 42;
+    }
+
+    public function caller() {
+        return $helper->work();
+    }
+}
+"#;
+
+        let results = extract_full("src/service.php", code);
+        let caller = results
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == "caller")
+            .expect("Should extract caller method");
+        let work = results
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == "work")
+            .expect("Should extract work method");
+
+        let wrong_local_call = results.relationships.iter().any(|relationship| {
+            relationship.kind == RelationshipKind::Calls
+                && relationship.from_symbol_id == caller.id
+                && relationship.to_symbol_id == work.id
+        });
+        assert!(
+            !wrong_local_call,
+            "receiver-qualified $helper->work() must not resolve to local Service::work()"
+        );
+
+        let structured_pending = results
+            .structured_pending_relationships
+            .iter()
+            .find(|pending| pending.target.display_name == "helper.work")
+            .expect("receiver-qualified PHP calls should emit structured pending targets");
+        assert_eq!(structured_pending.target.terminal_name, "work");
+        assert_eq!(
+            structured_pending.target.receiver.as_deref(),
+            Some("helper")
+        );
+    }
+
+    #[test]
     fn test_undefined_function_call_creates_pending_relationship() {
         // Function calls something not defined anywhere (not even imported)
         let code = r#"<?php

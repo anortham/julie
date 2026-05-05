@@ -229,4 +229,54 @@ int caller() {
             "Should have relationship from caller to helper"
         );
     }
+
+    #[test]
+    fn test_receiver_qualified_call_does_not_resolve_to_unrelated_local_function() {
+        let code = r#"
+struct Widget {};
+
+int helper() {
+    return 7;
+}
+
+int caller(Widget widget) {
+    return widget.helper();
+}
+"#;
+
+        let results = extract_full("src/receiver_qualified.cpp", code);
+        let helper = results
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == "helper")
+            .expect("helper symbol should be extracted");
+        let caller = results
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == "caller")
+            .expect("caller symbol should be extracted");
+
+        let wrong_local_resolution = results.relationships.iter().any(|relationship| {
+            relationship.kind == RelationshipKind::Calls
+                && relationship.from_symbol_id == caller.id
+                && relationship.to_symbol_id == helper.id
+        });
+        assert!(
+            !wrong_local_resolution,
+            "Receiver-qualified calls should not resolve to unrelated local functions by terminal name"
+        );
+
+        let structured_pending = results
+            .structured_pending_relationships
+            .iter()
+            .find(|pending| {
+                pending.pending.kind == RelationshipKind::Calls
+                    && pending.target.terminal_name == "helper"
+                    && pending.target.receiver.as_deref() == Some("widget")
+            })
+            .expect(
+                "receiver-qualified unresolved call should produce structured pending relationship",
+            );
+        assert_eq!(structured_pending.pending.from_symbol_id, caller.id);
+    }
 }

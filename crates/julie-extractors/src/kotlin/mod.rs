@@ -22,7 +22,7 @@ use crate::base::{
     BaseExtractor, Identifier, PendingRelationship, Relationship, StructuredPendingRelationship,
     Symbol,
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use tree_sitter::{Node, Tree};
 
 pub struct KotlinExtractor {
@@ -192,6 +192,7 @@ impl KotlinExtractor {
     pub fn extract_relationships(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Relationship> {
         let mut relationships = Vec::new();
         self.visit_node_for_relationships(tree.root_node(), symbols, &mut relationships);
+        dedupe_relationships(&mut relationships);
         relationships
     }
 
@@ -239,4 +240,9 @@ impl KotlinExtractor {
     pub(crate) fn base(&self) -> &BaseExtractor {
         &self.base
     }
+}
+
+fn dedupe_relationships(relationships: &mut Vec<Relationship>) {
+    let mut seen = HashSet::new();
+    relationships.retain(|relationship| seen.insert(relationship.id.clone()));
 }

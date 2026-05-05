@@ -297,4 +297,52 @@ func caller() int {
             "Should have relationship from caller to helper"
         );
     }
+
+    #[test]
+    fn test_receiver_qualified_stdlib_call_does_not_resolve_to_local_terminal_name() {
+        let code = r#"
+package main
+
+import "fmt"
+
+func Println(message string) {
+}
+
+func caller() {
+    fmt.Println("hello")
+}
+"#;
+
+        let results = extract_full("main.go", code);
+        let caller = results
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == "caller")
+            .expect("caller symbol should be extracted");
+        let local_println = results
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == "Println")
+            .expect("local Println symbol should be extracted");
+
+        let wrong_local_resolution = results.relationships.iter().any(|relationship| {
+            relationship.kind == RelationshipKind::Calls
+                && relationship.from_symbol_id == caller.id
+                && relationship.to_symbol_id == local_println.id
+        });
+        assert!(
+            !wrong_local_resolution,
+            "fmt.Println() should not resolve to local Println() symbol"
+        );
+
+        let pending_calls: Vec<_> = results
+            .structured_pending_relationships
+            .iter()
+            .filter(|pending| pending.pending.kind == RelationshipKind::Calls)
+            .collect();
+        assert!(
+            pending_calls.is_empty(),
+            "fmt.Println() should not generate pending calls either"
+        );
+    }
 }

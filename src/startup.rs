@@ -5,6 +5,9 @@
 
 use crate::handler::JulieServerHandler;
 use crate::tools::workspace::ManageWorkspaceTool;
+use crate::tools::workspace::indexing::engine_version::{
+    SEMANTIC_INDEX_ENGINE_COMPONENT, SEMANTIC_INDEX_ENGINE_VERSION,
+};
 use crate::tools::workspace::indexing::state::IndexingRepairReason;
 use crate::workspace::startup_hint::WorkspaceStartupSource;
 use anyhow::{Context, Result};
@@ -242,6 +245,15 @@ pub(crate) async fn plan_primary_workspace_repair(
             }
 
             let mut reasons = Vec::new();
+
+            if !db.index_engine_version_matches(
+                &route.workspace_id,
+                SEMANTIC_INDEX_ENGINE_COMPONENT,
+                SEMANTIC_INDEX_ENGINE_VERSION,
+            )? {
+                info!("📊 Index semantic version changed or missing - full indexing needed");
+                reasons.push(IndexingRepairReason::SemanticVersionChanged);
+            }
 
             // ✅ NEW: Check if index is stale
             // Compare file modification times with database timestamp

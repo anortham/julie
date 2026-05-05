@@ -14,13 +14,14 @@
 //!    test subclasses from stealing centrality from production symbols
 
 mod namespace;
+mod rust_reexports;
+mod scoring;
 
 use crate::database::SymbolDatabase;
 use julie_extractors::base::{
-    PendingRelationship, Relationship, RelationshipKind, StructuredPendingRelationship, Symbol,
-    SymbolKind, UnresolvedTarget,
+    PendingRelationship, Relationship, StructuredPendingRelationship, Symbol, SymbolKind,
+    UnresolvedTarget,
 };
-use julie_extractors::language::detect_language_from_extension;
 use std::collections::{HashMap, HashSet};
 use tracing::{info, trace, warn};
 
@@ -98,39 +99,6 @@ impl ParentReferenceContext {
     }
 }
 
-/// Symbols that are valid resolution targets for cross-file relationships.
-/// Excludes Import, Export, Variable, Field, EnumMember — these aren't definitions you call or extend.
-fn is_resolvable_target(kind: &SymbolKind) -> bool {
-    matches!(
-        kind,
-        SymbolKind::Function
-            | SymbolKind::Method
-            | SymbolKind::Constructor
-            | SymbolKind::Class
-            | SymbolKind::Struct
-            | SymbolKind::Trait
-            | SymbolKind::Interface
-            | SymbolKind::Enum
-            | SymbolKind::Type
-            | SymbolKind::Module
-            | SymbolKind::Namespace
-            | SymbolKind::Constant
-            | SymbolKind::Delegate
-            | SymbolKind::Event
-    )
-}
-
-/// Infer language from a file path's extension.
-fn language_of(file_path: &str) -> Option<&'static str> {
-    let ext = file_path.rsplit('.').next()?;
-    detect_language_from_extension(ext)
-}
-
-/// Extract directory portion of a path (everything before the last `/`).
-fn dir_of(path: &str) -> &str {
-    path.rsplit_once('/').map_or("", |(dir, _)| dir)
-}
-
 fn add_parent_mentions_from_text(
     scope_id: &str,
     text: &str,
@@ -157,77 +125,6 @@ fn add_symbol_parent_mentions(
     }
 }
 
-/// Score a candidate symbol for disambiguation. Higher score wins; 0 excludes it.
-fn score_candidate(
-    candidate: &Symbol,
-    pending: &PendingRelationship,
-    target: Option<&UnresolvedTarget>,
-    caller_scope_symbol_id: Option<&str>,
-    parent_ctx: &ParentReferenceContext,
-) -> u32 {
-    if !is_resolvable_target(&candidate.kind) {
-        return 0;
-    }
-
-    let mut score: u32 = 1; // Base score for being a valid target
-    let Some(namespace_bonus) = namespace::score(candidate, pending, target, parent_ctx) else {
-        return 0;
-    };
-    score += namespace_bonus;
-
-    if let Some(caller_lang) = language_of(&pending.file_path) {
-        if candidate.language == caller_lang {
-            score += 100;
-        }
-    }
-
-    let caller_dir = dir_of(&pending.file_path);
-    let candidate_dir = dir_of(&candidate.file_path);
-    if caller_dir == candidate_dir {
-        score += 50; // Same directory
-    } else if candidate_dir.starts_with(caller_dir) || caller_dir.starts_with(candidate_dir) {
-        score += 25; // Parent/child directory
-    }
-
-    if pending.kind == RelationshipKind::Calls
-        && matches!(
-            candidate.kind,
-            SymbolKind::Function | SymbolKind::Method | SymbolKind::Constructor
-        )
-    {
-        score += 10;
-    }
-
-    if pending.kind == RelationshipKind::Instantiates
-        && matches!(
-            candidate.kind,
-            SymbolKind::Class | SymbolKind::Interface | SymbolKind::Struct | SymbolKind::Type
-        )
-    {
-        score += 10;
-    }
-
-    if target.and_then(|t| t.receiver.as_ref()).is_some()
-        && parent_ctx
-            .caller_scope_references_parent(caller_scope_symbol_id, candidate.parent_id.as_deref())
-    {
-        score += 150;
-    }
-
-    if parent_ctx.caller_references_parent(&pending.file_path, candidate.parent_id.as_deref()) {
-        score += 200;
-    } else if candidate.parent_id.is_some() && parent_ctx.caller_has_identifiers(&pending.file_path)
-    {
-        score = score.saturating_sub(75);
-    }
-
-    if crate::search::scoring::is_test_path(&candidate.file_path) {
-        score = score.saturating_sub(75);
-    }
-
-    score
-}
-
 /// Select the best candidate from a list of symbols matching a callee name.
 /// Returns None if no valid candidate exists.
 #[cfg(test)]
@@ -236,20 +133,28 @@ pub fn select_best_candidate<'a>(
     pending: &PendingRelationship,
     parent_ctx: &ParentReferenceContext,
 ) -> Option<&'a Symbol> {
-    select_best_candidate_for_target(candidates, pending, None, None, parent_ctx)
+    select_best_candidate_for_target(candidates, &[], pending, None, None, parent_ctx)
 }
 
 fn select_best_candidate_for_target<'a>(
     candidates: &'a [Symbol],
+    reexport_imports: &[Symbol],
     pending: &PendingRelationship,
     target: Option<&UnresolvedTarget>,
     caller_scope_symbol_id: Option<&str>,
     parent_ctx: &ParentReferenceContext,
 ) -> Option<&'a Symbol> {
+    if let Some(symbol) =
+        rust_reexports::select_definition(candidates, reexport_imports, pending, target)
+    {
+        return Some(symbol);
+    }
+
     candidates
         .iter()
         .filter_map(|c| {
-            let s = score_candidate(c, pending, target, caller_scope_symbol_id, parent_ctx);
+            let s =
+                scoring::score_candidate(c, pending, target, caller_scope_symbol_id, parent_ctx);
             if s > 0 { Some((c, s)) } else { None }
         })
         .max_by_key(|(_, score)| *score)
@@ -355,6 +260,24 @@ pub fn resolve_structured_batch(
             return (Vec::new(), stats);
         }
     };
+    let reexport_imports = if pendings.iter().any(|pending| {
+        pending
+            .target
+            .namespace_path
+            .first()
+            .is_some_and(|root| root == "crate")
+            && scoring::language_of(&pending.pending.file_path) == Some("rust")
+    }) {
+        match db.query_symbols_by_kind(&SymbolKind::Import) {
+            Ok(imports) => imports,
+            Err(e) => {
+                warn!("Rust re-export import lookup failed: {}", e);
+                Vec::new()
+            }
+        }
+    } else {
+        Vec::new()
+    };
 
     let legacy_pendings: Vec<PendingRelationship> = pendings
         .iter()
@@ -373,6 +296,7 @@ pub fn resolve_structured_batch(
             Some(candidates) if !candidates.is_empty() => {
                 if let Some(target) = select_best_candidate_for_target(
                     candidates,
+                    &reexport_imports,
                     &structured.pending,
                     Some(&structured.target),
                     structured.caller_scope_symbol_id.as_deref(),

@@ -323,6 +323,62 @@ public class Calculator {
             has_correct_rel,
             "Should have relationship from caller to helper"
         );
+
+        let matching_rels = call_rels
+            .iter()
+            .filter(|r| r.from_symbol_id == caller.id && r.to_symbol_id == helper.id)
+            .count();
+        assert_eq!(
+            matching_rels, 1,
+            "same-file method call should produce one relationship"
+        );
+    }
+
+    #[test]
+    fn test_receiver_qualified_call_does_not_resolve_to_unrelated_local_method() {
+        let code = r#"
+public class Service {
+    public void doThing() {
+    }
+
+    public void run() {
+        helper.doThing();
+    }
+}
+"#;
+
+        let results = extract_full("src/Service.java", code);
+        let run = results
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == "run")
+            .expect("Should extract run method");
+        let do_thing = results
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == "doThing")
+            .expect("Should extract doThing method");
+
+        let wrong_local_call = results.relationships.iter().any(|relationship| {
+            relationship.kind == RelationshipKind::Calls
+                && relationship.from_symbol_id == run.id
+                && relationship.to_symbol_id == do_thing.id
+        });
+        assert!(
+            !wrong_local_call,
+            "receiver-qualified helper.doThing() must not resolve to local Service.doThing()"
+        );
+
+        let structured_pending = results
+            .structured_pending_relationships
+            .iter()
+            .find(|pending| pending.target.display_name == "helper.doThing")
+            .expect("receiver-qualified Java calls should emit structured pending targets");
+        assert_eq!(structured_pending.target.terminal_name, "doThing");
+        assert_eq!(
+            structured_pending.target.receiver.as_deref(),
+            Some("helper")
+        );
     }
 
     // ========================================================================

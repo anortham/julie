@@ -125,12 +125,14 @@ namespace Main
             pending_calls.len()
         );
 
-        // Verify the pending relationship has the correct callee name
-        let process_pending = pending_calls.iter().find(|p| p.callee_name == "Process");
+        // Verify the pending relationship preserves a useful callee name.
+        let process_pending = pending_calls
+            .iter()
+            .find(|p| p.callee_name == "Process" || p.callee_name == "Helper.Process");
 
         assert!(
             process_pending.is_some(),
-            "PendingRelationship should have callee_name='Process'.\n\
+            "PendingRelationship should preserve the Process callee name.\n\
              Found: {:?}",
             pending_calls
                 .iter()
@@ -154,6 +156,59 @@ namespace Main
         assert_eq!(
             structured_pending.target.receiver.as_deref(),
             Some("Helper")
+        );
+    }
+
+    #[test]
+    fn receiver_qualified_call_does_not_resolve_to_unrelated_local_method() {
+        let code = r#"
+namespace Main
+{
+    public class Service
+    {
+        public void Process()
+        {
+        }
+
+        public void Run()
+        {
+            helper.Process();
+        }
+    }
+}
+"#;
+
+        let results = extract_full("src/Main.cs", code);
+        let run = results
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == "Run")
+            .expect("Should extract Run method");
+        let process = results
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == "Process")
+            .expect("Should extract Process method");
+
+        let wrong_local_call = results.relationships.iter().any(|relationship| {
+            relationship.kind == RelationshipKind::Calls
+                && relationship.from_symbol_id == run.id
+                && relationship.to_symbol_id == process.id
+        });
+        assert!(
+            !wrong_local_call,
+            "receiver-qualified helper.Process() must not resolve to local Service.Process()"
+        );
+
+        let structured_pending = results
+            .structured_pending_relationships
+            .iter()
+            .find(|pending| pending.target.display_name == "helper.Process")
+            .expect("receiver-qualified C# calls should emit structured pending targets");
+        assert_eq!(structured_pending.target.terminal_name, "Process");
+        assert_eq!(
+            structured_pending.target.receiver.as_deref(),
+            Some("helper")
         );
     }
 

@@ -192,7 +192,7 @@ fn resolve_self_receiver_target<'a>(
     caller: Option<&Symbol>,
 ) -> LocalTargetResolution<'a> {
     let Some(caller_parent_id) = caller.and_then(|caller| caller.parent_id.as_deref()) else {
-        return unique_candidate(candidates);
+        return LocalTargetResolution::Missing;
     };
 
     let same_parent: Vec<&Symbol> = candidates
@@ -208,11 +208,36 @@ fn resolve_self_receiver_target<'a>(
 }
 
 fn unique_candidate<'a>(candidates: &[&'a Symbol]) -> LocalTargetResolution<'a> {
+    if let Some(symbol) = unique_concrete_definition(candidates) {
+        return LocalTargetResolution::Resolved(symbol);
+    }
+
     match candidates {
         [] => LocalTargetResolution::Missing,
         [symbol] if symbol.kind == SymbolKind::Import => LocalTargetResolution::Import(symbol),
         [symbol] => LocalTargetResolution::Resolved(symbol),
         _ => LocalTargetResolution::Ambiguous,
+    }
+}
+
+fn unique_concrete_definition<'a>(candidates: &[&'a Symbol]) -> Option<&'a Symbol> {
+    let mut definition = None;
+    for symbol in candidates {
+        match symbol_definition_status(symbol)? {
+            true if definition.replace(*symbol).is_some() => return None,
+            true => {}
+            false => {}
+        }
+    }
+    definition
+}
+
+fn symbol_definition_status(symbol: &Symbol) -> Option<bool> {
+    let value = symbol.metadata.as_ref()?.get("isDefinition")?;
+    match value {
+        serde_json::Value::Bool(value) => Some(*value),
+        serde_json::Value::String(value) => value.parse::<bool>().ok(),
+        _ => None,
     }
 }
 

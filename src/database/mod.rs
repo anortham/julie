@@ -18,6 +18,7 @@ mod files;
 mod helpers;
 mod identifiers;
 pub mod impact_graph;
+mod index_engine;
 mod memory_vectors;
 mod migrations;
 mod projections;

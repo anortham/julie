@@ -11,6 +11,7 @@
 //! - **incremental**: Incremental updates - detects changed files and orphan cleanup
 
 pub(crate) mod embeddings;
+pub(crate) mod engine_version;
 pub(crate) mod extractor;
 pub(crate) mod file_policy;
 pub(crate) mod incremental;

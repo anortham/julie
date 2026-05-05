@@ -2,7 +2,10 @@
 //!
 //! Handles extraction of relationships between symbols (calls, definitions, usages).
 
-use crate::base::{Relationship, RelationshipKind, Symbol, SymbolKind, UnresolvedTarget};
+use crate::base::{
+    LocalTargetResolution, Relationship, RelationshipKind, ScopedSymbolIndex, Symbol, SymbolKind,
+    UnresolvedTarget,
+};
 use tree_sitter::Node;
 
 impl super::BashExtractor {
@@ -13,57 +16,54 @@ impl super::BashExtractor {
         symbols: &[Symbol],
         relationships: &mut Vec<Relationship>,
     ) {
-        // Extract relationships between functions and the commands they call
-        if let Some(command_name_node) = self.find_command_name_node(node) {
-            let command_name = self.base.get_node_text(&command_name_node);
+        let Some(command_name_node) = self.find_command_name_node(node) else {
+            return;
+        };
+        let command_name = self.base.get_node_text(&command_name_node);
+        let Some(caller_symbol) = self
+            .base
+            .find_containing_symbol(&node, symbols)
+            .filter(|symbol| symbol.kind == SymbolKind::Function)
+        else {
+            return;
+        };
 
-            // Find the parent function that calls this command
-            let mut current = node.parent();
-            while let Some(parent_node) = current {
-                if parent_node.kind() == "function_definition" {
-                    if let Some(func_name_node) = self.find_name_node(parent_node) {
-                        let func_name = self.base.get_node_text(&func_name_node);
-                        let func_symbol = symbols
-                            .iter()
-                            .find(|s| s.name == func_name && s.kind == SymbolKind::Function);
+        let unresolved_target = UnresolvedTarget::simple(command_name.clone());
+        let scoped_index = ScopedSymbolIndex::new(symbols);
 
-                        if let Some(func_sym) = func_symbol {
-                            // Now check if the called command is in our symbol map
-                            let command_symbol = symbols
-                                .iter()
-                                .find(|s| s.name == command_name && s.kind == SymbolKind::Function);
-
-                            if let Some(cmd_sym) = command_symbol {
-                                // Local function call - create resolved Relationship
-                                if func_sym.id != cmd_sym.id {
-                                    let relationship = self.base.create_relationship(
-                                        func_sym.id.clone(),
-                                        cmd_sym.id.clone(),
-                                        RelationshipKind::Calls,
-                                        &node,
-                                        Some(0.95),
-                                        None,
-                                    );
-                                    relationships.push(relationship);
-                                }
-                            } else if !is_builtin_command(&command_name) {
-                                // Cross-file function call - create PendingRelationship
-                                // (but skip built-in shell commands like echo, cd, etc.)
-                                let pending = self.base.create_pending_relationship(
-                                    func_sym.id.clone(),
-                                    UnresolvedTarget::simple(command_name.clone()),
-                                    RelationshipKind::Calls,
-                                    &node,
-                                    Some(func_sym.id.clone()),
-                                    Some(0.8),
-                                );
-                                self.add_structured_pending_relationship(pending);
-                            }
-                        }
-                    }
-                    break;
+        match scoped_index.resolve_call_target(
+            &unresolved_target.terminal_name,
+            Some(caller_symbol),
+            unresolved_target.receiver.as_deref(),
+        ) {
+            LocalTargetResolution::Resolved(called_symbol) => {
+                if caller_symbol.id != called_symbol.id {
+                    let relationship = self.base.create_relationship(
+                        caller_symbol.id.clone(),
+                        called_symbol.id.clone(),
+                        RelationshipKind::Calls,
+                        &node,
+                        Some(0.95),
+                        None,
+                    );
+                    relationships.push(relationship);
                 }
-                current = parent_node.parent();
+            }
+            LocalTargetResolution::Import(_)
+            | LocalTargetResolution::Ambiguous
+            | LocalTargetResolution::Missing
+            | LocalTargetResolution::ReceiverQualified => {
+                if !is_builtin_command(&command_name) {
+                    let pending = self.base.create_pending_relationship(
+                        caller_symbol.id.clone(),
+                        unresolved_target,
+                        RelationshipKind::Calls,
+                        &node,
+                        Some(caller_symbol.id.clone()),
+                        Some(0.8),
+                    );
+                    self.add_structured_pending_relationship(pending);
+                }
             }
         }
     }

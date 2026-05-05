@@ -87,17 +87,89 @@ Rectangle {
 }
 "#;
 
-        let (symbols, relationships) = extract_symbols_and_relationships(qml_code);
+        let tree = crate::tests::helpers::init_parser(qml_code, "qml");
+        let workspace_root = std::path::PathBuf::from("/tmp/test");
+        let mut extractor = crate::qml::QmlExtractor::new(
+            "qml".to_string(),
+            "test.qml".to_string(),
+            qml_code.to_string(),
+            &workspace_root,
+        );
+        let symbols = extractor.extract_symbols(&tree);
+        let relationships = extractor.extract_relationships(&tree, &symbols);
 
-        // Should have relationships for signal handler calling the function
+        let button = symbols
+            .iter()
+            .find(|symbol| symbol.name == "button" && symbol.kind == SymbolKind::Property)
+            .expect("Should extract button id");
+        let component_id = button
+            .parent_id
+            .as_deref()
+            .expect("button id should belong to the component");
+        let handle_click = symbols
+            .iter()
+            .find(|symbol| symbol.name == "handleClick" && symbol.kind == SymbolKind::Function)
+            .expect("Should extract handleClick function");
+
         let call_relationships: Vec<&Relationship> = relationships
             .iter()
-            .filter(|r| r.kind == RelationshipKind::Calls)
+            .filter(|r| {
+                r.kind == RelationshipKind::Calls
+                    && r.from_symbol_id == component_id
+                    && r.to_symbol_id == handle_click.id
+            })
             .collect();
+        assert_eq!(
+            call_relationships.len(),
+            1,
+            "Receiver-qualified call through the component id should resolve locally"
+        );
+    }
 
-        assert!(
-            call_relationships.len() >= 1,
-            "Should extract call relationship from signal handler to handleClick"
+    #[test]
+    fn test_component_id_receiver_call_resolves_to_local_function() {
+        let qml_code = r#"
+import QtQuick 2.15
+
+Item {
+    id: root
+
+    function format(value) {
+        return value
+    }
+
+    Text {
+        text: root.format("ok")
+    }
+}
+"#;
+
+        let (symbols, relationships) = extract_symbols_and_relationships(qml_code);
+        let root_id = symbols
+            .iter()
+            .find(|symbol| symbol.name == "root" && symbol.kind == SymbolKind::Property)
+            .expect("Should extract root id");
+        let component_id = root_id
+            .parent_id
+            .as_deref()
+            .expect("root id should belong to the component");
+        let format = symbols
+            .iter()
+            .find(|symbol| symbol.name == "format" && symbol.kind == SymbolKind::Function)
+            .expect("Should extract format function");
+
+        let resolved_call_count = relationships
+            .iter()
+            .filter(|relationship| {
+                relationship.kind == RelationshipKind::Calls
+                    && relationship.from_symbol_id == component_id
+                    && relationship.to_symbol_id == format.id
+            })
+            .count();
+
+        assert_eq!(
+            resolved_call_count, 1,
+            "root.format() should resolve to the current component's local function"
         );
     }
 
@@ -222,6 +294,66 @@ Rectangle {
         assert!(
             uses_relationships.len() >= 1,
             "Should extract property binding relationships"
+        );
+    }
+
+    #[test]
+    fn test_ambiguous_duplicate_function_names_do_not_create_resolved_calls() {
+        let qml_code = r#"
+import QtQuick 2.15
+
+Item {
+    function duplicate() { return 1 }
+
+    Rectangle {
+        function duplicate() { return 2 }
+    }
+
+    function caller() {
+        return duplicate()
+    }
+}
+"#;
+
+        let tree = crate::tests::helpers::init_parser(qml_code, "qml");
+        let workspace_root = std::path::PathBuf::from("/tmp/test");
+        let mut extractor = crate::qml::QmlExtractor::new(
+            "qml".to_string(),
+            "test.qml".to_string(),
+            qml_code.to_string(),
+            &workspace_root,
+        );
+
+        let symbols = extractor.extract_symbols(&tree);
+        let relationships = extractor.extract_relationships(&tree, &symbols);
+
+        let caller = symbols
+            .iter()
+            .find(|s| s.name == "caller" && s.kind == SymbolKind::Function)
+            .expect("Should find caller function");
+
+        let resolved_calls_from_caller: Vec<&Relationship> = relationships
+            .iter()
+            .filter(|r| r.kind == RelationshipKind::Calls && r.from_symbol_id == caller.id)
+            .collect();
+
+        assert!(
+            resolved_calls_from_caller.is_empty(),
+            "Ambiguous duplicate targets should not produce resolved call edges, found: {:?}",
+            resolved_calls_from_caller
+                .iter()
+                .map(|r| &r.to_symbol_id)
+                .collect::<Vec<_>>()
+        );
+
+        let pending = extractor.get_structured_pending_relationships();
+        assert!(
+            pending.iter().any(|p| {
+                p.pending.kind == RelationshipKind::Calls
+                    && p.pending.from_symbol_id == caller.id
+                    && p.target.terminal_name == "duplicate"
+            }),
+            "Ambiguous duplicate call should be recorded as a pending relationship"
         );
     }
 }

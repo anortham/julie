@@ -1,9 +1,11 @@
 //! Relationship extraction for GDScript
 //! Handles function call relationships (including cross-file pending relationships)
 
-use super::super::base::{Relationship, RelationshipKind, Symbol, UnresolvedTarget};
+use super::super::base::{
+    LocalTargetResolution, Relationship, RelationshipKind, ScopedSymbolIndex, Symbol, SymbolKind,
+    UnresolvedTarget,
+};
 use super::GDScriptExtractor;
-use std::collections::HashMap;
 use tree_sitter::{Node, Tree};
 
 /// Extract relationships from GDScript code
@@ -13,13 +15,16 @@ pub(super) fn extract_relationships(
     symbols: &[Symbol],
 ) -> Vec<Relationship> {
     let mut relationships = Vec::new();
-
-    // Create symbol map for fast lookups by name
-    let symbol_map: HashMap<String, &Symbol> =
-        crate::base::ScopedSymbolIndex::unique_symbol_map(symbols);
+    let scoped_index = ScopedSymbolIndex::new(symbols);
 
     // Recursively visit all nodes to extract relationships
-    visit_node_for_relationships(extractor, tree.root_node(), &symbol_map, &mut relationships);
+    visit_node_for_relationships(
+        extractor,
+        tree.root_node(),
+        symbols,
+        &scoped_index,
+        &mut relationships,
+    );
 
     relationships
 }
@@ -28,12 +33,13 @@ pub(super) fn extract_relationships(
 fn visit_node_for_relationships(
     extractor: &mut GDScriptExtractor,
     node: Node,
-    symbol_map: &HashMap<String, &Symbol>,
+    symbols: &[Symbol],
+    scoped_index: &ScopedSymbolIndex<'_>,
     relationships: &mut Vec<Relationship>,
 ) {
     match node.kind() {
         "call" | "call_expression" => {
-            extract_call_relationships(extractor, node, symbol_map, relationships);
+            extract_call_relationships(extractor, node, symbols, scoped_index, relationships);
         }
         _ => {}
     }
@@ -41,7 +47,7 @@ fn visit_node_for_relationships(
     // Recursively visit all children
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        visit_node_for_relationships(extractor, child, symbol_map, relationships);
+        visit_node_for_relationships(extractor, child, symbols, scoped_index, relationships);
     }
 }
 
@@ -49,7 +55,8 @@ fn visit_node_for_relationships(
 fn extract_call_relationships(
     extractor: &mut GDScriptExtractor,
     node: Node,
-    symbol_map: &HashMap<String, &Symbol>,
+    symbols: &[Symbol],
+    scoped_index: &ScopedSymbolIndex<'_>,
     relationships: &mut Vec<Relationship>,
 ) {
     let base = &extractor.base;
@@ -60,21 +67,20 @@ fn extract_call_relationships(
     let called_function_name = target.terminal_name.clone();
 
     if !called_function_name.is_empty() {
-        // Find the enclosing function/method that contains this call
-        // CRITICAL: Only search symbols from THIS FILE (file-scoped filtering)
-        let file_symbols: Vec<Symbol> = symbol_map
-            .values()
-            .filter(|s| s.file_path == base.file_path)
-            .map(|&s| s.clone())
-            .collect();
-
-        if let Some(caller_symbol) = base.find_containing_symbol(&node, &file_symbols) {
+        if let Some(caller_symbol) = base
+            .find_containing_symbol(&node, symbols)
+            .filter(|symbol| matches!(symbol.kind, SymbolKind::Function | SymbolKind::Method))
+        {
             let line_number = (node.start_position().row + 1) as u32;
             let file_path = base.file_path.clone();
 
             // Check if we can resolve the callee locally
-            match symbol_map.get(&called_function_name) {
-                Some(called_symbol) => {
+            match scoped_index.resolve_call_target(
+                &called_function_name,
+                Some(caller_symbol),
+                target.receiver.as_deref(),
+            ) {
+                LocalTargetResolution::Resolved(called_symbol) => {
                     // Target is a local function/method - create resolved Relationship
                     let relationship = Relationship {
                         id: format!(
@@ -95,7 +101,10 @@ fn extract_call_relationships(
 
                     relationships.push(relationship);
                 }
-                None => {
+                LocalTargetResolution::Import(_)
+                | LocalTargetResolution::Ambiguous
+                | LocalTargetResolution::Missing
+                | LocalTargetResolution::ReceiverQualified => {
                     // Target not found in local symbols - likely a method on imported type
                     // or a call to an external function
                     // Create PendingRelationship for cross-file resolution
