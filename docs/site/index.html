@@ -3,24 +3,24 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Julie — Code Intelligence for AI Agents</title>
-  <meta name="description" content="LSP-quality code intelligence across 34 languages. 90% fewer tokens. <5ms search. Built in Rust with tree-sitter.">
+  <title>Julie - Code Intelligence for AI Agents</title>
+  <meta name="description" content="Code intelligence for AI coding agents across 34 languages. Search, understand, edit, and measure impact without flooding the context window.">
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <link rel="canonical" href="https://anortham.github.io/julie/">
 
   <!-- Open Graph -->
   <meta property="og:type" content="website">
-  <meta property="og:title" content="Julie — Code Intelligence for AI Agents">
-  <meta property="og:description" content="LSP-quality code intelligence across 34 languages. 90% fewer tokens. <5ms search. Built in Rust with tree-sitter.">
+  <meta property="og:title" content="Julie - Code Intelligence for AI Agents">
+  <meta property="og:description" content="Search, understand, edit, and measure impact without flooding the context window.">
   <meta property="og:url" content="https://anortham.github.io/julie/">
 
-  <meta property="og:image" content="https://anortham.github.io/julie/og-card.png">
+  <meta property="og:image" content="https://anortham.github.io/julie/og-card.svg">
 
   <!-- Twitter Card -->
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="Julie — Code Intelligence for AI Agents">
-  <meta name="twitter:description" content="LSP-quality code intelligence across 34 languages. 90% fewer tokens. <5ms search. Built in Rust with tree-sitter.">
-  <meta name="twitter:image" content="https://anortham.github.io/julie/og-card.png">
+  <meta name="twitter:title" content="Julie - Code Intelligence for AI Agents">
+  <meta name="twitter:description" content="Search, understand, edit, and measure impact without flooding the context window.">
+  <meta name="twitter:image" content="https://anortham.github.io/julie/og-card.svg">
 
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -36,6 +36,7 @@
       <a href="#" class="nav-logo">Julie</a>
       <div class="nav-links">
         <a href="#how-it-works">How it Works</a>
+        <a href="#agent-workflows">Workflows</a>
         <a href="#reference-graph">Reference Graph</a>
         <a href="#test-intelligence">Test Quality</a>
         <a href="#embeddings">Embeddings</a>
@@ -131,14 +132,14 @@
   <!-- Section 3: How It Works -->
   <section id="how-it-works" class="section">
     <h2 class="section-title">How It Works</h2>
-    <p class="section-subtitle">Three steps. Zero configuration.</p>
+    <p class="section-subtitle">Julie keeps a compact code map ready so agents can ask better questions before they spend your context.</p>
 
     <div class="steps-flow">
       <div class="step animate-on-scroll" data-delay="0">
         <div class="step-icon">🌳</div>
         <div class="step-number">Step 1</div>
         <h3>Parse</h3>
-        <p>Tree-sitter extracts symbols, relationships, and types from 34 languages</p>
+        <p>Map symbols, relationships, tests, and types across 34 languages</p>
       </div>
 
       <svg class="step-arrow animate-on-scroll" data-delay="150" viewBox="0 0 60 24" fill="none" aria-hidden="true">
@@ -150,7 +151,7 @@
         <div class="step-icon">📦</div>
         <div class="step-number">Step 2</div>
         <h3>Index</h3>
-        <p>Tantivy full-text search + SQLite graph + KNN embeddings</p>
+        <p>Keep search, graph, and semantic context ready for the workspace</p>
       </div>
 
       <svg class="step-arrow animate-on-scroll" data-delay="450" viewBox="0 0 60 24" fill="none" aria-hidden="true">
@@ -162,15 +163,43 @@
         <div class="step-icon">⚡</div>
         <div class="step-number">Step 3</div>
         <h3>Query</h3>
-        <p>Agent asks a question, gets exactly what it needs — no file reads</p>
+        <p>Return focused answers, previews, impact, and likely tests</p>
       </div>
     </div>
   </section>
 
-  <!-- Section 4: Reference Graph -->
+  <!-- Section 4: Agent Workflows -->
+  <section id="agent-workflows" class="section">
+    <h2 class="section-title">Built for Agent Workflows</h2>
+    <p class="section-subtitle">Julie is useful when an agent needs to move fast without pretending it read the whole repository.</p>
+
+    <div class="card-grid feature-grid">
+      <div class="card feature-card animate-on-scroll" data-delay="0">
+        <h3>Find the right code</h3>
+        <p>Search by concept, symbol, or file path and get ranked results with enough context to choose the next move.</p>
+      </div>
+
+      <div class="card feature-card animate-on-scroll" data-delay="100">
+        <h3>Understand before editing</h3>
+        <p>Inspect callers, callees, types, and nearby tests before touching the implementation.</p>
+      </div>
+
+      <div class="card feature-card animate-on-scroll" data-delay="200">
+        <h3>Preview risky changes</h3>
+        <p>Rewrite, edit, and rename with dry-run diffs so the agent can show its work before applying it.</p>
+      </div>
+
+      <div class="card feature-card animate-on-scroll" data-delay="300">
+        <h3>Know what to test</h3>
+        <p>See likely affected symbols and tests before a change turns into a guessing exercise.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 5: Reference Graph -->
   <section id="reference-graph" class="section">
     <h2 class="section-title">Reference Graph</h2>
-    <p class="section-subtitle">Julie doesn't just find symbols — it understands how they connect.</p>
+    <p class="section-subtitle">Julie does not just find symbols. It shows how they connect.</p>
 
     <div class="graph-container" aria-describedby="graph-desc">
       <svg id="ref-graph" viewBox="0 0 700 360" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -251,7 +280,7 @@
     <p class="section-subtitle" style="margin-top: 32px; text-align: center; max-width: 100%;"><em>One call. Full picture. Zero file reads.</em></p>
   </section>
 
-  <!-- Section 5: Test Intelligence -->
+  <!-- Section 6: Test Intelligence -->
   <section id="test-intelligence" class="section">
     <h2 class="section-title">Test Intelligence</h2>
     <p class="section-subtitle">Every test rated by quality. Know which tests actually protect your code.</p>
@@ -264,21 +293,21 @@
       </div>
       <div style="margin-bottom: 4px;"><span class="comment">// Test Quality Analysis</span></div>
       <div><span class="result">Tests: 3 found</span></div>
-      <div>&nbsp; <span class="command">✓</span> <span class="result">test_process_payment</span> &nbsp;<span class="highlight">(thorough — 8 assertions, error paths)</span></div>
-      <div>&nbsp; <span class="command">✓</span> <span class="result">test_payment_validation</span> &nbsp;<span class="highlight">(adequate — 4 assertions)</span></div>
-      <div>&nbsp; <span class="warn">○</span> <span class="result">test_payment_retry</span> &nbsp;<span class="warn">(thin — 1 assertion, no error paths)</span></div>
+      <div>&nbsp; <span class="command">✓</span> <span class="result">test_process_payment</span> &nbsp;<span class="highlight">(thorough, 8 assertions, error paths)</span></div>
+      <div>&nbsp; <span class="command">✓</span> <span class="result">test_payment_validation</span> &nbsp;<span class="highlight">(adequate, 4 assertions)</span></div>
+      <div>&nbsp; <span class="warn">○</span> <span class="result">test_payment_retry</span> &nbsp;<span class="warn">(thin, 1 assertion, no error paths)</span></div>
       <span class="cursor"></span>
     </div>
 
     <p class="section-subtitle" style="margin-top: 32px; text-align: center; max-width: 100%;"><em>Computed at index time. Every test scored automatically.</em></p>
   </section>
 
-  <!-- Section 6: Skills -->
+  <!-- Section 7: Skills -->
   <section id="skills" class="section">
     <h2 class="section-title">Skills</h2>
     <p class="section-subtitle">A focused set of pre-built workflows that combine Julie's tools into higher-level capabilities.</p>
 
-    <div class="card-grid" style="grid-template-columns: repeat(3, 1fr);">
+    <div class="card-grid skill-grid">
       <div class="card tool-card animate-on-scroll" data-delay="0">
         <div class="tool-name">/editing</div>
         <div class="tool-desc">Zero-read editing: understand and modify without reading files</div>
@@ -304,7 +333,7 @@
 
       <div class="card tool-card animate-on-scroll" data-delay="200">
         <div class="tool-name">/impact-analysis</div>
-        <div class="tool-desc">Blast radius for a symbol — callers grouped by risk</div>
+        <div class="tool-desc">Blast radius for a symbol, with callers grouped by risk</div>
         <div class="terminal">
           <div><span class="prompt">$ </span><span class="command">/impact-analysis User::email</span></div>
           <div><span class="result">blast_radius → 47 impacted symbols</span></div>
@@ -313,17 +342,21 @@
           <div><span class="highlight">→ Review handler.rs and login_flow.rs first</span></div>
         </div>
       </div>
-    </div>
 
-    <p class="section-subtitle" style="margin-top: 24px; text-align: left; max-width: 720px; margin-left: auto; margin-right: auto;">
-      <strong>Also included:</strong> <code>/web-research</code> for fetching and locally indexing web content with Julie's token-efficient reading model.
-    </p>
-    <p class="section-subtitle" style="margin-top: 12px; text-align: left; max-width: 720px; margin-left: auto; margin-right: auto; font-size: 0.95rem; opacity: 0.85;">
-      <code>/web-research</code> extends Julie's token efficiency to web content: fetch documentation or articles as markdown, index locally, then read selectively with Julie tools instead of dumping entire pages into context.
-    </p>
+      <div class="card tool-card animate-on-scroll" data-delay="300">
+        <div class="tool-name">/web-research</div>
+        <div class="tool-desc">Fetch web content, index it locally, and read only the useful sections</div>
+        <div class="terminal">
+          <div><span class="prompt">$ </span><span class="command">/web-research rust async docs</span></div>
+          <div><span class="result">browser39 fetch → local markdown</span></div>
+          <div><span class="result">fast_search → matching sections</span></div>
+          <div><span class="highlight">→ Read the docs without dumping the whole page</span></div>
+        </div>
+      </div>
+    </div>
   </section>
 
-  <!-- Section 7: Embeddings -->
+  <!-- Section 8: Embeddings -->
   <section id="embeddings" class="section">
     <h2 class="section-title">Semantic Embeddings</h2>
     <p class="section-subtitle">Find what you mean, not just what you typed.</p>
@@ -360,10 +393,10 @@
     <p class="section-subtitle" style="margin-top: 32px; text-align: center; max-width: 100%;"><em>GPU-accelerated embeddings. Works with CUDA, MPS, and DirectML. Falls back to CPU gracefully.</em></p>
   </section>
 
-  <!-- Section 7: Tools -->
+  <!-- Section 9: Tools -->
   <section id="tools" class="section">
     <h2 class="section-title">Tools</h2>
-    <p class="section-subtitle">10 tools. Each one replaces dozens of file reads.</p>
+    <p class="section-subtitle">12 focused tools. Each one replaces scattershot file reads.</p>
 
     <div class="card-grid">
       <div class="card tool-card animate-on-scroll" data-delay="0">
@@ -515,10 +548,10 @@
     </div>
   </section>
 
-  <!-- Section 8: Languages -->
+  <!-- Section 10: Languages -->
   <section id="languages" class="section">
     <h2 class="section-title">34 Languages</h2>
-    <p class="section-subtitle">Full symbol extraction, reference graphs, and code intelligence across all of them.</p>
+    <p class="section-subtitle">Broad symbol extraction, test detection, and relationship coverage, tracked by explicit capability checks.</p>
 
     <div class="lang-category animate-on-scroll" data-delay="0">
       <div class="lang-category-label">Core (12)</div>
@@ -586,7 +619,7 @@
     </div>
   </section>
 
-  <!-- Section 9: Performance -->
+  <!-- Section 11: Performance -->
   <section id="performance" class="section">
     <div class="perf-stats">
       <div class="perf-stat animate-on-scroll" data-delay="0">
@@ -602,18 +635,18 @@
         <div class="perf-label">Startup</div>
       </div>
     </div>
-    <p class="perf-subtitle animate-on-scroll" data-delay="400">After initial indexing, only changed files are re-processed — keeping your index fresh in seconds, not minutes.</p>
+    <p class="perf-subtitle animate-on-scroll" data-delay="400">After initial indexing, only changed files are re-processed, keeping your index fresh in seconds, not minutes.</p>
   </section>
 
-  <!-- Section 10: Observatory Dashboard -->
+  <!-- Section 12: Observatory Dashboard -->
   <section id="dashboard" class="section">
     <h2 class="section-title">Observatory Dashboard</h2>
-    <p class="section-subtitle">A built-in web dashboard for monitoring your Julie daemon.</p>
+    <p class="section-subtitle">A built-in dashboard for seeing how Julie is helping across workspaces.</p>
 
-    <div class="card-grid" style="grid-template-columns: repeat(2, 1fr);">
+    <div class="card-grid dashboard-grid">
       <div class="card tool-card animate-on-scroll" data-delay="0">
         <div class="tool-name">Intelligence</div>
-        <div class="tool-desc">Codebase analytics: top symbols by centrality, symbol kind distribution, file hotspots, and story cards</div>
+        <div class="tool-desc">Codebase analytics: important symbols, file hotspots, language mix, and project story cards</div>
         <div class="terminal">
           <div><span class="prompt">Top Symbols</span></div>
           <div><span class="highlight">1.</span> <span class="result">process_payment</span> <span class="comment">fn (0.92)</span></div>
@@ -624,7 +657,7 @@
 
       <div class="card tool-card animate-on-scroll" data-delay="100">
         <div class="tool-name">Search Playground</div>
-        <div class="tool-desc">Live search across all indexed workspaces with scoring details and centrality badges</div>
+        <div class="tool-desc">Try searches across indexed workspaces and see why results ranked where they did</div>
         <div class="terminal">
           <div><span class="prompt">$ </span><span class="command">search "authenticate"</span></div>
           <div><span class="result">verify_credentials</span> <span class="highlight">score: 42.1</span></div>
@@ -635,7 +668,7 @@
 
       <div class="card tool-card animate-on-scroll" data-delay="200">
         <div class="tool-name">Projects</div>
-        <div class="tool-desc">Workspace overview with language distribution bars, symbol counts, and indexing status</div>
+        <div class="tool-desc">Workspace overview with language distribution, symbol counts, and indexing status</div>
         <div class="terminal">
           <div><span class="result">my-app</span> <span class="highlight">Ready</span></div>
           <div><span class="comment">1,247 symbols | 89 files</span></div>
@@ -649,11 +682,11 @@
 
       <div class="card tool-card animate-on-scroll" data-delay="300">
         <div class="tool-name">Metrics</div>
-        <div class="tool-desc">Tool call performance, session stats, success rates, and context efficiency across workspaces</div>
+        <div class="tool-desc">Tool performance, failed calls, edit efficiency, and bytes kept out of context</div>
         <div class="terminal">
-          <div><span class="result">fast_search</span> <span class="comment">142 calls</span> <span class="highlight">avg 3.8ms</span></div>
-          <div><span class="result">deep_dive</span> <span class="comment">67 calls</span> <span class="highlight">avg 8.2ms</span></div>
-          <div><span class="result">Context saved:</span> <span class="highlight">1.2MB</span></div>
+          <div><span class="result">Bytes not injected:</span> <span class="highlight">1.2MB</span></div>
+          <div><span class="result">Failed calls:</span> <span class="highlight">1.1%</span></div>
+          <div><span class="result">Edit dry-runs:</span> <span class="highlight">38</span></div>
         </div>
       </div>
     </div>
@@ -661,10 +694,10 @@
     <p class="section-subtitle" style="margin-top: 32px; text-align: center; max-width: 100%;"><em>The daemon starts automatically when your MCP client connects. Visit <code>http://localhost:7890</code> to explore.</em></p>
   </section>
 
-  <!-- Section 11: Installation -->
+  <!-- Section 13: Installation -->
   <section id="install" class="section">
     <h2 class="section-title">Installation</h2>
-    <p class="section-subtitle">Get started in 30 seconds.</p>
+    <p class="section-subtitle">Use the Claude Code plugin for the full experience, or wire the binary into any MCP client.</p>
 
     <div class="animate-on-scroll">
       <div class="install-tabs" role="tablist">
@@ -719,7 +752,7 @@
       <div id="panel-cursor" class="install-panel" role="tabpanel">
         <div class="terminal install-terminal" style="position:relative;" aria-label="Configuration for Cursor, Windsurf, or other MCP clients">
           <button class="copy-btn" data-copy="cursor" aria-label="Copy to clipboard">Copy</button>
-          <div><span class="comment">// MCP config (Cursor, Windsurf, etc.)</span></div>
+          <div><span class="comment">// .cursor/mcp.json or compatible MCP config</span></div>
           <div><span class="result">{</span></div>
           <div><span class="result">&nbsp; "mcpServers": {</span></div>
           <div><span class="result">&nbsp; &nbsp; "julie": {</span></div>
@@ -750,22 +783,17 @@
       <div id="panel-codex" class="install-panel" role="tabpanel">
         <div class="terminal install-terminal" style="position:relative;" aria-label="Configuration for Codex CLI">
           <button class="copy-btn" data-copy="codex" aria-label="Copy to clipboard">Copy</button>
-          <div><span class="comment"># codex.json or ~/.codex/config.toml</span></div>
-          <div><span class="result">{</span></div>
-          <div><span class="result">&nbsp; "mcpServers": {</span></div>
-          <div><span class="result">&nbsp; &nbsp; "julie": {</span></div>
-          <div><span class="result">&nbsp; &nbsp; &nbsp; "command": </span><span class="highlight">"/path/to/julie-server"</span></div>
-          <div><span class="result">&nbsp; &nbsp; }</span></div>
-          <div><span class="result">&nbsp; }</span></div>
-          <div><span class="result">}</span></div>
+          <div><span class="comment"># ~/.codex/config.toml or .codex/config.toml</span></div>
+          <div><span class="result">[mcp_servers.julie]</span></div>
+          <div><span class="result">command = </span><span class="highlight">"/path/to/julie-server"</span></div>
         </div>
       </div>
     </div>
 
-    <p class="section-subtitle" style="margin-top: 24px; max-width: 100%;">Julie indexes your workspace automatically on first connection (~2-5s for most projects).</p>
+    <p class="section-subtitle" style="margin-top: 24px; max-width: 100%;">Julie indexes your workspace automatically on first connection. Some clients need an explicit workspace path; the <a href="https://github.com/anortham/julie#manual-install" target="_blank" rel="noopener">README</a> has the per-client details.</p>
   </section>
 
-  <!-- Section 11: Footer -->
+  <!-- Section 14: Footer -->
   <footer id="footer" class="footer">
     <div class="footer-inner">
       <a href="https://github.com/anortham/julie" target="_blank" rel="noopener">GitHub</a>

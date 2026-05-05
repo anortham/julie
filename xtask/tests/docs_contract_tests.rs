@@ -110,6 +110,27 @@ fn docs_contract_tests_agents_points_to_ledger_template() {
     }
 }
 
+#[test]
+fn docs_contract_tests_site_marketing_page_stays_current() {
+    let html = read_repo_file("docs/site/index.html");
+    let script = read_repo_file("docs/site/script.js");
+    let tools = extract_section(&html, "tools");
+    let skills = extract_section(&html, "skills");
+    let codex_panel = extract_section(&html, "panel-codex");
+
+    let tool_cards = tools.matches("class=\"tool-name\"").count();
+    assert!(
+        tools.contains(&format!("{tool_cards} focused tools")),
+        "tools section count should match rendered cards"
+    );
+    assert!(skills.contains("/web-research"));
+    assert!(html.contains("og-card.svg"));
+    assert!(repo_file("docs/site/og-card.svg").exists());
+    assert!(codex_panel.contains("[mcp_servers.julie]"));
+    assert!(!codex_panel.contains("\"mcpServers\""));
+    assert!(!script.contains("JULIE_WORKSPACE\": \"${workspaceFolder}\""));
+}
+
 fn assert_contains_public_commands(contents: &str) {
     for command in [
         "cargo xtask test changed",
@@ -147,6 +168,18 @@ fn assert_blocked_tier_caveat(contents: &str, manifest: &TestManifest) {
             );
         }
     }
+}
+
+fn extract_section(contents: &str, id: &str) -> String {
+    let marker = format!("id=\"{id}\"");
+    let start = contents
+        .find(&marker)
+        .unwrap_or_else(|| panic!("missing section marker `{marker}`"));
+    let after_start = &contents[start..];
+    let end = after_start
+        .find("</section>")
+        .unwrap_or_else(|| panic!("missing section close for `{id}`"));
+    after_start[..end].to_string()
 }
 
 fn repo_file(relative_path: &str) -> PathBuf {

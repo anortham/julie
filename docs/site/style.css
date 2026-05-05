@@ -1,5 +1,5 @@
 /* ============================================
-   Julie Site — CSS Foundation
+   Julie Site - CSS Foundation
    ============================================ */
 
 /* --- Theme Variables --- */
@@ -215,6 +215,17 @@ a:hover {
 
 .card:hover {
   border-color: rgba(255, 255, 255, 0.12);
+}
+
+.feature-card h3 {
+  font-size: 1rem;
+  margin-bottom: 8px;
+  color: var(--text-primary);
+}
+
+.feature-card p {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
 }
 
 /* --- Scroll animation base --- */
@@ -565,7 +576,7 @@ a:hover {
 }
 
 /* ============================================
-   How It Works — 3-Step Flow
+   How It Works - 3-Step Flow
    ============================================ */
 .steps-flow {
   display: flex;
@@ -761,6 +772,14 @@ a:hover {
 /* ============================================
    Tools Showcase
    ============================================ */
+.skill-grid {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.dashboard-grid {
+  grid-template-columns: repeat(2, 1fr);
+}
+
 .tool-card .tool-name {
   font-family: var(--font-mono);
   font-size: 1rem;
@@ -778,6 +797,13 @@ a:hover {
 .tool-card .terminal {
   font-size: 0.78rem;
   margin-bottom: 12px;
+}
+
+@media (max-width: 768px) {
+  .skill-grid,
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .token-badge {
@@ -876,7 +902,7 @@ a:hover {
 }
 
 /* ============================================
-   Installation — Tabbed Code Blocks
+   Installation - Tabbed Code Blocks
    ============================================ */
 .install-tabs {
   display: flex;

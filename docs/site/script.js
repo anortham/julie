@@ -1,11 +1,11 @@
 /* ============================================
-   Julie Site — Script
+   Julie Site - Script
    ============================================ */
 
 (function () {
   'use strict';
 
-  // --- Reduced motion check (live query — responds to runtime changes) ---
+  // --- Reduced motion check (live query, responds to runtime changes) ---
   const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
   function prefersReducedMotion() { return reducedMotionQuery.matches; }
 
@@ -85,7 +85,7 @@
     if (!bar || !counter || !reads || !message || !ctas) return;
 
     // Hero animation runs once on page load (above fold, no Intersection Observer).
-    // It's called exactly once by runHeroAnimation() below — no replay guard needed.
+    // It's called exactly once by runHeroAnimation() below, no replay guard needed.
 
     // Skip animation for reduced motion
     if (prefersReducedMotion()) {
@@ -347,11 +347,11 @@
   // --- Copy to clipboard ---
   const copySnippets = {
     'claude-code': '/plugin marketplace add anortham/julie-plugin\n/plugin install julie@julie-plugin',
-    'vscode': '{\n  "servers": {\n    "Julie": {\n      "type": "stdio",\n      "command": "/path/to/julie-server",\n      "env": {\n        "JULIE_WORKSPACE": "${workspaceFolder}"\n      }\n    }\n  }\n}',
+    'vscode': '{\n  "servers": {\n    "Julie": {\n      "type": "stdio",\n      "command": "/path/to/julie-server"\n    }\n  }\n}',
     'opencode': '{\n  "mcp": {\n    "julie": {\n      "type": "local",\n      "command": ["/path/to/julie-server"],\n      "enabled": true\n    }\n  }\n}',
     'cursor': '{\n  "mcpServers": {\n    "julie": {\n      "command": "/path/to/julie-server"\n    }\n  }\n}',
     'gemini': '{\n  "mcpServers": {\n    "julie": {\n      "command": "/path/to/julie-server"\n    }\n  }\n}',
-    'codex': '# Codex Desktop project config (.codex/config.toml)\n[mcp_servers.julie]\ncommand = "/path/to/julie-server"\nenv = { JULIE_WORKSPACE = "/absolute/path/to/your/project" }',
+    'codex': '# ~/.codex/config.toml or .codex/config.toml\n[mcp_servers.julie]\ncommand = "/path/to/julie-server"',
   };
 
   document.querySelectorAll('.copy-btn').forEach((btn) => {
