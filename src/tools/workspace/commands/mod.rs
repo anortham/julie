@@ -6,6 +6,7 @@ use tracing::info;
 
 use crate::handler::JulieServerHandler;
 
+pub(crate) mod force_safeguards;
 mod index;
 pub(crate) mod registry;
 

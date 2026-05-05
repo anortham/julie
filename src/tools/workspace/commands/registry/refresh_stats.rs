@@ -1,3 +1,7 @@
+use super::super::force_safeguards::{
+    cancel_embedding_tasks, pause_force_reindex_watchers, refresh_workspace_ids_for_force_reindex,
+    resume_force_reindex_watchers,
+};
 use super::super::index::indexing_lock_for_path;
 use super::ManageWorkspaceTool;
 use crate::handler::JulieServerHandler;
@@ -46,24 +50,38 @@ impl ManageWorkspaceTool {
                 info!("Starting re-indexing of workspace: {}", workspace_id);
 
                 let force = self.force.unwrap_or(false);
-                let current_primary_id = handler.current_workspace_id();
-                let ref_watcher_id = if force && current_primary_id.as_deref() != Some(workspace_id)
-                {
-                    Some(workspace_id.to_string())
-                } else {
-                    None
-                };
-                if let (Some(id), Some(pool)) = (&ref_watcher_id, &handler.watcher_pool) {
-                    pool.pause_workspace(id).await;
+                let semantic_engine_refresh_needed = self
+                    .semantic_index_engine_refresh_needed_for_path(handler, &workspace_path)
+                    .await?;
+                let effective_force_reindex = force || semantic_engine_refresh_needed;
+                if semantic_engine_refresh_needed {
+                    info!(
+                        workspace_id,
+                        "Index semantic version changed or missing; treating refresh as an effective full re-index"
+                    );
                 }
+                let current_primary_id = handler.current_workspace_id();
+                let force_reindex_workspace_ids = if effective_force_reindex {
+                    refresh_workspace_ids_for_force_reindex(workspace_id)
+                } else {
+                    Vec::new()
+                };
+                if effective_force_reindex {
+                    cancel_embedding_tasks(handler, &force_reindex_workspace_ids, "refresh").await;
+                }
+                let refreshes_primary = current_primary_id.as_deref() == Some(workspace_id);
+                let watcher_pause = pause_force_reindex_watchers(
+                    handler,
+                    &force_reindex_workspace_ids,
+                    effective_force_reindex && refreshes_primary,
+                )
+                .await;
 
                 let index_result = self
-                    .index_workspace_files(handler, &workspace_path, force)
+                    .index_workspace_files(handler, &workspace_path, effective_force_reindex)
                     .await;
 
-                if let (Some(id), Some(pool)) = (&ref_watcher_id, &handler.watcher_pool) {
-                    pool.resume_workspace(id).await;
-                }
+                resume_force_reindex_watchers(handler, watcher_pause).await;
 
                 match index_result {
                     Ok(result) => {
@@ -79,18 +97,7 @@ impl ManageWorkspaceTool {
                         }
 
                         let db_mutated = result.files_processed > 0 || result.orphans_cleaned > 0;
-                        let embed_count = if db_mutated || force {
-                            if force {
-                                let mut tasks = handler.embedding_tasks.lock().await;
-                                if let Some((cancel_flag, handle)) = tasks.remove(workspace_id) {
-                                    info!(
-                                        "Cancelling running embedding pipeline for force refresh"
-                                    );
-                                    cancel_flag.store(true, std::sync::atomic::Ordering::Relaxed);
-                                    handle.abort();
-                                }
-                            }
-
+                        let embed_count = if db_mutated || effective_force_reindex {
                             crate::tools::workspace::indexing::embeddings::spawn_workspace_embedding(
                                 handler,
                                 workspace_id.to_string(),
@@ -135,7 +142,7 @@ impl ManageWorkspaceTool {
 
                         let mut status = if result.files_processed == 0 {
                             "Already up-to-date.".to_string()
-                        } else if force {
+                        } else if effective_force_reindex {
                             format!("Full re-index: {} files processed.", result.files_processed)
                         } else {
                             format!("{} changed files re-indexed.", result.files_processed)
@@ -192,7 +199,7 @@ impl ManageWorkspaceTool {
         // and the post-refresh `initialize_workspace_with_force` rebind below
         // mutate the same session state the swap machinery guards. Note that
         // `current_workspace_id()` returns `None` during a swap, so we can't
-        // condition this check on "targets current primary" — the safe move is
+        // condition this check on "targets current primary"; the safe move is
         // to back off entirely for the brief window the swap holds the flag.
         if handler.is_primary_workspace_swap_in_progress() {
             return Err(anyhow::anyhow!(

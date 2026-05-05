@@ -242,7 +242,7 @@ fn symbol_definition_status(symbol: &Symbol) -> Option<bool> {
 }
 
 fn is_self_receiver(receiver: &str) -> bool {
-    matches!(receiver, "self" | "this" | "Self" | "super")
+    matches!(receiver, "self" | "this" | "Self")
 }
 
 fn is_callable_or_import(kind: &SymbolKind) -> bool {

@@ -71,6 +71,35 @@ fn test_scoped_symbol_index_resolves_self_receiver_to_same_parent_method() {
 }
 
 #[test]
+fn test_scoped_symbol_index_super_receiver_does_not_resolve_to_child_override() {
+    let superclass = symbol("class-a", "Base", SymbolKind::Class, None, 1);
+    let subclass = symbol("class-b", "Child", SymbolKind::Class, None, 10);
+    let base_render = symbol(
+        "base-render",
+        "render",
+        SymbolKind::Method,
+        Some("class-a"),
+        3,
+    );
+    let caller = symbol(
+        "child-render",
+        "render",
+        SymbolKind::Method,
+        Some("class-b"),
+        12,
+    );
+    let symbols = vec![superclass, subclass, base_render, caller.clone()];
+
+    let index = ScopedSymbolIndex::new(&symbols);
+    let resolution = index.resolve_call_target("render", Some(&caller), Some("super"));
+
+    assert!(
+        matches!(resolution, LocalTargetResolution::ReceiverQualified),
+        "super calls need inheritance-aware resolution, not same-parent self resolution"
+    );
+}
+
+#[test]
 fn test_scoped_symbol_index_this_receiver_without_parent_scope_stays_unresolved() {
     let caller = symbol("caller", "caller", SymbolKind::Function, None, 3);
     let local_render = symbol("render", "render", SymbolKind::Function, None, 4);

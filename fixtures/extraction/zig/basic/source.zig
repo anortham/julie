@@ -9,3 +9,7 @@ pub const Worker = struct {
 pub fn helper(value: i32) i32 {
     return value + 1;
 }
+
+pub fn runWorker(worker: Worker) i32 {
+    return helper(worker.id);
+}

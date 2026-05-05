@@ -1,6 +1,7 @@
 use crate::language::language_spec;
 use crate::registry::{capabilities_for_language, supported_languages};
 use serde::Deserialize;
+use serde_json::Value;
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -18,6 +19,8 @@ struct CapabilityRow {
     dependency_status: String,
     capabilities: CapabilityFlags,
     fixtures: Vec<FixtureRow>,
+    #[serde(default)]
+    relationship_fixture_exception: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -157,6 +160,54 @@ fn capability_matrix_has_golden_case_for_every_registry_entry() {
     }
 }
 
+#[test]
+fn capability_matrix_requires_relationship_fixture_evidence() {
+    let root = workspace_root();
+    let matrix = load_matrix(&root);
+
+    for row in matrix.languages {
+        let has_relationship_evidence = row
+            .fixtures
+            .iter()
+            .any(|fixture| fixture_exercises_relationships(&root, fixture));
+        let exception = row
+            .relationship_fixture_exception
+            .as_deref()
+            .map(str::trim)
+            .filter(|reason| !reason.is_empty());
+
+        assert!(
+            row.capabilities.relationships || exception.is_none(),
+            "{} has a relationship fixture exception but does not advertise relationship support",
+            row.language
+        );
+
+        if has_relationship_evidence {
+            assert!(
+                exception.is_none(),
+                "{} has relationship fixture evidence and no longer needs relationship_fixture_exception",
+                row.language
+            );
+        }
+
+        assert!(
+            !row.capabilities.relationships || has_relationship_evidence || exception.is_some(),
+            "{} advertises relationship support but no golden fixture exercises relationships, pending_relationships, or structured_pending_relationships",
+            row.language
+        );
+    }
+}
+
+#[test]
+fn regex_capabilities_do_not_advertise_stubbed_relationships() {
+    let capabilities = capabilities_for_language("regex").unwrap();
+
+    assert!(
+        !capabilities.relationships,
+        "regex extract_relationships currently returns no relationships; keep the capability false until a golden fixture proves relationship extraction"
+    );
+}
+
 fn workspace_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -180,5 +231,36 @@ fn load_matrix(root: &Path) -> CapabilityMatrix {
             matrix_path.display(),
             err
         )
+    })
+}
+
+fn fixture_exercises_relationships(root: &Path, fixture: &FixtureRow) -> bool {
+    let expected_path = root.join(&fixture.expected);
+    let json = fs::read_to_string(&expected_path).unwrap_or_else(|err| {
+        panic!(
+            "failed to read expected fixture at {}: {}",
+            expected_path.display(),
+            err
+        )
+    });
+    let expected: Value = serde_json::from_str(&json).unwrap_or_else(|err| {
+        panic!(
+            "failed to parse expected fixture at {}: {}",
+            expected_path.display(),
+            err
+        )
+    });
+
+    [
+        "relationships",
+        "pending_relationships",
+        "structured_pending_relationships",
+    ]
+    .iter()
+    .any(|field| {
+        expected
+            .get(field)
+            .and_then(Value::as_array)
+            .is_some_and(|items| !items.is_empty())
     })
 }

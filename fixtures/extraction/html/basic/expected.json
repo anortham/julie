@@ -51,6 +51,37 @@
       "content_type": null
     },
     {
+      "key": "fixtures/extraction/html/basic/source.html:a:9:6",
+      "name": "a",
+      "kind": "class",
+      "language": "html",
+      "file_path": "fixtures/extraction/html/basic/source.html",
+      "start_line": 9,
+      "start_column": 6,
+      "end_line": 9,
+      "end_column": 36,
+      "start_byte": 131,
+      "end_byte": 161,
+      "signature": "<a href=\"/workers\">Workers",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": "fixtures/extraction/html/basic/source.html:section:7:4",
+      "metadata": {
+        "attributes": {
+          "href": "/workers"
+        },
+        "isSemantic": false,
+        "isVoid": false,
+        "tagName": "a",
+        "textContent": "Workers",
+        "type": "html-element"
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
       "key": "fixtures/extraction/html/basic/source.html:body:6:2",
       "name": "body",
       "kind": "class",
@@ -58,10 +89,10 @@
       "file_path": "fixtures/extraction/html/basic/source.html",
       "start_line": 6,
       "start_column": 2,
-      "end_line": 16,
+      "end_line": 17,
       "end_column": 9,
       "start_byte": 70,
-      "end_byte": 286,
+      "end_byte": 323,
       "signature": "<body>",
       "doc_comment": null,
       "visibility": "Public",
@@ -78,17 +109,17 @@
       "content_type": null
     },
     {
-      "key": "fixtures/extraction/html/basic/source.html:button:9:6",
+      "key": "fixtures/extraction/html/basic/source.html:button:10:6",
       "name": "button",
       "kind": "field",
       "language": "html",
       "file_path": "fixtures/extraction/html/basic/source.html",
-      "start_line": 9,
+      "start_line": 10,
       "start_column": 6,
-      "end_line": 9,
+      "end_line": 10,
       "end_column": 44,
-      "start_byte": 131,
-      "end_byte": 169,
+      "start_byte": 168,
+      "end_byte": 206,
       "signature": "<button data-action=\"run\">Run",
       "doc_comment": null,
       "visibility": "Public",
@@ -171,10 +202,10 @@
       "file_path": "fixtures/extraction/html/basic/source.html",
       "start_line": 2,
       "start_column": 0,
-      "end_line": 17,
+      "end_line": 18,
       "end_column": 7,
       "start_byte": 16,
-      "end_byte": 294,
+      "end_byte": 331,
       "signature": "<html>",
       "doc_comment": null,
       "visibility": "Public",
@@ -191,17 +222,17 @@
       "content_type": null
     },
     {
-      "key": "fixtures/extraction/html/basic/source.html:script:11:4",
+      "key": "fixtures/extraction/html/basic/source.html:script:12:4",
       "name": "script",
       "kind": "variable",
       "language": "html",
       "file_path": "fixtures/extraction/html/basic/source.html",
-      "start_line": 11,
+      "start_line": 12,
       "start_column": 4,
-      "end_line": 15,
+      "end_line": 16,
       "end_column": 13,
-      "start_byte": 189,
-      "end_byte": 276,
+      "start_byte": 226,
+      "end_byte": 313,
       "signature": "<script>function helper(value) {\n        return value + 1;\n      }",
       "doc_comment": null,
       "visibility": "Public",
@@ -225,10 +256,10 @@
       "file_path": "fixtures/extraction/html/basic/source.html",
       "start_line": 7,
       "start_column": 4,
-      "end_line": 10,
+      "end_line": 11,
       "end_column": 14,
       "start_byte": 81,
-      "end_byte": 184,
+      "end_byte": 221,
       "signature": "<section id=\"worker\">",
       "doc_comment": null,
       "visibility": "Public",
@@ -276,22 +307,34 @@
       "content_type": null
     }
   ],
-  "relationships": [],
+  "relationships": [
+    {
+      "from_key": "fixtures/extraction/html/basic/source.html:a:9:6",
+      "to_key": "unresolved:url:/workers",
+      "kind": "references",
+      "file_path": "fixtures/extraction/html/basic/source.html",
+      "line_number": 9,
+      "confidence": "1.000",
+      "metadata": {
+        "href": "/workers"
+      }
+    }
+  ],
   "pending_relationships": [],
   "structured_pending_relationships": [],
   "identifiers": [
     {
-      "key": "fixtures/extraction/html/basic/source.html:run:call:9:14",
+      "key": "fixtures/extraction/html/basic/source.html:run:call:10:14",
       "name": "run",
       "kind": "call",
       "language": "html",
       "file_path": "fixtures/extraction/html/basic/source.html",
-      "start_line": 9,
+      "start_line": 10,
       "start_column": 14,
-      "end_line": 9,
+      "end_line": 10,
       "end_column": 31,
-      "start_byte": 139,
-      "end_byte": 156,
+      "start_byte": 176,
+      "end_byte": 193,
       "containing_key": "fixtures/extraction/html/basic/source.html:section:7:4",
       "target_key": null,
       "confidence": "1.000"
@@ -333,6 +376,15 @@
       "metadata": null
     },
     {
+      "symbol_key": "fixtures/extraction/html/basic/source.html:a:9:6",
+      "resolved_type": "html-element",
+      "generic_params": null,
+      "constraints": null,
+      "is_inferred": true,
+      "language": "html",
+      "metadata": null
+    },
+    {
       "symbol_key": "fixtures/extraction/html/basic/source.html:body:6:2",
       "resolved_type": "html-element",
       "generic_params": null,
@@ -342,7 +394,7 @@
       "metadata": null
     },
     {
-      "symbol_key": "fixtures/extraction/html/basic/source.html:button:9:6",
+      "symbol_key": "fixtures/extraction/html/basic/source.html:button:10:6",
       "resolved_type": "html-element",
       "generic_params": null,
       "constraints": null,
@@ -378,7 +430,7 @@
       "metadata": null
     },
     {
-      "symbol_key": "fixtures/extraction/html/basic/source.html:script:11:4",
+      "symbol_key": "fixtures/extraction/html/basic/source.html:script:12:4",
       "resolved_type": "script-element",
       "generic_params": null,
       "constraints": null,

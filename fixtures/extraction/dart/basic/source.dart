@@ -2,7 +2,7 @@ abstract class Job {
   int run();
 }
 
-class Worker implements Job {
+class Worker extends Job {
   final int id;
 
   Worker(this.id);

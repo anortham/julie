@@ -3,7 +3,7 @@
 
 use super::engine_version::{SEMANTIC_INDEX_ENGINE_COMPONENT, SEMANTIC_INDEX_ENGINE_VERSION};
 use super::pipeline::run_indexing_pipeline;
-use super::route::IndexRoute;
+use super::route::{IndexRoute, IndexRouteRepairReason};
 use super::state::{IndexingOperation, IndexingRepairReason};
 use crate::handler::JulieServerHandler;
 use crate::tools::workspace::commands::ManageWorkspaceTool;
@@ -13,7 +13,7 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use tracing::{debug, info, warn};
 
-/// Result of workspace indexing — distinguishes files processed from DB totals.
+/// Result of workspace indexing, distinguishing files processed from DB totals.
 pub(crate) struct IndexResult {
     /// Files actually processed in this indexing run (may be 0 if nothing changed)
     pub files_processed: usize,
@@ -32,6 +32,31 @@ pub(crate) struct IndexResult {
 }
 
 impl ManageWorkspaceTool {
+    pub(crate) async fn semantic_index_engine_refresh_needed_for_path(
+        &self,
+        handler: &JulieServerHandler,
+        workspace_path: &Path,
+    ) -> Result<bool> {
+        let route = match IndexRoute::for_workspace_path(handler, workspace_path).await {
+            Ok(route) => route,
+            Err(err)
+                if matches!(
+                    err.reason,
+                    IndexRouteRepairReason::PrimaryBindingUnavailable
+                        | IndexRouteRepairReason::StorageAnchorUnavailable
+                ) =>
+            {
+                debug!(
+                    workspace_path = %workspace_path.display(),
+                    "Skipping semantic engine preflight because no readable index route exists yet"
+                );
+                return Ok(false);
+            }
+            Err(err) => return Err(anyhow::Error::new(err)),
+        };
+        semantic_index_engine_refresh_needed(handler, &route).await
+    }
+
     /// Index a workspace by discovering, parsing, and storing file symbols
     ///
     /// This is the main entry point for workspace indexing. It coordinates:

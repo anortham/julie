@@ -269,7 +269,7 @@
       "dependency_status": "current",
       "capabilities": {
         "symbols": true,
-        "relationships": true,
+        "relationships": false,
         "pending_relationships": false,
         "identifiers": true,
         "types": true
@@ -721,7 +721,7 @@
       "dependency_status": "current",
       "capabilities": {
         "symbols": true,
-        "relationships": true,
+        "relationships": false,
         "pending_relationships": false,
         "identifiers": true,
         "types": true

@@ -96,7 +96,7 @@ mod target_workspace_tests {
     ///
     /// REFACTORING STATUS: Complete - uses fixture setup, bug fixed, test passing
     #[tokio::test(flavor = "multi_thread")]
-    #[serial_test::file_serial(target_workspace_fixtures)] // Shared fixture roots require one cross-process lane.
+    #[serial_test::file_serial(shared_test_workspace_fixtures)] // Shared fixture roots require one cross-process lane.
     async fn test_target_workspace_end_to_end() -> Result<()> {
         use crate::tests::helpers::cleanup::atomic_cleanup_julie_dir;
 
@@ -199,7 +199,7 @@ mod target_workspace_tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    #[serial_test::file_serial(target_workspace_fixtures)] // Shared fixture roots require one cross-process lane.
+    #[serial_test::file_serial(shared_test_workspace_fixtures)] // Shared fixture roots require one cross-process lane.
     async fn test_invalid_target_workspace_id_error() -> Result<()> {
         use crate::tests::helpers::cleanup::atomic_cleanup_julie_dir;
 
@@ -342,7 +342,7 @@ mod target_workspace_tests {
     /// This verifies the fix for INCOMPLETE_IMPLEMENTATIONS.md Issue #2:
     /// Target-workspace orphan cleanup must open the correct database to clean up deleted files.
     #[tokio::test(flavor = "multi_thread")]
-    #[serial_test::file_serial(target_workspace_fixtures)] // Shared fixture roots require one cross-process lane.
+    #[serial_test::file_serial(shared_test_workspace_fixtures)] // Shared fixture roots require one cross-process lane.
     async fn test_target_workspace_orphan_cleanup() -> Result<()> {
         // CLEANUP: Remove any stale .julie directories from previous test runs to prevent FTS5 corruption
         let primary_path = get_fixture_path("tiny-primary");

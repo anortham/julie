@@ -111,9 +111,7 @@ impl HTMLExtractor {
     pub fn extract_relationships(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Relationship> {
         let mut relationships = Vec::new();
 
-        if let Some(root_node) = tree.root_node().child(0) {
-            self.visit_node_for_relationships(root_node, symbols, &mut relationships);
-        }
+        self.visit_node_for_relationships(tree.root_node(), symbols, &mut relationships);
 
         relationships
     }

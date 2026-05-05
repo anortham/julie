@@ -48,7 +48,7 @@ Post-restart live MCP dogfood on 2026-05-05:
 ## Findings To Close
 
 1. **Closed: relationship precision is now reviewed and covered across the relationship-capable inventory.** Unsafe receiver-qualified or duplicate-name local resolution now stays unresolved or pending unless the extractor has enough scope evidence.
-2. **Closed: `call_path` now follows the production re-export chain.** `crate::extractors::extract_canonical` resolves through `pub use julie_extractors::*` and the workspace crate root re-export to [crates/julie-extractors/src/pipeline.rs](/Users/murphy/source/julie/crates/julie-extractors/src/pipeline.rs:8).
+2. **Closed: `call_path` now follows the production re-export chain.** `crate::extractors::extract_canonical` resolves through `pub use julie_extractors::*` and the workspace crate root re-export to [crates/julie-extractors/src/pipeline.rs](../../crates/julie-extractors/src/pipeline.rs:8).
 3. **Closed: `LanguageSpec` conflation was real, sparse refs were expected.** The bug was exact definition lookup falling back to naming variants and returning `language_spec`; exact definitions now suppress variant-definition noise.
 4. **Closed: health language wording now says indexed workspace languages.** The output no longer implies that text fallback and missing `jsx` are support-matrix facts.
 5. **Closed: agent startup instructions include the new gates.** `JULIE_AGENT_INSTRUCTIONS.md` now names both extractor and parser-upgrade buckets.
@@ -249,7 +249,7 @@ Post-restart live MCP dogfood on 2026-05-05:
 
 ## Verification Strategy
 
-**Project source of truth:** [AGENTS.md](/Users/murphy/source/julie/AGENTS.md), [RAZORBACK.md](/Users/murphy/source/julie/RAZORBACK.md), [docs/TESTING_GUIDE.md](/Users/murphy/source/julie/docs/TESTING_GUIDE.md), and [xtask/test_tiers.toml](/Users/murphy/source/julie/xtask/test_tiers.toml).
+**Project source of truth:** [AGENTS.md](../../AGENTS.md), [RAZORBACK.md](../../RAZORBACK.md), [docs/TESTING_GUIDE.md](../TESTING_GUIDE.md), and [xtask/test_tiers.toml](../../xtask/test_tiers.toml).
 
 **Worker red/green scope:** Workers run exact tests they add or change. Extractor workers usually run `cargo nextest run -p julie-extractors <exact_test_name>`. Main crate workers use `cargo nextest run --lib <exact_test_name>`.
 
@@ -272,6 +272,8 @@ Post-restart live MCP dogfood on 2026-05-05:
 **Verification ledger:** Record invariant, command, scope label, commit SHA, result, and timestamp. Reuse evidence only when HEAD and scope match.
 
 ## Verification Ledger
+
+This is a historical execution ledger for the gap-closure batch. Do not reuse these rows as release evidence unless the scope label and commit SHA match current HEAD exactly. Current release-readiness evidence belongs in [TREE_SITTER_QUALITY_BAR.md](../TREE_SITTER_QUALITY_BAR.md).
 
 | Invariant | Command | Scope label | Commit SHA | Result | Timestamp |
 | --- | --- | --- | --- | --- | --- |
@@ -321,7 +323,7 @@ Post-restart live MCP dogfood on 2026-05-05:
 
 ## Model Routing
 
-**Project source of truth:** [RAZORBACK.md](/Users/murphy/source/julie/RAZORBACK.md).
+**Project source of truth:** [RAZORBACK.md](../../RAZORBACK.md).
 
 **Strategy tier:** Planning, decomposition, relationship semantics review, and final lead review.
 - Harness mapping: Codex `gpt-5.5` with medium or high reasoning.

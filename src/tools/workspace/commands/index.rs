@@ -1,4 +1,8 @@
 use super::ManageWorkspaceTool;
+use super::force_safeguards::{
+    cancel_embedding_tasks, pause_force_reindex_watchers, resume_force_reindex_watchers,
+    workspace_ids_for_force_reindex,
+};
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::{CallToolResult, CallToolResultExt, Content};
 use anyhow::Result;
@@ -119,30 +123,32 @@ impl ManageWorkspaceTool {
         let index_lock = indexing_lock_for_path(&canonical_path);
 
         let _index_guard = index_lock.lock().await;
-        let force_reindex = force;
+        let semantic_engine_refresh_needed = self
+            .semantic_index_engine_refresh_needed_for_path(handler, &canonical_path)
+            .await?;
+        let effective_force_reindex = force || semantic_engine_refresh_needed;
 
         info!("🎯 Resolved workspace path: {}", canonical_path.display());
+        if semantic_engine_refresh_needed {
+            info!(
+                "Index semantic version changed or missing; treating index request as an effective full re-index"
+            );
+        }
+        let force_reindex_workspace_ids = if effective_force_reindex {
+            workspace_ids_for_force_reindex(
+                &canonical_path,
+                current_primary_id.as_deref(),
+                is_non_primary_target,
+            )?
+        } else {
+            Vec::new()
+        };
 
         // Clear existing state if force reindexing
-        if force_reindex {
+        if effective_force_reindex {
             info!("🔄 Force reindex requested - clearing existing state");
 
-            // Cancel any running embedding pipeline FIRST, before touching the DB.
-            // This prevents GPU errors from concurrent DB access and avoids the
-            // race where a running pipeline writes embeddings back after we clear.
-            // Use the target workspace_id, which may differ from the primary during force reindex.
-            let cancel_ws_id =
-                crate::workspace::registry::generate_workspace_id(&original_path.to_string_lossy())
-                    .ok()
-                    .or_else(|| current_primary_id.clone());
-            if let Some(ref ws_id) = cancel_ws_id {
-                let mut tasks = handler.embedding_tasks.lock().await;
-                if let Some((cancel_flag, handle)) = tasks.remove(ws_id) {
-                    info!("🛑 Cancelling running embedding pipeline for workspace {ws_id}");
-                    cancel_flag.store(true, std::sync::atomic::Ordering::Relaxed);
-                    handle.abort();
-                }
-            }
+            cancel_embedding_tasks(handler, &force_reindex_workspace_ids, "index").await;
 
             *handler.is_indexed.write().await = false;
             // Database will be cleared by initialize_workspace_with_force
@@ -169,12 +175,12 @@ impl ManageWorkspaceTool {
         // 3. Forcing reindex AND this is NOT a non-primary workspace target
         if !workspace_already_loaded
             || (!is_non_primary_workspace_target && !loaded_workspace_matches_target)
-            || (force_reindex && !is_non_primary_workspace_target)
+            || (effective_force_reindex && !is_non_primary_workspace_target)
         {
             handler
                 .initialize_workspace_with_force(
                     Some(canonical_path.to_string_lossy().to_string()),
-                    force_reindex,
+                    effective_force_reindex,
                 )
                 .await?;
         } else if is_non_primary_workspace_target {
@@ -185,8 +191,8 @@ impl ManageWorkspaceTool {
         // 🔴 CRITICAL FIX: Skip this guard for non-primary workspace targets.
         // The is_indexed flag and symbol count belong to the PRIMARY workspace.
         // Without this check, calling index on a non-primary workspace path returns
-        // "Workspace already indexed: {primary_symbol_count} symbols" — a silent lie.
-        if !force_reindex && !is_non_primary_workspace_target {
+        // "Workspace already indexed: {primary_symbol_count} symbols", a silent lie.
+        if !effective_force_reindex && !is_non_primary_workspace_target {
             let is_indexed = *handler.is_indexed.read().await;
             if is_indexed {
                 // Get symbol count from database using efficient COUNT(*) query
@@ -248,29 +254,20 @@ impl ManageWorkspaceTool {
             }
         }
 
-        // Fix C part c: pause the target workspace's watcher during force reindex
-        // to prevent the watcher from dispatching concurrent incremental updates to
-        // the same target DB while the full reindex is running.
-        let target_watcher_id: Option<String> = if is_non_primary_workspace_target && force_reindex
-        {
-            let path_str = canonical_path.to_string_lossy().to_string();
-            crate::workspace::registry::generate_workspace_id(&path_str).ok()
-        } else {
-            None
-        };
-        if let (Some(id), Some(pool)) = (&target_watcher_id, &handler.watcher_pool) {
-            pool.pause_workspace(id).await;
-        }
+        let watcher_pause = pause_force_reindex_watchers(
+            handler,
+            &force_reindex_workspace_ids,
+            effective_force_reindex && !is_non_primary_workspace_target,
+        )
+        .await;
 
         // Perform indexing
         let index_result = self
-            .index_workspace_files(handler, &canonical_path, force_reindex)
+            .index_workspace_files(handler, &canonical_path, effective_force_reindex)
             .await;
 
         // Resume the target watcher before handling the result, whether Ok or Err.
-        if let (Some(id), Some(pool)) = (&target_watcher_id, &handler.watcher_pool) {
-            pool.resume_workspace(id).await;
-        }
+        resume_force_reindex_watchers(handler, watcher_pause).await;
 
         match index_result {
             Ok(result) => {
@@ -315,7 +312,7 @@ impl ManageWorkspaceTool {
                     );
                     indexed_workspace_id = Some(workspace_id);
                 } else {
-                    // Stdio mode: no registry — compute workspace ID for embeddings only
+                    // Stdio mode: no registry, compute workspace ID for embeddings only.
                     if let Ok(ws_id) =
                         crate::workspace::registry::generate_workspace_id(&canonical_path_str)
                     {
@@ -331,7 +328,8 @@ impl ManageWorkspaceTool {
                     message.push_str(&format!("\nCanonical revision: {}", canonical_revision));
                 }
                 if let Some(ws_id) = indexed_workspace_id {
-                    if skip_embeddings {
+                    let skip_embedding_pipeline = skip_embeddings && !effective_force_reindex;
+                    if skip_embedding_pipeline {
                         info!(
                             "Skipping embeddings in auto-index mode (use explicit `manage_workspace index` to embed)"
                         );
@@ -340,7 +338,7 @@ impl ManageWorkspaceTool {
                         // Matches the gate in handle_refresh_command.
                         let db_mutated = result.files_processed > 0 || result.orphans_cleaned > 0;
 
-                        if db_mutated || force {
+                        if db_mutated || effective_force_reindex {
                             // Force re-index: pipeline was already cancelled at the top
                             // of this function. Clear embeddings so the new pipeline
                             // re-embeds everything with the latest enrichment text.
@@ -349,7 +347,7 @@ impl ManageWorkspaceTool {
                             // handler.get_workspace().db always points to the PRIMARY
                             // workspace. For non-primary targets we must open the
                             // target DB via workspace_db_path() instead.
-                            if force {
+                            if effective_force_reindex {
                                 if is_non_primary_workspace_target {
                                     let target_db_path =
                                         handler.workspace_db_file_path_for(&ws_id).await?;

@@ -21,15 +21,17 @@
 
 ## Audit Inputs
 
-- Core tree-sitter is currently `0.25.10`, declared in [Cargo.toml](/Users/murphy/source/julie/Cargo.toml:42) and [crates/julie-extractors/Cargo.toml](/Users/murphy/source/julie/crates/julie-extractors/Cargo.toml:17).
+- Core tree-sitter is currently `0.25.10`, declared in [Cargo.toml](../../Cargo.toml:42) and [crates/julie-extractors/Cargo.toml](../../crates/julie-extractors/Cargo.toml:17).
 - Latest upstream core is `0.26.8`. `tree-sitter 0.25.10` and `0.26.8` both support parser ABI `13..15`, so the main risk is grammar/API drift, not ABI panic.
-- Watcher incremental indexing calls `extract_all` in [src/watcher/handlers.rs](/Users/murphy/source/julie/src/watcher/handlers.rs:128), but does not resolve `pending_relationships` or `structured_pending_relationships`.
-- Full indexing collects and resolves pending relationships in [src/tools/workspace/indexing/pipeline.rs](/Users/murphy/source/julie/src/tools/workspace/indexing/pipeline.rs:112).
-- Relationship extractors use name-only maps in several places, including [crates/julie-extractors/src/csharp/relationships.rs](/Users/murphy/source/julie/crates/julie-extractors/src/csharp/relationships.rs:354), which can create wrong edges for overloads or duplicate names.
+- Watcher incremental indexing calls `extract_all` in [src/watcher/handlers.rs](../../src/watcher/handlers.rs:128), but does not resolve `pending_relationships` or `structured_pending_relationships`.
+- Full indexing collects and resolves pending relationships in [src/tools/workspace/indexing/pipeline.rs](../../src/tools/workspace/indexing/pipeline.rs:112).
+- Relationship extractors use name-only maps in several places, including [crates/julie-extractors/src/csharp/relationships.rs](../../crates/julie-extractors/src/csharp/relationships.rs:354), which can create wrong edges for overloads or duplicate names.
 - The extractor suite is broad, but golden production-path coverage is thin: `crates/julie-extractors/src/tests` has many tests, while only a small number call `extract_canonical`.
-- Real-world validation currently checks symbol non-emptiness in [src/tests/integration/real_world_validation.rs](/Users/murphy/source/julie/src/tests/integration/real_world_validation.rs:279), which is smoke coverage, not extraction-contract coverage.
+- Real-world validation currently checks symbol non-emptiness in [src/tests/integration/real_world_validation.rs](../../src/tests/integration/real_world_validation.rs:279), which is smoke coverage, not extraction-contract coverage.
 
 ## Dogfood Findings, 2026-05-05
+
+**Current release verdict:** See [TREE_SITTER_QUALITY_BAR.md](../TREE_SITTER_QUALITY_BAR.md). This section is historical dogfood context, not release evidence.
 
 **Verification evidence at `c01b9516`:**
 - `cargo xtask test bucket extractors` passed in 36.1s.
@@ -37,7 +39,7 @@
 - `cargo xtask test full` passed 30 buckets in 825.6s, including system and dogfood gates.
 - Live Julie health returned to `FULLY READY` after test-induced catch-up settled: 32,728 symbols, 23,450 relationships, projection revision 3512/3512, MPS embeddings initialized.
 
-**Best-in-class status:** not yet achieved. The core golden, parser-upgrade, parse-diagnostic, and broad regression gates are real and green, but the dogfood pass found remaining correctness and product-quality gaps.
+**Historical status at `c01b9516`:** not yet achieved. The core golden, parser-upgrade, parse-diagnostic, and broad regression gates were real and green, but the dogfood pass found remaining correctness and product-quality gaps.
 
 **Blocking gap: Task 6 relationship precision is incomplete.**
 - `ScopedSymbolIndex::resolve_call_target` is adopted directly in Rust, Python, JavaScript, and TypeScript relationship extractors.
@@ -45,12 +47,12 @@
 - Some of those lookups are type or inheritance edges and may be acceptable after review, but the plan's acceptance bar was whole-inventory scope-aware handling for ambiguous local relationship resolution. That bar has not been proven across every relationship-capable language.
 
 **Live Julie dogfood bugs and polish gaps:**
-- `fast_refs(extract_canonical)` sees the production indexing call at [src/tools/workspace/indexing/extractor.rs](/Users/murphy/source/julie/src/tools/workspace/indexing/extractor.rs:24), but `call_path(extract_symbols_static -> extract_canonical)` returns no path. This is a graph traversal or symbol-resolution gap around cross-crate/re-export call edges.
+- `fast_refs(extract_canonical)` sees the production indexing call at [src/tools/workspace/indexing/extractor.rs](../../src/tools/workspace/indexing/extractor.rs:24), but `call_path(extract_symbols_static -> extract_canonical)` returns no path. This is a graph traversal or symbol-resolution gap around cross-crate/re-export call edges.
 - `fast_refs("LanguageSpec")` returns sparse and slightly conflated results for the `LanguageSpec` struct, the `language_spec` function, and the module. This needs investigation before deciding whether it is a real type-reference indexing bug or acceptable sparse usage.
 - Health output reports 36 supported languages including `text` and omits `jsx`, while the tree-sitter capability matrix has `jsx` and intentionally excludes non-tree-sitter `text`. The behavior may be correct, but the wording is confusing.
 - `JULIE_AGENT_INSTRUCTIONS.md` does not explicitly mention the new `extractors` and `parser-upgrade` gates, even though `AGENTS.md` and `CLAUDE.md` do.
 
-**Follow-up owner:** [2026-05-05-tree-sitter-gap-closure.md](/Users/murphy/source/julie/docs/plans/2026-05-05-tree-sitter-gap-closure.md).
+**Follow-up owner:** [2026-05-05-tree-sitter-gap-closure.md](2026-05-05-tree-sitter-gap-closure.md).
 
 **Closure update, 2026-05-05:** Gap-closure work has fixed the relationship precision rollout, the `extract_symbols_static -> extract_canonical` call-path miss, the `LanguageSpec` exact-match noise, health wording, missing injected gate instructions, the post-restart semantic index invalidation gap that kept old derived relationships until forced refresh, and a Rust enum-variant reference extraction gap found during live dogfood. The focused closure plan remains the evidence ledger for final gate results.
 
@@ -346,7 +348,7 @@ The plan covers these registry entries:
 
 ## Verification Strategy
 
-**Project source of truth:** [AGENTS.md](/Users/murphy/source/julie/AGENTS.md), [RAZORBACK.md](/Users/murphy/source/julie/RAZORBACK.md), [docs/TESTING_GUIDE.md](/Users/murphy/source/julie/docs/TESTING_GUIDE.md), and [xtask/test_tiers.toml](/Users/murphy/source/julie/xtask/test_tiers.toml).
+**Project source of truth:** [AGENTS.md](../../AGENTS.md), [RAZORBACK.md](../../RAZORBACK.md), [docs/TESTING_GUIDE.md](../TESTING_GUIDE.md), and [xtask/test_tiers.toml](../../xtask/test_tiers.toml).
 
 **Worker red/green scope:** Workers run exact tests they add or change, usually `cargo nextest run -p julie-extractors <test_name>` for extractor work, or `cargo nextest run --lib <exact_test_name>` for main crate watcher/tooling work.
 
@@ -370,7 +372,7 @@ The plan covers these registry entries:
 
 ## Model Routing
 
-**Project source of truth:** [RAZORBACK.md](/Users/murphy/source/julie/RAZORBACK.md).
+**Project source of truth:** [RAZORBACK.md](../../RAZORBACK.md).
 
 **Strategy tier:** Planning, architecture, decomposition, lead review, dependency version selection, parser-upgrade decisions, and finding triage.
 - Harness mapping: Codex `gpt-5.5` with medium or high reasoning.

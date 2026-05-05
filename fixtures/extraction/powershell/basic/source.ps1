@@ -3,6 +3,11 @@ function Invoke-Helper {
     return $Value + 1
 }
 
+function Invoke-Run {
+    param([int]$Value)
+    return Invoke-Helper $Value
+}
+
 class Worker {
     [int]$Id
 

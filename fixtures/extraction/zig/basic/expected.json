@@ -87,12 +87,60 @@
       "semantic_group": null,
       "confidence": null,
       "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/zig/basic/source.zig:runWorker:13:0",
+      "name": "runWorker",
+      "kind": "function",
+      "language": "zig",
+      "file_path": "fixtures/extraction/zig/basic/source.zig",
+      "start_line": 13,
+      "start_column": 0,
+      "end_line": 15,
+      "end_column": 1,
+      "start_byte": 176,
+      "end_byte": 246,
+      "signature": "pub fn runWorker(worker: Worker) i32",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": null,
+      "metadata": {},
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
     }
   ],
-  "relationships": [],
+  "relationships": [
+    {
+      "from_key": "fixtures/extraction/zig/basic/source.zig:runWorker:13:0",
+      "to_key": "fixtures/extraction/zig/basic/source.zig:helper:9:0",
+      "kind": "calls",
+      "file_path": "fixtures/extraction/zig/basic/source.zig",
+      "line_number": 14,
+      "confidence": "0.900",
+      "metadata": null
+    }
+  ],
   "pending_relationships": [],
   "structured_pending_relationships": [],
   "identifiers": [
+    {
+      "key": "fixtures/extraction/zig/basic/source.zig:Worker:type_usage:13:25",
+      "name": "Worker",
+      "kind": "type_usage",
+      "language": "zig",
+      "file_path": "fixtures/extraction/zig/basic/source.zig",
+      "start_line": 13,
+      "start_column": 25,
+      "end_line": 13,
+      "end_column": 31,
+      "start_byte": 201,
+      "end_byte": 207,
+      "containing_key": "fixtures/extraction/zig/basic/source.zig:runWorker:13:0",
+      "target_key": null,
+      "confidence": "1.000"
+    },
     {
       "key": "fixtures/extraction/zig/basic/source.zig:Worker:type_usage:4:21",
       "name": "Worker",
@@ -106,6 +154,22 @@
       "start_byte": 63,
       "end_byte": 69,
       "containing_key": "fixtures/extraction/zig/basic/source.zig:run:4:4",
+      "target_key": null,
+      "confidence": "1.000"
+    },
+    {
+      "key": "fixtures/extraction/zig/basic/source.zig:helper:call:14:11",
+      "name": "helper",
+      "kind": "call",
+      "language": "zig",
+      "file_path": "fixtures/extraction/zig/basic/source.zig",
+      "start_line": 14,
+      "start_column": 11,
+      "end_line": 14,
+      "end_column": 17,
+      "start_byte": 226,
+      "end_byte": 232,
+      "containing_key": "fixtures/extraction/zig/basic/source.zig:runWorker:13:0",
       "target_key": null,
       "confidence": "1.000"
     },
@@ -156,6 +220,15 @@
     },
     {
       "symbol_key": "unresolved:run",
+      "resolved_type": "Worker",
+      "generic_params": null,
+      "constraints": null,
+      "is_inferred": true,
+      "language": "zig",
+      "metadata": null
+    },
+    {
+      "symbol_key": "unresolved:runWorker",
       "resolved_type": "Worker",
       "generic_params": null,
       "constraints": null,

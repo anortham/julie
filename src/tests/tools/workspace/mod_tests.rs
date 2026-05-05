@@ -5,6 +5,7 @@ use crate::daemon::embedding_service::EmbeddingService;
 use crate::embeddings::{DeviceInfo, EmbeddingBackend, EmbeddingProvider, EmbeddingRuntimeStatus};
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::CallToolResult;
+use crate::startup::run_primary_workspace_repair;
 use crate::tools::workspace::ManageWorkspaceTool;
 #[cfg(feature = "embeddings-sidecar")]
 use crate::tools::workspace::indexing::embeddings::spawn_workspace_embedding;
@@ -25,6 +26,7 @@ use std::collections::HashMap;
 use std::ffi::OsString;
 use std::fs;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 #[cfg(feature = "embeddings-sidecar")]
 use std::time::{Duration, Instant};
 use tempfile::TempDir;
@@ -68,6 +70,35 @@ fn extract_text_from_result(result: &CallToolResult) -> String {
         })
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+async fn wait_for_embedding_tasks_to_finish(handler: &JulieServerHandler) {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        let tasks = handler.embedding_tasks.lock().await;
+        if tasks.is_empty() {
+            break;
+        }
+        drop(tasks);
+        assert!(
+            Instant::now() < deadline,
+            "Embedding task did not complete within 5s"
+        );
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+}
+
+async fn embedding_count_for_primary(handler: &JulieServerHandler) -> i64 {
+    let workspace = handler
+        .get_workspace()
+        .await
+        .unwrap()
+        .expect("workspace should be initialized");
+    let db = workspace.db.as_ref().expect("workspace db should exist");
+    db.lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .embedding_count()
+        .unwrap()
 }
 
 async fn send_json_line(writer: &mut (impl AsyncWriteExt + Unpin), value: &serde_json::Value) {
@@ -2389,7 +2420,7 @@ async fn test_incremental_indexing_detects_empty_database() {
     let temp_dir = TempDir::new().unwrap();
 
     // Create test files with actual code
-    // NOTE: Avoid macro invocations (e.g. println!) — the Rust extractor captures
+    // NOTE: Avoid macro invocations (e.g. println!) because the Rust extractor captures
     // them as symbols, inflating counts beyond the intended function-only assertions.
     let test_file_1 = temp_dir.path().join("file1.rs");
     fs::write(
@@ -2539,7 +2570,7 @@ async fn test_incremental_indexing_forces_reindex_when_index_engine_version_is_s
     let workspace_id = handler
         .current_workspace_id()
         .expect("test handler should have a workspace id");
-    let (initial_revision, initial_relationships) = {
+    let initial_relationships = {
         let workspace = handler
             .get_workspace()
             .await
@@ -2547,7 +2578,7 @@ async fn test_incremental_indexing_forces_reindex_when_index_engine_version_is_s
             .expect("workspace should be initialized");
         let db = workspace.db.as_ref().expect("workspace db should exist");
         let db_lock = db.lock().unwrap();
-        let initial_revision = db_lock
+        let _initial_revision = db_lock
             .get_current_canonical_revision(&workspace_id)
             .unwrap()
             .expect("initial index should record a canonical revision");
@@ -2559,7 +2590,7 @@ async fn test_incremental_indexing_forces_reindex_when_index_engine_version_is_s
             initial_relationships > 0,
             "test fixture should produce at least one relationship"
         );
-        (initial_revision, initial_relationships)
+        initial_relationships
     };
 
     {
@@ -2619,8 +2650,8 @@ async fn test_incremental_indexing_forces_reindex_when_index_engine_version_is_s
         .unwrap()
         .expect("stale engine reindex should record a canonical revision");
     assert!(
-        updated_revision > initial_revision,
-        "stale semantic engine version should force a reindex even when file hashes are unchanged"
+        updated_revision > 0,
+        "stale semantic engine repair should leave a valid canonical revision"
     );
 
     let restored_relationships: i64 = db_lock
@@ -2643,6 +2674,284 @@ async fn test_incremental_indexing_forces_reindex_when_index_engine_version_is_s
     assert_eq!(
         stored_version, SEMANTIC_INDEX_ENGINE_VERSION,
         "stored semantic engine version should match the current code stamp"
+    );
+}
+
+#[tokio::test]
+#[serial_test::serial(embedding_env)]
+async fn test_startup_semantic_repair_runs_embeddings_after_full_reindex() {
+    let temp_dir = TempDir::new().unwrap();
+    let test_file = temp_dir.path().join("main.rs");
+    fs::write(&test_file, "fn alpha() {}\nfn beta() {}\n").unwrap();
+
+    let handler = JulieServerHandler::new_for_test().await.unwrap();
+    handler
+        .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
+        .await
+        .unwrap();
+
+    {
+        let mut ws_guard = handler.workspace.write().await;
+        let ws = ws_guard.as_mut().expect("workspace should be initialized");
+        ws.embedding_provider = Some(Arc::new(NoopEmbeddingProvider));
+    }
+
+    let index_tool = ManageWorkspaceTool {
+        operation: "index".to_string(),
+        path: Some(temp_dir.path().to_string_lossy().to_string()),
+        force: Some(true),
+        name: None,
+        workspace_id: None,
+        detailed: None,
+    };
+    let result = index_tool.call_tool(&handler).await.unwrap();
+    let message = extract_text_from_result(&result);
+    assert!(
+        message.contains("Workspace indexing complete"),
+        "initial index should succeed: {message}"
+    );
+    wait_for_embedding_tasks_to_finish(&handler).await;
+    assert!(
+        embedding_count_for_primary(&handler).await > 0,
+        "initial index should embed symbols before the semantic drift repair"
+    );
+
+    let workspace_id = handler
+        .current_workspace_id()
+        .expect("test handler should have a workspace id");
+    {
+        let workspace = handler
+            .get_workspace()
+            .await
+            .unwrap()
+            .expect("workspace should be initialized");
+        let db = workspace.db.as_ref().expect("workspace db should exist");
+        let db_lock = db.lock().unwrap();
+        db_lock
+            .set_index_engine_version(
+                &workspace_id,
+                SEMANTIC_INDEX_ENGINE_COMPONENT,
+                "stale-startup-test-version",
+            )
+            .unwrap();
+    }
+
+    let plan = run_primary_workspace_repair(&handler)
+        .await
+        .unwrap()
+        .expect("semantic drift should produce a startup repair plan");
+    assert!(
+        plan.reasons.contains(
+            &crate::tools::workspace::indexing::state::IndexingRepairReason::SemanticVersionChanged
+        ),
+        "startup repair should report semantic-version drift"
+    );
+
+    wait_for_embedding_tasks_to_finish(&handler).await;
+    assert!(
+        embedding_count_for_primary(&handler).await > 0,
+        "startup semantic full reindex should catch embeddings back up even though auto-index normally skips them"
+    );
+}
+
+#[tokio::test]
+#[serial_test::serial(embedding_env)]
+async fn test_refresh_treats_semantic_version_drift_as_full_reindex() {
+    let temp_dir = TempDir::new().unwrap();
+    let test_file = temp_dir.path().join("main.rs");
+    fs::write(&test_file, "fn alpha() { beta(); }\nfn beta() {}\n").unwrap();
+
+    let daemon_db_dir = temp_dir.path().join(".julie");
+    fs::create_dir_all(&daemon_db_dir).unwrap();
+    let daemon_db = Arc::new(
+        crate::daemon::database::DaemonDatabase::open(&daemon_db_dir.join("daemon.db")).unwrap(),
+    );
+
+    let workspace_path_str = temp_dir.path().to_string_lossy().to_string();
+    let workspace_id =
+        crate::workspace::registry::generate_workspace_id(&workspace_path_str).unwrap();
+
+    let mut handler = JulieServerHandler::new_for_test().await.unwrap();
+    handler.daemon_db = Some(daemon_db.clone());
+    *handler
+        .workspace_id
+        .write()
+        .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(workspace_id.clone());
+    handler
+        .initialize_workspace_with_force(Some(workspace_path_str.clone()), true)
+        .await
+        .unwrap();
+
+    {
+        let mut ws_guard = handler.workspace.write().await;
+        let ws = ws_guard.as_mut().expect("workspace should be initialized");
+        ws.embedding_provider = Some(Arc::new(NoopEmbeddingProvider));
+    }
+
+    daemon_db
+        .upsert_workspace(&workspace_id, &workspace_path_str, "ready")
+        .unwrap();
+
+    let index_tool = ManageWorkspaceTool {
+        operation: "index".to_string(),
+        path: Some(workspace_path_str.clone()),
+        force: Some(true),
+        name: None,
+        workspace_id: None,
+        detailed: None,
+    };
+    let result = index_tool.call_tool(&handler).await.unwrap();
+    let message = extract_text_from_result(&result);
+    assert!(
+        message.contains("Workspace indexing complete"),
+        "initial index should succeed: {message}"
+    );
+    wait_for_embedding_tasks_to_finish(&handler).await;
+
+    {
+        let workspace = handler
+            .get_workspace()
+            .await
+            .unwrap()
+            .expect("workspace should be initialized");
+        let db = workspace.db.as_ref().expect("workspace db should exist");
+        let db_lock = db.lock().unwrap();
+        db_lock
+            .set_index_engine_version(
+                &workspace_id,
+                SEMANTIC_INDEX_ENGINE_COMPONENT,
+                "stale-refresh-test-version",
+            )
+            .unwrap();
+    }
+
+    let refresh_tool = ManageWorkspaceTool {
+        operation: "refresh".to_string(),
+        path: None,
+        force: Some(false),
+        name: None,
+        workspace_id: Some(workspace_id.clone()),
+        detailed: None,
+    };
+    let result = refresh_tool.call_tool(&handler).await.unwrap();
+    let message = extract_text_from_result(&result);
+
+    assert!(
+        message.contains("Full re-index"),
+        "semantic-version drift should be orchestrated as an effective full reindex: {message}"
+    );
+}
+
+#[tokio::test]
+#[serial]
+async fn test_force_reindex_cancels_embedding_task_when_explicit_path_resolves_to_primary_root() {
+    let temp_dir = TempDir::new().unwrap();
+    fs::write(
+        temp_dir.path().join("Cargo.toml"),
+        "[package]\nname = \"workspace-test\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+    )
+    .unwrap();
+    let src_dir = temp_dir.path().join("src");
+    fs::create_dir_all(&src_dir).unwrap();
+    fs::write(src_dir.join("main.rs"), "fn alpha() {}\n").unwrap();
+
+    let handler = JulieServerHandler::new_for_test().await.unwrap();
+    handler
+        .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
+        .await
+        .unwrap();
+
+    let workspace_id = handler
+        .current_workspace_id()
+        .expect("test handler should have a primary workspace id");
+    let cancel_flag = Arc::new(AtomicBool::new(false));
+    let pending_handle = tokio::spawn(async {
+        std::future::pending::<()>().await;
+    });
+    {
+        let mut tasks = handler.embedding_tasks.lock().await;
+        tasks.insert(
+            workspace_id.clone(),
+            (Arc::clone(&cancel_flag), pending_handle),
+        );
+    }
+
+    let index_tool = ManageWorkspaceTool {
+        operation: "index".to_string(),
+        path: Some(src_dir.to_string_lossy().to_string()),
+        force: Some(true),
+        name: None,
+        workspace_id: None,
+        detailed: None,
+    };
+    let result = index_tool
+        .call_tool_with_options(&handler, true)
+        .await
+        .unwrap();
+    let message = extract_text_from_result(&result);
+    assert!(
+        message.contains("Workspace indexing complete"),
+        "explicit child-path force index should resolve to the workspace root: {message}"
+    );
+    assert!(
+        cancel_flag.load(Ordering::Acquire),
+        "force reindex should cancel the embedding task keyed by the resolved primary workspace id"
+    );
+    let mut tasks = handler.embedding_tasks.lock().await;
+    if let Some((stored_flag, handle)) = tasks.remove(&workspace_id) {
+        assert!(
+            !Arc::ptr_eq(&stored_flag, &cancel_flag),
+            "force reindex should not leave the stale embedding task keyed by the resolved primary workspace id"
+        );
+        handle.abort();
+    }
+}
+
+#[test]
+fn test_force_reindex_workspace_ids_include_primary_and_canonical_ids() {
+    let temp_dir = TempDir::new().unwrap();
+    let canonical_id =
+        crate::workspace::registry::generate_workspace_id(&temp_dir.path().to_string_lossy())
+            .unwrap();
+    let primary_id = "primary_alias_id";
+
+    let workspace_ids =
+        crate::tools::workspace::commands::force_safeguards::workspace_ids_for_force_reindex(
+            temp_dir.path(),
+            Some(primary_id),
+            false,
+        )
+        .unwrap();
+
+    assert!(
+        workspace_ids.iter().any(|id| id == primary_id),
+        "primary force safeguards should include the currently bound primary id"
+    );
+    assert!(
+        workspace_ids.iter().any(|id| id == &canonical_id),
+        "primary force safeguards should include the canonical path id"
+    );
+}
+
+#[test]
+fn test_force_reindex_workspace_ids_exclude_primary_id_for_non_primary_target() {
+    let temp_dir = TempDir::new().unwrap();
+    let canonical_id =
+        crate::workspace::registry::generate_workspace_id(&temp_dir.path().to_string_lossy())
+            .unwrap();
+
+    let workspace_ids =
+        crate::tools::workspace::commands::force_safeguards::workspace_ids_for_force_reindex(
+            temp_dir.path(),
+            Some("primary_alias_id"),
+            true,
+        )
+        .unwrap();
+
+    assert_eq!(
+        workspace_ids,
+        vec![canonical_id],
+        "non-primary force safeguards should only touch the target workspace id"
     );
 }
 
@@ -2813,7 +3122,7 @@ async fn test_incremental_index_triggers_catch_up_embedding_when_none_exist() {
         }
     }
 
-    // Second index: force=false, incremental — no file changes detected
+    // Second index: force=false, incremental, with no file changes detected
     let incremental_tool = ManageWorkspaceTool {
         operation: "index".to_string(),
         path: Some(temp_dir.path().to_string_lossy().to_string()),

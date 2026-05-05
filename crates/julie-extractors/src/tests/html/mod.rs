@@ -1,4 +1,4 @@
-use crate::base::Symbol;
+use crate::base::{Relationship, Symbol};
 use crate::html::HTMLExtractor;
 use tree_sitter::Parser;
 
@@ -27,11 +27,29 @@ pub fn extract_symbols(code: &str) -> Vec<Symbol> {
     extractor.extract_symbols(&tree)
 }
 
+pub fn extract_symbols_and_relationships(code: &str) -> (Vec<Symbol>, Vec<Relationship>) {
+    use std::path::PathBuf;
+    let mut parser = init_parser();
+    let tree = parser.parse(code, None).expect("Failed to parse HTML code");
+
+    let workspace_root = PathBuf::from("/tmp/test");
+    let mut extractor = HTMLExtractor::new(
+        "html".to_string(),
+        "test.html".to_string(),
+        code.to_string(),
+        &workspace_root,
+    );
+    let symbols = extractor.extract_symbols(&tree);
+    let relationships = extractor.extract_relationships(&tree, &symbols);
+    (symbols, relationships)
+}
+
 pub mod doc_comments;
 pub mod edge_cases;
 pub mod forms;
 pub mod identifier_extraction;
 pub mod media;
+pub mod relationships;
 pub mod script_style;
 pub mod structure;
 mod types; // Phase 4: Type extraction verification tests

@@ -120,7 +120,12 @@ pub(crate) async fn run_primary_workspace_repair(
                     detailed: None,
                 };
 
-                index_tool.call_tool_with_options(handler, true).await?;
+                let skip_embeddings = !plan
+                    .reasons
+                    .contains(&IndexingRepairReason::SemanticVersionChanged);
+                index_tool
+                    .call_tool_with_options(handler, skip_embeddings)
+                    .await?;
                 if let Some(runtime) = indexing_runtime.as_ref() {
                     let mut runtime = runtime
                         .write()

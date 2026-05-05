@@ -88,6 +88,12 @@ pub const NO_PENDING_CAPABILITIES: LanguageCapabilities = LanguageCapabilities {
     ..FULL_CAPABILITIES
 };
 
+pub const NO_RELATIONSHIP_CAPABILITIES: LanguageCapabilities = LanguageCapabilities {
+    relationships: false,
+    pending_relationships: false,
+    ..FULL_CAPABILITIES
+};
+
 pub const PENDING_NO_TYPES_CAPABILITIES: LanguageCapabilities = LanguageCapabilities {
     types: false,
     ..FULL_CAPABILITIES
@@ -270,7 +276,7 @@ const LANGUAGE_SPECS: &[LanguageSpec] = &[
         "vue",
         &["vue"],
         "tree-sitter-html",
-        NO_PENDING_CAPABILITIES,
+        NO_RELATIONSHIP_CAPABILITIES,
         parser_html,
         HTML_DOCS,
     ),
@@ -430,7 +436,7 @@ const LANGUAGE_SPECS: &[LanguageSpec] = &[
         "regex",
         &["regex"],
         "tree-sitter-regex",
-        NO_PENDING_CAPABILITIES,
+        NO_RELATIONSHIP_CAPABILITIES,
         parser_regex,
         EMPTY,
     ),
