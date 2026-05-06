@@ -14,7 +14,23 @@ pub fn extract_canonical(
         return extract_jsonl_canonical(file_path, content, workspace_root);
     }
 
-    let (language, tree) = parse_file(file_path, content)?;
+    extract_canonical_with_parse(file_path, content, workspace_root, parse_for_language)
+}
+
+pub(crate) fn extract_canonical_with_parse<F>(
+    file_path: &str,
+    content: &str,
+    workspace_root: &Path,
+    parse: F,
+) -> Result<ExtractionResults, anyhow::Error>
+where
+    F: FnOnce(&str, &str, &str) -> Result<Option<Tree>, anyhow::Error>,
+{
+    let language = detect_language_for_path(file_path)?;
+    let Some(tree) = parse(language, file_path, content)? else {
+        return Ok(degraded_parse_failure_result(content));
+    };
+
     let mut results =
         crate::registry::extract_for_language(language, &tree, file_path, content, workspace_root)?;
     results.parse_diagnostics = parse_diagnostics_for_tree(&tree);
@@ -44,7 +60,15 @@ where
     let mut parser = parser_factory()?;
 
     for (line_delta, byte_delta, line) in jsonl_records(content) {
-        let tree = parse_with_parser(&mut parser, file_path, line)?;
+        let Some(tree) = parse_with_parser(&mut parser, file_path, line)? else {
+            let mut record_results = degraded_parse_failure_result(line);
+            record_results.apply_record_offset(RecordOffset {
+                line_delta,
+                byte_delta,
+            });
+            results.extend(record_results);
+            continue;
+        };
         let mut record_results =
             crate::registry::extract_for_language("json", &tree, file_path, line, workspace_root)?;
         record_results.parse_diagnostics = parse_diagnostics_for_tree(&tree);
@@ -83,20 +107,11 @@ fn jsonl_records(content: &str) -> Vec<(u32, u32, &str)> {
     records
 }
 
-pub(crate) fn parse_file(
-    file_path: &str,
-    content: &str,
-) -> Result<(&'static str, Tree), anyhow::Error> {
-    let language = detect_language_for_path(file_path)?;
-    let tree = parse_for_language(language, file_path, content)?;
-    Ok((language, tree))
-}
-
 pub(crate) fn parse_for_language(
     language: &str,
     file_path: &str,
     content: &str,
-) -> Result<Tree, anyhow::Error> {
+) -> Result<Option<Tree>, anyhow::Error> {
     let mut parser = configured_parser_for_language(language)?;
     parse_with_parser(&mut parser, file_path, content)
 }
@@ -113,12 +128,47 @@ pub(crate) fn configured_parser_for_language(language: &str) -> Result<Parser, a
 
 fn parse_with_parser(
     parser: &mut Parser,
-    file_path: &str,
+    _file_path: &str,
     content: &str,
-) -> Result<Tree, anyhow::Error> {
-    parser
-        .parse(content, None)
-        .ok_or_else(|| anyhow::anyhow!("Failed to parse file: {}", file_path))
+) -> Result<Option<Tree>, anyhow::Error> {
+    Ok(parser.parse(content, None))
+}
+
+fn degraded_parse_failure_result(content: &str) -> ExtractionResults {
+    let mut results = ExtractionResults::empty();
+    results
+        .parse_diagnostics
+        .push(total_parse_failure_diagnostic(content));
+    results
+}
+
+fn total_parse_failure_diagnostic(content: &str) -> ParseDiagnostic {
+    let (end_line, end_column) = content_end_position(content);
+    ParseDiagnostic {
+        kind: ParseDiagnosticKind::Error,
+        start_line: 1,
+        start_column: 0,
+        end_line,
+        end_column,
+        start_byte: 0,
+        end_byte: content.len() as u32,
+    }
+}
+
+fn content_end_position(content: &str) -> (u32, u32) {
+    let mut line = 1;
+    let mut column = 0;
+
+    for byte in content.bytes() {
+        if byte == b'\n' {
+            line += 1;
+            column = 0;
+        } else {
+            column += 1;
+        }
+    }
+
+    (line, column)
 }
 
 pub fn parse_diagnostics_for_tree(tree: &Tree) -> Vec<ParseDiagnostic> {

@@ -229,3 +229,34 @@ func VariadicFunction(format string, args ...interface{}) {
         );
     }
 }
+
+#[test]
+fn test_extract_canonical_parse_none_returns_degraded_result_with_diagnostic() {
+    let workspace_root = PathBuf::from("/test/workspace");
+    let content = "fn main() {\n    println!(\"unterminated parse\")";
+
+    let results = crate::pipeline::extract_canonical_with_parse(
+        "src/broken.rs",
+        content,
+        &workspace_root,
+        |_language, _file_path, _content| Ok(None),
+    )
+    .expect("parser None should return a degraded extraction result");
+
+    assert!(results.symbols.is_empty());
+    assert!(results.relationships.is_empty());
+    assert!(results.identifiers.is_empty());
+    assert_eq!(results.parse_diagnostics.len(), 1);
+
+    let diagnostic = &results.parse_diagnostics[0];
+    assert_eq!(diagnostic.kind, ParseDiagnosticKind::Error);
+    assert_eq!(diagnostic.start_line, 1);
+    assert_eq!(diagnostic.start_column, 0);
+    assert_eq!(diagnostic.start_byte, 0);
+    assert_eq!(diagnostic.end_byte, content.len() as u32);
+    assert_eq!(diagnostic.end_line, 2);
+    assert_eq!(
+        diagnostic.end_column,
+        "    println!(\"unterminated parse\")".len() as u32
+    );
+}
