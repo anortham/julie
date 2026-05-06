@@ -757,6 +757,43 @@ class Worker extends ExternalService {
 }
 
 #[test]
+fn test_scala_unresolved_inheritance_and_conformance_keep_relationship_kind() {
+    let code = r#"
+class Worker extends ExternalBase with ExternalProtocol {
+  def run(): Unit = {}
+}
+"#;
+    let mut parser = init_parser();
+    let tree = parser.parse(code, None).unwrap();
+    let workspace_root = PathBuf::from("/tmp/test");
+    let mut extractor = ScalaExtractor::new(
+        "scala".to_string(),
+        "test.scala".to_string(),
+        code.to_string(),
+        &workspace_root,
+    );
+    let symbols = extractor.extract_symbols(&tree);
+    let _relationships = extractor.extract_relationships(&tree, &symbols);
+    let pending = extractor.get_structured_pending_relationships();
+
+    let base_pending = pending
+        .iter()
+        .find(|pending| pending.target.display_name == "ExternalBase")
+        .expect("unresolved Scala base class should create a structured pending relationship");
+    assert_eq!(base_pending.pending.kind, RelationshipKind::Extends);
+    assert_eq!(base_pending.target.terminal_name, "ExternalBase");
+
+    let protocol_pending = pending
+        .iter()
+        .find(|pending| pending.target.display_name == "ExternalProtocol")
+        .expect(
+            "unresolved Scala protocol conformance should create a structured pending relationship",
+        );
+    assert_eq!(protocol_pending.pending.kind, RelationshipKind::Implements);
+    assert_eq!(protocol_pending.target.terminal_name, "ExternalProtocol");
+}
+
+#[test]
 fn test_scala_calls_inside_vals_given_and_extensions_are_extracted() {
     let code = r#"
 def helper(): Int = 1
@@ -1016,7 +1053,7 @@ type Handler = Request => Response
 #[test]
 fn test_scala_type_usage_skips_builtin_types() {
     // Scala primitive wrappers (Int, String, Boolean, etc.) should NOT produce
-    // TypeUsage identifiers — they pollute centrality with noise.
+    // TypeUsage identifiers because they pollute centrality with noise.
     let code = r#"
 def greet(name: String, age: Int): Boolean = {
   true

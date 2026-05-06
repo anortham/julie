@@ -3,7 +3,9 @@
 // Methods for extracting relationships between symbols (inheritance, uses, etc.)
 
 use super::helpers::*;
-use crate::base::{BaseExtractor, Relationship, RelationshipKind, Symbol, SymbolKind};
+use crate::base::{
+    BaseExtractor, Relationship, RelationshipKind, Symbol, SymbolKind, UnresolvedTarget,
+};
 use std::collections::HashMap;
 use tree_sitter::Node;
 
@@ -55,6 +57,18 @@ fn extract_class_relationships(
     }
     let class_symbol = class_symbol.unwrap();
 
+    for (target_name, kind) in extract_class_header_targets(node) {
+        emit_type_relationship_or_pending(
+            base,
+            class_symbol,
+            symbols,
+            node,
+            &target_name,
+            kind,
+            relationships,
+        );
+    }
+
     if let Some(extends_clause) = find_child_by_type(node, "superclass") {
         let type_root = find_child_by_type(&extends_clause, "type")
             .or_else(|| find_child_by_type(&extends_clause, "type_identifier"));
@@ -66,33 +80,6 @@ fn extract_class_relationships(
                     type_names.push(get_node_text(&type_child));
                 }
             });
-
-            let Some(superclass_name) = type_names.first() else {
-                return;
-            };
-
-            if let Some(superclass_symbol) = symbols
-                .iter()
-                .find(|s| s.name == *superclass_name && s.kind == SymbolKind::Class)
-            {
-                relationships.push(Relationship {
-                    id: format!(
-                        "{}_{}_{:?}_{}",
-                        class_symbol.id,
-                        superclass_symbol.id,
-                        RelationshipKind::Extends,
-                        node.start_position().row
-                    ),
-                    from_symbol_id: class_symbol.id.clone(),
-                    to_symbol_id: superclass_symbol.id.clone(),
-                    kind: RelationshipKind::Extends,
-                    file_path: base.file_path.clone(),
-                    line_number: node.start_position().row as u32 + 1,
-                    confidence: 1.0,
-                    metadata: None,
-                });
-            }
-
             for generic_type_name in type_names.iter().skip(1) {
                 if let Some(generic_type_symbol) = symbols
                     .iter()
@@ -116,44 +103,190 @@ fn extract_class_relationships(
                     });
                 }
             }
+        }
+    }
+}
 
-            // Extract mixin relationships (with clause)
-            if let Some(mixin_clause) = find_child_by_type(&extends_clause, "mixins") {
-                // Look for type_identifier nodes within the mixins clause
-                let mut mixin_types = Vec::new();
-                traverse_tree(mixin_clause, &mut |mixin_node| {
-                    if mixin_node.kind() == "type_identifier" {
-                        mixin_types.push(get_node_text(&mixin_node));
-                    }
-                });
+fn extract_class_header_targets(node: &Node) -> Vec<(String, RelationshipKind)> {
+    let mut targets = Vec::new();
 
-                // Create 'uses' relationships for any mixin types that are interfaces in our symbols
-                // Note: Using 'Uses' instead of 'with' since 'with' is not in RelationshipKind enum
-                for mixin_type_name in mixin_types {
-                    if let Some(mixin_type_symbol) = symbols
-                        .iter()
-                        .find(|s| s.name == mixin_type_name && s.kind == SymbolKind::Interface)
-                    {
-                        relationships.push(Relationship {
-                            id: format!(
-                                "{}_{}_{:?}_{}",
-                                class_symbol.id,
-                                mixin_type_symbol.id,
-                                RelationshipKind::Uses,
-                                node.start_position().row
-                            ),
-                            from_symbol_id: class_symbol.id.clone(),
-                            to_symbol_id: mixin_type_symbol.id.clone(),
-                            kind: RelationshipKind::Uses,
-                            file_path: base.file_path.clone(),
-                            line_number: node.start_position().row as u32 + 1,
-                            confidence: 1.0,
-                            metadata: None,
-                        });
-                    }
-                }
+    if let Some(superclass_clause) = find_child_by_type(node, "superclass") {
+        let type_root = find_child_by_type(&superclass_clause, "type")
+            .or_else(|| find_child_by_type(&superclass_clause, "type_identifier"));
+        if let Some(type_node) = type_root {
+            if let Some(target_name) = normalize_type_name(&get_node_text(&type_node)) {
+                targets.push((target_name, RelationshipKind::Extends));
             }
         }
+
+        if let Some(mixin_clause) = find_child_by_type(&superclass_clause, "mixins") {
+            append_clause_targets(&mut targets, &mixin_clause, "with", RelationshipKind::Uses);
+        }
+    }
+
+    if let Some(interfaces_clause) = find_child_by_type(node, "interfaces") {
+        append_clause_targets(
+            &mut targets,
+            &interfaces_clause,
+            "implements",
+            RelationshipKind::Implements,
+        );
+    }
+
+    targets
+}
+
+fn append_clause_targets(
+    targets: &mut Vec<(String, RelationshipKind)>,
+    clause_node: &Node,
+    keyword: &str,
+    kind: RelationshipKind,
+) {
+    let clause_text = get_node_text(clause_node);
+    let clause_text = strip_leading_keyword(clause_text.trim(), keyword);
+    for target_name in extract_type_list(clause_text) {
+        targets.push((target_name, kind.clone()));
+    }
+}
+
+fn strip_leading_keyword<'a>(source: &'a str, keyword: &str) -> &'a str {
+    source.strip_prefix(keyword).unwrap_or(source).trim_start()
+}
+
+fn extract_type_list(clause: &str) -> Vec<String> {
+    let mut targets = Vec::new();
+    let mut start = 0;
+    let mut depth = 0_u32;
+
+    for (index, ch) in clause.char_indices() {
+        match ch {
+            '<' | '(' | '[' => depth += 1,
+            '>' | ')' | ']' => depth = depth.saturating_sub(1),
+            ',' if depth == 0 => {
+                if let Some(target_name) = normalize_type_name(&clause[start..index]) {
+                    targets.push(target_name);
+                }
+                start = index + ch.len_utf8();
+            }
+            _ => {}
+        }
+    }
+
+    if let Some(target_name) = normalize_type_name(&clause[start..]) {
+        targets.push(target_name);
+    }
+
+    targets
+}
+
+fn normalize_type_name(raw: &str) -> Option<String> {
+    let trimmed = raw.trim();
+    let end = trimmed
+        .char_indices()
+        .find_map(|(index, ch)| (!is_type_name_char(ch)).then_some(index))
+        .unwrap_or(trimmed.len());
+    let name = trimmed[..end].trim_matches('.');
+
+    (!name.is_empty()).then(|| name.to_string())
+}
+
+fn is_type_name_char(ch: char) -> bool {
+    ch.is_ascii_alphanumeric() || ch == '_' || ch == '.'
+}
+
+fn emit_type_relationship_or_pending(
+    base: &mut BaseExtractor,
+    class_symbol: &Symbol,
+    symbols: &[Symbol],
+    node: &Node,
+    target_name: &str,
+    kind: RelationshipKind,
+    relationships: &mut Vec<Relationship>,
+) {
+    let target = unresolved_type_target(symbols, target_name);
+    if let Some(target_symbol) = find_local_type_symbol(symbols, &target.terminal_name) {
+        relationships.push(Relationship {
+            id: format!(
+                "{}_{}_{:?}_{}",
+                class_symbol.id,
+                target_symbol.id,
+                kind,
+                node.start_position().row
+            ),
+            from_symbol_id: class_symbol.id.clone(),
+            to_symbol_id: target_symbol.id.clone(),
+            kind,
+            file_path: base.file_path.clone(),
+            line_number: node.start_position().row as u32 + 1,
+            confidence: 1.0,
+            metadata: None,
+        });
+    } else {
+        let pending = base.create_pending_relationship(
+            class_symbol.id.clone(),
+            target,
+            kind,
+            node,
+            Some(class_symbol.id.clone()),
+            Some(0.8),
+        );
+        base.add_structured_pending_relationship(pending);
+    }
+}
+
+fn find_local_type_symbol<'a>(symbols: &'a [Symbol], target_name: &str) -> Option<&'a Symbol> {
+    symbols.iter().find(|symbol| {
+        symbol.name == target_name
+            && matches!(
+                symbol.kind,
+                SymbolKind::Class | SymbolKind::Interface | SymbolKind::Type
+            )
+    })
+}
+
+fn unresolved_type_target(symbols: &[Symbol], target_name: &str) -> UnresolvedTarget {
+    let (receiver, terminal_name) = target_name
+        .rsplit_once('.')
+        .map(|(receiver, terminal)| (Some(receiver.to_string()), terminal.to_string()))
+        .unwrap_or_else(|| (None, target_name.to_string()));
+    let namespace_path = receiver
+        .as_deref()
+        .map(|receiver| receiver.split('.').map(str::to_string).collect())
+        .unwrap_or_default();
+
+    UnresolvedTarget {
+        display_name: target_name.to_string(),
+        terminal_name,
+        receiver,
+        namespace_path,
+        import_context: import_context_for_target(symbols, target_name),
+    }
+}
+
+fn import_context_for_target(symbols: &[Symbol], target_name: &str) -> Option<String> {
+    let imports: Vec<&Symbol> = symbols
+        .iter()
+        .filter(|symbol| symbol.kind == SymbolKind::Import)
+        .collect();
+
+    if let Some((receiver, _)) = target_name.rsplit_once('.') {
+        let alias = format!(" as {receiver}");
+        return imports.iter().find_map(|symbol| {
+            symbol
+                .signature
+                .as_ref()
+                .filter(|signature| signature.contains(&alias))
+                .cloned()
+        });
+    }
+
+    if imports.len() == 1 {
+        imports[0]
+            .signature
+            .clone()
+            .or_else(|| Some(imports[0].name.clone()))
+    } else {
+        None
     }
 }
 

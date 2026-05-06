@@ -460,4 +460,46 @@ func caller(other):
             "receiver-qualified calls should not produce a wrong confident local edge"
         );
     }
+
+    #[test]
+    fn test_gdscript_extends_metadata_emits_extends_relationship_or_pending_target() {
+        let code = r#"
+class_name Enemy
+extends Actor
+
+func _ready():
+    pass
+"#;
+
+        let structured_pending = extract_structured_pending("src/enemy.gd", code);
+        let actor_pending = structured_pending
+            .iter()
+            .find(|pending| pending.target.display_name == "Actor")
+            .expect("unresolved baseClass metadata should produce a structured pending target");
+
+        assert_eq!(actor_pending.pending.kind, RelationshipKind::Extends);
+        assert_eq!(actor_pending.pending.callee_name, "Actor");
+        assert_eq!(actor_pending.target.terminal_name, "Actor");
+        assert_eq!(actor_pending.target.receiver, None);
+    }
+
+    #[test]
+    fn test_gdscript_builtin_extends_does_not_emit_pending_target() {
+        let code = r#"
+class_name Worker
+extends Node
+
+func run():
+    pass
+"#;
+
+        let structured_pending = extract_structured_pending("src/worker.gd", code);
+        assert!(
+            structured_pending.iter().all(|pending| {
+                pending.pending.kind != RelationshipKind::Extends
+                    || pending.target.terminal_name != "Node"
+            }),
+            "built-in GDScript base class Node must not be emitted as a cross-file pending target"
+        );
+    }
 }

@@ -2,8 +2,8 @@
 //! Handles function call relationships (including cross-file pending relationships)
 
 use super::super::base::{
-    LocalTargetResolution, Relationship, RelationshipKind, ScopedSymbolIndex, Symbol, SymbolKind,
-    UnresolvedTarget,
+    LocalTargetResolution, Relationship, RelationshipKind, ScopedSymbolIndex,
+    StructuredPendingRelationship, Symbol, SymbolKind, UnresolvedTarget,
 };
 use super::GDScriptExtractor;
 use tree_sitter::{Node, Tree};
@@ -17,6 +17,8 @@ pub(super) fn extract_relationships(
     let mut relationships = Vec::new();
     let scoped_index = ScopedSymbolIndex::new(symbols);
 
+    extract_metadata_inheritance_relationships(extractor, symbols, &mut relationships);
+
     // Recursively visit all nodes to extract relationships
     visit_node_for_relationships(
         extractor,
@@ -27,6 +29,98 @@ pub(super) fn extract_relationships(
     );
 
     relationships
+}
+
+fn extract_metadata_inheritance_relationships(
+    extractor: &mut GDScriptExtractor,
+    symbols: &[Symbol],
+    relationships: &mut Vec<Relationship>,
+) {
+    for class_symbol in symbols
+        .iter()
+        .filter(|symbol| symbol.kind == SymbolKind::Class)
+    {
+        let Some(base_class) = class_symbol
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("baseClass"))
+            .and_then(|value| value.as_str())
+            .filter(|base_class| !base_class.is_empty())
+        else {
+            continue;
+        };
+
+        if is_builtin_gdscript_base_class(base_class) {
+            continue;
+        }
+
+        if let Some(base_symbol) = symbols.iter().find(|symbol| {
+            symbol.id != class_symbol.id
+                && symbol.name == base_class
+                && symbol.kind == SymbolKind::Class
+        }) {
+            relationships.push(Relationship {
+                id: format!(
+                    "{}_{}_{:?}_{}",
+                    class_symbol.id,
+                    base_symbol.id,
+                    RelationshipKind::Extends,
+                    class_symbol.start_line
+                ),
+                from_symbol_id: class_symbol.id.clone(),
+                to_symbol_id: base_symbol.id.clone(),
+                kind: RelationshipKind::Extends,
+                file_path: extractor.base.file_path.clone(),
+                line_number: class_symbol.start_line,
+                confidence: 0.95,
+                metadata: None,
+            });
+        } else {
+            let pending = StructuredPendingRelationship::new(
+                class_symbol.id.clone(),
+                UnresolvedTarget::simple(base_class.to_string()),
+                Some(class_symbol.id.clone()),
+                RelationshipKind::Extends,
+                extractor.base.file_path.clone(),
+                class_symbol.start_line,
+                0.8,
+            );
+            extractor.add_structured_pending_relationship(pending);
+        }
+    }
+}
+
+fn is_builtin_gdscript_base_class(name: &str) -> bool {
+    matches!(
+        name,
+        "Object"
+            | "RefCounted"
+            | "Resource"
+            | "Node"
+            | "Node2D"
+            | "Node3D"
+            | "Control"
+            | "CanvasItem"
+            | "CanvasLayer"
+            | "Area2D"
+            | "Area3D"
+            | "CharacterBody2D"
+            | "CharacterBody3D"
+            | "RigidBody2D"
+            | "RigidBody3D"
+            | "StaticBody2D"
+            | "StaticBody3D"
+            | "Sprite2D"
+            | "Sprite3D"
+            | "Camera2D"
+            | "Camera3D"
+            | "Label"
+            | "Button"
+            | "Panel"
+            | "AnimationPlayer"
+            | "AudioStreamPlayer"
+            | "Timer"
+    )
 }
 
 /// Visit a node and extract relationships from it

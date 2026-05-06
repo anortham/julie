@@ -29,7 +29,7 @@ pub(super) fn extract_inheritance_relationships(
     let file_path = extractor.base().file_path.clone();
     let line_number = (node.start_position().row + 1) as u32;
 
-    for base_type_name in base_types {
+    for (base_type_name, syntax_relationship_kind) in base_types {
         let base_type_symbol = symbols.iter().find(|s| {
             s.name == base_type_name
                 && matches!(
@@ -69,7 +69,7 @@ pub(super) fn extract_inheritance_relationships(
             let pending_kind = if class_symbol.kind == SymbolKind::Trait {
                 RelationshipKind::Extends
             } else {
-                RelationshipKind::Implements
+                syntax_relationship_kind
             };
 
             let pending = extractor.base().create_pending_relationship(
@@ -86,7 +86,7 @@ pub(super) fn extract_inheritance_relationships(
 }
 
 /// Collect type names from extends clause
-fn collect_extends_types(base: &BaseExtractor, node: &Node) -> Vec<String> {
+fn collect_extends_types(base: &BaseExtractor, node: &Node) -> Vec<(String, RelationshipKind)> {
     let mut types = Vec::new();
 
     let extends_clause = node
@@ -94,19 +94,24 @@ fn collect_extends_types(base: &BaseExtractor, node: &Node) -> Vec<String> {
         .find(|n| n.kind() == "extends_clause");
 
     if let Some(ec) = extends_clause {
+        let mut next_kind = RelationshipKind::Extends;
         for child in ec.children(&mut ec.walk()) {
-            if child.kind() == "type_identifier" {
-                types.push(base.get_node_text(&child));
+            if child.kind() == "with" {
+                next_kind = RelationshipKind::Implements;
+            } else if child.kind() == "type_identifier" {
+                types.push((base.get_node_text(&child), next_kind.clone()));
+                next_kind = RelationshipKind::Implements;
             } else if child.kind() == "generic_type" || child.kind() == "stable_type_identifier" {
-                // Extract the base type name from generic types like List[String]
-                if let Some(name_node) = child
+                let type_name = if let Some(name_node) = child
                     .children(&mut child.walk())
                     .find(|n| n.kind() == "type_identifier")
                 {
-                    types.push(base.get_node_text(&name_node));
+                    base.get_node_text(&name_node)
                 } else {
-                    types.push(base.get_node_text(&child));
-                }
+                    base.get_node_text(&child)
+                };
+                types.push((type_name, next_kind.clone()));
+                next_kind = RelationshipKind::Implements;
             }
         }
     }

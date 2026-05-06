@@ -1,20 +1,40 @@
 // PHP Extractor - Relationship extraction (inheritance, implementation, function calls)
 
 use super::{PhpExtractor, find_child};
-use crate::base::{
-    LocalTargetResolution, Relationship, RelationshipKind, ScopedSymbolIndex, Symbol, SymbolKind,
-    UnresolvedTarget,
-};
+use crate::base::{Relationship, RelationshipKind, Symbol, SymbolKind, UnresolvedTarget};
 use std::collections::HashMap;
 use tree_sitter::Node;
 
 /// Strip PHP namespace prefix from a qualified name, returning the last component.
 /// e.g. `\App\Http\Controller` -> `Controller`, `Controller` -> `Controller`
-fn strip_php_namespace(name: &str) -> &str {
+pub(super) fn strip_php_namespace(name: &str) -> &str {
     name.trim_start_matches('\\')
         .rsplit('\\')
         .next()
         .unwrap_or(name)
+}
+
+pub(super) fn unresolved_php_type_target(raw_name: &str) -> UnresolvedTarget {
+    let parts: Vec<String> = raw_name
+        .trim()
+        .trim_start_matches('\\')
+        .split('\\')
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .map(ToString::to_string)
+        .collect();
+
+    let Some(terminal_name) = parts.last().cloned() else {
+        return UnresolvedTarget::simple(raw_name.trim().to_string());
+    };
+
+    UnresolvedTarget {
+        display_name: terminal_name.clone(),
+        terminal_name,
+        receiver: None,
+        namespace_path: parts[..parts.len().saturating_sub(1)].to_vec(),
+        import_context: None,
+    }
 }
 
 /// Extract class inheritance and implementation relationships
@@ -38,8 +58,8 @@ pub(super) fn extract_class_relationships(
             .replace("extends", "")
             .trim()
             .to_string();
-        // Bug 4: strip namespace qualifier so `\App\Http\BaseController` -> `BaseController`
-        let base_class_name = strip_php_namespace(&raw_name).to_string();
+        let base_target = unresolved_php_type_target(&raw_name);
+        let base_class_name = base_target.terminal_name.clone();
 
         // Try same-file resolution first
         if let Some(base_class_symbol) = symbols
@@ -70,10 +90,10 @@ pub(super) fn extract_class_relationships(
                 }),
             });
         } else {
-            // Bug 2: base class not found in same file — emit PendingRelationship for cross-file resolution
+            // Bug 2: base class not found in same file, emit PendingRelationship for cross-file resolution
             let pending = extractor.get_base().create_pending_relationship(
                 class_symbol.id.clone(),
-                UnresolvedTarget::simple(base_class_name),
+                base_target,
                 RelationshipKind::Extends,
                 &node,
                 Some(class_symbol.id.clone()),
@@ -90,13 +110,14 @@ pub(super) fn extract_class_relationships(
             .get_node_text(&implements_node)
             .replace("implements", "")
             .split(',')
-            // Bug 4: strip namespace qualifiers from interface names
-            .map(|name| strip_php_namespace(name.trim()).to_string())
+            .map(|name| name.trim().to_string())
             .filter(|name| !name.is_empty())
             .collect();
 
-        for interface_name in interface_names {
-            // Bug 3: removed same-file filter — search all in-scope symbols
+        for raw_interface_name in interface_names {
+            let interface_target = unresolved_php_type_target(&raw_interface_name);
+            let interface_name = interface_target.terminal_name.clone();
+            // Bug 3: removed same-file filter, search all in-scope symbols
             let interface_symbol = symbols
                 .iter()
                 .find(|s| s.name == interface_name && s.kind == SymbolKind::Interface);
@@ -127,10 +148,10 @@ pub(super) fn extract_class_relationships(
                     }),
                 });
             } else {
-                // Bug 3: interface not found in symbols — emit PendingRelationship instead of fabricating an ID
+                // Bug 3: interface not found in symbols, emit PendingRelationship instead of fabricating an ID
                 let pending = extractor.get_base().create_pending_relationship(
                     class_symbol.id.clone(),
-                    UnresolvedTarget::simple(interface_name),
+                    interface_target,
                     RelationshipKind::Implements,
                     &node,
                     Some(class_symbol.id.clone()),
@@ -162,12 +183,13 @@ pub(super) fn extract_interface_relationships(
             .get_node_text(&extends_node)
             .replace("extends", "")
             .split(',')
-            // Bug 4: strip namespace qualifiers
-            .map(|name| strip_php_namespace(name.trim()).to_string())
+            .map(|name| name.trim().to_string())
             .filter(|name| !name.is_empty())
             .collect();
 
-        for base_interface_name in base_interface_names {
+        for raw_base_interface_name in base_interface_names {
+            let base_interface_target = unresolved_php_type_target(&raw_base_interface_name);
+            let base_interface_name = base_interface_target.terminal_name.clone();
             // Try to find the base interface in current symbols
             let base_symbol = symbols
                 .iter()
@@ -202,7 +224,7 @@ pub(super) fn extract_interface_relationships(
                 // Cross-file: emit PendingRelationship instead of fabricating an ID
                 let pending = extractor.get_base().create_pending_relationship(
                     interface_symbol.id.clone(),
-                    UnresolvedTarget::simple(base_interface_name),
+                    base_interface_target,
                     RelationshipKind::Extends,
                     &node,
                     Some(interface_symbol.id.clone()),
@@ -244,259 +266,4 @@ pub(super) fn find_interface_symbol<'a>(
             && s.kind == SymbolKind::Interface
             && s.file_path == extractor.get_base().file_path
     })
-}
-
-/// Extract function and method call relationships
-pub(super) fn extract_call_relationships(
-    extractor: &mut PhpExtractor,
-    node: Node,
-    symbols: &[Symbol],
-    relationships: &mut Vec<Relationship>,
-) {
-    let base = extractor.get_base();
-
-    // For function calls and method calls, extract the function/method being called
-    let called_function_name = match node.kind() {
-        "function_call_expression" => {
-            // Function call: foo()
-            if let Some(name_node) = node.child_by_field_name("function") {
-                base.get_node_text(&name_node)
-            } else {
-                return;
-            }
-        }
-        "member_call_expression" => {
-            // Method call: $obj->method() - uses "name" field not "member"
-            if let Some(name_node) = node.child_by_field_name("name") {
-                base.get_node_text(&name_node)
-            } else {
-                return;
-            }
-        }
-        "scoped_call_expression" => {
-            // Static method call: Class::method()
-            if let Some(name_node) = node.child_by_field_name("name") {
-                base.get_node_text(&name_node)
-            } else {
-                return;
-            }
-        }
-        "object_creation_expression" => {
-            // Bug 1: new ClassName() — extract the class name being instantiated.
-            // Tree structure: (object_creation_expression (name) ...) or (qualified_name)
-            // The class name is the first named child.
-            if let Some(class_name_node) = node.named_child(0) {
-                // Bug 4: strip namespace qualifier from the class name
-                let raw = base.get_node_text(&class_name_node);
-                strip_php_namespace(raw.trim()).to_string()
-            } else {
-                return;
-            }
-        }
-        _ => return,
-    };
-
-    if called_function_name.is_empty() {
-        return;
-    }
-
-    // Determine relationship kind: new Foo() is Instantiates, everything else is Calls
-    let rel_kind = if node.kind() == "object_creation_expression" {
-        RelationshipKind::Instantiates
-    } else {
-        RelationshipKind::Calls
-    };
-
-    // Find the enclosing function/method that contains this call
-    if let Some(caller_symbol) = base
-        .find_containing_symbol(&node, symbols)
-        .filter(|symbol| {
-            matches!(
-                symbol.kind,
-                SymbolKind::Function | SymbolKind::Method | SymbolKind::Constructor
-            )
-        })
-    {
-        let line_number = (node.start_position().row + 1) as u32;
-        let file_path = base.file_path.clone();
-        let target = unresolved_call_target(extractor, node, &called_function_name);
-
-        if rel_kind == RelationshipKind::Calls {
-            let symbol_index = ScopedSymbolIndex::new(symbols);
-            match symbol_index.resolve_call_target(
-                &target.terminal_name,
-                Some(caller_symbol),
-                target.receiver.as_deref(),
-            ) {
-                LocalTargetResolution::Resolved(called_symbol) => {
-                    let relationship = Relationship {
-                        id: format!(
-                            "{}_{}_{:?}_{}",
-                            caller_symbol.id,
-                            called_symbol.id,
-                            rel_kind,
-                            node.start_position().row
-                        ),
-                        from_symbol_id: caller_symbol.id.clone(),
-                        to_symbol_id: called_symbol.id.clone(),
-                        kind: rel_kind,
-                        file_path,
-                        line_number,
-                        confidence: 0.9,
-                        metadata: None,
-                    };
-
-                    relationships.push(relationship);
-                }
-                LocalTargetResolution::Import(_) => {
-                    let pending = extractor.get_base().create_pending_relationship(
-                        caller_symbol.id.clone(),
-                        target,
-                        rel_kind,
-                        &node,
-                        Some(caller_symbol.id.clone()),
-                        Some(0.8),
-                    );
-                    extractor.add_structured_pending_relationship(pending);
-                }
-                LocalTargetResolution::Ambiguous
-                | LocalTargetResolution::ReceiverQualified
-                | LocalTargetResolution::Missing => {
-                    let pending = extractor.get_base().create_pending_relationship(
-                        caller_symbol.id.clone(),
-                        target,
-                        rel_kind,
-                        &node,
-                        Some(caller_symbol.id.clone()),
-                        Some(0.7),
-                    );
-                    extractor.add_structured_pending_relationship(pending);
-                }
-            }
-            return;
-        }
-
-        // Create a symbol map for constructor lookups where type targets are expected.
-        let symbol_map: HashMap<String, &Symbol> = ScopedSymbolIndex::unique_symbol_map(symbols);
-        match symbol_map.get(&called_function_name) {
-            // For Instantiates, reject non-type targets (a function or constant
-            // sharing the same name is not a valid instantiation target)
-            Some(called_symbol)
-                if !matches!(
-                    called_symbol.kind,
-                    SymbolKind::Class
-                        | SymbolKind::Interface
-                        | SymbolKind::Struct
-                        | SymbolKind::Enum
-                ) =>
-            {
-                let pending = extractor.get_base().create_pending_relationship(
-                    caller_symbol.id.clone(),
-                    target,
-                    rel_kind,
-                    &node,
-                    Some(caller_symbol.id.clone()),
-                    Some(0.7),
-                );
-                extractor.add_structured_pending_relationship(pending);
-            }
-            Some(called_symbol) if called_symbol.kind == SymbolKind::Import => {
-                let pending = extractor.get_base().create_pending_relationship(
-                    caller_symbol.id.clone(),
-                    target,
-                    rel_kind,
-                    &node,
-                    Some(caller_symbol.id.clone()),
-                    Some(0.8),
-                );
-                extractor.add_structured_pending_relationship(pending);
-            }
-            Some(called_symbol) => {
-                let relationship = Relationship {
-                    id: format!(
-                        "{}_{}_{:?}_{}",
-                        caller_symbol.id,
-                        called_symbol.id,
-                        rel_kind,
-                        node.start_position().row
-                    ),
-                    from_symbol_id: caller_symbol.id.clone(),
-                    to_symbol_id: called_symbol.id.clone(),
-                    kind: rel_kind,
-                    file_path,
-                    line_number,
-                    confidence: 0.9,
-                    metadata: None,
-                };
-
-                relationships.push(relationship);
-            }
-            None => {
-                let pending = extractor.get_base().create_pending_relationship(
-                    caller_symbol.id.clone(),
-                    target,
-                    rel_kind,
-                    &node,
-                    Some(caller_symbol.id.clone()),
-                    Some(0.7),
-                );
-                extractor.add_structured_pending_relationship(pending);
-            }
-        }
-    }
-}
-
-fn unresolved_call_target(
-    extractor: &PhpExtractor,
-    node: Node,
-    fallback_name: &str,
-) -> UnresolvedTarget {
-    match node.kind() {
-        "member_call_expression" => {
-            let receiver = node
-                .child_by_field_name("object")
-                .map(|object| extractor.get_base().get_node_text(&object))
-                .map(|name| name.trim_start_matches('$').to_string());
-            let terminal_name = node
-                .child_by_field_name("name")
-                .map(|name| extractor.get_base().get_node_text(&name))
-                .unwrap_or_else(|| fallback_name.to_string());
-            let display_name = receiver
-                .as_ref()
-                .map(|receiver| format!("{receiver}.{terminal_name}"))
-                .unwrap_or_else(|| terminal_name.clone());
-            UnresolvedTarget {
-                display_name,
-                terminal_name,
-                receiver,
-                namespace_path: Vec::new(),
-                import_context: None,
-            }
-        }
-        "scoped_call_expression" => {
-            let receiver = node
-                .child_by_field_name("scope")
-                .or_else(|| node.child_by_field_name("class"))
-                .map(|scope| {
-                    strip_php_namespace(extractor.get_base().get_node_text(&scope).trim())
-                        .to_string()
-                });
-            let terminal_name = node
-                .child_by_field_name("name")
-                .map(|name| extractor.get_base().get_node_text(&name))
-                .unwrap_or_else(|| fallback_name.to_string());
-            let display_name = receiver
-                .as_ref()
-                .map(|receiver| format!("{receiver}.{terminal_name}"))
-                .unwrap_or_else(|| terminal_name.clone());
-            UnresolvedTarget {
-                display_name,
-                terminal_name,
-                receiver,
-                namespace_path: Vec::new(),
-                import_context: None,
-            }
-        }
-        _ => UnresolvedTarget::simple(fallback_name.to_string()),
-    }
 }

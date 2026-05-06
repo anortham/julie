@@ -437,4 +437,54 @@ class Service {
             "receiver-qualified other.helper() must not resolve to local Service.helper()"
         );
     }
+
+    #[test]
+    fn test_dart_extends_implements_and_with_emit_structured_pending_targets() {
+        let code = r#"
+import 'external_types.dart';
+
+class Feature extends ExternalBase
+    with AuditMixin, TraceMixin
+    implements Serializable, JsonEncodable {
+  void run() {}
+}
+"#;
+
+        let structured_pending = extract_structured_pending("lib/feature.dart", code);
+
+        let external_base = structured_pending
+            .iter()
+            .find(|pending| pending.target.display_name == "ExternalBase")
+            .expect("unresolved superclass should produce a structured pending target");
+        assert_eq!(external_base.pending.kind, RelationshipKind::Extends);
+        assert_eq!(external_base.target.terminal_name, "ExternalBase");
+        assert_eq!(
+            external_base.target.import_context.as_deref(),
+            Some("import 'external_types.dart';")
+        );
+
+        for interface_name in ["Serializable", "JsonEncodable"] {
+            let interface_pending = structured_pending
+                .iter()
+                .find(|pending| pending.target.display_name == interface_name)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "unresolved interface {interface_name} should produce structured pending"
+                    )
+                });
+            assert_eq!(interface_pending.pending.kind, RelationshipKind::Implements);
+            assert_eq!(interface_pending.target.terminal_name, interface_name);
+        }
+
+        for mixin_name in ["AuditMixin", "TraceMixin"] {
+            let mixin_pending = structured_pending
+                .iter()
+                .find(|pending| pending.target.display_name == mixin_name)
+                .unwrap_or_else(|| {
+                    panic!("unresolved mixin {mixin_name} should produce structured pending")
+                });
+            assert_eq!(mixin_pending.pending.kind, RelationshipKind::Uses);
+            assert_eq!(mixin_pending.target.terminal_name, mixin_name);
+        }
+    }
 }

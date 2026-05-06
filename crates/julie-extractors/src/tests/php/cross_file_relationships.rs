@@ -704,4 +704,59 @@ class AdminController extends \Base\Http\AbstractController {
                 .collect::<Vec<_>>()
         );
     }
+
+    #[test]
+    fn test_php_pending_relationship_preserves_namespace_path() {
+        let code = r#"<?php
+class AdminController extends \App\Http\BaseController implements \App\Contracts\Routable {
+    public function make() {
+        return new \Vendor\Package\Service();
+    }
+}
+"#;
+
+        let results = extract_full("src/admin.php", code);
+
+        let extends = results
+            .structured_pending_relationships
+            .iter()
+            .find(|pending| {
+                pending.pending.kind == RelationshipKind::Extends
+                    && pending.target.terminal_name == "BaseController"
+            })
+            .expect("qualified extends should emit a structured pending target");
+        assert_eq!(
+            extends.target.namespace_path,
+            vec!["App".to_string(), "Http".to_string()]
+        );
+        assert_eq!(extends.pending.callee_name, "BaseController");
+
+        let implements = results
+            .structured_pending_relationships
+            .iter()
+            .find(|pending| {
+                pending.pending.kind == RelationshipKind::Implements
+                    && pending.target.terminal_name == "Routable"
+            })
+            .expect("qualified implements should emit a structured pending target");
+        assert_eq!(
+            implements.target.namespace_path,
+            vec!["App".to_string(), "Contracts".to_string()]
+        );
+        assert_eq!(implements.pending.callee_name, "Routable");
+
+        let instantiates = results
+            .structured_pending_relationships
+            .iter()
+            .find(|pending| {
+                pending.pending.kind == RelationshipKind::Instantiates
+                    && pending.target.terminal_name == "Service"
+            })
+            .expect("qualified constructor calls should emit a structured pending target");
+        assert_eq!(
+            instantiates.target.namespace_path,
+            vec!["Vendor".to_string(), "Package".to_string()]
+        );
+        assert_eq!(instantiates.pending.callee_name, "Service");
+    }
 }

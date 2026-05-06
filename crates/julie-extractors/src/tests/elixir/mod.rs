@@ -608,6 +608,74 @@ end"#;
     }
 
     #[test]
+    fn test_elixir_use_and_behaviour_emit_structured_pending_targets() {
+        let code = r#"defmodule MyApp.Web do
+  @behaviour MyApp.Behaviours.Controller
+  use Phoenix.Router
+end"#;
+        let (mut extractor, tree) = create_extractor_and_parse(code);
+        let symbols = extractor.extract_symbols(&tree);
+        let _relationships = extractor.extract_relationships(&tree, &symbols);
+        let module = symbols
+            .iter()
+            .find(|symbol| symbol.name == "MyApp.Web")
+            .expect("MyApp.Web module should be extracted");
+        let structured = extractor.base.get_structured_pending_relationships();
+
+        for (target, kind, terminal_name, namespace_path) in [
+            (
+                "MyApp.Behaviours.Controller",
+                crate::base::RelationshipKind::Implements,
+                "Controller",
+                vec!["MyApp", "Behaviours"],
+            ),
+            (
+                "Phoenix.Router",
+                crate::base::RelationshipKind::Uses,
+                "Router",
+                vec!["Phoenix"],
+            ),
+        ] {
+            let pending = structured
+                .iter()
+                .find(|pending| {
+                    pending.pending.kind == kind && pending.target.display_name == target
+                })
+                .unwrap_or_else(|| {
+                    panic!("missing structured pending {kind:?} relationship for {target}")
+                });
+
+            assert_eq!(pending.pending.from_symbol_id, module.id);
+            assert_eq!(
+                pending.caller_scope_symbol_id.as_deref(),
+                Some(module.id.as_str())
+            );
+            assert_eq!(pending.target.terminal_name, terminal_name);
+            assert_eq!(
+                pending.target.namespace_path,
+                namespace_path
+                    .iter()
+                    .map(|part| part.to_string())
+                    .collect::<Vec<_>>()
+            );
+        }
+
+        let compatibility_pending = extractor.get_pending_relationships();
+        let compatibility_pending_names: Vec<_> = compatibility_pending
+            .iter()
+            .map(|pending| pending.callee_name.as_str())
+            .collect();
+        let structured_names: Vec<_> = structured
+            .iter()
+            .map(|pending| pending.pending.callee_name.as_str())
+            .collect();
+        assert_eq!(
+            compatibility_pending_names, structured_names,
+            "compatibility pending list should not contain legacy-only Elixir relationships"
+        );
+    }
+
+    #[test]
     fn test_elixir_cross_file_call_produces_pending_relationship() {
         // When a function calls another unqualified function not defined in the same file,
         // we should get a pending relationship for cross-file resolution.

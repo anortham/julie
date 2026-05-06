@@ -35,6 +35,12 @@ Workers must use Julie MCP tools before touching code:
 - `fast_refs(symbol='<public API or shared symbol>')` before changing shared contracts.
 - `get_symbols(file_path='<file>')` before reading large files.
 
+## Current Status
+
+- Task 10 is completed and committed as `e75facd1 fix(extractors): cover identifier and call gaps`.
+- Task 11 is completed in this batch. Verification passed, and this plan update records the Task 11 stopping point before the requested break.
+- Task 12 is the next unstarted task. Do not continue into it until work resumes.
+
 ## Finding Coverage
 
 - Task 1: `C1`, `H21` SQL part, `H25`, `H26` SQL part, `M9`, `M10`, `M27`.
@@ -407,13 +413,16 @@ Reviewed-but-not-promoted claims from the compiled document are not task drivers
 
 ## Task 11: Structured Pending Relationships
 
+**Status:** Completed on 2026-05-06. Stop here for the requested break.
+
 **Files:**
 - Modify `crates/julie-extractors/src/elixir/relationships.rs`
 - Modify `crates/julie-extractors/src/ruby/relationships.rs`
 - Modify `crates/julie-extractors/src/dart/relationships.rs`
-- Modify `crates/julie-extractors/src/dart/mod.rs`
 - Modify `crates/julie-extractors/src/gdscript/relationships.rs`
 - Modify `crates/julie-extractors/src/php/relationships.rs`
+- Add `crates/julie-extractors/src/php/call_relationships.rs`
+- Modify `crates/julie-extractors/src/php/mod.rs`
 - Modify `crates/julie-extractors/src/scala/relationships.rs`
 - Modify `crates/julie-extractors/src/swift/relationships.rs`
 - Test matching cross-file relationship files under `crates/julie-extractors/src/tests/`
@@ -435,6 +444,14 @@ Reviewed-but-not-promoted claims from the compiled document are not task drivers
 - Cross-file targets are either resolved locally or represented as structured pending data.
 - No worker adds a legacy pending path where structured pending is available.
 - Pending payload tests assert receiver, namespace path, import context, and relationship kind where the language can know them.
+
+**Completion notes:**
+- Elixir `use` and behaviour relationships now preserve structured pending targets without resolving imports as fake local behaviour targets.
+- Dart inheritance, `with`, and `implements` clauses now emit structured pending targets from parser clause nodes, with import context preserved when unambiguous.
+- GDScript `extends` metadata now emits real `Extends` relationships or structured pending targets, while common engine base classes such as `Node` stay out of cross-file pending output.
+- PHP preserves namespace components for unresolved type targets and splits call relationship extraction into `php/call_relationships.rs` to keep implementation files below the 500-line cap.
+- Scala and Swift keep exact `Extends` versus `Implements` relationship kinds for unresolved inheritance and conformance targets.
+- Ruby keeps structured pending inheritance/include coverage and fixes the adjacent receiver-qualified instance call terminal-name bug found during focused verification.
 
 ## Task 12: Vue, HTML, CSS, And Razor Embedded Extraction
 
@@ -734,3 +751,15 @@ cargo xtask test dogfood
 | Task 10 diff has no whitespace errors | `git diff --check` | task-10-diff-check | `4fbdd4b7f9a2a0458d9f06aa03a16db2be978fa6` | PASS | 2026-05-06T20:55:51Z | No |
 | Task 10 changed-file buckets pass | `cargo xtask test changed` | task-10-changed | `4fbdd4b7f9a2a0458d9f06aa03a16db2be978fa6` | PASS, extractors and parser-upgrade buckets passed | 2026-05-06T20:55:51Z | No |
 | Task 10 batch regression tier passes | `cargo xtask test dev` | task-10-dev | `4fbdd4b7f9a2a0458d9f06aa03a16db2be978fa6` | PASS, 22 buckets passed in 351.9s | 2026-05-06T20:55:51Z | No |
+| Task 11 Dart structured pending inheritance, implements, and mixins pass | `cargo nextest run -p julie-extractors --lib tests::dart::cross_file_relationships` | task-11-dart-cross-file | `e75facd1c3dda1bcbbd9c5765b737fcee1994a9e` | PASS, 6 tests passed | 2026-05-06T21:41:52Z | No |
+| Task 11 Elixir structured pending use and behaviour relationships pass | `cargo nextest run -p julie-extractors --lib tests::elixir` | task-11-elixir | `e75facd1c3dda1bcbbd9c5765b737fcee1994a9e` | PASS, 23 tests passed | 2026-05-06T21:41:52Z | No |
+| Task 11 PHP namespace-aware pending relationship coverage passes | `cargo nextest run -p julie-extractors --lib tests::php::cross_file_relationships` | task-11-php-cross-file | `e75facd1c3dda1bcbbd9c5765b737fcee1994a9e` | PASS, 12 tests passed | 2026-05-06T21:41:52Z | No |
+| Task 11 Ruby structured pending and receiver-qualified call coverage passes | `cargo nextest run -p julie-extractors --lib tests::ruby::cross_file_relationships` | task-11-ruby-cross-file | `e75facd1c3dda1bcbbd9c5765b737fcee1994a9e` | PASS, 6 tests passed | 2026-05-06T21:41:52Z | No |
+| Task 11 Scala unresolved inheritance and conformance relationship kinds pass | `cargo nextest run -p julie-extractors --lib tests::scala` | task-11-scala | `e75facd1c3dda1bcbbd9c5765b737fcee1994a9e` | PASS, 30 tests passed | 2026-05-06T21:41:52Z | No |
+| Task 11 Swift unresolved inheritance and conformance relationship kinds pass | `cargo nextest run -p julie-extractors --lib tests::swift::cross_file_relationships` | task-11-swift-cross-file | `e75facd1c3dda1bcbbd9c5765b737fcee1994a9e` | PASS, 10 tests passed | 2026-05-06T21:41:52Z | No |
+| Task 11 GDScript metadata inheritance and built-in base-class regression pass | `cargo nextest run -p julie-extractors --lib tests::gdscript::cross_file_relationships` | task-11-gdscript-cross-file | `e75facd1c3dda1bcbbd9c5765b737fcee1994a9e` | PASS, 8 tests passed | 2026-05-06T21:41:52Z | No |
+| Task 11 formatting is current | `cargo fmt --check` | task-11-fmt-check | `e75facd1c3dda1bcbbd9c5765b737fcee1994a9e` | PASS | 2026-05-06T21:41:52Z | No |
+| Task 11 diff has no whitespace errors | `git diff --check` | task-11-diff-check | `e75facd1c3dda1bcbbd9c5765b737fcee1994a9e` | PASS | 2026-05-06T21:41:52Z | No |
+| Task 11 canonical extractor golden fixtures are current | `UPDATE_GOLDEN=1 cargo nextest run -p julie-extractors golden` | task-11-golden | `e75facd1c3dda1bcbbd9c5765b737fcee1994a9e` | PASS, 3 tests passed | 2026-05-06T21:41:52Z | No |
+| Task 11 changed-file buckets pass | `cargo xtask test changed` | task-11-changed | `e75facd1c3dda1bcbbd9c5765b737fcee1994a9e` | PASS, extractors bucket passed in 0.8s | 2026-05-06T21:41:52Z | No |
+| Task 11 batch regression tier passes | `cargo xtask test dev` | task-11-dev | `e75facd1c3dda1bcbbd9c5765b737fcee1994a9e` | PASS, 22 buckets passed in 348.7s | 2026-05-06T21:41:52Z | No |

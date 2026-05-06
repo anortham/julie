@@ -324,11 +324,11 @@ fn extract_pending_target(
     let call_text = base.get_node_text(&node);
     let call_head = call_text.split('(').next().unwrap_or(call_text.as_str());
 
-    if let Some((receiver, _)) = call_head.rsplit_once('.') {
+    if let Some((receiver, terminal_name)) = call_head.rsplit_once('.') {
         if !receiver.is_empty() {
             return UnresolvedTarget {
                 display_name: call_head.to_string(),
-                terminal_name: method_name.to_string(),
+                terminal_name: terminal_name.to_string(),
                 receiver: Some(receiver.to_string()),
                 namespace_path: Vec::new(),
                 import_context: None,
