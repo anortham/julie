@@ -3,7 +3,7 @@ pub mod extractor;
 
 #[cfg(test)]
 mod zig_extractor_tests {
-    use crate::base::SymbolKind;
+    use crate::base::{RelationshipKind, SymbolKind};
     use crate::tests::helpers::init_parser;
     use crate::zig::ZigExtractor;
     use std::path::PathBuf;
@@ -33,6 +33,42 @@ mod zig_extractor_tests {
             &workspace_root,
         );
         extractor.extract_relationships(&tree, symbols)
+    }
+
+    #[test]
+    fn test_zig_method_call_relationship_uses_method_caller() {
+        let zig_code = r#"
+const Service = struct {
+    pub fn run(self: *Service) void {
+        _ = self;
+        helper();
+    }
+
+    fn helper() void {}
+};
+"#;
+
+        let symbols = extract_symbols(zig_code);
+        let relationships = extract_relationships(zig_code, &symbols);
+        let run = symbols
+            .iter()
+            .find(|symbol| symbol.name == "run")
+            .expect("run method should be extracted");
+        let helper = symbols
+            .iter()
+            .find(|symbol| symbol.name == "helper")
+            .expect("helper method should be extracted");
+
+        let call = relationships.iter().find(|relationship| {
+            relationship.kind == RelationshipKind::Calls
+                && relationship.from_symbol_id == run.id
+                && relationship.to_symbol_id == helper.id
+        });
+
+        assert!(
+            call.is_some(),
+            "helper() inside run method should create a Calls relationship from run to helper; relationships: {relationships:?}"
+        );
     }
 
     #[test]

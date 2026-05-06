@@ -113,6 +113,15 @@
   ],
   "relationships": [
     {
+      "from_key": "fixtures/extraction/zig/basic/source.zig:run:4:4",
+      "to_key": "fixtures/extraction/zig/basic/source.zig:helper:9:0",
+      "kind": "calls",
+      "file_path": "fixtures/extraction/zig/basic/source.zig",
+      "line_number": 5,
+      "confidence": "0.900",
+      "metadata": null
+    },
+    {
       "from_key": "fixtures/extraction/zig/basic/source.zig:runWorker:13:0",
       "to_key": "fixtures/extraction/zig/basic/source.zig:helper:9:0",
       "kind": "calls",

@@ -184,6 +184,22 @@
   "structured_pending_relationships": [],
   "identifiers": [
     {
+      "key": "fixtures/extraction/swift/basic/source.swift:Job:type_usage:5:15",
+      "name": "Job",
+      "kind": "type_usage",
+      "language": "swift",
+      "file_path": "fixtures/extraction/swift/basic/source.swift",
+      "start_line": 5,
+      "start_column": 15,
+      "end_line": 5,
+      "end_column": 18,
+      "start_byte": 55,
+      "end_byte": 58,
+      "containing_key": "fixtures/extraction/swift/basic/source.swift:Worker:5:0",
+      "target_key": null,
+      "confidence": "1.000"
+    },
+    {
       "key": "fixtures/extraction/swift/basic/source.swift:helper:call:9:8",
       "name": "helper",
       "kind": "call",

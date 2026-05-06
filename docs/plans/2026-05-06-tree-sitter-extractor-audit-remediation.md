@@ -729,3 +729,8 @@ cargo xtask test dogfood
 
 | Invariant | Command | Scope Label | Commit SHA | Result | Timestamp (UTC) | Evidence Reused |
 |---|---|---|---|---|---|---|
+| Task 10 focused Go malformed recovery and type usage regressions pass | `cargo nextest run -p julie-extractors --lib tests::go::identifiers` | task-10-go-identifiers | `4fbdd4b7f9a2a0458d9f06aa03a16db2be978fa6` | PASS, 2 tests passed | 2026-05-06T20:55:51Z | No |
+| Task 10 canonical extractor golden fixtures are current | `UPDATE_GOLDEN=1 cargo nextest run -p julie-extractors golden` | task-10-golden | `4fbdd4b7f9a2a0458d9f06aa03a16db2be978fa6` | PASS, 3 tests passed | 2026-05-06T20:55:51Z | No |
+| Task 10 diff has no whitespace errors | `git diff --check` | task-10-diff-check | `4fbdd4b7f9a2a0458d9f06aa03a16db2be978fa6` | PASS | 2026-05-06T20:55:51Z | No |
+| Task 10 changed-file buckets pass | `cargo xtask test changed` | task-10-changed | `4fbdd4b7f9a2a0458d9f06aa03a16db2be978fa6` | PASS, extractors and parser-upgrade buckets passed | 2026-05-06T20:55:51Z | No |
+| Task 10 batch regression tier passes | `cargo xtask test dev` | task-10-dev | `4fbdd4b7f9a2a0458d9f06aa03a16db2be978fa6` | PASS, 22 buckets passed in 351.9s | 2026-05-06T20:55:51Z | No |

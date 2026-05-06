@@ -182,7 +182,12 @@ fn extract_function_call_relationships(
     if let Some(unresolved_target) = unresolved_target {
         let caller_symbol = base
             .find_containing_symbol(&node, symbols)
-            .filter(|symbol| symbol.kind == SymbolKind::Function);
+            .filter(|symbol| {
+                matches!(
+                    symbol.kind,
+                    SymbolKind::Function | SymbolKind::Method | SymbolKind::Constructor
+                )
+            });
         let scoped_index = ScopedSymbolIndex::new(symbols);
 
         if let Some(caller_symbol) = caller_symbol {

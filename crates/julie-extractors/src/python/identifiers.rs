@@ -91,6 +91,24 @@ fn extract_identifier_from_node(
         // Member access: object.property
         // Python uses "attribute" node type
         "attribute" => {
+            if is_python_type_usage_node(node) {
+                if let Some(attr_node) = node.child_by_field_name("attribute") {
+                    let name = extractor.base_mut().get_node_text(&attr_node);
+                    if !is_python_builtin_type(&name) {
+                        let containing_symbol_id =
+                            find_containing_symbol_id(extractor, node, symbol_map);
+
+                        extractor.base_mut().create_identifier(
+                            &attr_node,
+                            name,
+                            IdentifierKind::TypeUsage,
+                            containing_symbol_id,
+                        );
+                    }
+                }
+                return;
+            }
+
             // Only extract if it's NOT part of a call
             // (we handle those in the call case above)
             if let Some(parent) = node.parent() {
@@ -118,11 +136,90 @@ fn extract_identifier_from_node(
             }
         }
 
-        _ => {
-            // Skip other node types for now
-            // Future: type usage, constructor calls, etc.
+        "identifier" => {
+            if is_python_type_usage_identifier(node) {
+                let name = extractor.base_mut().get_node_text(&node);
+                if !is_python_builtin_type(&name) {
+                    let containing_symbol_id =
+                        find_containing_symbol_id(extractor, node, symbol_map);
+
+                    extractor.base_mut().create_identifier(
+                        &node,
+                        name,
+                        IdentifierKind::TypeUsage,
+                        containing_symbol_id,
+                    );
+                }
+            }
+        }
+
+        _ => {}
+    }
+}
+
+fn is_python_type_usage_identifier(node: Node) -> bool {
+    if let Some(parent) = node.parent() {
+        if parent.kind() == "attribute" {
+            return false;
         }
     }
+
+    is_python_type_usage_node(node)
+}
+
+fn is_python_type_usage_node(node: Node) -> bool {
+    if is_python_declaration_name(node) {
+        return false;
+    }
+
+    let mut current = node;
+    while let Some(parent) = current.parent() {
+        match parent.kind() {
+            "type" | "generic_type" | "union_type" => return true,
+            "call" | "argument_list" | "return_statement" | "block" | "module" => return false,
+            _ => {}
+        }
+
+        current = parent;
+    }
+
+    false
+}
+
+fn is_python_declaration_name(node: Node) -> bool {
+    let Some(parent) = node.parent() else {
+        return false;
+    };
+
+    if let Some(name_node) = parent.child_by_field_name("name") {
+        return name_node.id() == node.id()
+            && matches!(
+                parent.kind(),
+                "class_definition" | "function_definition" | "type_alias_statement"
+            );
+    }
+
+    false
+}
+
+fn is_python_builtin_type(name: &str) -> bool {
+    matches!(
+        name,
+        "bool"
+            | "bytes"
+            | "complex"
+            | "dict"
+            | "float"
+            | "frozenset"
+            | "int"
+            | "list"
+            | "None"
+            | "object"
+            | "set"
+            | "str"
+            | "tuple"
+            | "type"
+    )
 }
 
 /// Find the ID of the symbol that contains this node

@@ -158,7 +158,24 @@
   "relationships": [],
   "pending_relationships": [],
   "structured_pending_relationships": [],
-  "identifiers": [],
+  "identifiers": [
+    {
+      "key": "fixtures/extraction/go/malformed_recovery/source.go:Empty:type_usage:6:4",
+      "name": "Empty",
+      "kind": "type_usage",
+      "language": "go",
+      "file_path": "fixtures/extraction/go/malformed_recovery/source.go",
+      "start_line": 6,
+      "start_column": 4,
+      "end_line": 6,
+      "end_column": 9,
+      "start_byte": 68,
+      "end_byte": 73,
+      "containing_key": null,
+      "target_key": null,
+      "confidence": "1.000"
+    }
+  ],
   "types": [],
   "parse_diagnostics": [
     {

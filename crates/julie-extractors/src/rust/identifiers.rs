@@ -147,7 +147,7 @@ fn extract_identifier_from_node(
             }
         }
 
-        "scoped_identifier" => {
+        "scoped_identifier" | "scoped_type_identifier" => {
             if is_inside_call_function(node) {
                 return;
             }
@@ -171,11 +171,51 @@ fn extract_identifier_from_node(
             }
         }
 
-        _ => {
-            // Skip other node types for now
-            // Future: type_usage, import statements, etc.
+        "type_identifier" => {
+            if !is_rust_declaration_type_name(node) {
+                let name = {
+                    let base = extractor.get_base_mut();
+                    base.get_node_text(&node)
+                };
+                let containing_symbol_id = find_containing_symbol_id(extractor, node, symbol_map);
+
+                {
+                    let base = extractor.get_base_mut();
+                    base.create_identifier(
+                        &node,
+                        name,
+                        IdentifierKind::TypeUsage,
+                        containing_symbol_id,
+                    );
+                }
+            }
+        }
+
+        _ => {}
+    }
+}
+
+fn is_rust_declaration_type_name(node: tree_sitter::Node) -> bool {
+    let Some(parent) = node.parent() else {
+        return false;
+    };
+
+    if let Some(name_node) = parent.child_by_field_name("name") {
+        if name_node.id() == node.id() {
+            return matches!(
+                parent.kind(),
+                "struct_item"
+                    | "enum_item"
+                    | "union_item"
+                    | "trait_item"
+                    | "type_item"
+                    | "impl_item"
+                    | "type_parameter"
+            );
         }
     }
+
+    matches!(parent.kind(), "type_parameters")
 }
 
 fn is_inside_call_function(node: tree_sitter::Node) -> bool {

@@ -611,7 +611,6 @@ end"#;
     fn test_elixir_cross_file_call_produces_pending_relationship() {
         // When a function calls another unqualified function not defined in the same file,
         // we should get a pending relationship for cross-file resolution.
-        // Note: qualified dot-calls (e.g. Logger.info) are not currently tracked.
         let code = r#"defmodule MyApp.Worker do
   def run do
     start_server()
@@ -636,6 +635,31 @@ end"#;
                 .all(|p| p.kind == crate::base::RelationshipKind::Calls),
             "Expected all pending relationships to be Calls kind"
         );
+    }
+
+    #[test]
+    fn test_elixir_qualified_module_call_is_extracted() {
+        let code = r#"defmodule MyApp.Worker do
+  def run do
+    Logger.info("started")
+  end
+end"#;
+        let (mut extractor, tree) = create_extractor_and_parse(code);
+        let symbols = extractor.extract_symbols(&tree);
+        let _relationships = extractor.extract_relationships(&tree, &symbols);
+        let pending = extractor.get_pending_relationships();
+
+        let logger_info = pending
+            .iter()
+            .find(|relationship| relationship.callee_name == "Logger.info")
+            .expect("qualified Logger.info call should produce a pending Calls relationship");
+
+        assert_eq!(logger_info.kind, crate::base::RelationshipKind::Calls);
+        let run = symbols
+            .iter()
+            .find(|symbol| symbol.name == "run")
+            .expect("run function should be extracted");
+        assert_eq!(logger_info.from_symbol_id, run.id);
     }
 
     // ========================================================================

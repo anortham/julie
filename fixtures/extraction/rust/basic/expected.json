@@ -129,6 +129,22 @@
   "structured_pending_relationships": [],
   "identifiers": [
     {
+      "key": "fixtures/extraction/rust/basic/source.rs:Worker:type_usage:6:9",
+      "name": "Worker",
+      "kind": "type_usage",
+      "language": "rust",
+      "file_path": "fixtures/extraction/rust/basic/source.rs",
+      "start_line": 6,
+      "start_column": 9,
+      "end_line": 6,
+      "end_column": 15,
+      "start_byte": 79,
+      "end_byte": 85,
+      "containing_key": "fixtures/extraction/rust/basic/source.rs:fixture:1:0",
+      "target_key": null,
+      "confidence": "1.000"
+    },
+    {
       "key": "fixtures/extraction/rust/basic/source.rs:helper:call:8:12",
       "name": "helper",
       "kind": "call",

@@ -2,6 +2,7 @@
 // Following TDD pattern: RED phase - tests should compile but fail
 
 mod cross_file_relationships;
+mod identifiers;
 
 use crate::base::{RelationshipKind, SymbolKind, Visibility};
 use crate::swift::SwiftExtractor;

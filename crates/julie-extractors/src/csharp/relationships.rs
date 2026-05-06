@@ -54,15 +54,6 @@ fn visit_relationships(
             );
             extract_call_relationships(extractor, node, symbols, relationships);
         }
-        // In C#, method calls are represented as member_access_expression followed by argument_list
-        "member_access_expression" => {
-            // Check if this is followed by an argument_list (i.e., a method call)
-            if let Some(sibling) = node.next_sibling() {
-                if sibling.kind() == "argument_list" {
-                    extract_call_relationships(extractor, node, symbols, relationships);
-                }
-            }
-        }
         _ => {}
     }
 

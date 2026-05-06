@@ -203,7 +203,7 @@ fn extract_single_call(
         return;
     };
 
-    let Some(caller) = extractor.base().find_containing_symbol(&node, all_symbols) else {
+    let Some(caller) = find_innermost_containing_symbol(node, all_symbols) else {
         return;
     };
 
@@ -259,6 +259,16 @@ fn extract_single_call(
             extractor.add_structured_pending_relationship(pending);
         }
     }
+}
+
+fn find_innermost_containing_symbol<'a>(node: Node, symbols: &'a [Symbol]) -> Option<&'a Symbol> {
+    symbols
+        .iter()
+        .filter(|symbol| {
+            node.start_byte() >= symbol.start_byte as usize
+                && node.end_byte() <= symbol.end_byte as usize
+        })
+        .min_by_key(|symbol| symbol.end_byte - symbol.start_byte)
 }
 
 fn unresolved_call_target(

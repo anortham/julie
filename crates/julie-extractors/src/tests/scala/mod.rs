@@ -2,7 +2,7 @@
 
 mod ast_debug;
 
-use crate::base::{IdentifierKind, SymbolKind};
+use crate::base::{IdentifierKind, RelationshipKind, SymbolKind};
 use crate::scala::ScalaExtractor;
 use std::path::PathBuf;
 use tree_sitter::Parser;
@@ -754,6 +754,57 @@ class Worker extends ExternalService {
 
     assert_eq!(pending.target.terminal_name, "ExternalService");
     assert_eq!(pending.target.receiver, None);
+}
+
+#[test]
+fn test_scala_calls_inside_vals_given_and_extensions_are_extracted() {
+    let code = r#"
+def helper(): Int = 1
+
+val cached: Int = helper()
+
+given defaultValue: Int = helper()
+
+extension (value: String)
+  def score: Int = helper()
+"#;
+    let mut parser = init_parser();
+    let tree = parser.parse(code, None).unwrap();
+    let workspace_root = PathBuf::from("/tmp/test");
+    let mut extractor = ScalaExtractor::new(
+        "scala".to_string(),
+        "test.scala".to_string(),
+        code.to_string(),
+        &workspace_root,
+    );
+    let symbols = extractor.extract_symbols(&tree);
+    let relationships = extractor.extract_relationships(&tree, &symbols);
+    let helper = symbols
+        .iter()
+        .find(|symbol| symbol.name == "helper")
+        .expect("helper function should be extracted");
+
+    for caller_name in ["cached", "defaultValue", "score"] {
+        let caller = symbols
+            .iter()
+            .find(|symbol| symbol.name == caller_name)
+            .unwrap_or_else(|| panic!("{caller_name} symbol should be extracted"));
+        let call = relationships.iter().find(|relationship| {
+            relationship.kind == RelationshipKind::Calls
+                && relationship.from_symbol_id == caller.id
+                && relationship.to_symbol_id == helper.id
+        });
+
+        assert!(
+            call.is_some(),
+            "{caller_name} should have a resolved call relationship to helper(); symbols: {:?}, relationships: {:?}",
+            symbols
+                .iter()
+                .map(|symbol| (&symbol.name, &symbol.kind))
+                .collect::<Vec<_>>(),
+            relationships
+        );
+    }
 }
 
 // ========================================================================

@@ -5,6 +5,7 @@ mod cross_file_relationships;
 mod edge_cases;
 mod error_handling;
 mod generics;
+mod identifiers;
 mod integration;
 mod type_assertions;
 

@@ -171,6 +171,9 @@ impl ScalaExtractor {
             "function_definition" | "function_declaration" => {
                 relationships::extract_call_relationships(self, node, symbols, relationships);
             }
+            "val_definition" | "var_definition" | "given_definition" | "extension_definition" => {
+                relationships::extract_call_relationships(self, node, symbols, relationships);
+            }
             _ => {}
         }
 

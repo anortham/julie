@@ -350,7 +350,7 @@ fn emit_uses_relationship(
                 || symbols
                     .iter()
                     .find(|symbol| symbol.id == relationship.to_symbol_id)
-                    .is_some_and(|symbol| symbol.name == target.terminal_name))
+                    .is_some_and(|symbol| symbol.name.eq_ignore_ascii_case(&target.terminal_name)))
     });
     if already_resolved {
         return;
@@ -365,25 +365,7 @@ fn emit_uses_relationship(
         return;
     }
 
-    let mut symbol_map: std::collections::HashMap<String, &Symbol> = symbols
-        .iter()
-        .map(|symbol| (symbol.name.clone(), symbol))
-        .collect();
-    for symbol in symbols.iter().filter(|symbol| {
-        matches!(
-            symbol.kind,
-            SymbolKind::Class
-                | SymbolKind::Interface
-                | SymbolKind::Struct
-                | SymbolKind::Enum
-                | SymbolKind::Trait
-                | SymbolKind::Type
-        )
-    }) {
-        symbol_map.insert(symbol.name.clone(), symbol);
-    }
-
-    match symbol_map.get(&target.terminal_name) {
+    match find_vb_type_symbol(symbols, &target.terminal_name) {
         Some(type_symbol) => {
             relationships.push(Relationship {
                 id: format!(
@@ -506,6 +488,28 @@ fn extract_call_relationships(
         LocalTargetResolution::Ambiguous
         | LocalTargetResolution::ReceiverQualified
         | LocalTargetResolution::Missing => {
+            if let Some(called_symbol) =
+                find_vb_case_insensitive_call_target(symbols, &target, caller)
+            {
+                relationships.push(Relationship {
+                    id: format!(
+                        "{}_{}_{:?}_{}",
+                        caller.id,
+                        called_symbol.id,
+                        RelationshipKind::Calls,
+                        node.start_position().row
+                    ),
+                    from_symbol_id: caller.id.clone(),
+                    to_symbol_id: called_symbol.id.clone(),
+                    kind: RelationshipKind::Calls,
+                    file_path,
+                    line_number,
+                    confidence: 0.9,
+                    metadata: None,
+                });
+                return;
+            }
+
             let pending = extractor.get_base().create_pending_relationship(
                 caller.id.clone(),
                 target,
@@ -516,6 +520,47 @@ fn extract_call_relationships(
             );
             extractor.add_structured_pending_relationship(pending);
         }
+    }
+}
+
+fn find_vb_type_symbol<'a>(symbols: &'a [Symbol], type_name: &str) -> Option<&'a Symbol> {
+    symbols.iter().find(|symbol| {
+        symbol.name.eq_ignore_ascii_case(type_name)
+            && matches!(
+                symbol.kind,
+                SymbolKind::Class
+                    | SymbolKind::Interface
+                    | SymbolKind::Struct
+                    | SymbolKind::Enum
+                    | SymbolKind::Trait
+                    | SymbolKind::Type
+            )
+    })
+}
+
+fn find_vb_case_insensitive_call_target<'a>(
+    symbols: &'a [Symbol],
+    target: &UnresolvedTarget,
+    caller: &Symbol,
+) -> Option<&'a Symbol> {
+    if target.receiver.is_some() {
+        return None;
+    }
+
+    let mut matches = symbols.iter().filter(|symbol| {
+        symbol.file_path == caller.file_path
+            && symbol.name.eq_ignore_ascii_case(&target.terminal_name)
+            && matches!(
+                symbol.kind,
+                SymbolKind::Function | SymbolKind::Method | SymbolKind::Constructor
+            )
+    });
+
+    let first = matches.next()?;
+    if matches.next().is_some() {
+        None
+    } else {
+        Some(first)
     }
 }
 
