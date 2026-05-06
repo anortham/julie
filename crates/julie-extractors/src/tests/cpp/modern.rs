@@ -79,4 +79,44 @@ mod tests {
         // At minimum, we should find the generic_lambda
         assert!(lambdas_count >= 1);
     }
+
+    #[test]
+    fn test_cpp20_concept_definition_is_extracted() {
+        let cpp_code = r#"
+    #include <concepts>
+
+    template<typename T>
+    concept Numeric = std::integral<T> || std::floating_point<T>;
+
+    template<Numeric T>
+    T add(T left, T right) {
+        return left + right;
+    }
+    "#;
+
+        let (mut extractor, tree) = parse_cpp(cpp_code);
+        let symbols = extractor.extract_symbols(&tree);
+
+        let concept = symbols
+            .iter()
+            .find(|symbol| symbol.name == "Numeric")
+            .expect("C++20 concept definition should be extracted");
+        assert_eq!(concept.kind, crate::base::SymbolKind::Type);
+        assert!(
+            concept
+                .signature
+                .as_ref()
+                .is_some_and(|signature| signature.contains("concept Numeric")),
+            "concept signature should preserve the concept declaration: {:?}",
+            concept.signature
+        );
+        assert_eq!(
+            concept
+                .metadata
+                .as_ref()
+                .and_then(|metadata| metadata.get("kind"))
+                .and_then(|value| value.as_str()),
+            Some("concept")
+        );
+    }
 }

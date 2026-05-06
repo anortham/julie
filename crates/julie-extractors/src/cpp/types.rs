@@ -62,7 +62,7 @@ pub(super) fn extract_class(
         SymbolKind::Class,
         SymbolOptions {
             signature: Some(signature),
-            visibility: Some(Visibility::Public),
+            visibility: Some(super::visibility::extract_cpp_visibility(base, node)),
             parent_id: parent_id.map(String::from),
             metadata: None,
             doc_comment,
@@ -119,7 +119,7 @@ pub(super) fn extract_struct(
         SymbolKind::Struct,
         SymbolOptions {
             signature: Some(signature),
-            visibility: Some(Visibility::Public),
+            visibility: Some(super::visibility::extract_cpp_visibility(base, node)),
             parent_id: parent_id.map(String::from),
             metadata: None,
             doc_comment,
@@ -160,7 +160,7 @@ pub(super) fn extract_union(
         SymbolKind::Union,
         SymbolOptions {
             signature: Some(signature),
-            visibility: Some(Visibility::Public),
+            visibility: Some(super::visibility::extract_cpp_visibility(base, node)),
             parent_id: parent_id.map(String::from),
             metadata: None,
             doc_comment,
@@ -210,7 +210,7 @@ pub(super) fn extract_enum(
         SymbolKind::Enum,
         SymbolOptions {
             signature: Some(signature),
-            visibility: Some(Visibility::Public),
+            visibility: Some(super::visibility::extract_cpp_visibility(base, node)),
             parent_id: parent_id.map(String::from),
             metadata: None,
             doc_comment,

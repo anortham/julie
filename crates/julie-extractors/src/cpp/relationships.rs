@@ -46,6 +46,9 @@ fn walk_tree_for_relationships(
         "call_expression" | "function_call" => {
             extract_call_relationships(extractor, node, symbols, scoped_index, relationships);
         }
+        "type_identifier" => {
+            extract_type_use_relationship(extractor, node, symbols, scoped_index, relationships);
+        }
         _ => {}
     }
 
@@ -261,6 +264,56 @@ fn handle_call_target(
     }
 }
 
+fn extract_type_use_relationship(
+    extractor: &mut super::CppExtractor,
+    node: Node,
+    symbols: &[Symbol],
+    scoped_index: &ScopedSymbolIndex<'_>,
+    relationships: &mut Vec<Relationship>,
+) {
+    if helpers::is_type_declaration_name(&node) {
+        return;
+    }
+
+    let base = extractor.get_base_mut();
+    let type_name = base.get_node_text(&node);
+    if helpers::is_noise_type(&type_name) {
+        return;
+    }
+
+    let Some(source_symbol) = source_symbol_for_type_use(symbols, node) else {
+        return;
+    };
+    let source_symbol_id = source_symbol.id.clone();
+
+    if let Some(target_symbol) = resolve_type_use_symbol(scoped_index, &type_name) {
+        if target_symbol.id == source_symbol_id {
+            return;
+        }
+        push_unique_relationship(
+            relationships,
+            base.create_relationship(
+                source_symbol_id,
+                target_symbol.id.clone(),
+                RelationshipKind::Uses,
+                &node,
+                Some(0.8),
+                None,
+            ),
+        );
+    } else {
+        let pending = base.create_pending_relationship(
+            source_symbol_id.clone(),
+            UnresolvedTarget::simple(type_name),
+            RelationshipKind::Uses,
+            &node,
+            Some(source_symbol_id),
+            Some(0.7),
+        );
+        extractor.add_structured_pending_relationship(pending);
+    }
+}
+
 fn find_containing_callable_symbol<'a>(
     symbols: &'a [Symbol],
     node: Node<'_>,
@@ -316,4 +369,67 @@ fn resolve_base_type_symbol<'a>(
 
 fn is_inheritance_type(kind: &SymbolKind) -> bool {
     matches!(kind, SymbolKind::Class | SymbolKind::Struct)
+}
+
+fn source_symbol_for_type_use<'a>(symbols: &'a [Symbol], node: Node<'_>) -> Option<&'a Symbol> {
+    let containing = symbols
+        .iter()
+        .filter(|symbol| symbol_contains_node(symbol, node))
+        .min_by_key(|symbol| symbol.end_byte.saturating_sub(symbol.start_byte))?;
+    if matches!(containing.kind, SymbolKind::Field | SymbolKind::Property) {
+        if let Some(parent_id) = containing.parent_id.as_deref() {
+            if let Some(parent) = symbols.iter().find(|symbol| symbol.id == parent_id) {
+                return Some(parent);
+            }
+        }
+    }
+    Some(containing)
+}
+
+fn resolve_type_use_symbol<'a>(
+    scoped_index: &'a ScopedSymbolIndex<'a>,
+    type_name: &str,
+) -> Option<&'a Symbol> {
+    let candidates: Vec<&Symbol> = scoped_index
+        .candidates_by_name(type_name)
+        .filter(|symbol| is_type_use_symbol(&symbol.kind))
+        .collect();
+    if let [candidate] = candidates.as_slice() {
+        return Some(*candidate);
+    }
+
+    let top_level: Vec<&Symbol> = candidates
+        .iter()
+        .copied()
+        .filter(|symbol| symbol.parent_id.is_none())
+        .collect();
+    if let [candidate] = top_level.as_slice() {
+        return Some(*candidate);
+    }
+
+    None
+}
+
+fn is_type_use_symbol(kind: &SymbolKind) -> bool {
+    matches!(
+        kind,
+        SymbolKind::Class
+            | SymbolKind::Struct
+            | SymbolKind::Union
+            | SymbolKind::Enum
+            | SymbolKind::Type
+            | SymbolKind::Interface
+            | SymbolKind::Trait
+    )
+}
+
+fn push_unique_relationship(relationships: &mut Vec<Relationship>, relationship: Relationship) {
+    if relationships.iter().any(|existing| {
+        existing.kind == relationship.kind
+            && existing.from_symbol_id == relationship.from_symbol_id
+            && existing.to_symbol_id == relationship.to_symbol_id
+    }) {
+        return;
+    }
+    relationships.push(relationship);
 }

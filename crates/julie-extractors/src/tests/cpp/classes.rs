@@ -206,6 +206,68 @@ mod tests {
     }
 
     #[test]
+    fn test_cpp_nested_type_visibility_uses_parent_default() {
+        let cpp_code = r#"
+    class Owner {
+        struct ImplicitPrivate {};
+
+    public:
+        class PublicNested {};
+
+    protected:
+        enum ProtectedState { Ready, Waiting };
+    };
+
+    struct PublicOwner {
+        class ImplicitPublic {};
+    };
+    "#;
+
+        let (mut extractor, tree) = parse_cpp(cpp_code);
+        let symbols = extractor.extract_symbols(&tree);
+
+        let implicit_private = symbols
+            .iter()
+            .find(|s| s.name == "ImplicitPrivate")
+            .expect("nested struct in class should be extracted");
+        assert_eq!(
+            implicit_private.visibility,
+            Some(crate::base::Visibility::Private),
+            "nested type before an access specifier in a class should default to private"
+        );
+
+        let public_nested = symbols
+            .iter()
+            .find(|s| s.name == "PublicNested")
+            .expect("nested public class should be extracted");
+        assert_eq!(
+            public_nested.visibility,
+            Some(crate::base::Visibility::Public),
+            "nested type in public section should be public"
+        );
+
+        let protected_state = symbols
+            .iter()
+            .find(|s| s.name == "ProtectedState")
+            .expect("nested protected enum should be extracted");
+        assert_eq!(
+            protected_state.visibility,
+            Some(crate::base::Visibility::Protected),
+            "nested enum in protected section should be protected"
+        );
+
+        let implicit_public = symbols
+            .iter()
+            .find(|s| s.name == "ImplicitPublic")
+            .expect("nested class in struct should be extracted");
+        assert_eq!(
+            implicit_public.visibility,
+            Some(crate::base::Visibility::Public),
+            "nested type in a struct should default to public"
+        );
+    }
+
+    #[test]
     fn test_extract_constructors_and_destructors_with_various_patterns() {
         let cpp_code = r#"
     class Resource {

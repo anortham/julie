@@ -164,6 +164,15 @@
   "relationships": [
     {
       "from_key": "fixtures/extraction/c/basic/source.c:worker_run:7:0",
+      "to_key": "fixtures/extraction/c/basic/source.c:Worker:1:0",
+      "kind": "uses",
+      "file_path": "fixtures/extraction/c/basic/source.c",
+      "line_number": 7,
+      "confidence": "0.800",
+      "metadata": null
+    },
+    {
+      "from_key": "fixtures/extraction/c/basic/source.c:worker_run:7:0",
       "to_key": "fixtures/extraction/c/basic/source.c:helper:11:0",
       "kind": "calls",
       "file_path": "fixtures/extraction/c/basic/source.c",
