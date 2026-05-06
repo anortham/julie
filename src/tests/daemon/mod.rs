@@ -15,5 +15,7 @@ pub mod shutdown_event;
 pub mod state;
 pub mod transport;
 pub mod watcher_pool;
+pub mod watcher_pool_shutdown;
 pub mod workspace_cleanup;
 pub mod workspace_pool;
+pub mod workspace_pool_shutdown;
