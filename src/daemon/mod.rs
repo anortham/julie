@@ -673,20 +673,30 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
     // (workspace pool commits Tantivy writes before watcher pool releases OS
     // file-watcher handles).
     let port_path = paths.daemon_port();
+    let artifacts = ShutdownArtifacts {
+        port_path: &port_path,
+        pid_file,
+        state_path: &daemon_state_path,
+    };
     perform_shutdown_sequence(
         http_transport,
         embedding_service,
         pool,
         watcher_pool,
-        &port_path,
-        pid_file,
-        &daemon_state_path,
+        artifacts,
         None,
     )
     .await;
 
     info!("Daemon stopped");
     result
+}
+
+/// Files and resources cleaned up at the end of the shutdown sequence.
+pub(crate) struct ShutdownArtifacts<'a> {
+    pub port_path: &'a Path,
+    pub pid_file: PidFile,
+    pub state_path: &'a Path,
 }
 
 /// Execute the daemon shutdown sequence in LIFO dependency order.
@@ -709,18 +719,14 @@ pub(crate) async fn perform_shutdown_sequence(
     embedding_service: Arc<EmbeddingService>,
     workspace_pool: Arc<WorkspacePool>,
     watcher_pool: Arc<WatcherPool>,
-    port_path: &Path,
-    pid_file: PidFile,
-    state_path: &Path,
+    artifacts: ShutdownArtifacts<'_>,
     call_log: Option<Arc<Mutex<Vec<&'static str>>>>,
 ) {
     // Helper: record a step name to the call_log if one was provided.
     let record = |step: &'static str| {
-        if let Some(ref log) = call_log {
-            if let Ok(mut guard) = log.lock() {
-                guard.push(step);
-            }
-        }
+        let Some(log) = call_log.as_ref() else { return; };
+        let Ok(mut guard) = log.lock() else { return; };
+        guard.push(step);
     };
 
     // Step 1: HTTP transport
@@ -746,11 +752,11 @@ pub(crate) async fn perform_shutdown_sequence(
     info!("Watcher pool shut down");
 
     // Step 5: Housekeeping
-    let _ = std::fs::remove_file(port_path);
-    if let Err(e) = pid_file.cleanup() {
+    let _ = std::fs::remove_file(artifacts.port_path);
+    if let Err(e) = artifacts.pid_file.cleanup() {
         warn!("Failed to clean up PID file: {}", e);
     }
-    let _ = std::fs::remove_file(state_path);
+    let _ = std::fs::remove_file(artifacts.state_path);
 }
 
 /// Wait for a shutdown signal (SIGTERM or SIGINT on Unix).

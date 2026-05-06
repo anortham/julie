@@ -16,10 +16,10 @@ use std::time::Duration;
 
 use crate::daemon::embedding_service::EmbeddingService;
 use crate::daemon::http_transport::{HttpTransportConfig, HttpTransportServer};
-use crate::daemon::perform_shutdown_sequence;
 use crate::daemon::pid::PidFile;
 use crate::daemon::watcher_pool::WatcherPool;
 use crate::daemon::workspace_pool::WorkspacePool;
+use crate::daemon::{ShutdownArtifacts, perform_shutdown_sequence};
 use crate::paths::DaemonPaths;
 
 // ---- helpers ----
@@ -77,14 +77,17 @@ async fn test_shutdown_calls_pools_after_transport() {
     let port_path = paths.daemon_port();
     let state_path = paths.daemon_state();
 
+    let artifacts = ShutdownArtifacts {
+        port_path: &port_path,
+        pid_file,
+        state_path: &state_path,
+    };
     perform_shutdown_sequence(
         http_transport,
         embedding_service,
         workspace_pool,
         watcher_pool,
-        &port_path,
-        pid_file,
-        &state_path,
+        artifacts,
         Some(Arc::clone(&call_log)),
     )
     .await;
@@ -133,14 +136,17 @@ async fn test_shutdown_calls_workspace_pool_before_watcher_pool() {
     let port_path = paths.daemon_port();
     let state_path = paths.daemon_state();
 
+    let artifacts = ShutdownArtifacts {
+        port_path: &port_path,
+        pid_file,
+        state_path: &state_path,
+    };
     perform_shutdown_sequence(
         http_transport,
         embedding_service,
         workspace_pool,
         watcher_pool,
-        &port_path,
-        pid_file,
-        &state_path,
+        artifacts,
         Some(Arc::clone(&call_log)),
     )
     .await;
