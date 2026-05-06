@@ -2,6 +2,7 @@ use super::helpers::extract_method_name_from_call;
 /// Special method call extraction for Ruby
 /// Handles require, attr_accessor, define_method, def_delegator, module_function, Struct.new
 use crate::base::{BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility};
+use std::collections::HashMap;
 use tree_sitter::Node;
 
 /// Extract special method calls that create symbols.
@@ -16,6 +17,33 @@ pub(super) fn extract_call(
 
     match method_name.as_str() {
         "require" | "require_relative" => extract_require(base, node).into_iter().collect(),
+        "describe" | "context" | "feature" => extract_rspec_block(
+            base,
+            node,
+            &method_name,
+            parent_id.as_deref(),
+            RSpecBlockKind::Container,
+        )
+        .into_iter()
+        .collect(),
+        "it" | "specify" | "example" | "scenario" => extract_rspec_block(
+            base,
+            node,
+            &method_name,
+            parent_id.as_deref(),
+            RSpecBlockKind::Example,
+        )
+        .into_iter()
+        .collect(),
+        "before" | "after" | "around" => extract_rspec_block(
+            base,
+            node,
+            &method_name,
+            parent_id.as_deref(),
+            RSpecBlockKind::Lifecycle,
+        )
+        .into_iter()
+        .collect(),
         "attr_reader" | "attr_writer" | "attr_accessor" => {
             extract_attr_accessor(base, node, &method_name, parent_id)
         }
@@ -151,6 +179,86 @@ fn extract_require(base: &mut BaseExtractor, node: Node) -> Option<Symbol> {
             annotations: Vec::new(),
         },
     ))
+}
+
+enum RSpecBlockKind {
+    Container,
+    Example,
+    Lifecycle,
+}
+
+fn extract_rspec_block(
+    base: &mut BaseExtractor,
+    node: Node,
+    method_name: &str,
+    parent_id: Option<&str>,
+    block_kind: RSpecBlockKind,
+) -> Option<Symbol> {
+    let is_lifecycle = matches!(block_kind, RSpecBlockKind::Lifecycle);
+    let block_name = if is_lifecycle {
+        method_name.to_string()
+    } else {
+        extract_first_rspec_argument(base, node)?
+    };
+
+    let signature = if is_lifecycle {
+        format!("{method_name}()")
+    } else {
+        format!("{method_name} \"{block_name}\"")
+    };
+
+    let mut metadata = HashMap::new();
+    match block_kind {
+        RSpecBlockKind::Container => {
+            metadata.insert("test_container".to_string(), serde_json::json!(true));
+        }
+        RSpecBlockKind::Example => {
+            metadata.insert("is_test".to_string(), serde_json::json!(true));
+        }
+        RSpecBlockKind::Lifecycle => {
+            metadata.insert("is_test".to_string(), serde_json::json!(true));
+            metadata.insert("test_lifecycle".to_string(), serde_json::json!(true));
+        }
+    }
+
+    let kind = if matches!(block_kind, RSpecBlockKind::Container) {
+        SymbolKind::Namespace
+    } else {
+        SymbolKind::Function
+    };
+
+    Some(base.create_symbol(
+        &node,
+        block_name,
+        kind,
+        SymbolOptions {
+            signature: Some(signature),
+            visibility: None,
+            parent_id: parent_id.map(str::to_string),
+            metadata: Some(metadata),
+            doc_comment: None,
+            annotations: Vec::new(),
+        },
+    ))
+}
+
+fn extract_first_rspec_argument(base: &BaseExtractor, node: Node) -> Option<String> {
+    let arg_node = node.child_by_field_name("arguments")?;
+    let first_arg = arg_node.children(&mut arg_node.walk()).find(|child| {
+        matches!(
+            child.kind(),
+            "string" | "simple_symbol" | "symbol" | "constant" | "identifier" | "scope_resolution"
+        )
+    })?;
+    let raw = base.get_node_text(&first_arg);
+
+    Some(match first_arg.kind() {
+        "string" => raw
+            .trim_matches(|ch| matches!(ch, '"' | '\'' | '`'))
+            .to_string(),
+        "simple_symbol" | "symbol" => raw.trim_start_matches(':').to_string(),
+        _ => raw,
+    })
 }
 
 /// Extract attr_reader/attr_writer/attr_accessor calls.
