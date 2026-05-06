@@ -17,6 +17,11 @@ CREATE TABLE orders (
     FOREIGN KEY (user_id) REFERENCES users(id)
 );
 
+CREATE TABLE users (
+    id BIGINT PRIMARY KEY,
+    username VARCHAR(255) NOT NULL
+);
+
 CREATE TABLE order_items (
     id BIGINT PRIMARY KEY,
     order_id BIGINT NOT NULL,
@@ -75,6 +80,28 @@ WHERE o.status = 'completed';
             .iter()
             .filter(|r| r.kind == RelationshipKind::Joins)
             .collect::<Vec<_>>();
-        assert!(!join_relations.is_empty());
+        assert_eq!(join_relations.len(), 2);
+
+        let users = symbols.iter().find(|s| s.name == "users").unwrap();
+        let mut joined_tables = Vec::new();
+
+        for relation in &join_relations {
+            assert_eq!(relation.from_symbol_id, users.id);
+            assert_ne!(relation.from_symbol_id, relation.to_symbol_id);
+
+            let table_name = relation
+                .metadata
+                .as_ref()
+                .and_then(|m| m.get("tableName"))
+                .and_then(|v| v.as_str())
+                .unwrap();
+            let target = symbols.iter().find(|s| s.name == table_name).unwrap();
+
+            assert_eq!(relation.to_symbol_id, target.id);
+            joined_tables.push(table_name);
+        }
+
+        joined_tables.sort_unstable();
+        assert_eq!(joined_tables, vec!["order_items", "orders"]);
     }
 }

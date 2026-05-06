@@ -153,48 +153,88 @@ pub(super) fn extract_foreign_key_relationship(
 }
 
 /// Extract JOIN relationships
+fn first_child_by_kind<'a>(node: Node<'a>, kind: &str) -> Option<Node<'a>> {
+    for i in 0..node.child_count() {
+        let child = node.child(i as u32)?;
+        if child.kind() == kind {
+            return Some(child);
+        }
+    }
+    None
+}
+
+fn table_symbol_from_relation<'a>(
+    base: &BaseExtractor,
+    relation_node: Node,
+    symbols: &'a [Symbol],
+) -> Option<(&'a Symbol, String)> {
+    let object_reference = first_child_by_kind(relation_node, "object_reference")?;
+    let name_node = object_reference
+        .child_by_field_name("name")
+        .or_else(|| first_child_by_kind(object_reference, "identifier"))?;
+    let table_name = base.get_node_text(&name_node);
+    let table_symbol = symbols
+        .iter()
+        .find(|s| s.name == table_name && s.kind == SymbolKind::Class)?;
+
+    Some((table_symbol, table_name))
+}
+
+fn enclosing_from_node(mut node: Node) -> Option<Node> {
+    while let Some(parent) = node.parent() {
+        if parent.kind() == "from" {
+            return Some(parent);
+        }
+        node = parent;
+    }
+    None
+}
+
 pub(super) fn extract_join_relationships(
     base: &mut BaseExtractor,
     node: Node,
     symbols: &[Symbol],
     relationships: &mut Vec<Relationship>,
 ) {
-    // Port extractJoinRelationships logic
-    base.traverse_tree(&node, &mut |child_node| {
-        if child_node.kind() == "table_name"
-            || (child_node.kind() == "identifier"
-                && child_node
-                    .parent()
-                    .is_some_and(|p| p.kind() == "object_reference"))
-        {
-            let table_name = base.get_node_text(child_node);
-            let table_symbol = symbols
-                .iter()
-                .find(|s| s.name == table_name && s.kind == SymbolKind::Class);
+    let Some(from_node) = enclosing_from_node(node) else {
+        return;
+    };
+    let Some(source_relation) = first_child_by_kind(from_node, "relation") else {
+        return;
+    };
+    let Some((source_symbol, _source_table_name)) =
+        table_symbol_from_relation(base, source_relation, symbols)
+    else {
+        return;
+    };
+    let Some(target_relation) = first_child_by_kind(node, "relation") else {
+        return;
+    };
+    let Some((target_symbol, target_table_name)) =
+        table_symbol_from_relation(base, target_relation, symbols)
+    else {
+        return;
+    };
 
-            if let Some(table_symbol) = table_symbol {
-                // Create a join relationship
-                let mut metadata = HashMap::new();
-                metadata.insert("joinType".to_string(), Value::String("join".to_string()));
-                metadata.insert("tableName".to_string(), Value::String(table_name.clone()));
+    // Create a join relationship from the FROM-side table to the joined table.
+    let mut metadata = HashMap::new();
+    metadata.insert("joinType".to_string(), Value::String("join".to_string()));
+    metadata.insert("tableName".to_string(), Value::String(target_table_name));
 
-                relationships.push(Relationship {
-                    id: format!(
-                        "{}_{}_{:?}_{}",
-                        table_symbol.id,
-                        table_symbol.id,
-                        RelationshipKind::Joins,
-                        node.start_position().row
-                    ),
-                    from_symbol_id: table_symbol.id.clone(),
-                    to_symbol_id: table_symbol.id.clone(),
-                    kind: RelationshipKind::Joins,
-                    file_path: base.file_path.clone(),
-                    line_number: node.start_position().row as u32,
-                    confidence: 0.9,
-                    metadata: Some(metadata),
-                });
-            }
-        }
+    relationships.push(Relationship {
+        id: format!(
+            "{}_{}_{:?}_{}",
+            source_symbol.id,
+            target_symbol.id,
+            RelationshipKind::Joins,
+            node.start_position().row
+        ),
+        from_symbol_id: source_symbol.id.clone(),
+        to_symbol_id: target_symbol.id.clone(),
+        kind: RelationshipKind::Joins,
+        file_path: base.file_path.clone(),
+        line_number: node.start_position().row as u32,
+        confidence: 0.9,
+        metadata: Some(metadata),
     });
 }

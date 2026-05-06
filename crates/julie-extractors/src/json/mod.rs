@@ -99,7 +99,7 @@ impl JsonExtractor {
                     Some(trimmed.to_string())
                 } else {
                     // Truncate long strings (e.g., plan content) instead of skipping
-                    Some(trimmed[..2000].to_string())
+                    Some(trimmed.chars().take(2000).collect())
                 }
             } else {
                 None

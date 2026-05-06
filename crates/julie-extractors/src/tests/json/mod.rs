@@ -1232,4 +1232,28 @@ mod json_extractor_tests {
             "Truncated content should be the first 2000 chars"
         );
     }
+
+    #[test]
+    fn test_long_multibyte_string_truncates_on_char_boundary() {
+        let long_value = format!("{}é{}", "x".repeat(1999), "y".repeat(20));
+        let json = format!(r#"{{"long": "{}"}}"#, long_value);
+
+        let symbols = extract_symbols(&json);
+
+        let long = symbols.iter().find(|s| s.name == "long").unwrap();
+        let doc_comment = long
+            .doc_comment
+            .as_ref()
+            .expect("Long strings should be captured in doc_comment");
+
+        assert_eq!(
+            doc_comment.chars().count(),
+            2000,
+            "Long strings should be truncated to 2000 chars, not bytes"
+        );
+        assert!(
+            doc_comment.ends_with('é'),
+            "Truncation should preserve the multibyte character at the boundary"
+        );
+    }
 }
