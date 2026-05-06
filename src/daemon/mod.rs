@@ -25,7 +25,7 @@ use std::time::{Duration, SystemTime};
 
 use anyhow::{Context, Result};
 use tokio::sync::{Notify, broadcast};
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 
 use crate::dashboard::state::DashboardEvent;
 
@@ -61,6 +61,45 @@ pub(crate) async fn drain_sessions(sessions: &SessionTracker, timeout: Duration)
     })
     .await
     .is_ok()
+}
+
+const DRAIN_TIMEOUT_ENV: &str = "JULIE_DAEMON_DRAIN_TIMEOUT_SECS";
+const DEFAULT_DRAIN_TIMEOUT_SECS: u64 = 10;
+const MIN_DRAIN_TIMEOUT_SECS: u64 = 1;
+const MAX_DRAIN_TIMEOUT_SECS: u64 = 120;
+
+/// Return the configured drain timeout for the daemon shutdown sequence.
+///
+/// Reads `JULIE_DAEMON_DRAIN_TIMEOUT_SECS` from the environment. Valid range
+/// is [1, 120] seconds. Values outside this range, or unparseable strings,
+/// fall back to the default (10 s) with a warning. The default is intentionally
+/// larger than the old 5 s literal to handle Windows NTFS fsync latency during
+/// stale-binary restarts.
+pub(crate) fn drain_timeout() -> Duration {
+    match std::env::var(DRAIN_TIMEOUT_ENV) {
+        Ok(s) => match s.parse::<u64>() {
+            Ok(v) if (MIN_DRAIN_TIMEOUT_SECS..=MAX_DRAIN_TIMEOUT_SECS).contains(&v) => {
+                Duration::from_secs(v)
+            }
+            Ok(v) => {
+                warn!(
+                    value = v,
+                    "JULIE_DAEMON_DRAIN_TIMEOUT_SECS out of range [1,120]; using default {}s",
+                    DEFAULT_DRAIN_TIMEOUT_SECS
+                );
+                Duration::from_secs(DEFAULT_DRAIN_TIMEOUT_SECS)
+            }
+            Err(e) => {
+                warn!(
+                    error = %e,
+                    "JULIE_DAEMON_DRAIN_TIMEOUT_SECS unparseable; using default {}s",
+                    DEFAULT_DRAIN_TIMEOUT_SECS
+                );
+                Duration::from_secs(DEFAULT_DRAIN_TIMEOUT_SECS)
+            }
+        },
+        Err(_) => Duration::from_secs(DEFAULT_DRAIN_TIMEOUT_SECS),
+    }
 }
 
 /// Get the current on-disk binary's modification time.
@@ -637,17 +676,19 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
     let remaining = sessions.active_count();
     let phase = lifecycle.request_shutdown(shutdown_cause, remaining);
     if remaining > 0 {
+        let timeout = drain_timeout();
         info!(
             active_sessions = remaining,
-            "Draining active sessions (up to 5s)"
+            timeout_secs = timeout.as_secs(),
+            "Draining active sessions"
         );
-        let drained = drain_sessions(&sessions, Duration::from_secs(5)).await;
+        let drained = drain_sessions(&sessions, timeout).await;
         if drained {
             info!("All sessions drained cleanly");
         } else {
-            warn!(
+            error!(
                 remaining = sessions.active_count(),
-                "Session drain timeout exceeded, forcing shutdown"
+                "Session drain timeout exceeded, forcing shutdown — in-flight writes may be lost"
             );
         }
     }

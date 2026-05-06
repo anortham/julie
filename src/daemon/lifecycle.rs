@@ -322,9 +322,20 @@ pub fn restart_handoff_action(
 /// Write the daemon lifecycle state to the state file.
 ///
 /// Best effort: failure to write is advisory and must not crash the daemon.
+///
+/// Uses a write-to-temp + atomic-rename pattern so that concurrent readers
+/// never observe an empty or partial state string.  On Windows,
+/// `std::fs::rename` maps to `MoveFileExW(MOVEFILE_REPLACE_EXISTING)`, which
+/// is atomic for same-filesystem paths.
 pub(crate) fn write_daemon_state(path: &Path, state: &str) {
-    if let Err(e) = std::fs::write(path, state) {
-        warn!("Failed to write daemon state '{}': {}", state, e);
+    let tmp = path.with_extension("state.tmp");
+    if let Err(e) = std::fs::write(&tmp, state) {
+        warn!("Failed to write daemon state tmp file '{}': {}", state, e);
+        return;
+    }
+    if let Err(e) = std::fs::rename(&tmp, path) {
+        warn!("Failed to atomically replace daemon state '{}': {}", state, e);
+        let _ = std::fs::remove_file(&tmp);
     }
 }
 

@@ -21,3 +21,6 @@ pub mod watcher_pool_shutdown;
 pub mod workspace_cleanup;
 pub mod workspace_pool;
 pub mod workspace_pool_shutdown;
+pub mod daemon_state_atomic;
+pub mod pid_file_format;
+pub mod drain_timeout;
