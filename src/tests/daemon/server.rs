@@ -111,9 +111,11 @@ async fn test_daemon_starts_and_creates_pid_file() {
         pid_path.display()
     );
 
-    // Read the PID and verify it matches our process
-    let pid_contents = std::fs::read_to_string(&pid_path).expect("read PID file");
-    let pid: u32 = pid_contents.trim().parse().expect("PID should be numeric");
+    // Read the PID and verify it matches our process. After the v7.7.x
+    // format change, the file contains `<pid> <creation_time> <binary_mtime>`,
+    // so use the dedicated parser instead of treating the whole contents as
+    // a single integer.
+    let pid = daemon::pid::PidFile::read_pid(&pid_path).expect("PID file should be readable");
     assert_eq!(pid, std::process::id(), "PID should match current process");
 
     // Send a shutdown signal to stop the daemon.
