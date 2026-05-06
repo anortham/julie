@@ -2,10 +2,9 @@
 //! Handles inheritance and function call relationships
 
 use crate::base::{
-    LocalTargetResolution, Relationship, RelationshipKind, ScopedSymbolIndex, Symbol,
+    LocalTargetResolution, Relationship, RelationshipKind, ScopedSymbolIndex, Symbol, SymbolKind,
     UnresolvedTarget,
 };
-use std::collections::HashMap;
 use tree_sitter::{Node, Tree};
 
 use super::helpers;
@@ -18,13 +17,12 @@ pub(super) fn extract_relationships(
 ) -> Vec<Relationship> {
     let mut relationships = Vec::new();
     let scoped_index = ScopedSymbolIndex::new(symbols);
-    let symbol_map = crate::base::ScopedSymbolIndex::unique_symbol_map(symbols);
 
     // Walk the tree looking for relationships
     walk_tree_for_relationships(
         extractor,
         tree.root_node(),
-        &symbol_map,
+        symbols,
         &scoped_index,
         &mut relationships,
     );
@@ -36,24 +34,24 @@ pub(super) fn extract_relationships(
 fn walk_tree_for_relationships(
     extractor: &mut super::CppExtractor,
     node: Node,
-    symbol_map: &HashMap<String, &Symbol>,
+    symbols: &[Symbol],
     scoped_index: &ScopedSymbolIndex<'_>,
     relationships: &mut Vec<Relationship>,
 ) {
     match node.kind() {
         "class_specifier" | "struct_specifier" => {
-            let inheritance = extract_inheritance_from_class(extractor, node, symbol_map);
+            let inheritance = extract_inheritance_from_class(extractor, node, scoped_index);
             relationships.extend(inheritance);
         }
         "call_expression" | "function_call" => {
-            extract_call_relationships(extractor, node, symbol_map, scoped_index, relationships);
+            extract_call_relationships(extractor, node, symbols, scoped_index, relationships);
         }
         _ => {}
     }
 
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        walk_tree_for_relationships(extractor, child, symbol_map, scoped_index, relationships);
+        walk_tree_for_relationships(extractor, child, symbols, scoped_index, relationships);
     }
 }
 
@@ -61,7 +59,7 @@ fn walk_tree_for_relationships(
 fn extract_inheritance_from_class(
     extractor: &mut super::CppExtractor,
     class_node: Node,
-    symbol_map: &HashMap<String, &Symbol>,
+    scoped_index: &ScopedSymbolIndex<'_>,
 ) -> Vec<Relationship> {
     let mut relationships = Vec::new();
     let base = extractor.get_base_mut();
@@ -77,7 +75,9 @@ fn extract_inheritance_from_class(
     };
 
     let class_name = base.get_node_text(&name_node);
-    let Some(derived_symbol) = symbol_map.get(&class_name) else {
+    let Some(derived_symbol) = scoped_index.candidates_by_name(&class_name).find(|symbol| {
+        is_inheritance_type(&symbol.kind) && symbol_span_matches_node(symbol, class_node)
+    }) else {
         return relationships;
     };
 
@@ -100,23 +100,17 @@ fn extract_inheritance_from_class(
             .or_else(|| base_class.strip_prefix("protected "))
             .unwrap_or(&base_class);
 
-        if let Some(base_symbol) = symbol_map.get(clean_base_name) {
-            relationships.push(Relationship {
-                id: format!(
-                    "{}_{}_{:?}_{}",
-                    derived_symbol.id,
-                    base_symbol.id,
-                    RelationshipKind::Extends,
-                    class_node.start_position().row
-                ),
-                from_symbol_id: derived_symbol.id.clone(),
-                to_symbol_id: base_symbol.id.clone(),
-                kind: RelationshipKind::Extends,
-                file_path: base.file_path.clone(),
-                line_number: (class_node.start_position().row + 1) as u32,
-                confidence: 1.0,
-                metadata: None,
-            });
+        if let Some(base_symbol) =
+            resolve_base_type_symbol(scoped_index, clean_base_name, derived_symbol)
+        {
+            relationships.push(base.create_relationship(
+                derived_symbol.id.clone(),
+                base_symbol.id.clone(),
+                RelationshipKind::Extends,
+                &class_node,
+                Some(1.0),
+                None,
+            ));
         }
     }
 
@@ -131,7 +125,7 @@ fn extract_inheritance_from_class(
 fn extract_call_relationships(
     extractor: &mut super::CppExtractor,
     call_node: Node,
-    symbol_map: &HashMap<String, &Symbol>,
+    symbols: &[Symbol],
     scoped_index: &ScopedSymbolIndex<'_>,
     relationships: &mut Vec<Relationship>,
 ) {
@@ -209,7 +203,7 @@ fn extract_call_relationships(
                 extractor,
                 call_node,
                 target,
-                symbol_map,
+                symbols,
                 scoped_index,
                 relationships,
             );
@@ -222,24 +216,15 @@ fn handle_call_target(
     extractor: &mut super::CppExtractor,
     call_node: Node,
     target: UnresolvedTarget,
-    symbol_map: &HashMap<String, &Symbol>,
+    symbols: &[Symbol],
     scoped_index: &ScopedSymbolIndex<'_>,
     relationships: &mut Vec<Relationship>,
 ) {
-    // Find the containing function for this call
-    let containing_function_name = find_containing_function_name(extractor, call_node);
-
-    let Some(caller_name) = containing_function_name else {
-        return;
-    };
-
-    // Look up the caller in the symbol map to get its ID
-    let Some(caller_symbol) = symbol_map.get(&caller_name) else {
+    let Some(caller_symbol) = find_containing_callable_symbol(symbols, call_node) else {
         return;
     };
 
     let caller_id = caller_symbol.id.clone();
-    let file_path = extractor.get_base_mut().file_path.clone();
 
     // Check if we can resolve the callee locally
     match scoped_index.resolve_call_target(
@@ -248,22 +233,14 @@ fn handle_call_target(
         target.receiver.as_deref(),
     ) {
         LocalTargetResolution::Resolved(called_symbol) => {
-            relationships.push(Relationship {
-                id: format!(
-                    "{}_{}_{:?}_{}",
-                    caller_id,
-                    called_symbol.id,
-                    RelationshipKind::Calls,
-                    call_node.start_position().row
-                ),
-                from_symbol_id: caller_id,
-                to_symbol_id: called_symbol.id.clone(),
-                kind: RelationshipKind::Calls,
-                file_path,
-                line_number: call_node.start_position().row as u32 + 1,
-                confidence: 0.9,
-                metadata: None,
-            });
+            relationships.push(extractor.get_base_mut().create_relationship(
+                caller_id,
+                called_symbol.id.clone(),
+                RelationshipKind::Calls,
+                &call_node,
+                Some(0.9),
+                None,
+            ));
         }
         LocalTargetResolution::Import(_)
         | LocalTargetResolution::Ambiguous
@@ -284,59 +261,59 @@ fn handle_call_target(
     }
 }
 
-/// Find the containing function for a given call node by traversing up the tree
-fn find_containing_function_name(
-    extractor: &mut super::CppExtractor,
-    mut node: Node,
-) -> Option<String> {
-    let base = extractor.get_base_mut();
+fn find_containing_callable_symbol<'a>(
+    symbols: &'a [Symbol],
+    node: Node<'_>,
+) -> Option<&'a Symbol> {
+    symbols
+        .iter()
+        .filter(|symbol| is_callable(&symbol.kind) && symbol_contains_node(symbol, node))
+        .min_by_key(|symbol| symbol.end_byte.saturating_sub(symbol.start_byte))
+}
 
-    while let Some(parent) = node.parent() {
-        match parent.kind() {
-            "function_definition" | "function_declarator" => {
-                // Extract the function name from the declarator or the function itself
-                // For function_definition, the name is in a declarator child
-                // For function_declarator, the name is the first identifier
-                let mut cursor = parent.walk();
-                for child in parent.children(&mut cursor) {
-                    if child.kind() == "declarator"
-                        || child.kind() == "pointer_declarator"
-                        || child.kind() == "reference_declarator"
-                        || child.kind() == "function_declarator"
-                    {
-                        // Find the identifier in the declarator
-                        let mut decl_cursor = child.walk();
-                        for decl_child in child.children(&mut decl_cursor) {
-                            if decl_child.kind() == "identifier" {
-                                let name = base.get_node_text(&decl_child);
-                                return Some(name);
-                            }
-                        }
-                    } else if child.kind() == "identifier" {
-                        return Some(base.get_node_text(&child));
-                    }
-                }
-                return None; // Found a function node but couldn't extract name
-            }
-            "declaration" => {
-                // Top-level declaration with function_declarator child
-                // Check if this is a function declaration
-                let mut cursor = parent.walk();
-                for child in parent.children(&mut cursor) {
-                    if child.kind() == "function_declarator" || child.kind() == "declarator" {
-                        // This might be a function, try to extract the name
-                        let mut decl_cursor = child.walk();
-                        for decl_child in child.children(&mut decl_cursor) {
-                            if decl_child.kind() == "identifier" {
-                                return Some(base.get_node_text(&decl_child));
-                            }
-                        }
-                    }
-                }
-            }
-            _ => {}
-        }
-        node = parent;
+fn symbol_contains_node(symbol: &Symbol, node: Node) -> bool {
+    let start_byte = node.start_byte() as u32;
+    let end_byte = node.end_byte() as u32;
+    symbol.start_byte <= start_byte && symbol.end_byte >= end_byte
+}
+
+fn symbol_span_matches_node(symbol: &Symbol, node: Node) -> bool {
+    symbol.start_byte == node.start_byte() as u32 && symbol.end_byte == node.end_byte() as u32
+}
+
+fn is_callable(kind: &SymbolKind) -> bool {
+    matches!(
+        kind,
+        SymbolKind::Function | SymbolKind::Method | SymbolKind::Constructor | SymbolKind::Operator
+    )
+}
+
+fn resolve_base_type_symbol<'a>(
+    scoped_index: &'a ScopedSymbolIndex<'a>,
+    base_name: &str,
+    derived_symbol: &Symbol,
+) -> Option<&'a Symbol> {
+    let type_candidates: Vec<&Symbol> = scoped_index
+        .candidates_by_name(base_name)
+        .filter(|symbol| is_inheritance_type(&symbol.kind))
+        .collect();
+
+    let same_parent: Vec<&Symbol> = type_candidates
+        .iter()
+        .copied()
+        .filter(|symbol| symbol.parent_id == derived_symbol.parent_id)
+        .collect();
+    if let [base_symbol] = same_parent.as_slice() {
+        return Some(*base_symbol);
     }
+
+    if let [base_symbol] = type_candidates.as_slice() {
+        return Some(*base_symbol);
+    }
+
     None
+}
+
+fn is_inheritance_type(kind: &SymbolKind) -> bool {
+    matches!(kind, SymbolKind::Class | SymbolKind::Struct)
 }

@@ -156,6 +156,13 @@ impl<'a> ScopedSymbolIndex<'a> {
             .and_then(|candidates| candidates.first().copied())
     }
 
+    pub fn candidates_by_name(&self, name: &str) -> impl Iterator<Item = &'a Symbol> + '_ {
+        self.by_name
+            .get(name)
+            .into_iter()
+            .flat_map(|candidates| candidates.iter().copied())
+    }
+
     pub fn resolve_call_target(
         &self,
         terminal_name: &str,
