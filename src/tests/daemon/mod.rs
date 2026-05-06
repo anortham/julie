@@ -24,3 +24,4 @@ pub mod workspace_pool_shutdown;
 pub mod daemon_state_atomic;
 pub mod pid_file_format;
 pub mod drain_timeout;
+pub mod admit_initialize_short_circuit;
