@@ -279,3 +279,68 @@ pub(super) fn extract_record(
             .create_symbol(&node, name, SymbolKind::Class, options),
     )
 }
+
+pub(super) fn extract_record_components(
+    extractor: &mut JavaExtractor,
+    node: Node,
+    parent_id: Option<&str>,
+) -> Vec<Symbol> {
+    let Some(param_list) = node
+        .children(&mut node.walk())
+        .find(|c| c.kind() == "formal_parameters")
+    else {
+        return Vec::new();
+    };
+
+    let mut components = Vec::new();
+    let mut cursor = param_list.walk();
+    for parameter in param_list.children(&mut cursor) {
+        if parameter.kind() != "formal_parameter" {
+            continue;
+        }
+
+        let mut parameter_cursor = parameter.walk();
+        let mut component_type = None;
+        let mut name_node = None;
+
+        for child in parameter.children(&mut parameter_cursor) {
+            match child.kind() {
+                "type_identifier"
+                | "generic_type"
+                | "array_type"
+                | "primitive_type"
+                | "boolean_type"
+                | "integral_type"
+                | "floating_point_type" => {
+                    component_type = Some(extractor.base().get_node_text(&child));
+                }
+                "identifier" => {
+                    name_node = Some(child);
+                }
+                _ => {}
+            }
+        }
+
+        let Some(name_node) = name_node else {
+            continue;
+        };
+        let name = extractor.base().get_node_text(&name_node);
+        let component_type = component_type.unwrap_or_else(|| "Object".to_string());
+        let signature = format!("{} {}", component_type, name);
+        let options = SymbolOptions {
+            signature: Some(signature),
+            visibility: Some(Visibility::Public),
+            parent_id: parent_id.map(|s| s.to_string()),
+            ..Default::default()
+        };
+
+        components.push(extractor.base_mut().create_symbol(
+            &parameter,
+            name,
+            SymbolKind::Property,
+            options,
+        ));
+    }
+
+    components
+}

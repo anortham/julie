@@ -431,6 +431,43 @@ from .local_module import LocalClass as LC
     }
 
     #[test]
+    fn test_plain_import_statement_extracts_each_binding() {
+        let python_code = r#"
+import os, sys as system, pathlib
+"#;
+
+        let (mut extractor, tree) = create_extractor_and_parse(python_code);
+        let symbols = extractor.extract_symbols(&tree);
+
+        let os_import = symbols.iter().find(|s| s.name == "os");
+        assert!(
+            os_import.is_some(),
+            "Should extract first plain import binding"
+        );
+        assert_eq!(os_import.unwrap().signature.as_deref(), Some("import os"));
+
+        let system_import = symbols.iter().find(|s| s.name == "system");
+        assert!(
+            system_import.is_some(),
+            "Should extract aliased binding after a comma"
+        );
+        assert_eq!(
+            system_import.unwrap().signature.as_deref(),
+            Some("import sys as system")
+        );
+
+        let pathlib_import = symbols.iter().find(|s| s.name == "pathlib");
+        assert!(
+            pathlib_import.is_some(),
+            "Should extract final plain import binding"
+        );
+        assert_eq!(
+            pathlib_import.unwrap().signature.as_deref(),
+            Some("import pathlib")
+        );
+    }
+
+    #[test]
     fn test_extract_lambda_functions() {
         let python_code = r#"
 numbers = [1, 2, 3, 4, 5]

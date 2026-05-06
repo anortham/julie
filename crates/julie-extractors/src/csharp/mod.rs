@@ -13,6 +13,7 @@
 // - Modern C# features (nullable types, records, pattern matching)
 
 pub(crate) mod di_relationships;
+mod fields;
 mod helpers;
 mod identifiers;
 pub(crate) mod member_type_relationships;
@@ -136,6 +137,36 @@ impl CSharpExtractor {
         symbols: &mut Vec<Symbol>,
         parent_id: Option<String>,
     ) {
+        if node.kind() == "field_declaration" {
+            let field_symbols = fields::extract_fields(&mut self.base, node, parent_id.clone());
+            let current_parent_id = field_symbols
+                .first()
+                .map(|symbol| symbol.id.clone())
+                .or(parent_id);
+            symbols.extend(field_symbols);
+
+            let mut cursor = node.walk();
+            for child in node.children(&mut cursor) {
+                self.walk_tree(child, symbols, current_parent_id.clone());
+            }
+            return;
+        }
+
+        if node.kind() == "event_field_declaration" {
+            let event_symbols = fields::extract_events(&mut self.base, node, parent_id.clone());
+            let current_parent_id = event_symbols
+                .first()
+                .map(|symbol| symbol.id.clone())
+                .or(parent_id);
+            symbols.extend(event_symbols);
+
+            let mut cursor = node.walk();
+            for child in node.children(&mut cursor) {
+                self.walk_tree(child, symbols, current_parent_id.clone());
+            }
+            return;
+        }
+
         let symbol = self.extract_symbol(node, parent_id.clone());
         let current_parent_id = if let Some(ref sym) = symbol {
             symbols.push(sym.clone());
@@ -172,8 +203,8 @@ impl CSharpExtractor {
                 members::extract_constructor(&mut self.base, node, parent_id)
             }
             "property_declaration" => members::extract_property(&mut self.base, node, parent_id),
-            "field_declaration" => members::extract_field(&mut self.base, node, parent_id),
-            "event_field_declaration" => members::extract_event(&mut self.base, node, parent_id),
+            "field_declaration" => fields::extract_field(&mut self.base, node, parent_id),
+            "event_field_declaration" => fields::extract_event(&mut self.base, node, parent_id),
             "delegate_declaration" => members::extract_delegate(&mut self.base, node, parent_id),
             "record_declaration" => types::extract_record(&mut self.base, node, parent_id),
             "destructor_declaration" => {

@@ -71,9 +71,25 @@ impl JavaExtractor {
     }
 
     fn walk_tree(&mut self, node: Node, symbols: &mut Vec<Symbol>, parent_id: Option<&str>) {
+        if node.kind() == "field_declaration" {
+            let field_symbols = fields::extract_fields(self, node, parent_id);
+            let first_symbol_id = field_symbols.first().map(|symbol| symbol.id.clone());
+            symbols.extend(field_symbols);
+
+            for child in node.children(&mut node.walk()) {
+                self.walk_tree(child, symbols, first_symbol_id.as_deref().or(parent_id));
+            }
+            return;
+        }
+
         if let Some(symbol) = self.extract_symbol(node, parent_id) {
             let symbol_id = symbol.id.clone();
             symbols.push(symbol);
+
+            if node.kind() == "record_declaration" {
+                let components = classes::extract_record_components(self, node, Some(&symbol_id));
+                symbols.extend(components);
+            }
 
             // Walk children with this symbol as parent
             for child in node.children(&mut node.walk()) {

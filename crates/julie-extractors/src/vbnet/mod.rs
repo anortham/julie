@@ -61,6 +61,36 @@ impl VbNetExtractor {
         symbols: &mut Vec<Symbol>,
         parent_id: Option<String>,
     ) {
+        if node.kind() == "field_declaration" {
+            let field_symbols = members::extract_fields(&mut self.base, node, parent_id.clone());
+            let current_parent_id = field_symbols
+                .first()
+                .map(|symbol| symbol.id.clone())
+                .or(parent_id);
+            symbols.extend(field_symbols);
+
+            let mut cursor = node.walk();
+            for child in node.children(&mut cursor) {
+                self.walk_tree(child, symbols, current_parent_id.clone());
+            }
+            return;
+        }
+
+        if node.kind() == "const_declaration" {
+            let const_symbols = members::extract_consts(&mut self.base, node, parent_id.clone());
+            let current_parent_id = const_symbols
+                .first()
+                .map(|symbol| symbol.id.clone())
+                .or(parent_id);
+            symbols.extend(const_symbols);
+
+            let mut cursor = node.walk();
+            for child in node.children(&mut cursor) {
+                self.walk_tree(child, symbols, current_parent_id.clone());
+            }
+            return;
+        }
+
         let symbol = self.extract_symbol(node, parent_id.clone());
         let current_parent_id = if let Some(ref sym) = symbol {
             symbols.push(sym.clone());

@@ -51,50 +51,64 @@ impl super::BashExtractor {
         node: Node,
         parent_id: Option<&str>,
     ) -> Option<Symbol> {
+        self.extract_declarations(node, parent_id)
+            .into_iter()
+            .next()
+    }
+
+    /// Extract all variables from declaration commands (declare, export, readonly)
+    pub(super) fn extract_declarations(
+        &mut self,
+        node: Node,
+        parent_id: Option<&str>,
+    ) -> Vec<Symbol> {
         // Handle declare, export, readonly commands
         let declaration_text = self.base.get_node_text(&node);
-        let declaration_type = declaration_text.split_whitespace().next()?;
+        let Some(declaration_type) = declaration_text.split_whitespace().next() else {
+            return Vec::new();
+        };
+
+        // Check if it's readonly: either 'readonly' command or 'declare -r'
+        let is_readonly = declaration_type == "readonly"
+            || declaration_type.contains("readonly")
+            || (declaration_type == "declare" && declaration_text.contains(" -r "));
+        let is_exported = declaration_type == "export";
 
         // Look for variable assignments within the declaration
         let assignments = self.get_children_of_type(node, "variable_assignment");
-        if let Some(assignment) = assignments.first() {
-            let assignment = *assignment;
-            let name_node = self.find_variable_name_node(assignment)?;
-            let name = self.base.get_node_text(&name_node);
+        assignments
+            .into_iter()
+            .filter_map(|assignment| {
+                let name_node = self.find_variable_name_node(assignment)?;
+                let name = self.base.get_node_text(&name_node);
 
-            // Check if it's readonly: either 'readonly' command or 'declare -r'
-            let is_readonly = declaration_type == "readonly"
-                || declaration_type.contains("readonly")
-                || (declaration_type == "declare" && declaration_text.contains(" -r "));
+                // Check if it's an environment variable (but not if it's readonly)
+                let _is_environment =
+                    !is_readonly && self.is_environment_variable(assignment, &name);
 
-            // Check if it's an environment variable (but not if it's readonly)
-            let _is_environment = !is_readonly && self.is_environment_variable(assignment, &name);
-            let is_exported = declaration_type == "export";
+                let options = SymbolOptions {
+                    signature: Some(format!("{} {}", declaration_type, name)),
+                    visibility: if is_exported {
+                        Some(Visibility::Public)
+                    } else {
+                        Some(Visibility::Private)
+                    },
+                    parent_id: parent_id.map(|s| s.to_string()),
+                    doc_comment: self.base.find_doc_comment(&node),
+                    ..Default::default()
+                };
 
-            let options = SymbolOptions {
-                signature: Some(format!("{} {}", declaration_type, name)),
-                visibility: if is_exported {
-                    Some(Visibility::Public)
+                let symbol_kind = if is_readonly {
+                    SymbolKind::Constant
                 } else {
-                    Some(Visibility::Private)
-                },
-                parent_id: parent_id.map(|s| s.to_string()),
-                doc_comment: self.base.find_doc_comment(&node),
-                ..Default::default()
-            };
-
-            let symbol_kind = if is_readonly {
-                SymbolKind::Constant
-            } else {
-                SymbolKind::Variable
-            };
-            return Some(
-                self.base
-                    .create_symbol(&assignment, name, symbol_kind, options),
-            );
-        }
-
-        None
+                    SymbolKind::Variable
+                };
+                Some(
+                    self.base
+                        .create_symbol(&assignment, name, symbol_kind, options),
+                )
+            })
+            .collect()
     }
 
     /// Check if a variable name matches environment variable patterns

@@ -151,6 +151,35 @@ declare -r CONFIG_PATH="/etc/app/config"
     }
 
     #[test]
+    fn test_bash_export_declaration_emits_all_variables() {
+        let bash_code = r#"
+export API_URL="https://example.test" FEATURE_FLAG=1 REGION=us-east-1
+"#;
+
+        let symbols = extract_symbols(bash_code);
+
+        for name in ["API_URL", "FEATURE_FLAG", "REGION"] {
+            let expected_signature = format!("export {name}");
+            let symbol = symbols.iter().find(|s| {
+                s.name == name
+                    && s.visibility == Some(crate::base::Visibility::Public)
+                    && s.signature.as_deref() == Some(expected_signature.as_str())
+            });
+            assert!(
+                symbol.is_some(),
+                "Expected export declaration to emit {name}; symbols: {:?}",
+                symbols
+                    .iter()
+                    .map(|s| (&s.name, &s.kind, &s.visibility, &s.signature))
+                    .collect::<Vec<_>>()
+            );
+
+            let symbol = symbol.unwrap();
+            assert_eq!(symbol.kind, SymbolKind::Variable);
+        }
+    }
+
+    #[test]
     fn test_extract_devops_and_cross_language_command_calls() {
         let bash_code = r#"#!/bin/bash
 

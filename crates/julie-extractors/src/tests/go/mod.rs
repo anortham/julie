@@ -512,6 +512,67 @@ var (
     }
 
     #[test]
+    fn test_go_var_and_const_multi_name_specs_emit_all_symbols() {
+        let code = r#"
+package main
+
+var Left, Right int
+var PublicName, privateName = 1, "two"
+const Alpha, Beta = 1, 2
+"#;
+        let tree = init_parser(code, "go");
+        let workspace_root = PathBuf::from("/tmp/test");
+        let mut extractor = GoExtractor::new(
+            "go".to_string(),
+            "test.go".to_string(),
+            code.to_string(),
+            &workspace_root,
+        );
+        let symbols = extractor.extract_symbols(&tree);
+
+        for (name, signature, visibility) in [
+            ("Left", "var Left int", Some(Visibility::Public)),
+            ("Right", "var Right int", Some(Visibility::Public)),
+            ("PublicName", "var PublicName = 1", Some(Visibility::Public)),
+            (
+                "privateName",
+                "var privateName = \"two\"",
+                Some(Visibility::Private),
+            ),
+        ] {
+            let symbol = symbols.iter().find(|s| s.name == name);
+            assert!(
+                symbol.is_some(),
+                "Expected Go var spec to emit {name}; symbols: {:?}",
+                symbols
+                    .iter()
+                    .map(|s| (&s.name, &s.kind, &s.signature))
+                    .collect::<Vec<_>>()
+            );
+            let symbol = symbol.unwrap();
+            assert_eq!(symbol.kind, SymbolKind::Variable);
+            assert_eq!(symbol.signature.as_deref(), Some(signature));
+            assert_eq!(symbol.visibility, visibility);
+        }
+
+        for (name, signature) in [("Alpha", "const Alpha = 1"), ("Beta", "const Beta = 2")] {
+            let symbol = symbols.iter().find(|s| s.name == name);
+            assert!(
+                symbol.is_some(),
+                "Expected Go const spec to emit {name}; symbols: {:?}",
+                symbols
+                    .iter()
+                    .map(|s| (&s.name, &s.kind, &s.signature))
+                    .collect::<Vec<_>>()
+            );
+            let symbol = symbol.unwrap();
+            assert_eq!(symbol.kind, SymbolKind::Constant);
+            assert_eq!(symbol.signature.as_deref(), Some(signature));
+            assert_eq!(symbol.visibility, Some(Visibility::Public));
+        }
+    }
+
+    #[test]
     fn test_handle_channel_types_and_goroutines() {
         let code = r#"
 package main

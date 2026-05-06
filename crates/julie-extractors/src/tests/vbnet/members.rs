@@ -483,6 +483,75 @@ End Class
     }
 
     #[test]
+    fn test_vbnet_dim_multi_declarator_emits_all_fields() {
+        let code = r#"
+Class C
+    Private _x As Integer, _y As Integer
+    Public Const A As Integer = 1, B As Integer = 2
+End Class
+"#;
+        let mut parser = init_parser();
+        let tree = parser.parse(code, None).unwrap();
+        let workspace_root = PathBuf::from("/tmp/test");
+        let mut extractor = VbNetExtractor::new(
+            "vbnet".to_string(),
+            "test.vb".to_string(),
+            code.to_string(),
+            &workspace_root,
+        );
+        let symbols = extractor.extract_symbols(&tree);
+        let class = symbols
+            .iter()
+            .find(|s| s.name == "C" && s.kind == SymbolKind::Class)
+            .expect("Class C should be found");
+
+        for (name, signature, kind, visibility) in [
+            (
+                "_x",
+                "private Dim _x As Integer",
+                SymbolKind::Field,
+                Visibility::Private,
+            ),
+            (
+                "_y",
+                "private Dim _y As Integer",
+                SymbolKind::Field,
+                Visibility::Private,
+            ),
+            (
+                "A",
+                "public Const A As Integer",
+                SymbolKind::Constant,
+                Visibility::Public,
+            ),
+            (
+                "B",
+                "public Const B As Integer",
+                SymbolKind::Constant,
+                Visibility::Public,
+            ),
+        ] {
+            let symbol = symbols.iter().find(|s| {
+                s.name == name
+                    && s.kind == kind
+                    && s.parent_id.as_deref() == Some(class.id.as_str())
+            });
+            assert!(
+                symbol.is_some(),
+                "Expected VB.NET declaration to emit {name}; symbols: {:?}",
+                symbols
+                    .iter()
+                    .map(|s| (&s.name, &s.kind, &s.parent_id, &s.signature))
+                    .collect::<Vec<_>>()
+            );
+
+            let symbol = symbol.unwrap();
+            assert_eq!(symbol.signature.as_deref(), Some(signature));
+            assert_eq!(symbol.visibility, Some(visibility));
+        }
+    }
+
+    #[test]
     fn test_typed_event_extraction() {
         let code = r#"
 Class C

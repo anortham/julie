@@ -47,17 +47,13 @@ impl super::GoExtractor {
         for child in node.children(&mut cursor) {
             match child.kind() {
                 "var_spec" => {
-                    if let Some(symbol) = self.extract_var_spec(child, parent_id) {
-                        symbols.push(symbol);
-                    }
+                    symbols.extend(self.extract_var_spec_symbols(child, parent_id));
                 }
                 "var_spec_list" => {
                     let mut nested_cursor = child.walk();
                     for nested_child in child.children(&mut nested_cursor) {
                         if nested_child.kind() == "var_spec" {
-                            if let Some(symbol) = self.extract_var_spec(nested_child, parent_id) {
-                                symbols.push(symbol);
-                            }
+                            symbols.extend(self.extract_var_spec_symbols(nested_child, parent_id));
                         }
                     }
                 }
@@ -79,17 +75,14 @@ impl super::GoExtractor {
         for child in node.children(&mut cursor) {
             match child.kind() {
                 "const_spec" => {
-                    if let Some(symbol) = self.extract_const_spec(child, parent_id) {
-                        symbols.push(symbol);
-                    }
+                    symbols.extend(self.extract_const_spec_symbols(child, parent_id));
                 }
                 "const_spec_list" => {
                     let mut nested_cursor = child.walk();
                     for nested_child in child.children(&mut nested_cursor) {
                         if nested_child.kind() == "const_spec" {
-                            if let Some(symbol) = self.extract_const_spec(nested_child, parent_id) {
-                                symbols.push(symbol);
-                            }
+                            symbols
+                                .extend(self.extract_const_spec_symbols(nested_child, parent_id));
                         }
                     }
                 }
@@ -161,145 +154,146 @@ impl super::GoExtractor {
         }
     }
 
-    pub(super) fn extract_var_spec(
+    pub(super) fn extract_var_spec_symbols(
         &mut self,
         node: Node,
         parent_id: Option<&str>,
-    ) -> Option<Symbol> {
+    ) -> Vec<Symbol> {
         let mut cursor = node.walk();
-        let mut identifier = None;
+        let mut identifiers = Vec::new();
         let mut var_type = None;
-        let mut value = None;
+        let mut values = Vec::new();
 
         for child in node.children(&mut cursor) {
             match child.kind() {
-                "identifier" => identifier = Some(self.get_node_text(child)),
+                "identifier" => identifiers.push((self.get_node_text(child), child)),
                 "type_identifier" | "primitive_type" | "pointer_type" | "slice_type"
                 | "map_type" => {
                     var_type = Some(self.extract_type_from_node(child));
                 }
                 "expression_list" => {
-                    // Extract the first expression as the value
-                    let mut expr_cursor = child.walk();
-                    for expr_child in child.children(&mut expr_cursor) {
-                        if !matches!(expr_child.kind(), "," | " ") {
-                            value = Some(self.get_node_text(expr_child));
-                            break;
-                        }
-                    }
+                    values = self.extract_spec_values(child);
                 }
                 _ => {}
             }
         }
 
-        if let Some(name) = identifier {
-            let visibility = if self.is_public(&name) {
-                Some(Visibility::Public)
-            } else {
-                Some(Visibility::Private)
-            };
-
-            let signature = if let Some(typ) = var_type {
-                if let Some(val) = value {
-                    format!("var {} {} = {}", name, typ, val)
+        let doc_comment = self.base.find_doc_comment(&node);
+        identifiers
+            .into_iter()
+            .enumerate()
+            .map(|(index, (name, _name_node))| {
+                let visibility = if self.is_public(&name) {
+                    Some(Visibility::Public)
                 } else {
-                    format!("var {} {}", name, typ)
-                }
-            } else if let Some(val) = value {
-                format!("var {} = {}", name, val)
-            } else {
-                format!("var {}", name)
-            };
+                    Some(Visibility::Private)
+                };
 
-            let doc_comment = self.base.find_doc_comment(&node);
+                let value = values.get(index).or_else(|| values.first());
+                let signature = if let Some(typ) = var_type.as_deref() {
+                    if let Some(val) = value {
+                        format!("var {} {} = {}", name, typ, val)
+                    } else {
+                        format!("var {} {}", name, typ)
+                    }
+                } else if let Some(val) = value {
+                    format!("var {} = {}", name, val)
+                } else {
+                    format!("var {}", name)
+                };
 
-            Some(self.base.create_symbol(
-                &node,
-                name,
-                SymbolKind::Variable,
-                SymbolOptions {
-                    signature: Some(signature),
-                    visibility,
-                    parent_id: parent_id.map(|s| s.to_string()),
-                    metadata: None,
-                    doc_comment,
-                    annotations: Vec::new(),
-                },
-            ))
-        } else {
-            None
-        }
+                self.base.create_symbol(
+                    &node,
+                    name,
+                    SymbolKind::Variable,
+                    SymbolOptions {
+                        signature: Some(signature),
+                        visibility,
+                        parent_id: parent_id.map(|s| s.to_string()),
+                        metadata: None,
+                        doc_comment: doc_comment.clone(),
+                        annotations: Vec::new(),
+                    },
+                )
+            })
+            .collect()
     }
 
-    pub(super) fn extract_const_spec(
+    pub(super) fn extract_const_spec_symbols(
         &mut self,
         node: Node,
         parent_id: Option<&str>,
-    ) -> Option<Symbol> {
+    ) -> Vec<Symbol> {
         let mut cursor = node.walk();
-        let mut identifier = None;
+        let mut identifiers = Vec::new();
         let mut const_type = None;
-        let mut value = None;
+        let mut values = Vec::new();
 
         for child in node.children(&mut cursor) {
             match child.kind() {
-                "identifier" => identifier = Some(self.get_node_text(child)),
+                "identifier" => identifiers.push((self.get_node_text(child), child)),
                 "type_identifier" | "primitive_type" => {
                     const_type = Some(self.extract_type_from_node(child));
                 }
                 "expression_list" => {
-                    // Extract the first expression as the value
-                    let mut expr_cursor = child.walk();
-                    for expr_child in child.children(&mut expr_cursor) {
-                        if !matches!(expr_child.kind(), "," | " ") {
-                            value = Some(self.get_node_text(expr_child));
-                            break;
-                        }
-                    }
+                    values = self.extract_spec_values(child);
                 }
                 _ if child.kind().starts_with("literal")
                     || matches!(child.kind(), "true" | "false" | "nil") =>
                 {
-                    value = Some(self.get_node_text(child));
+                    values.push(self.get_node_text(child));
                 }
                 _ => {}
             }
         }
 
-        if let Some(name) = identifier {
-            let visibility = if self.is_public(&name) {
-                Some(Visibility::Public)
-            } else {
-                Some(Visibility::Private)
-            };
-
-            let signature = if let Some(val) = value {
-                if let Some(typ) = const_type {
-                    format!("const {} {} = {}", name, typ, val)
+        let doc_comment = self.base.find_doc_comment(&node);
+        identifiers
+            .into_iter()
+            .enumerate()
+            .map(|(index, (name, _name_node))| {
+                let visibility = if self.is_public(&name) {
+                    Some(Visibility::Public)
                 } else {
-                    format!("const {} = {}", name, val)
-                }
-            } else {
-                format!("const {}", name)
-            };
+                    Some(Visibility::Private)
+                };
 
-            let doc_comment = self.base.find_doc_comment(&node);
+                let value = values.get(index).or_else(|| values.first());
+                let signature = if let Some(val) = value {
+                    if let Some(typ) = const_type.as_deref() {
+                        format!("const {} {} = {}", name, typ, val)
+                    } else {
+                        format!("const {} = {}", name, val)
+                    }
+                } else {
+                    format!("const {}", name)
+                };
 
-            Some(self.base.create_symbol(
-                &node,
-                name,
-                SymbolKind::Constant,
-                SymbolOptions {
-                    signature: Some(signature),
-                    visibility,
-                    parent_id: parent_id.map(|s| s.to_string()),
-                    metadata: None,
-                    doc_comment,
-                    annotations: Vec::new(),
-                },
-            ))
-        } else {
-            None
+                self.base.create_symbol(
+                    &node,
+                    name,
+                    SymbolKind::Constant,
+                    SymbolOptions {
+                        signature: Some(signature),
+                        visibility,
+                        parent_id: parent_id.map(|s| s.to_string()),
+                        metadata: None,
+                        doc_comment: doc_comment.clone(),
+                        annotations: Vec::new(),
+                    },
+                )
+            })
+            .collect()
+    }
+
+    fn extract_spec_values(&self, node: Node) -> Vec<String> {
+        let mut values = Vec::new();
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            if !matches!(child.kind(), "," | " ") {
+                values.push(self.get_node_text(child));
+            }
         }
+        values
     }
 }

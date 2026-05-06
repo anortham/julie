@@ -648,4 +648,70 @@ namespace MyProject
             "protected"
         );
     }
+
+    #[test]
+    fn test_csharp_field_and_event_multi_declarator_emits_all_members() {
+        let code = r#"
+namespace MyProject
+{
+    public class MultiMembers
+    {
+        private int _x, _y;
+        public const string A = "a", B = "b";
+        public event EventHandler Opened, Closed;
+    }
+}
+"#;
+
+        let mut parser = init_parser();
+        let tree = parser.parse(code, None).unwrap();
+
+        let workspace_root = PathBuf::from("/tmp/test");
+        let mut extractor = CSharpExtractor::new(
+            "c_sharp".to_string(),
+            "test.cs".to_string(),
+            code.to_string(),
+            &workspace_root,
+        );
+
+        let symbols = extractor.extract_symbols(&tree);
+        let class = symbols
+            .iter()
+            .find(|s| s.name == "MultiMembers")
+            .expect("MultiMembers class should be found");
+
+        for (name, signature, kind) in [
+            ("_x", "private int _x", SymbolKind::Field),
+            ("_y", "private int _y", SymbolKind::Field),
+            ("A", "public const string A = \"a\"", SymbolKind::Constant),
+            ("B", "public const string B = \"b\"", SymbolKind::Constant),
+            (
+                "Opened",
+                "public event EventHandler Opened",
+                SymbolKind::Event,
+            ),
+            (
+                "Closed",
+                "public event EventHandler Closed",
+                SymbolKind::Event,
+            ),
+        ] {
+            let symbol = symbols.iter().find(|s| {
+                s.name == name
+                    && s.kind == kind
+                    && s.parent_id.as_deref() == Some(class.id.as_str())
+            });
+            assert!(
+                symbol.is_some(),
+                "Expected C# declaration to emit {name}; symbols: {:?}",
+                symbols
+                    .iter()
+                    .map(|s| (&s.name, &s.kind, &s.parent_id, &s.signature))
+                    .collect::<Vec<_>>()
+            );
+
+            let symbol = symbol.unwrap();
+            assert_eq!(symbol.signature.as_deref(), Some(signature));
+        }
+    }
 }
