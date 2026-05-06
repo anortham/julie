@@ -168,15 +168,7 @@ fn determine_function_kind(
                 None => continue, // Skip if class has no name
             };
 
-            // Create parent_id using the same pattern as BaseExtractor
-            // NormalizedSpan::from_node converts row to 1-based (row + 1),
-            // so we must do the same here for the ID to match the class's actual ID.
-            let start_pos = parent.start_position();
-            let parent_id = extractor.base().generate_id(
-                &class_name,
-                start_pos.row as u32 + 1,
-                start_pos.column as u32,
-            );
+            let parent_id = extractor.base().generate_id_for_node(&class_name, &parent);
 
             // Determine method type
             let symbol_kind = if name == "__init__" {

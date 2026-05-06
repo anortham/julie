@@ -73,9 +73,7 @@ pub(super) fn extract_function(extractor: &mut TypeScriptExtractor, node: Node) 
         metadata.insert("is_test".to_string(), serde_json::json!(true));
     }
 
-    // CRITICAL FIX: Symbol must span entire function body for containment logic,
-    // but ID should be generated from function name position (not body start).
-    let mut symbol = extractor.base_mut().create_symbol(
+    let symbol = extractor.base_mut().create_symbol(
         &node,
         name.clone(),
         SymbolKind::Function,
@@ -88,44 +86,6 @@ pub(super) fn extract_function(extractor: &mut TypeScriptExtractor, node: Node) 
             annotations,
         },
     );
-
-    // Regenerate ID using function name position (not body start)
-    if let Some(name_node) = node.child_by_field_name("name") {
-        let start_pos = name_node.start_position();
-        let new_id =
-            extractor
-                .base()
-                .generate_id(&name, start_pos.row as u32, start_pos.column as u32);
-
-        let old_id = symbol.id.clone();
-        symbol.id = new_id.clone();
-        extractor.base_mut().symbol_map.remove(&old_id);
-        extractor
-            .base_mut()
-            .symbol_map
-            .insert(new_id, symbol.clone());
-    } else if node.kind() == "arrow_function" {
-        if let Some(parent) = node.parent() {
-            if parent.kind() == "variable_declarator" {
-                if let Some(var_name_node) = parent.child_by_field_name("name") {
-                    let start_pos = var_name_node.start_position();
-                    let new_id = extractor.base().generate_id(
-                        &name,
-                        start_pos.row as u32,
-                        start_pos.column as u32,
-                    );
-
-                    let old_id = symbol.id.clone();
-                    symbol.id = new_id.clone();
-                    extractor.base_mut().symbol_map.remove(&old_id);
-                    extractor
-                        .base_mut()
-                        .symbol_map
-                        .insert(new_id, symbol.clone());
-                }
-            }
-        }
-    }
 
     Some(symbol)
 }
@@ -201,8 +161,7 @@ pub(super) fn extract_method(extractor: &mut TypeScriptExtractor, node: Node) ->
         metadata.insert("is_test".to_string(), serde_json::json!(true));
     }
 
-    // CRITICAL FIX: Keep full body span for containment
-    let mut symbol = extractor.base_mut().create_symbol(
+    let symbol = extractor.base_mut().create_symbol(
         &node,
         name.clone(),
         symbol_kind,
@@ -215,23 +174,6 @@ pub(super) fn extract_method(extractor: &mut TypeScriptExtractor, node: Node) ->
             annotations,
         },
     );
-
-    // Regenerate ID using method name position
-    if let Some(name_node) = node.child_by_field_name("name") {
-        let start_pos = name_node.start_position();
-        let new_id =
-            extractor
-                .base()
-                .generate_id(&name, start_pos.row as u32, start_pos.column as u32);
-
-        let old_id = symbol.id.clone();
-        symbol.id = new_id.clone();
-        extractor.base_mut().symbol_map.remove(&old_id);
-        extractor
-            .base_mut()
-            .symbol_map
-            .insert(new_id, symbol.clone());
-    }
 
     Some(symbol)
 }
@@ -319,32 +261,11 @@ fn find_parent_class_id(extractor: &TypeScriptExtractor, node: &Node) -> Option<
         if parent_node.kind() == "class_declaration" {
             if let Some(class_name_node) = parent_node.child_by_field_name("name") {
                 let class_name = extractor.base().get_node_text(&class_name_node);
-                let class_start = parent_node.start_position();
-                let candidates = [
-                    extractor.base().generate_id(
-                        &class_name,
-                        class_start.row as u32,
-                        class_start.column as u32,
-                    ),
-                    extractor.base().generate_id(
-                        &class_name,
-                        class_name_node.start_position().row as u32,
-                        class_name_node.start_position().column as u32,
-                    ),
-                ];
-
-                for candidate in candidates {
-                    if extractor.base().symbol_map.contains_key(&candidate) {
-                        return Some(candidate);
-                    }
-                }
-
-                if let Some((id, _symbol)) =
-                    extractor.base().symbol_map.iter().find(|(_, symbol)| {
-                        symbol.name == class_name && symbol.kind == SymbolKind::Class
-                    })
-                {
-                    return Some(id.clone());
+                let parent_id = extractor
+                    .base()
+                    .generate_id_for_node(&class_name, &parent_node);
+                if extractor.base().symbol_map.contains_key(&parent_id) {
+                    return Some(parent_id);
                 }
             }
         }

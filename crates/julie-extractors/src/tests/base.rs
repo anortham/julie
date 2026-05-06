@@ -2,6 +2,7 @@
 // These were previously inline tests that have been moved to follow project standards
 
 use crate::base::*;
+use tree_sitter::Node;
 
 #[test]
 fn test_context_extraction_edge_cases() {
@@ -191,6 +192,65 @@ fn test_id_generation() {
     assert_eq!(id1, id2); // Same inputs should give same ID
     assert_ne!(id1, id3); // Different inputs should give different IDs
     assert_eq!(id1.len(), 32); // MD5 hash is 32 chars
+}
+
+#[test]
+fn test_relationship_ids_do_not_collide_for_multiple_calls_on_one_line() {
+    let code = "fn caller() { target(); target(); }\nfn target() {}\n";
+    let mut parser = tree_sitter::Parser::new();
+    parser
+        .set_language(&tree_sitter_rust::LANGUAGE.into())
+        .expect("Error loading Rust grammar");
+    let tree = parser.parse(code, None).expect("Error parsing Rust code");
+    let root = tree.root_node();
+    let mut call_nodes = Vec::new();
+    collect_nodes_of_kind(root, "call_expression", &mut call_nodes);
+    assert_eq!(call_nodes.len(), 2);
+    assert_eq!(
+        call_nodes[0].start_position().row,
+        call_nodes[1].start_position().row
+    );
+
+    let workspace_root = std::path::PathBuf::from("/tmp/test");
+    let extractor = BaseExtractor::new(
+        "rust".to_string(),
+        "src/lib.rs".to_string(),
+        code.to_string(),
+        &workspace_root,
+    );
+
+    let first = extractor.create_relationship(
+        "caller-id".to_string(),
+        "target-id".to_string(),
+        RelationshipKind::Calls,
+        &call_nodes[0],
+        Some(0.9),
+        None,
+    );
+    let second = extractor.create_relationship(
+        "caller-id".to_string(),
+        "target-id".to_string(),
+        RelationshipKind::Calls,
+        &call_nodes[1],
+        Some(0.9),
+        None,
+    );
+
+    assert_ne!(
+        first.id, second.id,
+        "Same-line calls should preserve distinct relationship IDs"
+    );
+}
+
+fn collect_nodes_of_kind<'a>(node: Node<'a>, kind: &str, matches: &mut Vec<Node<'a>>) {
+    if node.kind() == kind {
+        matches.push(node);
+    }
+
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        collect_nodes_of_kind(child, kind, matches);
+    }
 }
 
 #[test]

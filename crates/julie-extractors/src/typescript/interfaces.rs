@@ -259,34 +259,11 @@ fn find_parent_class_or_interface_id(
             "class_declaration" | "interface_declaration" => {
                 if let Some(class_name_node) = parent_node.child_by_field_name("name") {
                     let class_name = extractor.base().get_node_text(&class_name_node);
-                    let class_start = parent_node.start_position();
-                    let candidates = [
-                        extractor.base().generate_id(
-                            &class_name,
-                            class_start.row as u32,
-                            class_start.column as u32,
-                        ),
-                        extractor.base().generate_id(
-                            &class_name,
-                            class_name_node.start_position().row as u32,
-                            class_name_node.start_position().column as u32,
-                        ),
-                    ];
-
-                    for candidate in candidates {
-                        if extractor.base().symbol_map.contains_key(&candidate) {
-                            return Some(candidate);
-                        }
-                    }
-
-                    if let Some((id, _symbol)) =
-                        extractor.base().symbol_map.iter().find(|(_, symbol)| {
-                            symbol.name == class_name
-                                && (symbol.kind == SymbolKind::Class
-                                    || symbol.kind == SymbolKind::Interface)
-                        })
-                    {
-                        return Some(id.clone());
+                    let parent_id = extractor
+                        .base()
+                        .generate_id_for_node(&class_name, &parent_node);
+                    if extractor.base().symbol_map.contains_key(&parent_id) {
+                        return Some(parent_id);
                     }
                 }
             }

@@ -1,18 +1,40 @@
 use std::collections::HashMap;
 
 use super::span::{NormalizedSpan, RecordOffset};
-use super::types::ExtractionResults;
+use super::types::{ExtractionResults, TypeInfo};
+use tracing::warn;
 
 fn relationship_id(
     from_symbol_id: &str,
     to_symbol_id: &str,
     kind: &impl std::fmt::Debug,
     line_number: u32,
+    previous_id: &str,
 ) -> String {
+    let previous_digest = format!("{:x}", md5::compute(previous_id.as_bytes()));
     format!(
-        "{}_{}_{:?}_{}",
-        from_symbol_id, to_symbol_id, kind, line_number
+        "{}_{}_{:?}_{}_{}",
+        from_symbol_id, to_symbol_id, kind, line_number, previous_digest
     )
+}
+
+fn merge_type_info(types: &mut HashMap<String, TypeInfo>, incoming: HashMap<String, TypeInfo>) {
+    for (symbol_id, type_info) in incoming {
+        match types.get(&symbol_id) {
+            Some(existing) if existing == &type_info => {}
+            Some(existing) => {
+                warn!(
+                    symbol_id = %symbol_id,
+                    existing_type = %existing.resolved_type,
+                    incoming_type = %type_info.resolved_type,
+                    "conflicting TypeInfo for symbol id; keeping existing row"
+                );
+            }
+            None => {
+                types.insert(symbol_id, type_info);
+            }
+        }
+    }
 }
 
 impl ExtractionResults {
@@ -35,7 +57,7 @@ impl ExtractionResults {
             .append(&mut other.pending_relationships);
         self.structured_pending_relationships
             .append(&mut other.structured_pending_relationships);
-        self.types.extend(other.types);
+        merge_type_info(&mut self.types, other.types);
         self.identifiers.append(&mut other.identifiers);
         self.parse_diagnostics.append(&mut other.parse_diagnostics);
     }
@@ -120,6 +142,7 @@ impl ExtractionResults {
         }
 
         for relationship in &mut self.relationships {
+            let previous_id = relationship.id.clone();
             if let Some(new_from_symbol_id) = symbol_id_map.get(&relationship.from_symbol_id) {
                 relationship.from_symbol_id = new_from_symbol_id.clone();
             }
@@ -132,6 +155,7 @@ impl ExtractionResults {
                 relationship.to_symbol_id.as_str(),
                 &relationship.kind,
                 relationship.line_number,
+                previous_id.as_str(),
             );
         }
 

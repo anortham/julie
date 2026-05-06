@@ -12,6 +12,7 @@ use super::relationship_resolution::StructuredPendingRelationship;
 use super::span::{NormalizedSpan, normalize_file_path};
 use super::types::{
     ContextConfig, Identifier, PendingRelationship, Relationship, Symbol, TypeInfo,
+    stable_location_id,
 };
 
 /// Base implementation for language extractors
@@ -191,7 +192,11 @@ impl BaseExtractor {
     }
 
     pub fn generate_id_for_span(&self, name: &str, span: &NormalizedSpan) -> String {
-        self.generate_id(name, span.start_line, span.start_column)
+        stable_location_id(self.file_path.as_str(), name, *span)
+    }
+
+    pub fn generate_id_for_node(&self, name: &str, node: &Node) -> String {
+        self.generate_id_for_span(name, &NormalizedSpan::from_node(node))
     }
 
     /// Extract code context around a symbol using configurable parameters

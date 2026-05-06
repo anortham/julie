@@ -124,11 +124,14 @@ impl BaseExtractor {
     ) -> Relationship {
         Relationship {
             id: format!(
-                "{}_{}_{:?}_{}",
+                "{}_{}_{:?}_{}_{}_{}_{}",
                 from_symbol_id,
                 to_symbol_id,
                 kind,
-                node.start_position().row
+                node.start_position().row,
+                node.start_position().column,
+                node.start_byte(),
+                node.end_byte()
             ),
             from_symbol_id,
             to_symbol_id,

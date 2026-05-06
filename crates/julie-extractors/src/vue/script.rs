@@ -7,7 +7,7 @@ use super::helpers::{
     COMPUTED_OBJECT_RE, DATA_FUNCTION_RE, FUNCTION_DEF_RE, METHODS_OBJECT_RE, PROPS_OBJECT_RE,
 };
 use super::parsing::VueSection;
-use crate::base::{BaseExtractor, Symbol, SymbolKind};
+use crate::base::{BaseExtractor, NormalizedSpan, Symbol, SymbolKind};
 use crate::test_detection::is_test_symbol;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -197,8 +197,15 @@ pub(super) fn create_symbol_manual(
         annotations: Vec::new(),
     };
 
-    // Generate ID similar to standard approach
-    let id = format!("{}:{}:{}", name, start_line, start_column);
+    let span = NormalizedSpan {
+        start_line: start_line as u32,
+        start_column: start_column as u32,
+        end_line: end_line as u32,
+        end_column: end_column as u32,
+        start_byte: 0,
+        end_byte: 0,
+    };
+    let id = base.generate_id_for_span(name, &span);
 
     Symbol {
         id,

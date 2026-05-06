@@ -1,4 +1,6 @@
-use crate::base::{BaseExtractor, Symbol, SymbolKind, SymbolOptions, containing_symbol_at_line};
+use crate::base::{
+    BaseExtractor, NormalizedSpan, Symbol, SymbolKind, SymbolOptions, containing_symbol_at_line,
+};
 use regex::Regex;
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -325,19 +327,27 @@ fn line_symbol(
     doc_comment: Option<String>,
     metadata: HashMap<String, Value>,
 ) -> Symbol {
-    let id = base.generate_id(&name, line_number, start_column);
-    Symbol {
-        id,
-        name,
-        kind,
-        language: base.language.clone(),
-        file_path: base.file_path.clone(),
+    let span = NormalizedSpan {
         start_line: line_number,
         start_column,
         end_line: line_number,
         end_column,
         start_byte: line_byte_offset + start_column,
         end_byte: line_byte_offset + end_column,
+    };
+    let id = base.generate_id_for_span(&name, &span);
+    Symbol {
+        id,
+        name,
+        kind,
+        language: base.language.clone(),
+        file_path: base.file_path.clone(),
+        start_line: span.start_line,
+        start_column: span.start_column,
+        end_line: span.end_line,
+        end_column: span.end_column,
+        start_byte: span.start_byte,
+        end_byte: span.end_byte,
         signature,
         doc_comment,
         visibility: None,

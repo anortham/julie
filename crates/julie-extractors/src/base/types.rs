@@ -167,13 +167,19 @@ impl Symbol {
 
     pub fn refresh_id(&mut self) -> String {
         let previous_id = self.id.clone();
-        self.id = stable_location_id(
-            self.file_path.as_str(),
-            self.name.as_str(),
-            self.start_line,
-            self.start_column,
-        );
+        self.id = stable_location_id(self.file_path.as_str(), self.name.as_str(), self.span());
         previous_id
+    }
+
+    fn span(&self) -> NormalizedSpan {
+        NormalizedSpan {
+            start_line: self.start_line,
+            start_column: self.start_column,
+            end_line: self.end_line,
+            end_column: self.end_column,
+            start_byte: self.start_byte,
+            end_byte: self.end_byte,
+        }
     }
 }
 
@@ -227,17 +233,33 @@ impl Identifier {
     }
 
     pub fn refresh_id(&mut self) {
-        self.id = stable_location_id(
-            self.file_path.as_str(),
-            self.name.as_str(),
-            self.start_line,
-            self.start_column,
-        );
+        self.id = stable_location_id(self.file_path.as_str(), self.name.as_str(), self.span());
+    }
+
+    fn span(&self) -> NormalizedSpan {
+        NormalizedSpan {
+            start_line: self.start_line,
+            start_column: self.start_column,
+            end_line: self.end_line,
+            end_column: self.end_column,
+            start_byte: self.start_byte,
+            end_byte: self.end_byte,
+        }
     }
 }
 
-fn stable_location_id(file_path: &str, name: &str, start_line: u32, start_column: u32) -> String {
-    let input = format!("{file_path}:{name}:{start_line}:{start_column}");
+pub(crate) fn stable_location_id(file_path: &str, name: &str, span: NormalizedSpan) -> String {
+    let input = format!(
+        "{}:{}:{}:{}:{}:{}:{}:{}",
+        file_path,
+        name,
+        span.start_line,
+        span.start_column,
+        span.end_line,
+        span.end_column,
+        span.start_byte,
+        span.end_byte
+    );
     format!("{:x}", md5::compute(input.as_bytes()))
 }
 
