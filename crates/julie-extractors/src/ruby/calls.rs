@@ -4,21 +4,29 @@ use super::helpers::extract_method_name_from_call;
 use crate::base::{BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility};
 use tree_sitter::Node;
 
-/// Extract special method calls that create symbols
-pub(super) fn extract_call(base: &mut BaseExtractor, node: Node) -> Option<Symbol> {
-    let method_name = extract_method_name_from_call(node, |n| base.get_node_text(n))?;
+/// Extract special method calls that create symbols.
+pub(super) fn extract_call(
+    base: &mut BaseExtractor,
+    node: Node,
+    parent_id: Option<String>,
+) -> Vec<Symbol> {
+    let Some(method_name) = extract_method_name_from_call(node, |n| base.get_node_text(n)) else {
+        return Vec::new();
+    };
 
     match method_name.as_str() {
-        "require" | "require_relative" => extract_require(base, node),
+        "require" | "require_relative" => extract_require(base, node).into_iter().collect(),
         "attr_reader" | "attr_writer" | "attr_accessor" => {
-            extract_attr_accessor(base, node, &method_name)
+            extract_attr_accessor(base, node, &method_name, parent_id)
         }
         "define_method" | "define_singleton_method" => {
             extract_define_method(base, node, &method_name)
+                .into_iter()
+                .collect()
         }
-        "def_delegator" => extract_def_delegator(base, node),
-        "module_function" => None, // Recognized but no separate symbol needed
-        _ => None,
+        "def_delegator" => extract_def_delegator(base, node).into_iter().collect(),
+        "module_function" => Vec::new(), // Recognized but no separate symbol needed
+        _ => Vec::new(),
     }
 }
 
@@ -145,37 +153,41 @@ fn extract_require(base: &mut BaseExtractor, node: Node) -> Option<Symbol> {
     ))
 }
 
-/// Extract attr_reader/attr_writer/attr_accessor calls
+/// Extract attr_reader/attr_writer/attr_accessor calls.
 fn extract_attr_accessor(
     base: &mut BaseExtractor,
     node: Node,
     method_name: &str,
-) -> Option<Symbol> {
-    let arg_node = node.child_by_field_name("arguments")?;
+    parent_id: Option<String>,
+) -> Vec<Symbol> {
+    let Some(arg_node) = node.child_by_field_name("arguments") else {
+        return Vec::new();
+    };
     let symbol_nodes: Vec<_> = arg_node
         .children(&mut arg_node.walk())
         .filter(|c| matches!(c.kind(), "simple_symbol" | "symbol"))
         .collect();
 
-    if let Some(first_symbol) = symbol_nodes.first() {
-        let attr_name = base.get_node_text(first_symbol).replace(':', "");
-        let signature = format!("{} :{}", method_name, attr_name);
-        Some(base.create_symbol(
-            &node,
-            attr_name,
-            SymbolKind::Property,
-            SymbolOptions {
-                signature: Some(signature),
-                visibility: Some(Visibility::Public),
-                parent_id: None,
-                metadata: None,
-                doc_comment: None,
-                annotations: Vec::new(),
-            },
-        ))
-    } else {
-        None
-    }
+    symbol_nodes
+        .into_iter()
+        .map(|symbol_node| {
+            let attr_name = base.get_node_text(&symbol_node).replace(':', "");
+            let signature = format!("{} :{}", method_name, attr_name);
+            base.create_symbol(
+                &symbol_node,
+                attr_name,
+                SymbolKind::Property,
+                SymbolOptions {
+                    signature: Some(signature),
+                    visibility: Some(Visibility::Public),
+                    parent_id: parent_id.clone(),
+                    metadata: None,
+                    doc_comment: None,
+                    annotations: Vec::new(),
+                },
+            )
+        })
+        .collect()
 }
 
 /// Extract define_method/define_singleton_method calls

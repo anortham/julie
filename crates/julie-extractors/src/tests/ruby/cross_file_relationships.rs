@@ -375,4 +375,78 @@ end
             "Structured pending target should keep a terminal call name"
         );
     }
+
+    #[test]
+    fn test_cross_file_inheritance_emits_structured_pending_relationship() {
+        let code = r#"
+class UsersController < ApplicationController
+end
+"#;
+
+        let results = extract_full("app/controllers/users_controller.rb", code);
+        let controller = results
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == "UsersController")
+            .expect("UsersController class should be extracted");
+
+        assert!(
+            results
+                .relationships
+                .iter()
+                .all(|relationship| relationship.kind != RelationshipKind::Extends),
+            "cross-file superclass should not produce a resolved same-file edge"
+        );
+
+        let pending = results
+            .structured_pending_relationships
+            .iter()
+            .find(|pending| {
+                pending.pending.kind == RelationshipKind::Extends
+                    && pending.target.display_name == "ApplicationController"
+            })
+            .expect("cross-file superclass should create structured pending relationship");
+
+        assert_eq!(pending.pending.from_symbol_id, controller.id);
+        assert_eq!(pending.target.terminal_name, "ApplicationController");
+        assert_eq!(
+            pending.caller_scope_symbol_id.as_deref(),
+            Some(controller.id.as_str())
+        );
+    }
+
+    #[test]
+    fn test_cross_file_include_and_extend_emit_structured_pending_relationships() {
+        let code = r#"
+class User
+  include Auditable
+  extend Searchable
+end
+"#;
+
+        let results = extract_full("app/models/user.rb", code);
+        let user = results
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == "User")
+            .expect("User class should be extracted");
+
+        for target in ["Auditable", "Searchable"] {
+            let pending = results
+                .structured_pending_relationships
+                .iter()
+                .find(|pending| {
+                    pending.pending.kind == RelationshipKind::Implements
+                        && pending.target.display_name == target
+                })
+                .unwrap_or_else(|| panic!("missing structured pending relationship for {target}"));
+
+            assert_eq!(pending.pending.from_symbol_id, user.id);
+            assert_eq!(pending.target.terminal_name, target);
+            assert_eq!(
+                pending.caller_scope_symbol_id.as_deref(),
+                Some(user.id.as_str())
+            );
+        }
+    }
 }
