@@ -414,4 +414,42 @@ with_env <- function(expr, envir = parent.frame()) {
             "Should find with_env function"
         );
     }
+
+    #[test]
+    fn test_r_roxygen_comment_attaches_to_function_symbols() {
+        let r_code = r#"
+# Plain setup comment should not become documentation
+#' Safely average numeric values
+#'
+#' @param x Numeric vector.
+#' @return Single numeric mean.
+safe_mean <- function(x) {
+  mean(x, na.rm = TRUE)
+}
+
+# This ordinary hash comment is intentionally not roxygen
+plain_helper <- function(x) {
+  x
+}
+"#;
+
+        let symbols = extract_symbols(r_code);
+
+        let safe_mean = symbols
+            .iter()
+            .find(|s| s.name == "safe_mean" && s.kind == SymbolKind::Function)
+            .expect("safe_mean should be extracted");
+        assert_eq!(
+            safe_mean.doc_comment.as_deref(),
+            Some(
+                "#' Safely average numeric values\n#'\n#' @param x Numeric vector.\n#' @return Single numeric mean."
+            )
+        );
+
+        let plain_helper = symbols
+            .iter()
+            .find(|s| s.name == "plain_helper" && s.kind == SymbolKind::Function)
+            .expect("plain_helper should be extracted");
+        assert_eq!(plain_helper.doc_comment, None);
+    }
 }

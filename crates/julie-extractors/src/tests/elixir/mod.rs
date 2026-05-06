@@ -187,6 +187,121 @@ end"#;
     }
 
     #[test]
+    fn test_elixir_doc_and_moduledoc_attach_to_symbols() {
+        let code = r#"defmodule MyApp.Guards do
+  @moduledoc "Guard helpers"
+
+  @doc "Checks for an even integer"
+  defguard is_even(value) when is_integer(value) and rem(value, 2) == 0
+
+  @doc "Delegates child specs"
+  defdelegate child_spec(opts), to: Supervisor
+
+  @doc "Raised when the payload is invalid"
+  defexception [:message, :code]
+end"#;
+        let (mut extractor, tree) = create_extractor_and_parse(code);
+        let symbols = extractor.extract_symbols(&tree);
+
+        let module = symbols
+            .iter()
+            .find(|s| s.name == "MyApp.Guards" && s.kind == SymbolKind::Module)
+            .expect("Should find module");
+        assert!(
+            module
+                .annotations
+                .iter()
+                .any(|annotation| annotation.annotation_key == "moduledoc")
+        );
+
+        let is_even = symbols
+            .iter()
+            .find(|s| s.name == "is_even" && s.kind == SymbolKind::Function)
+            .expect("Should find defguard function symbol");
+        assert!(
+            is_even
+                .annotations
+                .iter()
+                .any(|annotation| annotation.annotation_key == "doc")
+        );
+
+        let child_spec = symbols
+            .iter()
+            .find(|s| s.name == "child_spec" && s.kind == SymbolKind::Delegate)
+            .expect("Should find defdelegate symbol");
+        assert!(
+            child_spec
+                .annotations
+                .iter()
+                .any(|annotation| annotation.annotation_key == "doc")
+        );
+
+        let exception = symbols
+            .iter()
+            .find(|s| s.name == "MyApp.Guards" && s.kind == SymbolKind::Struct)
+            .expect("Should find defexception struct symbol");
+        assert!(
+            exception
+                .annotations
+                .iter()
+                .any(|annotation| annotation.annotation_key == "doc")
+        );
+    }
+
+    #[test]
+    fn test_elixir_defguard_defdelegate_defexception_are_extracted() {
+        let code = r#"defmodule MyApp.Guards do
+  defguard is_even(value) when is_integer(value) and rem(value, 2) == 0
+  defdelegate child_spec(opts), to: Supervisor
+  defexception [:message, :code]
+  defoverridable child_spec: 1
+end"#;
+        let (mut extractor, tree) = create_extractor_and_parse(code);
+        let symbols = extractor.extract_symbols(&tree);
+
+        let guard = symbols
+            .iter()
+            .find(|s| s.name == "is_even" && s.kind == SymbolKind::Function)
+            .expect("defguard should be extracted as a function symbol");
+        assert_eq!(guard.signature.as_deref(), Some("defguard is_even(value)"));
+
+        let delegate = symbols
+            .iter()
+            .find(|s| s.name == "child_spec" && s.kind == SymbolKind::Delegate)
+            .expect("defdelegate should be extracted as a delegate symbol");
+        assert_eq!(
+            delegate.signature.as_deref(),
+            Some("defdelegate child_spec(opts)")
+        );
+
+        let exception = symbols
+            .iter()
+            .find(|s| s.name == "MyApp.Guards" && s.kind == SymbolKind::Struct)
+            .expect("defexception should be extracted as a struct symbol");
+        assert_eq!(
+            exception
+                .metadata
+                .as_ref()
+                .and_then(|metadata| metadata.get("exception"))
+                .and_then(|value| value.as_bool()),
+            Some(true)
+        );
+
+        let overridable = symbols
+            .iter()
+            .find(|s| s.name == "child_spec/1" && s.kind == SymbolKind::Method)
+            .expect("defoverridable should be extracted as an overridable method marker");
+        assert_eq!(
+            overridable
+                .metadata
+                .as_ref()
+                .and_then(|metadata| metadata.get("overridable"))
+                .and_then(|value| value.as_bool()),
+            Some(true)
+        );
+    }
+
+    #[test]
     fn test_elixir_def_defp_visibility() {
         let code = r#"defmodule Foo do
   def public_fn(x), do: x

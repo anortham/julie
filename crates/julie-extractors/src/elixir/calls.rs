@@ -4,6 +4,7 @@
 /// This module inspects the call target and dispatches to the appropriate handler.
 use super::ElixirExtractor;
 use super::attributes;
+use super::definition_forms;
 use super::helpers;
 use crate::base::{Symbol, SymbolKind, SymbolOptions, Visibility, normalize_annotations};
 use crate::test_detection::is_test_symbol;
@@ -29,9 +30,20 @@ pub(super) fn dispatch_call(
         "defp" => extract_def(extractor, node, parent_id, Visibility::Private),
         "defmacro" => extract_defmacro(extractor, node, parent_id, Visibility::Public),
         "defmacrop" => extract_defmacro(extractor, node, parent_id, Visibility::Private),
+        "defguard" => {
+            definition_forms::extract_defguard(extractor, node, parent_id, Visibility::Public)
+        }
+        "defguardp" => {
+            definition_forms::extract_defguard(extractor, node, parent_id, Visibility::Private)
+        }
+        "defdelegate" => definition_forms::extract_defdelegate(extractor, node, parent_id),
         "defprotocol" => extract_defprotocol(extractor, node, symbols, parent_id),
         "defimpl" => extract_defimpl(extractor, node, symbols, parent_id),
         "defstruct" => extract_defstruct(extractor, node, symbols, parent_id),
+        "defexception" => {
+            definition_forms::extract_defexception(extractor, node, symbols, parent_id)
+        }
+        "defoverridable" => definition_forms::extract_defoverridable(extractor, node, parent_id),
         "import" => extract_import_call(extractor, node, parent_id),
         "use" => extract_use_call(extractor, node, parent_id),
         "alias" => extract_alias_call(extractor, node, parent_id),

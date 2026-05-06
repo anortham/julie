@@ -534,6 +534,7 @@ fn recover_dart3_modifier_class(
             visibility: Some(Visibility::Public),
             parent_id: parent_id.map(|id| id.to_string()),
             metadata: Some(HashMap::new()),
+            doc_comment: base.find_doc_comment(node),
             ..Default::default()
         },
     ))
@@ -620,6 +621,7 @@ fn recover_dart3_generic_modifier_class<'a>(
             visibility: Some(Visibility::Public),
             parent_id: parent_id.map(|id| id.to_string()),
             metadata: Some(HashMap::new()),
+            doc_comment: base.find_doc_comment(node),
             ..Default::default()
         },
     );
@@ -766,6 +768,7 @@ fn recover_mixin_class_declaration<'a>(
             visibility: Some(Visibility::Public),
             parent_id: parent_id.map(|id| id.to_string()),
             metadata: Some(HashMap::new()),
+            doc_comment: base.find_doc_comment(node),
             ..Default::default()
         },
     ))
@@ -848,6 +851,7 @@ fn recover_from_node_recursive(
                             visibility: Some(Visibility::Public),
                             parent_id: parent_id.map(|id| id.to_string()),
                             metadata: Some(HashMap::new()),
+                            doc_comment: base.find_doc_comment(node),
                             ..Default::default()
                         },
                     );
@@ -874,6 +878,7 @@ fn recover_from_node_recursive(
                             visibility: Some(Visibility::Public),
                             parent_id: parent_id.map(|id| id.to_string()),
                             metadata: Some(HashMap::new()),
+                            doc_comment: base.find_doc_comment(node),
                             ..Default::default()
                         },
                     );

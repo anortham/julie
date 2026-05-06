@@ -45,7 +45,8 @@ fn walk_for_relationships(
                     }
                     // Skip definition macros for call relationships
                     "defmodule" | "def" | "defp" | "defmacro" | "defmacrop" | "defprotocol"
-                    | "defstruct" | "import" | "alias" | "require" => {}
+                    | "defstruct" | "defguard" | "defguardp" | "defdelegate" | "defexception"
+                    | "defoverridable" | "import" | "alias" | "require" => {}
                     _ => {
                         // Regular function call → Calls relationship
                         extract_call_relationship(

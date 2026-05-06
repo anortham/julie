@@ -2091,6 +2091,56 @@ class Person {
                 "Should have dartdoc for named constructor"
             );
         }
+
+        #[test]
+        fn test_dart_doc_comment_attaches_to_classes_methods_and_fields_exactly() {
+            let code = r#"
+/// Public API for account records
+class Account {
+    /// Persisted account id
+    final String id;
+
+    /// Computes a display label
+    String label() => id;
+}
+"#;
+            let mut parser = init_parser();
+            let tree = parser.parse(code, None).unwrap();
+
+            let workspace_root = PathBuf::from("/tmp/test");
+            let mut extractor = DartExtractor::new(
+                "dart".to_string(),
+                "test.dart".to_string(),
+                code.to_string(),
+                &workspace_root,
+            );
+
+            let symbols = extractor.extract_symbols(&tree);
+
+            let account = symbols
+                .iter()
+                .find(|s| s.name == "Account" && s.kind == SymbolKind::Class)
+                .expect("Account class should be extracted");
+            assert_eq!(
+                account.doc_comment.as_deref(),
+                Some("/// Public API for account records")
+            );
+
+            let id = symbols
+                .iter()
+                .find(|s| s.name == "id" && s.kind == SymbolKind::Field)
+                .expect("id field should be extracted");
+            assert_eq!(id.doc_comment.as_deref(), Some("/// Persisted account id"));
+
+            let label = symbols
+                .iter()
+                .find(|s| s.name == "label" && s.kind == SymbolKind::Method)
+                .expect("label method should be extracted");
+            assert_eq!(
+                label.doc_comment.as_deref(),
+                Some("/// Computes a display label")
+            );
+        }
     }
 
     mod typedef_kind {

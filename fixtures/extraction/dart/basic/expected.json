@@ -104,10 +104,14 @@
       "start_byte": 66,
       "end_byte": 78,
       "signature": "final int id",
-      "doc_comment": "[Final]",
+      "doc_comment": null,
       "visibility": "Public",
       "parent_key": "fixtures/extraction/dart/basic/source.dart:Worker:5:0",
-      "metadata": {},
+      "metadata": {
+        "isFinal": true,
+        "isLate": false,
+        "isStatic": false
+      },
       "annotations": [],
       "semantic_group": null,
       "confidence": null,

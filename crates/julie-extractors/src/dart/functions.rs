@@ -34,15 +34,16 @@ pub(super) fn extract_class(
             visibility: Some(Visibility::Public), // Dart classes are generally public unless private (_)
             parent_id: parent_id.map(|id| id.to_string()),
             metadata: Some(HashMap::new()),
-            doc_comment: None,
+            doc_comment: base.find_doc_comment(node),
             annotations,
         },
     );
 
-    // Add Flutter widget annotation in documentation
     if is_widget {
-        let doc = symbol.doc_comment.unwrap_or_default();
-        symbol.doc_comment = Some(format!("{} [Flutter Widget]", doc).trim().to_string());
+        symbol
+            .metadata
+            .get_or_insert_with(HashMap::new)
+            .insert("isFlutterWidget".to_string(), serde_json::Value::Bool(true));
     }
 
     Some(symbol)
@@ -83,7 +84,7 @@ pub(super) fn extract_function(
             parent_id: parent_id.map(|id| id.to_string()),
             metadata: Some(HashMap::new()),
             annotations,
-            ..Default::default()
+            doc_comment: base.find_doc_comment(node),
         },
     );
 
@@ -174,7 +175,7 @@ pub(super) fn extract_method(
             parent_id: parent_id.map(|id| id.to_string()),
             metadata: Some(HashMap::new()),
             annotations,
-            ..Default::default()
+            doc_comment: base.find_doc_comment(node),
         },
     );
 
@@ -280,7 +281,7 @@ pub(super) fn extract_constructor(
             parent_id: parent_id.map(|id| id.to_string()),
             metadata: Some(HashMap::new()),
             annotations,
-            ..Default::default()
+            doc_comment: base.find_doc_comment(node),
         },
     );
 
@@ -352,7 +353,7 @@ pub(super) fn extract_variable(
                         parent_id: parent_id.map(|id| id.to_string()),
                         metadata: Some(HashMap::new()),
                         annotations,
-                        ..Default::default()
+                        doc_comment: base.find_doc_comment(node),
                     },
                 );
 

@@ -447,4 +447,42 @@ duplicate <- function(x) {
             "Ambiguous duplicate call should be recorded as a pending relationship"
         );
     }
+
+    #[test]
+    fn test_r_source_call_emits_import_and_pending_relationship() {
+        let r_code = r#"
+source("helpers/math.R")
+
+main <- function(value) {
+  helper(value)
+}
+"#;
+        let tree = crate::tests::helpers::init_parser(r_code, "r");
+        let workspace_root = std::path::PathBuf::from("/tmp/test");
+        let mut extractor = crate::r::RExtractor::new(
+            "r".to_string(),
+            "test.R".to_string(),
+            r_code.to_string(),
+            &workspace_root,
+        );
+        let symbols = extractor.extract_symbols(&tree);
+        let _relationships = extractor.extract_relationships(&tree, &symbols);
+
+        let source_import = symbols
+            .iter()
+            .find(|s| s.name == "helpers/math.R" && s.kind == SymbolKind::Import)
+            .expect("source() should emit an import symbol for the sourced path");
+        assert_eq!(
+            source_import.signature.as_deref(),
+            Some("source(\"helpers/math.R\")")
+        );
+
+        let pending_import = extractor
+            .get_structured_pending_relationships()
+            .into_iter()
+            .find(|pending| pending.pending.kind == RelationshipKind::Imports)
+            .expect("source() should emit a pending import relationship");
+        assert_eq!(pending_import.target.display_name, "helpers/math.R");
+        assert_eq!(pending_import.target.terminal_name, "helpers/math.R");
+    }
 }

@@ -81,30 +81,23 @@ pub(super) fn extract_field(
             }),
             parent_id: parent_id.map(|id| id.to_string()),
             metadata: Some(HashMap::new()),
+            doc_comment: base.find_doc_comment(node),
             ..Default::default()
         },
     );
 
-    // Add field annotations
-    let mut annotations = Vec::new();
-    if is_late {
-        annotations.push("Late");
-    }
-    if is_final {
-        annotations.push("Final");
-    }
-    if is_static {
-        annotations.push("Static");
-    }
-
-    if !annotations.is_empty() {
-        let doc = symbol.doc_comment.unwrap_or_default();
-        symbol.doc_comment = Some(
-            format!("{} [{}]", doc, annotations.join(", "))
-                .trim()
-                .to_string(),
-        );
-    }
+    symbol
+        .metadata
+        .get_or_insert_with(HashMap::new)
+        .insert("isLate".to_string(), serde_json::Value::Bool(is_late));
+    symbol
+        .metadata
+        .get_or_insert_with(HashMap::new)
+        .insert("isFinal".to_string(), serde_json::Value::Bool(is_final));
+    symbol
+        .metadata
+        .get_or_insert_with(HashMap::new)
+        .insert("isStatic".to_string(), serde_json::Value::Bool(is_static));
 
     Some(symbol)
 }
@@ -132,13 +125,15 @@ pub(super) fn extract_getter(
             }),
             parent_id: parent_id.map(|id| id.to_string()),
             metadata: Some(HashMap::new()),
+            doc_comment: base.find_doc_comment(node),
             ..Default::default()
         },
     );
 
-    // Add getter annotation
-    let doc = symbol.doc_comment.unwrap_or_default();
-    symbol.doc_comment = Some(format!("{} [Getter]", doc).trim().to_string());
+    symbol.metadata.get_or_insert_with(HashMap::new).insert(
+        "accessorKind".to_string(),
+        serde_json::Value::String("getter".to_string()),
+    );
 
     Some(symbol)
 }
@@ -166,13 +161,15 @@ pub(super) fn extract_setter(
             }),
             parent_id: parent_id.map(|id| id.to_string()),
             metadata: Some(HashMap::new()),
+            doc_comment: base.find_doc_comment(node),
             ..Default::default()
         },
     );
 
-    // Add setter annotation
-    let doc = symbol.doc_comment.unwrap_or_default();
-    symbol.doc_comment = Some(format!("{} [Setter]", doc).trim().to_string());
+    symbol.metadata.get_or_insert_with(HashMap::new).insert(
+        "accessorKind".to_string(),
+        serde_json::Value::String("setter".to_string()),
+    );
 
     Some(symbol)
 }

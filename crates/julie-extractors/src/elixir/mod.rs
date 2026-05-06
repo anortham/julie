@@ -12,6 +12,7 @@ use tree_sitter::{Node, Tree};
 
 mod attributes;
 mod calls;
+mod definition_forms;
 mod helpers;
 mod identifiers;
 mod relationships;
