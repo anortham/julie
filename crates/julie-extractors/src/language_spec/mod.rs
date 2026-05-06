@@ -14,6 +14,7 @@ pub struct LanguageCapabilities {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DocCommentStyle {
+    SlashStarDocBlock,
     PlainSlashStarBlock,
     HtmlBlock,
     TripleSlash,
@@ -49,17 +50,23 @@ impl LanguageSpec {
 
     pub fn is_doc_comment(&self, text: &str) -> bool {
         let trimmed = text.trim_start();
-        trimmed.starts_with("/**")
-            || self
-                .doc_comment_styles
-                .iter()
-                .any(|style| style.matches(trimmed))
+        self.doc_comment_styles
+            .iter()
+            .any(|style| style.starts_doc_comment(trimmed))
+    }
+
+    pub fn continues_doc_comment(&self, text: &str) -> bool {
+        let trimmed = text.trim_start();
+        self.doc_comment_styles
+            .iter()
+            .any(|style| style.continues_doc_comment(trimmed))
     }
 }
 
 impl DocCommentStyle {
-    fn matches(self, trimmed: &str) -> bool {
+    fn starts_doc_comment(self, trimmed: &str) -> bool {
         match self {
+            Self::SlashStarDocBlock => trimmed.starts_with("/**"),
             Self::PlainSlashStarBlock => trimmed.starts_with("/*"),
             Self::HtmlBlock => trimmed.starts_with("<!--"),
             Self::TripleSlash => trimmed.starts_with("///"),
@@ -67,7 +74,7 @@ impl DocCommentStyle {
             Self::RustInnerBlock => trimmed.starts_with("/*!"),
             Self::GoLine => trimmed.starts_with("//"),
             Self::LuaTripleDash => trimmed.starts_with("---"),
-            Self::LuaDoubleDash => trimmed.starts_with("--"),
+            Self::LuaDoubleDash => false,
             Self::LuaBlock => trimmed.starts_with("--[["),
             Self::SqlLine => trimmed.starts_with("--"),
             Self::RHashPrime => trimmed.starts_with("#'"),
@@ -75,6 +82,13 @@ impl DocCommentStyle {
             Self::RazorBlock => trimmed.starts_with("@*"),
             Self::GdscriptDoubleHash => trimmed.starts_with("##"),
             Self::VbTripleApostrophe => trimmed.starts_with("'''"),
+        }
+    }
+
+    fn continues_doc_comment(self, trimmed: &str) -> bool {
+        match self {
+            Self::LuaDoubleDash => trimmed.starts_with("--"),
+            _ => self.starts_doc_comment(trimmed),
         }
     }
 }
@@ -121,21 +135,42 @@ pub const RELATIONSHIP_DATA_CAPABILITIES: LanguageCapabilities = LanguageCapabil
 
 const EMPTY: &[DocCommentStyle] = &[];
 const RUST_DOCS: &[DocCommentStyle] = &[
+    DocCommentStyle::SlashStarDocBlock,
     DocCommentStyle::TripleSlash,
     DocCommentStyle::RustInnerLine,
     DocCommentStyle::RustInnerBlock,
 ];
-const C_DOCS: &[DocCommentStyle] = &[DocCommentStyle::TripleSlash];
+const C_DOCS: &[DocCommentStyle] = &[
+    DocCommentStyle::SlashStarDocBlock,
+    DocCommentStyle::TripleSlash,
+];
 const GO_DOCS: &[DocCommentStyle] = &[
     DocCommentStyle::PlainSlashStarBlock,
     DocCommentStyle::GoLine,
 ];
-const JAVA_DOCS: &[DocCommentStyle] = &[DocCommentStyle::TripleSlash];
-const CSHARP_DOCS: &[DocCommentStyle] = &[DocCommentStyle::TripleSlash];
+const JAVA_DOCS: &[DocCommentStyle] = &[
+    DocCommentStyle::SlashStarDocBlock,
+    DocCommentStyle::TripleSlash,
+];
+const CSHARP_DOCS: &[DocCommentStyle] = &[
+    DocCommentStyle::SlashStarDocBlock,
+    DocCommentStyle::TripleSlash,
+];
 const VBNET_DOCS: &[DocCommentStyle] = &[DocCommentStyle::VbTripleApostrophe];
-const SWIFT_DOCS: &[DocCommentStyle] = &[DocCommentStyle::TripleSlash];
-const KOTLIN_DOCS: &[DocCommentStyle] = &[DocCommentStyle::TripleSlash];
-const DART_DOCS: &[DocCommentStyle] = &[DocCommentStyle::TripleSlash];
+const SWIFT_DOCS: &[DocCommentStyle] = &[
+    DocCommentStyle::SlashStarDocBlock,
+    DocCommentStyle::TripleSlash,
+];
+const KOTLIN_DOCS: &[DocCommentStyle] = &[
+    DocCommentStyle::SlashStarDocBlock,
+    DocCommentStyle::TripleSlash,
+];
+const DART_DOCS: &[DocCommentStyle] = &[
+    DocCommentStyle::SlashStarDocBlock,
+    DocCommentStyle::TripleSlash,
+];
+const JS_DOCS: &[DocCommentStyle] = &[DocCommentStyle::SlashStarDocBlock];
+const PHP_DOCS: &[DocCommentStyle] = &[DocCommentStyle::SlashStarDocBlock];
 const HTML_DOCS: &[DocCommentStyle] = &[DocCommentStyle::HtmlBlock];
 const CSS_DOCS: &[DocCommentStyle] = &[DocCommentStyle::PlainSlashStarBlock];
 const SQL_DOCS: &[DocCommentStyle] = &[
@@ -143,7 +178,6 @@ const SQL_DOCS: &[DocCommentStyle] = &[
     DocCommentStyle::SqlLine,
 ];
 const LUA_DOCS: &[DocCommentStyle] = &[
-    DocCommentStyle::PlainSlashStarBlock,
     DocCommentStyle::LuaTripleDash,
     DocCommentStyle::LuaBlock,
     DocCommentStyle::LuaDoubleDash,

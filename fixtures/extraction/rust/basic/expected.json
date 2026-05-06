@@ -56,7 +56,7 @@
       "end_column": 5,
       "start_byte": 172,
       "end_byte": 230,
-      "signature": "pub fn helper(value: i32)",
+      "signature": "pub fn helper(value: i32) -> i32",
       "doc_comment": null,
       "visibility": "Public",
       "parent_key": "fixtures/extraction/rust/basic/source.rs:fixture:1:0",
@@ -100,7 +100,7 @@
       "end_column": 9,
       "start_byte": 96,
       "end_byte": 160,
-      "signature": "pub fn run(&self)",
+      "signature": "pub fn run(&self) -> i32",
       "doc_comment": null,
       "visibility": "Public",
       "parent_key": "fixtures/extraction/rust/basic/source.rs:Worker:2:4",
@@ -163,7 +163,25 @@
   ],
   "types": [
     {
+      "symbol_key": "fixtures/extraction/rust/basic/source.rs:helper:12:4",
+      "resolved_type": "i32",
+      "generic_params": null,
+      "constraints": null,
+      "is_inferred": true,
+      "language": "rust",
+      "metadata": null
+    },
+    {
       "symbol_key": "fixtures/extraction/rust/basic/source.rs:id:3:8",
+      "resolved_type": "i32",
+      "generic_params": null,
+      "constraints": null,
+      "is_inferred": true,
+      "language": "rust",
+      "metadata": null
+    },
+    {
+      "symbol_key": "fixtures/extraction/rust/basic/source.rs:run:7:8",
       "resolved_type": "i32",
       "generic_params": null,
       "constraints": null,

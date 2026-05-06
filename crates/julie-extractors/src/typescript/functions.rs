@@ -29,7 +29,7 @@ pub(super) fn extract_function(extractor: &mut TypeScriptExtractor, node: Node) 
     let name = name?;
 
     let signature = build_function_signature(extractor, &node, &name);
-    let visibility = extractor.base().extract_visibility(&node);
+    let visibility = helpers::extract_ts_visibility(node);
     let content = extractor.base().content.clone();
     let decorator_texts = helpers::extract_decorator_texts(node, &content);
     let annotations = normalize_annotations(&decorator_texts, "typescript");
@@ -117,9 +117,7 @@ pub(super) fn extract_method(extractor: &mut TypeScriptExtractor, node: Node) ->
     let decorator_prefix = helpers::decorator_prefix(&decorators);
     let signature = format!("{}{}", decorator_prefix, base_sig);
 
-    // Use TypeScript-specific visibility extraction (accessibility_modifier nodes)
-    let visibility =
-        helpers::extract_ts_visibility(node).or_else(|| extractor.base().extract_visibility(&node));
+    let visibility = helpers::extract_ts_visibility(node);
 
     // Check for modifiers
     let is_async = helpers::has_modifier(node, "async");

@@ -14,7 +14,7 @@ pub(super) fn extract_class(extractor: &mut TypeScriptExtractor, node: Node) -> 
     let name_node = node.child_by_field_name("name");
     let name = name_node.map(|n| extractor.base().get_node_text(&n))?;
 
-    let visibility = extractor.base().extract_visibility(&node);
+    let visibility = helpers::extract_ts_visibility(node);
     let mut metadata = HashMap::new();
 
     // Check for inheritance (extends clause)

@@ -491,6 +491,42 @@ class UserService {
 }
 
 #[test]
+fn test_class_and_constructor_visibility_ignore_parameter_properties() {
+    let code = r#"
+export class Worker {
+    constructor(private id: number) {}
+}
+"#;
+
+    let mut parser = tree_sitter::Parser::new();
+    parser
+        .set_language(&tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into())
+        .unwrap();
+    let tree = parser.parse(code, None).unwrap();
+
+    let workspace_root = PathBuf::from("/tmp/test");
+    let mut extractor = TypeScriptExtractor::new(
+        "typescript".to_string(),
+        "test.ts".to_string(),
+        code.to_string(),
+        &workspace_root,
+    );
+    let symbols = extractor.extract_symbols(&tree);
+
+    let worker = symbols
+        .iter()
+        .find(|s| s.name == "Worker" && s.kind == SymbolKind::Class)
+        .expect("Should extract Worker class");
+    assert_eq!(worker.visibility, None);
+
+    let constructor = symbols
+        .iter()
+        .find(|s| s.name == "constructor" && s.kind == SymbolKind::Constructor)
+        .expect("Should extract constructor");
+    assert_eq!(constructor.visibility, None);
+}
+
+#[test]
 fn test_readonly_modifier_in_signature() {
     let code = r#"
 class Config {

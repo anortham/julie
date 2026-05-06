@@ -20,6 +20,9 @@ impl VisibilityExt for Visibility {
             Visibility::Public => "public".to_string(),
             Visibility::Private => "private".to_string(),
             Visibility::Protected => "protected".to_string(),
+            Visibility::Internal => "internal".to_string(),
+            Visibility::FilePrivate => "fileprivate".to_string(),
+            Visibility::Open => "open".to_string(),
         }
     }
 }

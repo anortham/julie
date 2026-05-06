@@ -47,7 +47,7 @@ pub(super) const LANGUAGE_SPECS: &[LanguageSpec] = &[
         "tree-sitter-typescript",
         FULL_CAPABILITIES,
         parser_typescript,
-        EMPTY,
+        JS_DOCS,
     ),
     spec(
         "tsx",
@@ -55,7 +55,7 @@ pub(super) const LANGUAGE_SPECS: &[LanguageSpec] = &[
         "tree-sitter-typescript",
         FULL_CAPABILITIES,
         parser_tsx,
-        EMPTY,
+        JS_DOCS,
     ),
     spec(
         "javascript",
@@ -63,7 +63,7 @@ pub(super) const LANGUAGE_SPECS: &[LanguageSpec] = &[
         "tree-sitter-javascript",
         FULL_CAPABILITIES,
         parser_javascript,
-        EMPTY,
+        JS_DOCS,
     ),
     spec(
         "jsx",
@@ -71,7 +71,7 @@ pub(super) const LANGUAGE_SPECS: &[LanguageSpec] = &[
         "tree-sitter-javascript",
         FULL_CAPABILITIES,
         parser_javascript,
-        EMPTY,
+        JS_DOCS,
     ),
     spec(
         "html",
@@ -135,7 +135,7 @@ pub(super) const LANGUAGE_SPECS: &[LanguageSpec] = &[
         "tree-sitter-php",
         FULL_CAPABILITIES,
         parser_php,
-        EMPTY,
+        PHP_DOCS,
     ),
     spec(
         "ruby",

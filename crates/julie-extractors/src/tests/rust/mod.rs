@@ -1700,6 +1700,42 @@ pub const MAX_CONNECTIONS: usize = 1024;
         }
 
         #[test]
+        fn test_rust_inner_doc_comments_are_extracted() {
+            let rust_code = r#"
+pub mod config {
+    //! Runtime configuration helpers
+    //! shared by startup code.
+
+    pub fn load() {}
+}
+"#;
+
+            let mut parser = init_parser();
+            let tree = parser.parse(rust_code, None).unwrap();
+
+            let workspace_root = test_workspace_root();
+            let mut extractor = RustExtractor::new(
+                "rust".to_string(),
+                "test.rs".to_string(),
+                rust_code.to_string(),
+                &workspace_root,
+            );
+
+            let symbols = extractor.extract_symbols(&tree);
+            let module = symbols
+                .iter()
+                .find(|s| s.name == "config")
+                .expect("Should extract config module");
+
+            let doc = module
+                .doc_comment
+                .as_ref()
+                .expect("Module inner docs should be extracted");
+            assert!(doc.contains("Runtime configuration helpers"));
+            assert!(doc.contains("shared by startup code"));
+        }
+
+        #[test]
         fn test_symbol_without_doc_comment() {
             let rust_code = r#"
 pub fn no_doc_function() {

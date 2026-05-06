@@ -136,6 +136,9 @@ pub(super) fn extract_constant(
             Visibility::Public => "public",
             Visibility::Private => "private",
             Visibility::Protected => "protected",
+            Visibility::Internal => "internal",
+            Visibility::FilePrivate => "fileprivate",
+            Visibility::Open => "open",
         },
         name
     );

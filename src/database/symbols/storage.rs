@@ -25,11 +25,7 @@ impl SymbolDatabase {
                 .transpose()?;
 
             // Serialize visibility enum to string
-            let visibility_str = symbol.visibility.as_ref().map(|v| match v {
-                crate::extractors::base::Visibility::Public => "public",
-                crate::extractors::base::Visibility::Private => "private",
-                crate::extractors::base::Visibility::Protected => "protected",
-            });
+            let visibility_str = symbol.visibility.as_ref().map(|v| v.as_storage_str());
 
             // Debug log for markdown symbols
             if symbol.language == "markdown" {
@@ -90,12 +86,7 @@ impl SymbolDatabase {
                 .map(serde_json::to_string)
                 .transpose()?;
 
-            // Serialize visibility enum to string
-            let visibility_str = symbol.visibility.as_ref().map(|v| match v {
-                crate::extractors::base::Visibility::Public => "public",
-                crate::extractors::base::Visibility::Private => "private",
-                crate::extractors::base::Visibility::Protected => "protected",
-            });
+            let visibility_str = symbol.visibility.as_ref().map(|v| v.as_storage_str());
 
             tx.execute(
                 SYMBOL_UPSERT_SQL,

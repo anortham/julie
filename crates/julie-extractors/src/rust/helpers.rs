@@ -281,6 +281,10 @@ pub(super) fn find_doc_comment(base: &BaseExtractor, node: Node) -> Option<Strin
         }
     }
 
+    if let Some(doc_comment) = find_inner_doc_comment(base, node) {
+        return Some(doc_comment);
+    }
+
     // Also try the base extractor's implementation as a fallback
     if let Some(doc) = base.find_doc_comment(&node) {
         // Strip the /// or //! prefix and trim whitespace
@@ -314,6 +318,56 @@ pub(super) fn find_doc_comment(base: &BaseExtractor, node: Node) -> Option<Strin
     }
 
     None
+}
+
+fn find_inner_doc_comment(base: &BaseExtractor, node: Node) -> Option<String> {
+    let body = node
+        .children(&mut node.walk())
+        .find(|child| child.kind() == "declaration_list")?;
+
+    let mut doc_comments = Vec::new();
+    for child in body.children(&mut body.walk()) {
+        match child.kind() {
+            "{" | "}" => continue,
+            "line_comment" => {
+                let comment_text = base.get_node_text(&child);
+                let comment_text = comment_text.trim_start();
+                if let Some(stripped) = comment_text.strip_prefix("//!") {
+                    let doc_text = stripped.trim();
+                    if !doc_text.is_empty() {
+                        doc_comments.push(doc_text.to_string());
+                    }
+                    continue;
+                }
+                break;
+            }
+            "block_comment" => {
+                let comment_text = base.get_node_text(&child);
+                let comment_text = comment_text.trim_start();
+                if let Some(stripped) = comment_text.strip_prefix("/*!") {
+                    let trimmed = stripped.strip_suffix("*/").unwrap_or(stripped);
+                    let doc_text = trimmed
+                        .lines()
+                        .map(|line| line.trim_start_matches('*').trim())
+                        .filter(|line| !line.is_empty())
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    if !doc_text.is_empty() {
+                        doc_comments.push(doc_text);
+                    }
+                    continue;
+                }
+                break;
+            }
+            _ => break,
+        }
+    }
+
+    if doc_comments.is_empty() {
+        None
+    } else {
+        Some(doc_comments.join("\n"))
+    }
 }
 
 /// Extract doc string from #[doc = "..."] attribute

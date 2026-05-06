@@ -80,7 +80,7 @@
       "end_byte": 181,
       "signature": "class Worker implements Job",
       "doc_comment": null,
-      "visibility": "Private",
+      "visibility": null,
       "parent_key": null,
       "metadata": {
         "implements": [
@@ -107,7 +107,7 @@
       "end_byte": 120,
       "signature": "constructor(private id: number)",
       "doc_comment": null,
-      "visibility": "Private",
+      "visibility": null,
       "parent_key": "fixtures/extraction/typescript/basic/source.ts:Worker:5:7",
       "metadata": {
         "isAsync": false,

@@ -134,12 +134,8 @@ impl SymbolDatabase {
 
         // Deserialize visibility string to enum
         let visibility_str: Option<String> = row.get("visibility")?;
-        let visibility = visibility_str.and_then(|v| match v.as_str() {
-            "public" => Some(crate::extractors::base::Visibility::Public),
-            "private" => Some(crate::extractors::base::Visibility::Private),
-            "protected" => Some(crate::extractors::base::Visibility::Protected),
-            _ => None,
-        });
+        let visibility =
+            visibility_str.and_then(|v| crate::extractors::base::Visibility::from_storage_str(&v));
 
         Ok(Symbol {
             id: row.get("id")?,
@@ -173,12 +169,8 @@ impl SymbolDatabase {
         let kind = SymbolKind::from_string(&kind_str);
 
         let visibility_str: Option<String> = row.get("visibility")?;
-        let visibility = visibility_str.and_then(|v| match v.as_str() {
-            "public" => Some(crate::extractors::base::Visibility::Public),
-            "private" => Some(crate::extractors::base::Visibility::Private),
-            "protected" => Some(crate::extractors::base::Visibility::Protected),
-            _ => None,
-        });
+        let visibility =
+            visibility_str.and_then(|v| crate::extractors::base::Visibility::from_storage_str(&v));
 
         Ok(Symbol {
             id: row.get("id")?,

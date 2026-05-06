@@ -216,6 +216,7 @@ open class Session: @unchecked Sendable {
             );
             let session = session.unwrap();
             assert_eq!(session.kind, SymbolKind::Class);
+            assert_eq!(session.visibility, Some(Visibility::Open));
 
             // Methods must be children of Session, not top-level orphans
             let do_something = symbols.iter().find(|s| s.name == "doSomething");

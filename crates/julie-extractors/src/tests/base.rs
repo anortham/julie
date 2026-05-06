@@ -242,6 +242,34 @@ fn test_relationship_ids_do_not_collide_for_multiple_calls_on_one_line() {
     );
 }
 
+#[test]
+fn test_base_visibility_does_not_read_method_body_text() {
+    let code = r#"
+fn issue_token() -> &'static str {
+    "public key"
+}
+"#;
+    let tree = parse_rust(code);
+    let root = tree.root_node();
+    let mut function_nodes = Vec::new();
+    collect_nodes_of_kind(root, "function_item", &mut function_nodes);
+    assert_eq!(function_nodes.len(), 1);
+
+    let workspace_root = std::path::PathBuf::from("/tmp/test");
+    let extractor = BaseExtractor::new(
+        "rust".to_string(),
+        "src/lib.rs".to_string(),
+        code.to_string(),
+        &workspace_root,
+    );
+
+    assert_eq!(
+        extractor.extract_visibility(&function_nodes[0]),
+        None,
+        "Body text should not be treated as a visibility modifier"
+    );
+}
+
 fn collect_nodes_of_kind<'a>(node: Node<'a>, kind: &str, matches: &mut Vec<Node<'a>>) {
     if node.kind() == kind {
         matches.push(node);

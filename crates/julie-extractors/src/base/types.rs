@@ -405,6 +405,34 @@ pub enum Visibility {
     Public,
     Private,
     Protected,
+    Internal,
+    FilePrivate,
+    Open,
+}
+
+impl Visibility {
+    pub fn as_storage_str(&self) -> &'static str {
+        match self {
+            Visibility::Public => "public",
+            Visibility::Private => "private",
+            Visibility::Protected => "protected",
+            Visibility::Internal => "internal",
+            Visibility::FilePrivate => "fileprivate",
+            Visibility::Open => "open",
+        }
+    }
+
+    pub fn from_storage_str(value: &str) -> Option<Self> {
+        match value {
+            "public" => Some(Visibility::Public),
+            "private" => Some(Visibility::Private),
+            "protected" => Some(Visibility::Protected),
+            "internal" => Some(Visibility::Internal),
+            "fileprivate" => Some(Visibility::FilePrivate),
+            "open" => Some(Visibility::Open),
+            _ => None,
+        }
+    }
 }
 
 impl std::fmt::Display for Visibility {
@@ -413,6 +441,9 @@ impl std::fmt::Display for Visibility {
             Visibility::Public => write!(f, "Public"),
             Visibility::Private => write!(f, "Private"),
             Visibility::Protected => write!(f, "Protected"),
+            Visibility::Internal => write!(f, "Internal"),
+            Visibility::FilePrivate => write!(f, "FilePrivate"),
+            Visibility::Open => write!(f, "Open"),
         }
     }
 }

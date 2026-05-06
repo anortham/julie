@@ -14,9 +14,6 @@ use regex::Regex;
 use std::sync::LazyLock;
 use tree_sitter::{Node, Tree};
 
-/// Matches return type in function signatures: `-> ReturnType`
-static RETURN_TYPE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"->\s*([^{]+)").unwrap());
-
 /// Matches type annotations: `: Type`
 static VAR_TYPE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r":\s*([^=\s{]+)").unwrap());
 
@@ -166,12 +163,8 @@ impl RustExtractor {
             // For functions/methods, try to extract return type from signature
             if matches!(symbol.kind, SymbolKind::Function | SymbolKind::Method) {
                 if let Some(ref signature) = symbol.signature {
-                    // Extract return type: "-> Type"
-                    if let Some(captures) = RETURN_TYPE_RE.captures(signature) {
-                        let return_type = captures[1].trim().to_string();
-                        if !return_type.is_empty() {
-                            type_map.insert(symbol.id.clone(), return_type);
-                        }
+                    if let Some(return_type) = extract_return_type_from_signature(signature) {
+                        type_map.insert(symbol.id.clone(), return_type);
                     }
                 }
             }
@@ -206,5 +199,25 @@ impl RustExtractor {
 
     pub(super) fn add_impl_block(&mut self, block: ImplBlockInfo) {
         self.impl_blocks.push(block);
+    }
+}
+
+fn extract_return_type_from_signature(signature: &str) -> Option<String> {
+    let arrow_index = signature.find("->")?;
+    let after_arrow = signature[arrow_index + 2..].trim();
+    let where_index = after_arrow
+        .find(" where")
+        .or_else(|| after_arrow.find("\nwhere"));
+    let return_type = where_index
+        .map(|index| &after_arrow[..index])
+        .unwrap_or(after_arrow)
+        .trim()
+        .trim_end_matches(';')
+        .trim();
+
+    if return_type.is_empty() {
+        None
+    } else {
+        Some(return_type.to_string())
     }
 }
