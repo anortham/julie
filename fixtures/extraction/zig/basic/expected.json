@@ -192,7 +192,7 @@
   ],
   "types": [
     {
-      "symbol_key": "unresolved:Worker",
+      "symbol_key": "fixtures/extraction/zig/basic/source.zig:Worker:1:0",
       "resolved_type": "struct",
       "generic_params": null,
       "constraints": null,
@@ -201,7 +201,7 @@
       "metadata": null
     },
     {
-      "symbol_key": "unresolved:helper",
+      "symbol_key": "fixtures/extraction/zig/basic/source.zig:helper:9:0",
       "resolved_type": "i32",
       "generic_params": null,
       "constraints": null,
@@ -210,7 +210,7 @@
       "metadata": null
     },
     {
-      "symbol_key": "unresolved:id",
+      "symbol_key": "fixtures/extraction/zig/basic/source.zig:id:2:4",
       "resolved_type": "i32",
       "generic_params": null,
       "constraints": null,
@@ -219,7 +219,7 @@
       "metadata": null
     },
     {
-      "symbol_key": "unresolved:run",
+      "symbol_key": "fixtures/extraction/zig/basic/source.zig:run:4:4",
       "resolved_type": "Worker",
       "generic_params": null,
       "constraints": null,
@@ -228,7 +228,7 @@
       "metadata": null
     },
     {
-      "symbol_key": "unresolved:runWorker",
+      "symbol_key": "fixtures/extraction/zig/basic/source.zig:runWorker:13:0",
       "resolved_type": "Worker",
       "generic_params": null,
       "constraints": null,

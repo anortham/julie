@@ -303,7 +303,7 @@
   ],
   "types": [
     {
-      "symbol_key": "unresolved:Job",
+      "symbol_key": "fixtures/extraction/dart/basic/source.dart:Job:1:0",
       "resolved_type": "abstract",
       "generic_params": null,
       "constraints": null,
@@ -312,7 +312,7 @@
       "metadata": null
     },
     {
-      "symbol_key": "unresolved:Worker",
+      "symbol_key": "fixtures/extraction/dart/basic/source.dart:Worker:5:0",
       "resolved_type": "class",
       "generic_params": null,
       "constraints": null,
@@ -321,7 +321,7 @@
       "metadata": null
     },
     {
-      "symbol_key": "unresolved:helper",
+      "symbol_key": "fixtures/extraction/dart/basic/source.dart:helper:16:0",
       "resolved_type": "int",
       "generic_params": null,
       "constraints": null,
@@ -330,7 +330,7 @@
       "metadata": null
     },
     {
-      "symbol_key": "unresolved:id",
+      "symbol_key": "fixtures/extraction/dart/basic/source.dart:id:6:2",
       "resolved_type": "final",
       "generic_params": null,
       "constraints": null,
@@ -339,7 +339,7 @@
       "metadata": null
     },
     {
-      "symbol_key": "unresolved:run",
+      "symbol_key": "fixtures/extraction/dart/basic/source.dart:run:2:2",
       "resolved_type": "int",
       "generic_params": null,
       "constraints": null,
