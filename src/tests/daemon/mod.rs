@@ -1,5 +1,6 @@
 pub mod database;
 pub mod embedding_service;
+pub mod embedding_service_shutdown;
 pub mod handler;
 pub mod http_transport;
 pub mod lifecycle;

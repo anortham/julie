@@ -217,6 +217,52 @@ impl WorkspacePool {
         inputs
     }
 
+    /// Shut down all workspaces in the pool, committing Tantivy writes and
+    /// releasing file locks.
+    ///
+    /// Mirrors the per-session pattern at `handler.rs::teardown_loaded_workspace`.
+    /// Drains the pool so no workspace is accessible after this returns.
+    ///
+    /// Per-workspace failures are logged and do not prevent the remaining
+    /// workspaces from being shut down (infallible at the API level).
+    pub async fn shutdown(&self) {
+        // Take a write lock, drain the map, and release the lock before doing
+        // any blocking work so we don't hold it across SearchIndex::shutdown().
+        let entries: Vec<(String, WorkspaceEntry)> = {
+            let mut guard = self.workspaces.write().await;
+            guard.drain().collect()
+        };
+
+        for (workspace_id, entry) in entries {
+            if let Some(ref search_index) = entry.workspace.search_index {
+                match search_index.lock() {
+                    Ok(idx) => {
+                        if let Err(e) = idx.shutdown() {
+                            warn!(
+                                workspace_id = %workspace_id,
+                                "Failed to shut down search index: {}",
+                                e
+                            );
+                        } else {
+                            info!(
+                                workspace_id = %workspace_id,
+                                "Search index shut down, Tantivy file lock released"
+                            );
+                        }
+                    }
+                    Err(poisoned) => {
+                        let idx = poisoned.into_inner();
+                        let _ = idx.shutdown();
+                        warn!(
+                            workspace_id = %workspace_id,
+                            "Recovered from poisoned search index mutex during pool shutdown"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
     /// Initialize a `JulieWorkspace` with its index root redirected to the pool's
     /// shared indexes directory.
     async fn init_workspace(
