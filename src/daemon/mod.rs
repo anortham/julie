@@ -665,7 +665,7 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
         cleanup_sweep_handle.abort();
     }
 
-    embedding_service.shutdown();
+    embedding_service.shutdown().await;
     info!("Embedding service shut down");
 
     if let Err(e) = http_transport.shutdown().await {

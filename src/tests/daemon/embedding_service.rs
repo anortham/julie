@@ -10,10 +10,10 @@ fn test_embedding_service_provider_returns_none_when_unavailable() {
     assert!(service.provider().is_none());
 }
 
-#[test]
-fn test_embedding_service_shutdown_is_safe_when_no_provider() {
+#[tokio::test]
+async fn test_embedding_service_shutdown_is_safe_when_no_provider() {
     let service = EmbeddingService::initialize_for_test(None);
-    service.shutdown(); // should not panic
+    service.shutdown().await; // should not panic
 }
 
 #[tokio::test]
