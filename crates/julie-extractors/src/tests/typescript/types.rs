@@ -149,6 +149,99 @@ interface Config {
             retries_count
         );
     }
+
+    #[test]
+    fn test_typescript_nested_class_parent_id_is_threaded() {
+        let code = r#"
+namespace Outer {
+    export namespace Inner {
+        export class User {
+            serialize(): string {
+                return "ok";
+            }
+        }
+    }
+}
+"#;
+
+        let mut parser = Parser::new();
+        parser
+            .set_language(&tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into())
+            .expect("Error loading TypeScript grammar");
+        let tree = parser.parse(code, None).expect("Error parsing code");
+
+        let workspace_root = PathBuf::from("/tmp/test");
+        let mut extractor = TypeScriptExtractor::new(
+            "typescript".to_string(),
+            "nested.ts".to_string(),
+            code.to_string(),
+            &workspace_root,
+        );
+        let symbols = extractor.extract_symbols(&tree);
+
+        let outer = symbols
+            .iter()
+            .find(|symbol| symbol.name == "Outer" && symbol.kind == SymbolKind::Namespace)
+            .expect("Outer namespace should be extracted");
+        let inner = symbols
+            .iter()
+            .find(|symbol| symbol.name == "Inner" && symbol.kind == SymbolKind::Namespace)
+            .expect("Inner namespace should be extracted");
+        let user = symbols
+            .iter()
+            .find(|symbol| symbol.name == "User" && symbol.kind == SymbolKind::Class)
+            .expect("User class should be extracted");
+        let serialize = symbols
+            .iter()
+            .find(|symbol| symbol.name == "serialize" && symbol.kind == SymbolKind::Method)
+            .expect("serialize method should be extracted");
+
+        assert_eq!(inner.parent_id.as_deref(), Some(outer.id.as_str()));
+        assert_eq!(user.parent_id.as_deref(), Some(inner.id.as_str()));
+        assert_eq!(serialize.parent_id.as_deref(), Some(user.id.as_str()));
+    }
+
+    #[test]
+    fn test_typescript_interface_method_parent_id_is_threaded() {
+        let code = r#"
+namespace Api {
+    export interface Client {
+        request(url: string): void;
+    }
+}
+"#;
+
+        let mut parser = Parser::new();
+        parser
+            .set_language(&tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into())
+            .expect("Error loading TypeScript grammar");
+        let tree = parser.parse(code, None).expect("Error parsing code");
+
+        let workspace_root = PathBuf::from("/tmp/test");
+        let mut extractor = TypeScriptExtractor::new(
+            "typescript".to_string(),
+            "api.ts".to_string(),
+            code.to_string(),
+            &workspace_root,
+        );
+        let symbols = extractor.extract_symbols(&tree);
+
+        let api = symbols
+            .iter()
+            .find(|symbol| symbol.name == "Api" && symbol.kind == SymbolKind::Namespace)
+            .expect("Api namespace should be extracted");
+        let client = symbols
+            .iter()
+            .find(|symbol| symbol.name == "Client" && symbol.kind == SymbolKind::Interface)
+            .expect("Client interface should be extracted");
+        let request = symbols
+            .iter()
+            .find(|symbol| symbol.name == "request" && symbol.kind == SymbolKind::Method)
+            .expect("request method should be extracted");
+
+        assert_eq!(client.parent_id.as_deref(), Some(api.id.as_str()));
+        assert_eq!(request.parent_id.as_deref(), Some(client.id.as_str()));
+    }
 }
 
 #[cfg(test)]

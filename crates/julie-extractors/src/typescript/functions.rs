@@ -11,7 +11,11 @@ use std::collections::HashMap;
 use tree_sitter::Node;
 
 /// Extract a function declaration or arrow function
-pub(super) fn extract_function(extractor: &mut TypeScriptExtractor, node: Node) -> Option<Symbol> {
+pub(super) fn extract_function(
+    extractor: &mut TypeScriptExtractor,
+    node: Node,
+    parent_id: Option<&str>,
+) -> Option<Symbol> {
     let name_node = node.child_by_field_name("name");
     let mut name = name_node.map(|n| extractor.base().get_node_text(&n));
 
@@ -80,7 +84,7 @@ pub(super) fn extract_function(extractor: &mut TypeScriptExtractor, node: Node) 
         SymbolOptions {
             signature: Some(signature),
             visibility,
-            parent_id: None,
+            parent_id: parent_id.map(str::to_string),
             metadata: Some(metadata),
             doc_comment,
             annotations,
@@ -91,7 +95,11 @@ pub(super) fn extract_function(extractor: &mut TypeScriptExtractor, node: Node) 
 }
 
 /// Extract a method definition (inside a class)
-pub(super) fn extract_method(extractor: &mut TypeScriptExtractor, node: Node) -> Option<Symbol> {
+pub(super) fn extract_method(
+    extractor: &mut TypeScriptExtractor,
+    node: Node,
+    parent_id: Option<&str>,
+) -> Option<Symbol> {
     let name_node = node.child_by_field_name("name");
     let name = name_node.map(|n| extractor.base().get_node_text(&n))?;
 
@@ -141,9 +149,6 @@ pub(super) fn extract_method(extractor: &mut TypeScriptExtractor, node: Node) ->
         serde_json::json!(type_parameters),
     );
 
-    // Find parent class
-    let parent_id = find_parent_class_id(extractor, &node);
-
     // Extract JSDoc comment
     let doc_comment = extractor.base().find_doc_comment(&node);
 
@@ -166,7 +171,7 @@ pub(super) fn extract_method(extractor: &mut TypeScriptExtractor, node: Node) ->
         SymbolOptions {
             signature: Some(signature),
             visibility,
-            parent_id,
+            parent_id: parent_id.map(str::to_string),
             metadata: Some(metadata),
             doc_comment,
             annotations,
@@ -177,7 +182,11 @@ pub(super) fn extract_method(extractor: &mut TypeScriptExtractor, node: Node) ->
 }
 
 /// Extract a variable declarator
-pub(super) fn extract_variable(extractor: &mut TypeScriptExtractor, node: Node) -> Option<Symbol> {
+pub(super) fn extract_variable(
+    extractor: &mut TypeScriptExtractor,
+    node: Node,
+    parent_id: Option<&str>,
+) -> Option<Symbol> {
     let name_node = node.child_by_field_name("name");
     let name = name_node.map(|n| extractor.base().get_node_text(&n))?;
 
@@ -185,7 +194,7 @@ pub(super) fn extract_variable(extractor: &mut TypeScriptExtractor, node: Node) 
     if let Some(value_node) = node.child_by_field_name("value") {
         if value_node.kind() == "arrow_function" {
             // Extract as a function instead of a variable
-            return extract_function(extractor, value_node);
+            return extract_function(extractor, value_node, parent_id);
         }
     }
 
@@ -197,6 +206,7 @@ pub(super) fn extract_variable(extractor: &mut TypeScriptExtractor, node: Node) 
         name,
         SymbolKind::Variable,
         SymbolOptions {
+            parent_id: parent_id.map(str::to_string),
             doc_comment,
             ..Default::default()
         },
@@ -250,24 +260,4 @@ fn extract_parameters(extractor: &TypeScriptExtractor, node: &Node) -> Vec<Strin
     } else {
         Vec::new()
     }
-}
-
-/// Find the parent class ID for a method
-fn find_parent_class_id(extractor: &TypeScriptExtractor, node: &Node) -> Option<String> {
-    let mut current = node.parent();
-    while let Some(parent_node) = current {
-        if parent_node.kind() == "class_declaration" {
-            if let Some(class_name_node) = parent_node.child_by_field_name("name") {
-                let class_name = extractor.base().get_node_text(&class_name_node);
-                let parent_id = extractor
-                    .base()
-                    .generate_id_for_node(&class_name, &parent_node);
-                if extractor.base().symbol_map.contains_key(&parent_id) {
-                    return Some(parent_id);
-                }
-            }
-        }
-        current = parent_node.parent();
-    }
-    None
 }

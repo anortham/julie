@@ -8,7 +8,11 @@ use crate::typescript::TypeScriptExtractor;
 use tree_sitter::Node;
 
 /// Extract an interface declaration and its members (properties and methods)
-pub(super) fn extract_interface(extractor: &mut TypeScriptExtractor, node: Node) -> Vec<Symbol> {
+pub(super) fn extract_interface(
+    extractor: &mut TypeScriptExtractor,
+    node: Node,
+    parent_id: Option<&str>,
+) -> Vec<Symbol> {
     let mut symbols = Vec::new();
 
     let name_node = node.child_by_field_name("name");
@@ -25,6 +29,7 @@ pub(super) fn extract_interface(extractor: &mut TypeScriptExtractor, node: Node)
         name,
         SymbolKind::Interface,
         SymbolOptions {
+            parent_id: parent_id.map(str::to_string),
             doc_comment,
             ..Default::default()
         },
@@ -88,6 +93,7 @@ pub(super) fn extract_interface(extractor: &mut TypeScriptExtractor, node: Node)
 pub(super) fn extract_type_alias(
     extractor: &mut TypeScriptExtractor,
     node: Node,
+    parent_id: Option<&str>,
 ) -> Option<Symbol> {
     let name_node = node.child_by_field_name("name");
     let name = name_node.map(|n| extractor.base().get_node_text(&n))?;
@@ -100,6 +106,7 @@ pub(super) fn extract_type_alias(
         name,
         SymbolKind::Type,
         SymbolOptions {
+            parent_id: parent_id.map(str::to_string),
             doc_comment,
             ..Default::default()
         },
@@ -107,7 +114,11 @@ pub(super) fn extract_type_alias(
 }
 
 /// Extract an enum declaration and its members
-pub(super) fn extract_enum(extractor: &mut TypeScriptExtractor, node: Node) -> Vec<Symbol> {
+pub(super) fn extract_enum(
+    extractor: &mut TypeScriptExtractor,
+    node: Node,
+    parent_id: Option<&str>,
+) -> Vec<Symbol> {
     let mut symbols = Vec::new();
 
     let name_node = node.child_by_field_name("name");
@@ -124,6 +135,7 @@ pub(super) fn extract_enum(extractor: &mut TypeScriptExtractor, node: Node) -> V
         name,
         SymbolKind::Enum,
         SymbolOptions {
+            parent_id: parent_id.map(str::to_string),
             doc_comment,
             ..Default::default()
         },
@@ -171,7 +183,11 @@ pub(super) fn extract_enum(extractor: &mut TypeScriptExtractor, node: Node) -> V
 }
 
 /// Extract a namespace declaration
-pub(super) fn extract_namespace(extractor: &mut TypeScriptExtractor, node: Node) -> Option<Symbol> {
+pub(super) fn extract_namespace(
+    extractor: &mut TypeScriptExtractor,
+    node: Node,
+    parent_id: Option<&str>,
+) -> Option<Symbol> {
     let name_node = node.child_by_field_name("name");
     let name = name_node.map(|n| extractor.base().get_node_text(&n))?;
 
@@ -183,6 +199,7 @@ pub(super) fn extract_namespace(extractor: &mut TypeScriptExtractor, node: Node)
         name,
         SymbolKind::Namespace,
         SymbolOptions {
+            parent_id: parent_id.map(str::to_string),
             doc_comment,
             ..Default::default()
         },
@@ -190,7 +207,11 @@ pub(super) fn extract_namespace(extractor: &mut TypeScriptExtractor, node: Node)
 }
 
 /// Extract a property (class property or interface property)
-pub(super) fn extract_property(extractor: &mut TypeScriptExtractor, node: Node) -> Option<Symbol> {
+pub(super) fn extract_property(
+    extractor: &mut TypeScriptExtractor,
+    node: Node,
+    parent_id: Option<&str>,
+) -> Option<Symbol> {
     use super::helpers;
 
     let name_node = node
@@ -231,9 +252,6 @@ pub(super) fn extract_property(extractor: &mut TypeScriptExtractor, node: Node) 
     // Extract JSDoc comment
     let doc_comment = extractor.base().find_doc_comment(&node);
 
-    // Find parent class
-    let parent_id = find_parent_class_or_interface_id(extractor, &node);
-
     Some(extractor.base_mut().create_symbol(
         &node,
         name,
@@ -241,35 +259,9 @@ pub(super) fn extract_property(extractor: &mut TypeScriptExtractor, node: Node) 
         SymbolOptions {
             signature,
             visibility,
-            parent_id,
+            parent_id: parent_id.map(str::to_string),
             doc_comment,
             ..Default::default()
         },
     ))
-}
-
-/// Find the parent class or interface ID for a member node
-fn find_parent_class_or_interface_id(
-    extractor: &TypeScriptExtractor,
-    node: &Node,
-) -> Option<String> {
-    let mut current = node.parent();
-    while let Some(parent_node) = current {
-        match parent_node.kind() {
-            "class_declaration" | "interface_declaration" => {
-                if let Some(class_name_node) = parent_node.child_by_field_name("name") {
-                    let class_name = extractor.base().get_node_text(&class_name_node);
-                    let parent_id = extractor
-                        .base()
-                        .generate_id_for_node(&class_name, &parent_node);
-                    if extractor.base().symbol_map.contains_key(&parent_id) {
-                        return Some(parent_id);
-                    }
-                }
-            }
-            _ => {}
-        }
-        current = parent_node.parent();
-    }
-    None
 }

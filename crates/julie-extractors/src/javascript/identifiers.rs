@@ -81,6 +81,18 @@ impl super::JavaScriptExtractor {
                 }
             }
 
+            "new_expression" => {
+                if let Some((name_node, name)) = self.constructor_identifier(&node) {
+                    let containing_symbol_id = self.find_containing_symbol_id(node, symbol_map);
+                    self.base.create_identifier(
+                        &name_node,
+                        name,
+                        IdentifierKind::Call,
+                        containing_symbol_id,
+                    );
+                }
+            }
+
             // Member access: object.property
             "member_expression" => {
                 // Only extract if it's NOT part of a call_expression
@@ -91,6 +103,13 @@ impl super::JavaScriptExtractor {
                         if let Some(function_node) = parent.child_by_field_name("function") {
                             if function_node.id() == node.id() {
                                 return; // Skip - handled by call_expression
+                            }
+                        }
+                    }
+                    if parent.kind() == "new_expression" {
+                        if let Some(constructor_node) = parent.child_by_field_name("constructor") {
+                            if constructor_node.id() == node.id() {
+                                return;
                             }
                         }
                     }
@@ -127,5 +146,29 @@ impl super::JavaScriptExtractor {
         self.base
             .find_containing_symbol_from_map(&node, symbol_map)
             .map(|s| s.id.clone())
+    }
+
+    fn constructor_identifier<'tree>(&self, node: &Node<'tree>) -> Option<(Node<'tree>, String)> {
+        let constructor = node
+            .child_by_field_name("constructor")
+            .or_else(|| node.child_by_field_name("callee"))
+            .or_else(|| {
+                let mut cursor = node.walk();
+                node.named_children(&mut cursor)
+                    .find(|child| child.kind() != "arguments")
+            })?;
+        self.terminal_identifier(constructor)
+    }
+
+    fn terminal_identifier<'tree>(&self, node: Node<'tree>) -> Option<(Node<'tree>, String)> {
+        match node.kind() {
+            "identifier" | "property_identifier" | "private_property_identifier" => {
+                Some((node, self.base.get_node_text(&node)))
+            }
+            "member_expression" => node
+                .child_by_field_name("property")
+                .and_then(|property| self.terminal_identifier(property)),
+            _ => None,
+        }
     }
 }

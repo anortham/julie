@@ -89,6 +89,30 @@ fn extract_identifier_from_node(
             }
         }
 
+        "new_expression" => {
+            if let Some((name_node, name)) = constructor_identifier(extractor, &node) {
+                let containing_symbol_id = find_containing_symbol_id(extractor, node, symbol_map);
+                extractor.base_mut().create_identifier(
+                    &name_node,
+                    name,
+                    IdentifierKind::Call,
+                    containing_symbol_id,
+                );
+            }
+        }
+
+        "jsx_opening_element" | "jsx_self_closing_element" => {
+            if let Some((name_node, name)) = jsx_component_identifier(extractor, &node) {
+                let containing_symbol_id = find_containing_symbol_id(extractor, node, symbol_map);
+                extractor.base_mut().create_identifier(
+                    &name_node,
+                    name,
+                    IdentifierKind::Call,
+                    containing_symbol_id,
+                );
+            }
+        }
+
         // Member access: object.property
         "member_expression" => {
             // Only extract if it's NOT part of a call_expression
@@ -98,6 +122,13 @@ fn extract_identifier_from_node(
                     if let Some(function_node) = parent.child_by_field_name("function") {
                         if function_node.id() == node.id() {
                             return; // Skip - handled by call_expression
+                        }
+                    }
+                }
+                if parent.kind() == "new_expression" {
+                    if let Some(constructor_node) = parent.child_by_field_name("constructor") {
+                        if constructor_node.id() == node.id() {
+                            return;
                         }
                     }
                 }
@@ -147,6 +178,63 @@ fn extract_identifier_from_node(
 
         _ => {}
     }
+}
+
+fn constructor_identifier<'tree>(
+    extractor: &TypeScriptExtractor,
+    node: &Node<'tree>,
+) -> Option<(Node<'tree>, String)> {
+    let constructor = node
+        .child_by_field_name("constructor")
+        .or_else(|| node.child_by_field_name("callee"))
+        .or_else(|| {
+            let mut cursor = node.walk();
+            node.named_children(&mut cursor)
+                .find(|child| !matches!(child.kind(), "arguments" | "type_arguments"))
+        })?;
+    terminal_identifier(extractor, constructor)
+}
+
+fn jsx_component_identifier<'tree>(
+    extractor: &TypeScriptExtractor,
+    node: &Node<'tree>,
+) -> Option<(Node<'tree>, String)> {
+    let name_node = node.child_by_field_name("name")?;
+    let (identifier_node, name) = terminal_identifier(extractor, name_node)?;
+    if is_component_name(&name) {
+        Some((identifier_node, name))
+    } else {
+        None
+    }
+}
+
+fn terminal_identifier<'tree>(
+    extractor: &TypeScriptExtractor,
+    node: Node<'tree>,
+) -> Option<(Node<'tree>, String)> {
+    match node.kind() {
+        "identifier"
+        | "property_identifier"
+        | "type_identifier"
+        | "private_property_identifier" => Some((node, extractor.base().get_node_text(&node))),
+        "member_expression" => node
+            .child_by_field_name("property")
+            .and_then(|property| terminal_identifier(extractor, property)),
+        "jsx_namespace_name" | "nested_identifier" => {
+            let mut cursor = node.walk();
+            node.named_children(&mut cursor)
+                .filter(|child| matches!(child.kind(), "identifier" | "property_identifier"))
+                .last()
+                .and_then(|child| terminal_identifier(extractor, child))
+        }
+        _ => None,
+    }
+}
+
+fn is_component_name(name: &str) -> bool {
+    name.chars()
+        .next()
+        .map_or(false, |first| first.is_ascii_uppercase())
 }
 
 /// Find the ID of the symbol that contains this node

@@ -87,6 +87,59 @@ function calculate() {
 }
 
 #[test]
+fn test_javascript_new_expression_emits_constructor_call_identifier() {
+    let js_code = r#"
+class ServiceClient {}
+
+function build() {
+    const client = new ServiceClient();
+    const widget = new ui.Widget();
+    return { client, widget };
+}
+"#;
+
+    let mut parser = init_parser();
+    let tree = parser.parse(js_code, None).unwrap();
+
+    let workspace_root = PathBuf::from("/tmp/test");
+    let mut extractor = JavaScriptExtractor::new(
+        "javascript".to_string(),
+        "constructors.js".to_string(),
+        js_code.to_string(),
+        &workspace_root,
+    );
+
+    let symbols = extractor.extract_symbols(&tree);
+    let identifiers = extractor.extract_identifiers(&tree, &symbols);
+
+    let build_symbol = symbols
+        .iter()
+        .find(|symbol| symbol.name == "build")
+        .expect("build function should be extracted");
+
+    for expected in ["ServiceClient", "Widget"] {
+        let call = identifiers
+            .iter()
+            .find(|identifier| {
+                identifier.name == expected && identifier.kind == IdentifierKind::Call
+            })
+            .unwrap_or_else(|| {
+                panic!(
+                    "new expression should emit constructor call identifier {expected}; got {:?}",
+                    identifiers
+                        .iter()
+                        .map(|identifier| (&identifier.name, &identifier.kind))
+                        .collect::<Vec<_>>()
+                )
+            });
+        assert_eq!(
+            call.containing_symbol_id.as_deref(),
+            Some(build_symbol.id.as_str())
+        );
+    }
+}
+
+#[test]
 fn test_extract_member_access() {
     let js_code = r#"
 class User {
