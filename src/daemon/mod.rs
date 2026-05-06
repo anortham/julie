@@ -20,7 +20,7 @@ pub mod workspace_registry_store;
 pub mod workspace_session_attachment;
 
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
 use anyhow::{Context, Result};
@@ -660,27 +660,97 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
         "Daemon shutting down"
     );
 
+    // Abort background tasks before tearing down shared resources.
+    // These tasks hold Arcs into the pools; aborting them first prevents
+    // them from racing with the explicit shutdown calls below.
     reaper_handle.abort();
     if let Some(cleanup_sweep_handle) = cleanup_sweep_handle {
         cleanup_sweep_handle.abort();
     }
 
-    embedding_service.shutdown().await;
-    info!("Embedding service shut down");
-
-    if let Err(e) = http_transport.shutdown().await {
-        warn!("Failed to shut down HTTP MCP transport cleanly: {e:#}");
-    }
-
-    let _ = std::fs::remove_file(paths.daemon_port());
-
-    if let Err(e) = pid_file.cleanup() {
-        warn!("Failed to clean up PID file: {}", e);
-    }
-    let _ = std::fs::remove_file(&daemon_state_path);
+    // LIFO shutdown: HTTP transport first (stops new requests from reaching
+    // any service), then embedding service, then pools in dependency order
+    // (workspace pool commits Tantivy writes before watcher pool releases OS
+    // file-watcher handles).
+    let port_path = paths.daemon_port();
+    perform_shutdown_sequence(
+        http_transport,
+        embedding_service,
+        pool,
+        watcher_pool,
+        &port_path,
+        pid_file,
+        &daemon_state_path,
+        None,
+    )
+    .await;
 
     info!("Daemon stopped");
     result
+}
+
+/// Execute the daemon shutdown sequence in LIFO dependency order.
+///
+/// Shutdown order:
+///   1. HTTP transport — stops accepting new requests and drains existing ones.
+///      Must happen first so in-flight requests cannot observe a torn-down
+///      embedding service.
+///   2. Embedding service — sidecar exit is awaited; safe now that the
+///      transport gate is closed.
+///   3. WorkspacePool — commits Tantivy writes and releases file locks.
+///   4. WatcherPool — drops OS file-watcher handles; goes last because it
+///      has the fewest downstream dependencies.
+///   5. Housekeeping — removes port file, pid file, and daemon state file.
+///
+/// The `call_log` parameter is a test hook: when `Some`, each step records its
+/// name to the log before executing. Pass `None` in production (zero overhead).
+pub(crate) async fn perform_shutdown_sequence(
+    http_transport: HttpTransportServer,
+    embedding_service: Arc<EmbeddingService>,
+    workspace_pool: Arc<WorkspacePool>,
+    watcher_pool: Arc<WatcherPool>,
+    port_path: &Path,
+    pid_file: PidFile,
+    state_path: &Path,
+    call_log: Option<Arc<Mutex<Vec<&'static str>>>>,
+) {
+    // Helper: record a step name to the call_log if one was provided.
+    let record = |step: &'static str| {
+        if let Some(ref log) = call_log {
+            if let Ok(mut guard) = log.lock() {
+                guard.push(step);
+            }
+        }
+    };
+
+    // Step 1: HTTP transport
+    record("http_transport");
+    if let Err(e) = http_transport.shutdown().await {
+        warn!("Failed to shut down HTTP MCP transport cleanly: {e:#}");
+    }
+    info!("HTTP MCP transport shut down");
+
+    // Step 2: Embedding service
+    record("embedding_service");
+    embedding_service.shutdown().await;
+    info!("Embedding service shut down");
+
+    // Step 3: WorkspacePool (Tantivy writes committed, file locks released)
+    record("workspace_pool");
+    workspace_pool.shutdown().await;
+    info!("Workspace pool shut down");
+
+    // Step 4: WatcherPool (OS file-watcher handles released)
+    record("watcher_pool");
+    watcher_pool.shutdown().await;
+    info!("Watcher pool shut down");
+
+    // Step 5: Housekeeping
+    let _ = std::fs::remove_file(port_path);
+    if let Err(e) = pid_file.cleanup() {
+        warn!("Failed to clean up PID file: {}", e);
+    }
+    let _ = std::fs::remove_file(state_path);
 }
 
 /// Wait for a shutdown signal (SIGTERM or SIGINT on Unix).
