@@ -146,8 +146,11 @@ mod tests {
             "PID file should appear within 30s at {}",
             pid_path.display()
         );
-        let pid_str = std::fs::read_to_string(&pid_path).expect("read PID file");
-        let pid: u32 = pid_str.trim().parse().expect("PID should be numeric");
+        // After the v7.7.x format change the file is `<pid> <ctime> <mtime>`,
+        // so use the first-field parser instead of treating the whole file as
+        // a single integer.
+        let pid = crate::daemon::pid::PidFile::read_pid(&pid_path)
+            .expect("PID file should be readable");
         assert_eq!(pid, std::process::id(), "PID should match our process");
 
         // State file plus HTTP readiness is the daemon startup contract.
