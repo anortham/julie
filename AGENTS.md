@@ -458,4 +458,4 @@ These are project knowledge, not ephemeral. If you create a checkpoint or plan, 
 
 ---
 
-**Last Updated:** 2026-05-05 | **Status:** Production Ready (v7.7.2, extractor quality + workspace lifecycle + 34 languages)
+**Last Updated:** 2026-05-06 | **Status:** Production Ready (v7.7.3, extractor quality + workspace lifecycle + 34 languages)
