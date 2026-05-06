@@ -33,3 +33,10 @@ pub use types::{
     ParseDiagnostic, ParseDiagnosticKind, PendingRelationship, Relationship, RelationshipKind,
     Symbol, SymbolKind, SymbolOptions, TestRole, TypeInfo, Visibility,
 };
+
+pub(crate) fn containing_symbol_at_line(symbols: &[Symbol], line_number: u32) -> Option<&Symbol> {
+    symbols
+        .iter()
+        .filter(|symbol| symbol.start_line <= line_number && symbol.end_line >= line_number)
+        .min_by_key(|symbol| symbol.end_line.saturating_sub(symbol.start_line))
+}

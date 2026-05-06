@@ -184,24 +184,39 @@ fn workspace_has_crate_root(candidates: &[Symbol], crate_name: &str) -> bool {
 
 fn file_is_workspace_crate_root(path: &str, crate_name: &str) -> bool {
     let parts = path_parts(path);
-    parts.windows(3).any(|window| {
-        crate_name_matches(&window[0], crate_name)
-            && window[1] == "src"
-            && matches!(window[2].as_str(), "lib.rs" | "main.rs")
+    crate_src_index(&parts, crate_name).is_some_and(|src_index| {
+        matches!(
+            parts.get(src_index + 1).map(String::as_str),
+            Some("lib.rs" | "main.rs")
+        )
     })
 }
 
 fn file_is_in_workspace_crate(path: &str, crate_name: &str) -> bool {
     let parts = path_parts(path);
-    parts
-        .windows(2)
-        .any(|window| crate_name_matches(&window[0], crate_name) && window[1] == "src")
+    crate_src_index(&parts, crate_name).is_some()
 }
 
 fn crate_name_matches(path_segment: &str, crate_name: &str) -> bool {
     path_segment
         .replace('-', "_")
         .eq_ignore_ascii_case(crate_name)
+}
+
+fn crate_src_index(parts: &[String], crate_name: &str) -> Option<usize> {
+    if parts.len() >= 2 && crate_name_matches(&parts[0], crate_name) && parts[1] == "src" {
+        return Some(1);
+    }
+
+    if parts.len() >= 3
+        && parts[0] == "crates"
+        && crate_name_matches(&parts[1], crate_name)
+        && parts[2] == "src"
+    {
+        return Some(2);
+    }
+
+    None
 }
 
 fn path_parts(path: &str) -> Vec<String> {

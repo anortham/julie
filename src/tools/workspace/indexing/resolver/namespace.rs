@@ -16,6 +16,10 @@ pub(super) fn score(
 
     let root = target.namespace_path.first().map(String::as_str);
     if matches!(root, Some("std" | "core" | "alloc")) {
+        if language_of(&pending.file_path) != Some("rust") || candidate.language != "rust" {
+            return Some(0);
+        }
+
         let candidate_module_path = rust_module_path_from_file(&candidate.file_path);
         return path_ends_with_segments(&candidate_module_path, &target.namespace_path)
             .then_some(500);

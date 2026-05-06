@@ -38,7 +38,9 @@
       "doc_comment": null,
       "visibility": null,
       "parent_key": null,
-      "metadata": {},
+      "metadata": {
+        "yaml_anchor": "defaults"
+      },
       "annotations": [],
       "semantic_group": null,
       "confidence": null,

@@ -143,6 +143,26 @@ func MainFunction() int {
             Some("utils"),
         ),
         (
+            "src/Widget.vue",
+            r#"
+<template>
+  <section>
+    <HeaderBar />
+  </section>
+</template>
+
+<script setup lang="ts">
+const title = format("Worker");
+
+function format(value: string): string {
+  return value.trim();
+}
+</script>
+"#,
+            "HeaderBar",
+            None,
+        ),
+        (
             "lib/processor.py",
             r#"
 def process():
@@ -298,6 +318,16 @@ fn test_language_specs_drive_public_metadata_surfaces() {
     assert_eq!(language_spec("vue").map(|spec| spec.name), Some("vue"));
     assert_eq!(language_spec("vbnet").map(|spec| spec.name), Some("vbnet"));
     assert_eq!(detect_language_from_extension("vb"), Some("vbnet"));
+}
+
+#[test]
+fn test_rust_language_spec_recognizes_inner_doc_comments() {
+    let spec = language_spec("rust").expect("rust spec should exist");
+
+    assert!(spec.is_doc_comment("/// outer line docs"));
+    assert!(spec.is_doc_comment("//! inner line docs"));
+    assert!(spec.is_doc_comment("/** outer block docs */"));
+    assert!(spec.is_doc_comment("/*! inner block docs */"));
 }
 
 #[test]

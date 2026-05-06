@@ -761,6 +761,76 @@ production:
     }
 
     #[test]
+    fn test_alias_resolution_uses_exact_anchor_name() {
+        let yaml = r#"
+foobar: &foobar
+  value: two
+
+foo: &foo
+  value: one
+
+consumer:
+  <<: *foo
+  selected: true
+"#;
+
+        let (symbols, relationships) = extract_symbols_and_relationships(yaml);
+        let identifiers = extract_identifiers(yaml, &symbols);
+
+        let foo_symbol = symbols
+            .iter()
+            .find(|symbol| symbol.name == "foo")
+            .expect("Should find foo anchor owner");
+        let foobar_symbol = symbols
+            .iter()
+            .find(|symbol| symbol.name == "foobar")
+            .expect("Should find foobar anchor owner");
+
+        let alias_identifier = identifiers
+            .iter()
+            .find(|identifier| identifier.name == "foo")
+            .expect("Should extract alias identifier for *foo");
+
+        assert_eq!(
+            alias_identifier.target_symbol_id.as_deref(),
+            Some(foo_symbol.id.as_str()),
+            "Identifier target should resolve only to &foo"
+        );
+        assert_ne!(
+            alias_identifier.target_symbol_id.as_deref(),
+            Some(foobar_symbol.id.as_str()),
+            "Identifier target must not resolve to prefix match &foobar"
+        );
+
+        let foo_relationships: Vec<_> = relationships
+            .iter()
+            .filter(|relationship| {
+                relationship.kind == RelationshipKind::References
+                    && relationship.to_symbol_id == foo_symbol.id
+            })
+            .collect();
+        assert_eq!(
+            foo_relationships.len(),
+            1,
+            "Expected exactly one alias relationship to &foo"
+        );
+        assert!(
+            !relationships.iter().any(|relationship| {
+                relationship.kind == RelationshipKind::References
+                    && relationship.to_symbol_id == foobar_symbol.id
+            }),
+            "Alias relationship must not resolve to prefix match &foobar"
+        );
+        assert_eq!(
+            alias_identifier.target_symbol_id.as_deref(),
+            foo_relationships
+                .first()
+                .map(|relationship| relationship.to_symbol_id.as_str()),
+            "Identifier target and relationship target must agree"
+        );
+    }
+
+    #[test]
     fn test_no_identifiers_without_aliases() {
         let yaml = "name: julie\nversion: 1.0\n";
         let symbols = extract_symbols(yaml);

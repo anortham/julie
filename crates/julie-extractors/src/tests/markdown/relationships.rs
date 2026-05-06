@@ -56,3 +56,71 @@ See [the intro](#intro) before continuing.
         relationships
     );
 }
+
+#[test]
+fn markdown_relationships_do_not_emit_self_reference_edges() {
+    let markdown = r#"# Self
+
+[self](#self)
+"#;
+
+    let (symbols, relationships) = extract_symbols_and_relationships(markdown);
+    let self_heading = symbols
+        .iter()
+        .find(|symbol| symbol.name == "Self")
+        .expect("self heading should be extracted");
+
+    assert!(
+        !relationships.iter().any(|relationship| {
+            relationship.kind == RelationshipKind::References
+                && relationship.from_symbol_id == self_heading.id
+                && relationship.to_symbol_id == self_heading.id
+        }),
+        "self links should not create self edges, got: {:?}",
+        relationships
+    );
+}
+
+#[test]
+fn markdown_relationships_duplicate_slugs_use_first_heading_deterministically() {
+    let markdown = r#"# Overview
+
+## First
+
+# Overview
+
+## Later
+
+See [overview](#overview) before moving on.
+"#;
+
+    let (symbols, relationships) = extract_symbols_and_relationships(markdown);
+    let mut overview_headings: Vec<&Symbol> = symbols
+        .iter()
+        .filter(|symbol| symbol.name == "Overview")
+        .collect();
+    overview_headings.sort_by_key(|symbol| symbol.start_line);
+
+    assert_eq!(
+        overview_headings.len(),
+        2,
+        "expected two duplicate overview headings, got: {:?}",
+        symbols
+    );
+
+    let first_overview = overview_headings[0];
+    let later_section = symbols
+        .iter()
+        .find(|symbol| symbol.name == "Later")
+        .expect("later section heading should be extracted");
+
+    assert!(
+        relationships.iter().any(|relationship| {
+            relationship.kind == RelationshipKind::References
+                && relationship.from_symbol_id == later_section.id
+                && relationship.to_symbol_id == first_overview.id
+        }),
+        "duplicate heading links should resolve to first heading deterministically, got: {:?}",
+        relationships
+    );
+}

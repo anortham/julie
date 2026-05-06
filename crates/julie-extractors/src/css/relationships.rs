@@ -1,4 +1,6 @@
-use crate::base::{BaseExtractor, Relationship, RelationshipKind, Symbol};
+use crate::base::{
+    BaseExtractor, Relationship, RelationshipKind, Symbol, containing_symbol_at_line,
+};
 use regex::Regex;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
@@ -6,19 +8,23 @@ use std::sync::LazyLock;
 
 static CUSTOM_PROPERTY_USE_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"var\(\s*(--[A-Za-z0-9_-]+)").unwrap());
-static ANIMATION_USE_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\banimation(?:-name)?\s*:\s*([A-Za-z_][A-Za-z0-9_-]*)").unwrap());
+static ANIMATION_NAME_DECL_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\banimation-name\s*:\s*([^;]+)").unwrap());
+static CSS_IDENTIFIER_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^[A-Za-z_][A-Za-z0-9_-]*$").unwrap());
 
 pub(super) fn extract_relationships(base: &BaseExtractor, symbols: &[Symbol]) -> Vec<Relationship> {
     let custom_properties = symbols_by_metadata(symbols, "property");
     let keyframes = symbols_by_metadata(symbols, "animationName");
     let mut relationships = Vec::new();
     let mut seen = HashSet::new();
+    let mut in_block_comment = false;
 
     for (line_index, line) in base.content.lines().enumerate() {
         let line_number = line_index as u32 + 1;
+        let scan_line = strip_css_comments(line, &mut in_block_comment);
 
-        for captures in CUSTOM_PROPERTY_USE_RE.captures_iter(line) {
+        for captures in CUSTOM_PROPERTY_USE_RE.captures_iter(&scan_line) {
             if let Some(name) = captures.get(1).map(|matched| matched.as_str()) {
                 if let Some(target) = custom_properties.get(name) {
                     push_relationship(
@@ -35,8 +41,11 @@ pub(super) fn extract_relationships(base: &BaseExtractor, symbols: &[Symbol]) ->
             }
         }
 
-        for captures in ANIMATION_USE_RE.captures_iter(line) {
-            if let Some(name) = captures.get(1).map(|matched| matched.as_str()) {
+        for captures in ANIMATION_NAME_DECL_RE.captures_iter(&scan_line) {
+            let Some(value) = captures.get(1).map(|matched| matched.as_str()) else {
+                continue;
+            };
+            for name in parse_animation_names(value) {
                 if let Some(target) = keyframes.get(name) {
                     push_relationship(
                         base,
@@ -81,7 +90,7 @@ fn push_relationship(
     relationships: &mut Vec<Relationship>,
 ) {
     let Some(source) =
-        containing_symbol(symbols, line_number).filter(|source| source.id != target.id)
+        containing_symbol_at_line(symbols, line_number).filter(|source| source.id != target.id)
     else {
         return;
     };
@@ -124,9 +133,35 @@ fn push_relationship(
     });
 }
 
-fn containing_symbol(symbols: &[Symbol], line_number: u32) -> Option<&Symbol> {
-    symbols
-        .iter()
-        .filter(|symbol| symbol.start_line <= line_number && symbol.end_line >= line_number)
-        .min_by_key(|symbol| symbol.end_line.saturating_sub(symbol.start_line))
+fn parse_animation_names(value: &str) -> impl Iterator<Item = &str> {
+    value
+        .split(',')
+        .map(str::trim)
+        .filter(|name| CSS_IDENTIFIER_RE.is_match(name))
+}
+
+fn strip_css_comments(line: &str, in_block_comment: &mut bool) -> String {
+    let mut output = String::with_capacity(line.len());
+    let mut remaining = line;
+
+    loop {
+        if *in_block_comment {
+            if let Some(end_index) = remaining.find("*/") {
+                remaining = &remaining[end_index + 2..];
+                *in_block_comment = false;
+                continue;
+            }
+            return output;
+        }
+
+        if let Some(start_index) = remaining.find("/*") {
+            output.push_str(&remaining[..start_index]);
+            remaining = &remaining[start_index + 2..];
+            *in_block_comment = true;
+            continue;
+        }
+
+        output.push_str(remaining);
+        return output;
+    }
 }

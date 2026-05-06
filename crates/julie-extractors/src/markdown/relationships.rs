@@ -1,4 +1,6 @@
-use crate::base::{BaseExtractor, Relationship, RelationshipKind, Symbol};
+use crate::base::{
+    BaseExtractor, Relationship, RelationshipKind, Symbol, containing_symbol_at_line,
+};
 use regex::Regex;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
@@ -22,7 +24,7 @@ pub(super) fn extract_relationships(base: &BaseExtractor, symbols: &[Symbol]) ->
             let Some(target) = headings.get(&slug) else {
                 continue;
             };
-            let Some(source) = containing_symbol(symbols, line_number) else {
+            let Some(source) = containing_symbol_at_line(symbols, line_number) else {
                 continue;
             };
             push_relationship(
@@ -41,10 +43,13 @@ pub(super) fn extract_relationships(base: &BaseExtractor, symbols: &[Symbol]) ->
 }
 
 fn heading_symbols_by_slug(symbols: &[Symbol]) -> HashMap<String, &Symbol> {
-    symbols
-        .iter()
-        .map(|symbol| (slugify_heading(&symbol.name), symbol))
-        .collect()
+    let mut headings = HashMap::new();
+    for symbol in symbols {
+        headings
+            .entry(slugify_heading(&symbol.name))
+            .or_insert(symbol);
+    }
+    headings
 }
 
 fn push_relationship(
@@ -56,6 +61,10 @@ fn push_relationship(
     seen: &mut HashSet<(String, String, u32, String)>,
     relationships: &mut Vec<Relationship>,
 ) {
+    if source.id == target.id {
+        return;
+    }
+
     let key = (
         source.id.clone(),
         target.id.clone(),
@@ -86,13 +95,6 @@ fn push_relationship(
         confidence: 1.0,
         metadata: Some(metadata),
     });
-}
-
-fn containing_symbol(symbols: &[Symbol], line_number: u32) -> Option<&Symbol> {
-    symbols
-        .iter()
-        .filter(|symbol| symbol.start_line <= line_number && symbol.end_line >= line_number)
-        .min_by_key(|symbol| symbol.end_line.saturating_sub(symbol.start_line))
 }
 
 fn normalize_anchor(anchor: &str) -> String {

@@ -145,28 +145,10 @@
     },
     {
       "from_key": "fixtures/extraction/qml/basic/source.qml:source:3:0",
-      "to_key": "unresolved:property_format",
+      "to_key": "fixtures/extraction/qml/basic/source.qml:title:5:4",
       "kind": "uses",
       "file_path": "fixtures/extraction/qml/basic/source.qml",
       "line_number": 13,
-      "confidence": "0.800",
-      "metadata": null
-    },
-    {
-      "from_key": "fixtures/extraction/qml/basic/source.qml:source:3:0",
-      "to_key": "unresolved:property_title",
-      "kind": "uses",
-      "file_path": "fixtures/extraction/qml/basic/source.qml",
-      "line_number": 13,
-      "confidence": "0.800",
-      "metadata": null
-    },
-    {
-      "from_key": "fixtures/extraction/qml/basic/source.qml:source:3:0",
-      "to_key": "unresolved:property_trim",
-      "kind": "uses",
-      "file_path": "fixtures/extraction/qml/basic/source.qml",
-      "line_number": 9,
       "confidence": "0.800",
       "metadata": null
     }

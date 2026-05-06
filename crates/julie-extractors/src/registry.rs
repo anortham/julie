@@ -44,7 +44,7 @@ macro_rules! define_full_language_extractors {
                     structured_pending_relationships: Vec::new(),
                     identifiers,
                     types: convert_types_map(types, $language),
-        parse_diagnostics: Vec::new(),
+                    parse_diagnostics: Vec::new(),
                 })
             }
         )+
@@ -79,7 +79,7 @@ macro_rules! define_structured_full_language_extractors {
                     structured_pending_relationships,
                     identifiers,
                     types: convert_types_map(types, $language),
-        parse_diagnostics: Vec::new(),
+                    parse_diagnostics: Vec::new(),
                 })
             }
         )+
@@ -113,7 +113,7 @@ macro_rules! define_structured_full_file_extractors {
                     structured_pending_relationships,
                     identifiers,
                     types: convert_types_map(types, $language),
-        parse_diagnostics: Vec::new(),
+                    parse_diagnostics: Vec::new(),
                 })
             }
         )+
@@ -146,7 +146,7 @@ macro_rules! define_no_pending_extractors {
                     structured_pending_relationships: Vec::new(),
                     identifiers,
                     types: convert_types_map(types, $language),
-        parse_diagnostics: Vec::new(),
+                    parse_diagnostics: Vec::new(),
                 })
             }
         )+
@@ -177,7 +177,7 @@ macro_rules! define_data_only_extractors {
                     structured_pending_relationships: Vec::new(),
                     identifiers,
                     types: HashMap::new(),
-        parse_diagnostics: Vec::new(),
+                    parse_diagnostics: Vec::new(),
                 })
             }
         )+
@@ -709,10 +709,15 @@ fn extract_vue(
     let identifiers = ext.extract_identifiers(&symbols);
     let types = ext.infer_types(&symbols);
     let structured_pending_relationships = ext.extract_structured_pending_relationships(&symbols);
+    let pending_relationships = structured_pending_relationships
+        .clone()
+        .into_iter()
+        .map(|pending| pending.into_pending_relationship())
+        .collect();
     Ok(ExtractionResults {
         symbols,
         relationships,
-        pending_relationships: Vec::new(),
+        pending_relationships,
         structured_pending_relationships,
         identifiers,
         types: convert_types_map(types, "vue"),

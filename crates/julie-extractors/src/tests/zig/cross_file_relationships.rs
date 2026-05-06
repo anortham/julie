@@ -103,23 +103,6 @@ fn main_function() i32 {
             "Should extract main_function from main.zig"
         );
 
-        // Debug output
-        println!("=== File B symbols ===");
-        for s in &results_b.symbols {
-            println!("  {} ({:?}) at line {}", s.name, s.kind, s.start_line);
-        }
-        println!("=== File B relationships (resolved) ===");
-        for r in &results_b.relationships {
-            println!("  {:?}: {} -> {}", r.kind, r.from_symbol_id, r.to_symbol_id);
-        }
-        println!("=== File B pending_relationships ===");
-        for p in &results_b.pending_relationships {
-            println!(
-                "  {:?}: {} -> '{}' (needs resolution)",
-                p.kind, p.from_symbol_id, p.callee_name
-            );
-        }
-
         // KEY TEST: Cross-file call should NOT create a resolved Relationship
         let call_relationships: Vec<_> = results_b
             .relationships

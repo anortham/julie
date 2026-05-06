@@ -39,6 +39,12 @@ fn sym(id: &str, name: &str, kind: SymbolKind, lang: &str, file_path: &str) -> S
     }
 }
 
+fn import_sym(id: &str, name: &str, file_path: &str, signature: &str) -> Symbol {
+    let mut s = sym(id, name, SymbolKind::Import, "rust", file_path);
+    s.signature = Some(signature.to_string());
+    s
+}
+
 /// Helper: minimal pending relationship
 fn pending(from_id: &str, callee: &str, file_path: &str) -> PendingRelationship {
     PendingRelationship {
@@ -587,6 +593,117 @@ fn test_resolve_structured_batch_rejects_std_namespace_project_symbol() {
     assert!(
         resolved.is_empty(),
         "std namespace calls should not attach to local same-name functions"
+    );
+}
+
+#[test]
+fn test_resolve_structured_batch_does_not_apply_rust_std_namespace_to_typescript() {
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("test.db");
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
+
+    for path in &["src/main.ts", "src/helpers.ts"] {
+        db.store_file_info(&FileInfo {
+            path: path.to_string(),
+            language: "typescript".to_string(),
+            hash: "h".to_string(),
+            size: 100,
+            last_modified: 1000,
+            last_indexed: 0,
+            symbol_count: 1,
+            line_count: 0,
+            content: None,
+        })
+        .unwrap();
+    }
+
+    let symbols = vec![sym(
+        "target_do_thing",
+        "doThing",
+        SymbolKind::Function,
+        "typescript",
+        "src/helpers.ts",
+    )];
+    db.store_symbols_transactional(&symbols).unwrap();
+
+    let pendings = vec![structured_pending(
+        "caller",
+        "std.helpers.doThing",
+        "doThing",
+        &["std", "helpers"],
+        "src/main.ts",
+    )];
+
+    let (resolved, stats) = resolver::resolve_structured_batch(&pendings, &db);
+
+    assert_eq!(stats.total, 1);
+    assert_eq!(stats.resolved, 1);
+    assert_eq!(resolved.len(), 1);
+    assert_eq!(
+        resolved[0].to_symbol_id, "target_do_thing",
+        "non-Rust std-prefixed namespaces should use normal language scoring"
+    );
+}
+
+#[test]
+fn test_resolve_structured_batch_does_not_treat_vendor_path_as_workspace_crate_root() {
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("test.db");
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
+
+    for path in &[
+        "src/api.rs",
+        "src/main.rs",
+        "vendor/foo/src/lib.rs",
+        "vendor/foo/src/foo_impl.rs",
+    ] {
+        db.store_file_info(&FileInfo {
+            path: path.to_string(),
+            language: "rust".to_string(),
+            hash: "h".to_string(),
+            size: 100,
+            last_modified: 1000,
+            last_indexed: 0,
+            symbol_count: 1,
+            line_count: 0,
+            content: None,
+        })
+        .unwrap();
+    }
+
+    let symbols = vec![
+        import_sym("api_glob", "foo", "src/api.rs", "pub use foo::*;"),
+        import_sym(
+            "vendor_root_reexport",
+            "Widget",
+            "vendor/foo/src/lib.rs",
+            "pub use foo_impl::Widget;",
+        ),
+        sym(
+            "vendor_widget",
+            "Widget",
+            SymbolKind::Struct,
+            "rust",
+            "vendor/foo/src/foo_impl.rs",
+        ),
+    ];
+    db.store_symbols_transactional(&symbols).unwrap();
+
+    let pendings = vec![structured_pending(
+        "caller",
+        "crate::api::Widget",
+        "Widget",
+        &["crate", "api"],
+        "src/main.rs",
+    )];
+
+    let (resolved, stats) = resolver::resolve_structured_batch(&pendings, &db);
+
+    assert_eq!(stats.total, 1);
+    assert_eq!(stats.resolved, 0);
+    assert!(
+        resolved.is_empty(),
+        "workspace glob reexports must not resolve through nested vendor crate roots"
     );
 }
 

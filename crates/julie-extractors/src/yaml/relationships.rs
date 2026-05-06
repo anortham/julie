@@ -1,3 +1,4 @@
+use super::resolve_alias_anchor_target;
 use crate::base::{BaseExtractor, Relationship, RelationshipKind, Symbol};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
@@ -47,7 +48,7 @@ fn extract_alias_relationship(
     let Some(alias_name) = alias_name(base, node) else {
         return;
     };
-    let Some(target) = anchor_target(symbols, &alias_name) else {
+    let Some(target) = resolve_alias_anchor_target(symbols, &alias_name) else {
         return;
     };
     let Some(source) = base.find_containing_symbol(&node, symbols) else {
@@ -86,14 +87,4 @@ fn alias_name(base: &BaseExtractor, node: Node) -> Option<String> {
         }
     }
     None
-}
-
-fn anchor_target<'a>(symbols: &'a [Symbol], alias_name: &str) -> Option<&'a Symbol> {
-    let anchor_pattern = format!("&{}", alias_name);
-    symbols.iter().find(|symbol| {
-        symbol
-            .signature
-            .as_ref()
-            .is_some_and(|signature| signature.contains(&anchor_pattern))
-    })
 }

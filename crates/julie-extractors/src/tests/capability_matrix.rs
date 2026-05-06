@@ -176,10 +176,10 @@ fn capability_matrix_requires_relationship_fixture_evidence() {
     let matrix = load_matrix(&root);
 
     for row in matrix.languages {
-        let has_relationship_evidence = row
-            .fixtures
-            .iter()
-            .any(|fixture| fixture_exercises_relationships(&root, fixture));
+        let has_relationship_evidence = row.fixtures.iter().any(|fixture| {
+            assert_fixture_pending_parity(&root, fixture, &row.language);
+            fixture_exercises_relationships(&root, fixture)
+        });
         let exception = row
             .capability_gaps
             .iter()
@@ -344,21 +344,7 @@ fn implemented_capability(row: &CapabilityRow, capability: &str) -> bool {
 }
 
 fn fixture_exercises_relationships(root: &Path, fixture: &FixtureRow) -> bool {
-    let expected_path = root.join(&fixture.expected);
-    let json = fs::read_to_string(&expected_path).unwrap_or_else(|err| {
-        panic!(
-            "failed to read expected fixture at {}: {}",
-            expected_path.display(),
-            err
-        )
-    });
-    let expected: Value = serde_json::from_str(&json).unwrap_or_else(|err| {
-        panic!(
-            "failed to parse expected fixture at {}: {}",
-            expected_path.display(),
-            err
-        )
-    });
+    let expected = load_expected_fixture(root, fixture);
 
     [
         "relationships",
@@ -371,5 +357,64 @@ fn fixture_exercises_relationships(root: &Path, fixture: &FixtureRow) -> bool {
             .get(field)
             .and_then(Value::as_array)
             .is_some_and(|items| !items.is_empty())
+    })
+}
+
+fn assert_fixture_pending_parity(root: &Path, fixture: &FixtureRow, language: &str) {
+    let expected = load_expected_fixture(root, fixture);
+    let pending = expected
+        .get("pending_relationships")
+        .and_then(Value::as_array)
+        .unwrap_or_else(|| {
+            panic!(
+                "{} fixture {} is missing pending_relationships",
+                language, fixture.name
+            )
+        });
+    let structured_pending = expected
+        .get("structured_pending_relationships")
+        .and_then(Value::as_array)
+        .unwrap_or_else(|| {
+            panic!(
+                "{} fixture {} is missing structured_pending_relationships",
+                language, fixture.name
+            )
+        });
+    let degraded = structured_pending
+        .iter()
+        .map(|item| {
+            item.get("pending").cloned().unwrap_or_else(|| {
+                panic!(
+                    "{} fixture {} has structured pending without pending payload",
+                    language, fixture.name
+                )
+            })
+        })
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        pending,
+        degraded.as_slice(),
+        "{} fixture {} must keep pending_relationships aligned with degraded structured_pending_relationships",
+        language,
+        fixture.name
+    );
+}
+
+fn load_expected_fixture(root: &Path, fixture: &FixtureRow) -> Value {
+    let expected_path = root.join(&fixture.expected);
+    let json = fs::read_to_string(&expected_path).unwrap_or_else(|err| {
+        panic!(
+            "failed to read expected fixture at {}: {}",
+            expected_path.display(),
+            err
+        )
+    });
+    serde_json::from_str(&json).unwrap_or_else(|err| {
+        panic!(
+            "failed to parse expected fixture at {}: {}",
+            expected_path.display(),
+            err
+        )
     })
 }

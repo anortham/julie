@@ -200,6 +200,12 @@ fn extract_property_binding_relationships(
 
             // Find containing component
             if let Some(container_symbol) = find_containing_component(node, symbols) {
+                let Some(target_symbol) =
+                    find_property_target(&property_name, container_symbol, symbols)
+                else {
+                    return;
+                };
+
                 // Create a Uses relationship for the property access
                 let relationship = Relationship {
                     id: format!(
@@ -210,7 +216,7 @@ fn extract_property_binding_relationships(
                         node.start_position().row
                     ),
                     from_symbol_id: container_symbol.id.clone(),
-                    to_symbol_id: format!("property_{}", property_name),
+                    to_symbol_id: target_symbol.id.clone(),
                     kind: RelationshipKind::Uses,
                     file_path: extractor.base.file_path.clone(),
                     line_number: (node.start_position().row + 1) as u32,
@@ -227,6 +233,35 @@ fn extract_property_binding_relationships(
     for child in node.children(&mut cursor) {
         extract_property_binding_relationships(extractor, child, symbols, relationships);
     }
+}
+
+fn find_property_target<'a>(
+    property_name: &str,
+    container_symbol: &Symbol,
+    symbols: &'a [Symbol],
+) -> Option<&'a Symbol> {
+    symbols
+        .iter()
+        .find(|symbol| {
+            symbol.kind == SymbolKind::Property
+                && symbol.name == property_name
+                && symbol.parent_id.as_deref() == Some(container_symbol.id.as_str())
+        })
+        .or_else(|| {
+            let matches = symbols
+                .iter()
+                .filter(|symbol| {
+                    symbol.kind == SymbolKind::Property
+                        && symbol.name == property_name
+                        && symbol.file_path == container_symbol.file_path
+                })
+                .collect::<Vec<_>>();
+            if matches.len() == 1 {
+                Some(matches[0])
+            } else {
+                None
+            }
+        })
 }
 
 /// Find the containing function for a node

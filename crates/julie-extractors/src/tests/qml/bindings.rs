@@ -2,7 +2,7 @@
 // Tests for property bindings and JavaScript expressions
 
 use super::*;
-use crate::base::SymbolKind;
+use crate::base::{RelationshipKind, SymbolKind};
 
 #[cfg(test)]
 mod tests {
@@ -182,6 +182,47 @@ Item {
         assert!(
             properties.len() >= 3,
             "Should extract properties with array operations"
+        );
+    }
+
+    #[test]
+    fn test_property_binding_relationship_targets_real_property_symbol() {
+        let qml_code = r#"
+import QtQuick 2.15
+
+Item {
+    id: root
+    property int sourceValue: 42
+    property int doubled: root.sourceValue * 2
+}
+"#;
+
+        let (symbols, relationships) = extract_symbols_and_relationships(qml_code);
+        let source_value = symbols
+            .iter()
+            .find(|symbol| symbol.name == "sourceValue" && symbol.kind == SymbolKind::Property)
+            .expect("sourceValue property should be extracted");
+
+        assert!(
+            relationships.iter().any(|relationship| {
+                relationship.kind == RelationshipKind::Uses
+                    && relationship.to_symbol_id == source_value.id
+            }),
+            "root.sourceValue should target the real sourceValue property symbol, got: {:?}",
+            relationships
+                .iter()
+                .map(|relationship| (&relationship.kind, &relationship.to_symbol_id))
+                .collect::<Vec<_>>()
+        );
+        assert!(
+            relationships
+                .iter()
+                .all(|relationship| !relationship.to_symbol_id.starts_with("property_")),
+            "QML relationships must not target synthetic property IDs: {:?}",
+            relationships
+                .iter()
+                .map(|relationship| &relationship.to_symbol_id)
+                .collect::<Vec<_>>()
         );
     }
 

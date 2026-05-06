@@ -174,18 +174,6 @@
         "referenceName": "--accent",
         "referenceType": "custom-property"
       }
-    },
-    {
-      "from_key": "fixtures/extraction/css/basic/source.css:.button,\n#save:5:0",
-      "to_key": "fixtures/extraction/css/basic/source.css:@keyframes spin:17:0",
-      "kind": "references",
-      "file_path": "fixtures/extraction/css/basic/source.css",
-      "line_number": 8,
-      "confidence": "1.000",
-      "metadata": {
-        "referenceName": "spin",
-        "referenceType": "keyframes"
-      }
     }
   ],
   "pending_relationships": [],

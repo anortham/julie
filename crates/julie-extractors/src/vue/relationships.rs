@@ -331,7 +331,14 @@ fn call_name(function_node: Node, script_content: &str) -> Option<String> {
 }
 
 fn node_text(node: Node, content: &str) -> String {
-    content[node.start_byte()..node.end_byte()].to_string()
+    let bytes = content.as_bytes();
+    let start = node.start_byte();
+    let end = node.end_byte();
+    if start < bytes.len() && end <= bytes.len() {
+        String::from_utf8_lossy(&bytes[start..end]).to_string()
+    } else {
+        String::new()
+    }
 }
 
 fn is_template_keyword(name: &str) -> bool {

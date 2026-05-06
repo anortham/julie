@@ -17,6 +17,8 @@
 mod relationships;
 
 use crate::base::{BaseExtractor, Identifier, IdentifierKind, Relationship, Symbol, SymbolKind};
+use serde_json::Value;
+use std::collections::HashMap;
 use std::path::Path;
 
 pub struct YamlExtractor {
@@ -97,7 +99,15 @@ impl YamlExtractor {
 
         // Check for anchor on the value side
         let anchor = self.extract_anchor(node);
-        let signature = anchor.map(|a| format!("{}: &{}", key_name, a));
+        let signature = anchor.as_ref().map(|a| format!("{}: &{}", key_name, a));
+        let metadata = anchor.as_ref().map(|anchor_name| {
+            let mut metadata = HashMap::new();
+            metadata.insert(
+                "yaml_anchor".to_string(),
+                Value::String(anchor_name.clone()),
+            );
+            metadata
+        });
 
         // Determine kind: container keys (with nested mappings) are Module, leaves are Variable
         let kind = if self.has_nested_mapping(node) {
@@ -110,6 +120,7 @@ impl YamlExtractor {
             signature,
             visibility: None,
             parent_id: parent_id.map(|s| s.to_string()),
+            metadata,
             doc_comment: None,
             ..Default::default()
         };
@@ -232,15 +243,8 @@ impl YamlExtractor {
                     .map(|s| s.id.clone());
 
                 // Resolve: find the symbol whose signature contains &{alias_name}
-                let anchor_pattern = format!("&{}", alias_name);
-                let target_symbol_id = symbols
-                    .iter()
-                    .find(|s| {
-                        s.signature
-                            .as_ref()
-                            .is_some_and(|sig| sig.contains(&anchor_pattern))
-                    })
-                    .map(|s| s.id.clone());
+                let target_symbol_id =
+                    resolve_alias_anchor_target(symbols, &alias_name).map(|s| s.id.clone());
 
                 let mut identifier = self.base.create_identifier(
                     &child,
@@ -262,4 +266,45 @@ impl YamlExtractor {
             }
         }
     }
+}
+
+pub(super) fn resolve_alias_anchor_target<'a>(
+    symbols: &'a [Symbol],
+    alias_name: &str,
+) -> Option<&'a Symbol> {
+    symbols.iter().find(|symbol| {
+        symbol_anchor_name(symbol).is_some_and(|anchor_name| anchor_name == alias_name)
+    })
+}
+
+fn symbol_anchor_name<'a>(symbol: &'a Symbol) -> Option<&'a str> {
+    symbol
+        .metadata
+        .as_ref()
+        .and_then(|metadata| metadata.get("yaml_anchor"))
+        .and_then(Value::as_str)
+        .or_else(|| {
+            symbol
+                .signature
+                .as_deref()
+                .and_then(anchor_name_from_signature)
+        })
+}
+
+fn anchor_name_from_signature(signature: &str) -> Option<&str> {
+    let (_, anchor_tail) = signature.rsplit_once('&')?;
+    let anchor_name = anchor_tail.trim();
+    if anchor_name.is_empty() {
+        return None;
+    }
+
+    if anchor_name.chars().all(is_yaml_anchor_char) {
+        Some(anchor_name)
+    } else {
+        None
+    }
+}
+
+fn is_yaml_anchor_char(ch: char) -> bool {
+    !ch.is_whitespace() && !matches!(ch, '[' | ']' | '{' | '}' | ',')
 }

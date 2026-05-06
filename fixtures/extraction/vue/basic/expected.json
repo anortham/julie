@@ -121,7 +121,16 @@
       }
     }
   ],
-  "pending_relationships": [],
+  "pending_relationships": [
+    {
+      "from_key": "fixtures/extraction/vue/basic/source.vue:Source:1:1",
+      "callee_name": "HeaderBar",
+      "kind": "references",
+      "file_path": "fixtures/extraction/vue/basic/source.vue",
+      "line_number": 3,
+      "confidence": "1.000"
+    }
+  ],
   "structured_pending_relationships": [
     {
       "pending": {
