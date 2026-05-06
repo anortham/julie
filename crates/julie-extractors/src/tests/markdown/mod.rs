@@ -5,6 +5,7 @@
 // Target: 400+ lines with edge cases, special syntax, and real-world validation
 
 pub mod relationships;
+pub mod semantics;
 
 #[cfg(test)]
 mod markdown_extractor_tests {

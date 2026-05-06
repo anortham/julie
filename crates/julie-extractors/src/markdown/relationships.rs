@@ -1,6 +1,4 @@
-use crate::base::{
-    BaseExtractor, Relationship, RelationshipKind, Symbol, containing_symbol_at_line,
-};
+use crate::base::{BaseExtractor, Relationship, RelationshipKind, Symbol, SymbolKind};
 use regex::Regex;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
@@ -24,7 +22,7 @@ pub(super) fn extract_relationships(base: &BaseExtractor, symbols: &[Symbol]) ->
             let Some(target) = headings.get(&slug) else {
                 continue;
             };
-            let Some(source) = containing_symbol_at_line(symbols, line_number) else {
+            let Some(source) = containing_heading_at_line(symbols, line_number) else {
                 continue;
             };
             push_relationship(
@@ -42,9 +40,23 @@ pub(super) fn extract_relationships(base: &BaseExtractor, symbols: &[Symbol]) ->
     relationships
 }
 
+fn containing_heading_at_line(symbols: &[Symbol], line_number: u32) -> Option<&Symbol> {
+    symbols
+        .iter()
+        .filter(|symbol| {
+            symbol.kind == SymbolKind::Module
+                && symbol.start_line <= line_number
+                && symbol.end_line >= line_number
+        })
+        .min_by_key(|symbol| symbol.end_line.saturating_sub(symbol.start_line))
+}
+
 fn heading_symbols_by_slug(symbols: &[Symbol]) -> HashMap<String, &Symbol> {
     let mut headings = HashMap::new();
     for symbol in symbols {
+        if symbol.kind != SymbolKind::Module {
+            continue;
+        }
         headings
             .entry(slugify_heading(&symbol.name))
             .or_insert(symbol);
