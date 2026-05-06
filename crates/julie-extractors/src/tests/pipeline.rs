@@ -1,5 +1,5 @@
 use crate::ExtractionResults;
-use crate::base::ParseDiagnosticKind;
+use crate::base::{ParseDiagnosticKind, SymbolKind};
 use crate::factory::extract_symbols_and_relationships;
 use crate::tests::helpers::init_parser;
 use std::path::{Path, PathBuf};
@@ -258,5 +258,79 @@ fn test_extract_canonical_parse_none_returns_degraded_result_with_diagnostic() {
     assert_eq!(
         diagnostic.end_column,
         "    println!(\"unterminated parse\")".len() as u32
+    );
+}
+
+#[test]
+fn test_h_header_with_cpp_syntax_routes_to_cpp_extractor() {
+    let workspace_root = PathBuf::from("/test/workspace");
+    let content = r#"
+#pragma once
+
+namespace app {
+class Widget {
+public:
+    void run() const;
+};
+}
+"#;
+
+    let results = crate::pipeline::extract_canonical("include/widget.h", content, &workspace_root)
+        .expect("C++ header extraction should succeed");
+
+    let widget = results
+        .symbols
+        .iter()
+        .find(|symbol| symbol.name == "Widget" && symbol.kind == SymbolKind::Class)
+        .unwrap_or_else(|| {
+            panic!(
+                "expected C++ class symbol in .h header: {:?}",
+                results.symbols
+            )
+        });
+    assert_eq!(widget.language, "cpp");
+    assert!(
+        results.symbols.iter().any(|symbol| {
+            symbol.name == "run" && symbol.kind == SymbolKind::Method && symbol.language == "cpp"
+        }),
+        "expected C++ method symbol in .h header: {:?}",
+        results.symbols
+    );
+}
+
+#[test]
+fn test_h_header_with_c_syntax_stays_c_extractor() {
+    let workspace_root = PathBuf::from("/test/workspace");
+    let content = r#"
+#ifndef WIDGET_H
+#define WIDGET_H
+
+typedef struct widget {
+    int id;
+} widget_t;
+
+void widget_init(widget_t *widget);
+
+#endif
+"#;
+
+    let results = crate::pipeline::extract_canonical("include/widget.h", content, &workspace_root)
+        .expect("C header extraction should succeed");
+
+    assert!(
+        results.symbols.iter().any(|symbol| {
+            symbol.name == "widget_t" && symbol.kind == SymbolKind::Struct && symbol.language == "c"
+        }),
+        "expected C struct typedef symbol in .h header: {:?}",
+        results.symbols
+    );
+    assert!(
+        results.symbols.iter().any(|symbol| {
+            symbol.name == "widget_init"
+                && symbol.kind == SymbolKind::Function
+                && symbol.language == "c"
+        }),
+        "expected C function declaration symbol in .h header: {:?}",
+        results.symbols
     );
 }
