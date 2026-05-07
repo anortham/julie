@@ -291,6 +291,7 @@ pub(super) fn extract_type_alias(
 
     let modifiers = helpers::extract_modifiers(base, node);
     let type_params = helpers::extract_type_parameters(base, node);
+    let annotations = helpers::extract_annotations(base, node);
 
     // Find the aliased type (after =) - may consist of multiple nodes
     let mut aliased_type = String::new();
@@ -340,7 +341,7 @@ pub(super) fn extract_type_alias(
                 ("aliasedType".to_string(), Value::String(aliased_type)),
             ])),
             doc_comment,
-            annotations: Vec::new(),
+            annotations,
         },
     ))
 }

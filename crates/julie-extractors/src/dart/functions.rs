@@ -4,10 +4,7 @@
 
 use super::helpers::*;
 use super::signatures;
-use crate::base::{
-    AnnotationMarker, BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility,
-    normalize_annotations,
-};
+use crate::base::{AnnotationMarker, BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility};
 use crate::test_detection::is_test_symbol;
 use std::collections::HashMap;
 use tree_sitter::Node;
@@ -374,11 +371,6 @@ pub(super) fn extract_variable(
 
     None
 }
-
-fn extract_annotation_markers(node: &Node) -> Vec<AnnotationMarker> {
-    normalize_annotations(&extract_annotations(node), "dart")
-}
-
 fn annotation_keys(annotations: &[AnnotationMarker]) -> Vec<String> {
     annotations
         .iter()

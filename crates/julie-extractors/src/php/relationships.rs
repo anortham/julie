@@ -29,7 +29,7 @@ pub(super) fn unresolved_php_type_target(raw_name: &str) -> UnresolvedTarget {
     };
 
     UnresolvedTarget {
-        display_name: terminal_name.clone(),
+        display_name: parts.join("\\"),
         terminal_name,
         receiver: None,
         namespace_path: parts[..parts.len().saturating_sub(1)].to_vec(),

@@ -299,33 +299,20 @@ pub(super) fn extract_record_components(
             continue;
         }
 
-        let mut parameter_cursor = parameter.walk();
-        let mut component_type = None;
-        let mut name_node = None;
-
-        for child in parameter.children(&mut parameter_cursor) {
-            match child.kind() {
-                "type_identifier"
-                | "generic_type"
-                | "array_type"
-                | "primitive_type"
-                | "boolean_type"
-                | "integral_type"
-                | "floating_point_type" => {
-                    component_type = Some(extractor.base().get_node_text(&child));
-                }
-                "identifier" => {
-                    name_node = Some(child);
-                }
-                _ => {}
-            }
-        }
-
+        let name_node = parameter.child_by_field_name("name").or_else(|| {
+            parameter
+                .children(&mut parameter.walk())
+                .find(|child| child.kind() == "identifier")
+        });
         let Some(name_node) = name_node else {
             continue;
         };
+
         let name = extractor.base().get_node_text(&name_node);
-        let component_type = component_type.unwrap_or_else(|| "Object".to_string());
+        let component_type = parameter
+            .child_by_field_name("type")
+            .map(|node| extractor.base().get_node_text(&node))
+            .unwrap_or_else(|| "Object".to_string());
         let signature = format!("{} {}", component_type, name);
         let options = SymbolOptions {
             signature: Some(signature),

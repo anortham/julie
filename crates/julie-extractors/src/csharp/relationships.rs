@@ -1,5 +1,6 @@
 // C# Relationship Extraction
 
+use super::partial_classes;
 use crate::base::{
     LocalTargetResolution, Relationship, RelationshipKind, ScopedSymbolIndex, Symbol, SymbolKind,
     UnresolvedTarget,
@@ -19,6 +20,7 @@ pub fn extract_relationships(
 ) -> Vec<Relationship> {
     let mut relationships = Vec::new();
     visit_relationships(extractor, tree.root_node(), symbols, &mut relationships);
+    partial_classes::add_linkage_relationships(symbols, &mut relationships);
     relationships
 }
 

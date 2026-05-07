@@ -39,9 +39,10 @@ Workers must use Julie MCP tools before touching code:
 
 - Task 10 is completed and committed as `e75facd1 fix(extractors): cover identifier and call gaps`.
 - Task 11 is completed and committed as `57f59b74 fix(extractors): preserve structured pending targets`.
-- Task 12 is completed in the current working tree. Verification passed, and the Task 12 ledger records focused exact tests, changed-file, extractor, parser-upgrade, and one dev gate.
-- Task 13 is completed in the current working tree. Verification passed, and the Task 13 ledger records focused exact tests, golden refresh, changed-file, parser-upgrade, and one dev gate.
-- Task 14 is the next unstarted task.
+- Task 12 is completed and committed as `6594c4ac fix(extractors): support embedded vue html css razor`.
+- Task 13 is completed and committed as `cf6c9bae fix(extractors): clean up scripting language extraction`.
+- Task 14 is completed in the current working tree. Verification passed, and the Task 14 ledger records focused exact tests, golden refresh, changed-file, and one dev gate.
+- Task 15 is the next unstarted task.
 
 ## Finding Coverage
 
@@ -598,6 +599,16 @@ Reviewed-but-not-promoted claims from the compiled document are not task drivers
 - PHP 8 promoted properties are first-class symbols.
 - JVM and Swift/Scala language constructs are modeled with exact names, kinds, and parent IDs.
 
+**Status:** Completed on 2026-05-07 in the current working tree.
+
+**Completion notes:**
+- Added PHP 8 constructor property promotion with class parent IDs, visibility, signatures, and property type metadata. PHP qualified pending targets now keep namespace-qualified display and callee names.
+- Added C# local function symbols, stable-name lambda symbols, and partial-class linkage using full-name plus `partial` marker metadata. Lead review split the new C# code into focused modules to keep touched implementation files under the 500-line limit.
+- Added Java record component property symbols with parent IDs and field-based type extraction for qualified, generic, and array component types.
+- Added Scala case-class constructor property symbols, scope-sensitive `val` kind semantics, and non-function annotation capture for classes, objects, properties, and type aliases.
+- Added Swift extension modeling as `SymbolKind::Module` with `symbol_role = extension` metadata, plus non-function annotation metadata for extensions, type aliases, enum cases, and properties.
+- Added Kotlin and Dart non-function annotation capture for classes, objects, properties/fields, type aliases, and related type declarations. Lead review fixed the Dart field path after the first exact test pass exposed the worker's missed `dart/members.rs` path.
+
 ## Task 15: Remaining Language Modeling Corrections
 
 **Files:**
@@ -813,3 +824,9 @@ cargo xtask test dogfood
 | Task 13 diff has no whitespace errors | `git diff --check` | task-13-diff-check | `6594c4acbac9d579ad5621d9ace6096efd91a034 + dirty Task 13 working tree` | PASS | 2026-05-07T00:48:53Z | No |
 | Task 13 changed-file buckets pass | `cargo xtask test changed` | task-13-changed | `6594c4acbac9d579ad5621d9ace6096efd91a034 + dirty Task 13 working tree` | PASS, extractors and parser-upgrade buckets passed in 3.3s | 2026-05-07T00:48:53Z | No |
 | Task 13 batch regression tier passes | `cargo xtask test dev` | task-13-dev | `6594c4acbac9d579ad5621d9ace6096efd91a034 + dirty Task 13 working tree` | PASS, 22 buckets passed in 354.4s | 2026-05-07T00:48:53Z | No |
+| Task 14 focused JVM, Swift, Scala, PHP, Kotlin, and Dart idiom regressions pass | sequential loop over `cargo nextest run -p julie-extractors --lib <exact_test>` for `test_php_constructor_property_promotion_emits_property_symbols`, `test_php_pending_target_preserves_namespace_path`, `test_csharp_local_functions_lambdas_and_partial_classes_are_modeled`, `test_java_record_components_emit_properties`, `test_scala_case_class_fields_are_property_symbols`, `test_scala_val_kind_depends_on_scope`, `test_scala_annotations_attach_to_classes_properties_objects_and_type_aliases`, `test_swift_extensions_are_not_plain_class_symbols`, `test_swift_annotations_attach_to_extensions_type_aliases_and_enum_cases`, `test_kotlin_annotations_attach_to_classes_properties_objects_and_type_aliases`, and `test_dart_annotations_attach_to_classes_properties_and_type_aliases` | task-14-focused | `cf6c9baea45442eb8d90bc9fd3cc074b627b70ce + dirty Task 14 working tree` | PASS, 11 exact tests passed | 2026-05-07T01:20:08Z | No |
+| Task 14 canonical extractor golden fixtures are current | `UPDATE_GOLDEN=1 cargo nextest run -p julie-extractors golden` | task-14-golden | `cf6c9baea45442eb8d90bc9fd3cc074b627b70ce + dirty Task 14 working tree` | PASS, 3 tests passed | 2026-05-07T01:20:08Z | No |
+| Task 14 formatting is current | `cargo fmt --check` | task-14-fmt-check | `cf6c9baea45442eb8d90bc9fd3cc074b627b70ce + dirty Task 14 working tree` | PASS | 2026-05-07T01:20:08Z | No |
+| Task 14 diff has no whitespace errors | `git diff --check` | task-14-diff-check | `cf6c9baea45442eb8d90bc9fd3cc074b627b70ce + dirty Task 14 working tree` | PASS | 2026-05-07T01:20:08Z | No |
+| Task 14 changed-file buckets pass | `cargo xtask test changed` | task-14-changed | `cf6c9baea45442eb8d90bc9fd3cc074b627b70ce + dirty Task 14 working tree` | PASS, extractors bucket passed in 0.9s | 2026-05-07T01:20:08Z | No |
+| Task 14 batch regression tier passes | `cargo xtask test dev` | task-14-dev | `cf6c9baea45442eb8d90bc9fd3cc074b627b70ce + dirty Task 14 working tree` | PASS, 22 buckets passed in 371.1s | 2026-05-07T01:20:08Z | No |

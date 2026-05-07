@@ -251,6 +251,59 @@ record Person(String name, int age) {
     }
 
     #[test]
+    fn test_java_record_components_emit_properties() {
+        let workspace_root = PathBuf::from("/tmp/test");
+        let code = r#"
+package com.example;
+
+public record Snapshot(
+    String id,
+    java.time.Instant createdAt,
+    java.util.List<String> tags,
+    int[] values
+) {}
+"#;
+
+        let tree = init_parser(code, "java");
+
+        let mut extractor = JavaExtractor::new(
+            "java".to_string(),
+            "test.java".to_string(),
+            code.to_string(),
+            &workspace_root,
+        );
+
+        let symbols = extractor.extract_symbols(&tree);
+        let snapshot_record = symbols
+            .iter()
+            .find(|symbol| symbol.name == "Snapshot")
+            .expect("Snapshot record should be found");
+
+        for (component_name, expected_signature) in [
+            ("id", "String id"),
+            ("createdAt", "java.time.Instant createdAt"),
+            ("tags", "java.util.List<String> tags"),
+            ("values", "int[] values"),
+        ] {
+            let component = symbols
+                .iter()
+                .find(|symbol| {
+                    symbol.name == component_name
+                        && symbol.kind == SymbolKind::Property
+                        && symbol.parent_id.as_deref() == Some(snapshot_record.id.as_str())
+                })
+                .unwrap_or_else(|| panic!("Missing record component {component_name}"));
+
+            assert_eq!(component.kind, SymbolKind::Property);
+            assert_eq!(
+                component.parent_id.as_deref(),
+                Some(snapshot_record.id.as_str())
+            );
+            assert_eq!(component.signature.as_deref(), Some(expected_signature));
+        }
+    }
+
+    #[test]
     fn test_extract_nested_classes() {
         let workspace_root = PathBuf::from("/tmp/test");
         let code = r#"

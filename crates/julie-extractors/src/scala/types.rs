@@ -16,6 +16,7 @@ pub(super) fn extract_class(
 ) -> Option<Symbol> {
     let name = helpers::get_name(base, node)?;
     let modifiers = helpers::extract_modifiers(base, node);
+    let annotations = helpers::extract_annotations(base, node);
     let type_params = helpers::extract_type_parameters(base, node);
     let params = helpers::extract_parameters(base, node);
     let extends = helpers::extract_extends(base, node);
@@ -66,7 +67,7 @@ pub(super) fn extract_class(
                 ("modifiers".to_string(), Value::String(modifiers.join(","))),
             ])),
             doc_comment,
-            annotations: Vec::new(),
+            annotations,
         },
     ))
 }
@@ -137,6 +138,7 @@ pub(super) fn extract_object(
 ) -> Option<Symbol> {
     let name = helpers::get_name(base, node)?;
     let modifiers = helpers::extract_modifiers(base, node);
+    let annotations = helpers::extract_annotations(base, node);
     let extends = helpers::extract_extends(base, node);
 
     // Check if companion (matches an existing class/trait name)
@@ -191,7 +193,7 @@ pub(super) fn extract_object(
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: Some(metadata),
             doc_comment,
-            annotations: Vec::new(),
+            annotations,
         },
     ))
 }

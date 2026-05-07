@@ -27,6 +27,7 @@ impl SwiftExtractor {
             .any(|c| c.kind() == "extension");
 
         let modifiers = self.extract_modifiers(node);
+        let annotations = self.extract_annotations(node);
         let generic_params = self.extract_generic_parameters(node);
         let inheritance = self.extract_inheritance(node);
 
@@ -44,7 +45,7 @@ impl SwiftExtractor {
         } else if is_struct {
             ("struct", SymbolKind::Struct)
         } else if is_extension {
-            ("extension", SymbolKind::Class)
+            ("extension", SymbolKind::Module)
         } else {
             ("class", SymbolKind::Class)
         };
@@ -70,16 +71,36 @@ impl SwiftExtractor {
             signature.push_str(&format!(" {}", where_clause));
         }
 
-        let metadata = HashMap::from([
+        let mut metadata = HashMap::from([
             (
                 "type".to_string(),
-                serde_json::Value::String("class".to_string()),
+                serde_json::Value::String(if is_extension {
+                    "extension".to_string()
+                } else {
+                    "class".to_string()
+                }),
             ),
             (
                 "modifiers".to_string(),
                 serde_json::Value::String(modifiers.join(", ")),
             ),
         ]);
+        if is_extension {
+            metadata.insert(
+                "extendedType".to_string(),
+                serde_json::Value::String(name.clone()),
+            );
+            metadata.insert(
+                "symbol_role".to_string(),
+                serde_json::Value::String("extension".to_string()),
+            );
+        }
+        if let Some(keys) = self.annotation_keys_csv(&annotations) {
+            metadata.insert(
+                "annotationKeys".to_string(),
+                serde_json::Value::String(keys),
+            );
+        }
 
         // Extract Swift documentation comment
         let doc_comment = self.base.find_doc_comment(&node);
@@ -94,7 +115,7 @@ impl SwiftExtractor {
                 parent_id: parent_id.map(|s| s.to_string()),
                 metadata: Some(metadata),
                 doc_comment,
-                annotations: Vec::new(),
+                annotations,
             },
         ))
     }

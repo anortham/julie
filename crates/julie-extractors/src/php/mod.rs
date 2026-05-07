@@ -116,6 +116,7 @@ impl PhpExtractor {
                 extract_function(self, node, parent_id.as_deref())
             }
             "property_declaration" => extract_property(self, node, parent_id.as_deref()),
+            "property_promotion_parameter" => extract_property(self, node, parent_id.as_deref()),
             "const_declaration" => extract_constant(self, node, parent_id.as_deref()),
             "namespace_definition" => extract_namespace(self, node, parent_id.as_deref()),
             "use_declaration" | "namespace_use_declaration" => {

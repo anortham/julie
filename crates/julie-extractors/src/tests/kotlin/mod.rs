@@ -2,6 +2,8 @@
 //
 // Direct Implementation of Kotlin extractor tests (TDD RED phase)
 
+mod task14;
+
 use crate::base::SymbolKind;
 use crate::kotlin::KotlinExtractor;
 use std::path::PathBuf;

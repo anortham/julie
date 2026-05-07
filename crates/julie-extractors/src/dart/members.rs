@@ -29,6 +29,7 @@ pub(super) fn extract_field(
 
     let field_name = get_node_text(&name_node);
     let field_type = get_node_text(&type_node);
+    let annotations = extract_annotation_markers(node);
     let is_private = field_name.starts_with('_');
 
     // Check for modifiers using child nodes
@@ -82,6 +83,7 @@ pub(super) fn extract_field(
             parent_id: parent_id.map(|id| id.to_string()),
             metadata: Some(HashMap::new()),
             doc_comment: base.find_doc_comment(node),
+            annotations,
             ..Default::default()
         },
     );

@@ -16,9 +16,11 @@ pub(crate) mod di_relationships;
 mod fields;
 mod helpers;
 mod identifiers;
+mod local_callables;
 pub(crate) mod member_type_relationships;
 mod members;
 mod operators;
+mod partial_classes;
 mod relationships;
 mod type_inference;
 mod types;
@@ -199,6 +201,9 @@ impl CSharpExtractor {
                 types::extract_enum_member(&mut self.base, node, parent_id)
             }
             "method_declaration" => members::extract_method(&mut self.base, node, parent_id),
+            "local_function_statement" => {
+                local_callables::extract_local_function(&mut self.base, node, parent_id)
+            }
             "constructor_declaration" => {
                 members::extract_constructor(&mut self.base, node, parent_id)
             }
@@ -207,6 +212,9 @@ impl CSharpExtractor {
             "event_field_declaration" => fields::extract_event(&mut self.base, node, parent_id),
             "delegate_declaration" => members::extract_delegate(&mut self.base, node, parent_id),
             "record_declaration" => types::extract_record(&mut self.base, node, parent_id),
+            "lambda_expression" | "anonymous_method_expression" => {
+                local_callables::extract_lambda(&mut self.base, node, parent_id)
+            }
             "destructor_declaration" => {
                 members::extract_destructor(&mut self.base, node, parent_id)
             }
