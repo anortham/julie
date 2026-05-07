@@ -8,13 +8,51 @@ use std::path::{Path, PathBuf};
 use tracing::{debug, error, info, warn};
 
 impl ManageWorkspaceTool {
-    /// Handle index command - index primary workspace
+    /// Handle index command - index primary workspace.
+    ///
+    /// Acquires the per-workspace mutation gate internally. If the caller
+    /// already holds the gate (e.g. catch-up indexer), use
+    /// `handle_index_command_with_guard` instead — `tokio::sync::Mutex` is
+    /// non-reentrant and re-acquisition deadlocks.
     pub(crate) async fn handle_index_command(
         &self,
         handler: &JulieServerHandler,
         path: Option<String>,
         force: bool,
         skip_embeddings: bool,
+    ) -> Result<CallToolResult> {
+        self.handle_index_command_internal(handler, path, force, skip_embeddings, None)
+            .await
+    }
+
+    /// Variant for callers that already hold the workspace mutation gate.
+    /// Skips the internal `acquire_gate` call (which would deadlock) and uses
+    /// the caller's guard as the proof token.
+    pub(crate) async fn handle_index_command_with_guard(
+        &self,
+        handler: &JulieServerHandler,
+        path: Option<String>,
+        force: bool,
+        skip_embeddings: bool,
+        existing_guard: &MutationGuard<'_>,
+    ) -> Result<CallToolResult> {
+        self.handle_index_command_internal(
+            handler,
+            path,
+            force,
+            skip_embeddings,
+            Some(existing_guard),
+        )
+        .await
+    }
+
+    async fn handle_index_command_internal(
+        &self,
+        handler: &JulieServerHandler,
+        path: Option<String>,
+        force: bool,
+        skip_embeddings: bool,
+        existing_guard: Option<&MutationGuard<'_>>,
     ) -> Result<CallToolResult> {
         info!("📚 Starting workspace indexing...");
         let explicit_path_requested = path.is_some();
@@ -103,7 +141,17 @@ impl ManageWorkspaceTool {
                 .clone()
                 .unwrap_or_else(|| canonical_path.to_string_lossy().to_string())
         };
-        let _mutation_guard = acquire_gate(&gate_workspace_id).await;
+        // Use the caller's guard if supplied; otherwise acquire our own.
+        // `_local_guard` keeps the freshly-acquired guard alive for the rest
+        // of this function when no existing_guard was passed.
+        let _local_guard;
+        let _mutation_guard: &MutationGuard<'_> = match existing_guard {
+            Some(g) => g,
+            None => {
+                _local_guard = acquire_gate(&gate_workspace_id).await;
+                &_local_guard
+            }
+        };
         let semantic_engine_refresh_needed = self
             .semantic_index_engine_refresh_needed_for_path(handler, &canonical_path)
             .await?;
@@ -237,7 +285,7 @@ impl ManageWorkspaceTool {
 
         // Perform indexing — gate is held via _mutation_guard for the duration.
         let index_result = self
-            .index_workspace_inner(&_mutation_guard, handler, &canonical_path, effective_force_reindex)
+            .index_workspace_inner(_mutation_guard, handler, &canonical_path, effective_force_reindex)
             .await;
 
         match index_result {

@@ -197,6 +197,40 @@ async fn test_proof_token_signature_compiles_with_real_guard() {
     assert_eq!(gated_mutation(&guard), "ran with proof");
 }
 
+/// Regression for the v2 nested-acquisition deadlock that codex flagged and
+/// that briefly returned in commit 8383502b: a caller holding the gate must
+/// not deadlock when invoking gated work via the proof-token path. The
+/// `_with_guard` variants take an existing `&MutationGuard<'_>` and skip
+/// re-acquisition — proven here by completing two nested acquire-equivalent
+/// calls within a tight timeout that any actual deadlock would blow through.
+#[tokio::test]
+async fn test_guard_passing_prevents_reentrant_deadlock() {
+    clear_cache_for_test();
+
+    let outer_guard = acquire_gate("ws_reentrancy").await;
+
+    // A function that takes a guard reference can be called freely with the
+    // existing one — no re-acquisition, no deadlock.
+    fn nested_work(_guard: &MutationGuard<'_>) {}
+
+    timeout(
+        Duration::from_millis(200),
+        async {
+            nested_work(&outer_guard);
+            nested_work(&outer_guard);
+            nested_work(&outer_guard);
+        },
+    )
+    .await
+    .expect(
+        "Re-entering gated work via &MutationGuard<'_> must not deadlock. \
+         A timeout here means a callee on the proof-token path silently \
+         re-acquired the gate (the codex v2 finding regressed).",
+    );
+
+    drop(outer_guard);
+}
+
 /// Cross-cutting smoke: a fresh-clone catch-up holding the gate while a
 /// watcher event arrives is the exact bug the plan targets. We simulate it
 /// directly: hold the gate, write a file, attempt to acquire the gate from

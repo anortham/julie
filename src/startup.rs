@@ -85,8 +85,10 @@ pub(crate) async fn run_primary_workspace_repair(
         Err(_) => {
             // No workspace bound yet (first-run / empty-database path).
             // There is no concurrent writer to serialize against, so run
-            // the repair directly without a gate.
-            run_primary_workspace_repair_inner_ungated(handler).await
+            // the repair directly without a gate. The downstream index call
+            // will acquire its own gate when it discovers the workspace
+            // identity.
+            run_primary_workspace_repair_body(handler, None).await
         }
     }
 }
@@ -101,15 +103,21 @@ pub(crate) async fn run_primary_workspace_repair_inner(
     _guard: &MutationGuard<'_>,
     handler: &JulieServerHandler,
 ) -> Result<Option<PrimaryWorkspaceRepairPlan>> {
-    run_primary_workspace_repair_inner_ungated(handler).await
+    run_primary_workspace_repair_body(handler, Some(_guard)).await
 }
 
 /// The actual repair body, shared by the gated and ungated paths.
 ///
 /// Private — callers must go through `run_primary_workspace_repair` (gated) or
 /// `run_primary_workspace_repair_inner` (already-gated proof-token path).
-async fn run_primary_workspace_repair_inner_ungated(
+///
+/// When `existing_guard` is `Some`, the indexing helper is invoked via
+/// `handle_index_command_with_guard` so we don't try to re-acquire the same
+/// per-workspace mutex (which would deadlock — `tokio::sync::Mutex` is not
+/// reentrant). When `None`, the gated entry point acquires its own gate.
+async fn run_primary_workspace_repair_body(
     handler: &JulieServerHandler,
+    existing_guard: Option<&MutationGuard<'_>>,
 ) -> Result<Option<PrimaryWorkspaceRepairPlan>> {
     let indexing_runtime = handler
         .primary_workspace_snapshot()
@@ -167,9 +175,28 @@ async fn run_primary_workspace_repair_inner_ungated(
                     )
                 });
                 let skip_embeddings = !repair_rebuilds_embedding_inputs;
-                index_tool
-                    .call_tool_with_options(handler, skip_embeddings)
-                    .await?;
+                match existing_guard {
+                    Some(guard) => {
+                        // Caller already holds the gate — call the variant
+                        // that skips re-acquisition (would deadlock).
+                        index_tool
+                            .handle_index_command_with_guard(
+                                handler,
+                                None,
+                                false,
+                                skip_embeddings,
+                                guard,
+                            )
+                            .await?;
+                    }
+                    None => {
+                        // No gate held yet — let the gated entry point
+                        // acquire it once it has resolved the workspace_id.
+                        index_tool
+                            .call_tool_with_options(handler, skip_embeddings)
+                            .await?;
+                    }
+                }
                 if let Some(runtime) = indexing_runtime.as_ref() {
                     let mut runtime = runtime
                         .write()
