@@ -74,6 +74,17 @@ impl DaemonPaths {
     /// FNV-1a hash of `julie_home`, used for Windows shutdown event names.
     ///
     /// Stable across Rust versions (unlike `DefaultHasher`).
+    ///
+    /// Note: this uses `Path::to_string_lossy()`, which replaces non-UTF-8 byte
+    /// sequences in the home directory path with U+FFFD. On modern systems this
+    /// is essentially never observed -- Windows paths are UTF-16 by definition,
+    /// and macOS/Linux home directories are conventionally UTF-8. On legacy
+    /// filesystems or unusual locales, two distinct non-UTF-8 home paths could
+    /// in theory hash to the same value. The collision is bounded in scope:
+    /// the hash only namespaces the per-user `daemon_shutdown_event`, so a
+    /// collision would mean two different homes share an event name on the
+    /// same machine -- effectively impossible without an attacker who can
+    /// already write to both home directories.
     #[cfg(windows)]
     fn julie_home_hash(&self) -> u64 {
         let path_str = self.julie_home.to_string_lossy();
