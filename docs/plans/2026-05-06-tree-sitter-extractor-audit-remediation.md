@@ -38,8 +38,9 @@ Workers must use Julie MCP tools before touching code:
 ## Current Status
 
 - Task 10 is completed and committed as `e75facd1 fix(extractors): cover identifier and call gaps`.
-- Task 11 is completed in this batch. Verification passed, and this plan update records the Task 11 stopping point before the requested break.
-- Task 12 is the next unstarted task. Do not continue into it until work resumes.
+- Task 11 is completed and committed as `57f59b74 fix(extractors): preserve structured pending targets`.
+- Task 12 is completed in the current working tree. Verification passed, and the Task 12 ledger records focused exact tests, changed-file, extractor, parser-upgrade, and one dev gate.
+- Task 13 is the next unstarted task. Stop here until work resumes.
 
 ## Finding Coverage
 
@@ -455,21 +456,28 @@ Reviewed-but-not-promoted claims from the compiled document are not task drivers
 
 ## Task 12: Vue, HTML, CSS, And Razor Embedded Extraction
 
+**Status:** Completed on 2026-05-06 in the current working tree. Stop before Task 13.
+
 **Files:**
+- Modify `crates/julie-extractors/src/vue/mod.rs`
 - Modify `crates/julie-extractors/src/vue/script.rs`
-- Modify `crates/julie-extractors/src/vue/identifiers.rs`
+- Modify `crates/julie-extractors/src/vue/script_setup.rs`
+- Add `crates/julie-extractors/src/vue/template.rs`
 - Modify `crates/julie-extractors/src/vue/style.rs`
+- Modify `crates/julie-extractors/src/vue/helpers.rs`
+- Modify `crates/julie-extractors/src/html/mod.rs`
 - Modify `crates/julie-extractors/src/html/relationships.rs`
 - Modify `crates/julie-extractors/src/html/scripts.rs`
 - Modify `crates/julie-extractors/src/css/at_rules.rs`
 - Modify `crates/julie-extractors/src/css/identifiers.rs`
 - Modify `crates/julie-extractors/src/razor/relationships.rs`
-- Modify `crates/julie-extractors/src/language_spec/specs.rs`
 - Test `crates/julie-extractors/src/tests/vue/mod.rs`
 - Test `crates/julie-extractors/src/tests/vue/script_setup.rs`
 - Test `crates/julie-extractors/src/tests/html/script_style.rs`
 - Test `crates/julie-extractors/src/tests/css/mod.rs`
 - Test `crates/julie-extractors/src/tests/razor/mod.rs`
+- Update `fixtures/extraction/html/basic/expected.json`
+- Update `fixtures/extraction/vue/basic/expected.json`
 
 **What to build:** Options API members, script/style offsets, embedded JS/CSS parsing, modern CSS, symbol-name collisions, HTML/Razor pending relationships, and Vue template definitions.
 
@@ -491,6 +499,15 @@ Reviewed-but-not-promoted claims from the compiled document are not task drivers
 - Embedded ranges preserve full-file positions.
 - HTML and Vue embedded scripts/styles produce real language-specific output.
 - HTML/CSS/Razor symbols no longer collapse to generic names when a specific target exists.
+
+**Completion notes:**
+- Vue Options API extraction now parses script sections through the JavaScript or TypeScript parser and emits real props, emits, data-return properties, computed members, and methods.
+- Vue template extraction now emits template-owned `ref`, named slot, and `v-model` symbols while preserving component usages as non-definition references.
+- Vue style extraction and HTML inline script/style extraction now delegate to CSS, JavaScript, or TypeScript extractors and preserve full-file line, column, and byte ranges.
+- CSS modern at-rules now keep specific names, and pseudo selector call identifiers are parser-scoped so comments and broad selector text do not create bogus calls.
+- Razor `@using` relationships now target namespace-specific IDs, while C# `@using (...)` blocks are filtered out.
+- `language_spec/specs.rs` was not changed because HTML and Razor pending-capability policy stayed unchanged; no legacy pending path was added.
+- Dev verification exposed a downstream Vue `get_symbols` span regression; script setup function spans now cover full function declarations so minimal mode can return function bodies.
 
 ## Task 13: Scripting Language Extraction
 
@@ -763,3 +780,13 @@ cargo xtask test dogfood
 | Task 11 canonical extractor golden fixtures are current | `UPDATE_GOLDEN=1 cargo nextest run -p julie-extractors golden` | task-11-golden | `e75facd1c3dda1bcbbd9c5765b737fcee1994a9e` | PASS, 3 tests passed | 2026-05-06T21:41:52Z | No |
 | Task 11 changed-file buckets pass | `cargo xtask test changed` | task-11-changed | `e75facd1c3dda1bcbbd9c5765b737fcee1994a9e` | PASS, extractors bucket passed in 0.8s | 2026-05-06T21:41:52Z | No |
 | Task 11 batch regression tier passes | `cargo xtask test dev` | task-11-dev | `e75facd1c3dda1bcbbd9c5765b737fcee1994a9e` | PASS, 22 buckets passed in 348.7s | 2026-05-06T21:41:52Z | No |
+| Task 12 Vue template, Options API, style, script range, and script setup line regressions pass | `cargo nextest run -p julie-extractors --lib test_vue_template_refs_slots_and_v_model_emit_template_symbols`; `cargo nextest run -p julie-extractors --lib test_vue_template_symbol_ranges_use_template_section_when_content_repeats`; `cargo nextest run -p julie-extractors --lib test_vue_component_symbol_keeps_broad_span_when_name_appears_in_script`; `cargo nextest run -p julie-extractors --lib test_vue_options_api_methods_computed_data_props_emit_member_symbols`; `cargo nextest run -p julie-extractors --lib test_vue_script_symbols_have_full_file_byte_ranges`; `cargo nextest run -p julie-extractors --lib test_vue_style_delegates_to_css_extractor_with_offsets`; `cargo nextest run -p julie-extractors --lib test_script_setup_line_numbers_are_file_relative` | task-12-vue-focused | `57f59b748850e373c0541f9acb7f6ba7f0a4ba67 + dirty Task 12 working tree` | PASS, 7 exact tests passed | 2026-05-06T23:50:56Z | No |
+| Task 12 HTML, CSS, and Razor exact regressions pass | `cargo nextest run -p julie-extractors --lib test_html_script_and_style_ranges_delegate_to_js_and_css_extractors`; `cargo nextest run -p julie-extractors --lib test_html_script_import_relationship_uses_matching_script_symbol`; `cargo nextest run -p julie-extractors --lib test_css_modern_at_rules_and_pseudo_selectors_are_extracted`; `cargo nextest run -p julie-extractors --lib test_html_css_razor_symbol_names_use_specific_targets`; `cargo nextest run -p julie-extractors --lib test_razor_using_blocks_do_not_emit_fake_namespace_relationships` | task-12-embedded-css-razor-focused | `57f59b748850e373c0541f9acb7f6ba7f0a4ba67 + dirty Task 12 working tree` | PASS, 5 exact tests passed | 2026-05-06T23:50:56Z | No |
+| Task 12 existing Vue and HTML regressions remain covered | `cargo nextest run -p julie-extractors --lib test_template_usages_not_extracted_as_symbols`; `cargo nextest run -p julie-extractors --lib test_extract_external_script_and_style_references` | task-12-existing-regressions | `57f59b748850e373c0541f9acb7f6ba7f0a4ba67 + dirty Task 12 working tree` | PASS, 2 exact tests passed | 2026-05-06T23:50:56Z | No |
+| Task 12 Vue spans still satisfy get_symbols target minimal mode | `cargo nextest run --lib test_vue_target_minimal_extracts_code_body` | task-12-get-symbols-vue-span | `57f59b748850e373c0541f9acb7f6ba7f0a4ba67 + dirty Task 12 working tree` | PASS, 1 exact test passed | 2026-05-06T23:50:56Z | No |
+| Task 12 canonical extractor golden fixtures are current | `UPDATE_GOLDEN=1 cargo nextest run -p julie-extractors golden` | task-12-golden | `57f59b748850e373c0541f9acb7f6ba7f0a4ba67 + dirty Task 12 working tree` | PASS, 3 tests passed | 2026-05-06T23:50:56Z | No |
+| Task 12 formatting is current | `cargo fmt --check` | task-12-fmt-check | `57f59b748850e373c0541f9acb7f6ba7f0a4ba67 + dirty Task 12 working tree` | PASS | 2026-05-06T23:50:56Z | No |
+| Task 12 diff has no whitespace errors | `git diff --check` | task-12-diff-check | `57f59b748850e373c0541f9acb7f6ba7f0a4ba67 + dirty Task 12 working tree` | PASS | 2026-05-06T23:50:56Z | No |
+| Task 12 changed-file buckets pass | `cargo xtask test changed` | task-12-changed | `57f59b748850e373c0541f9acb7f6ba7f0a4ba67 + dirty Task 12 working tree` | PASS, extractors and parser-upgrade buckets passed in 8.8s | 2026-05-06T23:50:56Z | No |
+| Task 12 extractor specialist bucket passes | `cargo xtask test bucket extractors` | task-12-extractors | `57f59b748850e373c0541f9acb7f6ba7f0a4ba67 + dirty Task 12 working tree` | PASS, extractors bucket passed in 0.8s | 2026-05-06T23:50:56Z | No |
+| Task 12 batch regression tier passes | `cargo xtask test dev` | task-12-dev | `57f59b748850e373c0541f9acb7f6ba7f0a4ba67 + dirty Task 12 working tree` | PASS, 22 buckets passed in 356.0s; not rerun after warning-only helper cleanup, final `changed` gate passed | 2026-05-06T23:50:56Z | No |

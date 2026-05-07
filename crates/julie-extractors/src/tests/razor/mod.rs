@@ -1,4 +1,4 @@
-use crate::base::{Relationship, Symbol, SymbolKind};
+use crate::base::{Relationship, RelationshipKind, Symbol, SymbolKind};
 use crate::razor::RazorExtractor;
 use crate::tests::helpers::init_parser;
 use std::path::PathBuf;
@@ -29,6 +29,67 @@ fn extract_relationships(code: &str, symbols: &[Symbol]) -> Vec<Relationship> {
 
 #[cfg(test)]
 mod relationships;
+
+#[test]
+fn test_html_css_razor_symbol_names_use_specific_targets() {
+    let razor_code = r#"@page "/dashboard"
+@using MyApp.Components
+
+<DashboardCard Title="Sales" />
+
+@code {
+    private string Title { get; set; } = "Sales";
+}"#;
+
+    let symbols = extract_symbols(razor_code);
+    let relationships = extract_relationships(razor_code, &symbols);
+    assert!(
+        relationships.iter().any(|relationship| {
+            relationship.kind == RelationshipKind::Uses
+                && relationship.to_symbol_id == "namespace:MyApp.Components"
+                && relationship
+                    .metadata
+                    .as_ref()
+                    .and_then(|metadata| metadata.get("namespace"))
+                    .and_then(|namespace| namespace.as_str())
+                    == Some("MyApp.Components")
+        }),
+        "using directive should target a specific namespace payload, got {relationships:#?}"
+    );
+}
+
+#[test]
+fn test_razor_using_blocks_do_not_emit_fake_namespace_relationships() {
+    let razor_code = r#"@page "/form"
+@using MyApp.Components
+
+@using (Html.BeginForm()) {
+    <button type="submit">Save</button>
+}
+"#;
+
+    let symbols = extract_symbols(razor_code);
+    let relationships = extract_relationships(razor_code, &symbols);
+
+    assert!(
+        relationships
+            .iter()
+            .any(|relationship| relationship.to_symbol_id == "namespace:MyApp.Components"),
+        "real @using namespace directive should still be extracted, got {relationships:#?}"
+    );
+    assert!(
+        !relationships.iter().any(|relationship| {
+            relationship.to_symbol_id == "namespace:(Html.BeginForm()) {"
+                || relationship
+                    .metadata
+                    .as_ref()
+                    .and_then(|metadata| metadata.get("namespace"))
+                    .and_then(|namespace| namespace.as_str())
+                    == Some("(Html.BeginForm()) {")
+        }),
+        "C# using blocks should not become namespace relationships, got {relationships:#?}"
+    );
+}
 
 #[cfg(test)]
 mod razor_extractor_tests {

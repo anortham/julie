@@ -168,6 +168,108 @@ export default {
     }
 
     #[test]
+    fn test_vue_template_refs_slots_and_v_model_emit_template_symbols() {
+        let vue_code = r#"<template>
+  <section>
+    <input ref="nameInput" v-model="form.name" />
+    <slot name="actions"></slot>
+    <UserProfile :user="currentUser" />
+  </section>
+</template>"#;
+
+        let mut extractor = create_extractor("template-definitions.vue", vue_code);
+        let symbols = extractor.extract_symbols(None);
+
+        let name_input = symbols
+            .iter()
+            .find(|symbol| symbol.name == "nameInput")
+            .expect("template ref should be extracted as a symbol");
+        assert_eq!(name_input.kind, SymbolKind::Variable);
+        let ref_offset = vue_code.find("nameInput").unwrap() as u32;
+        assert_eq!(name_input.start_byte, ref_offset);
+        assert_eq!(name_input.end_byte, ref_offset + "nameInput".len() as u32);
+        assert_eq!(
+            &vue_code[name_input.start_byte as usize..name_input.end_byte as usize],
+            "nameInput"
+        );
+
+        let actions = symbols
+            .iter()
+            .find(|symbol| symbol.name == "actions")
+            .expect("named slot should be extracted as a symbol");
+        assert_eq!(actions.kind, SymbolKind::Event);
+        let slot_offset = vue_code.find("actions").unwrap() as u32;
+        assert_eq!(actions.start_byte, slot_offset);
+        assert_eq!(actions.end_byte, slot_offset + "actions".len() as u32);
+
+        let form_name = symbols
+            .iter()
+            .find(|symbol| symbol.name == "form.name")
+            .expect("v-model binding should be extracted as a symbol");
+        assert_eq!(form_name.kind, SymbolKind::Property);
+        let model_offset = vue_code.find("form.name").unwrap() as u32;
+        assert_eq!(form_name.start_byte, model_offset);
+        assert_eq!(form_name.end_byte, model_offset + "form.name".len() as u32);
+
+        assert!(
+            !symbols.iter().any(|symbol| symbol.name == "UserProfile"),
+            "template component usages remain references, not definitions"
+        );
+    }
+
+    #[test]
+    fn test_vue_template_symbol_ranges_use_template_section_when_content_repeats() {
+        let vue_code = r#"<script>
+const repeated = `
+  <input ref="nameInput" />
+`;
+</script>
+
+<template>
+  <input ref="nameInput" />
+</template>"#;
+
+        let mut extractor = create_extractor("repeated-template.vue", vue_code);
+        let symbols = extractor.extract_symbols(None);
+        let name_input = symbols
+            .iter()
+            .find(|symbol| symbol.name == "nameInput" && symbol.kind == SymbolKind::Variable)
+            .expect("template ref should be extracted");
+        let expected_offset = vue_code.rfind("nameInput").unwrap() as u32;
+        assert_eq!(name_input.start_byte, expected_offset);
+    }
+
+    #[test]
+    fn test_vue_component_symbol_keeps_broad_span_when_name_appears_in_script() {
+        let vue_code = r#"<template>
+  <div>Named component</div>
+</template>
+
+<script>
+export default {
+  name: 'BroadSpanComponent',
+  methods: {
+    mention() {
+      return 'BroadSpanComponent';
+    }
+  }
+}
+</script>"#;
+
+        let mut extractor = create_extractor("broad-span.vue", vue_code);
+        let symbols = extractor.extract_symbols(None);
+        let component = symbols
+            .iter()
+            .find(|symbol| symbol.name == "BroadSpanComponent" && symbol.kind == SymbolKind::Class)
+            .expect("component-level symbol should be extracted");
+
+        assert_eq!(component.start_line, 1);
+        assert_eq!(component.start_column, 1);
+        assert_eq!(component.start_byte, 0);
+        assert!(component.end_byte > vue_code.find("name: 'BroadSpanComponent'").unwrap() as u32);
+    }
+
+    #[test]
     fn test_extract_style_symbols() {
         let vue_code = r#"
 <style scoped>
@@ -1302,5 +1404,44 @@ mod vue_style_enhanced_tests {
             "Should extract --spacing custom property"
         );
         assert_eq!(spacing.unwrap().signature.as_ref().unwrap(), "--spacing");
+    }
+
+    #[test]
+    fn test_vue_style_delegates_to_css_extractor_with_offsets() {
+        let vue_code = r#"<template>
+  <button class="button">Save</button>
+</template>
+
+<style scoped>
+.button {
+  animation: pulse 1s ease-in-out;
+}
+
+@keyframes pulse {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+</style>"#;
+
+        let mut extractor = create_extractor("animated.vue", vue_code);
+        let symbols = extractor.extract_symbols(None);
+
+        let keyframes = symbols
+            .iter()
+            .find(|symbol| symbol.name == "@keyframes pulse")
+            .expect("Vue style block should delegate to CSS keyframes extraction");
+        assert_eq!(keyframes.kind, SymbolKind::Function);
+        assert!(keyframes.start_byte > vue_code.find("<style").unwrap() as u32);
+        assert_eq!(
+            &vue_code[keyframes.start_byte as usize..keyframes.start_byte as usize + 10],
+            "@keyframes"
+        );
+
+        let button = symbols
+            .iter()
+            .find(|symbol| symbol.name == ".button")
+            .expect("Vue style block should preserve CSS selector names");
+        assert_eq!(button.kind, SymbolKind::Property);
+        assert!(button.start_byte > vue_code.find("<style").unwrap() as u32);
     }
 }

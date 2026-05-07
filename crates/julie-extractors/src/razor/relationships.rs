@@ -12,6 +12,7 @@ impl super::RazorExtractor {
     ) -> Vec<Relationship> {
         let mut relationships = Vec::new();
         self.visit_relationships(tree.root_node(), symbols, &mut relationships);
+        self.extract_using_line_relationships(tree.root_node(), symbols, &mut relationships);
         relationships
     }
 
@@ -105,14 +106,28 @@ impl super::RazorExtractor {
         relationships: &mut Vec<Relationship>,
     ) {
         // Extract using directive relationships
-        if let Some(qualified_name) = self.find_child_by_type(node, "qualified_name") {
-            let namespace_name = self.base.get_node_text(&qualified_name);
-
+        if let Some(namespace_name) = self
+            .find_child_by_type(node, "qualified_name")
+            .map(|qualified_name| self.base.get_node_text(&qualified_name))
+            .or_else(|| {
+                self.base
+                    .get_node_text(&node)
+                    .strip_prefix("@using")
+                    .map(str::trim)
+                    .filter(|name| !name.is_empty())
+                    .map(ToString::to_string)
+            })
+        {
             // Find any symbol that could be using this namespace
-            if let Some(from_symbol) = symbols.iter().find(|s| s.kind == SymbolKind::Class) {
+            if let Some(from_symbol) = symbols
+                .iter()
+                .find(|s| s.kind == SymbolKind::Class)
+                .or_else(|| symbols.iter().find(|s| s.name == "@page"))
+                .or_else(|| symbols.first())
+            {
                 relationships.push(self.base.create_relationship(
                     from_symbol.id.clone(),
-                    format!("using-{}", namespace_name), // Create synthetic ID for namespaces
+                    format!("namespace:{}", namespace_name),
                     RelationshipKind::Uses,
                     &node,
                     Some(0.8),
@@ -121,6 +136,59 @@ impl super::RazorExtractor {
                         metadata.insert(
                             "namespace".to_string(),
                             serde_json::Value::String(namespace_name),
+                        );
+                        metadata.insert(
+                            "type".to_string(),
+                            serde_json::Value::String("using-directive".to_string()),
+                        );
+                        metadata
+                    }),
+                ));
+            }
+        }
+    }
+
+    fn extract_using_line_relationships(
+        &self,
+        root: Node,
+        symbols: &[Symbol],
+        relationships: &mut Vec<Relationship>,
+    ) {
+        let Some(from_symbol) = symbols
+            .iter()
+            .find(|s| s.kind == SymbolKind::Class)
+            .or_else(|| symbols.iter().find(|s| s.name == "@page"))
+            .or_else(|| symbols.first())
+        else {
+            return;
+        };
+
+        for line in self.base.content.lines() {
+            let namespace_name = line
+                .trim()
+                .strip_prefix("@using")
+                .map(str::trim)
+                .filter(|name| is_namespace_like(name));
+            if let Some(namespace_name) = namespace_name {
+                let to_symbol_id = format!("namespace:{}", namespace_name);
+                if relationships.iter().any(|relationship| {
+                    relationship.from_symbol_id == from_symbol.id
+                        && relationship.to_symbol_id == to_symbol_id
+                }) {
+                    continue;
+                }
+
+                relationships.push(self.base.create_relationship(
+                    from_symbol.id.clone(),
+                    to_symbol_id,
+                    RelationshipKind::Uses,
+                    &root,
+                    Some(0.8),
+                    Some({
+                        let mut metadata = HashMap::new();
+                        metadata.insert(
+                            "namespace".to_string(),
+                            serde_json::Value::String(namespace_name.to_string()),
                         );
                         metadata.insert(
                             "type".to_string(),
@@ -265,4 +333,20 @@ impl super::RazorExtractor {
             }
         }
     }
+}
+
+fn is_namespace_like(name: &str) -> bool {
+    !name.is_empty()
+        && name
+            .split('.')
+            .all(|segment| is_identifier_segment(segment.trim()))
+}
+
+fn is_identifier_segment(segment: &str) -> bool {
+    let mut chars = segment.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    (first == '_' || first.is_ascii_alphabetic())
+        && chars.all(|ch| ch == '_' || ch.is_ascii_alphanumeric())
 }

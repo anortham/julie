@@ -61,6 +61,11 @@ impl AtRuleExtractor {
 
     /// Extract at-rule name - port of extractAtRuleName
     pub(super) fn extract_at_rule_name(base: &BaseExtractor, node: &Node) -> Option<String> {
+        let full_text = base.get_node_text(node);
+        if let Some(name) = modern_at_rule_name(&full_text) {
+            return Some(name);
+        }
+
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
             if child.kind() == "at_keyword" {
@@ -73,4 +78,14 @@ impl AtRuleExtractor {
         }
         None
     }
+}
+
+fn modern_at_rule_name(text: &str) -> Option<String> {
+    let mut parts = text.split_whitespace();
+    let rule = parts.next()?;
+    if !matches!(rule, "@layer" | "@container" | "@property") {
+        return None;
+    }
+    let name = parts.next()?.trim_end_matches('{');
+    Some(format!("{} {}", rule, name))
 }

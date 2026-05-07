@@ -1,6 +1,34 @@
 {
   "symbols": [
     {
+      "key": "fixtures/extraction/vue/basic/source.vue:.worker:17:0",
+      "name": ".worker",
+      "kind": "property",
+      "language": "vue",
+      "file_path": "fixtures/extraction/vue/basic/source.vue",
+      "start_line": 17,
+      "start_column": 0,
+      "end_line": 19,
+      "end_column": 1,
+      "start_byte": 257,
+      "end_byte": 286,
+      "signature": ".worker { color: #0f766e }",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": null,
+      "metadata": {
+        "properties": [
+          "color: #0f766e;"
+        ],
+        "selector": ".worker",
+        "type": "css-rule"
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
       "key": "fixtures/extraction/vue/basic/source.vue:Source:1:1",
       "name": "Source",
       "kind": "class",
@@ -11,7 +39,7 @@
       "end_line": 20,
       "end_column": 1,
       "start_byte": 0,
-      "end_byte": 0,
+      "end_byte": 287,
       "signature": "<Source />",
       "doc_comment": "Vue Single File Component: Source",
       "visibility": "Public",
@@ -26,17 +54,17 @@
       "content_type": null
     },
     {
-      "key": "fixtures/extraction/vue/basic/source.vue:format:10:10",
+      "key": "fixtures/extraction/vue/basic/source.vue:format:11:1",
       "name": "format",
       "kind": "function",
       "language": "vue",
       "file_path": "fixtures/extraction/vue/basic/source.vue",
-      "start_line": 10,
-      "start_column": 10,
-      "end_line": 12,
+      "start_line": 11,
+      "start_column": 1,
+      "end_line": 13,
       "end_column": 2,
-      "start_byte": 0,
-      "end_byte": 0,
+      "start_byte": 165,
+      "end_byte": 230,
       "signature": "function format(value: string)",
       "doc_comment": null,
       "visibility": "Public",
@@ -59,8 +87,8 @@
       "start_column": 7,
       "end_line": 8,
       "end_column": 31,
-      "start_byte": 0,
-      "end_byte": 0,
+      "start_byte": 113,
+      "end_byte": 132,
       "signature": "const title",
       "doc_comment": null,
       "visibility": "Public",
@@ -73,34 +101,12 @@
       "semantic_group": null,
       "confidence": null,
       "content_type": null
-    },
-    {
-      "key": "fixtures/extraction/vue/basic/source.vue:worker:16:2",
-      "name": "worker",
-      "kind": "property",
-      "language": "vue",
-      "file_path": "fixtures/extraction/vue/basic/source.vue",
-      "start_line": 16,
-      "start_column": 2,
-      "end_line": 16,
-      "end_column": 8,
-      "start_byte": 0,
-      "end_byte": 0,
-      "signature": ".worker",
-      "doc_comment": null,
-      "visibility": "Public",
-      "parent_key": null,
-      "metadata": {},
-      "annotations": [],
-      "semantic_group": null,
-      "confidence": null,
-      "content_type": null
     }
   ],
   "relationships": [
     {
       "from_key": "fixtures/extraction/vue/basic/source.vue:Source:1:1",
-      "to_key": "fixtures/extraction/vue/basic/source.vue:format:10:10",
+      "to_key": "fixtures/extraction/vue/basic/source.vue:format:11:1",
       "kind": "calls",
       "file_path": "fixtures/extraction/vue/basic/source.vue",
       "line_number": 9,
@@ -186,6 +192,15 @@
     }
   ],
   "types": [
+    {
+      "symbol_key": "fixtures/extraction/vue/basic/source.vue:.worker:17:0",
+      "resolved_type": "css-rule",
+      "generic_params": null,
+      "constraints": null,
+      "is_inferred": true,
+      "language": "vue",
+      "metadata": null
+    },
     {
       "symbol_key": "fixtures/extraction/vue/basic/source.vue:Source:1:1",
       "resolved_type": "vue-sfc",

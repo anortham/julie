@@ -319,7 +319,7 @@ export default {
     greet() {
       console.log(this.message);
     }
-  }
+    }
 }
 </script>"#;
 
@@ -341,6 +341,97 @@ export default {
     assert!(
         symbols.iter().any(|s| s.name == "greet"),
         "Options API method functions should still work"
+    );
+}
+
+#[test]
+fn test_vue_options_api_methods_computed_data_props_emit_member_symbols() {
+    let vue_code = r#"<script lang="ts">
+export default {
+  props: {
+    title: String,
+    count: Number
+  },
+  emits: ['save', 'cancel'],
+  data() {
+    return {
+      total: 0,
+      enabled: true
+    }
+  },
+  computed: {
+    doubled() {
+      return this.total * 2
+    }
+  },
+  methods: {
+    increment() {
+      this.total++
+    },
+    decrement() {
+      this.total--
+    }
+  }
+}
+</script>"#;
+
+    let mut extractor = create_extractor("counter.vue", vue_code);
+    let symbols = extractor.extract_symbols(None);
+
+    for (name, kind) in [
+        ("title", SymbolKind::Property),
+        ("count", SymbolKind::Property),
+        ("save", SymbolKind::Event),
+        ("cancel", SymbolKind::Event),
+        ("total", SymbolKind::Property),
+        ("enabled", SymbolKind::Property),
+        ("doubled", SymbolKind::Method),
+        ("increment", SymbolKind::Method),
+        ("decrement", SymbolKind::Method),
+    ] {
+        let symbol = symbols
+            .iter()
+            .find(|symbol| symbol.name == name)
+            .unwrap_or_else(|| panic!("missing Options API symbol {name}; got {symbols:#?}"));
+        assert_eq!(symbol.kind, kind, "symbol {name} has wrong kind");
+        assert!(
+            symbol.start_byte > 0,
+            "symbol {name} should keep full-file start byte"
+        );
+        assert!(
+            symbol.end_byte > symbol.start_byte,
+            "symbol {name} should keep byte range"
+        );
+    }
+}
+
+#[test]
+fn test_vue_script_symbols_have_full_file_byte_ranges() {
+    let vue_code = r#"<template>
+  <div>{{ total }}</div>
+</template>
+
+<script>
+export default {
+  methods: {
+    increment() {
+      this.total++
+    }
+  }
+}
+</script>"#;
+
+    let mut extractor = create_extractor("ranges.vue", vue_code);
+    let symbols = extractor.extract_symbols(None);
+    let increment = symbols
+        .iter()
+        .find(|symbol| symbol.name == "increment")
+        .expect("increment method should be extracted");
+
+    assert!(increment.start_byte > vue_code.find("<script>").unwrap() as u32);
+    assert_eq!(
+        &vue_code[increment.start_byte as usize..increment.end_byte as usize],
+        "increment"
     );
 }
 

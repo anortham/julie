@@ -65,14 +65,15 @@ impl HTMLExtractor {
     }
 
     fn visit_node(&mut self, node: Node, symbols: &mut Vec<Symbol>, parent_id: Option<&str>) {
-        if let Some(symbol) = self.extract_node_symbol(node, parent_id) {
-            let symbol_id = symbol.id.clone();
-            symbols.push(symbol);
+        let node_symbols = self.extract_node_symbols(node, parent_id);
+        if !node_symbols.is_empty() {
+            let symbol_id = node_symbols.first().map(|symbol| symbol.id.clone());
+            symbols.extend(node_symbols);
 
             // Recursively visit children with the new symbol as parent
             let mut cursor = node.walk();
             for child in node.children(&mut cursor) {
-                self.visit_node(child, symbols, Some(&symbol_id));
+                self.visit_node(child, symbols, symbol_id.as_deref());
             }
         } else {
             // If no symbol was extracted, continue with children using current parent
@@ -83,28 +84,30 @@ impl HTMLExtractor {
         }
     }
 
-    fn extract_node_symbol(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
+    fn extract_node_symbols(&mut self, node: Node, parent_id: Option<&str>) -> Vec<Symbol> {
         match node.kind() {
             "element" => {
                 elements::ElementExtractor::extract_element(&mut self.base, node, parent_id)
+                    .into_iter()
+                    .collect()
             }
-            "script_element" => Some(scripts::ScriptStyleExtractor::extract_script_element(
+            "script_element" => scripts::ScriptStyleExtractor::extract_script_element(
                 &mut self.base,
                 node,
                 parent_id,
-            )),
-            "style_element" => Some(scripts::ScriptStyleExtractor::extract_style_element(
+            ),
+            "style_element" => scripts::ScriptStyleExtractor::extract_style_element(
                 &mut self.base,
                 node,
                 parent_id,
-            )),
-            "doctype" => Some(elements::ElementExtractor::extract_doctype(
+            ),
+            "doctype" => vec![elements::ElementExtractor::extract_doctype(
                 &mut self.base,
                 node,
                 parent_id,
-            )),
-            "comment" => None,
-            _ => None,
+            )],
+            "comment" => Vec::new(),
+            _ => Vec::new(),
         }
     }
 

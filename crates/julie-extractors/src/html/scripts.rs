@@ -1,4 +1,6 @@
 use crate::base::{BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility};
+use crate::css::CSSExtractor;
+use crate::javascript::JavaScriptExtractor;
 use std::collections::HashMap;
 use tree_sitter::Node;
 
@@ -14,9 +16,20 @@ impl ScriptStyleExtractor {
         base: &mut BaseExtractor,
         node: Node,
         parent_id: Option<&str>,
-    ) -> Symbol {
+    ) -> Vec<Symbol> {
         let attributes = HTMLHelpers::extract_attributes(base, node);
         let content = HTMLHelpers::extract_text_content(base, node);
+
+        if !attributes.contains_key("src") {
+            let symbols = content
+                .as_deref()
+                .map(|content| extract_embedded_javascript_symbols(base, node, content))
+                .unwrap_or_default();
+            if !symbols.is_empty() {
+                return symbols;
+            }
+        }
+
         let signature =
             AttributeHandler::build_element_signature("script", &attributes, content.as_deref());
 
@@ -65,7 +78,7 @@ impl ScriptStyleExtractor {
         // Extract HTML comment
         let doc_comment = base.find_doc_comment(&node);
 
-        base.create_symbol(
+        vec![base.create_symbol(
             &node,
             "script".to_string(),
             symbol_kind,
@@ -77,7 +90,7 @@ impl ScriptStyleExtractor {
                 doc_comment,
                 annotations: Vec::new(),
             },
-        )
+        )]
     }
 
     /// Extract a style element and create a symbol
@@ -85,9 +98,18 @@ impl ScriptStyleExtractor {
         base: &mut BaseExtractor,
         node: Node,
         parent_id: Option<&str>,
-    ) -> Symbol {
+    ) -> Vec<Symbol> {
         let attributes = HTMLHelpers::extract_attributes(base, node);
         let content = HTMLHelpers::extract_text_content(base, node);
+
+        let symbols = content
+            .as_deref()
+            .map(|content| extract_embedded_css_symbols(base, node, content))
+            .unwrap_or_default();
+        if !symbols.is_empty() {
+            return symbols;
+        }
+
         let signature =
             AttributeHandler::build_element_signature("style", &attributes, content.as_deref());
 
@@ -117,7 +139,7 @@ impl ScriptStyleExtractor {
         // Extract HTML comment
         let doc_comment = base.find_doc_comment(&node);
 
-        base.create_symbol(
+        vec![base.create_symbol(
             &node,
             "style".to_string(),
             SymbolKind::Variable,
@@ -129,6 +151,97 @@ impl ScriptStyleExtractor {
                 doc_comment,
                 annotations: Vec::new(),
             },
-        )
+        )]
     }
+}
+
+fn extract_embedded_javascript_symbols(
+    base: &BaseExtractor,
+    node: Node,
+    content: &str,
+) -> Vec<Symbol> {
+    let mut parser = tree_sitter::Parser::new();
+    if parser
+        .set_language(&tree_sitter_javascript::LANGUAGE.into())
+        .is_err()
+    {
+        return Vec::new();
+    }
+    let Some(tree) = parser.parse(content, None) else {
+        return Vec::new();
+    };
+    let mut extractor = JavaScriptExtractor::new(
+        "javascript".to_string(),
+        base.file_path.clone(),
+        content.to_string(),
+        std::path::Path::new(""),
+    );
+    let mut symbols = extractor.extract_symbols(&tree);
+    let Some(offset) = embedded_content_offset(base, node, content) else {
+        return Vec::new();
+    };
+    for symbol in &mut symbols {
+        apply_embedded_offset(symbol, base, offset);
+    }
+    symbols
+}
+
+fn extract_embedded_css_symbols(base: &BaseExtractor, node: Node, content: &str) -> Vec<Symbol> {
+    let mut parser = tree_sitter::Parser::new();
+    if parser
+        .set_language(&tree_sitter_css::LANGUAGE.into())
+        .is_err()
+    {
+        return Vec::new();
+    }
+    let Some(tree) = parser.parse(content, None) else {
+        return Vec::new();
+    };
+    let mut extractor = CSSExtractor::new(
+        "css".to_string(),
+        base.file_path.clone(),
+        content.to_string(),
+        std::path::Path::new(""),
+    );
+    let mut symbols = extractor.extract_symbols(&tree);
+    let Some(offset) = embedded_content_offset(base, node, content) else {
+        return Vec::new();
+    };
+    for symbol in &mut symbols {
+        apply_embedded_offset(symbol, base, offset);
+    }
+    symbols
+}
+
+fn embedded_content_offset(base: &BaseExtractor, node: Node, content: &str) -> Option<u32> {
+    let node_text = base.content.get(node.start_byte()..node.end_byte())?;
+    let local_offset = node_text.find(content)?;
+    Some((node.start_byte() + local_offset) as u32)
+}
+
+fn apply_embedded_offset(symbol: &mut Symbol, base: &BaseExtractor, byte_offset: u32) {
+    let (line_offset, column_offset) = line_column_offset(&base.content, byte_offset as usize);
+    let original_start_line = symbol.start_line;
+    let original_end_line = symbol.end_line;
+    symbol.file_path = base.file_path.clone();
+    symbol.start_line += line_offset;
+    symbol.end_line += line_offset;
+    if original_start_line == 1 {
+        symbol.start_column += column_offset;
+    }
+    if original_end_line == 1 {
+        symbol.end_column += column_offset;
+    }
+    symbol.start_byte += byte_offset;
+    symbol.end_byte += byte_offset;
+}
+
+fn line_column_offset(content: &str, byte_offset: usize) -> (u32, u32) {
+    let prefix = &content[..byte_offset.min(content.len())];
+    let line_offset = prefix.bytes().filter(|byte| *byte == b'\n').count() as u32;
+    let column_offset = prefix
+        .rsplit_once('\n')
+        .map(|(_, tail)| tail.len())
+        .unwrap_or(prefix.len()) as u32;
+    (line_offset, column_offset)
 }
