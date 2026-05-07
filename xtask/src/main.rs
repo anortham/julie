@@ -5,7 +5,9 @@ use anyhow::anyhow;
 use xtask::changed::{
     ChangedSelectionMode, collect_changed_paths, render_changed_selection, select_changed_buckets,
 };
-use xtask::cli::{CliCommand, TestCommand, parse_cli_command, validate_cli_command};
+use xtask::cli::{
+    CertifyCommand, CliCommand, TestCommand, parse_cli_command, validate_cli_command,
+};
 use xtask::inventory::{ProcessInventoryExecutor, render_inventory_report, run_inventory};
 use xtask::manifest::TestManifest;
 use xtask::runner::{
@@ -13,6 +15,8 @@ use xtask::runner::{
     run_tier,
 };
 use xtask::search_matrix::run_search_matrix_command;
+use xtask::tree_sitter_certification::run_tree_sitter_certification;
+use xtask::tree_sitter_real_world::run_tree_sitter_real_world_certification;
 use xtask::workspace_root;
 
 fn main() -> anyhow::Result<()> {
@@ -42,6 +46,7 @@ fn main() -> anyhow::Result<()> {
             let command = match validate_cli_command(&manifest, CliCommand::Test(command))? {
                 CliCommand::Test(command) => command,
                 CliCommand::SearchMatrix(_) => unreachable!("validated test command changed shape"),
+                CliCommand::Certify(_) => unreachable!("validated test command changed shape"),
             };
 
             match command {
@@ -120,6 +125,28 @@ fn main() -> anyhow::Result<()> {
         CliCommand::SearchMatrix(command) => {
             run_search_matrix_command(&command, &mut stdout)?;
         }
+        CliCommand::Certify(command) => match command {
+            CertifyCommand::TreeSitter {
+                out,
+                check,
+                real_world,
+                profile,
+                corpus,
+                julie_home,
+            } => {
+                if real_world {
+                    run_tree_sitter_real_world_certification(
+                        &profile,
+                        &corpus,
+                        &out,
+                        &julie_home,
+                        &mut stdout,
+                    )?;
+                } else {
+                    run_tree_sitter_certification(&out, check, &mut stdout)?;
+                }
+            }
+        },
     }
 
     if coverage {

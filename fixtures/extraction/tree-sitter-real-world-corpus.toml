@@ -1,0 +1,172 @@
+roots = ["~/source"]
+
+[profiles.smoke]
+repos = ["julie", "zod", "flask"]
+
+[profiles.restored]
+repos = [
+  "jq",
+  "nlohmann-json",
+  "Newtonsoft.Json",
+  "riverpod",
+  "phoenix",
+  "cobra",
+  "gson",
+  "moshi",
+  "lite",
+  "Slim",
+  "sinatra",
+  "cats",
+  "Alamofire",
+]
+
+[profiles.release]
+repos = [
+  "julie",
+  "pandora",
+  "zls",
+  "zod",
+  "flask",
+  "cobra",
+  "gson",
+  "Slim",
+  "sinatra",
+  "Newtonsoft.Json",
+  "Alamofire",
+  "moshi",
+  "jq",
+  "nlohmann-json",
+  "riverpod",
+  "lite",
+  "cats",
+  "phoenix",
+  "express",
+  "kirigami",
+  "blazor-samples",
+]
+
+[[repos]]
+name = "julie"
+language = "rust"
+profile_tags = ["smoke", "release"]
+min_relationships = 1
+
+[[repos]]
+name = "pandora"
+language = "gdscript"
+profile_tags = ["release"]
+min_relationships = 1
+
+[[repos]]
+name = "zls"
+language = "zig"
+profile_tags = ["release"]
+min_relationships = 1
+
+[[repos]]
+name = "zod"
+language = "typescript"
+profile_tags = ["smoke", "release"]
+min_relationships = 1
+
+[[repos]]
+name = "flask"
+language = "python"
+profile_tags = ["smoke", "release"]
+min_relationships = 1
+
+[[repos]]
+name = "cobra"
+language = "go"
+profile_tags = ["restored", "release"]
+min_relationships = 1
+
+[[repos]]
+name = "gson"
+language = "java"
+profile_tags = ["restored", "release"]
+min_relationships = 1
+
+[[repos]]
+name = "Slim"
+language = "php"
+profile_tags = ["restored", "release"]
+min_relationships = 1
+
+[[repos]]
+name = "sinatra"
+language = "ruby"
+profile_tags = ["restored", "release"]
+min_relationships = 1
+
+[[repos]]
+name = "Newtonsoft.Json"
+language = "csharp"
+profile_tags = ["restored", "release"]
+min_relationships = 1
+
+[[repos]]
+name = "Alamofire"
+language = "swift"
+profile_tags = ["restored", "release"]
+min_relationships = 1
+
+[[repos]]
+name = "moshi"
+language = "kotlin"
+profile_tags = ["restored", "release"]
+min_relationships = 1
+
+[[repos]]
+name = "jq"
+language = "c"
+profile_tags = ["restored", "release"]
+min_relationships = 1
+
+[[repos]]
+name = "nlohmann-json"
+language = "cpp"
+profile_tags = ["restored", "release"]
+min_relationships = 1
+
+[[repos]]
+name = "riverpod"
+language = "dart"
+profile_tags = ["restored", "release"]
+min_relationships = 1
+
+[[repos]]
+name = "lite"
+language = "lua"
+profile_tags = ["restored", "release"]
+min_relationships = 1
+
+[[repos]]
+name = "cats"
+language = "scala"
+profile_tags = ["restored", "release"]
+min_relationships = 1
+
+[[repos]]
+name = "phoenix"
+language = "elixir"
+profile_tags = ["restored", "release"]
+min_relationships = 1
+
+[[repos]]
+name = "express"
+language = "javascript"
+profile_tags = ["release"]
+min_relationships = 1
+
+[[repos]]
+name = "kirigami"
+language = "qml"
+profile_tags = ["release"]
+min_relationships = 1
+
+[[repos]]
+name = "blazor-samples"
+language = "razor"
+profile_tags = ["release"]
+min_relationships = 1

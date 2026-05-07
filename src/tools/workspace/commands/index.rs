@@ -132,10 +132,8 @@ impl ManageWorkspaceTool {
 
         // Derive workspace_id for the gate — same logic used later when registering stats.
         let gate_workspace_id = if is_non_primary_target {
-            crate::workspace::registry::generate_workspace_id(
-                &canonical_path.to_string_lossy(),
-            )
-            .unwrap_or_else(|_| canonical_path.to_string_lossy().to_string())
+            crate::workspace::registry::generate_workspace_id(&canonical_path.to_string_lossy())
+                .unwrap_or_else(|_| canonical_path.to_string_lossy().to_string())
         } else {
             current_primary_id
                 .clone()
@@ -285,7 +283,12 @@ impl ManageWorkspaceTool {
 
         // Perform indexing — gate is held via _mutation_guard for the duration.
         let index_result = self
-            .index_workspace_inner(_mutation_guard, handler, &canonical_path, effective_force_reindex)
+            .index_workspace_inner(
+                _mutation_guard,
+                handler,
+                &canonical_path,
+                effective_force_reindex,
+            )
             .await;
 
         match index_result {
@@ -485,9 +488,9 @@ impl ManageWorkspaceTool {
                 Ok(CallToolResult::text_content(vec![Content::text(message)]))
             }
             Err(e) => {
-                error!("Failed to index workspace: {}", e);
+                error!("Failed to index workspace: {:#}", e);
                 let message = format!(
-                    "Workspace indexing failed: {}\nCheck that the path exists and contains source files",
+                    "Workspace indexing failed: {:#}\nCheck that the path exists and contains source files",
                     e
                 );
                 Ok(CallToolResult::error(vec![Content::text(message)]))
@@ -536,11 +539,7 @@ mod tests {
             // Guard is held here; a concurrent acquire would block.
         }
         // Guard dropped — a second acquire must complete without deadlock.
-        let result = timeout(
-            Duration::from_millis(200),
-            acquire_gate(workspace_id),
-        )
-        .await;
+        let result = timeout(Duration::from_millis(200), acquire_gate(workspace_id)).await;
         assert!(
             result.is_ok(),
             "second acquire_gate for same workspace_id must succeed after first guard is dropped"
@@ -556,11 +555,7 @@ mod tests {
         let _guard_a = acquire_gate("ws_index_alpha").await;
 
         // Acquiring a completely different workspace_id must not block.
-        let result = timeout(
-            Duration::from_millis(200),
-            acquire_gate("ws_index_beta"),
-        )
-        .await;
+        let result = timeout(Duration::from_millis(200), acquire_gate("ws_index_beta")).await;
         assert!(
             result.is_ok(),
             "different workspace IDs must acquire their gates independently"

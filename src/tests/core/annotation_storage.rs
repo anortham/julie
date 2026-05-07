@@ -248,6 +248,29 @@ fn bulk_store_symbols_persists_annotations() {
 }
 
 #[test]
+fn bulk_store_symbols_deduplicates_annotation_rows_for_duplicate_symbol_ids() {
+    let (_temp_dir, mut db) = open_db();
+    let first = symbol(
+        "symbol-duplicate",
+        "duplicate_annotated",
+        "src/duplicate.rs",
+        rich_markers(),
+    );
+    let second = symbol(
+        "symbol-duplicate",
+        "duplicate_annotated",
+        "src/duplicate.rs",
+        rich_markers(),
+    );
+
+    db.bulk_store_symbols(&[first, second], "primary").unwrap();
+
+    let reloaded = db.get_symbol_by_id("symbol-duplicate").unwrap().unwrap();
+    assert_eq!(reloaded.annotations, rich_markers());
+    assert_eq!(annotation_row_count(&db, "symbol-duplicate"), 2);
+}
+
+#[test]
 fn incremental_update_persists_annotations_and_cleans_rows_with_foreign_keys_disabled() {
     let (_temp_dir, mut db) = open_db();
     let file = file_info("src/incremental.rs", "rust");

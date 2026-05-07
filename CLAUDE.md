@@ -33,6 +33,8 @@ cargo build                    # Debug build (fast iteration)
 cargo build --release          # Release build (for live MCP testing)
 cargo nextest run --lib <test_name>  # Default: narrowest test first (seconds)
 cargo xtask test bucket extractors   # Extractor golden + capability gate
+cargo xtask certify tree-sitter --check  # Tree-sitter certification report gate
+cargo xtask certify tree-sitter --real-world --profile smoke --out docs/LANGUAGE_REAL_WORLD_EVIDENCE.json  # Refresh real-world smoke evidence
 cargo xtask test bucket parser-upgrade  # Parser dependency upgrade gate
 cargo xtask test changed       # After a localized change (diff-scoped buckets)
 cargo xtask test dev           # Batch gate before handoff — not per edit

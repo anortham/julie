@@ -245,6 +245,9 @@ pub struct JulieServerHandler {
     /// Set when on_initialized defers auto-indexing until the primary workspace
     /// is resolved from client roots. Consumed by the first successful bind.
     deferred_auto_index_pending: Arc<AtomicBool>,
+    /// Certification/replay handlers can index external repos without writing
+    /// helper files such as `.julieignore` into those repos.
+    pub(crate) suppress_workspace_file_writes: Arc<AtomicBool>,
     /// Optional daemon session lifecycle handle. Present when this handler is
     /// serving an IPC session through the daemon.
     session_lifecycle: Option<SessionLifecycleHandle>,
@@ -676,6 +679,7 @@ impl JulieServerHandler {
             embedding_service: None,
             restart_pending: None,
             deferred_auto_index_pending: Arc::new(AtomicBool::new(false)),
+            suppress_workspace_file_writes: Arc::new(AtomicBool::new(false)),
             session_lifecycle: None,
             watcher_pool: None,
             metrics_tx,
@@ -791,6 +795,7 @@ impl JulieServerHandler {
             embedding_service,
             restart_pending,
             deferred_auto_index_pending: Arc::new(AtomicBool::new(false)),
+            suppress_workspace_file_writes: Arc::new(AtomicBool::new(false)),
             session_lifecycle: None,
             watcher_pool,
             metrics_tx,
@@ -820,6 +825,51 @@ impl JulieServerHandler {
         watcher_pool: Option<Arc<crate::daemon::watcher_pool::WatcherPool>>,
         workspace_pool: Option<Arc<crate::daemon::workspace_pool::WorkspacePool>>,
     ) -> Result<Self> {
+        Self::new_deferred_daemon_startup_hint_with_project_log(
+            workspace_startup_hint,
+            daemon_db,
+            embedding_service,
+            restart_pending,
+            dashboard_tx,
+            watcher_pool,
+            workspace_pool,
+            true,
+        )
+        .await
+    }
+
+    pub async fn new_deferred_daemon_startup_hint_without_project_log(
+        workspace_startup_hint: WorkspaceStartupHint,
+        daemon_db: Option<Arc<crate::daemon::database::DaemonDatabase>>,
+        embedding_service: Option<Arc<crate::daemon::embedding_service::EmbeddingService>>,
+        restart_pending: Option<Arc<std::sync::atomic::AtomicBool>>,
+        dashboard_tx: Option<broadcast::Sender<DashboardEvent>>,
+        watcher_pool: Option<Arc<crate::daemon::watcher_pool::WatcherPool>>,
+        workspace_pool: Option<Arc<crate::daemon::workspace_pool::WorkspacePool>>,
+    ) -> Result<Self> {
+        Self::new_deferred_daemon_startup_hint_with_project_log(
+            workspace_startup_hint,
+            daemon_db,
+            embedding_service,
+            restart_pending,
+            dashboard_tx,
+            watcher_pool,
+            workspace_pool,
+            false,
+        )
+        .await
+    }
+
+    async fn new_deferred_daemon_startup_hint_with_project_log(
+        workspace_startup_hint: WorkspaceStartupHint,
+        daemon_db: Option<Arc<crate::daemon::database::DaemonDatabase>>,
+        embedding_service: Option<Arc<crate::daemon::embedding_service::EmbeddingService>>,
+        restart_pending: Option<Arc<std::sync::atomic::AtomicBool>>,
+        dashboard_tx: Option<broadcast::Sender<DashboardEvent>>,
+        watcher_pool: Option<Arc<crate::daemon::watcher_pool::WatcherPool>>,
+        workspace_pool: Option<Arc<crate::daemon::workspace_pool::WorkspacePool>>,
+        enable_project_writes: bool,
+    ) -> Result<Self> {
         let workspace_root = workspace_startup_hint.path.clone();
         info!(
             "Creating deferred daemon-mode handler (workspace_root: {:?})",
@@ -841,14 +891,19 @@ impl JulieServerHandler {
             spillover_store: Arc::new(crate::tools::spillover::store::SpilloverStore::default()),
             embedding_tasks: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
             tool_router: Self::tool_router(),
-            project_log: Some(Arc::new(crate::daemon::project_log::ProjectLog::new(
-                &workspace_root,
-            ))),
+            project_log: if enable_project_writes {
+                Some(Arc::new(crate::daemon::project_log::ProjectLog::new(
+                    &workspace_root,
+                )))
+            } else {
+                None
+            },
             daemon_db,
             workspace_id: Arc::new(StdRwLock::new(None)),
             embedding_service,
             restart_pending,
             deferred_auto_index_pending: Arc::new(AtomicBool::new(false)),
+            suppress_workspace_file_writes: Arc::new(AtomicBool::new(!enable_project_writes)),
             session_lifecycle: None,
             watcher_pool,
             metrics_tx,

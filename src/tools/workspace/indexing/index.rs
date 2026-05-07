@@ -98,8 +98,15 @@ impl ManageWorkspaceTool {
         debug!("🐛 [INDEX TRACE C] About to call discover_indexable_files");
         let workspace_path_clone = workspace_path.to_path_buf();
         let tool_clone = self.clone();
+        let write_julieignore = !handler
+            .suppress_workspace_file_writes
+            .load(Ordering::Relaxed);
         let all_discovered_files = tokio::task::spawn_blocking(move || {
-            tool_clone.discover_indexable_files(&workspace_path_clone)
+            if write_julieignore {
+                tool_clone.discover_indexable_files(&workspace_path_clone)
+            } else {
+                tool_clone.discover_indexable_files_with_options(&workspace_path_clone, false)
+            }
         })
         .await
         .map_err(|e| anyhow::anyhow!("File discovery task failed: {}", e))??;

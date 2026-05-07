@@ -19,6 +19,7 @@ pub struct WorkspacePool {
     workspaces: tokio::sync::RwLock<HashMap<String, WorkspaceEntry>>,
     indexes_dir: PathBuf,
     daemon_db: Option<Arc<DaemonDatabase>>,
+    project_local_julie_dir: bool,
 }
 
 struct WorkspaceEntry {
@@ -38,6 +39,20 @@ impl WorkspacePool {
             workspaces: tokio::sync::RwLock::new(HashMap::new()),
             indexes_dir,
             daemon_db,
+            project_local_julie_dir: true,
+        }
+    }
+
+    /// Create a workspace pool that keeps all runtime state under `indexes_dir`.
+    ///
+    /// This is for certification and replay jobs that index external repos and
+    /// must not create `.julie` directories in those repos.
+    pub fn new_isolated(indexes_dir: PathBuf, daemon_db: Option<Arc<DaemonDatabase>>) -> Self {
+        Self {
+            workspaces: tokio::sync::RwLock::new(HashMap::new()),
+            indexes_dir,
+            daemon_db,
+            project_local_julie_dir: false,
         }
     }
 
@@ -246,19 +261,15 @@ impl WorkspacePool {
                 continue;
             };
             let workspace_id_for_task = workspace_id.clone();
-            let join = tokio::task::spawn_blocking(move || {
-                match search_index.lock() {
-                    Ok(idx) => idx
-                        .shutdown()
-                        .map_err(|e| format!("shutdown error: {e}")),
-                    Err(poisoned) => {
-                        let idx = poisoned.into_inner();
-                        let _ = idx.shutdown();
-                        Err(format!(
-                            "recovered from poisoned mutex while shutting down {}",
-                            workspace_id_for_task
-                        ))
-                    }
+            let join = tokio::task::spawn_blocking(move || match search_index.lock() {
+                Ok(idx) => idx.shutdown().map_err(|e| format!("shutdown error: {e}")),
+                Err(poisoned) => {
+                    let idx = poisoned.into_inner();
+                    let _ = idx.shutdown();
+                    Err(format!(
+                        "recovered from poisoned mutex while shutting down {}",
+                        workspace_id_for_task
+                    ))
                 }
             });
 
@@ -307,9 +318,17 @@ impl WorkspacePool {
         // index root before initializing db/search. We build the workspace
         // manually to avoid the full `JulieWorkspace::initialize` which creates
         // folder structure and config under .julie (the daemon may not own that).
-        let julie_dir = workspace_root.join(".julie");
-        std::fs::create_dir_all(&julie_dir)
-            .with_context(|| format!("Failed to create .julie dir at {}", julie_dir.display()))?;
+        let julie_dir = if self.project_local_julie_dir {
+            workspace_root.join(".julie")
+        } else {
+            self.indexes_dir.join(workspace_id).join("runtime")
+        };
+        std::fs::create_dir_all(&julie_dir).with_context(|| {
+            format!(
+                "Failed to create workspace runtime dir at {}",
+                julie_dir.display()
+            )
+        })?;
 
         let mut workspace = JulieWorkspace {
             root: workspace_root,

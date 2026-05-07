@@ -10,11 +10,19 @@ use tracing::{debug, info};
 
 impl ManageWorkspaceTool {
     pub(crate) fn discover_indexable_files(&self, workspace_path: &Path) -> Result<Vec<PathBuf>> {
+        self.discover_indexable_files_with_options(workspace_path, true)
+    }
+
+    pub(crate) fn discover_indexable_files_with_options(
+        &self,
+        workspace_path: &Path,
+        write_julieignore: bool,
+    ) -> Result<Vec<PathBuf>> {
         let blacklisted_exts: HashSet<&str> = BLACKLISTED_EXTENSIONS.iter().copied().collect();
         let max_file_size = 1024 * 1024; // 1MB limit for files
         let julieignore_path = workspace_path.join(".julieignore");
 
-        if !julieignore_path.exists() {
+        if write_julieignore && !julieignore_path.exists() {
             info!("🤖 No .julieignore found - scanning for vendor patterns...");
 
             // Phase 1: Vendor scan — gitignore ON, blacklisted dirs OFF, no julieignore

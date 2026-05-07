@@ -229,8 +229,8 @@ fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
         (
             "xtask-runner",
             ExpectedBucket {
-                expected_seconds: 5,
-                timeout_seconds: 30,
+                expected_seconds: 15,
+                timeout_seconds: 60,
                 commands: &["cargo nextest run -p xtask"],
             },
         ),
@@ -288,6 +288,7 @@ fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
                 commands: &[
                     "cargo nextest run -p julie-extractors golden",
                     "cargo nextest run -p julie-extractors capability_matrix",
+                    "cargo xtask certify tree-sitter --check",
                 ],
             },
         ),

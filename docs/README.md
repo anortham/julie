@@ -20,6 +20,14 @@ This directory contains **current** documentation for Julie. Code is the source 
 - **`RELATIVE_PATHS_CONTRACT.md`** - Relative Unix-style path storage contract
 - **`operations/embedding-sidecar.md`** - Embedding sidecar env vars, configuration, and troubleshooting
 
+## Quality Reports
+
+- **`LANGUAGE_CERTIFICATION_REPORT.md`** - Generated current-HEAD tree-sitter certification report
+- **`LANGUAGE_REAL_WORLD_EVIDENCE.json`** - Generated current-HEAD real-world smoke evidence consumed by certification
+- **`LANGUAGE_VERIFICATION_RESULTS.md`** - Restored historical quality matrix with current-status validation notes
+- **`LANGUAGE_VERIFICATION_CHECKLIST.md`** - Reusable real-world verification methodology for language support
+- **`verification/`** - Raw historical per-language OSS repository verification reports
+
 ## Primary Documentation
 
 For development guidelines, TDD methodology, and current project status, see:

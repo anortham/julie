@@ -41,6 +41,7 @@ pub(in crate::database) fn replace_annotations_batch<C: AnnotationConnection>(
     }
 
     delete_annotations_for_symbols(conn, symbols)?;
+    let symbols = unique_symbols_by_id(symbols);
 
     let mut stmt = conn.prepare_annotation(
         "INSERT INTO symbol_annotations
@@ -63,6 +64,22 @@ pub(in crate::database) fn replace_annotations_batch<C: AnnotationConnection>(
     }
 
     Ok(())
+}
+
+fn unique_symbols_by_id(symbols: &[Symbol]) -> Vec<&Symbol> {
+    let mut positions_by_id: HashMap<&str, usize> = HashMap::new();
+    let mut unique_symbols = Vec::new();
+
+    for symbol in symbols {
+        if let Some(index) = positions_by_id.get(symbol.id.as_str()).copied() {
+            unique_symbols[index] = symbol;
+        } else {
+            positions_by_id.insert(symbol.id.as_str(), unique_symbols.len());
+            unique_symbols.push(symbol);
+        }
+    }
+
+    unique_symbols
 }
 
 pub(in crate::database) fn delete_annotations_for_file<C: AnnotationConnection>(
