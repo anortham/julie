@@ -2,11 +2,19 @@
 // Tests for S3, S4, R6 class systems
 
 use super::*;
-use crate::base::SymbolKind;
+use crate::base::{Symbol, SymbolKind};
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn metadata_str<'a>(symbol: &'a Symbol, key: &str) -> Option<&'a str> {
+        symbol
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get(key))
+            .and_then(|value| value.as_str())
+    }
 
     #[test]
     fn test_s3_class_creation() {
@@ -92,7 +100,7 @@ plot.my_class <- function(x, ...) {
     #[test]
     fn test_s4_class_definition() {
         let r_code = r#"
-# S4 class definition
+#' Student model for registrar records
 setClass("Student",
   slots = c(
     name = "character",
@@ -113,8 +121,26 @@ setClass("GradStudent",
 
         let symbols = extract_symbols(r_code);
 
-        // The code should parse successfully
-        assert!(symbols.len() >= 0, "Should parse S4 class definitions");
+        let student = symbols
+            .iter()
+            .find(|s| s.name == "Student" && s.kind == SymbolKind::Class)
+            .expect("Student S4 class should be extracted");
+        assert_eq!(metadata_str(student, "r_class_system"), Some("S4"));
+        assert_eq!(
+            student.doc_comment.as_deref(),
+            Some("#' Student model for registrar records")
+        );
+        let slots = metadata_str(student, "slots").expect("Student should record S4 slots");
+        assert!(slots.contains("name"));
+        assert!(slots.contains("age"));
+        assert!(slots.contains("gpa"));
+
+        let grad_student = symbols
+            .iter()
+            .find(|s| s.name == "GradStudent" && s.kind == SymbolKind::Class)
+            .expect("GradStudent S4 class should be extracted");
+        assert_eq!(metadata_str(grad_student, "r_class_system"), Some("S4"));
+        assert_eq!(metadata_str(grad_student, "contains"), Some("Student"));
     }
 
     #[test]
@@ -137,7 +163,28 @@ setMethod("show", "Student", function(object) {
 "#;
 
         let symbols = extract_symbols(r_code);
-        assert!(symbols.len() >= 0, "Should parse S4 method definitions");
+
+        let display_generic = symbols
+            .iter()
+            .find(|s| s.name == "display" && s.kind == SymbolKind::Function)
+            .expect("display S4 generic should be extracted");
+        assert_eq!(metadata_str(display_generic, "r_class_system"), Some("S4"));
+        assert_eq!(metadata_str(display_generic, "s4_role"), Some("generic"));
+
+        let display_student = symbols
+            .iter()
+            .find(|s| s.name == "display,Student" && s.kind == SymbolKind::Method)
+            .expect("display Student S4 method should be extracted");
+        assert_eq!(metadata_str(display_student, "r_class_system"), Some("S4"));
+        assert_eq!(metadata_str(display_student, "s4_generic"), Some("display"));
+        assert_eq!(metadata_str(display_student, "s4_class"), Some("Student"));
+
+        let show_student = symbols
+            .iter()
+            .find(|s| s.name == "show,Student" && s.kind == SymbolKind::Method)
+            .expect("show Student S4 method should be extracted");
+        assert_eq!(metadata_str(show_student, "s4_generic"), Some("show"));
+        assert_eq!(metadata_str(show_student, "s4_class"), Some("Student"));
     }
 
     #[test]
@@ -168,15 +215,24 @@ john <- Person$new("John", 30)
 
         let symbols = extract_symbols(r_code);
 
-        let variables: Vec<&Symbol> = symbols
+        let person = symbols
             .iter()
-            .filter(|s| s.kind == SymbolKind::Variable)
-            .collect();
+            .find(|s| s.name == "Person" && s.kind == SymbolKind::Class)
+            .expect("Person R6 class should be extracted as a class");
+        assert_eq!(metadata_str(person, "r_class_system"), Some("R6"));
 
-        assert!(
-            variables.len() >= 2,
-            "Should extract Person class and john instance"
-        );
+        let greet = symbols
+            .iter()
+            .find(|s| s.name == "greet" && s.kind == SymbolKind::Method)
+            .expect("R6 public method should be extracted");
+        assert_eq!(greet.parent_id.as_deref(), Some(person.id.as_str()));
+        assert_eq!(metadata_str(greet, "member_visibility"), Some("public"));
+
+        let john = symbols
+            .iter()
+            .find(|s| s.name == "john" && s.kind == SymbolKind::Variable)
+            .expect("R6 instance assignment should remain a variable");
+        assert_ne!(john.id, person.id);
     }
 
     #[test]
@@ -242,12 +298,25 @@ BankAccount <- R6Class("BankAccount",
 
         let symbols = extract_symbols(r_code);
 
-        let variables: Vec<&Symbol> = symbols
+        let account = symbols
             .iter()
-            .filter(|s| s.kind == SymbolKind::Variable)
-            .collect();
+            .find(|s| s.name == "BankAccount" && s.kind == SymbolKind::Class)
+            .expect("BankAccount R6 class should be extracted");
+        assert_eq!(metadata_str(account, "r_class_system"), Some("R6"));
 
-        assert!(variables.len() >= 1, "Should extract BankAccount class");
+        let balance = symbols
+            .iter()
+            .find(|s| s.name == "balance" && s.kind == SymbolKind::Field)
+            .expect("R6 private field should be extracted");
+        assert_eq!(balance.parent_id.as_deref(), Some(account.id.as_str()));
+        assert_eq!(metadata_str(balance, "member_visibility"), Some("private"));
+
+        let deposit = symbols
+            .iter()
+            .find(|s| s.name == "deposit" && s.kind == SymbolKind::Method)
+            .expect("R6 public method should be extracted");
+        assert_eq!(deposit.parent_id.as_deref(), Some(account.id.as_str()));
+        assert_eq!(metadata_str(deposit, "member_visibility"), Some("public"));
     }
 
     #[test]
@@ -276,14 +345,25 @@ person1 <- Person$new(name = "Alice", age = 25)
 
         let symbols = extract_symbols(r_code);
 
-        let variables: Vec<&Symbol> = symbols
+        let person = symbols
             .iter()
-            .filter(|s| s.kind == SymbolKind::Variable)
-            .collect();
-
-        assert!(
-            variables.len() >= 2,
-            "Should extract Person refClass and instance"
+            .find(|s| s.name == "Person" && s.kind == SymbolKind::Class)
+            .expect("Reference class should be extracted as a class");
+        assert_eq!(
+            metadata_str(person, "r_class_system"),
+            Some("ReferenceClass")
         );
+
+        let greet = symbols
+            .iter()
+            .find(|s| s.name == "greet" && s.kind == SymbolKind::Method)
+            .expect("Reference class method should be extracted");
+        assert_eq!(greet.parent_id.as_deref(), Some(person.id.as_str()));
+
+        let person1 = symbols
+            .iter()
+            .find(|s| s.name == "person1" && s.kind == SymbolKind::Variable)
+            .expect("Reference class instance should remain a variable");
+        assert_ne!(person1.id, person.id);
     }
 }

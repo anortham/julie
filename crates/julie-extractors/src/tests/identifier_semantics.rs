@@ -20,11 +20,8 @@ fn test_identifier_kind_round_trips_supported_values() {
 }
 
 #[test]
-fn test_identifier_kind_import_falls_back_to_variable_ref() {
-    assert_eq!(
-        IdentifierKind::from_string("import"),
-        IdentifierKind::VariableRef
-    );
+fn test_identifier_kind_import_is_not_silently_coerced() {
+    assert_eq!(IdentifierKind::try_from_string("import"), None);
 }
 
 #[test]

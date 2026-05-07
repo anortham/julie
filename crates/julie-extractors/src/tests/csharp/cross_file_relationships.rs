@@ -212,6 +212,53 @@ namespace Main
         );
     }
 
+    #[test]
+    fn test_csharp_member_invocation_is_not_double_counted() {
+        let code = r#"
+namespace Main
+{
+    public class Service
+    {
+        public void Run()
+        {
+            this.DoWork();
+        }
+
+        private void DoWork()
+        {
+        }
+    }
+}
+"#;
+
+        let results = extract_full("src/Service.cs", code);
+        let run = results
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == "Run")
+            .expect("Should extract Run method");
+        let do_work = results
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == "DoWork")
+            .expect("Should extract DoWork method");
+
+        let call_count = results
+            .relationships
+            .iter()
+            .filter(|relationship| {
+                relationship.kind == RelationshipKind::Calls
+                    && relationship.from_symbol_id == run.id
+                    && relationship.to_symbol_id == do_work.id
+            })
+            .count();
+
+        assert_eq!(
+            call_count, 1,
+            "this.DoWork() should produce exactly one Calls relationship"
+        );
+    }
+
     // ========================================================================
     // TEST: Cross-file interface implementation should create PendingRelationship
     // ========================================================================

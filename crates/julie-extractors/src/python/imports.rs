@@ -10,9 +10,28 @@ pub fn extract_imports(extractor: &mut PythonExtractor, node: Node) -> Vec<Symbo
 
     match node.kind() {
         "import_statement" => {
-            // Handle single import: import module [as alias]
-            if let Some(import_symbol) = extract_single_import(extractor, &node) {
-                imports.push(import_symbol);
+            // Handle import bindings: import module1, module2 as alias
+            let mut cursor = node.walk();
+            for child in node.children(&mut cursor) {
+                match child.kind() {
+                    "aliased_import" => {
+                        if let Some((module_name, alias)) = extract_alias(extractor, &child) {
+                            let import_text = format!("import {} as {}", module_name, alias);
+                            imports.push(create_import_symbol(
+                                extractor,
+                                &node,
+                                alias,
+                                import_text,
+                            ));
+                        }
+                    }
+                    "dotted_name" => {
+                        let name = extractor.base_mut().get_node_text(&child);
+                        let import_text = format!("import {}", name);
+                        imports.push(create_import_symbol(extractor, &node, name, import_text));
+                    }
+                    _ => {}
+                }
             }
         }
         "import_from_statement" => {
@@ -70,36 +89,6 @@ pub fn extract_imports(extractor: &mut PythonExtractor, node: Node) -> Vec<Symbo
     }
 
     imports
-}
-
-/// Extract a single import statement
-fn extract_single_import(extractor: &mut PythonExtractor, node: &Node) -> Option<Symbol> {
-    let mut import_text = String::new();
-    let mut name = String::new();
-
-    // Check for aliased_import child
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        if child.kind() == "aliased_import" {
-            // import module as alias
-            if let Some((module_name, alias)) = extract_alias(extractor, &child) {
-                import_text = format!("import {} as {}", module_name, alias);
-                name = alias; // Use alias as the symbol name
-            }
-            break;
-        } else if child.kind() == "dotted_name" {
-            // Simple import: import module
-            name = extractor.base_mut().get_node_text(&child);
-            import_text = format!("import {}", name);
-            break;
-        }
-    }
-
-    if !name.is_empty() {
-        Some(create_import_symbol(extractor, node, name, import_text))
-    } else {
-        None
-    }
 }
 
 /// Extract alias from an aliased_import node

@@ -109,9 +109,9 @@ fn extract_function_declaration(
         .map(|p| get_node_text(&p, &section.content))
         .unwrap_or_else(|| "()".to_string());
 
-    let start_line = section.start_line + name_node.start_position().row;
-    let start_col = name_node.start_position().column + 1;
-    let end_line = section.start_line + node.end_position().row;
+    let start_line = section.start_line + node.start_position().row + 1;
+    let start_col = node.start_position().column + 1;
+    let end_line = section.start_line + node.end_position().row + 1;
     let end_col = node.end_position().column + 1;
 
     let mut metadata = HashMap::new();

@@ -262,7 +262,7 @@ main
     }
 
     #[test]
-    fn test_builtin_and_common_external_commands_do_not_create_pending_relationships() {
+    fn test_builtin_commands_do_not_create_pending_relationships_and_external_commands_do() {
         let code = r#"#!/bin/bash
 
 helper() {
@@ -305,12 +305,20 @@ main
             .collect();
 
         assert!(
-            pending_calls.is_empty(),
-            "Builtin and common external commands should not create pending call edges. Found: {:?}",
+            pending_calls
+                .iter()
+                .any(|pending| pending.callee_name == "git"),
+            "git should create a pending call edge. Found: {:?}",
             pending_calls
                 .iter()
                 .map(|p| p.callee_name.as_str())
                 .collect::<Vec<_>>()
+        );
+        assert!(
+            !pending_calls
+                .iter()
+                .any(|pending| pending.callee_name == "echo"),
+            "echo should remain a builtin and not create a pending call edge"
         );
     }
 

@@ -3,7 +3,9 @@
 // Tree-sitter-r parser provides AST nodes for R syntax
 
 mod identifiers;
+mod idioms;
 mod relationships;
+mod text_args;
 
 use crate::base::{BaseExtractor, Identifier, PendingRelationship, Relationship, Symbol};
 use crate::base::{SymbolKind, SymbolOptions};
@@ -181,7 +183,7 @@ impl RExtractor {
     ) {
         let current_symbol: Option<Symbol> = match node.kind() {
             "binary_operator" => self.extract_from_binary_op(node, &parent_id, non_s3),
-            "call" => self.extract_call_as_import(node, &parent_id),
+            "call" => self.extract_from_call(node, &parent_id),
             _ => None,
         };
 
@@ -207,22 +209,41 @@ impl RExtractor {
             // Left-to-right assignment: x <- value, x = value, x <<- value
             "<-" | "=" | "<<-" => {
                 let left = node.child(0)?;
-                if left.kind() != "identifier" {
+                let name = idioms::assignment_name(self, left)?;
+                if name.contains('(') {
                     return None;
                 }
-                let name = self.base.get_node_text(&left);
                 let right = node.child(2)?;
 
-                if right.kind() == "function_definition" {
+                if let Some(symbol) =
+                    idioms::extract_assignment_class_factory(self, node, &name, right, parent_id)
+                {
+                    Some(symbol)
+                } else if right.kind() == "function_definition" {
                     Some(self.extract_function_assignment(node, name, right, parent_id, non_s3))
+                } else if idioms::is_container_assignment(self, left, right) {
+                    None
                 } else {
+                    let mut metadata = idioms::member_metadata(self, node, parent_id);
                     let options = SymbolOptions {
                         parent_id: parent_id.clone(),
+                        doc_comment: self.base.find_doc_comment(&node),
+                        metadata: if metadata.is_empty() {
+                            None
+                        } else {
+                            Some(std::mem::take(&mut metadata))
+                        },
                         ..Default::default()
                     };
-                    let symbol =
-                        self.base
-                            .create_symbol(&node, name, SymbolKind::Variable, options);
+                    let kind = if idioms::member_metadata(self, node, parent_id)
+                        .get("member_visibility")
+                        .is_some()
+                    {
+                        SymbolKind::Field
+                    } else {
+                        SymbolKind::Variable
+                    };
+                    let symbol = self.base.create_symbol(&node, name, kind, options);
                     self.symbols.push(symbol.clone());
                     Some(symbol)
                 }
@@ -236,6 +257,7 @@ impl RExtractor {
                 let name = self.base.get_node_text(&right);
                 let options = SymbolOptions {
                     parent_id: parent_id.clone(),
+                    doc_comment: self.base.find_doc_comment(&node),
                     ..Default::default()
                 };
                 let symbol = self
@@ -283,6 +305,8 @@ impl RExtractor {
             metadata.insert("s3_generic".to_string(), serde_json::Value::Bool(true));
         }
 
+        metadata.extend(idioms::member_metadata(self, node, parent_id));
+
         // Test detection
         if is_test_symbol("r", &name, &self.base.file_path, &kind, &[], None) {
             metadata.insert("is_test".to_string(), serde_json::Value::Bool(true));
@@ -296,6 +320,7 @@ impl RExtractor {
             } else {
                 Some(metadata)
             },
+            doc_comment: self.base.find_doc_comment(&node),
             ..Default::default()
         };
         let symbol = self.base.create_symbol(&node, name, kind, options);
@@ -409,86 +434,9 @@ impl RExtractor {
         body_text.contains("UseMethod(")
     }
 
-    /// Extract library(pkg) and require(pkg) as Import symbols
-    fn extract_call_as_import(&mut self, node: Node, parent_id: &Option<String>) -> Option<Symbol> {
-        let func_node = node.child(0)?;
-        if func_node.kind() != "identifier" {
-            return None;
-        }
-        let func_name = self.base.get_node_text(&func_node);
-        if func_name != "library" && func_name != "require" {
-            return None;
-        }
-
-        // Get the arguments node (second child of call)
-        let args_node = node.child(1)?;
-
-        // Find the first argument - it's the package name
-        let pkg_name = self.find_first_argument(&args_node)?;
-
-        if pkg_name.is_empty() {
-            return None;
-        }
-
-        let signature = format!("{}({})", func_name, pkg_name);
-        let options = SymbolOptions {
-            parent_id: parent_id.clone(),
-            signature: Some(signature),
-            ..Default::default()
-        };
-        let symbol = self
-            .base
-            .create_symbol(&node, pkg_name, SymbolKind::Import, options);
-        self.symbols.push(symbol.clone());
-        Some(symbol)
-    }
-
-    /// Find the first positional argument in an arguments node.
-    /// Handles both bare identifiers `library(dplyr)` and strings `library("dplyr")`.
-    fn find_first_argument(&self, args_node: &Node) -> Option<String> {
-        let mut cursor = args_node.walk();
-        for child in args_node.children(&mut cursor) {
-            match child.kind() {
-                "identifier" => {
-                    return Some(self.base.get_node_text(&child));
-                }
-                "string" | "string_content" => {
-                    let text = self.base.get_node_text(&child);
-                    // Strip quotes if present
-                    let stripped = text.trim_matches('"').trim_matches('\'');
-                    return Some(stripped.to_string());
-                }
-                "argument" => {
-                    // Named argument like library(dplyr, quietly = TRUE)
-                    // First named argument might be the package if it has no name= prefix
-                    // Check if this argument has a name (child count > 1 with "=" separator)
-                    if let Some(first_child) = child.child(0) {
-                        if first_child.kind() == "identifier" {
-                            // Check if this is name = value pattern
-                            if let Some(second_child) = child.child(1) {
-                                let second_text = self.base.get_node_text(&second_child);
-                                if second_text == "=" {
-                                    // This is a named arg, skip it and continue
-                                    continue;
-                                }
-                            }
-                            // Bare identifier as first arg
-                            return Some(self.base.get_node_text(&first_child));
-                        }
-                        if first_child.kind() == "string" || first_child.kind() == "string_content"
-                        {
-                            let text = self.base.get_node_text(&first_child);
-                            let stripped = text.trim_matches('"').trim_matches('\'');
-                            return Some(stripped.to_string());
-                        }
-                    }
-                }
-                // Skip delimiters like ( , )
-                "(" | ")" | "," => continue,
-                _ => continue,
-            }
-        }
-        None
+    fn extract_from_call(&mut self, node: Node, parent_id: &Option<String>) -> Option<Symbol> {
+        idioms::extract_s4_call(self, node, parent_id)
+            .or_else(|| idioms::extract_import_call(self, node, parent_id))
     }
 
     pub fn extract_relationships(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Relationship> {
@@ -497,6 +445,10 @@ impl RExtractor {
 
     pub fn extract_identifiers(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Identifier> {
         identifiers::extract_identifiers(self, tree, symbols)
+    }
+
+    pub fn infer_types(&self, _symbols: &[Symbol]) -> HashMap<String, String> {
+        HashMap::new()
     }
 
     // ========================================================================

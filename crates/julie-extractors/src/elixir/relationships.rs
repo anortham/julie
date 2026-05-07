@@ -2,7 +2,10 @@
 ///
 /// Handles: use (Uses), @behaviour (Implements), defimpl (Implements), function calls (Calls).
 use super::helpers;
-use crate::base::{PendingRelationship, Relationship, RelationshipKind, Symbol, SymbolKind};
+use crate::base::{
+    BaseExtractor, PendingRelationship, Relationship, RelationshipKind, Symbol, SymbolKind,
+    UnresolvedTarget,
+};
 use std::collections::HashMap;
 use tree_sitter::Node;
 
@@ -45,7 +48,8 @@ fn walk_for_relationships(
                     }
                     // Skip definition macros for call relationships
                     "defmodule" | "def" | "defp" | "defmacro" | "defmacrop" | "defprotocol"
-                    | "defstruct" | "import" | "alias" | "require" => {}
+                    | "defstruct" | "defguard" | "defguardp" | "defdelegate" | "defexception"
+                    | "defoverridable" | "import" | "alias" | "require" => {}
                     _ => {
                         // Regular function call → Calls relationship
                         extract_call_relationship(
@@ -78,7 +82,7 @@ fn extract_use_relationship(
     symbols: &[Symbol],
     relationships: &mut Vec<Relationship>,
 ) {
-    let Some(target) = helpers::extract_import_target(&extractor.base, node) else {
+    let Some(target) = extract_alias_argument(&extractor.base, node) else {
         return;
     };
 
@@ -88,7 +92,7 @@ fn extract_use_relationship(
         return;
     };
 
-    // Try to find the used module in symbols — only match definition symbols,
+    // Try to find the used module in symbols, matching only definition symbols,
     // not Import/Export symbols (which are created for the `use` statement itself)
     if let Some(to_symbol) = symbols
         .iter()
@@ -110,16 +114,15 @@ fn extract_use_relationship(
             metadata: None,
         });
     } else {
-        extractor
-            .base
-            .add_pending_relationship(PendingRelationship {
-                from_symbol_id: from_symbol.id.clone(),
-                callee_name: target,
-                kind: RelationshipKind::Uses,
-                file_path: extractor.base.file_path.clone(),
-                line_number: (node.start_position().row + 1) as u32,
-                confidence: 0.8,
-            });
+        let pending = extractor.base.create_pending_relationship(
+            from_symbol.id.clone(),
+            unresolved_elixir_alias(target),
+            RelationshipKind::Uses,
+            node,
+            Some(from_symbol.id.clone()),
+            Some(0.8),
+        );
+        extractor.base.add_structured_pending_relationship(pending);
     }
 }
 
@@ -188,35 +191,84 @@ fn extract_behaviour_relationship(
         return;
     }
 
-    let Some(args) = operand.child_by_field_name("arguments") else {
+    let Some(behaviour_name) = extract_alias_argument(&extractor.base, &operand) else {
         return;
     };
-    let mut cursor = args.walk();
-    for child in args.children(&mut cursor) {
-        if child.kind() == "alias" {
-            let behaviour_name = extractor.base.get_node_text(&child);
-            let containing_module = find_containing_module(extractor, node, symbols);
-            if let Some(from) = containing_module {
-                if let Some(to) = symbols.iter().find(|s| s.name == behaviour_name) {
-                    relationships.push(Relationship {
-                        id: format!(
-                            "{}_{}_Implements_{}",
-                            from.id,
-                            to.id,
-                            node.start_position().row
-                        ),
-                        from_symbol_id: from.id.clone(),
-                        to_symbol_id: to.id.clone(),
-                        kind: RelationshipKind::Implements,
-                        file_path: extractor.base.file_path.clone(),
-                        line_number: (node.start_position().row + 1) as u32,
-                        confidence: 1.0,
-                        metadata: None,
-                    });
+
+    let containing_module = find_containing_module(extractor, node, symbols);
+    if let Some(from) = containing_module {
+        if let Some(to) = symbols.iter().find(|s| {
+            s.name == behaviour_name && !matches!(s.kind, SymbolKind::Import | SymbolKind::Export)
+        }) {
+            relationships.push(Relationship {
+                id: format!(
+                    "{}_{}_Implements_{}",
+                    from.id,
+                    to.id,
+                    node.start_position().row
+                ),
+                from_symbol_id: from.id.clone(),
+                to_symbol_id: to.id.clone(),
+                kind: RelationshipKind::Implements,
+                file_path: extractor.base.file_path.clone(),
+                line_number: (node.start_position().row + 1) as u32,
+                confidence: 1.0,
+                metadata: None,
+            });
+        } else {
+            let pending = extractor.base.create_pending_relationship(
+                from.id.clone(),
+                unresolved_elixir_alias(behaviour_name),
+                RelationshipKind::Implements,
+                node,
+                Some(from.id.clone()),
+                Some(0.9),
+            );
+            extractor.base.add_structured_pending_relationship(pending);
+        }
+    }
+}
+
+fn unresolved_elixir_alias(name: String) -> UnresolvedTarget {
+    let parts: Vec<_> = name
+        .split('.')
+        .filter(|part| !part.is_empty())
+        .map(str::to_string)
+        .collect();
+
+    let terminal_name = parts.last().cloned().unwrap_or_else(|| name.clone());
+    let namespace_path = parts
+        .get(..parts.len().saturating_sub(1))
+        .unwrap_or(&[])
+        .to_vec();
+
+    UnresolvedTarget {
+        display_name: name,
+        terminal_name,
+        receiver: None,
+        namespace_path,
+        import_context: None,
+    }
+}
+
+fn extract_alias_argument(base: &BaseExtractor, node: &Node) -> Option<String> {
+    let args = helpers::find_child_by_type(node, "arguments")?;
+    find_alias_like_node(base, &args)
+}
+
+fn find_alias_like_node(base: &BaseExtractor, node: &Node) -> Option<String> {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        match child.kind() {
+            "alias" | "dot" => return Some(base.get_node_text(&child)),
+            _ => {
+                if let Some(name) = find_alias_like_node(base, &child) {
+                    return Some(name);
                 }
             }
         }
     }
+    None
 }
 
 fn extract_call_relationship(

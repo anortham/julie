@@ -56,7 +56,7 @@
       "end_column": 5,
       "start_byte": 172,
       "end_byte": 230,
-      "signature": "pub fn helper(value: i32)",
+      "signature": "pub fn helper(value: i32) -> i32",
       "doc_comment": null,
       "visibility": "Public",
       "parent_key": "fixtures/extraction/rust/basic/source.rs:fixture:1:0",
@@ -100,7 +100,7 @@
       "end_column": 9,
       "start_byte": 96,
       "end_byte": 160,
-      "signature": "pub fn run(&self)",
+      "signature": "pub fn run(&self) -> i32",
       "doc_comment": null,
       "visibility": "Public",
       "parent_key": "fixtures/extraction/rust/basic/source.rs:Worker:2:4",
@@ -128,6 +128,22 @@
   "pending_relationships": [],
   "structured_pending_relationships": [],
   "identifiers": [
+    {
+      "key": "fixtures/extraction/rust/basic/source.rs:Worker:type_usage:6:9",
+      "name": "Worker",
+      "kind": "type_usage",
+      "language": "rust",
+      "file_path": "fixtures/extraction/rust/basic/source.rs",
+      "start_line": 6,
+      "start_column": 9,
+      "end_line": 6,
+      "end_column": 15,
+      "start_byte": 79,
+      "end_byte": 85,
+      "containing_key": "fixtures/extraction/rust/basic/source.rs:fixture:1:0",
+      "target_key": null,
+      "confidence": "1.000"
+    },
     {
       "key": "fixtures/extraction/rust/basic/source.rs:helper:call:8:12",
       "name": "helper",
@@ -163,7 +179,25 @@
   ],
   "types": [
     {
+      "symbol_key": "fixtures/extraction/rust/basic/source.rs:helper:12:4",
+      "resolved_type": "i32",
+      "generic_params": null,
+      "constraints": null,
+      "is_inferred": true,
+      "language": "rust",
+      "metadata": null
+    },
+    {
       "symbol_key": "fixtures/extraction/rust/basic/source.rs:id:3:8",
+      "resolved_type": "i32",
+      "generic_params": null,
+      "constraints": null,
+      "is_inferred": true,
+      "language": "rust",
+      "metadata": null
+    },
+    {
+      "symbol_key": "fixtures/extraction/rust/basic/source.rs:run:7:8",
       "resolved_type": "i32",
       "generic_params": null,
       "constraints": null,

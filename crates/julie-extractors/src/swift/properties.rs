@@ -25,6 +25,7 @@ impl SwiftExtractor {
 
             let modifiers = self.extract_modifiers(node);
             let var_type = self.extract_variable_type(node);
+            let annotations = self.extract_annotations(node);
             let is_let = node.children(&mut node.walk()).any(|c| c.kind() == "let");
             let is_var = node.children(&mut node.walk()).any(|c| c.kind() == "var");
 
@@ -43,7 +44,7 @@ impl SwiftExtractor {
                 signature.push_str(&format!(": {}", var_type));
             }
 
-            let metadata = HashMap::from([
+            let mut metadata = HashMap::from([
                 (
                     "type".to_string(),
                     serde_json::Value::String("variable".to_string()),
@@ -65,6 +66,12 @@ impl SwiftExtractor {
                     serde_json::Value::String(is_var.to_string()),
                 ),
             ]);
+            if let Some(keys) = self.annotation_keys_csv(&annotations) {
+                metadata.insert(
+                    "annotationKeys".to_string(),
+                    serde_json::Value::String(keys),
+                );
+            }
 
             // Extract Swift documentation comment
             let doc_comment = self.base.find_doc_comment(&node);
@@ -79,7 +86,7 @@ impl SwiftExtractor {
                     parent_id: parent_id.map(|s| s.to_string()),
                     metadata: Some(metadata),
                     doc_comment,
-                    annotations: Vec::new(),
+                    annotations,
                 },
             ))
         } else {
@@ -100,6 +107,7 @@ impl SwiftExtractor {
 
         let modifiers = self.extract_modifiers(node);
         let property_type = self.extract_property_type(node);
+        let annotations = self.extract_annotations(node);
 
         // Extract the property keyword (var or let)
         let binding_pattern = node
@@ -139,7 +147,7 @@ impl SwiftExtractor {
             signature.push_str(&format!(": {}", property_type));
         }
 
-        let metadata = HashMap::from([
+        let mut metadata = HashMap::from([
             (
                 "type".to_string(),
                 serde_json::Value::String("property".to_string()),
@@ -154,6 +162,12 @@ impl SwiftExtractor {
             ),
             ("keyword".to_string(), serde_json::Value::String(keyword)),
         ]);
+        if let Some(keys) = self.annotation_keys_csv(&annotations) {
+            metadata.insert(
+                "annotationKeys".to_string(),
+                serde_json::Value::String(keys),
+            );
+        }
 
         // Extract Swift documentation comment
         let doc_comment = self.base.find_doc_comment(&node);
@@ -168,7 +182,7 @@ impl SwiftExtractor {
                 parent_id: parent_id.map(|s| s.to_string()),
                 metadata: Some(metadata),
                 doc_comment,
-                annotations: Vec::new(),
+                annotations,
             },
         ))
     }

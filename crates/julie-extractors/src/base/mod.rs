@@ -13,6 +13,7 @@
 
 pub mod annotations;
 pub mod creation_methods;
+pub mod embedded_span;
 pub mod extractor;
 pub mod relationship_resolution;
 mod results_normalization;
@@ -22,6 +23,7 @@ pub mod types;
 
 // Re-export key types for external use
 pub use annotations::normalize_annotations;
+pub use embedded_span::EmbeddedSpanOffset;
 pub use extractor::BaseExtractor;
 pub use relationship_resolution::{
     LocalTargetResolution, ScopedSymbolIndex, StructuredPendingRelationship, UnresolvedTarget,

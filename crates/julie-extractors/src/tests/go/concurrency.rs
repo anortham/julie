@@ -165,7 +165,7 @@ func (wp *WorkerPool) worker(id int) {
     let worker_pool = symbols.iter().find(|s| s.name == "WorkerPool");
     assert!(worker_pool.is_some());
     let worker_pool = worker_pool.unwrap();
-    assert_eq!(worker_pool.kind, SymbolKind::Class);
+    assert_eq!(worker_pool.kind, SymbolKind::Struct);
     assert!(
         worker_pool
             .signature
@@ -177,12 +177,12 @@ func (wp *WorkerPool) worker(id int) {
     let job = symbols.iter().find(|s| s.name == "Job");
     assert!(job.is_some());
     let job = job.unwrap();
-    assert_eq!(job.kind, SymbolKind::Class);
+    assert_eq!(job.kind, SymbolKind::Struct);
 
     let result_symbol = symbols.iter().find(|s| s.name == "Result");
     assert!(result_symbol.is_some());
     let result_symbol = result_symbol.unwrap();
-    assert_eq!(result_symbol.kind, SymbolKind::Class);
+    assert_eq!(result_symbol.kind, SymbolKind::Struct);
 
     let new_worker_pool = symbols.iter().find(|s| s.name == "NewWorkerPool");
     assert!(new_worker_pool.is_some());

@@ -5,6 +5,7 @@
 /// - Objects and arrays are treated as SymbolKind::Module (containers)
 /// - Primitive values are treated as SymbolKind::Variable
 use crate::base::{BaseExtractor, Identifier, Symbol, SymbolKind};
+use std::collections::HashMap;
 use std::path::Path;
 
 pub struct JsonExtractor {
@@ -99,7 +100,7 @@ impl JsonExtractor {
                     Some(trimmed.to_string())
                 } else {
                     // Truncate long strings (e.g., plan content) instead of skipping
-                    Some(trimmed[..2000].to_string())
+                    Some(trimmed.chars().take(2000).collect())
                 }
             } else {
                 None
@@ -130,5 +131,9 @@ impl JsonExtractor {
     ) -> Vec<Identifier> {
         // JSON is configuration data - no code identifiers
         Vec::new()
+    }
+
+    pub fn infer_types(&self, _symbols: &[Symbol]) -> HashMap<String, String> {
+        HashMap::new()
     }
 }

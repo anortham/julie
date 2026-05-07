@@ -57,6 +57,7 @@ impl SwiftExtractor {
     ) {
         if let Some(type_symbol) = self.find_type_symbol(node, symbols) {
             let mut inheritance_entry_index = 0usize;
+            let declaration_kind = self.declaration_kind_for_relationships(node);
 
             // Try type_inheritance_clause first
             if let Some(inheritance) = node
@@ -64,12 +65,16 @@ impl SwiftExtractor {
                 .find(|c| c.kind() == "type_inheritance_clause")
             {
                 for child in inheritance.children(&mut inheritance.walk()) {
-                    if matches!(child.kind(), "type_identifier" | "type") {
-                        let base_type_name = self.base.get_node_text(&child);
+                    if let Some(base_type_name) = self.inheritance_type_name(child) {
+                        let pending_kind = Self::pending_inheritance_kind(
+                            &type_symbol,
+                            declaration_kind,
+                            inheritance_entry_index,
+                        );
                         self.add_inheritance_relationship(
                             &type_symbol,
                             &base_type_name,
-                            inheritance_entry_index,
+                            pending_kind,
                             symbols,
                             relationships,
                             node,
@@ -100,10 +105,15 @@ impl SwiftExtractor {
                     } else {
                         self.base.get_node_text(&type_node)
                     };
+                    let pending_kind = Self::pending_inheritance_kind(
+                        &type_symbol,
+                        declaration_kind,
+                        inheritance_entry_index,
+                    );
                     self.add_inheritance_relationship(
                         &type_symbol,
                         &base_type_name,
-                        inheritance_entry_index,
+                        pending_kind,
                         symbols,
                         relationships,
                         node,
@@ -114,12 +124,61 @@ impl SwiftExtractor {
         }
     }
 
+    fn declaration_kind_for_relationships(&self, node: Node) -> &'static str {
+        let declaration_text = self.base.get_node_text(&node);
+        let declaration_head = declaration_text.trim_start();
+
+        if declaration_head.starts_with("extension ") {
+            "extension_declaration"
+        } else if declaration_head.starts_with("enum ") {
+            "enum_declaration"
+        } else if declaration_head.starts_with("struct ") {
+            "struct_declaration"
+        } else if declaration_head.starts_with("protocol ") {
+            "protocol_declaration"
+        } else {
+            node.kind()
+        }
+    }
+
+    fn inheritance_type_name(&self, node: Node) -> Option<String> {
+        match node.kind() {
+            "type_identifier" | "type" => Some(self.base.get_node_text(&node)),
+            "user_type" => node
+                .children(&mut node.walk())
+                .find(|child| child.kind() == "type_identifier")
+                .map(|child| self.base.get_node_text(&child)),
+            _ => None,
+        }
+    }
+
+    fn pending_inheritance_kind(
+        type_symbol: &Symbol,
+        declaration_kind: &str,
+        inheritance_entry_index: usize,
+    ) -> RelationshipKind {
+        match declaration_kind {
+            "extension_declaration" | "struct_declaration" | "enum_declaration" => {
+                RelationshipKind::Implements
+            }
+            "class_declaration" if inheritance_entry_index == 0 => RelationshipKind::Extends,
+            "class_declaration" => RelationshipKind::Implements,
+            _ => match type_symbol.kind {
+                SymbolKind::Interface => RelationshipKind::Extends,
+                SymbolKind::Struct | SymbolKind::Enum => RelationshipKind::Implements,
+                SymbolKind::Class if inheritance_entry_index == 0 => RelationshipKind::Extends,
+                SymbolKind::Class => RelationshipKind::Implements,
+                _ => RelationshipKind::Extends,
+            },
+        }
+    }
+
     /// Implementation of addInheritanceRelationship method
     fn add_inheritance_relationship(
         &mut self,
         type_symbol: &Symbol,
         base_type_name: &str,
-        inheritance_entry_index: usize,
+        pending_kind: RelationshipKind,
         symbols: &[Symbol],
         relationships: &mut Vec<Relationship>,
         node: Node,
@@ -161,19 +220,6 @@ impl SwiftExtractor {
                 metadata: Some(metadata),
             });
         } else {
-            let pending_kind = match type_symbol.kind {
-                SymbolKind::Interface => RelationshipKind::Extends,
-                SymbolKind::Struct | SymbolKind::Enum => RelationshipKind::Implements,
-                SymbolKind::Class => {
-                    if inheritance_entry_index == 0 {
-                        RelationshipKind::Extends
-                    } else {
-                        RelationshipKind::Implements
-                    }
-                }
-                _ => RelationshipKind::Extends,
-            };
-
             let pending = self.base.create_pending_relationship(
                 type_symbol.id.clone(),
                 UnresolvedTarget::simple(base_type_name.to_string()),
@@ -239,10 +285,7 @@ impl SwiftExtractor {
 
     /// Implementation of findTypeSymbol method
     pub(super) fn find_type_symbol(&self, node: Node, symbols: &[Symbol]) -> Option<Symbol> {
-        if let Some(name_node) = node
-            .children(&mut node.walk())
-            .find(|c| c.kind() == "type_identifier")
-        {
+        if let Some(name_node) = self.declaration_name_node(node) {
             let type_name = self.base.get_node_text(&name_node);
             symbols
                 .iter()
@@ -261,6 +304,21 @@ impl SwiftExtractor {
         } else {
             None
         }
+    }
+
+    fn declaration_name_node<'a>(&self, node: Node<'a>) -> Option<Node<'a>> {
+        let mut cursor = node.walk();
+        node.children(&mut cursor).find_map(|child| {
+            if child.kind() == "type_identifier" {
+                Some(child)
+            } else if child.kind() == "user_type" {
+                child
+                    .children(&mut child.walk())
+                    .find(|nested| nested.kind() == "type_identifier")
+            } else {
+                None
+            }
+        })
     }
 
     /// Extract function/method call relationships

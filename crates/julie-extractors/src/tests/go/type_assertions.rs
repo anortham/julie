@@ -135,7 +135,7 @@ func ProcessValue(value interface{}) string {
     let container = symbols.iter().find(|s| s.name == "Container");
     assert!(container.is_some());
     let container = container.unwrap();
-    assert_eq!(container.kind, SymbolKind::Class);
+    assert_eq!(container.kind, SymbolKind::Struct);
     assert!(
         container
             .signature

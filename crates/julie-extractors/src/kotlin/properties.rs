@@ -36,6 +36,7 @@ pub(super) fn extract_property(
 
     let modifiers = helpers::extract_modifiers(base, node);
     let property_type = helpers::extract_property_type(base, node);
+    let annotations = helpers::extract_annotations(base, node);
 
     // Check for val/var in binding_pattern_kind for interface properties
     let mut is_val = node.children(&mut node.walk()).any(|n| n.kind() == "val");
@@ -120,7 +121,7 @@ pub(super) fn extract_property(
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: Some(metadata),
             doc_comment,
-            annotations: Vec::new(),
+            annotations,
         },
     ))
 }
@@ -232,6 +233,7 @@ pub(super) fn extract_constructor_parameters(
 
                 // Extract KDoc comment
                 let doc_comment = base.find_doc_comment(&child);
+                let annotations = helpers::extract_annotations(base, &child);
 
                 let property_symbol = base.create_symbol(
                     &child,
@@ -251,7 +253,7 @@ pub(super) fn extract_constructor_parameters(
                             ),
                         ])),
                         doc_comment,
-                        annotations: Vec::new(),
+                        annotations,
                     },
                 );
 

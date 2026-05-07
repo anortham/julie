@@ -1,5 +1,6 @@
 // C# Relationship Extraction
 
+use super::partial_classes;
 use crate::base::{
     LocalTargetResolution, Relationship, RelationshipKind, ScopedSymbolIndex, Symbol, SymbolKind,
     UnresolvedTarget,
@@ -19,6 +20,7 @@ pub fn extract_relationships(
 ) -> Vec<Relationship> {
     let mut relationships = Vec::new();
     visit_relationships(extractor, tree.root_node(), symbols, &mut relationships);
+    partial_classes::add_linkage_relationships(symbols, &mut relationships);
     relationships
 }
 
@@ -53,15 +55,6 @@ fn visit_relationships(
                 relationships,
             );
             extract_call_relationships(extractor, node, symbols, relationships);
-        }
-        // In C#, method calls are represented as member_access_expression followed by argument_list
-        "member_access_expression" => {
-            // Check if this is followed by an argument_list (i.e., a method call)
-            if let Some(sibling) = node.next_sibling() {
-                if sibling.kind() == "argument_list" {
-                    extract_call_relationships(extractor, node, symbols, relationships);
-                }
-            }
         }
         _ => {}
     }

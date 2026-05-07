@@ -19,7 +19,7 @@ impl super::GoExtractor {
                 return Some(self.base.create_symbol(
                     &child,
                     name,
-                    SymbolKind::Namespace,
+                    SymbolKind::Module,
                     SymbolOptions {
                         signature: Some(signature),
                         visibility: Some(Visibility::Public),
@@ -128,7 +128,7 @@ impl super::GoExtractor {
                     Some(self.base.create_symbol(
                         &type_id,
                         name,
-                        SymbolKind::Class,
+                        SymbolKind::Struct,
                         SymbolOptions {
                             signature: Some(signature),
                             visibility,
@@ -344,8 +344,83 @@ impl super::GoExtractor {
 
                 symbols.push(symbol);
             }
+
+            // Anonymous embedded fields have no field_identifier, so emit a field symbol
+            // with embedding metadata instead of dropping them.
+            if symbols.is_empty() && !field_has_error_context(node) {
+                let field_text = self.get_node_text(node);
+                let field_without_tag = tag_text
+                    .as_ref()
+                    .and_then(|tag| field_text.strip_suffix(tag))
+                    .unwrap_or(&field_text)
+                    .trim();
+                let is_embedded_shape = !field_without_tag.contains(char::is_whitespace)
+                    && !field_text.contains('(')
+                    && !field_text.contains(',')
+                    && !field_text.contains("...");
+
+                if is_embedded_shape {
+                    let trimmed_type = type_text.trim_start_matches('*');
+                    let embedded_name = trimmed_type
+                        .rsplit('.')
+                        .next()
+                        .unwrap_or(trimmed_type)
+                        .to_string();
+
+                    if !embedded_name.is_empty() {
+                        let mut metadata = HashMap::new();
+                        metadata.insert("go_embedded".to_string(), serde_json::Value::Bool(true));
+                        metadata.insert(
+                            "embedded_type".to_string(),
+                            serde_json::Value::String(type_text.clone()),
+                        );
+
+                        let mut signature = type_text.clone();
+                        if let Some(ref tag) = tag_text {
+                            signature.push(' ');
+                            signature.push_str(tag);
+                        }
+
+                        let visibility = if self.is_public(&embedded_name) {
+                            Some(Visibility::Public)
+                        } else {
+                            Some(Visibility::Private)
+                        };
+
+                        symbols.push(self.base.create_symbol(
+                            &type_node,
+                            embedded_name,
+                            SymbolKind::Field,
+                            SymbolOptions {
+                                signature: Some(signature),
+                                visibility,
+                                parent_id: parent_id.map(|s| s.to_string()),
+                                metadata: Some(metadata),
+                                doc_comment: None,
+                                annotations: Vec::new(),
+                            },
+                        ));
+                    }
+                }
+            }
         }
 
         symbols
     }
+}
+
+fn field_has_error_context(node: Node) -> bool {
+    let mut current = Some(node);
+
+    while let Some(current_node) = current {
+        if current_node.has_error() || current_node.kind() == "ERROR" {
+            return true;
+        }
+        if current_node.kind() == "struct_type" {
+            return false;
+        }
+        current = current_node.parent();
+    }
+
+    false
 }

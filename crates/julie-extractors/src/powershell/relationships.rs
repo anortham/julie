@@ -72,7 +72,7 @@ fn extract_command_relationships(
                                 }
                             }
                             None => {
-                                if !is_builtin_cmdlet(&command_name) {
+                                if !super::commands::is_builtin_cmdlet(&command_name) {
                                     // Command not in local symbols - create pending relationship
                                     let pending = extractor.base.create_pending_relationship(
                                         func_symbol.id.clone(),
@@ -95,10 +95,6 @@ fn extract_command_relationships(
             }
         }
     }
-}
-
-fn is_builtin_cmdlet(command_name: &str) -> bool {
-    matches!(command_name, "Write-Output" | "Get-ChildItem")
 }
 
 /// Extract inheritance relationships between classes

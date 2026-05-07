@@ -65,6 +65,28 @@
       "semantic_group": null,
       "confidence": null,
       "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/r/basic/source.r:self$id:14:6",
+      "name": "self$id",
+      "kind": "variable",
+      "language": "r",
+      "file_path": "fixtures/extraction/r/basic/source.r",
+      "start_line": 14,
+      "start_column": 6,
+      "end_line": 14,
+      "end_column": 19,
+      "start_byte": 193,
+      "end_byte": 206,
+      "signature": null,
+      "doc_comment": null,
+      "visibility": null,
+      "parent_key": "fixtures/extraction/r/basic/source.r:Worker:9:0",
+      "metadata": {},
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
     }
   ],
   "relationships": [
@@ -141,7 +163,7 @@
       "end_column": 13,
       "start_byte": 198,
       "end_byte": 200,
-      "containing_key": "fixtures/extraction/r/basic/source.r:Worker:9:0",
+      "containing_key": "fixtures/extraction/r/basic/source.r:self$id:14:6",
       "target_key": null,
       "confidence": "1.000"
     },
@@ -189,7 +211,7 @@
       "end_column": 19,
       "start_byte": 204,
       "end_byte": 206,
-      "containing_key": "fixtures/extraction/r/basic/source.r:Worker:9:0",
+      "containing_key": "fixtures/extraction/r/basic/source.r:self$id:14:6",
       "target_key": null,
       "confidence": "1.000"
     },

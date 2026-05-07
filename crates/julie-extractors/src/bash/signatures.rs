@@ -3,7 +3,6 @@
 //! Provides functions for building signatures of functions, variables, commands,
 //! and other Bash constructs.
 
-use crate::base::BaseExtractor;
 use tree_sitter::Node;
 
 impl super::BashExtractor {
@@ -29,14 +28,5 @@ impl super::BashExtractor {
         }
 
         Some(name)
-    }
-
-    /// Build signature for a command (limited to 100 chars for readability)
-    pub(super) fn extract_command_signature(&self, node: Node) -> String {
-        // Get the full command with arguments
-        let command_text = self.base.get_node_text(&node);
-
-        // Limit length for readability - safely handle UTF-8
-        BaseExtractor::truncate_string(&command_text, 97)
     }
 }

@@ -6,6 +6,7 @@
 /// - Array tables: [[array_table]] -> SymbolKind::Module
 /// - Key-value pairs: key = value -> SymbolKind::Property
 use crate::base::{BaseExtractor, Identifier, Symbol, SymbolKind};
+use std::collections::HashMap;
 use std::path::Path;
 
 pub struct TomlExtractor {
@@ -208,5 +209,9 @@ impl TomlExtractor {
     ) -> Vec<Identifier> {
         // TOML is configuration data - no code identifiers
         Vec::new()
+    }
+
+    pub fn infer_types(&self, _symbols: &[Symbol]) -> HashMap<String, String> {
+        HashMap::new()
     }
 }

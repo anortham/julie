@@ -518,6 +518,81 @@ fn ruby_test_prefix_in_test_dir() {
     ));
 }
 
+#[test]
+fn test_bash_powershell_and_ruby_test_framework_detection_covers_common_frameworks() {
+    assert!(check(
+        "bash",
+        "test_helper",
+        "scripts/build.sh",
+        &SymbolKind::Function,
+        &[],
+        None,
+    ));
+
+    assert!(check(
+        "bash",
+        "describe",
+        "spec/build.sh",
+        &SymbolKind::Function,
+        &[],
+        None,
+    ));
+
+    assert!(!check(
+        "bash",
+        "setup",
+        "scripts/build.sh",
+        &SymbolKind::Function,
+        &[],
+        None,
+    ));
+
+    assert!(check(
+        "powershell",
+        "Describe",
+        "tests/build.ps1",
+        &SymbolKind::Function,
+        &[],
+        None,
+    ));
+
+    assert!(!check(
+        "powershell",
+        "Test-Connection",
+        "tests/network.ps1",
+        &SymbolKind::Function,
+        &[],
+        None,
+    ));
+
+    assert!(check(
+        "ruby",
+        "test_login",
+        "lib/payment.rb",
+        &SymbolKind::Method,
+        &[],
+        None,
+    ));
+
+    assert!(check(
+        "ruby",
+        "it",
+        "spec/payment_spec.rb",
+        &SymbolKind::Method,
+        &[],
+        None,
+    ));
+
+    assert!(!check(
+        "ruby",
+        "it",
+        "lib/payment.rb",
+        &SymbolKind::Method,
+        &[],
+        None,
+    ));
+}
+
 // ===========================================================================
 // Swift
 // ===========================================================================

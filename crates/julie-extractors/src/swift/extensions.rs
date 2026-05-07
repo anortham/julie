@@ -1,4 +1,4 @@
-use crate::base::{Symbol, SymbolKind, SymbolOptions, Visibility};
+use crate::base::{AnnotationMarker, Symbol, SymbolKind, SymbolOptions, Visibility};
 use serde_json;
 use std::collections::HashMap;
 use tree_sitter::Node;
@@ -20,6 +20,7 @@ impl SwiftExtractor {
 
         let modifiers = self.extract_modifiers(node);
         let conformance = self.extract_inheritance(node);
+        let annotations = self.extract_annotations(node);
 
         let mut signature = format!("extension {}", name);
 
@@ -35,6 +36,7 @@ impl SwiftExtractor {
             ("type".to_string(), "extension".to_string()),
             ("modifiers".to_string(), modifiers.join(", ")),
             ("extendedType".to_string(), name.clone()),
+            ("symbol_role".to_string(), "extension".to_string()),
         ]);
 
         // Extract Swift documentation comment
@@ -42,15 +44,16 @@ impl SwiftExtractor {
 
         let options = self.create_symbol_options(
             Some(signature),
-            Some(Visibility::Public),
+            Some(self.determine_visibility(&modifiers)),
             parent_id.map(|s| s.to_string()),
             metadata,
             doc_comment,
+            annotations,
         );
 
         Some(
             self.base
-                .create_symbol(&node, name, SymbolKind::Class, options),
+                .create_symbol(&node, name, SymbolKind::Module, options),
         )
     }
 
@@ -72,6 +75,7 @@ impl SwiftExtractor {
             parent_id.map(|s| s.to_string()),
             metadata,
             doc_comment,
+            Vec::new(),
         );
 
         Some(
@@ -107,6 +111,7 @@ impl SwiftExtractor {
 
         let modifiers = self.extract_modifiers(node);
         let generic_params = self.extract_generic_parameters(node);
+        let annotations = self.extract_annotations(node);
 
         let mut signature = format!("typealias {}", name);
 
@@ -137,6 +142,7 @@ impl SwiftExtractor {
             parent_id.map(|s| s.to_string()),
             metadata,
             doc_comment,
+            annotations,
         );
 
         Some(
@@ -153,11 +159,18 @@ impl SwiftExtractor {
         parent_id: Option<String>,
         metadata: HashMap<String, String>,
         doc_comment: Option<String>,
+        annotations: Vec<AnnotationMarker>,
     ) -> SymbolOptions {
-        let json_metadata: HashMap<String, serde_json::Value> = metadata
+        let mut json_metadata: HashMap<String, serde_json::Value> = metadata
             .into_iter()
             .map(|(k, v)| (k, serde_json::Value::String(v)))
             .collect();
+        if let Some(keys) = self.annotation_keys_csv(&annotations) {
+            json_metadata.insert(
+                "annotationKeys".to_string(),
+                serde_json::Value::String(keys),
+            );
+        }
 
         SymbolOptions {
             signature,
@@ -165,7 +178,7 @@ impl SwiftExtractor {
             parent_id,
             metadata: Some(json_metadata),
             doc_comment,
-            annotations: Vec::new(),
+            annotations,
         }
     }
 }

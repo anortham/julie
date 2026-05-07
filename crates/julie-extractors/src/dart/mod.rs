@@ -344,21 +344,21 @@ impl DartExtractor {
             if let Some(signature) = &symbol.signature {
                 if let Some(captures) = TYPE_SIGNATURE_RE.captures(signature) {
                     if let Some(type_match) = captures.get(1) {
-                        types.insert(symbol.name.clone(), type_match.as_str().to_string());
+                        types.insert(symbol.id.clone(), type_match.as_str().to_string());
                     }
                 }
             }
             if let Some(is_final) = symbol.metadata.as_ref().and_then(|m| m.get("isFinal")) {
                 if is_final.as_bool() == Some(true) {
                     types
-                        .entry(symbol.name.clone())
+                        .entry(symbol.id.clone())
                         .or_insert_with(|| "final".to_string());
                 }
             }
             if let Some(is_const) = symbol.metadata.as_ref().and_then(|m| m.get("isConst")) {
                 if is_const.as_bool() == Some(true) {
                     types
-                        .entry(symbol.name.clone())
+                        .entry(symbol.id.clone())
                         .or_insert_with(|| "const".to_string());
                 }
             }
@@ -534,6 +534,7 @@ fn recover_dart3_modifier_class(
             visibility: Some(Visibility::Public),
             parent_id: parent_id.map(|id| id.to_string()),
             metadata: Some(HashMap::new()),
+            doc_comment: base.find_doc_comment(node),
             ..Default::default()
         },
     ))
@@ -620,6 +621,7 @@ fn recover_dart3_generic_modifier_class<'a>(
             visibility: Some(Visibility::Public),
             parent_id: parent_id.map(|id| id.to_string()),
             metadata: Some(HashMap::new()),
+            doc_comment: base.find_doc_comment(node),
             ..Default::default()
         },
     );
@@ -766,6 +768,7 @@ fn recover_mixin_class_declaration<'a>(
             visibility: Some(Visibility::Public),
             parent_id: parent_id.map(|id| id.to_string()),
             metadata: Some(HashMap::new()),
+            doc_comment: base.find_doc_comment(node),
             ..Default::default()
         },
     ))
@@ -848,6 +851,7 @@ fn recover_from_node_recursive(
                             visibility: Some(Visibility::Public),
                             parent_id: parent_id.map(|id| id.to_string()),
                             metadata: Some(HashMap::new()),
+                            doc_comment: base.find_doc_comment(node),
                             ..Default::default()
                         },
                     );
@@ -874,6 +878,7 @@ fn recover_from_node_recursive(
                             visibility: Some(Visibility::Public),
                             parent_id: parent_id.map(|id| id.to_string()),
                             metadata: Some(HashMap::new()),
+                            doc_comment: base.find_doc_comment(node),
                             ..Default::default()
                         },
                     );

@@ -11,7 +11,11 @@ use std::collections::HashMap;
 use tree_sitter::Node;
 
 /// Extract a function declaration or arrow function
-pub(super) fn extract_function(extractor: &mut TypeScriptExtractor, node: Node) -> Option<Symbol> {
+pub(super) fn extract_function(
+    extractor: &mut TypeScriptExtractor,
+    node: Node,
+    parent_id: Option<&str>,
+) -> Option<Symbol> {
     let name_node = node.child_by_field_name("name");
     let mut name = name_node.map(|n| extractor.base().get_node_text(&n));
 
@@ -29,7 +33,7 @@ pub(super) fn extract_function(extractor: &mut TypeScriptExtractor, node: Node) 
     let name = name?;
 
     let signature = build_function_signature(extractor, &node, &name);
-    let visibility = extractor.base().extract_visibility(&node);
+    let visibility = helpers::extract_ts_visibility(node);
     let content = extractor.base().content.clone();
     let decorator_texts = helpers::extract_decorator_texts(node, &content);
     let annotations = normalize_annotations(&decorator_texts, "typescript");
@@ -73,65 +77,29 @@ pub(super) fn extract_function(extractor: &mut TypeScriptExtractor, node: Node) 
         metadata.insert("is_test".to_string(), serde_json::json!(true));
     }
 
-    // CRITICAL FIX: Symbol must span entire function body for containment logic,
-    // but ID should be generated from function name position (not body start).
-    let mut symbol = extractor.base_mut().create_symbol(
+    let symbol = extractor.base_mut().create_symbol(
         &node,
         name.clone(),
         SymbolKind::Function,
         SymbolOptions {
             signature: Some(signature),
             visibility,
-            parent_id: None,
+            parent_id: parent_id.map(str::to_string),
             metadata: Some(metadata),
             doc_comment,
             annotations,
         },
     );
 
-    // Regenerate ID using function name position (not body start)
-    if let Some(name_node) = node.child_by_field_name("name") {
-        let start_pos = name_node.start_position();
-        let new_id =
-            extractor
-                .base()
-                .generate_id(&name, start_pos.row as u32, start_pos.column as u32);
-
-        let old_id = symbol.id.clone();
-        symbol.id = new_id.clone();
-        extractor.base_mut().symbol_map.remove(&old_id);
-        extractor
-            .base_mut()
-            .symbol_map
-            .insert(new_id, symbol.clone());
-    } else if node.kind() == "arrow_function" {
-        if let Some(parent) = node.parent() {
-            if parent.kind() == "variable_declarator" {
-                if let Some(var_name_node) = parent.child_by_field_name("name") {
-                    let start_pos = var_name_node.start_position();
-                    let new_id = extractor.base().generate_id(
-                        &name,
-                        start_pos.row as u32,
-                        start_pos.column as u32,
-                    );
-
-                    let old_id = symbol.id.clone();
-                    symbol.id = new_id.clone();
-                    extractor.base_mut().symbol_map.remove(&old_id);
-                    extractor
-                        .base_mut()
-                        .symbol_map
-                        .insert(new_id, symbol.clone());
-                }
-            }
-        }
-    }
-
     Some(symbol)
 }
 
 /// Extract a method definition (inside a class)
-pub(super) fn extract_method(extractor: &mut TypeScriptExtractor, node: Node) -> Option<Symbol> {
+pub(super) fn extract_method(
+    extractor: &mut TypeScriptExtractor,
+    node: Node,
+    parent_id: Option<&str>,
+) -> Option<Symbol> {
     let name_node = node.child_by_field_name("name");
     let name = name_node.map(|n| extractor.base().get_node_text(&n))?;
 
@@ -157,9 +125,7 @@ pub(super) fn extract_method(extractor: &mut TypeScriptExtractor, node: Node) ->
     let decorator_prefix = helpers::decorator_prefix(&decorators);
     let signature = format!("{}{}", decorator_prefix, base_sig);
 
-    // Use TypeScript-specific visibility extraction (accessibility_modifier nodes)
-    let visibility =
-        helpers::extract_ts_visibility(node).or_else(|| extractor.base().extract_visibility(&node));
+    let visibility = helpers::extract_ts_visibility(node);
 
     // Check for modifiers
     let is_async = helpers::has_modifier(node, "async");
@@ -183,9 +149,6 @@ pub(super) fn extract_method(extractor: &mut TypeScriptExtractor, node: Node) ->
         serde_json::json!(type_parameters),
     );
 
-    // Find parent class
-    let parent_id = find_parent_class_id(extractor, &node);
-
     // Extract JSDoc comment
     let doc_comment = extractor.base().find_doc_comment(&node);
 
@@ -201,43 +164,29 @@ pub(super) fn extract_method(extractor: &mut TypeScriptExtractor, node: Node) ->
         metadata.insert("is_test".to_string(), serde_json::json!(true));
     }
 
-    // CRITICAL FIX: Keep full body span for containment
-    let mut symbol = extractor.base_mut().create_symbol(
+    let symbol = extractor.base_mut().create_symbol(
         &node,
         name.clone(),
         symbol_kind,
         SymbolOptions {
             signature: Some(signature),
             visibility,
-            parent_id,
+            parent_id: parent_id.map(str::to_string),
             metadata: Some(metadata),
             doc_comment,
             annotations,
         },
     );
 
-    // Regenerate ID using method name position
-    if let Some(name_node) = node.child_by_field_name("name") {
-        let start_pos = name_node.start_position();
-        let new_id =
-            extractor
-                .base()
-                .generate_id(&name, start_pos.row as u32, start_pos.column as u32);
-
-        let old_id = symbol.id.clone();
-        symbol.id = new_id.clone();
-        extractor.base_mut().symbol_map.remove(&old_id);
-        extractor
-            .base_mut()
-            .symbol_map
-            .insert(new_id, symbol.clone());
-    }
-
     Some(symbol)
 }
 
 /// Extract a variable declarator
-pub(super) fn extract_variable(extractor: &mut TypeScriptExtractor, node: Node) -> Option<Symbol> {
+pub(super) fn extract_variable(
+    extractor: &mut TypeScriptExtractor,
+    node: Node,
+    parent_id: Option<&str>,
+) -> Option<Symbol> {
     let name_node = node.child_by_field_name("name");
     let name = name_node.map(|n| extractor.base().get_node_text(&n))?;
 
@@ -245,7 +194,7 @@ pub(super) fn extract_variable(extractor: &mut TypeScriptExtractor, node: Node) 
     if let Some(value_node) = node.child_by_field_name("value") {
         if value_node.kind() == "arrow_function" {
             // Extract as a function instead of a variable
-            return extract_function(extractor, value_node);
+            return extract_function(extractor, value_node, parent_id);
         }
     }
 
@@ -257,6 +206,7 @@ pub(super) fn extract_variable(extractor: &mut TypeScriptExtractor, node: Node) 
         name,
         SymbolKind::Variable,
         SymbolOptions {
+            parent_id: parent_id.map(str::to_string),
             doc_comment,
             ..Default::default()
         },
@@ -310,45 +260,4 @@ fn extract_parameters(extractor: &TypeScriptExtractor, node: &Node) -> Vec<Strin
     } else {
         Vec::new()
     }
-}
-
-/// Find the parent class ID for a method
-fn find_parent_class_id(extractor: &TypeScriptExtractor, node: &Node) -> Option<String> {
-    let mut current = node.parent();
-    while let Some(parent_node) = current {
-        if parent_node.kind() == "class_declaration" {
-            if let Some(class_name_node) = parent_node.child_by_field_name("name") {
-                let class_name = extractor.base().get_node_text(&class_name_node);
-                let class_start = parent_node.start_position();
-                let candidates = [
-                    extractor.base().generate_id(
-                        &class_name,
-                        class_start.row as u32,
-                        class_start.column as u32,
-                    ),
-                    extractor.base().generate_id(
-                        &class_name,
-                        class_name_node.start_position().row as u32,
-                        class_name_node.start_position().column as u32,
-                    ),
-                ];
-
-                for candidate in candidates {
-                    if extractor.base().symbol_map.contains_key(&candidate) {
-                        return Some(candidate);
-                    }
-                }
-
-                if let Some((id, _symbol)) =
-                    extractor.base().symbol_map.iter().find(|(_, symbol)| {
-                        symbol.name == class_name && symbol.kind == SymbolKind::Class
-                    })
-                {
-                    return Some(id.clone());
-                }
-            }
-        }
-        current = parent_node.parent();
-    }
-    None
 }

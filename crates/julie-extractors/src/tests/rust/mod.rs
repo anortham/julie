@@ -647,6 +647,56 @@ macro_rules! create_function {
                 "macro_rules! create_function"
             );
         }
+
+        #[test]
+        fn test_rust_macro_rules_uses_macro_kind_when_available() {
+            let rust_code = r#"
+macro_rules! build_user {
+    ($name:expr) => {
+        User::new($name)
+    };
+}
+"#;
+
+            let mut parser = init_parser();
+            let tree = parser.parse(rust_code, None).unwrap();
+
+            let workspace_root = test_workspace_root();
+            let mut extractor = RustExtractor::new(
+                "rust".to_string(),
+                "test.rs".to_string(),
+                rust_code.to_string(),
+                &workspace_root,
+            );
+
+            let symbols = extractor.extract_symbols(&tree);
+            let macro_symbol = symbols
+                .iter()
+                .find(|symbol| symbol.name == "build_user")
+                .expect("macro_rules symbol should be extracted");
+
+            assert_eq!(
+                macro_symbol.signature.as_deref(),
+                Some("macro_rules! build_user")
+            );
+
+            let kind_name = macro_symbol.kind.to_string();
+            assert!(
+                kind_name == "macro" || kind_name == "function",
+                "macro_rules symbol should use macro kind when available, or function fallback otherwise"
+            );
+            if kind_name == "function" {
+                assert_eq!(
+                    macro_symbol
+                        .metadata
+                        .as_ref()
+                        .and_then(|metadata| metadata.get("rustSymbolKind"))
+                        .and_then(|value| value.as_str()),
+                    Some("macro_rules"),
+                    "Function fallback must preserve explicit macro metadata"
+                );
+            }
+        }
     }
 
     mod advanced_generics_and_type_parameters {
@@ -1697,6 +1747,42 @@ pub const MAX_CONNECTIONS: usize = 1024;
                     .unwrap()
                     .contains("maximum number of concurrent connections")
             );
+        }
+
+        #[test]
+        fn test_rust_inner_doc_comments_are_extracted() {
+            let rust_code = r#"
+pub mod config {
+    //! Runtime configuration helpers
+    //! shared by startup code.
+
+    pub fn load() {}
+}
+"#;
+
+            let mut parser = init_parser();
+            let tree = parser.parse(rust_code, None).unwrap();
+
+            let workspace_root = test_workspace_root();
+            let mut extractor = RustExtractor::new(
+                "rust".to_string(),
+                "test.rs".to_string(),
+                rust_code.to_string(),
+                &workspace_root,
+            );
+
+            let symbols = extractor.extract_symbols(&tree);
+            let module = symbols
+                .iter()
+                .find(|s| s.name == "config")
+                .expect("Should extract config module");
+
+            let doc = module
+                .doc_comment
+                .as_ref()
+                .expect("Module inner docs should be extracted");
+            assert!(doc.contains("Runtime configuration helpers"));
+            assert!(doc.contains("shared by startup code"));
         }
 
         #[test]

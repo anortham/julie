@@ -467,75 +467,118 @@ class ServerInfo : ComputerInfo {
             let log_level = enums.iter().find(|e| e.name == "LogLevel");
             assert!(log_level.is_some(), "Should extract LogLevel enum");
         }
+
+        #[test]
+        fn test_powershell_method_signature_includes_parameters_without_double_spaces() {
+            let powershell_code = r#"
+class ComputerInfo {
+    static [ComputerInfo] GetLocalComputer([string]$ComputerName, [switch]$IncludeServices) {
+        return [ComputerInfo]::new($ComputerName)
+    }
+}
+"#;
+
+            let (mut extractor, tree) = create_extractor_and_parse(powershell_code);
+            let symbols = extractor.extract_symbols(&tree);
+
+            let method = symbols
+                .iter()
+                .find(|s| s.kind == SymbolKind::Method && s.name == "GetLocalComputer");
+            assert!(method.is_some(), "Should extract GetLocalComputer method");
+
+            let method = method.unwrap();
+            let signature = method
+                .signature
+                .as_ref()
+                .expect("Method should have a signature");
+
+            assert_eq!(
+                signature,
+                "static [ComputerInfo] GetLocalComputer([string]$ComputerName, [switch]$IncludeServices)"
+            );
+            assert!(
+                !signature.contains("  "),
+                "Method signature should not contain doubled spaces: {}",
+                signature
+            );
+            assert!(
+                !signature.contains('{'),
+                "Method signature should not include body text: {}",
+                signature
+            );
+        }
     }
 
     mod azure_and_windows_devops_commands {
         use super::*;
 
         #[test]
-        fn test_extract_azure_and_windows_devops_commands() {
+        fn test_powershell_external_command_call_is_identifier_not_function_symbol() {
             let powershell_code = r#"
-# Azure PowerShell commands
-function Deploy-AzureResources {
-    param($ResourceGroupName, $SubscriptionId)
-
-    # Azure authentication and context
-    Connect-AzAccount -SubscriptionId $SubscriptionId
-    Set-AzContext -SubscriptionId $SubscriptionId
-
-    # Resource deployment
-    New-AzResourceGroup -Name $ResourceGroupName -Location "East US"
-    New-AzResourceGroupDeployment -ResourceGroupName $ResourceGroupName -TemplateFile "template.json"
-
-    # Azure Container Instances
-    New-AzContainerGroup -ResourceGroupName $ResourceGroupName -Name "myapp-container"
-
-    # Azure Kubernetes Service
-    New-AzAksCluster -ResourceGroupName $ResourceGroupName -Name "myapp-aks"
-    Get-AzAksCluster | kubectl config use-context
+function Run-DeploymentPipeline {
+    docker build -t myapp:latest .
+    kubectl apply -f k8s/deployment.yaml
+    az login --service-principal --username $env:AZURE_CLIENT_ID --password $env:AZURE_CLIENT_SECRET --tenant $env:AZURE_TENANT_ID
+    Invoke-Command -ComputerName $ServerList -ScriptBlock { }
 }
-
-# Windows Server management
-function Configure-WindowsServer {
-    # Windows Features
-    Enable-WindowsOptionalFeature -Online -FeatureName IIS-WebServerRole
-    Install-WindowsFeature -Name Web-Server -IncludeManagementTools
-
-    # Registry operations
-    Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion" -Name "CustomSetting" -Value "Configured"
-
-    # Service management
-    Set-Service -Name "W3SVC" -StartupType Automatic
-    Start-Service -Name "W3SVC"
-
-    # File and folder operations
-    New-Item -Path "C:\inetpub\wwwroot\api" -ItemType Directory -Force
-    Copy-Item -Path "app\*" -Destination "C:\inetpub\wwwroot\api" -Recurse
-
-    # PowerShell DSC
-    Configuration WebServerConfig {
-        Node "localhost" {
-            WindowsFeature IIS {
-                Ensure = "Present"
-                Name = "Web-Server"
-        }
-    }
 "#;
 
             let (mut extractor, tree) = create_extractor_and_parse(powershell_code);
             let symbols = extractor.extract_symbols(&tree);
+            let relationships = extractor.extract_relationships(&tree, &symbols);
+            let identifiers = extractor.extract_identifiers(&tree, &symbols);
+            let pending_relationships = extractor.get_pending_relationships();
 
-            // Test DSC configuration
-            let web_server_config = symbols.iter().find(|s| s.name == "WebServerConfig");
-            assert!(web_server_config.is_some());
-            assert_eq!(web_server_config.unwrap().kind, SymbolKind::Function);
+            let deployment_func = symbols.iter().find(|s| s.name == "Run-DeploymentPipeline");
+            assert!(
+                deployment_func.is_some(),
+                "Should extract Run-DeploymentPipeline function"
+            );
+            assert_eq!(deployment_func.unwrap().kind, SymbolKind::Function);
 
-            // Test Azure functions
-            let deploy_resources = symbols.iter().find(|s| s.name == "Deploy-AzureResources");
-            assert!(deploy_resources.is_some());
+            assert!(
+                relationships.is_empty(),
+                "External command calls should not resolve to direct relationships: {:?}",
+                relationships
+            );
 
-            let configure_server = symbols.iter().find(|s| s.name == "Configure-WindowsServer");
-            assert!(configure_server.is_some());
+            for command_name in ["docker", "kubectl", "az", "Invoke-Command"] {
+                assert!(
+                    identifiers.iter().any(|identifier| {
+                        identifier.name == command_name
+                            && identifier.kind == crate::base::IdentifierKind::Call
+                    }),
+                    "Should extract {} as a call identifier",
+                    command_name
+                );
+                assert!(
+                    symbols.iter().all(|symbol| symbol.name != command_name),
+                    "Command call {} should not be emitted as a symbol",
+                    command_name
+                );
+            }
+
+            let pending_command_names = pending_relationships
+                .iter()
+                .map(|pending| pending.callee_name.as_str())
+                .collect::<Vec<_>>();
+
+            assert!(
+                pending_command_names.contains(&"docker"),
+                "docker should produce a pending relationship"
+            );
+            assert!(
+                pending_command_names.contains(&"kubectl"),
+                "kubectl should produce a pending relationship"
+            );
+            assert!(
+                pending_command_names.contains(&"az"),
+                "az should produce a pending relationship"
+            );
+            assert!(
+                !pending_command_names.contains(&"Invoke-Command"),
+                "Built-in Invoke-Command should not produce a pending relationship"
+            );
         }
     }
 

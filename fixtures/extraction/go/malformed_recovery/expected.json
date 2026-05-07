@@ -3,7 +3,7 @@
     {
       "key": "fixtures/extraction/go/malformed_recovery/source.go:EmbeddedStruct:5:5",
       "name": "EmbeddedStruct",
-      "kind": "class",
+      "kind": "struct",
       "language": "go",
       "file_path": "fixtures/extraction/go/malformed_recovery/source.go",
       "start_line": 5,
@@ -25,7 +25,7 @@
     {
       "key": "fixtures/extraction/go/malformed_recovery/source.go:Empty:3:5",
       "name": "Empty",
-      "kind": "class",
+      "kind": "struct",
       "language": "go",
       "file_path": "fixtures/extraction/go/malformed_recovery/source.go",
       "start_line": 3,
@@ -45,9 +45,34 @@
       "content_type": null
     },
     {
+      "key": "fixtures/extraction/go/malformed_recovery/source.go:Empty:6:4",
+      "name": "Empty",
+      "kind": "field",
+      "language": "go",
+      "file_path": "fixtures/extraction/go/malformed_recovery/source.go",
+      "start_line": 6,
+      "start_column": 4,
+      "end_line": 6,
+      "end_column": 9,
+      "start_byte": 68,
+      "end_byte": 73,
+      "signature": "Empty",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": "fixtures/extraction/go/malformed_recovery/source.go:EmbeddedStruct:5:5",
+      "metadata": {
+        "embedded_type": "Empty",
+        "go_embedded": true
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
       "key": "fixtures/extraction/go/malformed_recovery/source.go:MissingBrace:10:5",
       "name": "MissingBrace",
-      "kind": "class",
+      "kind": "struct",
       "language": "go",
       "file_path": "fixtures/extraction/go/malformed_recovery/source.go",
       "start_line": 10,
@@ -113,7 +138,7 @@
     {
       "key": "fixtures/extraction/go/malformed_recovery/source.go:main:1:8",
       "name": "main",
-      "kind": "namespace",
+      "kind": "module",
       "language": "go",
       "file_path": "fixtures/extraction/go/malformed_recovery/source.go",
       "start_line": 1,
@@ -158,7 +183,24 @@
   "relationships": [],
   "pending_relationships": [],
   "structured_pending_relationships": [],
-  "identifiers": [],
+  "identifiers": [
+    {
+      "key": "fixtures/extraction/go/malformed_recovery/source.go:Empty:type_usage:6:4",
+      "name": "Empty",
+      "kind": "type_usage",
+      "language": "go",
+      "file_path": "fixtures/extraction/go/malformed_recovery/source.go",
+      "start_line": 6,
+      "start_column": 4,
+      "end_line": 6,
+      "end_column": 9,
+      "start_byte": 68,
+      "end_byte": 73,
+      "containing_key": "fixtures/extraction/go/malformed_recovery/source.go:Empty:6:4",
+      "target_key": null,
+      "confidence": "1.000"
+    }
+  ],
   "types": [],
   "parse_diagnostics": [
     {

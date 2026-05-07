@@ -493,10 +493,9 @@ function make_app() {
         );
     }
 
-    /// Test that namespace-qualified `new \App\Http\Controller()` strips the namespace.
-    /// Bug 4: qualified names were not normalized.
+    /// Test that namespace-qualified `new \App\Http\Controller()` preserves the namespace path.
     #[test]
-    fn test_new_expression_with_qualified_name_strips_namespace() {
+    fn test_new_expression_with_qualified_name_preserves_namespace_path() {
         let code = r#"<?php
 function make_controller() {
     $ctrl = new \App\Http\Controller();
@@ -517,10 +516,12 @@ function make_controller() {
             "new \\App\\Http\\Controller() should create a PendingRelationship with kind Instantiates."
         );
 
-        let ctrl_instantiation = instantiates.iter().find(|p| p.callee_name == "Controller");
+        let ctrl_instantiation = instantiates
+            .iter()
+            .find(|p| p.callee_name == "App\\Http\\Controller");
         assert!(
             ctrl_instantiation.is_some(),
-            "PendingRelationship callee_name should be 'Controller' (namespace stripped).\n\
+            "PendingRelationship callee_name should preserve namespace path.\n\
              Found: {:?}",
             instantiates
                 .iter()
@@ -668,10 +669,9 @@ class Router implements RouterInterface {
         );
     }
 
-    /// Test namespace-qualified extends strips the namespace prefix.
-    /// Bug 4 applied to extends: `class Foo extends \Base\AbstractController` should use 'AbstractController'.
+    /// Test namespace-qualified extends preserves the namespace prefix.
     #[test]
-    fn test_namespace_qualified_extends_strips_namespace() {
+    fn test_namespace_qualified_extends_preserves_namespace() {
         let code = r#"<?php
 class AdminController extends \Base\Http\AbstractController {
     public function index() {}
@@ -693,15 +693,73 @@ class AdminController extends \Base\Http\AbstractController {
 
         let base = extends_pending
             .iter()
-            .find(|p| p.callee_name == "AbstractController");
+            .find(|p| p.callee_name == "Base\\Http\\AbstractController");
         assert!(
             base.is_some(),
-            "callee_name should be 'AbstractController' (namespace stripped).\n\
+            "callee_name should preserve namespace path for qualified extends.\n\
              Found: {:?}",
             extends_pending
                 .iter()
                 .map(|p| &p.callee_name)
                 .collect::<Vec<_>>()
         );
+    }
+
+    #[test]
+    fn test_php_pending_target_preserves_namespace_path() {
+        let code = r#"<?php
+class AdminController extends \App\Http\BaseController implements \App\Contracts\Routable {
+    public function make() {
+        return new \Vendor\Package\Service();
+    }
+}
+"#;
+
+        let results = extract_full("src/admin.php", code);
+
+        let extends = results
+            .structured_pending_relationships
+            .iter()
+            .find(|pending| {
+                pending.pending.kind == RelationshipKind::Extends
+                    && pending.target.terminal_name == "BaseController"
+            })
+            .expect("qualified extends should emit a structured pending target");
+        assert_eq!(
+            extends.target.namespace_path,
+            vec!["App".to_string(), "Http".to_string()]
+        );
+        assert_eq!(extends.target.display_name, "App\\Http\\BaseController");
+        assert_eq!(extends.pending.callee_name, "App\\Http\\BaseController");
+
+        let implements = results
+            .structured_pending_relationships
+            .iter()
+            .find(|pending| {
+                pending.pending.kind == RelationshipKind::Implements
+                    && pending.target.terminal_name == "Routable"
+            })
+            .expect("qualified implements should emit a structured pending target");
+        assert_eq!(
+            implements.target.namespace_path,
+            vec!["App".to_string(), "Contracts".to_string()]
+        );
+        assert_eq!(implements.target.display_name, "App\\Contracts\\Routable");
+        assert_eq!(implements.pending.callee_name, "App\\Contracts\\Routable");
+
+        let instantiates = results
+            .structured_pending_relationships
+            .iter()
+            .find(|pending| {
+                pending.pending.kind == RelationshipKind::Instantiates
+                    && pending.target.terminal_name == "Service"
+            })
+            .expect("qualified constructor calls should emit a structured pending target");
+        assert_eq!(
+            instantiates.target.namespace_path,
+            vec!["Vendor".to_string(), "Package".to_string()]
+        );
+        assert_eq!(instantiates.target.display_name, "Vendor\\Package\\Service");
+        assert_eq!(instantiates.pending.callee_name, "Vendor\\Package\\Service");
     }
 }

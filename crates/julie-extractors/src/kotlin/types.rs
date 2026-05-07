@@ -29,6 +29,7 @@ pub(super) fn extract_class(
     let type_params = helpers::extract_type_parameters(base, node);
     let super_types = helpers::extract_super_types(base, node);
     let constructor_params = helpers::extract_primary_constructor_signature(base, node);
+    let annotations = helpers::extract_annotations(base, node);
 
     // Determine if this is an enum class
     let is_enum = helpers::determine_class_kind(base, &modifiers, node) == SymbolKind::Enum;
@@ -110,7 +111,7 @@ pub(super) fn extract_class(
                 ),
             ])),
             doc_comment,
-            annotations: Vec::new(),
+            annotations,
         },
     ))
 }
@@ -129,6 +130,7 @@ pub(super) fn extract_interface(
     let modifiers = helpers::extract_modifiers(base, node);
     let type_params = helpers::extract_type_parameters(base, node);
     let super_types = helpers::extract_super_types(base, node);
+    let annotations = helpers::extract_annotations(base, node);
 
     let mut signature = format!("interface {}", name);
 
@@ -162,7 +164,7 @@ pub(super) fn extract_interface(
                 ("modifiers".to_string(), Value::String(modifiers.join(","))),
             ])),
             doc_comment,
-            annotations: Vec::new(),
+            annotations,
         },
     ))
 }
@@ -180,6 +182,7 @@ pub(super) fn extract_object(
 
     let modifiers = helpers::extract_modifiers(base, node);
     let super_types = helpers::extract_super_types(base, node);
+    let annotations = helpers::extract_annotations(base, node);
 
     let mut signature = format!("object {}", name);
 
@@ -209,7 +212,7 @@ pub(super) fn extract_object(
                 ("modifiers".to_string(), Value::String(modifiers.join(","))),
             ])),
             doc_comment,
-            annotations: Vec::new(),
+            annotations,
         },
     ))
 }
@@ -237,6 +240,7 @@ pub(super) fn extract_companion_object(
 
     // Extract KDoc comment
     let doc_comment = base.find_doc_comment(node);
+    let annotations = helpers::extract_annotations(base, node);
 
     base.create_symbol(
         node,
@@ -251,7 +255,7 @@ pub(super) fn extract_companion_object(
                 Value::String("companion-object".to_string()),
             )])),
             doc_comment,
-            annotations: Vec::new(),
+            annotations,
         },
     )
 }

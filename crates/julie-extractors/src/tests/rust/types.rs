@@ -60,6 +60,45 @@ fn process_data() -> Result<Vec<u8>, std::io::Error> {
 }
 
 #[test]
+fn test_rust_return_type_inference_stops_before_where_clause() {
+    let code = r#"
+fn make_iter<T>(items: Vec<T>) -> impl Iterator<Item = Result<T, std::io::Error>>
+where
+    T: Clone,
+{
+    items.into_iter().map(Ok)
+}
+"#;
+
+    let mut parser = Parser::new();
+    parser
+        .set_language(&tree_sitter_rust::LANGUAGE.into())
+        .expect("Failed to load Rust grammar");
+
+    let tree = parser.parse(code, None).expect("Failed to parse code");
+    let workspace_root = PathBuf::from("/test");
+
+    let mut extractor = RustExtractor::new(
+        "rust".to_string(),
+        "test.rs".to_string(),
+        code.to_string(),
+        &workspace_root,
+    );
+
+    let symbols = extractor.extract_symbols(&tree);
+    let types = extractor.infer_types(&symbols);
+    let make_iter = symbols
+        .iter()
+        .find(|s| s.name == "make_iter")
+        .expect("Should find make_iter");
+
+    assert_eq!(
+        types.get(&make_iter.id),
+        Some(&"impl Iterator<Item = Result<T, std::io::Error>>".to_string())
+    );
+}
+
+#[test]
 fn test_rust_variable_types() {
     let code = r#"
 fn main() {

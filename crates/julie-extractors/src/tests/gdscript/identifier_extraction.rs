@@ -126,6 +126,43 @@ func _ready():
     }
 
     #[test]
+    fn test_gdscript_attribute_call_identifier_uses_rightmost_name() {
+        let gdscript_code = r#"
+extends Node
+
+func update_inventory(item):
+    player.inventory.add_item(item)
+"#;
+
+        let tree = init_parser(gdscript_code, "gdscript");
+        let workspace_root = PathBuf::from("/tmp/test");
+        let mut extractor = GDScriptExtractor::new(
+            "gdscript".to_string(),
+            "test.gd".to_string(),
+            gdscript_code.to_string(),
+            &workspace_root,
+        );
+
+        let symbols = extractor.extract_symbols(&tree);
+        let identifiers = extractor.extract_identifiers(&tree, &symbols);
+
+        let add_item_call = identifiers
+            .iter()
+            .find(|id| id.name == "add_item" && id.kind == IdentifierKind::Call);
+        assert!(
+            add_item_call.is_some(),
+            "Should extract the rightmost method name from attribute calls"
+        );
+
+        assert!(
+            identifiers
+                .iter()
+                .all(|id| id.name != "player.inventory.add_item"),
+            "Attribute calls should not be indexed under the dotted receiver chain"
+        );
+    }
+
+    #[test]
     fn test_gdscript_identifiers_have_containing_symbol() {
         // This test ensures we ONLY match symbols from the SAME FILE
         // Critical bug fix from Rust implementation (line 1311-1318 in rust.rs)

@@ -3,6 +3,7 @@
 #[cfg(test)]
 mod tests {
     use crate::factory::extract_symbols_and_relationships;
+    use std::collections::HashSet;
     use std::path::PathBuf;
     use tree_sitter::Parser;
 
@@ -52,6 +53,50 @@ pub fn getUserScores() std.StringHashMap(i32) {
         for type_info in results.types.values() {
             assert_eq!(type_info.language, "zig");
             assert!(type_info.is_inferred);
+        }
+    }
+
+    #[test]
+    fn test_factory_zig_type_keys_are_symbol_ids() {
+        let code = r#"
+const User = struct {
+    pub fn shared(self: User) i32 {
+        _ = self;
+        return 1;
+    }
+};
+
+pub fn shared() i32 {
+    return 2;
+}
+"#;
+
+        let mut parser = Parser::new();
+        parser
+            .set_language(&tree_sitter_zig::LANGUAGE.into())
+            .expect("Error loading Zig grammar");
+        let tree = parser.parse(code, None).expect("Error parsing code");
+
+        let workspace_root = PathBuf::from("/tmp/test");
+        let results =
+            extract_symbols_and_relationships(&tree, "collision.zig", code, "zig", &workspace_root)
+                .expect("Extraction failed");
+
+        let symbol_ids: HashSet<&str> = results
+            .symbols
+            .iter()
+            .map(|symbol| symbol.id.as_str())
+            .collect();
+        assert!(
+            !results.types.is_empty(),
+            "Expected inferred Zig types for fixture, got empty map"
+        );
+        for type_key in results.types.keys() {
+            assert!(
+                symbol_ids.contains(type_key.as_str()),
+                "Type key '{}' is not a real symbol id",
+                type_key
+            );
         }
     }
 }

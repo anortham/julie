@@ -50,6 +50,34 @@ pub(crate) const SYMBOL_UPSERT_SQL: &str = "INSERT INTO symbols
       last_indexed = 0,
       reference_score = 0.0";
 
+fn row_conversion_error(column: usize, message: String) -> rusqlite::Error {
+    rusqlite::Error::FromSqlConversionFailure(
+        column,
+        rusqlite::types::Type::Text,
+        Box::new(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            message,
+        )),
+    )
+}
+
+fn parse_symbol_kind(kind: &str) -> rusqlite::Result<SymbolKind> {
+    SymbolKind::try_from_string(kind)
+        .ok_or_else(|| row_conversion_error(2, format!("unknown symbol kind: {kind}")))
+}
+
+fn parse_symbol_visibility(
+    visibility: &str,
+) -> rusqlite::Result<crate::extractors::base::Visibility> {
+    crate::extractors::base::Visibility::from_storage_str(visibility)
+        .ok_or_else(|| row_conversion_error(13, format!("unknown symbol visibility: {visibility}")))
+}
+
+fn parse_relationship_kind(kind: &str) -> rusqlite::Result<RelationshipKind> {
+    RelationshipKind::try_from_string(kind)
+        .ok_or_else(|| row_conversion_error(3, format!("unknown relationship kind: {kind}")))
+}
+
 impl SymbolDatabase {
     /// Get database statistics
     pub fn get_stats(&self) -> Result<DatabaseStats> {
@@ -127,19 +155,17 @@ impl SymbolDatabase {
     /// Helper to convert database row to Symbol
     pub(crate) fn row_to_symbol(&self, row: &Row) -> rusqlite::Result<Symbol> {
         let kind_str: String = row.get("kind")?;
-        let kind = SymbolKind::from_string(&kind_str);
+        let kind = parse_symbol_kind(&kind_str)?;
 
         let metadata_json: Option<String> = row.get("metadata")?;
         let metadata = metadata_json.and_then(|json| serde_json::from_str(&json).ok());
 
         // Deserialize visibility string to enum
         let visibility_str: Option<String> = row.get("visibility")?;
-        let visibility = visibility_str.and_then(|v| match v.as_str() {
-            "public" => Some(crate::extractors::base::Visibility::Public),
-            "private" => Some(crate::extractors::base::Visibility::Private),
-            "protected" => Some(crate::extractors::base::Visibility::Protected),
-            _ => None,
-        });
+        let visibility = visibility_str
+            .as_deref()
+            .map(parse_symbol_visibility)
+            .transpose()?;
 
         Ok(Symbol {
             id: row.get("id")?,
@@ -170,15 +196,13 @@ impl SymbolDatabase {
     /// Sets code_context, metadata, semantic_group, confidence, content_type to None.
     pub(crate) fn row_to_symbol_lightweight(&self, row: &Row) -> rusqlite::Result<Symbol> {
         let kind_str: String = row.get("kind")?;
-        let kind = SymbolKind::from_string(&kind_str);
+        let kind = parse_symbol_kind(&kind_str)?;
 
         let visibility_str: Option<String> = row.get("visibility")?;
-        let visibility = visibility_str.and_then(|v| match v.as_str() {
-            "public" => Some(crate::extractors::base::Visibility::Public),
-            "private" => Some(crate::extractors::base::Visibility::Private),
-            "protected" => Some(crate::extractors::base::Visibility::Protected),
-            _ => None,
-        });
+        let visibility = visibility_str
+            .as_deref()
+            .map(parse_symbol_visibility)
+            .transpose()?;
 
         Ok(Symbol {
             id: row.get("id")?,
@@ -208,7 +232,7 @@ impl SymbolDatabase {
     /// Helper to convert database row to Relationship
     pub(crate) fn row_to_relationship(&self, row: &Row) -> rusqlite::Result<Relationship> {
         let kind_str: String = row.get("kind")?;
-        let kind = RelationshipKind::from_string(&kind_str);
+        let kind = parse_relationship_kind(&kind_str)?;
 
         let metadata_json: Option<String> = row.get("metadata")?;
         let metadata = metadata_json.and_then(|json| serde_json::from_str(&json).ok());

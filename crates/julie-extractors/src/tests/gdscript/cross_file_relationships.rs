@@ -324,6 +324,23 @@ func caller():
     }
 
     #[test]
+    fn test_attribute_call_relationship_uses_rightmost_method_name() {
+        let code = r#"
+func update_inventory(item):
+    player.inventory.add_item(item)
+"#;
+
+        let structured_pending = extract_structured_pending("inventory.gd", code);
+        let pending = structured_pending
+            .iter()
+            .find(|pending| pending.target.terminal_name == "add_item")
+            .expect("structured pending relationship should keep the method name");
+
+        assert_eq!(pending.target.receiver.as_deref(), Some("player.inventory"));
+        assert_eq!(pending.pending.kind, RelationshipKind::Calls);
+    }
+
+    #[test]
     fn test_local_function_call_creates_resolved_relationship() {
         // GDScript code with local function and call
         let code = r#"
@@ -458,6 +475,48 @@ func caller(other):
                     .iter()
                     .all(|relationship| relationship.kind != RelationshipKind::Calls),
             "receiver-qualified calls should not produce a wrong confident local edge"
+        );
+    }
+
+    #[test]
+    fn test_gdscript_extends_metadata_emits_extends_relationship_or_pending_target() {
+        let code = r#"
+class_name Enemy
+extends Actor
+
+func _ready():
+    pass
+"#;
+
+        let structured_pending = extract_structured_pending("src/enemy.gd", code);
+        let actor_pending = structured_pending
+            .iter()
+            .find(|pending| pending.target.display_name == "Actor")
+            .expect("unresolved baseClass metadata should produce a structured pending target");
+
+        assert_eq!(actor_pending.pending.kind, RelationshipKind::Extends);
+        assert_eq!(actor_pending.pending.callee_name, "Actor");
+        assert_eq!(actor_pending.target.terminal_name, "Actor");
+        assert_eq!(actor_pending.target.receiver, None);
+    }
+
+    #[test]
+    fn test_gdscript_builtin_extends_does_not_emit_pending_target() {
+        let code = r#"
+class_name Worker
+extends Node
+
+func run():
+    pass
+"#;
+
+        let structured_pending = extract_structured_pending("src/worker.gd", code);
+        assert!(
+            structured_pending.iter().all(|pending| {
+                pending.pending.kind != RelationshipKind::Extends
+                    || pending.target.terminal_name != "Node"
+            }),
+            "built-in GDScript base class Node must not be emitted as a cross-file pending target"
         );
     }
 }

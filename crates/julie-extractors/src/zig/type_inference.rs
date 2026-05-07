@@ -15,7 +15,7 @@ pub(super) fn infer_types(symbols: &[Symbol]) -> HashMap<String, String> {
         if let Some(signature) = &symbol.signature {
             // Extract Zig types from signatures
             if let Some(type_match) = ZIG_TYPE_RE.captures(signature) {
-                types.insert(symbol.name.clone(), type_match[1].to_string());
+                types.insert(symbol.id.clone(), type_match[1].to_string());
             }
         }
 
@@ -27,7 +27,7 @@ pub(super) fn infer_types(symbols: &[Symbol]) -> HashMap<String, String> {
             .and_then(|v| v.as_bool())
         {
             if is_error {
-                types.insert(symbol.name.clone(), "error".to_string());
+                types.insert(symbol.id.clone(), "error".to_string());
             }
         }
         if let Some(is_type_alias) = symbol
@@ -37,7 +37,7 @@ pub(super) fn infer_types(symbols: &[Symbol]) -> HashMap<String, String> {
             .and_then(|v| v.as_bool())
         {
             if is_type_alias {
-                types.insert(symbol.name.clone(), "type".to_string());
+                types.insert(symbol.id.clone(), "type".to_string());
             }
         }
 
@@ -51,11 +51,11 @@ pub(super) fn infer_types(symbols: &[Symbol]) -> HashMap<String, String> {
                     .and_then(|v| v.as_bool())
                     != Some(true)
                 {
-                    types.insert(symbol.name.clone(), "struct".to_string());
+                    types.insert(symbol.id.clone(), "struct".to_string());
                 }
             }
             SymbolKind::Enum => {
-                types.insert(symbol.name.clone(), "enum".to_string());
+                types.insert(symbol.id.clone(), "enum".to_string());
             }
             _ => {}
         }

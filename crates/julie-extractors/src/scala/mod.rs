@@ -69,6 +69,7 @@ impl ScalaExtractor {
 
         let mut symbol: Option<Symbol> = None;
         let mut new_parent_id = parent_id.clone();
+        let mut class_symbol_id: Option<String> = None;
 
         match node.kind() {
             "class_definition" => {
@@ -120,6 +121,18 @@ impl ScalaExtractor {
         if let Some(ref sym) = symbol {
             symbols.push(sym.clone());
             new_parent_id = Some(sym.id.clone());
+            if node.kind() == "class_definition" {
+                class_symbol_id = Some(sym.id.clone());
+            }
+        }
+
+        if let Some(class_id) = class_symbol_id {
+            properties::extract_case_class_constructor_fields(
+                &mut self.base,
+                &node,
+                symbols,
+                Some(class_id.as_str()),
+            );
         }
 
         // Recursively visit children
@@ -169,6 +182,9 @@ impl ScalaExtractor {
                 relationships::extract_call_relationships(self, node, symbols, relationships);
             }
             "function_definition" | "function_declaration" => {
+                relationships::extract_call_relationships(self, node, symbols, relationships);
+            }
+            "val_definition" | "var_definition" | "given_definition" | "extension_definition" => {
                 relationships::extract_call_relationships(self, node, symbols, relationships);
             }
             _ => {}

@@ -14,6 +14,7 @@ impl SwiftExtractor {
         symbols: &mut Vec<Symbol>,
         parent_id: Option<&str>,
     ) {
+        let declaration_annotations = self.extract_annotations(node);
         for child in node.children(&mut node.walk()) {
             if child.kind() == "enum_case_element" {
                 let name_node = child
@@ -30,10 +31,16 @@ impl SwiftExtractor {
                         signature.push_str(&self.base.get_node_text(&associated_values));
                     }
 
-                    let metadata = HashMap::from([(
+                    let mut metadata = HashMap::from([(
                         "type".to_string(),
                         serde_json::Value::String("enum-case".to_string()),
                     )]);
+                    if let Some(keys) = self.annotation_keys_csv(&declaration_annotations) {
+                        metadata.insert(
+                            "annotationKeys".to_string(),
+                            serde_json::Value::String(keys),
+                        );
+                    }
 
                     let symbol = self.base.create_symbol(
                         &child,
@@ -45,7 +52,7 @@ impl SwiftExtractor {
                             parent_id: parent_id.map(|s| s.to_string()),
                             metadata: Some(metadata),
                             doc_comment: None,
-                            annotations: Vec::new(),
+                            annotations: declaration_annotations.clone(),
                         },
                     );
                     symbols.push(symbol);
@@ -83,10 +90,17 @@ impl SwiftExtractor {
             }
         }
 
-        let metadata = HashMap::from([(
+        let annotations = self.extract_annotations(node);
+        let mut metadata = HashMap::from([(
             "type".to_string(),
             serde_json::Value::String("enum-case".to_string()),
         )]);
+        if let Some(keys) = self.annotation_keys_csv(&annotations) {
+            metadata.insert(
+                "annotationKeys".to_string(),
+                serde_json::Value::String(keys),
+            );
+        }
 
         // Extract Swift documentation comment
         let doc_comment = self.base.find_doc_comment(&node);
@@ -101,7 +115,7 @@ impl SwiftExtractor {
                 parent_id: parent_id.map(|s| s.to_string()),
                 metadata: Some(metadata),
                 doc_comment,
-                annotations: Vec::new(),
+                annotations,
             },
         ))
     }

@@ -67,6 +67,18 @@ impl SwiftExtractor {
         normalize_annotations(&raw_attributes, "swift")
     }
 
+    pub(super) fn annotation_keys_csv(&self, annotations: &[AnnotationMarker]) -> Option<String> {
+        let keys: Vec<&str> = annotations
+            .iter()
+            .map(|marker| marker.annotation_key.as_str())
+            .collect();
+        if keys.is_empty() {
+            None
+        } else {
+            Some(keys.join(","))
+        }
+    }
+
     fn extract_declaration_attribute_texts(&self, node: Node) -> Vec<String> {
         let mut attributes = Vec::new();
 
@@ -316,13 +328,14 @@ impl SwiftExtractor {
 
     /// Implementation of determineVisibility method
     pub(super) fn determine_visibility(&self, modifiers: &[String]) -> Visibility {
-        if modifiers
-            .iter()
-            .any(|m| m == "private" || m == "fileprivate")
-        {
+        if modifiers.iter().any(|m| m == "open") {
+            Visibility::Open
+        } else if modifiers.iter().any(|m| m == "fileprivate") {
+            Visibility::FilePrivate
+        } else if modifiers.iter().any(|m| m == "private") {
             Visibility::Private
         } else if modifiers.iter().any(|m| m == "internal") {
-            Visibility::Protected
+            Visibility::Internal
         } else {
             Visibility::Public
         }

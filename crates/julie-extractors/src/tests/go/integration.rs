@@ -113,7 +113,7 @@ func handleUsers(w http.ResponseWriter, r *http.Request) {
     // Check specific features
     let user_struct = symbols.iter().find(|s| s.name == "User");
     assert!(user_struct.is_some());
-    assert_eq!(user_struct.unwrap().kind, SymbolKind::Class);
+    assert_eq!(user_struct.unwrap().kind, SymbolKind::Struct);
 
     let user_service = symbols.iter().find(|s| s.name == "UserService");
     assert!(user_service.is_some());
@@ -255,6 +255,6 @@ func main() {{
         let service_name = format!("Service{}", i);
         let service = symbols.iter().find(|s| s.name == service_name);
         assert!(service.is_some());
-        assert_eq!(service.unwrap().kind, SymbolKind::Class);
+        assert_eq!(service.unwrap().kind, SymbolKind::Struct);
     }
 }

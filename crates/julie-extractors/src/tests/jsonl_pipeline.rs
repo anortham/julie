@@ -6,8 +6,19 @@ use md5;
 use std::collections::HashSet;
 use std::path::PathBuf;
 
-fn expected_id(file_path: &str, name: &str, start_line: u32, start_column: u32) -> String {
-    let input = format!("{file_path}:{name}:{start_line}:{start_column}");
+fn expected_id(
+    file_path: &str,
+    name: &str,
+    start_line: u32,
+    start_column: u32,
+    end_line: u32,
+    end_column: u32,
+    start_byte: u32,
+    end_byte: u32,
+) -> String {
+    let input = format!(
+        "{file_path}:{name}:{start_line}:{start_column}:{end_line}:{end_column}:{start_byte}:{end_byte}"
+    );
     format!("{:x}", md5::compute(input.as_bytes()))
 }
 
@@ -66,6 +77,10 @@ fn test_extract_all_jsonl_emits_file_global_positions_and_unique_ids() {
                 symbol.name.as_str(),
                 symbol.start_line,
                 symbol.start_column,
+                symbol.end_line,
+                symbol.end_column,
+                symbol.start_byte,
+                symbol.end_byte,
             ),
             "JSONL IDs should hash the normalized stored location"
         );

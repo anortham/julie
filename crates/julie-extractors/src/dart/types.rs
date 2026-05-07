@@ -15,6 +15,7 @@ pub(super) fn extract_enum(
 ) -> Option<Symbol> {
     let name_node = find_child_by_type(node, "identifier")?;
     let name = get_node_text(&name_node);
+    let annotations = extract_annotation_markers(node);
 
     let symbol = base.create_symbol(
         node,
@@ -25,6 +26,8 @@ pub(super) fn extract_enum(
             visibility: Some(Visibility::Public),
             parent_id: parent_id.map(|id| id.to_string()),
             metadata: Some(HashMap::new()),
+            doc_comment: base.find_doc_comment(node),
+            annotations,
             ..Default::default()
         },
     );
@@ -44,6 +47,7 @@ pub(super) fn extract_enum_constant(
 
     let name_node = find_child_by_type(node, "identifier")?;
     let constant_name = get_node_text(&name_node);
+    let annotations = extract_annotation_markers(node);
 
     // Check if there are arguments (enhanced enum)
     let argument_part = find_child_by_type(node, "argument_part");
@@ -62,6 +66,8 @@ pub(super) fn extract_enum_constant(
             visibility: Some(Visibility::Public),
             parent_id: parent_id.map(|id| id.to_string()),
             metadata: Some(HashMap::new()),
+            doc_comment: base.find_doc_comment(node),
+            annotations,
             ..Default::default()
         },
     );
@@ -77,6 +83,7 @@ pub(super) fn extract_mixin(
 ) -> Option<Symbol> {
     let name_node = find_child_by_type(node, "identifier")?;
     let name = get_node_text(&name_node);
+    let annotations = extract_annotation_markers(node);
 
     let source = get_node_text(node);
     let has_on_constraint = source.contains(" on ");
@@ -105,6 +112,8 @@ pub(super) fn extract_mixin(
             visibility: Some(Visibility::Public),
             parent_id: parent_id.map(|id| id.to_string()),
             metadata: Some(HashMap::new()),
+            doc_comment: base.find_doc_comment(node),
+            annotations,
             ..Default::default()
         },
     );
@@ -132,6 +141,7 @@ pub(super) fn extract_extension(
 ) -> Option<Symbol> {
     let name_node = find_child_by_type(node, "identifier")?;
     let name = get_node_text(&name_node);
+    let annotations = extract_annotation_markers(node);
 
     let source = get_node_text(node);
     let has_on_clause = source.contains(" on ");
@@ -160,6 +170,8 @@ pub(super) fn extract_extension(
             visibility: Some(Visibility::Public),
             parent_id: parent_id.map(|id| id.to_string()),
             metadata: Some(HashMap::new()),
+            doc_comment: base.find_doc_comment(node),
+            annotations,
             ..Default::default()
         },
     );
@@ -193,6 +205,7 @@ pub(super) fn extract_typedef(
     let name_node = find_child_by_type(node, "type_identifier")?;
     let name = get_node_text(&name_node);
     let is_private = name.starts_with('_');
+    let annotations = extract_annotation_markers(node);
 
     // Build signature with typedef keyword and generic parameters
     let type_params_node = find_child_by_type(node, "type_parameters");
@@ -230,6 +243,8 @@ pub(super) fn extract_typedef(
             }),
             parent_id: parent_id.map(|id| id.to_string()),
             metadata: Some(HashMap::new()),
+            doc_comment: base.find_doc_comment(node),
+            annotations,
             ..Default::default()
         },
     );

@@ -19,6 +19,7 @@ mod promotion_tests;
 mod quality;
 mod race_condition;
 mod tantivy_affix_tests;
+mod tantivy_kind_conversion_tests;
 mod tantivy_index_tests;
 mod tantivy_integration_tests;
 mod tantivy_language_config_tests;

@@ -187,11 +187,7 @@ impl SymbolDatabase {
                         .map(serde_json::to_string)
                         .transpose()?;
 
-                    let visibility_str = symbol.visibility.as_ref().map(|v| match v {
-                        crate::extractors::base::Visibility::Public => "public",
-                        crate::extractors::base::Visibility::Private => "private",
-                        crate::extractors::base::Visibility::Protected => "protected",
-                    });
+                    let visibility_str = symbol.visibility.as_ref().map(|v| v.as_storage_str());
 
                     match stmt.execute(params![
                         symbol.id,

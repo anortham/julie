@@ -148,3 +148,47 @@ fn mark(reasons: &mut Vec<IndexingRepairReason>) {
         "Enum variant usages should retain containing symbols"
     );
 }
+
+#[test]
+fn test_rust_type_usage_identifiers_cover_type_identifier_nodes() {
+    let code = r#"
+struct UserService {
+    repository: Repository<User>,
+}
+
+struct LoginRequest;
+struct AuthResult;
+struct Repository<T> { item: T }
+struct User;
+struct Error;
+
+impl UserService {
+    fn login(&self, request: &LoginRequest, users: Vec<User>) -> Result<AuthResult, Error> {
+        let fallback: Option<User> = None;
+        todo!()
+    }
+}
+"#;
+    let (_symbols, identifiers) = extract_all(code);
+    let type_names: Vec<&str> = identifiers
+        .iter()
+        .filter(|id| id.kind == IdentifierKind::TypeUsage)
+        .map(|id| id.name.as_str())
+        .collect();
+
+    for expected in [
+        "Repository",
+        "User",
+        "LoginRequest",
+        "Vec",
+        "Result",
+        "AuthResult",
+        "Error",
+        "Option",
+    ] {
+        assert!(
+            type_names.contains(&expected),
+            "missing Rust type usage {expected}; got {type_names:?}"
+        );
+    }
+}

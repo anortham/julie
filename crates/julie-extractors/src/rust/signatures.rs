@@ -14,18 +14,11 @@ pub(super) fn extract_return_type(base: &crate::base::BaseExtractor, node: Node)
     let return_type_node = node.child_by_field_name("return_type");
 
     if let Some(ret_type) = return_type_node {
-        // Skip the -> token and get the actual type
-        let type_nodes: Vec<_> = ret_type
-            .children(&mut ret_type.walk())
-            .filter(|c| c.kind() != "->" && base.get_node_text(c) != "->")
-            .collect();
-
-        if !type_nodes.is_empty() {
-            return type_nodes
-                .iter()
-                .map(|n| base.get_node_text(n))
-                .collect::<Vec<_>>()
-                .join("");
+        let return_type = base.get_node_text(&ret_type);
+        let return_type = return_type.trim();
+        let return_type = return_type.strip_prefix("->").unwrap_or(return_type).trim();
+        if !return_type.is_empty() {
+            return return_type.to_string();
         }
     }
 

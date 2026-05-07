@@ -4,7 +4,7 @@
 // produce IdentifierKind::TypeUsage identifiers, while declaration
 // names (class/struct/enum definitions, template params) are skipped.
 
-use crate::base::IdentifierKind;
+use crate::base::{IdentifierKind, RelationshipKind, SymbolKind};
 use crate::tests::cpp::parse_cpp;
 
 #[cfg(test)]
@@ -219,6 +219,56 @@ class Factory {
         assert!(
             !with_containing.is_empty(),
             "Widget type usages inside methods should have containing symbol IDs"
+        );
+    }
+
+    #[test]
+    fn test_cpp_declarations_emit_type_use_relationships() {
+        let code = r#"
+class Widget {};
+
+class Service {
+    Widget field;
+
+public:
+    Widget make(Widget input);
+};
+"#;
+
+        let (mut extractor, tree) = parse_cpp(code);
+        let symbols = extractor.extract_symbols(&tree);
+        let relationships = extractor.extract_relationships(&tree, &symbols);
+
+        let widget = symbols
+            .iter()
+            .find(|symbol| symbol.name == "Widget" && symbol.kind == SymbolKind::Class)
+            .expect("Widget class should be extracted");
+        let service = symbols
+            .iter()
+            .find(|symbol| symbol.name == "Service" && symbol.kind == SymbolKind::Class)
+            .expect("Service class should be extracted");
+        let make = symbols
+            .iter()
+            .find(|symbol| symbol.name == "make" && symbol.kind == SymbolKind::Method)
+            .expect("make method should be extracted");
+
+        assert!(
+            relationships.iter().any(|relationship| {
+                relationship.kind == RelationshipKind::Uses
+                    && relationship.from_symbol_id == service.id
+                    && relationship.to_symbol_id == widget.id
+            }),
+            "Service should use Widget through its field declaration. Relationships: {:?}",
+            relationships
+        );
+        assert!(
+            relationships.iter().any(|relationship| {
+                relationship.kind == RelationshipKind::Uses
+                    && relationship.from_symbol_id == make.id
+                    && relationship.to_symbol_id == widget.id
+            }),
+            "make should use Widget through its return or parameter type. Relationships: {:?}",
+            relationships
         );
     }
 }

@@ -27,7 +27,16 @@
         "pending_relationships": true,
         "identifiers": true,
         "types": true
-      }
+      },
+      "capability_gaps": [
+        {
+          "capability": "pending_relationships",
+          "status": "open",
+          "reason": "Runtime advertises pending relationship support, but the listed golden fixtures do not yet prove pending_relationships or structured_pending_relationships output.",
+          "required_closure": "Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported.",
+          "evidence": "docs/findings/COMPILED-FINDINGS.md"
+        }
+      ]
     },
     {
       "language": "c",
@@ -57,7 +66,16 @@
         "pending_relationships": true,
         "identifiers": true,
         "types": true
-      }
+      },
+      "capability_gaps": [
+        {
+          "capability": "pending_relationships",
+          "status": "open",
+          "reason": "Runtime advertises pending relationship support, but the listed golden fixtures do not yet prove pending_relationships or structured_pending_relationships output.",
+          "required_closure": "Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported.",
+          "evidence": "docs/findings/COMPILED-FINDINGS.md"
+        }
+      ]
     },
     {
       "language": "cpp",
@@ -93,7 +111,16 @@
         "pending_relationships": true,
         "identifiers": true,
         "types": true
-      }
+      },
+      "capability_gaps": [
+        {
+          "capability": "pending_relationships",
+          "status": "open",
+          "reason": "Runtime advertises pending relationship support, but the listed golden fixtures do not yet prove pending_relationships or structured_pending_relationships output.",
+          "required_closure": "Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported.",
+          "evidence": "docs/findings/COMPILED-FINDINGS.md"
+        }
+      ]
     },
     {
       "language": "go",
@@ -127,7 +154,16 @@
         "pending_relationships": true,
         "identifiers": true,
         "types": true
-      }
+      },
+      "capability_gaps": [
+        {
+          "capability": "pending_relationships",
+          "status": "open",
+          "reason": "Runtime advertises pending relationship support, but the listed golden fixtures do not yet prove pending_relationships or structured_pending_relationships output.",
+          "required_closure": "Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported.",
+          "evidence": "docs/findings/COMPILED-FINDINGS.md"
+        }
+      ]
     },
     {
       "language": "zig",
@@ -156,7 +192,16 @@
         "pending_relationships": true,
         "identifiers": true,
         "types": true
-      }
+      },
+      "capability_gaps": [
+        {
+          "capability": "pending_relationships",
+          "status": "open",
+          "reason": "Runtime advertises pending relationship support, but the listed golden fixtures do not yet prove pending_relationships or structured_pending_relationships output.",
+          "required_closure": "Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported.",
+          "evidence": "docs/findings/COMPILED-FINDINGS.md"
+        }
+      ]
     },
     {
       "language": "typescript",
@@ -187,7 +232,16 @@
         "pending_relationships": true,
         "identifiers": true,
         "types": true
-      }
+      },
+      "capability_gaps": [
+        {
+          "capability": "pending_relationships",
+          "status": "open",
+          "reason": "Runtime advertises pending relationship support, but the listed golden fixtures do not yet prove pending_relationships or structured_pending_relationships output.",
+          "required_closure": "Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported.",
+          "evidence": "docs/findings/COMPILED-FINDINGS.md"
+        }
+      ]
     },
     {
       "language": "tsx",
@@ -247,7 +301,16 @@
         "pending_relationships": true,
         "identifiers": true,
         "types": true
-      }
+      },
+      "capability_gaps": [
+        {
+          "capability": "pending_relationships",
+          "status": "open",
+          "reason": "Runtime advertises pending relationship support, but the listed golden fixtures do not yet prove pending_relationships or structured_pending_relationships output.",
+          "required_closure": "Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported.",
+          "evidence": "docs/findings/COMPILED-FINDINGS.md"
+        }
+      ]
     },
     {
       "language": "jsx",
@@ -306,7 +369,16 @@
         "pending_relationships": false,
         "identifiers": true,
         "types": true
-      }
+      },
+      "capability_gaps": [
+        {
+          "capability": "pending_relationships",
+          "status": "open",
+          "reason": "HTML markup has no language-level cross-file forward-reference construct; href/src attributes resolve at extraction time. Pending relationships are not targeted.",
+          "required_closure": "N/A — domain limitation.",
+          "evidence": "docs/findings/COMPILED-FINDINGS.md"
+        }
+      ]
     },
     {
       "language": "css",
@@ -335,7 +407,23 @@
         "pending_relationships": false,
         "identifiers": true,
         "types": false
-      }
+      },
+      "capability_gaps": [
+        {
+          "capability": "pending_relationships",
+          "status": "open",
+          "reason": "CSS @import directives resolve at extraction time and current relationship extraction emits direct edges. CSS has no forward-reference construct that would benefit from pending relationships.",
+          "required_closure": "N/A — domain limitation.",
+          "evidence": "docs/findings/COMPILED-FINDINGS.md"
+        },
+        {
+          "capability": "types",
+          "status": "open",
+          "reason": "CSS has no static type system. Custom property values are runtime strings; there is no type metadata to extract.",
+          "required_closure": "N/A — domain limitation.",
+          "evidence": "docs/findings/COMPILED-FINDINGS.md"
+        }
+      ]
     },
     {
       "language": "vue",
@@ -395,7 +483,16 @@
         "pending_relationships": true,
         "identifiers": true,
         "types": true
-      }
+      },
+      "capability_gaps": [
+        {
+          "capability": "pending_relationships",
+          "status": "open",
+          "reason": "Runtime advertises pending relationship support, but the listed golden fixtures do not yet prove pending_relationships or structured_pending_relationships output.",
+          "required_closure": "Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported.",
+          "evidence": "docs/findings/COMPILED-FINDINGS.md"
+        }
+      ]
     },
     {
       "language": "java",
@@ -424,7 +521,16 @@
         "pending_relationships": true,
         "identifiers": true,
         "types": true
-      }
+      },
+      "capability_gaps": [
+        {
+          "capability": "pending_relationships",
+          "status": "open",
+          "reason": "Runtime advertises pending relationship support, but the listed golden fixtures do not yet prove pending_relationships or structured_pending_relationships output.",
+          "required_closure": "Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported.",
+          "evidence": "docs/findings/COMPILED-FINDINGS.md"
+        }
+      ]
     },
     {
       "language": "csharp",
@@ -453,7 +559,16 @@
         "pending_relationships": true,
         "identifiers": true,
         "types": true
-      }
+      },
+      "capability_gaps": [
+        {
+          "capability": "pending_relationships",
+          "status": "open",
+          "reason": "Runtime advertises pending relationship support, but the listed golden fixtures do not yet prove pending_relationships or structured_pending_relationships output.",
+          "required_closure": "Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported.",
+          "evidence": "docs/findings/COMPILED-FINDINGS.md"
+        }
+      ]
     },
     {
       "language": "vbnet",
@@ -482,7 +597,16 @@
         "pending_relationships": true,
         "identifiers": true,
         "types": true
-      }
+      },
+      "capability_gaps": [
+        {
+          "capability": "pending_relationships",
+          "status": "open",
+          "reason": "Runtime advertises pending relationship support, but the listed golden fixtures do not yet prove pending_relationships or structured_pending_relationships output.",
+          "required_closure": "Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported.",
+          "evidence": "docs/findings/COMPILED-FINDINGS.md"
+        }
+      ]
     },
     {
       "language": "php",
@@ -512,7 +636,16 @@
         "pending_relationships": true,
         "identifiers": true,
         "types": true
-      }
+      },
+      "capability_gaps": [
+        {
+          "capability": "pending_relationships",
+          "status": "open",
+          "reason": "Runtime advertises pending relationship support, but the listed golden fixtures do not yet prove pending_relationships or structured_pending_relationships output.",
+          "required_closure": "Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported.",
+          "evidence": "docs/findings/COMPILED-FINDINGS.md"
+        }
+      ]
     },
     {
       "language": "ruby",
@@ -542,7 +675,16 @@
         "pending_relationships": true,
         "identifiers": true,
         "types": true
-      }
+      },
+      "capability_gaps": [
+        {
+          "capability": "pending_relationships",
+          "status": "open",
+          "reason": "Runtime advertises pending relationship support, but the listed golden fixtures do not yet prove pending_relationships or structured_pending_relationships output.",
+          "required_closure": "Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported.",
+          "evidence": "docs/findings/COMPILED-FINDINGS.md"
+        }
+      ]
     },
     {
       "language": "swift",
@@ -571,7 +713,16 @@
         "pending_relationships": true,
         "identifiers": true,
         "types": true
-      }
+      },
+      "capability_gaps": [
+        {
+          "capability": "pending_relationships",
+          "status": "open",
+          "reason": "Runtime advertises pending relationship support, but the listed golden fixtures do not yet prove pending_relationships or structured_pending_relationships output.",
+          "required_closure": "Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported.",
+          "evidence": "docs/findings/COMPILED-FINDINGS.md"
+        }
+      ]
     },
     {
       "language": "kotlin",
@@ -601,7 +752,16 @@
         "pending_relationships": true,
         "identifiers": true,
         "types": true
-      }
+      },
+      "capability_gaps": [
+        {
+          "capability": "pending_relationships",
+          "status": "open",
+          "reason": "Runtime advertises pending relationship support, but the listed golden fixtures do not yet prove pending_relationships or structured_pending_relationships output.",
+          "required_closure": "Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported.",
+          "evidence": "docs/findings/COMPILED-FINDINGS.md"
+        }
+      ]
     },
     {
       "language": "scala",
@@ -631,7 +791,16 @@
         "pending_relationships": true,
         "identifiers": true,
         "types": true
-      }
+      },
+      "capability_gaps": [
+        {
+          "capability": "pending_relationships",
+          "status": "open",
+          "reason": "Runtime advertises pending relationship support, but the listed golden fixtures do not yet prove pending_relationships or structured_pending_relationships output.",
+          "required_closure": "Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported.",
+          "evidence": "docs/findings/COMPILED-FINDINGS.md"
+        }
+      ]
     },
     {
       "language": "dart",
@@ -660,7 +829,16 @@
         "pending_relationships": true,
         "identifiers": true,
         "types": true
-      }
+      },
+      "capability_gaps": [
+        {
+          "capability": "pending_relationships",
+          "status": "open",
+          "reason": "Runtime advertises pending relationship support, but the listed golden fixtures do not yet prove pending_relationships or structured_pending_relationships output.",
+          "required_closure": "Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported.",
+          "evidence": "docs/findings/COMPILED-FINDINGS.md"
+        }
+      ]
     },
     {
       "language": "elixir",
@@ -690,7 +868,16 @@
         "pending_relationships": true,
         "identifiers": true,
         "types": true
-      }
+      },
+      "capability_gaps": [
+        {
+          "capability": "pending_relationships",
+          "status": "open",
+          "reason": "Runtime advertises pending relationship support, but the listed golden fixtures do not yet prove pending_relationships or structured_pending_relationships output.",
+          "required_closure": "Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported.",
+          "evidence": "docs/findings/COMPILED-FINDINGS.md"
+        }
+      ]
     },
     {
       "language": "lua",
@@ -719,7 +906,23 @@
         "pending_relationships": true,
         "identifiers": true,
         "types": false
-      }
+      },
+      "capability_gaps": [
+        {
+          "capability": "pending_relationships",
+          "status": "open",
+          "reason": "Runtime advertises pending relationship support, but the listed golden fixtures do not yet prove pending_relationships or structured_pending_relationships output.",
+          "required_closure": "Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported.",
+          "evidence": "docs/findings/COMPILED-FINDINGS.md"
+        },
+        {
+          "capability": "types",
+          "status": "open",
+          "reason": "Lua is a dynamically typed language with no static type annotations in core syntax. Luau-style annotations are out of scope for the base Lua extractor.",
+          "required_closure": "Out of scope — Lua is dynamic. Luau-style type annotations would be a separate language target.",
+          "evidence": "docs/findings/COMPILED-FINDINGS.md"
+        }
+      ]
     },
     {
       "language": "qml",
@@ -748,7 +951,16 @@
         "pending_relationships": true,
         "identifiers": true,
         "types": false
-      }
+      },
+      "capability_gaps": [
+        {
+          "capability": "types",
+          "status": "open",
+          "reason": "QML property bindings carry runtime type names but no static type extraction is implemented. Property type tags are stored on Symbol metadata, not as separate Type rows.",
+          "required_closure": "Future work could add structured TypeInfo for QML property declarations.",
+          "evidence": "docs/findings/COMPILED-FINDINGS.md"
+        }
+      ]
     },
     {
       "language": "r",
@@ -778,7 +990,23 @@
         "pending_relationships": true,
         "identifiers": true,
         "types": false
-      }
+      },
+      "capability_gaps": [
+        {
+          "capability": "pending_relationships",
+          "status": "open",
+          "reason": "Runtime advertises pending relationship support, but the listed golden fixtures do not yet prove pending_relationships or structured_pending_relationships output.",
+          "required_closure": "Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported.",
+          "evidence": "docs/findings/COMPILED-FINDINGS.md"
+        },
+        {
+          "capability": "types",
+          "status": "open",
+          "reason": "R is a dynamically typed language with no static type system. roxygen @param type tags are documentation-only and not currently extracted as TypeInfo.",
+          "required_closure": "N/A — domain limitation. Future work could harvest roxygen type annotations into TypeInfo.",
+          "evidence": "docs/findings/COMPILED-FINDINGS.md"
+        }
+      ]
     },
     {
       "language": "bash",
@@ -808,7 +1036,16 @@
         "pending_relationships": true,
         "identifiers": true,
         "types": true
-      }
+      },
+      "capability_gaps": [
+        {
+          "capability": "pending_relationships",
+          "status": "open",
+          "reason": "Runtime advertises pending relationship support, but the listed golden fixtures do not yet prove pending_relationships or structured_pending_relationships output.",
+          "required_closure": "Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported.",
+          "evidence": "docs/findings/COMPILED-FINDINGS.md"
+        }
+      ]
     },
     {
       "language": "powershell",
@@ -839,7 +1076,16 @@
         "pending_relationships": true,
         "identifiers": true,
         "types": true
-      }
+      },
+      "capability_gaps": [
+        {
+          "capability": "pending_relationships",
+          "status": "open",
+          "reason": "Runtime advertises pending relationship support, but the listed golden fixtures do not yet prove pending_relationships or structured_pending_relationships output.",
+          "required_closure": "Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported.",
+          "evidence": "docs/findings/COMPILED-FINDINGS.md"
+        }
+      ]
     },
     {
       "language": "gdscript",
@@ -868,7 +1114,16 @@
         "pending_relationships": true,
         "identifiers": true,
         "types": true
-      }
+      },
+      "capability_gaps": [
+        {
+          "capability": "pending_relationships",
+          "status": "open",
+          "reason": "Runtime advertises pending relationship support, but the listed golden fixtures do not yet prove pending_relationships or structured_pending_relationships output.",
+          "required_closure": "Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported.",
+          "evidence": "docs/findings/COMPILED-FINDINGS.md"
+        }
+      ]
     },
     {
       "language": "razor",
@@ -898,7 +1153,16 @@
         "pending_relationships": false,
         "identifiers": true,
         "types": true
-      }
+      },
+      "capability_gaps": [
+        {
+          "capability": "pending_relationships",
+          "status": "open",
+          "reason": "Razor @using directives resolve at extraction time to namespace symbols. Cross-file C# references go through the embedded C# pipeline, not through Razor's pending path.",
+          "required_closure": "N/A — handled by embedded C# extractor.",
+          "evidence": "docs/findings/COMPILED-FINDINGS.md"
+        }
+      ]
     },
     {
       "language": "sql",
@@ -927,7 +1191,23 @@
         "pending_relationships": false,
         "identifiers": true,
         "types": true
-      }
+      },
+      "capability_gaps": [
+        {
+          "capability": "relationships",
+          "status": "open",
+          "reason": "Only foreign_key_constraint and JOIN relationships are extracted. View-source relationships (CREATE VIEW ... AS SELECT ... FROM table) and trigger-target relationships (CREATE TRIGGER ... ON table) are not yet extracted (see H25). SQL is in NO_PENDING_CAPABILITIES so cross-file FK references to tables in other files are suppressed (not emitted as dead synthetic IDs).",
+          "required_closure": "Implement view-source and trigger-target relationship extraction. Additionally, implement structured pending relationships for unresolved cross-file FK targets, move SQL out of NO_PENDING_CAPABILITIES, and either advance target_capabilities.pending_relationships to true or record a separate pending_relationships gap. Until then, cross-file FK dependency information is suppressed at the source, not preserved as pending.",
+          "evidence": "docs/findings/COMPILED-FINDINGS.md"
+        },
+        {
+          "capability": "pending_relationships",
+          "status": "open",
+          "reason": "Cross-file foreign-key references are currently suppressed at extraction (crates/julie-extractors/src/sql/relationships.rs around line 115) rather than preserved as pending relationships. Promotion of FK targets to structured pending relationships is deferred.",
+          "required_closure": "Implement structured pending relationships for unresolved FK targets, move SQL out of NO_PENDING_CAPABILITIES, and advance target_capabilities.pending_relationships to true.",
+          "evidence": "docs/findings/COMPILED-FINDINGS.md"
+        }
+      ]
     },
     {
       "language": "regex",
@@ -956,7 +1236,16 @@
         "pending_relationships": false,
         "identifiers": true,
         "types": true
-      }
+      },
+      "capability_gaps": [
+        {
+          "capability": "pending_relationships",
+          "status": "open",
+          "reason": "Regex backreferences are within-pattern only; there is no cross-file forward-reference construct in regex syntax.",
+          "required_closure": "N/A — domain limitation.",
+          "evidence": "docs/findings/COMPILED-FINDINGS.md"
+        }
+      ]
     },
     {
       "language": "markdown",
@@ -986,7 +1275,23 @@
         "pending_relationships": false,
         "identifiers": true,
         "types": false
-      }
+      },
+      "capability_gaps": [
+        {
+          "capability": "pending_relationships",
+          "status": "open",
+          "reason": "Markdown links and footnote references are within-document. Cross-file links are URL/path strings, not symbol references.",
+          "required_closure": "N/A — domain limitation.",
+          "evidence": "docs/findings/COMPILED-FINDINGS.md"
+        },
+        {
+          "capability": "types",
+          "status": "open",
+          "reason": "Markdown is a presentation format with no static type system.",
+          "required_closure": "N/A — domain limitation.",
+          "evidence": "docs/findings/COMPILED-FINDINGS.md"
+        }
+      ]
     },
     {
       "language": "json",
@@ -1017,7 +1322,30 @@
         "pending_relationships": false,
         "identifiers": true,
         "types": false
-      }
+      },
+      "capability_gaps": [
+        {
+          "capability": "relationships",
+          "status": "open",
+          "reason": "JSON Schema $ref relationship extraction is not yet implemented. Current extractor emits structural symbols (object keys, array entries) only.",
+          "required_closure": "Implement JSON Schema $ref to schema-definition relationship extraction with exact target resolution.",
+          "evidence": "docs/findings/COMPILED-FINDINGS.md"
+        },
+        {
+          "capability": "pending_relationships",
+          "status": "open",
+          "reason": "JSON has no cross-document construct that requires deferred resolution beyond $ref. Pending support depends on the relationships gap above.",
+          "required_closure": "Once $ref relationships are implemented, evaluate whether unresolved external refs warrant pending promotion.",
+          "evidence": "docs/findings/COMPILED-FINDINGS.md"
+        },
+        {
+          "capability": "types",
+          "status": "open",
+          "reason": "JSON has no static type system. JSON Schema type keywords are runtime hints, not extracted as TypeInfo.",
+          "required_closure": "N/A — domain limitation. JSON Schema type extraction would require a schema-aware extractor mode.",
+          "evidence": "docs/findings/COMPILED-FINDINGS.md"
+        }
+      ]
     },
     {
       "language": "toml",
@@ -1046,7 +1374,30 @@
         "pending_relationships": false,
         "identifiers": true,
         "types": false
-      }
+      },
+      "capability_gaps": [
+        {
+          "capability": "relationships",
+          "status": "open",
+          "reason": "TOML has no inter-key reference construct in the format itself. Domain-specific references (Cargo.toml [dependencies], pyproject [tool.*]) require schema-aware extraction not yet implemented.",
+          "required_closure": "Implement domain-specific TOML reference extraction (Cargo.toml dependencies, pyproject tool tables, etc.) with exact resolution.",
+          "evidence": "docs/findings/COMPILED-FINDINGS.md"
+        },
+        {
+          "capability": "pending_relationships",
+          "status": "open",
+          "reason": "Same scope as the relationships gap above. Depends on domain-specific TOML reference extraction being implemented first.",
+          "required_closure": "Re-evaluate after TOML relationships are implemented.",
+          "evidence": "docs/findings/COMPILED-FINDINGS.md"
+        },
+        {
+          "capability": "types",
+          "status": "open",
+          "reason": "TOML has no static type system. Value types (string/int/array) are format-level, not extracted as TypeInfo.",
+          "required_closure": "N/A — domain limitation.",
+          "evidence": "docs/findings/COMPILED-FINDINGS.md"
+        }
+      ]
     },
     {
       "language": "yaml",
@@ -1076,7 +1427,23 @@
         "pending_relationships": false,
         "identifiers": true,
         "types": false
-      }
+      },
+      "capability_gaps": [
+        {
+          "capability": "pending_relationships",
+          "status": "open",
+          "reason": "YAML anchors/aliases are within-document. YAML has no cross-document forward-reference construct.",
+          "required_closure": "N/A — domain limitation.",
+          "evidence": "docs/findings/COMPILED-FINDINGS.md"
+        },
+        {
+          "capability": "types",
+          "status": "open",
+          "reason": "YAML has no static type system. Tag types (!!str, !!int) are format-level, not extracted as TypeInfo.",
+          "required_closure": "N/A — domain limitation.",
+          "evidence": "docs/findings/COMPILED-FINDINGS.md"
+        }
+      ]
     }
   ]
 }

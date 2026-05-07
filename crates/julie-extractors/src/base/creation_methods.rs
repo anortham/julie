@@ -124,11 +124,14 @@ impl BaseExtractor {
     ) -> Relationship {
         Relationship {
             id: format!(
-                "{}_{}_{:?}_{}",
+                "{}_{}_{:?}_{}_{}_{}_{}",
                 from_symbol_id,
                 to_symbol_id,
                 kind,
-                node.start_position().row
+                node.start_position().row,
+                node.start_position().column,
+                node.start_byte(),
+                node.end_byte()
             ),
             from_symbol_id,
             to_symbol_id,
@@ -260,7 +263,7 @@ impl BaseExtractor {
         Some(containing_symbols[0])
     }
 
-    /// Extract visibility - exact port of extractVisibility
+    /// Extract visibility from explicit modifier nodes only.
     pub fn extract_visibility(&self, node: &Node) -> Option<Visibility> {
         // Look for visibility modifiers in child nodes
         for i in 0..node.child_count() {
@@ -274,16 +277,6 @@ impl BaseExtractor {
             }
         }
 
-        // Check for language-specific patterns in text
-        let text = self.get_node_text(node);
-        if text.contains("public ") {
-            Some(Visibility::Public)
-        } else if text.contains("private ") {
-            Some(Visibility::Private)
-        } else if text.contains("protected ") {
-            Some(Visibility::Protected)
-        } else {
-            None
-        }
+        None
     }
 }

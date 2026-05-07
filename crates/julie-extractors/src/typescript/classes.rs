@@ -10,11 +10,15 @@ use std::collections::HashMap;
 use tree_sitter::Node;
 
 /// Extract a class declaration
-pub(super) fn extract_class(extractor: &mut TypeScriptExtractor, node: Node) -> Option<Symbol> {
+pub(super) fn extract_class(
+    extractor: &mut TypeScriptExtractor,
+    node: Node,
+    parent_id: Option<&str>,
+) -> Option<Symbol> {
     let name_node = node.child_by_field_name("name");
     let name = name_node.map(|n| extractor.base().get_node_text(&n))?;
 
-    let visibility = extractor.base().extract_visibility(&node);
+    let visibility = helpers::extract_ts_visibility(node);
     let mut metadata = HashMap::new();
 
     // Check for inheritance (extends clause)
@@ -104,7 +108,7 @@ pub(super) fn extract_class(extractor: &mut TypeScriptExtractor, node: Node) -> 
         SymbolOptions {
             signature: Some(signature),
             visibility,
-            parent_id: None,
+            parent_id: parent_id.map(str::to_string),
             metadata: Some(metadata),
             doc_comment,
             annotations,

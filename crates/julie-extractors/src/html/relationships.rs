@@ -128,6 +128,12 @@ impl RelationshipExtractor {
                     .and_then(|v| v.as_str())
                     .map(|t| t == "script-element")
                     .unwrap_or(false)
+                    && s.metadata
+                        .as_ref()
+                        .and_then(|m| m.get("attributes"))
+                        .and_then(|attrs| attrs.get("src"))
+                        .and_then(|value| value.as_str())
+                        == Some(src.as_str())
             }) {
                 let to_id = format!("script:{}", src);
                 relationships.push(Relationship {

@@ -4,7 +4,7 @@ use super::helpers::extract_impl_target_names;
 /// - Type references in fields
 /// - Function calls
 use crate::base::{
-    LocalTargetResolution, Relationship, RelationshipKind, ScopedSymbolIndex, Symbol,
+    LocalTargetResolution, Relationship, RelationshipKind, ScopedSymbolIndex, Symbol, SymbolKind,
     UnresolvedTarget,
 };
 use crate::rust::RustExtractor;
@@ -51,6 +51,9 @@ fn walk_tree_for_relationships(
         "call_expression" => {
             extract_call_relationships(extractor, node, symbols, symbol_index, relationships);
         }
+        "use_declaration" => {
+            extract_use_import_relationship(extractor, node, symbols);
+        }
         _ => {}
     }
 
@@ -65,6 +68,100 @@ fn walk_tree_for_relationships(
             symbol_index,
             relationships,
         );
+    }
+}
+
+fn extract_use_import_relationship(extractor: &mut RustExtractor, node: Node, symbols: &[Symbol]) {
+    let import_symbol = {
+        let base = extractor.get_base_mut();
+        base.find_containing_symbol(&node, symbols)
+            .filter(|symbol| symbol.kind == SymbolKind::Import)
+            .cloned()
+    };
+    let Some(import_symbol) = import_symbol else {
+        return;
+    };
+
+    let use_text = import_symbol
+        .signature
+        .clone()
+        .unwrap_or_else(|| extractor.get_base_mut().get_node_text(&node));
+    let Some(target) = unresolved_import_target_from_use_text(&use_text) else {
+        return;
+    };
+
+    let pending = extractor.get_base_mut().create_pending_relationship(
+        import_symbol.id.clone(),
+        target,
+        RelationshipKind::Imports,
+        &node,
+        Some(import_symbol.id.clone()),
+        Some(1.0),
+    );
+    extractor.add_structured_pending_relationship(pending);
+}
+
+fn unresolved_import_target_from_use_text(use_text: &str) -> Option<UnresolvedTarget> {
+    let normalized_path = normalize_use_path(use_text)?;
+    let segments: Vec<String> = normalized_path
+        .split("::")
+        .map(str::trim)
+        .filter(|segment| !segment.is_empty() && *segment != "*")
+        .map(ToOwned::to_owned)
+        .collect();
+
+    if segments.is_empty() {
+        return Some(UnresolvedTarget {
+            display_name: normalized_path.clone(),
+            terminal_name: normalized_path,
+            receiver: None,
+            namespace_path: Vec::new(),
+            import_context: Some(use_text.trim().to_string()),
+        });
+    }
+
+    let terminal_name = segments.last().cloned()?;
+    let namespace_path = segments[..segments.len().saturating_sub(1)].to_vec();
+
+    Some(UnresolvedTarget {
+        display_name: normalized_path,
+        terminal_name,
+        receiver: None,
+        namespace_path,
+        import_context: Some(use_text.trim().to_string()),
+    })
+}
+
+fn normalize_use_path(use_text: &str) -> Option<String> {
+    let path_text = use_text
+        .trim()
+        .trim_start_matches("pub(crate) use ")
+        .trim_start_matches("pub(super) use ")
+        .trim_start_matches("pub use ")
+        .trim_start_matches("use ")
+        .trim_end_matches(';')
+        .trim();
+    if path_text.is_empty() {
+        return None;
+    }
+
+    let without_alias = path_text.split(" as ").next().unwrap_or(path_text).trim();
+    let normalized = if without_alias.contains('{') {
+        without_alias
+            .split("::{")
+            .next()
+            .unwrap_or(without_alias)
+            .trim()
+    } else if without_alias.ends_with("::*") {
+        without_alias.trim_end_matches("::*").trim()
+    } else {
+        without_alias
+    };
+
+    if normalized.is_empty() {
+        None
+    } else {
+        Some(normalized.to_string())
     }
 }
 

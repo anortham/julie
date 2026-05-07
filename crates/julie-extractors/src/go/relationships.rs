@@ -2,6 +2,56 @@ use crate::base::{Relationship, RelationshipKind, Symbol, SymbolKind, Unresolved
 use std::collections::HashMap;
 use tree_sitter::Node;
 
+const GO_STDLIB_ROOT_PACKAGES: &[&str] = &[
+    "archive",
+    "bufio",
+    "builtin",
+    "bytes",
+    "cmp",
+    "compress",
+    "container",
+    "context",
+    "crypto",
+    "database",
+    "debug",
+    "embed",
+    "encoding",
+    "errors",
+    "expvar",
+    "flag",
+    "fmt",
+    "go",
+    "hash",
+    "html",
+    "image",
+    "index",
+    "io",
+    "iter",
+    "log",
+    "maps",
+    "math",
+    "mime",
+    "net",
+    "os",
+    "path",
+    "plugin",
+    "reflect",
+    "regexp",
+    "runtime",
+    "slices",
+    "sort",
+    "strconv",
+    "strings",
+    "sync",
+    "syscall",
+    "testing",
+    "text",
+    "time",
+    "unicode",
+    "unique",
+    "unsafe",
+];
+
 fn import_path_from_signature(signature: &str) -> Option<&str> {
     signature
         .strip_prefix("import ")?
@@ -11,7 +61,9 @@ fn import_path_from_signature(signature: &str) -> Option<&str> {
 }
 
 fn is_stdlib_import_path(import_path: &str) -> bool {
-    matches!(import_path, "fmt")
+    let import_path = import_path.trim_matches('"');
+    let root = import_path.split('/').next().unwrap_or(import_path);
+    GO_STDLIB_ROOT_PACKAGES.contains(&root)
 }
 
 /// Relationship extraction for Go (method receivers, interface implementations, embedding, function calls)
@@ -25,11 +77,6 @@ impl super::GoExtractor {
         // Handle interface implementations (implicit in Go)
         if node.kind() == "method_declaration" {
             self.extract_method_relationships_from_node(node, symbol_map, relationships);
-        }
-
-        // Handle struct embedding
-        if node.kind() == "struct_type" {
-            self.extract_embedding_relationships(node, symbol_map, relationships);
         }
 
         // Handle function calls (direct and cross-package)
@@ -85,17 +132,6 @@ impl super::GoExtractor {
                 }
             }
         }
-    }
-
-    pub(super) fn extract_embedding_relationships(
-        &self,
-        _node: Node,
-        _symbol_map: &HashMap<String, &Symbol>,
-        _relationships: &mut Vec<Relationship>,
-    ) {
-        // Go struct embedding creates implicit relationships
-        // This would need more complex parsing to detect embedded types
-        // For now, we'll skip this advanced feature
     }
 
     /// Extract function call relationships

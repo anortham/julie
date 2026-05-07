@@ -167,13 +167,19 @@ impl Symbol {
 
     pub fn refresh_id(&mut self) -> String {
         let previous_id = self.id.clone();
-        self.id = stable_location_id(
-            self.file_path.as_str(),
-            self.name.as_str(),
-            self.start_line,
-            self.start_column,
-        );
+        self.id = stable_location_id(self.file_path.as_str(), self.name.as_str(), self.span());
         previous_id
+    }
+
+    fn span(&self) -> NormalizedSpan {
+        NormalizedSpan {
+            start_line: self.start_line,
+            start_column: self.start_column,
+            end_line: self.end_line,
+            end_column: self.end_column,
+            start_byte: self.start_byte,
+            end_byte: self.end_byte,
+        }
     }
 }
 
@@ -227,17 +233,33 @@ impl Identifier {
     }
 
     pub fn refresh_id(&mut self) {
-        self.id = stable_location_id(
-            self.file_path.as_str(),
-            self.name.as_str(),
-            self.start_line,
-            self.start_column,
-        );
+        self.id = stable_location_id(self.file_path.as_str(), self.name.as_str(), self.span());
+    }
+
+    fn span(&self) -> NormalizedSpan {
+        NormalizedSpan {
+            start_line: self.start_line,
+            start_column: self.start_column,
+            end_line: self.end_line,
+            end_column: self.end_column,
+            start_byte: self.start_byte,
+            end_byte: self.end_byte,
+        }
     }
 }
 
-fn stable_location_id(file_path: &str, name: &str, start_line: u32, start_column: u32) -> String {
-    let input = format!("{file_path}:{name}:{start_line}:{start_column}");
+pub(crate) fn stable_location_id(file_path: &str, name: &str, span: NormalizedSpan) -> String {
+    let input = format!(
+        "{}:{}:{}:{}:{}:{}:{}:{}",
+        file_path,
+        name,
+        span.start_line,
+        span.start_column,
+        span.end_line,
+        span.end_column,
+        span.start_byte,
+        span.end_byte
+    );
     format!("{:x}", md5::compute(input.as_bytes()))
 }
 
@@ -268,14 +290,19 @@ impl std::fmt::Display for IdentifierKind {
 
 impl IdentifierKind {
     /// Convert from string representation (for database deserialization)
-    pub fn from_string(s: &str) -> Self {
+    pub fn try_from_string(s: &str) -> Option<Self> {
         match s {
-            "call" => IdentifierKind::Call,
-            "variable_ref" => IdentifierKind::VariableRef,
-            "type_usage" => IdentifierKind::TypeUsage,
-            "member_access" => IdentifierKind::MemberAccess,
-            _ => IdentifierKind::VariableRef, // Default fallback
+            "call" => Some(IdentifierKind::Call),
+            "variable_ref" => Some(IdentifierKind::VariableRef),
+            "type_usage" => Some(IdentifierKind::TypeUsage),
+            "member_access" => Some(IdentifierKind::MemberAccess),
+            _ => None,
         }
+    }
+
+    /// Convert from string representation (for database deserialization)
+    pub fn from_string(s: &str) -> Self {
+        Self::try_from_string(s).unwrap_or_else(|| panic!("unknown identifier kind: {s}"))
     }
 }
 
@@ -312,35 +339,41 @@ pub enum SymbolKind {
 }
 
 impl SymbolKind {
+    /// Convert from string representation (for database deserialization).
+    /// Returns `None` for unrecognised strings instead of panicking.
+    pub fn try_from_string(s: &str) -> Option<Self> {
+        match s {
+            "class" => Some(SymbolKind::Class),
+            "interface" => Some(SymbolKind::Interface),
+            "function" => Some(SymbolKind::Function),
+            "method" => Some(SymbolKind::Method),
+            "variable" => Some(SymbolKind::Variable),
+            "constant" => Some(SymbolKind::Constant),
+            "property" => Some(SymbolKind::Property),
+            "enum" => Some(SymbolKind::Enum),
+            "enum_member" => Some(SymbolKind::EnumMember),
+            "module" => Some(SymbolKind::Module),
+            "namespace" => Some(SymbolKind::Namespace),
+            "type" => Some(SymbolKind::Type),
+            "trait" => Some(SymbolKind::Trait),
+            "struct" => Some(SymbolKind::Struct),
+            "union" => Some(SymbolKind::Union),
+            "field" => Some(SymbolKind::Field),
+            "constructor" => Some(SymbolKind::Constructor),
+            "destructor" => Some(SymbolKind::Destructor),
+            "operator" => Some(SymbolKind::Operator),
+            "import" => Some(SymbolKind::Import),
+            "export" => Some(SymbolKind::Export),
+            "event" => Some(SymbolKind::Event),
+            "delegate" => Some(SymbolKind::Delegate),
+            _ => None,
+        }
+    }
+
     /// Convert from string representation (for database deserialization)
     #[allow(dead_code)] // TODO: Used for database deserialization
     pub fn from_string(s: &str) -> Self {
-        match s {
-            "class" => SymbolKind::Class,
-            "interface" => SymbolKind::Interface,
-            "function" => SymbolKind::Function,
-            "method" => SymbolKind::Method,
-            "variable" => SymbolKind::Variable,
-            "constant" => SymbolKind::Constant,
-            "property" => SymbolKind::Property,
-            "enum" => SymbolKind::Enum,
-            "enum_member" => SymbolKind::EnumMember,
-            "module" => SymbolKind::Module,
-            "namespace" => SymbolKind::Namespace,
-            "type" => SymbolKind::Type,
-            "trait" => SymbolKind::Trait,
-            "struct" => SymbolKind::Struct,
-            "union" => SymbolKind::Union,
-            "field" => SymbolKind::Field,
-            "constructor" => SymbolKind::Constructor,
-            "destructor" => SymbolKind::Destructor,
-            "operator" => SymbolKind::Operator,
-            "import" => SymbolKind::Import,
-            "export" => SymbolKind::Export,
-            "event" => SymbolKind::Event,
-            "delegate" => SymbolKind::Delegate,
-            _ => SymbolKind::Variable, // Default fallback
-        }
+        Self::try_from_string(s).unwrap_or_else(|| panic!("unknown symbol kind: {s}"))
     }
 
     // Note: to_string() is provided by Display trait implementation below
@@ -383,6 +416,34 @@ pub enum Visibility {
     Public,
     Private,
     Protected,
+    Internal,
+    FilePrivate,
+    Open,
+}
+
+impl Visibility {
+    pub fn as_storage_str(&self) -> &'static str {
+        match self {
+            Visibility::Public => "public",
+            Visibility::Private => "private",
+            Visibility::Protected => "protected",
+            Visibility::Internal => "internal",
+            Visibility::FilePrivate => "fileprivate",
+            Visibility::Open => "open",
+        }
+    }
+
+    pub fn from_storage_str(value: &str) -> Option<Self> {
+        match value {
+            "public" => Some(Visibility::Public),
+            "private" => Some(Visibility::Private),
+            "protected" => Some(Visibility::Protected),
+            "internal" => Some(Visibility::Internal),
+            "fileprivate" => Some(Visibility::FilePrivate),
+            "open" => Some(Visibility::Open),
+            _ => None,
+        }
+    }
 }
 
 impl std::fmt::Display for Visibility {
@@ -391,6 +452,9 @@ impl std::fmt::Display for Visibility {
             Visibility::Public => write!(f, "Public"),
             Visibility::Private => write!(f, "Private"),
             Visibility::Protected => write!(f, "Protected"),
+            Visibility::Internal => write!(f, "Internal"),
+            Visibility::FilePrivate => write!(f, "FilePrivate"),
+            Visibility::Open => write!(f, "Open"),
         }
     }
 }
@@ -479,23 +543,30 @@ impl std::fmt::Display for RelationshipKind {
 impl RelationshipKind {
     /// Convert from string representation (for database deserialization)
     #[allow(dead_code)] // TODO: Used for database deserialization
-    pub fn from_string(s: &str) -> Self {
+    pub fn try_from_string(s: &str) -> Option<Self> {
         match s {
-            "calls" => RelationshipKind::Calls,
-            "extends" => RelationshipKind::Extends,
-            "implements" => RelationshipKind::Implements,
-            "uses" => RelationshipKind::Uses,
-            "returns" => RelationshipKind::Returns,
-            "parameter" => RelationshipKind::Parameter,
-            "imports" => RelationshipKind::Imports,
-            "instantiates" => RelationshipKind::Instantiates,
-            "references" => RelationshipKind::References,
-            "defines" => RelationshipKind::Defines,
-            "overrides" => RelationshipKind::Overrides,
-            "contains" => RelationshipKind::Contains,
-            "joins" => RelationshipKind::Joins,
-            _ => RelationshipKind::Uses, // Default fallback
+            "calls" => Some(RelationshipKind::Calls),
+            "extends" => Some(RelationshipKind::Extends),
+            "implements" => Some(RelationshipKind::Implements),
+            "uses" => Some(RelationshipKind::Uses),
+            "returns" => Some(RelationshipKind::Returns),
+            "parameter" => Some(RelationshipKind::Parameter),
+            "imports" => Some(RelationshipKind::Imports),
+            "instantiates" => Some(RelationshipKind::Instantiates),
+            "references" => Some(RelationshipKind::References),
+            "defines" => Some(RelationshipKind::Defines),
+            "overrides" => Some(RelationshipKind::Overrides),
+            "contains" => Some(RelationshipKind::Contains),
+            "joins" => Some(RelationshipKind::Joins),
+            "composition" => Some(RelationshipKind::Composition),
+            _ => None,
         }
+    }
+
+    /// Convert from string representation (for database deserialization)
+    #[allow(dead_code)] // TODO: Used for database deserialization
+    pub fn from_string(s: &str) -> Self {
+        Self::try_from_string(s).unwrap_or_else(|| panic!("unknown relationship kind: {s}"))
     }
 
     // Note: to_string() is provided automatically by the Display trait implementation above

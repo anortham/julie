@@ -2,7 +2,7 @@
 //! "how risky is it to change this?" based on centrality, visibility,
 //! test linkage quality, and symbol kind.
 
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use tracing::{debug, info};
 
 use crate::analysis::test_linkage::test_linkage_entry;
@@ -164,7 +164,8 @@ pub fn compute_change_risk_scores(db: &SymbolDatabase) -> Result<ChangeRiskStats
     db.conn.execute_batch("BEGIN")?;
     let result = (|| -> Result<()> {
         for (id, kind_str, vis, ref_score, metadata_json) in &rows {
-            let kind = SymbolKind::from_string(kind_str);
+            let kind = SymbolKind::try_from_string(kind_str)
+                .ok_or_else(|| anyhow!("unknown symbol kind in change risk input: {kind_str}"))?;
 
             // Skip imports/exports
             let kw = match kind_weight(&kind) {

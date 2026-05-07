@@ -279,3 +279,55 @@ pub(super) fn extract_record(
             .create_symbol(&node, name, SymbolKind::Class, options),
     )
 }
+
+pub(super) fn extract_record_components(
+    extractor: &mut JavaExtractor,
+    node: Node,
+    parent_id: Option<&str>,
+) -> Vec<Symbol> {
+    let Some(param_list) = node
+        .children(&mut node.walk())
+        .find(|c| c.kind() == "formal_parameters")
+    else {
+        return Vec::new();
+    };
+
+    let mut components = Vec::new();
+    let mut cursor = param_list.walk();
+    for parameter in param_list.children(&mut cursor) {
+        if parameter.kind() != "formal_parameter" {
+            continue;
+        }
+
+        let name_node = parameter.child_by_field_name("name").or_else(|| {
+            parameter
+                .children(&mut parameter.walk())
+                .find(|child| child.kind() == "identifier")
+        });
+        let Some(name_node) = name_node else {
+            continue;
+        };
+
+        let name = extractor.base().get_node_text(&name_node);
+        let component_type = parameter
+            .child_by_field_name("type")
+            .map(|node| extractor.base().get_node_text(&node))
+            .unwrap_or_else(|| "Object".to_string());
+        let signature = format!("{} {}", component_type, name);
+        let options = SymbolOptions {
+            signature: Some(signature),
+            visibility: Some(Visibility::Public),
+            parent_id: parent_id.map(|s| s.to_string()),
+            ..Default::default()
+        };
+
+        components.push(extractor.base_mut().create_symbol(
+            &parameter,
+            name,
+            SymbolKind::Property,
+            options,
+        ));
+    }
+
+    components
+}

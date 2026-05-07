@@ -7,6 +7,7 @@
 //! - relationships: Inheritance and identifier usage tracking
 //! - type_inference: Return type and variable type inference
 
+mod concepts;
 mod declarations;
 mod fields;
 mod functions;
@@ -177,7 +178,11 @@ impl CppExtractor {
         // Track specific node types to prevent duplicates
         let should_track = matches!(
             node.kind(),
-            "function_declarator" | "function_definition" | "declaration" | "class_specifier"
+            "function_declarator"
+                | "function_definition"
+                | "declaration"
+                | "class_specifier"
+                | "concept_definition"
         );
 
         if should_track && self.processed_nodes.contains(&node_key) {
@@ -196,6 +201,7 @@ impl CppExtractor {
             "union_specifier" => types::extract_union(&mut self.base, node, parent_id),
             "enum_specifier" => types::extract_enum(&mut self.base, node, parent_id),
             "enumerator" => types::extract_enum_member(&mut self.base, node, parent_id),
+            "concept_definition" => concepts::extract_concept(&mut self.base, node, parent_id),
             "function_definition" => functions::extract_function(&mut self.base, node, parent_id),
             "function_declarator" => {
                 // Only extract standalone function declarators

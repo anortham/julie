@@ -98,10 +98,21 @@ impl SwiftExtractor {
                 }
             }
 
-            _ => {
-                // Skip other node types for now
-                // Future: type usage, constructor calls, etc.
+            "simple_identifier" | "type_identifier" => {
+                let name = self.base.get_node_text(&node);
+                if is_swift_type_usage_identifier(node) && !is_swift_builtin_type(&name) {
+                    let containing_symbol_id = self.find_containing_symbol_id(node, symbol_map);
+
+                    self.base.create_identifier(
+                        &node,
+                        name,
+                        IdentifierKind::TypeUsage,
+                        containing_symbol_id,
+                    );
+                }
             }
+
+            _ => {}
         }
     }
 
@@ -150,4 +161,88 @@ impl SwiftExtractor {
 
         None
     }
+}
+
+fn is_swift_type_usage_identifier(node: Node) -> bool {
+    if is_swift_declaration_name(node) {
+        return false;
+    }
+
+    let mut current = node;
+    while let Some(parent) = current.parent() {
+        match parent.kind() {
+            "user_type"
+            | "optional_type"
+            | "array_type"
+            | "dictionary_type"
+            | "metatype_type"
+            | "composition_type"
+            | "tuple_type"
+            | "function_type"
+            | "type_annotation"
+            | "generic_argument_clause" => return true,
+            "call_expression"
+            | "navigation_expression"
+            | "value_argument"
+            | "statements"
+            | "source_file" => return false,
+            _ => {}
+        }
+
+        current = parent;
+    }
+
+    false
+}
+
+fn is_swift_declaration_name(node: Node) -> bool {
+    let Some(parent) = node.parent() else {
+        return false;
+    };
+
+    if let Some(name_node) = parent.child_by_field_name("name") {
+        if name_node.id() == node.id() {
+            return matches!(
+                parent.kind(),
+                "class_declaration"
+                    | "struct_declaration"
+                    | "enum_declaration"
+                    | "protocol_declaration"
+                    | "function_declaration"
+                    | "property_declaration"
+                    | "typealias_declaration"
+                    | "generic_parameter"
+            );
+        }
+    }
+
+    matches!(parent.kind(), "generic_parameter_clause")
+}
+
+fn is_swift_builtin_type(name: &str) -> bool {
+    matches!(
+        name,
+        "Any"
+            | "Bool"
+            | "Character"
+            | "Double"
+            | "Float"
+            | "Float16"
+            | "Float32"
+            | "Float64"
+            | "Int"
+            | "Int8"
+            | "Int16"
+            | "Int32"
+            | "Int64"
+            | "Never"
+            | "Self"
+            | "String"
+            | "UInt"
+            | "UInt8"
+            | "UInt16"
+            | "UInt32"
+            | "UInt64"
+            | "Void"
+    )
 }

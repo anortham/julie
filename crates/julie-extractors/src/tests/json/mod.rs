@@ -5,6 +5,9 @@
 // Target: 600+ lines with edge cases, special syntax, and real-world validation
 
 #[cfg(test)]
+mod task15;
+
+#[cfg(test)]
 mod json_extractor_tests {
     #![allow(unused_imports)]
     #![allow(unused_variables)]
@@ -363,9 +366,24 @@ mod json_extractor_tests {
 
         let symbols = extract_symbols(json);
 
-        // Array as root - may or may not extract items
-        // At minimum, should not crash
-        assert!(symbols.len() >= 0, "Should handle array as root");
+        // The extractor only produces symbols for "pair" nodes. When the root is
+        // an array, the array and object wrappers yield nothing, but the "pair"
+        // nodes inside each object element ARE extracted (one per object key).
+        // Both objects have one key ("name"), so 2 symbols total.
+        assert_eq!(symbols.len(), 2, "Array root: one symbol per key in each element object");
+
+        let mut names: Vec<&str> = symbols.iter().map(|s| s.name.as_str()).collect();
+        names.sort_unstable();
+        assert_eq!(names, vec!["name", "name"], "Both array element keys must be extracted as 'name'");
+
+        for sym in &symbols {
+            assert_eq!(
+                sym.kind,
+                SymbolKind::Variable,
+                "String-valued key must be SymbolKind::Variable, got {:?}",
+                sym.kind
+            );
+        }
     }
 
     #[test]
@@ -1230,6 +1248,30 @@ mod json_extractor_tests {
         assert!(
             long.doc_comment.as_ref().unwrap().chars().all(|c| c == 'x'),
             "Truncated content should be the first 2000 chars"
+        );
+    }
+
+    #[test]
+    fn test_long_multibyte_string_truncates_on_char_boundary() {
+        let long_value = format!("{}é{}", "x".repeat(1999), "y".repeat(20));
+        let json = format!(r#"{{"long": "{}"}}"#, long_value);
+
+        let symbols = extract_symbols(&json);
+
+        let long = symbols.iter().find(|s| s.name == "long").unwrap();
+        let doc_comment = long
+            .doc_comment
+            .as_ref()
+            .expect("Long strings should be captured in doc_comment");
+
+        assert_eq!(
+            doc_comment.chars().count(),
+            2000,
+            "Long strings should be truncated to 2000 chars, not bytes"
+        );
+        assert!(
+            doc_comment.ends_with('é'),
+            "Truncation should preserve the multibyte character at the boundary"
         );
     }
 }

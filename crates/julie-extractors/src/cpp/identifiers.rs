@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use tree_sitter::Node;
 
 use super::CppExtractor;
+use super::helpers;
 
 impl CppExtractor {
     /// Walk the tree and extract identifiers
@@ -32,14 +33,22 @@ impl CppExtractor {
             // Function calls: foo(), bar.baz()
             "call_expression" => {
                 if let Some(func_node) = node.child_by_field_name("function") {
-                    let name = self.base.get_node_text(&func_node);
+                    let (identifier_node, name) = if func_node.kind() == "field_expression" {
+                        if let Some(field_node) = func_node.child_by_field_name("field") {
+                            (field_node, self.base.get_node_text(&field_node))
+                        } else {
+                            (func_node, self.base.get_node_text(&func_node))
+                        }
+                    } else {
+                        (func_node, self.base.get_node_text(&func_node))
+                    };
 
                     // Find containing symbol (which function/method contains this call)
                     let containing_symbol_id = self.find_containing_symbol_id(node, symbol_map);
 
                     // Create identifier for this function call
                     self.base.create_identifier(
-                        &func_node,
+                        &identifier_node,
                         name,
                         IdentifierKind::Call,
                         containing_symbol_id,
@@ -68,13 +77,13 @@ impl CppExtractor {
             // (class MyClass, struct Foo, enum Bar) AND reference positions.
             // We only want references — declarations are filtered by parent context.
             "type_identifier" => {
-                if is_cpp_type_declaration_name(&node) {
+                if helpers::is_type_declaration_name(&node) {
                     return;
                 }
 
                 let name = self.base.get_node_text(&node);
 
-                if is_cpp_noise_type(&name) {
+                if helpers::is_noise_type(&name) {
                     return;
                 }
 
@@ -103,61 +112,4 @@ impl CppExtractor {
             .find_containing_symbol_from_map(&node, symbol_map)
             .map(|s| s.id.clone())
     }
-}
-
-/// Check if a `type_identifier` node is a declaration name rather than a type reference.
-///
-/// In C++ tree-sitter, `type_identifier` appears as the `name` field of:
-/// - `class_specifier` -> `class MyClass {}`
-/// - `struct_specifier` -> `struct MyStruct {}`
-/// - `enum_specifier` -> `enum Color { ... }`
-/// - `type_definition` -> `typedef int MyInt;` (the alias name)
-/// - `template_type_parameter` -> `template<typename T>` (T is a declaration)
-///
-/// It also appears in reference positions like parameter types, variable types,
-/// template arguments, etc. — those are NOT declarations and should produce TypeUsage.
-fn is_cpp_type_declaration_name(node: &Node) -> bool {
-    if let Some(parent) = node.parent() {
-        if let Some(name_node) = parent.child_by_field_name("name") {
-            if name_node.id() == node.id() {
-                return matches!(
-                    parent.kind(),
-                    "class_specifier"
-                        | "struct_specifier"
-                        | "enum_specifier"
-                        | "type_definition"
-                        | "template_type_parameter"
-                );
-            }
-        }
-        // For type_definition, the alias name is in the `declarator` field, not `name`
-        if parent.kind() == "type_definition" {
-            if let Some(declarator) = parent.child_by_field_name("declarator") {
-                if declarator.id() == node.id() {
-                    return true;
-                }
-            }
-        }
-    }
-    false
-}
-
-/// Returns true for C++ types that are too common to be meaningful
-/// type references for centrality scoring.
-///
-/// Filters:
-/// - Single-letter uppercase names (T, U, V, etc.) — generic template parameters
-fn is_cpp_noise_type(name: &str) -> bool {
-    // Single-letter uppercase names are almost always template type parameters.
-    // Even when they appear as references (e.g. `T value`), they carry no cross-file signal.
-    if name.len() == 1
-        && name
-            .chars()
-            .next()
-            .map_or(false, |c| c.is_ascii_uppercase())
-    {
-        return true;
-    }
-
-    false
 }

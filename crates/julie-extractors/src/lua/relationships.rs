@@ -17,7 +17,7 @@ fn traverse_tree_for_relationships<'a>(
     symbols: &[Symbol],
 ) {
     if node.kind() == "function_call" {
-        // Handle simple function calls: foo()
+        // `require(...)` is handled during symbol extraction as an import symbol.
         if let Some(identifier) = helpers::find_child_by_type(&node, "identifier") {
             let callee_name = extractor.base().get_node_text(&identifier);
             process_function_call(extractor, node, &callee_name, None, symbol_map);
@@ -53,6 +53,10 @@ fn process_function_call(
     full_expr: Option<&str>,
     symbol_map: &HashMap<String, &Symbol>,
 ) {
+    if callee_name == "require" {
+        return;
+    }
+
     if let Some(caller_symbol) = find_enclosing_function(node, extractor.base(), symbol_map) {
         let target = if let Some(full_expr) = full_expr {
             let normalized = full_expr.replace(':', ".");

@@ -1,6 +1,7 @@
 // PHP Extractor for Julie - Modular structure
 // Main orchestrator and public API
 
+mod call_relationships;
 mod functions;
 mod helpers;
 mod identifiers;
@@ -17,14 +18,13 @@ use std::collections::HashMap;
 use tree_sitter::{Node, Tree};
 
 // Import functions for use in this module
+use call_relationships::extract_call_relationships;
 use functions::extract_function;
 use helpers::{determine_visibility, extract_modifiers, find_child, find_child_text};
 use identifiers::extract_identifier_from_node;
 use members::{extract_constant, extract_property};
 use namespaces::{extract_namespace, extract_use, extract_variable_assignment};
-use relationships::{
-    extract_call_relationships, extract_class_relationships, extract_interface_relationships,
-};
+use relationships::{extract_class_relationships, extract_interface_relationships};
 use types::{
     extract_anonymous_class, extract_class, extract_enum, extract_enum_case, extract_interface,
     extract_trait,
@@ -116,6 +116,7 @@ impl PhpExtractor {
                 extract_function(self, node, parent_id.as_deref())
             }
             "property_declaration" => extract_property(self, node, parent_id.as_deref()),
+            "property_promotion_parameter" => extract_property(self, node, parent_id.as_deref()),
             "const_declaration" => extract_constant(self, node, parent_id.as_deref()),
             "namespace_definition" => extract_namespace(self, node, parent_id.as_deref()),
             "use_declaration" | "namespace_use_declaration" => {

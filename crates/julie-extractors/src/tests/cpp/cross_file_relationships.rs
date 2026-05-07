@@ -279,4 +279,216 @@ int caller(Widget widget) {
             );
         assert_eq!(structured_pending.pending.from_symbol_id, caller.id);
     }
+
+    #[test]
+    fn test_cpp_duplicate_method_names_keep_this_call_relationships() {
+        let code = r#"
+class Alpha {
+public:
+    void helper() {}
+    void run() { this->helper(); }
+};
+
+class Beta {
+public:
+    void helper() {}
+    void run() { this->helper(); }
+};
+"#;
+
+        let results = extract_full("src/duplicate_methods.cpp", code);
+
+        let run_methods: Vec<_> = results
+            .symbols
+            .iter()
+            .filter(|symbol| symbol.name == "run")
+            .collect();
+        let helper_methods: Vec<_> = results
+            .symbols
+            .iter()
+            .filter(|symbol| symbol.name == "helper")
+            .collect();
+        assert_eq!(run_methods.len(), 2);
+        assert_eq!(helper_methods.len(), 2);
+
+        for run in run_methods {
+            let expected_helper = helper_methods
+                .iter()
+                .find(|helper| helper.parent_id == run.parent_id)
+                .expect("each run method should have a helper in the same class");
+
+            assert!(
+                results.relationships.iter().any(|relationship| {
+                    relationship.kind == RelationshipKind::Calls
+                        && relationship.from_symbol_id == run.id
+                        && relationship.to_symbol_id == expected_helper.id
+                }),
+                "expected a call relationship from run {:?} to same-class helper {:?}; relationships: {:?}",
+                run,
+                expected_helper,
+                results.relationships
+            );
+        }
+    }
+
+    #[test]
+    fn test_cpp_overloaded_functions_keep_call_relationships() {
+        let code = r#"
+int helper() {
+    return 1;
+}
+
+int caller(int value) {
+    return helper() + value;
+}
+
+int caller(double value) {
+    return helper() + static_cast<int>(value);
+}
+"#;
+
+        let results = extract_full("src/overloaded_functions.cpp", code);
+        let helper = results
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == "helper")
+            .expect("helper should be extracted");
+        let callers: Vec<_> = results
+            .symbols
+            .iter()
+            .filter(|symbol| symbol.name == "caller")
+            .collect();
+        assert_eq!(callers.len(), 2);
+
+        for caller in callers {
+            assert!(
+                results.relationships.iter().any(|relationship| {
+                    relationship.kind == RelationshipKind::Calls
+                        && relationship.from_symbol_id == caller.id
+                        && relationship.to_symbol_id == helper.id
+                }),
+                "expected overloaded caller {:?} to call helper {:?}; relationships: {:?}",
+                caller,
+                helper,
+                results.relationships
+            );
+        }
+    }
+
+    #[test]
+    fn test_cpp_constructor_name_collision_does_not_drop_inheritance() {
+        let code = r#"
+class Base {
+public:
+    Base() {}
+};
+
+class Derived : public Base {
+public:
+    Derived() {}
+};
+"#;
+
+        let results = extract_full("src/constructor_collision.cpp", code);
+
+        let base_class = results
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == "Base" && symbol.kind == crate::base::SymbolKind::Class)
+            .expect("Base class should be extracted");
+        let derived_class = results
+            .symbols
+            .iter()
+            .find(|symbol| {
+                symbol.name == "Derived" && symbol.kind == crate::base::SymbolKind::Class
+            })
+            .expect("Derived class should be extracted");
+
+        assert!(
+            results.symbols.iter().any(|symbol| {
+                symbol.name == "Base" && symbol.kind == crate::base::SymbolKind::Constructor
+            }),
+            "constructor should make Base non-unique by name"
+        );
+        assert!(
+            results.relationships.iter().any(|relationship| {
+                relationship.kind == RelationshipKind::Extends
+                    && relationship.from_symbol_id == derived_class.id
+                    && relationship.to_symbol_id == base_class.id
+            }),
+            "expected Derived to extend Base despite constructor name collision; relationships: {:?}",
+            results.relationships
+        );
+    }
+
+    #[test]
+    fn test_cpp_inheritance_prefers_base_type_in_same_namespace_when_names_are_duplicated() {
+        let code = r#"
+namespace B {
+class Base {};
+}
+
+namespace A {
+class Base {};
+class Derived : public Base {};
+}
+"#;
+
+        let results = extract_full("src/namespaced_inheritance.cpp", code);
+        let namespace_a = results
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == "A" && symbol.kind == crate::base::SymbolKind::Namespace)
+            .expect("namespace A should be extracted");
+        let namespace_b = results
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == "B" && symbol.kind == crate::base::SymbolKind::Namespace)
+            .expect("namespace B should be extracted");
+        let a_base = results
+            .symbols
+            .iter()
+            .find(|symbol| {
+                symbol.name == "Base"
+                    && symbol.kind == crate::base::SymbolKind::Class
+                    && symbol.parent_id.as_deref() == Some(namespace_a.id.as_str())
+            })
+            .expect("A::Base should be extracted");
+        let b_base = results
+            .symbols
+            .iter()
+            .find(|symbol| {
+                symbol.name == "Base"
+                    && symbol.kind == crate::base::SymbolKind::Class
+                    && symbol.parent_id.as_deref() == Some(namespace_b.id.as_str())
+            })
+            .expect("B::Base should be extracted");
+        let derived = results
+            .symbols
+            .iter()
+            .find(|symbol| {
+                symbol.name == "Derived"
+                    && symbol.kind == crate::base::SymbolKind::Class
+                    && symbol.parent_id.as_deref() == Some(namespace_a.id.as_str())
+            })
+            .expect("A::Derived should be extracted");
+
+        assert!(
+            results.relationships.iter().any(|relationship| {
+                relationship.kind == RelationshipKind::Extends
+                    && relationship.from_symbol_id == derived.id
+                    && relationship.to_symbol_id == a_base.id
+            }),
+            "expected A::Derived to extend A::Base; relationships: {:?}",
+            results.relationships
+        );
+        assert!(
+            !results.relationships.iter().any(|relationship| {
+                relationship.kind == RelationshipKind::Extends
+                    && relationship.from_symbol_id == derived.id
+                    && relationship.to_symbol_id == b_base.id
+            }),
+            "A::Derived should not extend B::Base"
+        );
+    }
 }

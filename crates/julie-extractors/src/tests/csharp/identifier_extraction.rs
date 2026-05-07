@@ -9,7 +9,7 @@
 
 #![allow(unused_imports)]
 
-use crate::base::{IdentifierKind, SymbolKind};
+use crate::base::{Identifier, IdentifierKind, Symbol, SymbolKind};
 use crate::csharp::CSharpExtractor;
 use crate::tests::csharp::init_parser;
 use std::path::PathBuf;
@@ -17,6 +17,21 @@ use std::path::PathBuf;
 #[cfg(test)]
 mod identifier_extraction_tests {
     use super::*;
+
+    fn extract_all(csharp_code: &str) -> (Vec<Symbol>, Vec<Identifier>) {
+        let mut parser = init_parser();
+        let tree = parser.parse(csharp_code, None).unwrap();
+        let workspace_root = PathBuf::from("/tmp/test");
+        let mut extractor = CSharpExtractor::new(
+            "csharp".to_string(),
+            "test.cs".to_string(),
+            csharp_code.to_string(),
+            &workspace_root,
+        );
+        let symbols = extractor.extract_symbols(&tree);
+        let identifiers = extractor.extract_identifiers(&tree, &symbols);
+        (symbols, identifiers)
+    }
 
     #[test]
     fn test_extract_function_calls() {
@@ -273,5 +288,79 @@ public class Test {
             process_calls[0].start_line, process_calls[1].start_line,
             "Duplicate calls should have different line numbers"
         );
+    }
+
+    #[test]
+    fn test_csharp_type_usage_identifiers_cover_fields_params_returns_and_generics() {
+        let csharp_code = r#"
+using System.Collections.Generic;
+
+public class User {}
+public class UserRequest {}
+public class Result<T> {}
+public class Repository<T> {}
+
+public class Controller {
+    private Repository<User> repository;
+
+    public Result<User> Load(UserRequest request, List<User> users) {
+        return new Result<User>();
+    }
+}
+"#;
+
+        let (_symbols, identifiers) = extract_all(csharp_code);
+        let type_names: Vec<&str> = identifiers
+            .iter()
+            .filter(|id| id.kind == IdentifierKind::TypeUsage)
+            .map(|id| id.name.as_str())
+            .collect();
+
+        for expected in ["Repository", "User", "Result", "UserRequest", "List"] {
+            assert!(
+                type_names.contains(&expected),
+                "missing C# type usage {expected}; got {type_names:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_csharp_object_creation_emits_constructor_call_identifier() {
+        let csharp_code = r#"
+public class User {}
+public class Result<T> {}
+
+public class Controller {
+    public Result<User> Build() {
+        var user = new User();
+        return new Result<User>();
+    }
+}
+"#;
+
+        let (symbols, identifiers) = extract_all(csharp_code);
+        let build = symbols
+            .iter()
+            .find(|symbol| symbol.name == "Build")
+            .expect("Build method should be extracted");
+
+        for expected in ["User", "Result"] {
+            let call = identifiers
+                .iter()
+                .find(|id| id.name == expected && id.kind == IdentifierKind::Call)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "missing constructor call identifier {expected}; got {:?}",
+                        identifiers
+                            .iter()
+                            .map(|id| (&id.name, &id.kind))
+                            .collect::<Vec<_>>()
+                    )
+                });
+            assert_eq!(
+                call.containing_symbol_id.as_deref(),
+                Some(build.id.as_str())
+            );
+        }
     }
 }

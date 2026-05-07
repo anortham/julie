@@ -283,11 +283,12 @@ function Main {
     // ========================================================================
 
     #[test]
-    fn test_builtin_cmdlet_no_pending_relationship() {
+    fn test_powershell_builtin_cmdlets_do_not_emit_noisy_pending_relationships() {
         let code = r#"
 function MyFunction {
     Write-Output "Hello"  # Built-in cmdlet
     Get-ChildItem       # Built-in cmdlet
+    Invoke-Command -ScriptBlock { Write-Output "nested" }  # Built-in cmdlet
     return
 }
 "#;
@@ -307,7 +308,11 @@ function MyFunction {
         let pending_for_builtin: Vec<_> = results
             .pending_relationships
             .iter()
-            .filter(|p| p.callee_name == "Write-Output" || p.callee_name == "Get-ChildItem")
+            .filter(|p| {
+                p.callee_name == "Write-Output"
+                    || p.callee_name == "Get-ChildItem"
+                    || p.callee_name == "Invoke-Command"
+            })
             .collect();
 
         assert!(
@@ -325,6 +330,7 @@ function MyFunction {
             .filter(|pending| {
                 pending.target.display_name == "Write-Output"
                     || pending.target.display_name == "Get-ChildItem"
+                    || pending.target.display_name == "Invoke-Command"
             })
             .collect();
 

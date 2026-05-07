@@ -86,10 +86,11 @@ fn extract_inheritance_relationship(
             .trim()
             .to_string();
 
-        if let (Some(from_symbol), Some(to_symbol)) = (
-            symbols.iter().find(|s| s.name == class_name),
-            symbols.iter().find(|s| s.name == superclass_name),
-        ) {
+        let Some(from_symbol) = symbols.iter().find(|s| s.name == class_name) else {
+            return;
+        };
+
+        if let Some(to_symbol) = symbols.iter().find(|s| s.name == superclass_name) {
             relationships.push(Relationship {
                 id: format!(
                     "{}_{}_{:?}_{}",
@@ -106,6 +107,16 @@ fn extract_inheritance_relationship(
                 confidence: 1.0,
                 metadata: None,
             });
+        } else {
+            let pending = extractor.base().create_pending_relationship(
+                from_symbol.id.clone(),
+                unresolved_ruby_constant(superclass_name),
+                RelationshipKind::Extends,
+                &node,
+                Some(from_symbol.id.clone()),
+                Some(0.9),
+            );
+            extractor.add_structured_pending_relationship(pending);
         }
     }
 }
@@ -202,6 +213,16 @@ fn process_include_extend_call(
                             confidence: 1.0,
                             metadata: None,
                         });
+                    } else if let Some(from_symbol) = from_symbol {
+                        let pending = extractor.base().create_pending_relationship(
+                            from_symbol.id.clone(),
+                            unresolved_ruby_constant(module_name),
+                            RelationshipKind::Implements,
+                            &child,
+                            Some(from_symbol.id.clone()),
+                            Some(0.9),
+                        );
+                        extractor.add_structured_pending_relationship(pending);
                     }
                 }
             }
@@ -273,6 +294,28 @@ fn extract_call_relationships(
     }
 }
 
+fn unresolved_ruby_constant(name: String) -> UnresolvedTarget {
+    let parts: Vec<_> = name
+        .split("::")
+        .filter(|part| !part.is_empty())
+        .map(str::to_string)
+        .collect();
+
+    let terminal_name = parts.last().cloned().unwrap_or_else(|| name.clone());
+    let namespace_path = parts
+        .get(..parts.len().saturating_sub(1))
+        .unwrap_or(&[])
+        .to_vec();
+
+    UnresolvedTarget {
+        display_name: name,
+        terminal_name,
+        receiver: None,
+        namespace_path,
+        import_context: None,
+    }
+}
+
 fn extract_pending_target(
     base: &crate::base::BaseExtractor,
     node: Node,
@@ -281,11 +324,11 @@ fn extract_pending_target(
     let call_text = base.get_node_text(&node);
     let call_head = call_text.split('(').next().unwrap_or(call_text.as_str());
 
-    if let Some((receiver, _)) = call_head.rsplit_once('.') {
+    if let Some((receiver, terminal_name)) = call_head.rsplit_once('.') {
         if !receiver.is_empty() {
             return UnresolvedTarget {
                 display_name: call_head.to_string(),
-                terminal_name: method_name.to_string(),
+                terminal_name: terminal_name.to_string(),
                 receiver: Some(receiver.to_string()),
                 namespace_path: Vec::new(),
                 import_context: None,

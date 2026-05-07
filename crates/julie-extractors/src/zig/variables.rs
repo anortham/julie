@@ -3,6 +3,8 @@ use regex::Regex;
 use std::collections::HashMap;
 use tree_sitter::Node;
 
+use super::imports;
+
 /// Extract variable and const declarations, including compound declarations
 /// (generic type constructors, struct/union/enum assignments, error sets, function types)
 pub(super) fn extract_variable(
@@ -11,18 +13,17 @@ pub(super) fn extract_variable(
     parent_id: Option<&String>,
     is_public_fn: fn(&BaseExtractor, Node) -> bool,
 ) -> Option<Symbol> {
-    let name_node = base.find_child_by_type(&node, "identifier")?;
-    let name = base.get_node_text(&name_node);
-    let is_const =
-        node.kind() == "const_declaration" || base.get_node_text(&node).contains("const");
+    let node_text = base.get_node_text(&node);
+    let is_const = node.kind() == "const_declaration" || node_text.contains("const");
     let is_public = is_public_fn(base, node);
 
-    let node_text = base.get_node_text(&node);
-
-    // Check for @import — Zig's module import mechanism
+    // Check for @import, Zig's module import mechanism.
     if node_text.contains("@import(") {
-        return extract_import(base, node, name, parent_id, is_public, &node_text);
+        return imports::extract_import_variable(base, node, parent_id, is_public, &node_text);
     }
+
+    let name_node = base.find_child_by_type(&node, "identifier")?;
+    let name = base.get_node_text(&name_node);
 
     // Check for generic type constructor
     if node_text.contains("(comptime") && node_text.contains("= struct") {
@@ -61,47 +62,6 @@ pub(super) fn extract_variable(
 
     // Standard variable/constant extraction
     extract_standard_variable(base, node, name, parent_id, is_public, is_const)
-}
-
-fn extract_import(
-    base: &mut BaseExtractor,
-    node: Node,
-    name: String,
-    parent_id: Option<&String>,
-    is_public: bool,
-    node_text: &str,
-) -> Option<Symbol> {
-    // Extract the module path from @import("...")
-    let module_path = Regex::new(r#"@import\("([^"]+)"\)"#)
-        .unwrap()
-        .captures(node_text)
-        .map(|caps| caps[1].to_string());
-
-    let signature = if let Some(ref path) = module_path {
-        format!("const {} = @import(\"{}\")", name, path)
-    } else {
-        format!("const {} = @import(...)", name)
-    };
-
-    let visibility = if is_public {
-        Visibility::Public
-    } else {
-        Visibility::Private
-    };
-
-    Some(base.create_symbol(
-        &node,
-        name,
-        SymbolKind::Import,
-        SymbolOptions {
-            signature: Some(signature),
-            visibility: Some(visibility),
-            parent_id: parent_id.cloned(),
-            metadata: None,
-            doc_comment: base.extract_documentation(&node),
-            annotations: Vec::new(),
-        },
-    ))
 }
 
 fn extract_generic_type_constructor(

@@ -2,6 +2,8 @@
 // Following TDD pattern: RED phase - tests should compile but fail
 
 mod cross_file_relationships;
+mod identifiers;
+mod task14;
 
 use crate::base::{RelationshipKind, SymbolKind, Visibility};
 use crate::swift::SwiftExtractor;
@@ -216,6 +218,7 @@ open class Session: @unchecked Sendable {
             );
             let session = session.unwrap();
             assert_eq!(session.kind, SymbolKind::Class);
+            assert_eq!(session.visibility, Some(Visibility::Open));
 
             // Methods must be children of Session, not top-level orphans
             let do_something = symbols.iter().find(|s| s.name == "doSomething");
@@ -874,6 +877,7 @@ struct UserDefault<T> {
             UserDefaults.standard.set(newValue, forKey: key)
         }
     }
+
 }
 
 class SettingsManager {

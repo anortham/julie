@@ -208,6 +208,10 @@ impl YamlExtractor {
         self.base.identifiers.clone()
     }
 
+    pub fn infer_types(&self, _symbols: &[Symbol]) -> HashMap<String, String> {
+        HashMap::new()
+    }
+
     pub fn extract_relationships(
         &mut self,
         tree: &tree_sitter::Tree,

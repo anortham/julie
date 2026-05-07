@@ -436,6 +436,11 @@ pub(super) fn extract_macro(
     let name = name_node.map(|n| base.get_node_text(&n))?;
 
     let signature = format!("macro_rules! {}", name);
+    let mut metadata = HashMap::new();
+    metadata.insert(
+        "rustSymbolKind".to_string(),
+        serde_json::Value::String("macro_rules".to_string()),
+    );
 
     Some(base.create_symbol(
         &node,
@@ -446,7 +451,7 @@ pub(super) fn extract_macro(
             visibility: Some(Visibility::Public),
             parent_id,
             doc_comment: find_doc_comment(base, node),
-            metadata: Some(HashMap::new()),
+            metadata: Some(metadata),
             annotations: Vec::new(),
         },
     ))

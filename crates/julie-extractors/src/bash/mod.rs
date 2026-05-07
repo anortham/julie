@@ -84,6 +84,23 @@ impl BashExtractor {
         symbols: &mut Vec<Symbol>,
         parent_id: Option<String>,
     ) {
+        if node.kind() == "declaration_command" {
+            let declaration_symbols = self.extract_declarations(node, parent_id.as_deref());
+            let mut current_parent_id = parent_id;
+
+            if let Some(first_symbol) = declaration_symbols.first() {
+                current_parent_id = Some(first_symbol.id.clone());
+            }
+
+            symbols.extend(declaration_symbols);
+
+            let mut cursor = node.walk();
+            for child in node.children(&mut cursor) {
+                self.walk_tree_for_symbols(child, symbols, current_parent_id.clone());
+            }
+            return;
+        }
+
         let symbol = self.extract_symbol_from_node(node, parent_id.as_deref());
         let mut current_parent_id = parent_id;
 

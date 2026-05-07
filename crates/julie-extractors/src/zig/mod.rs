@@ -9,6 +9,7 @@ mod error_handling;
 mod functions;
 mod helpers;
 mod identifiers;
+mod imports;
 mod relationships;
 mod type_inference;
 mod types;
@@ -122,6 +123,12 @@ impl ZigExtractor {
                 helpers::is_public_declaration,
             ),
             "variable_declaration" | "const_declaration" => variables::extract_variable(
+                &mut self.base,
+                node,
+                parent_id,
+                helpers::is_public_declaration,
+            ),
+            "using_namespace_declaration" => imports::extract_usingnamespace(
                 &mut self.base,
                 node,
                 parent_id,

@@ -6,7 +6,7 @@
 //! - Heredoc and Nowdoc syntax
 //! - Dynamic features (magic methods, variable functions)
 
-use crate::base::Symbol;
+use crate::base::{Symbol, SymbolKind, Visibility};
 use crate::php::PhpExtractor;
 use std::path::PathBuf;
 use tree_sitter::Parser;
@@ -140,4 +140,126 @@ $result = $func();
 
     // Should handle dynamic PHP features
     assert!(!symbols.is_empty());
+}
+
+#[test]
+fn test_php_constructor_property_promotion_emits_property_symbols() {
+    let php_code = r#"<?php
+class UserProfile {
+    public function __construct(
+        public string $name,
+        private readonly Foo $foo,
+        protected ?int $id,
+        int $notPromoted
+    ) {}
+}
+"#;
+
+    let symbols = extract_symbols(php_code);
+
+    let class_symbol = symbols
+        .iter()
+        .find(|symbol| symbol.name == "UserProfile" && symbol.kind == SymbolKind::Class)
+        .expect("expected class symbol");
+
+    let constructor = symbols
+        .iter()
+        .find(|symbol| {
+            symbol.name == "__construct"
+                && symbol.kind == SymbolKind::Constructor
+                && symbol.parent_id.as_deref() == Some(class_symbol.id.as_str())
+        })
+        .expect("expected constructor symbol under class");
+    assert!(
+        constructor
+            .signature
+            .as_deref()
+            .unwrap_or_default()
+            .contains("public function __construct"),
+        "constructor signature should be extracted"
+    );
+
+    let promoted_name = symbols
+        .iter()
+        .find(|symbol| {
+            symbol.name == "name"
+                && symbol.kind == SymbolKind::Property
+                && symbol.parent_id.as_deref() == Some(class_symbol.id.as_str())
+        })
+        .expect("expected promoted property for $name");
+    assert_eq!(promoted_name.visibility, Some(Visibility::Public));
+    assert!(
+        promoted_name
+            .signature
+            .as_deref()
+            .unwrap_or_default()
+            .contains("public string $name")
+    );
+    assert_eq!(
+        promoted_name
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("propertyType"))
+            .and_then(|property_type| property_type.as_str()),
+        Some("string")
+    );
+
+    let promoted_foo = symbols
+        .iter()
+        .find(|symbol| {
+            symbol.name == "foo"
+                && symbol.kind == SymbolKind::Property
+                && symbol.parent_id.as_deref() == Some(class_symbol.id.as_str())
+        })
+        .expect("expected promoted property for $foo");
+    assert_eq!(promoted_foo.visibility, Some(Visibility::Private));
+    assert!(
+        promoted_foo
+            .signature
+            .as_deref()
+            .unwrap_or_default()
+            .contains("private readonly Foo $foo")
+    );
+    assert_eq!(
+        promoted_foo
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("propertyType"))
+            .and_then(|property_type| property_type.as_str()),
+        Some("Foo")
+    );
+
+    let promoted_id = symbols
+        .iter()
+        .find(|symbol| {
+            symbol.name == "id"
+                && symbol.kind == SymbolKind::Property
+                && symbol.parent_id.as_deref() == Some(class_symbol.id.as_str())
+        })
+        .expect("expected promoted property for $id");
+    assert_eq!(promoted_id.visibility, Some(Visibility::Protected));
+    assert!(
+        promoted_id
+            .signature
+            .as_deref()
+            .unwrap_or_default()
+            .contains("protected ?int $id")
+    );
+    assert_eq!(
+        promoted_id
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("propertyType"))
+            .and_then(|property_type| property_type.as_str()),
+        Some("?int")
+    );
+
+    assert!(
+        !symbols.iter().any(|symbol| {
+            symbol.name == "notPromoted"
+                && symbol.kind == SymbolKind::Property
+                && symbol.parent_id.as_deref() == Some(class_symbol.id.as_str())
+        }),
+        "regular constructor parameters must not be emitted as properties"
+    );
 }

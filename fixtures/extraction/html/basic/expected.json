@@ -195,6 +195,36 @@
       "content_type": null
     },
     {
+      "key": "fixtures/extraction/html/basic/source.html:helper:13:6",
+      "name": "helper",
+      "kind": "function",
+      "language": "javascript",
+      "file_path": "fixtures/extraction/html/basic/source.html",
+      "start_line": 13,
+      "start_column": 6,
+      "end_line": 15,
+      "end_column": 7,
+      "start_byte": 241,
+      "end_byte": 299,
+      "signature": "function helper(value)",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": null,
+      "metadata": {
+        "isArrowFunction": false,
+        "isAsync": false,
+        "isExpression": false,
+        "isGenerator": false,
+        "parameters": [
+          "value"
+        ]
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
       "key": "fixtures/extraction/html/basic/source.html:html:2:0",
       "name": "html",
       "kind": "class",
@@ -215,33 +245,6 @@
         "isVoid": false,
         "tagName": "html",
         "type": "html-element"
-      },
-      "annotations": [],
-      "semantic_group": null,
-      "confidence": null,
-      "content_type": null
-    },
-    {
-      "key": "fixtures/extraction/html/basic/source.html:script:12:4",
-      "name": "script",
-      "kind": "variable",
-      "language": "html",
-      "file_path": "fixtures/extraction/html/basic/source.html",
-      "start_line": 12,
-      "start_column": 4,
-      "end_line": 16,
-      "end_column": 13,
-      "start_byte": 226,
-      "end_byte": 313,
-      "signature": "<script>function helper(value) {\n        return value + 1;\n      }",
-      "doc_comment": null,
-      "visibility": "Public",
-      "parent_key": "fixtures/extraction/html/basic/source.html:body:6:2",
-      "metadata": {
-        "content": "function helper(value) {\n        return value + 1;\n      }",
-        "isInline": true,
-        "scriptType": "text/javascript",
-        "type": "script-element"
       },
       "annotations": [],
       "semantic_group": null,
@@ -423,15 +426,6 @@
     {
       "symbol_key": "fixtures/extraction/html/basic/source.html:html:2:0",
       "resolved_type": "html-element",
-      "generic_params": null,
-      "constraints": null,
-      "is_inferred": true,
-      "language": "html",
-      "metadata": null
-    },
-    {
-      "symbol_key": "fixtures/extraction/html/basic/source.html:script:12:4",
-      "resolved_type": "script-element",
       "generic_params": null,
       "constraints": null,
       "is_inferred": true,

@@ -5,6 +5,7 @@
 use tree_sitter::Node;
 
 pub(super) use crate::base::find_child_by_type;
+use crate::base::{AnnotationMarker, normalize_annotations};
 
 /// Get text content of a node - THREAD-SAFE PER-THREAD CACHE
 /// Uses thread-local storage to avoid race conditions in parallel tests
@@ -220,6 +221,10 @@ pub(super) fn extract_annotations(node: &Node) -> Vec<String> {
     collect_annotations_from_subtree(&target_node, &mut annotations);
 
     annotations
+}
+
+pub(super) fn extract_annotation_markers(node: &Node) -> Vec<AnnotationMarker> {
+    normalize_annotations(&extract_annotations(node), "dart")
 }
 
 fn annotation_parent_should_be_used(kind: &str) -> bool {

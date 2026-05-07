@@ -187,6 +187,121 @@ end"#;
     }
 
     #[test]
+    fn test_elixir_doc_and_moduledoc_attach_to_symbols() {
+        let code = r#"defmodule MyApp.Guards do
+  @moduledoc "Guard helpers"
+
+  @doc "Checks for an even integer"
+  defguard is_even(value) when is_integer(value) and rem(value, 2) == 0
+
+  @doc "Delegates child specs"
+  defdelegate child_spec(opts), to: Supervisor
+
+  @doc "Raised when the payload is invalid"
+  defexception [:message, :code]
+end"#;
+        let (mut extractor, tree) = create_extractor_and_parse(code);
+        let symbols = extractor.extract_symbols(&tree);
+
+        let module = symbols
+            .iter()
+            .find(|s| s.name == "MyApp.Guards" && s.kind == SymbolKind::Module)
+            .expect("Should find module");
+        assert!(
+            module
+                .annotations
+                .iter()
+                .any(|annotation| annotation.annotation_key == "moduledoc")
+        );
+
+        let is_even = symbols
+            .iter()
+            .find(|s| s.name == "is_even" && s.kind == SymbolKind::Function)
+            .expect("Should find defguard function symbol");
+        assert!(
+            is_even
+                .annotations
+                .iter()
+                .any(|annotation| annotation.annotation_key == "doc")
+        );
+
+        let child_spec = symbols
+            .iter()
+            .find(|s| s.name == "child_spec" && s.kind == SymbolKind::Delegate)
+            .expect("Should find defdelegate symbol");
+        assert!(
+            child_spec
+                .annotations
+                .iter()
+                .any(|annotation| annotation.annotation_key == "doc")
+        );
+
+        let exception = symbols
+            .iter()
+            .find(|s| s.name == "MyApp.Guards" && s.kind == SymbolKind::Struct)
+            .expect("Should find defexception struct symbol");
+        assert!(
+            exception
+                .annotations
+                .iter()
+                .any(|annotation| annotation.annotation_key == "doc")
+        );
+    }
+
+    #[test]
+    fn test_elixir_defguard_defdelegate_defexception_are_extracted() {
+        let code = r#"defmodule MyApp.Guards do
+  defguard is_even(value) when is_integer(value) and rem(value, 2) == 0
+  defdelegate child_spec(opts), to: Supervisor
+  defexception [:message, :code]
+  defoverridable child_spec: 1
+end"#;
+        let (mut extractor, tree) = create_extractor_and_parse(code);
+        let symbols = extractor.extract_symbols(&tree);
+
+        let guard = symbols
+            .iter()
+            .find(|s| s.name == "is_even" && s.kind == SymbolKind::Function)
+            .expect("defguard should be extracted as a function symbol");
+        assert_eq!(guard.signature.as_deref(), Some("defguard is_even(value)"));
+
+        let delegate = symbols
+            .iter()
+            .find(|s| s.name == "child_spec" && s.kind == SymbolKind::Delegate)
+            .expect("defdelegate should be extracted as a delegate symbol");
+        assert_eq!(
+            delegate.signature.as_deref(),
+            Some("defdelegate child_spec(opts)")
+        );
+
+        let exception = symbols
+            .iter()
+            .find(|s| s.name == "MyApp.Guards" && s.kind == SymbolKind::Struct)
+            .expect("defexception should be extracted as a struct symbol");
+        assert_eq!(
+            exception
+                .metadata
+                .as_ref()
+                .and_then(|metadata| metadata.get("exception"))
+                .and_then(|value| value.as_bool()),
+            Some(true)
+        );
+
+        let overridable = symbols
+            .iter()
+            .find(|s| s.name == "child_spec/1" && s.kind == SymbolKind::Method)
+            .expect("defoverridable should be extracted as an overridable method marker");
+        assert_eq!(
+            overridable
+                .metadata
+                .as_ref()
+                .and_then(|metadata| metadata.get("overridable"))
+                .and_then(|value| value.as_bool()),
+            Some(true)
+        );
+    }
+
+    #[test]
     fn test_elixir_def_defp_visibility() {
         let code = r#"defmodule Foo do
   def public_fn(x), do: x
@@ -493,10 +608,77 @@ end"#;
     }
 
     #[test]
+    fn test_elixir_use_and_behaviour_emit_structured_pending_targets() {
+        let code = r#"defmodule MyApp.Web do
+  @behaviour MyApp.Behaviours.Controller
+  use Phoenix.Router
+end"#;
+        let (mut extractor, tree) = create_extractor_and_parse(code);
+        let symbols = extractor.extract_symbols(&tree);
+        let _relationships = extractor.extract_relationships(&tree, &symbols);
+        let module = symbols
+            .iter()
+            .find(|symbol| symbol.name == "MyApp.Web")
+            .expect("MyApp.Web module should be extracted");
+        let structured = extractor.base.get_structured_pending_relationships();
+
+        for (target, kind, terminal_name, namespace_path) in [
+            (
+                "MyApp.Behaviours.Controller",
+                crate::base::RelationshipKind::Implements,
+                "Controller",
+                vec!["MyApp", "Behaviours"],
+            ),
+            (
+                "Phoenix.Router",
+                crate::base::RelationshipKind::Uses,
+                "Router",
+                vec!["Phoenix"],
+            ),
+        ] {
+            let pending = structured
+                .iter()
+                .find(|pending| {
+                    pending.pending.kind == kind && pending.target.display_name == target
+                })
+                .unwrap_or_else(|| {
+                    panic!("missing structured pending {kind:?} relationship for {target}")
+                });
+
+            assert_eq!(pending.pending.from_symbol_id, module.id);
+            assert_eq!(
+                pending.caller_scope_symbol_id.as_deref(),
+                Some(module.id.as_str())
+            );
+            assert_eq!(pending.target.terminal_name, terminal_name);
+            assert_eq!(
+                pending.target.namespace_path,
+                namespace_path
+                    .iter()
+                    .map(|part| part.to_string())
+                    .collect::<Vec<_>>()
+            );
+        }
+
+        let compatibility_pending = extractor.get_pending_relationships();
+        let compatibility_pending_names: Vec<_> = compatibility_pending
+            .iter()
+            .map(|pending| pending.callee_name.as_str())
+            .collect();
+        let structured_names: Vec<_> = structured
+            .iter()
+            .map(|pending| pending.pending.callee_name.as_str())
+            .collect();
+        assert_eq!(
+            compatibility_pending_names, structured_names,
+            "compatibility pending list should not contain legacy-only Elixir relationships"
+        );
+    }
+
+    #[test]
     fn test_elixir_cross_file_call_produces_pending_relationship() {
         // When a function calls another unqualified function not defined in the same file,
         // we should get a pending relationship for cross-file resolution.
-        // Note: qualified dot-calls (e.g. Logger.info) are not currently tracked.
         let code = r#"defmodule MyApp.Worker do
   def run do
     start_server()
@@ -521,6 +703,31 @@ end"#;
                 .all(|p| p.kind == crate::base::RelationshipKind::Calls),
             "Expected all pending relationships to be Calls kind"
         );
+    }
+
+    #[test]
+    fn test_elixir_qualified_module_call_is_extracted() {
+        let code = r#"defmodule MyApp.Worker do
+  def run do
+    Logger.info("started")
+  end
+end"#;
+        let (mut extractor, tree) = create_extractor_and_parse(code);
+        let symbols = extractor.extract_symbols(&tree);
+        let _relationships = extractor.extract_relationships(&tree, &symbols);
+        let pending = extractor.get_pending_relationships();
+
+        let logger_info = pending
+            .iter()
+            .find(|relationship| relationship.callee_name == "Logger.info")
+            .expect("qualified Logger.info call should produce a pending Calls relationship");
+
+        assert_eq!(logger_info.kind, crate::base::RelationshipKind::Calls);
+        let run = symbols
+            .iter()
+            .find(|symbol| symbol.name == "run")
+            .expect("run function should be extracted");
+        assert_eq!(logger_info.from_symbol_id, run.id);
     }
 
     // ========================================================================

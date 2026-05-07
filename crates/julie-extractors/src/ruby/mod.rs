@@ -181,8 +181,11 @@ impl RubyExtractor {
                 );
             }
             "call" => {
-                if let Some(symbol) = calls::extract_call(&mut self.base, node) {
-                    symbol_opt = Some(symbol);
+                let call_symbols = calls::extract_call(&mut self.base, node, parent_id.clone());
+                if call_symbols.len() == 1 {
+                    symbol_opt = call_symbols.into_iter().next();
+                } else {
+                    symbols.extend(call_symbols);
                 }
             }
             "assignment" | "operator_assignment" => {

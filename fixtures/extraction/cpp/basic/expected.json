@@ -201,6 +201,33 @@
   ],
   "relationships": [
     {
+      "from_key": "fixtures/extraction/cpp/basic/source.cpp:Worker:8:0",
+      "to_key": "fixtures/extraction/cpp/basic/source.cpp:Base:1:0",
+      "kind": "extends",
+      "file_path": "fixtures/extraction/cpp/basic/source.cpp",
+      "line_number": 8,
+      "confidence": "1.000",
+      "metadata": null
+    },
+    {
+      "from_key": "fixtures/extraction/cpp/basic/source.cpp:Worker:8:0",
+      "to_key": "fixtures/extraction/cpp/basic/source.cpp:Base:1:0",
+      "kind": "uses",
+      "file_path": "fixtures/extraction/cpp/basic/source.cpp",
+      "line_number": 8,
+      "confidence": "0.800",
+      "metadata": null
+    },
+    {
+      "from_key": "fixtures/extraction/cpp/basic/source.cpp:run:12:4",
+      "to_key": "fixtures/extraction/cpp/basic/source.cpp:helper:17:4",
+      "kind": "calls",
+      "file_path": "fixtures/extraction/cpp/basic/source.cpp",
+      "line_number": 13,
+      "confidence": "0.900",
+      "metadata": null
+    },
+    {
       "from_key": "fixtures/extraction/cpp/basic/source.cpp:run_worker:28:0",
       "to_key": "fixtures/extraction/cpp/basic/source.cpp:helper_value:24:0",
       "kind": "calls",

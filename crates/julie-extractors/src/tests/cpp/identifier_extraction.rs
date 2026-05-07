@@ -86,6 +86,62 @@ public:
     }
 
     #[test]
+    fn test_extract_method_call_names_from_field_expression() {
+        let cpp_code = r#"
+class Service {
+public:
+    void process() {
+    }
+
+    void run() {
+        service.process();
+        this->process();
+    }
+
+private:
+    Service service;
+};
+"#;
+
+        let mut parser = init_parser();
+        let tree = parser.parse(cpp_code, None).unwrap();
+
+        let workspace_root = PathBuf::from("/tmp/test");
+        let mut extractor = CppExtractor::new(
+            "test.cpp".to_string(),
+            cpp_code.to_string(),
+            &workspace_root,
+        );
+
+        let symbols = extractor.extract_symbols(&tree);
+        let identifiers = extractor.extract_identifiers(&tree, &symbols);
+
+        let process_calls: Vec<_> = identifiers
+            .iter()
+            .filter(|id| id.kind == IdentifierKind::Call && id.name == "process")
+            .collect();
+        assert_eq!(
+            process_calls.len(),
+            2,
+            "Should extract both method calls as 'process'"
+        );
+
+        assert!(
+            identifiers
+                .iter()
+                .all(|id| !(id.kind == IdentifierKind::Call && id.name == "service.process")),
+            "Should not keep receiver-qualified call name for service.process()"
+        );
+
+        assert!(
+            identifiers
+                .iter()
+                .all(|id| !(id.kind == IdentifierKind::Call && id.name == "this->process")),
+            "Should not keep receiver-qualified call name for this->process()"
+        );
+    }
+
+    #[test]
     fn test_extract_member_access() {
         let cpp_code = r#"
 class User {

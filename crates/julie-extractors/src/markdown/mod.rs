@@ -5,8 +5,11 @@
 /// 2. goto definition for heading navigation
 /// 3. Knowledge graph connections between code and docs
 mod relationships;
+mod semantic_symbols;
 
-use crate::base::{BaseExtractor, Identifier, Relationship, Symbol, SymbolKind};
+use crate::base::{BaseExtractor, Identifier, Relationship, Symbol, SymbolKind, SymbolOptions};
+use serde_json::json;
+use std::collections::HashMap;
 use std::path::Path;
 use tree_sitter::Tree;
 
@@ -28,6 +31,9 @@ impl MarkdownExtractor {
     pub fn extract_symbols(&mut self, tree: &Tree) -> Vec<Symbol> {
         let mut symbols = Vec::new();
         self.walk_tree_for_symbols(tree.root_node(), &mut symbols, None);
+        symbols.extend(semantic_symbols::extract_line_based_symbols(
+            &self.base, &symbols,
+        ));
         symbols
     }
 
@@ -62,6 +68,14 @@ impl MarkdownExtractor {
         match node.kind() {
             // tree-sitter-md uses "section" nodes for headings
             "section" => self.extract_section(node, parent_id),
+            "fenced_code_block"
+            | "inline_link"
+            | "full_reference_link"
+            | "collapsed_reference_link"
+            | "shortcut_link"
+            | "link_reference_definition" => {
+                semantic_symbols::extract_symbol_from_node(&mut self.base, node, parent_id)
+            }
             // YAML frontmatter (--- delimited)
             "minus_metadata" => self.extract_frontmatter(node),
             // TOML frontmatter (+++ delimited)
@@ -82,8 +96,6 @@ impl MarkdownExtractor {
     /// 3. Blog/static site content discovery
     /// 4. Development memory checkpoint search
     fn extract_frontmatter(&mut self, node: tree_sitter::Node) -> Option<Symbol> {
-        use crate::base::SymbolOptions;
-
         let raw_text = self.base.get_node_text(&node);
 
         // Strip the delimiters (--- or +++) from start and end
@@ -287,13 +299,13 @@ impl MarkdownExtractor {
         parent_id: Option<&str>,
         section_content: Option<String>,
     ) -> Option<Symbol> {
-        use crate::base::SymbolOptions;
-
         // Extract the heading text (skip the # markers)
         let heading_text = self.extract_heading_text(node)?;
 
-        // Determine heading level (1-6) - could be used in metadata later
-        let _level = self.determine_heading_level(node);
+        let level = self.determine_heading_level(node);
+        let mut metadata = HashMap::new();
+        metadata.insert("markdown_kind".to_string(), json!("heading"));
+        metadata.insert("heading_level".to_string(), json!(level));
 
         // Include section content as doc_comment for RAG embedding
         let doc_comment = section_content.filter(|s| !s.is_empty());
@@ -303,6 +315,7 @@ impl MarkdownExtractor {
             visibility: None,
             parent_id: parent_id.map(|s| s.to_string()),
             doc_comment,
+            metadata: Some(metadata),
             ..Default::default()
         };
 
@@ -329,8 +342,7 @@ impl MarkdownExtractor {
 
         // Fallback: get entire node text and strip # markers
         let text = self.base.get_node_text(&node);
-        let text = text.trim_start_matches('#').trim();
-        Some(text.to_string())
+        Some(strip_atx_heading_marker(&text))
     }
 
     /// Determine heading level from number of # markers
@@ -346,7 +358,22 @@ impl MarkdownExtractor {
         Vec::new()
     }
 
+    pub fn infer_types(&self, _symbols: &[Symbol]) -> HashMap<String, String> {
+        HashMap::new()
+    }
+
     pub fn extract_relationships(&mut self, _tree: &Tree, symbols: &[Symbol]) -> Vec<Relationship> {
         relationships::extract_relationships(&self.base, symbols)
     }
+}
+
+fn strip_atx_heading_marker(raw: &str) -> String {
+    let trimmed = raw.trim_start();
+    let marker_len = trimmed.chars().take_while(|ch| *ch == '#').count();
+    if marker_len == 0 {
+        return trimmed.trim().to_string();
+    }
+
+    let marker_len = marker_len.min(6);
+    trimmed[marker_len..].trim_start().trim_end().to_string()
 }

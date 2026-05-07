@@ -109,6 +109,13 @@ impl PythonExtractor {
         let mut type_map = HashMap::new();
 
         for symbol in symbols {
+            if matches!(symbol.kind, SymbolKind::Function | SymbolKind::Method) {
+                if let Some(return_type) = metadata_return_type(symbol) {
+                    type_map.insert(symbol.id.clone(), return_type);
+                    continue;
+                }
+            }
+
             // Infer types from Python-specific patterns
             if let Some(ref signature) = symbol.signature {
                 if let Some(inferred_type) = self.infer_type_from_signature(signature, &symbol.kind)
@@ -177,5 +184,28 @@ impl PythonExtractor {
 
     pub fn get_structured_pending_relationships(&self) -> Vec<StructuredPendingRelationship> {
         self.base.get_structured_pending_relationships()
+    }
+}
+
+fn metadata_return_type(symbol: &Symbol) -> Option<String> {
+    symbol
+        .metadata
+        .as_ref()?
+        .get("returnType")?
+        .as_str()
+        .and_then(normalize_python_return_hint)
+}
+
+fn normalize_python_return_hint(raw: &str) -> Option<String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let without_colon = trimmed.strip_prefix(':').unwrap_or(trimmed).trim();
+    if without_colon.is_empty() {
+        None
+    } else {
+        Some(without_colon.to_string())
     }
 }

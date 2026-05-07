@@ -12,6 +12,7 @@ use super::relationship_resolution::StructuredPendingRelationship;
 use super::span::{NormalizedSpan, normalize_file_path};
 use super::types::{
     ContextConfig, Identifier, PendingRelationship, Relationship, Symbol, TypeInfo,
+    stable_location_id,
 };
 
 /// Base implementation for language extractors
@@ -101,86 +102,61 @@ impl BaseExtractor {
 
     /// Find documentation comment for a node - exact port of findDocComment
     pub fn find_doc_comment(&self, node: &Node) -> Option<String> {
-        let mut comments = Vec::new();
-
-        let is_doc_comment = |text: &str| {
-            crate::language::language_spec(&self.language)
-                .is_some_and(|spec| spec.is_doc_comment(text))
-        };
-
         // First try to find comments as siblings of this node
-        let mut current = node.prev_named_sibling();
-        while let Some(sibling) = current {
-            if sibling.kind().contains("comment") || sibling.kind() == "marginalia" {
-                let comment_text = self.get_node_text(&sibling);
-                if is_doc_comment(&comment_text) {
-                    comments.push(comment_text);
-                    current = sibling.prev_named_sibling();
-                } else {
-                    // Stop at non-doc comment
-                    break;
-                }
-            } else {
-                // Stop at non-comment node
-                break;
-            }
+        let comments = self.previous_comment_texts(node.prev_named_sibling());
+        if let Some(doc_comment) = select_doc_comment_block(&self.language, &comments) {
+            return Some(doc_comment);
         }
 
         // If no comments found as direct siblings, try looking at ancestor siblings
         // (useful for SQL where comment is sibling of statement, not create_table inside,
         // or Dart where comment is sibling of class_member_definition, not getter_signature)
-        if comments.is_empty() {
-            let mut current_node = *node;
-            for _ in 0..3 {
-                // Try up to 3 ancestor levels
-                if let Some(parent) = current_node.parent() {
-                    current = parent.prev_named_sibling();
-                    while let Some(sibling) = current {
-                        if sibling.kind().contains("comment") || sibling.kind() == "marginalia" {
-                            let comment_text = self.get_node_text(&sibling);
-                            if is_doc_comment(&comment_text) {
-                                comments.push(comment_text);
-                                current = sibling.prev_named_sibling();
-                            } else {
-                                // Stop at non-doc comment
-                                break;
-                            }
-                        } else {
-                            // Stop at non-comment node
-                            break;
-                        }
-                    }
-                    if !comments.is_empty() {
-                        break;
-                    }
-                    current_node = parent;
-                } else {
-                    break;
+        let mut current_node = *node;
+        for _ in 0..3 {
+            // Try up to 3 ancestor levels
+            if let Some(parent) = current_node.parent() {
+                let comments = self.previous_comment_texts(parent.prev_named_sibling());
+                if let Some(doc_comment) = select_doc_comment_block(&self.language, &comments) {
+                    return Some(doc_comment);
                 }
+                current_node = parent;
+            } else {
+                break;
             }
         }
 
         // For certain nodes (like cte), also check for comments as children (e.g., inside parentheses)
-        if comments.is_empty() && (node.kind() == "cte") {
+        if node.kind() == "cte" {
             // Look for first comments among direct children
+            let mut comments = Vec::new();
             let mut cursor = node.walk();
             for child in node.children(&mut cursor) {
-                if child.kind().contains("comment") || child.kind() == "marginalia" {
-                    let comment_text = self.get_node_text(&child);
-                    if is_doc_comment(&comment_text) {
-                        comments.push(comment_text);
-                    }
+                if is_comment_node(&child) {
+                    comments.push(self.get_node_text(&child));
                 }
+            }
+            comments.reverse();
+            if let Some(doc_comment) = select_doc_comment_block(&self.language, &comments) {
+                return Some(doc_comment);
             }
         }
 
-        if comments.is_empty() {
-            None
-        } else {
-            // Reverse to get original order (top to bottom)
-            comments.reverse();
-            Some(comments.join("\n"))
+        None
+    }
+
+    fn previous_comment_texts<'a>(&self, mut current: Option<Node<'a>>) -> Vec<String> {
+        let mut comments = Vec::new();
+
+        while let Some(sibling) = current {
+            if is_comment_node(&sibling) {
+                comments.push(self.get_node_text(&sibling));
+                current = sibling.prev_named_sibling();
+            } else {
+                break;
+            }
         }
+
+        comments
     }
 
     /// Generate ID for a symbol - exact port of generateId (MD5 hash)
@@ -191,7 +167,11 @@ impl BaseExtractor {
     }
 
     pub fn generate_id_for_span(&self, name: &str, span: &NormalizedSpan) -> String {
-        self.generate_id(name, span.start_line, span.start_column)
+        stable_location_id(self.file_path.as_str(), name, *span)
+    }
+
+    pub fn generate_id_for_node(&self, name: &str, node: &Node) -> String {
+        self.generate_id_for_span(name, &NormalizedSpan::from_node(node))
     }
 
     /// Extract code context around a symbol using configurable parameters
@@ -269,4 +249,38 @@ impl BaseExtractor {
             text.chars().take(max_chars).collect::<String>() + "..."
         }
     }
+}
+
+fn is_comment_node(node: &Node) -> bool {
+    node.kind().contains("comment") || node.kind() == "marginalia"
+}
+
+fn select_doc_comment_block(language: &str, comments_nearest_first: &[String]) -> Option<String> {
+    let spec = crate::language::language_spec(language)?;
+    if comments_nearest_first.is_empty() {
+        return None;
+    }
+
+    let comments_top_down = comments_nearest_first.iter().rev().collect::<Vec<_>>();
+    for start_index in 0..comments_top_down.len() {
+        let first = comments_top_down[start_index];
+        if !spec.is_doc_comment(first) {
+            continue;
+        }
+
+        if comments_top_down[start_index + 1..]
+            .iter()
+            .all(|comment| spec.continues_doc_comment(comment))
+        {
+            return Some(
+                comments_top_down[start_index..]
+                    .iter()
+                    .map(|comment| comment.as_str())
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+            );
+        }
+    }
+
+    None
 }

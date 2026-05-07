@@ -509,6 +509,36 @@ class Foo: BaseModel, Codable {
     }
 
     #[test]
+    fn test_swift_unresolved_inheritance_and_conformance_keep_relationship_kind() {
+        let code = r#"
+class Widget: ExternalBase {
+    var id: String = ""
+}
+
+extension Widget: ExternalProtocol {
+    func refresh() {}
+}
+"#;
+
+        let results = extract_full("Widget.swift", code);
+        let base_pending = results
+            .structured_pending_relationships
+            .iter()
+            .find(|pending| pending.target.display_name == "ExternalBase")
+            .expect("unresolved Swift base class should create a structured pending relationship");
+        assert_eq!(base_pending.pending.kind, RelationshipKind::Extends);
+        assert_eq!(base_pending.target.terminal_name, "ExternalBase");
+
+        let protocol_pending = results
+            .structured_pending_relationships
+            .iter()
+            .find(|pending| pending.target.display_name == "ExternalProtocol")
+            .expect("unresolved Swift extension conformance should create a structured pending relationship");
+        assert_eq!(protocol_pending.pending.kind, RelationshipKind::Implements);
+        assert_eq!(protocol_pending.target.terminal_name, "ExternalProtocol");
+    }
+
+    #[test]
     fn test_receiver_qualified_call_does_not_resolve_to_unqualified_local_method() {
         let code = r#"
 class Worker {

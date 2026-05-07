@@ -90,6 +90,65 @@ class DefaultClass {
     }
 
     #[test]
+    fn test_java_field_multi_declarator_emits_all_fields() {
+        let workspace_root = PathBuf::from("/tmp/test");
+        let code = r#"
+package com.example;
+
+class MultiFields {
+    private int x, y;
+    public static final String NAME = "name", CODE = "code";
+}
+"#;
+
+        let tree = init_parser(code, "java");
+        let mut extractor = JavaExtractor::new(
+            "java".to_string(),
+            "test.java".to_string(),
+            code.to_string(),
+            &workspace_root,
+        );
+        let symbols = extractor.extract_symbols(&tree);
+
+        let class = symbols
+            .iter()
+            .find(|s| s.name == "MultiFields")
+            .expect("MultiFields class should be found");
+
+        for (name, signature, kind) in [
+            ("x", "private int x", SymbolKind::Property),
+            ("y", "private int y", SymbolKind::Property),
+            (
+                "NAME",
+                "public static final String NAME = \"name\"",
+                SymbolKind::Constant,
+            ),
+            (
+                "CODE",
+                "public static final String CODE = \"code\"",
+                SymbolKind::Constant,
+            ),
+        ] {
+            let symbol = symbols.iter().find(|s| {
+                s.name == name
+                    && s.kind == kind
+                    && s.parent_id.as_deref() == Some(class.id.as_str())
+            });
+            assert!(
+                symbol.is_some(),
+                "Expected Java field declaration to emit {name}; symbols: {:?}",
+                symbols
+                    .iter()
+                    .map(|s| (&s.name, &s.kind, &s.parent_id, &s.signature))
+                    .collect::<Vec<_>>()
+            );
+
+            let symbol = symbol.unwrap();
+            assert_eq!(symbol.signature.as_deref(), Some(signature));
+        }
+    }
+
+    #[test]
     fn test_extract_enum_declarations() {
         let workspace_root = PathBuf::from("/tmp/test");
         let code = r#"
@@ -162,14 +221,86 @@ record Person(String name, int age) {
 
         let point_record = symbols.iter().find(|s| s.name == "Point");
         assert!(point_record.is_some(), "Point record should be found");
-        assert_eq!(point_record.unwrap().kind, SymbolKind::Class);
+        let point_record = point_record.unwrap();
+        assert_eq!(point_record.kind, SymbolKind::Class);
         assert_eq!(
-            point_record.unwrap().visibility.as_ref().unwrap(),
+            point_record.visibility.as_ref().unwrap(),
             &Visibility::Public
         );
+        for (name, signature) in [("x", "int x"), ("y", "int y")] {
+            let component = symbols.iter().find(|s| {
+                s.name == name
+                    && s.kind == SymbolKind::Property
+                    && s.parent_id.as_deref() == Some(point_record.id.as_str())
+            });
+            assert!(
+                component.is_some(),
+                "Expected record component {name}; symbols: {:?}",
+                symbols
+                    .iter()
+                    .map(|s| (&s.name, &s.kind, &s.parent_id, &s.signature))
+                    .collect::<Vec<_>>()
+            );
+            let component = component.unwrap();
+            assert_eq!(component.signature.as_deref(), Some(signature));
+            assert_eq!(component.visibility.as_ref().unwrap(), &Visibility::Public);
+        }
 
         let person_record = symbols.iter().find(|s| s.name == "Person");
         assert!(person_record.is_some(), "Person record should be found");
+    }
+
+    #[test]
+    fn test_java_record_components_emit_properties() {
+        let workspace_root = PathBuf::from("/tmp/test");
+        let code = r#"
+package com.example;
+
+public record Snapshot(
+    String id,
+    java.time.Instant createdAt,
+    java.util.List<String> tags,
+    int[] values
+) {}
+"#;
+
+        let tree = init_parser(code, "java");
+
+        let mut extractor = JavaExtractor::new(
+            "java".to_string(),
+            "test.java".to_string(),
+            code.to_string(),
+            &workspace_root,
+        );
+
+        let symbols = extractor.extract_symbols(&tree);
+        let snapshot_record = symbols
+            .iter()
+            .find(|symbol| symbol.name == "Snapshot")
+            .expect("Snapshot record should be found");
+
+        for (component_name, expected_signature) in [
+            ("id", "String id"),
+            ("createdAt", "java.time.Instant createdAt"),
+            ("tags", "java.util.List<String> tags"),
+            ("values", "int[] values"),
+        ] {
+            let component = symbols
+                .iter()
+                .find(|symbol| {
+                    symbol.name == component_name
+                        && symbol.kind == SymbolKind::Property
+                        && symbol.parent_id.as_deref() == Some(snapshot_record.id.as_str())
+                })
+                .unwrap_or_else(|| panic!("Missing record component {component_name}"));
+
+            assert_eq!(component.kind, SymbolKind::Property);
+            assert_eq!(
+                component.parent_id.as_deref(),
+                Some(snapshot_record.id.as_str())
+            );
+            assert_eq!(component.signature.as_deref(), Some(expected_signature));
+        }
     }
 
     #[test]

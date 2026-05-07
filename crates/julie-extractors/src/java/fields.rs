@@ -11,6 +11,16 @@ pub(super) fn extract_field(
     node: Node,
     parent_id: Option<&str>,
 ) -> Option<Symbol> {
+    extract_fields(extractor, node, parent_id)
+        .into_iter()
+        .next()
+}
+
+pub(super) fn extract_fields(
+    extractor: &mut JavaExtractor,
+    node: Node,
+    parent_id: Option<&str>,
+) -> Vec<Symbol> {
     let modifiers = helpers::extract_modifiers(extractor.base(), node);
     let visibility = helpers::determine_visibility(&modifiers);
 
@@ -38,14 +48,6 @@ pub(super) fn extract_field(
         .filter(|c| c.kind() == "variable_declarator")
         .collect();
 
-    // For now, handle the first declarator (we could extend to handle multiple)
-    let declarator = declarators.first()?;
-    let name_node = declarator
-        .children(&mut declarator.walk())
-        .find(|c| c.kind() == "identifier")?;
-
-    let name = extractor.base().get_node_text(&name_node);
-
     // Check if it's a constant (static final)
     let is_constant =
         modifiers.contains(&"static".to_string()) && modifiers.contains(&"final".to_string());
@@ -55,41 +57,52 @@ pub(super) fn extract_field(
         SymbolKind::Property
     };
 
-    // Get initializer if present
-    let children: Vec<Node> = declarator.children(&mut declarator.walk()).collect();
-    let assign_index = children.iter().position(|c| c.kind() == "=");
-    let initializer = if let Some(idx) = assign_index {
-        let init_nodes: Vec<String> = children[(idx + 1)..]
-            .iter()
-            .map(|n| extractor.base().get_node_text(n))
-            .collect();
-        format!(" = {}", init_nodes.join(""))
-    } else {
-        String::new()
-    };
-
     // Build signature
     let modifier_str = if modifiers.is_empty() {
         String::new()
     } else {
         format!("{} ", modifiers.join(" "))
     };
-    let signature = format!("{}{} {}{}", modifier_str, field_type, name, initializer);
 
     // Extract JavaDoc comment
     let doc_comment = extractor.base().find_doc_comment(&node);
 
-    let options = SymbolOptions {
-        signature: Some(signature),
-        visibility: Some(visibility),
-        parent_id: parent_id.map(|s| s.to_string()),
-        doc_comment,
-        ..Default::default()
-    };
+    declarators
+        .into_iter()
+        .filter_map(|declarator| {
+            let name_node = declarator
+                .children(&mut declarator.walk())
+                .find(|c| c.kind() == "identifier")?;
 
-    Some(
-        extractor
-            .base_mut()
-            .create_symbol(&node, name, symbol_kind, options),
-    )
+            let name = extractor.base().get_node_text(&name_node);
+
+            // Get initializer if present
+            let children: Vec<Node> = declarator.children(&mut declarator.walk()).collect();
+            let assign_index = children.iter().position(|c| c.kind() == "=");
+            let initializer = if let Some(idx) = assign_index {
+                let init_nodes: Vec<String> = children[(idx + 1)..]
+                    .iter()
+                    .map(|n| extractor.base().get_node_text(n))
+                    .collect();
+                format!(" = {}", init_nodes.join(""))
+            } else {
+                String::new()
+            };
+
+            let signature = format!("{}{} {}{}", modifier_str, field_type, name, initializer);
+            let options = SymbolOptions {
+                signature: Some(signature),
+                visibility: Some(visibility.clone()),
+                parent_id: parent_id.map(|s| s.to_string()),
+                doc_comment: doc_comment.clone(),
+                ..Default::default()
+            };
+
+            Some(
+                extractor
+                    .base_mut()
+                    .create_symbol(&node, name, symbol_kind.clone(), options),
+            )
+        })
+        .collect()
 }

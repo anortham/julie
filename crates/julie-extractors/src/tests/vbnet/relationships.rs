@@ -272,6 +272,50 @@ End Class
     }
 
     #[test]
+    fn test_vbnet_relationship_lookup_is_case_insensitive() {
+        let code = r#"
+Public Class Service
+    Public Sub Run()
+        dowork()
+    End Sub
+
+    Public Sub DoWork()
+    End Sub
+End Class
+"#;
+
+        let results = extract_full("src/Service.vb", code);
+        let run = results
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == "Run")
+            .expect("Should extract Run method");
+        let do_work = results
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == "DoWork")
+            .expect("Should extract DoWork method");
+
+        let resolved_call = results.relationships.iter().find(|relationship| {
+            relationship.kind == RelationshipKind::Calls
+                && relationship.from_symbol_id == run.id
+                && relationship.to_symbol_id == do_work.id
+        });
+        assert!(
+            resolved_call.is_some(),
+            "VB.NET call lookup should resolve dowork() to DoWork()"
+        );
+
+        assert!(
+            results
+                .structured_pending_relationships
+                .iter()
+                .all(|pending| pending.target.terminal_name.to_lowercase() != "dowork"),
+            "case-only mismatches should not become pending VB.NET calls"
+        );
+    }
+
+    #[test]
     fn test_vb_constructor_and_member_types_create_uses_relationship() {
         let code = r#"
 Public Interface ILogger

@@ -11,10 +11,9 @@ pub(super) use crate::base::find_child_by_type;
 pub(super) fn extract_call_target_name(base: &BaseExtractor, node: &Node) -> Option<String> {
     // `target` IS a named field in tree-sitter-elixir
     let target = node.child_by_field_name("target")?;
-    if target.kind() == "identifier" {
-        Some(base.get_node_text(&target))
-    } else {
-        None
+    match target.kind() {
+        "identifier" | "dot" | "alias" => Some(base.get_node_text(&target)),
+        _ => None,
     }
 }
 
