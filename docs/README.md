@@ -23,7 +23,8 @@ This directory contains **current** documentation for Julie. Code is the source 
 ## Quality Reports
 
 - **`LANGUAGE_CERTIFICATION_REPORT.md`** - Generated current-HEAD tree-sitter certification report
-- **`LANGUAGE_REAL_WORLD_EVIDENCE.json`** - Generated current-HEAD real-world smoke evidence consumed by certification
+- **`LANGUAGE_REAL_WORLD_EVIDENCE.json`** - Generated current-HEAD real-world evidence consumed by certification
+- **`TREE_SITTER_REVIEW_FINDINGS_STATUS.md`** - Current status of concrete v7.8.0 review findings not fully represented by generated capability reports
 - **`LANGUAGE_VERIFICATION_RESULTS.md`** - Restored historical quality matrix with current-status validation notes
 - **`LANGUAGE_VERIFICATION_CHECKLIST.md`** - Reusable real-world verification methodology for language support
 - **`verification/`** - Raw historical per-language OSS repository verification reports
