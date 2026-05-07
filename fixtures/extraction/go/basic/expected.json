@@ -69,7 +69,7 @@
     {
       "key": "fixtures/extraction/go/basic/source.go:Worker:3:5",
       "name": "Worker",
-      "kind": "class",
+      "kind": "struct",
       "language": "go",
       "file_path": "fixtures/extraction/go/basic/source.go",
       "start_line": 3,
@@ -91,7 +91,7 @@
     {
       "key": "fixtures/extraction/go/basic/source.go:fixture:1:8",
       "name": "fixture",
-      "kind": "namespace",
+      "kind": "module",
       "language": "go",
       "file_path": "fixtures/extraction/go/basic/source.go",
       "start_line": 1,

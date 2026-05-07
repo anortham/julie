@@ -39,6 +39,8 @@ impl RegexExtractor {
             &referenced_capture_numbers,
             &mut capture_index,
         );
+        self.extract_missing_lookarounds_from_source(tree.root_node(), &mut symbols);
+        self.extract_missing_unicode_properties_from_source(tree.root_node(), &mut symbols);
         symbols
     }
 
@@ -68,6 +70,7 @@ impl RegexExtractor {
                 *capture_index += 1;
                 patterns::extract_group(&mut self.base, node, parent_id.clone()).map(
                     |mut symbol| {
+                        symbol.kind = SymbolKind::Function;
                         add_capture_index(&mut symbol, *capture_index);
                         symbol
                     },
@@ -79,6 +82,7 @@ impl RegexExtractor {
                 if referenced_capture_numbers.contains(capture_index) {
                     patterns::extract_group(&mut self.base, node, parent_id.clone()).map(
                         |mut symbol| {
+                            symbol.kind = SymbolKind::Function;
                             add_capture_index(&mut symbol, *capture_index);
                             symbol
                         },
@@ -87,8 +91,16 @@ impl RegexExtractor {
                     None
                 }
             }
-            // Skip unnamed/non-capturing groups (noise)
-            "group" | "non_capturing_group" => None,
+            // Skip unnamed/non-capturing groups (noise), except lookarounds.
+            // Some grammar versions surface lookarounds as generic group nodes.
+            "group" | "non_capturing_group" => {
+                let group_text = self.base.get_node_text(&node);
+                if is_lookaround_group_text(&group_text) {
+                    patterns::extract_lookaround(&mut self.base, node, parent_id.clone())
+                } else {
+                    None
+                }
+            }
             // Skip quantifiers (noise)
             "quantifier" | "quantified_expression" => None,
             // Skip anchors (noise)
@@ -169,6 +181,64 @@ impl RegexExtractor {
     pub fn extract_identifiers(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Identifier> {
         identifiers::extract_identifiers(&mut self.base, tree, symbols)
     }
+
+    fn extract_missing_lookarounds_from_source(&mut self, root: Node, symbols: &mut Vec<Symbol>) {
+        let existing_lookarounds: HashSet<_> = symbols
+            .iter()
+            .filter(|symbol| {
+                symbol
+                    .metadata
+                    .as_ref()
+                    .and_then(|metadata| metadata.get("type"))
+                    .and_then(|value| value.as_str())
+                    == Some("lookaround")
+            })
+            .map(|symbol| symbol.name.clone())
+            .collect();
+
+        let lookaround_texts = find_lookaround_texts(&self.base.content);
+        for lookaround_text in lookaround_texts {
+            if existing_lookarounds.contains(&lookaround_text) {
+                continue;
+            }
+            if let Some(symbol) =
+                patterns::extract_lookaround_text(&mut self.base, root, lookaround_text, None)
+            {
+                symbols.push(symbol);
+            }
+        }
+    }
+
+    fn extract_missing_unicode_properties_from_source(
+        &mut self,
+        root: Node,
+        symbols: &mut Vec<Symbol>,
+    ) {
+        let existing_unicode_properties: HashSet<_> = symbols
+            .iter()
+            .filter(|symbol| {
+                symbol
+                    .metadata
+                    .as_ref()
+                    .and_then(|metadata| metadata.get("type"))
+                    .and_then(|value| value.as_str())
+                    == Some("unicode-property")
+            })
+            .map(|symbol| symbol.name.clone())
+            .collect();
+
+        let unicode_properties = find_unicode_property_texts(&self.base.content);
+        for property_text in unicode_properties {
+            if existing_unicode_properties.contains(&property_text) {
+                continue;
+            }
+            if let Some(symbol) =
+                patterns::extract_unicode_property_text(&mut self.base, root, property_text, None)
+            {
+                symbols.push(symbol);
+            }
+        }
+    }
 }
 
 fn add_capture_index(symbol: &mut Symbol, capture_index: usize) {
@@ -177,4 +247,95 @@ fn add_capture_index(symbol: &mut Symbol, capture_index: usize) {
         "captureIndex".to_string(),
         serde_json::Value::Number((capture_index as u64).into()),
     );
+}
+
+fn is_lookaround_group_text(group_text: &str) -> bool {
+    group_text.starts_with("(?=")
+        || group_text.starts_with("(?!")
+        || group_text.starts_with("(?<=")
+        || group_text.starts_with("(?<!")
+}
+
+fn find_lookaround_texts(content: &str) -> Vec<String> {
+    let mut lookarounds = Vec::new();
+    let mut index = 0;
+
+    while index < content.len() {
+        let rest = &content[index..];
+        let is_lookaround = rest.starts_with("(?=")
+            || rest.starts_with("(?!")
+            || rest.starts_with("(?<=")
+            || rest.starts_with("(?<!");
+
+        if is_lookaround {
+            if let Some(end) = find_group_end(content, index) {
+                lookarounds.push(content[index..=end].to_string());
+                index = end + 1;
+                continue;
+            }
+        }
+
+        index += rest
+            .chars()
+            .next()
+            .map(char::len_utf8)
+            .unwrap_or_default()
+            .max(1);
+    }
+
+    lookarounds
+}
+
+fn find_group_end(content: &str, start: usize) -> Option<usize> {
+    let mut depth = 0usize;
+    let mut escaped = false;
+    let mut in_character_class = false;
+
+    for (offset, ch) in content[start..].char_indices() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+
+        match ch {
+            '\\' => escaped = true,
+            '[' if !in_character_class => in_character_class = true,
+            ']' if in_character_class => in_character_class = false,
+            '(' if !in_character_class => depth += 1,
+            ')' if !in_character_class => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    return Some(start + offset);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    None
+}
+
+fn find_unicode_property_texts(content: &str) -> Vec<String> {
+    let mut properties = Vec::new();
+    let mut index = 0;
+
+    while index < content.len() {
+        let rest = &content[index..];
+        if rest.starts_with(r"\p{") || rest.starts_with(r"\P{") {
+            if let Some(end_offset) = rest.find('}') {
+                properties.push(rest[..=end_offset].to_string());
+                index += end_offset + 1;
+                continue;
+            }
+        }
+
+        index += rest
+            .chars()
+            .next()
+            .map(char::len_utf8)
+            .unwrap_or_default()
+            .max(1);
+    }
+
+    properties
 }

@@ -118,11 +118,11 @@ var (
     // Should still extract valid symbols
     let empty = symbols.iter().find(|s| s.name == "Empty");
     assert!(empty.is_some());
-    assert_eq!(empty.unwrap().kind, SymbolKind::Class);
+    assert_eq!(empty.unwrap().kind, SymbolKind::Struct);
 
     let embedded_struct = symbols.iter().find(|s| s.name == "EmbeddedStruct");
     assert!(embedded_struct.is_some());
-    assert_eq!(embedded_struct.unwrap().kind, SymbolKind::Class);
+    assert_eq!(embedded_struct.unwrap().kind, SymbolKind::Struct);
 
     let complex_interface = symbols.iter().find(|s| s.name == "ComplexInterface");
     assert!(complex_interface.is_some());
@@ -167,7 +167,7 @@ var (
 
     let channels = symbols.iter().find(|s| s.name == "Channels");
     assert!(channels.is_some());
-    assert_eq!(channels.unwrap().kind, SymbolKind::Class);
+    assert_eq!(channels.unwrap().kind, SymbolKind::Struct);
 
     let type_alias = symbols.iter().find(|s| s.name == "TypeAlias");
     assert!(type_alias.is_some());

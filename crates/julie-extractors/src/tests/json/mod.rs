@@ -5,6 +5,9 @@
 // Target: 600+ lines with edge cases, special syntax, and real-world validation
 
 #[cfg(test)]
+mod task15;
+
+#[cfg(test)]
 mod json_extractor_tests {
     #![allow(unused_imports)]
     #![allow(unused_variables)]

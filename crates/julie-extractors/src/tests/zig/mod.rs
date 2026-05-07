@@ -1,5 +1,7 @@
 // Submodule declarations
 pub mod extractor;
+#[cfg(test)]
+mod task15;
 
 #[cfg(test)]
 mod zig_extractor_tests {

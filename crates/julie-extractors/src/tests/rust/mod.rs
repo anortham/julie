@@ -647,6 +647,56 @@ macro_rules! create_function {
                 "macro_rules! create_function"
             );
         }
+
+        #[test]
+        fn test_rust_macro_rules_uses_macro_kind_when_available() {
+            let rust_code = r#"
+macro_rules! build_user {
+    ($name:expr) => {
+        User::new($name)
+    };
+}
+"#;
+
+            let mut parser = init_parser();
+            let tree = parser.parse(rust_code, None).unwrap();
+
+            let workspace_root = test_workspace_root();
+            let mut extractor = RustExtractor::new(
+                "rust".to_string(),
+                "test.rs".to_string(),
+                rust_code.to_string(),
+                &workspace_root,
+            );
+
+            let symbols = extractor.extract_symbols(&tree);
+            let macro_symbol = symbols
+                .iter()
+                .find(|symbol| symbol.name == "build_user")
+                .expect("macro_rules symbol should be extracted");
+
+            assert_eq!(
+                macro_symbol.signature.as_deref(),
+                Some("macro_rules! build_user")
+            );
+
+            let kind_name = macro_symbol.kind.to_string();
+            assert!(
+                kind_name == "macro" || kind_name == "function",
+                "macro_rules symbol should use macro kind when available, or function fallback otherwise"
+            );
+            if kind_name == "function" {
+                assert_eq!(
+                    macro_symbol
+                        .metadata
+                        .as_ref()
+                        .and_then(|metadata| metadata.get("rustSymbolKind"))
+                        .and_then(|value| value.as_str()),
+                    Some("macro_rules"),
+                    "Function fallback must preserve explicit macro metadata"
+                );
+            }
+        }
     }
 
     mod advanced_generics_and_type_parameters {

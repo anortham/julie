@@ -3,7 +3,7 @@
     {
       "key": "fixtures/extraction/regex/basic/source.regex:(?<id>\\d+):1:20",
       "name": "(?<id>\\d+)",
-      "kind": "class",
+      "kind": "function",
       "language": "regex",
       "file_path": "fixtures/extraction/regex/basic/source.regex",
       "start_line": 1,
@@ -31,7 +31,7 @@
     {
       "key": "fixtures/extraction/regex/basic/source.regex:(?<name>[A-Za-z]+):1:1",
       "name": "(?<name>[A-Za-z]+)",
-      "kind": "class",
+      "kind": "function",
       "language": "regex",
       "file_path": "fixtures/extraction/regex/basic/source.regex",
       "start_line": 1,
@@ -59,7 +59,7 @@
     {
       "key": "fixtures/extraction/regex/basic/source.regex:(foo):1:40",
       "name": "(foo)",
-      "kind": "class",
+      "kind": "function",
       "language": "regex",
       "file_path": "fixtures/extraction/regex/basic/source.regex",
       "start_line": 1,

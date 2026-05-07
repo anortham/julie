@@ -8,6 +8,8 @@ pub mod helpers;
 pub mod identifiers;
 pub mod relationships;
 pub mod signatures;
+#[cfg(test)]
+mod task15;
 
 use crate::base::{SymbolKind, Visibility};
 use crate::regex::RegexExtractor;

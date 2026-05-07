@@ -41,8 +41,9 @@ Workers must use Julie MCP tools before touching code:
 - Task 11 is completed and committed as `57f59b74 fix(extractors): preserve structured pending targets`.
 - Task 12 is completed and committed as `6594c4ac fix(extractors): support embedded vue html css razor`.
 - Task 13 is completed and committed as `cf6c9bae fix(extractors): clean up scripting language extraction`.
-- Task 14 is completed in the current working tree. Verification passed, and the Task 14 ledger records focused exact tests, golden refresh, changed-file, and one dev gate.
-- Task 15 is the next unstarted task.
+- Task 14 is completed and committed as `c4bb292c fix(extractors): model language idioms`.
+- Task 15 is completed in the current working tree. Verification passed, and the Task 15 ledger records focused exact tests, golden refresh, changed-file, parser-upgrade, integration, and one dev gate.
+- Task 16 is the next unstarted task.
 
 ## Finding Coverage
 
@@ -642,6 +643,14 @@ Reviewed-but-not-promoted claims from the compiled document are not task drivers
 - Import/dependency constructs produce searchable symbols and relationships.
 - Languages with no type inference return a tested, contract-consistent result instead of accidental absence.
 
+**Completion notes (2026-05-07):**
+- Go packages now model as modules, Go structs model as structs, anonymous embedded fields get explicit embedding metadata, and stdlib package calls are filtered without dropping non-stdlib package calls from `func main`.
+- QML now records doc comments, visibility, property bindings, signal handler bindings, and type inference for property and function signatures.
+- Zig import logic is split into `zig/imports.rs`; `usingnamespace` and broader `@import` expressions now produce import symbols with source metadata.
+- Rust `use` declarations now emit structured pending `Imports` relationships, and `macro_rules!` symbols record `rustSymbolKind=macro_rules` metadata.
+- Regex capture groups now use function kind, and source-level fallbacks cover grammar-missing lookarounds and unicode properties while preserving distinct metadata.
+- Lua, Markdown, JSON, TOML, YAML, and R now expose deterministic empty `infer_types` contracts.
+
 ## Task 16: Core Enums, Embedded Extraction Framework, Capability Matrix, And Test Bar
 
 **Files:**
@@ -830,3 +839,10 @@ cargo xtask test dogfood
 | Task 14 diff has no whitespace errors | `git diff --check` | task-14-diff-check | `cf6c9baea45442eb8d90bc9fd3cc074b627b70ce + dirty Task 14 working tree` | PASS | 2026-05-07T01:20:08Z | No |
 | Task 14 changed-file buckets pass | `cargo xtask test changed` | task-14-changed | `cf6c9baea45442eb8d90bc9fd3cc074b627b70ce + dirty Task 14 working tree` | PASS, extractors bucket passed in 0.9s | 2026-05-07T01:20:08Z | No |
 | Task 14 batch regression tier passes | `cargo xtask test dev` | task-14-dev | `cf6c9baea45442eb8d90bc9fd3cc074b627b70ce + dirty Task 14 working tree` | PASS, 22 buckets passed in 371.1s | 2026-05-07T01:20:08Z | No |
+| Task 15 focused remaining language modeling regressions pass | sequential exact `cargo nextest run -p julie-extractors --lib <exact_test>` runs for `test_go_structs_are_struct_symbols_and_packages_are_modules`, `test_go_embedded_field_emits_relationship_or_embedding_metadata`, `test_go_stdlib_filter_avoids_noisy_pending_relationships`, `test_qml_docs_types_visibility_bindings_and_signal_handlers_are_extracted`, `test_zig_usingnamespace_and_non_declaration_imports_are_extracted`, `test_rust_use_declarations_emit_import_relationships`, `test_rust_macro_rules_uses_macro_kind_when_available`, `test_regex_constructs_have_distinct_symbol_kinds`, and `test_missing_infer_types_languages_return_contract_consistent_results` | task-15-focused | `c4bb292ce23a09e62fe29eeb79564c77ac6cc1ca + dirty Task 15 working tree` | PASS, 9 exact tests passed after lead fixes for Go `main` caller resolution and regex grammar fallbacks | 2026-05-07T01:54:34Z | No |
+| Task 15 real-world Go parser-upgrade contract matches new struct kind | `cargo nextest run --lib real_world_parser_upgrade_contracts_assert_expected_outputs` | task-15-real-world-contract | `c4bb292ce23a09e62fe29eeb79564c77ac6cc1ca + dirty Task 15 working tree` | PASS, 1 exact integration contract passed | 2026-05-07T01:54:34Z | No |
+| Task 15 canonical extractor golden fixtures are current | `UPDATE_GOLDEN=1 cargo nextest run -p julie-extractors golden` | task-15-golden | `c4bb292ce23a09e62fe29eeb79564c77ac6cc1ca + dirty Task 15 working tree` | PASS, 3 tests passed | 2026-05-07T01:54:34Z | No |
+| Task 15 formatting is current | `cargo fmt --check` | task-15-fmt-check | `c4bb292ce23a09e62fe29eeb79564c77ac6cc1ca + dirty Task 15 working tree` | PASS | 2026-05-07T01:54:34Z | No |
+| Task 15 diff has no whitespace errors | `git diff --check` | task-15-diff-check | `c4bb292ce23a09e62fe29eeb79564c77ac6cc1ca + dirty Task 15 working tree` | PASS | 2026-05-07T01:54:34Z | No |
+| Task 15 changed-file buckets pass | `cargo xtask test changed` | task-15-changed | `c4bb292ce23a09e62fe29eeb79564c77ac6cc1ca + dirty Task 15 working tree` | PASS, extractors, parser-upgrade, and integration buckets passed in 58.4s | 2026-05-07T01:54:34Z | No |
+| Task 15 batch regression tier passes | `cargo xtask test dev` | task-15-dev | `c4bb292ce23a09e62fe29eeb79564c77ac6cc1ca + dirty Task 15 working tree` | PASS, 22 buckets passed in 357.4s | 2026-05-07T01:54:34Z | No |

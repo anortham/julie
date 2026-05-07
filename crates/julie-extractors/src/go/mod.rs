@@ -208,6 +208,40 @@ impl GoExtractor {
     }
 
     fn build_symbol_map<'a>(&self, symbols: &'a [Symbol]) -> HashMap<String, &'a Symbol> {
-        crate::base::ScopedSymbolIndex::unique_symbol_map(symbols)
+        let mut by_name: HashMap<&str, Vec<&'a Symbol>> = HashMap::new();
+        for symbol in symbols {
+            by_name.entry(&symbol.name).or_default().push(symbol);
+        }
+
+        by_name
+            .into_iter()
+            .filter_map(|(name, candidates)| match candidates.as_slice() {
+                [symbol] => Some((name.to_string(), *symbol)),
+                _ => single_callable_with_module_duplicate(&candidates)
+                    .map(|symbol| (name.to_string(), symbol)),
+            })
+            .collect()
+    }
+}
+
+fn single_callable_with_module_duplicate<'a>(symbols: &[&'a Symbol]) -> Option<&'a Symbol> {
+    let callable_symbols: Vec<_> = symbols
+        .iter()
+        .copied()
+        .filter(|symbol| matches!(symbol.kind, SymbolKind::Function | SymbolKind::Method))
+        .collect();
+
+    match callable_symbols.as_slice() {
+        [callable]
+            if symbols.iter().all(|symbol| {
+                matches!(
+                    symbol.kind,
+                    SymbolKind::Function | SymbolKind::Method | SymbolKind::Module
+                )
+            }) =>
+        {
+            Some(*callable)
+        }
+        _ => None,
     }
 }

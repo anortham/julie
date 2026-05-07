@@ -97,7 +97,7 @@ const CASES: &[RealWorldCase] = &[
         symbols: &[
             sym!("main", "function"),
             sym!("Helper", "function"),
-            sym!("DemoStruct", "class"),
+            sym!("DemoStruct", "struct"),
         ],
         identifiers: &["Helper"],
     },

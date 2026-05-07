@@ -447,6 +447,10 @@ impl RExtractor {
         identifiers::extract_identifiers(self, tree, symbols)
     }
 
+    pub fn infer_types(&self, _symbols: &[Symbol]) -> HashMap<String, String> {
+        HashMap::new()
+    }
+
     // ========================================================================
     // Pending Relationship Management
     // ========================================================================

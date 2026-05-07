@@ -141,7 +141,7 @@ func main() {
         "Should extract Stack generic struct"
     );
     let stack = stack_struct.unwrap();
-    assert_eq!(stack.kind, SymbolKind::Class);
+    assert_eq!(stack.kind, SymbolKind::Struct);
     assert!(
         stack.signature.as_ref().unwrap().contains("[T any]"),
         "Stack signature should include type parameter"

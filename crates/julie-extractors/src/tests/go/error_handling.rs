@@ -94,7 +94,7 @@ func Err[T any](err error) Result[T] {
     let validation_error = symbols.iter().find(|s| s.name == "ValidationError");
     assert!(validation_error.is_some());
     let validation_error = validation_error.unwrap();
-    assert_eq!(validation_error.kind, SymbolKind::Class);
+    assert_eq!(validation_error.kind, SymbolKind::Struct);
     assert!(
         validation_error
             .signature
@@ -128,7 +128,7 @@ func Err[T any](err error) Result[T] {
     let database_error = symbols.iter().find(|s| s.name == "DatabaseError");
     assert!(database_error.is_some());
     let database_error = database_error.unwrap();
-    assert_eq!(database_error.kind, SymbolKind::Class);
+    assert_eq!(database_error.kind, SymbolKind::Struct);
 
     let result_type = symbols.iter().find(|s| s.name == "Result");
     assert!(result_type.is_some());

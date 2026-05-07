@@ -240,6 +240,60 @@ func main() {
         );
     }
 
+    #[test]
+    fn test_go_stdlib_filter_avoids_noisy_pending_relationships() {
+        let code = r#"
+package main
+
+import (
+    "fmt"
+    "net/http"
+    util "myapp/utils"
+)
+
+func main() {
+    fmt.Println("hello")
+    _ = http.ListenAndServe(":8080", nil)
+    util.Helper()
+}
+"#;
+
+        let results = extract_full("main.go", code);
+        let structured_calls: Vec<_> = results
+            .structured_pending_relationships
+            .iter()
+            .filter(|pending| pending.pending.kind == RelationshipKind::Calls)
+            .collect();
+
+        assert!(
+            structured_calls
+                .iter()
+                .any(|pending| pending.target.display_name == "util.Helper"),
+            "non-stdlib package call should remain pending for cross-file resolution"
+        );
+        assert!(
+            structured_calls
+                .iter()
+                .all(|pending| pending.target.display_name != "fmt.Println"),
+            "stdlib fmt calls should not create noisy pending relationships"
+        );
+        assert!(
+            structured_calls
+                .iter()
+                .all(|pending| pending.target.display_name != "http.ListenAndServe"),
+            "stdlib net/http calls should not create noisy pending relationships"
+        );
+        assert_eq!(
+            structured_calls.len(),
+            1,
+            "only non-stdlib pending call should remain, found {:?}",
+            structured_calls
+                .iter()
+                .map(|pending| pending.target.display_name.as_str())
+                .collect::<Vec<_>>()
+        );
+    }
+
     // ========================================================================
     // TEST: Same-file calls should still work (regression test)
     // ========================================================================

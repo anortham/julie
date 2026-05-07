@@ -135,6 +135,15 @@ pub(super) fn extract_lookaround(
     parent_id: Option<String>,
 ) -> Option<Symbol> {
     let lookaround_text = base.get_node_text(&node);
+    extract_lookaround_text(base, node, lookaround_text, parent_id)
+}
+
+pub(super) fn extract_lookaround_text(
+    base: &mut BaseExtractor,
+    node: Node,
+    lookaround_text: String,
+    parent_id: Option<String>,
+) -> Option<Symbol> {
     let direction = flags::get_lookaround_direction(&lookaround_text);
     let polarity = if flags::is_positive_lookaround(&lookaround_text) {
         "positive"
@@ -177,6 +186,15 @@ pub(super) fn extract_unicode_property(
     parent_id: Option<String>,
 ) -> Option<Symbol> {
     let property_text = base.get_node_text(&node);
+    extract_unicode_property_text(base, node, property_text, parent_id)
+}
+
+pub(super) fn extract_unicode_property_text(
+    base: &mut BaseExtractor,
+    node: Node,
+    property_text: String,
+    parent_id: Option<String>,
+) -> Option<Symbol> {
     let property = flags::extract_unicode_property_name(&property_text)?;
     let signature = signatures::build_unicode_property_signature(&property_text, &property);
 

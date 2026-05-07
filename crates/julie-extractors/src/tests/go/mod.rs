@@ -36,7 +36,7 @@ package utils
         let main_package = symbols.iter().find(|s| s.name == "main");
         assert!(main_package.is_some());
         let main_package = main_package.unwrap();
-        assert_eq!(main_package.kind, SymbolKind::Namespace);
+        assert_eq!(main_package.kind, SymbolKind::Module);
         assert_eq!(main_package.signature.as_ref().unwrap(), "package main");
         assert_eq!(main_package.visibility, Some(Visibility::Public));
     }
@@ -69,7 +69,7 @@ type Point struct {
         let user_struct = symbols.iter().find(|s| s.name == "User");
         assert!(user_struct.is_some());
         let user_struct = user_struct.unwrap();
-        assert_eq!(user_struct.kind, SymbolKind::Class);
+        assert_eq!(user_struct.kind, SymbolKind::Struct);
         assert_eq!(user_struct.signature.as_ref().unwrap(), "type User struct");
         assert_eq!(user_struct.visibility, Some(Visibility::Public));
 
@@ -807,7 +807,7 @@ func Sum[T Numeric](values ...T) T {
         let stack = symbols.iter().find(|s| s.name == "Stack");
         assert!(stack.is_some());
         let stack = stack.unwrap();
-        assert_eq!(stack.kind, SymbolKind::Class);
+        assert_eq!(stack.kind, SymbolKind::Struct);
         assert!(
             stack
                 .signature
@@ -983,7 +983,7 @@ func (wp *WorkerPool) worker(id int) {
         let worker_pool = symbols.iter().find(|s| s.name == "WorkerPool");
         assert!(worker_pool.is_some());
         let worker_pool = worker_pool.unwrap();
-        assert_eq!(worker_pool.kind, SymbolKind::Class);
+        assert_eq!(worker_pool.kind, SymbolKind::Struct);
         assert!(
             worker_pool
                 .signature
@@ -995,12 +995,12 @@ func (wp *WorkerPool) worker(id int) {
         let job = symbols.iter().find(|s| s.name == "Job");
         assert!(job.is_some());
         let job = job.unwrap();
-        assert_eq!(job.kind, SymbolKind::Class);
+        assert_eq!(job.kind, SymbolKind::Struct);
 
         let result_symbol = symbols.iter().find(|s| s.name == "Result");
         assert!(result_symbol.is_some());
         let result_symbol = result_symbol.unwrap();
-        assert_eq!(result_symbol.kind, SymbolKind::Class);
+        assert_eq!(result_symbol.kind, SymbolKind::Struct);
 
         let new_worker_pool = symbols.iter().find(|s| s.name == "NewWorkerPool");
         assert!(new_worker_pool.is_some());
@@ -1117,7 +1117,7 @@ func Err[T any](err error) Result[T] {
         let validation_error = symbols.iter().find(|s| s.name == "ValidationError");
         assert!(validation_error.is_some());
         let validation_error = validation_error.unwrap();
-        assert_eq!(validation_error.kind, SymbolKind::Class);
+        assert_eq!(validation_error.kind, SymbolKind::Struct);
         assert!(
             validation_error
                 .signature
@@ -1151,7 +1151,7 @@ func Err[T any](err error) Result[T] {
         let database_error = symbols.iter().find(|s| s.name == "DatabaseError");
         assert!(database_error.is_some());
         let database_error = database_error.unwrap();
-        assert_eq!(database_error.kind, SymbolKind::Class);
+        assert_eq!(database_error.kind, SymbolKind::Struct);
 
         let result_type = symbols.iter().find(|s| s.name == "Result");
         assert!(result_type.is_some());
@@ -1320,7 +1320,7 @@ func ProcessValue(value interface{}) string {
         let container = symbols.iter().find(|s| s.name == "Container");
         assert!(container.is_some());
         let container = container.unwrap();
-        assert_eq!(container.kind, SymbolKind::Class);
+        assert_eq!(container.kind, SymbolKind::Struct);
         assert!(
             container
                 .signature
@@ -1595,7 +1595,7 @@ func handleUsers(w http.ResponseWriter, r *http.Request) {
         // Check specific features
         let user_struct = symbols.iter().find(|s| s.name == "User");
         assert!(user_struct.is_some());
-        assert_eq!(user_struct.unwrap().kind, SymbolKind::Class);
+        assert_eq!(user_struct.unwrap().kind, SymbolKind::Struct);
 
         let user_service = symbols.iter().find(|s| s.name == "UserService");
         assert!(user_service.is_some());
@@ -1737,7 +1737,7 @@ func main() {{
             let service_name = format!("Service{}", i);
             let service = symbols.iter().find(|s| s.name == service_name);
             assert!(service.is_some());
-            assert_eq!(service.unwrap().kind, SymbolKind::Class);
+            assert_eq!(service.unwrap().kind, SymbolKind::Struct);
         }
     }
 
@@ -1839,11 +1839,11 @@ var (
         // Should still extract valid symbols
         let empty = symbols.iter().find(|s| s.name == "Empty");
         assert!(empty.is_some());
-        assert_eq!(empty.unwrap().kind, SymbolKind::Class);
+        assert_eq!(empty.unwrap().kind, SymbolKind::Struct);
 
         let embedded_struct = symbols.iter().find(|s| s.name == "EmbeddedStruct");
         assert!(embedded_struct.is_some());
-        assert_eq!(embedded_struct.unwrap().kind, SymbolKind::Class);
+        assert_eq!(embedded_struct.unwrap().kind, SymbolKind::Struct);
 
         let complex_interface = symbols.iter().find(|s| s.name == "ComplexInterface");
         assert!(complex_interface.is_some());
@@ -1888,7 +1888,7 @@ var (
 
         let channels = symbols.iter().find(|s| s.name == "Channels");
         assert!(channels.is_some());
-        assert_eq!(channels.unwrap().kind, SymbolKind::Class);
+        assert_eq!(channels.unwrap().kind, SymbolKind::Struct);
 
         let type_alias = symbols.iter().find(|s| s.name == "TypeAlias");
         assert!(type_alias.is_some());
@@ -2289,7 +2289,7 @@ type Admin struct {
             let user = symbols.iter().find(|s| s.name == "User");
             assert!(user.is_some(), "Should extract User type");
             let user = user.unwrap();
-            assert_eq!(user.kind, SymbolKind::Class);
+            assert_eq!(user.kind, SymbolKind::Struct);
             assert_eq!(
                 user.doc_comment.as_ref().unwrap(),
                 "// User represents a user in the system",
@@ -2299,7 +2299,7 @@ type Admin struct {
             let admin = symbols.iter().find(|s| s.name == "Admin");
             assert!(admin.is_some(), "Should extract Admin type");
             let admin = admin.unwrap();
-            assert_eq!(admin.kind, SymbolKind::Class);
+            assert_eq!(admin.kind, SymbolKind::Struct);
             assert_eq!(
                 admin.doc_comment.as_ref().unwrap(),
                 "// Admin is a user with admin privileges",

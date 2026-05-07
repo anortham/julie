@@ -4,12 +4,14 @@
 
 mod identifiers;
 mod relationships;
+mod semantics;
 
 use crate::base::{
     BaseExtractor, Identifier, PendingRelationship, Relationship, StructuredPendingRelationship,
     Symbol, UnresolvedTarget,
 };
 use crate::test_detection::is_test_symbol;
+use std::collections::HashMap;
 use tree_sitter::Tree;
 
 pub struct QmlExtractor {
@@ -53,6 +55,8 @@ impl QmlExtractor {
                     let name = self.base.get_node_text(&source_node);
                     let options = SymbolOptions {
                         parent_id: parent_id.clone(),
+                        visibility: Some(crate::base::Visibility::Public),
+                        doc_comment: semantics::extract_qml_doc_comment(self, &node),
                         ..Default::default()
                     };
                     let symbol = self
@@ -85,6 +89,8 @@ impl QmlExtractor {
                         let options = SymbolOptions {
                             parent_id: parent_id.clone(),
                             signature,
+                            visibility: Some(crate::base::Visibility::Public),
+                            doc_comment: semantics::extract_qml_doc_comment(self, &node),
                             ..Default::default()
                         };
                         let symbol = self.base.create_symbol(
@@ -109,6 +115,8 @@ impl QmlExtractor {
                     let options = SymbolOptions {
                         parent_id: parent_id.clone(),
                         signature,
+                        visibility: Some(semantics::infer_visibility(&name, false)),
+                        doc_comment: semantics::extract_qml_doc_comment(self, &node),
                         ..Default::default()
                     };
                     let symbol =
@@ -139,6 +147,16 @@ impl QmlExtractor {
                             let options = SymbolOptions {
                                 parent_id: parent_id.clone(),
                                 signature,
+                                visibility: Some(crate::base::Visibility::Private),
+                                metadata: Some({
+                                    let mut meta = HashMap::new();
+                                    meta.insert(
+                                        "binding_kind".to_string(),
+                                        serde_json::Value::String("id".to_string()),
+                                    );
+                                    meta
+                                }),
+                                doc_comment: semantics::extract_qml_doc_comment(self, &node),
                                 ..Default::default()
                             };
                             let symbol = self.base.create_symbol(
@@ -149,6 +167,60 @@ impl QmlExtractor {
                             );
                             self.symbols.push(symbol);
                         }
+                    } else if semantics::is_signal_handler_binding_name(&binding_name) {
+                        let options = SymbolOptions {
+                            parent_id: parent_id.clone(),
+                            signature: Some(self.base.get_node_text(&node)),
+                            visibility: Some(crate::base::Visibility::Private),
+                            metadata: Some({
+                                let mut meta = HashMap::new();
+                                meta.insert(
+                                    "binding_kind".to_string(),
+                                    serde_json::Value::String("signal_handler".to_string()),
+                                );
+                                if let Some(signal_name) =
+                                    semantics::handled_signal_from_binding_name(&binding_name)
+                                {
+                                    meta.insert(
+                                        "handled_signal".to_string(),
+                                        serde_json::Value::String(signal_name),
+                                    );
+                                }
+                                meta
+                            }),
+                            doc_comment: semantics::extract_qml_doc_comment(self, &node),
+                            ..Default::default()
+                        };
+                        let symbol = self.base.create_symbol(
+                            &node,
+                            binding_name,
+                            SymbolKind::Function,
+                            options,
+                        );
+                        self.symbols.push(symbol);
+                    } else {
+                        let options = SymbolOptions {
+                            parent_id: parent_id.clone(),
+                            signature: Some(self.base.get_node_text(&node)),
+                            visibility: Some(crate::base::Visibility::Private),
+                            metadata: Some({
+                                let mut meta = HashMap::new();
+                                meta.insert(
+                                    "binding_kind".to_string(),
+                                    serde_json::Value::String("property_binding".to_string()),
+                                );
+                                meta
+                            }),
+                            doc_comment: semantics::extract_qml_doc_comment(self, &node),
+                            ..Default::default()
+                        };
+                        let symbol = self.base.create_symbol(
+                            &node,
+                            binding_name,
+                            SymbolKind::Property,
+                            options,
+                        );
+                        self.symbols.push(symbol);
                     }
                 }
             }
@@ -159,6 +231,8 @@ impl QmlExtractor {
                     let name = self.base.get_node_text(&name_node);
                     let options = SymbolOptions {
                         parent_id: parent_id.clone(),
+                        visibility: Some(semantics::infer_visibility(&name, false)),
+                        doc_comment: semantics::extract_qml_doc_comment(self, &node),
                         ..Default::default()
                     };
                     let enum_symbol =
@@ -220,11 +294,16 @@ impl QmlExtractor {
                     }
                     let options = SymbolOptions {
                         parent_id: parent_id.clone(),
+                        signature: Some(semantics::function_signature(
+                            self.base.get_node_text(&node),
+                        )),
+                        visibility: Some(semantics::infer_visibility(&name, false)),
                         metadata: if metadata.is_empty() {
                             None
                         } else {
                             Some(metadata)
                         },
+                        doc_comment: semantics::extract_qml_doc_comment(self, &node),
                         ..Default::default()
                     };
                     let symbol =
@@ -389,6 +468,10 @@ impl QmlExtractor {
         }
 
         UnresolvedTarget::simple(fallback_name.to_string())
+    }
+
+    pub fn infer_types(&self, symbols: &[Symbol]) -> HashMap<String, String> {
+        semantics::infer_types(symbols)
     }
 
     pub fn extract_identifiers(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Identifier> {

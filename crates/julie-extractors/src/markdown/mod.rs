@@ -358,6 +358,10 @@ impl MarkdownExtractor {
         Vec::new()
     }
 
+    pub fn infer_types(&self, _symbols: &[Symbol]) -> HashMap<String, String> {
+        HashMap::new()
+    }
+
     pub fn extract_relationships(&mut self, _tree: &Tree, symbols: &[Symbol]) -> Vec<Relationship> {
         relationships::extract_relationships(&self.base, symbols)
     }

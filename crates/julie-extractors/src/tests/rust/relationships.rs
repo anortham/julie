@@ -269,3 +269,67 @@ fn caller() {
         vec!["crate", "search", "hybrid"]
     );
 }
+
+#[test]
+fn test_rust_use_declarations_emit_import_relationships() {
+    let code = r#"
+use std::collections::HashMap;
+use crate::models::User as AppUser;
+
+fn main() {}
+"#;
+    let (symbols, relationships, structured_pending) = extract_with_relationships(code);
+
+    assert!(
+        relationships
+            .iter()
+            .all(|relationship| relationship.kind != RelationshipKind::Imports),
+        "Rust use imports should be modeled as structured pending import relationships"
+    );
+
+    let import_pending: Vec<_> = structured_pending
+        .iter()
+        .filter(|pending| pending.pending.kind == RelationshipKind::Imports)
+        .collect();
+    assert_eq!(
+        import_pending.len(),
+        2,
+        "Expected one import relationship per use declaration"
+    );
+
+    let hash_map_import = symbols
+        .iter()
+        .find(|symbol| symbol.name == "HashMap")
+        .expect("HashMap import symbol should be extracted");
+    let hash_map_pending = import_pending
+        .iter()
+        .find(|pending| pending.target.display_name == "std::collections::HashMap")
+        .expect("HashMap use declaration should emit an Imports pending relationship");
+    assert_eq!(
+        hash_map_pending.pending.from_symbol_id, hash_map_import.id,
+        "Import relationship source should be the corresponding use symbol"
+    );
+    assert_eq!(hash_map_pending.target.terminal_name, "HashMap");
+    assert_eq!(
+        hash_map_pending.target.namespace_path,
+        vec!["std", "collections"]
+    );
+
+    let app_user_import = symbols
+        .iter()
+        .find(|symbol| symbol.name == "AppUser")
+        .expect("Aliased import symbol should be extracted");
+    let app_user_pending = import_pending
+        .iter()
+        .find(|pending| pending.target.display_name == "crate::models::User")
+        .expect("Aliased use declaration should emit Imports pending relationship to source path");
+    assert_eq!(
+        app_user_pending.pending.from_symbol_id, app_user_import.id,
+        "Import relationship source should match aliased use symbol"
+    );
+    assert_eq!(app_user_pending.target.terminal_name, "User");
+    assert_eq!(
+        app_user_pending.target.namespace_path,
+        vec!["crate", "models"]
+    );
+}
