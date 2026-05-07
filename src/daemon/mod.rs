@@ -102,12 +102,21 @@ pub(crate) fn drain_timeout() -> Duration {
     }
 }
 
-/// Get the current on-disk binary's modification time.
+/// Capture the binary's mtime so we can detect a replacement at runtime.
 ///
 /// Used at daemon startup to snapshot the binary mtime, then compared on each
 /// session disconnect to detect whether the binary has been rebuilt. If it has,
 /// the daemon exits after the last session disconnects so the adapter can
 /// restart it with the new binary.
+///
+/// Note (Windows): the running `julie-server.exe` holds an exclusive image-section
+/// lock on its own binary, so a developer running `cargo build --release` against
+/// a live daemon FAILS with "Access is denied" rather than producing a new binary
+/// the daemon could see. Stale-binary detection therefore fires for: (a) installers
+/// that use `MoveFileEx(MOVEFILE_REPLACE_EXISTING)`, (b) `touch`-style mtime bumps
+/// without byte changes, (c) a delete + new-name + rename sequence done out of band.
+/// It does NOT fire for in-place developer rebuilds on Windows; the developer must
+/// stop the daemon first.
 fn binary_mtime() -> Option<SystemTime> {
     std::env::current_exe()
         .ok()

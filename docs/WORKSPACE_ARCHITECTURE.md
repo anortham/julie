@@ -46,6 +46,12 @@ A background process shares indexes across all MCP sessions. Workspace indexes l
 - Per-session codehealth snapshots
 - Tool call history (retained 7 days)
 
+**Windows binary-lock caveat:** on Windows, the running `julie-server.exe` holds an exclusive
+image-section lock on its own binary, so `cargo build --release` against a live daemon fails with
+"Access is denied." The daemon's stale-binary detection fires for installer-style replacements
+(`MoveFileEx(MOVEFILE_REPLACE_EXISTING)`) or out-of-band rename sequences, but NOT for in-place
+developer rebuilds. Developers must stop the daemon before rebuilding the release binary on Windows.
+
 ## Global Workspace Targeting
 
 Daemon mode is the supported global-workspace path and uses four workspace concepts:
