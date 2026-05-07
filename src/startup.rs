@@ -9,6 +9,7 @@ use crate::tools::workspace::indexing::engine_version::{
     SEMANTIC_INDEX_ENGINE_COMPONENT, SEMANTIC_INDEX_ENGINE_VERSION,
 };
 use crate::tools::workspace::indexing::state::IndexingRepairReason;
+use crate::workspace::mutation_gate::{MutationGuard, acquire_gate};
 use crate::workspace::startup_hint::WorkspaceStartupSource;
 use anyhow::{Context, Result};
 use std::collections::HashSet;
@@ -66,17 +67,50 @@ pub async fn check_if_indexing_needed(handler: &JulieServerHandler) -> Result<bo
     Ok(plan_primary_workspace_repair(handler).await?.is_some())
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum PrimaryWatcherPauseTarget {
-    LocalWatcher,
-    WatcherPool(String),
-    None,
-}
-
+/// Acquire the mutation gate for the primary workspace, then run the repair pass.
+///
+/// This is the public entry point. It serializes concurrent catch-up scans by
+/// holding the workspace mutation gate for the duration of the repair. If no
+/// workspace is bound yet (empty-database first-run path), the gate cannot be
+/// keyed by workspace_id and the repair runs ungated — there is no concurrent
+/// writer to contend with in that case.
 pub(crate) async fn run_primary_workspace_repair(
     handler: &JulieServerHandler,
 ) -> Result<Option<PrimaryWorkspaceRepairPlan>> {
-    let pause_target = pause_primary_workspace_updates(handler).await;
+    match handler.require_primary_workspace_identity() {
+        Ok(workspace_id) => {
+            let guard = acquire_gate(&workspace_id).await;
+            run_primary_workspace_repair_inner(&guard, handler).await
+        }
+        Err(_) => {
+            // No workspace bound yet (first-run / empty-database path).
+            // There is no concurrent writer to serialize against, so run
+            // the repair directly without a gate.
+            run_primary_workspace_repair_inner_ungated(handler).await
+        }
+    }
+}
+
+/// Inner repair implementation. Takes a `&MutationGuard<'_>` as a proof token
+/// that the caller already holds the workspace mutation gate. Does NOT call
+/// `acquire_gate` — doing so would deadlock since the gate is not reentrant.
+///
+/// Call chains originating from here must use other `_inner` variants (never
+/// `_gated` variants) to avoid re-acquiring the gate.
+pub(crate) async fn run_primary_workspace_repair_inner(
+    _guard: &MutationGuard<'_>,
+    handler: &JulieServerHandler,
+) -> Result<Option<PrimaryWorkspaceRepairPlan>> {
+    run_primary_workspace_repair_inner_ungated(handler).await
+}
+
+/// The actual repair body, shared by the gated and ungated paths.
+///
+/// Private — callers must go through `run_primary_workspace_repair` (gated) or
+/// `run_primary_workspace_repair_inner` (already-gated proof-token path).
+async fn run_primary_workspace_repair_inner_ungated(
+    handler: &JulieServerHandler,
+) -> Result<Option<PrimaryWorkspaceRepairPlan>> {
     let indexing_runtime = handler
         .primary_workspace_snapshot()
         .await
@@ -158,7 +192,6 @@ pub(crate) async fn run_primary_workspace_repair(
         runtime.set_catchup_active(false);
         runtime.set_watcher_paused(false);
     }
-    resume_primary_workspace_updates(handler, pause_target).await;
     repair_result
 }
 
@@ -270,8 +303,7 @@ pub(crate) async fn plan_primary_workspace_repair(
                 reasons.push(IndexingRepairReason::SemanticVersionChanged);
             }
 
-            // ✅ NEW: Check if index is stale
-            // Compare file modification times with database timestamp
+            // Check if index is stale by comparing file modification times with database timestamp
             let db_mtime = get_database_mtime(&db_path)?;
             let max_file_mtime = get_max_file_mtime_in_workspace(&current_primary_root)?;
 
@@ -287,7 +319,7 @@ pub(crate) async fn plan_primary_workspace_repair(
                 reasons.push(IndexingRepairReason::StaleFiles);
             }
 
-            // ✅ NEW: Check for new files not in database
+            // Check for new files not in database
             let indexed_files_raw: Vec<String> = db.get_all_indexed_files()?;
 
             // Database stores relative Unix-style paths per CLAUDE.md Path Handling Contract
@@ -349,37 +381,6 @@ pub(crate) async fn plan_primary_workspace_repair(
                 reasons: vec![IndexingRepairReason::EmptyDatabase],
             }))
         }
-    }
-}
-
-async fn pause_primary_workspace_updates(
-    handler: &JulieServerHandler,
-) -> PrimaryWatcherPauseTarget {
-    if let Some(pool) = &handler.watcher_pool {
-        if let Some(workspace_id) = handler.current_workspace_id() {
-            pool.pause_workspace(&workspace_id).await;
-            return PrimaryWatcherPauseTarget::WatcherPool(workspace_id);
-        }
-
-        return PrimaryWatcherPauseTarget::None;
-    }
-
-    handler.pause_watcher().await;
-    PrimaryWatcherPauseTarget::LocalWatcher
-}
-
-async fn resume_primary_workspace_updates(
-    handler: &JulieServerHandler,
-    pause_target: PrimaryWatcherPauseTarget,
-) {
-    match pause_target {
-        PrimaryWatcherPauseTarget::LocalWatcher => handler.resume_watcher().await,
-        PrimaryWatcherPauseTarget::WatcherPool(workspace_id) => {
-            if let Some(pool) = &handler.watcher_pool {
-                pool.resume_workspace(&workspace_id).await;
-            }
-        }
-        PrimaryWatcherPauseTarget::None => {}
     }
 }
 
