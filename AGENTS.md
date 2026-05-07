@@ -329,6 +329,17 @@ fast_search(query="workspace routing", search_target="definitions", file_pattern
 
 See: **docs/WORKSPACE_ARCHITECTURE.md** for complete details.
 
+### Filewatcher Mutation Gate
+
+All workspace mutations serialize through a per-workspace async mutex defined in `src/workspace/mutation_gate.rs`. Eight canonical writers — watcher event-processor, watcher repair scan, watcher repair-replay, watcher Tantivy retry, catch-up indexer, force-reindex, refresh-stats, and `register` — all acquire `mutation_gate::acquire_gate(workspace_id)` before mutating, and threading is enforced at compile time via the `MutationGuard<'_>` proof token (gated functions take `_guard: &MutationGuard<'_>`).
+
+**Operator signals to watch in daemon.log:**
+- `Waited Nms for mutation gate on workspace <id>` — fires only when gate-wait exceeds 100ms. Steady-state should rarely log; long catch-ups on fresh clones may log briefly. Sustained waits >1s for steady-state operation indicate a writer holding the gate too long; investigate whether a repair scan, catch-up, or force-reindex is leaking the guard.
+- `Watcher: extracted N symbols, M identifiers, K relationships from <path> (<lang>)` — successful index of a watcher event.
+- `Watcher: <path> unchanged (hash match), skipping re-index` — file written but content identical; expected on save-without-change.
+
+The previous lossy `pause()` / `resume()` mechanism that silently dropped events while catch-up ran has been removed; events now queue unconditionally and the queue processor blocks on the gate. See `docs/plans/2026-05-06-filewatcher-pause-architecture.md` for the full design.
+
 ---
 
 ## 🏗️ Architecture Principles (Brief)
