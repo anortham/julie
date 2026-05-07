@@ -1425,22 +1425,6 @@ impl JulieServerHandler {
         Ok(workspace_guard.clone())
     }
 
-    /// Pause the file watcher's event dispatch during catch-up indexing (Fix C part a).
-    pub async fn pause_watcher(&self) {
-        let guard = self.workspace.read().await;
-        if let Some(ref ws) = *guard {
-            ws.pause_file_watching();
-        }
-    }
-
-    /// Resume the file watcher after catch-up indexing completes (Fix C part a).
-    pub async fn resume_watcher(&self) {
-        let guard = self.workspace.read().await;
-        if let Some(ref ws) = *guard {
-            ws.resume_file_watching();
-        }
-    }
-
     /// Ensure workspace is initialized for operations that require it
     pub async fn ensure_workspace(&self) -> Result<()> {
         if self.workspace.read().await.is_some() {
