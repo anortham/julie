@@ -1,3 +1,6 @@
+use crate::database::SymbolDatabase;
+use crate::extractors::ExtractionResults;
+use crate::extractors::base::{ParseDiagnostic, ParseDiagnosticKind};
 use crate::tools::workspace::ManageWorkspaceTool;
 use crate::tools::workspace::indexing::state::{
     IndexedFileDisposition, IndexingBatchState, IndexingStage,
@@ -244,5 +247,80 @@ fn caller() {
     assert_eq!(
         pending.target.namespace_path,
         vec!["crate", "search", "hybrid"]
+    );
+}
+
+#[tokio::test]
+async fn test_process_file_with_parser_keeps_file_info_for_degraded_parse_result() {
+    let temp_dir = TempDir::new().unwrap();
+    let workspace_root = temp_dir.path().canonicalize().unwrap();
+    let file_path = workspace_root.join("broken.rs");
+    let content = "fn broken() {\n    let value = ;\n}\n";
+    fs::write(&file_path, content).unwrap();
+
+    let diagnostic = ParseDiagnostic {
+        kind: ParseDiagnosticKind::Error,
+        start_line: 1,
+        start_column: 0,
+        end_line: 3,
+        end_column: 0,
+        start_byte: 0,
+        end_byte: content.len() as u32,
+    };
+    let expected_diagnostic = diagnostic.clone();
+
+    let tool = workspace_tool();
+    let (
+        symbols,
+        relationships,
+        pending_relationships,
+        structured_pending_relationships,
+        identifiers,
+        types,
+        parse_diagnostics,
+        file_info,
+    ) = tool
+        .process_file_with_parser_for_test(
+            &file_path,
+            "rust",
+            &workspace_root,
+            move |relative_path, extracted_content, _workspace_root| {
+                assert_eq!(relative_path, "broken.rs");
+                assert_eq!(extracted_content, content);
+
+                let mut results = ExtractionResults::empty();
+                results.parse_diagnostics.push(diagnostic);
+                Ok(results)
+            },
+        )
+        .await
+        .expect("degraded parse result should still produce indexable file metadata");
+
+    assert!(symbols.is_empty());
+    assert!(relationships.is_empty());
+    assert!(pending_relationships.is_empty());
+    assert!(structured_pending_relationships.is_empty());
+    assert!(identifiers.is_empty());
+    assert!(types.is_empty());
+    assert_eq!(parse_diagnostics, vec![expected_diagnostic.clone()]);
+    assert_eq!(file_info.path, "broken.rs");
+    assert_eq!(file_info.language, "rust");
+    assert_eq!(file_info.symbol_count, 0);
+    assert_eq!(file_info.content.as_deref(), Some(content));
+
+    let stored_path = file_info.path.clone();
+    let db_path = temp_dir.path().join("index.db");
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
+    db.bulk_store_fresh_atomic(&[file_info], &[], &[], &[], &[], "test-workspace")
+        .expect("zero-symbol degraded file should still be stored as a file row");
+    db.store_file_parse_diagnostics(&stored_path, &parse_diagnostics)
+        .expect("parse diagnostics should attach to stored zero-symbol file row");
+
+    let stats = db.get_stats().unwrap();
+    assert_eq!(stats.total_files, 1);
+    assert_eq!(stats.total_symbols, 0);
+    assert_eq!(
+        db.get_file_parse_diagnostics(&stored_path).unwrap(),
+        vec![expected_diagnostic]
     );
 }

@@ -1,14 +1,25 @@
 //! File processing helpers for indexing stages.
 //! Handles reading, parsing, and extracting symbols from individual files.
 
-use crate::extractors::{PendingRelationship, Relationship, Symbol};
+use crate::extractors::{ExtractionResults, PendingRelationship, Relationship, Symbol};
 use crate::tools::workspace::commands::ManageWorkspaceTool;
 use crate::tools::workspace::indexing::file_policy::{ExtractionMode, determine_extraction_mode};
 use anyhow::Result;
 use julie_extractors::base::StructuredPendingRelationship;
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tracing::{debug, trace, warn};
+
+type ParserFileProcessResult = (
+    Vec<Symbol>,
+    Vec<Relationship>,
+    Vec<PendingRelationship>,
+    Vec<StructuredPendingRelationship>,
+    Vec<crate::extractors::Identifier>,
+    HashMap<String, crate::extractors::base::TypeInfo>,
+    Vec<crate::extractors::base::ParseDiagnostic>,
+    crate::database::FileInfo,
+);
 
 impl ManageWorkspaceTool {
     /// Queue cleanup and file metadata refresh after parser extraction fails.
@@ -62,16 +73,47 @@ impl ManageWorkspaceTool {
         file_path: &Path,
         language: &str,
         workspace_root: &Path, // NEW: Phase 2 - workspace root for relative paths
-    ) -> Result<(
-        Vec<Symbol>,
-        Vec<Relationship>,
-        Vec<PendingRelationship>,
-        Vec<StructuredPendingRelationship>,
-        Vec<crate::extractors::Identifier>,
-        HashMap<String, crate::extractors::base::TypeInfo>,
-        Vec<crate::extractors::base::ParseDiagnostic>,
-        crate::database::FileInfo,
-    )> {
+    ) -> Result<ParserFileProcessResult> {
+        self.process_file_with_parser_using(
+            file_path,
+            language,
+            workspace_root,
+            |relative_path, content, workspace_root_path| {
+                crate::tools::workspace::ManageWorkspaceTool::extract_symbols_static(
+                    &relative_path,
+                    &content,
+                    &workspace_root_path,
+                )
+            },
+        )
+        .await
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn process_file_with_parser_for_test<F>(
+        &self,
+        file_path: &Path,
+        language: &str,
+        workspace_root: &Path,
+        extract: F,
+    ) -> Result<ParserFileProcessResult>
+    where
+        F: FnOnce(String, String, PathBuf) -> Result<ExtractionResults> + Send + 'static,
+    {
+        self.process_file_with_parser_using(file_path, language, workspace_root, extract)
+            .await
+    }
+
+    async fn process_file_with_parser_using<F>(
+        &self,
+        file_path: &Path,
+        language: &str,
+        workspace_root: &Path,
+        extract: F,
+    ) -> Result<ParserFileProcessResult>
+    where
+        F: FnOnce(String, String, PathBuf) -> Result<ExtractionResults> + Send + 'static,
+    {
         // 🚨 CRITICAL FIX: Wrap ALL blocking filesystem I/O in spawn_blocking to prevent tokio deadlock
         // When processing hundreds of large files (500KB+), blocking I/O in async functions
         // starves the tokio runtime and causes silent hangs (discovered in PsychiatricIntake workspace)
@@ -140,11 +182,7 @@ impl ManageWorkspaceTool {
 
         let extract_start = std::time::Instant::now();
         let task = tokio::task::spawn_blocking(move || {
-            crate::tools::workspace::ManageWorkspaceTool::extract_symbols_static(
-                &relative_path_clone,
-                &content_clone,
-                &workspace_root_clone2,
-            )
+            extract(relative_path_clone, content_clone, workspace_root_clone2)
         });
 
         let results = match task.await {

@@ -44,7 +44,7 @@ Workers must use Julie MCP tools before touching code:
 - Task 14 is completed and committed as `c4bb292c fix(extractors): model language idioms`.
 - Task 15 is completed and committed as `2b252985 fix(extractors): complete remaining language modeling`.
 - Task 16 is completed and committed in this branch as `fix(extractors): harden core extractor contracts`.
-- Task 17 is the next unstarted task.
+- Task 17 is completed in the working tree; commit pending.
 
 ## Finding Coverage
 
@@ -709,6 +709,12 @@ Reviewed-but-not-promoted claims from the compiled document are not task drivers
 - Indexing can preserve file identity even when extraction cannot produce symbols.
 - This task is not assigned to a cheap worker because it affects pipeline and caller contracts.
 
+**Completion notes (Task 17):**
+- Confirmed the core parser contract already existed: `extract_canonical_with_parse` returns a degraded `ExtractionResults` with a full-content parse diagnostic when tree-sitter returns `None`.
+- Kept `ExtractorManager::extract_all` as a direct canonical-pipeline delegate; no extra manager policy was needed because callers can accept degraded `ExtractionResults`.
+- Added a crate-private processor injection seam so tests can simulate a degraded, zero-symbol extraction without relying on huge files, timeouts, or a real parser failure.
+- Added a workspace processor regression that proves a degraded parse result still returns workspace-relative `FileInfo`, `symbol_count == 0`, stored content, and exact parse diagnostics. The same test writes that zero-symbol file row through `bulk_store_fresh_atomic` and reads diagnostics back from the database.
+
 ## Verification Strategy
 
 **Project source of truth:** `AGENTS.md`, `RAZORBACK.md`, `docs/TESTING_GUIDE.md`, and `docs/plans/verification-ledger-template.md`.
@@ -862,3 +868,9 @@ cargo xtask test dogfood
 | Task 16 extractor specialist bucket passes | `cargo xtask test bucket extractors` | task-16-extractors | `2b2529854b68d293219bdf2a2e0becde41a7e8ef + dirty Task 16 working tree` | PASS, golden and capability_matrix commands passed in 0.8s | 2026-05-07T02:31:15Z | No |
 | Task 16 parser-upgrade bucket passes | `cargo xtask test bucket parser-upgrade` | task-16-parser-upgrade | `2b2529854b68d293219bdf2a2e0becde41a7e8ef + dirty Task 16 working tree` | PASS, parser-upgrade bucket passed in 1.3s | 2026-05-07T02:31:15Z | No |
 | Task 16 batch regression tier passes on final worktree | `cargo xtask test dev` | task-16-dev | `2b2529854b68d293219bdf2a2e0becde41a7e8ef + dirty Task 16 working tree` | PASS, 22 buckets passed in 343.4s | 2026-05-07T02:31:15Z | No |
+| Task 17 parser failure and indexing identity regressions pass | `cargo nextest run --lib test_process_file_with_parser_keeps_file_info_for_degraded_parse_result`; `cargo nextest run -p julie-extractors --lib test_extract_canonical_parse_none_returns_degraded_result_with_diagnostic`; `cargo nextest run --lib test_process_file_with_parser_preserves_structured_pending_relationships`; `cargo nextest run --lib test_markdown_with_long_lines_is_not_skipped_as_minified`; `cargo nextest run --lib test_workspace_index_records_parse_diagnostics_for_recovered_file` | task-17-focused | `fff666642b3998e4f9efaeaddc9edc71ee7fa342 + dirty Task 17 working tree` | PASS; new exact test first failed before the processor injection seam existed, then passed after implementation | 2026-05-07T02:48:27Z | No |
+| Task 17 formatting is current | `cargo fmt --check` | task-17-fmt-check | `fff666642b3998e4f9efaeaddc9edc71ee7fa342 + dirty Task 17 working tree` | PASS | 2026-05-07T02:48:27Z | No |
+| Task 17 diff has no whitespace errors | `git diff --check` | task-17-diff-check | `fff666642b3998e4f9efaeaddc9edc71ee7fa342 + dirty Task 17 working tree` | PASS | 2026-05-07T02:48:27Z | No |
+| Task 17 changed-file buckets pass | `cargo xtask test changed` | task-17-changed | `fff666642b3998e4f9efaeaddc9edc71ee7fa342 + dirty Task 17 working tree` | PASS, tools-workspace and workspace-init buckets passed in 39.0s | 2026-05-07T02:48:27Z | No |
+| Task 17 batch regression tier passes | `cargo xtask test dev` | task-17-dev | `fff666642b3998e4f9efaeaddc9edc71ee7fa342 + dirty Task 17 working tree` | PASS, 22 buckets passed in 363.4s | 2026-05-07T02:48:27Z | No |
+| Task 17 indexing pipeline blast-radius tests pass | `cargo nextest run --lib tests::integration::indexing_pipeline -- --skip search_quality` | task-17-indexing-pipeline | `fff666642b3998e4f9efaeaddc9edc71ee7fa342 + dirty Task 17 working tree` | PASS, 7 tests passed | 2026-05-07T02:49:56Z | No |
