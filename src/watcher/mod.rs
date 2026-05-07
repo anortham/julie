@@ -14,6 +14,7 @@
 pub(crate) mod events;
 pub mod filtering; // Public for tests
 pub mod handlers; // Public for tests
+pub mod observability; // INFO-level event observability helpers
 pub(crate) mod queue;
 mod runtime;
 pub mod types;
