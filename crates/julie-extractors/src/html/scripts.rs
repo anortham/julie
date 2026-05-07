@@ -1,4 +1,7 @@
-use crate::base::{BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility};
+use crate::base::{
+    BaseExtractor, EmbeddedSpanOffset, NormalizedSpan, Symbol, SymbolKind, SymbolOptions,
+    Visibility,
+};
 use crate::css::CSSExtractor;
 use crate::javascript::JavaScriptExtractor;
 use std::collections::HashMap;
@@ -220,28 +223,18 @@ fn embedded_content_offset(base: &BaseExtractor, node: Node, content: &str) -> O
 }
 
 fn apply_embedded_offset(symbol: &mut Symbol, base: &BaseExtractor, byte_offset: u32) {
-    let (line_offset, column_offset) = line_column_offset(&base.content, byte_offset as usize);
-    let original_start_line = symbol.start_line;
-    let original_end_line = symbol.end_line;
+    let Some(offset) = EmbeddedSpanOffset::from_host_byte(&base.content, byte_offset as usize)
+    else {
+        return;
+    };
+    let span = NormalizedSpan {
+        start_line: symbol.start_line,
+        start_column: symbol.start_column,
+        end_line: symbol.end_line,
+        end_column: symbol.end_column,
+        start_byte: symbol.start_byte,
+        end_byte: symbol.end_byte,
+    };
     symbol.file_path = base.file_path.clone();
-    symbol.start_line += line_offset;
-    symbol.end_line += line_offset;
-    if original_start_line == 1 {
-        symbol.start_column += column_offset;
-    }
-    if original_end_line == 1 {
-        symbol.end_column += column_offset;
-    }
-    symbol.start_byte += byte_offset;
-    symbol.end_byte += byte_offset;
-}
-
-fn line_column_offset(content: &str, byte_offset: usize) -> (u32, u32) {
-    let prefix = &content[..byte_offset.min(content.len())];
-    let line_offset = prefix.bytes().filter(|byte| *byte == b'\n').count() as u32;
-    let column_offset = prefix
-        .rsplit_once('\n')
-        .map(|(_, tail)| tail.len())
-        .unwrap_or(prefix.len()) as u32;
-    (line_offset, column_offset)
+    symbol.apply_normalized_span(offset.apply(span));
 }

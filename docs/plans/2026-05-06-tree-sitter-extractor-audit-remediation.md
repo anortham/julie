@@ -42,8 +42,9 @@ Workers must use Julie MCP tools before touching code:
 - Task 12 is completed and committed as `6594c4ac fix(extractors): support embedded vue html css razor`.
 - Task 13 is completed and committed as `cf6c9bae fix(extractors): clean up scripting language extraction`.
 - Task 14 is completed and committed as `c4bb292c fix(extractors): model language idioms`.
-- Task 15 is completed in the current working tree. Verification passed, and the Task 15 ledger records focused exact tests, golden refresh, changed-file, parser-upgrade, integration, and one dev gate.
-- Task 16 is the next unstarted task.
+- Task 15 is completed and committed as `2b252985 fix(extractors): complete remaining language modeling`.
+- Task 16 is completed and committed in this branch as `fix(extractors): harden core extractor contracts`.
+- Task 17 is the next unstarted task.
 
 ## Finding Coverage
 
@@ -680,6 +681,13 @@ Reviewed-but-not-promoted claims from the compiled document are not task drivers
 - Tests with `assert symbols.len() >= 0`, `assert True`, or non-empty-only relationship checks are replaced when touched.
 - Unknown kind, visibility, relationship, or identifier strings do not silently degrade to a generic value without a tested warning or failure path.
 
+**Completion notes (Task 16):**
+- Added explicit `try_from_string` APIs for core symbol, relationship, and identifier kind parsing, fixed `RelationshipKind::Composition` round-trip parsing, and changed database row mapping to fail on unknown symbol kinds, relationship kinds, or visibility values instead of silently coercing them.
+- Added `EmbeddedSpanOffset` under `crates/julie-extractors/src/base/` and switched HTML embedded script/style and Vue style remapping to the shared offset projection helper. Razor was intentionally left alone because it already works from file-relative nodes, and this task only needed the shared offset invariant.
+- Populated `capability_gaps` for languages that claim pending relationships without golden pending evidence, and added capability-matrix tests that keep those claims honest.
+- Strengthened the touched SQL and R package tests away from non-empty/tautological assertions. The SQL line-number assertion exposed 0-based relationship line storage, so SQL relationship extraction now records 1-based relationship line numbers and the SQL golden fixture was refreshed.
+- No broad enum expansion landed in this task. The explorer found plausible future variants, but the plan requires variants to ship with real extractor output in the same wave; only the already-existing `composition` relationship parse bug met that bar.
+
 ## Task 17: Degraded Parser Failure Results
 
 **Files:**
@@ -846,3 +854,11 @@ cargo xtask test dogfood
 | Task 15 diff has no whitespace errors | `git diff --check` | task-15-diff-check | `c4bb292ce23a09e62fe29eeb79564c77ac6cc1ca + dirty Task 15 working tree` | PASS | 2026-05-07T01:54:34Z | No |
 | Task 15 changed-file buckets pass | `cargo xtask test changed` | task-15-changed | `c4bb292ce23a09e62fe29eeb79564c77ac6cc1ca + dirty Task 15 working tree` | PASS, extractors, parser-upgrade, and integration buckets passed in 58.4s | 2026-05-07T01:54:34Z | No |
 | Task 15 batch regression tier passes | `cargo xtask test dev` | task-15-dev | `c4bb292ce23a09e62fe29eeb79564c77ac6cc1ca + dirty Task 15 working tree` | PASS, 22 buckets passed in 357.4s | 2026-05-07T01:54:34Z | No |
+| Task 16 focused core contract, embedded offset, capability, SQL, R, and DB mapping regressions pass | exact and focused runs for `test_relationship_kind_from_string_round_trips_composition`, `test_core_kind_conversion_rejects_or_reports_unknown_values`, `test_embedded_range_helper_preserves_offsets`, `capability_matrix_pending_claim_requires_pending_output_in_fixtures`, `capability_matrix_records_known_gaps_for_languages_with_unfixed_findings`, `capability_matrix_requires_target_capabilities`, `test_db_row_to_symbol_unknown_kind_does_not_silently_coerce`, `test_db_row_to_symbol_unknown_visibility_does_not_silently_drop`, `test_db_row_to_relationship_unknown_kind_does_not_silently_coerce`, `test_identifier_kind_import_is_not_silently_coerced`, `tests::r::packages`, `test_type_inference_and_relationships`, `test_html_script_and_style_ranges_delegate_to_js_and_css_extractors`, and `test_vue_style_delegates_to_css_extractor_with_offsets` | task-16-focused | `2b2529854b68d293219bdf2a2e0becde41a7e8ef + dirty Task 16 working tree` | PASS; SQL exact test initially failed on 0-based line numbers, then passed after fixing relationship line storage to 1-based | 2026-05-07T02:31:15Z | No |
+| Task 16 formatting is current | `cargo fmt --check` | task-16-fmt-check | `2b2529854b68d293219bdf2a2e0becde41a7e8ef + dirty Task 16 working tree` | PASS | 2026-05-07T02:31:15Z | No |
+| Task 16 diff has no whitespace errors | `git diff --check` | task-16-diff-check | `2b2529854b68d293219bdf2a2e0becde41a7e8ef + dirty Task 16 working tree` | PASS | 2026-05-07T02:31:15Z | No |
+| Task 16 changed-file gate falls back to dev and passes | `cargo xtask test changed` | task-16-changed | `2b2529854b68d293219bdf2a2e0becde41a7e8ef + dirty Task 16 working tree` | PASS, changed fallback ran 22 dev buckets in 364.3s before the SQL golden refresh; final dev rerun below covers the final worktree | 2026-05-07T02:31:15Z | No |
+| Task 16 canonical extractor golden fixtures are current | `UPDATE_GOLDEN=1 cargo nextest run -p julie-extractors golden` | task-16-golden | `2b2529854b68d293219bdf2a2e0becde41a7e8ef + dirty Task 16 working tree` | PASS, 3 tests passed after refreshing SQL basic relationship line number | 2026-05-07T02:31:15Z | No |
+| Task 16 extractor specialist bucket passes | `cargo xtask test bucket extractors` | task-16-extractors | `2b2529854b68d293219bdf2a2e0becde41a7e8ef + dirty Task 16 working tree` | PASS, golden and capability_matrix commands passed in 0.8s | 2026-05-07T02:31:15Z | No |
+| Task 16 parser-upgrade bucket passes | `cargo xtask test bucket parser-upgrade` | task-16-parser-upgrade | `2b2529854b68d293219bdf2a2e0becde41a7e8ef + dirty Task 16 working tree` | PASS, parser-upgrade bucket passed in 1.3s | 2026-05-07T02:31:15Z | No |
+| Task 16 batch regression tier passes on final worktree | `cargo xtask test dev` | task-16-dev | `2b2529854b68d293219bdf2a2e0becde41a7e8ef + dirty Task 16 working tree` | PASS, 22 buckets passed in 343.4s | 2026-05-07T02:31:15Z | No |

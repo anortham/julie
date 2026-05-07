@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 
 use super::scoring::Pivot;
 use crate::database::SymbolDatabase;
@@ -32,30 +32,39 @@ pub struct GraphExpansion {
 pub fn expand_graph(pivots: &[Pivot], db: &SymbolDatabase) -> Result<GraphExpansion> {
     let pivot_symbols: Vec<Symbol> = pivots
         .iter()
-        .map(|pivot| Symbol {
-            id: pivot.result.id.clone(),
-            name: pivot.result.name.clone(),
-            kind: crate::extractors::base::SymbolKind::from_string(&pivot.result.kind),
-            language: pivot.result.language.clone(),
-            file_path: pivot.result.file_path.clone(),
-            start_line: pivot.result.start_line,
-            end_line: pivot.result.start_line,
-            start_column: 0,
-            end_column: 0,
-            start_byte: 0,
-            end_byte: 0,
-            parent_id: None,
-            signature: Some(pivot.result.signature.clone()),
-            doc_comment: None,
-            visibility: None,
-            metadata: None,
-            semantic_group: None,
-            confidence: None,
-            code_context: None,
-            content_type: None,
-            annotations: Vec::new(),
+        .map(|pivot| {
+            let kind = crate::extractors::base::SymbolKind::try_from_string(&pivot.result.kind)
+                .ok_or_else(|| {
+                    anyhow!(
+                        "unknown pivot symbol kind in get_context graph: {}",
+                        pivot.result.kind
+                    )
+                })?;
+            Ok(Symbol {
+                id: pivot.result.id.clone(),
+                name: pivot.result.name.clone(),
+                kind,
+                language: pivot.result.language.clone(),
+                file_path: pivot.result.file_path.clone(),
+                start_line: pivot.result.start_line,
+                end_line: pivot.result.start_line,
+                start_column: 0,
+                end_column: 0,
+                start_byte: 0,
+                end_byte: 0,
+                parent_id: None,
+                signature: Some(pivot.result.signature.clone()),
+                doc_comment: None,
+                visibility: None,
+                metadata: None,
+                semantic_group: None,
+                confidence: None,
+                code_context: None,
+                content_type: None,
+                annotations: Vec::new(),
+            })
         })
-        .collect();
+        .collect::<Result<Vec<_>>>()?;
     expand_graph_from_symbols(&pivot_symbols, db)
 }
 

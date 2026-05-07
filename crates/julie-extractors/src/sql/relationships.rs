@@ -145,7 +145,7 @@ pub(super) fn extract_foreign_key_relationship(
                 .unwrap_or_else(|| format!("external_{}", referenced_table)),
             kind: RelationshipKind::References,
             file_path: base.file_path.clone(),
-            line_number: node.start_position().row as u32,
+            line_number: node.start_position().row as u32 + 1,
             confidence: if target_symbol.is_some() { 1.0 } else { 0.8 },
             metadata: Some(metadata),
         });
@@ -233,7 +233,7 @@ pub(super) fn extract_join_relationships(
         to_symbol_id: target_symbol.id.clone(),
         kind: RelationshipKind::Joins,
         file_path: base.file_path.clone(),
-        line_number: node.start_position().row as u32,
+        line_number: node.start_position().row as u32 + 1,
         confidence: 0.9,
         metadata: Some(metadata),
     });

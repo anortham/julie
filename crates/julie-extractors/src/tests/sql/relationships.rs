@@ -1,4 +1,4 @@
-use super::{RelationshipKind, extract_symbols_and_relationships};
+use super::{RelationshipKind, SymbolKind, extract_symbols_and_relationships};
 
 #[cfg(test)]
 mod tests {
@@ -48,33 +48,36 @@ WHERE o.status = 'completed';
 
         let (symbols, relationships) = extract_symbols_and_relationships(sql_code);
 
-        assert!(!relationships.is_empty());
+        assert_eq!(relationships.len(), 5);
 
-        let order_user_relation = relationships.iter().find(|r| {
-            r.kind == RelationshipKind::References
-                && r.metadata
-                    .as_ref()
-                    .and_then(|m| m.get("targetTable"))
-                    .and_then(|v| v.as_str())
-                    == Some("users")
-        });
-        assert!(order_user_relation.is_some());
+        let mut referenced_tables = relationships
+            .iter()
+            .filter(|r| r.kind == RelationshipKind::References)
+            .map(target_table)
+            .collect::<Vec<_>>();
+        referenced_tables.sort_unstable();
+        assert_eq!(referenced_tables, vec!["orders", "products", "users"]);
 
-        let order_items_order_relation = relationships.iter().find(|r| {
-            r.kind == RelationshipKind::References
-                && r.metadata
-                    .as_ref()
-                    .and_then(|m| m.get("targetTable"))
-                    .and_then(|v| v.as_str())
-                    == Some("orders")
-        });
-        assert!(order_items_order_relation.is_some());
+        let order_user_relation = relationships
+            .iter()
+            .find(|r| r.kind == RelationshipKind::References && target_table(r) == "users")
+            .expect("orders.user_id should reference users");
+        assert_eq!(
+            order_user_relation.line_number,
+            line_number(sql_code, "FOREIGN KEY (user_id)")
+        );
 
-        let total_amount_column = symbols.iter().find(|s| s.name == "total_amount");
-        assert!(total_amount_column.is_some());
+        let total_amount_column = symbols
+            .iter()
+            .find(|s| s.name == "total_amount")
+            .expect("total_amount column should be extracted");
+        assert_eq!(total_amount_column.kind, SymbolKind::Field);
 
-        let status_column = symbols.iter().find(|s| s.name == "status");
-        assert!(status_column.is_some());
+        let status_column = symbols
+            .iter()
+            .find(|s| s.name == "status")
+            .expect("status column should be extracted");
+        assert_eq!(status_column.kind, SymbolKind::Field);
 
         let join_relations = relationships
             .iter()
@@ -98,10 +101,35 @@ WHERE o.status = 'completed';
             let target = symbols.iter().find(|s| s.name == table_name).unwrap();
 
             assert_eq!(relation.to_symbol_id, target.id);
+            assert_eq!(
+                relation.line_number,
+                line_number(sql_code, &format!("JOIN {table_name}"))
+            );
             joined_tables.push(table_name);
         }
 
         joined_tables.sort_unstable();
         assert_eq!(joined_tables, vec!["order_items", "orders"]);
+    }
+
+    fn target_table(relationship: &crate::base::Relationship) -> &str {
+        relationship
+            .metadata
+            .as_ref()
+            .and_then(|metadata| {
+                metadata
+                    .get("targetTable")
+                    .or_else(|| metadata.get("tableName"))
+            })
+            .and_then(|value| value.as_str())
+            .expect("relationship should record target table metadata")
+    }
+
+    fn line_number(code: &str, needle: &str) -> u32 {
+        code[..code.find(needle).expect("needle must be present")]
+            .bytes()
+            .filter(|byte| *byte == b'\n')
+            .count() as u32
+            + 1
     }
 }

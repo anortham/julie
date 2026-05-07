@@ -290,14 +290,19 @@ impl std::fmt::Display for IdentifierKind {
 
 impl IdentifierKind {
     /// Convert from string representation (for database deserialization)
-    pub fn from_string(s: &str) -> Self {
+    pub fn try_from_string(s: &str) -> Option<Self> {
         match s {
-            "call" => IdentifierKind::Call,
-            "variable_ref" => IdentifierKind::VariableRef,
-            "type_usage" => IdentifierKind::TypeUsage,
-            "member_access" => IdentifierKind::MemberAccess,
-            _ => IdentifierKind::VariableRef, // Default fallback
+            "call" => Some(IdentifierKind::Call),
+            "variable_ref" => Some(IdentifierKind::VariableRef),
+            "type_usage" => Some(IdentifierKind::TypeUsage),
+            "member_access" => Some(IdentifierKind::MemberAccess),
+            _ => None,
         }
+    }
+
+    /// Convert from string representation (for database deserialization)
+    pub fn from_string(s: &str) -> Self {
+        Self::try_from_string(s).unwrap_or_else(|| panic!("unknown identifier kind: {s}"))
     }
 }
 
@@ -336,33 +341,39 @@ pub enum SymbolKind {
 impl SymbolKind {
     /// Convert from string representation (for database deserialization)
     #[allow(dead_code)] // TODO: Used for database deserialization
-    pub fn from_string(s: &str) -> Self {
+    pub fn try_from_string(s: &str) -> Option<Self> {
         match s {
-            "class" => SymbolKind::Class,
-            "interface" => SymbolKind::Interface,
-            "function" => SymbolKind::Function,
-            "method" => SymbolKind::Method,
-            "variable" => SymbolKind::Variable,
-            "constant" => SymbolKind::Constant,
-            "property" => SymbolKind::Property,
-            "enum" => SymbolKind::Enum,
-            "enum_member" => SymbolKind::EnumMember,
-            "module" => SymbolKind::Module,
-            "namespace" => SymbolKind::Namespace,
-            "type" => SymbolKind::Type,
-            "trait" => SymbolKind::Trait,
-            "struct" => SymbolKind::Struct,
-            "union" => SymbolKind::Union,
-            "field" => SymbolKind::Field,
-            "constructor" => SymbolKind::Constructor,
-            "destructor" => SymbolKind::Destructor,
-            "operator" => SymbolKind::Operator,
-            "import" => SymbolKind::Import,
-            "export" => SymbolKind::Export,
-            "event" => SymbolKind::Event,
-            "delegate" => SymbolKind::Delegate,
-            _ => SymbolKind::Variable, // Default fallback
+            "class" => Some(SymbolKind::Class),
+            "interface" => Some(SymbolKind::Interface),
+            "function" => Some(SymbolKind::Function),
+            "method" => Some(SymbolKind::Method),
+            "variable" => Some(SymbolKind::Variable),
+            "constant" => Some(SymbolKind::Constant),
+            "property" => Some(SymbolKind::Property),
+            "enum" => Some(SymbolKind::Enum),
+            "enum_member" => Some(SymbolKind::EnumMember),
+            "module" => Some(SymbolKind::Module),
+            "namespace" => Some(SymbolKind::Namespace),
+            "type" => Some(SymbolKind::Type),
+            "trait" => Some(SymbolKind::Trait),
+            "struct" => Some(SymbolKind::Struct),
+            "union" => Some(SymbolKind::Union),
+            "field" => Some(SymbolKind::Field),
+            "constructor" => Some(SymbolKind::Constructor),
+            "destructor" => Some(SymbolKind::Destructor),
+            "operator" => Some(SymbolKind::Operator),
+            "import" => Some(SymbolKind::Import),
+            "export" => Some(SymbolKind::Export),
+            "event" => Some(SymbolKind::Event),
+            "delegate" => Some(SymbolKind::Delegate),
+            _ => None,
         }
+    }
+
+    /// Convert from string representation (for database deserialization)
+    #[allow(dead_code)] // TODO: Used for database deserialization
+    pub fn from_string(s: &str) -> Self {
+        Self::try_from_string(s).unwrap_or_else(|| panic!("unknown symbol kind: {s}"))
     }
 
     // Note: to_string() is provided by Display trait implementation below
@@ -532,23 +543,30 @@ impl std::fmt::Display for RelationshipKind {
 impl RelationshipKind {
     /// Convert from string representation (for database deserialization)
     #[allow(dead_code)] // TODO: Used for database deserialization
-    pub fn from_string(s: &str) -> Self {
+    pub fn try_from_string(s: &str) -> Option<Self> {
         match s {
-            "calls" => RelationshipKind::Calls,
-            "extends" => RelationshipKind::Extends,
-            "implements" => RelationshipKind::Implements,
-            "uses" => RelationshipKind::Uses,
-            "returns" => RelationshipKind::Returns,
-            "parameter" => RelationshipKind::Parameter,
-            "imports" => RelationshipKind::Imports,
-            "instantiates" => RelationshipKind::Instantiates,
-            "references" => RelationshipKind::References,
-            "defines" => RelationshipKind::Defines,
-            "overrides" => RelationshipKind::Overrides,
-            "contains" => RelationshipKind::Contains,
-            "joins" => RelationshipKind::Joins,
-            _ => RelationshipKind::Uses, // Default fallback
+            "calls" => Some(RelationshipKind::Calls),
+            "extends" => Some(RelationshipKind::Extends),
+            "implements" => Some(RelationshipKind::Implements),
+            "uses" => Some(RelationshipKind::Uses),
+            "returns" => Some(RelationshipKind::Returns),
+            "parameter" => Some(RelationshipKind::Parameter),
+            "imports" => Some(RelationshipKind::Imports),
+            "instantiates" => Some(RelationshipKind::Instantiates),
+            "references" => Some(RelationshipKind::References),
+            "defines" => Some(RelationshipKind::Defines),
+            "overrides" => Some(RelationshipKind::Overrides),
+            "contains" => Some(RelationshipKind::Contains),
+            "joins" => Some(RelationshipKind::Joins),
+            "composition" => Some(RelationshipKind::Composition),
+            _ => None,
         }
+    }
+
+    /// Convert from string representation (for database deserialization)
+    #[allow(dead_code)] // TODO: Used for database deserialization
+    pub fn from_string(s: &str) -> Self {
+        Self::try_from_string(s).unwrap_or_else(|| panic!("unknown relationship kind: {s}"))
     }
 
     // Note: to_string() is provided automatically by the Display trait implementation above

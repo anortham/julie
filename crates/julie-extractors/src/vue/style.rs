@@ -4,7 +4,7 @@
 // Supports: class selectors (.name), ID selectors (#name), CSS custom properties (--name)
 
 use super::parsing::VueSection;
-use crate::base::BaseExtractor;
+use crate::base::{BaseExtractor, EmbeddedSpanOffset, NormalizedSpan};
 use crate::css::CSSExtractor;
 use tree_sitter::Parser;
 
@@ -33,12 +33,21 @@ pub(super) fn extract_style_symbols(
     );
     let mut symbols = extractor.extract_symbols(&tree);
     let byte_offset = section_byte_offset(&base.content, section.start_line);
+    let Some(offset) = EmbeddedSpanOffset::from_host_byte(&base.content, byte_offset as usize)
+    else {
+        return Vec::new();
+    };
     for symbol in &mut symbols {
         symbol.language = base.language.clone();
-        symbol.start_line += section.start_line as u32;
-        symbol.end_line += section.start_line as u32;
-        symbol.start_byte += byte_offset;
-        symbol.end_byte += byte_offset;
+        let span = NormalizedSpan {
+            start_line: symbol.start_line,
+            start_column: symbol.start_column,
+            end_line: symbol.end_line,
+            end_column: symbol.end_column,
+            start_byte: symbol.start_byte,
+            end_byte: symbol.end_byte,
+        };
+        symbol.apply_normalized_span(offset.apply(span));
     }
     symbols
 }

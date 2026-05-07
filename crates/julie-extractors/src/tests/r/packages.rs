@@ -25,19 +25,9 @@ library(data.table, quietly = TRUE)
             .filter(|s| s.kind == SymbolKind::Import)
             .collect();
 
-        // Should extract at least dplyr, ggplot2, and data.table as imports
-        // (tidyr via string notation may or may not work depending on parser)
-        assert!(
-            imports.len() >= 3,
-            "Should extract library() calls as imports (found {})",
-            imports.len()
-        );
-
-        let import_names: Vec<&str> = imports.iter().map(|s| s.name.as_str()).collect();
-        assert!(import_names.contains(&"dplyr"), "Should find dplyr import");
-        assert!(
-            import_names.contains(&"ggplot2"),
-            "Should find ggplot2 import"
+        assert_eq!(
+            sorted_symbol_names(imports),
+            vec!["data.table", "dplyr", "ggplot2", "tidyr"]
         );
     }
 
@@ -61,17 +51,9 @@ if (require(somePackage)) {
             .filter(|s| s.kind == SymbolKind::Import)
             .collect();
 
-        assert!(
-            imports.len() >= 2,
-            "Should extract require() calls as imports (found {})",
-            imports.len()
-        );
-
-        let import_names: Vec<&str> = imports.iter().map(|s| s.name.as_str()).collect();
-        assert!(import_names.contains(&"dplyr"), "Should find dplyr import");
-        assert!(
-            import_names.contains(&"ggplot2"),
-            "Should find ggplot2 import"
+        assert_eq!(
+            sorted_symbol_names(imports),
+            vec!["dplyr", "ggplot2", "somePackage"]
         );
     }
 
@@ -93,14 +75,10 @@ internal_result <- somePackage:::internal_function()
             .filter(|s| s.kind == SymbolKind::Variable)
             .collect();
 
-        assert!(
-            variables.len() >= 3,
-            "Should extract variables with namespace calls"
+        assert_eq!(
+            sorted_symbol_names(variables),
+            vec!["internal_result", "plot", "result1"]
         );
-
-        let var_names: Vec<&str> = variables.iter().map(|v| v.name.as_str()).collect();
-        assert!(var_names.contains(&"result1"), "Should find result1");
-        assert!(var_names.contains(&"plot"), "Should find plot");
     }
 
     #[test]
@@ -116,9 +94,13 @@ data <- read_csv("file.csv")
 "#;
 
         let symbols = extract_symbols(r_code);
-        assert!(
-            symbols.len() >= 0,
-            "Should parse code with install.packages comments"
+        assert_eq!(
+            symbols_by_kind(&symbols, SymbolKind::Import),
+            vec!["tidyverse"]
+        );
+        assert_eq!(
+            symbols_by_kind(&symbols, SymbolKind::Variable),
+            vec!["data"]
         );
     }
 
@@ -133,7 +115,10 @@ unloadNamespace("somePackage")
 "#;
 
         let symbols = extract_symbols(r_code);
-        assert!(symbols.len() >= 0, "Should parse detach/unload calls");
+        assert!(
+            symbols.is_empty(),
+            "detach/unload calls should not create package symbols: {symbols:?}"
+        );
     }
 
     #[test]
@@ -152,13 +137,11 @@ df %>%
 
         let symbols = extract_symbols(r_code);
 
-        let variables: Vec<&Symbol> = symbols
-            .iter()
-            .filter(|s| s.kind == SymbolKind::Variable)
-            .collect();
-
-        // Should at least extract df variable
-        assert!(variables.len() >= 0, "Should parse mixed namespace usage");
+        assert_eq!(symbols_by_kind(&symbols, SymbolKind::Import), vec!["dplyr"]);
+        assert_eq!(
+            symbols_by_kind(&symbols, SymbolKind::Variable),
+            Vec::<&str>::new()
+        );
     }
 
     #[test]
@@ -179,7 +162,7 @@ result <- filter(data, value > 10)
             .filter(|s| s.kind == SymbolKind::Variable)
             .collect();
 
-        assert!(variables.len() >= 1, "Should extract result variable");
+        assert_eq!(sorted_symbol_names(variables), vec!["result"]);
     }
 
     #[test]
@@ -204,6 +187,24 @@ library(dplyr)
             .filter(|s| s.kind == SymbolKind::Function)
             .collect();
 
-        assert!(functions.len() >= 1, "Should extract check_pkg function");
+        assert_eq!(sorted_symbol_names(functions), vec!["check_pkg"]);
+        assert_eq!(symbols_by_kind(&symbols, SymbolKind::Import), vec!["dplyr"]);
+    }
+
+    fn symbols_by_kind(symbols: &[Symbol], kind: SymbolKind) -> Vec<&str> {
+        let matching = symbols
+            .iter()
+            .filter(|symbol| symbol.kind == kind)
+            .collect::<Vec<_>>();
+        sorted_symbol_names(matching)
+    }
+
+    fn sorted_symbol_names(symbols: Vec<&Symbol>) -> Vec<&str> {
+        let mut names = symbols
+            .into_iter()
+            .map(|symbol| symbol.name.as_str())
+            .collect::<Vec<_>>();
+        names.sort_unstable();
+        names
     }
 }

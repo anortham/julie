@@ -190,7 +190,7 @@
       "to_key": "fixtures/extraction/sql/basic/source.sql:workers:1:0",
       "kind": "references",
       "file_path": "fixtures/extraction/sql/basic/source.sql",
-      "line_number": 8,
+      "line_number": 9,
       "confidence": "1.000",
       "metadata": {
         "isExternal": false,

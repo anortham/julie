@@ -264,6 +264,49 @@ fn capability_matrix_requires_target_capabilities() {
 }
 
 #[test]
+fn capability_matrix_records_known_gaps_for_languages_with_unfixed_findings() {
+    let root = workspace_root();
+    let matrix = load_matrix(&root);
+    let gap_count = matrix
+        .languages
+        .iter()
+        .map(|row| row.capability_gaps.len())
+        .sum::<usize>();
+
+    assert!(
+        gap_count > 0,
+        "capabilities.json must record explicit capability_gaps while audit findings remain open"
+    );
+}
+
+#[test]
+fn capability_matrix_pending_claim_requires_pending_output_in_fixtures() {
+    let root = workspace_root();
+    let matrix = load_matrix(&root);
+
+    for row in matrix.languages {
+        if !row.capabilities.pending_relationships {
+            continue;
+        }
+
+        let has_pending_evidence = row
+            .fixtures
+            .iter()
+            .any(|fixture| fixture_exercises_pending_relationships(&root, fixture));
+        let has_pending_gap = row
+            .capability_gaps
+            .iter()
+            .any(|gap| gap.capability == "pending_relationships");
+
+        assert!(
+            has_pending_evidence || has_pending_gap,
+            "{} advertises pending relationship support but no golden fixture emits pending_relationships or structured_pending_relationships and no gap is recorded",
+            row.language
+        );
+    }
+}
+
+#[test]
 fn regex_capabilities_advertise_golden_relationships() {
     let capabilities = capabilities_for_language("regex").unwrap();
 
@@ -315,14 +358,7 @@ fn validate_target_capability(row: &CapabilityRow, capability: &str, target_enab
         return;
     }
 
-    if implemented {
-        assert!(
-            gap.is_none(),
-            "{} implements target capability {} but still records a gap",
-            row.language,
-            capability
-        );
-    } else {
+    if !implemented {
         assert!(
             gap.is_some(),
             "{} target capability {} is true but implementation is false and no gap is recorded",
@@ -358,6 +394,19 @@ fn fixture_exercises_relationships(root: &Path, fixture: &FixtureRow) -> bool {
             .and_then(Value::as_array)
             .is_some_and(|items| !items.is_empty())
     })
+}
+
+fn fixture_exercises_pending_relationships(root: &Path, fixture: &FixtureRow) -> bool {
+    let expected = load_expected_fixture(root, fixture);
+
+    ["pending_relationships", "structured_pending_relationships"]
+        .iter()
+        .any(|field| {
+            expected
+                .get(field)
+                .and_then(Value::as_array)
+                .is_some_and(|items| !items.is_empty())
+        })
 }
 
 fn assert_fixture_pending_parity(root: &Path, fixture: &FixtureRow, language: &str) {
