@@ -33,6 +33,7 @@ use tracing::{debug, error, info, warn};
 use crate::database::SymbolDatabase;
 use crate::extractors::ExtractorManager;
 use crate::tools::workspace::indexing::state::{IndexingRepairReason, SharedIndexingRuntime};
+use crate::workspace::mutation_gate::MutationGuard;
 
 pub use types::{FileChangeEvent, FileChangeType, IndexingStats};
 
@@ -89,6 +90,10 @@ pub struct IncrementalIndexer {
     // Configuration
     workspace_root: PathBuf,
 
+    /// Stable identifier for this workspace, used as the mutation-gate key.
+    /// Computed once at construction from `workspace_root` via `generate_workspace_id`.
+    workspace_id: String,
+
     /// Shared flag checked by spawned tasks — when set to true, tasks exit their loops.
     cancel_flag: Arc<AtomicBool>,
 
@@ -133,6 +138,7 @@ pub(super) async fn dispatch_file_event(
     lang_configs: &Arc<crate::search::language_config::LanguageConfigs>,
     tantivy_dirty: &Arc<StdMutex<std::collections::HashSet<String>>>,
     indexing_runtime: &SharedIndexingRuntime,
+    _guard: &MutationGuard<'_>,
 ) -> Option<PathBuf> {
     let relative_for_embed =
         crate::utils::paths::to_relative_unix_style(&event.path, workspace_root).ok();
@@ -146,6 +152,7 @@ pub(super) async fn dispatch_file_event(
                 extractor_manager,
                 workspace_root,
                 search_index.as_ref(),
+                _guard,
             )
             .await
             {
@@ -217,6 +224,7 @@ pub(super) async fn dispatch_file_event(
                 db,
                 workspace_root,
                 search_index.as_ref(),
+                _guard,
             )
             .await
             {
@@ -241,6 +249,7 @@ pub(super) async fn dispatch_file_event(
                 extractor_manager,
                 workspace_root,
                 search_index.as_ref(),
+                _guard,
             )
             .await
             {
@@ -333,6 +342,13 @@ impl IncrementalIndexer {
         let lang_configs =
             Arc::new(crate::search::language_config::LanguageConfigs::load_embedded());
 
+        // Derive a stable workspace_id for use as the mutation-gate key.
+        // Falls back to the raw path string so construction never fails.
+        let workspace_id = workspace_root
+            .to_str()
+            .and_then(|p| crate::workspace::registry::generate_workspace_id(p).ok())
+            .unwrap_or_else(|| workspace_root.to_string_lossy().into_owned());
+
         Ok(Self {
             watcher: None,
             db,
@@ -344,6 +360,7 @@ impl IncrementalIndexer {
             last_processed: Arc::new(TokioMutex::new(HashMap::new())),
             supported_extensions,
             gitignore,
+            workspace_id,
             workspace_root,
             cancel_flag: Arc::new(AtomicBool::new(false)),
             pause_flag: Arc::new(AtomicBool::new(false)),
@@ -462,6 +479,7 @@ impl IncrementalIndexer {
             Arc::clone(&self.last_processed),
             self.supported_extensions.clone(),
             self.workspace_root.clone(),
+            self.workspace_id.clone(),
             Arc::clone(&self.pause_flag),
             Arc::clone(&self.needs_rescan),
             Arc::clone(&self.tantivy_dirty),

@@ -462,6 +462,7 @@ async fn test_overflow_repair_skips_unchanged_indexed_files() {
     use crate::extractors::ExtractorManager;
     use crate::tools::workspace::indexing::state::IndexingRepairReason;
     use crate::watcher::handlers::handle_file_created_or_modified_static;
+    use crate::workspace::mutation_gate::acquire_gate;
 
     let temp_dir = crate::tests::helpers::unique_temp_dir("watcher_repair_skip_unchanged");
     let workspace_root = temp_dir.path().canonicalize().unwrap();
@@ -482,15 +483,19 @@ async fn test_overflow_repair_skips_unchanged_indexed_files() {
 
     let stable_file = workspace_root.join("stable.rs");
     fs::write(&stable_file, "fn stable_symbol() {}\n").unwrap();
-    handle_file_created_or_modified_static(
-        stable_file.canonicalize().unwrap(),
-        &db,
-        &extractor_manager,
-        &workspace_root,
-        None,
-    )
-    .await
-    .unwrap();
+    {
+        let guard = acquire_gate("test_overflow_repair_skip_unchanged").await;
+        handle_file_created_or_modified_static(
+            stable_file.canonicalize().unwrap(),
+            &db,
+            &extractor_manager,
+            &workspace_root,
+            None,
+            &guard,
+        )
+        .await
+        .unwrap();
+    } // guard dropped before process_pending_changes acquires its own
 
     {
         let db_lock = db.lock().unwrap();
@@ -522,6 +527,7 @@ async fn test_overflow_repair_processes_changed_deleted_new_supported_and_text_o
     use crate::database::SymbolDatabase;
     use crate::extractors::ExtractorManager;
     use crate::watcher::handlers::handle_file_created_or_modified_static;
+    use crate::workspace::mutation_gate::acquire_gate;
 
     let temp_dir = crate::tests::helpers::unique_temp_dir("watcher_repair_targeted_dispatch");
     let workspace_root = temp_dir.path().canonicalize().unwrap();
@@ -547,17 +553,21 @@ async fn test_overflow_repair_processes_changed_deleted_new_supported_and_text_o
     fs::write(&changed, "fn before_change() {}\n").unwrap();
     fs::write(&deleted, "fn deleted_symbol() {}\n").unwrap();
 
-    for file in [&unchanged, &changed, &deleted] {
-        handle_file_created_or_modified_static(
-            file.canonicalize().unwrap(),
-            &db,
-            &extractor_manager,
-            &workspace_root,
-            None,
-        )
-        .await
-        .unwrap();
-    }
+    {
+        let guard = acquire_gate("test_overflow_repair_targeted").await;
+        for file in [&unchanged, &changed, &deleted] {
+            handle_file_created_or_modified_static(
+                file.canonicalize().unwrap(),
+                &db,
+                &extractor_manager,
+                &workspace_root,
+                None,
+                &guard,
+            )
+            .await
+            .unwrap();
+        }
+    } // guard dropped before process_pending_changes acquires its own
 
     fs::write(&changed, "fn after_change() {}\n").unwrap();
     fs::remove_file(&deleted).unwrap();
@@ -690,6 +700,7 @@ async fn test_repair_retry_keeps_supported_extractor_failures_due_for_retry() {
     use crate::database::SymbolDatabase;
     use crate::extractors::ExtractorManager;
     use crate::watcher::handlers::handle_file_created_or_modified_static;
+    use crate::workspace::mutation_gate::acquire_gate;
 
     let temp_dir = crate::tests::helpers::unique_temp_dir("watcher_retry_supported_failure");
     let workspace_root = temp_dir.path().canonicalize().unwrap();
@@ -700,15 +711,19 @@ async fn test_repair_retry_keeps_supported_extractor_failures_due_for_retry() {
 
     let rust_file = workspace_root.join("broken.rs");
     fs::write(&rust_file, "fn previously_indexed() {}\n").unwrap();
-    handle_file_created_or_modified_static(
-        rust_file.canonicalize().unwrap(),
-        &db,
-        &extractor_manager,
-        &workspace_root,
-        None,
-    )
-    .await
-    .unwrap();
+    {
+        let guard = acquire_gate("test_retry_supported_failure").await;
+        handle_file_created_or_modified_static(
+            rust_file.canonicalize().unwrap(),
+            &db,
+            &extractor_manager,
+            &workspace_root,
+            None,
+            &guard,
+        )
+        .await
+        .unwrap();
+    } // guard dropped before process_pending_changes acquires its own
 
     fs::write(&rust_file, "// no symbols remain\n").unwrap();
     {
