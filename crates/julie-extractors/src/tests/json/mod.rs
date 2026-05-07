@@ -366,9 +366,24 @@ mod json_extractor_tests {
 
         let symbols = extract_symbols(json);
 
-        // Array as root - may or may not extract items
-        // At minimum, should not crash
-        assert!(symbols.len() >= 0, "Should handle array as root");
+        // The extractor only produces symbols for "pair" nodes. When the root is
+        // an array, the array and object wrappers yield nothing, but the "pair"
+        // nodes inside each object element ARE extracted (one per object key).
+        // Both objects have one key ("name"), so 2 symbols total.
+        assert_eq!(symbols.len(), 2, "Array root: one symbol per key in each element object");
+
+        let mut names: Vec<&str> = symbols.iter().map(|s| s.name.as_str()).collect();
+        names.sort_unstable();
+        assert_eq!(names, vec!["name", "name"], "Both array element keys must be extracted as 'name'");
+
+        for sym in &symbols {
+            assert_eq!(
+                sym.kind,
+                SymbolKind::Variable,
+                "String-valued key must be SymbolKind::Variable, got {:?}",
+                sym.kind
+            );
+        }
     }
 
     #[test]

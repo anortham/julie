@@ -339,8 +339,8 @@ pub enum SymbolKind {
 }
 
 impl SymbolKind {
-    /// Convert from string representation (for database deserialization)
-    #[allow(dead_code)] // TODO: Used for database deserialization
+    /// Convert from string representation (for database deserialization).
+    /// Returns `None` for unrecognised strings instead of panicking.
     pub fn try_from_string(s: &str) -> Option<Self> {
         match s {
             "class" => Some(SymbolKind::Class),

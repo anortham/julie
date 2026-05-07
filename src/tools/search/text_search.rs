@@ -396,7 +396,12 @@ fn definition_search_with_index(
                                     signature: s.signature.unwrap_or_default(),
                                     doc_comment: s.doc_comment.unwrap_or_default(),
                                     file_path: s.file_path,
-                                    kind: format!("{:?}", s.kind).to_lowercase(),
+                                    // Use Display (snake_case via SymbolKind's fmt::Display impl),
+                                    // not Debug+lowercase — the latter produces "enummember" for
+                                    // SymbolKind::EnumMember while try_from_string expects
+                                    // "enum_member", silently degrading rescued enum members to
+                                    // SymbolKind::Variable. (Caught by Codex adversarial review.)
+                                    kind: s.kind.to_string(),
                                     language: s.language,
                                     start_line: s.start_line,
                                     score,
@@ -533,10 +538,22 @@ fn content_search_with_index(
 
 /// Convert a Tantivy SymbolSearchResult into an extractors Symbol.
 pub(crate) fn tantivy_symbol_to_symbol(result: crate::search::index::SymbolSearchResult) -> Symbol {
+    // Resolve the kind before consuming `result` fields into the struct literal.
+    // `try_from_string` returns None for unrecognised strings (e.g. from a
+    // corrupt or schema-evolved Tantivy row) — degrade to Variable instead of
+    // panicking and taking down the search request.
+    let kind = SymbolKind::try_from_string(&result.kind).unwrap_or_else(|| {
+        tracing::warn!(
+            "unknown SymbolKind {:?} in tantivy row {}; degrading to Variable",
+            result.kind,
+            result.id
+        );
+        SymbolKind::Variable
+    });
     Symbol {
         id: result.id,
         name: result.name,
-        kind: SymbolKind::from_string(&result.kind),
+        kind,
         language: result.language,
         file_path: result.file_path,
         start_line: result.start_line,

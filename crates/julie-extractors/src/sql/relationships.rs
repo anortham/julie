@@ -112,8 +112,11 @@ pub(super) fn extract_foreign_key_relationship(
         .iter()
         .find(|s| s.name == referenced_table && s.kind == SymbolKind::Class);
 
-    // Create relationship if we have at least the source symbol
-    if let Some(source_symbol) = source_symbol {
+    // SQL is in NO_PENDING_CAPABILITIES: only emit a relationship when both the
+    // source and target tables are defined in this file. A missing target means
+    // the referenced table lives in another file; we suppress the relationship
+    // entirely rather than emitting a dead synthetic ID like "external_users".
+    if let (Some(source_symbol), Some(target_symbol)) = (source_symbol, target_symbol) {
         let mut metadata = HashMap::new();
         metadata.insert(
             "targetTable".to_string(),
@@ -124,29 +127,22 @@ pub(super) fn extract_foreign_key_relationship(
             "relationshipType".to_string(),
             Value::String("foreign_key".to_string()),
         );
-        metadata.insert(
-            "isExternal".to_string(),
-            Value::Bool(target_symbol.is_none()),
-        );
+        metadata.insert("isExternal".to_string(), Value::Bool(false));
 
         relationships.push(Relationship {
             id: format!(
                 "{}_{}_{:?}_{}",
                 source_symbol.id,
-                target_symbol
-                    .map(|s| s.id.clone())
-                    .unwrap_or_else(|| format!("external_{}", referenced_table)),
+                target_symbol.id,
                 RelationshipKind::References,
                 node.start_position().row
             ),
             from_symbol_id: source_symbol.id.clone(),
-            to_symbol_id: target_symbol
-                .map(|s| s.id.clone())
-                .unwrap_or_else(|| format!("external_{}", referenced_table)),
+            to_symbol_id: target_symbol.id.clone(),
             kind: RelationshipKind::References,
             file_path: base.file_path.clone(),
             line_number: node.start_position().row as u32 + 1,
-            confidence: if target_symbol.is_some() { 1.0 } else { 0.8 },
+            confidence: 1.0,
             metadata: Some(metadata),
         });
     }
