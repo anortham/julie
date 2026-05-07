@@ -40,7 +40,8 @@ Workers must use Julie MCP tools before touching code:
 - Task 10 is completed and committed as `e75facd1 fix(extractors): cover identifier and call gaps`.
 - Task 11 is completed and committed as `57f59b74 fix(extractors): preserve structured pending targets`.
 - Task 12 is completed in the current working tree. Verification passed, and the Task 12 ledger records focused exact tests, changed-file, extractor, parser-upgrade, and one dev gate.
-- Task 13 is the next unstarted task. Stop here until work resumes.
+- Task 13 is completed in the current working tree. Verification passed, and the Task 13 ledger records focused exact tests, golden refresh, changed-file, parser-upgrade, and one dev gate.
+- Task 14 is the next unstarted task.
 
 ## Finding Coverage
 
@@ -511,21 +512,28 @@ Reviewed-but-not-promoted claims from the compiled document are not task drivers
 
 ## Task 13: Scripting Language Extraction
 
+**Status:** Completed on 2026-05-07 in the current working tree.
+
 **Files:**
 - Modify `crates/julie-extractors/src/powershell/relationships.rs`
 - Modify `crates/julie-extractors/src/powershell/classes.rs`
 - Modify `crates/julie-extractors/src/powershell/commands.rs`
+- Modify `crates/julie-extractors/src/powershell/documentation.rs`
+- Modify `crates/julie-extractors/src/powershell/helpers.rs`
 - Modify `crates/julie-extractors/src/bash/commands.rs`
 - Modify `crates/julie-extractors/src/bash/relationships.rs`
+- Modify `crates/julie-extractors/src/bash/signatures.rs`
 - Modify `crates/julie-extractors/src/bash/variables.rs`
+- Modify `crates/julie-extractors/src/lua/core.rs`
 - Modify `crates/julie-extractors/src/lua/functions.rs`
-- Modify `crates/julie-extractors/src/lua/helpers.rs`
 - Modify `crates/julie-extractors/src/lua/relationships.rs`
 - Modify `crates/julie-extractors/src/gdscript/functions.rs`
 - Modify `crates/julie-extractors/src/gdscript/identifiers.rs`
+- Modify `crates/julie-extractors/src/gdscript/mod.rs`
 - Modify `crates/julie-extractors/src/gdscript/relationships.rs`
 - Modify `crates/julie-extractors/src/test_detection.rs`
 - Test matching files under `crates/julie-extractors/src/tests/{powershell,bash,lua,gdscript}/`
+- Update `fixtures/extraction/{gdscript,lua,powershell}/basic/expected.json`
 
 **What to build:** Clean up command modeling, built-in filtering, signatures, member-call names, imports, aliases, source commands, and test framework detection for scripting languages.
 
@@ -547,6 +555,15 @@ Reviewed-but-not-promoted claims from the compiled document are not task drivers
 - Built-in filters are one source of truth per language.
 - Signatures fit on one logical declaration line.
 - Import/source constructs are searchable and relationship-backed.
+
+**Completion notes:**
+- Bash external commands now remain call identifiers plus pending call relationships instead of fake `Function` symbols, while `alias`, `source`, and dot-source commands emit searchable import symbols and structured pending import relationships.
+- Bash builtin filtering is centralized in `bash/commands.rs`, and local all-caps variables no longer become environment constants just because their names shout.
+- PowerShell command invocations no longer become function symbols, builtin cmdlet filtering is shared by command relationships, and stale command-documentation helpers were removed.
+- PowerShell method signatures are assembled from AST children before the body, preserving modifiers, return types, names, and parameters without doubled spaces.
+- Lua function signatures now stop at the declaration line, and bare `require("...")` emits a real import symbol plus a structured pending import relationship from that symbol ID.
+- GDScript function signatures now stop before the body, attribute-call identifiers use the rightmost method name, and relationship targets keep the full receiver prefix.
+- Test framework detection for Bash, PowerShell, and Ruby now covers common framework names while path-gating generic DSL words to avoid production false positives.
 
 ## Task 14: JVM, Swift, Scala, And PHP Idioms
 
@@ -790,3 +807,9 @@ cargo xtask test dogfood
 | Task 12 changed-file buckets pass | `cargo xtask test changed` | task-12-changed | `57f59b748850e373c0541f9acb7f6ba7f0a4ba67 + dirty Task 12 working tree` | PASS, extractors and parser-upgrade buckets passed in 8.8s | 2026-05-06T23:50:56Z | No |
 | Task 12 extractor specialist bucket passes | `cargo xtask test bucket extractors` | task-12-extractors | `57f59b748850e373c0541f9acb7f6ba7f0a4ba67 + dirty Task 12 working tree` | PASS, extractors bucket passed in 0.8s | 2026-05-06T23:50:56Z | No |
 | Task 12 batch regression tier passes | `cargo xtask test dev` | task-12-dev | `57f59b748850e373c0541f9acb7f6ba7f0a4ba67 + dirty Task 12 working tree` | PASS, 22 buckets passed in 356.0s; not rerun after warning-only helper cleanup, final `changed` gate passed | 2026-05-06T23:50:56Z | No |
+| Task 13 focused scripting extractor regressions pass | sequential loop over `cargo nextest run -p julie-extractors --lib <exact_test>` for `test_gdscript_function_signature_does_not_include_body`, `test_gdscript_attribute_call_identifier_uses_rightmost_name`, `test_attribute_call_relationship_uses_rightmost_method_name`, `test_bash_external_command_is_identifier_not_function_symbol`, `test_bash_alias_and_source_emit_symbols_and_pending_relationships`, `test_bash_local_all_caps_variable_is_not_environment_constant`, `test_powershell_external_command_call_is_identifier_not_function_symbol`, `test_powershell_method_signature_includes_parameters_without_double_spaces`, `test_powershell_builtin_cmdlets_do_not_emit_noisy_pending_relationships`, `test_lua_function_signature_does_not_include_body`, `test_lua_bare_require_emits_import_symbol`, and `test_bash_powershell_and_ruby_test_framework_detection_covers_common_frameworks` | task-13-focused | `6594c4acbac9d579ad5621d9ace6096efd91a034 + dirty Task 13 working tree` | PASS, 12 exact tests passed | 2026-05-07T00:48:53Z | No |
+| Task 13 canonical extractor golden fixtures are current | `UPDATE_GOLDEN=1 cargo nextest run -p julie-extractors golden` | task-13-golden | `6594c4acbac9d579ad5621d9ace6096efd91a034 + dirty Task 13 working tree` | PASS, 3 tests passed | 2026-05-07T00:48:53Z | No |
+| Task 13 formatting is current | `cargo fmt --check` | task-13-fmt-check | `6594c4acbac9d579ad5621d9ace6096efd91a034 + dirty Task 13 working tree` | PASS | 2026-05-07T00:48:53Z | No |
+| Task 13 diff has no whitespace errors | `git diff --check` | task-13-diff-check | `6594c4acbac9d579ad5621d9ace6096efd91a034 + dirty Task 13 working tree` | PASS | 2026-05-07T00:48:53Z | No |
+| Task 13 changed-file buckets pass | `cargo xtask test changed` | task-13-changed | `6594c4acbac9d579ad5621d9ace6096efd91a034 + dirty Task 13 working tree` | PASS, extractors and parser-upgrade buckets passed in 3.3s | 2026-05-07T00:48:53Z | No |
+| Task 13 batch regression tier passes | `cargo xtask test dev` | task-13-dev | `6594c4acbac9d579ad5621d9ace6096efd91a034 + dirty Task 13 working tree` | PASS, 22 buckets passed in 354.4s | 2026-05-07T00:48:53Z | No |

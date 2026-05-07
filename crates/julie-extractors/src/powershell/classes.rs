@@ -6,8 +6,8 @@ use tree_sitter::Node;
 
 use super::documentation;
 use super::helpers::{
-    extract_enum_member_value, extract_inheritance, extract_property_type, extract_return_type,
-    find_class_name_node, find_enum_member_name_node, find_enum_name_node, find_method_name_node,
+    extract_enum_member_value, extract_inheritance, extract_property_type, find_class_name_node,
+    find_enum_member_name_node, find_enum_name_node, find_method_name_node,
     find_property_name_node, has_modifier,
 };
 
@@ -186,15 +186,38 @@ fn extract_class_signature(base: &BaseExtractor, node: Node) -> Option<String> {
 
 /// Extract method signature
 fn extract_method_signature(base: &BaseExtractor, node: Node) -> Option<String> {
-    let name = find_method_name_node(node).map(|n| base.get_node_text(&n))?;
+    let name = find_method_name_node(node).map(|n| base.get_node_text(&n).trim().to_string())?;
 
-    let return_type = extract_return_type(base, node);
-    let is_static = has_modifier(base, node, "static");
+    let mut prefix_parts = Vec::new();
+    let mut parameters = String::new();
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        match child.kind() {
+            "script_block" | "{" => break,
+            "class_method_parameter_list" | "parameter_list" => {
+                parameters = normalize_signature_fragment(&base.get_node_text(&child));
+            }
+            "simple_name" | "identifier" | "method_name" => {}
+            "(" | ")" => {}
+            _ => {
+                let fragment = normalize_signature_fragment(&base.get_node_text(&child));
+                if !fragment.is_empty() {
+                    prefix_parts.push(fragment);
+                }
+            }
+        }
+    }
 
-    let prefix = if is_static { "static " } else { "" };
-    let suffix = return_type.map_or(String::new(), |t| format!(" {}", t));
+    let mut signature = prefix_parts.join(" ");
+    if !signature.is_empty() {
+        signature.push(' ');
+    }
+    signature.push_str(&name);
+    signature.push('(');
+    signature.push_str(&parameters);
+    signature.push(')');
 
-    Some(format!("{}{} {}()", prefix, suffix, name))
+    Some(signature)
 }
 
 /// Extract property signature
@@ -210,4 +233,12 @@ fn extract_property_signature(base: &BaseExtractor, node: Node) -> Option<String
     } else {
         Some(format!("{}${}", prefix, name))
     }
+}
+
+fn normalize_signature_fragment(text: &str) -> String {
+    text.lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
 }

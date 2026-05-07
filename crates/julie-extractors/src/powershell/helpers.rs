@@ -330,14 +330,6 @@ pub(super) fn extract_inheritance(base: &BaseExtractor, node: Node) -> Option<St
         .and_then(|captures| captures.get(1).map(|m| m.as_str().to_string()))
 }
 
-/// Extract return type annotation from a method definition
-pub(super) fn extract_return_type(base: &BaseExtractor, node: Node) -> Option<String> {
-    let node_text = base.get_node_text(&node);
-    BRACKET_TYPE_RE
-        .captures(&node_text)
-        .and_then(|captures| captures.get(1).map(|m| format!("[{}]", m.as_str())))
-}
-
 /// Extract property type annotation from a property definition
 pub(super) fn extract_property_type(base: &BaseExtractor, node: Node) -> Option<String> {
     let node_text = base.get_node_text(&node);

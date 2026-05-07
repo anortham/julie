@@ -71,51 +71,6 @@ pub(super) fn get_variable_documentation(
     }
 }
 
-/// Generate documentation for PowerShell commands (Azure, Windows, DevOps)
-pub(super) fn get_command_documentation(command_name: &str) -> String {
-    let command_docs = [
-        ("Connect-AzAccount", "[Azure CLI Call]"),
-        ("Set-AzContext", "[Azure Context Management]"),
-        ("New-AzResourceGroup", "[Azure Resource Management]"),
-        ("New-AzResourceGroupDeployment", "[Azure Deployment]"),
-        ("docker", "[Docker Container Call]"),
-        ("kubectl", "[Kubernetes CLI Call]"),
-        ("az", "[Azure CLI Call]"),
-        ("Import-Module", "[PowerShell Module Import]"),
-        ("Export-ModuleMember", "[PowerShell Module Export]"),
-        ("Invoke-Command", "[PowerShell Remoting]"),
-    ];
-
-    // Check direct match first
-    for (cmd, doc) in &command_docs {
-        if command_name == *cmd {
-            return doc.to_string();
-        }
-    }
-
-    // Pattern matching for commands
-    if command_name.starts_with("Connect-Az") {
-        return "[Azure CLI Call]".to_string();
-    }
-    if command_name.starts_with("New-Az") {
-        return "[Azure Resource Creation]".to_string();
-    }
-    if command_name.starts_with("Set-Az") {
-        return "[Azure Configuration]".to_string();
-    }
-    if command_name.starts_with("Get-Az") {
-        return "[Azure Information Retrieval]".to_string();
-    }
-    if command_name.contains("WindowsFeature") {
-        return "[Windows Feature Management]".to_string();
-    }
-    if command_name.contains("Service") {
-        return "[Windows Service Management]".to_string();
-    }
-
-    "[PowerShell Command]".to_string()
-}
-
 /// Extract PowerShell doc comments (comment-based help)
 /// Handles both block comments <# #> and single-line # comments
 pub(super) fn extract_powershell_doc_comment(base: &BaseExtractor, node: &Node) -> Option<String> {

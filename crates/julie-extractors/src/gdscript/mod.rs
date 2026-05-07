@@ -145,7 +145,7 @@ impl GDScriptExtractor {
                 // Return type is on the `func` line
                 let func_line = signature
                     .lines()
-                    .find(|l| l.trim_start().starts_with("func "))?;
+                    .find(|l| l.trim_start().contains("func "))?;
                 let re = regex::Regex::new(r"->\s*(\w+)").ok()?;
                 re.captures(func_line).map(|c| c[1].to_string())
             }

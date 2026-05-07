@@ -307,4 +307,30 @@ func apply_movement(input_vector: Vector2):
         assert!(doc.contains("Handles movement input"));
         assert!(doc.contains("@param input_vector: Normalized input direction"));
     }
+
+    #[test]
+    fn test_gdscript_function_signature_does_not_include_body() {
+        let code = r#"
+extends Node
+
+static func build_player(name: String) -> String:
+    var inside_body_marker = name.to_upper()
+    return inside_body_marker
+"#;
+
+        let symbols = extract_symbols(code);
+
+        let build_player = symbols.iter().find(|s| s.name == "build_player");
+        assert!(build_player.is_some());
+
+        let signature = build_player.unwrap().signature.as_ref().unwrap();
+        assert_eq!(
+            signature,
+            "static func build_player(name: String) -> String:"
+        );
+        assert!(
+            !signature.contains("inside_body_marker"),
+            "Signature should not include function body text"
+        );
+    }
 }

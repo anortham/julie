@@ -49,6 +49,38 @@ mod bash_extractor_tests {
         (symbols, relationships)
     }
 
+    fn extract_full(
+        code: &str,
+    ) -> (
+        Vec<Symbol>,
+        Vec<crate::base::Relationship>,
+        Vec<crate::base::Identifier>,
+        Vec<crate::base::PendingRelationship>,
+        Vec<crate::base::StructuredPendingRelationship>,
+    ) {
+        let workspace_root = PathBuf::from("/tmp/test");
+        let mut parser = init_parser();
+        let tree = parser.parse(code, None).expect("Failed to parse code");
+        let mut extractor = BashExtractor::new(
+            "bash".to_string(),
+            "test.sh".to_string(),
+            code.to_string(),
+            &workspace_root,
+        );
+        let symbols = extractor.extract_symbols(&tree);
+        let relationships = extractor.extract_relationships(&tree, &symbols);
+        let identifiers = extractor.extract_identifiers(&tree, &symbols);
+        let pending_relationships = extractor.get_pending_relationships();
+        let structured_pending_relationships = extractor.get_structured_pending_relationships();
+        (
+            symbols,
+            relationships,
+            identifiers,
+            pending_relationships,
+            structured_pending_relationships,
+        )
+    }
+
     #[test]
     fn test_extract_bash_functions_and_parameters() {
         let bash_code = r#"#!/bin/bash
@@ -180,6 +212,163 @@ export API_URL="https://example.test" FEATURE_FLAG=1 REGION=us-east-1
     }
 
     #[test]
+    fn test_bash_external_command_is_identifier_not_function_symbol() {
+        let bash_code = r#"#!/bin/bash
+
+build_site() {
+    python3 scripts/build_site.py --out dist
+    return 0
+}
+"#;
+
+        let (symbols, relationships, identifiers, pending_relationships, structured_pending) =
+            extract_full(bash_code);
+
+        assert!(
+            !symbols
+                .iter()
+                .any(|symbol| symbol.name == "python3" && symbol.kind == SymbolKind::Function),
+            "python3 should not be extracted as a Function symbol: {:?}",
+            symbols
+                .iter()
+                .map(|symbol| (&symbol.name, &symbol.kind))
+                .collect::<Vec<_>>()
+        );
+
+        assert!(
+            identifiers
+                .iter()
+                .any(|identifier| identifier.name == "python3"
+                    && identifier.kind == IdentifierKind::Call),
+            "python3 should be extracted as a call identifier"
+        );
+
+        assert!(
+            pending_relationships.iter().any(|pending| {
+                pending.kind == RelationshipKind::Calls && pending.callee_name == "python3"
+            }),
+            "python3 should create a pending call relationship"
+        );
+
+        assert!(
+            structured_pending.iter().any(|pending| {
+                pending.pending.kind == RelationshipKind::Calls
+                    && pending.target.terminal_name == "python3"
+            }),
+            "python3 should preserve structured pending call context"
+        );
+
+        assert!(
+            relationships.is_empty(),
+            "External command calls should not create resolved relationships"
+        );
+    }
+
+    #[test]
+    fn test_bash_alias_and_source_emit_symbols_and_pending_relationships() {
+        let bash_code = r#"#!/bin/bash
+
+alias ll='ls -la'
+
+bootstrap() {
+    source ./scripts/common.sh
+    . ./scripts/legacy.sh
+}
+"#;
+
+        let (symbols, relationships, _identifiers, pending_relationships, structured_pending) =
+            extract_full(bash_code);
+
+        let alias = symbols
+            .iter()
+            .find(|symbol| symbol.name == "ll")
+            .expect("alias symbol should be extracted");
+        assert_eq!(alias.kind, SymbolKind::Import);
+        assert_eq!(alias.signature.as_deref(), Some("alias ll='ls -la'"));
+        assert_eq!(
+            alias
+                .metadata
+                .as_ref()
+                .and_then(|metadata| metadata.get("aliasTarget"))
+                .and_then(|value| value.as_str()),
+            Some("ls -la")
+        );
+
+        let common = symbols
+            .iter()
+            .find(|symbol| symbol.name == "common")
+            .expect("source symbol should be extracted");
+        assert_eq!(common.kind, SymbolKind::Import);
+        assert_eq!(
+            common.signature.as_deref(),
+            Some("source ./scripts/common.sh")
+        );
+        assert_eq!(
+            common
+                .metadata
+                .as_ref()
+                .and_then(|metadata| metadata.get("sourcePath"))
+                .and_then(|value| value.as_str()),
+            Some("./scripts/common.sh")
+        );
+
+        let legacy = symbols
+            .iter()
+            .find(|symbol| symbol.name == "legacy")
+            .expect("dot-source symbol should be extracted");
+        assert_eq!(legacy.kind, SymbolKind::Import);
+        assert_eq!(
+            legacy
+                .metadata
+                .as_ref()
+                .and_then(|metadata| metadata.get("sourceCommand"))
+                .and_then(|value| value.as_str()),
+            Some(".")
+        );
+
+        assert!(
+            relationships.is_empty(),
+            "source imports should use structured pending relationships"
+        );
+
+        for target_name in ["common", "legacy"] {
+            assert!(
+                pending_relationships.iter().any(|pending| {
+                    pending.kind == RelationshipKind::Imports
+                        && pending.callee_name.contains(target_name)
+                }),
+                "{target_name} should create a pending import relationship"
+            );
+            assert!(
+                structured_pending.iter().any(|pending| {
+                    pending.pending.kind == RelationshipKind::Imports
+                        && pending.target.terminal_name == target_name
+                }),
+                "{target_name} should preserve structured pending import context"
+            );
+        }
+    }
+
+    #[test]
+    fn test_bash_local_all_caps_variable_is_not_environment_constant() {
+        let bash_code = r#"#!/bin/bash
+
+deploy() {
+    local ALL_CAPS="value"
+}
+"#;
+
+        let symbols = extract_symbols(bash_code);
+
+        let local_all_caps = symbols
+            .iter()
+            .find(|symbol| symbol.name == "ALL_CAPS")
+            .expect("local ALL_CAPS variable should be extracted");
+
+        assert_eq!(local_all_caps.kind, SymbolKind::Variable);
+    }
+
+    #[test]
     fn test_extract_devops_and_cross_language_command_calls() {
         let bash_code = r#"#!/bin/bash
 
@@ -239,105 +428,68 @@ monitoring_setup() {
 }
 "#;
 
-        let symbols = extract_symbols(bash_code);
+        let (
+            symbols,
+            _relationships,
+            identifiers,
+            pending_relationships,
+            structured_pending_relationships,
+        ) = extract_full(bash_code);
 
-        // Should extract cross-language commands
-        let commands: Vec<&Symbol> = symbols
-            .iter()
-            .filter(|s| {
-                s.kind == SymbolKind::Function
-                    && [
-                        "python3",
-                        "npm",
-                        "bun",
-                        "node",
-                        "go",
-                        "docker",
-                        "kubectl",
-                        "terraform",
-                        "git",
-                        "java",
-                        "mvn",
-                        "dotnet",
-                        "php",
-                        "ruby",
-                        "curl",
-                        "ssh",
-                        "scp",
-                    ]
-                    .contains(&s.name.as_str())
-            })
-            .collect();
+        // External commands should be identifiers and pending relationships, not Function symbols.
+        for name in [
+            "python3",
+            "npm",
+            "bun",
+            "node",
+            "go",
+            "docker",
+            "kubectl",
+            "terraform",
+            "git",
+            "java",
+            "mvn",
+            "dotnet",
+            "php",
+            "ruby",
+            "curl",
+            "ssh",
+            "scp",
+        ] {
+            assert!(
+                !symbols
+                    .iter()
+                    .any(|symbol| symbol.name == name && symbol.kind == SymbolKind::Function),
+                "{name} should not be extracted as a Function symbol"
+            );
+            assert!(
+                identifiers
+                    .iter()
+                    .any(|identifier| identifier.name == name
+                        && identifier.kind == IdentifierKind::Call),
+                "{name} should be extracted as a call identifier"
+            );
+        }
 
         assert!(
-            commands.len() >= 10,
-            "Expected at least 10 cross-language commands, got {}",
-            commands.len()
+            pending_relationships.iter().any(|pending| {
+                pending.kind == RelationshipKind::Calls && pending.callee_name == "python3"
+            }),
+            "python3 should create a pending call relationship"
         );
-
-        // Verify specific commands
-        let python_cmd = commands.iter().find(|c| c.name == "python3");
-        assert!(python_cmd.is_some(), "python3 command not found");
-        let python_cmd = python_cmd.unwrap();
-        // Now extracts real doc comment from code
-        assert_eq!(
-            python_cmd.doc_comment,
-            Some("# Python application setup".to_string())
-        );
-
-        let node_cmd = commands.iter().find(|c| c.name == "node");
-        assert!(node_cmd.is_some(), "node command not found");
-        let node_cmd = node_cmd.unwrap();
-        // Now extracts real doc comment from code (shebang + description)
         assert!(
-            node_cmd
-                .doc_comment
-                .as_ref()
-                .map(|d| d.contains("DevOps")
-                    || d.contains("deployment")
-                    || d.contains("Node.js service"))
-                .unwrap_or(false),
-            "Node comment should mention deployment or service, got: {:?}",
-            node_cmd.doc_comment
+            pending_relationships.iter().any(|pending| {
+                pending.kind == RelationshipKind::Calls && pending.callee_name == "git"
+            }),
+            "git should create a pending call relationship"
         );
-
-        let docker_cmd = commands.iter().find(|c| c.name == "docker");
-        assert!(docker_cmd.is_some(), "docker command not found");
-        let docker_cmd = docker_cmd.unwrap();
-        // Now extracts real doc comment from code (Container orchestration section)
         assert!(
-            docker_cmd
-                .doc_comment
-                .as_ref()
-                .map(|d| d.contains("Container") || d.contains("orchestration"))
-                .unwrap_or(false),
-            "Docker comment should mention container orchestration, got: {:?}",
-            docker_cmd.doc_comment
+            structured_pending_relationships.iter().any(|pending| {
+                pending.pending.kind == RelationshipKind::Calls
+                    && pending.target.terminal_name == "docker"
+            }),
+            "docker should preserve structured pending call context"
         );
-
-        let kubectl_cmd = commands.iter().find(|c| c.name == "kubectl");
-        assert!(kubectl_cmd.is_some(), "kubectl command not found");
-        let kubectl_cmd = kubectl_cmd.unwrap();
-        // Now extracts real doc comment from code
-        assert!(
-            kubectl_cmd.doc_comment.is_some(),
-            "kubectl should have doc_comment"
-        );
-
-        let terraform_cmd = commands.iter().find(|c| c.name == "terraform");
-        assert!(terraform_cmd.is_some(), "terraform command not found");
-        let terraform_cmd = terraform_cmd.unwrap();
-        // Now extracts real doc comment from code
-        assert!(
-            terraform_cmd.doc_comment.is_some(),
-            "terraform should have doc_comment"
-        );
-
-        let bun_cmd = commands.iter().find(|c| c.name == "bun");
-        assert!(bun_cmd.is_some(), "bun command not found");
-        let bun_cmd = bun_cmd.unwrap();
-        // Now extracts real doc comment from code
-        assert!(bun_cmd.doc_comment.is_some(), "bun should have doc_comment");
     }
 
     #[test]
@@ -573,7 +725,8 @@ verify_deployment() {
 main "$@"
 "#;
 
-        let (symbols, relationships) = extract_symbols_and_relationships(bash_code);
+        let (symbols, relationships, identifiers, pending_relationships, structured_pending) =
+            extract_full(bash_code);
 
         // Should extract function call relationships
         let call_relationships: Vec<&crate::base::Relationship> = relationships
@@ -612,19 +765,35 @@ main "$@"
             "main -> setup_environment relationship not found"
         );
 
-        // Should extract external command calls
-        let commands: Vec<&Symbol> = symbols
-            .iter()
-            .filter(|s| {
-                s.kind == SymbolKind::Function
-                    && ["npm", "python3", "docker-compose", "kubectl", "curl"]
-                        .contains(&s.name.as_str())
-            })
-            .collect();
+        // External command calls should be identifiers and pending relationships, not Function symbols.
+        for name in ["npm", "python3", "docker-compose", "kubectl", "curl"] {
+            assert!(
+                !symbols
+                    .iter()
+                    .any(|symbol| symbol.name == name && symbol.kind == SymbolKind::Function),
+                "{name} should not be extracted as a Function symbol"
+            );
+            assert!(
+                identifiers
+                    .iter()
+                    .any(|identifier| identifier.name == name
+                        && identifier.kind == IdentifierKind::Call),
+                "{name} should be extracted as a call identifier"
+            );
+        }
+
         assert!(
-            commands.len() >= 4,
-            "Expected at least 4 external command calls, got {}",
-            commands.len()
+            pending_relationships.iter().any(|pending| {
+                pending.kind == RelationshipKind::Calls && pending.callee_name == "npm"
+            }),
+            "npm should create a pending call relationship"
+        );
+        assert!(
+            structured_pending.iter().any(|pending| {
+                pending.pending.kind == RelationshipKind::Calls
+                    && pending.target.terminal_name == "python3"
+            }),
+            "python3 should preserve structured pending call context"
         );
     }
 

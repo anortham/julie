@@ -135,6 +135,11 @@ fn visit_node_for_relationships(
         "call" | "call_expression" => {
             extract_call_relationships(extractor, node, symbols, scoped_index, relationships);
         }
+        "attribute" => {
+            if attribute_has_call_suffix(&node) {
+                extract_call_relationships(extractor, node, symbols, scoped_index, relationships);
+            }
+        }
         _ => {}
     }
 
@@ -223,6 +228,47 @@ fn extract_target_from_call(base: &crate::base::BaseExtractor, node: &Node) -> U
     // call -> identifier (for simple calls like func_name())
     // call -> attribute (for method calls like obj.method() or self.method())
 
+    if node.kind() == "attribute" {
+        let mut cursor = node.walk();
+        let children: Vec<Node> = node.children(&mut cursor).collect();
+
+        if let Some(attribute_call) = children
+            .iter()
+            .find(|child| child.kind() == "attribute_call")
+        {
+            let mut call_cursor = attribute_call.walk();
+            let call_children: Vec<Node> = attribute_call.children(&mut call_cursor).collect();
+            if let Some(name_node) = call_children
+                .iter()
+                .find(|child| child.kind() == "identifier")
+            {
+                let terminal_name = base.get_node_text(name_node);
+                let display_name = base.get_node_text(node);
+                let receiver = display_name
+                    .rsplit_once('.')
+                    .map(|(receiver, _)| receiver.to_string())
+                    .or_else(|| {
+                        children
+                            .iter()
+                            .find(|child| child.is_named() && child.kind() != "attribute_call")
+                            .map(|child| base.get_node_text(child))
+                    });
+
+                if let Some(receiver) = receiver {
+                    return UnresolvedTarget {
+                        display_name,
+                        terminal_name,
+                        receiver: Some(receiver),
+                        namespace_path: Vec::new(),
+                        import_context: None,
+                    };
+                }
+
+                return UnresolvedTarget::simple(terminal_name);
+            }
+        }
+    }
+
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         match child.kind() {
@@ -235,6 +281,33 @@ fn extract_target_from_call(base: &crate::base::BaseExtractor, node: &Node) -> U
                 // For an attribute node, the rightmost identifier is the member being accessed
                 let mut attr_cursor = child.walk();
                 let attr_children: Vec<Node> = child.children(&mut attr_cursor).collect();
+
+                if let Some(attribute_call) = attr_children
+                    .iter()
+                    .find(|attr_child| attr_child.kind() == "attribute_call")
+                {
+                    let mut call_cursor = attribute_call.walk();
+                    if let Some(name_node) = attribute_call
+                        .children(&mut call_cursor)
+                        .find(|call_child| call_child.kind() == "identifier")
+                    {
+                        let terminal_name = base.get_node_text(&name_node);
+                        let attr_text = base.get_node_text(&child);
+                        if let Some(receiver) = attr_text
+                            .rsplit_once('.')
+                            .map(|(receiver, _)| receiver.to_string())
+                        {
+                            return UnresolvedTarget {
+                                display_name: attr_text,
+                                terminal_name,
+                                receiver: Some(receiver),
+                                namespace_path: Vec::new(),
+                                import_context: None,
+                            };
+                        }
+                        return UnresolvedTarget::simple(terminal_name);
+                    }
+                }
 
                 // The last identifier in the attribute is the method name
                 if let Some(last_child) = attr_children.last() {
@@ -274,4 +347,10 @@ fn extract_target_from_call(base: &crate::base::BaseExtractor, node: &Node) -> U
     }
 
     UnresolvedTarget::simple(String::new())
+}
+
+fn attribute_has_call_suffix(node: &Node) -> bool {
+    let mut cursor = node.walk();
+    node.children(&mut cursor)
+        .any(|child| child.kind() == "attribute_call")
 }

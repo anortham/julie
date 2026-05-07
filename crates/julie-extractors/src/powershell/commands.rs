@@ -5,14 +5,20 @@ use crate::base::{BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility};
 use regex::Regex;
 use tree_sitter::Node;
 
-use super::documentation::get_command_documentation;
 use super::helpers::find_command_name_node;
 
-/// Extract command and cmdlet symbols (Azure, Windows, DevOps focused)
+const BUILTIN_CMDLETS: &[&str] = &["Write-Output", "Get-ChildItem", "Invoke-Command"];
+
+pub(super) fn is_builtin_cmdlet(command_name: &str) -> bool {
+    BUILTIN_CMDLETS.contains(&command_name)
+}
+
+/// Handle command and cmdlet invocations.
+/// They are modeled as identifiers and relationships, not symbols.
 pub(super) fn extract_command(
     base: &mut BaseExtractor,
     node: Node,
-    parent_id: Option<&str>,
+    _parent_id: Option<&str>,
 ) -> Option<Symbol> {
     // Check for dot sourcing first (special case with different AST structure)
     let mut cursor = node.walk();
@@ -38,57 +44,7 @@ pub(super) fn extract_command(
         return None; // Handled in imports module
     }
 
-    // Extract well-known DevOps commands and PowerShell cmdlets as symbols
-    // This preserves the original design intent of tracking important tool usage
-    let wellknown_commands = [
-        // Azure PowerShell
-        "Connect-AzAccount",
-        "Set-AzContext",
-        "New-AzResourceGroup",
-        "New-AzResourceGroupDeployment",
-        "New-AzContainerGroup",
-        "New-AzAksCluster",
-        "Get-AzAksCluster",
-        // Windows Management
-        "Enable-WindowsOptionalFeature",
-        "Install-WindowsFeature",
-        "Set-ItemProperty",
-        "Set-Service",
-        "Start-Service",
-        "New-Item",
-        "Copy-Item",
-        // Cross-platform DevOps
-        "docker",
-        "kubectl",
-        "az",
-        // PowerShell Core
-        "Invoke-Command",
-    ];
-
-    let is_wellknown = wellknown_commands.contains(&command_name.as_str())
-        || command_name.starts_with("Connect-")
-        || command_name.starts_with("Connect-Az");
-
-    if is_wellknown {
-        let signature = extract_command_signature(base, node);
-        let doc_comment = get_command_documentation(&command_name);
-
-        Some(base.create_symbol(
-            &node,
-            command_name,
-            SymbolKind::Function,
-            SymbolOptions {
-                signature: Some(signature),
-                visibility: Some(Visibility::Public),
-                parent_id: parent_id.map(|s| s.to_string()),
-                metadata: None,
-                doc_comment: Some(doc_comment),
-                annotations: Vec::new(),
-            },
-        ))
-    } else {
-        None
-    }
+    None
 }
 
 /// Extract DSC Configuration command
@@ -141,13 +97,6 @@ pub(super) fn extract_dsc_configuration(
     }
 
     None
-}
-
-/// Extract command signature
-fn extract_command_signature(base: &BaseExtractor, node: Node) -> String {
-    let command_text = base.get_node_text(&node);
-    // Safely truncate UTF-8 string at character boundary
-    BaseExtractor::truncate_string(&command_text, 97)
 }
 
 /// Extract configuration name from ERROR node containing DSC configuration

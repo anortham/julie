@@ -20,6 +20,9 @@ func calculate_damage(base: int, multiplier: float) -> float:
 func get_name() -> String:
     return "Player"
 
+static func get_avatar_color() -> Color:
+    return Color.WHITE
+
 func _ready() -> void:
     pass
 "#;
@@ -58,6 +61,11 @@ func _ready() -> void:
         assert!(
             type_strings.iter().any(|t| *t == "String"),
             "Expected 'String' return type, got: {:?}",
+            type_strings
+        );
+        assert!(
+            type_strings.iter().any(|t| *t == "Color"),
+            "Expected 'Color' return type from static function, got: {:?}",
             type_strings
         );
 

@@ -22,7 +22,8 @@ impl super::BashExtractor {
         let name = self.base.get_node_text(&name_node);
 
         // Check if it's an environment variable or local variable
-        let is_environment = self.is_environment_variable(node, &name);
+        let is_environment =
+            !self.is_local_variable(node) && self.is_environment_variable(node, &name);
         let is_exported = self.is_exported_variable(node);
 
         let options = SymbolOptions {
@@ -139,6 +140,19 @@ impl super::BashExtractor {
         while let Some(sibling) = current {
             let text = self.base.get_node_text(&sibling);
             if text == "export" {
+                return true;
+            }
+            current = sibling.prev_named_sibling();
+        }
+        false
+    }
+
+    /// Check if a variable assignment is preceded by 'local'
+    pub(super) fn is_local_variable(&self, node: Node) -> bool {
+        let mut current = node.prev_named_sibling();
+        while let Some(sibling) = current {
+            let text = self.base.get_node_text(&sibling);
+            if text == "local" {
                 return true;
             }
             current = sibling.prev_named_sibling();

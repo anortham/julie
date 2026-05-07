@@ -26,7 +26,7 @@ pub(super) fn extract_constructor_definition(
     node: Node,
     parent_id: Option<&String>,
 ) -> Option<Symbol> {
-    let signature = base.get_node_text(&node);
+    let signature = synthetic_signature(base, node);
 
     // Extract doc comment
     let doc_comment = base.find_doc_comment(&node);
@@ -89,7 +89,7 @@ pub(super) fn extract_function_definition(
     let name_node = name_node?;
     let parent_node = parent_node?;
     let name = base.get_node_text(&name_node);
-    let signature = base.get_node_text(&parent_node);
+    let signature = synthetic_signature(base, parent_node);
 
     // Determine visibility based on naming convention
     let visibility = if name.starts_with('_') {
@@ -134,6 +134,16 @@ pub(super) fn extract_function_definition(
             annotations: Vec::new(),
         },
     ))
+}
+
+fn synthetic_signature(base: &BaseExtractor, node: Node) -> String {
+    if let Some(body) = node.child_by_field_name("body") {
+        base.content[node.start_byte()..body.start_byte()]
+            .trim_end()
+            .to_string()
+    } else {
+        base.get_node_text(&node).trim_end().to_string()
+    }
 }
 
 /// Determine if a function is a method or standalone function based on context

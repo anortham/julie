@@ -324,6 +324,23 @@ func caller():
     }
 
     #[test]
+    fn test_attribute_call_relationship_uses_rightmost_method_name() {
+        let code = r#"
+func update_inventory(item):
+    player.inventory.add_item(item)
+"#;
+
+        let structured_pending = extract_structured_pending("inventory.gd", code);
+        let pending = structured_pending
+            .iter()
+            .find(|pending| pending.target.terminal_name == "add_item")
+            .expect("structured pending relationship should keep the method name");
+
+        assert_eq!(pending.target.receiver.as_deref(), Some("player.inventory"));
+        assert_eq!(pending.pending.kind, RelationshipKind::Calls);
+    }
+
+    #[test]
     fn test_local_function_call_creates_resolved_relationship() {
         // GDScript code with local function and call
         let code = r#"

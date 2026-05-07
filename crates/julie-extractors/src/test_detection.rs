@@ -81,6 +81,8 @@ pub fn is_test_symbol(
         "go" => detect_go(name, file_path),
         "javascript" | "typescript" => detect_js_ts(name, file_path),
         "php" => detect_php(name, file_path, annotation_keys, doc_comment),
+        "bash" => detect_bash(name, file_path),
+        "powershell" => detect_powershell(name, file_path),
         "ruby" => detect_ruby(name, file_path),
         "swift" => detect_swift(name, file_path),
         "dart" => detect_dart(name, file_path, annotation_keys),
@@ -207,9 +209,72 @@ fn detect_php(
     name.starts_with("test") && is_test_path(file_path)
 }
 
+fn matches_script_test_name(
+    name: &str,
+    file_path: &str,
+    allow_test_prefix: bool,
+    keywords: &[&str],
+) -> bool {
+    let normalized = name.to_ascii_lowercase();
+    if allow_test_prefix && normalized.starts_with("test_") {
+        return true;
+    }
+
+    is_test_path(file_path) && keywords.contains(&normalized.as_str())
+}
+
+fn detect_bash(name: &str, file_path: &str) -> bool {
+    matches_script_test_name(
+        name,
+        file_path,
+        true,
+        &[
+            "describe", "context", "it", "specify", "example", "feature", "scenario", "setup",
+            "teardown",
+        ],
+    )
+}
+
+fn detect_powershell(name: &str, file_path: &str) -> bool {
+    matches_script_test_name(
+        name,
+        file_path,
+        false,
+        &[
+            "describe",
+            "context",
+            "it",
+            "beforeall",
+            "afterall",
+            "beforeeach",
+            "aftereach",
+        ],
+    )
+}
+
 fn detect_ruby(name: &str, file_path: &str) -> bool {
-    // test_ prefix AND in spec/ or test/ directory
-    name.starts_with("test_") && is_test_path(file_path)
+    matches_script_test_name(
+        name,
+        file_path,
+        true,
+        &[
+            "describe",
+            "context",
+            "it",
+            "specify",
+            "example",
+            "feature",
+            "scenario",
+            "before",
+            "after",
+            "around",
+            "xdescribe",
+            "xcontext",
+            "xit",
+            "fdescribe",
+            "fit",
+        ],
+    )
 }
 
 fn detect_swift(name: &str, file_path: &str) -> bool {
