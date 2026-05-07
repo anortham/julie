@@ -306,6 +306,86 @@ fn capability_matrix_pending_claim_requires_pending_output_in_fixtures() {
     }
 }
 
+// Plan-doc stronger versions: per-language coverage instead of global totals.
+
+#[test]
+fn test_capability_matrix_records_known_gaps_for_languages_with_unfixed_findings() {
+    // For every language that sets a capability to false in target_capabilities,
+    // capability_gaps must have a matching entry (gap.capability == the false capability).
+    // Silently lowering target_capabilities without a documented gap is dishonest.
+    let root = workspace_root();
+    let matrix = load_matrix(&root);
+
+    let cap_names = [
+        "symbols",
+        "relationships",
+        "pending_relationships",
+        "identifiers",
+        "types",
+    ];
+
+    for row in &matrix.languages {
+        for &cap in &cap_names {
+            let target_enabled = match cap {
+                "symbols" => row.target_capabilities.symbols,
+                "relationships" => row.target_capabilities.relationships,
+                "pending_relationships" => row.target_capabilities.pending_relationships,
+                "identifiers" => row.target_capabilities.identifiers,
+                "types" => row.target_capabilities.types,
+                _ => unreachable!(),
+            };
+
+            if !target_enabled {
+                let has_gap = row
+                    .capability_gaps
+                    .iter()
+                    .any(|gap| gap.capability == cap);
+                assert!(
+                    has_gap,
+                    "{} sets target_capabilities.{} = false but has no matching capability_gaps \
+                     entry. Add a gap with capability=\"{}\" documenting why this capability is \
+                     not targeted.",
+                    row.language, cap, cap
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn test_capability_matrix_pending_claim_requires_pending_output_in_fixtures() {
+    // For every language that targets pending_relationships (target_capabilities.pending_relationships
+    // == true), either a golden fixture must emit at least one pending or structured_pending entry,
+    // or a capability_gaps entry for "pending_relationships" must explain the shortfall.
+    // This is stricter than the existing check, which tests capabilities (current state) instead
+    // of target_capabilities (intended state).
+    let root = workspace_root();
+    let matrix = load_matrix(&root);
+
+    for row in &matrix.languages {
+        if !row.target_capabilities.pending_relationships {
+            continue;
+        }
+
+        let has_pending_evidence = row
+            .fixtures
+            .iter()
+            .any(|fixture| fixture_exercises_pending_relationships(&root, fixture));
+        let has_pending_gap = row
+            .capability_gaps
+            .iter()
+            .any(|gap| gap.capability == "pending_relationships");
+
+        assert!(
+            has_pending_evidence || has_pending_gap,
+            "{} sets target_capabilities.pending_relationships = true but no golden fixture emits \
+             pending_relationships or structured_pending_relationships and no capability_gaps entry \
+             for pending_relationships is recorded.",
+            row.language
+        );
+    }
+}
+
 #[test]
 fn regex_capabilities_advertise_golden_relationships() {
     let capabilities = capabilities_for_language("regex").unwrap();

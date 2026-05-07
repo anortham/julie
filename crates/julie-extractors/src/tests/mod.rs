@@ -12,6 +12,7 @@ pub mod cpp;
 pub mod csharp;
 pub mod css;
 pub mod dart;
+pub mod data_format_relationships;
 pub mod doc_comments;
 pub mod elixir;
 pub mod embedded_spans;
