@@ -147,20 +147,26 @@ mod tests {
     }
 
     #[test]
-    fn test_check_running_cleans_legacy_format() {
+    fn test_check_running_preserves_live_legacy_format() {
+        // Updated post-codex-review: a live legacy daemon's single-integer
+        // PID file must NOT be deleted by a v7.7.x adapter. Otherwise an
+        // upgrade where the user has v7.7.<earlier> running and a new
+        // adapter starts would delete the running daemon's PID file and
+        // spawn a duplicate — breaking the single-daemon invariant.
         let (_dir, path) = temp_pid_path();
-
-        // A legacy single-integer file (any PID, even a live one) must be
-        // treated as stale and cleaned up, because it cannot be verified.
         let our_pid = std::process::id();
         fs::write(&path, our_pid.to_string()).unwrap();
         assert!(path.exists());
 
         let result = PidFile::check_running(&path);
-        assert_eq!(result, None, "Legacy format must return None");
+        assert_eq!(
+            result,
+            Some(our_pid),
+            "Live legacy PID file must be reported as running"
+        );
         assert!(
-            !path.exists(),
-            "Legacy PID file should be cleaned up automatically"
+            path.exists(),
+            "Live legacy PID file must NOT be deleted by check_running"
         );
     }
 

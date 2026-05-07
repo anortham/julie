@@ -225,7 +225,15 @@ impl WorkspacePool {
     ///
     /// Per-workspace failures are logged and do not prevent the remaining
     /// workspaces from being shut down (infallible at the API level).
+    ///
+    /// Each workspace shutdown is bounded by `PER_WORKSPACE_SHUTDOWN_TIMEOUT`
+    /// so a single hung Tantivy lock cannot stall daemon exit forever. A
+    /// timed-out workspace is logged and skipped; its lock will be reclaimed
+    /// by the OS when the process exits.
     pub async fn shutdown(&self) {
+        const PER_WORKSPACE_SHUTDOWN_TIMEOUT: std::time::Duration =
+            std::time::Duration::from_secs(2);
+
         // Take a write lock, drain the map, and release the lock before doing
         // any blocking work so we don't hold it across SearchIndex::shutdown().
         let entries: Vec<(String, WorkspaceEntry)> = {
@@ -234,30 +242,53 @@ impl WorkspacePool {
         };
 
         for (workspace_id, entry) in entries {
-            if let Some(ref search_index) = entry.workspace.search_index {
+            let Some(search_index) = entry.workspace.search_index.clone() else {
+                continue;
+            };
+            let workspace_id_for_task = workspace_id.clone();
+            let join = tokio::task::spawn_blocking(move || {
                 match search_index.lock() {
-                    Ok(idx) => {
-                        if let Err(e) = idx.shutdown() {
-                            warn!(
-                                workspace_id = %workspace_id,
-                                "Failed to shut down search index: {}",
-                                e
-                            );
-                        } else {
-                            info!(
-                                workspace_id = %workspace_id,
-                                "Search index shut down, Tantivy file lock released"
-                            );
-                        }
-                    }
+                    Ok(idx) => idx
+                        .shutdown()
+                        .map_err(|e| format!("shutdown error: {e}")),
                     Err(poisoned) => {
                         let idx = poisoned.into_inner();
                         let _ = idx.shutdown();
-                        warn!(
-                            workspace_id = %workspace_id,
-                            "Recovered from poisoned search index mutex during pool shutdown"
-                        );
+                        Err(format!(
+                            "recovered from poisoned mutex while shutting down {}",
+                            workspace_id_for_task
+                        ))
                     }
+                }
+            });
+
+            match tokio::time::timeout(PER_WORKSPACE_SHUTDOWN_TIMEOUT, join).await {
+                Ok(Ok(Ok(()))) => {
+                    info!(
+                        workspace_id = %workspace_id,
+                        "Search index shut down, Tantivy file lock released"
+                    );
+                }
+                Ok(Ok(Err(msg))) => {
+                    warn!(
+                        workspace_id = %workspace_id,
+                        "Failed to shut down search index: {}",
+                        msg
+                    );
+                }
+                Ok(Err(join_err)) => {
+                    warn!(
+                        workspace_id = %workspace_id,
+                        "Search index shutdown task panicked: {}",
+                        join_err
+                    );
+                }
+                Err(_) => {
+                    warn!(
+                        workspace_id = %workspace_id,
+                        timeout_secs = PER_WORKSPACE_SHUTDOWN_TIMEOUT.as_secs(),
+                        "Search index shutdown timed out; Tantivy lock may not release until process exit"
+                    );
                 }
             }
         }

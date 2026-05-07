@@ -196,4 +196,78 @@ mod tests {
         assert_eq!(backoff_ms(8), 5000, "retry 8: still capped at 5000ms");
         assert_eq!(backoff_ms(20), 5000, "retry 20: still capped");
     }
+
+    // ── Codex pre-merge review fixes ───────────────────────────────────────
+
+    /// Codex finding #1 (high): a v7.7.x adapter must NOT delete a live
+    /// legacy daemon's single-integer PID file, otherwise it would spawn a
+    /// duplicate daemon during upgrade. `check_running` must return Some(pid)
+    /// for a legacy file backed by an alive process, and must NOT remove the
+    /// file in that case.
+    #[test]
+    fn test_check_running_preserves_legacy_pid_file_when_alive() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = dir.path().join("legacy.pid");
+        // Legacy single-integer format: just the PID, with a trailing newline.
+        let live_pid = std::process::id();
+        std::fs::write(&path, format!("{}\n", live_pid)).unwrap();
+
+        let result = PidFile::check_running(&path);
+
+        assert_eq!(
+            result,
+            Some(live_pid),
+            "live legacy PID file should be preserved and reported as running"
+        );
+        assert!(
+            path.exists(),
+            "live legacy PID file must NOT be deleted by check_running"
+        );
+    }
+
+    /// Same scenario but the legacy PID is dead: the file SHOULD be removed
+    /// and `check_running` returns None.
+    #[test]
+    fn test_check_running_removes_legacy_pid_file_when_dead() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = dir.path().join("legacy_dead.pid");
+        // PID 999_999_999 is well above any realistic running PID on the test box.
+        std::fs::write(&path, "999999999\n").unwrap();
+
+        let result = PidFile::check_running(&path);
+
+        assert_eq!(result, None, "dead legacy PID should be reported as not running");
+        assert!(
+            !path.exists(),
+            "dead legacy PID file should be removed by check_running"
+        );
+    }
+
+    /// `create_exclusive` must bail when an existing PID file is owned by a
+    /// live legacy daemon, rather than silently removing it and starting a
+    /// duplicate. (Companion to `test_check_running_preserves_legacy_pid_file_when_alive`.)
+    #[test]
+    fn test_create_exclusive_bails_on_live_legacy_pid_file() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = dir.path().join("conflict.pid");
+        let live_pid = std::process::id();
+        std::fs::write(&path, format!("{}\n", live_pid)).unwrap();
+
+        let result = PidFile::create_exclusive(&path);
+
+        assert!(
+            result.is_err(),
+            "create_exclusive must fail when a live legacy daemon owns the file"
+        );
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("already running"),
+            "error should indicate the daemon is already running, got: {}",
+            err
+        );
+        assert!(
+            path.exists(),
+            "create_exclusive must NOT delete a live legacy daemon's PID file"
+        );
+    }
 }

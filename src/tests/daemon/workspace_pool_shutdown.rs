@@ -123,3 +123,58 @@ async fn test_workspace_pool_shutdown_recovers_from_poisoned_mutex() {
         );
     }
 }
+
+/// Codex finding #3 (medium): if a search_index mutex is held by another task
+/// (e.g., a hung in-flight request), `WorkspacePool::shutdown` must not block
+/// indefinitely. The per-workspace timeout (2s) bounds the total shutdown
+/// time, even though the held workspace cannot be shut down cleanly.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_workspace_pool_shutdown_bounded_when_mutex_is_held() {
+    let (pool, ids, _roots, _indexes_dir) = pool_with_workspaces(2).await;
+
+    // Grab the first workspace's search_index Arc before we start the test —
+    // we'll hold its mutex for the duration of shutdown to simulate a hung
+    // in-flight request.
+    let first_idx = {
+        let workspace = pool
+            .get_or_init(&ids[0], _roots[0].path().to_path_buf())
+            .await
+            .expect("get workspace");
+        workspace.search_index.clone().expect("search_index exists")
+    };
+
+    let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
+    let blocker_idx = Arc::clone(&first_idx);
+    let blocker = std::thread::spawn(move || {
+        let _guard = blocker_idx.lock().expect("acquire mutex");
+        // Hold the lock until the test signals release.
+        let _ = release_rx.recv();
+    });
+
+    // Give the blocker a beat to acquire the mutex before shutdown starts.
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+    // shutdown() should complete within a bounded time even though one
+    // workspace's mutex is held. The per-workspace timeout is 2s, so two
+    // workspaces with one held should finish in well under 5s.
+    let started = std::time::Instant::now();
+    let timeout_duration = std::time::Duration::from_secs(5);
+    let result = tokio::time::timeout(timeout_duration, pool.shutdown()).await;
+    let elapsed = started.elapsed();
+
+    // Release the held mutex so the blocker thread can exit cleanly.
+    let _ = release_tx.send(());
+    let _ = blocker.join();
+
+    assert!(
+        result.is_ok(),
+        "pool.shutdown() must complete within {:?}; took {:?}",
+        timeout_duration,
+        elapsed
+    );
+    assert!(
+        elapsed < timeout_duration,
+        "shutdown must return well before the test timeout (took {:?})",
+        elapsed
+    );
+}

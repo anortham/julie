@@ -170,6 +170,23 @@ fn backoff_delay(n: u32) -> Duration {
 
 // ── PidFile ───────────────────────────────────────────────────────────────────
 
+/// Three-way classification of an existing PID file's owner. Used by
+/// `create_exclusive` to decide whether to bail (real daemon), retry (stale),
+/// or refuse to overwrite (indeterminate).
+enum OwnerState {
+    /// A live process owns the file and validation succeeded (or no
+    /// creation_time was stored, e.g. legacy single-integer file).
+    Real(u32),
+    /// The owner is dead, the PID was recycled, or the file is corrupt.
+    /// Safe to remove and retry.
+    Stale,
+    /// The owner is alive but creation_time validation failed (e.g. Windows
+    /// ACCESS_DENIED for a recycled PID owned by a privileged process). Do
+    /// not assume this is the daemon, but do not remove the file either —
+    /// a legitimate daemon may own it.
+    Indeterminate,
+}
+
 /// Handle to a PID file. Holds the path so cleanup can remove it on shutdown.
 #[derive(Debug)]
 pub struct PidFile {
@@ -238,14 +255,22 @@ impl PidFile {
     /// Check if a daemon is running: verify the process is alive AND its
     /// creation_time matches the stored value (PID-reuse defense).
     ///
-    /// Removes the file and returns `None` when: file is missing, unreadable,
-    /// in legacy format, process is dead, or creation_time mismatches.
+    /// Returns `None` when: file is missing, unreadable, the process is dead,
+    /// creation_time mismatches, or the creation_time lookup is indeterminate.
+    /// Removes the file when the process is provably dead or creation_time
+    /// proves PID-reuse. Preserves the file for legacy single-integer files
+    /// owned by a live process (upgrade path) and for indeterminate
+    /// creation_time lookups (transient permission/race issues).
     pub fn check_running(path: &Path) -> Option<u32> {
         let stored = match Self::read_contents(path) {
             Some(s) => s,
             None => {
-                if path.exists() { let _ = fs::remove_file(path); }
-                return None;
+                // Legacy single-integer format or corrupt file. To preserve
+                // the single-daemon invariant during upgrades, fall back to
+                // parsing the first whitespace-delimited field as a PID and
+                // check liveness. Only remove the file if the process is
+                // provably dead.
+                return Self::check_running_legacy_fallback(path);
             }
         };
 
@@ -254,18 +279,69 @@ impl PidFile {
             return None;
         }
 
-        // PID-reuse defense: if both stored and actual creation_time are non-zero
-        // and differ, the PID was recycled — reject the file.
+        // PID-reuse defense: if stored creation_time is non-zero, validate
+        // against the actual creation_time. Distinguish three outcomes:
+        //   - match: this is the daemon (accept)
+        //   - mismatch: PID recycled (reject, remove file)
+        //   - lookup failed: indeterminate (reject, but DO NOT remove file —
+        //     a transient failure should not erase a legitimate daemon's
+        //     PID file; preserving lets the adapter retry)
         if stored.creation_time_micros != 0 {
-            let actual = process_creation_time_micros(stored.pid).unwrap_or(0);
-            if actual != 0 && actual != stored.creation_time_micros {
-                let _ = fs::remove_file(path);
-                return None;
+            match process_creation_time_micros(stored.pid) {
+                Some(actual) if actual == stored.creation_time_micros => {
+                    // Match — fall through to Some(stored.pid).
+                }
+                Some(_) => {
+                    // Mismatch — PID recycled, file is stale.
+                    let _ = fs::remove_file(path);
+                    return None;
+                }
+                None => {
+                    // Indeterminate (e.g., Windows ACCESS_DENIED on a recycled
+                    // PID owned by a privileged process, or a transient race).
+                    // Do not claim this PID as the daemon, but preserve the
+                    // file so a follow-up adapter call can retry validation.
+                    return None;
+                }
             }
-            // actual == 0: platform can't query creation time — skip check (no false positives).
         }
 
         Some(stored.pid)
+    }
+
+    /// Best-effort liveness check for legacy single-integer PID files.
+    ///
+    /// Reads the first whitespace-delimited field as a PID and probes the
+    /// process. If alive, returns `Some(pid)` and **does not** remove the
+    /// file — a legacy daemon may still own it. If dead or unparseable,
+    /// removes the file and returns `None`.
+    ///
+    /// This exists so a v7.7.x adapter starting against a v7.7.<earlier>
+    /// live daemon does not delete the running daemon's PID file and spawn a
+    /// duplicate.
+    fn check_running_legacy_fallback(path: &Path) -> Option<u32> {
+        let raw = match fs::read_to_string(path) {
+            Ok(s) => s,
+            Err(_) => {
+                if path.exists() { let _ = fs::remove_file(path); }
+                return None;
+            }
+        };
+        let pid: u32 = match raw.split_whitespace().next().and_then(|s| s.parse().ok()) {
+            Some(p) => p,
+            None => {
+                let _ = fs::remove_file(path);
+                return None;
+            }
+        };
+        if Self::is_process_alive(pid) {
+            // Legacy daemon still alive — preserve the file. Do not return
+            // a creation_time validation result; the legacy file has none.
+            Some(pid)
+        } else {
+            let _ = fs::remove_file(path);
+            None
+        }
     }
 
     /// Atomically create the PID file using `O_CREAT|O_EXCL`, eliminating the
@@ -293,22 +369,67 @@ impl PidFile {
                     return Ok(Self { path: path.to_path_buf() });
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
-                    if let Some(stored) = Self::read_contents(path) {
-                        if Self::is_process_alive(stored.pid) {
-                            let is_real = if stored.creation_time_micros != 0 {
-                                let actual = process_creation_time_micros(stored.pid).unwrap_or(0);
-                                actual == 0 || actual == stored.creation_time_micros
+                    // Decide: real running daemon, stale, or indeterminate.
+                    //   - Some(stored): 3-field format. Validate liveness +
+                    //     creation_time match.
+                    //   - None: legacy single-integer file. If the legacy PID
+                    //     is alive, treat as a real running daemon (preserves
+                    //     the upgrade-path single-daemon invariant).
+                    let owner_state = match Self::read_contents(path) {
+                        Some(stored) => {
+                            if !Self::is_process_alive(stored.pid) {
+                                OwnerState::Stale
+                            } else if stored.creation_time_micros == 0 {
+                                // No creation_time recorded — benefit of doubt
+                                // for legacy files written by older daemons.
+                                OwnerState::Real(stored.pid)
                             } else {
-                                true // no creation_time — give benefit of doubt
-                            };
-                            if is_real {
-                                anyhow::bail!("Daemon already running (PID {})", stored.pid);
+                                match process_creation_time_micros(stored.pid) {
+                                    Some(actual) if actual == stored.creation_time_micros => {
+                                        OwnerState::Real(stored.pid)
+                                    }
+                                    Some(_) => OwnerState::Stale, // PID recycled
+                                    None => OwnerState::Indeterminate, // can't validate
+                                }
                             }
-                            // creation_time mismatch → PID recycled, treat as stale
+                        }
+                        None => {
+                            // Legacy or corrupt format. Try to extract a PID
+                            // from the first whitespace-delimited token.
+                            let raw = fs::read_to_string(path).unwrap_or_default();
+                            let legacy_pid: Option<u32> = raw
+                                .split_whitespace()
+                                .next()
+                                .and_then(|s| s.parse().ok());
+                            match legacy_pid {
+                                Some(pid) if Self::is_process_alive(pid) => {
+                                    OwnerState::Real(pid)
+                                }
+                                _ => OwnerState::Stale,
+                            }
+                        }
+                    };
+
+                    match owner_state {
+                        OwnerState::Real(pid) => {
+                            anyhow::bail!("Daemon already running (PID {})", pid);
+                        }
+                        OwnerState::Indeterminate => {
+                            // Cannot validate the existing PID. Don't remove
+                            // the file — a legitimate daemon may own it. Bail
+                            // so the adapter can retry validation on a fresh
+                            // call.
+                            anyhow::bail!(
+                                "PID file at {} exists but creation_time validation is indeterminate; not overwriting",
+                                path.display()
+                            );
+                        }
+                        OwnerState::Stale => {
+                            // Fall through to the remove+retry path below.
                         }
                     }
 
-                    // Stale/unreadable/PID-reused — remove and retry.
+                    // Stale/PID-reused — remove and retry.
                     // Propagate non-NotFound errors (e.g. Windows sharing violation).
                     if let Err(re) = fs::remove_file(path) {
                         if re.kind() != std::io::ErrorKind::NotFound {
