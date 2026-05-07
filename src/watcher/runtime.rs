@@ -31,7 +31,6 @@ pub(super) struct QueueRuntime {
     workspace_root: PathBuf,
     /// Stable workspace identifier used as the mutation-gate key.
     workspace_id: String,
-    pause_flag: Arc<AtomicBool>,
     needs_rescan: Arc<AtomicBool>,
     tantivy_dirty: Arc<StdMutex<HashSet<String>>>,
     indexing_runtime: SharedIndexingRuntime,
@@ -50,7 +49,6 @@ impl QueueRuntime {
             supported_extensions: indexer.supported_extensions.clone(),
             workspace_root: indexer.workspace_root.clone(),
             workspace_id: indexer.workspace_id.clone(),
-            pause_flag: Arc::clone(&indexer.pause_flag),
             needs_rescan: Arc::clone(&indexer.needs_rescan),
             tantivy_dirty: Arc::clone(&indexer.tantivy_dirty),
             indexing_runtime: Arc::clone(&indexer.indexing_runtime),
@@ -68,7 +66,6 @@ impl QueueRuntime {
         supported_extensions: HashSet<String>,
         workspace_root: PathBuf,
         workspace_id: String,
-        pause_flag: Arc<AtomicBool>,
         needs_rescan: Arc<AtomicBool>,
         tantivy_dirty: Arc<StdMutex<HashSet<String>>>,
         indexing_runtime: SharedIndexingRuntime,
@@ -84,7 +81,6 @@ impl QueueRuntime {
             supported_extensions,
             workspace_root,
             workspace_id,
-            pause_flag,
             needs_rescan,
             tantivy_dirty,
             indexing_runtime,
@@ -97,19 +93,6 @@ impl QueueRuntime {
     }
 
     async fn run_cycle_with_retry_age(&self, min_repair_age: Duration) {
-        if self.pause_flag.load(Ordering::Acquire) {
-            self.indexing_runtime
-                .write()
-                .unwrap_or_else(|poisoned| poisoned.into_inner())
-                .set_watcher_paused(true);
-            return;
-        }
-
-        self.indexing_runtime
-            .write()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .set_watcher_paused(false);
-
         self.retry_dirty_tantivy().await;
 
         let processed_count = self.process_queue_batch().await;
