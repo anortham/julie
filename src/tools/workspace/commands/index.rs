@@ -1,39 +1,11 @@
 use super::ManageWorkspaceTool;
-use super::force_safeguards::{
-    cancel_embedding_tasks, pause_force_reindex_watchers, resume_force_reindex_watchers,
-    workspace_ids_for_force_reindex,
-};
+use super::force_safeguards::{cancel_embedding_tasks, workspace_ids_for_force_reindex};
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::{CallToolResult, CallToolResultExt, Content};
+use crate::workspace::mutation_gate::{MutationGuard, acquire_gate};
 use anyhow::Result;
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex as StdMutex, OnceLock};
-use tokio::sync::Mutex as AsyncMutex;
 use tracing::{debug, error, info, warn};
-
-fn indexing_lock_cache() -> &'static StdMutex<HashMap<PathBuf, Arc<AsyncMutex<()>>>> {
-    static LOCKS: OnceLock<StdMutex<HashMap<PathBuf, Arc<AsyncMutex<()>>>>> = OnceLock::new();
-    LOCKS.get_or_init(|| StdMutex::new(HashMap::new()))
-}
-
-pub(super) fn indexing_lock_for_path(path: &Path) -> Arc<AsyncMutex<()>> {
-    let mut locks = match indexing_lock_cache().lock() {
-        Ok(guard) => guard,
-        Err(poisoned) => {
-            warn!(
-                "Indexing lock cache mutex poisoned, recovering: {}",
-                poisoned
-            );
-            poisoned.into_inner()
-        }
-    };
-
-    locks
-        .entry(path.to_path_buf())
-        .or_insert_with(|| Arc::new(AsyncMutex::new(())))
-        .clone()
-}
 
 impl ManageWorkspaceTool {
     /// Handle index command - index primary workspace
@@ -120,9 +92,18 @@ impl ManageWorkspaceTool {
             .canonicalize()
             .unwrap_or_else(|_| workspace_path.clone());
 
-        let index_lock = indexing_lock_for_path(&canonical_path);
-
-        let _index_guard = index_lock.lock().await;
+        // Derive workspace_id for the gate — same logic used later when registering stats.
+        let gate_workspace_id = if is_non_primary_target {
+            crate::workspace::registry::generate_workspace_id(
+                &canonical_path.to_string_lossy(),
+            )
+            .unwrap_or_else(|_| canonical_path.to_string_lossy().to_string())
+        } else {
+            current_primary_id
+                .clone()
+                .unwrap_or_else(|| canonical_path.to_string_lossy().to_string())
+        };
+        let _mutation_guard = acquire_gate(&gate_workspace_id).await;
         let semantic_engine_refresh_needed = self
             .semantic_index_engine_refresh_needed_for_path(handler, &canonical_path)
             .await?;
@@ -254,20 +235,10 @@ impl ManageWorkspaceTool {
             }
         }
 
-        let watcher_pause = pause_force_reindex_watchers(
-            handler,
-            &force_reindex_workspace_ids,
-            effective_force_reindex && !is_non_primary_workspace_target,
-        )
-        .await;
-
-        // Perform indexing
+        // Perform indexing — gate is held via _mutation_guard for the duration.
         let index_result = self
-            .index_workspace_files(handler, &canonical_path, effective_force_reindex)
+            .index_workspace_inner(&_mutation_guard, handler, &canonical_path, effective_force_reindex)
             .await;
-
-        // Resume the target watcher before handling the result, whether Ok or Err.
-        resume_force_reindex_watchers(handler, watcher_pause).await;
 
         match index_result {
             Ok(result) => {
@@ -475,24 +446,76 @@ impl ManageWorkspaceTool {
             }
         }
     }
+
+    /// Perform workspace indexing while holding the mutation gate.
+    ///
+    /// The caller must acquire the gate via [`acquire_gate`] and pass the
+    /// resulting [`MutationGuard`] here as a proof token.  This makes it
+    /// impossible (at compile time) to call this function without holding
+    /// the shared workspace mutex.
+    pub(crate) async fn index_workspace_inner(
+        &self,
+        _guard: &MutationGuard<'_>,
+        handler: &JulieServerHandler,
+        workspace_path: &Path,
+        force_reindex: bool,
+    ) -> Result<crate::tools::workspace::indexing::index::IndexResult> {
+        self.index_workspace_files(handler, workspace_path, force_reindex)
+            .await
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::indexing_lock_for_path;
-    use std::path::PathBuf;
-    use std::sync::Arc;
+    use crate::workspace::mutation_gate::{acquire_gate, clear_cache_for_test};
+    use std::time::Duration;
+    use tokio::time::timeout;
 
-    #[test]
-    fn test_shared_index_lock_reuses_lock_for_same_path() {
-        let path = PathBuf::from("/tmp/julie-shared-lock");
+    /// Two `acquire_gate` calls with the same workspace_id serialize through
+    /// the same underlying mutex.  After the first guard is dropped, a second
+    /// `acquire_gate` must succeed promptly, proving the lock was released.
+    ///
+    /// This replaces the old path-keyed `test_shared_index_lock_reuses_lock_for_same_path`
+    /// test, which tested a local per-path cache that no longer exists.
+    #[tokio::test]
+    async fn test_shared_gate_serializes_same_workspace_id() {
+        clear_cache_for_test();
 
-        let first = indexing_lock_for_path(&path);
-        let second = indexing_lock_for_path(&path);
+        let workspace_id = "ws_index_test_aabb1122";
 
+        {
+            let _guard = acquire_gate(workspace_id).await;
+            // Guard is held here; a concurrent acquire would block.
+        }
+        // Guard dropped — a second acquire must complete without deadlock.
+        let result = timeout(
+            Duration::from_millis(200),
+            acquire_gate(workspace_id),
+        )
+        .await;
         assert!(
-            Arc::ptr_eq(&first, &second),
-            "same canonical path should reuse the same indexing lock"
+            result.is_ok(),
+            "second acquire_gate for same workspace_id must succeed after first guard is dropped"
+        );
+    }
+
+    /// Two different workspace IDs acquire their gates independently — one does
+    /// not block the other.
+    #[tokio::test]
+    async fn test_different_workspace_ids_do_not_block_each_other() {
+        clear_cache_for_test();
+
+        let _guard_a = acquire_gate("ws_index_alpha").await;
+
+        // Acquiring a completely different workspace_id must not block.
+        let result = timeout(
+            Duration::from_millis(200),
+            acquire_gate("ws_index_beta"),
+        )
+        .await;
+        assert!(
+            result.is_ok(),
+            "different workspace IDs must acquire their gates independently"
         );
     }
 }

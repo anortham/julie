@@ -1,9 +1,8 @@
 use super::super::force_safeguards::{
-    cancel_embedding_tasks, pause_force_reindex_watchers, refresh_workspace_ids_for_force_reindex,
-    resume_force_reindex_watchers,
+    cancel_embedding_tasks, refresh_workspace_ids_for_force_reindex,
 };
-use super::super::index::indexing_lock_for_path;
 use super::ManageWorkspaceTool;
+use crate::workspace::mutation_gate::acquire_gate;
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::{CallToolResult, CallToolResultExt, Content};
 use anyhow::Result;
@@ -42,11 +41,9 @@ impl ManageWorkspaceTool {
         match db.get_workspace(workspace_id) {
             Ok(Some(ws_row)) => {
                 let workspace_path = std::path::PathBuf::from(&ws_row.path);
-                let canonical_path = workspace_path
-                    .canonicalize()
-                    .unwrap_or_else(|_| workspace_path.clone());
-                let index_lock = indexing_lock_for_path(&canonical_path);
-                let _index_guard = index_lock.lock().await;
+
+                // Acquire the shared mutation gate before touching workspace state.
+                let mutation_guard = acquire_gate(workspace_id).await;
                 info!("Starting re-indexing of workspace: {}", workspace_id);
 
                 let force = self.force.unwrap_or(false);
@@ -60,7 +57,6 @@ impl ManageWorkspaceTool {
                         "Index semantic version changed or missing; treating refresh as an effective full re-index"
                     );
                 }
-                let current_primary_id = handler.current_workspace_id();
                 let force_reindex_workspace_ids = if effective_force_reindex {
                     refresh_workspace_ids_for_force_reindex(workspace_id)
                 } else {
@@ -69,19 +65,16 @@ impl ManageWorkspaceTool {
                 if effective_force_reindex {
                     cancel_embedding_tasks(handler, &force_reindex_workspace_ids, "refresh").await;
                 }
-                let refreshes_primary = current_primary_id.as_deref() == Some(workspace_id);
-                let watcher_pause = pause_force_reindex_watchers(
-                    handler,
-                    &force_reindex_workspace_ids,
-                    effective_force_reindex && refreshes_primary,
-                )
-                .await;
 
                 let index_result = self
-                    .index_workspace_files(handler, &workspace_path, effective_force_reindex)
+                    .index_workspace_inner(
+                        &mutation_guard,
+                        handler,
+                        &workspace_path,
+                        effective_force_reindex,
+                    )
                     .await;
-
-                resume_force_reindex_watchers(handler, watcher_pause).await;
+                // Gate released when mutation_guard is dropped at end of this block.
 
                 match index_result {
                     Ok(result) => {
