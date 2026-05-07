@@ -282,9 +282,35 @@ impl EmbeddingService {
 
     /// Shut down the underlying provider, if any. A no-op when the service
     /// is in `Initializing` or `Unavailable`.
-    pub fn shutdown(&self) {
-        if let EmbeddingServiceState::Ready { provider, .. } = &*self.state_rx.borrow() {
-            provider.shutdown();
+    ///
+    /// Sends a graceful shutdown signal to the provider, then awaits the
+    /// underlying child process exit with a 3-second bound. This prevents the
+    /// new daemon from racing the old sidecar's handle cleanup on Windows.
+    pub async fn shutdown(&self) {
+        let provider = match &*self.state_rx.borrow() {
+            EmbeddingServiceState::Ready { provider, .. } => Arc::clone(provider),
+            _ => return,
+        };
+
+        // Signal the provider to shut down (sends graceful shutdown RPC + kill).
+        provider.shutdown();
+
+        // Await child exit off the async executor so we don't block other tasks.
+        // The 3-second bound ensures the new daemon isn't delayed indefinitely
+        // if the old sidecar is stuck.
+        const SIDECAR_EXIT_TIMEOUT: Duration = Duration::from_secs(3);
+        let exited = tokio::task::spawn_blocking(move || {
+            provider.wait_for_exit(SIDECAR_EXIT_TIMEOUT)
+        })
+        .await
+        .unwrap_or(false);
+
+        if !exited {
+            warn!(
+                "embedding sidecar did not exit within {}s; \
+                 continuing shutdown — new daemon may race old sidecar handle release",
+                SIDECAR_EXIT_TIMEOUT.as_secs()
+            );
         }
     }
 

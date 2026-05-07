@@ -1,5 +1,6 @@
 pub mod database;
 pub mod embedding_service;
+pub mod embedding_service_shutdown;
 pub mod handler;
 pub mod http_transport;
 pub mod lifecycle;
@@ -12,8 +13,15 @@ pub mod session;
 pub mod session_workspace;
 #[cfg(windows)]
 pub mod shutdown_event;
+pub mod shutdown_ordering;
 pub mod state;
 pub mod transport;
 pub mod watcher_pool;
+pub mod watcher_pool_shutdown;
 pub mod workspace_cleanup;
 pub mod workspace_pool;
+pub mod workspace_pool_shutdown;
+pub mod daemon_state_atomic;
+pub mod pid_file_format;
+pub mod drain_timeout;
+pub mod admit_initialize_short_circuit;

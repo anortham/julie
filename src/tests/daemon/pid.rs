@@ -2,7 +2,7 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::daemon::pid::PidFile;
+    use crate::daemon::pid::{PidFile, PidFileContents};
     use std::fs;
     use tempfile::TempDir;
 
@@ -12,14 +12,19 @@ mod tests {
         (dir, path)
     }
 
+    /// Write a valid three-field PID file with a dead (stale) process PID.
+    fn write_stale_pid_file(path: &std::path::Path) {
+        // PID 99999999 does not exist; creation_time 1 is a dead giveaway sentinel.
+        fs::write(path, "99999999 1 0\n").unwrap();
+    }
+
     #[test]
     fn test_create_pid_file_writes_current_pid() {
         let (_dir, path) = temp_pid_path();
         let pid_file = PidFile::create(&path).unwrap();
 
-        // Read back the file and verify it contains current PID
-        let contents = fs::read_to_string(&path).unwrap();
-        let written_pid: u32 = contents.trim().parse().unwrap();
+        // The file now uses the three-field format — use read_pid to extract the PID.
+        let written_pid = PidFile::read_pid(&path).expect("read_pid must succeed");
         assert_eq!(written_pid, std::process::id());
 
         pid_file.cleanup().unwrap();
@@ -28,10 +33,25 @@ mod tests {
     #[test]
     fn test_read_pid_from_existing_file() {
         let (_dir, path) = temp_pid_path();
-        fs::write(&path, "12345").unwrap();
+        // The new format requires three fields; a single integer is legacy and returns None.
+        // Write a valid three-field file to confirm read_pid works.
+        fs::write(&path, "12345 1000000 0\n").unwrap();
 
         let pid = PidFile::read_pid(&path);
         assert_eq!(pid, Some(12345));
+    }
+
+    #[test]
+    fn test_read_pid_returns_none_for_legacy_single_int() {
+        // Legacy single-integer files are treated as stale and return None.
+        let (_dir, path) = temp_pid_path();
+        fs::write(&path, "12345").unwrap();
+
+        let pid = PidFile::read_pid(&path);
+        assert_eq!(
+            pid, None,
+            "legacy single-integer PID files must return None (treated as stale)"
+        );
     }
 
     #[test]
@@ -49,6 +69,22 @@ mod tests {
 
         let pid = PidFile::read_pid(&path);
         assert_eq!(pid, None);
+    }
+
+    #[test]
+    fn test_pid_file_contents_parse_three_fields() {
+        let c = PidFileContents::parse("12345 9999999 8888888\n").unwrap();
+        assert_eq!(c.pid, 12345);
+        assert_eq!(c.creation_time_micros, 9999999);
+        assert_eq!(c.binary_mtime_micros, 8888888);
+    }
+
+    #[test]
+    fn test_pid_file_contents_parse_rejects_single_int() {
+        assert!(
+            PidFileContents::parse("12345").is_none(),
+            "single-int legacy format must be rejected"
+        );
     }
 
     #[test]
@@ -97,8 +133,8 @@ mod tests {
     fn test_check_running_cleans_stale_pid() {
         let (_dir, path) = temp_pid_path();
 
-        // Write a PID that definitely doesn't exist
-        fs::write(&path, "99999999").unwrap();
+        // Write a three-field file with a PID that definitely doesn't exist.
+        write_stale_pid_file(&path);
         assert!(path.exists());
 
         // check_running should detect the process is dead, clean up, and return None
@@ -111,15 +147,41 @@ mod tests {
     }
 
     #[test]
+    fn test_check_running_preserves_live_legacy_format() {
+        // Updated post-codex-review: a live legacy daemon's single-integer
+        // PID file must NOT be deleted by a v7.7.x adapter. Otherwise an
+        // upgrade where the user has v7.7.<earlier> running and a new
+        // adapter starts would delete the running daemon's PID file and
+        // spawn a duplicate — breaking the single-daemon invariant.
+        let (_dir, path) = temp_pid_path();
+        let our_pid = std::process::id();
+        fs::write(&path, our_pid.to_string()).unwrap();
+        assert!(path.exists());
+
+        let result = PidFile::check_running(&path);
+        assert_eq!(
+            result,
+            Some(our_pid),
+            "Live legacy PID file must be reported as running"
+        );
+        assert!(
+            path.exists(),
+            "Live legacy PID file must NOT be deleted by check_running"
+        );
+    }
+
+    #[test]
     fn test_check_running_returns_pid_for_live_process() {
         let (_dir, path) = temp_pid_path();
 
-        // Write our own PID (which is definitely alive)
-        let our_pid = std::process::id();
-        fs::write(&path, our_pid.to_string()).unwrap();
+        // Use create_exclusive so the file is in the correct three-field format
+        // with the real creation_time for this process.
+        let pid_file = PidFile::create_exclusive(&path).unwrap();
 
         let result = PidFile::check_running(&path);
-        assert_eq!(result, Some(our_pid), "Live process PID should be returned");
+        assert_eq!(result, Some(std::process::id()), "Live process PID should be returned");
+
+        pid_file.cleanup().unwrap();
     }
 
     #[test]
@@ -138,8 +200,9 @@ mod tests {
     fn test_create_exclusive_succeeds_when_no_file_exists() {
         let (_dir, path) = temp_pid_path();
         let pid_file = PidFile::create_exclusive(&path).unwrap();
-        let contents = std::fs::read_to_string(&path).unwrap();
-        assert_eq!(contents.trim().parse::<u32>().unwrap(), std::process::id());
+        // Use read_pid (not raw parse) since the file is now three-field format.
+        let pid = PidFile::read_pid(&path).expect("read_pid must succeed after create_exclusive");
+        assert_eq!(pid, std::process::id());
         pid_file.cleanup().unwrap();
     }
 
@@ -166,10 +229,10 @@ mod tests {
     fn test_create_exclusive_handles_stale_pid() {
         let (_dir, path) = temp_pid_path();
 
-        // Write a stale PID (process definitely dead)
-        std::fs::write(&path, "99999999").unwrap();
+        // Write a three-field stale PID file (dead process, wrong creation_time).
+        write_stale_pid_file(&path);
 
-        // create_exclusive should detect the dead process, remove stale file, succeed
+        // create_exclusive should detect the dead process, remove stale file, succeed.
         let result = PidFile::create_exclusive(&path);
         assert!(
             result.is_ok(),
@@ -177,9 +240,10 @@ mod tests {
             result.err()
         );
 
-        let pid_str = std::fs::read_to_string(&path).unwrap();
+        // Verify the new file contains our PID via read_pid (three-field format).
+        let new_pid = PidFile::read_pid(&path).expect("read_pid must succeed after overwrite");
         assert_eq!(
-            pid_str.trim().parse::<u32>().unwrap(),
+            new_pid,
             std::process::id(),
             "PID file should contain current process PID after overwriting stale one"
         );

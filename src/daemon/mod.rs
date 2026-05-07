@@ -20,12 +20,12 @@ pub mod workspace_registry_store;
 pub mod workspace_session_attachment;
 
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
 use anyhow::{Context, Result};
 use tokio::sync::{Notify, broadcast};
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 
 use crate::dashboard::state::DashboardEvent;
 
@@ -63,12 +63,60 @@ pub(crate) async fn drain_sessions(sessions: &SessionTracker, timeout: Duration)
     .is_ok()
 }
 
-/// Get the current on-disk binary's modification time.
+const DRAIN_TIMEOUT_ENV: &str = "JULIE_DAEMON_DRAIN_TIMEOUT_SECS";
+const DEFAULT_DRAIN_TIMEOUT_SECS: u64 = 10;
+const MIN_DRAIN_TIMEOUT_SECS: u64 = 1;
+const MAX_DRAIN_TIMEOUT_SECS: u64 = 120;
+
+/// Return the configured drain timeout for the daemon shutdown sequence.
+///
+/// Reads `JULIE_DAEMON_DRAIN_TIMEOUT_SECS` from the environment. Valid range
+/// is [1, 120] seconds. Values outside this range, or unparseable strings,
+/// fall back to the default (10 s) with a warning. The default is intentionally
+/// larger than the old 5 s literal to handle Windows NTFS fsync latency during
+/// stale-binary restarts.
+pub(crate) fn drain_timeout() -> Duration {
+    match std::env::var(DRAIN_TIMEOUT_ENV) {
+        Ok(s) => match s.parse::<u64>() {
+            Ok(v) if (MIN_DRAIN_TIMEOUT_SECS..=MAX_DRAIN_TIMEOUT_SECS).contains(&v) => {
+                Duration::from_secs(v)
+            }
+            Ok(v) => {
+                warn!(
+                    value = v,
+                    "JULIE_DAEMON_DRAIN_TIMEOUT_SECS out of range [1,120]; using default {}s",
+                    DEFAULT_DRAIN_TIMEOUT_SECS
+                );
+                Duration::from_secs(DEFAULT_DRAIN_TIMEOUT_SECS)
+            }
+            Err(e) => {
+                warn!(
+                    error = %e,
+                    "JULIE_DAEMON_DRAIN_TIMEOUT_SECS unparseable; using default {}s",
+                    DEFAULT_DRAIN_TIMEOUT_SECS
+                );
+                Duration::from_secs(DEFAULT_DRAIN_TIMEOUT_SECS)
+            }
+        },
+        Err(_) => Duration::from_secs(DEFAULT_DRAIN_TIMEOUT_SECS),
+    }
+}
+
+/// Capture the binary's mtime so we can detect a replacement at runtime.
 ///
 /// Used at daemon startup to snapshot the binary mtime, then compared on each
 /// session disconnect to detect whether the binary has been rebuilt. If it has,
 /// the daemon exits after the last session disconnects so the adapter can
 /// restart it with the new binary.
+///
+/// Note (Windows): the running `julie-server.exe` holds an exclusive image-section
+/// lock on its own binary, so a developer running `cargo build --release` against
+/// a live daemon FAILS with "Access is denied" rather than producing a new binary
+/// the daemon could see. Stale-binary detection therefore fires for: (a) installers
+/// that use `MoveFileEx(MOVEFILE_REPLACE_EXISTING)`, (b) `touch`-style mtime bumps
+/// without byte changes, (c) a delete + new-name + rename sequence done out of band.
+/// It does NOT fire for in-place developer rebuilds on Windows; the developer must
+/// stop the daemon first.
 fn binary_mtime() -> Option<SystemTime> {
     std::env::current_exe()
         .ok()
@@ -637,17 +685,19 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
     let remaining = sessions.active_count();
     let phase = lifecycle.request_shutdown(shutdown_cause, remaining);
     if remaining > 0 {
+        let timeout = drain_timeout();
         info!(
             active_sessions = remaining,
-            "Draining active sessions (up to 5s)"
+            timeout_secs = timeout.as_secs(),
+            "Draining active sessions"
         );
-        let drained = drain_sessions(&sessions, Duration::from_secs(5)).await;
+        let drained = drain_sessions(&sessions, timeout).await;
         if drained {
             info!("All sessions drained cleanly");
         } else {
-            warn!(
+            error!(
                 remaining = sessions.active_count(),
-                "Session drain timeout exceeded, forcing shutdown"
+                "Session drain timeout exceeded, forcing shutdown — in-flight writes may be lost"
             );
         }
     }
@@ -660,27 +710,103 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
         "Daemon shutting down"
     );
 
+    // Abort background tasks before tearing down shared resources.
+    // These tasks hold Arcs into the pools; aborting them first prevents
+    // them from racing with the explicit shutdown calls below.
     reaper_handle.abort();
     if let Some(cleanup_sweep_handle) = cleanup_sweep_handle {
         cleanup_sweep_handle.abort();
     }
 
-    embedding_service.shutdown();
-    info!("Embedding service shut down");
-
-    if let Err(e) = http_transport.shutdown().await {
-        warn!("Failed to shut down HTTP MCP transport cleanly: {e:#}");
-    }
-
-    let _ = std::fs::remove_file(paths.daemon_port());
-
-    if let Err(e) = pid_file.cleanup() {
-        warn!("Failed to clean up PID file: {}", e);
-    }
-    let _ = std::fs::remove_file(&daemon_state_path);
+    // LIFO shutdown: HTTP transport first (stops new requests from reaching
+    // any service), then embedding service, then pools in dependency order
+    // (workspace pool commits Tantivy writes before watcher pool releases OS
+    // file-watcher handles).
+    let port_path = paths.daemon_port();
+    let artifacts = ShutdownArtifacts {
+        port_path: &port_path,
+        pid_file,
+        state_path: &daemon_state_path,
+    };
+    perform_shutdown_sequence(
+        http_transport,
+        embedding_service,
+        pool,
+        watcher_pool,
+        artifacts,
+        None,
+    )
+    .await;
 
     info!("Daemon stopped");
     result
+}
+
+/// Files and resources cleaned up at the end of the shutdown sequence.
+pub(crate) struct ShutdownArtifacts<'a> {
+    pub port_path: &'a Path,
+    pub pid_file: PidFile,
+    pub state_path: &'a Path,
+}
+
+/// Execute the daemon shutdown sequence in LIFO dependency order.
+///
+/// Shutdown order:
+///   1. HTTP transport — stops accepting new requests and drains existing ones.
+///      Must happen first so in-flight requests cannot observe a torn-down
+///      embedding service.
+///   2. Embedding service — sidecar exit is awaited; safe now that the
+///      transport gate is closed.
+///   3. WorkspacePool — commits Tantivy writes and releases file locks.
+///   4. WatcherPool — drops OS file-watcher handles; goes last because it
+///      has the fewest downstream dependencies.
+///   5. Housekeeping — removes port file, pid file, and daemon state file.
+///
+/// The `call_log` parameter is a test hook: when `Some`, each step records its
+/// name to the log before executing. Pass `None` in production (zero overhead).
+pub(crate) async fn perform_shutdown_sequence(
+    http_transport: HttpTransportServer,
+    embedding_service: Arc<EmbeddingService>,
+    workspace_pool: Arc<WorkspacePool>,
+    watcher_pool: Arc<WatcherPool>,
+    artifacts: ShutdownArtifacts<'_>,
+    call_log: Option<Arc<Mutex<Vec<&'static str>>>>,
+) {
+    // Helper: record a step name to the call_log if one was provided.
+    let record = |step: &'static str| {
+        let Some(log) = call_log.as_ref() else { return; };
+        let Ok(mut guard) = log.lock() else { return; };
+        guard.push(step);
+    };
+
+    // Step 1: HTTP transport
+    record("http_transport");
+    if let Err(e) = http_transport.shutdown().await {
+        warn!("Failed to shut down HTTP MCP transport cleanly: {e:#}");
+    }
+    info!("HTTP MCP transport shut down");
+
+    // Step 2: Embedding service
+    record("embedding_service");
+    embedding_service.shutdown().await;
+    info!("Embedding service shut down");
+
+    // Step 3: WorkspacePool (Tantivy writes committed, file locks released)
+    record("workspace_pool");
+    workspace_pool.shutdown().await;
+    info!("Workspace pool shut down");
+
+    // Step 4: WatcherPool (OS file-watcher handles released)
+    record("watcher_pool");
+    watcher_pool.shutdown().await;
+    info!("Watcher pool shut down");
+
+    // Step 5: Housekeeping
+    let _ = std::fs::remove_file(artifacts.port_path);
+    if let Err(e) = artifacts.pid_file.cleanup() {
+        warn!("Failed to clean up PID file: {}", e);
+    }
+    let _ = std::fs::remove_file(artifacts.state_path);
 }
 
 /// Wait for a shutdown signal (SIGTERM or SIGINT on Unix).

@@ -259,6 +259,37 @@ impl WatcherPool {
         }
     }
 
+    /// Unconditionally shut down all watchers in the pool.
+    ///
+    /// Walks every entry, extracts its `IncrementalIndexer` (if any), removes
+    /// the entry from the map, then calls `stop()` on each extracted indexer.
+    /// After this call the entries map is empty.
+    ///
+    /// Unlike `detach`, this ignores ref_count and grace state. It is intended
+    /// for daemon shutdown where OS file-watcher handles must be released before
+    /// the process exits to avoid races with the next daemon process on Windows.
+    pub async fn shutdown(&self) {
+        let mut guard = self.entries.write().await;
+        let mut to_stop: Vec<(String, IncrementalIndexer)> = Vec::new();
+
+        // Drain all entries, collecting any live watchers.
+        for (id, mut entry) in guard.drain() {
+            if let Some(watcher) = entry.watcher.take() {
+                to_stop.push((id.clone(), watcher));
+            }
+            info!(workspace_id = %id, "Watcher pool shutdown: removing entry");
+        }
+
+        // Release the write lock before awaiting stop (mirrors reap_expired).
+        drop(guard);
+
+        for (id, mut watcher) in to_stop {
+            if let Err(e) = watcher.stop().await {
+                warn!(workspace_id = %id, "Failed to stop watcher during shutdown: {}", e);
+            }
+        }
+    }
+
     /// Spawn a background task that calls `reap_expired` every `interval`.
     ///
     /// Returns the `JoinHandle` — the caller should hold it (or abort it) for

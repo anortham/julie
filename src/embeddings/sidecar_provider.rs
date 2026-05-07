@@ -6,7 +6,7 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, anyhow, bail};
 use serde::Serialize;
@@ -149,14 +149,22 @@ fn spawn_process(
     command
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::inherit());
+        // Null stderr so the parent's stderr handle is not inherited by the
+        // sidecar child. On Windows, inherited handles can prevent the parent
+        // from releasing file resources until the child exits, which causes
+        // races when the new daemon starts before the old sidecar is done.
+        .stderr(Stdio::null());
 
-    // On Windows, prevent the sidecar from opening a visible console window.
+    // On Windows: CREATE_NO_WINDOW hides the console; CREATE_NEW_PROCESS_GROUP
+    // assigns the child its own process group so Ctrl-C and SIGINT from the
+    // parent are not delivered to the sidecar, and the child's handle
+    // inheritance set is isolated from the parent.
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x08000000;
-        command.creation_flags(CREATE_NO_WINDOW);
+        const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
+        command.creation_flags(CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP);
     }
 
     let mut child = command.spawn().with_context(|| {
@@ -283,6 +291,40 @@ impl EmbeddingProvider for SidecarEmbeddingProvider {
                 let mut process = poisoned.into_inner();
                 process.terminate();
             }
+        }
+    }
+
+    /// Poll the child process for exit up to `timeout`. Returns `true` if the
+    /// child exited within the window, `false` if the timeout elapsed first.
+    ///
+    /// Uses `try_wait` (non-blocking) in a polling loop to avoid holding the
+    /// process lock across sleeps. The poll interval is 10 ms — fine-grained
+    /// enough that we don't overshoot the timeout by more than one interval.
+    fn wait_for_exit(&self, timeout: Duration) -> bool {
+        let deadline = Instant::now() + timeout;
+        let poll_interval = Duration::from_millis(10);
+
+        loop {
+            // Check without holding the lock for the full sleep.
+            let exited = match self.process.lock() {
+                Ok(mut process) => process.child.try_wait().ok().flatten().is_some(),
+                Err(poisoned) => {
+                    // Mutex poisoned — the process is in an unknown state.
+                    // Treat as exited so the caller can continue.
+                    drop(poisoned.into_inner());
+                    true
+                }
+            };
+
+            if exited {
+                return true;
+            }
+
+            if Instant::now() >= deadline {
+                return false;
+            }
+
+            thread::sleep(poll_interval);
         }
     }
 }

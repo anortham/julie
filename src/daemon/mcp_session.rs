@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock as StdRwLock};
 use std::time::SystemTime;
 
@@ -54,6 +54,10 @@ pub(crate) struct HttpSessionAdmission {
     lifecycle: DaemonLifecycleController,
     startup_binary_mtime: Option<SystemTime>,
     current_binary_mtime: Arc<dyn Fn() -> Option<SystemTime> + Send + Sync>,
+    /// Counts every `apply_admission_action` invocation. Used in tests to verify
+    /// that the short-circuit in `admit_initialize` prevents the second gate from
+    /// running when the first returns `Err`.
+    pub(crate) apply_action_call_count: Arc<AtomicUsize>,
 }
 
 impl HttpSessionAdmission {
@@ -66,6 +70,7 @@ impl HttpSessionAdmission {
             lifecycle,
             startup_binary_mtime,
             current_binary_mtime: Arc::new(current_binary_mtime),
+            apply_action_call_count: Arc::new(AtomicUsize::new(0)),
         }
     }
 }
@@ -403,6 +408,9 @@ impl HttpJulieService {
         gate: &str,
         adapter_version: Option<&str>,
     ) -> Result<(), McpError> {
+        admission
+            .apply_action_call_count
+            .fetch_add(1, Ordering::Relaxed);
         match action {
             IncomingSessionAction::Accept => Ok(()),
             IncomingSessionAction::AcceptWithRestartPending(reason) => {

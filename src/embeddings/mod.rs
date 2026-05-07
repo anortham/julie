@@ -26,6 +26,7 @@ pub mod sidecar_provider;
 pub mod sidecar_supervisor;
 
 use anyhow::Result;
+use std::time::Duration;
 
 /// Supported embedding backends.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -117,6 +118,18 @@ pub trait EmbeddingProvider: Send + Sync {
     /// Explicitly shut down the provider, releasing any child processes.
     /// Default is a no-op; sidecar providers override to kill the child process.
     fn shutdown(&self) {}
+
+    /// Wait for the provider's underlying child process to exit, up to `timeout`.
+    ///
+    /// Returns `true` if the child exited within the timeout, `false` if the
+    /// timeout elapsed before the child exited. Providers without a child
+    /// process return `true` immediately (no-op default).
+    ///
+    /// This is a blocking call. Callers in async context should run it via
+    /// `tokio::task::spawn_blocking`.
+    fn wait_for_exit(&self, _timeout: Duration) -> bool {
+        true
+    }
 }
 
 // Re-exports
