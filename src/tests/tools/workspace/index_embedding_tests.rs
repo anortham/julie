@@ -402,36 +402,3 @@ fn test_pipeline_cancel_after_batch_stops_before_next_batch() {
         "first batch should have been stored before cancel was detected"
     );
 }
-
-/// Verify that the catch-up dedup flag prevents concurrent auto-indexing runs.
-/// With the AtomicBool guard in run_auto_indexing, only one concurrent scan runs.
-#[test]
-fn test_catchup_dedup_flag_prevents_concurrent_scans() {
-    use std::sync::Arc;
-    use std::sync::atomic::{AtomicBool, Ordering};
-
-    let in_progress = Arc::new(AtomicBool::new(false));
-
-    // First call: CAS succeeds — this session "owns" the catch-up.
-    let first = in_progress
-        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-        .is_ok();
-    assert!(first, "first caller must acquire the dedup flag");
-
-    // Second concurrent call: CAS fails — another session is already running.
-    let second = in_progress
-        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-        .is_ok();
-    assert!(!second, "second caller must not acquire the dedup flag");
-
-    // After the first session finishes, the flag is cleared.
-    in_progress.store(false, Ordering::Release);
-
-    // Now a third call can proceed.
-    let third = in_progress
-        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-        .is_ok();
-    assert!(third, "after flag cleared, next caller must acquire it");
-
-    in_progress.store(false, Ordering::Release);
-}

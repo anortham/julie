@@ -11,6 +11,7 @@ use crate::tools::workspace::indexing::file_policy::{
 };
 use crate::tools::workspace::indexing::pipeline::resolve_pending_relationships;
 use crate::tools::workspace::indexing::state::IndexingRepairReason;
+use crate::workspace::mutation_gate::MutationGuard;
 use anyhow::{Context, Result};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -78,6 +79,7 @@ pub(crate) async fn handle_file_created_or_modified_static(
     extractor_manager: &Arc<ExtractorManager>,
     workspace_root: &Path,
     search_index: Option<&Arc<std::sync::Mutex<SearchIndex>>>,
+    _guard: &MutationGuard<'_>,
 ) -> Result<FileIndexOutcome> {
     debug!("Processing file: {}", path.display());
 
@@ -108,9 +110,9 @@ pub(crate) async fn handle_file_created_or_modified_static(
         if let Some(old_hash_str) = db_lock.get_file_hash(&relative_path)? {
             let new_hash_str = hex::encode(new_hash.as_bytes());
             if new_hash_str == old_hash_str {
-                debug!(
-                    "File {} unchanged (Blake3 hash match), skipping",
-                    path.display()
+                info!(
+                    "Watcher: {} unchanged (hash match), skipping re-index",
+                    relative_path
                 );
                 // Clear any stale repair entry so retry_persisted_repairs
                 // doesn't re-dispatch this file every cycle.
@@ -180,12 +182,12 @@ pub(crate) async fn handle_file_created_or_modified_static(
         },
     };
 
-    debug!(
-        "Extracted {} symbols, {} identifiers, {} relationships from {} ({})",
+    info!(
+        "Watcher: extracted {} symbols, {} identifiers, {} relationships from {} ({})",
         results.symbols.len(),
         results.identifiers.len(),
         results.relationships.len(),
-        path.display(),
+        relative_path,
         language
     );
 
@@ -344,7 +346,7 @@ pub(crate) async fn handle_file_created_or_modified_static(
         true // No search index configured — nothing to fail
     };
 
-    debug!("Successfully indexed {}", path.display());
+    debug!("Watcher: indexed {}", relative_path);
     if tantivy_ok {
         Ok(FileIndexOutcome::clean())
     } else {
@@ -367,6 +369,7 @@ pub(crate) async fn handle_file_deleted_static(
     db: &Arc<std::sync::Mutex<SymbolDatabase>>,
     workspace_root: &Path,
     search_index: Option<&Arc<std::sync::Mutex<crate::search::SearchIndex>>>,
+    _guard: &MutationGuard<'_>,
 ) -> Result<()> {
     info!("Processing file deletion: {}", path.display());
 
@@ -462,6 +465,7 @@ pub(crate) async fn handle_file_renamed_static(
     extractor_manager: &Arc<ExtractorManager>,
     workspace_root: &Path,
     search_index: Option<&Arc<std::sync::Mutex<SearchIndex>>>,
+    _guard: &MutationGuard<'_>,
 ) -> Result<FileIndexOutcome> {
     info!(
         "Handling file rename: {} -> {}",
@@ -477,6 +481,7 @@ pub(crate) async fn handle_file_renamed_static(
         extractor_manager,
         workspace_root,
         search_index,
+        _guard,
     )
     .await?;
 
@@ -486,7 +491,9 @@ pub(crate) async fn handle_file_renamed_static(
 
     let relative_from = crate::utils::paths::to_relative_unix_style(&from, workspace_root)
         .unwrap_or_else(|_| from.to_string_lossy().replace('\\', "/"));
-    if let Err(err) = handle_file_deleted_static(from, db, workspace_root, search_index).await {
+    if let Err(err) =
+        handle_file_deleted_static(from, db, workspace_root, search_index, _guard).await
+    {
         persist_repair_state(
             db,
             &relative_from,

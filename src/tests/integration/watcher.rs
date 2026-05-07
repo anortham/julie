@@ -251,6 +251,7 @@ async fn test_process_pending_changes_runs_rescan_repair_for_stale_and_new_files
     use crate::database::SymbolDatabase;
     use crate::extractors::ExtractorManager;
     use crate::watcher::handlers::handle_file_created_or_modified_static;
+    use crate::workspace::mutation_gate::acquire_gate;
     use std::sync::{Arc, Mutex, atomic::Ordering};
 
     let temp_dir = crate::tests::helpers::unique_temp_dir("watcher_rescan_repair");
@@ -274,15 +275,18 @@ async fn test_process_pending_changes_runs_rescan_repair_for_stale_and_new_files
     )
     .unwrap();
 
+    let guard = acquire_gate("test_rescan_repair").await;
     handle_file_created_or_modified_static(
         tracked_file.canonicalize().unwrap(),
         &db,
         &extractor_manager,
         &workspace_root,
         None,
+        &guard,
     )
     .await
     .expect("initial indexing should succeed");
+    drop(guard); // release gate before process_pending_changes acquires its own
 
     fs::write(&tracked_file, "fn after_rescan() {}\n").unwrap();
     let new_file = workspace_root.join("fresh.rs");
@@ -478,12 +482,14 @@ async fn test_blake3_change_detection() {
     use crate::database::SymbolDatabase;
     use crate::extractors::ExtractorManager;
     use crate::watcher::handlers::handle_file_created_or_modified_static;
+    use crate::workspace::mutation_gate::acquire_gate;
     use std::sync::{Arc, Mutex};
 
     let dir = tempfile::tempdir().unwrap();
     let db_path = dir.path().join("test.db");
     let db = Arc::new(Mutex::new(SymbolDatabase::new(&db_path).unwrap()));
     let extractor_manager = Arc::new(ExtractorManager::new());
+    let guard = acquire_gate("test_blake3_change_detection").await;
 
     // 1. Create a file and index it for the first time
     let test_file = dir.path().join("example.rs");
@@ -495,6 +501,7 @@ async fn test_blake3_change_detection() {
         &extractor_manager,
         dir.path(),
         None,
+        &guard,
     )
     .await
     .expect("First index should succeed");
@@ -530,6 +537,7 @@ async fn test_blake3_change_detection() {
         &extractor_manager,
         dir.path(),
         None,
+        &guard,
     )
     .await
     .expect("Second index (same content) should succeed");
@@ -565,6 +573,7 @@ async fn test_blake3_change_detection() {
         &extractor_manager,
         dir.path(),
         None,
+        &guard,
     )
     .await
     .expect("Third index (new content) should succeed");
@@ -735,12 +744,14 @@ async fn test_delete_handler_trusts_caller_no_toctou() {
     use crate::watcher::handlers::{
         handle_file_created_or_modified_static, handle_file_deleted_static,
     };
+    use crate::workspace::mutation_gate::acquire_gate;
     use std::sync::{Arc, Mutex};
 
     let dir = tempfile::tempdir().unwrap();
     let db_path = dir.path().join("test.db");
     let db = Arc::new(Mutex::new(SymbolDatabase::new(&db_path).unwrap()));
     let extractor_manager = Arc::new(ExtractorManager::new());
+    let guard = acquire_gate("test_delete_toctou").await;
 
     // Index a real file first
     let test_file = dir.path().join("toctou.rs");
@@ -751,6 +762,7 @@ async fn test_delete_handler_trusts_caller_no_toctou() {
         &extractor_manager,
         dir.path(),
         None,
+        &guard,
     )
     .await
     .unwrap();
@@ -767,7 +779,7 @@ async fn test_delete_handler_trusts_caller_no_toctou() {
         test_file.exists(),
         "File must still exist to test TOCTOU fix"
     );
-    handle_file_deleted_static(test_file.clone(), &db, dir.path(), None)
+    handle_file_deleted_static(test_file.clone(), &db, dir.path(), None, &guard)
         .await
         .unwrap();
 

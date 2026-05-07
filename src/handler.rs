@@ -242,9 +242,6 @@ pub struct JulieServerHandler {
     /// True when the daemon detects its binary has been rebuilt.
     /// Surfaced in `manage_workspace health`. None in stdio mode.
     pub(crate) restart_pending: Option<Arc<std::sync::atomic::AtomicBool>>,
-    /// Fix G: prevents concurrent catch-up auto-indexing scans.
-    /// CAS'd to true by the first `run_auto_indexing` call; cleared on exit.
-    catchup_in_progress: Arc<AtomicBool>,
     /// Set when on_initialized defers auto-indexing until the primary workspace
     /// is resolved from client roots. Consumed by the first successful bind.
     deferred_auto_index_pending: Arc<AtomicBool>,
@@ -678,7 +675,6 @@ impl JulieServerHandler {
             workspace_id: Arc::new(StdRwLock::new(None)),
             embedding_service: None,
             restart_pending: None,
-            catchup_in_progress: Arc::new(AtomicBool::new(false)),
             deferred_auto_index_pending: Arc::new(AtomicBool::new(false)),
             session_lifecycle: None,
             watcher_pool: None,
@@ -794,7 +790,6 @@ impl JulieServerHandler {
             workspace_id: Arc::new(StdRwLock::new(workspace_id)),
             embedding_service,
             restart_pending,
-            catchup_in_progress: Arc::new(AtomicBool::new(false)),
             deferred_auto_index_pending: Arc::new(AtomicBool::new(false)),
             session_lifecycle: None,
             watcher_pool,
@@ -853,7 +848,6 @@ impl JulieServerHandler {
             workspace_id: Arc::new(StdRwLock::new(None)),
             embedding_service,
             restart_pending,
-            catchup_in_progress: Arc::new(AtomicBool::new(false)),
             deferred_auto_index_pending: Arc::new(AtomicBool::new(false)),
             session_lifecycle: None,
             watcher_pool,
@@ -1425,22 +1419,6 @@ impl JulieServerHandler {
         Ok(workspace_guard.clone())
     }
 
-    /// Pause the file watcher's event dispatch during catch-up indexing (Fix C part a).
-    pub async fn pause_watcher(&self) {
-        let guard = self.workspace.read().await;
-        if let Some(ref ws) = *guard {
-            ws.pause_file_watching();
-        }
-    }
-
-    /// Resume the file watcher after catch-up indexing completes (Fix C part a).
-    pub async fn resume_watcher(&self) {
-        let guard = self.workspace.read().await;
-        if let Some(ref ws) = *guard {
-            ws.resume_file_watching();
-        }
-    }
-
     /// Ensure workspace is initialized for operations that require it
     pub async fn ensure_workspace(&self) -> Result<()> {
         if self.workspace.read().await.is_some() {
@@ -1557,19 +1535,10 @@ impl JulieServerHandler {
     /// Run auto-indexing in background (called after MCP handshake)
     async fn run_auto_indexing(&self) {
         use crate::startup::run_primary_workspace_repair;
-        use std::sync::atomic::Ordering;
 
-        // Fix G: prevent concurrent catch-up scans (e.g. two sessions connecting simultaneously).
-        // Only the first caller proceeds; the second sees the flag set and bails out.
-        if self
-            .catchup_in_progress
-            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-            .is_err()
-        {
-            info!("Catch-up auto-indexing already in progress for this workspace, skipping");
-            return;
-        }
-
+        // Concurrent catch-up calls serialize through mutation_gate::acquire_gate(workspace_id)
+        // inside run_primary_workspace_repair. Redundant invocations are cheap because
+        // filter_changed_files short-circuits when nothing has changed.
         info!("🔍 Starting background auto-indexing check...");
 
         match run_primary_workspace_repair(self).await {
@@ -1589,9 +1558,6 @@ impl JulieServerHandler {
                 warn!("⚠️ Failed to check indexing status: {}", e);
             }
         }
-
-        // Fix G: release the dedup flag so the next catch-up can proceed.
-        self.catchup_in_progress.store(false, Ordering::Release);
     }
 
     // ========== Workspace Access Helpers ==========

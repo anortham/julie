@@ -187,7 +187,8 @@ pub mod integration {
     pub mod tracing;
     pub mod watcher; // File watcher tests
     pub mod watcher_handlers; // File watcher handler tests (incremental indexing)
-    pub mod watcher_pause; // Pause-aware watcher ingestion tests
+    pub mod watcher_mutation_gate; // Per-workspace mutation gate concurrency contract (LEAD-OWNED)
+    pub mod watcher_observability; // INFO-level observability regression tests (rate limiter, gate timing)
     pub mod watcher_queue; // Watcher queue coalescing and overflow policy tests
     pub mod workspace_isolation_smoke; // Fast workspace isolation smoke tests // Tracing integration tests (dogfooding tests) // Daemon + adapter integration tests (lifecycle, pool sharing, IPC, migration)
     pub mod zero_hit_replay_task3; // Task 3 diagnostic harness (ignored): replay content zero-hit fixture.

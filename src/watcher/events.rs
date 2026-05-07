@@ -8,7 +8,7 @@ use notify::{Event, EventKind};
 use std::collections::{HashSet, VecDeque};
 use std::path::Path;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::SystemTime;
 use tokio::sync::Mutex as TokioMutex;
 use tracing::debug;
@@ -17,7 +17,6 @@ use tracing::debug;
 ///
 /// `needs_rescan` is set to true if the queue overflows (>1000 events). The caller
 /// should trigger a workspace-wide staleness check when this flag is observed.
-#[cfg(test)]
 pub async fn process_file_system_event(
     supported_extensions: &HashSet<String>,
     gitignore: &Gitignore,
@@ -26,73 +25,11 @@ pub async fn process_file_system_event(
     event: Event,
     needs_rescan: &Arc<AtomicBool>,
 ) -> Result<()> {
-    process_file_system_event_internal(
-        supported_extensions,
-        gitignore,
-        workspace_root,
-        index_queue,
-        event,
-        needs_rescan,
-        None,
-        None,
-    )
-    .await
-}
-
-/// Process a file system event and skip queueing while watcher dispatch is paused.
-///
-/// Relevant events seen while paused trigger `needs_rescan` and bump `paused_event_count`,
-/// but are intentionally dropped from the queue to avoid overflow during catch-up indexing.
-pub async fn process_file_system_event_with_pause(
-    supported_extensions: &HashSet<String>,
-    gitignore: &Gitignore,
-    workspace_root: &Path,
-    index_queue: std::sync::Arc<TokioMutex<VecDeque<FileChangeEvent>>>,
-    event: Event,
-    needs_rescan: &Arc<AtomicBool>,
-    pause_flag: &AtomicBool,
-    paused_event_count: Option<&AtomicUsize>,
-) -> Result<()> {
-    process_file_system_event_internal(
-        supported_extensions,
-        gitignore,
-        workspace_root,
-        index_queue,
-        event,
-        needs_rescan,
-        Some(pause_flag),
-        paused_event_count,
-    )
-    .await
-}
-
-async fn process_file_system_event_internal(
-    supported_extensions: &HashSet<String>,
-    gitignore: &Gitignore,
-    workspace_root: &Path,
-    index_queue: std::sync::Arc<TokioMutex<VecDeque<FileChangeEvent>>>,
-    event: Event,
-    needs_rescan: &Arc<AtomicBool>,
-    pause_flag: Option<&AtomicBool>,
-    paused_event_count: Option<&AtomicUsize>,
-) -> Result<()> {
     debug!("Processing file system event: {:?}", event);
     let change_events =
         classify_file_system_event(supported_extensions, gitignore, workspace_root, event);
 
     if change_events.is_empty() {
-        return Ok(());
-    }
-
-    if pause_flag.is_some_and(|flag| flag.load(Ordering::Acquire)) {
-        needs_rescan.store(true, Ordering::Release);
-        if let Some(counter) = paused_event_count {
-            counter.fetch_add(change_events.len(), Ordering::AcqRel);
-        }
-        debug!(
-            dropped_events = change_events.len(),
-            "Watcher paused, dropping relevant events and scheduling repair scan"
-        );
         return Ok(());
     }
 

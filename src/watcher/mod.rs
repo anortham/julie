@@ -14,6 +14,7 @@
 pub(crate) mod events;
 pub mod filtering; // Public for tests
 pub mod handlers; // Public for tests
+pub mod observability; // INFO-level event observability helpers
 pub(crate) mod queue;
 mod runtime;
 pub mod types;
@@ -24,7 +25,7 @@ use notify::Watcher;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::future::Future;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
 use std::time::SystemTime;
 use tokio::sync::{Mutex as TokioMutex, mpsc};
@@ -33,6 +34,7 @@ use tracing::{debug, error, info, warn};
 use crate::database::SymbolDatabase;
 use crate::extractors::ExtractorManager;
 use crate::tools::workspace::indexing::state::{IndexingRepairReason, SharedIndexingRuntime};
+use crate::workspace::mutation_gate::MutationGuard;
 
 pub use types::{FileChangeEvent, FileChangeType, IndexingStats};
 
@@ -89,20 +91,16 @@ pub struct IncrementalIndexer {
     // Configuration
     workspace_root: PathBuf,
 
+    /// Stable identifier for this workspace, used as the mutation-gate key.
+    /// Computed once at construction from `workspace_root` via `generate_workspace_id`.
+    workspace_id: String,
+
     /// Shared flag checked by spawned tasks — when set to true, tasks exit their loops.
     cancel_flag: Arc<AtomicBool>,
-
-    /// When true, the queue processor skips dispatching events (events remain buffered).
-    /// Used to pause the watcher during catch-up indexing to prevent concurrent updates.
-    pub(crate) pause_flag: Arc<AtomicBool>,
 
     /// Set to true when the event queue overflows (>1000 events).
     /// The queue processor and external callers check this to trigger a full rescan.
     pub(crate) needs_rescan: Arc<AtomicBool>,
-
-    /// Count of relevant watcher events seen while queue dispatch is paused.
-    /// Emitted as a summary when watcher dispatch resumes.
-    pub(crate) paused_event_count: Arc<AtomicUsize>,
 
     /// Relative paths of files whose SQLite update succeeded but Tantivy update
     /// failed. Retried at the start of each queue-processor tick (Fix B-b).
@@ -133,6 +131,7 @@ pub(super) async fn dispatch_file_event(
     lang_configs: &Arc<crate::search::language_config::LanguageConfigs>,
     tantivy_dirty: &Arc<StdMutex<std::collections::HashSet<String>>>,
     indexing_runtime: &SharedIndexingRuntime,
+    _guard: &MutationGuard<'_>,
 ) -> Option<PathBuf> {
     let relative_for_embed =
         crate::utils::paths::to_relative_unix_style(&event.path, workspace_root).ok();
@@ -146,6 +145,7 @@ pub(super) async fn dispatch_file_event(
                 extractor_manager,
                 workspace_root,
                 search_index.as_ref(),
+                _guard,
             )
             .await
             {
@@ -217,6 +217,7 @@ pub(super) async fn dispatch_file_event(
                 db,
                 workspace_root,
                 search_index.as_ref(),
+                _guard,
             )
             .await
             {
@@ -241,6 +242,7 @@ pub(super) async fn dispatch_file_event(
                 extractor_manager,
                 workspace_root,
                 search_index.as_ref(),
+                _guard,
             )
             .await
             {
@@ -333,6 +335,13 @@ impl IncrementalIndexer {
         let lang_configs =
             Arc::new(crate::search::language_config::LanguageConfigs::load_embedded());
 
+        // Derive a stable workspace_id for use as the mutation-gate key.
+        // Falls back to the raw path string so construction never fails.
+        let workspace_id = workspace_root
+            .to_str()
+            .and_then(|p| crate::workspace::registry::generate_workspace_id(p).ok())
+            .unwrap_or_else(|| workspace_root.to_string_lossy().into_owned());
+
         Ok(Self {
             watcher: None,
             db,
@@ -344,11 +353,10 @@ impl IncrementalIndexer {
             last_processed: Arc::new(TokioMutex::new(HashMap::new())),
             supported_extensions,
             gitignore,
+            workspace_id,
             workspace_root,
             cancel_flag: Arc::new(AtomicBool::new(false)),
-            pause_flag: Arc::new(AtomicBool::new(false)),
             needs_rescan: Arc::new(AtomicBool::new(false)),
-            paused_event_count: Arc::new(AtomicUsize::new(0)),
             tantivy_dirty: Arc::new(StdMutex::new(std::collections::HashSet::new())),
             indexing_runtime,
             event_task: None,
@@ -406,8 +414,6 @@ impl IncrementalIndexer {
         let workspace_root_for_events = self.workspace_root.clone();
         let index_queue = self.index_queue.clone();
         let needs_rescan_for_events = self.needs_rescan.clone();
-        let pause_flag_for_events = self.pause_flag.clone();
-        let paused_event_count_for_events = self.paused_event_count.clone();
 
         let event_handle = tokio::spawn(async move {
             info!("File system event detector started");
@@ -417,22 +423,18 @@ impl IncrementalIndexer {
                 let workspace_root_for_events = workspace_root_for_events.clone();
                 let index_queue = index_queue.clone();
                 let needs_rescan_for_events = needs_rescan_for_events.clone();
-                let pause_flag_for_events = pause_flag_for_events.clone();
-                let paused_event_count_for_events = paused_event_count_for_events.clone();
 
                 let _ = run_guarded_task_step("event-detector", async move {
                     match event_result {
                         Ok(event) => {
                             debug!("File system event detected: {:?}", event);
-                            if let Err(e) = events::process_file_system_event_with_pause(
+                            if let Err(e) = events::process_file_system_event(
                                 &supported_extensions,
                                 &gitignore,
                                 &workspace_root_for_events,
                                 index_queue,
                                 event,
                                 &needs_rescan_for_events,
-                                pause_flag_for_events.as_ref(),
-                                Some(paused_event_count_for_events.as_ref()),
                             )
                             .await
                             {
@@ -462,7 +464,7 @@ impl IncrementalIndexer {
             Arc::clone(&self.last_processed),
             self.supported_extensions.clone(),
             self.workspace_root.clone(),
-            Arc::clone(&self.pause_flag),
+            self.workspace_id.clone(),
             Arc::clone(&self.needs_rescan),
             Arc::clone(&self.tantivy_dirty),
             Arc::clone(&self.indexing_runtime),
@@ -531,37 +533,6 @@ impl IncrementalIndexer {
 
         info!("File watcher stopped");
         Ok(())
-    }
-
-    /// Pause event dispatch. Events continue to accumulate in the queue
-    /// but are not dispatched until `resume()` is called.
-    ///
-    /// Used by `run_auto_indexing` to prevent the watcher from racing with
-    /// the catch-up staleness scan (Fix C part a).
-    pub fn pause(&self) {
-        self.pause_flag.store(true, Ordering::Release);
-        self.indexing_runtime
-            .write()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .set_watcher_paused(true);
-        debug!("File watcher paused");
-    }
-
-    /// Resume event dispatch after a `pause()`.
-    pub fn resume(&self) {
-        self.pause_flag.store(false, Ordering::Release);
-        self.indexing_runtime
-            .write()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .set_watcher_paused(false);
-        let dropped_while_paused = self.paused_event_count.swap(0, Ordering::AcqRel);
-        if dropped_while_paused > 0 {
-            info!(
-                dropped_while_paused,
-                "Watcher resumed after catch-up pause; repair scan will cover dropped events"
-            );
-        }
-        debug!("File watcher resumed");
     }
 
     #[cfg(test)]

@@ -211,6 +211,12 @@ impl IndexingRuntimeState {
         }
     }
 
+    /// Dashboard health signal: `true` while a long-running mutation (typically
+    /// catch-up) holds the workspace mutation gate, so live watcher events are
+    /// queueing but not yet processing. The watcher itself is not paused —
+    /// events flow into the queue uninterrupted; the queue processor blocks on
+    /// `mutation_gate::acquire_gate(workspace_id)` until the holder releases.
+    /// Field name kept for dashboard JSON stability.
     pub(crate) fn set_watcher_paused(&mut self, paused: bool) {
         self.watcher_paused = paused;
     }

@@ -236,29 +236,6 @@ impl WatcherPool {
         reaped
     }
 
-    /// Pause event dispatch for a workspace's watcher (Fix C part c).
-    ///
-    /// Used during force reindex of a non-primary workspace to prevent the watcher
-    /// from dispatching concurrent incremental updates to the same DB.
-    pub async fn pause_workspace(&self, workspace_id: &str) {
-        let guard = self.entries.read().await;
-        if let Some(entry) = guard.get(workspace_id) {
-            if let Some(ref watcher) = entry.watcher {
-                watcher.pause();
-            }
-        }
-    }
-
-    /// Resume event dispatch for a workspace's watcher after `pause_workspace`.
-    pub async fn resume_workspace(&self, workspace_id: &str) {
-        let guard = self.entries.read().await;
-        if let Some(entry) = guard.get(workspace_id) {
-            if let Some(ref watcher) = entry.watcher {
-                watcher.resume();
-            }
-        }
-    }
-
     /// Unconditionally shut down all watchers in the pool.
     ///
     /// Walks every entry, extracts its `IncrementalIndexer` (if any), removes

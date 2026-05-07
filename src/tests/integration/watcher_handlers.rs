@@ -9,6 +9,7 @@ use crate::tools::workspace::indexing::state::IndexingRepairReason;
 use crate::watcher::handlers::{
     handle_file_created_or_modified_static, handle_file_deleted_static, handle_file_renamed_static,
 };
+use crate::workspace::mutation_gate::acquire_gate;
 use std::fs;
 use std::sync::{Arc, Mutex};
 
@@ -44,6 +45,7 @@ fn caller() -> i32 {
         SymbolDatabase::new(&db_path).expect("Failed to create test database"),
     ));
     let extractor_manager = Arc::new(ExtractorManager::new());
+    let guard = acquire_gate("test_stores_identifiers").await;
 
     // Index the file
     handle_file_created_or_modified_static(
@@ -52,6 +54,7 @@ fn caller() -> i32 {
         &extractor_manager,
         &workspace_root,
         None,
+        &guard,
     )
     .await
     .expect("Indexing should succeed");
@@ -131,6 +134,7 @@ pub fn should_use_semantic_fallback() {}
         SymbolDatabase::new(&db_path).expect("Failed to create test database"),
     ));
     let extractor_manager = Arc::new(ExtractorManager::new());
+    let guard = acquire_gate("test_cross_file_pending").await;
 
     handle_file_created_or_modified_static(
         callee_abs,
@@ -138,6 +142,7 @@ pub fn should_use_semantic_fallback() {}
         &extractor_manager,
         &workspace_root,
         None,
+        &guard,
     )
     .await
     .expect("callee file indexing should succeed");
@@ -148,6 +153,7 @@ pub fn should_use_semantic_fallback() {}
         &extractor_manager,
         &workspace_root,
         None,
+        &guard,
     )
     .await
     .expect("initial caller file indexing should succeed");
@@ -168,6 +174,7 @@ fn caller() {
         &extractor_manager,
         &workspace_root,
         None,
+        &guard,
     )
     .await
     .expect("caller update introducing cross-file call should succeed");
@@ -214,6 +221,7 @@ fn original_symbol() {}
         SymbolDatabase::new(&db_path).expect("Failed to create test database"),
     ));
     let extractor_manager = Arc::new(ExtractorManager::new());
+    let guard = acquire_gate("test_oversized_text_only").await;
 
     let initial_outcome = handle_file_created_or_modified_static(
         absolute_path.clone(),
@@ -221,6 +229,7 @@ fn original_symbol() {}
         &extractor_manager,
         &workspace_root,
         None,
+        &guard,
     )
     .await
     .expect("initial indexing should succeed");
@@ -238,6 +247,7 @@ fn original_symbol() {}
         &extractor_manager,
         &workspace_root,
         None,
+        &guard,
     )
     .await
     .expect("oversized update should be handled");
@@ -300,6 +310,7 @@ fn initial_function() {
 
     // Initialize extractor manager
     let extractor_manager = Arc::new(ExtractorManager::new());
+    let guard = acquire_gate("test_absolute_path_handling").await;
 
     println!("DEBUG: absolute_path = {}", absolute_path.display());
     println!("DEBUG: workspace_root = {}", workspace_root.display());
@@ -311,6 +322,7 @@ fn initial_function() {
         &extractor_manager,
         &workspace_root,
         None,
+        &guard,
     )
     .await
     .expect("Initial indexing should succeed");
@@ -358,6 +370,7 @@ fn modified_function() {
         &extractor_manager,
         &workspace_root,
         None,
+        &guard,
     )
     .await
     .expect("Incremental indexing should succeed");
@@ -446,6 +459,7 @@ fn third_function() {
         &extractor_manager,
         &workspace_root,
         None,
+        &guard,
     )
     .await
     .expect("Second modification should succeed");
@@ -495,6 +509,7 @@ fn third_function() {
         &extractor_manager,
         &workspace_root,
         None,
+        &guard,
     )
     .await
     .expect("Re-indexing unchanged file should succeed");
@@ -553,6 +568,7 @@ fn final_function() {
         &extractor_manager,
         &workspace_root,
         None,
+        &guard,
     )
     .await
     .expect("Re-indexing with new content should succeed");
@@ -585,6 +601,7 @@ async fn test_file_deletion_absolute_path() {
         SymbolDatabase::new(&db_path).expect("Failed to create test database"),
     ));
     let extractor_manager = Arc::new(ExtractorManager::new());
+    let guard = acquire_gate("test_file_deletion").await;
 
     // Index the file
     handle_file_created_or_modified_static(
@@ -593,6 +610,7 @@ async fn test_file_deletion_absolute_path() {
         &extractor_manager,
         &workspace_root,
         None,
+        &guard,
     )
     .await
     .expect("Initial indexing should succeed");
@@ -608,7 +626,7 @@ async fn test_file_deletion_absolute_path() {
     fs::remove_file(&test_file).unwrap();
 
     // Call deletion handler with absolute path
-    handle_file_deleted_static(absolute_path, &db, &workspace_root, None)
+    handle_file_deleted_static(absolute_path, &db, &workspace_root, None, &guard)
         .await
         .expect("File deletion should succeed");
 
@@ -636,6 +654,7 @@ async fn test_file_rename_absolute_paths() {
         SymbolDatabase::new(&db_path).expect("Failed to create test database"),
     ));
     let extractor_manager = Arc::new(ExtractorManager::new());
+    let guard = acquire_gate("test_file_rename").await;
 
     // Index original file
     handle_file_created_or_modified_static(
@@ -644,6 +663,7 @@ async fn test_file_rename_absolute_paths() {
         &extractor_manager,
         &workspace_root,
         None,
+        &guard,
     )
     .await
     .expect("Initial indexing should succeed");
@@ -661,6 +681,7 @@ async fn test_file_rename_absolute_paths() {
         &extractor_manager,
         &workspace_root,
         None,
+        &guard,
     )
     .await
     .expect("File rename should succeed");
@@ -694,6 +715,7 @@ async fn test_file_rename_keeps_source_indexed_when_destination_reindex_fails() 
         SymbolDatabase::new(&db_path).expect("Failed to create test database"),
     ));
     let extractor_manager = Arc::new(ExtractorManager::new());
+    let guard = acquire_gate("test_rename_destination_failure").await;
 
     handle_file_created_or_modified_static(
         old_absolute.clone(),
@@ -701,6 +723,7 @@ async fn test_file_rename_keeps_source_indexed_when_destination_reindex_fails() 
         &extractor_manager,
         &workspace_root,
         None,
+        &guard,
     )
     .await
     .expect("Initial indexing should succeed");
@@ -715,6 +738,7 @@ async fn test_file_rename_keeps_source_indexed_when_destination_reindex_fails() 
         &extractor_manager,
         &workspace_root,
         None,
+        &guard,
     )
     .await
     .expect("Initial destination indexing should succeed");
@@ -735,6 +759,7 @@ async fn test_file_rename_keeps_source_indexed_when_destination_reindex_fails() 
         &extractor_manager,
         &workspace_root,
         None,
+        &guard,
     )
     .await
     .expect("Rename handler should report the destination failure without panicking");
@@ -771,6 +796,7 @@ async fn test_file_rename_persists_repair_when_source_retirement_fails() {
         SymbolDatabase::new(&db_path).expect("Failed to create test database"),
     ));
     let extractor_manager = Arc::new(ExtractorManager::new());
+    let guard = acquire_gate("test_rename_source_retirement").await;
 
     handle_file_created_or_modified_static(
         old_absolute.clone(),
@@ -778,6 +804,7 @@ async fn test_file_rename_persists_repair_when_source_retirement_fails() {
         &extractor_manager,
         &workspace_root,
         None,
+        &guard,
     )
     .await
     .expect("Initial indexing should succeed");
@@ -808,6 +835,7 @@ async fn test_file_rename_persists_repair_when_source_retirement_fails() {
         &extractor_manager,
         &workspace_root,
         None,
+        &guard,
     )
     .await
     .expect_err("source retirement failure should bubble up");
@@ -850,6 +878,7 @@ async fn test_extractor_failure_is_persisted_durably() {
         SymbolDatabase::new(&db_path).expect("Failed to create test database"),
     ));
     let extractor_manager = Arc::new(ExtractorManager::new());
+    let guard = acquire_gate("test_extractor_failure_durable").await;
 
     handle_file_created_or_modified_static(
         absolute_path.clone(),
@@ -857,6 +886,7 @@ async fn test_extractor_failure_is_persisted_durably() {
         &extractor_manager,
         &workspace_root,
         None,
+        &guard,
     )
     .await
     .expect("initial parser-backed indexing should succeed");
@@ -873,6 +903,7 @@ async fn test_extractor_failure_is_persisted_durably() {
         &extractor_manager,
         &workspace_root,
         None,
+        &guard,
     )
     .await
     .expect("Extractor failure should surface as repair-needed, not a hard error");
@@ -934,6 +965,7 @@ async fn test_delete_handler_always_cleans_up() {
         SymbolDatabase::new(&db_path).expect("Failed to create test database"),
     ));
     let extractor_manager = Arc::new(ExtractorManager::new());
+    let guard = acquire_gate("test_delete_always_cleans_up").await;
 
     // Index the file
     handle_file_created_or_modified_static(
@@ -942,6 +974,7 @@ async fn test_delete_handler_always_cleans_up() {
         &extractor_manager,
         &workspace_root,
         None,
+        &guard,
     )
     .await
     .expect("Initial indexing should succeed");
@@ -961,7 +994,7 @@ async fn test_delete_handler_always_cleans_up() {
         "File still exists — handler must clean up regardless (trust caller)"
     );
 
-    handle_file_deleted_static(absolute_path, &db, &workspace_root, None)
+    handle_file_deleted_static(absolute_path, &db, &workspace_root, None, &guard)
         .await
         .expect("Delete handler should succeed");
 
@@ -1058,6 +1091,7 @@ fn render_rich_text_field() {
 }
 "#;
     fs::write(&test_file, modified_content).unwrap();
+    let guard = acquire_gate("test_tantivy_file_content").await;
 
     // Call the watcher handler WITH the search index (this is the code path that has the bug)
     handle_file_created_or_modified_static(
@@ -1066,6 +1100,7 @@ fn render_rich_text_field() {
         &extractor_manager,
         &workspace_root,
         Some(&search_index),
+        &guard,
     )
     .await
     .expect("Incremental indexing should succeed");
@@ -1150,6 +1185,7 @@ fn watched_annotation_marker() {
     let search_index = Arc::new(Mutex::new(
         SearchIndex::create(&tantivy_dir).expect("Failed to create search index"),
     ));
+    let guard = acquire_gate("test_annotation_fields").await;
 
     handle_file_created_or_modified_static(
         absolute_path,
@@ -1157,6 +1193,7 @@ fn watched_annotation_marker() {
         &extractor_manager,
         &workspace_root,
         Some(&search_index),
+        &guard,
     )
     .await
     .expect("incremental indexing should succeed");
@@ -1206,6 +1243,7 @@ async fn test_incremental_indexing_projection_failure_reports_repair_reason() {
         idx.shutdown()
             .expect("search index should shut down cleanly");
     }
+    let guard = acquire_gate("test_projection_failure").await;
 
     let outcome = handle_file_created_or_modified_static(
         absolute_path,
@@ -1213,6 +1251,7 @@ async fn test_incremental_indexing_projection_failure_reports_repair_reason() {
         &extractor_manager,
         &workspace_root,
         Some(&search_index),
+        &guard,
     )
     .await
     .expect("SQLite update should still succeed when projection fails");
@@ -1249,6 +1288,7 @@ async fn test_hash_match_clears_stale_repair_entry() {
         SymbolDatabase::new(&db_path).expect("Failed to create test database"),
     ));
     let extractor_manager = Arc::new(ExtractorManager::new());
+    let guard = acquire_gate("test_hash_match_repair_clear").await;
 
     // First pass: index the file (stores hash + symbols)
     handle_file_created_or_modified_static(
@@ -1257,6 +1297,7 @@ async fn test_hash_match_clears_stale_repair_entry() {
         &extractor_manager,
         &workspace_root,
         None,
+        &guard,
     )
     .await
     .expect("initial indexing should succeed");
@@ -1276,6 +1317,7 @@ async fn test_hash_match_clears_stale_repair_entry() {
         &extractor_manager,
         &workspace_root,
         None,
+        &guard,
     )
     .await
     .expect("hash-match pass should succeed");

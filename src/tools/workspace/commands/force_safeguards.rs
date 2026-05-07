@@ -4,12 +4,6 @@ use std::path::Path;
 use std::sync::atomic::Ordering;
 use tracing::info;
 
-#[derive(Default)]
-pub(crate) struct ForceReindexWatcherPause {
-    watcher_pool_workspace_ids: Vec<String>,
-    local_primary_paused: bool,
-}
-
 pub(crate) fn workspace_ids_for_force_reindex(
     canonical_path: &Path,
     current_primary_id: Option<&str>,
@@ -50,49 +44,6 @@ pub(crate) async fn cancel_embedding_tasks(
             cancel_flag.store(true, Ordering::Release);
             handle.abort();
         }
-    }
-}
-
-pub(crate) async fn pause_force_reindex_watchers(
-    handler: &JulieServerHandler,
-    workspace_ids: &[String],
-    pause_local_primary: bool,
-) -> ForceReindexWatcherPause {
-    if let Some(pool) = &handler.watcher_pool {
-        let mut paused = ForceReindexWatcherPause::default();
-        for workspace_id in workspace_ids {
-            pool.pause_workspace(workspace_id).await;
-            push_unique(
-                &mut paused.watcher_pool_workspace_ids,
-                workspace_id.to_string(),
-            );
-        }
-        return paused;
-    }
-
-    if pause_local_primary {
-        handler.pause_watcher().await;
-        ForceReindexWatcherPause {
-            watcher_pool_workspace_ids: Vec::new(),
-            local_primary_paused: true,
-        }
-    } else {
-        ForceReindexWatcherPause::default()
-    }
-}
-
-pub(crate) async fn resume_force_reindex_watchers(
-    handler: &JulieServerHandler,
-    paused: ForceReindexWatcherPause,
-) {
-    if let Some(pool) = &handler.watcher_pool {
-        for workspace_id in paused.watcher_pool_workspace_ids {
-            pool.resume_workspace(&workspace_id).await;
-        }
-    }
-
-    if paused.local_primary_paused {
-        handler.resume_watcher().await;
     }
 }
 
