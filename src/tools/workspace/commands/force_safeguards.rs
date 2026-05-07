@@ -1,5 +1,4 @@
 use crate::handler::JulieServerHandler;
-use crate::workspace::mutation_gate::{MutationGuard, acquire_gate};
 use anyhow::Result;
 use std::path::Path;
 use std::sync::atomic::Ordering;
@@ -46,20 +45,6 @@ pub(crate) async fn cancel_embedding_tasks(
             handle.abort();
         }
     }
-}
-
-/// Acquire the workspace mutation gate for a force-reindex operation.
-///
-/// Returns a [`MutationGuard`] that serializes all writers through the same
-/// shared per-workspace lock.  The gate is released automatically when the
-/// returned guard is dropped — there is no separate "resume" step.
-///
-/// This replaces the old `pause_force_reindex_watchers` / `resume_force_reindex_watchers`
-/// pair.  The old approach used a lossy pause flag on the watcher; the new
-/// approach uses the same proof-token mutex that all other writers (index,
-/// refresh, register, catch-up) hold.
-pub(crate) async fn acquire_force_reindex_gate(workspace_id: &str) -> MutationGuard<'static> {
-    acquire_gate(workspace_id).await
 }
 
 fn push_unique(values: &mut Vec<String>, value: String) {
