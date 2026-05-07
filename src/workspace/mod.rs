@@ -8,6 +8,7 @@
 //! - Configuration and caching
 //! - Workspace registry for multi-project indexing
 
+pub mod mutation_gate;
 pub mod registry;
 pub mod startup_hint;
 
