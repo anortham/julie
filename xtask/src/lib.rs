@@ -6,6 +6,7 @@ pub mod runner;
 pub mod search_matrix;
 pub mod search_matrix_mine;
 pub mod search_matrix_report;
+pub mod sync_plugin;
 pub mod tree_sitter_certification;
 pub mod tree_sitter_certification_data;
 pub mod tree_sitter_certification_report;

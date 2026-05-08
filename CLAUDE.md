@@ -38,6 +38,7 @@ cargo xtask certify tree-sitter --real-world --profile smoke --out docs/LANGUAGE
 cargo xtask test bucket parser-upgrade  # Parser dependency upgrade gate
 cargo xtask test changed       # After a localized change (diff-scoped buckets)
 cargo xtask test dev           # Batch gate before handoff — not per edit
+cargo xtask sync-plugin        # Mirror skills source → ~/source/julie-plugin (`--dry-run` to preview)
 cargo fmt                      # Format code
 cargo clippy                   # Lint
 ```
@@ -440,7 +441,7 @@ On release, a GitHub Actions workflow in julie-plugin (`update-binaries.yml`):
 
 **Adding a new skill:**
 1. Create `.claude/skills/<name>/SKILL.md` here in julie
-2. Copy it manually to `~/source/julie-plugin/skills/<name>/SKILL.md` for immediate availability
+2. Run `cargo xtask sync-plugin` to mirror skills source → plugin (full mirror; removes plugin-only skill files). `--dry-run` previews changes.
 3. Add `<name>` to the `for skill in ...` list in `julie-plugin/.github/workflows/update-binaries.yml`
 4. Update the skill count check in the same workflow
 
@@ -448,6 +449,7 @@ On release, a GitHub Actions workflow in julie-plugin (`update-binaries.yml`):
 - `.claude/hooks/hooks.json` in julie is dev-only (applies when working IN the julie repo)
 - `hooks/hooks.json` in julie-plugin is what gets distributed to users
 - These are intentionally separate; edit the plugin repo's copy for distribution changes
+- `cargo xtask sync-plugin` reports hook divergence but does NOT auto-sync hooks (plugin uses `${CLAUDE_PLUGIN_ROOT}` paths and a plugin-only `lib/` that don't apply in source dev mode)
 
 **Modifying agent instructions:**
 - Edit `JULIE_AGENT_INSTRUCTIONS.md` here in julie (source of truth)

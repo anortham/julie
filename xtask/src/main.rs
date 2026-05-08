@@ -6,7 +6,8 @@ use xtask::changed::{
     ChangedSelectionMode, collect_changed_paths, render_changed_selection, select_changed_buckets,
 };
 use xtask::cli::{
-    CertifyCommand, CliCommand, TestCommand, parse_cli_command, validate_cli_command,
+    CertifyCommand, CliCommand, SyncPluginCommand, TestCommand, parse_cli_command,
+    validate_cli_command,
 };
 use xtask::inventory::{ProcessInventoryExecutor, render_inventory_report, run_inventory};
 use xtask::manifest::TestManifest;
@@ -47,6 +48,7 @@ fn main() -> anyhow::Result<()> {
                 CliCommand::Test(command) => command,
                 CliCommand::SearchMatrix(_) => unreachable!("validated test command changed shape"),
                 CliCommand::Certify(_) => unreachable!("validated test command changed shape"),
+                CliCommand::SyncPlugin(_) => unreachable!("validated test command changed shape"),
             };
 
             match command {
@@ -124,6 +126,15 @@ fn main() -> anyhow::Result<()> {
         }
         CliCommand::SearchMatrix(command) => {
             run_search_matrix_command(&command, &mut stdout)?;
+        }
+        CliCommand::SyncPlugin(SyncPluginCommand {
+            plugin_root,
+            dry_run,
+        }) => {
+            let workspace = workspace_root();
+            let plugin = plugin_root
+                .unwrap_or_else(|| xtask::sync_plugin::default_plugin_root(&workspace));
+            xtask::sync_plugin::run_sync_plugin(&workspace, &plugin, dry_run, &mut stdout)?;
         }
         CliCommand::Certify(command) => match command {
             CertifyCommand::TreeSitter {

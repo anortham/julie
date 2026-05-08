@@ -54,10 +54,17 @@ pub enum CertifyCommand {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SyncPluginCommand {
+    pub plugin_root: Option<PathBuf>,
+    pub dry_run: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CliCommand {
     Test(TestCommand),
     SearchMatrix(SearchMatrixCommand),
     Certify(CertifyCommand),
+    SyncPlugin(SyncPluginCommand),
 }
 
 pub fn parse_cli_command<I, S>(args: I) -> Result<CliCommand>
@@ -78,8 +85,33 @@ where
         "test" => Ok(CliCommand::Test(parse_test_command(args)?)),
         "search-matrix" => Ok(CliCommand::SearchMatrix(parse_search_matrix_command(args)?)),
         "certify" => Ok(CliCommand::Certify(parse_certify_command(args)?)),
+        "sync-plugin" => Ok(CliCommand::SyncPlugin(parse_sync_plugin_command(args)?)),
         other => bail!("unsupported xtask command `{other}`"),
     }
+}
+
+fn parse_sync_plugin_command(args: Vec<String>) -> Result<SyncPluginCommand> {
+    let mut tail = args.into_iter().skip(2);
+    let mut plugin_root: Option<PathBuf> = None;
+    let mut dry_run = false;
+
+    while let Some(arg) = tail.next() {
+        match arg.as_str() {
+            "--dry-run" => dry_run = true,
+            "--plugin-root" => {
+                let raw = tail
+                    .next()
+                    .ok_or_else(|| anyhow!("missing value for --plugin-root"))?;
+                plugin_root = Some(PathBuf::from(raw));
+            }
+            other => bail!("unexpected argument: {other}"),
+        }
+    }
+
+    Ok(SyncPluginCommand {
+        plugin_root,
+        dry_run,
+    })
 }
 
 pub fn parse_test_command<I, S>(args: I) -> Result<TestCommand>
@@ -146,6 +178,7 @@ pub fn validate_cli_command(manifest: &TestManifest, command: CliCommand) -> Res
         )?)),
         CliCommand::SearchMatrix(command) => Ok(CliCommand::SearchMatrix(command)),
         CliCommand::Certify(command) => Ok(CliCommand::Certify(command)),
+        CliCommand::SyncPlugin(command) => Ok(CliCommand::SyncPlugin(command)),
     }
 }
 
