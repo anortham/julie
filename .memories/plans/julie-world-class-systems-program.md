@@ -1,9 +1,9 @@
 ---
 id: julie-world-class-systems-program
-title: Julie World-Class Systems Program
+title: Julie Post-v7.8.0 Patch Release Decision
 status: active
 created: 2026-04-16T07:23:42.025Z
-updated: 2026-04-16T21:49:20.921Z
+updated: 2026-05-08T14:03:51.046Z
 tags:
   - world-class-systems
   - track-1
@@ -17,23 +17,23 @@ tags:
   - ready-to-merge
 ---
 
-## Julie World-Class Systems Program
+## Julie Post-v7.8.0 Patch Release Decision
 
 ### Status
-- Program baseline completed: shared health contract, dashboard wiring, and xtask reliability and benchmark entry points landed.
-- Track 1 completed: daemon lifecycle state, transport seam, adapter retry handoff, and dashboard and session visibility are in place.
-- Track 2 completed: indexing route and pipeline seams are in place, cold start and catch-up and watcher repair now share one runtime path, indexing health is exposed through product surfaces, rename repair is rollback-safe, and extractor failures persist durably.
-- Track 3 completed: canonical revision tracking is durable in SQLite, Tantivy projection freshness is revision-aware, projection lag and repair status are surfaced through health and dashboard, and projection failure no longer lies about search readiness.
-- Track 4 completed: sidecar capability and load-policy contracts are explicit, settled embedding runtime state is preserved end to end, indexing and query flows honor settled runtime status, and embedding degradation now surfaces through health and dashboard.
-- Convergence completed: `cargo xtask test full` passed on rerun after a transient `tools-workspace` bucket failure did not reproduce on standalone rerun.
+- Julie World-Class Systems Program: **completed and shipped** (Tracks 1-4, convergence, all merged to main).
+- v7.8.0 tagged 2026-05-07 (Tree-Sitter Extractor Audit Remediation wave). Release notes in docs/release-notes/v7.8.0.md.
+- Two post-v7.8.0 commits sit on local main, unpushed:
+  - `7738219d` fix(tree-sitter): close TS-RF-001..008 review findings
+  - `069b9d76` fix(health,vue,sql): close 4 review findings on tree-sitter remediation
+- Working tree clean except `.claude/settings.local.json`.
 
-### Remaining Work
-- Merge `codex/world-class-systems` back to `main` locally.
-- Dogfood from the merged branch and release binary, with attention on the known release-daemon false deleted-file detection lead behind the `Transport closed` reports.
+### Current Question
+Decide whether to bump patch version (v7.8.1) and ship the two unpushed review-finding fixes, or roll them into a larger release with additional work.
 
 ### Risks To Watch
-- Release-daemon false deleted-file detection on connect still needs dogfood validation after merge.
-- Windows control-plane behavior improved in structure and visibility, but release-binary restart and replacement flow still deserves live validation.
+- Release-daemon false deleted-file detection on connect — known lead behind `Transport closed` reports, still wants live validation.
+- Windows release-binary restart and replacement flow still wants live validation.
 
 ### Outcome
-- The program plan is implemented. The branch is at merge and dogfood stage, not in active feature development.
+- Active feature program is closed. Day-to-day work is now release-train management, dogfood validation, and tactical fixes.
+
