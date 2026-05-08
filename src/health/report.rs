@@ -54,7 +54,18 @@ impl SystemHealthSnapshot {
         ));
 
         if self.data_plane.canonical_store.level == HealthLevel::Unavailable {
-            report.push_str("Database not initialized\n");
+            // Phantom-fd state surfaces a non-empty `detail` string explaining
+            // that SQLite still serves rows from an unlinked file descriptor.
+            // Prefer that over the generic "not initialized" line so operators
+            // see the symbol/file count and the recovery instructions.
+            if self.data_plane.canonical_store.detail.is_empty() {
+                report.push_str("Database not initialized\n");
+            } else {
+                report.push_str(&format!(
+                    "{}\n",
+                    self.data_plane.canonical_store.detail
+                ));
+            }
         } else {
             let symbols_per_file = if self.data_plane.canonical_store.file_count > 0 {
                 self.data_plane.canonical_store.symbol_count as f64

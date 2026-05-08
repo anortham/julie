@@ -7,6 +7,13 @@ use std::collections::HashMap;
 use std::sync::LazyLock;
 use tree_sitter::Node;
 
+// Best-effort fallback regex used only when the SQL parser produces an ERROR
+// node. Captures the FIRST `FROM <identifier>` after `AS`, so a view that
+// references a CTE (`WITH cte AS (SELECT ... FROM x) SELECT ... FROM y`) or
+// nests subqueries (`SELECT * FROM (SELECT ... FROM x) sub`) will bind to the
+// inner table (`x`) instead of the outer one (`y`). The AST path is exact and
+// handles those cases correctly; this fallback exists to recover something
+// useful when the dialect-specific syntax fails to parse.
 static CREATE_VIEW_SOURCE_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
         r"(?is)\bCREATE\s+(?:OR\s+REPLACE\s+)?(?:TEMP(?:ORARY)?\s+)?(?:RECURSIVE\s+)?VIEW\s+(?:IF\s+NOT\s+EXISTS\s+)?([a-zA-Z_][a-zA-Z0-9_\.]*)\s*(?:\([^)]*\)\s*)?AS\s+.*?\bFROM\s+([a-zA-Z_][a-zA-Z0-9_\.]*)",

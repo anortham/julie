@@ -144,6 +144,11 @@ pub(crate) struct IndexingRuntimeState {
     dirty_projection_count: usize,
     repair_reasons: BTreeSet<IndexingRepairReason>,
     repair_details: Vec<String>,
+    /// Files whose Tantivy projection retry was abandoned after the watcher's
+    /// retry budget was exhausted. ProjectionFailure is sticky against this set:
+    /// it survives unrelated dirty-count changes and clears only when every
+    /// abandoned file recovers, or when a new indexing operation begins.
+    abandoned_projection_files: BTreeSet<String>,
 }
 
 impl Default for IndexingRuntimeState {
@@ -163,6 +168,7 @@ impl IndexingRuntimeState {
             dirty_projection_count: 0,
             repair_reasons: BTreeSet::new(),
             repair_details: Vec::new(),
+            abandoned_projection_files: BTreeSet::new(),
         }
     }
 
@@ -191,6 +197,7 @@ impl IndexingRuntimeState {
             .remove(&IndexingRepairReason::ExtractorFailure);
         self.repair_reasons
             .remove(&IndexingRepairReason::ProjectionFailure);
+        self.abandoned_projection_files.clear();
     }
 
     pub(crate) fn transition_stage(&mut self, stage: IndexingStage) {
@@ -229,9 +236,35 @@ impl IndexingRuntimeState {
         } else {
             self.repair_reasons
                 .remove(&IndexingRepairReason::TantivyDirty);
+        }
+        // ProjectionFailure is owned by the abandoned-projection-files set, not
+        // by the dirty count. An unrelated retry success that drops the count
+        // to zero must not erase a previously abandoned file's failure signal.
+    }
+
+    /// Marks `file_path` as abandoned by the Tantivy retry loop. Sticky:
+    /// `ProjectionFailure` stays set until every abandoned file recovers (via
+    /// `clear_abandoned_projection`) or a new indexing operation resets state.
+    pub(crate) fn record_abandoned_projection(&mut self, file_path: String) {
+        self.abandoned_projection_files.insert(file_path);
+        self.repair_reasons
+            .insert(IndexingRepairReason::ProjectionFailure);
+    }
+
+    /// Removes `file_path` from the abandoned set, typically after a later
+    /// retry succeeds. Clears `ProjectionFailure` only when no abandoned files
+    /// remain.
+    pub(crate) fn clear_abandoned_projection(&mut self, file_path: &str) {
+        self.abandoned_projection_files.remove(file_path);
+        if self.abandoned_projection_files.is_empty() {
             self.repair_reasons
                 .remove(&IndexingRepairReason::ProjectionFailure);
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn abandoned_projection_count(&self) -> usize {
+        self.abandoned_projection_files.len()
     }
 
     pub(crate) fn set_watcher_rescan_pending(&mut self, pending: bool) {
@@ -359,5 +392,70 @@ impl IndexingBatchState {
             .iter()
             .filter(|file| file.disposition == disposition)
             .count()
+    }
+}
+
+#[cfg(test)]
+mod abandoned_projection_tests {
+    use super::*;
+
+    fn snapshot_has(state: &IndexingRuntimeState, reason: IndexingRepairReason) -> bool {
+        state.snapshot().repair_reasons.contains(&reason)
+    }
+
+    #[test]
+    fn projection_failure_survives_unrelated_dirty_count_drop_to_zero() {
+        let mut state = IndexingRuntimeState::new();
+
+        state.record_abandoned_projection("file_a.rs".to_string());
+        state.set_dirty_projection_count(1);
+
+        assert!(snapshot_has(
+            &state,
+            IndexingRepairReason::ProjectionFailure
+        ));
+        assert!(snapshot_has(&state, IndexingRepairReason::TantivyDirty));
+
+        state.set_dirty_projection_count(0);
+
+        assert!(
+            snapshot_has(&state, IndexingRepairReason::ProjectionFailure),
+            "ProjectionFailure must remain while file_a.rs is still abandoned"
+        );
+        assert!(!snapshot_has(&state, IndexingRepairReason::TantivyDirty));
+    }
+
+    #[test]
+    fn clear_abandoned_projection_only_clears_failure_when_set_is_empty() {
+        let mut state = IndexingRuntimeState::new();
+        state.record_abandoned_projection("file_a.rs".to_string());
+        state.record_abandoned_projection("file_b.rs".to_string());
+        assert_eq!(state.abandoned_projection_count(), 2);
+
+        state.clear_abandoned_projection("file_a.rs");
+        assert!(
+            snapshot_has(&state, IndexingRepairReason::ProjectionFailure),
+            "ProjectionFailure must remain while file_b.rs is still abandoned"
+        );
+
+        state.clear_abandoned_projection("file_b.rs");
+        assert!(!snapshot_has(
+            &state,
+            IndexingRepairReason::ProjectionFailure
+        ));
+    }
+
+    #[test]
+    fn begin_operation_clears_abandoned_projection_files() {
+        let mut state = IndexingRuntimeState::new();
+        state.record_abandoned_projection("file_a.rs".to_string());
+
+        state.begin_operation(IndexingOperation::Full);
+
+        assert_eq!(state.abandoned_projection_count(), 0);
+        assert!(!snapshot_has(
+            &state,
+            IndexingRepairReason::ProjectionFailure
+        ));
     }
 }

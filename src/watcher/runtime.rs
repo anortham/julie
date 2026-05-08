@@ -434,10 +434,14 @@ impl QueueRuntime {
                         .lock()
                         .unwrap_or_else(|poisoned| poisoned.into_inner())
                         .remove(&rel_path);
-                    self.indexing_runtime
-                        .write()
-                        .unwrap_or_else(|poisoned| poisoned.into_inner())
-                        .set_dirty_projection_count(remaining_dirty);
+                    {
+                        let mut runtime = self
+                            .indexing_runtime
+                            .write()
+                            .unwrap_or_else(|poisoned| poisoned.into_inner());
+                        runtime.set_dirty_projection_count(remaining_dirty);
+                        runtime.clear_abandoned_projection(&rel_path);
+                    }
                     info!("Tantivy retry succeeded for {}", rel_path);
                 }
                 Ok(Err(err)) => {
@@ -499,7 +503,7 @@ impl QueueRuntime {
                 .write()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
             runtime.set_dirty_projection_count(remaining_dirty);
-            runtime.record_repair_reason(IndexingRepairReason::ProjectionFailure);
+            runtime.record_abandoned_projection(rel_path.to_string());
             drop(runtime);
 
             error!(

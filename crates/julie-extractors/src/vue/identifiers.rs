@@ -248,7 +248,15 @@ fn find_containing_symbol_id_for_span(
 
         let size_a = a.end_byte - a.start_byte;
         let size_b = b.end_byte - b.start_byte;
-        size_a.cmp(&size_b)
+        if size_a != size_b {
+            return size_a.cmp(&size_b);
+        }
+
+        // HashMap iteration order is non-deterministic. Without an id-level
+        // tiebreaker, two symbols with identical priority and size would be
+        // selected arbitrarily across runs and produce flaky
+        // containing_symbol_id assignments.
+        a.id.cmp(&b.id)
     });
 
     Some(containing_symbols[0].id.clone())
