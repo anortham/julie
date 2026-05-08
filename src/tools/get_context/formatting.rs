@@ -181,8 +181,8 @@ fn format_context_readable(data: &ContextData) -> String {
     if !data.neighbors.is_empty() {
         out.push('\n');
         out.push_str("-- Neighbors ---\n");
-        for neighbor in &data.neighbors {
-            format_neighbor(&mut out, neighbor, &data.allocation.neighbor_mode);
+        for row in format_neighbor_rows(&data.neighbors, &data.allocation.neighbor_mode) {
+            push_indented_block(&mut out, &row, "  ");
         }
     }
 
@@ -243,8 +243,9 @@ fn format_context_compact(data: &ContextData) -> String {
         }
     }
 
-    for neighbor in &data.neighbors {
-        format_neighbor_compact(&mut out, neighbor, &data.allocation.neighbor_mode);
+    for row in format_neighbor_rows_compact(&data.neighbors, &data.allocation.neighbor_mode) {
+        out.push_str(&row);
+        out.push('\n');
     }
 
     if let Some(handle) = &data.spillover_handle {
@@ -256,41 +257,7 @@ fn format_context_compact(data: &ContextData) -> String {
 }
 
 pub fn format_neighbor_rows(entries: &[NeighborEntry], mode: &NeighborMode) -> Vec<String> {
-    entries
-        .iter()
-        .map(|neighbor| match mode {
-            NeighborMode::SignatureAndDoc => {
-                let mut row = format!(
-                    "{} {}:{} ({})",
-                    neighbor.name, neighbor.file_path, neighbor.start_line, neighbor.kind
-                );
-                if let Some(signature) = &neighbor.signature {
-                    row.push_str(&format!("\n   sig: {}", signature));
-                }
-                if let Some(doc_summary) = &neighbor.doc_summary {
-                    row.push_str(&format!("\n   doc: {}", doc_summary));
-                }
-                row
-            }
-            NeighborMode::SignatureOnly => {
-                let signature = neighbor.signature.as_deref().unwrap_or(&neighbor.name);
-                format!(
-                    "{} {}:{} ({})\n   sig: {}",
-                    neighbor.name,
-                    neighbor.file_path,
-                    neighbor.start_line,
-                    neighbor.kind,
-                    signature
-                )
-            }
-            NeighborMode::NameAndLocation => {
-                format!(
-                    "{} {}:{} ({})",
-                    neighbor.name, neighbor.file_path, neighbor.start_line, neighbor.kind
-                )
-            }
-        })
-        .collect()
+    grouped_neighbor_rows(entries, mode, NeighborRowStyle::Readable)
 }
 
 fn dedup_names(names: &[String]) -> Vec<String> {
@@ -300,52 +267,156 @@ fn dedup_names(names: &[String]) -> Vec<String> {
     out
 }
 
-fn format_neighbor_compact(out: &mut String, neighbor: &NeighborEntry, mode: &NeighborMode) {
-    match mode {
-        // In compact mode, SignatureAndDoc omits doc to save tokens (doc is optional context,
-        // not load-bearing for navigation). Use readable format when doc matters.
-        NeighborMode::SignatureAndDoc | NeighborMode::SignatureOnly => {
-            let sig = neighbor.signature.as_deref().unwrap_or(&neighbor.name);
-            out.push_str(&format!(
-                "NEIGHBOR {} {}:{} kind={} sig={}\n",
-                neighbor.name, neighbor.file_path, neighbor.start_line, neighbor.kind, sig
-            ));
+fn format_neighbor_rows_compact(entries: &[NeighborEntry], mode: &NeighborMode) -> Vec<String> {
+    grouped_neighbor_rows(entries, mode, NeighborRowStyle::Compact)
+}
+
+#[derive(Clone, Copy)]
+enum NeighborRowStyle {
+    Readable,
+    Compact,
+}
+
+fn grouped_neighbor_rows(
+    entries: &[NeighborEntry],
+    mode: &NeighborMode,
+    style: NeighborRowStyle,
+) -> Vec<String> {
+    let mut rows = Vec::new();
+    let mut index = 0;
+    while index < entries.len() {
+        let end = same_file_neighbor_run_end(entries, index);
+        if end - index > 1 {
+            rows.push(format_neighbor_group(&entries[index..end], mode, style));
+        } else {
+            rows.push(format_neighbor_row(&entries[index], mode, style));
         }
-        NeighborMode::NameAndLocation => {
-            out.push_str(&format!(
-                "NEIGHBOR {} {}:{} kind={}\n",
+        index = end;
+    }
+    rows
+}
+
+fn same_file_neighbor_run_end(entries: &[NeighborEntry], start: usize) -> usize {
+    let file_path = &entries[start].file_path;
+    let mut end = start + 1;
+    while end < entries.len() && entries[end].file_path == *file_path {
+        end += 1;
+    }
+    end
+}
+
+fn format_neighbor_row(
+    neighbor: &NeighborEntry,
+    mode: &NeighborMode,
+    style: NeighborRowStyle,
+) -> String {
+    match (style, mode) {
+        (NeighborRowStyle::Readable, NeighborMode::SignatureAndDoc) => {
+            let mut row = format!(
+                "{} {}:{} ({})",
                 neighbor.name, neighbor.file_path, neighbor.start_line, neighbor.kind
-            ));
+            );
+            if let Some(signature) = &neighbor.signature {
+                row.push_str(&format!("\n   sig: {signature}"));
+            }
+            if let Some(doc_summary) = &neighbor.doc_summary {
+                row.push_str(&format!("\n   doc: {doc_summary}"));
+            }
+            row
+        }
+        (NeighborRowStyle::Readable, NeighborMode::SignatureOnly) => {
+            let signature = neighbor.signature.as_deref().unwrap_or(&neighbor.name);
+            format!(
+                "{} {}:{} ({})\n   sig: {}",
+                neighbor.name, neighbor.file_path, neighbor.start_line, neighbor.kind, signature
+            )
+        }
+        (NeighborRowStyle::Readable, NeighborMode::NameAndLocation) => {
+            format!(
+                "{} {}:{} ({})",
+                neighbor.name, neighbor.file_path, neighbor.start_line, neighbor.kind
+            )
+        }
+        (NeighborRowStyle::Compact, NeighborMode::SignatureAndDoc)
+        | (NeighborRowStyle::Compact, NeighborMode::SignatureOnly) => {
+            let sig = neighbor.signature.as_deref().unwrap_or(&neighbor.name);
+            format!(
+                "NEIGHBOR {} {}:{} kind={} sig={}",
+                neighbor.name, neighbor.file_path, neighbor.start_line, neighbor.kind, sig
+            )
+        }
+        (NeighborRowStyle::Compact, NeighborMode::NameAndLocation) => {
+            format!(
+                "NEIGHBOR {} {}:{} kind={}",
+                neighbor.name, neighbor.file_path, neighbor.start_line, neighbor.kind
+            )
         }
     }
 }
 
-/// Format a single neighbor entry based on the active NeighborMode.
-fn format_neighbor(out: &mut String, neighbor: &NeighborEntry, mode: &NeighborMode) {
-    match mode {
-        NeighborMode::SignatureAndDoc => {
-            let sig = neighbor.signature.as_deref().unwrap_or(&neighbor.name);
-            out.push_str(&format!(
-                "  {} {}:{} {}\n",
-                neighbor.name, neighbor.file_path, neighbor.start_line, sig
-            ));
-            if let Some(doc) = &neighbor.doc_summary {
-                out.push_str(&format!("  {}\n", doc));
+fn format_neighbor_group(
+    entries: &[NeighborEntry],
+    mode: &NeighborMode,
+    style: NeighborRowStyle,
+) -> String {
+    let file_path = &entries[0].file_path;
+    let mut row = match style {
+        NeighborRowStyle::Readable => format!("{file_path}:"),
+        NeighborRowStyle::Compact => format!("NEIGHBORS {file_path}"),
+    };
+
+    for neighbor in entries {
+        match (style, mode) {
+            (NeighborRowStyle::Readable, NeighborMode::SignatureAndDoc) => {
+                row.push_str(&format!(
+                    "\n  :{} {} ({})",
+                    neighbor.start_line, neighbor.name, neighbor.kind
+                ));
+                if let Some(signature) = &neighbor.signature {
+                    row.push_str(&format!("\n     sig: {signature}"));
+                }
+                if let Some(doc_summary) = &neighbor.doc_summary {
+                    row.push_str(&format!("\n     doc: {doc_summary}"));
+                }
+            }
+            (NeighborRowStyle::Readable, NeighborMode::SignatureOnly) => {
+                let signature = neighbor.signature.as_deref().unwrap_or(&neighbor.name);
+                row.push_str(&format!(
+                    "\n  :{} {} ({})\n     sig: {}",
+                    neighbor.start_line, neighbor.name, neighbor.kind, signature
+                ));
+            }
+            (NeighborRowStyle::Readable, NeighborMode::NameAndLocation) => {
+                row.push_str(&format!(
+                    "\n  :{} {} ({})",
+                    neighbor.start_line, neighbor.name, neighbor.kind
+                ));
+            }
+            (NeighborRowStyle::Compact, NeighborMode::SignatureAndDoc)
+            | (NeighborRowStyle::Compact, NeighborMode::SignatureOnly) => {
+                let sig = neighbor.signature.as_deref().unwrap_or(&neighbor.name);
+                row.push_str(&format!(
+                    "\n  :{} {} kind={} sig={}",
+                    neighbor.start_line, neighbor.name, neighbor.kind, sig
+                ));
+            }
+            (NeighborRowStyle::Compact, NeighborMode::NameAndLocation) => {
+                row.push_str(&format!(
+                    "\n  :{} {} kind={}",
+                    neighbor.start_line, neighbor.name, neighbor.kind
+                ));
             }
         }
-        NeighborMode::SignatureOnly => {
-            let sig = neighbor.signature.as_deref().unwrap_or(&neighbor.name);
-            out.push_str(&format!(
-                "  {} {}:{} {}\n",
-                neighbor.name, neighbor.file_path, neighbor.start_line, sig
-            ));
-        }
-        NeighborMode::NameAndLocation => {
-            out.push_str(&format!(
-                "  {} {}:{}\n",
-                neighbor.name, neighbor.file_path, neighbor.start_line
-            ));
-        }
+    }
+
+    row
+}
+
+fn push_indented_block(out: &mut String, block: &str, indent: &str) {
+    for line in block.lines() {
+        out.push_str(indent);
+        out.push_str(line);
+        out.push('\n');
     }
 }
 

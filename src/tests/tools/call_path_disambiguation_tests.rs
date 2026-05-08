@@ -2,7 +2,7 @@ use anyhow::Result;
 use std::fs;
 
 use crate::handler::JulieServerHandler;
-use crate::tools::navigation::call_path::{CallPathResponse, CallPathTool};
+use crate::tools::navigation::call_path::{CallPathHop, CallPathResponse, CallPathTool};
 use crate::tools::navigation::resolution::file_path_matches_suffix;
 use crate::tools::workspace::ManageWorkspaceTool;
 use tempfile::TempDir;
@@ -55,7 +55,60 @@ fn extract_text(result: &crate::mcp_compat::CallToolResult) -> String {
 }
 
 fn try_parse_response(text: &str) -> Option<CallPathResponse> {
-    serde_json::from_str(text).ok()
+    let mut lines = text.lines();
+    let header = lines.next()?.trim();
+    let mut found = None;
+    let mut hops = None;
+    for part in header.split_whitespace() {
+        if let Some(value) = part.strip_prefix("found=") {
+            found = value.parse::<bool>().ok();
+        } else if let Some(value) = part.strip_prefix("hops=") {
+            hops = value.parse::<u32>().ok();
+        }
+    }
+
+    let mut path = Vec::new();
+    let mut diagnostic = None;
+    for line in lines {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        if let Some(value) = line.strip_prefix("diagnostic: ") {
+            diagnostic = Some(value.to_string());
+            continue;
+        }
+
+        let (_, hop) = line.split_once(". ")?;
+        let (from, rest) = hop.split_once(" --")?;
+        let (edge, rest) = rest.split_once("--> ")?;
+        let (to, rest) = rest.split_once(" at ")?;
+        let (file, target) = rest
+            .split_once(" -> ")
+            .map_or((rest, None), |(file, target)| (file, Some(target)));
+        let (target_file, target_start_line) = target
+            .and_then(|location| {
+                let (file, line) = location.rsplit_once(':')?;
+                Some((file.to_string(), line.parse::<u32>().ok()?))
+            })
+            .unwrap_or_default();
+
+        path.push(CallPathHop {
+            from: from.to_string(),
+            to: to.to_string(),
+            edge: edge.to_string(),
+            file: file.to_string(),
+            target_file,
+            target_start_line,
+        });
+    }
+
+    Some(CallPathResponse {
+        found: found?,
+        hops: hops?,
+        path,
+        diagnostic,
+    })
 }
 
 #[test]
@@ -124,8 +177,8 @@ async fn test_disambiguation_from_file_path() -> Result<()> {
         to_file_path: None,
     };
     let text = extract_text(&tool.call_tool(&handler).await?);
-    let response =
-        try_parse_response(&text).unwrap_or_else(|| panic!("expected JSON response, got: {text}"));
+    let response = try_parse_response(&text)
+        .unwrap_or_else(|| panic!("expected compact response, got: {text}"));
 
     assert!(
         response.found,
@@ -182,8 +235,8 @@ async fn test_disambiguation_both_file_paths() -> Result<()> {
         to_file_path: Some("src/a.rs".to_string()),
     };
     let text = extract_text(&tool.call_tool(&handler).await?);
-    let response =
-        try_parse_response(&text).unwrap_or_else(|| panic!("expected JSON response, got: {text}"));
+    let response = try_parse_response(&text)
+        .unwrap_or_else(|| panic!("expected compact response, got: {text}"));
 
     assert!(
         response.found,
@@ -227,8 +280,8 @@ async fn test_disambiguation_to_file_path() -> Result<()> {
         to_file_path: None,
     };
     let text = extract_text(&tool_without_hint.call_tool(&handler).await?);
-    let response =
-        try_parse_response(&text).unwrap_or_else(|| panic!("expected JSON response, got: {text}"));
+    let response = try_parse_response(&text)
+        .unwrap_or_else(|| panic!("expected compact response, got: {text}"));
     assert!(
         response.found,
         "reachable destination should not require to_file_path: {response:?}"
@@ -246,8 +299,8 @@ async fn test_disambiguation_to_file_path() -> Result<()> {
         to_file_path: Some("src/a.rs".to_string()),
     };
     let text = extract_text(&tool.call_tool(&handler).await?);
-    let response =
-        try_parse_response(&text).unwrap_or_else(|| panic!("expected JSON response, got: {text}"));
+    let response = try_parse_response(&text)
+        .unwrap_or_else(|| panic!("expected compact response, got: {text}"));
 
     assert!(
         response.found,
@@ -367,7 +420,7 @@ async fn test_qualified_name_struct_method() -> Result<()> {
     };
     let text = extract_text(&tool.call_tool(&handler).await?);
     let response = try_parse_response(&text)
-        .unwrap_or_else(|| panic!("expected JSON response for qualified name, got: {text}"));
+        .unwrap_or_else(|| panic!("expected compact response for qualified name, got: {text}"));
 
     assert!(
         response.found,
@@ -402,8 +455,8 @@ async fn test_trait_impl_qualified_name_limitation() -> Result<()> {
         to_file_path: None,
     };
     let text = extract_text(&tool.call_tool(&handler).await?);
-    let response =
-        try_parse_response(&text).unwrap_or_else(|| panic!("expected JSON response, got: {text}"));
+    let response = try_parse_response(&text)
+        .unwrap_or_else(|| panic!("expected compact response, got: {text}"));
 
     assert!(
         response.found,

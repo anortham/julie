@@ -214,6 +214,63 @@ mod formatting_tests {
     }
 
     #[test]
+    fn test_callable_groups_same_file_callers() {
+        let sym = make_symbol(
+            "process",
+            SymbolKind::Function,
+            "src/engine.rs",
+            42,
+            None,
+            None,
+            None,
+        );
+        let caller_one = make_symbol(
+            "main",
+            SymbolKind::Function,
+            "src/main.rs",
+            10,
+            None,
+            None,
+            None,
+        );
+        let caller_two = make_symbol(
+            "retry",
+            SymbolKind::Function,
+            "src/main.rs",
+            20,
+            None,
+            None,
+            None,
+        );
+        let mut ctx = empty_context(sym);
+        ctx.incoming = vec![
+            make_ref(RelationshipKind::Calls, "src/main.rs", 15, Some(caller_one)),
+            make_ref(RelationshipKind::Calls, "src/main.rs", 25, Some(caller_two)),
+        ];
+        ctx.incoming_total = 2;
+
+        let output = format_symbol_context(&ctx, "overview");
+
+        assert_eq!(
+            output.matches("src/main.rs").count(),
+            1,
+            "same-file callers should print the file path once: {output}",
+        );
+        assert!(
+            output.contains("src/main.rs:"),
+            "missing grouped file header: {output}"
+        );
+        assert!(
+            output.contains(":15  main (Calls)"),
+            "missing first caller: {output}"
+        );
+        assert!(
+            output.contains(":25  retry (Calls)"),
+            "missing second caller: {output}"
+        );
+    }
+
+    #[test]
     fn test_callable_context_depth_shows_signatures() {
         let sym = make_symbol(
             "process",

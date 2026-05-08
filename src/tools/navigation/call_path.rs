@@ -335,7 +335,7 @@ fn build_hops(
 impl CallPathTool {
     fn response_result(response: &CallPathResponse) -> Result<CallToolResult> {
         Ok(CallToolResult::text_content(vec![Content::text(
-            serde_json::to_string_pretty(response)?,
+            format_call_path_response(response),
         )]))
     }
 
@@ -446,4 +446,31 @@ impl CallPathTool {
 
         Self::response_result(&response)
     }
+}
+
+fn format_call_path_response(response: &CallPathResponse) -> String {
+    let mut out = format!("found={} hops={}", response.found, response.hops);
+
+    if let Some(diagnostic) = &response.diagnostic {
+        out.push_str(&format!("\ndiagnostic: {diagnostic}"));
+    }
+
+    for (index, hop) in response.path.iter().enumerate() {
+        out.push_str(&format!(
+            "\n{}. {} --{}--> {} at {}",
+            index + 1,
+            hop.from,
+            hop.edge,
+            hop.to,
+            hop.file
+        ));
+        if !hop.target_file.is_empty() {
+            out.push_str(&format!(
+                " -> {}:{}",
+                hop.target_file, hop.target_start_line
+            ));
+        }
+    }
+
+    out
 }

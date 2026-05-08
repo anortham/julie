@@ -57,7 +57,65 @@ fn extract_text(result: &crate::mcp_compat::CallToolResult) -> String {
 }
 
 fn parse_response(text: &str) -> CallPathResponse {
-    serde_json::from_str(text).expect("call_path should return valid JSON")
+    try_parse_response(text)
+        .unwrap_or_else(|| panic!("call_path should return compact text: {text}"))
+}
+
+fn try_parse_response(text: &str) -> Option<CallPathResponse> {
+    let mut lines = text.lines();
+    let header = lines.next()?.trim();
+    let mut found = None;
+    let mut hops = None;
+    for part in header.split_whitespace() {
+        if let Some(value) = part.strip_prefix("found=") {
+            found = value.parse::<bool>().ok();
+        } else if let Some(value) = part.strip_prefix("hops=") {
+            hops = value.parse::<u32>().ok();
+        }
+    }
+
+    let mut path = Vec::new();
+    let mut diagnostic = None;
+    for line in lines {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        if let Some(value) = line.strip_prefix("diagnostic: ") {
+            diagnostic = Some(value.to_string());
+            continue;
+        }
+
+        let (_, hop) = line.split_once(". ")?;
+        let (from, rest) = hop.split_once(" --")?;
+        let (edge, rest) = rest.split_once("--> ")?;
+        let (to, rest) = rest.split_once(" at ")?;
+        let (file, target) = rest
+            .split_once(" -> ")
+            .map_or((rest, None), |(file, target)| (file, Some(target)));
+        let (target_file, target_start_line) = target
+            .and_then(|location| {
+                let (file, line) = location.rsplit_once(':')?;
+                Some((file.to_string(), line.parse::<u32>().ok()?))
+            })
+            .unwrap_or_default();
+
+        path.push(CallPathHop {
+            from: from.to_string(),
+            to: to.to_string(),
+            edge: edge.to_string(),
+            file: file.to_string(),
+            target_file,
+            target_start_line,
+        });
+    }
+
+    Some(CallPathResponse {
+        found: found?,
+        hops: hops?,
+        path,
+        diagnostic,
+    })
 }
 
 fn make_call_path_symbol(id: &str, name: &str, file_path: &str, start_line: u32) -> Symbol {
@@ -144,7 +202,7 @@ async fn test_call_path_failures_return_structured_response() -> Result<()> {
     );
     assert!(
         !missing_input_text.starts_with("Error:"),
-        "validation failure should be JSON, not plain text: {missing_input_text}"
+        "validation failure should be compact text, not plain error text: {missing_input_text}"
     );
 
     let lookup_tool = CallPathTool {
@@ -173,7 +231,7 @@ async fn test_call_path_failures_return_structured_response() -> Result<()> {
     );
     assert!(
         !lookup_text.starts_with("Error:"),
-        "lookup failure should be JSON, not plain text: {lookup_text}"
+        "lookup failure should be compact text, not plain error text: {lookup_text}"
     );
 
     Ok(())
@@ -241,17 +299,13 @@ async fn test_call_path_tie_ordering_uses_target_identity() -> Result<()> {
     };
 
     let result = tool.call_tool(&handler).await?;
-    let response_json: serde_json::Value = serde_json::from_str(&extract_text(&result))?;
-    assert_eq!(response_json["found"], true);
+    let response = parse_response(&extract_text(&result));
+    assert!(response.found);
     assert_eq!(
-        response_json["path"][0]["target_file"].as_str(),
-        Some("src/a.rs"),
+        response.path[0].target_file, "src/a.rs",
         "same-score ties should be resolved by target identity, not storage order"
     );
-    assert_eq!(
-        response_json["path"][0]["target_start_line"].as_u64(),
-        Some(3)
-    );
+    assert_eq!(response.path[0].target_start_line, 3);
 
     Ok(())
 }
@@ -295,6 +349,42 @@ async fn test_call_path_finds_shortest_call_chain() -> Result<()> {
                 target_start_line: 9,
             },
         ]
+    );
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_call_path_renders_compact_text_instead_of_json() -> Result<()> {
+    let source = "pub fn start() {\n    leaf();\n}\n\npub fn leaf() {}\n";
+    let (_temp_dir, handler) = setup_indexed_workspace(source).await?;
+
+    let tool = CallPathTool {
+        from: "start".to_string(),
+        to: "leaf".to_string(),
+        max_hops: 2,
+        workspace: Some("primary".to_string()),
+        from_file_path: None,
+        to_file_path: None,
+    };
+
+    let text = extract_text(&tool.call_tool(&handler).await?);
+
+    assert!(
+        !text.trim_start().starts_with('{'),
+        "call_path should return compact text, not JSON: {text}"
+    );
+    assert!(
+        text.contains("found=true hops=1"),
+        "missing compact header: {text}"
+    );
+    assert!(
+        text.contains("1. start --call--> leaf"),
+        "missing hop: {text}"
+    );
+    assert!(
+        !text.contains("\"from\"") && !text.contains("\"target_file\""),
+        "JSON keys should not appear in compact output: {text}"
     );
 
     Ok(())
@@ -388,9 +478,7 @@ async fn test_non_call_edge_not_traversed() -> Result<()> {
     };
 
     let result = tool.call_tool(&handler).await?;
-    let text = extract_text(&result);
-    let response: CallPathResponse = serde_json::from_str(&text)
-        .unwrap_or_else(|e| panic!("call_path must return valid JSON (err={e}, text={text})"));
+    let response = parse_response(&extract_text(&result));
     assert!(
         !response.found,
         "Implements edge must not produce a call-graph path: {response:?}"
@@ -588,24 +676,12 @@ async fn test_call_path_hops_include_target_definition_identity() -> Result<()> 
     };
 
     let result = tool.call_tool(&handler).await?;
-    let response_json: serde_json::Value = serde_json::from_str(&extract_text(&result))?;
-    let hop = response_json["path"][0]
-        .as_object()
-        .expect("first hop should be an object");
+    let response = parse_response(&extract_text(&result));
+    let hop = &response.path[0];
 
-    assert_eq!(
-        hop.get("to").and_then(serde_json::Value::as_str),
-        Some("leaf")
-    );
-    assert_eq!(
-        hop.get("target_file").and_then(serde_json::Value::as_str),
-        Some("src/lib.rs")
-    );
-    assert_eq!(
-        hop.get("target_start_line")
-            .and_then(serde_json::Value::as_u64),
-        Some(5)
-    );
+    assert_eq!(hop.to, "leaf");
+    assert_eq!(hop.target_file, "src/lib.rs");
+    assert_eq!(hop.target_start_line, 5);
 
     Ok(())
 }
@@ -635,9 +711,8 @@ async fn test_call_path_workspace_isolation() -> Result<()> {
         }
         Ok(result) => {
             let text = extract_text(&result);
-            let found_via_wrong_workspace = serde_json::from_str::<CallPathResponse>(&text)
-                .map(|r| r.found)
-                .unwrap_or(false);
+            let found_via_wrong_workspace =
+                try_parse_response(&text).map(|r| r.found).unwrap_or(false);
             assert!(
                 !found_via_wrong_workspace,
                 "call_path must not traverse primary symbols when a different workspace is specified: {text}"

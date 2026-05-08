@@ -627,48 +627,70 @@ fn format_ref_section(
     };
     out.push_str(&header);
 
-    for r in refs {
-        let kind = format!("{:?}", r.kind);
-        match depth {
-            "full" => {
-                // Full: show signature + body if available
-                if let Some(sym) = &r.symbol {
-                    let name = sym.signature.as_deref().unwrap_or(&sym.name);
-                    out.push_str(&format!(
-                        "  {}:{}  {} ({})\n",
-                        r.file_path, r.line_number, name, kind
-                    ));
-                    if let Some(code) = &sym.code_context {
-                        for line in code.lines().take(10) {
-                            out.push_str(&format!("    {}\n", line));
-                        }
+    let mut index = 0;
+    while index < refs.len() {
+        let end = same_file_ref_run_end(refs, index);
+        if end - index > 1 {
+            out.push_str(&format!("  {}:\n", refs[index].file_path));
+            for r in &refs[index..end] {
+                format_ref_entry(out, r, depth, true);
+            }
+        } else {
+            format_ref_entry(out, refs[index], depth, false);
+        }
+        index = end;
+    }
+}
+
+fn same_file_ref_run_end(refs: &[&RefEntry], start: usize) -> usize {
+    let file_path = &refs[start].file_path;
+    let mut end = start + 1;
+    while end < refs.len() && refs[end].file_path == *file_path {
+        end += 1;
+    }
+    end
+}
+
+fn format_ref_entry(out: &mut String, r: &RefEntry, depth: &str, grouped: bool) {
+    let kind = format!("{:?}", r.kind);
+    let prefix = if grouped { "    " } else { "  " };
+    let location = if grouped {
+        format!(":{}", r.line_number)
+    } else {
+        format!("{}:{}", r.file_path, r.line_number)
+    };
+
+    match depth {
+        "full" => {
+            // Full: show signature + body if available
+            if let Some(sym) = &r.symbol {
+                let name = sym.signature.as_deref().unwrap_or(&sym.name);
+                out.push_str(&format!("{prefix}{location}  {name} ({kind})\n"));
+                if let Some(code) = &sym.code_context {
+                    let code_prefix = if grouped { "      " } else { "    " };
+                    for line in code.lines().take(10) {
+                        out.push_str(&format!("{code_prefix}{line}\n"));
                     }
-                } else {
-                    out.push_str(&format!("  {}:{} ({})\n", r.file_path, r.line_number, kind));
                 }
+            } else {
+                out.push_str(&format!("{prefix}{location} ({kind})\n"));
             }
-            "context" => {
-                // Context: show signature + kind
-                if let Some(sym) = &r.symbol {
-                    let name = sym.signature.as_deref().unwrap_or(&sym.name);
-                    out.push_str(&format!(
-                        "  {}:{}  {} ({})\n",
-                        r.file_path, r.line_number, name, kind
-                    ));
-                } else {
-                    out.push_str(&format!("  {}:{} ({})\n", r.file_path, r.line_number, kind));
-                }
+        }
+        "context" => {
+            // Context: show signature + kind
+            if let Some(sym) = &r.symbol {
+                let name = sym.signature.as_deref().unwrap_or(&sym.name);
+                out.push_str(&format!("{prefix}{location}  {name} ({kind})\n"));
+            } else {
+                out.push_str(&format!("{prefix}{location} ({kind})\n"));
             }
-            _ => {
-                // Overview: location + name + kind
-                if let Some(sym) = &r.symbol {
-                    out.push_str(&format!(
-                        "  {}:{}  {} ({})\n",
-                        r.file_path, r.line_number, sym.name, kind
-                    ));
-                } else {
-                    out.push_str(&format!("  {}:{} ({})\n", r.file_path, r.line_number, kind));
-                }
+        }
+        _ => {
+            // Overview: location + name + kind
+            if let Some(sym) = &r.symbol {
+                out.push_str(&format!("{prefix}{location}  {} ({kind})\n", sym.name));
+            } else {
+                out.push_str(&format!("{prefix}{location} ({kind})\n"));
             }
         }
     }

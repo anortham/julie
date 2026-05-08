@@ -484,6 +484,74 @@ mod formatting_tests {
         );
     }
 
+    #[test]
+    fn test_neighbors_same_file_are_grouped() {
+        let data = ContextData {
+            query: "broad search".to_string(),
+            pivots: vec![make_pivot("main", "src/main.rs", 1, 5.0, "fn main() {}")],
+            neighbors: vec![
+                make_neighbor("helper", "src/utils.rs", 5, None, None),
+                make_neighbor("parse", "src/utils.rs", 9, None, None),
+            ],
+            allocation: make_allocation(PivotMode::SignatureOnly, NeighborMode::NameAndLocation),
+            spillover_handle: None,
+        };
+
+        let output = format_context(&data);
+
+        assert_eq!(
+            output.matches("src/utils.rs").count(),
+            1,
+            "same-file neighbors should print the file path once: {output}",
+        );
+        assert!(
+            output.contains("src/utils.rs:"),
+            "missing grouped file header: {output}"
+        );
+        assert!(
+            output.contains(":5 helper (function)"),
+            "missing first neighbor: {output}"
+        );
+        assert!(
+            output.contains(":9 parse (function)"),
+            "missing second neighbor: {output}"
+        );
+    }
+
+    #[test]
+    fn test_compact_neighbors_same_file_are_grouped() {
+        let data = ContextData {
+            query: "broad search".to_string(),
+            pivots: vec![make_pivot("main", "src/main.rs", 1, 5.0, "fn main() {}")],
+            neighbors: vec![
+                make_neighbor("helper", "src/utils.rs", 5, None, None),
+                make_neighbor("parse", "src/utils.rs", 9, None, None),
+            ],
+            allocation: make_allocation(PivotMode::SignatureOnly, NeighborMode::NameAndLocation),
+            spillover_handle: None,
+        };
+
+        let output = format_context_with_mode(&data, OutputFormat::Compact);
+
+        assert_eq!(
+            output.matches("src/utils.rs").count(),
+            1,
+            "compact same-file neighbors should print the file path once: {output}",
+        );
+        assert!(
+            output.contains("NEIGHBORS src/utils.rs"),
+            "missing compact grouped file header: {output}"
+        );
+        assert!(
+            output.contains(":5 helper kind=function"),
+            "missing first compact neighbor: {output}"
+        );
+        assert!(
+            output.contains(":9 parse kind=function"),
+            "missing second compact neighbor: {output}"
+        );
+    }
+
     // === Test 10: Multiple pivots in output ===
 
     #[test]

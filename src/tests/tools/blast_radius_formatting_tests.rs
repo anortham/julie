@@ -1,6 +1,6 @@
 use crate::extractors::{RelationshipKind, Symbol, SymbolKind};
 use crate::tools::impact::LikelyTests;
-use crate::tools::impact::formatting::{BlastRadiusHeader, format_blast_radius};
+use crate::tools::impact::formatting::{BlastRadiusHeader, format_blast_radius, impact_rows};
 use crate::tools::impact::ranking::RankedImpact;
 use crate::tools::impact::seed::SeedContext;
 use crate::tools::spillover::SpilloverFormat;
@@ -75,6 +75,46 @@ fn test_format_blast_radius_includes_sections_and_overflow_marker() {
     assert!(text.contains("src/legacy.rs"));
     assert!(text.contains("More available: spillover_handle=br_123"));
     assert!(text.contains("Next page: spillover_get(spillover_handle=\"br_123\")"));
+}
+
+#[test]
+fn test_impact_rows_group_same_file_impacts() {
+    let impacts = vec![
+        RankedImpact {
+            symbol: make_symbol("handle_request", "src/api.rs", 20),
+            distance: 1,
+            relationship_kind: RelationshipKind::Calls,
+            reference_score: 4.0,
+            why: "direct caller, 1 hop, centrality=medium".to_string(),
+        },
+        RankedImpact {
+            symbol: make_symbol("validate_request", "src/api.rs", 44),
+            distance: 1,
+            relationship_kind: RelationshipKind::Calls,
+            reference_score: 3.0,
+            why: "direct caller, 1 hop, centrality=low".to_string(),
+        },
+    ];
+
+    let text = impact_rows(&impacts, 1).join("\n");
+
+    assert_eq!(
+        text.matches("src/api.rs").count(),
+        1,
+        "same-file impacts should print the file path once: {text}",
+    );
+    assert!(
+        text.contains("src/api.rs:"),
+        "missing grouped file header: {text}"
+    );
+    assert!(
+        text.contains("1. handle_request  :20"),
+        "missing first impact: {text}"
+    );
+    assert!(
+        text.contains("2. validate_request  :44"),
+        "missing second impact: {text}"
+    );
 }
 
 #[test]

@@ -135,20 +135,52 @@ fn tests_block(
 }
 
 pub fn impact_rows(impacts: &[RankedImpact], start_index: usize) -> Vec<String> {
-    impacts
-        .iter()
-        .enumerate()
-        .map(|(offset, impact)| {
-            format!(
-                "{}. {}  {}:{}\n   why: {}",
-                start_index + offset,
-                impact.symbol.name,
-                impact.symbol.file_path,
-                impact.symbol.start_line,
-                impact.why
-            )
-        })
-        .collect()
+    let mut rows = Vec::new();
+    let mut index = 0;
+    while index < impacts.len() {
+        let end = same_file_impact_run_end(impacts, index);
+        if end - index > 1 {
+            rows.push(format_impact_group(
+                &impacts[index..end],
+                start_index + index,
+            ));
+        } else {
+            rows.push(format_impact_row(&impacts[index], start_index + index));
+        }
+        index = end;
+    }
+    rows
+}
+
+fn same_file_impact_run_end(impacts: &[RankedImpact], start: usize) -> usize {
+    let file_path = &impacts[start].symbol.file_path;
+    let mut end = start + 1;
+    while end < impacts.len() && impacts[end].symbol.file_path == *file_path {
+        end += 1;
+    }
+    end
+}
+
+fn format_impact_row(impact: &RankedImpact, rank: usize) -> String {
+    format!(
+        "{}. {}  {}:{}\n   why: {}",
+        rank, impact.symbol.name, impact.symbol.file_path, impact.symbol.start_line, impact.why
+    )
+}
+
+fn format_impact_group(impacts: &[RankedImpact], start_rank: usize) -> String {
+    let file_path = &impacts[0].symbol.file_path;
+    let mut block = format!("{file_path}:");
+    for (offset, impact) in impacts.iter().enumerate() {
+        block.push_str(&format!(
+            "\n{}. {}  :{}\n   why: {}",
+            start_rank + offset,
+            impact.symbol.name,
+            impact.symbol.start_line,
+            impact.why
+        ));
+    }
+    block
 }
 
 pub(super) fn store_list_overflow(
