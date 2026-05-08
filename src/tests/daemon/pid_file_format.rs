@@ -82,7 +82,10 @@ mod tests {
         let fake_creation_time: u64 = 1;
         let content = format!("{} {} 0\n", our_pid, fake_creation_time);
         fs::write(&path, &content).unwrap();
-        assert!(path.exists(), "test setup: PID file must exist before check");
+        assert!(
+            path.exists(),
+            "test setup: PID file must exist before check"
+        );
 
         // check_running must detect the mismatched creation_time, treat as stale,
         // remove the file, and return None.
@@ -236,7 +239,10 @@ mod tests {
 
         let result = PidFile::check_running(&path);
 
-        assert_eq!(result, None, "dead legacy PID should be reported as not running");
+        assert_eq!(
+            result, None,
+            "dead legacy PID should be reported as not running"
+        );
         assert!(
             !path.exists(),
             "dead legacy PID file should be removed by check_running"

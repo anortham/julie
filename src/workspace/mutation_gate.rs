@@ -185,8 +185,7 @@ mod tests {
         // The spawned task should NOT be able to acquire the gate while we hold
         // `direct_lock`.  Give it 100 ms; if it resolves within that window,
         // something is wrong.
-        let should_timeout =
-            timeout(Duration::from_millis(100), handle).await;
+        let should_timeout = timeout(Duration::from_millis(100), handle).await;
         assert!(
             should_timeout.is_err(),
             "Second acquire_gate should block while first lock is held"
@@ -196,11 +195,7 @@ mod tests {
         drop(direct_lock);
 
         // Spawn a fresh task since the original handle was consumed.
-        let result = timeout(
-            Duration::from_millis(200),
-            acquire_gate("ws_concurrent"),
-        )
-        .await;
+        let result = timeout(Duration::from_millis(200), acquire_gate("ws_concurrent")).await;
         assert!(
             result.is_ok(),
             "acquire_gate should succeed after first lock is released"

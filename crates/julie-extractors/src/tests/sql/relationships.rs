@@ -1,4 +1,4 @@
-use super::{extract_symbols_and_relationships, RelationshipKind, SymbolKind};
+use super::{RelationshipKind, SymbolKind, extract_symbols_and_relationships};
 
 #[cfg(test)]
 mod tests {

@@ -6,8 +6,8 @@
 
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
     use std::time::{Duration, Instant};
 
     use crate::daemon::lifecycle::write_daemon_state;
@@ -35,8 +35,7 @@ mod tests {
             let deadline = Instant::now() + Duration::from_millis(600);
             while Instant::now() < deadline && !reader_done.load(Ordering::Relaxed) {
                 let content = std::fs::read_to_string(&reader_path).unwrap_or_default();
-                let allowed = content.is_empty()
-                    || STATES.iter().any(|&s| s == content.as_str());
+                let allowed = content.is_empty() || STATES.iter().any(|&s| s == content.as_str());
                 assert!(
                     allowed,
                     "Partial or unexpected state read: {:?} — concurrent readers must \

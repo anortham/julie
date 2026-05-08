@@ -1,6 +1,6 @@
 ---
 name: impact-analysis
-description: Analyze what would break if a symbol changes: finds callers, groups by risk level, assesses impact. Use when the user asks about blast radius, who uses a symbol, or is planning a refactor.
+description: "Analyze what would break if a symbol changes: finds callers, groups by risk level, assesses impact. Use when the user asks about blast radius, who uses a symbol, or is planning a refactor."
 user-invocable: true
 arguments: "<symbol, file path, or change target>"
 allowed-tools: mcp__julie__fast_search, mcp__julie__fast_refs, mcp__julie__deep_dive, mcp__julie__get_context, mcp__julie__call_path, mcp__julie__blast_radius, mcp__julie__spillover_get, mcp__julie__manage_workspace

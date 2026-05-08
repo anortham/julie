@@ -1,5 +1,7 @@
 //! Golden master tests for the edit_file tool.
 
+use crate::daemon::database::DaemonDatabase;
+use crate::daemon::workspace_pool::WorkspacePool;
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::CallToolResult;
 use crate::tools::editing::edit_file::{
@@ -7,9 +9,11 @@ use crate::tools::editing::edit_file::{
     set_before_commit_hook_for_test,
 };
 use crate::tools::workspace::ManageWorkspaceTool;
+use crate::workspace::registry::generate_workspace_id;
 use anyhow::Result;
 use std::fs;
 use std::path::PathBuf;
+use std::sync::Arc;
 use tempfile::TempDir;
 
 fn fixture_source(name: &str) -> PathBuf {
@@ -248,25 +252,19 @@ fn test_dmp_loop_forward_progress_match_near_tail() {
     assert_eq!(result, "long prefix text then AB");
 }
 
-// Finding #30: editing tools have no `workspace` field but serde silently
-// accepts unknown fields by default, so `edit_file(..., workspace="x")`
-// silently ignores `workspace` and edits against primary. Tighten with
-// #[serde(deny_unknown_fields)] so the silent-ignore becomes a loud error.
+// edit_file must accept the same workspace routing parameter as the other
+// editing tools so agents can edit an opened target workspace.
 #[test]
-fn test_edit_file_rejects_unknown_workspace_field() {
+fn test_edit_file_accepts_workspace_field() {
     let json = serde_json::json!({
         "file_path": "src/foo.rs",
         "old_text": "old",
         "new_text": "new",
         "workspace": "secondary-id",
     });
-    let result: Result<crate::tools::editing::edit_file::EditFileTool, _> =
-        serde_json::from_value(json);
-    let err = result.expect_err("unknown `workspace` field should be rejected");
-    assert!(
-        err.to_string().contains("workspace"),
-        "error should mention the offending field name, got: {err}"
-    );
+    let tool: EditFileTool =
+        serde_json::from_value(json).expect("workspace field should be accepted");
+    assert_eq!(tool.workspace.as_deref(), Some("secondary-id"));
 }
 
 #[test]
@@ -342,6 +340,7 @@ async fn test_edit_file_apply_rejects_changed_target_before_commit() -> Result<(
         file_path: "src/main.rs".to_string(),
         old_text: "before();".to_string(),
         new_text: "after();".to_string(),
+        workspace: Some("primary".to_string()),
         dry_run: false,
         occurrence: EditOccurrence::First,
     };
@@ -357,6 +356,83 @@ async fn test_edit_file_apply_rejects_changed_target_before_commit() -> Result<(
         fs::read_to_string(&file_path)?,
         intervening,
         "intervening file content should be preserved"
+    );
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_edit_file_routes_to_target_workspace() -> Result<()> {
+    let temp_dir = TempDir::new()?;
+    let indexes_dir = temp_dir.path().join("indexes");
+    fs::create_dir_all(&indexes_dir)?;
+
+    let primary_root = temp_dir.path().join("primary");
+    let target_root = temp_dir.path().join("target");
+    fs::create_dir_all(primary_root.join("src"))?;
+    fs::create_dir_all(target_root.join("src"))?;
+
+    let file_path = "src/edit_target.rs";
+    let primary_content = "pub fn marker() {\n    primary_before();\n}\n";
+    let target_content = "pub fn marker() {\n    target_before();\n}\n";
+    fs::write(primary_root.join(file_path), primary_content)?;
+    fs::write(target_root.join(file_path), target_content)?;
+
+    let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db"))?);
+    let pool = Arc::new(WorkspacePool::new(
+        indexes_dir,
+        Some(Arc::clone(&daemon_db)),
+    ));
+
+    let primary_path = primary_root.canonicalize()?;
+    let primary_path_str = primary_path.to_string_lossy().to_string();
+    let primary_id = generate_workspace_id(&primary_path_str)?;
+    daemon_db.upsert_workspace(&primary_id, &primary_path_str, "ready")?;
+    let primary_ws = pool.get_or_init(&primary_id, primary_path.clone()).await?;
+
+    let target_path = target_root.canonicalize()?;
+    let target_path_str = target_path.to_string_lossy().to_string();
+    let target_id = generate_workspace_id(&target_path_str)?;
+    daemon_db.upsert_workspace(&target_id, &target_path_str, "ready")?;
+
+    let handler = JulieServerHandler::new_with_shared_workspace(
+        primary_ws,
+        primary_path,
+        Some(Arc::clone(&daemon_db)),
+        Some(primary_id),
+        None,
+        None,
+        None,
+        None,
+        Some(Arc::clone(&pool)),
+    )
+    .await?;
+
+    let tool = EditFileTool {
+        file_path: file_path.to_string(),
+        old_text: "target_before();".to_string(),
+        new_text: "target_after();".to_string(),
+        workspace: Some(target_id),
+        dry_run: false,
+        occurrence: EditOccurrence::First,
+    };
+
+    let result = tool.call_tool(&handler).await?;
+    let result_text = extract_text(&result);
+
+    assert!(
+        result_text.contains("target_after"),
+        "edit_file should report the target-workspace edit diff: {result_text}"
+    );
+    assert_eq!(
+        fs::read_to_string(primary_root.join(file_path))?,
+        primary_content,
+        "primary workspace file must not be edited"
+    );
+    assert_eq!(
+        fs::read_to_string(target_root.join(file_path))?,
+        "pub fn marker() {\n    target_after();\n}\n",
+        "target workspace file should be edited"
     );
 
     Ok(())
@@ -395,6 +471,7 @@ async fn test_edit_file_dry_run_truncates_large_diff_preview() -> Result<()> {
         file_path: "src/large.rs".to_string(),
         old_text: original.trim_end().to_string(),
         new_text: replacement,
+        workspace: Some("primary".to_string()),
         dry_run: true,
         occurrence: EditOccurrence::First,
     };

@@ -1,6 +1,8 @@
 # Fast local confidence buckets.
 # Expected seconds are first-pass estimates for later rebalancing.
 [tiers]
+# Nano: smallest possible confidence slice for the tight edit-test loop.
+nano = ["core-database", "core-fast"]
 # Smoke: keep this tiny for frequent local runs.
 smoke = ["cli", "core-database", "core-embeddings", "tools-get-context"]
 dev = ["cli", "xtask-runner", "core-database", "core-embeddings", "tools-get-context", "tools-search-tantivy", "tools-search-line-file", "tools-search-ranking-format", "tools-search-context", "tools-search-text", "tools-search-hybrid", "tools-search-query", "tools-workspace", "tools-get-symbols", "tools-editing", "tools-navigation", "tools-refactoring", "tools-metrics", "tools-format-filter", "core-fast", "daemon", "dashboard"]

@@ -179,7 +179,11 @@ mod tests {
         let pid_file = PidFile::create_exclusive(&path).unwrap();
 
         let result = PidFile::check_running(&path);
-        assert_eq!(result, Some(std::process::id()), "Live process PID should be returned");
+        assert_eq!(
+            result,
+            Some(std::process::id()),
+            "Live process PID should be returned"
+        );
 
         pid_file.cleanup().unwrap();
     }

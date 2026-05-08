@@ -334,7 +334,10 @@ pub(crate) fn write_daemon_state(path: &Path, state: &str) {
         return;
     }
     if let Err(e) = std::fs::rename(&tmp, path) {
-        warn!("Failed to atomically replace daemon state '{}': {}", state, e);
+        warn!(
+            "Failed to atomically replace daemon state '{}': {}",
+            state, e
+        );
         let _ = std::fs::remove_file(&tmp);
     }
 }

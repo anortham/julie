@@ -134,6 +134,7 @@ pub(crate) fn edit_file_metadata(params: &EditFileTool) -> Value {
         params.base_metrics_metadata(),
         json!({
             "file": params.file_path,
+            "workspace": params.workspace,
             "target": target_metadata(None, Some(&params.file_path), None),
         }),
     )

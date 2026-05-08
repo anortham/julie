@@ -49,7 +49,11 @@ impl PidFileContents {
 
 impl fmt::Display for PidFileContents {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} {} {}", self.pid, self.creation_time_micros, self.binary_mtime_micros)
+        write!(
+            f,
+            "{} {} {}",
+            self.pid, self.creation_time_micros, self.binary_mtime_micros
+        )
     }
 }
 
@@ -63,16 +67,25 @@ impl fmt::Display for PidFileContents {
 /// Windows: `OpenProcess` + `GetProcessTimes`.
 fn process_creation_time_micros(pid: u32) -> Option<u64> {
     #[cfg(target_os = "linux")]
-    { linux_process_creation_time(pid) }
+    {
+        linux_process_creation_time(pid)
+    }
 
     #[cfg(target_os = "macos")]
-    { macos_process_creation_time(pid) }
+    {
+        macos_process_creation_time(pid)
+    }
 
     #[cfg(windows)]
-    { windows_process_creation_time(pid) }
+    {
+        windows_process_creation_time(pid)
+    }
 
     #[cfg(not(any(target_os = "linux", target_os = "macos", windows)))]
-    { let _ = pid; None }
+    {
+        let _ = pid;
+        None
+    }
 }
 
 fn current_process_creation_time_micros() -> u64 {
@@ -93,11 +106,16 @@ fn linux_process_creation_time(pid: u32) -> Option<u64> {
     // After the closing paren, field indices restart at 2; starttime is field 21 → offset 19.
     let ticks: u64 = fields.get(19)?.parse().ok()?;
     let ticks_per_sec = unsafe { libc::sysconf(libc::_SC_CLK_TCK) } as u64;
-    if ticks_per_sec == 0 { return None; }
+    if ticks_per_sec == 0 {
+        return None;
+    }
 
     let uptime_str = fs::read_to_string("/proc/uptime").ok()?;
     let uptime_secs: f64 = uptime_str.split_whitespace().next()?.parse().ok()?;
-    let now_secs = SystemTime::now().duration_since(UNIX_EPOCH).ok()?.as_secs_f64();
+    let now_secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .ok()?
+        .as_secs_f64();
     let boot_secs = now_secs - uptime_secs;
     let start_micros = ((boot_secs + ticks as f64 / ticks_per_sec as f64) * 1_000_000.0) as u64;
     Some(start_micros)
@@ -111,18 +129,34 @@ fn macos_process_creation_time(pid: u32) -> Option<u64> {
     // p_starttime (a timeval) is at offset 0: tv_sec=i64 at bytes 0-7, tv_usec=i32 at bytes 8-11.
     // Verified: sizeof(kinfo_proc)=648, offset(p_starttime)=0 on macOS arm64/x86_64.
     const KINFO_PROC_SIZE: usize = 648;
-    let mut mib = [libc::CTL_KERN, libc::KERN_PROC, libc::KERN_PROC_PID, pid as libc::c_int];
+    let mut mib = [
+        libc::CTL_KERN,
+        libc::KERN_PROC,
+        libc::KERN_PROC_PID,
+        pid as libc::c_int,
+    ];
     let mut buf = [0u8; KINFO_PROC_SIZE];
     let mut size: libc::size_t = KINFO_PROC_SIZE;
 
     let ret = unsafe {
-        libc::sysctl(mib.as_mut_ptr(), 4, buf.as_mut_ptr() as *mut libc::c_void, &mut size, std::ptr::null_mut(), 0)
+        libc::sysctl(
+            mib.as_mut_ptr(),
+            4,
+            buf.as_mut_ptr() as *mut libc::c_void,
+            &mut size,
+            std::ptr::null_mut(),
+            0,
+        )
     };
-    if ret != 0 || size < 12 { return None; }
+    if ret != 0 || size < 12 {
+        return None;
+    }
 
     let tv_sec = i64::from_ne_bytes(buf[0..8].try_into().ok()?);
     let tv_usec = i32::from_ne_bytes(buf[8..12].try_into().ok()?);
-    if tv_sec <= 0 { return None; }
+    if tv_sec <= 0 {
+        return None;
+    }
     let micros = tv_sec as u64 * 1_000_000 + tv_usec as u64;
     if micros == 0 { None } else { Some(micros) }
 }
@@ -134,18 +168,25 @@ fn windows_process_creation_time(pid: u32) -> Option<u64> {
     unsafe extern "system" {
         fn OpenProcess(desired_access: u32, inherit_handle: i32, process_id: u32) -> isize;
         fn CloseHandle(handle: isize) -> i32;
-        fn GetProcessTimes(h: isize, ct: *mut u64, et: *mut u64, kt: *mut u64, ut: *mut u64) -> i32;
+        fn GetProcessTimes(h: isize, ct: *mut u64, et: *mut u64, kt: *mut u64, ut: *mut u64)
+        -> i32;
     }
     const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
     let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
-    if handle == 0 { return None; }
+    if handle == 0 {
+        return None;
+    }
     let (mut ct, mut et, mut kt, mut ut) = (0u64, 0u64, 0u64, 0u64);
     let ok = unsafe { GetProcessTimes(handle, &mut ct, &mut et, &mut kt, &mut ut) };
     unsafe { CloseHandle(handle) };
-    if ok == 0 { return None; }
+    if ok == 0 {
+        return None;
+    }
     // FILETIME: 100-ns intervals since 1601-01-01. Convert to µs since UNIX epoch.
     const EPOCH_DIFF: u64 = 116_444_736_000_000_000; // 100-ns intervals
-    if ct < EPOCH_DIFF { return None; }
+    if ct < EPOCH_DIFF {
+        return None;
+    }
     Some((ct - EPOCH_DIFF) / 10)
 }
 
@@ -153,7 +194,8 @@ fn windows_process_creation_time(pid: u32) -> Option<u64> {
 
 /// Current binary mtime as µs since UNIX epoch; 0 when unavailable.
 fn current_binary_mtime_micros() -> u64 {
-    std::env::current_exe().ok()
+    std::env::current_exe()
+        .ok()
         .and_then(|p| fs::metadata(p).ok())
         .and_then(|m| m.modified().ok())
         .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
@@ -210,7 +252,9 @@ impl PidFile {
             let _ = fs::remove_file(&tmp);
             format!("Failed to rename PID file to: {}", path.display())
         })?;
-        Ok(Self { path: path.to_path_buf() })
+        Ok(Self {
+            path: path.to_path_buf(),
+        })
     }
 
     /// Read and parse a PID file. Returns `None` for missing, malformed, or
@@ -232,7 +276,9 @@ impl PidFile {
         #[cfg(unix)]
         {
             let ret = unsafe { libc::kill(pid as i32, 0) };
-            if ret == 0 { return true; }
+            if ret == 0 {
+                return true;
+            }
             // EPERM: process exists but we lack permission — still alive.
             let errno = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
             errno == libc::EPERM
@@ -246,7 +292,10 @@ impl PidFile {
             }
             const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
             let h = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
-            if h != 0 { unsafe { CloseHandle(h) }; return true; }
+            if h != 0 {
+                unsafe { CloseHandle(h) };
+                return true;
+            }
             // ERROR_ACCESS_DENIED (5): process exists but we lack permission.
             std::io::Error::last_os_error().raw_os_error() == Some(5)
         }
@@ -323,7 +372,9 @@ impl PidFile {
         let raw = match fs::read_to_string(path) {
             Ok(s) => s,
             Err(_) => {
-                if path.exists() { let _ = fs::remove_file(path); }
+                if path.exists() {
+                    let _ = fs::remove_file(path);
+                }
                 return None;
             }
         };
@@ -352,11 +403,14 @@ impl PidFile {
     /// Non-`NotFound` errors from `remove_file` are propagated (they indicate
     /// real problems such as Windows `ERROR_SHARING_VIOLATION`).
     pub fn create_exclusive(path: &Path) -> anyhow::Result<Self> {
-        let contents_str = format!("{}\n", PidFileContents {
-            pid: std::process::id(),
-            creation_time_micros: current_process_creation_time_micros(),
-            binary_mtime_micros: current_binary_mtime_micros(),
-        });
+        let contents_str = format!(
+            "{}\n",
+            PidFileContents {
+                pid: std::process::id(),
+                creation_time_micros: current_process_creation_time_micros(),
+                binary_mtime_micros: current_binary_mtime_micros(),
+            }
+        );
 
         const MAX_RETRIES: u32 = 10;
         let mut retries = 0u32;
@@ -366,7 +420,9 @@ impl PidFile {
                 Ok(mut f) => {
                     f.write_all(contents_str.as_bytes())
                         .with_context(|| format!("Failed to write PID to {}", path.display()))?;
-                    return Ok(Self { path: path.to_path_buf() });
+                    return Ok(Self {
+                        path: path.to_path_buf(),
+                    });
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
                     // Decide: real running daemon, stale, or indeterminate.
@@ -397,14 +453,10 @@ impl PidFile {
                             // Legacy or corrupt format. Try to extract a PID
                             // from the first whitespace-delimited token.
                             let raw = fs::read_to_string(path).unwrap_or_default();
-                            let legacy_pid: Option<u32> = raw
-                                .split_whitespace()
-                                .next()
-                                .and_then(|s| s.parse().ok());
+                            let legacy_pid: Option<u32> =
+                                raw.split_whitespace().next().and_then(|s| s.parse().ok());
                             match legacy_pid {
-                                Some(pid) if Self::is_process_alive(pid) => {
-                                    OwnerState::Real(pid)
-                                }
+                                Some(pid) if Self::is_process_alive(pid) => OwnerState::Real(pid),
                                 _ => OwnerState::Stale,
                             }
                         }
@@ -433,9 +485,10 @@ impl PidFile {
                     // Propagate non-NotFound errors (e.g. Windows sharing violation).
                     if let Err(re) = fs::remove_file(path) {
                         if re.kind() != std::io::ErrorKind::NotFound {
-                            return Err(anyhow::Error::from(re).context(
-                                format!("Failed to remove stale PID file: {}", path.display())
-                            ));
+                            return Err(anyhow::Error::from(re).context(format!(
+                                "Failed to remove stale PID file: {}",
+                                path.display()
+                            )));
                         }
                         // NotFound: a racing process already cleaned it up — retry.
                     }
@@ -444,7 +497,8 @@ impl PidFile {
                     if retries >= MAX_RETRIES {
                         anyhow::bail!(
                             "Failed to create PID file at {} after {} retries",
-                            path.display(), MAX_RETRIES
+                            path.display(),
+                            MAX_RETRIES
                         );
                     }
                     // Backoff AFTER first failure, not before first attempt.

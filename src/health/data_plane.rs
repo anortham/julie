@@ -62,8 +62,7 @@ pub(crate) fn build_data_plane(primary: &PrimaryWorkspaceHealth) -> Result<DataP
                             // on-disk file is gone (size 0). This happens when the index
                             // directory is removed while the daemon holds the SQLite fd
                             // open — reads keep working but the data is unrecoverable.
-                            let phantom_fd =
-                                stats.total_symbols > 0 && stats.db_size_mb == 0.0;
+                            let phantom_fd = stats.total_symbols > 0 && stats.db_size_mb == 0.0;
                             let level = if phantom_fd {
                                 HealthLevel::Unavailable
                             } else if stats.total_symbols > 0 {

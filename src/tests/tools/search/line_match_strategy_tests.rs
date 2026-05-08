@@ -211,6 +211,81 @@ mod line_match_strategy_tests {
     }
 
     #[test]
+    fn test_file_level_compound_identifier_matches_contiguous_identifier() {
+        let strategy = LineMatchStrategy::FileLevel {
+            terms: vec!["workspace_is_primary".to_string()],
+        };
+
+        assert!(line_matches(
+            &strategy,
+            "fn workspace_is_primary(workspace: &WorkspaceTarget) -> bool {",
+        ));
+        assert!(line_matches(
+            &strategy,
+            "let is_primary = workspace.is_primary();",
+        ));
+    }
+
+    #[test]
+    fn test_file_level_compound_identifier_does_not_match_individual_subtokens() {
+        let strategy = LineMatchStrategy::FileLevel {
+            terms: vec!["workspace_is_primary".to_string(), "edit_file".to_string()],
+        };
+
+        assert!(!line_matches(
+            &strategy,
+            "workspace_label: Some(\"primary\".to_string()),",
+        ));
+        assert!(!line_matches(
+            &strategy,
+            "file_path: \"src/lib.rs\".to_string(),",
+        ));
+    }
+
+    #[test]
+    fn test_tokens_compound_required_identifier_does_not_match_individual_subtokens() {
+        let strategy = LineMatchStrategy::Tokens {
+            required: vec!["workspace_is_primary".to_string()],
+            excluded: Vec::new(),
+        };
+
+        assert!(line_matches(
+            &strategy,
+            "let ok = workspace_is_primary(target);",
+        ));
+        assert!(!line_matches(
+            &strategy,
+            "workspace_label: Some(\"primary\".to_string()),",
+        ));
+    }
+
+    #[test]
+    fn test_tokens_compound_excluded_identifier_does_not_exclude_individual_subtokens() {
+        let strategy = LineMatchStrategy::Tokens {
+            required: vec!["call_tool".to_string()],
+            excluded: vec!["edit_file".to_string()],
+        };
+
+        assert!(line_matches(
+            &strategy,
+            "call_tool handles file_path without editing",
+        ));
+        assert!(!line_matches(
+            &strategy,
+            "call_tool invokes edit_file for text changes",
+        ));
+    }
+
+    #[test]
+    fn test_file_level_simple_terms_keep_tokenized_matching() {
+        let strategy = LineMatchStrategy::FileLevel {
+            terms: vec!["tokens".to_string()],
+        };
+
+        assert!(line_matches(&strategy, "pub struct TokenEstimator;"));
+    }
+
+    #[test]
     fn test_tokens_strategy_excluded_terms_use_tokenized_forms() {
         let strategy = LineMatchStrategy::Tokens {
             required: vec!["format".to_string()],

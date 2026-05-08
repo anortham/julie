@@ -132,8 +132,8 @@ fn main() -> anyhow::Result<()> {
             dry_run,
         }) => {
             let workspace = workspace_root();
-            let plugin = plugin_root
-                .unwrap_or_else(|| xtask::sync_plugin::default_plugin_root(&workspace));
+            let plugin =
+                plugin_root.unwrap_or_else(|| xtask::sync_plugin::default_plugin_root(&workspace));
             xtask::sync_plugin::run_sync_plugin(&workspace, &plugin, dry_run, &mut stdout)?;
         }
         CliCommand::Certify(command) => match command {

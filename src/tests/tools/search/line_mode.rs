@@ -196,7 +196,9 @@ fn processPayment() {
             "Should find second TODO comment"
         );
         assert!(
-            response_text.contains("Line 1") || response_text.contains(":1:"),
+            response_text.contains("Line 1")
+                || response_text.contains(":1:")
+                || response_text.contains("  1:"),
             "Should include line numbers"
         );
         assert!(

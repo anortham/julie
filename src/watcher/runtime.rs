@@ -136,7 +136,9 @@ impl QueueRuntime {
             // calling retry_dirty_tantivy (which acquires its own gate).
             // Holding both simultaneously would deadlock on the same workspace_id.
             {
-                let _guard = timed_acquire_gate(&self.workspace_id, std::time::Duration::from_millis(100)).await;
+                let _guard =
+                    timed_acquire_gate(&self.workspace_id, std::time::Duration::from_millis(100))
+                        .await;
                 while let Some(event) = self.index_queue.lock().await.pop_front() {
                     let provider_snapshot = self
                         .embedding_provider
@@ -158,7 +160,6 @@ impl QueueRuntime {
                     .await;
                 }
             } // _guard dropped here, gate released
-
         }
 
         self.retry_dirty_tantivy().await;
@@ -195,7 +196,8 @@ impl QueueRuntime {
         }
 
         // Acquire the mutation gate before dispatching repair events.
-        let _guard = timed_acquire_gate(&self.workspace_id, std::time::Duration::from_millis(100)).await;
+        let _guard =
+            timed_acquire_gate(&self.workspace_id, std::time::Duration::from_millis(100)).await;
 
         let gitignore = match super::filtering::build_gitignore_matcher(&self.workspace_root) {
             Ok(gitignore) => Some(gitignore),
@@ -368,7 +370,8 @@ impl QueueRuntime {
         };
 
         // Acquire the mutation gate before writing to Tantivy.
-        let _guard = timed_acquire_gate(&self.workspace_id, std::time::Duration::from_millis(100)).await;
+        let _guard =
+            timed_acquire_gate(&self.workspace_id, std::time::Duration::from_millis(100)).await;
 
         self.indexing_runtime
             .write()
@@ -532,7 +535,8 @@ impl QueueRuntime {
         // Acquire the mutation gate for the duration of the batch.  Held until
         // all events in this tick are dispatched so catch-up indexing cannot
         // interleave writes mid-batch.
-        let _guard = timed_acquire_gate(&self.workspace_id, std::time::Duration::from_millis(100)).await;
+        let _guard =
+            timed_acquire_gate(&self.workspace_id, std::time::Duration::from_millis(100)).await;
 
         let mut processed_count = 0usize;
         let mut dropped_duplicates = 0usize;
@@ -665,7 +669,8 @@ impl QueueRuntime {
         }
 
         // Acquire the mutation gate after early-return checks pass.
-        let _guard = timed_acquire_gate(&self.workspace_id, std::time::Duration::from_millis(100)).await;
+        let _guard =
+            timed_acquire_gate(&self.workspace_id, std::time::Duration::from_millis(100)).await;
 
         self.needs_rescan.store(false, Ordering::Release);
         self.indexing_runtime

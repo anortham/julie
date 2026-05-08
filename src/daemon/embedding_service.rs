@@ -299,11 +299,10 @@ impl EmbeddingService {
         // The 3-second bound ensures the new daemon isn't delayed indefinitely
         // if the old sidecar is stuck.
         const SIDECAR_EXIT_TIMEOUT: Duration = Duration::from_secs(3);
-        let exited = tokio::task::spawn_blocking(move || {
-            provider.wait_for_exit(SIDECAR_EXIT_TIMEOUT)
-        })
-        .await
-        .unwrap_or(false);
+        let exited =
+            tokio::task::spawn_blocking(move || provider.wait_for_exit(SIDECAR_EXIT_TIMEOUT))
+                .await
+                .unwrap_or(false);
 
         if !exited {
             warn!(

@@ -65,10 +65,7 @@ async fn test_shutdown_calls_pools_after_transport() {
     let (paths, _dir) = make_daemon_paths();
     let http_transport = bind_test_transport(paths.clone()).await;
     let embedding_service = Arc::new(EmbeddingService::initialize_for_test(None));
-    let workspace_pool = Arc::new(WorkspacePool::new(
-        paths.indexes_dir().to_path_buf(),
-        None,
-    ));
+    let workspace_pool = Arc::new(WorkspacePool::new(paths.indexes_dir().to_path_buf(), None));
     let watcher_pool = Arc::new(WatcherPool::new(Duration::from_secs(300)));
     let pid_file = make_pid_file(&paths);
 
@@ -124,10 +121,7 @@ async fn test_shutdown_calls_workspace_pool_before_watcher_pool() {
     let (paths, _dir) = make_daemon_paths();
     let http_transport = bind_test_transport(paths.clone()).await;
     let embedding_service = Arc::new(EmbeddingService::initialize_for_test(None));
-    let workspace_pool = Arc::new(WorkspacePool::new(
-        paths.indexes_dir().to_path_buf(),
-        None,
-    ));
+    let workspace_pool = Arc::new(WorkspacePool::new(paths.indexes_dir().to_path_buf(), None));
     let watcher_pool = Arc::new(WatcherPool::new(Duration::from_secs(300)));
     let pid_file = make_pid_file(&paths);
 

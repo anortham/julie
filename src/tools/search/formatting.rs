@@ -267,10 +267,22 @@ pub fn format_content_locations_only(
         ));
     }
 
-    for hit in &response.results {
-        match hit.line {
-            Some(line) => output.push_str(&format!("  {}:{}\n", hit.file, line)),
-            None => output.push_str(&format!("  {}\n", hit.file)),
+    for group in grouped_content_locations(&response.results) {
+        if !group.lines.is_empty() {
+            let line_numbers = group
+                .lines
+                .iter()
+                .map(u32::to_string)
+                .collect::<Vec<_>>()
+                .join(", ");
+            if group.lines.len() == 1 {
+                output.push_str(&format!("  {}:{}\n", group.file, line_numbers));
+            } else {
+                output.push_str(&format!("  {}: {}\n", group.file, line_numbers));
+            }
+        }
+        for _ in 0..group.file_only_hits {
+            output.push_str(&format!("  {}\n", group.file));
         }
     }
 
@@ -350,5 +362,38 @@ fn file_match_kind_label(match_kind: FileMatchKind) -> &'static str {
         FileMatchKind::ExactBasename => "exact basename",
         FileMatchKind::PathFragment => "path fragment",
         FileMatchKind::Glob => "glob match",
+    }
+}
+
+struct ContentLocationGroup<'a> {
+    file: &'a str,
+    lines: Vec<u32>,
+    file_only_hits: usize,
+}
+
+fn grouped_content_locations(hits: &[SearchHit]) -> Vec<ContentLocationGroup<'_>> {
+    let mut groups: Vec<ContentLocationGroup<'_>> = Vec::new();
+
+    for hit in hits {
+        let Some(group) = groups.iter_mut().find(|group| group.file == hit.file) else {
+            let mut group = ContentLocationGroup {
+                file: &hit.file,
+                lines: Vec::new(),
+                file_only_hits: 0,
+            };
+            add_hit_to_content_location_group(&mut group, hit);
+            groups.push(group);
+            continue;
+        };
+        add_hit_to_content_location_group(group, hit);
+    }
+
+    groups
+}
+
+fn add_hit_to_content_location_group(group: &mut ContentLocationGroup<'_>, hit: &SearchHit) {
+    match hit.line {
+        Some(line) => group.lines.push(line),
+        None => group.file_only_hits += 1,
     }
 }

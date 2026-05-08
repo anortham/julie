@@ -774,8 +774,12 @@ pub(crate) async fn perform_shutdown_sequence(
 ) {
     // Helper: record a step name to the call_log if one was provided.
     let record = |step: &'static str| {
-        let Some(log) = call_log.as_ref() else { return; };
-        let Ok(mut guard) = log.lock() else { return; };
+        let Some(log) = call_log.as_ref() else {
+            return;
+        };
+        let Ok(mut guard) = log.lock() else {
+            return;
+        };
         guard.push(step);
     };
 

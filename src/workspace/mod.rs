@@ -798,7 +798,6 @@ impl JulieWorkspace {
         }
         Ok(())
     }
-
 }
 
 /// Health status of a Julie workspace

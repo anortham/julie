@@ -15,6 +15,7 @@ use crate::search::index::SearchIndex;
 use crate::tools::navigation::resolution::WorkspaceTarget;
 
 use super::hint_formatter::build_scope_rescue_header;
+use super::line_output::format_grouped_line_matches;
 use super::query::{
     line_match_strategy, line_matches, looks_like_whitespace_separated_globs, matches_glob_pattern,
 };
@@ -701,12 +702,7 @@ pub(crate) fn format_line_mode_output(query: &str, result: &LineModeSearchResult
     lines.push(header);
     lines.push(String::new());
 
-    for entry in &result.matches {
-        lines.push(format!(
-            "{}:{}:{}",
-            entry.file_path, entry.line_number, entry.line_content
-        ));
-    }
+    lines.extend(format_grouped_line_matches(&result.matches));
 
     lines.join("\n")
 }

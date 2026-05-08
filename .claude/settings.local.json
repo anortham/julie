@@ -166,8 +166,6 @@
     "deny": [],
     "ask": []
   },
-  "enabledPlugins": {
-    "playwright@claude-plugins-official": true
-  },
-  "outputStyle": "Explanatory"
+  "enabledPlugins": {},
+  "outputStyle": "default"
 }

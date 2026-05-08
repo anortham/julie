@@ -370,11 +370,19 @@ mod json_extractor_tests {
         // an array, the array and object wrappers yield nothing, but the "pair"
         // nodes inside each object element ARE extracted (one per object key).
         // Both objects have one key ("name"), so 2 symbols total.
-        assert_eq!(symbols.len(), 2, "Array root: one symbol per key in each element object");
+        assert_eq!(
+            symbols.len(),
+            2,
+            "Array root: one symbol per key in each element object"
+        );
 
         let mut names: Vec<&str> = symbols.iter().map(|s| s.name.as_str()).collect();
         names.sort_unstable();
-        assert_eq!(names, vec!["name", "name"], "Both array element keys must be extracted as 'name'");
+        assert_eq!(
+            names,
+            vec!["name", "name"],
+            "Both array element keys must be extracted as 'name'"
+        );
 
         for sym in &symbols {
             assert_eq!(

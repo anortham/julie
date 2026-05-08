@@ -2,9 +2,9 @@ use super::super::force_safeguards::{
     cancel_embedding_tasks, refresh_workspace_ids_for_force_reindex,
 };
 use super::ManageWorkspaceTool;
-use crate::workspace::mutation_gate::acquire_gate;
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::{CallToolResult, CallToolResultExt, Content};
+use crate::workspace::mutation_gate::acquire_gate;
 use anyhow::Result;
 use tracing::{info, warn};
 

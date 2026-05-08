@@ -16,14 +16,20 @@ fn with_env(key: &str, value: &str) -> EnvGuard {
     let previous = std::env::var(key).ok();
     // SAFETY: single-threaded by serial attribute; no other threads read this var.
     unsafe { std::env::set_var(key, value) };
-    EnvGuard { key: key.to_owned(), previous }
+    EnvGuard {
+        key: key.to_owned(),
+        previous,
+    }
 }
 
 fn without_env(key: &str) -> EnvGuard {
     let previous = std::env::var(key).ok();
     // SAFETY: single-threaded by serial attribute; no other threads read this var.
     unsafe { std::env::remove_var(key) };
-    EnvGuard { key: key.to_owned(), previous }
+    EnvGuard {
+        key: key.to_owned(),
+        previous,
+    }
 }
 
 struct EnvGuard {

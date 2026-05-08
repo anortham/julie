@@ -93,10 +93,7 @@ async fn test_hash_match_logs_skipped_info() {
     drop(_sub_guard);
 
     let entries = capture.entries();
-    let info_entries: Vec<_> = entries
-        .iter()
-        .filter(|e| e.level == "INFO")
-        .collect();
+    let info_entries: Vec<_> = entries.iter().filter(|e| e.level == "INFO").collect();
 
     assert!(
         info_entries
@@ -144,10 +141,7 @@ async fn test_indexed_file_logs_symbol_count_info() {
     drop(_sub_guard);
 
     let entries = capture.entries();
-    let info_entries: Vec<_> = entries
-        .iter()
-        .filter(|e| e.level == "INFO")
-        .collect();
+    let info_entries: Vec<_> = entries.iter().filter(|e| e.level == "INFO").collect();
 
     // Must log an INFO with "indexed.rs" and extraction details.
     let has_indexed_line = info_entries.iter().any(|e| {

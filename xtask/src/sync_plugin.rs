@@ -95,13 +95,11 @@ fn sync_skills(
         } else {
             if !dry_run {
                 if let Some(parent) = dst.parent() {
-                    fs::create_dir_all(parent).with_context(|| {
-                        format!("create_dir_all {}", parent.display())
-                    })?;
+                    fs::create_dir_all(parent)
+                        .with_context(|| format!("create_dir_all {}", parent.display()))?;
                 }
-                fs::copy(&src, &dst).with_context(|| {
-                    format!("copy {} → {}", src.display(), dst.display())
-                })?;
+                fs::copy(&src, &dst)
+                    .with_context(|| format!("copy {} → {}", src.display(), dst.display()))?;
             }
             writeln!(out, "  → {}", rel.display())?;
             report.skills_updated.push(rel.clone());
@@ -111,8 +109,7 @@ fn sync_skills(
     for rel in plugin_files.difference(&source_files) {
         let dst = plugin.join(rel);
         if !dry_run {
-            fs::remove_file(&dst)
-                .with_context(|| format!("remove {}", dst.display()))?;
+            fs::remove_file(&dst).with_context(|| format!("remove {}", dst.display()))?;
         }
         writeln!(out, "  - {} (removed; not in source)", rel.display())?;
         report.skills_removed.push(rel.clone());
@@ -131,7 +128,10 @@ fn diff_hooks(
     out: &mut impl Write,
     report: &mut SyncReport,
 ) -> Result<()> {
-    writeln!(out, "\n[hooks] report-only (intentionally separate per CLAUDE.md)")?;
+    writeln!(
+        out,
+        "\n[hooks] report-only (intentionally separate per CLAUDE.md)"
+    )?;
     writeln!(
         out,
         "  source uses relative `node .claude/hooks/...` paths;"
@@ -144,10 +144,7 @@ fn diff_hooks(
     let source_files = collect_files(source)?;
     let plugin_files = collect_files(plugin)?;
 
-    let shared: BTreeSet<PathBuf> = source_files
-        .intersection(&plugin_files)
-        .cloned()
-        .collect();
+    let shared: BTreeSet<PathBuf> = source_files.intersection(&plugin_files).cloned().collect();
 
     for rel in &shared {
         let src = source.join(rel);
@@ -156,7 +153,11 @@ fn diff_hooks(
             writeln!(out, "  = {}", rel.display())?;
             report.hooks_identical.push(rel.clone());
         } else {
-            writeln!(out, "  ≠ {} (differs; reconcile manually if needed)", rel.display())?;
+            writeln!(
+                out,
+                "  ≠ {} (differs; reconcile manually if needed)",
+                rel.display()
+            )?;
             report.hooks_differ.push(rel.clone());
         }
     }
@@ -189,9 +190,7 @@ fn collect_files(dir: &Path) -> Result<BTreeSet<PathBuf>> {
 }
 
 fn walk(root: &Path, current: &Path, out: &mut BTreeSet<PathBuf>) -> Result<()> {
-    for entry in
-        fs::read_dir(current).with_context(|| format!("read_dir {}", current.display()))?
-    {
+    for entry in fs::read_dir(current).with_context(|| format!("read_dir {}", current.display()))? {
         let entry = entry?;
         let path = entry.path();
         let ft = entry.file_type()?;
@@ -200,7 +199,9 @@ fn walk(root: &Path, current: &Path, out: &mut BTreeSet<PathBuf>) -> Result<()> 
         } else if ft.is_file() {
             let rel = path
                 .strip_prefix(root)
-                .with_context(|| format!("strip_prefix {} from {}", root.display(), path.display()))?
+                .with_context(|| {
+                    format!("strip_prefix {} from {}", root.display(), path.display())
+                })?
                 .to_path_buf();
             out.insert(rel);
         }
@@ -226,8 +227,7 @@ fn prune_empty_dirs(root: &Path) -> Result<()> {
             continue;
         }
         if fs::read_dir(&dir)?.next().is_none() {
-            fs::remove_dir(&dir)
-                .with_context(|| format!("remove_dir {}", dir.display()))?;
+            fs::remove_dir(&dir).with_context(|| format!("remove_dir {}", dir.display()))?;
         }
     }
     Ok(())
@@ -299,13 +299,13 @@ mod tests {
             &plugin.join("skills/editing/stale.md"),
             "plugin-only-skill-file-should-be-removed",
         );
-        write(&plugin.join("skills/explore-area/SKILL.md"), "source-explore");
+        write(
+            &plugin.join("skills/explore-area/SKILL.md"),
+            "source-explore",
+        );
 
         // Plugin hooks
-        write(
-            &plugin.join("hooks/hooks.json"),
-            "{\"distributed\": true}",
-        );
+        write(&plugin.join("hooks/hooks.json"), "{\"distributed\": true}");
         write(
             &plugin.join("hooks/pretool-edit.cjs"),
             "// plugin pretool-edit (canonical)",
@@ -365,22 +365,24 @@ mod tests {
         let source_hooks_json =
             fs::read_to_string(workspace.join(".claude/hooks/hooks.json")).unwrap();
         assert_eq!(source_hooks_json, "{\"dev\": true}");
-        let plugin_hooks_json =
-            fs::read_to_string(plugin.join("hooks/hooks.json")).unwrap();
+        let plugin_hooks_json = fs::read_to_string(plugin.join("hooks/hooks.json")).unwrap();
         assert_eq!(plugin_hooks_json, "{\"distributed\": true}");
 
         let source_pretool =
             fs::read_to_string(workspace.join(".claude/hooks/pretool-edit.cjs")).unwrap();
         assert_eq!(source_pretool, "// source pretool-edit (stale)");
-        let plugin_pretool =
-            fs::read_to_string(plugin.join("hooks/pretool-edit.cjs")).unwrap();
+        let plugin_pretool = fs::read_to_string(plugin.join("hooks/pretool-edit.cjs")).unwrap();
         assert_eq!(plugin_pretool, "// plugin pretool-edit (canonical)");
 
         // Unique files preserved on each side
         assert!(workspace.join(".claude/hooks/probe.cjs").exists());
         assert!(!plugin.join("hooks/probe.cjs").exists());
         assert!(plugin.join("hooks/codex-pretooluse.cjs").exists());
-        assert!(!workspace.join(".claude/hooks/codex-pretooluse.cjs").exists());
+        assert!(
+            !workspace
+                .join(".claude/hooks/codex-pretooluse.cjs")
+                .exists()
+        );
 
         // Report classifies divergence
         let differ: Vec<_> = report
@@ -442,14 +444,20 @@ mod tests {
         );
         assert!(report.skills_removed.is_empty());
         // Hooks remain divergent (report-only) — not an error
-        assert!(!report.hooks_differ.is_empty() || !report.hooks_source_only.is_empty()
-            || !report.hooks_plugin_only.is_empty());
+        assert!(
+            !report.hooks_differ.is_empty()
+                || !report.hooks_source_only.is_empty()
+                || !report.hooks_plugin_only.is_empty()
+        );
     }
 
     #[test]
     fn sync_plugin_tests_default_plugin_root_is_sibling() {
         let workspace = PathBuf::from("/Users/test/source/julie");
         let plugin_root = default_plugin_root(&workspace);
-        assert_eq!(plugin_root, PathBuf::from("/Users/test/source/julie-plugin"));
+        assert_eq!(
+            plugin_root,
+            PathBuf::from("/Users/test/source/julie-plugin")
+        );
     }
 }

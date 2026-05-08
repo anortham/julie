@@ -173,12 +173,9 @@ async fn test_external_acquire_proceeds_after_drop() {
         // _guard dropped at end of this scope.
     }
 
-    timeout(
-        Duration::from_millis(200),
-        acquire_gate("ws_drop_release"),
-    )
-    .await
-    .expect("Acquire after drop must succeed without deadlock");
+    timeout(Duration::from_millis(200), acquire_gate("ws_drop_release"))
+        .await
+        .expect("Acquire after drop must succeed without deadlock");
 }
 
 /// Positive-path companion to the `compile_fail` doctest in `mutation_gate.rs`.
@@ -213,14 +210,11 @@ async fn test_guard_passing_prevents_reentrant_deadlock() {
     // existing one — no re-acquisition, no deadlock.
     fn nested_work(_guard: &MutationGuard<'_>) {}
 
-    timeout(
-        Duration::from_millis(200),
-        async {
-            nested_work(&outer_guard);
-            nested_work(&outer_guard);
-            nested_work(&outer_guard);
-        },
-    )
+    timeout(Duration::from_millis(200), async {
+        nested_work(&outer_guard);
+        nested_work(&outer_guard);
+        nested_work(&outer_guard);
+    })
     .await
     .expect(
         "Re-entering gated work via &MutationGuard<'_> must not deadlock. \

@@ -29,10 +29,12 @@ All AI coding agents (Claude Code, Copilot, Cursor, Windsurf, Cody, Gemini CLI, 
 ## Quick Reference
 
 ```bash
-cargo build                    # Debug build (fast iteration)
+cargo check                    # Type-check only (fastest compilation, no binary)
+cargo build                    # Debug build
 cargo build --release          # Release build (for live MCP testing)
-cargo nextest run --lib <test_name>  # Default: narrowest test first (seconds)
+cargo nextest run --lib <test_name>  # Default: narrowest test first
 cargo xtask test bucket extractors   # Extractor golden + capability gate
+cargo xtask test nano          # Minimal regression check (~25s)
 cargo xtask certify tree-sitter --check  # Tree-sitter certification report gate
 cargo xtask certify tree-sitter --real-world --profile smoke --out docs/LANGUAGE_REAL_WORLD_EVIDENCE.json  # Refresh real-world smoke evidence
 cargo xtask test bucket parser-upgrade  # Parser dependency upgrade gate
@@ -40,7 +42,7 @@ cargo xtask test changed       # After a localized change (diff-scoped buckets)
 cargo xtask test dev           # Batch gate before handoff — not per edit
 cargo xtask sync-plugin        # Mirror skills source → ~/source/julie-plugin (`--dry-run` to preview)
 cargo fmt                      # Format code
-cargo clippy                   # Lint
+cargo clippy                  # Lint
 ```
 
 **After cloning:** `git config core.hooksPath hooks/` — enables pre-commit hook that keeps CLAUDE.md and AGENTS.md in sync.
@@ -94,6 +96,7 @@ See: **docs/TESTING_GUIDE.md** for comprehensive testing standards and SOURCE/CO
 
 | Tier | Command | What it covers | When to use |
 |------|---------|----------------|-------------|
+| **Nano** | `cargo xtask test nano` | Fastest core buckets (~25s) | Ultra-tight loop: quick sanity before or between edit batches |
 | **Smoke** | `cargo xtask test smoke` | Small confidence slice of the fastest buckets | Quick sanity check when you want a tiny run |
 | **Dev** | `cargo xtask test dev` | Batch-level regression tier for ordinary code changes | Once per completed batch, before handoff |
 | **System** | `cargo xtask test system` | `workspace_init` + integration buckets | Use when touching startup/workspace/system behavior |
@@ -117,6 +120,19 @@ See: **docs/TESTING_GUIDE.md** for comprehensive testing standards and SOURCE/CO
 7. **For a broad pre-merge pass**: run `cargo xtask test full`
 8. **To inspect the calibrated buckets**: run `cargo xtask test list`
 9. **To audit overlap without running tests**: run `cargo xtask test inventory --bucket <name>` or `cargo xtask test inventory --tier dev`. Inventory is diagnostic evidence, not a passing test gate.
+
+### 🔥 Fast Feedback Loop (Edit → Verify)
+
+For the tight edit-test loop during implementation:
+
+1. **`cargo check`** — Type-checks only, no codegen. Use FIRST after any code
+   change to catch compilation errors (~2-5 seconds).
+2. **`cargo nextest run --lib <exact_test_name>`** — After `cargo check` passes,
+   run the specific test. Incremental rebuilds now take ~5-15 seconds.
+3. **Batch before broader testing** — Make 3-5 edits before running
+   `cargo xtask test changed` or `cargo xtask test dev`.
+4. **`cargo xtask test nano`** — For a quick "did I break anything?" sanity
+   check (~25s) between batches, without running the full dev tier.
 
 ### Known Pre-Existing Failures
 
@@ -254,6 +270,23 @@ src/database/
 **ALWAYS USE JULIE'S TOOLS** when developing.
 
 **MANDATORY**: When dogfooding and you find a bug, investigate it. Don't work around it and keep going.
+
+### sccache (Optional, Recommended)
+
+Install [sccache](https://github.com/mozilla/sccache) to cache compiled
+artifacts across branches and clean builds:
+
+```bash
+brew install sccache
+```
+
+Then set the environment variable or add to `.cargo/config.toml`:
+```bash
+export RUSTC_WRAPPER=sccache
+```
+
+This helps most when switching branches (common for AI agents) and on clean
+builds after `cargo clean`.
 
 ### Development Workflow
 1. **Development Mode**: Always work in `debug` mode for fast iteration

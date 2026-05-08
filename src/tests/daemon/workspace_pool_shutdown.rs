@@ -9,8 +9,7 @@ fn temp_indexes_dir() -> tempfile::TempDir {
 
 fn temp_workspace_root() -> tempfile::TempDir {
     let dir = tempfile::tempdir().expect("Failed to create temp workspace root");
-    std::fs::create_dir_all(dir.path().join(".julie"))
-        .expect("Failed to create .julie dir");
+    std::fs::create_dir_all(dir.path().join(".julie")).expect("Failed to create .julie dir");
     dir
 }
 
@@ -33,10 +32,8 @@ async fn pool_with_workspaces(
 
     for i in 0..n {
         let root = temp_workspace_root();
-        let base_id = generate_workspace_id(
-            root.path().to_str().expect("path is valid utf-8"),
-        )
-        .expect("generate_workspace_id should succeed");
+        let base_id = generate_workspace_id(root.path().to_str().expect("path is valid utf-8"))
+            .expect("generate_workspace_id should succeed");
         // Append index suffix to guarantee uniqueness when multiple roots
         // happen to produce the same hash (same tmpdir prefix).
         let workspace_id = format!("{base_id}_{i}");
@@ -67,7 +64,11 @@ async fn test_workspace_pool_shutdown_calls_search_index_shutdown() {
             .expect("workspace should have a search_index");
         indexes.push(idx_arc);
     }
-    assert_eq!(indexes.len(), 3, "all 3 workspaces should have a search_index");
+    assert_eq!(
+        indexes.len(),
+        3,
+        "all 3 workspaces should have a search_index"
+    );
 
     pool.shutdown().await;
 
@@ -98,7 +99,11 @@ async fn test_workspace_pool_shutdown_recovers_from_poisoned_mutex() {
             .expect("workspace should have a search_index");
         all_indexes.push(idx_arc);
     }
-    assert_eq!(all_indexes.len(), 2, "both workspaces should have a search_index");
+    assert_eq!(
+        all_indexes.len(),
+        2,
+        "both workspaces should have a search_index"
+    );
 
     // Poison the first mutex by panicking while holding its guard.
     let poisoned_arc = Arc::clone(&all_indexes[0]);

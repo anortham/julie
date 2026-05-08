@@ -23,6 +23,7 @@ pub(crate) mod formatting; // Exposed for testing
 pub(crate) mod hint_formatter;
 pub(crate) mod input_diagnostics;
 pub(crate) mod line_mode;
+pub(crate) mod line_output;
 mod nl_embeddings;
 pub(crate) mod query;
 pub mod query_preprocessor; // Public for testing

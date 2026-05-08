@@ -596,9 +596,10 @@ impl JulieServerHandler {
 
         match tool_name {
             "fast_search" | "fast_refs" | "call_path" | "get_symbols" | "deep_dive"
-            | "get_context" | "blast_radius" | "rename_symbol" => workspace_is_primary,
+            | "get_context" | "blast_radius" | "rename_symbol" | "edit_file" => {
+                workspace_is_primary
+            }
             "manage_workspace" => Self::manage_workspace_request_targets_primary(arguments),
-            "edit_file" => true,
             "rewrite_symbol" => workspace_is_primary,
             _ => false,
         }
@@ -2822,8 +2823,12 @@ impl JulieServerHandler {
             params.file_path, params.dry_run
         );
         let start = std::time::Instant::now();
-        let workspace_snapshot = self.require_primary_workspace_binding().ok();
-        let metadata = match params.success_metrics_metadata(self) {
+        let workspace_snapshot = if params.workspace.as_deref().unwrap_or("primary") == "primary" {
+            self.require_primary_workspace_binding().ok()
+        } else {
+            None
+        };
+        let metadata = match params.success_metrics_metadata(self).await {
             Ok(metadata) => tool_targets::merge_object(
                 metadata,
                 serde_json::json!({

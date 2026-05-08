@@ -414,8 +414,7 @@ fn capability_matrix_sql_relationship_gap_closes_with_view_and_trigger_evidence(
         .collect::<BTreeSet<_>>();
 
     assert!(
-        relationship_types.contains("view_source")
-            && relationship_types.contains("trigger_target"),
+        relationship_types.contains("view_source") && relationship_types.contains("trigger_target"),
         "SQL golden fixtures must prove view_source and trigger_target relationships before closing TS-RF-006"
     );
 

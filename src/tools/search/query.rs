@@ -308,10 +308,10 @@ pub fn line_matches(strategy: &LineMatchStrategy, line: &str) -> bool {
             let required_ok = required.is_empty()
                 || required
                     .iter()
-                    .all(|term| term_matches_tokens(term, &line_tokens));
+                    .all(|term| term_matches_line(term, line, &line_tokens));
             let excluded_ok = excluded
                 .iter()
-                .all(|term| !term_matches_tokens(term, &line_tokens));
+                .all(|term| !term_matches_line(term, line, &line_tokens));
             required_ok && excluded_ok
         }
         LineMatchStrategy::FileLevel { terms } => {
@@ -320,7 +320,7 @@ pub fn line_matches(strategy: &LineMatchStrategy, line: &str) -> bool {
             let line_tokens = tokenize_text_for_line_match(line);
             terms
                 .iter()
-                .any(|term| term_matches_tokens(term, &line_tokens))
+                .any(|term| term_matches_line(term, line, &line_tokens))
         }
     }
 }
@@ -467,6 +467,32 @@ fn token_sequence_contains_contiguous_window(haystack: &[String], needle: &[Stri
     haystack
         .windows(needle.len())
         .any(|window| window == needle)
+}
+
+fn term_matches_line(term: &str, line: &str, line_tokens: &HashSet<String>) -> bool {
+    if is_compound_term(term) {
+        return line_matches_literal(line, &term.to_lowercase());
+    }
+
+    term_matches_tokens(term, line_tokens)
+}
+
+fn is_compound_term(term: &str) -> bool {
+    (term.chars().any(|ch| ch.is_ascii_punctuation()) || has_camel_case_boundary(term))
+        && tokenize_text_sequence(term).len() > 1
+}
+
+fn has_camel_case_boundary(term: &str) -> bool {
+    let mut previous_was_lower_or_digit = false;
+
+    for ch in term.chars() {
+        if previous_was_lower_or_digit && ch.is_uppercase() {
+            return true;
+        }
+        previous_was_lower_or_digit = ch.is_lowercase() || ch.is_ascii_digit();
+    }
+
+    false
 }
 
 fn term_matches_tokens(term: &str, line_tokens: &HashSet<String>) -> bool {

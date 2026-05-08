@@ -13,6 +13,7 @@ use tracing::debug;
 
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::CallToolResultExt;
+use crate::tools::navigation::resolution::{WorkspaceTarget, resolve_workspace_filter};
 use crate::utils::file_utils::secure_path_resolution;
 use rmcp::model::{CallToolResult, Content};
 
@@ -89,6 +90,10 @@ fn default_occurrence() -> EditOccurrence {
     EditOccurrence::First
 }
 
+fn default_workspace() -> Option<String> {
+    Some("primary".to_string())
+}
+
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum EditOccurrence {
@@ -151,6 +156,10 @@ pub struct EditFileTool {
 
     /// Replacement text
     pub new_text: String,
+
+    /// Workspace filter: "primary" (default) or workspace ID
+    #[serde(default = "default_workspace")]
+    pub workspace: Option<String>,
 
     /// Preview diff without applying (default: true). Always preview first.
     #[serde(
@@ -450,11 +459,27 @@ impl EditFileTool {
             "old_text_bytes": self.old_text.len(),
             "new_text_bytes": self.new_text.len(),
             "occurrence": self.occurrence.as_str(),
+            "workspace": self.workspace,
         })
     }
 
-    pub(crate) fn success_metrics_metadata(&self, handler: &JulieServerHandler) -> Result<Value> {
-        let workspace_root = handler.require_primary_workspace_root()?;
+    async fn resolve_workspace_root(
+        &self,
+        handler: &JulieServerHandler,
+    ) -> Result<std::path::PathBuf> {
+        match resolve_workspace_filter(self.workspace.as_deref(), handler).await? {
+            WorkspaceTarget::Primary => handler.require_primary_workspace_root(),
+            WorkspaceTarget::Target(workspace_id) => {
+                handler.get_workspace_root_for_target(&workspace_id).await
+            }
+        }
+    }
+
+    pub(crate) async fn success_metrics_metadata(
+        &self,
+        handler: &JulieServerHandler,
+    ) -> Result<Value> {
+        let workspace_root = self.resolve_workspace_root(handler).await?;
         let resolved_path = secure_path_resolution(&self.file_path, &workspace_root)?;
         let original_content = std::fs::read_to_string(&resolved_path)
             .map_err(|error| anyhow!("Cannot read file '{}': {}", self.file_path, error))?;
@@ -496,7 +521,7 @@ impl EditFileTool {
         }
 
         // Resolve and validate file path (security check)
-        let workspace_root = handler.require_primary_workspace_root()?;
+        let workspace_root = self.resolve_workspace_root(handler).await?;
         let resolved_path = secure_path_resolution(&self.file_path, &workspace_root)?;
         let resolved_str = resolved_path.to_string_lossy().to_string();
 

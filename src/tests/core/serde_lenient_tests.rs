@@ -282,6 +282,27 @@ fn call_path_tool_schema_describes_inputs() {
 }
 
 #[test]
+fn edit_file_tool_schema_describes_workspace_input() {
+    use crate::tools::editing::edit_file::EditFileTool;
+
+    let schema = serde_json::to_value(schemars::schema_for!(EditFileTool)).unwrap();
+    let properties = schema
+        .get("properties")
+        .and_then(serde_json::Value::as_object)
+        .expect("EditFileTool schema should expose input properties");
+
+    let description = properties
+        .get("workspace")
+        .and_then(|property| property.get("description"))
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("");
+    assert!(
+        description.to_ascii_lowercase().contains("workspace"),
+        "schema description for workspace should mention workspace routing: {description}"
+    );
+}
+
+#[test]
 fn get_context_tool_accepts_stringified_task_signals() {
     use crate::tools::get_context::GetContextTool;
 

@@ -61,10 +61,7 @@ impl SystemHealthSnapshot {
             if self.data_plane.canonical_store.detail.is_empty() {
                 report.push_str("Database not initialized\n");
             } else {
-                report.push_str(&format!(
-                    "{}\n",
-                    self.data_plane.canonical_store.detail
-                ));
+                report.push_str(&format!("{}\n", self.data_plane.canonical_store.detail));
             }
         } else {
             let symbols_per_file = if self.data_plane.canonical_store.file_count > 0 {
