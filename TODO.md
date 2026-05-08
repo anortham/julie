@@ -36,6 +36,15 @@ Data: 1,876 fast_search calls with enriched telemetry (824 before file mode, 1,0
 - Today's (Apr 27) elevated true-zero rate (22.5%) is from hermes-agent searching for symbols that genuinely don't exist in that codebase (loguru, structlog, UtcTime, etc.) -- correct behavior
 - Definitions zero-hit rate rose slightly (6.3% to 9.5%) but absolute numbers are small (14 to 16)
 
+## Daemon Reliability
+
+- [ ] **Daemon drain timeout too short for stale-binary restart** -- `drain_timeout_secs=10` (`src/daemon/mod.rs:689`) is aggressive. Observed 2026-05-08: dev-time `cargo build --release` triggers stale-binary auto-restart, in-flight sessions running embeddings/indexing/heavy search can't drain in 10s, force-shutdown logged as `Session drain timeout exceeded, forcing shutdown — in-flight writes may be lost`. Same-day repro showed 3+ forced shutdowns between 17:49–17:56. Fixes to consider:
+  1. Bump drain timeout to 60–120s.
+  2. Adapter resilience: when the stdio adapter loses HTTP to the daemon, retry with backoff for ≥30s before dropping the MCP session. Currently the client-side session goes permanently dead and `mcp__julie__*` tools become unavailable until the Claude session restarts.
+  3. Optional: skip stale-binary restart if any active session was busy in the last N seconds; treat as "wait until truly idle" rather than time-bounded drain.
+
+  Repro is straightforward: open a Claude Code session using the `julie` MCP server (registered to `target/release/julie-server`), run `cargo build --release` in another terminal while the session is active, and watch `~/.julie/daemon.log.*` for the drain-timeout error and the client losing its MCP tools.
+
 ## Future Ideas
 
 - [x] **Full CLI mode for all Julie tools** -- Implemented. CLI execution now supports daemon/fallback/standalone modes, named wrappers, generic tool dispatch, and output formats (`src/cli_tools/`, `src/main.rs`, `src/tests/cli/`, `src/tests/cli_execution_tests.rs`).

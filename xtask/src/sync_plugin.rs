@@ -42,8 +42,10 @@ pub fn run_sync_plugin(
         if dry_run { " (dry run)" } else { "" }
     )?;
 
-    let mut report = SyncReport::default();
-    report.dry_run = dry_run;
+    let mut report = SyncReport {
+        dry_run,
+        ..Default::default()
+    };
 
     sync_skills(&source_skills, &plugin_skills, dry_run, out, &mut report)?;
     diff_hooks(&source_hooks, &plugin_hooks, out, &mut report)?;
