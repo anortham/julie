@@ -104,9 +104,11 @@ Python 3.12 is used because it has the best PyTorch hardware acceleration compat
 
 ## Installation
 
-### Claude Code Plugin (Recommended)
+### Plugin Installation (Recommended)
 
-Install Julie as a [Claude Code plugin](https://github.com/anortham/julie-plugin) for the full experience: MCP tools, skills, and a SessionStart hook that teaches Claude how to use Julie effectively. No Rust toolchain required.
+The [`julie-plugin`](https://github.com/anortham/julie-plugin) repo bundles pre-built binaries, skills, and harness-specific hooks. No Rust toolchain required.
+
+**Claude Code:**
 
 ```bash
 # Add the plugin marketplace
@@ -115,6 +117,26 @@ Install Julie as a [Claude Code plugin](https://github.com/anortham/julie-plugin
 # Install (user scope, available across all projects)
 /plugin install julie@julie-plugin
 ```
+
+**Codex CLI** — clone the plugin repo, then run the installer:
+
+```bash
+git clone https://github.com/anortham/julie-plugin.git
+node julie-plugin/bin/install-codex.cjs
+```
+
+Adds Julie skills under `~/.codex/skills/julie-*/`, hook entries to `~/.codex/hooks.json`, and a sentinel-tagged precedence section to `~/.codex/AGENTS.md`. MCP server registration is left to you (`codex mcp add julie -- /path/to/julie-server` or per-project `.codex/config.toml`). See [the plugin README](https://github.com/anortham/julie-plugin#codex-cli-install) for details.
+
+**OpenCode** — clone the plugin repo, then run the installer:
+
+```bash
+git clone https://github.com/anortham/julie-plugin.git
+node julie-plugin/bin/install-opencode.cjs
+```
+
+Adds Julie skills under `~/.config/opencode/skills/julie-*/`, a bundled `julie-precedence.js` plugin under `~/.config/opencode/plugins/`, and a sentinel-tagged precedence section to `~/.config/opencode/AGENTS.md`. The plugin denies broad `cargo test` runs and adds after-the-fact coaching when grep/find/rg or large reads target an indexed workspace. MCP server registration is left to you (`opencode.json` `mcp.julie` block — see [the plugin README](https://github.com/anortham/julie-plugin#opencode-install) for the exact format).
+
+Both installers are idempotent and support `--uninstall` for clean removal.
 
 ### Build from Source
 
@@ -140,6 +162,7 @@ This is optional. All other Julie features work without it.
 | VS Code + GitHub Copilot | Yes | No |
 | Codex CLI | No — uses cwd | Only if cwd is wrong |
 | Codex Desktop | **No** | **Yes — required** |
+| OpenCode | No — uses cwd | Recommended for project configs |
 | Cursor / Windsurf / others | Varies | Safe default: set it |
 
 Julie prefers client roots when the startup hint is weak (`cwd`). Explicit CLI `--workspace` or `JULIE_WORKSPACE` always wins regardless of client support.
@@ -209,6 +232,26 @@ env = { JULIE_WORKSPACE = "/absolute/path/to/your/project" }
 > **Codex Desktop does not implement MCP roots** (as of this writing), so Julie cannot resolve the project from client-side workspace folders. You must set `JULIE_WORKSPACE` explicitly or Julie will fall back to whatever `cwd` the Desktop app happens to launch the server with — often `/` or the app bundle. Use an absolute path; `${workspaceFolder}`-style interpolation is not documented for Codex.
 >
 > Put this file at `.codex/config.toml` in the project root if you want a project-scoped Codex Desktop setup. Codex loads project config only for trusted projects, and project config overrides `~/.codex/config.toml`.
+
+**OpenCode** (`~/.config/opencode/opencode.json` for global, or `<repo>/opencode.json` for project):
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "julie": {
+      "type": "local",
+      "command": ["/path/to/julie-server"],
+      "enabled": true,
+      "environment": {
+        "JULIE_WORKSPACE": "/absolute/path/to/your/project"
+      }
+    }
+  }
+}
+```
+
+> OpenCode expects `command` as an **array** and the env key is `environment` (not `env`). For project-scope configs, set `JULIE_WORKSPACE` to an absolute path so the server resolves the right project regardless of cwd. The [`julie-plugin`](https://github.com/anortham/julie-plugin) installer (`node bin/install-opencode.cjs`) wires up skills, the precedence plugin, and AGENTS.md but leaves this MCP block to you.
 
 **Cursor / Windsurf / Other MCP Clients:**
 
@@ -388,8 +431,8 @@ Skills ship as `SKILL.md` files in `.claude/skills/`. Most modern AI coding harn
 | **Gemini CLI** | `.gemini/skills/` or `.agents/skills/` | Copy skill directories; same `SKILL.md` format |
 | **Windsurf** | `.windsurf/skills/` | Copy skill directories to `.windsurf/skills/` |
 | **Cursor** | `.cursor/rules/` | Copy `SKILL.md` content into `.mdc` files in the rules directory |
-| **Codex CLI** | `.agents/skills/` | Copy skill directories; reads `SKILL.md` format |
-| **OpenCode** | Via `instructions` config | Add skill file paths to the `instructions` array in `opencode.json` |
+| **Codex CLI** | `~/.codex/skills/` or `.agents/skills/` | Copy skill directories, or use `node bin/install-codex.cjs` from `julie-plugin` |
+| **OpenCode** | `~/.config/opencode/skills/` or `.opencode/skills/` | Auto-discovered (also reads `~/.claude/skills/` natively); use `node bin/install-opencode.cjs` from `julie-plugin` for symlinks + precedence plugin |
 
 **For harnesses that read `.claude/skills/` natively** (Claude Code, VS Code/Copilot): skills work out of the box when Julie's repo is cloned.
 
