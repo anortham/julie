@@ -1194,13 +1194,6 @@
       },
       "capability_gaps": [
         {
-          "capability": "relationships",
-          "status": "open",
-          "reason": "Only foreign_key_constraint and JOIN relationships are extracted. View-source relationships (CREATE VIEW ... AS SELECT ... FROM table) and trigger-target relationships (CREATE TRIGGER ... ON table) are not yet extracted (see H25). SQL is in NO_PENDING_CAPABILITIES so cross-file FK references to tables in other files are suppressed (not emitted as dead synthetic IDs).",
-          "required_closure": "Implement view-source and trigger-target relationship extraction. Additionally, implement structured pending relationships for unresolved cross-file FK targets, move SQL out of NO_PENDING_CAPABILITIES, and either advance target_capabilities.pending_relationships to true or record a separate pending_relationships gap. Until then, cross-file FK dependency information is suppressed at the source, not preserved as pending.",
-          "evidence": "docs/findings/COMPILED-FINDINGS.md"
-        },
-        {
           "capability": "pending_relationships",
           "status": "open",
           "reason": "Cross-file foreign-key references are currently suppressed at extraction (crates/julie-extractors/src/sql/relationships.rs around line 115) rather than preserved as pending relationships. Promotion of FK targets to structured pending relationships is deferred.",

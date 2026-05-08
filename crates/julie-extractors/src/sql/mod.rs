@@ -20,6 +20,7 @@ mod helpers;
 mod identifiers;
 mod relationships;
 mod routines;
+mod schema_relationships;
 mod schemas;
 mod views;
 

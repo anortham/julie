@@ -58,10 +58,33 @@ pub(crate) fn build_data_plane(primary: &PrimaryWorkspaceHealth) -> Result<DataP
                 Some(database) => match database.try_lock() {
                     Ok(db_lock) => match db_lock.get_stats() {
                         Ok(stats) => {
-                            let level = if stats.total_symbols > 0 {
+                            // Detect the phantom-fd state: SQLite reports symbols but the
+                            // on-disk file is gone (size 0). This happens when the index
+                            // directory is removed while the daemon holds the SQLite fd
+                            // open — reads keep working but the data is unrecoverable.
+                            let phantom_fd =
+                                stats.total_symbols > 0 && stats.db_size_mb == 0.0;
+                            let level = if phantom_fd {
+                                HealthLevel::Unavailable
+                            } else if stats.total_symbols > 0 {
                                 HealthLevel::Ready
                             } else {
                                 HealthLevel::Unavailable
+                            };
+                            let detail = if phantom_fd {
+                                format!(
+                                    "ON-DISK STATE MISSING: SQLite reports {} symbols but db file size is 0 MB. \
+                                     Index directory was removed while daemon was running. \
+                                     Restart daemon and force-reindex to recover.",
+                                    stats.total_symbols
+                                )
+                            } else if stats.total_symbols > 0 {
+                                format!(
+                                    "{} symbols across {} files",
+                                    stats.total_symbols, stats.total_files
+                                )
+                            } else {
+                                "SQLite opened but has no indexed symbols".to_string()
                             };
                             CanonicalStoreHealth {
                                 level,
@@ -71,14 +94,7 @@ pub(crate) fn build_data_plane(primary: &PrimaryWorkspaceHealth) -> Result<DataP
                                 embedding_count: stats.embedding_count,
                                 db_size_mb: stats.db_size_mb,
                                 languages: stats.languages,
-                                detail: if stats.total_symbols > 0 {
-                                    format!(
-                                        "{} symbols across {} files",
-                                        stats.total_symbols, stats.total_files
-                                    )
-                                } else {
-                                    "SQLite opened but has no indexed symbols".to_string()
-                                },
+                                detail,
                             }
                         }
                         Err(err) => CanonicalStoreHealth {

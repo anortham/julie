@@ -33,6 +33,26 @@ impl NormalizedSpan {
         }
     }
 
+    pub fn from_content_range(content: &str, start_byte: usize, end_byte: usize) -> Option<Self> {
+        let start_prefix = content.get(..start_byte)?;
+        let end_prefix = content.get(..end_byte)?;
+
+        Some(Self {
+            start_line: start_prefix.bytes().filter(|byte| *byte == b'\n').count() as u32 + 1,
+            start_column: start_prefix
+                .rsplit_once('\n')
+                .map(|(_, tail)| tail.len())
+                .unwrap_or(start_prefix.len()) as u32,
+            end_line: end_prefix.bytes().filter(|byte| *byte == b'\n').count() as u32 + 1,
+            end_column: end_prefix
+                .rsplit_once('\n')
+                .map(|(_, tail)| tail.len())
+                .unwrap_or(end_prefix.len()) as u32,
+            start_byte: start_byte as u32,
+            end_byte: end_byte as u32,
+        })
+    }
+
     pub fn with_offset(self, offset: RecordOffset) -> Self {
         Self {
             start_line: self.start_line + offset.line_delta,

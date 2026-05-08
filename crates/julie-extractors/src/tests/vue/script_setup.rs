@@ -7,6 +7,7 @@
 // - defineProps(), defineEmits(), defineExpose() macros
 // - Existing Options API tests still passing
 
+use super::{expected_identifier_id, expected_symbol_id, line_column_for_byte};
 use crate::base::{IdentifierKind, SymbolKind};
 use crate::vue::VueExtractor;
 use std::path::PathBuf;
@@ -199,10 +200,42 @@ defineExpose({
     // defineProps result should be extracted
     let props = symbols.iter().find(|s| s.name == "props");
     assert!(props.is_some(), "Should extract 'props' from defineProps()");
+    let props = props.unwrap();
+    let props_offset = vue_code.find("props = defineProps").unwrap() as u32;
+    let (props_line, props_column) = line_column_for_byte(vue_code, props_offset as usize);
+    assert_eq!(props.kind, SymbolKind::Variable);
+    assert_eq!(props.start_byte, props_offset);
+    assert_eq!(props.start_line, props_line);
+    assert_eq!(props.start_column, props_column);
+    assert_eq!(props.id, expected_symbol_id(props));
 
     // defineEmits result should be extracted
     let emit = symbols.iter().find(|s| s.name == "emit");
     assert!(emit.is_some(), "Should extract 'emit' from defineEmits()");
+    let emit = emit.unwrap();
+    let emit_offset = vue_code.find("emit = defineEmits").unwrap() as u32;
+    let (emit_line, emit_column) = line_column_for_byte(vue_code, emit_offset as usize);
+    assert_eq!(emit.kind, SymbolKind::Variable);
+    assert_eq!(emit.start_byte, emit_offset);
+    assert_eq!(emit.start_line, emit_line);
+    assert_eq!(emit.start_column, emit_column);
+    assert_eq!(emit.id, expected_symbol_id(emit));
+
+    // defineExpose should be extracted as a standalone macro symbol
+    let define_expose = symbols.iter().find(|s| s.name == "defineExpose");
+    assert!(
+        define_expose.is_some(),
+        "Should extract 'defineExpose' standalone macro"
+    );
+    let define_expose = define_expose.unwrap();
+    let define_expose_offset = vue_code.find("defineExpose").unwrap() as u32;
+    let (define_expose_line, define_expose_column) =
+        line_column_for_byte(vue_code, define_expose_offset as usize);
+    assert_eq!(define_expose.kind, SymbolKind::Function);
+    assert_eq!(define_expose.start_byte, define_expose_offset);
+    assert_eq!(define_expose.start_line, define_expose_line);
+    assert_eq!(define_expose.start_column, define_expose_column);
+    assert_eq!(define_expose.id, expected_symbol_id(define_expose));
 }
 
 #[test]
@@ -223,6 +256,13 @@ const count = ref(0)
         .iter()
         .find(|s| s.name == "ref" && s.kind == SymbolKind::Import);
     assert!(ref_import.is_some(), "Should extract 'ref' import");
+    let ref_import = ref_import.unwrap();
+    let ref_offset = vue_code.find("ref, computed, watch").unwrap() as u32;
+    let (ref_line, ref_column) = line_column_for_byte(vue_code, ref_offset as usize);
+    assert_eq!(ref_import.start_byte, ref_offset);
+    assert_eq!(ref_import.start_line, ref_line);
+    assert_eq!(ref_import.start_column, ref_column);
+    assert_eq!(ref_import.id, expected_symbol_id(ref_import));
 
     let computed_import = symbols
         .iter()
@@ -245,6 +285,14 @@ const count = ref(0)
         my_component.is_some(),
         "Should extract 'MyComponent' default import"
     );
+    let my_component = my_component.unwrap();
+    let my_component_offset = vue_code.find("MyComponent from").unwrap() as u32;
+    let (my_component_line, my_component_column) =
+        line_column_for_byte(vue_code, my_component_offset as usize);
+    assert_eq!(my_component.start_byte, my_component_offset);
+    assert_eq!(my_component.start_line, my_component_line);
+    assert_eq!(my_component.start_column, my_component_column);
+    assert_eq!(my_component.id, expected_symbol_id(my_component));
 }
 
 #[test]
@@ -266,21 +314,14 @@ const count = ref(0)
     let count = symbols.iter().find(|s| s.name == "count");
     assert!(count.is_some(), "Should extract 'count'");
     let count = count.unwrap();
+    let count_offset = vue_code.find("count = ref(0)").unwrap() as u32;
+    let (count_line, count_column) = line_column_for_byte(vue_code, count_offset as usize);
 
-    // <template> is at line index 0, <script setup> is at index 4
-    // start_line = 4 + 1 = 5, tree-sitter row for first content = 0
-    // So start_line = 5 (file-relative, matching Options API convention)
-    assert!(
-        count.start_line >= 5,
-        "Line number should be file-relative (>= 5), got {}",
-        count.start_line
-    );
-    // Should NOT be 0 (section-relative)
-    assert!(
-        count.start_line > 1,
-        "Line number should NOT be section-relative (1), got {}",
-        count.start_line
-    );
+    assert_eq!(count.kind, SymbolKind::Variable);
+    assert_eq!(count.start_byte, count_offset);
+    assert_eq!(count.start_line, count_line);
+    assert_eq!(count.start_column, count_column);
+    assert_eq!(count.id, expected_symbol_id(count));
 }
 
 #[test]
@@ -513,5 +554,49 @@ function run() {
         "Script section must be walked exactly once: expected 1 'doOnce' Call identifier, \
          got {}. A count of 2 indicates double-walking; 0 means the call was not captured.",
         do_once_calls.len()
+    );
+}
+
+#[test]
+fn test_vue_identifier_offsets_use_the_current_script_section() {
+    let vue_code = r#"<template>
+  <div />
+</template>
+
+<script>
+function boot() {
+  bootCall()
+}
+</script>
+
+<script setup>
+function bump() {
+  helper()
+}
+</script>"#;
+
+    let mut extractor = create_extractor("multi-script.vue", vue_code);
+    let symbols = extractor.extract_symbols(None);
+    let identifiers = extractor.extract_identifiers(&symbols);
+
+    let bump = symbols
+        .iter()
+        .find(|symbol| symbol.name == "bump" && symbol.kind == SymbolKind::Function)
+        .expect("script setup function should be extracted");
+    let helper = identifiers
+        .iter()
+        .find(|identifier| identifier.name == "helper" && identifier.kind == IdentifierKind::Call)
+        .expect("script setup helper() call should be extracted");
+
+    let helper_offset = vue_code.find("helper()").unwrap() as u32;
+    let (helper_line, helper_column) = line_column_for_byte(vue_code, helper_offset as usize);
+    assert_eq!(helper.start_byte, helper_offset);
+    assert_eq!(helper.start_line, helper_line);
+    assert_eq!(helper.start_column, helper_column);
+    assert_eq!(helper.id, expected_identifier_id(helper));
+    assert_eq!(
+        helper.containing_symbol_id.as_deref(),
+        Some(bump.id.as_str()),
+        "identifier containment must be computed after section offsets are applied"
     );
 }

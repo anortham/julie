@@ -13,10 +13,16 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
 use std::time::{Duration, Instant, SystemTime};
 use tokio::sync::Mutex as TokioMutex;
-use tracing::{debug, info, warn};
+use tracing::{debug, error, info, warn};
 
 const EXTRACTOR_REPAIR_RETRY_INTERVAL: Duration = Duration::from_secs(30);
 const DUPLICATE_DEBOUNCE_WINDOW: Duration = Duration::from_secs(1);
+/// Maximum number of times a single file's Tantivy projection retry can fail
+/// before we abandon retrying it. With a 1-second retry tick this means we
+/// stop after ~10 seconds, which is long enough to ride out transient
+/// filesystem hiccups but short enough to stop log spam when the index
+/// directory has been deleted out from under the daemon.
+const MAX_TANTIVY_RETRY_ATTEMPTS: u32 = 10;
 
 #[derive(Clone)]
 pub(super) struct QueueRuntime {
@@ -33,6 +39,10 @@ pub(super) struct QueueRuntime {
     workspace_id: String,
     needs_rescan: Arc<AtomicBool>,
     tantivy_dirty: Arc<StdMutex<HashSet<String>>>,
+    /// Per-file failure counter for the dirty-Tantivy retry loop. Once a file
+    /// hits MAX_TANTIVY_RETRY_ATTEMPTS we drop it from the dirty set and emit a
+    /// single ERROR log instead of spamming WARN every tick.
+    tantivy_failure_attempts: Arc<StdMutex<HashMap<String, u32>>>,
     indexing_runtime: SharedIndexingRuntime,
 }
 
@@ -51,6 +61,7 @@ impl QueueRuntime {
             workspace_id: indexer.workspace_id.clone(),
             needs_rescan: Arc::clone(&indexer.needs_rescan),
             tantivy_dirty: Arc::clone(&indexer.tantivy_dirty),
+            tantivy_failure_attempts: Arc::new(StdMutex::new(HashMap::new())),
             indexing_runtime: Arc::clone(&indexer.indexing_runtime),
         }
     }
@@ -83,6 +94,7 @@ impl QueueRuntime {
             workspace_id,
             needs_rescan,
             tantivy_dirty,
+            tantivy_failure_attempts: Arc::new(StdMutex::new(HashMap::new())),
             indexing_runtime,
         }
     }
@@ -418,6 +430,10 @@ impl QueueRuntime {
                         dirty.remove(&rel_path);
                         dirty.len()
                     };
+                    self.tantivy_failure_attempts
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner())
+                        .remove(&rel_path);
                     self.indexing_runtime
                         .write()
                         .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -425,10 +441,13 @@ impl QueueRuntime {
                     info!("Tantivy retry succeeded for {}", rel_path);
                 }
                 Ok(Err(err)) => {
-                    warn!("Tantivy retry failed for {}: {}", rel_path, err);
+                    self.handle_tantivy_retry_failure(&rel_path, &err.to_string());
                 }
                 Err(err) => {
-                    warn!("Tantivy retry task panicked for {}: {}", rel_path, err);
+                    self.handle_tantivy_retry_failure(
+                        &rel_path,
+                        &format!("retry task panicked: {}", err),
+                    );
                 }
             }
         }
@@ -437,6 +456,61 @@ impl QueueRuntime {
             .write()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .finish_operation();
+    }
+
+    /// Bumps the per-file retry counter and decides whether to keep retrying,
+    /// log a warning, or abandon the file entirely. After
+    /// MAX_TANTIVY_RETRY_ATTEMPTS we drop the file from the dirty set, emit a
+    /// single ERROR with remediation guidance, and record a repair reason so
+    /// the health report surfaces the projection failure instead of letting it
+    /// hide behind a silent retry loop.
+    fn handle_tantivy_retry_failure(&self, rel_path: &str, error_text: &str) {
+        let attempts = {
+            let mut attempts = self
+                .tantivy_failure_attempts
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            let count = attempts.entry(rel_path.to_string()).or_insert(0);
+            *count += 1;
+            *count
+        };
+
+        if attempts == 1 {
+            warn!(
+                "Tantivy retry failed for {} (will retry up to {} times): {}",
+                rel_path, MAX_TANTIVY_RETRY_ATTEMPTS, error_text
+            );
+        } else if attempts >= MAX_TANTIVY_RETRY_ATTEMPTS {
+            let remaining_dirty = {
+                let mut dirty = self
+                    .tantivy_dirty
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                dirty.remove(rel_path);
+                dirty.len()
+            };
+            self.tantivy_failure_attempts
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .remove(rel_path);
+
+            let mut runtime = self
+                .indexing_runtime
+                .write()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            runtime.set_dirty_projection_count(remaining_dirty);
+            runtime.record_repair_reason(IndexingRepairReason::ProjectionFailure);
+            drop(runtime);
+
+            error!(
+                file = %rel_path,
+                attempts = attempts,
+                last_error = %error_text,
+                "Tantivy projection abandoned for {} after {} retries — index directory may be missing on disk. Run manage_workspace operation=index force=true to rebuild.",
+                rel_path,
+                MAX_TANTIVY_RETRY_ATTEMPTS
+            );
+        }
     }
 
     async fn process_queue_batch(&self) -> usize {

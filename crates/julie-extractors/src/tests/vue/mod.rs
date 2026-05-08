@@ -298,14 +298,19 @@ export default {
         let container = container.unwrap();
         assert_eq!(container.kind, SymbolKind::Property);
         assert_eq!(container.signature.as_ref().unwrap(), ".container");
+        assert_eq!(container.id, expected_symbol_id(container));
 
         let button = symbols.iter().find(|s| s.name == "button");
         assert!(button.is_some());
-        assert_eq!(button.unwrap().kind, SymbolKind::Property);
+        let button = button.unwrap();
+        assert_eq!(button.kind, SymbolKind::Property);
+        assert_eq!(button.id, expected_symbol_id(button));
 
         let disabled = symbols.iter().find(|s| s.name == "disabled");
         assert!(disabled.is_some());
-        assert_eq!(disabled.unwrap().kind, SymbolKind::Property);
+        let disabled = disabled.unwrap();
+        assert_eq!(disabled.kind, SymbolKind::Property);
+        assert_eq!(disabled.id, expected_symbol_id(disabled));
     }
 
     #[test]
@@ -1270,7 +1275,8 @@ mod types; // Phase 4: Type extraction verification tests // Phase 5: Vue 3 Comp
 
 #[cfg(test)]
 mod vue_style_enhanced_tests {
-    use crate::base::SymbolKind;
+    use super::{expected_identifier_id, line_column_for_byte};
+    use crate::base::{IdentifierKind, SymbolKind};
     use crate::vue::VueExtractor;
 
     fn create_extractor(file_path: &str, code: &str) -> VueExtractor {
@@ -1444,4 +1450,96 @@ mod vue_style_enhanced_tests {
         assert_eq!(button.kind, SymbolKind::Property);
         assert!(button.start_byte > vue_code.find("<style").unwrap() as u32);
     }
+
+    #[test]
+    fn test_vue_script_setup_callsite_ids_are_file_relative() {
+        let vue_code = r#"
+<template>
+  <div />
+</template>
+
+<script setup>
+function bump() {
+  return 1
+}
+
+bump()
+</script>
+        "#;
+
+        use std::path::PathBuf;
+        let workspace_root = PathBuf::from("/tmp/test");
+        let mut extractor = VueExtractor::new(
+            "vue".to_string(),
+            "setup.vue".to_string(),
+            vue_code.to_string(),
+            &workspace_root,
+        );
+
+        let symbols = extractor.extract_symbols(None);
+        let identifiers = extractor.extract_identifiers(&symbols);
+
+        let bump_call = identifiers
+            .iter()
+            .find(|id| id.name == "bump" && id.kind == IdentifierKind::Call)
+            .expect("Should extract the script-setup bump() call");
+        let bump_offset = vue_code.rfind("bump()").unwrap() as u32;
+        let (bump_line, bump_column) = line_column_for_byte(vue_code, bump_offset as usize);
+        assert_eq!(bump_call.start_byte, bump_offset);
+        assert_eq!(bump_call.start_line, bump_line);
+        assert_eq!(bump_call.start_column, bump_column);
+        assert_eq!(bump_call.id, expected_identifier_id(bump_call));
+    }
+}
+
+fn line_column_for_byte(content: &str, target: usize) -> (u32, u32) {
+    let prefix = &content[..target];
+    let line = prefix.bytes().filter(|byte| *byte == b'\n').count() as u32 + 1;
+    let column = prefix
+        .rsplit_once('\n')
+        .map(|(_, tail)| tail.len())
+        .unwrap_or(prefix.len()) as u32;
+    (line, column)
+}
+
+fn expected_id(
+    file_path: &str,
+    name: &str,
+    start_line: u32,
+    start_column: u32,
+    end_line: u32,
+    end_column: u32,
+    start_byte: u32,
+    end_byte: u32,
+) -> String {
+    let input = format!(
+        "{file_path}:{name}:{start_line}:{start_column}:{end_line}:{end_column}:{start_byte}:{end_byte}"
+    );
+    format!("{:x}", md5::compute(input.as_bytes()))
+}
+
+fn expected_symbol_id(symbol: &crate::base::Symbol) -> String {
+    expected_id(
+        symbol.file_path.as_str(),
+        symbol.name.as_str(),
+        symbol.start_line,
+        symbol.start_column,
+        symbol.end_line,
+        symbol.end_column,
+        symbol.start_byte,
+        symbol.end_byte,
+    )
+}
+
+fn expected_identifier_id(identifier: &crate::base::Identifier) -> String {
+    expected_id(
+        identifier.file_path.as_str(),
+        identifier.name.as_str(),
+        identifier.start_line,
+        identifier.start_column,
+        identifier.end_line,
+        identifier.end_column,
+        identifier.start_byte,
+        identifier.end_byte,
+    )
 }

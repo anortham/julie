@@ -336,10 +336,7 @@ fn test_capability_matrix_records_known_gaps_for_languages_with_unfixed_findings
             };
 
             if !target_enabled {
-                let has_gap = row
-                    .capability_gaps
-                    .iter()
-                    .any(|gap| gap.capability == cap);
+                let has_gap = row.capability_gaps.iter().any(|gap| gap.capability == cap);
                 assert!(
                     has_gap,
                     "{} sets target_capabilities.{} = false but has no matching capability_gaps \
@@ -384,6 +381,50 @@ fn test_capability_matrix_pending_claim_requires_pending_output_in_fixtures() {
             row.language
         );
     }
+}
+
+#[test]
+fn capability_matrix_sql_relationship_gap_closes_with_view_and_trigger_evidence() {
+    let root = workspace_root();
+    let matrix = load_matrix(&root);
+    let sql = matrix
+        .languages
+        .iter()
+        .find(|row| row.language == "sql")
+        .expect("SQL capability row should exist");
+
+    let relationship_types = sql
+        .fixtures
+        .iter()
+        .flat_map(|fixture| {
+            let expected = load_expected_fixture(&root, fixture);
+            expected
+                .get("relationships")
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default()
+        })
+        .filter_map(|relationship| {
+            relationship
+                .get("metadata")
+                .and_then(|metadata| metadata.get("relationshipType"))
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        })
+        .collect::<BTreeSet<_>>();
+
+    assert!(
+        relationship_types.contains("view_source")
+            && relationship_types.contains("trigger_target"),
+        "SQL golden fixtures must prove view_source and trigger_target relationships before closing TS-RF-006"
+    );
+
+    assert!(
+        !sql.capability_gaps
+            .iter()
+            .any(|gap| gap.capability == "relationships"),
+        "SQL view/trigger relationship evidence is present, so the relationships capability gap is stale"
+    );
 }
 
 #[test]

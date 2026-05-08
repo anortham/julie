@@ -156,7 +156,13 @@ impl CanonicalStoreHealth {
         match self.level {
             HealthLevel::Ready => "HEALTHY",
             HealthLevel::Degraded => "BUSY",
-            HealthLevel::Unavailable => "NOT CONNECTED",
+            HealthLevel::Unavailable => {
+                if self.symbol_count > 0 && self.db_size_mb == 0.0 {
+                    "MISSING ON DISK"
+                } else {
+                    "NOT CONNECTED"
+                }
+            }
         }
     }
 }
@@ -223,4 +229,57 @@ pub struct SystemHealthSnapshot {
     pub control_plane: ControlPlaneHealth,
     pub data_plane: DataPlaneHealth,
     pub runtime_plane: RuntimePlaneHealth,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn store_with(level: HealthLevel, symbol_count: i64, db_size_mb: f64) -> CanonicalStoreHealth {
+        CanonicalStoreHealth {
+            level,
+            symbol_count,
+            file_count: 0,
+            relationship_count: 0,
+            embedding_count: 0,
+            db_size_mb,
+            languages: Vec::new(),
+            detail: String::new(),
+        }
+    }
+
+    #[test]
+    fn sqlite_status_label_returns_healthy_when_ready() {
+        let store = store_with(HealthLevel::Ready, 1000, 50.0);
+        assert_eq!(store.sqlite_status_label(), "HEALTHY");
+    }
+
+    #[test]
+    fn sqlite_status_label_returns_busy_when_degraded() {
+        let store = store_with(HealthLevel::Degraded, 1000, 50.0);
+        assert_eq!(store.sqlite_status_label(), "BUSY");
+    }
+
+    #[test]
+    fn sqlite_status_label_returns_not_connected_when_no_data() {
+        let store = store_with(HealthLevel::Unavailable, 0, 0.0);
+        assert_eq!(store.sqlite_status_label(), "NOT CONNECTED");
+    }
+
+    #[test]
+    fn sqlite_status_label_flags_phantom_fd_state() {
+        // Symbols present but disk size 0 means SQLite is serving from a file
+        // descriptor whose backing inode has been unlinked. This is the case
+        // we observed with julie_528d4264 on 2026-05-07.
+        let store = store_with(HealthLevel::Unavailable, 37989, 0.0);
+        assert_eq!(store.sqlite_status_label(), "MISSING ON DISK");
+    }
+
+    #[test]
+    fn sqlite_status_label_does_not_flag_empty_workspace_as_missing() {
+        // Empty workspace (no symbols, 0 MB) should remain NOT CONNECTED, not
+        // accidentally trigger the phantom-fd branch.
+        let store = store_with(HealthLevel::Unavailable, 0, 0.0);
+        assert_eq!(store.sqlite_status_label(), "NOT CONNECTED");
+    }
 }

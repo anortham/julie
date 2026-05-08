@@ -1,4 +1,4 @@
-use crate::base::{BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility};
+use crate::base::{BaseExtractor, NormalizedSpan, Symbol, SymbolKind, SymbolOptions, Visibility};
 use serde_json::Value;
 use std::collections::HashMap;
 use tree_sitter::Node;
@@ -135,7 +135,7 @@ pub(super) fn extract_lookaround(
     parent_id: Option<String>,
 ) -> Option<Symbol> {
     let lookaround_text = base.get_node_text(&node);
-    extract_lookaround_text(base, node, lookaround_text, parent_id)
+    extract_lookaround_text(base, node, lookaround_text, parent_id, None)
 }
 
 pub(super) fn extract_lookaround_text(
@@ -143,6 +143,7 @@ pub(super) fn extract_lookaround_text(
     node: Node,
     lookaround_text: String,
     parent_id: Option<String>,
+    span: Option<NormalizedSpan>,
 ) -> Option<Symbol> {
     let direction = flags::get_lookaround_direction(&lookaround_text);
     let polarity = if flags::is_positive_lookaround(&lookaround_text) {
@@ -163,20 +164,21 @@ pub(super) fn extract_lookaround_text(
     ]);
 
     let doc_comment = base.find_doc_comment(&node);
+    let options = SymbolOptions {
+        signature: Some(signature),
+        visibility: Some(Visibility::Public),
+        parent_id,
+        metadata: Some(metadata),
+        doc_comment,
+        annotations: Vec::new(),
+    };
 
-    Some(base.create_symbol(
-        &node,
-        lookaround_text,
-        SymbolKind::Method,
-        SymbolOptions {
-            signature: Some(signature),
-            visibility: Some(Visibility::Public),
-            parent_id,
-            metadata: Some(metadata),
-            doc_comment,
-            annotations: Vec::new(),
-        },
-    ))
+    Some(match span {
+        Some(span) => {
+            base.create_symbol_from_span(&node, span, lookaround_text, SymbolKind::Method, options)
+        }
+        None => base.create_symbol(&node, lookaround_text, SymbolKind::Method, options),
+    })
 }
 
 /// Extract a unicode property symbol
@@ -186,7 +188,7 @@ pub(super) fn extract_unicode_property(
     parent_id: Option<String>,
 ) -> Option<Symbol> {
     let property_text = base.get_node_text(&node);
-    extract_unicode_property_text(base, node, property_text, parent_id)
+    extract_unicode_property_text(base, node, property_text, parent_id, None)
 }
 
 pub(super) fn extract_unicode_property_text(
@@ -194,6 +196,7 @@ pub(super) fn extract_unicode_property_text(
     node: Node,
     property_text: String,
     parent_id: Option<String>,
+    span: Option<NormalizedSpan>,
 ) -> Option<Symbol> {
     let property = flags::extract_unicode_property_name(&property_text)?;
     let signature = signatures::build_unicode_property_signature(&property_text, &property);
@@ -205,20 +208,21 @@ pub(super) fn extract_unicode_property_text(
     ]);
 
     let doc_comment = base.find_doc_comment(&node);
+    let options = SymbolOptions {
+        signature: Some(signature),
+        visibility: Some(Visibility::Public),
+        parent_id,
+        metadata: Some(metadata),
+        doc_comment,
+        annotations: Vec::new(),
+    };
 
-    Some(base.create_symbol(
-        &node,
-        property_text,
-        SymbolKind::Constant,
-        SymbolOptions {
-            signature: Some(signature),
-            visibility: Some(Visibility::Public),
-            parent_id,
-            metadata: Some(metadata),
-            doc_comment,
-            annotations: Vec::new(),
-        },
-    ))
+    Some(match span {
+        Some(span) => {
+            base.create_symbol_from_span(&node, span, property_text, SymbolKind::Constant, options)
+        }
+        None => base.create_symbol(&node, property_text, SymbolKind::Constant, options),
+    })
 }
 
 /// Extract a conditional symbol

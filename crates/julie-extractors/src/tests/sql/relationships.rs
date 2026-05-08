@@ -1,4 +1,4 @@
-use super::{RelationshipKind, SymbolKind, extract_symbols_and_relationships};
+use super::{extract_symbols_and_relationships, RelationshipKind, SymbolKind};
 
 #[cfg(test)]
 mod tests {
@@ -36,11 +36,8 @@ CREATE TABLE orders (
         );
     }
 
-    /// SQL extractor does not extract view-source or trigger-target relationships.
-    /// This test documents that gap: no such relationships are emitted even when
-    /// the file contains CREATE VIEW and CREATE TRIGGER statements.
-    /// The gap is recorded in fixtures/extraction/capabilities.json under "sql"
-    /// (see H25 in docs/findings/COMPILED-FINDINGS.md).
+    /// CREATE VIEW and CREATE TRIGGER must point at the real table symbols they
+    /// depend on. A documented gap is not evidence, it is a bug with paperwork.
     #[test]
     fn test_sql_view_and_trigger_relationships_target_real_tables() {
         let sql_code = r#"
@@ -59,56 +56,77 @@ CREATE TRIGGER log_product_insert
         INSERT INTO audit_log (table_name) VALUES ('products');
     END;
 "#;
-        let (_symbols, relationships) = extract_symbols_and_relationships(sql_code);
+        let (symbols, relationships) = extract_symbols_and_relationships(sql_code);
 
-        // View-source and trigger-target relationships are not yet extracted.
-        // This is a documented gap in capabilities.json — only foreign_key_constraint
-        // and JOIN relationships are supported.
-        let view_or_trigger_rels: Vec<_> = relationships
+        let products = symbols
             .iter()
-            .filter(|r| {
-                r.metadata
-                    .as_ref()
-                    .and_then(|m| m.get("relationshipType"))
-                    .and_then(|v| v.as_str())
-                    .map(|t| t == "view_source" || t == "trigger_target")
-                    .unwrap_or(false)
+            .find(|symbol| symbol.name == "products" && symbol.kind == SymbolKind::Class)
+            .expect("products table should be extracted");
+        let view = symbols
+            .iter()
+            .find(|symbol| symbol.name == "active_products" && symbol.kind == SymbolKind::Interface)
+            .expect("active_products view should be extracted");
+        let trigger = symbols
+            .iter()
+            .find(|symbol| symbol.name == "log_product_insert" && symbol.kind == SymbolKind::Method)
+            .expect("log_product_insert trigger should be extracted");
+
+        let mut view_or_trigger_rels = relationships
+            .iter()
+            .filter(|relationship| {
+                matches!(
+                    relationship
+                        .metadata
+                        .as_ref()
+                        .and_then(|metadata| metadata.get("relationshipType"))
+                        .and_then(|value| value.as_str()),
+                    Some("view_source" | "trigger_target")
+                )
             })
-            .collect();
+            .collect::<Vec<_>>();
+        view_or_trigger_rels.sort_by_key(|relationship| {
+            relationship
+                .metadata
+                .as_ref()
+                .and_then(|metadata| metadata.get("relationshipType"))
+                .and_then(|value| value.as_str())
+                .unwrap()
+        });
 
         assert_eq!(
             view_or_trigger_rels.len(),
-            0,
-            "view-source and trigger-target relationships are not yet extracted (documented gap)"
+            2,
+            "SQL should emit one view-source edge and one trigger-target edge; got {:?}",
+            view_or_trigger_rels
+                .iter()
+                .map(|relationship| relationship
+                    .metadata
+                    .as_ref()
+                    .and_then(|metadata| metadata.get("relationshipType"))
+                    .and_then(|value| value.as_str())
+                    .unwrap_or("<missing>"))
+                .collect::<Vec<_>>()
         );
 
-        // The gap must be documented in capabilities.json so callers know SQL
-        // only covers foreign_key_constraint and JOIN relationships, not
-        // view-source or trigger-target (H25 in COMPILED-FINDINGS.md).
-        let capabilities_json =
-            include_str!("../../../../../fixtures/extraction/capabilities.json");
-        let capabilities: serde_json::Value =
-            serde_json::from_str(capabilities_json).expect("capabilities.json must be valid JSON");
-
-        let sql_entry = capabilities["languages"]
-            .as_array()
-            .expect("languages must be an array")
-            .iter()
-            .find(|lang| lang["language"].as_str() == Some("sql"))
-            .expect("sql entry must exist in capabilities.json");
-
-        let gaps = sql_entry["capability_gaps"]
-            .as_array()
-            .expect("SQL must have a capability_gaps array in capabilities.json to document the view-source and trigger-target extraction gap (H25)");
-
-        let has_relationships_gap = gaps
-            .iter()
-            .any(|gap| gap["capability"].as_str() == Some("relationships"));
-
-        assert!(
-            has_relationships_gap,
-            "capabilities.json must record a 'relationships' capability_gap for SQL covering the view-source and trigger-target extraction gap"
+        let trigger_relation = view_or_trigger_rels[0];
+        assert_eq!(trigger_relation.kind, RelationshipKind::References);
+        assert_eq!(trigger_relation.from_symbol_id, trigger.id);
+        assert_eq!(trigger_relation.to_symbol_id, products.id);
+        assert_eq!(
+            trigger_relation.line_number,
+            line_number(sql_code, "AFTER INSERT ON products")
         );
+        assert_eq!(target_table(trigger_relation), "products");
+
+        let view_relation = view_or_trigger_rels[1];
+        assert_eq!(view_relation.kind, RelationshipKind::References);
+        assert_eq!(view_relation.from_symbol_id, view.id);
+        assert_eq!(view_relation.to_symbol_id, products.id);
+        assert_eq!(
+            view_relation.line_number,
+            line_number(sql_code, "FROM products")
+        );
+        assert_eq!(target_table(view_relation), "products");
     }
 
     #[test]

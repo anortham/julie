@@ -4,7 +4,7 @@
 
 ## Summary
 
-- Current HEAD: `0bcc7c48130de38a4624f9e700809690f1246bf6`
+- Current HEAD: `72138dc0f7153a5950aae2487f4734091fa10302`
 - Registry rows: `36`
 - Golden fixtures: `37`
 - Historical matrix rows: `33`
@@ -45,14 +45,14 @@
 
 | symbols | relationships | pending | structured pending | identifiers | types | parse diagnostics |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 226 | 52 | 4 | 4 | 121 | 100 | 5 |
+| 227 | 54 | 4 | 4 | 121 | 100 | 6 |
 
 ## Gap Counts
 
 | capability | count |
 | --- | ---: |
 | `pending_relationships` | 32 |
-| `relationships` | 3 |
+| `relationships` | 2 |
 | `types` | 8 |
 
 ## Open Capability Gaps
@@ -89,7 +89,6 @@
 | `powershell` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
 | `gdscript` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
 | `razor` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | N/A — handled by embedded C# extractor. |
-| `sql` | `relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Implement view-source and trigger-target relationship extraction. Additionally, implement structured pending relationships for unresolved cross-file FK targets, move SQL out of NO_PENDING_CAPABILITIES, and either advance target_capabilities.pending_relationships to true or record a separate pending_relationships gap. Until then, cross-file FK dependency information is suppressed at the source, not preserved as pending. |
 | `sql` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Implement structured pending relationships for unresolved FK targets, move SQL out of NO_PENDING_CAPABILITIES, and advance target_capabilities.pending_relationships to true. |
 | `regex` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | N/A — domain limitation. |
 | `markdown` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | N/A — domain limitation. |
@@ -137,7 +136,7 @@
 | `powershell` | `tree-sitter-powershell` | `git_pinned` | 1 | 9 | 1 | 0 | 0 | 4 | 3 | 0 | 1 |
 | `gdscript` | `tree-sitter-gdscript` | `current` | 1 | 7 | 1 | 0 | 0 | 8 | 4 | 0 | 1 |
 | `razor` | `tree-sitter-razor` | `git_pinned` | 1 | 4 | 1 | 0 | 0 | 2 | 4 | 0 | 1 |
-| `sql` | `tree-sitter-sequel` | `current` | 1 | 8 | 1 | 0 | 0 | 3 | 7 | 0 | 2 |
+| `sql` | `tree-sitter-sequel` | `current` | 1 | 9 | 3 | 0 | 0 | 3 | 7 | 1 | 1 |
 | `regex` | `tree-sitter-regex` | `current` | 1 | 5 | 2 | 0 | 0 | 3 | 5 | 0 | 1 |
 | `markdown` | `tree-sitter-md` | `current` | 1 | 4 | 1 | 0 | 0 | 0 | 0 | 0 | 2 |
 | `json` | `tree-sitter-json` | `current` | 1 | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 3 |

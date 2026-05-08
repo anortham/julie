@@ -165,8 +165,8 @@ fn select_best_candidate_for_target<'a>(
 pub fn build_resolved_relationship(pending: &PendingRelationship, target: &Symbol) -> Relationship {
     Relationship {
         id: format!(
-            "{}_{}_{:?}_resolved",
-            pending.from_symbol_id, target.id, pending.kind
+            "{}_{}_{:?}_{}_{}",
+            pending.from_symbol_id, target.id, pending.kind, pending.file_path, pending.line_number
         ),
         from_symbol_id: pending.from_symbol_id.clone(),
         to_symbol_id: target.id.clone(),

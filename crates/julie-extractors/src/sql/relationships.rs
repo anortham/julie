@@ -18,6 +18,30 @@ pub(super) fn extract_relationships_internal(
     relationships: &mut Vec<Relationship>,
 ) {
     match node.kind() {
+        "create_view" => {
+            super::schema_relationships::extract_view_source_relationships(
+                base,
+                node,
+                symbols,
+                relationships,
+            );
+        }
+        "create_trigger" => {
+            super::schema_relationships::extract_trigger_target_relationship(
+                base,
+                node,
+                symbols,
+                relationships,
+            );
+        }
+        "ERROR" => {
+            super::schema_relationships::extract_error_relationships(
+                base,
+                node,
+                symbols,
+                relationships,
+            );
+        }
         "constraint" => {
             // Check if this is a foreign key constraint
             let has_foreign = base.find_child_by_type(&node, "keyword_foreign");
@@ -28,9 +52,8 @@ pub(super) fn extract_relationships_internal(
         "foreign_key_constraint" | "references_clause" => {
             extract_foreign_key_relationship(base, node, symbols, relationships);
         }
-        // NOTE: select_statement/from_clause table references intentionally not extracted.
-        // The original extract_table_references was a stub that found table names but
-        // never created relationships. If needed in the future, implement here.
+        // Plain SELECT/FROM table references are not emitted as top-level edges.
+        // CREATE VIEW handles its own FROM dependencies at the view symbol boundary.
         "select_statement" | "from_clause" => {}
         "join" | "join_clause" => {
             extract_join_relationships(base, node, symbols, relationships);
@@ -165,15 +188,20 @@ fn table_symbol_from_relation<'a>(
     symbols: &'a [Symbol],
 ) -> Option<(&'a Symbol, String)> {
     let object_reference = first_child_by_kind(relation_node, "object_reference")?;
-    let name_node = object_reference
-        .child_by_field_name("name")
-        .or_else(|| first_child_by_kind(object_reference, "identifier"))?;
-    let table_name = base.get_node_text(&name_node);
+    let table_name = object_reference_name(base, object_reference)?;
     let table_symbol = symbols
         .iter()
         .find(|s| s.name == table_name && s.kind == SymbolKind::Class)?;
 
     Some((table_symbol, table_name))
+}
+
+fn object_reference_name(base: &BaseExtractor, object_reference: Node) -> Option<String> {
+    let name_node = object_reference
+        .child_by_field_name("name")
+        .or_else(|| first_child_by_kind(object_reference, "identifier"))?;
+
+    Some(base.get_node_text(&name_node))
 }
 
 fn enclosing_from_node(mut node: Node) -> Option<Node> {

@@ -212,6 +212,82 @@ mod script_style_tests {
     }
 
     #[test]
+    fn test_html_inline_script_and_style_offsets_ignore_attribute_collisions() {
+        let html = r#"<html>
+<head>
+  <script data-body="
+    function greet(){return 1;}
+  ">
+    function greet(){return 1;}
+  </script>
+  <style data-body="
+    .card{color:red;}
+  ">
+    .card{color:red;}
+  </style>
+</head>
+</html>"#;
+
+        let symbols = extract_symbols(html);
+
+        let greet = symbols
+            .iter()
+            .find(|symbol| symbol.name == "greet")
+            .expect("inline script should still extract the function symbol");
+        let greet_offset = html.rfind("function greet(){return 1;}").unwrap() as u32;
+        assert_eq!(greet.start_byte, greet_offset);
+        let (greet_line, greet_column) = line_column_for_byte(html, greet_offset as usize);
+        assert_eq!(greet.start_line, greet_line);
+        assert_eq!(greet.start_column, greet_column);
+        assert_eq!(greet.id, expected_symbol_id(greet));
+
+        let card = symbols
+            .iter()
+            .find(|symbol| symbol.name == ".card")
+            .expect("inline style should still extract the selector symbol");
+        let card_offset = html.rfind(".card{color:red;}").unwrap() as u32;
+        assert_eq!(card.start_byte, card_offset);
+        let (card_line, card_column) = line_column_for_byte(html, card_offset as usize);
+        assert_eq!(card.start_line, card_line);
+        assert_eq!(card.start_column, card_column);
+        assert_eq!(card.id, expected_symbol_id(card));
+    }
+
+    #[test]
+    fn test_html_inline_script_offset_rekeys_child_parent_ids() {
+        let html = r#"<html>
+<body>
+  <script>
+    class Widget {
+      render() {
+        return 1;
+      }
+    }
+  </script>
+</body>
+</html>"#;
+
+        let symbols = extract_symbols(html);
+
+        let widget = symbols
+            .iter()
+            .find(|symbol| symbol.name == "Widget" && symbol.kind == SymbolKind::Class)
+            .expect("inline script should extract the class symbol");
+        let render = symbols
+            .iter()
+            .find(|symbol| symbol.name == "render" && symbol.kind == SymbolKind::Method)
+            .expect("inline script should extract the method symbol");
+
+        assert_eq!(widget.id, expected_symbol_id(widget));
+        assert_eq!(render.id, expected_symbol_id(render));
+        assert_eq!(
+            render.parent_id.as_deref(),
+            Some(widget.id.as_str()),
+            "embedded script parent IDs must be rekeyed after host offset remapping"
+        );
+    }
+
+    #[test]
     fn test_html_script_import_relationship_uses_matching_script_symbol() {
         let html = r#"<html>
 <head>
@@ -258,4 +334,33 @@ fn line_column_for_byte(content: &str, target: usize) -> (u32, u32) {
         .map(|(_, tail)| tail.len())
         .unwrap_or(prefix.len()) as u32;
     (line, column)
+}
+
+fn expected_id(
+    file_path: &str,
+    name: &str,
+    start_line: u32,
+    start_column: u32,
+    end_line: u32,
+    end_column: u32,
+    start_byte: u32,
+    end_byte: u32,
+) -> String {
+    let input = format!(
+        "{file_path}:{name}:{start_line}:{start_column}:{end_line}:{end_column}:{start_byte}:{end_byte}"
+    );
+    format!("{:x}", md5::compute(input.as_bytes()))
+}
+
+fn expected_symbol_id(symbol: &crate::base::Symbol) -> String {
+    expected_id(
+        symbol.file_path.as_str(),
+        symbol.name.as_str(),
+        symbol.start_line,
+        symbol.start_column,
+        symbol.end_line,
+        symbol.end_column,
+        symbol.start_byte,
+        symbol.end_byte,
+    )
 }

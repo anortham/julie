@@ -183,9 +183,7 @@ fn extract_embedded_javascript_symbols(
     let Some(offset) = embedded_content_offset(base, node, content) else {
         return Vec::new();
     };
-    for symbol in &mut symbols {
-        apply_embedded_offset(symbol, base, offset);
-    }
+    apply_embedded_offsets(&mut symbols, base, offset);
     symbols
 }
 
@@ -210,31 +208,52 @@ fn extract_embedded_css_symbols(base: &BaseExtractor, node: Node, content: &str)
     let Some(offset) = embedded_content_offset(base, node, content) else {
         return Vec::new();
     };
-    for symbol in &mut symbols {
-        apply_embedded_offset(symbol, base, offset);
-    }
+    apply_embedded_offsets(&mut symbols, base, offset);
     symbols
 }
 
-fn embedded_content_offset(base: &BaseExtractor, node: Node, content: &str) -> Option<u32> {
-    let node_text = base.content.get(node.start_byte()..node.end_byte())?;
-    let local_offset = node_text.find(content)?;
-    Some((node.start_byte() + local_offset) as u32)
+fn embedded_content_offset(base: &BaseExtractor, node: Node, _content: &str) -> Option<u32> {
+    let content_node = node
+        .children(&mut node.walk())
+        .find(|child| matches!(child.kind(), "text" | "raw_text"))?;
+    let raw_content = base.get_node_text(&content_node);
+    let trimmed_start = raw_content.trim_start();
+    if trimmed_start.is_empty() {
+        return None;
+    }
+
+    let leading_trim_bytes = raw_content.len() - trimmed_start.len();
+    Some((content_node.start_byte() + leading_trim_bytes) as u32)
 }
 
-fn apply_embedded_offset(symbol: &mut Symbol, base: &BaseExtractor, byte_offset: u32) {
+fn apply_embedded_offsets(symbols: &mut [Symbol], base: &BaseExtractor, byte_offset: u32) {
     let Some(offset) = EmbeddedSpanOffset::from_host_byte(&base.content, byte_offset as usize)
     else {
         return;
     };
-    let span = NormalizedSpan {
-        start_line: symbol.start_line,
-        start_column: symbol.start_column,
-        end_line: symbol.end_line,
-        end_column: symbol.end_column,
-        start_byte: symbol.start_byte,
-        end_byte: symbol.end_byte,
-    };
-    symbol.file_path = base.file_path.clone();
-    symbol.apply_normalized_span(offset.apply(span));
+
+    let mut symbol_id_map = HashMap::new();
+    for symbol in symbols.iter_mut() {
+        let old_id = symbol.id.clone();
+        let span = NormalizedSpan {
+            start_line: symbol.start_line,
+            start_column: symbol.start_column,
+            end_line: symbol.end_line,
+            end_column: symbol.end_column,
+            start_byte: symbol.start_byte,
+            end_byte: symbol.end_byte,
+        };
+        symbol.file_path = base.file_path.clone();
+        symbol.apply_normalized_span(offset.apply(span));
+        symbol.refresh_id();
+        symbol_id_map.insert(old_id, symbol.id.clone());
+    }
+
+    for symbol in symbols {
+        if let Some(parent_id) = symbol.parent_id.as_mut() {
+            if let Some(new_parent_id) = symbol_id_map.get(parent_id) {
+                *parent_id = new_parent_id.clone();
+            }
+        }
+    }
 }

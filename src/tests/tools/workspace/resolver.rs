@@ -46,12 +46,21 @@ mod resolver_tests {
 
     /// Helper to create a PendingRelationship
     fn make_pending(from_id: &str, callee_name: &str, file_path: &str) -> PendingRelationship {
+        make_pending_at_line(from_id, callee_name, file_path, 42)
+    }
+
+    fn make_pending_at_line(
+        from_id: &str,
+        callee_name: &str,
+        file_path: &str,
+        line_number: u32,
+    ) -> PendingRelationship {
         PendingRelationship {
             from_symbol_id: from_id.to_string(),
             callee_name: callee_name.to_string(),
             kind: RelationshipKind::Calls,
             file_path: file_path.to_string(),
-            line_number: 42,
+            line_number,
             confidence: 0.8,
         }
     }
@@ -386,7 +395,29 @@ mod resolver_tests {
         assert_eq!(resolved.kind, RelationshipKind::Calls);
         assert_eq!(resolved.file_path, "src/caller.rs");
         assert_eq!(resolved.line_number, 42);
-        assert!(resolved.id.contains("resolved"));
+        let expected_id = format!(
+            "{}_{}_{:?}_{}_{}",
+            pending.from_symbol_id, target.id, pending.kind, pending.file_path, pending.line_number
+        );
+        assert_eq!(resolved.id, expected_id);
+    }
+
+    #[test]
+    fn test_build_resolved_relationship_keeps_distinct_callsites_distinct() {
+        let target = make_symbol("target_fn", SymbolKind::Function, "rust", "src/target.rs");
+        let first = make_pending_at_line("from_abc", "target_fn", "src/caller.rs", 10);
+        let second = make_pending_at_line("from_abc", "target_fn", "src/caller.rs", 11);
+
+        let first_resolved = build_resolved_relationship(&first, &target);
+        let second_resolved = build_resolved_relationship(&second, &target);
+
+        assert_ne!(
+            first_resolved.id, second_resolved.id,
+            "resolved relationship ids must include callsite identity"
+        );
+        assert!(first_resolved.id.contains("src/caller.rs"));
+        assert!(first_resolved.id.contains("10"));
+        assert!(second_resolved.id.contains("11"));
     }
 
     // =========================================================================

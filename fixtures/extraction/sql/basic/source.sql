@@ -13,3 +13,10 @@ CREATE VIEW active_workers AS
 SELECT id, name
 FROM workers
 WHERE id > 0;
+
+CREATE TRIGGER refresh_active_workers
+AFTER INSERT ON workers
+FOR EACH ROW
+BEGIN
+    INSERT INTO jobs (worker_id) VALUES (NEW.id);
+END;

@@ -48,6 +48,7 @@ pub(super) fn extract_style_symbols(
             end_byte: symbol.end_byte,
         };
         symbol.apply_normalized_span(offset.apply(span));
+        symbol.refresh_id();
     }
     symbols
 }

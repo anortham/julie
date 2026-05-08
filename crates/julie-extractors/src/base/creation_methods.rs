@@ -22,8 +22,17 @@ impl BaseExtractor {
         kind: SymbolKind,
         options: SymbolOptions,
     ) -> Symbol {
-        let span = NormalizedSpan::from_node(node);
+        self.create_symbol_from_span(node, NormalizedSpan::from_node(node), name, kind, options)
+    }
 
+    pub(crate) fn create_symbol_from_span(
+        &mut self,
+        node: &Node,
+        span: NormalizedSpan,
+        name: String,
+        kind: SymbolKind,
+        options: SymbolOptions,
+    ) -> Symbol {
         let id = self.generate_id_for_span(&name, &span);
 
         // Extract code context around the symbol

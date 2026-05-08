@@ -4,7 +4,10 @@
 // Handles function calls, method calls, and member access patterns
 
 use super::parsing::{VueSection, parse_vue_sfc};
-use crate::base::{BaseExtractor, Identifier, IdentifierKind, Symbol};
+use crate::base::{
+    BaseExtractor, EmbeddedSpanOffset, Identifier, IdentifierKind, NormalizedSpan, Symbol,
+    SymbolKind,
+};
 use std::collections::HashMap;
 use tree_sitter::{Node, Parser};
 
@@ -20,14 +23,21 @@ pub(super) fn extract_identifiers(base: &mut BaseExtractor, symbols: &[Symbol]) 
             if section.section_type == "script" {
                 // Parse script section with JavaScript tree-sitter
                 if let Some(tree) = parse_script_section(section) {
+                    let byte_offset = section_byte_offset(&base.content, section.start_line);
+                    let Some(offset) =
+                        EmbeddedSpanOffset::from_host_byte(&base.content, byte_offset as usize)
+                    else {
+                        continue;
+                    };
+
                     // CRITICAL: We need to use the script content, not the full Vue SFC content
-                    // Walk the JavaScript tree and extract identifiers
+                    // for node text, then remap spans back to the host Vue file.
                     walk_tree_for_identifiers_with_content(
                         base,
                         tree.root_node(),
                         &symbol_map,
                         &section.content,
-                        section.start_line,
+                        offset,
                     );
                 }
             }
@@ -63,27 +73,15 @@ fn walk_tree_for_identifiers_with_content(
     node: Node,
     symbol_map: &HashMap<String, &Symbol>,
     script_content: &str,
-    start_line_offset: usize,
+    offset: EmbeddedSpanOffset,
 ) {
     // Extract identifier from this node if applicable
-    extract_identifier_from_node_with_content(
-        base,
-        node,
-        symbol_map,
-        script_content,
-        start_line_offset,
-    );
+    extract_identifier_from_node_with_content(base, node, symbol_map, script_content, offset);
 
     // Recursively walk children
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        walk_tree_for_identifiers_with_content(
-            base,
-            child,
-            symbol_map,
-            script_content,
-            start_line_offset,
-        );
+        walk_tree_for_identifiers_with_content(base, child, symbol_map, script_content, offset);
     }
 }
 
@@ -95,7 +93,7 @@ fn extract_identifier_from_node_with_content(
     node: Node,
     symbol_map: &HashMap<String, &Symbol>,
     script_content: &str,
-    start_line_offset: usize,
+    offset: EmbeddedSpanOffset,
 ) {
     match node.kind() {
         // Function/method calls: foo(), bar.baz()
@@ -106,16 +104,15 @@ fn extract_identifier_from_node_with_content(
                     "identifier" => {
                         // Simple function call: foo()
                         let name = get_node_text_from_content(&function_node, script_content);
-                        let containing_symbol_id =
-                            find_containing_symbol_id(base, node, symbol_map);
 
                         create_identifier_with_offset(
                             base,
                             &function_node,
+                            &node,
                             name,
                             IdentifierKind::Call,
-                            containing_symbol_id,
-                            start_line_offset,
+                            symbol_map,
+                            offset,
                         );
                     }
                     "member_expression" => {
@@ -123,16 +120,15 @@ fn extract_identifier_from_node_with_content(
                         // Extract the rightmost identifier (the method name)
                         if let Some(property_node) = function_node.child_by_field_name("property") {
                             let name = get_node_text_from_content(&property_node, script_content);
-                            let containing_symbol_id =
-                                find_containing_symbol_id(base, node, symbol_map);
 
                             create_identifier_with_offset(
                                 base,
                                 &property_node,
+                                &node,
                                 name,
                                 IdentifierKind::Call,
-                                containing_symbol_id,
-                                start_line_offset,
+                                symbol_map,
+                                offset,
                             );
                         }
                     }
@@ -154,15 +150,15 @@ fn extract_identifier_from_node_with_content(
             // Extract the rightmost identifier (the property name)
             if let Some(property_node) = node.child_by_field_name("property") {
                 let name = get_node_text_from_content(&property_node, script_content);
-                let containing_symbol_id = find_containing_symbol_id(base, node, symbol_map);
 
                 create_identifier_with_offset(
                     base,
                     &property_node,
+                    &node,
                     name,
                     IdentifierKind::MemberAccess,
-                    containing_symbol_id,
-                    start_line_offset,
+                    symbol_map,
+                    offset,
                 );
             }
         }
@@ -180,58 +176,107 @@ fn get_node_text_from_content(node: &Node, content: &str) -> String {
     content[start_byte..end_byte].to_string()
 }
 
-/// Create identifier with line offset adjustment
-/// Uses content swap to correctly extract from script section
+/// Create an identifier from a script-section node and remap it to the host Vue file.
 fn create_identifier_with_offset(
     base: &mut BaseExtractor,
     node: &Node,
+    containing_node: &Node,
     name: String,
     kind: IdentifierKind,
-    containing_symbol_id: Option<String>,
-    line_offset: usize,
+    symbol_map: &HashMap<String, &Symbol>,
+    offset: EmbeddedSpanOffset,
 ) {
-    // Temporarily swap the base content with script content
-    // This allows create_identifier to extract text correctly using script-relative byte positions
-    let original_content = std::mem::take(&mut base.content);
+    let span = offset.apply(NormalizedSpan::from_node(node));
+    let containing_span = offset.apply(NormalizedSpan::from_node(containing_node));
+    let containing_symbol_id =
+        find_containing_symbol_id_for_span(base, containing_span, symbol_map);
+    let code_context = base.extract_code_context(
+        span.start_line.saturating_sub(1) as usize,
+        span.end_line.saturating_sub(1) as usize,
+    );
 
-    // Get script content from the original content
-    if let Ok(sections) = parse_vue_sfc(&original_content) {
-        for section in &sections {
-            if section.section_type == "script" {
-                // Set base.content to script content temporarily
-                base.content = section.content.clone();
+    let identifier = Identifier {
+        id: base.generate_id_for_span(&name, &span),
+        name,
+        kind,
+        language: base.language.clone(),
+        file_path: base.file_path.clone(),
+        start_line: span.start_line,
+        start_column: span.start_column,
+        end_line: span.end_line,
+        end_column: span.end_column,
+        start_byte: span.start_byte,
+        end_byte: span.end_byte,
+        containing_symbol_id,
+        target_symbol_id: None,
+        confidence: 1.0,
+        code_context,
+    };
 
-                // Create identifier with script content
-                let mut identifier = base.create_identifier(node, name, kind, containing_symbol_id);
-
-                // Adjust line numbers for the script section offset
-                identifier.start_line += line_offset as u32;
-                identifier.end_line += line_offset as u32;
-
-                // Restore original content
-                base.content = original_content;
-
-                // Replace the last identifier (which was just added by create_identifier)
-                if let Some(last) = base.identifiers.last_mut() {
-                    *last = identifier;
-                }
-
-                return;
-            }
-        }
-    }
-
-    // Restore original content if we didn't find script section
-    base.content = original_content;
+    base.identifiers.push(identifier);
 }
 
-/// Find the ID of the symbol that contains this node
-/// CRITICAL: Only search symbols from THIS FILE (file-scoped filtering)
-fn find_containing_symbol_id(
+fn section_byte_offset(content: &str, start_line: usize) -> u32 {
+    content
+        .split_inclusive('\n')
+        .take(start_line)
+        .map(str::len)
+        .sum::<usize>() as u32
+}
+
+fn find_containing_symbol_id_for_span(
     base: &BaseExtractor,
-    node: Node,
+    span: NormalizedSpan,
     symbol_map: &HashMap<String, &Symbol>,
 ) -> Option<String> {
-    base.find_containing_symbol_from_map(&node, symbol_map)
-        .map(|s| s.id.clone())
+    let mut containing_symbols: Vec<&Symbol> = symbol_map
+        .values()
+        .copied()
+        .filter(|symbol| symbol.file_path == base.file_path && symbol_contains_span(symbol, span))
+        .collect();
+
+    if containing_symbols.is_empty() {
+        return None;
+    }
+
+    containing_symbols.sort_by(|a, b| {
+        let priority_a = symbol_containment_priority(&a.kind);
+        let priority_b = symbol_containment_priority(&b.kind);
+        if priority_a != priority_b {
+            return priority_a.cmp(&priority_b);
+        }
+
+        let size_a = a.end_byte - a.start_byte;
+        let size_b = b.end_byte - b.start_byte;
+        size_a.cmp(&size_b)
+    });
+
+    Some(containing_symbols[0].id.clone())
+}
+
+fn symbol_contains_span(symbol: &Symbol, span: NormalizedSpan) -> bool {
+    let pos_line = span.start_line;
+    let pos_column = span.start_column;
+    let line_contains = symbol.start_line <= pos_line && symbol.end_line >= pos_line;
+    let col_contains = if pos_line == symbol.start_line && pos_line == symbol.end_line {
+        symbol.start_column <= pos_column && symbol.end_column >= pos_column
+    } else if pos_line == symbol.start_line {
+        symbol.start_column <= pos_column
+    } else if pos_line == symbol.end_line {
+        symbol.end_column >= pos_column
+    } else {
+        true
+    };
+
+    line_contains && col_contains
+}
+
+fn symbol_containment_priority(kind: &SymbolKind) -> u32 {
+    match kind {
+        SymbolKind::Function | SymbolKind::Method | SymbolKind::Constructor => 1,
+        SymbolKind::Class | SymbolKind::Interface => 2,
+        SymbolKind::Namespace => 3,
+        SymbolKind::Variable | SymbolKind::Constant | SymbolKind::Property => 10,
+        _ => 5,
+    }
 }

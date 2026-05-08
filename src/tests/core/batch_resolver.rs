@@ -47,12 +47,21 @@ fn import_sym(id: &str, name: &str, file_path: &str, signature: &str) -> Symbol 
 
 /// Helper: minimal pending relationship
 fn pending(from_id: &str, callee: &str, file_path: &str) -> PendingRelationship {
+    pending_at_line(from_id, callee, file_path, 10)
+}
+
+fn pending_at_line(
+    from_id: &str,
+    callee: &str,
+    file_path: &str,
+    line_number: u32,
+) -> PendingRelationship {
     PendingRelationship {
         from_symbol_id: from_id.to_string(),
         callee_name: callee.to_string(),
         kind: RelationshipKind::Calls,
         file_path: file_path.to_string(),
-        line_number: 10,
+        line_number,
         confidence: 0.8,
     }
 }
@@ -212,6 +221,25 @@ fn test_resolve_batch_resolves_multiple_pendings_with_shared_callee() {
     for rel in &resolved {
         assert_eq!(rel.to_symbol_id, "s1");
     }
+}
+
+#[test]
+fn test_resolve_batch_keeps_same_caller_target_calls_distinct_by_line() {
+    let (_tmp, db) = setup_test_db();
+
+    let pendings = vec![
+        pending_at_line("caller-1", "authenticate", "src/db.rs", 10),
+        pending_at_line("caller-1", "authenticate", "src/db.rs", 11),
+    ];
+
+    let (resolved, stats) = resolver::resolve_batch(&pendings, &db);
+
+    assert_eq!(stats.total, 2);
+    assert_eq!(stats.resolved, 2);
+    assert_eq!(resolved.len(), 2);
+    assert_ne!(resolved[0].id, resolved[1].id);
+    assert_eq!(resolved[0].to_symbol_id, "s1");
+    assert_eq!(resolved[1].to_symbol_id, "s1");
 }
 
 #[test]

@@ -7,7 +7,7 @@ mod patterns;
 mod relationships;
 pub(crate) mod signatures;
 
-use crate::base::{BaseExtractor, Identifier, Relationship, Symbol, SymbolKind};
+use crate::base::{BaseExtractor, Identifier, NormalizedSpan, Relationship, Symbol, SymbolKind};
 use std::collections::{HashMap, HashSet};
 use tree_sitter::{Node, Tree};
 
@@ -197,13 +197,17 @@ impl RegexExtractor {
             .collect();
 
         let lookaround_texts = find_lookaround_texts(&self.base.content);
-        for lookaround_text in lookaround_texts {
+        for (lookaround_text, span) in lookaround_texts {
             if existing_lookarounds.contains(&lookaround_text) {
                 continue;
             }
-            if let Some(symbol) =
-                patterns::extract_lookaround_text(&mut self.base, root, lookaround_text, None)
-            {
+            if let Some(symbol) = patterns::extract_lookaround_text(
+                &mut self.base,
+                root,
+                lookaround_text,
+                None,
+                Some(span),
+            ) {
                 symbols.push(symbol);
             }
         }
@@ -228,13 +232,17 @@ impl RegexExtractor {
             .collect();
 
         let unicode_properties = find_unicode_property_texts(&self.base.content);
-        for property_text in unicode_properties {
+        for (property_text, span) in unicode_properties {
             if existing_unicode_properties.contains(&property_text) {
                 continue;
             }
-            if let Some(symbol) =
-                patterns::extract_unicode_property_text(&mut self.base, root, property_text, None)
-            {
+            if let Some(symbol) = patterns::extract_unicode_property_text(
+                &mut self.base,
+                root,
+                property_text,
+                None,
+                Some(span),
+            ) {
                 symbols.push(symbol);
             }
         }
@@ -256,7 +264,7 @@ fn is_lookaround_group_text(group_text: &str) -> bool {
         || group_text.starts_with("(?<!")
 }
 
-fn find_lookaround_texts(content: &str) -> Vec<String> {
+fn find_lookaround_texts(content: &str) -> Vec<(String, NormalizedSpan)> {
     let mut lookarounds = Vec::new();
     let mut index = 0;
 
@@ -269,8 +277,13 @@ fn find_lookaround_texts(content: &str) -> Vec<String> {
 
         if is_lookaround {
             if let Some(end) = find_group_end(content, index) {
-                lookarounds.push(content[index..=end].to_string());
-                index = end + 1;
+                let end_exclusive = end + 1;
+                if let Some(span) =
+                    NormalizedSpan::from_content_range(content, index, end_exclusive)
+                {
+                    lookarounds.push((content[index..end_exclusive].to_string(), span));
+                }
+                index = end_exclusive;
                 continue;
             }
         }
@@ -315,7 +328,7 @@ fn find_group_end(content: &str, start: usize) -> Option<usize> {
     None
 }
 
-fn find_unicode_property_texts(content: &str) -> Vec<String> {
+fn find_unicode_property_texts(content: &str) -> Vec<(String, NormalizedSpan)> {
     let mut properties = Vec::new();
     let mut index = 0;
 
@@ -323,8 +336,13 @@ fn find_unicode_property_texts(content: &str) -> Vec<String> {
         let rest = &content[index..];
         if rest.starts_with(r"\p{") || rest.starts_with(r"\P{") {
             if let Some(end_offset) = rest.find('}') {
-                properties.push(rest[..=end_offset].to_string());
-                index += end_offset + 1;
+                let end_exclusive = index + end_offset + 1;
+                if let Some(span) =
+                    NormalizedSpan::from_content_range(content, index, end_exclusive)
+                {
+                    properties.push((content[index..end_exclusive].to_string(), span));
+                }
+                index = end_exclusive;
                 continue;
             }
         }

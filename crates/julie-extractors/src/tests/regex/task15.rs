@@ -8,6 +8,35 @@ fn symbol_type(symbol: &Symbol) -> Option<&str> {
         .and_then(|v| v.as_str())
 }
 
+fn assert_exact_span(symbol: &Symbol, source: &str, expected_text: &str) {
+    let start = source
+        .find(expected_text)
+        .unwrap_or_else(|| panic!("Expected to find '{expected_text}' in test source"));
+    let end = start + expected_text.len();
+
+    assert_eq!(
+        symbol.start_byte as usize, start,
+        "start_byte mismatch for {expected_text}"
+    );
+    assert_eq!(
+        symbol.end_byte as usize, end,
+        "end_byte mismatch for {expected_text}"
+    );
+    assert_eq!(
+        symbol.start_column as usize, start,
+        "start_column mismatch for {expected_text}"
+    );
+    assert_eq!(
+        symbol.end_column as usize, end,
+        "end_column mismatch for {expected_text}"
+    );
+    assert_eq!(
+        symbol.start_line, 1,
+        "start_line mismatch for {expected_text}"
+    );
+    assert_eq!(symbol.end_line, 1, "end_line mismatch for {expected_text}");
+}
+
 #[test]
 fn test_regex_constructs_have_distinct_symbol_kinds() {
     let regex_code = r#"(?<capture>[A-Z]+)(?=foo)(?!bar)(?<tail>[^x]+)\p{Greek}\p{Letter}"#;
@@ -76,6 +105,8 @@ fn test_regex_constructs_have_distinct_symbol_kinds() {
             .and_then(|v| v.as_str()),
         Some("false")
     );
+    assert_exact_span(lookarounds[0], regex_code, "(?=foo)");
+    assert_exact_span(lookarounds[1], regex_code, "(?!bar)");
 
     let unicode_properties: Vec<_> = symbols
         .iter()
@@ -109,4 +140,6 @@ fn test_regex_constructs_have_distinct_symbol_kinds() {
             .and_then(|v| v.as_str()),
         Some("Letter")
     );
+    assert_exact_span(unicode_properties[0], regex_code, "\\p{Greek}");
+    assert_exact_span(unicode_properties[1], regex_code, "\\p{Letter}");
 }

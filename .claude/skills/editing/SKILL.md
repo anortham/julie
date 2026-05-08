@@ -50,6 +50,8 @@ If you catch yourself thinking any of these, you're about to waste tokens:
 
 Use `deep_dive` before rewriting a symbol. Use `fast_refs` first when the change may affect many callers.
 
+If a file was only read with offset/limit pagination, treat the view as partial: re-read the whole file before overwriting, or narrow the patch until the match is unambiguous. See `references/partial-read-patch-pitfall.md`.
+
 ### rename_symbol (for semantic workspace-wide renames)
 
 Renames a symbol across the workspace and updates all call sites. Prefer this over `edit_file` for renaming functions, structs, classes, methods, or variables.

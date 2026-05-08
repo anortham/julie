@@ -138,6 +138,31 @@
       "content_type": null
     },
     {
+      "key": "fixtures/extraction/sql/basic/source.sql:refresh_active_workers:17:0",
+      "name": "refresh_active_workers",
+      "kind": "method",
+      "language": "sql",
+      "file_path": "fixtures/extraction/sql/basic/source.sql",
+      "start_line": 17,
+      "start_column": 0,
+      "end_line": 22,
+      "end_column": 4,
+      "start_byte": 287,
+      "end_byte": 422,
+      "signature": "CREATE TRIGGER refresh_active_workers AFTER INSERT ON workers",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": null,
+      "metadata": {
+        "extractedFromError": true,
+        "isTrigger": true
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
       "key": "fixtures/extraction/sql/basic/source.sql:worker_id:8:4",
       "name": "worker_id",
       "kind": "field",
@@ -186,6 +211,19 @@
   ],
   "relationships": [
     {
+      "from_key": "fixtures/extraction/sql/basic/source.sql:active_workers:12:0",
+      "to_key": "fixtures/extraction/sql/basic/source.sql:workers:1:0",
+      "kind": "references",
+      "file_path": "fixtures/extraction/sql/basic/source.sql",
+      "line_number": 14,
+      "confidence": "0.950",
+      "metadata": {
+        "isExternal": false,
+        "relationshipType": "view_source",
+        "targetTable": "workers"
+      }
+    },
+    {
       "from_key": "fixtures/extraction/sql/basic/source.sql:jobs:6:0",
       "to_key": "fixtures/extraction/sql/basic/source.sql:workers:1:0",
       "kind": "references",
@@ -196,6 +234,19 @@
         "isExternal": false,
         "relationshipType": "foreign_key",
         "sourceTable": "jobs",
+        "targetTable": "workers"
+      }
+    },
+    {
+      "from_key": "fixtures/extraction/sql/basic/source.sql:refresh_active_workers:17:0",
+      "to_key": "fixtures/extraction/sql/basic/source.sql:workers:1:0",
+      "kind": "references",
+      "file_path": "fixtures/extraction/sql/basic/source.sql",
+      "line_number": 18,
+      "confidence": "0.950",
+      "metadata": {
+        "isExternal": false,
+        "relationshipType": "trigger_target",
         "targetTable": "workers"
       }
     }
@@ -317,5 +368,15 @@
       "metadata": null
     }
   ],
-  "parse_diagnostics": []
+  "parse_diagnostics": [
+    {
+      "kind": "Error",
+      "start_line": 17,
+      "start_column": 0,
+      "end_line": 22,
+      "end_column": 4,
+      "start_byte": 287,
+      "end_byte": 422
+    }
+  ]
 }
