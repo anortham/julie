@@ -10,6 +10,10 @@ const DEV_FALLBACK_FILES: &[&str] = &[
     "Cargo.toml",
     "Cargo.lock",
     "src/handler.rs",
+    "src/handler/session_workspace.rs",
+    "src/handler/tool_metrics.rs",
+    "src/handler/tool_targets.rs",
+    "src/handler/tools/mod.rs",
     "src/lib.rs",
     "src/main.rs",
     "src/migration.rs",
@@ -24,7 +28,6 @@ const DEV_FALLBACK_PREFIXES: &[&str] = &[
     "fixtures/",
     "src/analysis/",
     "src/extractors/",
-    "src/handler/",
     "src/tests/fixtures/",
     "src/tests/helpers/",
 ];
@@ -344,6 +347,10 @@ fn buckets_for_path(path: &str) -> &'static [&'static str] {
         return &["xtask-runner"];
     }
 
+    if let Some(buckets) = handler_tool_buckets_for_path(path) {
+        return buckets;
+    }
+
     if is_parser_upgrade_path(path) {
         return &["parser-upgrade"];
     }
@@ -603,6 +610,28 @@ fn buckets_for_path(path: &str) -> &'static [&'static str] {
     }
 
     &[]
+}
+
+fn handler_tool_buckets_for_path(path: &str) -> Option<&'static [&'static str]> {
+    match path {
+        "src/handler/tools/fast_search.rs" => Some(SEARCH_TOOL_BUCKETS),
+        "src/handler/tools/fast_refs.rs"
+        | "src/handler/tools/call_path.rs"
+        | "src/handler/tools/deep_dive.rs"
+        | "src/handler/tools/blast_radius.rs"
+        | "src/handler/tools/spillover_get.rs" => Some(&["tools-navigation"]),
+        "src/handler/tools/get_symbols.rs" => Some(&["tools-get-symbols"]),
+        "src/handler/tools/get_context.rs" => Some(&["tools-get-context"]),
+        "src/handler/tools/rename_symbol.rs" => Some(&["tools-refactoring"]),
+        "src/handler/tools/manage_workspace.rs" => {
+            Some(&["tools-workspace", "workspace-init"])
+        }
+        "src/handler/tools/edit_file.rs" | "src/handler/tools/rewrite_symbol.rs" => {
+            Some(&["tools-editing"])
+        }
+        "src/handler/search_telemetry.rs" => Some(SEARCH_TOOL_BUCKETS),
+        _ => None,
+    }
 }
 
 fn search_test_buckets_for_path(path: &str) -> Option<&'static [&'static str]> {

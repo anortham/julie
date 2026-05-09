@@ -137,3 +137,9 @@ panic = "abort"
 [profile.dev]
 opt-level = 0
 debug = true
+
+# Compile dependencies (Tantivy, tree-sitter, sqlite, etc.) at release speed
+# even in dev profile. User code stays at opt-level=0 for fast incremental
+# compiles, but heavy dependencies run at full speed during tests.
+[profile.dev.package."*"]
+opt-level = 3

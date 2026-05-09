@@ -294,6 +294,127 @@ fn changed_tests_misc_tool_paths_select_split_tool_buckets() {
 }
 
 #[test]
+fn changed_tests_handler_tool_fast_search_selects_search_buckets() {
+    let manifest = sample_manifest();
+
+    let selection = select_changed_buckets(
+        &manifest,
+        &["src/handler/tools/fast_search.rs".to_string()],
+    );
+
+    assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
+    assert_eq!(
+        selection.bucket_names,
+        vec![
+            "tools-search-tantivy",
+            "tools-search-line-file",
+            "tools-search-ranking-format",
+            "tools-search-context",
+            "tools-search-text",
+            "tools-search-hybrid",
+            "tools-search-query",
+        ]
+    );
+    assert!(selection.fallback_paths.is_empty());
+}
+
+#[test]
+fn changed_tests_handler_tool_navigation_files_select_navigation_bucket() {
+    let manifest = sample_manifest();
+
+    let selection = select_changed_buckets(
+        &manifest,
+        &[
+            "src/handler/tools/fast_refs.rs".to_string(),
+            "src/handler/tools/call_path.rs".to_string(),
+            "src/handler/tools/deep_dive.rs".to_string(),
+            "src/handler/tools/blast_radius.rs".to_string(),
+            "src/handler/tools/spillover_get.rs".to_string(),
+        ],
+    );
+
+    assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
+    assert_eq!(selection.bucket_names, vec!["tools-navigation"]);
+    assert!(selection.fallback_paths.is_empty());
+}
+
+#[test]
+fn changed_tests_handler_tool_files_select_specific_buckets() {
+    let manifest = sample_manifest();
+
+    let selection = select_changed_buckets(
+        &manifest,
+        &[
+            "src/handler/tools/get_symbols.rs".to_string(),
+            "src/handler/tools/get_context.rs".to_string(),
+            "src/handler/tools/rename_symbol.rs".to_string(),
+            "src/handler/tools/manage_workspace.rs".to_string(),
+            "src/handler/tools/edit_file.rs".to_string(),
+            "src/handler/tools/rewrite_symbol.rs".to_string(),
+        ],
+    );
+
+    assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
+    assert_eq!(
+        selection.bucket_names,
+        vec![
+            "tools-get-context",
+            "tools-workspace",
+            "tools-get-symbols",
+            "tools-editing",
+            "tools-refactoring",
+            "workspace-init",
+        ]
+    );
+    assert!(selection.fallback_paths.is_empty());
+}
+
+#[test]
+fn changed_tests_handler_search_telemetry_selects_search_buckets() {
+    let manifest = sample_manifest();
+
+    let selection = select_changed_buckets(
+        &manifest,
+        &["src/handler/search_telemetry.rs".to_string()],
+    );
+
+    assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
+    assert_eq!(
+        selection.bucket_names,
+        vec![
+            "tools-search-tantivy",
+            "tools-search-line-file",
+            "tools-search-ranking-format",
+            "tools-search-context",
+            "tools-search-text",
+            "tools-search-hybrid",
+            "tools-search-query",
+        ]
+    );
+}
+
+#[test]
+fn changed_tests_handler_cross_cutting_files_fall_back_to_dev() {
+    let manifest = sample_manifest();
+
+    for path in [
+        "src/handler/session_workspace.rs",
+        "src/handler/tool_metrics.rs",
+        "src/handler/tool_targets.rs",
+        "src/handler/tools/mod.rs",
+    ] {
+        let selection = select_changed_buckets(&manifest, &[path.to_string()]);
+        assert_eq!(
+            selection.mode,
+            ChangedSelectionMode::FallbackToDev,
+            "expected {} to fall back to dev",
+            path
+        );
+        assert_eq!(selection.fallback_paths, vec![path.to_string()]);
+    }
+}
+
+#[test]
 fn changed_tests_routes_projection_paths_to_projection_bucket() {
     let manifest = sample_manifest();
 
@@ -419,6 +540,7 @@ dev = [
   "tools-search-hybrid",
   "tools-search-query",
   "tools-get-symbols",
+  "tools-get-context",
   "tools-editing",
   "tools-navigation",
   "tools-refactoring",
@@ -487,6 +609,11 @@ commands = ["cargo test --lib tools::search::query_preprocessor::tests"]
 expected_seconds = 10
 timeout_seconds = 40
 commands = ["cargo test --lib tests::tools::get_symbols::"]
+
+[buckets.tools-get-context]
+expected_seconds = 10
+timeout_seconds = 40
+commands = ["cargo test --lib tests::tools::get_context::"]
 
 [buckets.tools-editing]
 expected_seconds = 10
