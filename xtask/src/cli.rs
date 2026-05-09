@@ -60,11 +60,19 @@ pub struct SyncPluginCommand {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DevLinkCommand {
+    pub cache_root: Option<PathBuf>,
+    pub dry_run: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CliCommand {
     Test(TestCommand),
     SearchMatrix(SearchMatrixCommand),
     Certify(CertifyCommand),
     SyncPlugin(SyncPluginCommand),
+    DevLink(DevLinkCommand),
+    DevRestart,
 }
 
 pub fn parse_cli_command<I, S>(args: I) -> Result<CliCommand>
@@ -86,8 +94,42 @@ where
         "search-matrix" => Ok(CliCommand::SearchMatrix(parse_search_matrix_command(args)?)),
         "certify" => Ok(CliCommand::Certify(parse_certify_command(args)?)),
         "sync-plugin" => Ok(CliCommand::SyncPlugin(parse_sync_plugin_command(args)?)),
+        "dev-link" => Ok(CliCommand::DevLink(parse_dev_link_command(args)?)),
+        "dev-restart" => parse_dev_restart_command(args),
         other => bail!("unsupported xtask command `{other}`"),
     }
+}
+
+fn parse_dev_link_command(args: Vec<String>) -> Result<DevLinkCommand> {
+    let mut tail = args.into_iter().skip(2);
+    let mut cache_root: Option<PathBuf> = None;
+    let mut dry_run = false;
+
+    while let Some(arg) = tail.next() {
+        match arg.as_str() {
+            "--dry-run" => dry_run = true,
+            "--cache-root" => {
+                let raw = tail
+                    .next()
+                    .ok_or_else(|| anyhow!("missing value for --cache-root"))?;
+                cache_root = Some(PathBuf::from(raw));
+            }
+            other => bail!("unexpected argument: {other}"),
+        }
+    }
+
+    Ok(DevLinkCommand {
+        cache_root,
+        dry_run,
+    })
+}
+
+fn parse_dev_restart_command(args: Vec<String>) -> Result<CliCommand> {
+    let extra: Vec<String> = args.into_iter().skip(2).collect();
+    if !extra.is_empty() {
+        bail!("unexpected arguments for `dev-restart`: {}", extra.join(" "));
+    }
+    Ok(CliCommand::DevRestart)
 }
 
 fn parse_sync_plugin_command(args: Vec<String>) -> Result<SyncPluginCommand> {
@@ -179,6 +221,8 @@ pub fn validate_cli_command(manifest: &TestManifest, command: CliCommand) -> Res
         CliCommand::SearchMatrix(command) => Ok(CliCommand::SearchMatrix(command)),
         CliCommand::Certify(command) => Ok(CliCommand::Certify(command)),
         CliCommand::SyncPlugin(command) => Ok(CliCommand::SyncPlugin(command)),
+        CliCommand::DevLink(command) => Ok(CliCommand::DevLink(command)),
+        CliCommand::DevRestart => Ok(CliCommand::DevRestart),
     }
 }
 

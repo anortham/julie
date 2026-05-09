@@ -1,5 +1,6 @@
 pub mod changed;
 pub mod cli;
+pub mod dev_workflow;
 pub mod inventory;
 pub mod manifest;
 pub mod runner;

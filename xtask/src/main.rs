@@ -6,7 +6,7 @@ use xtask::changed::{
     ChangedSelectionMode, collect_changed_paths, render_changed_selection, select_changed_buckets,
 };
 use xtask::cli::{
-    CertifyCommand, CliCommand, SyncPluginCommand, TestCommand, parse_cli_command,
+    CertifyCommand, CliCommand, DevLinkCommand, SyncPluginCommand, TestCommand, parse_cli_command,
     validate_cli_command,
 };
 use xtask::inventory::{ProcessInventoryExecutor, render_inventory_report, run_inventory};
@@ -46,9 +46,11 @@ fn main() -> anyhow::Result<()> {
             let manifest = TestManifest::load(workspace_root().join("xtask/test_tiers.toml"))?;
             let command = match validate_cli_command(&manifest, CliCommand::Test(command))? {
                 CliCommand::Test(command) => command,
-                CliCommand::SearchMatrix(_) => unreachable!("validated test command changed shape"),
-                CliCommand::Certify(_) => unreachable!("validated test command changed shape"),
-                CliCommand::SyncPlugin(_) => unreachable!("validated test command changed shape"),
+                CliCommand::SearchMatrix(_)
+                | CliCommand::Certify(_)
+                | CliCommand::SyncPlugin(_)
+                | CliCommand::DevLink(_)
+                | CliCommand::DevRestart => unreachable!("validated test command changed shape"),
             };
 
             match command {
@@ -135,6 +137,17 @@ fn main() -> anyhow::Result<()> {
             let plugin =
                 plugin_root.unwrap_or_else(|| xtask::sync_plugin::default_plugin_root(&workspace));
             xtask::sync_plugin::run_sync_plugin(&workspace, &plugin, dry_run, &mut stdout)?;
+        }
+        CliCommand::DevLink(DevLinkCommand {
+            cache_root,
+            dry_run,
+        }) => {
+            let workspace = workspace_root();
+            let cache = cache_root.unwrap_or_else(xtask::dev_workflow::default_cache_root);
+            xtask::dev_workflow::run_dev_link(&workspace, dry_run, &cache, &mut stdout)?;
+        }
+        CliCommand::DevRestart => {
+            xtask::dev_workflow::run_dev_restart(&mut stdout)?;
         }
         CliCommand::Certify(command) => match command {
             CertifyCommand::TreeSitter {
