@@ -121,21 +121,31 @@ fn expected_tiers() -> BTreeMap<String, Vec<String>> {
                 "xtask-runner".to_string(),
                 "core-database".to_string(),
                 "core-embeddings".to_string(),
-                "tools-get-context".to_string(),
+                "tools-get-context-pipeline".to_string(),
+                "tools-get-context-format".to_string(),
+                "tools-get-context-graph".to_string(),
                 "tools-search-tantivy".to_string(),
-                "tools-search-line-file".to_string(),
-                "tools-search-ranking-format".to_string(),
+                "tools-search-line".to_string(),
+                "tools-search-file-mode".to_string(),
+                "tools-search-zero-hit".to_string(),
+                "tools-search-promotion".to_string(),
+                "tools-search-format-quality".to_string(),
                 "tools-search-context".to_string(),
                 "tools-search-text".to_string(),
                 "tools-search-hybrid".to_string(),
                 "tools-search-query".to_string(),
                 "tools-workspace".to_string(),
+                "tools-workspace-targeting".to_string(),
                 "tools-get-symbols".to_string(),
                 "tools-editing".to_string(),
-                "tools-navigation".to_string(),
+                "tools-deep-dive".to_string(),
+                "tools-call-path".to_string(),
+                "tools-fast-refs".to_string(),
+                "tools-blast-spillover".to_string(),
                 "tools-refactoring".to_string(),
                 "tools-metrics".to_string(),
                 "tools-format-filter".to_string(),
+                "analysis".to_string(),
                 "core-fast".to_string(),
                 "daemon".to_string(),
                 "dashboard".to_string(),
@@ -155,21 +165,31 @@ fn expected_tiers() -> BTreeMap<String, Vec<String>> {
                 "xtask-runner".to_string(),
                 "core-database".to_string(),
                 "core-embeddings".to_string(),
-                "tools-get-context".to_string(),
+                "tools-get-context-pipeline".to_string(),
+                "tools-get-context-format".to_string(),
+                "tools-get-context-graph".to_string(),
                 "tools-search-tantivy".to_string(),
-                "tools-search-line-file".to_string(),
-                "tools-search-ranking-format".to_string(),
+                "tools-search-line".to_string(),
+                "tools-search-file-mode".to_string(),
+                "tools-search-zero-hit".to_string(),
+                "tools-search-promotion".to_string(),
+                "tools-search-format-quality".to_string(),
                 "tools-search-context".to_string(),
                 "tools-search-text".to_string(),
                 "tools-search-hybrid".to_string(),
                 "tools-search-query".to_string(),
                 "tools-workspace".to_string(),
+                "tools-workspace-targeting".to_string(),
                 "tools-get-symbols".to_string(),
                 "tools-editing".to_string(),
-                "tools-navigation".to_string(),
+                "tools-deep-dive".to_string(),
+                "tools-call-path".to_string(),
+                "tools-fast-refs".to_string(),
+                "tools-blast-spillover".to_string(),
                 "tools-refactoring".to_string(),
                 "tools-metrics".to_string(),
                 "tools-format-filter".to_string(),
+                "analysis".to_string(),
                 "core-fast".to_string(),
                 "daemon".to_string(),
                 "dashboard".to_string(),
@@ -193,7 +213,7 @@ fn expected_tiers() -> BTreeMap<String, Vec<String>> {
                 "cli".to_string(),
                 "core-database".to_string(),
                 "core-embeddings".to_string(),
-                "tools-get-context".to_string(),
+                "tools-get-context-pipeline".to_string(),
             ],
         ),
         (
@@ -262,6 +282,14 @@ fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
                     "cargo nextest run --lib tests::core::sidecar_supervisor_tests -- --skip search_quality",
                     "cargo nextest run --lib tests::core::sidecar_embedding_tests -- --skip search_quality",
                 ],
+            },
+        ),
+        (
+            "analysis",
+            ExpectedBucket {
+                expected_seconds: 30,
+                timeout_seconds: 90,
+                commands: &["cargo nextest run --lib tests::analysis -- --skip search_quality"],
             },
         ),
         (
@@ -384,24 +412,42 @@ fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
             },
         ),
         (
-            "tools-get-context",
+            "tools-get-context-pipeline",
             ExpectedBucket {
-                expected_seconds: 35,
-                timeout_seconds: 120,
+                expected_seconds: 15,
+                timeout_seconds: 60,
+                commands: &[
+                    "cargo nextest run --lib tests::tools::get_context_pipeline_tests -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::get_context_pipeline_relevance_tests -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::get_context_relevance_tests -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::get_context_scoring_tests -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::get_context_quality_tests -- --skip search_quality",
+                ],
+            },
+        ),
+        (
+            "tools-get-context-format",
+            ExpectedBucket {
+                expected_seconds: 12,
+                timeout_seconds: 45,
                 commands: &[
                     "cargo nextest run --lib tests::tools::get_context_allocation_tests -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::get_context_formatting_tests -- --skip search_quality",
-                    "cargo nextest run --lib tests::tools::get_context_graph_expansion_tests -- --skip search_quality",
-                    "cargo nextest run --lib tests::tools::get_context_pipeline_relevance_tests -- --skip search_quality",
-                    "cargo nextest run --lib tests::tools::get_context_pipeline_tests -- --skip search_quality",
-                    "cargo nextest run --lib tests::tools::get_context_quality_tests -- --skip search_quality",
-                    "cargo nextest run --lib tests::tools::get_context_relevance_tests -- --skip search_quality",
-                    "cargo nextest run --lib tests::tools::get_context_scoring_tests -- --skip search_quality",
-                    "cargo nextest run --lib tests::tools::get_context_tests -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::get_context_token_budget_tests -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::get_context_tests -- --skip search_quality",
+                ],
+            },
+        ),
+        (
+            "tools-get-context-graph",
+            ExpectedBucket {
+                expected_seconds: 12,
+                timeout_seconds: 45,
+                commands: &[
+                    "cargo nextest run --lib tests::tools::get_context_graph_expansion_tests -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::get_context_task_inputs_tests -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::get_context_primary_rebind_tests -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::get_context_target_workspace_metrics_tests -- --skip search_quality",
-                    "cargo nextest run --lib tests::tools::get_context_task_inputs_tests -- --skip search_quality",
                 ],
             },
         ),
@@ -454,18 +500,45 @@ fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
             },
         ),
         (
-            "tools-navigation",
+            "tools-deep-dive",
             ExpectedBucket {
-                expected_seconds: 35,
-                timeout_seconds: 120,
+                expected_seconds: 12,
+                timeout_seconds: 60,
                 commands: &[
                     "cargo nextest run --lib tests::tools::deep_dive_tests -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::deep_dive_primary_rebind_tests -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::deep_dive_regression_tests -- --skip search_quality",
-                    "cargo nextest run --lib tests::tools::fast_refs_primary_rebind_tests -- --skip search_quality",
-                    "cargo nextest run --lib tests::tools::target_workspace_fast_refs_tests -- --skip search_quality",
+                ],
+            },
+        ),
+        (
+            "tools-call-path",
+            ExpectedBucket {
+                expected_seconds: 8,
+                timeout_seconds: 45,
+                commands: &[
                     "cargo nextest run --lib tests::tools::call_path_tests -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::call_path_disambiguation_tests -- --skip search_quality",
+                ],
+            },
+        ),
+        (
+            "tools-fast-refs",
+            ExpectedBucket {
+                expected_seconds: 8,
+                timeout_seconds: 45,
+                commands: &[
+                    "cargo nextest run --lib tests::tools::fast_refs_primary_rebind_tests -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::target_workspace_fast_refs_tests -- --skip search_quality",
+                ],
+            },
+        ),
+        (
+            "tools-blast-spillover",
+            ExpectedBucket {
+                expected_seconds: 10,
+                timeout_seconds: 45,
+                commands: &[
                     "cargo nextest run --lib tests::tools::blast_radius -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::spillover_tests -- --skip search_quality",
                 ],
@@ -502,13 +575,31 @@ fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
             },
         ),
         (
-            "tools-search-line-file",
+            "tools-search-line",
             ExpectedBucket {
-                expected_seconds: 80,
-                timeout_seconds: 180,
+                expected_seconds: 50,
+                timeout_seconds: 150,
                 commands: &[
                     "cargo nextest run --lib tests::tools::search::line_ -- --skip search_quality",
+                ],
+            },
+        ),
+        (
+            "tools-search-file-mode",
+            ExpectedBucket {
+                expected_seconds: 20,
+                timeout_seconds: 90,
+                commands: &[
                     "cargo nextest run --lib tests::tools::search::file_ -- --skip search_quality",
+                ],
+            },
+        ),
+        (
+            "tools-search-zero-hit",
+            ExpectedBucket {
+                expected_seconds: 15,
+                timeout_seconds: 60,
+                commands: &[
                     "cargo nextest run --lib tests::tools::search::primary_workspace_bug -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::search::zero_hit_reason_tests -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::search::zero_hit_reason_propagation_tests -- --skip search_quality",
@@ -526,17 +617,26 @@ fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
             },
         ),
         (
-            "tools-search-ranking-format",
+            "tools-search-promotion",
             ExpectedBucket {
-                expected_seconds: 40,
-                timeout_seconds: 120,
+                expected_seconds: 15,
+                timeout_seconds: 60,
+                commands: &[
+                    "cargo nextest run --lib tests::tools::search::definition_ -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::search::promotion_tests -- --skip search_quality",
+                ],
+            },
+        ),
+        (
+            "tools-search-format-quality",
+            ExpectedBucket {
+                expected_seconds: 25,
+                timeout_seconds: 90,
                 commands: &[
                     "cargo nextest run --lib tests::tools::search::annotation_search_tests -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::search::content_scoring_tests -- --skip search_quality",
-                    "cargo nextest run --lib tests::tools::search::definition_ -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::search::fast_search_regression_tests -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::search::lean_format_tests -- --skip search_quality",
-                    "cargo nextest run --lib tests::tools::search::promotion_tests -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::search::quality -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::search::race_condition -- --skip search_quality",
                 ],
@@ -565,10 +665,29 @@ fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
         (
             "tools-workspace",
             ExpectedBucket {
-                expected_seconds: 40,
-                timeout_seconds: 120,
+                expected_seconds: 20,
+                timeout_seconds: 90,
                 commands: &[
-                    "cargo nextest run --lib tests::tools::workspace -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::workspace::discovery -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::workspace::file_policy -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::workspace::index_embedding_tests -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::workspace::isolation -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::workspace::management_token -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::workspace::mod_tests -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::workspace::processor -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::workspace::resolver -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::workspace::utils -- --skip search_quality",
+                ],
+            },
+        ),
+        (
+            "tools-workspace-targeting",
+            ExpectedBucket {
+                expected_seconds: 25,
+                timeout_seconds: 90,
+                commands: &[
+                    "cargo nextest run --lib tests::tools::workspace::global_targeting -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::workspace::refresh_routing -- --skip search_quality",
                 ],
             },
         ),
@@ -642,6 +761,15 @@ fn expected_bucket_metadata() -> BTreeMap<&'static str, ExpectedBucketMetadata> 
                 owner: "lead",
                 expensive: false,
                 notes: Some("embedding stack"),
+            },
+        ),
+        (
+            "analysis",
+            ExpectedBucketMetadata {
+                scope_label: "tooling",
+                owner: "lead",
+                expensive: false,
+                notes: Some("post-indexing analysis (test quality, risk, linkage)"),
             },
         ),
         (
@@ -748,12 +876,30 @@ fn expected_bucket_metadata() -> BTreeMap<&'static str, ExpectedBucketMetadata> 
             },
         ),
         (
-            "tools-get-context",
+            "tools-get-context-pipeline",
             ExpectedBucketMetadata {
                 scope_label: "tooling",
                 owner: "lead",
                 expensive: false,
-                notes: Some("get_context surface"),
+                notes: Some("get_context pipeline + scoring/relevance/quality"),
+            },
+        ),
+        (
+            "tools-get-context-format",
+            ExpectedBucketMetadata {
+                scope_label: "tooling",
+                owner: "lead",
+                expensive: false,
+                notes: Some("get_context formatting + token budget"),
+            },
+        ),
+        (
+            "tools-get-context-graph",
+            ExpectedBucketMetadata {
+                scope_label: "tooling",
+                owner: "lead",
+                expensive: false,
+                notes: Some("get_context graph expansion + cross-workspace coverage"),
             },
         ),
         (
@@ -793,12 +939,39 @@ fn expected_bucket_metadata() -> BTreeMap<&'static str, ExpectedBucketMetadata> 
             },
         ),
         (
-            "tools-navigation",
+            "tools-deep-dive",
             ExpectedBucketMetadata {
                 scope_label: "tooling",
                 owner: "lead",
                 expensive: false,
-                notes: Some("navigation, reference, and impact tools"),
+                notes: Some("deep_dive tool coverage"),
+            },
+        ),
+        (
+            "tools-call-path",
+            ExpectedBucketMetadata {
+                scope_label: "tooling",
+                owner: "lead",
+                expensive: false,
+                notes: Some("call_path tool coverage"),
+            },
+        ),
+        (
+            "tools-fast-refs",
+            ExpectedBucketMetadata {
+                scope_label: "tooling",
+                owner: "lead",
+                expensive: false,
+                notes: Some("fast_refs and target-workspace ref coverage"),
+            },
+        ),
+        (
+            "tools-blast-spillover",
+            ExpectedBucketMetadata {
+                scope_label: "tooling",
+                owner: "lead",
+                expensive: false,
+                notes: Some("blast_radius and spillover coverage"),
             },
         ),
         (
@@ -829,12 +1002,30 @@ fn expected_bucket_metadata() -> BTreeMap<&'static str, ExpectedBucketMetadata> 
             },
         ),
         (
-            "tools-search-line-file",
+            "tools-search-line",
             ExpectedBucketMetadata {
                 scope_label: "tooling",
                 owner: "lead",
                 expensive: false,
-                notes: Some("line and file mode search coverage"),
+                notes: Some("line-mode search coverage"),
+            },
+        ),
+        (
+            "tools-search-file-mode",
+            ExpectedBucketMetadata {
+                scope_label: "tooling",
+                owner: "lead",
+                expensive: false,
+                notes: Some("file-mode search coverage"),
+            },
+        ),
+        (
+            "tools-search-zero-hit",
+            ExpectedBucketMetadata {
+                scope_label: "tooling",
+                owner: "lead",
+                expensive: false,
+                notes: Some("zero-hit reason and primary-workspace regression coverage"),
             },
         ),
         (
@@ -847,12 +1038,21 @@ fn expected_bucket_metadata() -> BTreeMap<&'static str, ExpectedBucketMetadata> 
             },
         ),
         (
-            "tools-search-ranking-format",
+            "tools-search-promotion",
             ExpectedBucketMetadata {
                 scope_label: "tooling",
                 owner: "lead",
                 expensive: false,
-                notes: Some("search ranking and result formatting coverage"),
+                notes: Some("definition and promotion ranking coverage"),
+            },
+        ),
+        (
+            "tools-search-format-quality",
+            ExpectedBucketMetadata {
+                scope_label: "tooling",
+                owner: "lead",
+                expensive: false,
+                notes: Some("search formatting, scoring, quality, and race coverage"),
             },
         ),
         (
@@ -879,7 +1079,16 @@ fn expected_bucket_metadata() -> BTreeMap<&'static str, ExpectedBucketMetadata> 
                 scope_label: "tooling",
                 owner: "lead",
                 expensive: false,
-                notes: Some("workspace management tools"),
+                notes: Some("workspace management (excluding heavy targeting fixtures)"),
+            },
+        ),
+        (
+            "tools-workspace-targeting",
+            ExpectedBucketMetadata {
+                scope_label: "tooling",
+                owner: "lead",
+                expensive: false,
+                notes: Some("workspace global-targeting and refresh-routing coverage"),
             },
         ),
         (

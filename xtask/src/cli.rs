@@ -127,7 +127,10 @@ fn parse_dev_link_command(args: Vec<String>) -> Result<DevLinkCommand> {
 fn parse_dev_restart_command(args: Vec<String>) -> Result<CliCommand> {
     let extra: Vec<String> = args.into_iter().skip(2).collect();
     if !extra.is_empty() {
-        bail!("unexpected arguments for `dev-restart`: {}", extra.join(" "));
+        bail!(
+            "unexpected arguments for `dev-restart`: {}",
+            extra.join(" ")
+        );
     }
     Ok(CliCommand::DevRestart)
 }

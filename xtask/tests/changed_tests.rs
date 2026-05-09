@@ -29,9 +29,34 @@ fn changed_tests_select_localized_tool_buckets() {
     assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
     assert_eq!(
         selection.bucket_names,
-        vec!["xtask-runner", "tools-workspace", "workspace-init"]
+        vec![
+            "xtask-runner",
+            "tools-workspace",
+            "tools-workspace-targeting",
+            "workspace-init"
+        ]
     );
     assert!(selection.fallback_paths.is_empty());
+}
+
+#[test]
+fn changed_tests_workspace_targeting_files_route_to_targeting_bucket() {
+    let manifest = sample_manifest();
+
+    for path in [
+        "src/tests/tools/workspace/global_targeting.rs",
+        "src/tests/tools/workspace/refresh_routing.rs",
+    ] {
+        let selection = select_changed_buckets(&manifest, &[path.to_string()]);
+        assert_eq!(selection.mode, ChangedSelectionMode::Buckets, "{}", path);
+        assert_eq!(
+            selection.bucket_names,
+            vec!["tools-workspace-targeting"],
+            "{}",
+            path
+        );
+        assert!(selection.fallback_paths.is_empty(), "{}", path);
+    }
 }
 
 #[test]
@@ -92,8 +117,11 @@ fn changed_tests_selects_search_and_dogfood_for_search_core_changes() {
         selection.bucket_names,
         vec![
             "tools-search-tantivy",
-            "tools-search-line-file",
-            "tools-search-ranking-format",
+            "tools-search-line",
+            "tools-search-file-mode",
+            "tools-search-zero-hit",
+            "tools-search-promotion",
+            "tools-search-format-quality",
             "tools-search-context",
             "tools-search-text",
             "tools-search-hybrid",
@@ -169,13 +197,29 @@ fn changed_tests_tree_sitter_dependency_paths_select_parser_upgrade_bucket() {
 fn changed_tests_reports_fallback_prefix_rationale() {
     let manifest = sample_manifest();
 
-    let selection = select_changed_buckets(&manifest, &["src/analysis/scoring.rs".to_string()]);
+    let selection =
+        select_changed_buckets(&manifest, &["src/tests/fixtures/example.rs".to_string()]);
     let output = render_changed_selection(&selection);
 
     assert_eq!(selection.mode, ChangedSelectionMode::FallbackToDev);
     assert!(output.contains(
-        "CHANGED: rationale: src/analysis/scoring.rs -> dev (fallback prefix: src/analysis/)"
+        "CHANGED: rationale: src/tests/fixtures/example.rs -> dev (fallback prefix: src/tests/fixtures/)"
     ));
+}
+
+#[test]
+fn changed_tests_analysis_paths_route_to_analysis_bucket() {
+    let manifest = sample_manifest();
+
+    for path in [
+        "src/analysis/test_quality.rs",
+        "src/tests/analysis/test_quality_tests.rs",
+    ] {
+        let selection = select_changed_buckets(&manifest, &[path.to_string()]);
+        assert_eq!(selection.mode, ChangedSelectionMode::Buckets, "{}", path);
+        assert_eq!(selection.bucket_names, vec!["analysis"], "{}", path);
+        assert!(selection.fallback_paths.is_empty(), "{}", path);
+    }
 }
 
 #[test]
@@ -190,15 +234,18 @@ fn changed_tests_reports_path_to_bucket_rationale() {
         selection.bucket_names,
         vec![
             "tools-search-tantivy",
-            "tools-search-line-file",
-            "tools-search-ranking-format",
+            "tools-search-line",
+            "tools-search-file-mode",
+            "tools-search-zero-hit",
+            "tools-search-promotion",
+            "tools-search-format-quality",
             "tools-search-context",
             "tools-search-text",
             "tools-search-hybrid",
             "tools-search-query",
         ]
     );
-    assert!(output.contains("CHANGED: rationale: src/tools/search/mod.rs -> tools-search-tantivy, tools-search-line-file, tools-search-ranking-format, tools-search-context, tools-search-text, tools-search-hybrid, tools-search-query"));
+    assert!(output.contains("CHANGED: rationale: src/tools/search/mod.rs -> tools-search-tantivy, tools-search-line, tools-search-file-mode, tools-search-zero-hit, tools-search-promotion, tools-search-format-quality, tools-search-context, tools-search-text, tools-search-hybrid, tools-search-query"));
 }
 
 #[test]
@@ -210,6 +257,9 @@ fn changed_tests_search_paths_select_split_search_buckets() {
         &[
             "src/tests/tools/search/tantivy_tokenizer_tests.rs".to_string(),
             "src/tests/tools/search/line_mode.rs".to_string(),
+            "src/tests/tools/search/file_mode_tests.rs".to_string(),
+            "src/tests/tools/search/primary_workspace_bug.rs".to_string(),
+            "src/tests/tools/search/definition_overfetch_tests.rs".to_string(),
             "src/tests/tools/search/content_scoring_tests.rs".to_string(),
             "src/tests/tools/search_context_lines.rs".to_string(),
             "src/tests/tools/text_search_tantivy.rs".to_string(),
@@ -223,8 +273,11 @@ fn changed_tests_search_paths_select_split_search_buckets() {
         selection.bucket_names,
         vec![
             "tools-search-tantivy",
-            "tools-search-line-file",
-            "tools-search-ranking-format",
+            "tools-search-line",
+            "tools-search-file-mode",
+            "tools-search-zero-hit",
+            "tools-search-promotion",
+            "tools-search-format-quality",
             "tools-search-context",
             "tools-search-text",
             "tools-search-hybrid",
@@ -285,7 +338,7 @@ fn changed_tests_misc_tool_paths_select_split_tool_buckets() {
         vec![
             "tools-get-symbols",
             "tools-editing",
-            "tools-navigation",
+            "tools-deep-dive",
             "tools-refactoring",
             "tools-metrics",
             "tools-format-filter",
@@ -297,18 +350,19 @@ fn changed_tests_misc_tool_paths_select_split_tool_buckets() {
 fn changed_tests_handler_tool_fast_search_selects_search_buckets() {
     let manifest = sample_manifest();
 
-    let selection = select_changed_buckets(
-        &manifest,
-        &["src/handler/tools/fast_search.rs".to_string()],
-    );
+    let selection =
+        select_changed_buckets(&manifest, &["src/handler/tools/fast_search.rs".to_string()]);
 
     assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
     assert_eq!(
         selection.bucket_names,
         vec![
             "tools-search-tantivy",
-            "tools-search-line-file",
-            "tools-search-ranking-format",
+            "tools-search-line",
+            "tools-search-file-mode",
+            "tools-search-zero-hit",
+            "tools-search-promotion",
+            "tools-search-format-quality",
             "tools-search-context",
             "tools-search-text",
             "tools-search-hybrid",
@@ -319,23 +373,44 @@ fn changed_tests_handler_tool_fast_search_selects_search_buckets() {
 }
 
 #[test]
-fn changed_tests_handler_tool_navigation_files_select_navigation_bucket() {
+fn changed_tests_handler_tool_navigation_files_route_per_tool() {
     let manifest = sample_manifest();
 
-    let selection = select_changed_buckets(
-        &manifest,
-        &[
-            "src/handler/tools/fast_refs.rs".to_string(),
-            "src/handler/tools/call_path.rs".to_string(),
-            "src/handler/tools/deep_dive.rs".to_string(),
-            "src/handler/tools/blast_radius.rs".to_string(),
-            "src/handler/tools/spillover_get.rs".to_string(),
-        ],
-    );
+    let cases: &[(&str, &[&str])] = &[
+        ("src/handler/tools/fast_refs.rs", &["tools-fast-refs"]),
+        ("src/handler/tools/call_path.rs", &["tools-call-path"]),
+        ("src/handler/tools/deep_dive.rs", &["tools-deep-dive"]),
+        (
+            "src/handler/tools/blast_radius.rs",
+            &["tools-blast-spillover"],
+        ),
+        (
+            "src/handler/tools/spillover_get.rs",
+            &["tools-blast-spillover"],
+        ),
+    ];
 
+    for (path, expected) in cases {
+        let selection = select_changed_buckets(&manifest, &[path.to_string()]);
+        assert_eq!(selection.mode, ChangedSelectionMode::Buckets, "{}", path);
+        let expected_owned: Vec<String> = expected.iter().map(|s| s.to_string()).collect();
+        assert_eq!(selection.bucket_names, expected_owned, "{}", path);
+        assert!(selection.fallback_paths.is_empty(), "{}", path);
+    }
+
+    // All five together should yield the union (sorted).
+    let all_paths: Vec<String> = cases.iter().map(|(p, _)| p.to_string()).collect();
+    let selection = select_changed_buckets(&manifest, &all_paths);
     assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
-    assert_eq!(selection.bucket_names, vec!["tools-navigation"]);
-    assert!(selection.fallback_paths.is_empty());
+    assert_eq!(
+        selection.bucket_names,
+        vec![
+            "tools-deep-dive",
+            "tools-call-path",
+            "tools-fast-refs",
+            "tools-blast-spillover",
+        ]
+    );
 }
 
 #[test]
@@ -358,8 +433,11 @@ fn changed_tests_handler_tool_files_select_specific_buckets() {
     assert_eq!(
         selection.bucket_names,
         vec![
-            "tools-get-context",
+            "tools-get-context-pipeline",
+            "tools-get-context-format",
+            "tools-get-context-graph",
             "tools-workspace",
+            "tools-workspace-targeting",
             "tools-get-symbols",
             "tools-editing",
             "tools-refactoring",
@@ -373,18 +451,19 @@ fn changed_tests_handler_tool_files_select_specific_buckets() {
 fn changed_tests_handler_search_telemetry_selects_search_buckets() {
     let manifest = sample_manifest();
 
-    let selection = select_changed_buckets(
-        &manifest,
-        &["src/handler/search_telemetry.rs".to_string()],
-    );
+    let selection =
+        select_changed_buckets(&manifest, &["src/handler/search_telemetry.rs".to_string()]);
 
     assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
     assert_eq!(
         selection.bucket_names,
         vec![
             "tools-search-tantivy",
-            "tools-search-line-file",
-            "tools-search-ranking-format",
+            "tools-search-line",
+            "tools-search-file-mode",
+            "tools-search-zero-hit",
+            "tools-search-promotion",
+            "tools-search-format-quality",
             "tools-search-context",
             "tools-search-text",
             "tools-search-hybrid",
@@ -394,24 +473,88 @@ fn changed_tests_handler_search_telemetry_selects_search_buckets() {
 }
 
 #[test]
-fn changed_tests_handler_cross_cutting_files_fall_back_to_dev() {
+fn changed_tests_handler_cross_cutting_files_route_to_specific_buckets() {
     let manifest = sample_manifest();
 
-    for path in [
-        "src/handler/session_workspace.rs",
-        "src/handler/tool_metrics.rs",
-        "src/handler/tool_targets.rs",
-        "src/handler/tools/mod.rs",
-    ] {
+    let cases: &[(&str, &[&str])] = &[
+        ("src/handler/session_workspace.rs", &["daemon"]),
+        ("src/handler/tool_metrics.rs", &["tools-metrics", "daemon"]),
+        (
+            "src/handler/tool_targets.rs",
+            &["tools-workspace", "tools-workspace-targeting", "daemon"],
+        ),
+        ("src/handler/tools/mod.rs", &["daemon"]),
+    ];
+
+    for (path, expected) in cases {
         let selection = select_changed_buckets(&manifest, &[path.to_string()]);
         assert_eq!(
             selection.mode,
-            ChangedSelectionMode::FallbackToDev,
-            "expected {} to fall back to dev",
+            ChangedSelectionMode::Buckets,
+            "expected {} to route to specific buckets",
             path
         );
-        assert_eq!(selection.fallback_paths, vec![path.to_string()]);
+        assert!(
+            selection.fallback_paths.is_empty(),
+            "{} should not fall back",
+            path
+        );
+        let expected_owned: Vec<String> = expected.iter().map(|s| s.to_string()).collect();
+        assert_eq!(
+            selection.bucket_names, expected_owned,
+            "unexpected buckets for {}",
+            path
+        );
     }
+}
+
+#[test]
+fn changed_tests_handler_central_handler_rs_still_falls_back_to_dev() {
+    let manifest = sample_manifest();
+
+    let selection = select_changed_buckets(&manifest, &["src/handler.rs".to_string()]);
+    assert_eq!(selection.mode, ChangedSelectionMode::FallbackToDev);
+    assert_eq!(selection.fallback_paths, vec!["src/handler.rs"]);
+}
+
+#[test]
+fn changed_tests_migration_routes_to_database_and_workspace_init() {
+    let manifest = sample_manifest();
+
+    for path in ["src/migration.rs", "src/tests/migration.rs"] {
+        let selection = select_changed_buckets(&manifest, &[path.to_string()]);
+        assert_eq!(selection.mode, ChangedSelectionMode::Buckets, "{}", path);
+        assert_eq!(
+            selection.bucket_names,
+            vec!["core-database", "workspace-init"],
+            "{}",
+            path
+        );
+        assert!(selection.fallback_paths.is_empty(), "{}", path);
+    }
+}
+
+#[test]
+fn changed_tests_startup_routes_to_lifecycle_workspace_runtime_and_workspace() {
+    let manifest = sample_manifest();
+
+    let selection = select_changed_buckets(&manifest, &["src/startup.rs".to_string()]);
+    assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
+    assert_eq!(
+        selection.bucket_names,
+        vec!["tools-workspace", "lifecycle", "workspace-runtime"]
+    );
+    assert!(selection.fallback_paths.is_empty());
+}
+
+#[test]
+fn changed_tests_src_extractors_reexport_routes_to_extractors_bucket() {
+    let manifest = sample_manifest();
+
+    let selection = select_changed_buckets(&manifest, &["src/extractors/mod.rs".to_string()]);
+    assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
+    assert_eq!(selection.bucket_names, vec!["extractors"]);
+    assert!(selection.fallback_paths.is_empty());
 }
 
 #[test]
@@ -531,18 +674,27 @@ dev = [
   "cli",
   "xtask-runner",
   "tools-workspace",
+  "tools-workspace-targeting",
   "workspace-init",
   "tools-search-tantivy",
-  "tools-search-line-file",
-  "tools-search-ranking-format",
+  "tools-search-line",
+  "tools-search-file-mode",
+  "tools-search-zero-hit",
+  "tools-search-promotion",
+  "tools-search-format-quality",
   "tools-search-context",
   "tools-search-text",
   "tools-search-hybrid",
   "tools-search-query",
   "tools-get-symbols",
-  "tools-get-context",
+  "tools-get-context-pipeline",
+  "tools-get-context-format",
+  "tools-get-context-graph",
   "tools-editing",
-  "tools-navigation",
+  "tools-deep-dive",
+  "tools-call-path",
+  "tools-fast-refs",
+  "tools-blast-spillover",
   "tools-refactoring",
   "tools-metrics",
   "tools-format-filter",
@@ -560,10 +712,20 @@ expected_seconds = 5
 timeout_seconds = 30
 commands = ["cargo nextest run -p xtask"]
 
+[buckets.core-database]
+expected_seconds = 5
+timeout_seconds = 30
+commands = ["cargo nextest run --lib tests::core::database -- --skip search_quality"]
+
 [buckets.tools-workspace]
 expected_seconds = 10
 timeout_seconds = 40
-commands = ["cargo test --lib tests::tools::workspace"]
+commands = ["cargo test --lib tests::tools::workspace::discovery"]
+
+[buckets.tools-workspace-targeting]
+expected_seconds = 10
+timeout_seconds = 40
+commands = ["cargo test --lib tests::tools::workspace::global_targeting"]
 
 [buckets.workspace-init]
 expected_seconds = 10
@@ -575,12 +737,27 @@ expected_seconds = 10
 timeout_seconds = 40
 commands = ["cargo test --lib tests::tools::search::tantivy_"]
 
-[buckets.tools-search-line-file]
+[buckets.tools-search-line]
 expected_seconds = 10
 timeout_seconds = 40
 commands = ["cargo test --lib tests::tools::search::line_"]
 
-[buckets.tools-search-ranking-format]
+[buckets.tools-search-file-mode]
+expected_seconds = 10
+timeout_seconds = 40
+commands = ["cargo test --lib tests::tools::search::file_"]
+
+[buckets.tools-search-zero-hit]
+expected_seconds = 10
+timeout_seconds = 40
+commands = ["cargo test --lib tests::tools::search::primary_workspace_bug"]
+
+[buckets.tools-search-promotion]
+expected_seconds = 10
+timeout_seconds = 40
+commands = ["cargo test --lib tests::tools::search::definition_"]
+
+[buckets.tools-search-format-quality]
 expected_seconds = 10
 timeout_seconds = 40
 commands = ["cargo test --lib tests::tools::search::content_scoring_tests"]
@@ -610,20 +787,45 @@ expected_seconds = 10
 timeout_seconds = 40
 commands = ["cargo test --lib tests::tools::get_symbols::"]
 
-[buckets.tools-get-context]
+[buckets.tools-get-context-pipeline]
 expected_seconds = 10
 timeout_seconds = 40
-commands = ["cargo test --lib tests::tools::get_context::"]
+commands = ["cargo test --lib tests::tools::get_context_pipeline_tests"]
+
+[buckets.tools-get-context-format]
+expected_seconds = 10
+timeout_seconds = 40
+commands = ["cargo test --lib tests::tools::get_context_formatting_tests"]
+
+[buckets.tools-get-context-graph]
+expected_seconds = 10
+timeout_seconds = 40
+commands = ["cargo test --lib tests::tools::get_context_graph_expansion_tests"]
 
 [buckets.tools-editing]
 expected_seconds = 10
 timeout_seconds = 40
 commands = ["cargo test --lib tests::tools::editing::"]
 
-[buckets.tools-navigation]
+[buckets.tools-deep-dive]
 expected_seconds = 10
 timeout_seconds = 40
 commands = ["cargo test --lib tests::tools::deep_dive_tests"]
+
+[buckets.tools-call-path]
+expected_seconds = 10
+timeout_seconds = 40
+commands = ["cargo test --lib tests::tools::call_path_tests"]
+
+[buckets.tools-fast-refs]
+expected_seconds = 10
+timeout_seconds = 40
+commands = ["cargo test --lib tests::tools::fast_refs_primary_rebind_tests"]
+
+[buckets.tools-blast-spillover]
+expected_seconds = 10
+timeout_seconds = 40
+commands = ["cargo test --lib tests::tools::blast_radius"]
 
 [buckets.tools-refactoring]
 expected_seconds = 10
@@ -689,6 +891,11 @@ commands = ["cargo nextest run --lib tests::daemon -- --skip search_quality"]
 expected_seconds = 40
 timeout_seconds = 90
 commands = ["cargo nextest run --lib tests::daemon::workspace_pool -- --skip search_quality"]
+
+[buckets.analysis]
+expected_seconds = 30
+timeout_seconds = 90
+commands = ["cargo nextest run --lib tests::analysis -- --skip search_quality"]
     "#,
     )
     .unwrap()

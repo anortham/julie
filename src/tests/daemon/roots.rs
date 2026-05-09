@@ -2842,8 +2842,7 @@ async fn build_cwd_path_handler(
 
 async fn expect_cwd_path_rejected_as_sensitive(path: std::path::PathBuf) -> Result<()> {
     let display = path.display().to_string();
-    let (handler, service, write_half, _indexes_dir) =
-        build_cwd_path_handler(path.clone()).await?;
+    let (handler, service, write_half, _indexes_dir) = build_cwd_path_handler(path.clone()).await?;
 
     let result = <JulieServerHandler as ServerHandler>::call_tool(
         &handler,
@@ -2857,8 +2856,7 @@ async fn expect_cwd_path_rejected_as_sensitive(path: std::path::PathBuf) -> Resu
     )
     .await;
 
-    let error =
-        result.expect_err(&format!("sensitive cwd path {display} should be rejected"));
+    let error = result.expect_err(&format!("sensitive cwd path {display} should be rejected"));
     let message = error.to_string();
     assert!(
         message.contains("sensitive system path") && message.contains("JULIE_WORKSPACE"),
@@ -2915,16 +2913,14 @@ async fn test_primary_request_cwd_windows_root_is_rejected_as_sensitive() -> Res
 #[cfg(windows)]
 #[tokio::test]
 async fn test_primary_request_cwd_windows_system32_is_rejected_as_sensitive() -> Result<()> {
-    expect_cwd_path_rejected_as_sensitive(std::path::PathBuf::from(r"C:\Windows\System32"))
-        .await
+    expect_cwd_path_rejected_as_sensitive(std::path::PathBuf::from(r"C:\Windows\System32")).await
 }
 
 #[cfg(windows)]
 #[tokio::test]
-async fn test_primary_request_cwd_windows_system32_lowercase_is_rejected_as_sensitive()
--> Result<()> {
-    expect_cwd_path_rejected_as_sensitive(std::path::PathBuf::from(r"c:\windows\system32"))
-        .await
+async fn test_primary_request_cwd_windows_system32_lowercase_is_rejected_as_sensitive() -> Result<()>
+{
+    expect_cwd_path_rejected_as_sensitive(std::path::PathBuf::from(r"c:\windows\system32")).await
 }
 
 #[tokio::test]
@@ -2936,8 +2932,7 @@ async fn test_primary_request_cwd_normal_project_dir_is_not_rejected_by_sensitiv
         "pub fn marker_for_sensitive_guard_positive_case() {}\n",
     )?;
     let path = project_root.path().to_path_buf();
-    let (handler, service, write_half, _indexes_dir) =
-        build_cwd_path_handler(path.clone()).await?;
+    let (handler, service, write_half, _indexes_dir) = build_cwd_path_handler(path.clone()).await?;
 
     let result = <JulieServerHandler as ServerHandler>::call_tool(
         &handler,

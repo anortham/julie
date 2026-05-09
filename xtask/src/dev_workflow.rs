@@ -186,10 +186,7 @@ fn binary_name() -> &'static str {
 
 /// Walk `<cache_root>/<version>/bin/<arch>/julie-server` and collect any
 /// candidates that exist on disk.
-fn discover_plugin_binaries(
-    cache_root: &Path,
-    report: &mut DevLinkReport,
-) -> Result<Vec<PathBuf>> {
+fn discover_plugin_binaries(cache_root: &Path, report: &mut DevLinkReport) -> Result<Vec<PathBuf>> {
     let mut results = Vec::new();
 
     if !cache_root.is_dir() {
@@ -197,8 +194,8 @@ fn discover_plugin_binaries(
         return Ok(results);
     }
 
-    for version_entry in fs::read_dir(cache_root)
-        .with_context(|| format!("reading {}", cache_root.display()))?
+    for version_entry in
+        fs::read_dir(cache_root).with_context(|| format!("reading {}", cache_root.display()))?
     {
         let version_entry = version_entry?;
         if !version_entry.file_type()?.is_dir() {
@@ -245,9 +242,7 @@ fn link_or_skip(path: &Path, target: &Path, dry_run: bool) -> Result<LinkOutcome
         let want = target
             .canonicalize()
             .unwrap_or_else(|_| target.to_path_buf());
-        let have = resolved
-            .canonicalize()
-            .unwrap_or_else(|_| resolved.clone());
+        let have = resolved.canonicalize().unwrap_or_else(|_| resolved.clone());
         if want == have {
             return Ok(LinkOutcome::AlreadyLinked);
         }
@@ -324,12 +319,10 @@ mod tests {
         let target_bin = target.join(binary_name());
         File::create(&target_bin).unwrap();
 
-        let cache_bin =
-            make_fake_cache(&cache, "7.8.1", "aarch64-apple-darwin").unwrap();
+        let cache_bin = make_fake_cache(&cache, "7.8.1", "aarch64-apple-darwin").unwrap();
 
         let mut out = Vec::new();
-        let report =
-            run_dev_link(&workspace, false, &cache, &mut out).expect("dev-link succeeds");
+        let report = run_dev_link(&workspace, false, &cache, &mut out).expect("dev-link succeeds");
 
         assert_eq!(report.linked.len(), 1, "exactly one binary linked");
         assert_eq!(report.linked[0].previous_kind, PreviousKind::RealBinary);
@@ -337,7 +330,10 @@ mod tests {
         assert_eq!(report.skipped.len(), 0);
 
         let meta = fs::symlink_metadata(&cache_bin).unwrap();
-        assert!(meta.file_type().is_symlink(), "cache entry is now a symlink");
+        assert!(
+            meta.file_type().is_symlink(),
+            "cache entry is now a symlink"
+        );
         let link_target = fs::read_link(&cache_bin).unwrap();
         assert_eq!(link_target, target_bin, "symlink points at dev binary");
     }
@@ -353,8 +349,7 @@ mod tests {
         let target_bin = target.join(binary_name());
         File::create(&target_bin).unwrap();
 
-        let _cache_bin =
-            make_fake_cache(&cache, "7.8.1", "aarch64-apple-darwin").unwrap();
+        let _cache_bin = make_fake_cache(&cache, "7.8.1", "aarch64-apple-darwin").unwrap();
 
         let mut out = Vec::new();
         run_dev_link(&workspace, false, &cache, &mut out).unwrap();
@@ -362,7 +357,11 @@ mod tests {
         let mut out = Vec::new();
         let report = run_dev_link(&workspace, false, &cache, &mut out).unwrap();
         assert_eq!(report.linked.len(), 0, "second run links nothing");
-        assert_eq!(report.already_linked.len(), 1, "second run sees existing symlink");
+        assert_eq!(
+            report.already_linked.len(),
+            1,
+            "second run sees existing symlink"
+        );
     }
 
     #[test]
@@ -371,8 +370,7 @@ mod tests {
         let workspace = tmp.path().join("workspace");
         let cache = tmp.path().join("cache").join("julie-plugin").join("julie");
 
-        let cache_bin =
-            make_fake_cache(&cache, "7.8.1", "aarch64-apple-darwin").unwrap();
+        let cache_bin = make_fake_cache(&cache, "7.8.1", "aarch64-apple-darwin").unwrap();
 
         let mut out = Vec::new();
         let report = run_dev_link(&workspace, true, &cache, &mut out)

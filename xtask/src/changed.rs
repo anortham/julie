@@ -10,32 +10,26 @@ const DEV_FALLBACK_FILES: &[&str] = &[
     "Cargo.toml",
     "Cargo.lock",
     "src/handler.rs",
-    "src/handler/session_workspace.rs",
-    "src/handler/tool_metrics.rs",
-    "src/handler/tool_targets.rs",
-    "src/handler/tools/mod.rs",
     "src/lib.rs",
     "src/main.rs",
-    "src/migration.rs",
-    "src/startup.rs",
     "src/tests/mod.rs",
-    "src/tests/migration.rs",
     "src/tests/test_utils.rs",
 ];
 
 const DEV_FALLBACK_PREFIXES: &[&str] = &[
     "crates/",
     "fixtures/",
-    "src/analysis/",
-    "src/extractors/",
     "src/tests/fixtures/",
     "src/tests/helpers/",
 ];
 
 const SEARCH_TOOL_BUCKETS: &[&str] = &[
     "tools-search-tantivy",
-    "tools-search-line-file",
-    "tools-search-ranking-format",
+    "tools-search-line",
+    "tools-search-file-mode",
+    "tools-search-zero-hit",
+    "tools-search-promotion",
+    "tools-search-format-quality",
     "tools-search-context",
     "tools-search-text",
     "tools-search-hybrid",
@@ -44,8 +38,11 @@ const SEARCH_TOOL_BUCKETS: &[&str] = &[
 
 const SEARCH_TOOL_BUCKETS_WITH_QUALITY: &[&str] = &[
     "tools-search-tantivy",
-    "tools-search-line-file",
-    "tools-search-ranking-format",
+    "tools-search-line",
+    "tools-search-file-mode",
+    "tools-search-zero-hit",
+    "tools-search-promotion",
+    "tools-search-format-quality",
     "tools-search-context",
     "tools-search-text",
     "tools-search-hybrid",
@@ -359,6 +356,39 @@ fn buckets_for_path(path: &str) -> &'static [&'static str] {
         return &["extractors"];
     }
 
+    // src/extractors/ is a thin re-export wrapper for the julie-extractors crate;
+    // changes there only need the extractor bucket to gate.
+    if matches_prefix(path, &["src/extractors/"]) {
+        return &["extractors"];
+    }
+
+    // Handler cross-cutting subfiles map to specific buckets so an edit doesn't drag the
+    // whole dev tier in.
+    if path == "src/handler/session_workspace.rs" {
+        return &["daemon"];
+    }
+    if path == "src/handler/tool_metrics.rs" {
+        return &["tools-metrics", "daemon"];
+    }
+    if path == "src/handler/tool_targets.rs" {
+        return &["tools-workspace", "tools-workspace-targeting", "daemon"];
+    }
+    if path == "src/handler/tools/mod.rs" {
+        // Pure module declaration file. Re-routes to daemon (handler trait surface);
+        // any added tool also touches its dedicated handler/tools/<tool>.rs file which
+        // pulls the right bucket independently.
+        return &["daemon"];
+    }
+
+    // Migration and startup routing — both touch DaemonDatabase, workspace registry,
+    // and indexing; they no longer need to force the full dev tier.
+    if matches_exact(path, &["src/migration.rs", "src/tests/migration.rs"]) {
+        return &["core-database", "workspace-init"];
+    }
+    if path == "src/startup.rs" {
+        return &["lifecycle", "workspace-runtime", "tools-workspace"];
+    }
+
     if matches_exact(
         path,
         &[
@@ -404,10 +434,18 @@ fn buckets_for_path(path: &str) -> &'static [&'static str] {
         return &["core-database"];
     }
 
-    if matches_prefix(path, &["src/tools/get_context/"])
-        || matches_prefix(path, &["src/tests/tools/get_context"])
-    {
-        return &["tools-get-context"];
+    // Per-test file routing for get_context split.
+    if let Some(buckets) = get_context_test_buckets_for_path(path) {
+        return buckets;
+    }
+
+    // src/tools/get_context/ source edits run all three slices conservatively.
+    if matches_prefix(path, &["src/tools/get_context/"]) {
+        return &[
+            "tools-get-context-pipeline",
+            "tools-get-context-format",
+            "tools-get-context-graph",
+        ];
     }
 
     if matches_exact(
@@ -475,7 +513,22 @@ fn buckets_for_path(path: &str) -> &'static [&'static str] {
     }
 
     if matches_prefix(path, &["src/tools/workspace/", "src/workspace/"]) {
-        return &["tools-workspace", "workspace-init"];
+        return &[
+            "tools-workspace",
+            "tools-workspace-targeting",
+            "workspace-init",
+        ];
+    }
+
+    // Heavy targeting fixtures are isolated in tools-workspace-targeting.
+    if matches_exact(
+        path,
+        &[
+            "src/tests/tools/workspace/global_targeting.rs",
+            "src/tests/tools/workspace/refresh_routing.rs",
+        ],
+    ) {
+        return &["tools-workspace-targeting"];
     }
 
     if matches_prefix(path, &["src/tests/tools/workspace/"]) {
@@ -517,29 +570,64 @@ fn buckets_for_path(path: &str) -> &'static [&'static str] {
         return &["tools-editing"];
     }
 
-    if matches_prefix(
+    // src/tools/deep_dive/ and deep_dive test files
+    if matches_prefix(path, &["src/tools/deep_dive/"])
+        || matches_exact(
+            path,
+            &[
+                "src/tests/tools/deep_dive_tests.rs",
+                "src/tests/tools/deep_dive_primary_rebind_tests.rs",
+                "src/tests/tools/deep_dive_regression_tests.rs",
+            ],
+        )
+    {
+        return &["tools-deep-dive"];
+    }
+
+    // call_path tool source + tests
+    if path == "src/tools/navigation/call_path.rs"
+        || matches_exact(
+            path,
+            &[
+                "src/tests/tools/call_path_tests.rs",
+                "src/tests/tools/call_path_disambiguation_tests.rs",
+            ],
+        )
+    {
+        return &["tools-call-path"];
+    }
+
+    // fast_refs tool source + tests (target_workspace.rs is the cross-workspace
+    // binding for refs; group with fast-refs).
+    if matches_exact(
         path,
         &[
-            "src/tools/deep_dive/",
-            "src/tools/impact/",
-            "src/tools/navigation/",
-            "src/tools/spillover/",
-        ],
-    ) || matches_exact(
-        path,
-        &[
-            "src/tests/tools/deep_dive_primary_rebind_tests.rs",
-            "src/tests/tools/deep_dive_regression_tests.rs",
-            "src/tests/tools/deep_dive_tests.rs",
+            "src/tools/navigation/fast_refs.rs",
+            "src/tools/navigation/target_workspace.rs",
             "src/tests/tools/fast_refs_primary_rebind_tests.rs",
             "src/tests/tools/target_workspace_fast_refs_tests.rs",
-            "src/tests/tools/call_path_tests.rs",
-            "src/tests/tools/call_path_disambiguation_tests.rs",
-            "src/tests/tools/spillover_tests.rs",
         ],
-    ) || path.starts_with("src/tests/tools/blast_radius")
+    ) {
+        return &["tools-fast-refs"];
+    }
+
+    // blast_radius (impact) and spillover share graph traversal infrastructure
+    if matches_prefix(path, &["src/tools/impact/", "src/tools/spillover/"])
+        || path == "src/tests/tools/spillover_tests.rs"
+        || path.starts_with("src/tests/tools/blast_radius")
     {
-        return &["tools-navigation"];
+        return &["tools-blast-spillover"];
+    }
+
+    // src/tools/navigation/{mod,formatting,resolution}.rs are shared across all
+    // navigation buckets. An edit there is rare and we conservatively run all four.
+    if matches_prefix(path, &["src/tools/navigation/"]) {
+        return &[
+            "tools-deep-dive",
+            "tools-call-path",
+            "tools-fast-refs",
+            "tools-blast-spillover",
+        ];
     }
 
     if matches_prefix(
@@ -595,6 +683,10 @@ fn buckets_for_path(path: &str) -> &'static [&'static str] {
         return &["dashboard"];
     }
 
+    if matches_prefix(path, &["src/analysis/", "src/tests/analysis/"]) {
+        return &["analysis"];
+    }
+
     if matches_prefix(path, &["src/health/"])
         || matches_exact(path, &["src/tests/integration/system_health.rs"])
     {
@@ -615,23 +707,80 @@ fn buckets_for_path(path: &str) -> &'static [&'static str] {
 fn handler_tool_buckets_for_path(path: &str) -> Option<&'static [&'static str]> {
     match path {
         "src/handler/tools/fast_search.rs" => Some(SEARCH_TOOL_BUCKETS),
-        "src/handler/tools/fast_refs.rs"
-        | "src/handler/tools/call_path.rs"
-        | "src/handler/tools/deep_dive.rs"
-        | "src/handler/tools/blast_radius.rs"
-        | "src/handler/tools/spillover_get.rs" => Some(&["tools-navigation"]),
-        "src/handler/tools/get_symbols.rs" => Some(&["tools-get-symbols"]),
-        "src/handler/tools/get_context.rs" => Some(&["tools-get-context"]),
-        "src/handler/tools/rename_symbol.rs" => Some(&["tools-refactoring"]),
-        "src/handler/tools/manage_workspace.rs" => {
-            Some(&["tools-workspace", "workspace-init"])
+        "src/handler/tools/fast_refs.rs" => Some(&["tools-fast-refs"]),
+        "src/handler/tools/call_path.rs" => Some(&["tools-call-path"]),
+        "src/handler/tools/deep_dive.rs" => Some(&["tools-deep-dive"]),
+        "src/handler/tools/blast_radius.rs" | "src/handler/tools/spillover_get.rs" => {
+            Some(&["tools-blast-spillover"])
         }
+        "src/handler/tools/get_symbols.rs" => Some(&["tools-get-symbols"]),
+        "src/handler/tools/get_context.rs" => Some(&[
+            "tools-get-context-pipeline",
+            "tools-get-context-format",
+            "tools-get-context-graph",
+        ]),
+        "src/handler/tools/rename_symbol.rs" => Some(&["tools-refactoring"]),
+        "src/handler/tools/manage_workspace.rs" => Some(&[
+            "tools-workspace",
+            "tools-workspace-targeting",
+            "workspace-init",
+        ]),
         "src/handler/tools/edit_file.rs" | "src/handler/tools/rewrite_symbol.rs" => {
             Some(&["tools-editing"])
         }
         "src/handler/search_telemetry.rs" => Some(SEARCH_TOOL_BUCKETS),
         _ => None,
     }
+}
+
+fn get_context_test_buckets_for_path(path: &str) -> Option<&'static [&'static str]> {
+    if matches_exact(
+        path,
+        &[
+            "src/tests/tools/get_context_pipeline_tests.rs",
+            "src/tests/tools/get_context_pipeline_relevance_tests.rs",
+            "src/tests/tools/get_context_relevance_tests.rs",
+            "src/tests/tools/get_context_scoring_tests.rs",
+            "src/tests/tools/get_context_quality_tests.rs",
+        ],
+    ) {
+        return Some(&["tools-get-context-pipeline"]);
+    }
+
+    if matches_exact(
+        path,
+        &[
+            "src/tests/tools/get_context_allocation_tests.rs",
+            "src/tests/tools/get_context_formatting_tests.rs",
+            "src/tests/tools/get_context_token_budget_tests.rs",
+            "src/tests/tools/get_context_tests.rs",
+        ],
+    ) {
+        return Some(&["tools-get-context-format"]);
+    }
+
+    if matches_exact(
+        path,
+        &[
+            "src/tests/tools/get_context_graph_expansion_tests.rs",
+            "src/tests/tools/get_context_task_inputs_tests.rs",
+            "src/tests/tools/get_context_primary_rebind_tests.rs",
+            "src/tests/tools/get_context_target_workspace_metrics_tests.rs",
+        ],
+    ) {
+        return Some(&["tools-get-context-graph"]);
+    }
+
+    // Any other src/tests/tools/get_context_*.rs runs all three slices.
+    if path.starts_with("src/tests/tools/get_context") {
+        return Some(&[
+            "tools-get-context-pipeline",
+            "tools-get-context-format",
+            "tools-get-context-graph",
+        ]);
+    }
+
+    None
 }
 
 fn search_test_buckets_for_path(path: &str) -> Option<&'static [&'static str]> {
@@ -643,13 +792,15 @@ fn search_test_buckets_for_path(path: &str) -> Option<&'static [&'static str]> {
         return Some(&["tools-search-tantivy"]);
     }
 
-    if matches_prefix(
-        path,
-        &[
-            "src/tests/tools/search/line_",
-            "src/tests/tools/search/file_",
-        ],
-    ) || matches_exact(
+    if matches_prefix(path, &["src/tests/tools/search/line_"]) {
+        return Some(&["tools-search-line"]);
+    }
+
+    if matches_prefix(path, &["src/tests/tools/search/file_"]) {
+        return Some(&["tools-search-file-mode"]);
+    }
+
+    if matches_exact(
         path,
         &[
             "src/tests/tools/search/primary_workspace_bug.rs",
@@ -657,7 +808,13 @@ fn search_test_buckets_for_path(path: &str) -> Option<&'static [&'static str]> {
             "src/tests/tools/search/zero_hit_reason_propagation_tests.rs",
         ],
     ) {
-        return Some(&["tools-search-line-file"]);
+        return Some(&["tools-search-zero-hit"]);
+    }
+
+    if matches_prefix(path, &["src/tests/tools/search/definition_"])
+        || path == "src/tests/tools/search/promotion_tests.rs"
+    {
+        return Some(&["tools-search-promotion"]);
     }
 
     if matches_exact(
@@ -665,16 +822,13 @@ fn search_test_buckets_for_path(path: &str) -> Option<&'static [&'static str]> {
         &[
             "src/tests/tools/search/annotation_search_tests.rs",
             "src/tests/tools/search/content_scoring_tests.rs",
-            "src/tests/tools/search/definition_overfetch_tests.rs",
-            "src/tests/tools/search/definition_promotion_tests.rs",
             "src/tests/tools/search/fast_search_regression_tests.rs",
             "src/tests/tools/search/lean_format_tests.rs",
-            "src/tests/tools/search/promotion_tests.rs",
             "src/tests/tools/search/quality.rs",
             "src/tests/tools/search/race_condition.rs",
         ],
     ) {
-        return Some(&["tools-search-ranking-format"]);
+        return Some(&["tools-search-format-quality"]);
     }
 
     if matches_exact(path, &["src/tests/tools/search_context_lines.rs"]) {
@@ -717,21 +871,31 @@ fn sort_bucket_names(bucket_names: Vec<String>) -> Vec<String> {
         "extractors",
         "parser-upgrade",
         "projection",
-        "tools-get-context",
+        "tools-get-context-pipeline",
+        "tools-get-context-format",
+        "tools-get-context-graph",
         "tools-search-tantivy",
-        "tools-search-line-file",
-        "tools-search-ranking-format",
+        "tools-search-line",
+        "tools-search-file-mode",
+        "tools-search-zero-hit",
+        "tools-search-promotion",
+        "tools-search-format-quality",
         "tools-search-context",
         "tools-search-text",
         "tools-search-hybrid",
         "tools-search-query",
         "tools-workspace",
+        "tools-workspace-targeting",
         "tools-get-symbols",
         "tools-editing",
-        "tools-navigation",
+        "tools-deep-dive",
+        "tools-call-path",
+        "tools-fast-refs",
+        "tools-blast-spillover",
         "tools-refactoring",
         "tools-metrics",
         "tools-format-filter",
+        "analysis",
         "core-fast",
         "transport",
         "lifecycle",
