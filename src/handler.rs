@@ -245,6 +245,9 @@ pub struct JulieServerHandler {
     /// Set when on_initialized defers auto-indexing until the primary workspace
     /// is resolved from client roots. Consumed by the first successful bind.
     deferred_auto_index_pending: Arc<AtomicBool>,
+    /// Single-flight gate for deferred auto-index repair so primary requests can
+    /// wait behind an already-started background repair instead of racing it.
+    deferred_auto_index_gate: Arc<tokio::sync::Mutex<()>>,
     /// Certification/replay handlers can index external repos without writing
     /// helper files such as `.julieignore` into those repos.
     pub(crate) suppress_workspace_file_writes: Arc<AtomicBool>,
@@ -389,6 +392,19 @@ impl JulieServerHandler {
         Ok(roots)
     }
 
+    fn reject_cwd_filesystem_root_startup_hint(&self) -> Result<()> {
+        let startup_hint = self.workspace_startup_hint();
+        if matches!(startup_hint.source, Some(WorkspaceStartupSource::Cwd))
+            && startup_hint.path.parent().is_none()
+        {
+            anyhow::bail!(
+                "Refusing to use filesystem root as Julie primary workspace from process cwd. \
+Set JULIE_WORKSPACE or launch/configure the MCP server with a project cwd."
+            );
+        }
+        Ok(())
+    }
+
     fn primary_binding_for_root(&self, workspace_root: PathBuf) -> Result<PrimaryWorkspaceBinding> {
         let workspace_root = Self::canonicalize_workspace_path(workspace_root);
         let workspace_id =
@@ -410,20 +426,38 @@ impl JulieServerHandler {
             .store(pending, Ordering::Release);
     }
 
-    fn resume_deferred_auto_index_if_needed(&self) {
+    async fn complete_deferred_auto_index_if_needed(&self) -> Result<()> {
         use std::sync::atomic::Ordering;
 
+        let _deferred_guard = self.deferred_auto_index_gate.lock().await;
         if !self
             .deferred_auto_index_pending
             .swap(false, Ordering::AcqRel)
         {
-            return;
+            return Ok(());
         }
 
-        let handler = self.clone();
-        tokio::spawn(async move {
-            handler.run_auto_indexing().await;
-        });
+        match crate::startup::run_primary_workspace_repair(self).await {
+            Ok(Some(plan)) => {
+                let reasons = plan
+                    .reasons
+                    .iter()
+                    .map(std::string::ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                info!(%reasons, "Completed deferred auto-index repair");
+                Ok(())
+            }
+            Ok(None) => {
+                *self.is_indexed.write().await = true;
+                info!("Deferred auto-index repair found workspace already indexed");
+                Ok(())
+            }
+            Err(err) => {
+                self.mark_deferred_auto_index_pending(true);
+                Err(err.context("deferred auto-index repair failed"))
+            }
+        }
     }
 
     async fn attach_daemon_primary_binding_if_needed(
@@ -474,6 +508,7 @@ impl JulieServerHandler {
     }
 
     async fn reconcile_primary_workspace_to_startup_hint(&self) -> Result<()> {
+        self.reject_cwd_filesystem_root_startup_hint()?;
         let startup_binding = self.primary_binding_for_root(self.workspace_startup_hint().path)?;
         self.attach_daemon_primary_binding_if_needed(&startup_binding)
             .await?;
@@ -495,7 +530,11 @@ impl JulieServerHandler {
         Ok(())
     }
 
-    async fn ensure_primary_workspace_for_request(&self, peer: &Peer<RoleServer>) -> Result<()> {
+    async fn ensure_primary_workspace_for_request(
+        &self,
+        peer: &Peer<RoleServer>,
+        complete_deferred_auto_index: bool,
+    ) -> Result<()> {
         let existing_binding = match self.require_primary_binding() {
             Ok(binding) => Some(binding),
             Err(err) if self.is_primary_workspace_swap_in_progress() => return Err(err),
@@ -508,12 +547,17 @@ impl JulieServerHandler {
         if !prefers_request_roots {
             if self.roots_dirty() || existing_binding.is_none() {
                 self.reconcile_primary_workspace_to_startup_hint().await?;
-                self.resume_deferred_auto_index_if_needed();
+                if complete_deferred_auto_index {
+                    self.complete_deferred_auto_index_if_needed().await?;
+                }
             }
             return Ok(());
         }
 
         if existing_binding.is_some() && !self.roots_dirty() {
+            if complete_deferred_auto_index {
+                self.complete_deferred_auto_index_if_needed().await?;
+            }
             return Ok(());
         }
 
@@ -521,12 +565,16 @@ impl JulieServerHandler {
             match self.list_roots_from_peer(peer).await {
                 Ok(roots) => {
                     if self.reconcile_primary_workspace_roots(roots).await? {
-                        self.resume_deferred_auto_index_if_needed();
+                        if complete_deferred_auto_index {
+                            self.complete_deferred_auto_index_if_needed().await?;
+                        }
                         return Ok(());
                     }
 
                     self.reconcile_primary_workspace_to_startup_hint().await?;
-                    self.resume_deferred_auto_index_if_needed();
+                    if complete_deferred_auto_index {
+                        self.complete_deferred_auto_index_if_needed().await?;
+                    }
                     return Ok(());
                 }
                 Err(err) => {
@@ -542,7 +590,9 @@ impl JulieServerHandler {
                             self.last_roots_snapshot().filter(|roots| !roots.is_empty())
                         {
                             if self.reconcile_primary_workspace_roots(roots).await? {
-                                self.resume_deferred_auto_index_if_needed();
+                                if complete_deferred_auto_index {
+                                    self.complete_deferred_auto_index_if_needed().await?;
+                                }
                                 return Ok(());
                             }
                         }
@@ -551,12 +601,29 @@ impl JulieServerHandler {
             }
         }
 
+        self.reject_cwd_filesystem_root_startup_hint()?;
         let binding = self.primary_binding_for_root(self.workspace_startup_hint().path)?;
         self.attach_daemon_primary_binding_if_needed(&binding)
             .await?;
         self.activate_primary_binding(&binding);
-        self.resume_deferred_auto_index_if_needed();
+        if complete_deferred_auto_index {
+            self.complete_deferred_auto_index_if_needed().await?;
+        }
         Ok(())
+    }
+
+    fn manage_workspace_primary_index_request(
+        arguments: Option<&serde_json::Map<String, serde_json::Value>>,
+    ) -> bool {
+        let Some(arguments) = arguments else {
+            return false;
+        };
+
+        let operation = arguments
+            .get("operation")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default();
+        operation == "index" && arguments.get("path").is_none_or(serde_json::Value::is_null)
     }
 
     fn manage_workspace_request_targets_primary(
@@ -680,6 +747,7 @@ impl JulieServerHandler {
             embedding_service: None,
             restart_pending: None,
             deferred_auto_index_pending: Arc::new(AtomicBool::new(false)),
+            deferred_auto_index_gate: Arc::new(tokio::sync::Mutex::new(())),
             suppress_workspace_file_writes: Arc::new(AtomicBool::new(false)),
             session_lifecycle: None,
             watcher_pool: None,
@@ -796,6 +864,7 @@ impl JulieServerHandler {
             embedding_service,
             restart_pending,
             deferred_auto_index_pending: Arc::new(AtomicBool::new(false)),
+            deferred_auto_index_gate: Arc::new(tokio::sync::Mutex::new(())),
             suppress_workspace_file_writes: Arc::new(AtomicBool::new(false)),
             session_lifecycle: None,
             watcher_pool,
@@ -904,6 +973,7 @@ impl JulieServerHandler {
             embedding_service,
             restart_pending,
             deferred_auto_index_pending: Arc::new(AtomicBool::new(false)),
+            deferred_auto_index_gate: Arc::new(tokio::sync::Mutex::new(())),
             suppress_workspace_file_writes: Arc::new(AtomicBool::new(!enable_project_writes)),
             session_lifecycle: None,
             watcher_pool,
@@ -3016,7 +3086,9 @@ impl ServerHandler for JulieServerHandler {
         context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, McpError> {
         if Self::tool_request_targets_primary(request.name.as_ref(), request.arguments.as_ref()) {
-            self.ensure_primary_workspace_for_request(&context.peer)
+            let complete_deferred_auto_index = !(request.name.as_ref() == "manage_workspace"
+                && Self::manage_workspace_primary_index_request(request.arguments.as_ref()));
+            self.ensure_primary_workspace_for_request(&context.peer, complete_deferred_auto_index)
                 .await
                 .map_err(|err| McpError::internal_error(err.to_string(), None))?;
         }
@@ -3042,21 +3114,30 @@ impl ServerHandler for JulieServerHandler {
         info!("MCP connection established - client initialized");
 
         let startup_hint = self.workspace_startup_hint();
-        if crate::startup::startup_source_prefers_request_roots(startup_hint.source)
-            && self.client_supports_workspace_roots()
-        {
+        if crate::startup::startup_source_prefers_request_roots(startup_hint.source) {
             self.mark_deferred_auto_index_pending(true);
-            info!(
-                startup_source = ?startup_hint.source.unwrap_or(WorkspaceStartupSource::Cwd),
-                "Resolving client roots before auto-indexing"
-            );
-            let handler = self.clone();
-            let peer = context.peer;
-            tokio::spawn(async move {
-                if let Err(err) = handler.ensure_primary_workspace_for_request(&peer).await {
-                    warn!("Failed to resolve primary workspace from client roots: {err}");
-                }
-            });
+
+            if self.client_supports_workspace_roots() {
+                info!(
+                    startup_source = ?startup_hint.source.unwrap_or(WorkspaceStartupSource::Cwd),
+                    "Resolving client roots before auto-indexing"
+                );
+                let handler = self.clone();
+                let peer = context.peer;
+                tokio::spawn(async move {
+                    if let Err(err) = handler
+                        .ensure_primary_workspace_for_request(&peer, true)
+                        .await
+                    {
+                        warn!("Failed to resolve primary workspace from client roots: {err}");
+                    }
+                });
+            } else {
+                info!(
+                    startup_source = ?startup_hint.source.unwrap_or(WorkspaceStartupSource::Cwd),
+                    "Deferring cwd auto-indexing until first primary tool request"
+                );
+            }
             return;
         }
 
@@ -3107,7 +3188,10 @@ impl ServerHandler for JulieServerHandler {
             let handler = self.clone();
             let peer = context.peer;
             tokio::spawn(async move {
-                if let Err(err) = handler.ensure_primary_workspace_for_request(&peer).await {
+                if let Err(err) = handler
+                    .ensure_primary_workspace_for_request(&peer, true)
+                    .await
+                {
                     warn!("Failed to resolve deferred workspace on roots_list_changed: {err}");
                 }
             });
