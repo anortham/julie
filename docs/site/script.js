@@ -348,10 +348,10 @@
   const copySnippets = {
     'claude-code': '/plugin marketplace add anortham/julie-plugin\n/plugin install julie@julie-plugin',
     'vscode': '{\n  "servers": {\n    "Julie": {\n      "type": "stdio",\n      "command": "/path/to/julie-server"\n    }\n  }\n}',
-    'opencode': '{\n  "mcp": {\n    "julie": {\n      "type": "local",\n      "command": ["/path/to/julie-server"],\n      "enabled": true\n    }\n  }\n}',
+    'opencode': '{\n  "mcp": {\n    "julie": {\n      "type": "local",\n      "command": ["node", "/path/to/julie-plugin/hooks/run.cjs"],\n      "enabled": true\n    }\n  }\n}',
     'cursor': '{\n  "mcpServers": {\n    "julie": {\n      "command": "/path/to/julie-server"\n    }\n  }\n}',
     'gemini': '{\n  "mcpServers": {\n    "julie": {\n      "command": "/path/to/julie-server"\n    }\n  }\n}',
-    'codex': '# ~/.codex/config.toml or .codex/config.toml\n[mcp_servers.julie]\ncommand = "/path/to/julie-server"',
+    'codex': 'codex mcp add julie -- node /path/to/julie-plugin/hooks/run.cjs',
   };
 
   document.querySelectorAll('.copy-btn').forEach((btn) => {

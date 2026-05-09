@@ -44,9 +44,9 @@ The key difference from simpler code indexing tools: Julie doesn't just extract 
 
 Julie uses embeddings for semantic search, related symbol discovery, and intelligent code navigation. These features are powered by a managed Python sidecar (sentence-transformers + PyTorch) with automatic GPU acceleration.
 
-#### Step 1: install `uv`
+#### Recommended: install `uv`
 
-[`uv`](https://docs.astral.sh/uv/) is the only prerequisite. Julie uses it to install Python 3.12 and all sidecar dependencies automatically. You do not need to install Python yourself.
+[`uv`](https://docs.astral.sh/uv/) lets Julie install Python 3.12 and all sidecar dependencies automatically. You do not need to install Python yourself. If `uv` or the sidecar is unavailable, keyword search and code navigation still work; embedding-backed features stay disabled until the sidecar is available.
 
 **macOS:**
 ```bash
@@ -104,11 +104,9 @@ Python 3.12 is used because it has the best PyTorch hardware acceleration compat
 
 ## Installation
 
-### Plugin Installation (Recommended)
+### Claude Code Plugin (Recommended)
 
-The [`julie-plugin`](https://github.com/anortham/julie-plugin) repo bundles pre-built binaries, skills, and harness-specific hooks. No Rust toolchain required.
-
-**Claude Code:**
+The [`julie-plugin`](https://github.com/anortham/julie-plugin) bundles pre-built binaries, Julie skills, and the MCP server registration. No Rust toolchain required.
 
 ```bash
 # Add the plugin marketplace
@@ -118,25 +116,50 @@ The [`julie-plugin`](https://github.com/anortham/julie-plugin) repo bundles pre-
 /plugin install julie@julie-plugin
 ```
 
-**Codex CLI** — clone the plugin repo, then run the installer:
+The Claude Code plugin starts Julie automatically. Do not also run `claude mcp add` unless you are doing a manual binary install.
+
+### Codex CLI / Codex Desktop Helper
+
+Clone the plugin repo, then run the installer:
 
 ```bash
 git clone https://github.com/anortham/julie-plugin.git
 node julie-plugin/bin/install-codex.cjs
 ```
 
-Adds Julie skills under `~/.codex/skills/julie-*/`, hook entries to `~/.codex/hooks.json`, and a sentinel-tagged precedence section to `~/.codex/AGENTS.md`. MCP server registration is left to you (`codex mcp add julie -- /path/to/julie-server` or per-project `.codex/config.toml`). See [the plugin README](https://github.com/anortham/julie-plugin#codex-cli-install) for details.
+The installer adds Julie skills, hooks, and AGENTS.md guidance. It prints the exact MCP command for your checkout. The normal user-level shape is:
 
-**OpenCode** — clone the plugin repo, then run the installer:
+```bash
+codex mcp add julie -- node /absolute/path/to/julie-plugin/hooks/run.cjs
+```
+
+Codex CLI and Codex Desktop do not send MCP roots, so Julie uses the process cwd/startup hint. In normal CLI use this is the repo you launched from. If a desktop app starts Julie from the wrong directory, set `JULIE_WORKSPACE` in that app's MCP config or launch from the repo root.
+
+### OpenCode Helper
+
+Clone the plugin repo, then run the installer:
 
 ```bash
 git clone https://github.com/anortham/julie-plugin.git
 node julie-plugin/bin/install-opencode.cjs
 ```
 
-Adds Julie skills under `~/.config/opencode/skills/julie-*/`, a bundled `julie-precedence.js` plugin under `~/.config/opencode/plugins/`, and a sentinel-tagged precedence section to `~/.config/opencode/AGENTS.md`. The plugin denies broad `cargo test` runs and adds after-the-fact coaching when grep/find/rg or large reads target an indexed workspace. MCP server registration is left to you (`opencode.json` `mcp.julie` block — see [the plugin README](https://github.com/anortham/julie-plugin#opencode-install) for the exact format).
+The installer adds Julie skills, a precedence plugin, and AGENTS.md guidance. It prints an `opencode.json` MCP block using the plugin launcher:
 
-Both installers are idempotent and support `--uninstall` for clean removal.
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "julie": {
+      "type": "local",
+      "command": ["node", "/absolute/path/to/julie-plugin/hooks/run.cjs"],
+      "enabled": true
+    }
+  }
+}
+```
+
+Both helper installers are idempotent and support `--uninstall` for clean removal.
 
 ### Build from Source
 
@@ -152,7 +175,12 @@ To enable the `/web-research` skill for fetching and indexing web content, downl
 
 This is optional. All other Julie features work without it.
 
-### Connect Your AI Tool
+<a id="manual-install"></a>
+### Manual MCP Install
+
+Use this path when you are not using the Claude Code plugin or the Codex/OpenCode helper installers.
+
+Download a release archive for your platform from [GitHub releases](https://github.com/anortham/julie/releases), extract `julie-server`, and use its absolute path in your MCP config. Supported release targets are macOS Apple Silicon, macOS Intel, Linux x86_64, and Windows x86_64.
 
 **Client workspace-resolution support:**
 
@@ -161,8 +189,8 @@ This is optional. All other Julie features work without it.
 | Claude Code | Yes (on first request) | No (uses cwd / roots) |
 | VS Code + GitHub Copilot | Yes | No |
 | Codex CLI | No — uses cwd | Only if cwd is wrong |
-| Codex Desktop | **No** | **Yes — required** |
-| OpenCode | No — uses cwd | Recommended for project configs |
+| Codex Desktop | No — uses cwd/startup hint | Only if cwd is wrong |
+| OpenCode | No — uses cwd | Optional; useful for project configs |
 | Cursor / Windsurf / others | Varies | Safe default: set it |
 
 Julie prefers client roots when the startup hint is weak (`cwd`). Explicit CLI `--workspace` or `JULIE_WORKSPACE` always wins regardless of client support.
@@ -211,27 +239,14 @@ For project-level only, use `--scope project` or omit the scope flag. When using
 >
 > All `env` values are optional — see the [env options table](#available-env-options) below for defaults.
 
-**Codex CLI** (`~/.codex/config.toml` or `.codex/config.toml`):
+**Codex CLI / Codex Desktop** (`~/.codex/config.toml`):
 
 ```toml
 [mcp_servers.julie]
 command = "/path/to/julie-server"
 ```
 
-> Codex CLI usually starts Julie from your current project directory, so `JULIE_WORKSPACE` is not needed in the normal case.
-> If you built Julie from source, `command` will usually be `/path/to/julie/target/release/julie-server`.
-
-**Codex Desktop** (`.codex/config.toml` in the repo root):
-
-```toml
-[mcp_servers.julie]
-command = "/path/to/julie-server"
-env = { JULIE_WORKSPACE = "/absolute/path/to/your/project" }
-```
-
-> **Codex Desktop does not implement MCP roots** (as of this writing), so Julie cannot resolve the project from client-side workspace folders. You must set `JULIE_WORKSPACE` explicitly or Julie will fall back to whatever `cwd` the Desktop app happens to launch the server with — often `/` or the app bundle. Use an absolute path; `${workspaceFolder}`-style interpolation is not documented for Codex.
->
-> Put this file at `.codex/config.toml` in the project root if you want a project-scoped Codex Desktop setup. Codex loads project config only for trusted projects, and project config overrides `~/.codex/config.toml`.
+> Prefer `codex mcp add julie -- /path/to/julie-server` for manual registration. When using the plugin launcher, use `codex mcp add julie -- node /absolute/path/to/julie-plugin/hooks/run.cjs`.
 
 **OpenCode** (`~/.config/opencode/opencode.json` for global, or `<repo>/opencode.json` for project):
 
@@ -251,7 +266,7 @@ env = { JULIE_WORKSPACE = "/absolute/path/to/your/project" }
 }
 ```
 
-> OpenCode expects `command` as an **array** and the env key is `environment` (not `env`). For project-scope configs, set `JULIE_WORKSPACE` to an absolute path so the server resolves the right project regardless of cwd. The [`julie-plugin`](https://github.com/anortham/julie-plugin) installer (`node bin/install-opencode.cjs`) wires up skills, the precedence plugin, and AGENTS.md but leaves this MCP block to you.
+> OpenCode expects `command` as an **array** and the env key is `environment` (not `env`). `JULIE_WORKSPACE` is optional when OpenCode starts from the repo root; set it when OpenCode launches Julie from an unreliable cwd. The [`julie-plugin`](https://github.com/anortham/julie-plugin) installer (`node bin/install-opencode.cjs`) wires up skills, the precedence plugin, and AGENTS.md but leaves this MCP block to you.
 
 **Cursor / Windsurf / Other MCP Clients:**
 
@@ -275,14 +290,14 @@ All `env` values are optional — see the table below for defaults.
 
 | Variable | Values | Default | Notes |
 |----------|--------|---------|-------|
-| `JULIE_WORKSPACE` | Absolute path to project root | Client roots (if supported), else `cwd` | Overrides workspace detection. Required for clients that don't send MCP roots and launch Julie with an unreliable `cwd` (e.g., Codex Desktop). |
+| `JULIE_WORKSPACE` | Absolute path to project root | Client roots (if supported), else `cwd` | Overrides workspace detection. Set this when a no-roots client launches Julie from the wrong directory. |
 | `JULIE_EMBEDDING_PROVIDER` | `auto`, `sidecar` | `auto` | Selects embedding backend. `auto` resolves to `sidecar` on all platforms. |
 | `JULIE_EMBEDDING_SIDECAR_MODEL_ID` | Any HuggingFace model ID | `nomic-ai/CodeRankEmbed` | Sidecar model. CodeRankEmbed (768d) is code-optimized. |
 | `JULIE_EMBEDDING_STRICT_ACCEL` | `1` | unset | Disable embeddings entirely when no GPU is available. |
 
-**First Use:**
+**First Use / Verify:**
 
-Julie indexes your workspace automatically on first connection (~2-5s for most projects). All search capabilities are available immediately after indexing completes.
+Julie indexes your workspace automatically on first connection or first primary tool call. Ask your agent to run `manage_workspace(operation="health")` if you want to confirm which workspace is bound. First indexing may take a few seconds on small projects and longer on large repos; later sessions reuse the cached index and file watcher updates.
 
 ## Tools (12)
 

@@ -697,7 +697,7 @@
   <!-- Section 13: Installation -->
   <section id="install" class="section">
     <h2 class="section-title">Installation</h2>
-    <p class="section-subtitle">Use the Claude Code plugin for the full experience, or wire the binary into any MCP client.</p>
+    <p class="section-subtitle">Use the Claude Code plugin for the full experience, or wire the plugin launcher or binary into any MCP client.</p>
 
     <div class="animate-on-scroll">
       <div class="install-tabs" role="tablist">
@@ -741,7 +741,7 @@
           <div><span class="result">&nbsp; "mcp": {</span></div>
           <div><span class="result">&nbsp; &nbsp; "julie": {</span></div>
           <div><span class="result">&nbsp; &nbsp; &nbsp; "type": </span><span class="highlight">"local"</span><span class="result">,</span></div>
-          <div><span class="result">&nbsp; &nbsp; &nbsp; "command": [</span><span class="highlight">"/path/to/julie-server"</span><span class="result">],</span></div>
+          <div><span class="result">&nbsp; &nbsp; &nbsp; "command": [</span><span class="highlight">"node"</span><span class="result">, </span><span class="highlight">"/path/to/julie-plugin/hooks/run.cjs"</span><span class="result">],</span></div>
           <div><span class="result">&nbsp; &nbsp; &nbsp; "enabled": </span><span class="highlight">true</span></div>
           <div><span class="result">&nbsp; &nbsp; }</span></div>
           <div><span class="result">&nbsp; }</span></div>
@@ -783,14 +783,13 @@
       <div id="panel-codex" class="install-panel" role="tabpanel">
         <div class="terminal install-terminal" style="position:relative;" aria-label="Configuration for Codex CLI">
           <button class="copy-btn" data-copy="codex" aria-label="Copy to clipboard">Copy</button>
-          <div><span class="comment"># ~/.codex/config.toml or .codex/config.toml</span></div>
-          <div><span class="result">[mcp_servers.julie]</span></div>
-          <div><span class="result">command = </span><span class="highlight">"/path/to/julie-server"</span></div>
+          <div><span class="comment"># User-level registration</span></div>
+          <div><span class="prompt">$ </span><span class="result">codex mcp add julie -- node /path/to/julie-plugin/hooks/run.cjs</span></div>
         </div>
       </div>
     </div>
 
-    <p class="section-subtitle" style="margin-top: 24px; max-width: 100%;">Julie indexes your workspace automatically on first connection. Some clients need an explicit workspace path; the <a href="https://github.com/anortham/julie#manual-install" target="_blank" rel="noopener">README</a> has the per-client details.</p>
+    <p class="section-subtitle" style="margin-top: 24px; max-width: 100%;">Julie indexes your workspace automatically on first connection or first primary tool call. Some clients need an explicit workspace path; the <a href="https://github.com/anortham/julie#manual-install" target="_blank" rel="noopener">README</a> has the per-client details.</p>
   </section>
 
   <!-- Section 14: Footer -->
@@ -802,7 +801,7 @@
       <span class="footer-sep">·</span>
       <span>Built in Rust with tree-sitter and Tantivy</span>
       <span class="footer-sep">·</span>
-      <span>v7.8.2</span>
+      <span>v7.8.3</span>
     </div>
   </footer>
 
