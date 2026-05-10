@@ -135,6 +135,14 @@
       "file_path": "fixtures/extraction/vue/basic/source.vue",
       "line_number": 3,
       "confidence": "1.000"
+    },
+    {
+      "from_key": "fixtures/extraction/vue/basic/source.vue:Source:1:1",
+      "callee_name": "trim",
+      "kind": "calls",
+      "file_path": "fixtures/extraction/vue/basic/source.vue",
+      "line_number": 12,
+      "confidence": "0.800"
     }
   ],
   "structured_pending_relationships": [
@@ -150,6 +158,24 @@
       "target": {
         "display_name": "HeaderBar",
         "terminal_name": "HeaderBar",
+        "receiver": null,
+        "namespace_path": [],
+        "import_context": null
+      },
+      "caller_scope_key": "fixtures/extraction/vue/basic/source.vue:Source:1:1"
+    },
+    {
+      "pending": {
+        "from_key": "fixtures/extraction/vue/basic/source.vue:Source:1:1",
+        "callee_name": "trim",
+        "kind": "calls",
+        "file_path": "fixtures/extraction/vue/basic/source.vue",
+        "line_number": 12,
+        "confidence": "0.800"
+      },
+      "target": {
+        "display_name": "trim",
+        "terminal_name": "trim",
         "receiver": null,
         "namespace_path": [],
         "import_context": null

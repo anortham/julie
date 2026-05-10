@@ -1,0 +1,213 @@
+{
+  "symbols": [
+    {
+      "key": "fixtures/extraction/vue/cross_file/source.vue:Source:1:1",
+      "name": "Source",
+      "kind": "class",
+      "language": "vue",
+      "file_path": "fixtures/extraction/vue/cross_file/source.vue",
+      "start_line": 1,
+      "start_column": 1,
+      "end_line": 21,
+      "end_column": 1,
+      "start_byte": 0,
+      "end_byte": 477,
+      "signature": "<Source />",
+      "doc_comment": "Vue Single File Component: Source",
+      "visibility": "Public",
+      "parent_key": null,
+      "metadata": {
+        "sections": "script,template",
+        "type": "vue-sfc"
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/vue/cross_file/source.vue:entry:13:0",
+      "name": "entry",
+      "kind": "function",
+      "language": "vue",
+      "file_path": "fixtures/extraction/vue/cross_file/source.vue",
+      "start_line": 13,
+      "start_column": 0,
+      "end_line": 16,
+      "end_column": 1,
+      "start_byte": 367,
+      "end_byte": 425,
+      "signature": "function entry()",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": null,
+      "metadata": {
+        "type": "function"
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/vue/cross_file/source.vue:foo:7:9",
+      "name": "foo",
+      "kind": "import",
+      "language": "vue",
+      "file_path": "fixtures/extraction/vue/cross_file/source.vue",
+      "start_line": 7,
+      "start_column": 9,
+      "end_line": 7,
+      "end_column": 12,
+      "start_byte": 300,
+      "end_byte": 303,
+      "signature": "import { foo } from './other'",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": null,
+      "metadata": {
+        "importKind": "named",
+        "source": "'./other'"
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/vue/cross_file/source.vue:local_helper:9:0",
+      "name": "local_helper",
+      "kind": "function",
+      "language": "vue",
+      "file_path": "fixtures/extraction/vue/cross_file/source.vue",
+      "start_line": 9,
+      "start_column": 0,
+      "end_line": 11,
+      "end_column": 1,
+      "start_byte": 323,
+      "end_byte": 365,
+      "signature": "function local_helper()",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": null,
+      "metadata": {
+        "type": "function"
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    }
+  ],
+  "relationships": [
+    {
+      "from_key": "fixtures/extraction/vue/cross_file/source.vue:Source:1:1",
+      "to_key": "fixtures/extraction/vue/cross_file/source.vue:entry:13:0",
+      "kind": "references",
+      "file_path": "fixtures/extraction/vue/cross_file/source.vue",
+      "line_number": 20,
+      "confidence": "1.000",
+      "metadata": {
+        "referenceName": "entry"
+      }
+    },
+    {
+      "from_key": "fixtures/extraction/vue/cross_file/source.vue:Source:1:1",
+      "to_key": "fixtures/extraction/vue/cross_file/source.vue:foo:7:9",
+      "kind": "calls",
+      "file_path": "fixtures/extraction/vue/cross_file/source.vue",
+      "line_number": 14,
+      "confidence": "1.000",
+      "metadata": {
+        "referenceName": "foo"
+      }
+    },
+    {
+      "from_key": "fixtures/extraction/vue/cross_file/source.vue:Source:1:1",
+      "to_key": "fixtures/extraction/vue/cross_file/source.vue:local_helper:9:0",
+      "kind": "calls",
+      "file_path": "fixtures/extraction/vue/cross_file/source.vue",
+      "line_number": 15,
+      "confidence": "1.000",
+      "metadata": {
+        "referenceName": "local_helper"
+      }
+    }
+  ],
+  "pending_relationships": [
+    {
+      "from_key": "fixtures/extraction/vue/cross_file/source.vue:Source:1:1",
+      "callee_name": "foo",
+      "kind": "calls",
+      "file_path": "fixtures/extraction/vue/cross_file/source.vue",
+      "line_number": 14,
+      "confidence": "0.800"
+    }
+  ],
+  "structured_pending_relationships": [
+    {
+      "pending": {
+        "from_key": "fixtures/extraction/vue/cross_file/source.vue:Source:1:1",
+        "callee_name": "foo",
+        "kind": "calls",
+        "file_path": "fixtures/extraction/vue/cross_file/source.vue",
+        "line_number": 14,
+        "confidence": "0.800"
+      },
+      "target": {
+        "display_name": "foo",
+        "terminal_name": "foo",
+        "receiver": null,
+        "namespace_path": [],
+        "import_context": "'./other'"
+      },
+      "caller_scope_key": "fixtures/extraction/vue/cross_file/source.vue:Source:1:1"
+    }
+  ],
+  "identifiers": [
+    {
+      "key": "fixtures/extraction/vue/cross_file/source.vue:foo:call:14:4",
+      "name": "foo",
+      "kind": "call",
+      "language": "vue",
+      "file_path": "fixtures/extraction/vue/cross_file/source.vue",
+      "start_line": 14,
+      "start_column": 4,
+      "end_line": 14,
+      "end_column": 7,
+      "start_byte": 390,
+      "end_byte": 393,
+      "containing_key": "fixtures/extraction/vue/cross_file/source.vue:entry:13:0",
+      "target_key": null,
+      "confidence": "1.000"
+    },
+    {
+      "key": "fixtures/extraction/vue/cross_file/source.vue:local_helper:call:15:11",
+      "name": "local_helper",
+      "kind": "call",
+      "language": "vue",
+      "file_path": "fixtures/extraction/vue/cross_file/source.vue",
+      "start_line": 15,
+      "start_column": 11,
+      "end_line": 15,
+      "end_column": 23,
+      "start_byte": 408,
+      "end_byte": 420,
+      "containing_key": "fixtures/extraction/vue/cross_file/source.vue:entry:13:0",
+      "target_key": null,
+      "confidence": "1.000"
+    }
+  ],
+  "types": [
+    {
+      "symbol_key": "fixtures/extraction/vue/cross_file/source.vue:Source:1:1",
+      "resolved_type": "vue-sfc",
+      "generic_params": null,
+      "constraints": null,
+      "is_inferred": true,
+      "language": "vue",
+      "metadata": null
+    }
+  ],
+  "parse_diagnostics": []
+}

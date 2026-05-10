@@ -4,9 +4,9 @@
 
 ## Summary
 
-- Current HEAD: `b62181ae2a352c395bf2ca80a4c95917cceb1f21`
+- Current HEAD: `9ef313959c251deb652a96857efa8327be88c910`
 - Registry rows: `36`
-- Golden fixtures: `66`
+- Golden fixtures: `67`
 - Historical matrix rows: `33`
 - Raw historical OSS reports: `13`
 - Current real-world verified repos: `13`
@@ -45,7 +45,7 @@
 
 | symbols | relationships | pending | structured pending | identifiers | types | parse diagnostics |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 363 | 88 | 36 | 36 | 188 | 146 | 6 |
+| 367 | 91 | 38 | 38 | 190 | 147 | 6 |
 
 ## Gap Counts
 
@@ -86,7 +86,7 @@
 | `jsx` | `tree-sitter-javascript` | `current` | 2 | 9 | 3 | 2 | 2 | 5 | 0 | 0 | 0 |
 | `html` | `tree-sitter-html` | `current` | 1 | 11 | 1 | 0 | 0 | 2 | 10 | 0 | 1 |
 | `css` | `tree-sitter-css` | `current` | 1 | 6 | 1 | 0 | 0 | 4 | 0 | 0 | 2 |
-| `vue` | `tree-sitter-html` | `current` | 1 | 4 | 2 | 1 | 1 | 2 | 3 | 0 | 0 |
+| `vue` | `tree-sitter-html` | `current` | 2 | 8 | 5 | 3 | 3 | 4 | 4 | 0 | 0 |
 | `python` | `tree-sitter-python` | `current` | 2 | 8 | 2 | 1 | 1 | 5 | 2 | 0 | 0 |
 | `java` | `tree-sitter-java` | `current` | 2 | 11 | 3 | 2 | 2 | 6 | 6 | 0 | 0 |
 | `csharp` | `tree-sitter-c-sharp` | `current` | 2 | 11 | 3 | 1 | 1 | 4 | 6 | 0 | 0 |

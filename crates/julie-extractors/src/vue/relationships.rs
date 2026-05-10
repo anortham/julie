@@ -1,6 +1,6 @@
 use super::parsing::{VueSection, parse_vue_sfc};
 use crate::base::relationship_resolution::{StructuredPendingRelationship, UnresolvedTarget};
-use crate::base::{BaseExtractor, Relationship, RelationshipKind, Symbol};
+use crate::base::{BaseExtractor, Relationship, RelationshipKind, Symbol, SymbolKind};
 use regex::Regex;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
@@ -64,40 +64,154 @@ pub(super) fn extract_structured_pending_relationships(
     let Some(component) = component_symbol(symbols) else {
         return Vec::new();
     };
-    let local_symbols = unique_symbols_by_name(symbols);
+    let local_symbols = unique_local_callables_by_name(symbols);
+    let imported_modules = import_sources_by_name(symbols);
     let mut pending = Vec::new();
-    let mut seen = HashSet::new();
+    let mut seen_template = HashSet::new();
+    let mut seen_script = HashSet::new();
 
     for section in &sections {
-        if section.section_type != "template" {
-            continue;
-        }
-        for (line_index, line) in section.content.lines().enumerate() {
-            let line_number = section.start_line as u32 + line_index as u32 + 1;
-            for captures in COMPONENT_TAG_RE.captures_iter(line) {
-                let Some(tag_name) = captures.get(1).map(|matched| matched.as_str()) else {
+        match section.section_type.as_str() {
+            "template" => {
+                for (line_index, line) in section.content.lines().enumerate() {
+                    let line_number = section.start_line as u32 + line_index as u32 + 1;
+                    for captures in COMPONENT_TAG_RE.captures_iter(line) {
+                        let Some(tag_name) = captures.get(1).map(|matched| matched.as_str())
+                        else {
+                            continue;
+                        };
+                        if !is_component_tag(tag_name) || local_symbols.contains_key(tag_name) {
+                            continue;
+                        }
+                        if !seen_template.insert((tag_name.to_string(), line_number)) {
+                            continue;
+                        }
+                        pending.push(StructuredPendingRelationship::new(
+                            component.id.clone(),
+                            UnresolvedTarget::simple(tag_name),
+                            Some(component.id.clone()),
+                            RelationshipKind::References,
+                            base.file_path.clone(),
+                            line_number,
+                            1.0,
+                        ));
+                    }
+                }
+            }
+            "script" => {
+                let Some(tree) = parse_script_section(section) else {
                     continue;
                 };
-                if !is_component_tag(tag_name) || local_symbols.contains_key(tag_name) {
-                    continue;
-                }
-                if !seen.insert((tag_name.to_string(), line_number)) {
-                    continue;
-                }
-                pending.push(StructuredPendingRelationship::new(
-                    component.id.clone(),
-                    UnresolvedTarget::simple(tag_name),
-                    Some(component.id.clone()),
-                    RelationshipKind::References,
-                    base.file_path.clone(),
-                    line_number,
-                    1.0,
-                ));
+                visit_script_pending_node(
+                    base,
+                    tree.root_node(),
+                    &section.content,
+                    section.start_line,
+                    component,
+                    &local_symbols,
+                    &imported_modules,
+                    &mut pending,
+                    &mut seen_script,
+                );
             }
+            _ => {}
         }
     }
 
     pending
+}
+
+fn unique_local_callables_by_name(symbols: &[Symbol]) -> HashMap<String, &Symbol> {
+    let mut grouped: HashMap<&str, Vec<&Symbol>> = HashMap::new();
+    for symbol in symbols {
+        if symbol.kind == SymbolKind::Import {
+            continue;
+        }
+        grouped
+            .entry(symbol.name.as_str())
+            .or_default()
+            .push(symbol);
+    }
+    grouped
+        .into_iter()
+        .filter_map(|(name, symbols)| {
+            if symbols.len() == 1 {
+                Some((name.to_string(), symbols[0]))
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+fn import_sources_by_name(symbols: &[Symbol]) -> HashMap<String, String> {
+    let mut map = HashMap::new();
+    for symbol in symbols {
+        if symbol.kind != SymbolKind::Import {
+            continue;
+        }
+        let Some(metadata) = symbol.metadata.as_ref() else {
+            continue;
+        };
+        let Some(source) = metadata.get("source").and_then(Value::as_str) else {
+            continue;
+        };
+        map.insert(symbol.name.clone(), source.to_string());
+    }
+    map
+}
+
+fn visit_script_pending_node(
+    base: &BaseExtractor,
+    node: Node,
+    script_content: &str,
+    start_line_offset: usize,
+    component: &Symbol,
+    local_symbols: &HashMap<String, &Symbol>,
+    imports: &HashMap<String, String>,
+    pending: &mut Vec<StructuredPendingRelationship>,
+    seen: &mut HashSet<(String, u32)>,
+) {
+    if node.kind() == "call_expression" {
+        if let Some(function_node) = node.child_by_field_name("function") {
+            if let Some(name) = call_name(function_node, script_content) {
+                if !local_symbols.contains_key(&name) {
+                    let line_number =
+                        (function_node.start_position().row + start_line_offset + 1) as u32;
+                    if seen.insert((name.clone(), line_number)) {
+                        let mut target = UnresolvedTarget::simple(&name);
+                        if let Some(module) = imports.get(&name) {
+                            target.import_context = Some(module.clone());
+                        }
+                        pending.push(StructuredPendingRelationship::new(
+                            component.id.clone(),
+                            target,
+                            Some(component.id.clone()),
+                            RelationshipKind::Calls,
+                            base.file_path.clone(),
+                            line_number,
+                            0.8,
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        visit_script_pending_node(
+            base,
+            child,
+            script_content,
+            start_line_offset,
+            component,
+            local_symbols,
+            imports,
+            pending,
+            seen,
+        );
+    }
 }
 
 fn collect_script_relationships(

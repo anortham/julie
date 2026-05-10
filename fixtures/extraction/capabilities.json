@@ -448,6 +448,11 @@
           "name": "basic",
           "source": "fixtures/extraction/vue/basic/source.vue",
           "expected": "fixtures/extraction/vue/basic/expected.json"
+        },
+        {
+          "name": "cross_file",
+          "source": "fixtures/extraction/vue/cross_file/source.vue",
+          "expected": "fixtures/extraction/vue/cross_file/expected.json"
         }
       ],
       "target_capabilities": {
