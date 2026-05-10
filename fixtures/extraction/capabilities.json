@@ -409,12 +409,12 @@
         {
           "capability": "pending_relationships",
           "status": "open",
-          "reason": "HTML markup has no language-level cross-file forward-reference construct; href/src attributes resolve at extraction time. Pending relationships are not targeted.",
-          "required_closure": "N/A — domain limitation.",
+          "reason": "Phase 4b targets external <script src=...> and <link href=...> references as cross-file pending relationships. The HTML extractor currently emits no pending output; the Phase 4b.html task wires structured pending for these reference shapes.",
+          "required_closure": "Emit pending relationships for external script/style src=... references; close in Phase 4b (HTML task).",
           "evidence": {
             "kind": "commit",
-            "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
-            "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
+            "value": "c729e8636f6bde07fb5596035a76d24db9c47066",
+            "command": "git show c729e8636f6bde07fb5596035a76d24db9c47066"
           },
           "planned_closure_task": "Phase 4b.html"
         }
@@ -1304,11 +1304,11 @@
           "capability": "pending_relationships",
           "status": "open",
           "reason": "Razor @using directives resolve at extraction time to namespace symbols. Cross-file C# references go through the embedded C# pipeline, not through Razor's pending path.",
-          "required_closure": "N/A — handled by embedded C# extractor.",
+          "required_closure": "Lock the no-pending classification with `razor_pending_relationships_handled_by_csharp_embed` test in Phase 4b.razor; flip to status=exception with the locking test as evidence once it lands.",
           "evidence": {
             "kind": "commit",
-            "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
-            "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
+            "value": "c729e8636f6bde07fb5596035a76d24db9c47066",
+            "command": "git show c729e8636f6bde07fb5596035a76d24db9c47066"
           },
           "planned_closure_task": "Phase 4b.razor"
         }
@@ -1347,11 +1347,11 @@
           "capability": "pending_relationships",
           "status": "open",
           "reason": "Cross-file foreign-key references are currently suppressed at extraction (crates/julie-extractors/src/sql/relationships.rs around line 115) rather than preserved as pending relationships. Promotion of FK targets to structured pending relationships is deferred.",
-          "required_closure": "Implement structured pending relationships for unresolved FK targets, move SQL out of NO_PENDING_CAPABILITIES, and advance target_capabilities.pending_relationships to true.",
+          "required_closure": "Move SQL out of NO_PENDING_CAPABILITIES; emit StructuredPendingRelationship for cross-file FK targets; close in Phase 3.1.",
           "evidence": {
             "kind": "commit",
-            "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
-            "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
+            "value": "c729e8636f6bde07fb5596035a76d24db9c47066",
+            "command": "git show c729e8636f6bde07fb5596035a76d24db9c47066"
           },
           "planned_closure_task": "Phase 3.1"
         }
