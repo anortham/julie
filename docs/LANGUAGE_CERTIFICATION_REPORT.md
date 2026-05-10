@@ -4,9 +4,9 @@
 
 ## Summary
 
-- Current HEAD: `cb42f33665dad08b39dcbe95a85b406cb557107e`
+- Current HEAD: `e406e632da10fa5f70c3d8b6589120849807e1fd`
 - Registry rows: `36`
-- Golden fixtures: `64`
+- Golden fixtures: `65`
 - Historical matrix rows: `33`
 - Raw historical OSS reports: `13`
 - Current real-world verified repos: `13`
@@ -45,13 +45,13 @@
 
 | symbols | relationships | pending | structured pending | identifiers | types | parse diagnostics |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 356 | 86 | 34 | 34 | 181 | 146 | 6 |
+| 360 | 87 | 35 | 35 | 184 | 146 | 6 |
 
 ## Gap Counts
 
 | capability | count |
 | --- | ---: |
-| `pending_relationships` | 9 |
+| `pending_relationships` | 8 |
 | `types` | 8 |
 
 ## Open Capability Gaps
@@ -61,7 +61,6 @@
 | `html` | `pending_relationships` | `open` | `commit:c729e8636f6bde07fb5596035a76d24db9c47066` | Emit pending relationships for external script/style src=... references; close in Phase 4b (HTML task). |
 | `css` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | N/A — domain limitation. |
 | `css` | `types` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | N/A — domain limitation. |
-| `lua` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
 | `lua` | `types` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Out of scope — Lua is dynamic. Luau-style type annotations would be a separate language target. |
 | `qml` | `types` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Future work could add structured TypeInfo for QML property declarations. |
 | `r` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
@@ -100,7 +99,7 @@
 | `scala` | `tree-sitter-scala` | `current` | 2 | 11 | 3 | 2 | 2 | 4 | 5 | 0 | 0 |
 | `dart` | `tree-sitter-dart` | `current` | 2 | 10 | 2 | 1 | 1 | 11 | 7 | 0 | 0 |
 | `elixir` | `tree-sitter-elixir` | `current` | 2 | 7 | 4 | 1 | 1 | 7 | 0 | 0 | 0 |
-| `lua` | `tree-sitter-lua` | `current` | 1 | 8 | 1 | 0 | 0 | 8 | 0 | 0 | 2 |
+| `lua` | `tree-sitter-lua` | `current` | 2 | 12 | 2 | 1 | 1 | 11 | 0 | 0 | 1 |
 | `qml` | `tree-sitter-qmljs` | `git_pinned` | 1 | 7 | 2 | 1 | 1 | 10 | 0 | 0 | 1 |
 | `r` | `tree-sitter-r` | `current` | 1 | 4 | 1 | 0 | 0 | 13 | 0 | 0 | 2 |
 | `bash` | `tree-sitter-bash` | `current` | 2 | 11 | 2 | 1 | 1 | 6 | 4 | 0 | 0 |
