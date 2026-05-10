@@ -212,6 +212,17 @@ Record release evidence with the template in [verification-ledger-template.md](p
 | Live references for extraction API | `fast_refs extract_canonical` | live-fast-refs-current-contract | `0b7a2f36` | Found definition plus 20 visible references, including public API projection and real-world contract callers | 2026-05-05T16:42:28Z | No |
 | Live semantic state in SQLite | `sqlite3 ~/.julie/indexes/julie_528d4264/db/symbols.db` | live-sqlite-state-current-contract | `0b7a2f36` | Schema version 24, semantic engine `2026-05-05.reference-identifier-v3`, Tantivy projection ready at 3970/3970, 7009 vector rowids | 2026-05-05T16:42:28Z | No |
 | Live non-force refresh | `manage_workspace refresh workspace_id=julie_528d4264` | live-refresh-current-contract | `0b7a2f36` | Already up-to-date at canonical revision 3970; no repeated full reindex | 2026-05-05T16:42:28Z | No |
+| Formatter | `cargo fmt --check` | formatter | `94b7f5a3` | Passed | 2026-05-10T23:16:49Z | No |
+| Diff whitespace | `git diff --check` | diff-hygiene | `94b7f5a3` | Passed | 2026-05-10T23:16:49Z | No |
+| Tree-sitter certification freshness | `cargo xtask certify tree-sitter --check` | tree-sitter-cert | `94b7f5a3` | Passed (report current) | 2026-05-10T23:16:49Z | No |
+| Extractor bucket (golden + capability_matrix + cert + downstream-smoke) | `cargo xtask test bucket extractors` | extractors-current-contract | `94b7f5a3` | Passed 4 commands in 27.1s | 2026-05-10T23:16:49Z | No |
+| Parser upgrade current contract | `cargo xtask test bucket parser-upgrade` | parser-upgrade-current-contract | `94b7f5a3` | Passed 2 commands in 1.6s | 2026-05-10T23:16:49Z | No |
+| Changed-code regression tier | `cargo xtask test changed` | changed-current-contract | `94b7f5a3` | No code/test buckets matched (clean working tree) | 2026-05-10T23:16:49Z | No |
+| Release binary build | `cargo build --release` | release-build-current-contract | `94b7f5a3` | Passed in 3m 10s | 2026-05-10T23:16:49Z | No |
+| Example consumer build | `cargo build --examples -p julie-extractors` | example-build-current-contract | `94b7f5a3` | Passed | 2026-05-10T23:16:49Z | No |
+| Crate doctests | `cargo test -p julie-extractors --doc` | doctest-current-contract | `94b7f5a3` | Passed 1 test | 2026-05-10T23:16:49Z | No |
+| Crate rustdoc | `cargo doc -p julie-extractors --no-deps` | rustdoc-current-contract | `94b7f5a3` | Generated (6 missing-docs warnings, expected — Phase 5.4 follow-up) | 2026-05-10T23:16:49Z | No |
+| Pillar-3 downstream-consumer gate | `cargo nextest run -p julie-extractors --test downstream_smoke julie_extractors_works_as_path_dependency_in_downstream_crate` | downstream-smoke-current-contract | `94b7f5a3` | Passed in 17.0s | 2026-05-10T23:16:49Z | No |
 
 ## Exceptions
 

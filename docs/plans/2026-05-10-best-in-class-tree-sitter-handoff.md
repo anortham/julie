@@ -17,7 +17,32 @@ After the autonomous run completes, the user runs:
 
 ## What Phase 8.1 already proved (offline)
 
-The release gates that ran against the working tree at branch HEAD are recorded in the ledger and pass without live MCP. They cover formatter hygiene, extractor bucket (golden + capability matrix + cert + downstream-smoke), parser-upgrade bucket, the `cargo xtask test changed` regression tier, system + dogfood + full tiers, the release build, the docs build, and the example consumer crate. The downstream-consumer integration test specifically proves the Pillar-3 contract: a tempdir consumer crate path-deps `julie-extractors` and runs `extract_canonical` + `capability_snapshot()` + `EXTRACTION_CONTRACT_VERSION` end-to-end.
+The release gates that ran against the working tree at branch HEAD are recorded in the `TREE_SITTER_QUALITY_BAR.md` Verification Ledger and pass without live MCP. They cover:
+
+- `cargo fmt --check`
+- `git diff --check`
+- `cargo xtask certify tree-sitter --check`
+- `cargo xtask test bucket extractors` (golden + capability_matrix + cert + downstream-smoke)
+- `cargo xtask test bucket parser-upgrade`
+- `cargo xtask test changed` (clean working tree)
+- `cargo build --release`
+- `cargo build --examples -p julie-extractors`
+- `cargo test -p julie-extractors --doc`
+- `cargo doc -p julie-extractors --no-deps` (6 missing-docs warnings, expected — Phase 5.4 follow-up)
+- `cargo nextest run -p julie-extractors --test downstream_smoke julie_extractors_works_as_path_dependency_in_downstream_crate`
+
+The downstream-consumer integration test specifically proves the Pillar-3 contract: a tempdir consumer crate path-deps `julie-extractors` and runs `extract_canonical` + `capability_snapshot()` + `EXTRACTION_CONTRACT_VERSION` end-to-end.
+
+## Gates pending user-run
+
+The repository's broad-tests pre-tool hook blocked the autonomous session from running the broader tiers below. The user runs them locally before tagging:
+
+- `cargo xtask test dev`
+- `cargo xtask test system`
+- `cargo xtask test dogfood`
+- `cargo xtask test full`
+
+Each pass should append a ledger row at the same HEAD SHA recorded in the `94b7f5a3…` block of `docs/TREE_SITTER_QUALITY_BAR.md`.
 
 ## Items intentionally left for follow-up
 
