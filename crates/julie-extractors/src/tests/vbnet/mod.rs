@@ -44,6 +44,7 @@ pub(crate) fn get_vb_visibility(symbol: &Symbol) -> String {
 }
 
 pub mod core;
+pub mod cross_file_pending;
 pub mod identifiers;
 pub mod members;
 pub mod relationships;

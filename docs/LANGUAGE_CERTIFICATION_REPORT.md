@@ -4,15 +4,15 @@
 
 ## Summary
 
-- Current HEAD: `216ecbc872800695269fa2f3e4f7dc8d48e42a07`
+- Current HEAD: `7f2f2bd9c41b1b5cdef654375223ab67d4e92cab`
 - Registry rows: `36`
-- Golden fixtures: `42`
+- Golden fixtures: `43`
 - Historical matrix rows: `33`
 - Raw historical OSS reports: `13`
 - Current real-world verified repos: `13`
 - Current real-world skipped repos: `0`
-- Rows with open gaps: `29`
-- Rows without gap entries: `5`
+- Rows with open gaps: `28`
+- Rows without gap entries: `6`
 
 ## Historical Coverage Delta
 
@@ -45,13 +45,13 @@
 
 | symbols | relationships | pending | structured pending | identifiers | types | parse diagnostics |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 268 | 64 | 8 | 8 | 125 | 108 | 6 |
+| 273 | 65 | 9 | 9 | 127 | 110 | 6 |
 
 ## Gap Counts
 
 | capability | count |
 | --- | ---: |
-| `pending_relationships` | 29 |
+| `pending_relationships` | 28 |
 | `types` | 8 |
 
 ## Open Capability Gaps
@@ -70,7 +70,6 @@
 | `python` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
 | `java` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
 | `csharp` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
-| `vbnet` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
 | `php` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
 | `ruby` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
 | `swift` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
@@ -112,7 +111,7 @@
 | `python` | `tree-sitter-python` | `current` | 1 | 5 | 1 | 0 | 0 | 3 | 2 | 0 | 1 |
 | `java` | `tree-sitter-java` | `current` | 1 | 7 | 2 | 0 | 0 | 3 | 4 | 0 | 1 |
 | `csharp` | `tree-sitter-c-sharp` | `current` | 1 | 7 | 2 | 0 | 0 | 1 | 4 | 0 | 1 |
-| `vbnet` | `tree-sitter-vb-dotnet` | `git_pinned` | 1 | 7 | 2 | 0 | 0 | 1 | 4 | 0 | 1 |
+| `vbnet` | `tree-sitter-vb-dotnet` | `git_pinned` | 2 | 12 | 3 | 1 | 1 | 3 | 6 | 0 | 0 |
 | `php` | `tree-sitter-php` | `current` | 1 | 7 | 1 | 0 | 0 | 3 | 6 | 0 | 1 |
 | `ruby` | `tree-sitter-ruby` | `current` | 1 | 6 | 1 | 0 | 0 | 1 | 0 | 0 | 1 |
 | `swift` | `tree-sitter-swift` | `current` | 1 | 6 | 2 | 0 | 0 | 2 | 6 | 0 | 1 |
@@ -136,4 +135,4 @@
 
 ## Rows Without Gap Entries
 
-`rust`, `tsx`, `jsx`, `vue`, `sql`
+`rust`, `tsx`, `jsx`, `vue`, `vbnet`, `sql`
