@@ -4,15 +4,15 @@
 
 ## Summary
 
-- Current HEAD: `9428e94f19f2f69b0c01049049c2c622c555c470`
+- Current HEAD: `9d1aa8da650b49f794dc26a2b778b160e74034c5`
 - Registry rows: `36`
-- Golden fixtures: `59`
+- Golden fixtures: `60`
 - Historical matrix rows: `33`
 - Raw historical OSS reports: `13`
 - Current real-world verified repos: `13`
 - Current real-world skipped repos: `0`
-- Rows with open gaps: `14`
-- Rows without gap entries: `20`
+- Rows with open gaps: `13`
+- Rows without gap entries: `21`
 
 ## Historical Coverage Delta
 
@@ -45,13 +45,13 @@
 
 | symbols | relationships | pending | structured pending | identifiers | types | parse diagnostics |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 335 | 81 | 27 | 27 | 166 | 141 | 6 |
+| 340 | 82 | 29 | 29 | 168 | 143 | 6 |
 
 ## Gap Counts
 
 | capability | count |
 | --- | ---: |
-| `pending_relationships` | 14 |
+| `pending_relationships` | 13 |
 | `types` | 8 |
 
 ## Open Capability Gaps
@@ -61,7 +61,6 @@
 | `html` | `pending_relationships` | `open` | `commit:c729e8636f6bde07fb5596035a76d24db9c47066` | Emit pending relationships for external script/style src=... references; close in Phase 4b (HTML task). |
 | `css` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | N/A — domain limitation. |
 | `css` | `types` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | N/A — domain limitation. |
-| `kotlin` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
 | `scala` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
 | `elixir` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
 | `lua` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
@@ -101,7 +100,7 @@
 | `php` | `tree-sitter-php` | `current` | 2 | 13 | 2 | 1 | 1 | 4 | 12 | 0 | 0 |
 | `ruby` | `tree-sitter-ruby` | `current` | 2 | 10 | 1 | 2 | 2 | 4 | 0 | 0 | 0 |
 | `swift` | `tree-sitter-swift` | `current` | 2 | 10 | 3 | 1 | 1 | 4 | 10 | 0 | 0 |
-| `kotlin` | `tree-sitter-kotlin-ng` | `current` | 1 | 7 | 2 | 0 | 0 | 2 | 4 | 0 | 1 |
+| `kotlin` | `tree-sitter-kotlin-ng` | `current` | 2 | 12 | 3 | 2 | 2 | 4 | 6 | 0 | 0 |
 | `scala` | `tree-sitter-scala` | `current` | 1 | 6 | 2 | 0 | 0 | 2 | 3 | 0 | 1 |
 | `dart` | `tree-sitter-dart` | `current` | 2 | 10 | 2 | 1 | 1 | 11 | 7 | 0 | 0 |
 | `elixir` | `tree-sitter-elixir` | `current` | 1 | 3 | 3 | 0 | 0 | 3 | 0 | 0 | 1 |
@@ -121,4 +120,4 @@
 
 ## Rows Without Gap Entries
 
-`rust`, `c`, `cpp`, `go`, `zig`, `typescript`, `tsx`, `javascript`, `jsx`, `vue`, `python`, `java`, `csharp`, `vbnet`, `php`, `ruby`, `swift`, `dart`, `gdscript`, `sql`
+`rust`, `c`, `cpp`, `go`, `zig`, `typescript`, `tsx`, `javascript`, `jsx`, `vue`, `python`, `java`, `csharp`, `vbnet`, `php`, `ruby`, `swift`, `kotlin`, `dart`, `gdscript`, `sql`
