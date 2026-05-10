@@ -4,15 +4,15 @@
 
 ## Summary
 
-- Current HEAD: `7f2f2bd9c41b1b5cdef654375223ab67d4e92cab`
+- Current HEAD: `f9064a32f67abd4d6ef5d51134262730d88eaa57`
 - Registry rows: `36`
-- Golden fixtures: `43`
+- Golden fixtures: `44`
 - Historical matrix rows: `33`
 - Raw historical OSS reports: `13`
 - Current real-world verified repos: `13`
 - Current real-world skipped repos: `0`
-- Rows with open gaps: `28`
-- Rows without gap entries: `6`
+- Rows with open gaps: `27`
+- Rows without gap entries: `7`
 
 ## Historical Coverage Delta
 
@@ -45,13 +45,13 @@
 
 | symbols | relationships | pending | structured pending | identifiers | types | parse diagnostics |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 273 | 65 | 9 | 9 | 127 | 110 | 6 |
+| 276 | 66 | 10 | 10 | 131 | 112 | 6 |
 
 ## Gap Counts
 
 | capability | count |
 | --- | ---: |
-| `pending_relationships` | 28 |
+| `pending_relationships` | 27 |
 | `types` | 8 |
 
 ## Open Capability Gaps
@@ -75,7 +75,6 @@
 | `swift` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
 | `kotlin` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
 | `scala` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
-| `dart` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
 | `elixir` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
 | `lua` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
 | `lua` | `types` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Out of scope — Lua is dynamic. Luau-style type annotations would be a separate language target. |
@@ -117,7 +116,7 @@
 | `swift` | `tree-sitter-swift` | `current` | 1 | 6 | 2 | 0 | 0 | 2 | 6 | 0 | 1 |
 | `kotlin` | `tree-sitter-kotlin-ng` | `current` | 1 | 7 | 2 | 0 | 0 | 2 | 4 | 0 | 1 |
 | `scala` | `tree-sitter-scala` | `current` | 1 | 6 | 2 | 0 | 0 | 2 | 3 | 0 | 1 |
-| `dart` | `tree-sitter-dart` | `current` | 1 | 7 | 1 | 0 | 0 | 7 | 5 | 0 | 1 |
+| `dart` | `tree-sitter-dart` | `current` | 2 | 10 | 2 | 1 | 1 | 11 | 7 | 0 | 0 |
 | `elixir` | `tree-sitter-elixir` | `current` | 1 | 3 | 3 | 0 | 0 | 3 | 0 | 0 | 1 |
 | `lua` | `tree-sitter-lua` | `current` | 1 | 8 | 1 | 0 | 0 | 8 | 0 | 0 | 2 |
 | `qml` | `tree-sitter-qmljs` | `git_pinned` | 1 | 7 | 2 | 1 | 1 | 10 | 0 | 0 | 1 |
@@ -135,4 +134,4 @@
 
 ## Rows Without Gap Entries
 
-`rust`, `tsx`, `jsx`, `vue`, `vbnet`, `sql`
+`rust`, `tsx`, `jsx`, `vue`, `vbnet`, `dart`, `sql`
