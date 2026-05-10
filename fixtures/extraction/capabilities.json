@@ -260,6 +260,11 @@
           "name": "basic",
           "source": "fixtures/extraction/tsx/basic/source.tsx",
           "expected": "fixtures/extraction/tsx/basic/expected.json"
+        },
+        {
+          "name": "cross_file",
+          "source": "fixtures/extraction/tsx/cross_file/source.tsx",
+          "expected": "fixtures/extraction/tsx/cross_file/expected.json"
         }
       ],
       "target_capabilities": {

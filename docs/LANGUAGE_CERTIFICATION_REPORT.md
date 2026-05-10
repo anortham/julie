@@ -4,9 +4,9 @@
 
 ## Summary
 
-- Current HEAD: `1f381de7ed5dba4ad06e5c058a58186f44fee1f4`
+- Current HEAD: `5495e7a3ce2d6e9e5c52eb8cf5573c68e211d73c`
 - Registry rows: `36`
-- Golden fixtures: `51`
+- Golden fixtures: `52`
 - Historical matrix rows: `33`
 - Raw historical OSS reports: `13`
 - Current real-world verified repos: `13`
@@ -45,7 +45,7 @@
 
 | symbols | relationships | pending | structured pending | identifiers | types | parse diagnostics |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 302 | 73 | 18 | 18 | 149 | 124 | 6 |
+| 307 | 74 | 19 | 19 | 152 | 127 | 6 |
 
 ## Gap Counts
 
@@ -94,7 +94,7 @@
 | `go` | `tree-sitter-go` | `current` | 3 | 18 | 2 | 1 | 1 | 7 | 5 | 5 | 0 |
 | `zig` | `tree-sitter-zig` | `current` | 2 | 9 | 3 | 1 | 1 | 6 | 6 | 0 | 0 |
 | `typescript` | `tree-sitter-typescript` | `current` | 2 | 13 | 3 | 1 | 1 | 5 | 4 | 0 | 0 |
-| `tsx` | `tree-sitter-typescript` | `current` | 1 | 5 | 1 | 1 | 1 | 4 | 2 | 0 | 0 |
+| `tsx` | `tree-sitter-typescript` | `current` | 2 | 10 | 2 | 2 | 2 | 7 | 5 | 0 | 0 |
 | `javascript` | `tree-sitter-javascript` | `current` | 1 | 5 | 1 | 0 | 0 | 3 | 0 | 0 | 1 |
 | `jsx` | `tree-sitter-javascript` | `current` | 1 | 4 | 2 | 1 | 1 | 3 | 0 | 0 | 0 |
 | `html` | `tree-sitter-html` | `current` | 1 | 11 | 1 | 0 | 0 | 2 | 10 | 0 | 1 |
