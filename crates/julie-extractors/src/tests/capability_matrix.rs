@@ -373,6 +373,185 @@ fn capability_matrix_evidence_is_typed_object() {
     assert!(errors.is_empty(), "{}", errors.join("\n"));
 }
 
+/// Task 1.2: every typed-evidence reference must resolve to a real artifact.
+/// `kind: test` values must appear in the nextest test inventory; `kind:
+/// fixture` paths must exist on disk; `kind: commit` SHAs must resolve via
+/// `git cat-file -e`.
+#[test]
+fn capability_matrix_evidence_resolves() {
+    let root = workspace_root();
+    let matrix = load_matrix(&root);
+    let needs_inventory = matrix
+        .languages
+        .iter()
+        .flat_map(|row| &row.capability_gaps)
+        .any(|gap| matches!(gap.evidence, EvidenceRef::Test { .. }));
+    let test_inventory = if needs_inventory {
+        load_test_inventory(&root)
+    } else {
+        std::collections::HashSet::new()
+    };
+
+    let mut errors = Vec::new();
+    for row in &matrix.languages {
+        for gap in &row.capability_gaps {
+            match &gap.evidence {
+                EvidenceRef::Test { value, .. } => {
+                    if !test_inventory.contains(value) {
+                        errors.push(format!(
+                            "language {} gap {} references test `{}` not present in the nextest inventory",
+                            row.language, gap.capability, value
+                        ));
+                    }
+                }
+                EvidenceRef::Fixture { value, .. } => {
+                    let path = root.join(value);
+                    if !path.exists() {
+                        errors.push(format!(
+                            "language {} gap {} fixture path `{}` does not exist",
+                            row.language, gap.capability, path.display()
+                        ));
+                    }
+                }
+                EvidenceRef::Commit { value, .. } => {
+                    let output = std::process::Command::new("git")
+                        .args(["cat-file", "-e", value])
+                        .current_dir(&root)
+                        .output()
+                        .expect("git binary available");
+                    if !output.status.success() {
+                        errors.push(format!(
+                            "language {} gap {} commit `{}` does not resolve via git cat-file",
+                            row.language, gap.capability, value
+                        ));
+                    }
+                }
+                EvidenceRef::DeadString(s) => errors.push(format!(
+                    "language {} gap {} still has bare-string evidence: {}",
+                    row.language, gap.capability, s
+                )),
+            }
+        }
+    }
+    assert!(errors.is_empty(), "{}", errors.join("\n"));
+}
+
+/// Task 1.2: exception reasons must describe an intrinsic-N/A condition or a
+/// documented parser limitation. Placeholder phrases like "not implemented" or
+/// "todo" are banned — they hide work, not document a real limitation.
+#[test]
+fn capability_matrix_no_not_implemented_exceptions() {
+    let root = workspace_root();
+    let matrix = load_matrix(&root);
+    let banned = [
+        "not implemented",
+        "not yet supported",
+        "todo",
+        "coming soon",
+    ];
+    let mut errors = Vec::new();
+    for row in &matrix.languages {
+        for gap in &row.capability_gaps {
+            if gap.status != "exception" {
+                continue;
+            }
+            let lower = gap.reason.to_lowercase();
+            for ban in &banned {
+                if lower.contains(ban) {
+                    errors.push(format!(
+                        "language {} gap {} has exception reason containing `{}`: {}",
+                        row.language, gap.capability, ban, gap.reason
+                    ));
+                }
+            }
+        }
+    }
+    assert!(errors.is_empty(), "{}", errors.join("\n"));
+}
+
+/// Task 1.2: every `status: open` row must carry `planned_closure_task`
+/// pointing at a literal heading or anchor present in the plan body. Rows in
+/// `closed` or `exception` status must NOT carry this field — closed evidence
+/// already names what closed it.
+#[test]
+fn capability_matrix_open_rows_have_planned_closure_task() {
+    let root = workspace_root();
+    let matrix = load_matrix(&root);
+    let plan_path = root.join("docs/plans/2026-05-10-best-in-class-tree-sitter-plan.md");
+    let plan_body = std::fs::read_to_string(&plan_path).unwrap_or_else(|err| {
+        panic!(
+            "plan file must exist at {}: {}",
+            plan_path.display(),
+            err
+        )
+    });
+    let mut errors = Vec::new();
+    for row in &matrix.languages {
+        for gap in &row.capability_gaps {
+            match gap.status.as_str() {
+                "open" => match gap.planned_closure_task.as_deref() {
+                    None => errors.push(format!(
+                        "language {} gap {} has status=open but no planned_closure_task field",
+                        row.language, gap.capability
+                    )),
+                    Some(task) => {
+                        if !plan_body.contains(task) {
+                            errors.push(format!(
+                                "language {} gap {} planned_closure_task `{}` does not appear in the plan",
+                                row.language, gap.capability, task
+                            ));
+                        }
+                    }
+                },
+                "exception" | "closed" => {
+                    if gap.planned_closure_task.is_some() {
+                        errors.push(format!(
+                            "language {} gap {} status={} but carries planned_closure_task; remove the field",
+                            row.language, gap.capability, gap.status
+                        ));
+                    }
+                }
+                other => errors.push(format!(
+                    "language {} gap {} has unrecognized status `{}` (expected open|exception|closed)",
+                    row.language, gap.capability, other
+                )),
+            }
+        }
+    }
+    assert!(errors.is_empty(), "{}", errors.join("\n"));
+}
+
+fn load_test_inventory(root: &Path) -> std::collections::HashSet<String> {
+    let output = std::process::Command::new("cargo")
+        .args([
+            "nextest",
+            "list",
+            "-p",
+            "julie-extractors",
+            "--message-format",
+            "json",
+        ])
+        .current_dir(root)
+        .output()
+        .expect("cargo nextest list");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut names = std::collections::HashSet::new();
+    for line in stdout.lines() {
+        if let Ok(v) = serde_json::from_str::<Value>(line) {
+            if let Some(test_name) = v
+                .get("test")
+                .and_then(|t| t.get("name"))
+                .and_then(|n| n.as_str())
+            {
+                if let Some(bare) = test_name.split("::").last() {
+                    names.insert(bare.to_string());
+                }
+            }
+        }
+    }
+    names
+}
+
 #[test]
 fn capability_matrix_records_known_gaps_for_languages_with_unfixed_findings() {
     let root = workspace_root();

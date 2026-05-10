@@ -38,7 +38,8 @@
             "kind": "commit",
             "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
             "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
-          }
+          },
+          "planned_closure_task": "Phase 4a"
         }
       ]
     },
@@ -81,7 +82,8 @@
             "kind": "commit",
             "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
             "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
-          }
+          },
+          "planned_closure_task": "Phase 4a"
         }
       ]
     },
@@ -130,7 +132,8 @@
             "kind": "commit",
             "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
             "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
-          }
+          },
+          "planned_closure_task": "Phase 4a"
         }
       ]
     },
@@ -177,7 +180,8 @@
             "kind": "commit",
             "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
             "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
-          }
+          },
+          "planned_closure_task": "Phase 4a"
         }
       ]
     },
@@ -219,7 +223,8 @@
             "kind": "commit",
             "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
             "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
-          }
+          },
+          "planned_closure_task": "Phase 4a"
         }
       ]
     },
@@ -263,7 +268,8 @@
             "kind": "commit",
             "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
             "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
-          }
+          },
+          "planned_closure_task": "Phase 4a"
         }
       ]
     },
@@ -336,7 +342,8 @@
             "kind": "commit",
             "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
             "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
-          }
+          },
+          "planned_closure_task": "Phase 4a"
         }
       ]
     },
@@ -408,7 +415,8 @@
             "kind": "commit",
             "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
             "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
-          }
+          },
+          "planned_closure_task": "Phase 4b.html"
         }
       ]
     },
@@ -450,7 +458,8 @@
             "kind": "commit",
             "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
             "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
-          }
+          },
+          "planned_closure_task": "Phase 4c"
         },
         {
           "capability": "types",
@@ -461,7 +470,8 @@
             "kind": "commit",
             "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
             "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
-          }
+          },
+          "planned_closure_task": "Phase 4c"
         }
       ]
     },
@@ -534,7 +544,8 @@
             "kind": "commit",
             "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
             "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
-          }
+          },
+          "planned_closure_task": "Phase 4a"
         }
       ]
     },
@@ -576,7 +587,8 @@
             "kind": "commit",
             "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
             "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
-          }
+          },
+          "planned_closure_task": "Phase 4a"
         }
       ]
     },
@@ -618,7 +630,8 @@
             "kind": "commit",
             "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
             "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
-          }
+          },
+          "planned_closure_task": "Phase 4a"
         }
       ]
     },
@@ -660,7 +673,8 @@
             "kind": "commit",
             "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
             "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
-          }
+          },
+          "planned_closure_task": "Phase 4a"
         }
       ]
     },
@@ -703,7 +717,8 @@
             "kind": "commit",
             "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
             "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
-          }
+          },
+          "planned_closure_task": "Phase 4a"
         }
       ]
     },
@@ -746,7 +761,8 @@
             "kind": "commit",
             "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
             "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
-          }
+          },
+          "planned_closure_task": "Phase 4a"
         }
       ]
     },
@@ -788,7 +804,8 @@
             "kind": "commit",
             "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
             "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
-          }
+          },
+          "planned_closure_task": "Phase 4a"
         }
       ]
     },
@@ -831,7 +848,8 @@
             "kind": "commit",
             "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
             "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
-          }
+          },
+          "planned_closure_task": "Phase 4a"
         }
       ]
     },
@@ -874,7 +892,8 @@
             "kind": "commit",
             "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
             "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
-          }
+          },
+          "planned_closure_task": "Phase 4a"
         }
       ]
     },
@@ -916,7 +935,8 @@
             "kind": "commit",
             "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
             "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
-          }
+          },
+          "planned_closure_task": "Phase 4a"
         }
       ]
     },
@@ -959,7 +979,8 @@
             "kind": "commit",
             "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
             "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
-          }
+          },
+          "planned_closure_task": "Phase 4a"
         }
       ]
     },
@@ -1001,7 +1022,8 @@
             "kind": "commit",
             "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
             "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
-          }
+          },
+          "planned_closure_task": "Phase 4a"
         },
         {
           "capability": "types",
@@ -1012,7 +1034,8 @@
             "kind": "commit",
             "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
             "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
-          }
+          },
+          "planned_closure_task": "Phase 4a"
         }
       ]
     },
@@ -1054,7 +1077,8 @@
             "kind": "commit",
             "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
             "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
-          }
+          },
+          "planned_closure_task": "Phase 4b"
         }
       ]
     },
@@ -1097,7 +1121,8 @@
             "kind": "commit",
             "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
             "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
-          }
+          },
+          "planned_closure_task": "Phase 4a"
         },
         {
           "capability": "types",
@@ -1108,7 +1133,8 @@
             "kind": "commit",
             "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
             "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
-          }
+          },
+          "planned_closure_task": "Phase 4a"
         }
       ]
     },
@@ -1151,7 +1177,8 @@
             "kind": "commit",
             "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
             "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
-          }
+          },
+          "planned_closure_task": "Phase 4a"
         }
       ]
     },
@@ -1195,7 +1222,8 @@
             "kind": "commit",
             "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
             "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
-          }
+          },
+          "planned_closure_task": "Phase 4a"
         }
       ]
     },
@@ -1237,7 +1265,8 @@
             "kind": "commit",
             "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
             "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
-          }
+          },
+          "planned_closure_task": "Phase 4a"
         }
       ]
     },
@@ -1280,7 +1309,8 @@
             "kind": "commit",
             "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
             "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
-          }
+          },
+          "planned_closure_task": "Phase 4b.razor"
         }
       ]
     },
@@ -1322,7 +1352,8 @@
             "kind": "commit",
             "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
             "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
-          }
+          },
+          "planned_closure_task": "Phase 3.1"
         }
       ]
     },
@@ -1364,7 +1395,8 @@
             "kind": "commit",
             "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
             "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
-          }
+          },
+          "planned_closure_task": "Phase 4c"
         }
       ]
     },
@@ -1407,7 +1439,8 @@
             "kind": "commit",
             "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
             "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
-          }
+          },
+          "planned_closure_task": "Phase 4d"
         },
         {
           "capability": "types",
@@ -1418,7 +1451,8 @@
             "kind": "commit",
             "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
             "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
-          }
+          },
+          "planned_closure_task": "Phase 4d"
         }
       ]
     },
@@ -1462,7 +1496,8 @@
             "kind": "commit",
             "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
             "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
-          }
+          },
+          "planned_closure_task": "Phase 3.2"
         },
         {
           "capability": "pending_relationships",
@@ -1473,7 +1508,8 @@
             "kind": "commit",
             "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
             "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
-          }
+          },
+          "planned_closure_task": "Phase 3.2"
         },
         {
           "capability": "types",
@@ -1484,7 +1520,8 @@
             "kind": "commit",
             "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
             "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
-          }
+          },
+          "planned_closure_task": "Phase 3.2"
         }
       ]
     },
@@ -1526,7 +1563,8 @@
             "kind": "commit",
             "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
             "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
-          }
+          },
+          "planned_closure_task": "Phase 3.3"
         },
         {
           "capability": "pending_relationships",
@@ -1537,7 +1575,8 @@
             "kind": "commit",
             "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
             "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
-          }
+          },
+          "planned_closure_task": "Phase 3.3"
         },
         {
           "capability": "types",
@@ -1548,7 +1587,8 @@
             "kind": "commit",
             "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
             "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
-          }
+          },
+          "planned_closure_task": "Phase 3.3"
         }
       ]
     },
@@ -1591,7 +1631,8 @@
             "kind": "commit",
             "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
             "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
-          }
+          },
+          "planned_closure_task": "Phase 4d"
         },
         {
           "capability": "types",
@@ -1602,7 +1643,8 @@
             "kind": "commit",
             "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
             "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
-          }
+          },
+          "planned_closure_task": "Phase 4d"
         }
       ]
     }
