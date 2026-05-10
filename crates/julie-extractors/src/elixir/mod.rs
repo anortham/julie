@@ -123,4 +123,10 @@ impl ElixirExtractor {
     pub fn get_pending_relationships(&self) -> Vec<crate::base::PendingRelationship> {
         self.base.get_pending_relationships()
     }
+
+    pub fn get_structured_pending_relationships(
+        &self,
+    ) -> Vec<crate::base::StructuredPendingRelationship> {
+        self.base.get_structured_pending_relationships()
+    }
 }

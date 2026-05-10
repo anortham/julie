@@ -17,40 +17,6 @@ pub struct LanguageRegistryEntry {
     pub extract: ExtractFn,
 }
 
-macro_rules! define_full_language_extractors {
-    ($(($fn_name:ident, $language:literal, $extractor:path)),+ $(,)?) => {
-        $(
-            fn $fn_name(
-                tree: &Tree,
-                file_path: &str,
-                content: &str,
-                workspace_root: &Path,
-            ) -> Result<ExtractionResults, anyhow::Error> {
-                let mut ext = <$extractor>::new(
-                    $language.to_string(),
-                    file_path.to_string(),
-                    content.to_string(),
-                    workspace_root,
-                );
-                let symbols = ext.extract_symbols(tree);
-                let relationships = ext.extract_relationships(tree, &symbols);
-                let identifiers = ext.extract_identifiers(tree, &symbols);
-                let types = ext.infer_types(&symbols);
-                let pending_relationships = ext.get_pending_relationships();
-                Ok(ExtractionResults {
-                    symbols,
-                    relationships,
-                    pending_relationships,
-                    structured_pending_relationships: Vec::new(),
-                    identifiers,
-                    types: convert_types_map(types, $language),
-                    parse_diagnostics: Vec::new(),
-                })
-            }
-        )+
-    };
-}
-
 macro_rules! define_structured_full_language_extractors {
     ($(($fn_name:ident, $language:literal, $extractor:path)),+ $(,)?) => {
         $(
@@ -185,9 +151,8 @@ macro_rules! define_relationship_data_extractors {
     };
 }
 
-define_full_language_extractors![(extract_elixir, "elixir", crate::elixir::ElixirExtractor)];
-
 define_structured_full_language_extractors![
+    (extract_elixir, "elixir", crate::elixir::ElixirExtractor),
     (extract_rust, "rust", crate::rust::RustExtractor),
     (extract_dart, "dart", crate::dart::DartExtractor),
     (extract_go, "go", crate::go::GoExtractor),

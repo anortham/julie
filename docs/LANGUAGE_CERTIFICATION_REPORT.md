@@ -4,15 +4,15 @@
 
 ## Summary
 
-- Current HEAD: `8f0819f042c675f6647170997b3d6131216202b3`
+- Current HEAD: `19311eb9e91655443595a7f8d18521ed20a6ab95`
 - Registry rows: `36`
-- Golden fixtures: `61`
+- Golden fixtures: `62`
 - Historical matrix rows: `33`
 - Raw historical OSS reports: `13`
 - Current real-world verified repos: `13`
 - Current real-world skipped repos: `0`
-- Rows with open gaps: `12`
-- Rows without gap entries: `22`
+- Rows with open gaps: `11`
+- Rows without gap entries: `23`
 
 ## Historical Coverage Delta
 
@@ -45,13 +45,13 @@
 
 | symbols | relationships | pending | structured pending | identifiers | types | parse diagnostics |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 345 | 83 | 31 | 31 | 170 | 145 | 6 |
+| 349 | 84 | 32 | 32 | 174 | 145 | 6 |
 
 ## Gap Counts
 
 | capability | count |
 | --- | ---: |
-| `pending_relationships` | 12 |
+| `pending_relationships` | 11 |
 | `types` | 8 |
 
 ## Open Capability Gaps
@@ -61,7 +61,6 @@
 | `html` | `pending_relationships` | `open` | `commit:c729e8636f6bde07fb5596035a76d24db9c47066` | Emit pending relationships for external script/style src=... references; close in Phase 4b (HTML task). |
 | `css` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | N/A — domain limitation. |
 | `css` | `types` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | N/A — domain limitation. |
-| `elixir` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
 | `lua` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
 | `lua` | `types` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Out of scope — Lua is dynamic. Luau-style type annotations would be a separate language target. |
 | `qml` | `types` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Future work could add structured TypeInfo for QML property declarations. |
@@ -102,7 +101,7 @@
 | `kotlin` | `tree-sitter-kotlin-ng` | `current` | 2 | 12 | 3 | 2 | 2 | 4 | 6 | 0 | 0 |
 | `scala` | `tree-sitter-scala` | `current` | 2 | 11 | 3 | 2 | 2 | 4 | 5 | 0 | 0 |
 | `dart` | `tree-sitter-dart` | `current` | 2 | 10 | 2 | 1 | 1 | 11 | 7 | 0 | 0 |
-| `elixir` | `tree-sitter-elixir` | `current` | 1 | 3 | 3 | 0 | 0 | 3 | 0 | 0 | 1 |
+| `elixir` | `tree-sitter-elixir` | `current` | 2 | 7 | 4 | 1 | 1 | 7 | 0 | 0 | 0 |
 | `lua` | `tree-sitter-lua` | `current` | 1 | 8 | 1 | 0 | 0 | 8 | 0 | 0 | 2 |
 | `qml` | `tree-sitter-qmljs` | `git_pinned` | 1 | 7 | 2 | 1 | 1 | 10 | 0 | 0 | 1 |
 | `r` | `tree-sitter-r` | `current` | 1 | 4 | 1 | 0 | 0 | 13 | 0 | 0 | 2 |
@@ -119,4 +118,4 @@
 
 ## Rows Without Gap Entries
 
-`rust`, `c`, `cpp`, `go`, `zig`, `typescript`, `tsx`, `javascript`, `jsx`, `vue`, `python`, `java`, `csharp`, `vbnet`, `php`, `ruby`, `swift`, `kotlin`, `scala`, `dart`, `gdscript`, `sql`
+`rust`, `c`, `cpp`, `go`, `zig`, `typescript`, `tsx`, `javascript`, `jsx`, `vue`, `python`, `java`, `csharp`, `vbnet`, `php`, `ruby`, `swift`, `kotlin`, `scala`, `dart`, `elixir`, `gdscript`, `sql`
