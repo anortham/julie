@@ -318,7 +318,12 @@ fn write_minimal_repo(root: &Path, include_gap_evidence: bool) {
           "status": "open",
           "reason": "fixture does not prove pending output",
           "required_closure": "add pending fixture evidence",
-          "evidence": "docs/findings/COMPILED-FINDINGS.md"
+          "evidence": {
+            "kind": "fixture",
+            "value": "docs/findings/COMPILED-FINDINGS.md",
+            "command": "cargo nextest run -p julie-extractors --lib golden_fixtures_match_canonical_extraction"
+          },
+          "planned_closure_task": "Phase 4a"
         }
       ]
     }

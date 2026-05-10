@@ -4,7 +4,7 @@
 
 ## Summary
 
-- Current HEAD: `72138dc0f7153a5950aae2487f4734091fa10302`
+- Current HEAD: `a03250929ecf323d0faaf9762c81e3ecbec651a9`
 - Registry rows: `36`
 - Golden fixtures: `37`
 - Historical matrix rows: `33`
@@ -59,48 +59,48 @@
 
 | language | capability | status | evidence | required closure |
 | --- | --- | --- | --- | --- |
-| `rust` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
-| `c` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
-| `cpp` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
-| `go` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
-| `zig` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
-| `typescript` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
-| `javascript` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
-| `html` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | N/A — domain limitation. |
-| `css` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | N/A — domain limitation. |
-| `css` | `types` | `open` | `docs/findings/COMPILED-FINDINGS.md` | N/A — domain limitation. |
-| `python` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
-| `java` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
-| `csharp` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
-| `vbnet` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
-| `php` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
-| `ruby` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
-| `swift` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
-| `kotlin` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
-| `scala` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
-| `dart` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
-| `elixir` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
-| `lua` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
-| `lua` | `types` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Out of scope — Lua is dynamic. Luau-style type annotations would be a separate language target. |
-| `qml` | `types` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Future work could add structured TypeInfo for QML property declarations. |
-| `r` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
-| `r` | `types` | `open` | `docs/findings/COMPILED-FINDINGS.md` | N/A — domain limitation. Future work could harvest roxygen type annotations into TypeInfo. |
-| `bash` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
-| `powershell` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
-| `gdscript` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
-| `razor` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | N/A — handled by embedded C# extractor. |
-| `sql` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Implement structured pending relationships for unresolved FK targets, move SQL out of NO_PENDING_CAPABILITIES, and advance target_capabilities.pending_relationships to true. |
-| `regex` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | N/A — domain limitation. |
-| `markdown` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | N/A — domain limitation. |
-| `markdown` | `types` | `open` | `docs/findings/COMPILED-FINDINGS.md` | N/A — domain limitation. |
-| `json` | `relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Implement JSON Schema $ref to schema-definition relationship extraction with exact target resolution. |
-| `json` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Once $ref relationships are implemented, evaluate whether unresolved external refs warrant pending promotion. |
-| `json` | `types` | `open` | `docs/findings/COMPILED-FINDINGS.md` | N/A — domain limitation. JSON Schema type extraction would require a schema-aware extractor mode. |
-| `toml` | `relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Implement domain-specific TOML reference extraction (Cargo.toml dependencies, pyproject tool tables, etc.) with exact resolution. |
-| `toml` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Re-evaluate after TOML relationships are implemented. |
-| `toml` | `types` | `open` | `docs/findings/COMPILED-FINDINGS.md` | N/A — domain limitation. |
-| `yaml` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | N/A — domain limitation. |
-| `yaml` | `types` | `open` | `docs/findings/COMPILED-FINDINGS.md` | N/A — domain limitation. |
+| `rust` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
+| `c` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
+| `cpp` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
+| `go` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
+| `zig` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
+| `typescript` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
+| `javascript` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
+| `html` | `pending_relationships` | `open` | `commit:c729e8636f6bde07fb5596035a76d24db9c47066` | Emit pending relationships for external script/style src=... references; close in Phase 4b (HTML task). |
+| `css` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | N/A — domain limitation. |
+| `css` | `types` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | N/A — domain limitation. |
+| `python` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
+| `java` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
+| `csharp` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
+| `vbnet` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
+| `php` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
+| `ruby` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
+| `swift` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
+| `kotlin` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
+| `scala` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
+| `dart` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
+| `elixir` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
+| `lua` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
+| `lua` | `types` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Out of scope — Lua is dynamic. Luau-style type annotations would be a separate language target. |
+| `qml` | `types` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Future work could add structured TypeInfo for QML property declarations. |
+| `r` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
+| `r` | `types` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | N/A — domain limitation. Future work could harvest roxygen type annotations into TypeInfo. |
+| `bash` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
+| `powershell` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
+| `gdscript` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
+| `razor` | `pending_relationships` | `open` | `commit:c729e8636f6bde07fb5596035a76d24db9c47066` | Lock the no-pending classification with `razor_pending_relationships_handled_by_csharp_embed` test in Phase 4b.razor; flip to status=exception with the locking test as evidence once it lands. |
+| `sql` | `pending_relationships` | `open` | `commit:c729e8636f6bde07fb5596035a76d24db9c47066` | Move SQL out of NO_PENDING_CAPABILITIES; emit StructuredPendingRelationship for cross-file FK targets; close in Phase 3.1. |
+| `regex` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | N/A — domain limitation. |
+| `markdown` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | N/A — domain limitation. |
+| `markdown` | `types` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | N/A — domain limitation. |
+| `json` | `relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Implement JSON Schema $ref to schema-definition relationship extraction with exact target resolution. |
+| `json` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Once $ref relationships are implemented, evaluate whether unresolved external refs warrant pending promotion. |
+| `json` | `types` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | N/A — domain limitation. JSON Schema type extraction would require a schema-aware extractor mode. |
+| `toml` | `relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Implement domain-specific TOML reference extraction (Cargo.toml dependencies, pyproject tool tables, etc.) with exact resolution. |
+| `toml` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Re-evaluate after TOML relationships are implemented. |
+| `toml` | `types` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | N/A — domain limitation. |
+| `yaml` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | N/A — domain limitation. |
+| `yaml` | `types` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | N/A — domain limitation. |
 
 ## Per-Language Fixture Evidence
 
