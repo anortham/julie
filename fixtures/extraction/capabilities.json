@@ -1324,7 +1324,7 @@
       "capabilities": {
         "symbols": true,
         "relationships": true,
-        "pending_relationships": false,
+        "pending_relationships": true,
         "identifiers": true,
         "types": true
       },
@@ -1333,29 +1333,21 @@
           "name": "basic",
           "source": "fixtures/extraction/sql/basic/source.sql",
           "expected": "fixtures/extraction/sql/basic/expected.json"
+        },
+        {
+          "name": "cross_file",
+          "source": "fixtures/extraction/sql/cross_file/source.sql",
+          "expected": "fixtures/extraction/sql/cross_file/expected.json"
         }
       ],
       "target_capabilities": {
         "symbols": true,
         "relationships": true,
-        "pending_relationships": false,
+        "pending_relationships": true,
         "identifiers": true,
         "types": true
       },
-      "capability_gaps": [
-        {
-          "capability": "pending_relationships",
-          "status": "open",
-          "reason": "Cross-file foreign-key references are currently suppressed at extraction (crates/julie-extractors/src/sql/relationships.rs around line 115) rather than preserved as pending relationships. Promotion of FK targets to structured pending relationships is deferred.",
-          "required_closure": "Move SQL out of NO_PENDING_CAPABILITIES; emit StructuredPendingRelationship for cross-file FK targets; close in Phase 3.1.",
-          "evidence": {
-            "kind": "commit",
-            "value": "c729e8636f6bde07fb5596035a76d24db9c47066",
-            "command": "git show c729e8636f6bde07fb5596035a76d24db9c47066"
-          },
-          "planned_closure_task": "Phase 3.1"
-        }
-      ]
+      "capability_gaps": []
     },
     {
       "language": "regex",

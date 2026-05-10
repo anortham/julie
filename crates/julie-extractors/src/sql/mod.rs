@@ -24,7 +24,10 @@ mod schema_relationships;
 mod schemas;
 mod views;
 
-use crate::base::{BaseExtractor, Identifier, Relationship, Symbol};
+use crate::base::{
+    BaseExtractor, Identifier, PendingRelationship, Relationship, StructuredPendingRelationship,
+    Symbol,
+};
 use std::collections::HashMap;
 use tree_sitter::Tree;
 
@@ -49,6 +52,18 @@ impl SqlExtractor {
         Self {
             base: BaseExtractor::new(language, file_path, content, workspace_root),
         }
+    }
+
+    /// Pending relationships accumulated during extraction. SQL emits these
+    /// for cross-file/cross-schema FK targets (Phase 3.1).
+    pub fn get_pending_relationships(&self) -> Vec<PendingRelationship> {
+        self.base.get_pending_relationships()
+    }
+
+    /// Structured pending relationships with full `UnresolvedTarget` shape
+    /// (terminal_name, namespace_path, etc.) for cross-file FK references.
+    pub fn get_structured_pending_relationships(&self) -> Vec<StructuredPendingRelationship> {
+        self.base.get_structured_pending_relationships()
     }
 
     pub fn extract_symbols(&mut self, tree: &Tree) -> Vec<Symbol> {

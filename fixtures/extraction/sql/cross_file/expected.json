@@ -1,0 +1,246 @@
+{
+  "symbols": [
+    {
+      "key": "fixtures/extraction/sql/cross_file/source.sql:audit_events:10:0",
+      "name": "audit_events",
+      "kind": "class",
+      "language": "sql",
+      "file_path": "fixtures/extraction/sql/cross_file/source.sql",
+      "start_line": 10,
+      "start_column": 0,
+      "end_line": 13,
+      "end_column": 1,
+      "start_byte": 350,
+      "end_byte": 442,
+      "signature": "CREATE TABLE audit_events (2 columns)",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": null,
+      "metadata": {
+        "isTable": true
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/sql/cross_file/source.sql:id:11:4",
+      "name": "id",
+      "kind": "field",
+      "language": "sql",
+      "file_path": "fixtures/extraction/sql/cross_file/source.sql",
+      "start_line": 11,
+      "start_column": 4,
+      "end_line": 11,
+      "end_column": 22,
+      "start_byte": 382,
+      "end_byte": 400,
+      "signature": "INT PRIMARY KEY",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": "fixtures/extraction/sql/cross_file/source.sql:audit_events:10:0",
+      "metadata": {},
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/sql/cross_file/source.sql:id:6:4",
+      "name": "id",
+      "kind": "field",
+      "language": "sql",
+      "file_path": "fixtures/extraction/sql/cross_file/source.sql",
+      "start_line": 6,
+      "start_column": 4,
+      "end_line": 6,
+      "end_column": 22,
+      "start_byte": 276,
+      "end_byte": 294,
+      "signature": "INT PRIMARY KEY",
+      "doc_comment": "-- Phase 3.1 fixture: cross-schema FK references must produce a\n-- StructuredPendingRelationship with target.namespace_path=[\"other_schema\"]\n-- and target.terminal_name=\"users\". The local-only `audit_events` FK to\n-- `orders.id` resolves concretely.",
+      "visibility": "Public",
+      "parent_key": "fixtures/extraction/sql/cross_file/source.sql:orders:5:0",
+      "metadata": {},
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/sql/cross_file/source.sql:order_id:12:4",
+      "name": "order_id",
+      "kind": "field",
+      "language": "sql",
+      "file_path": "fixtures/extraction/sql/cross_file/source.sql",
+      "start_line": 12,
+      "start_column": 4,
+      "end_line": 12,
+      "end_column": 38,
+      "start_byte": 406,
+      "end_byte": 440,
+      "signature": "INT",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": "fixtures/extraction/sql/cross_file/source.sql:audit_events:10:0",
+      "metadata": {},
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/sql/cross_file/source.sql:orders:5:0",
+      "name": "orders",
+      "kind": "class",
+      "language": "sql",
+      "file_path": "fixtures/extraction/sql/cross_file/source.sql",
+      "start_line": 5,
+      "start_column": 0,
+      "end_line": 8,
+      "end_column": 1,
+      "start_byte": 250,
+      "end_byte": 347,
+      "signature": "CREATE TABLE orders (2 columns)",
+      "doc_comment": "-- Phase 3.1 fixture: cross-schema FK references must produce a\n-- StructuredPendingRelationship with target.namespace_path=[\"other_schema\"]\n-- and target.terminal_name=\"users\". The local-only `audit_events` FK to\n-- `orders.id` resolves concretely.",
+      "visibility": "Public",
+      "parent_key": null,
+      "metadata": {
+        "isTable": true
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/sql/cross_file/source.sql:user_id:7:4",
+      "name": "user_id",
+      "kind": "field",
+      "language": "sql",
+      "file_path": "fixtures/extraction/sql/cross_file/source.sql",
+      "start_line": 7,
+      "start_column": 4,
+      "end_line": 7,
+      "end_column": 49,
+      "start_byte": 300,
+      "end_byte": 345,
+      "signature": "INT",
+      "doc_comment": "-- Phase 3.1 fixture: cross-schema FK references must produce a\n-- StructuredPendingRelationship with target.namespace_path=[\"other_schema\"]\n-- and target.terminal_name=\"users\". The local-only `audit_events` FK to\n-- `orders.id` resolves concretely.",
+      "visibility": "Public",
+      "parent_key": "fixtures/extraction/sql/cross_file/source.sql:orders:5:0",
+      "metadata": {},
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    }
+  ],
+  "relationships": [
+    {
+      "from_key": "fixtures/extraction/sql/cross_file/source.sql:audit_events:10:0",
+      "to_key": "fixtures/extraction/sql/cross_file/source.sql:orders:5:0",
+      "kind": "references",
+      "file_path": "fixtures/extraction/sql/cross_file/source.sql",
+      "line_number": 12,
+      "confidence": "1.000",
+      "metadata": {
+        "isExternal": false,
+        "relationshipType": "foreign_key",
+        "sourceTable": "audit_events",
+        "targetTable": "orders"
+      }
+    }
+  ],
+  "pending_relationships": [
+    {
+      "from_key": "fixtures/extraction/sql/cross_file/source.sql:orders:5:0",
+      "callee_name": "other_schema.users",
+      "kind": "references",
+      "file_path": "fixtures/extraction/sql/cross_file/source.sql",
+      "line_number": 7,
+      "confidence": "1.000"
+    }
+  ],
+  "structured_pending_relationships": [
+    {
+      "pending": {
+        "from_key": "fixtures/extraction/sql/cross_file/source.sql:orders:5:0",
+        "callee_name": "other_schema.users",
+        "kind": "references",
+        "file_path": "fixtures/extraction/sql/cross_file/source.sql",
+        "line_number": 7,
+        "confidence": "1.000"
+      },
+      "target": {
+        "display_name": "other_schema.users",
+        "terminal_name": "users",
+        "receiver": null,
+        "namespace_path": [
+          "other_schema"
+        ],
+        "import_context": null
+      },
+      "caller_scope_key": "fixtures/extraction/sql/cross_file/source.sql:orders:5:0"
+    }
+  ],
+  "identifiers": [],
+  "types": [
+    {
+      "symbol_key": "fixtures/extraction/sql/cross_file/source.sql:audit_events:10:0",
+      "resolved_type": "TABLE",
+      "generic_params": null,
+      "constraints": null,
+      "is_inferred": true,
+      "language": "sql",
+      "metadata": null
+    },
+    {
+      "symbol_key": "fixtures/extraction/sql/cross_file/source.sql:id:11:4",
+      "resolved_type": "INT",
+      "generic_params": null,
+      "constraints": null,
+      "is_inferred": true,
+      "language": "sql",
+      "metadata": null
+    },
+    {
+      "symbol_key": "fixtures/extraction/sql/cross_file/source.sql:id:6:4",
+      "resolved_type": "INT",
+      "generic_params": null,
+      "constraints": null,
+      "is_inferred": true,
+      "language": "sql",
+      "metadata": null
+    },
+    {
+      "symbol_key": "fixtures/extraction/sql/cross_file/source.sql:order_id:12:4",
+      "resolved_type": "INT",
+      "generic_params": null,
+      "constraints": null,
+      "is_inferred": true,
+      "language": "sql",
+      "metadata": null
+    },
+    {
+      "symbol_key": "fixtures/extraction/sql/cross_file/source.sql:orders:5:0",
+      "resolved_type": "TABLE",
+      "generic_params": null,
+      "constraints": null,
+      "is_inferred": true,
+      "language": "sql",
+      "metadata": null
+    },
+    {
+      "symbol_key": "fixtures/extraction/sql/cross_file/source.sql:user_id:7:4",
+      "resolved_type": "INT",
+      "generic_params": null,
+      "constraints": null,
+      "is_inferred": true,
+      "language": "sql",
+      "metadata": null
+    }
+  ],
+  "parse_diagnostics": []
+}

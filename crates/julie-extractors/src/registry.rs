@@ -671,11 +671,44 @@ define_structured_full_file_extractors![
 ];
 
 define_no_pending_extractors![
-    (extract_sql, "sql", crate::sql::SqlExtractor),
     (extract_html, "html", crate::html::HTMLExtractor),
     (extract_razor, "razor", crate::razor::RazorExtractor),
     (extract_regex, "regex", crate::regex::RegexExtractor)
 ];
+
+/// Hand-written SQL extractor entry point. Phase 3.1 graduated SQL out of
+/// `define_no_pending_extractors!` so its `add_structured_pending_relationship`
+/// emissions for cross-schema FK targets reach the canonical extraction
+/// results. See `crates/julie-extractors/src/sql/relationships.rs` for the
+/// FK shape contract.
+fn extract_sql(
+    tree: &Tree,
+    file_path: &str,
+    content: &str,
+    workspace_root: &Path,
+) -> Result<ExtractionResults, anyhow::Error> {
+    let mut ext = crate::sql::SqlExtractor::new(
+        "sql".to_string(),
+        file_path.to_string(),
+        content.to_string(),
+        workspace_root,
+    );
+    let symbols = ext.extract_symbols(tree);
+    let relationships = ext.extract_relationships(tree, &symbols);
+    let identifiers = ext.extract_identifiers(tree, &symbols);
+    let types = ext.infer_types(&symbols);
+    let pending_relationships = ext.get_pending_relationships();
+    let structured_pending_relationships = ext.get_structured_pending_relationships();
+    Ok(ExtractionResults {
+        symbols,
+        relationships,
+        pending_relationships,
+        structured_pending_relationships,
+        identifiers,
+        types: convert_types_map(types, "sql"),
+        parse_diagnostics: Vec::new(),
+    })
+}
 
 define_relationship_data_extractors![
     (extract_css, "css", crate::css::CSSExtractor),

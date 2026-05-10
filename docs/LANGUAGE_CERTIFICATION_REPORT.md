@@ -4,15 +4,15 @@
 
 ## Summary
 
-- Current HEAD: `e6a9806ca0d4a0f0068c968f220cafd417cdf635`
+- Current HEAD: `a4beac3ae8d0f3d4f9c39e55c01251d9e5df5d97`
 - Registry rows: `36`
-- Golden fixtures: `37`
+- Golden fixtures: `38`
 - Historical matrix rows: `33`
 - Raw historical OSS reports: `13`
 - Current real-world verified repos: `13`
 - Current real-world skipped repos: `0`
-- Rows with open gaps: `33`
-- Rows without gap entries: `3`
+- Rows with open gaps: `32`
+- Rows without gap entries: `4`
 
 ## Historical Coverage Delta
 
@@ -45,13 +45,13 @@
 
 | symbols | relationships | pending | structured pending | identifiers | types | parse diagnostics |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 227 | 54 | 4 | 4 | 121 | 100 | 6 |
+| 233 | 55 | 5 | 5 | 121 | 106 | 6 |
 
 ## Gap Counts
 
 | capability | count |
 | --- | ---: |
-| `pending_relationships` | 32 |
+| `pending_relationships` | 31 |
 | `relationships` | 2 |
 | `types` | 8 |
 
@@ -89,7 +89,6 @@
 | `powershell` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
 | `gdscript` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
 | `razor` | `pending_relationships` | `open` | `commit:c729e8636f6bde07fb5596035a76d24db9c47066` | Lock the no-pending classification with `razor_pending_relationships_handled_by_csharp_embed` test in Phase 4b.razor; flip to status=exception with the locking test as evidence once it lands. |
-| `sql` | `pending_relationships` | `open` | `commit:c729e8636f6bde07fb5596035a76d24db9c47066` | Move SQL out of NO_PENDING_CAPABILITIES; emit StructuredPendingRelationship for cross-file FK targets; close in Phase 3.1. |
 | `regex` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | N/A — domain limitation. |
 | `markdown` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | N/A — domain limitation. |
 | `markdown` | `types` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | N/A — domain limitation. |
@@ -136,7 +135,7 @@
 | `powershell` | `tree-sitter-powershell` | `git_pinned` | 1 | 9 | 1 | 0 | 0 | 4 | 3 | 0 | 1 |
 | `gdscript` | `tree-sitter-gdscript` | `current` | 1 | 7 | 1 | 0 | 0 | 8 | 4 | 0 | 1 |
 | `razor` | `tree-sitter-razor` | `git_pinned` | 1 | 4 | 1 | 0 | 0 | 2 | 4 | 0 | 1 |
-| `sql` | `tree-sitter-sequel` | `current` | 1 | 9 | 3 | 0 | 0 | 3 | 7 | 1 | 1 |
+| `sql` | `tree-sitter-sequel` | `current` | 2 | 15 | 4 | 1 | 1 | 3 | 13 | 1 | 0 |
 | `regex` | `tree-sitter-regex` | `current` | 1 | 5 | 2 | 0 | 0 | 3 | 5 | 0 | 1 |
 | `markdown` | `tree-sitter-md` | `current` | 1 | 4 | 1 | 0 | 0 | 0 | 0 | 0 | 2 |
 | `json` | `tree-sitter-json` | `current` | 1 | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 3 |
@@ -145,4 +144,4 @@
 
 ## Rows Without Gap Entries
 
-`tsx`, `jsx`, `vue`
+`tsx`, `jsx`, `vue`, `sql`
