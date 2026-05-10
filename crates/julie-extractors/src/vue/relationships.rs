@@ -76,8 +76,7 @@ pub(super) fn extract_structured_pending_relationships(
                 for (line_index, line) in section.content.lines().enumerate() {
                     let line_number = section.start_line as u32 + line_index as u32 + 1;
                     for captures in COMPONENT_TAG_RE.captures_iter(line) {
-                        let Some(tag_name) = captures.get(1).map(|matched| matched.as_str())
-                        else {
+                        let Some(tag_name) = captures.get(1).map(|matched| matched.as_str()) else {
                             continue;
                         };
                         if !is_component_tag(tag_name) || local_symbols.contains_key(tag_name) {

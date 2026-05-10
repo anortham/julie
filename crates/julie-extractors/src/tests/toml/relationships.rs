@@ -61,8 +61,7 @@ tokio = { version = "1", features = ["full"] }
         result
             .relationships
             .iter()
-            .any(|r| &r.to_symbol_id == tokio_id
-                && matches!(r.kind, RelationshipKind::Imports)),
+            .any(|r| &r.to_symbol_id == tokio_id && matches!(r.kind, RelationshipKind::Imports)),
         "expected Cargo [dependencies] tokio Imports edge"
     );
 }

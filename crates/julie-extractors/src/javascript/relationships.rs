@@ -94,7 +94,13 @@ fn extract_new_expression_relationships(
 
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        extract_new_expression_relationships(extractor, child, symbols, symbol_index, relationships);
+        extract_new_expression_relationships(
+            extractor,
+            child,
+            symbols,
+            symbol_index,
+            relationships,
+        );
     }
 }
 

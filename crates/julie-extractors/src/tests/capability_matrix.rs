@@ -426,7 +426,9 @@ fn capability_matrix_evidence_resolves() {
                     if !path.exists() {
                         errors.push(format!(
                             "language {} gap {} fixture path `{}` does not exist",
-                            row.language, gap.capability, path.display()
+                            row.language,
+                            gap.capability,
+                            path.display()
                         ));
                     }
                 }
@@ -525,13 +527,8 @@ fn capability_matrix_open_rows_have_planned_closure_task() {
     let root = workspace_root();
     let matrix = load_matrix(&root);
     let plan_path = root.join("docs/plans/2026-05-10-best-in-class-tree-sitter-plan.md");
-    let plan_body = std::fs::read_to_string(&plan_path).unwrap_or_else(|err| {
-        panic!(
-            "plan file must exist at {}: {}",
-            plan_path.display(),
-            err
-        )
-    });
+    let plan_body = std::fs::read_to_string(&plan_path)
+        .unwrap_or_else(|err| panic!("plan file must exist at {}: {}", plan_path.display(), err));
     let mut errors = Vec::new();
     for row in &matrix.languages {
         for gap in &row.capability_gaps {

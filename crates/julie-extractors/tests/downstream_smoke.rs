@@ -80,7 +80,10 @@ fn main() -> anyhow::Result<()> {
         .arg(&target_dir)
         .status()
         .expect("spawn cargo build");
-    assert!(status.success(), "downstream consumer crate failed to build");
+    assert!(
+        status.success(),
+        "downstream consumer crate failed to build"
+    );
 
     let run_status = Command::new(env!("CARGO"))
         .args(["run", "--manifest-path"])

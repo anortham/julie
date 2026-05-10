@@ -3,8 +3,7 @@
 /// Handles: use (Uses), @behaviour (Implements), defimpl (Implements), function calls (Calls).
 use super::helpers;
 use crate::base::{
-    BaseExtractor, Relationship, RelationshipKind, Symbol, SymbolKind,
-    UnresolvedTarget,
+    BaseExtractor, Relationship, RelationshipKind, Symbol, SymbolKind, UnresolvedTarget,
 };
 use std::collections::HashMap;
 use tree_sitter::Node;

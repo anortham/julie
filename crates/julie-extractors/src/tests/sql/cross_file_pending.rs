@@ -4,8 +4,8 @@
 //!
 //! Source under test: `fixtures/extraction/sql/cross_file/source.sql`.
 
-use crate::extract_canonical;
 use crate::base::{RelationshipKind, SymbolKind};
+use crate::extract_canonical;
 use std::path::Path;
 
 /// CREATE TABLE orders has a FK to `other_schema.users(id)`. Because `users`
@@ -69,9 +69,7 @@ fn test_sql_emits_structured_pending_for_cross_file_fk() {
     // so its FK to `orders` resolves concretely. Cross-check by asserting no
     // structured pending entry has terminal_name="orders".
     assert!(
-        pendings
-            .iter()
-            .all(|p| p.target.terminal_name != "orders"),
+        pendings.iter().all(|p| p.target.terminal_name != "orders"),
         "FK to `orders` should resolve to a concrete relationship, not a structured pending; got: {:#?}",
         pendings
     );

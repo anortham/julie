@@ -593,7 +593,10 @@ fn extract_new_expression_relationships(
     extractor.add_structured_pending_relationship(pending);
 }
 
-fn find_first_identifier(base: &crate::base::BaseExtractor, node: tree_sitter::Node) -> Option<String> {
+fn find_first_identifier(
+    base: &crate::base::BaseExtractor,
+    node: tree_sitter::Node,
+) -> Option<String> {
     if node.kind() == "identifier" {
         return Some(base.get_node_text(&node));
     }

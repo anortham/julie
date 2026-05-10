@@ -84,7 +84,9 @@ fn extract_new_expression_relationships(
                         Some(caller.id.clone()),
                         Some(0.9),
                     );
-                    extractor.base_mut().add_structured_pending_relationship(pending);
+                    extractor
+                        .base_mut()
+                        .add_structured_pending_relationship(pending);
                 }
             }
         }
@@ -92,7 +94,13 @@ fn extract_new_expression_relationships(
 
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        extract_new_expression_relationships(extractor, child, symbols, symbol_index, relationships);
+        extract_new_expression_relationships(
+            extractor,
+            child,
+            symbols,
+            symbol_index,
+            relationships,
+        );
     }
 }
 

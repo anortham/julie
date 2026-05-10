@@ -62,7 +62,10 @@ pub(super) fn extract_relationships_internal(
         // cross-schema FKs (e.g., `REFERENCES other_schema.users(id)`) emit
         // structured pending relationships.
         "column_definition" => {
-            if base.find_child_by_type(&node, "keyword_references").is_some() {
+            if base
+                .find_child_by_type(&node, "keyword_references")
+                .is_some()
+            {
                 extract_foreign_key_relationship(base, node, symbols, relationships);
             }
         }
@@ -202,7 +205,10 @@ pub(super) fn extract_foreign_key_relationship(
                 [] => return,
                 [name] => ((*name).to_string(), Vec::new()),
                 _ => (
-                    parts.last().expect("split produces at least one element").to_string(),
+                    parts
+                        .last()
+                        .expect("split produces at least one element")
+                        .to_string(),
                     parts[..parts.len() - 1]
                         .iter()
                         .map(|s| s.to_string())

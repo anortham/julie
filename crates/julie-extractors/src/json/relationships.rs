@@ -138,10 +138,7 @@ fn emit_external_pending(
         [] => return,
         [name] => ((*name).to_string(), Vec::new()),
         _ => (
-            segments
-                .last()
-                .expect("non-empty after match")
-                .to_string(),
+            segments.last().expect("non-empty after match").to_string(),
             segments[..segments.len() - 1]
                 .iter()
                 .map(|s| (*s).to_string())
@@ -213,9 +210,7 @@ fn resolve_local_pointer<'a>(symbols: &'a [Symbol], fragment: &str) -> Option<&'
         // Walk up the parent chain matching preceding segments in reverse.
         let mut current_parent = symbol.parent_id.as_deref();
         for expected in segments[..segments.len() - 1].iter().rev() {
-            let parent = match current_parent
-                .and_then(|pid| symbols.iter().find(|s| s.id == pid))
-            {
+            let parent = match current_parent.and_then(|pid| symbols.iter().find(|s| s.id == pid)) {
                 Some(p) => p,
                 None => continue 'outer,
             };

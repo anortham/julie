@@ -177,14 +177,7 @@ impl RelationshipExtractor {
     ) {
         match node.kind() {
             "script_element" => {
-                Self::emit_resource_pending(
-                    base,
-                    node,
-                    symbols,
-                    "src",
-                    "html-script-src",
-                    pending,
-                );
+                Self::emit_resource_pending(base, node, symbols, "src", "html-script-src", pending);
             }
             "element" => {
                 if let Some(tag) = HTMLHelpers::extract_tag_name(base, node) {

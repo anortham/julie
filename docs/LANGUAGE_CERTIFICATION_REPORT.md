@@ -4,11 +4,11 @@
 
 ## Summary
 
-- Current HEAD: `e01563644c32ddfb8e1c0511d56fce620ef6c501`
+- Current HEAD: `9b796ceda4d0c84b0d5c15338728554d24145417`
 - Registry rows: `36`
 - Golden fixtures: `76`
-- Historical matrix rows: `33`
-- Raw historical OSS reports: `13`
+- Historical matrix rows: `0`
+- Raw historical OSS reports: `0`
 - Current real-world verified repos: `3`
 - Current real-world skipped repos: `0`
 - Rows with open gaps: `2`
@@ -16,7 +16,7 @@
 
 ## Historical Coverage Delta
 
-- Current registry rows missing from the restored historical matrix: `jsx`, `tsx`, `vbnet`
+- Current registry rows missing from the restored historical matrix: `bash`, `c`, `cpp`, `csharp`, `css`, `dart`, `elixir`, `gdscript`, `go`, `html`, `java`, `javascript`, `json`, `jsx`, `kotlin`, `lua`, `markdown`, `php`, `powershell`, `python`, `qml`, `r`, `razor`, `regex`, `ruby`, `rust`, `scala`, `sql`, `swift`, `toml`, `tsx`, `typescript`, `vbnet`, `vue`, `yaml`, `zig`
 - Restored historical rows missing from the current registry: `none`
 
 ## Current Real-World OSS Evidence

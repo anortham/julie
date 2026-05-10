@@ -487,8 +487,19 @@ fn assert_fixture_pending_parity(
 
 fn load_historical_matrix_rows(root: &Path) -> Result<BTreeSet<String>> {
     let path = root.join("docs/LANGUAGE_VERIFICATION_RESULTS.md");
-    let contents = fs::read_to_string(&path)
-        .with_context(|| format!("failed to read historical matrix at {}", path.display()))?;
+    // Phase 7.2 deleted the historical matrix; capability evidence now lives in
+    // fixtures/extraction/capabilities.json. Treat the file as optional so the
+    // certification command runs against the canonical typed-evidence source
+    // of truth instead of failing on a removed legacy file.
+    let contents = match fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(BTreeSet::new()),
+        Err(err) => {
+            return Err(err).with_context(|| {
+                format!("failed to read historical matrix at {}", path.display())
+            });
+        }
+    };
     let summary = summary_matrix_section(&contents);
     let mut languages = BTreeSet::new();
 

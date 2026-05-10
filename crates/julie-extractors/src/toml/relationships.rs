@@ -71,7 +71,9 @@ fn extract_cargo_relationships(
         if !is_cargo_dependencies_table(&name) {
             return;
         }
-        let table_symbol = match symbols.iter().find(|s| s.start_byte == table.start_byte() as u32)
+        let table_symbol = match symbols
+            .iter()
+            .find(|s| s.start_byte == table.start_byte() as u32)
         {
             Some(s) => s,
             None => return,
@@ -91,10 +93,7 @@ fn extract_cargo_relationships(
                 None => continue,
             };
             let mut metadata = HashMap::new();
-            metadata.insert(
-                "dependencyKind".to_string(),
-                Value::String(name.clone()),
-            );
+            metadata.insert("dependencyKind".to_string(), Value::String(name.clone()));
             relationships.push(Relationship {
                 id: format!(
                     "{}_{}_{:?}_{}",
@@ -135,7 +134,9 @@ fn extract_pyproject_relationships(
         if !seen_tools.insert(tool_name.clone()) {
             return;
         }
-        let table_symbol = match symbols.iter().find(|s| s.start_byte == table.start_byte() as u32)
+        let table_symbol = match symbols
+            .iter()
+            .find(|s| s.start_byte == table.start_byte() as u32)
         {
             Some(s) => s,
             None => return,

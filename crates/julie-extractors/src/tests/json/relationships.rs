@@ -160,8 +160,7 @@ fn test_json_no_relationship_for_malformed_ref() {
         result
             .structured_pending_relationships
             .iter()
-            .all(|p| p.target.terminal_name != "Path"
-                && p.target.terminal_name != "nonexistent"),
+            .all(|p| p.target.terminal_name != "Path" && p.target.terminal_name != "nonexistent"),
         "malformed local $ref must not produce a structured pending edge; got: {:#?}",
         result.structured_pending_relationships
     );
