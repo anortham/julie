@@ -721,9 +721,39 @@ define_relationship_data_extractors![
 ];
 
 define_data_only_extractors![
-    (extract_json, "json", crate::json::JsonExtractor),
     (extract_toml, "toml", crate::toml::TomlExtractor)
 ];
+
+/// JSON extractor (Phase 3.2): hand-written so it can return relationships
+/// (concrete + structured pending) for JSON Schema `$ref` shapes.
+/// `types` stays empty — JSON has no static type system.
+fn extract_json(
+    tree: &Tree,
+    file_path: &str,
+    content: &str,
+    workspace_root: &Path,
+) -> Result<ExtractionResults, anyhow::Error> {
+    let mut ext = crate::json::JsonExtractor::new(
+        "json".to_string(),
+        file_path.to_string(),
+        content.to_string(),
+        workspace_root,
+    );
+    let symbols = ext.extract_symbols(tree);
+    let relationships = ext.extract_relationships(tree, &symbols);
+    let identifiers = ext.extract_identifiers(tree, &symbols);
+    let pending_relationships = ext.get_pending_relationships();
+    let structured_pending_relationships = ext.get_structured_pending_relationships();
+    Ok(ExtractionResults {
+        symbols,
+        relationships,
+        pending_relationships,
+        structured_pending_relationships,
+        identifiers,
+        types: HashMap::new(),
+        parse_diagnostics: Vec::new(),
+    })
+}
 
 fn extract_vue(
     tree: &Tree,

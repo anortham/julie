@@ -269,7 +269,7 @@ pub(super) const LANGUAGE_SPECS: &[LanguageSpec] = &[
         "json",
         &["json", "jsonl", "jsonc"],
         "tree-sitter-json",
-        DATA_ONLY_CAPABILITIES,
+        PENDING_NO_TYPES_CAPABILITIES,
         parser_json,
         EMPTY,
     ),

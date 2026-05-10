@@ -4,14 +4,14 @@
 
 ## Summary
 
-- Current HEAD: `a4beac3ae8d0f3d4f9c39e55c01251d9e5df5d97`
+- Current HEAD: `8120d04e3e013b4f71443e94f53e02c090ed1e35`
 - Registry rows: `36`
-- Golden fixtures: `38`
+- Golden fixtures: `39`
 - Historical matrix rows: `33`
 - Raw historical OSS reports: `13`
 - Current real-world verified repos: `13`
 - Current real-world skipped repos: `0`
-- Rows with open gaps: `32`
+- Rows with open gaps: `31`
 - Rows without gap entries: `4`
 
 ## Historical Coverage Delta
@@ -45,14 +45,14 @@
 
 | symbols | relationships | pending | structured pending | identifiers | types | parse diagnostics |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 233 | 55 | 5 | 5 | 121 | 106 | 6 |
+| 244 | 56 | 6 | 6 | 121 | 106 | 6 |
 
 ## Gap Counts
 
 | capability | count |
 | --- | ---: |
-| `pending_relationships` | 31 |
-| `relationships` | 2 |
+| `pending_relationships` | 30 |
+| `relationships` | 1 |
 | `types` | 8 |
 
 ## Open Capability Gaps
@@ -92,9 +92,6 @@
 | `regex` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | N/A — domain limitation. |
 | `markdown` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | N/A — domain limitation. |
 | `markdown` | `types` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | N/A — domain limitation. |
-| `json` | `relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Implement JSON Schema $ref to schema-definition relationship extraction with exact target resolution. |
-| `json` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Once $ref relationships are implemented, evaluate whether unresolved external refs warrant pending promotion. |
-| `json` | `types` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | N/A — domain limitation. JSON Schema type extraction would require a schema-aware extractor mode. |
 | `toml` | `relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Implement domain-specific TOML reference extraction (Cargo.toml dependencies, pyproject tool tables, etc.) with exact resolution. |
 | `toml` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Re-evaluate after TOML relationships are implemented. |
 | `toml` | `types` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | N/A — domain limitation. |
@@ -138,7 +135,7 @@
 | `sql` | `tree-sitter-sequel` | `current` | 2 | 15 | 4 | 1 | 1 | 3 | 13 | 1 | 0 |
 | `regex` | `tree-sitter-regex` | `current` | 1 | 5 | 2 | 0 | 0 | 3 | 5 | 0 | 1 |
 | `markdown` | `tree-sitter-md` | `current` | 1 | 4 | 1 | 0 | 0 | 0 | 0 | 0 | 2 |
-| `json` | `tree-sitter-json` | `current` | 1 | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 3 |
+| `json` | `tree-sitter-json` | `current` | 2 | 15 | 1 | 1 | 1 | 0 | 0 | 0 | 1 |
 | `toml` | `tree-sitter-toml-ng` | `current` | 1 | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 3 |
 | `yaml` | `tree-sitter-yaml` | `current` | 1 | 5 | 1 | 0 | 0 | 1 | 0 | 0 | 2 |
 

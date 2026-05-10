@@ -1459,8 +1459,8 @@
       "dependency_status": "current",
       "capabilities": {
         "symbols": true,
-        "relationships": false,
-        "pending_relationships": false,
+        "relationships": true,
+        "pending_relationships": true,
         "identifiers": true,
         "types": false
       },
@@ -1469,51 +1469,31 @@
           "name": "basic",
           "source": "fixtures/extraction/json/basic/source.json",
           "expected": "fixtures/extraction/json/basic/expected.json"
+        },
+        {
+          "name": "refs",
+          "source": "fixtures/extraction/json/refs/source.json",
+          "expected": "fixtures/extraction/json/refs/expected.json"
         }
       ],
       "target_capabilities": {
         "symbols": true,
-        "relationships": false,
-        "pending_relationships": false,
+        "relationships": true,
+        "pending_relationships": true,
         "identifiers": true,
         "types": false
       },
       "capability_gaps": [
         {
-          "capability": "relationships",
-          "status": "open",
-          "reason": "JSON Schema $ref relationship extraction is not yet implemented. Current extractor emits structural symbols (object keys, array entries) only.",
-          "required_closure": "Implement JSON Schema $ref to schema-definition relationship extraction with exact target resolution.",
-          "evidence": {
-            "kind": "commit",
-            "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
-            "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
-          },
-          "planned_closure_task": "Phase 3.2"
-        },
-        {
-          "capability": "pending_relationships",
-          "status": "open",
-          "reason": "JSON has no cross-document construct that requires deferred resolution beyond $ref. Pending support depends on the relationships gap above.",
-          "required_closure": "Once $ref relationships are implemented, evaluate whether unresolved external refs warrant pending promotion.",
-          "evidence": {
-            "kind": "commit",
-            "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
-            "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
-          },
-          "planned_closure_task": "Phase 3.2"
-        },
-        {
           "capability": "types",
-          "status": "open",
-          "reason": "JSON has no static type system. JSON Schema type keywords are runtime hints, not extracted as TypeInfo.",
-          "required_closure": "N/A — domain limitation. JSON Schema type extraction would require a schema-aware extractor mode.",
+          "status": "exception",
+          "reason": "JSON has no static type system. JSON Schema type keywords are runtime hints, not extracted as TypeInfo. Domain limitation, not a gap.",
+          "required_closure": "N/A — domain limitation. JSON Schema type extraction would require a schema-aware extractor mode outside the tree-sitter scope.",
           "evidence": {
             "kind": "commit",
-            "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
-            "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
-          },
-          "planned_closure_task": "Phase 3.2"
+            "value": "8120d04e3e013b4f71443e94f53e02c090ed1e35",
+            "command": "git show 8120d04e3e013b4f71443e94f53e02c090ed1e35"
+          }
         }
       ]
     },
