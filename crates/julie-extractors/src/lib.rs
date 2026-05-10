@@ -26,6 +26,7 @@
 
 // Core infrastructure
 pub mod base;
+pub mod capability_snapshot;
 mod factory;
 pub mod language;
 mod language_spec;
@@ -89,6 +90,12 @@ pub use base::{
 pub use manager::ExtractorManager;
 pub use pipeline::extract_canonical;
 pub use registry::{LanguageCapabilities, LanguageRegistryEntry};
+
+// Re-export Pillar 3 stable capability snapshot API
+pub use capability_snapshot::{
+    CapabilityFlags, CapabilityGap, CapabilityRow, CapabilitySnapshot, FixtureRef,
+    capability_snapshot,
+};
 
 // Re-export BaseExtractor for language implementors
 pub use base::BaseExtractor;

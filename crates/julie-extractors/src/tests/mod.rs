@@ -8,6 +8,7 @@ pub mod base;
 pub mod bash;
 pub mod c;
 pub mod capability_matrix;
+pub mod capability_snapshot_test;
 pub mod pending_shape_contract;
 pub mod cpp;
 pub mod csharp;
