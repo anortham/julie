@@ -2,5 +2,17 @@
 ///
 /// Bump this when extractor, resolver, or indexing behavior changes in a way
 /// that can alter persisted derived data without changing source file hashes.
-pub(crate) const SEMANTIC_INDEX_ENGINE_COMPONENT: &str = "semantic_index_engine";
-pub(crate) const SEMANTIC_INDEX_ENGINE_VERSION: &str = "2026-05-05.reference-identifier-v3";
+///
+/// `pub` visibility (was `pub(crate)`) is required so the Phase 5.3
+/// composition test in `src/tests/core/engine_version.rs` can import this
+/// constant to verify it embeds `julie_extractors::EXTRACTION_CONTRACT_VERSION`.
+pub const SEMANTIC_INDEX_ENGINE_COMPONENT: &str = "semantic_index_engine";
+
+/// Composed engine version embedding the extractor crate's
+/// `EXTRACTION_CONTRACT_VERSION` so any shape drift in extractor outputs
+/// triggers a stored-index mismatch. The composition test in
+/// `src/tests/core/engine_version.rs` enforces that this literal contains the
+/// current value of `julie_extractors::EXTRACTION_CONTRACT_VERSION`; when you
+/// bump the extractor contract, bump this literal in lockstep.
+pub const SEMANTIC_INDEX_ENGINE_VERSION: &str =
+    "extractors=2026-05-10.tree-sitter-best-in-class-v1+schema=2026-05-05.reference-identifier-v3";

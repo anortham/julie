@@ -97,6 +97,14 @@ pub use capability_snapshot::{
     capability_snapshot,
 };
 
+/// Stable extraction-contract version string. Downstream consumers and
+/// upstream index engines compose this into their own engine version so that
+/// schema/shape drift in extractor outputs triggers a visible mismatch.
+///
+/// **Stable.** Bump the suffix after `v` when the canonical extraction shape
+/// changes in a way downstream consumers must observe.
+pub const EXTRACTION_CONTRACT_VERSION: &str = "2026-05-10.tree-sitter-best-in-class-v1";
+
 // Re-export BaseExtractor for language implementors
 pub use base::BaseExtractor;
 

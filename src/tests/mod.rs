@@ -47,6 +47,7 @@ pub mod core {
     pub mod embedding_provider; // EmbeddingProvider trait and factory tests
     pub mod embedding_sidecar_protocol; // Sidecar protocol contracts + validation tests
     pub mod embedding_sidecar_provider; // Sidecar provider IPC + dimension guard tests
+    pub mod engine_version; // Phase 5.3 — extractor contract / engine version composition
     pub mod handler; // MCP handler tests
     pub mod handler_telemetry; // search telemetry and downstream target metadata tests
     pub mod incremental_update_atomic; // incremental_update_atomic write path tests (TDD)
