@@ -4,14 +4,14 @@
 
 ## Summary
 
-- Current HEAD: `2e086037f4c4555c5cb9e478ab6def33b7112657`
+- Current HEAD: `dce7cceaa6b6e12e6215304c680166c0e6473f94`
 - Registry rows: `36`
-- Golden fixtures: `69`
+- Golden fixtures: `70`
 - Historical matrix rows: `33`
 - Raw historical OSS reports: `13`
 - Current real-world verified repos: `13`
 - Current real-world skipped repos: `0`
-- Rows with open gaps: `7`
+- Rows with open gaps: `6`
 - Rows without gap entries: `26`
 
 ## Historical Coverage Delta
@@ -45,7 +45,7 @@
 
 | symbols | relationships | pending | structured pending | identifiers | types | parse diagnostics |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 381 | 95 | 40 | 40 | 193 | 142 | 6 |
+| 387 | 96 | 41 | 41 | 198 | 142 | 6 |
 
 ## Gap Counts
 
@@ -61,7 +61,6 @@
 | `css` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | N/A — domain limitation. |
 | `css` | `types` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | N/A — domain limitation. |
 | `lua` | `types` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Out of scope — Lua is dynamic. Luau-style type annotations would be a separate language target. |
-| `qml` | `types` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Future work could add structured TypeInfo for QML property declarations. |
 | `r` | `types` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | N/A — domain limitation. Future work could harvest roxygen type annotations into TypeInfo. |
 | `regex` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | N/A — domain limitation. |
 | `markdown` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | N/A — domain limitation. |
@@ -97,7 +96,7 @@
 | `dart` | `tree-sitter-dart` | `current` | 2 | 10 | 2 | 1 | 1 | 11 | 7 | 0 | 0 |
 | `elixir` | `tree-sitter-elixir` | `current` | 2 | 7 | 4 | 1 | 1 | 7 | 0 | 0 | 0 |
 | `lua` | `tree-sitter-lua` | `current` | 2 | 12 | 2 | 1 | 1 | 11 | 0 | 0 | 1 |
-| `qml` | `tree-sitter-qmljs` | `git_pinned` | 1 | 7 | 2 | 1 | 1 | 10 | 0 | 0 | 1 |
+| `qml` | `tree-sitter-qmljs` | `git_pinned` | 2 | 13 | 3 | 2 | 2 | 15 | 0 | 0 | 1 |
 | `r` | `tree-sitter-r` | `current` | 2 | 7 | 2 | 1 | 1 | 17 | 0 | 0 | 1 |
 | `bash` | `tree-sitter-bash` | `current` | 2 | 11 | 2 | 1 | 1 | 6 | 4 | 0 | 0 |
 | `powershell` | `tree-sitter-powershell` | `git_pinned` | 2 | 12 | 2 | 1 | 1 | 7 | 3 | 0 | 0 |

@@ -915,6 +915,11 @@
           "name": "basic",
           "source": "fixtures/extraction/qml/basic/source.qml",
           "expected": "fixtures/extraction/qml/basic/expected.json"
+        },
+        {
+          "name": "cross_file",
+          "source": "fixtures/extraction/qml/cross_file/source.qml",
+          "expected": "fixtures/extraction/qml/cross_file/expected.json"
         }
       ],
       "target_capabilities": {
@@ -927,15 +932,14 @@
       "capability_gaps": [
         {
           "capability": "types",
-          "status": "open",
-          "reason": "QML property bindings carry runtime type names but no static type extraction is implemented. Property type tags are stored on Symbol metadata, not as separate Type rows.",
-          "required_closure": "Future work could add structured TypeInfo for QML property declarations.",
+          "status": "exception",
+          "reason": "QML property bindings carry runtime type names that are stored on Symbol metadata (propertyType field), not as separate TypeInfo rows. QML has no static type system distinct from these tags. Domain classification, not a deferred gap.",
+          "required_closure": "N/A — QML property types are recorded on Symbol metadata. A separate TypeInfo row layer would duplicate, not enrich.",
           "evidence": {
             "kind": "commit",
             "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
             "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
-          },
-          "planned_closure_task": "Phase 4b"
+          }
         }
       ]
     },
