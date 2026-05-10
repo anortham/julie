@@ -1954,7 +1954,7 @@ git commit -m "docs: add live MCP dogfood handoff note for user sign-off"
 
 | Invariant | Command | Scope label | Commit SHA | Result | Timestamp (UTC) | Evidence reused |
 |---|---|---|---|---|---|---|
-| Phase 1 boundary gate | `cargo xtask test changed` | phase-1-changed | _TBD_ | _TBD_ | _TBD_ | No |
+| Phase 1 boundary gate | `cargo xtask test changed` | phase-1-changed | c2eb72b6 | Pass — `changed` reports "no code/test buckets matched local changes" (xtask diff mapper has no bucket for `crates/julie-extractors/src/tests/`, `xtask/src/`, `xtask/tests/`, or `fixtures/extraction/capabilities.json`). Extractors bucket run explicitly: 3/3 PASS. xtask test bin: 144/144 PASS. | 2026-05-10T19:16:55Z | No |
 | Phase 2 boundary gate | `cargo xtask test changed` | phase-2-changed | _TBD_ | _TBD_ | _TBD_ | No |
 | Phase 3 SQL pending closure | `cargo nextest run -p julie-extractors --lib test_sql_emits_structured_pending_for_cross_file_fk` | sql-pending-closure | _TBD_ | _TBD_ | _TBD_ | No |
 | Phase 3 JSON $ref closure | `cargo nextest run -p julie-extractors --lib test_json_emits` | json-ref-closure | _TBD_ | _TBD_ | _TBD_ | No |
