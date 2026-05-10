@@ -7,37 +7,37 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Deserialize)]
-struct CapabilityMatrix {
-    languages: Vec<CapabilityRow>,
+pub(crate) struct CapabilityMatrix {
+    pub(crate) languages: Vec<CapabilityRow>,
 }
 
 #[derive(Debug, Deserialize)]
-struct CapabilityRow {
-    language: String,
-    parser_crate: String,
-    extensions: Vec<String>,
-    dependency_status: String,
-    target_capabilities: CapabilityFlags,
-    capabilities: CapabilityFlags,
-    fixtures: Vec<FixtureRow>,
+pub(crate) struct CapabilityRow {
+    pub(crate) language: String,
+    pub(crate) parser_crate: String,
+    pub(crate) extensions: Vec<String>,
+    pub(crate) dependency_status: String,
+    pub(crate) target_capabilities: CapabilityFlags,
+    pub(crate) capabilities: CapabilityFlags,
+    pub(crate) fixtures: Vec<FixtureRow>,
     #[serde(default)]
-    capability_gaps: Vec<CapabilityGap>,
+    pub(crate) capability_gaps: Vec<CapabilityGap>,
 }
 
 #[derive(Debug, Deserialize)]
-struct CapabilityFlags {
-    symbols: bool,
-    relationships: bool,
-    pending_relationships: bool,
-    identifiers: bool,
-    types: bool,
+pub(crate) struct CapabilityFlags {
+    pub(crate) symbols: bool,
+    pub(crate) relationships: bool,
+    pub(crate) pending_relationships: bool,
+    pub(crate) identifiers: bool,
+    pub(crate) types: bool,
 }
 
 #[derive(Debug, Deserialize)]
-struct FixtureRow {
-    name: String,
-    source: String,
-    expected: String,
+pub(crate) struct FixtureRow {
+    pub(crate) name: String,
+    pub(crate) source: String,
+    pub(crate) expected: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -725,7 +725,7 @@ fn regex_capabilities_advertise_golden_relationships() {
     );
 }
 
-fn workspace_root() -> PathBuf {
+pub(crate) fn workspace_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .and_then(Path::parent)
@@ -733,7 +733,7 @@ fn workspace_root() -> PathBuf {
         .to_path_buf()
 }
 
-fn load_matrix(root: &Path) -> CapabilityMatrix {
+pub(crate) fn load_matrix(root: &Path) -> CapabilityMatrix {
     let matrix_path = root.join("fixtures/extraction/capabilities.json");
     let json = fs::read_to_string(&matrix_path).unwrap_or_else(|err| {
         panic!(
@@ -859,7 +859,7 @@ fn assert_fixture_pending_parity(root: &Path, fixture: &FixtureRow, language: &s
     );
 }
 
-fn load_expected_fixture(root: &Path, fixture: &FixtureRow) -> Value {
+pub(crate) fn load_expected_fixture(root: &Path, fixture: &FixtureRow) -> Value {
     let expected_path = root.join(&fixture.expected);
     let json = fs::read_to_string(&expected_path).unwrap_or_else(|err| {
         panic!(
