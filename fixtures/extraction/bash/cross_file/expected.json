@@ -1,0 +1,214 @@
+{
+  "symbols": [
+    {
+      "key": "fixtures/extraction/bash/cross_file/source.sh:bash:1:0",
+      "name": "bash",
+      "kind": "variable",
+      "language": "bash",
+      "file_path": "fixtures/extraction/bash/cross_file/source.sh",
+      "start_line": 1,
+      "start_column": 0,
+      "end_line": 17,
+      "end_column": 0,
+      "start_byte": 0,
+      "end_byte": 393,
+      "signature": "#!/usr/bin/env bash",
+      "doc_comment": null,
+      "visibility": null,
+      "parent_key": null,
+      "metadata": {},
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/bash/cross_file/source.sh:entry:13:0",
+      "name": "entry",
+      "kind": "function",
+      "language": "bash",
+      "file_path": "fixtures/extraction/bash/cross_file/source.sh",
+      "start_line": 13,
+      "start_column": 0,
+      "end_line": 16,
+      "end_column": 1,
+      "start_byte": 346,
+      "end_byte": 392,
+      "signature": "function entry()",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": null,
+      "metadata": {},
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/bash/cross_file/source.sh:local_helper:9:0",
+      "name": "local_helper",
+      "kind": "function",
+      "language": "bash",
+      "file_path": "fixtures/extraction/bash/cross_file/source.sh",
+      "start_line": 9,
+      "start_column": 0,
+      "end_line": 11,
+      "end_column": 1,
+      "start_byte": 314,
+      "end_byte": 344,
+      "signature": "function local_helper()",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": null,
+      "metadata": {},
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/bash/cross_file/source.sh:other:7:0",
+      "name": "other",
+      "kind": "import",
+      "language": "bash",
+      "file_path": "fixtures/extraction/bash/cross_file/source.sh",
+      "start_line": 7,
+      "start_column": 0,
+      "end_line": 7,
+      "end_column": 17,
+      "start_byte": 295,
+      "end_byte": 312,
+      "signature": "source ./other.sh",
+      "doc_comment": "#!/usr/bin/env bash\n# Phase 4a fixture: cross-script call. `other_fn` is defined in another file\n# sourced via `source ./other.sh`. The bash extractor must emit a\n# StructuredPendingRelationship with target.terminal_name=\"other_fn\".\n# The intra-script call to local_helper resolves concretely.",
+      "visibility": "Public",
+      "parent_key": null,
+      "metadata": {
+        "sourceCommand": "source",
+        "sourcePath": "./other.sh"
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    }
+  ],
+  "relationships": [
+    {
+      "from_key": "fixtures/extraction/bash/cross_file/source.sh:entry:13:0",
+      "to_key": "fixtures/extraction/bash/cross_file/source.sh:local_helper:9:0",
+      "kind": "calls",
+      "file_path": "fixtures/extraction/bash/cross_file/source.sh",
+      "line_number": 15,
+      "confidence": "0.950",
+      "metadata": null
+    }
+  ],
+  "pending_relationships": [
+    {
+      "from_key": "fixtures/extraction/bash/cross_file/source.sh:entry:13:0",
+      "callee_name": "other_fn",
+      "kind": "calls",
+      "file_path": "fixtures/extraction/bash/cross_file/source.sh",
+      "line_number": 14,
+      "confidence": "0.800"
+    }
+  ],
+  "structured_pending_relationships": [
+    {
+      "pending": {
+        "from_key": "fixtures/extraction/bash/cross_file/source.sh:entry:13:0",
+        "callee_name": "other_fn",
+        "kind": "calls",
+        "file_path": "fixtures/extraction/bash/cross_file/source.sh",
+        "line_number": 14,
+        "confidence": "0.800"
+      },
+      "target": {
+        "display_name": "other_fn",
+        "terminal_name": "other_fn",
+        "receiver": null,
+        "namespace_path": [],
+        "import_context": null
+      },
+      "caller_scope_key": "fixtures/extraction/bash/cross_file/source.sh:entry:13:0"
+    }
+  ],
+  "identifiers": [
+    {
+      "key": "fixtures/extraction/bash/cross_file/source.sh:echo:call:10:4",
+      "name": "echo",
+      "kind": "call",
+      "language": "bash",
+      "file_path": "fixtures/extraction/bash/cross_file/source.sh",
+      "start_line": 10,
+      "start_column": 4,
+      "end_line": 10,
+      "end_column": 8,
+      "start_byte": 335,
+      "end_byte": 339,
+      "containing_key": "fixtures/extraction/bash/cross_file/source.sh:local_helper:9:0",
+      "target_key": null,
+      "confidence": "1.000"
+    },
+    {
+      "key": "fixtures/extraction/bash/cross_file/source.sh:local_helper:call:15:4",
+      "name": "local_helper",
+      "kind": "call",
+      "language": "bash",
+      "file_path": "fixtures/extraction/bash/cross_file/source.sh",
+      "start_line": 15,
+      "start_column": 4,
+      "end_line": 15,
+      "end_column": 16,
+      "start_byte": 378,
+      "end_byte": 390,
+      "containing_key": "fixtures/extraction/bash/cross_file/source.sh:entry:13:0",
+      "target_key": null,
+      "confidence": "1.000"
+    },
+    {
+      "key": "fixtures/extraction/bash/cross_file/source.sh:other_fn:call:14:4",
+      "name": "other_fn",
+      "kind": "call",
+      "language": "bash",
+      "file_path": "fixtures/extraction/bash/cross_file/source.sh",
+      "start_line": 14,
+      "start_column": 4,
+      "end_line": 14,
+      "end_column": 12,
+      "start_byte": 360,
+      "end_byte": 368,
+      "containing_key": "fixtures/extraction/bash/cross_file/source.sh:entry:13:0",
+      "target_key": null,
+      "confidence": "1.000"
+    },
+    {
+      "key": "fixtures/extraction/bash/cross_file/source.sh:source:call:7:0",
+      "name": "source",
+      "kind": "call",
+      "language": "bash",
+      "file_path": "fixtures/extraction/bash/cross_file/source.sh",
+      "start_line": 7,
+      "start_column": 0,
+      "end_line": 7,
+      "end_column": 6,
+      "start_byte": 295,
+      "end_byte": 301,
+      "containing_key": "fixtures/extraction/bash/cross_file/source.sh:other:7:0",
+      "target_key": null,
+      "confidence": "1.000"
+    }
+  ],
+  "types": [
+    {
+      "symbol_key": "unresolved:bash",
+      "resolved_type": "string",
+      "generic_params": null,
+      "constraints": null,
+      "is_inferred": true,
+      "language": "bash",
+      "metadata": null
+    }
+  ],
+  "parse_diagnostics": []
+}
