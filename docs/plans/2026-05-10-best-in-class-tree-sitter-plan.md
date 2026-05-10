@@ -8,7 +8,7 @@
 
 **Tech Stack:** Rust 2021, tree-sitter 0.26.8, `cargo nextest`, `cargo xtask` runners, Tantivy, SQLite via rusqlite, serde/serde_json, tree-sitter parser crates per language, the existing `crates/julie-extractors/` workspace member.
 
-**Architecture Quality:** Approved per the design doc (`docs/plans/2026-05-10-best-in-class-tree-sitter-design.md` §"Architecture Impact Assessment"): one read-only public function `capability_snapshot()`, one public constant `EXTRACTION_CONTRACT_VERSION`, one example binary, one source-tree move of `capabilities.json` into the crate, doc comments on every existing public item. No module restructure. No breaking refactor — main `julie` crate keeps re-exporting through `src/extractors/mod.rs`. **Architecture risk:** The capability-snapshot data lifetime (`&'static`) commits us to load-once semantics; a reload mechanism is explicitly out of scope. **Worker rule:** if code reality contradicts the approved shape, report a plan mismatch instead of redesigning locally.
+**Architecture Quality:** Approved per the design doc (`docs/plans/2026-05-10-best-in-class-tree-sitter-design.md` §"Architecture Impact Assessment"): one read-only public function `capability_snapshot()`, one public constant `EXTRACTION_CONTRACT_VERSION`, one example binary, doc comments on every existing public item. **`fixtures/extraction/capabilities.json` is the single source of truth and stays at that path** (44 in-repo references already point there per `mcp__julie__fast_search`). The crate reads it via `include_str!("../../../fixtures/extraction/capabilities.json")` from `crates/julie-extractors/src/capability_snapshot.rs`; this works for path-dep and git-dep consumers because cargo serves the whole repo at the actual on-disk location. It does NOT work for `cargo publish` to crates.io, and Pillar 3 has been scoped to "Rust path/git dependency usable" — not crates.io publishable — to match the inherent git deps (`tree-sitter-qmljs`, `tree-sitter-razor`, `tree-sitter-powershell`, `tree-sitter-vb-dotnet`) which have no crates.io equivalents. No module restructure. No breaking refactor — main `julie` crate keeps re-exporting through `src/extractors/mod.rs`. **Architecture risk:** The capability-snapshot data lifetime (`&'static`) commits us to load-once semantics; a reload mechanism is explicitly out of scope. **Worker rule:** if code reality contradicts the approved shape, report a plan mismatch instead of redesigning locally.
 
 ---
 
@@ -40,7 +40,7 @@
 - `cargo build --examples -p julie-extractors`
 - `cargo test -p julie-extractors --doc`
 - `cargo doc -p julie-extractors --no-deps`
-- `cargo package -p julie-extractors --list`
+- `cargo nextest run -p julie-extractors --test downstream_smoke julie_extractors_works_as_path_dependency_in_downstream_crate` (Pillar 3 gate; replaces `cargo package --list`)
 
 **Replay/metric evidence:** Real-world correctness specs in §6 are the only metric-style assertions. Each spec entry (named symbol with reference count, parent_id link, identifier span) is a hard gate; the existing `min_files` / `min_language_files` / `min_symbols` count thresholds remain as a secondary safety net. There are no report-only metrics in this plan — every assertion is a hard gate.
 
@@ -48,7 +48,7 @@
 - A worker reports the same failing test passes for the wrong reason (e.g., test asserts non-empty array, implementation returns a placeholder).
 - The structured-pending shape contract assertion fails for a language whose extractor was not modified in the same batch — indicates shared-contract regression in §2.
 - `cargo xtask test full` fails after a phase that should not have touched the failing tier (e.g., system tier fails after a per-language fixture phase).
-- `cargo package -p julie-extractors --list` fails because of out-of-crate path references (Phase 5 work).
+- The downstream-smoke integration test (Task 5.7) fails to build or run, indicating the crate is no longer usable as a path dependency.
 
 **Assigned verification failure:** Workers stop and report when assigned verification fails, unless this plan explicitly says to update that gate. Workers MUST NOT loosen a test to make it pass.
 
@@ -92,15 +92,16 @@
 
 ```
 crates/julie-extractors/
-├── Cargo.toml                            # MODIFY: include capabilities.json in package data
+├── Cargo.toml                            # No path/data changes needed for capabilities.json (file stays at fixtures/)
 ├── build.rs                              # ABSENT — we deliberately use include_str!, not a build script
-├── capabilities.json                     # CREATE (Phase 5.1, moved from fixtures/extraction/)
 ├── examples/
 │   └── extract_file.rs                   # CREATE (Phase 5.6)
+├── tests/
+│   └── downstream_smoke.rs               # CREATE (Phase 5.7): integration test that spawns a tempdir consumer crate
 └── src/
     ├── lib.rs                            # MODIFY: doc, capability_snapshot(), EXTRACTION_CONTRACT_VERSION
     ├── registry.rs                       # MODIFY: macro audit, per-language migration
-    ├── capability_snapshot.rs            # CREATE (Phase 5.2): typed CapabilitySnapshot + parser
+    ├── capability_snapshot.rs            # CREATE (Phase 5.2): typed CapabilitySnapshot + parser; include_str!("../../../fixtures/extraction/capabilities.json")
     ├── base/
     │   └── relationship_resolution.rs    # READ-ONLY shape reference for §2 assertions
     ├── tests/
@@ -109,11 +110,12 @@ crates/julie-extractors/
     └── <language>/                       # MODIFY per Phase 4 task — emit structured pending where applicable
 
 fixtures/extraction/
-├── capabilities.json                     # DELETE after Phase 5.1 (moved into the crate)
+├── capabilities.json                     # SINGLE SOURCE OF TRUTH — stays here; crate consumes via include_str!
 ├── tree-sitter-real-world-corpus.toml    # MODIFY: add VB.NET row, raise min_relationships, add representative_specs
 ├── <language>/basic/
 │   ├── source.<ext>                      # MODIFY per Phase 4: add cross-file/unresolved reference shapes
 │   └── expected.json                     # MODIFY per Phase 4: assert structured_pending_relationships fields
+├── <language>/negative/                  # CREATE per Phase 4: encode wrong-edge scenarios per language
 └── vbnet/basic/source.vb.* / expected.json  # ALREADY EXISTS — Phase 4 fixture work applies
 
 xtask/src/
@@ -233,7 +235,16 @@ struct CapabilityGap {
     status: String,
     reason: String,
     required_closure: String,
+    /// Resolvable artifact: a real test name, a real fixture path, or a real
+    /// 40-char commit SHA. Open rows must NOT use `evidence` for planned work —
+    /// use `planned_closure_task` instead.
     evidence: EvidenceRef,
+    /// Required for any row whose `status` is `open`. Names the Phase task that
+    /// will close the row, e.g. `"Phase 3.1"` or `"Phase 4b.html"`. Resolver
+    /// tests reject open rows without this field; non-open rows reject having
+    /// it (use `evidence` once the closure lands).
+    #[serde(default)]
+    planned_closure_task: Option<String>,
 }
 ```
 
@@ -370,20 +381,78 @@ Expected: BOTH FAIL initially. The resolver test fails because most evidence val
 
 **Step 3: Update capability rows so they resolve**
 
-For every row whose evidence is `kind: test`, ensure the test name listed exists. If the closing test doesn't exist yet, route the gap to its Phase 3 / Phase 4 task by changing the evidence to a `kind: fixture` reference to the (yet-to-be-written) golden fixture, OR mark the row as `gap_status: open` with a TODO note that points at the task ID. Open status remains acceptable through Phases 1–3; Phase 4 closes them out.
+For every row whose evidence is `kind: test`, ensure the test name listed exists in the nextest inventory NOW. If the closing test does not exist yet, do NOT keep the `evidence` pointing at a planned test name — that defeats the resolver gate. Instead:
 
-For every `exception` row's `reason` field, rewrite phrases that match the banned list. Acceptable reasons: "intrinsic to language" with a one-sentence justification; "documented parser limitation in tree-sitter-<crate>"; "handled by embedded <language> extractor at <path>".
+- Set `status: open`.
+- Set `planned_closure_task: "Phase N[.subtask]"` (e.g. `"Phase 3.1"` for SQL pending, `"Phase 4b.html"` for HTML, `"Phase 4a.ruby"` for Ruby — the value must match a task heading in this plan, case-sensitively).
+- Set `evidence` to a `kind: commit` pointing at the latest commit on the current branch where the row's `required_closure` text was last edited. This makes the resolver gate green (the commit resolves) while the open status carries the work-not-yet-done signal in a separate field.
+
+Do not use `kind: fixture` with a planned-but-not-yet-existing path. The resolver checks `path.exists()` and will fail.
+
+For every `exception` row's `reason` field, rewrite phrases that match the banned list. Acceptable reasons: "intrinsic to language" with a one-sentence justification; "documented parser limitation in tree-sitter-<crate>"; "handled by embedded <language> extractor at <path>". Exception rows must NOT carry `planned_closure_task` — they are closed by definition.
 
 **Step 4: Run tests to verify they pass**
 
 Run: `cargo nextest run -p julie-extractors --lib capability_matrix_evidence_resolves capability_matrix_no_not_implemented_exceptions 2>&1 | tail -10`
-Expected: PASS for `_no_not_implemented_exceptions`. PASS for `_evidence_resolves` once all `kind: test` references point at real test names — initially this may still fail for rows whose closing test is in a later phase; defer those by switching to `kind: fixture` pointing at a fixture path that will be authored in Phase 4 (the path can be planned-but-not-yet-existing if and only if the row's `gap_status` stays `open`).
+Expected: PASS for both. `_evidence_resolves` fails if any row has unresolvable evidence (test name not in inventory, fixture path missing, commit SHA does not resolve). The resolver must NOT be weakened to skip `open` rows — open status only changes which Phase task closes the row, not whether `evidence` resolves. The separate `planned_closure_task` field carries the "what closes this" signal.
 
-**Step 5: Commit**
+**Step 5: Add the `planned_closure_task` invariant test**
+
+```rust
+#[test]
+fn capability_matrix_open_rows_have_planned_closure_task() {
+    let root = workspace_root();
+    let matrix = load_matrix(&root);
+    let plan_path = root.join("docs/plans/2026-05-10-best-in-class-tree-sitter-plan.md");
+    let plan_body = std::fs::read_to_string(&plan_path).expect("plan file must exist");
+    let mut errors = Vec::new();
+    for row in &matrix.languages {
+        for gap in &row.capability_gaps {
+            match gap.status.as_str() {
+                "open" => {
+                    let Some(task) = gap.planned_closure_task.as_deref() else {
+                        errors.push(format!(
+                            "language {} gap {} has status=open but no planned_closure_task field",
+                            row.language, gap.capability
+                        ));
+                        continue;
+                    };
+                    // Plan task references must appear as a literal heading
+                    // (`### Task <task>` or section anchor) in the plan body.
+                    if !plan_body.contains(task) {
+                        errors.push(format!(
+                            "language {} gap {} planned_closure_task `{}` does not appear in the plan",
+                            row.language, gap.capability, task
+                        ));
+                    }
+                }
+                "exception" | "closed" => {
+                    if gap.planned_closure_task.is_some() {
+                        errors.push(format!(
+                            "language {} gap {} status={} but carries planned_closure_task; remove the field",
+                            row.language, gap.capability, gap.status
+                        ));
+                    }
+                }
+                other => errors.push(format!(
+                    "language {} gap {} has unrecognized status `{}` (expected one of: open, exception, closed)",
+                    row.language, gap.capability, other
+                )),
+            }
+        }
+    }
+    assert!(errors.is_empty(), "{}", errors.join("\n"));
+}
+```
+
+Run: `cargo nextest run -p julie-extractors --lib capability_matrix_open_rows_have_planned_closure_task 2>&1 | tail -20`
+Expected: PASS once every open row in Task 1.3 has a `planned_closure_task` pointing at a real Phase task heading.
+
+**Step 6: Commit**
 
 ```bash
 git add fixtures/extraction/capabilities.json crates/julie-extractors/src/tests/capability_matrix.rs
-git commit -m "feat(extractors): validate typed evidence resolves and ban not-implemented exceptions"
+git commit -m "feat(extractors): validate typed evidence resolves, ban not-implemented exceptions, and require planned_closure_task on open rows"
 ```
 
 ### Task 1.3: Resolve gap-classification contradictions
@@ -394,25 +463,29 @@ git commit -m "feat(extractors): validate typed evidence resolves and ban not-im
 
 **Step 1: Edit the JSON**
 
+**Recipe:** For an `open` row, use `planned_closure_task` to name the Phase task that will close it, and use `evidence: {kind: commit, value: <SHA>, command: "git show <SHA>"}` pointing at the commit where the `required_closure` text was last edited (this commit; the one that adds these row changes). The resolver gate stays green because every `evidence` entry resolves; the "what closes this" signal lives in the separate `planned_closure_task` field.
+
+For an `exception` row, evidence points at the locking-test name (which IS in the inventory because we add it in Phase 4) and `planned_closure_task` is absent. If the locking test does not yet exist, defer the exception classification — keep `status: open` with `planned_closure_task` until the locking test lands.
+
 For `razor`:
-- `pending_relationships` gap → `status: exception`, `reason: "Razor's external references are extracted by the embedded C# extractor; the Razor extractor itself emits no pending relationships by design."`, `evidence: {kind: test, value: razor_pending_relationships_handled_by_csharp_embed, command: ...}`. Add the locking test in Phase 4b (Razor task).
+- `pending_relationships` gap → `status: exception` only AFTER the Phase 4b `razor_pending_relationships_handled_by_csharp_embed` locking test exists. Until then, keep `status: open`, `planned_closure_task: "Phase 4b.razor"`, evidence = commit. Once the test lands (Phase 4b), flip to `status: exception`, `reason: "Razor's external references are extracted by the embedded C# extractor; the Razor extractor itself emits no pending relationships by design."`, `evidence: {kind: test, value: razor_pending_relationships_handled_by_csharp_embed, command: "cargo nextest run -p julie-extractors --lib razor_pending_relationships_handled_by_csharp_embed"}`, `planned_closure_task: null`.
 
 For `sql`:
-- `pending_relationships` gap → keep `status: open`, `required_closure: "Move SQL out of NO_PENDING_CAPABILITIES; emit StructuredPendingRelationship for cross-file FK targets; close in Phase 3.1."`. Update `evidence` to point at the Phase 3.1 closing test name (planned), `kind: test`.
+- `pending_relationships` gap → `status: open`, `required_closure: "Move SQL out of NO_PENDING_CAPABILITIES; emit StructuredPendingRelationship for cross-file FK targets; close in Phase 3.1."`, `planned_closure_task: "Phase 3.1"`, `evidence: {kind: commit, value: <SHA>, command: "git show <SHA>"}`. Phase 3.1 swaps this to `evidence: {kind: test, value: test_sql_emits_structured_pending_for_cross_file_fk, ...}` and removes `planned_closure_task`.
 
 For `html`:
-- `pending_relationships` gap → `status: open`, `required_closure: "Emit pending relationships for external script/style src=... references; close in Phase 4b (HTML task)."`, evidence points at the Phase 4b test name.
+- `pending_relationships` gap → `status: open`, `required_closure: "Emit pending relationships for external script/style src=... references; close in Phase 4b (HTML task)."`, `planned_closure_task: "Phase 4b.html"`, `evidence: {kind: commit, value: <SHA>, command: "git show <SHA>"}`. Phase 4b swaps this to the real closing test name and removes `planned_closure_task`.
 
 **Step 2: Verify capability_matrix tests still pass**
 
 Run: `cargo nextest run -p julie-extractors --lib capability_matrix 2>&1 | tail -20`
-Expected: PASS for tests that already passed; the resolver test still tolerates `open` status with planned-test evidence (verify by re-reading the test logic; if it fails on planned-but-missing test names, weaken the resolver-test to skip `open` rows whose evidence test name matches a Phase 3 / Phase 4 task ID by convention — record this in the plan note below).
+Expected: PASS for `capability_matrix_evidence_resolves` (every evidence cell now references a real commit, fixture, or test), PASS for `capability_matrix_no_not_implemented_exceptions`, PASS for `capability_matrix_open_rows_have_planned_closure_task` (each of razor/sql/html either has a valid `planned_closure_task` pointing at a real plan heading or is in exception status with no such field).
 
 **Step 3: Commit**
 
 ```bash
 git add fixtures/extraction/capabilities.json
-git commit -m "fix(extractors): resolve razor/sql/html gap-classification contradictions"
+git commit -m "fix(extractors): resolve razor/sql/html gap-classification contradictions using planned_closure_task"
 ```
 
 **Phase 1 boundary gate:** `cargo xtask test changed`. Append a verification ledger row.
@@ -517,15 +590,18 @@ git add crates/julie-extractors/src/tests/pending_shape_contract.rs crates/julie
 git commit -m "feat(extractors): add structured pending shape contract test"
 ```
 
-### Task 2.2: Add negative-case enforcement to capability_matrix
+### Task 2.2: Add negative-case enforcement to capability_matrix (ignored until Phase 4d)
 
 **Files:**
 - Modify: `crates/julie-extractors/src/tests/capability_matrix.rs` (add `capability_matrix_negative_cases_emit_no_wrong_edges`)
 
-**Step 1: Write the failing test**
+**Sequencing decision (resolves Codex finding #2):** The negative-fixture requirement is a Phase 4 gate, not a Phase 2 gate. Committing it red here would fail Phase 2's `cargo xtask test changed` boundary by design. Instead we land the test as `#[ignore]` here so the shape contract is visible in the test suite, and an explicit Phase 4d task (Task 4d.ignore-flip — see Phase 4d below) removes the `#[ignore]` attribute and lets it gate. The Phase 4 per-language work creates each `fixtures/extraction/<lang>/negative/` directory; flipping the gate at the end of Phase 4d turns the populated negatives into the proof.
+
+**Step 1: Write the failing-when-not-ignored test**
 
 ```rust
 #[test]
+#[ignore = "negative fixtures land per-language during Phase 4; Task 4d.ignore-flip removes this attribute"]
 fn capability_matrix_negative_cases_emit_no_wrong_edges() {
     let root = workspace_root();
     let matrix = load_matrix(&root);
@@ -547,25 +623,23 @@ fn capability_matrix_negative_cases_emit_no_wrong_edges() {
 }
 ```
 
-**Step 2: Run test to verify it fails**
+**Step 2: Verify the test compiles and is ignored (does not fail the suite)**
 
-Run: `cargo nextest run -p julie-extractors --lib capability_matrix_negative_cases_emit_no_wrong_edges 2>&1 | tail -20`
-Expected: FAIL — many languages have only a `basic` fixture.
+Run: `cargo nextest run -p julie-extractors --lib capability_matrix_negative_cases_emit_no_wrong_edges 2>&1 | tail -10`
+Expected: the test is reported as `IGNORED`, not `FAIL`. This keeps the Phase 2 boundary gate green.
 
-**Step 3: Defer negative-fixture creation to Phase 4**
+**Step 3: Confirm the de-ignore task exists in Phase 4d**
 
-The test stays failing through Phase 1 → Phase 3 boundary. Mark with `#[ignore]` IF AND ONLY IF the lead approves; otherwise it's a phase-spanning red gate that closes during Phase 4 per-language work. Default: keep it failing (red gates focus the work).
-
-Decision: keep red. Phase 4 closes it.
+Verify Task 4d.ignore-flip is present in the Phase 4d section below. That task is where the failing-then-passing TDD cycle for this test actually happens. If Task 4d.ignore-flip is missing, the lead reports a plan mismatch instead of removing the `#[ignore]` attribute locally.
 
 **Step 4: Commit**
 
 ```bash
 git add crates/julie-extractors/src/tests/capability_matrix.rs
-git commit -m "feat(extractors): require negative-case fixtures for languages claiming relationship support"
+git commit -m "feat(extractors): require negative-case fixtures for relationship-claiming languages (ignored until Phase 4d)"
 ```
 
-**Phase 2 boundary gate:** `cargo xtask test changed`. Ledger row.
+**Phase 2 boundary gate:** `cargo xtask test changed`. The ignored test does not block this gate. Ledger row.
 
 ---
 
@@ -595,7 +669,8 @@ fn test_sql_emits_structured_pending_for_cross_file_fk() {
     // RelationshipKind::References, file_path/line_number set, callerScopeSymbolId
     // pointing at the orders table symbol.
     let source = include_str!("../../../../../fixtures/extraction/sql/cross_file/source.sql");
-    let result = extract_canonical("sql", source, Path::new("source.sql"), workspace_root_static()).unwrap();
+    let workspace_root = workspace_root_static();
+    let result = extract_canonical("source.sql", source, workspace_root).unwrap();
     let pendings = &result.structured_pending_relationships;
     let users_ref = pendings.iter().find(|p| p.target.terminal_name == "users")
         .expect("expected structured pending for `users` cross-schema reference");
@@ -679,7 +754,7 @@ fn test_json_emits_relationship_for_local_ref() {
             "billing": { "$ref": "#/$defs/Address" }
         }
     }"#;
-    let result = extract_canonical("json", source, Path::new("schema.json"), workspace_root_static()).unwrap();
+    let result = extract_canonical("schema.json", source, workspace_root_static()).unwrap();
     let billing_to_address = result.relationships.iter()
         .find(|r| r.from_symbol_id.contains("billing") && r.to_symbol_id.contains("Address"))
         .expect("expected billing → Address relationship from local $ref");
@@ -693,7 +768,7 @@ fn test_json_emits_structured_pending_for_external_ref() {
             "billing": { "$ref": "external.json#/$defs/Address" }
         }
     }"#;
-    let result = extract_canonical("json", source, Path::new("schema.json"), workspace_root_static()).unwrap();
+    let result = extract_canonical("schema.json", source, workspace_root_static()).unwrap();
     let pending = result.structured_pending_relationships.iter()
         .find(|p| p.target.terminal_name == "Address")
         .expect("expected structured pending for external $ref");
@@ -708,7 +783,7 @@ fn test_json_no_relationship_for_malformed_ref() {
             "broken": { "$ref": "#/nonexistent/Path" }
         }
     }"#;
-    let result = extract_canonical("json", source, Path::new("schema.json"), workspace_root_static()).unwrap();
+    let result = extract_canonical("schema.json", source, workspace_root_static()).unwrap();
     assert!(result.relationships.iter().all(|r| !r.to_symbol_id.contains("nonexistent")),
         "no concrete relationship should be emitted for malformed $ref; structured pending is the right place");
 }
@@ -767,7 +842,7 @@ name = "myapp"
 serde = "1.0"
 tokio = { version = "1", features = ["full"] }
     "#;
-    let result = extract_canonical("toml", source, Path::new("Cargo.toml"), workspace_root_static()).unwrap();
+    let result = extract_canonical("Cargo.toml", source, workspace_root_static()).unwrap();
     assert!(result.relationships.iter().any(|r|
         r.to_symbol_id.contains("serde") && matches!(r.kind, RelationshipKind::Imports)),
         "expected Cargo.toml [dependencies] serde → Imports relationship");
@@ -786,7 +861,7 @@ line-length = 88
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
     "#;
-    let result = extract_canonical("toml", source, Path::new("pyproject.toml"), workspace_root_static()).unwrap();
+    let result = extract_canonical("pyproject.toml", source, workspace_root_static()).unwrap();
     assert!(result.relationships.iter().any(|r|
         r.to_symbol_id.contains("ruff") && matches!(r.kind, RelationshipKind::References)),
         "expected pyproject.toml [tool.ruff] → References relationship");
@@ -800,7 +875,7 @@ fn test_toml_arbitrary_table_emits_no_relationship() {
 [some.other.table]
 key = "value"
     "#;
-    let result = extract_canonical("toml", source, Path::new("config.toml"), workspace_root_static()).unwrap();
+    let result = extract_canonical("config.toml", source, workspace_root_static()).unwrap();
     assert!(result.relationships.is_empty(),
         "no relationships should be emitted for arbitrary tables, got: {:?}", result.relationships);
 }
@@ -844,9 +919,11 @@ git commit -m "feat(toml): emit relationships for cargo deps and pyproject tool 
 
 **Goal:** Close the structured-pending and relationship gaps for every language whose extractor currently doesn't emit them or whose fixtures don't prove them. Tier-ordered: general programming first (largest set), then component/template, then query/declarative, then doc/data.
 
-The work pattern is the same for every language; the per-language deltas are tabulated below. **For each language listed, execute the Per-Language TDD Cycle.**
+The work pattern depends on whether the language emits structured pending (most languages) or is an intrinsic-N/A row that only needs a locking test (e.g., razor's pending is handled by the embedded C# extractor; regex has no concept of cross-file references). Each table below tags every language with a **Recipe** column (`A` or `B`).
 
-### Per-Language TDD Cycle (the recipe; not "Similar to Task N")
+### Per-Language TDD Cycle — Recipe A (implement structured pending) — DEFAULT
+
+Use Recipe A when the language has a sensible cross-file or unresolved reference shape (imports, requires, FK targets, $ref, anchor refs, etc.). All Phase 4a rows use Recipe A. Most Phase 4b/4c/4d rows use Recipe A unless tagged Recipe B.
 
 **Files (substitute `<lang>`):**
 - Modify: `crates/julie-extractors/src/<lang>/mod.rs` — if the language uses `add_structured_pending_relationship` (csharp/java pattern), ensure the cross-file reference detection emits structured pending. If the language is currently on `define_no_pending_extractors!`, migrate to `define_structured_full_language_extractors!` or a hand-written extract function.
@@ -856,7 +933,7 @@ The work pattern is the same for every language; the per-language deltas are tab
 - Modify: `fixtures/extraction/<lang>/basic/source.<ext>` — add a cross-file/unresolved reference of the per-language scenario shape.
 - Modify: `fixtures/extraction/<lang>/basic/expected.json` — assert the structured_pending_relationships shape.
 - Create: `fixtures/extraction/<lang>/negative/source.<ext>` + `expected.json` — encode the per-language negative scenario.
-- Modify: `fixtures/extraction/capabilities.json` — add `negative` fixture entry, close pending gap with `kind: test, value: test_<lang>_emits_structured_pending_for_<scenario>, command: cargo nextest run -p julie-extractors --lib test_<lang>_emits_structured_pending_for_<scenario>`.
+- Modify: `fixtures/extraction/capabilities.json` — add `negative` fixture entry, close pending gap with `kind: test, value: test_<lang>_emits_structured_pending_for_<scenario>, command: cargo nextest run -p julie-extractors --lib test_<lang>_emits_structured_pending_for_<scenario>`. Remove `planned_closure_task` from this row (status flips from `open` to `closed`).
 
 **Steps:**
 1. Write the failing positive test asserting the structured-pending shape (target.terminal_name, target.namespace_path/import_context/receiver as appropriate, callerScopeSymbolId, line_number > 0).
@@ -874,6 +951,46 @@ The work pattern is the same for every language; the per-language deltas are tab
     git add crates/julie-extractors/src/<lang>/ crates/julie-extractors/src/registry.rs crates/julie-extractors/src/tests/<lang>/ fixtures/extraction/<lang>/ fixtures/extraction/capabilities.json
     git commit -m "feat(<lang>): emit structured pending and prove negative cases"
     ```
+
+### Per-Language TDD Cycle — Recipe B (lock exception / no-wrong-edge)
+
+Use Recipe B for intrinsic-N/A rows: languages whose external references are either handled by an embedded extractor (razor → C# embed) or whose grammar has no concept of cross-file references (regex). Recipe B emits NO structured pending entries; the proof is a locking test that asserts the extractor produces zero pending and a negative fixture proving no wrong edges escape.
+
+**Files (substitute `<lang>`):**
+- Read-only: `crates/julie-extractors/src/<lang>/mod.rs` (no extractor changes; verify it remains on `define_no_pending_extractors!` or equivalent)
+- Test: `crates/julie-extractors/src/tests/<lang>/pending.rs` — add `<lang>_pending_relationships_remain_unsupported` (or `<lang>_pending_relationships_handled_by_<embed>` for embed-delegated rows) asserting `structured_pending_relationships.is_empty()` and that any expected pending entries appear in the embed extractor's output instead (for razor).
+- Create: `fixtures/extraction/<lang>/negative/source.<ext>` + `expected.json` — encode the wrong-edge scenario; expected.json asserts `relationships: []` and `structured_pending_relationships: []`.
+- Modify: `fixtures/extraction/capabilities.json` — flip the row from `status: open, planned_closure_task: "Phase 4..."` to `status: exception` with `evidence: {kind: test, value: <lang>_pending_relationships_remain_unsupported, command: "cargo nextest run -p julie-extractors --lib <lang>_pending_relationships_remain_unsupported"}` and remove `planned_closure_task`. Reason must avoid the banned phrases from Task 1.2 — use "intrinsic to language" or "handled by embedded <embed> extractor at <path>".
+
+**Steps:**
+1. Write the failing locking test asserting zero pending output (for embed-delegated rows, also assert the embed extractor produced the expected entries).
+2. Run: `cargo nextest run -p julie-extractors --lib <lang>_pending_relationships_remain_unsupported 2>&1 | tail -10`. Expected: PASS at HEAD (the extractor already emits zero pending) — this is a locking test, so PASS-at-HEAD is the correct initial state. If the test fails, the extractor is leaking edges and Recipe B is the wrong choice; switch to Recipe A.
+3. Add the negative fixture and update `expected.json` with `relationships: []` and `structured_pending_relationships: []`.
+4. Run `cargo nextest run -p julie-extractors --lib golden_fixtures_match_canonical_extraction`. Expected: PASS.
+5. Flip `capabilities.json` row to `status: exception`, evidence pointing at the new locking test, `planned_closure_task` removed.
+6. Run all three resolver-related tests: `cargo nextest run -p julie-extractors --lib capability_matrix_evidence_resolves capability_matrix_no_not_implemented_exceptions capability_matrix_open_rows_have_planned_closure_task 2>&1 | tail -20`. Expected: PASS.
+7. Commit:
+    ```bash
+    git add crates/julie-extractors/src/tests/<lang>/ fixtures/extraction/<lang>/ fixtures/extraction/capabilities.json
+    git commit -m "test(<lang>): lock intrinsic-N/A pending classification with negative fixture"
+    ```
+
+### Recipe-Selection Reference
+
+| Row | Recipe | Why |
+|---|---|---|
+| Phase 4a all 24 langs | A | General-programming tier: every language has imports/calls/cross-file refs to encode |
+| Phase 4b html | A | `<script src=...>` is a real cross-file reference |
+| Phase 4b vue | A | `<script setup>` imports are real cross-file refs |
+| Phase 4b razor | B | External refs handled by embedded C# extractor; razor itself must emit zero pending |
+| Phase 4b qml | A | `import OtherModule 1.0` is a real cross-module ref |
+| Phase 4c sql | A | Already implemented in Phase 3.1 |
+| Phase 4c css | A | Cross-file `var(--brand)` is a real ref |
+| Phase 4c regex | B | Regex has no concept of cross-file references; backref scope is intra-pattern |
+| Phase 4d markdown | A | `[text](./other.md#anchor)` is a real cross-file ref |
+| Phase 4d json | A | Already implemented in Phase 3.2 |
+| Phase 4d toml | A | Already implemented in Phase 3.3 |
+| Phase 4d yaml | A | Cross-file anchor refs are real (per yaml-include conventions in the wild) |
 
 ### Phase 4a — General Programming Tier (24 languages)
 
@@ -939,6 +1056,33 @@ The work pattern is the same for every language; the per-language deltas are tab
 | toml | already closed in §3.3 | from §3.3 | done |
 | yaml | YAML anchor reference `*name` to `&name` in another file → pending; same-file `*name` → resolved | bare scalar that happens to start with `*` inside a quoted string → no edge | currently uses `define_relationship_data_extractors`; verify or migrate |
 
+### Task 4d.ignore-flip: De-ignore `capability_matrix_negative_cases_emit_no_wrong_edges`
+
+**Files:**
+- Modify: `crates/julie-extractors/src/tests/capability_matrix.rs` — remove the `#[ignore = "..."]` attribute on `capability_matrix_negative_cases_emit_no_wrong_edges` added in Task 2.2
+
+**Sequencing precondition:** Every language whose row in `capabilities.json` has `target_capabilities.relationships = true` must already have a `fixtures/extraction/<lang>/negative/` entry committed by an earlier Phase 4 task. Verify by running the test before removing the attribute.
+
+**Step 1: Confirm all negative fixtures exist**
+
+Run (the test is still ignored, so this is a manual inventory): `ls fixtures/extraction/*/negative/expected.json | sort`. Cross-check against `capabilities.json` rows where `target_capabilities.relationships = true`. Every such row must have a corresponding `negative` directory.
+
+**Step 2: Remove the `#[ignore]` attribute**
+
+Delete the `#[ignore = "..."]` line above `fn capability_matrix_negative_cases_emit_no_wrong_edges`.
+
+**Step 3: Run the test to verify it passes**
+
+Run: `cargo nextest run -p julie-extractors --lib capability_matrix_negative_cases_emit_no_wrong_edges 2>&1 | tail -10`
+Expected: PASS. If FAIL, identify the missing-negative language(s) and route back to the relevant Phase 4 sub-task to add the fixture — do not re-ignore.
+
+**Step 4: Commit**
+
+```bash
+git add crates/julie-extractors/src/tests/capability_matrix.rs
+git commit -m "test(extractors): activate negative-case gate now that all Phase 4 fixtures exist"
+```
+
 **Phase 4d boundary gate:** `cargo xtask test changed` and `cargo xtask test dev`. Ledger rows.
 
 ---
@@ -947,35 +1091,48 @@ The work pattern is the same for every language; the per-language deltas are tab
 
 **Goal:** Make `julie-extractors` consumable as a stable Rust crate dependency.
 
-### Task 5.1: Move `capabilities.json` into the crate
+### Task 5.1: Inventory references to `fixtures/extraction/capabilities.json` and confirm path stability
 
-**Files:**
-- Move: `fixtures/extraction/capabilities.json` → `crates/julie-extractors/capabilities.json`
-- Modify: `crates/julie-extractors/Cargo.toml` — `include = ["capabilities.json", ...]` to ensure cargo package picks it up
-- Modify: `crates/julie-extractors/src/tests/capability_matrix.rs:447-463` — `load_matrix` now reads the in-crate path instead of `<root>/fixtures/extraction/capabilities.json`. Update `workspace_root` to compute the crate root.
-- Modify: `xtask/src/tree_sitter_certification.rs` — point at the new path.
-- Modify: any other consumer of the workspace-root path. Use `fast_refs(symbol="capabilities.json")` style search via `cargo nextest run --lib references_to_capabilities_path` if such a test exists, otherwise grep with Julie's `fast_search`.
+**Decision (resolves Codex finding #5):** `capabilities.json` stays at `fixtures/extraction/capabilities.json`. It is NOT moved into the crate. The design lists it as the single source of truth, 44 in-repo refs already point there, and the crate consumes it via `include_str!("../../../fixtures/extraction/capabilities.json")` from `src/capability_snapshot.rs`. Phase 5.2 sets up the include_str; this task only verifies and inventories.
 
-**Step 1: Identify all consumers**
+**Files (this task makes no path-modifying edits):**
+- Read-only inventory: every consumer of the path. Use `mcp__plugin_julie_julie__fast_search(query="capabilities.json", search_target="files")` to enumerate.
 
-Use `mcp__plugin_julie_julie__fast_search(query="capabilities.json", search_target="files")` to find every file that references the path. Update each.
+**Step 1: Confirm the file lives at the canonical path**
 
-**Step 2: Move the file**
+Run: `test -f fixtures/extraction/capabilities.json && echo OK`
+Expected: `OK`.
 
-```bash
-git mv fixtures/extraction/capabilities.json crates/julie-extractors/capabilities.json
+**Step 2: Enumerate all consumers**
+
+Use `mcp__plugin_julie_julie__fast_search(query="capabilities.json", search_target="files")`. Record the count and a short list in a Step-3 note. The expectation is roughly 44 references across xtask, tests, docs, and the new `src/capability_snapshot.rs` (which is created in Phase 5.2).
+
+**Step 3: Add a path-stability regression test**
+
+Add to `crates/julie-extractors/src/tests/capability_matrix.rs`:
+
+```rust
+#[test]
+fn capabilities_json_canonical_path_exists() {
+    let path = workspace_root().join("fixtures/extraction/capabilities.json");
+    assert!(
+        path.exists(),
+        "capabilities.json must remain at fixtures/extraction/capabilities.json — \
+         this is the single source of truth and the include_str! path in \
+         crates/julie-extractors/src/capability_snapshot.rs targets it. \
+         Moving this file requires updating both that include_str! and ~44 other refs."
+    );
+}
 ```
 
-**Step 3: Verify all gates still pass**
+**Step 4: Run + commit**
 
-Run: `cargo nextest run -p julie-extractors --lib capability_matrix 2>&1 | tail -20`
-Run: `cargo xtask certify tree-sitter --check`
-Expected: PASS for both.
-
-**Step 4: Commit**
+Run: `cargo nextest run -p julie-extractors --lib capabilities_json_canonical_path_exists 2>&1 | tail -10`
+Expected: PASS.
 
 ```bash
-git commit -m "refactor(extractors): move capabilities.json into the julie-extractors crate root"
+git add crates/julie-extractors/src/tests/capability_matrix.rs
+git commit -m "test(extractors): lock canonical path of fixtures/extraction/capabilities.json"
 ```
 
 ### Task 5.2: Add `capability_snapshot()` public function
@@ -1031,14 +1188,18 @@ Expected: FAIL — `capability_snapshot` doesn't exist yet.
 ```rust
 //! Stable, downstream-readable capability declaration.
 //!
-//! Loads from `capabilities.json` baked into the crate via `include_str!`.
-//! No build script — keep `cargo package -p julie-extractors --list` self-contained.
+//! Loads from `fixtures/extraction/capabilities.json` (single source of truth)
+//! via `include_str!` at compile time. No build script. Path-dep and git-dep
+//! consumers work because cargo serves the whole repo at its on-disk location.
+//! This crate is intentionally NOT `cargo publish`-able to crates.io — see
+//! `docs/plans/2026-05-10-best-in-class-tree-sitter-plan.md` Architecture
+//! Quality section for the Pillar-3 scope decision.
 
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
-const CAPABILITIES_JSON: &str = include_str!("../capabilities.json");
+const CAPABILITIES_JSON: &str = include_str!("../../../fixtures/extraction/capabilities.json");
 
 #[derive(Debug, Deserialize)]
 pub struct CapabilitySnapshot {
@@ -1124,27 +1285,46 @@ git commit -m "feat(extractors): add capability_snapshot() public API for downst
 
 **Files:**
 - Modify: `crates/julie-extractors/src/lib.rs` — add `pub const EXTRACTION_CONTRACT_VERSION: &str = "2026-05-10.tree-sitter-best-in-class-v1";`
-- Modify: `src/tools/workspace/indexing/engine_version.rs` — compose `SEMANTIC_ENGINE_VERSION` from `EXTRACTION_CONTRACT_VERSION` + DB schema version + index format version
-- Test: `src/tests/core/engine_version.rs` (or wherever existing tests live) — add `test_semantic_engine_version_composes_from_extraction_contract`
+- Modify: `src/tools/workspace/indexing/engine_version.rs:6` — the existing constant is named `SEMANTIC_INDEX_ENGINE_VERSION` (not `SEMANTIC_ENGINE_VERSION`) and is currently `pub(crate)`. **Both must change in this task:** (a) bump visibility to `pub` so the in-repo test in `src/tests/core/` can import it; (b) recompose its value to include `julie_extractors::EXTRACTION_CONTRACT_VERSION`. Keep the name `SEMANTIC_INDEX_ENGINE_VERSION` — do not rename. Update every downstream call-site that reads the const (write rule: don't change call-sites yet — `pub(crate)` → `pub` is a strict widening, so callers compile unchanged).
+- Test: `src/tests/core/engine_version.rs` (or wherever existing tests live) — add `test_semantic_index_engine_version_includes_extraction_contract`
 
 **Step 1: Write the failing test**
 
 ```rust
-use julie::tools::workspace::indexing::engine_version::SEMANTIC_ENGINE_VERSION;
+use julie::tools::workspace::indexing::engine_version::SEMANTIC_INDEX_ENGINE_VERSION;
 
 #[test]
-fn test_semantic_engine_version_includes_extraction_contract() {
-    assert!(SEMANTIC_ENGINE_VERSION.contains(julie_extractors::EXTRACTION_CONTRACT_VERSION),
-        "SEMANTIC_ENGINE_VERSION ({}) must include EXTRACTION_CONTRACT_VERSION ({}) for drift detection",
-        SEMANTIC_ENGINE_VERSION, julie_extractors::EXTRACTION_CONTRACT_VERSION);
+fn test_semantic_index_engine_version_includes_extraction_contract() {
+    assert!(SEMANTIC_INDEX_ENGINE_VERSION.contains(julie_extractors::EXTRACTION_CONTRACT_VERSION),
+        "SEMANTIC_INDEX_ENGINE_VERSION ({}) must include EXTRACTION_CONTRACT_VERSION ({}) for drift detection",
+        SEMANTIC_INDEX_ENGINE_VERSION, julie_extractors::EXTRACTION_CONTRACT_VERSION);
 }
 ```
 
-**Step 2: Run, fail, implement, run, pass.**
+**Step 2: Run the test to verify it fails for the right reason**
 
-The composition rule: `SEMANTIC_ENGINE_VERSION = format!("{}+schema-v{}+index-v{}", EXTRACTION_CONTRACT_VERSION, schema_version, index_format_version)` evaluated at build time via a const fn or a `&'static` produced from a const concat. Since Rust's const string concat is limited, use a `&'static` initialized via `OnceLock<String>` if necessary, or `concat!` with literal versions.
+Run: `cargo nextest run --lib test_semantic_index_engine_version_includes_extraction_contract 2>&1 | tail -20`
+Expected: FAIL because (a) `SEMANTIC_INDEX_ENGINE_VERSION` is `pub(crate)` so the import fails to compile, OR (b) the current value `"2026-05-05.reference-identifier-v3"` does not contain `EXTRACTION_CONTRACT_VERSION`. Either failure mode is the right reason.
 
-**Step 3: Commit**
+**Step 3: Bump visibility + recompose**
+
+In `src/tools/workspace/indexing/engine_version.rs:6`, change `pub(crate) const SEMANTIC_INDEX_ENGINE_VERSION: &str = "..."` to a `pub const` initialized via `concat!`:
+
+```rust
+pub const SEMANTIC_INDEX_ENGINE_VERSION: &str = concat!(
+    "extractors=",
+    julie_extractors::EXTRACTION_CONTRACT_VERSION,
+    "+schema-v",
+    env!("CARGO_PKG_VERSION"),   // or a literal schema-version string if one is tracked elsewhere
+);
+```
+
+If `concat!` cannot accept `EXTRACTION_CONTRACT_VERSION` because Rust requires literal string arguments to `concat!`, fall back to a `pub static SEMANTIC_INDEX_ENGINE_VERSION: std::sync::LazyLock<String>` (Rust 1.80+) or a `OnceLock<String>` populated in a `pub fn semantic_index_engine_version() -> &'static str` accessor — and update existing call-sites to use the accessor.
+
+**Step 4: Run the test, verify it passes, commit**
+
+Run: `cargo nextest run --lib test_semantic_index_engine_version_includes_extraction_contract 2>&1 | tail -10`
+Expected: PASS.
 
 ```bash
 git add crates/julie-extractors/src/lib.rs src/tools/workspace/indexing/engine_version.rs src/tests/core/engine_version.rs
@@ -1207,9 +1387,8 @@ git commit -m "docs(extractors): add doc comments to every public item"
 //!
 //! let source = "fn main() { println!(\"hi\"); }";
 //! let result = extract_canonical(
-//!     "rust",
+//!     "hello.rs",
 //!     source,
-//!     Path::new("hello.rs"),
 //!     Path::new("."),
 //! ).unwrap();
 //! assert!(!result.symbols.is_empty());
@@ -1256,26 +1435,33 @@ use std::path::{Path, PathBuf};
 fn main() -> anyhow::Result<()> {
     let path = env::args().nth(1).expect("usage: extract_file <path>");
     let path = PathBuf::from(path);
-    let extension = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-    let snap = capability_snapshot();
-    let language = snap.languages()
-        .find(|row| row.extensions.iter().any(|e| e == extension))
-        .map(|row| row.language.as_str())
-        .ok_or_else(|| anyhow::anyhow!("no julie-extractors language matches extension `.{}`", extension))?;
+    let file_path_str = path.to_str()
+        .ok_or_else(|| anyhow::anyhow!("file path is not valid UTF-8: {:?}", path))?;
     let source = fs::read_to_string(&path)?;
     let workspace_root = path.parent().unwrap_or(Path::new("."));
-    let result = extract_canonical(language, &source, &path, workspace_root)?;
-    println!("# {} ({})", path.display(), language);
+    let result = extract_canonical(file_path_str, &source, workspace_root)?;
+    println!("# {}", path.display());
     println!("Symbols: {}", result.symbols.len());
     for s in &result.symbols {
         println!("  - {} ({:?}) at line {}", s.name, s.kind, s.start_line);
     }
     println!("Relationships: {}", result.relationships.len());
     println!("Structured pending: {}", result.structured_pending_relationships.len());
-    let cap = snap.get(language).unwrap();
-    println!("\nCapabilities: symbols={} relationships={} pending={} identifiers={} types={}",
-        cap.capabilities.symbols, cap.capabilities.relationships,
-        cap.capabilities.pending_relationships, cap.capabilities.identifiers, cap.capabilities.types);
+
+    // Auxiliary: report the declared capabilities for the matching language
+    // by extension lookup against the capability snapshot.
+    let extension = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+    let snap = capability_snapshot();
+    if let Some(cap) = snap.languages()
+        .find(|row| row.extensions.iter().any(|e| e == extension))
+    {
+        println!("\nLanguage: {}", cap.language);
+        println!("Capabilities: symbols={} relationships={} pending={} identifiers={} types={}",
+            cap.capabilities.symbols, cap.capabilities.relationships,
+            cap.capabilities.pending_relationships, cap.capabilities.identifiers, cap.capabilities.types);
+    } else {
+        println!("\n(no julie-extractors language matches extension `.{}`; extraction still proceeded via filename heuristics)", extension);
+    }
     Ok(())
 }
 ```
@@ -1297,34 +1483,124 @@ git add crates/julie-extractors/examples/extract_file.rs
 git commit -m "feat(extractors): add extract_file example demonstrating crate API"
 ```
 
-### Task 5.7: Packaging gate
+### Task 5.7: Downstream-consumer integration test (replaces `cargo package --list` gate)
+
+**Decision (resolves Codex finding #3 + cross-check Pillar 3 external crate usability):** `cargo package --list` does not prove the crate is usable downstream — it only enumerates files. Real `cargo package -p julie-extractors --allow-dirty` fails because four inherent git dependencies (`tree-sitter-qmljs`, `tree-sitter-razor`, `tree-sitter-powershell`, `tree-sitter-vb-dotnet`) lack crates.io versions, so the crate is not publishable to crates.io. The actual Pillar 3 contract is "consumable as a Rust path/git dependency from a downstream crate". This task proves it directly with an integration test that spawns a temp consumer crate, path-deps `julie-extractors`, and runs a program calling both `extract_canonical` and `capability_snapshot`.
 
 **Files:**
-- Modify: `crates/julie-extractors/Cargo.toml` — `include` array and metadata as needed
-- Modify: an xtask bucket or CI workflow to add `cargo package -p julie-extractors --list` as a verification step
+- Create: `crates/julie-extractors/tests/downstream_smoke.rs`
+- Modify: `xtask/src/test.rs` — register the new test in an appropriate bucket (extend `extractors` bucket)
 
-**Step 1: Run the package list**
+**Step 1: Write the failing test**
 
-Run: `cargo package -p julie-extractors --list 2>&1 | tail -30`
-Expected: output includes `capabilities.json`, `src/`, `examples/`, `Cargo.toml`. No errors about missing files.
+```rust
+//! Integration test that proves julie-extractors is usable from a downstream
+//! Rust crate via a path dependency. This is the Pillar 3 gate — see plan
+//! Task 5.7 for context.
 
-**Step 2: Verify**
+use std::fs;
+use std::path::PathBuf;
+use std::process::Command;
 
-Run: `cargo package -p julie-extractors --list | grep -E '(capabilities\.json|examples/)'`
-Expected: both lines appear.
+#[test]
+fn julie_extractors_works_as_path_dependency_in_downstream_crate() {
+    // Locate this crate's manifest root via cargo metadata (do not hard-code).
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    let extractors_path = PathBuf::from(manifest_dir);
+    assert!(
+        extractors_path.join("Cargo.toml").exists(),
+        "expected extractors Cargo.toml at {:?}",
+        extractors_path
+    );
 
-**Step 3: Add to a verification bucket**
+    let tempdir = tempfile::tempdir().expect("create tempdir");
+    let consumer = tempdir.path();
 
-Add to `xtask/src/test.rs` (or wherever the bucket definitions live) a new bucket entry or extend the existing `extractors` bucket to include `cargo package -p julie-extractors --list` as a sanity check.
+    let extractors_abs = extractors_path
+        .canonicalize()
+        .expect("canonicalize extractors path");
+    let extractors_abs_str = extractors_abs.to_string_lossy().replace('\\', "/");
+
+    fs::write(
+        consumer.join("Cargo.toml"),
+        format!(
+            r#"[package]
+name = "julie_extractors_downstream_smoke"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+julie-extractors = {{ path = "{extractors_abs_str}" }}
+anyhow = "1.0"
+"#
+        ),
+    )
+    .expect("write consumer Cargo.toml");
+
+    fs::create_dir_all(consumer.join("src")).expect("create src/");
+    fs::write(
+        consumer.join("src/main.rs"),
+        r#"use std::path::Path;
+
+fn main() -> anyhow::Result<()> {
+    let source = "fn main() { println!(\"hi\"); }";
+    let result = julie_extractors::extract_canonical("hello.rs", source, Path::new("."))?;
+    assert!(!result.symbols.is_empty(), "expected at least one symbol");
+
+    let snap = julie_extractors::capability_snapshot();
+    let rust = snap.get("rust").expect("rust language row");
+    assert!(rust.target_capabilities.symbols);
+
+    let _version: &str = julie_extractors::EXTRACTION_CONTRACT_VERSION;
+    Ok(())
+}
+"#,
+    )
+    .expect("write consumer main.rs");
+
+    // Use an isolated target dir so we don't poison the parent workspace cache.
+    let target_dir = consumer.join("target");
+
+    let status = Command::new(env!("CARGO"))
+        .args(["build", "--manifest-path"])
+        .arg(consumer.join("Cargo.toml"))
+        .arg("--target-dir")
+        .arg(&target_dir)
+        .status()
+        .expect("spawn cargo build");
+    assert!(status.success(), "downstream consumer crate failed to build");
+
+    let run_status = Command::new(env!("CARGO"))
+        .args(["run", "--manifest-path"])
+        .arg(consumer.join("Cargo.toml"))
+        .arg("--target-dir")
+        .arg(&target_dir)
+        .status()
+        .expect("spawn cargo run");
+    assert!(run_status.success(), "downstream consumer crate failed to run");
+}
+```
+
+Add `tempfile = "3"` to `[dev-dependencies]` in `crates/julie-extractors/Cargo.toml` if not already present.
+
+**Step 2: Run + verify**
+
+Run: `cargo nextest run -p julie-extractors --test downstream_smoke julie_extractors_works_as_path_dependency_in_downstream_crate 2>&1 | tail -20`
+Expected: PASS. The test takes ~30–60s because it spawns a real cargo build in a tempdir; that is the entire point of the gate.
+
+**Step 3: Register the test in the extractors bucket**
+
+In `xtask/src/test.rs` (or the bucket-registration module), confirm `cargo nextest run -p julie-extractors` picks up integration tests under `tests/`. If the existing bucket filters only `--lib`, add an `--all-targets` or `--test downstream_smoke` invocation so the gate runs as part of `cargo xtask test bucket extractors`.
 
 **Step 4: Commit**
 
 ```bash
-git add crates/julie-extractors/Cargo.toml xtask/src/
-git commit -m "feat(extractors): make cargo package self-contained and gate it"
+git add crates/julie-extractors/tests/downstream_smoke.rs crates/julie-extractors/Cargo.toml xtask/src/test.rs
+git commit -m "feat(extractors): add downstream-consumer integration test as Pillar 3 gate"
 ```
 
-**Phase 5 boundary gate:** `cargo xtask test changed`, `cargo doc -p julie-extractors --no-deps`, `cargo test -p julie-extractors --doc`, `cargo build --examples -p julie-extractors`, `cargo package -p julie-extractors --list`. Ledger row.
+**Phase 5 boundary gate:** `cargo xtask test changed`, `cargo doc -p julie-extractors --no-deps`, `cargo test -p julie-extractors --doc`, `cargo build --examples -p julie-extractors`, `cargo nextest run -p julie-extractors --test downstream_smoke julie_extractors_works_as_path_dependency_in_downstream_crate`. Ledger row.
 
 ---
 
@@ -1410,7 +1686,56 @@ git add fixtures/extraction/tree-sitter-real-world-corpus.toml
 git commit -m "feat(corpus): raise min_relationships from 1 to 5x language-file-count baseline"
 ```
 
-### Task 6.3: Author per-repo representative-correctness specs
+### Task 6.3: Extend `hard_failures` to enforce specs (gate-first ordering)
+
+**Sequencing decision (resolves Codex cross-check on §3 real-world):** Codex flagged that the original ordering (author specs, then build enforcement) lets spec mistakes accumulate before any gate catches them. We swap the order: build the enforcement gate first (this task), then author specs (Task 6.4). Each spec authored in 6.4 is validated by the existing `hard_failures` machinery at commit time, so typos and unresolvable specs surface immediately instead of at the Phase 6 boundary.
+
+**Files:**
+- Modify: `xtask/src/tree_sitter_real_world.rs:309` — `hard_failures` function
+- Modify: same file's `TreeSitterRealWorldRepo` struct to include `representative_specs: Vec<RepresentativeSpec>`
+- Modify: same file — add `RepresentativeSpec` enum/struct deserialization
+
+**Step 1: Write the failing test**
+
+Add to `xtask/src/tree_sitter_real_world.rs` (test module):
+
+```rust
+#[test]
+fn hard_failures_enforces_representative_specs() {
+    let repo = TreeSitterRealWorldRepo {
+        name: "phoenix".to_string(),
+        language: "elixir".to_string(),
+        profile_tags: vec!["release".to_string()],
+        min_files: 1,
+        min_language_files: 1,
+        min_symbols: 1,
+        min_relationships: 1,
+        max_parse_diagnostic_files: None,
+        representative_specs: vec![
+            RepresentativeSpec::ReferenceCountAtLeast { name: "Phoenix.Router".to_string(), min: 30 }
+        ],
+    };
+    let counts = RepoCounts { /* ... pass thresholds */ };
+    let db_path: PathBuf = /* test fixture DB */;
+    let failures = hard_failures(&repo, &counts, &db_path);
+    // If the test DB has only 5 references for Phoenix.Router, expect a failure.
+    assert!(failures.iter().any(|f| f.contains("Phoenix.Router") && f.contains("at_least")),
+        "expected hard failure for unsatisfied reference_count_at_least spec");
+}
+```
+
+**Step 2: Run, fail, implement.**
+
+Implement spec-driven assertions in `hard_failures`. Read symbol/relationship/identifier counts from the per-repo SQLite DB at `db_path` for the named symbols. Compose failure strings of the form `"phoenix: representative_specs.reference_count_at_least(Phoenix.Router): expected ≥30, got 5"`. Add a separate failure category `"representative_specs.unresolvable_symbol(...)"` that fires when a spec names a symbol that doesn't exist in the DB at all — this gives Task 6.4 immediate feedback when a typo'd spec is committed.
+
+**Step 3: Run, pass, commit.**
+
+```bash
+git add xtask/src/tree_sitter_real_world.rs
+git commit -m "feat(xtask): enforce representative correctness specs in hard_failures"
+```
+
+### Task 6.4: Author per-repo representative-correctness specs
 
 **Files:**
 - Modify: `fixtures/extraction/tree-sitter-real-world-corpus.toml` — extend `[[repos]]` with `[repos.representative_specs]` sub-table or array of inline tables
@@ -1462,54 +1787,7 @@ For repos the lead doesn't have direct domain knowledge of, query the repo's REA
 
 **Step 3: Commit**
 
-Commit per ~5 repos (so the diff is reviewable). Each commit message: `feat(corpus): author representative specs for <repo> [, <repo>, ...]`.
-
-### Task 6.4: Extend `hard_failures` to enforce specs
-
-**Files:**
-- Modify: `xtask/src/tree_sitter_real_world.rs:309` — `hard_failures` function
-- Modify: same file's `TreeSitterRealWorldRepo` struct to include `representative_specs: Vec<RepresentativeSpec>`
-- Modify: same file — add `RepresentativeSpec` enum/struct deserialization
-
-**Step 1: Write the failing test**
-
-Add to `xtask/src/tree_sitter_real_world.rs` (test module):
-
-```rust
-#[test]
-fn hard_failures_enforces_representative_specs() {
-    let repo = TreeSitterRealWorldRepo {
-        name: "phoenix".to_string(),
-        language: "elixir".to_string(),
-        profile_tags: vec!["release".to_string()],
-        min_files: 1,
-        min_language_files: 1,
-        min_symbols: 1,
-        min_relationships: 1,
-        max_parse_diagnostic_files: None,
-        representative_specs: vec![
-            RepresentativeSpec::ReferenceCountAtLeast { name: "Phoenix.Router".to_string(), min: 30 }
-        ],
-    };
-    let counts = RepoCounts { /* ... pass thresholds */ };
-    let db_path: PathBuf = /* test fixture DB */;
-    let failures = hard_failures(&repo, &counts, &db_path);
-    // If the test DB has only 5 references for Phoenix.Router, expect a failure.
-    assert!(failures.iter().any(|f| f.contains("Phoenix.Router") && f.contains("at_least")),
-        "expected hard failure for unsatisfied reference_count_at_least spec");
-}
-```
-
-**Step 2: Run, fail, implement.**
-
-Implement spec-driven assertions in `hard_failures`. Read symbol/relationship/identifier counts from the per-repo SQLite DB at `db_path` for the named symbols. Compose failure strings of the form `"phoenix: representative_specs.reference_count_at_least(Phoenix.Router): expected ≥30, got 5"`.
-
-**Step 3: Run, pass, commit.**
-
-```bash
-git add xtask/src/tree_sitter_real_world.rs
-git commit -m "feat(xtask): enforce representative correctness specs in hard_failures"
-```
+Per-commit validation: each repo's spec block is committed individually, and `cargo nextest run --test corpus_specs_resolve` (a small test added in Task 6.3 that loads the corpus.toml and runs each `representative_specs` entry against the existing real-world DB) MUST PASS for that commit. If a spec entry names a symbol the DB doesn't contain, the test surfaces `"representative_specs.unresolvable_symbol(...)"` and the commit is rolled back. Commit per ~5 repos (so the diff is reviewable). Each commit message: `feat(corpus): author representative specs for <repo> [, <repo>, ...]`.
 
 ### Task 6.5: Regenerate evidence at HEAD with `--profile release`
 
@@ -1625,7 +1903,7 @@ cargo build --release
 cargo build --examples -p julie-extractors
 cargo test -p julie-extractors --doc
 cargo doc -p julie-extractors --no-deps
-cargo package -p julie-extractors --list
+cargo nextest run -p julie-extractors --test downstream_smoke julie_extractors_works_as_path_dependency_in_downstream_crate
 ```
 
 If any fails: stop, root-cause, fix, recommit, restart from the failed gate. Do not skip.
@@ -1648,7 +1926,7 @@ After the autonomous run completes, the user runs:
    - `manage_workspace health` — expect ready status.
    - `call_path extract_symbols_static extract_canonical` — expect a one-hop edge.
    - `fast_refs extract_canonical` — expect definition + references.
-   - SQLite check: `sqlite3 ~/.julie/indexes/julie_<id>/db/symbols.db "SELECT version_string FROM schema_version; SELECT semantic_engine_version FROM index_metadata;"` — verify both reflect the new EXTRACTION_CONTRACT_VERSION composition.
+   - SQLite check: inspect the on-disk index metadata for the engine version column actually written by the indexer (verify the column name against `src/database/schema.rs` before running). The recorded value must contain `EXTRACTION_CONTRACT_VERSION` per Task 5.3's composition.
    - `manage_workspace refresh workspace_id=julie_<id>` — expect "already up-to-date" without full reindex.
 4. Sign off: append a ledger row to the rubric file with timestamp + result.
 5. Merge `.worktrees/best-in-class-treesitter/` back to `main`.
@@ -1686,7 +1964,7 @@ git commit -m "docs: add live MCP dogfood handoff note for user sign-off"
 | Phase 4b component/template gate | `cargo xtask test changed` | phase-4b-changed | _TBD_ | _TBD_ | _TBD_ | No |
 | Phase 4c query/declarative gate | `cargo xtask test changed` | phase-4c-changed | _TBD_ | _TBD_ | _TBD_ | No |
 | Phase 4d doc/data gate | `cargo xtask test dev` | phase-4d-dev | _TBD_ | _TBD_ | _TBD_ | No |
-| Phase 5 hardening gate | `cargo doc + cargo test --doc + cargo build --examples + cargo package --list` | phase-5-pillar3 | _TBD_ | _TBD_ | _TBD_ | No |
+| Phase 5 hardening gate | `cargo doc + cargo test --doc + cargo build --examples + downstream_smoke integration test` | phase-5-pillar3 | _TBD_ | _TBD_ | _TBD_ | No |
 | Phase 6 real-world gate | `cargo xtask test dogfood` + `cargo xtask certify tree-sitter --check` | phase-6-realworld | _TBD_ | _TBD_ | _TBD_ | No |
 | Final formatter | `cargo fmt --check` | release-formatter | _TBD_ | _TBD_ | _TBD_ | No |
 | Final cert check | `cargo xtask certify tree-sitter --check` | release-cert | _TBD_ | _TBD_ | _TBD_ | No |
@@ -1700,7 +1978,7 @@ git commit -m "docs: add live MCP dogfood handoff note for user sign-off"
 | Examples build | `cargo build --examples -p julie-extractors` | release-examples | _TBD_ | _TBD_ | _TBD_ | No |
 | Doctest | `cargo test -p julie-extractors --doc` | release-doctest | _TBD_ | _TBD_ | _TBD_ | No |
 | Rustdoc | `cargo doc -p julie-extractors --no-deps` | release-rustdoc | _TBD_ | _TBD_ | _TBD_ | No |
-| Packaging | `cargo package -p julie-extractors --list` | release-package | _TBD_ | _TBD_ | _TBD_ | No |
+| Pillar 3 downstream smoke | `cargo nextest run -p julie-extractors --test downstream_smoke julie_extractors_works_as_path_dependency_in_downstream_crate` | release-downstream-smoke | _TBD_ | _TBD_ | _TBD_ | No |
 | Live MCP health (manual) | `manage_workspace health` | live-health | _TBD_ | _TBD_ (user) | _TBD_ | No |
 | Live MCP call_path (manual) | `call_path extract_symbols_static extract_canonical` | live-call-path | _TBD_ | _TBD_ (user) | _TBD_ | No |
 | Live MCP refs (manual) | `fast_refs extract_canonical` | live-refs | _TBD_ | _TBD_ (user) | _TBD_ | No |
