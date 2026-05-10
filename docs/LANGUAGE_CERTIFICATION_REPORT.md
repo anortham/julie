@@ -4,12 +4,12 @@
 
 ## Summary
 
-- Current HEAD: `a7264b3977a62c4657875d0649e349cdd296a877`
+- Current HEAD: `e01563644c32ddfb8e1c0511d56fce620ef6c501`
 - Registry rows: `36`
 - Golden fixtures: `76`
 - Historical matrix rows: `33`
 - Raw historical OSS reports: `13`
-- Current real-world verified repos: `13`
+- Current real-world verified repos: `3`
 - Current real-world skipped repos: `0`
 - Rows with open gaps: `2`
 - Rows without gap entries: `26`
@@ -21,25 +21,15 @@
 
 ## Current Real-World OSS Evidence
 
-- Profile: `restored`
-- Julie HEAD in evidence: `f1280d3e2bc69475671eaa8939b5031a7c3bf83d`
+- Profile: `smoke`
+- Julie HEAD in evidence: `e01563644c32ddfb8e1c0511d56fce620ef6c501`
 - Summary flags: `none`
 
 | repo | language | status | files | language files | symbols | relationships | identifiers | types | diagnostic files | hard failures |
 | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| `Alamofire` | `swift` | `pass` | 520 | 96 | 100727 | 4990 | 230312 | 94594 | 22 | `none` |
-| `Newtonsoft.Json` | `csharp` | `pass` | 1160 | 945 | 21286 | 18976 | 111147 | 10537 | 45 | `none` |
-| `Slim` | `php` | `pass` | 145 | 125 | 4296 | 1690 | 5858 | 3515 | 0 | `none` |
-| `cats` | `scala` | `pass` | 934 | 835 | 25698 | 14478 | 73619 | 11536 | 14 | `none` |
-| `cobra` | `go` | `pass` | 65 | 36 | 1681 | 1571 | 6760 | 263 | 0 | `none` |
-| `gson` | `java` | `pass` | 305 | 259 | 8785 | 9175 | 36900 | 3811 | 0 | `none` |
-| `jq` | `c` | `pass` | 357 | 47 | 12457 | 5078 | 13897 | 2612 | 24 | `none` |
-| `lite` | `lua` | `pass` | 403 | 28 | 50759 | 35361 | 96174 | 21047 | 193 | `none` |
-| `moshi` | `kotlin` | `pass` | 182 | 99 | 6747 | 5547 | 24849 | 2497 | 2 | `none` |
-| `nlohmann-json` | `cpp` | `pass` | 1135 | 464 | 26445 | 14338 | 87303 | 7559 | 147 | `none` |
-| `phoenix` | `elixir` | `pass` | 455 | 291 | 10308 | 3882 | 37783 | 193 | 117 | `none` |
-| `riverpod` | `dart` | `pass` | 1805 | 1156 | 33949 | 2617 | 95478 | 11474 | 0 | `none` |
-| `sinatra` | `ruby` | `pass` | 288 | 147 | 6575 | 5720 | 16687 | 562 | 0 | `none` |
+| `flask` | `python` | `pass` | 225 | 83 | 4480 | 2399 | 7830 | 540 | 3 | `none` |
+| `julie` | `rust` | `pass` | 1465 | 1140 | 38272 | 55732 | 182974 | 8702 | 25 | `none` |
+| `zod` | `typescript` | `pass` | 504 | 364 | 18536 | 16533 | 51701 | 4329 | 9 | `none` |
 
 ## Fixture Evidence Totals
 
