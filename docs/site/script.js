@@ -351,7 +351,7 @@
     'opencode': '{\n  "mcp": {\n    "julie": {\n      "type": "local",\n      "command": ["node", "/path/to/julie-plugin/hooks/run.cjs"],\n      "enabled": true\n    }\n  }\n}',
     'cursor': '{\n  "mcpServers": {\n    "julie": {\n      "command": "/path/to/julie-server"\n    }\n  }\n}',
     'gemini': '{\n  "mcpServers": {\n    "julie": {\n      "command": "/path/to/julie-server"\n    }\n  }\n}',
-    'codex': 'codex mcp add julie -- node /path/to/julie-plugin/hooks/run.cjs',
+    'codex': '[mcp_servers.julie]\ncommand = "node"\nargs = ["/path/to/julie-plugin/hooks/run.cjs"]',
   };
 
   document.querySelectorAll('.copy-btn').forEach((btn) => {

@@ -783,8 +783,10 @@
       <div id="panel-codex" class="install-panel" role="tabpanel">
         <div class="terminal install-terminal" style="position:relative;" aria-label="Configuration for Codex CLI">
           <button class="copy-btn" data-copy="codex" aria-label="Copy to clipboard">Copy</button>
-          <div><span class="comment"># User-level registration</span></div>
-          <div><span class="prompt">$ </span><span class="result">codex mcp add julie -- node /path/to/julie-plugin/hooks/run.cjs</span></div>
+          <div><span class="comment"># ~/.codex/config.toml</span></div>
+          <div><span class="result">[mcp_servers.julie]</span></div>
+          <div><span class="result">command = </span><span class="highlight">"node"</span></div>
+          <div><span class="result">args = [</span><span class="highlight">"/path/to/julie-plugin/hooks/run.cjs"</span><span class="result">]</span></div>
         </div>
       </div>
     </div>
