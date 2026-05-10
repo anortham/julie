@@ -1,0 +1,188 @@
+{
+  "symbols": [
+    {
+      "key": "fixtures/extraction/go/cross_file/source.go:entry:14:0",
+      "name": "entry",
+      "kind": "function",
+      "language": "go",
+      "file_path": "fixtures/extraction/go/cross_file/source.go",
+      "start_line": 14,
+      "start_column": 0,
+      "end_line": 17,
+      "end_column": 1,
+      "start_byte": 341,
+      "end_byte": 398,
+      "signature": "func entry() int",
+      "doc_comment": null,
+      "visibility": "Private",
+      "parent_key": null,
+      "metadata": {},
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/go/cross_file/source.go:local_helper:10:0",
+      "name": "local_helper",
+      "kind": "function",
+      "language": "go",
+      "file_path": "fixtures/extraction/go/cross_file/source.go",
+      "start_line": 10,
+      "start_column": 0,
+      "end_line": 12,
+      "end_column": 1,
+      "start_byte": 301,
+      "end_byte": 339,
+      "signature": "func local_helper() int",
+      "doc_comment": null,
+      "visibility": "Private",
+      "parent_key": null,
+      "metadata": {},
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/go/cross_file/source.go:main:6:8",
+      "name": "main",
+      "kind": "module",
+      "language": "go",
+      "file_path": "fixtures/extraction/go/cross_file/source.go",
+      "start_line": 6,
+      "start_column": 8,
+      "end_line": 6,
+      "end_column": 12,
+      "start_byte": 271,
+      "end_byte": 275,
+      "signature": "package main",
+      "doc_comment": "// Phase 4a fixture: cross-package call. DoIt is defined in another file under\n// package \"example/other\". The go extractor must emit a\n// StructuredPendingRelationship with target.terminal_name=\"DoIt\".\n// The intra-file local_helper() call resolves concretely.",
+      "visibility": "Public",
+      "parent_key": null,
+      "metadata": {},
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/go/cross_file/source.go:other:8:7",
+      "name": "other",
+      "kind": "import",
+      "language": "go",
+      "file_path": "fixtures/extraction/go/cross_file/source.go",
+      "start_line": 8,
+      "start_column": 7,
+      "end_line": 8,
+      "end_column": 22,
+      "start_byte": 284,
+      "end_byte": 299,
+      "signature": "import \"example/other\"",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": null,
+      "metadata": {},
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    }
+  ],
+  "relationships": [
+    {
+      "from_key": "fixtures/extraction/go/cross_file/source.go:entry:14:0",
+      "to_key": "fixtures/extraction/go/cross_file/source.go:local_helper:10:0",
+      "kind": "calls",
+      "file_path": "fixtures/extraction/go/cross_file/source.go",
+      "line_number": 16,
+      "confidence": "0.900",
+      "metadata": null
+    }
+  ],
+  "pending_relationships": [
+    {
+      "from_key": "fixtures/extraction/go/cross_file/source.go:entry:14:0",
+      "callee_name": "other.DoIt",
+      "kind": "calls",
+      "file_path": "fixtures/extraction/go/cross_file/source.go",
+      "line_number": 15,
+      "confidence": "0.700"
+    }
+  ],
+  "structured_pending_relationships": [
+    {
+      "pending": {
+        "from_key": "fixtures/extraction/go/cross_file/source.go:entry:14:0",
+        "callee_name": "other.DoIt",
+        "kind": "calls",
+        "file_path": "fixtures/extraction/go/cross_file/source.go",
+        "line_number": 15,
+        "confidence": "0.700"
+      },
+      "target": {
+        "display_name": "other.DoIt",
+        "terminal_name": "DoIt",
+        "receiver": "other",
+        "namespace_path": [],
+        "import_context": null
+      },
+      "caller_scope_key": "fixtures/extraction/go/cross_file/source.go:entry:14:0"
+    }
+  ],
+  "identifiers": [
+    {
+      "key": "fixtures/extraction/go/cross_file/source.go:DoIt:call:15:7",
+      "name": "DoIt",
+      "kind": "call",
+      "language": "go",
+      "file_path": "fixtures/extraction/go/cross_file/source.go",
+      "start_line": 15,
+      "start_column": 7,
+      "end_line": 15,
+      "end_column": 11,
+      "start_byte": 367,
+      "end_byte": 371,
+      "containing_key": "fixtures/extraction/go/cross_file/source.go:entry:14:0",
+      "target_key": null,
+      "confidence": "1.000"
+    },
+    {
+      "key": "fixtures/extraction/go/cross_file/source.go:local_helper:call:16:8",
+      "name": "local_helper",
+      "kind": "call",
+      "language": "go",
+      "file_path": "fixtures/extraction/go/cross_file/source.go",
+      "start_line": 16,
+      "start_column": 8,
+      "end_line": 16,
+      "end_column": 20,
+      "start_byte": 382,
+      "end_byte": 394,
+      "containing_key": "fixtures/extraction/go/cross_file/source.go:entry:14:0",
+      "target_key": null,
+      "confidence": "1.000"
+    }
+  ],
+  "types": [
+    {
+      "symbol_key": "fixtures/extraction/go/cross_file/source.go:entry:14:0",
+      "resolved_type": "int",
+      "generic_params": null,
+      "constraints": null,
+      "is_inferred": true,
+      "language": "go",
+      "metadata": null
+    },
+    {
+      "symbol_key": "fixtures/extraction/go/cross_file/source.go:local_helper:10:0",
+      "resolved_type": "int",
+      "generic_params": null,
+      "constraints": null,
+      "is_inferred": true,
+      "language": "go",
+      "metadata": null
+    }
+  ],
+  "parse_diagnostics": []
+}

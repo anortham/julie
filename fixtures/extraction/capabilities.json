@@ -153,6 +153,11 @@
           "name": "malformed_recovery",
           "source": "fixtures/extraction/go/malformed_recovery/source.go",
           "expected": "fixtures/extraction/go/malformed_recovery/expected.json"
+        },
+        {
+          "name": "cross_file",
+          "source": "fixtures/extraction/go/cross_file/source.go",
+          "expected": "fixtures/extraction/go/cross_file/expected.json"
         }
       ],
       "target_capabilities": {
@@ -162,20 +167,7 @@
         "identifiers": true,
         "types": true
       },
-      "capability_gaps": [
-        {
-          "capability": "pending_relationships",
-          "status": "open",
-          "reason": "Runtime advertises pending relationship support, but the listed golden fixtures do not yet prove pending_relationships or structured_pending_relationships output.",
-          "required_closure": "Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported.",
-          "evidence": {
-            "kind": "commit",
-            "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
-            "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
-          },
-          "planned_closure_task": "Phase 4a"
-        }
-      ]
+      "capability_gaps": []
     },
     {
       "language": "zig",
