@@ -4,9 +4,9 @@
 
 ## Summary
 
-- Current HEAD: `e406e632da10fa5f70c3d8b6589120849807e1fd`
+- Current HEAD: `b62181ae2a352c395bf2ca80a4c95917cceb1f21`
 - Registry rows: `36`
-- Golden fixtures: `65`
+- Golden fixtures: `66`
 - Historical matrix rows: `33`
 - Raw historical OSS reports: `13`
 - Current real-world verified repos: `13`
@@ -45,13 +45,13 @@
 
 | symbols | relationships | pending | structured pending | identifiers | types | parse diagnostics |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 360 | 87 | 35 | 35 | 184 | 146 | 6 |
+| 363 | 88 | 36 | 36 | 188 | 146 | 6 |
 
 ## Gap Counts
 
 | capability | count |
 | --- | ---: |
-| `pending_relationships` | 8 |
+| `pending_relationships` | 7 |
 | `types` | 8 |
 
 ## Open Capability Gaps
@@ -63,7 +63,6 @@
 | `css` | `types` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | N/A — domain limitation. |
 | `lua` | `types` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Out of scope — Lua is dynamic. Luau-style type annotations would be a separate language target. |
 | `qml` | `types` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Future work could add structured TypeInfo for QML property declarations. |
-| `r` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
 | `r` | `types` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | N/A — domain limitation. Future work could harvest roxygen type annotations into TypeInfo. |
 | `razor` | `pending_relationships` | `open` | `commit:c729e8636f6bde07fb5596035a76d24db9c47066` | Lock the no-pending classification with `razor_pending_relationships_handled_by_csharp_embed` test in Phase 4b.razor; flip to status=exception with the locking test as evidence once it lands. |
 | `regex` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | N/A — domain limitation. |
@@ -101,7 +100,7 @@
 | `elixir` | `tree-sitter-elixir` | `current` | 2 | 7 | 4 | 1 | 1 | 7 | 0 | 0 | 0 |
 | `lua` | `tree-sitter-lua` | `current` | 2 | 12 | 2 | 1 | 1 | 11 | 0 | 0 | 1 |
 | `qml` | `tree-sitter-qmljs` | `git_pinned` | 1 | 7 | 2 | 1 | 1 | 10 | 0 | 0 | 1 |
-| `r` | `tree-sitter-r` | `current` | 1 | 4 | 1 | 0 | 0 | 13 | 0 | 0 | 2 |
+| `r` | `tree-sitter-r` | `current` | 2 | 7 | 2 | 1 | 1 | 17 | 0 | 0 | 1 |
 | `bash` | `tree-sitter-bash` | `current` | 2 | 11 | 2 | 1 | 1 | 6 | 4 | 0 | 0 |
 | `powershell` | `tree-sitter-powershell` | `git_pinned` | 2 | 12 | 2 | 1 | 1 | 7 | 3 | 0 | 0 |
 | `gdscript` | `tree-sitter-gdscript` | `current` | 2 | 9 | 2 | 1 | 1 | 12 | 6 | 0 | 0 |

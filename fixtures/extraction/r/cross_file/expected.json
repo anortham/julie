@@ -1,0 +1,181 @@
+{
+  "symbols": [
+    {
+      "key": "fixtures/extraction/r/cross_file/source.R:entry:13:0",
+      "name": "entry",
+      "kind": "function",
+      "language": "r",
+      "file_path": "fixtures/extraction/r/cross_file/source.R",
+      "start_line": 13,
+      "start_column": 0,
+      "end_line": 16,
+      "end_column": 1,
+      "start_byte": 367,
+      "end_byte": 427,
+      "signature": "entry <- function()",
+      "doc_comment": null,
+      "visibility": null,
+      "parent_key": null,
+      "metadata": {},
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/r/cross_file/source.R:local_helper:9:0",
+      "name": "local_helper",
+      "kind": "function",
+      "language": "r",
+      "file_path": "fixtures/extraction/r/cross_file/source.R",
+      "start_line": 9,
+      "start_column": 0,
+      "end_line": 11,
+      "end_column": 1,
+      "start_byte": 330,
+      "end_byte": 365,
+      "signature": "local_helper <- function()",
+      "doc_comment": null,
+      "visibility": null,
+      "parent_key": null,
+      "metadata": {},
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/r/cross_file/source.R:other:7:0",
+      "name": "other",
+      "kind": "import",
+      "language": "r",
+      "file_path": "fixtures/extraction/r/cross_file/source.R",
+      "start_line": 7,
+      "start_column": 0,
+      "end_line": 7,
+      "end_column": 14,
+      "start_byte": 314,
+      "end_byte": 328,
+      "signature": "library(other)",
+      "doc_comment": null,
+      "visibility": null,
+      "parent_key": null,
+      "metadata": {},
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    }
+  ],
+  "relationships": [
+    {
+      "from_key": "fixtures/extraction/r/cross_file/source.R:entry:13:0",
+      "to_key": "fixtures/extraction/r/cross_file/source.R:local_helper:9:0",
+      "kind": "calls",
+      "file_path": "fixtures/extraction/r/cross_file/source.R",
+      "line_number": 15,
+      "confidence": "1.000",
+      "metadata": null
+    }
+  ],
+  "pending_relationships": [
+    {
+      "from_key": "fixtures/extraction/r/cross_file/source.R:entry:13:0",
+      "callee_name": "other::do_thing",
+      "kind": "calls",
+      "file_path": "fixtures/extraction/r/cross_file/source.R",
+      "line_number": 14,
+      "confidence": "0.700"
+    }
+  ],
+  "structured_pending_relationships": [
+    {
+      "pending": {
+        "from_key": "fixtures/extraction/r/cross_file/source.R:entry:13:0",
+        "callee_name": "other::do_thing",
+        "kind": "calls",
+        "file_path": "fixtures/extraction/r/cross_file/source.R",
+        "line_number": 14,
+        "confidence": "0.700"
+      },
+      "target": {
+        "display_name": "other::do_thing",
+        "terminal_name": "do_thing",
+        "receiver": null,
+        "namespace_path": [
+          "other"
+        ],
+        "import_context": null
+      },
+      "caller_scope_key": "fixtures/extraction/r/cross_file/source.R:entry:13:0"
+    }
+  ],
+  "identifiers": [
+    {
+      "key": "fixtures/extraction/r/cross_file/source.R:do_thing:call:14:2",
+      "name": "do_thing",
+      "kind": "call",
+      "language": "r",
+      "file_path": "fixtures/extraction/r/cross_file/source.R",
+      "start_line": 14,
+      "start_column": 2,
+      "end_line": 14,
+      "end_column": 17,
+      "start_byte": 391,
+      "end_byte": 406,
+      "containing_key": "fixtures/extraction/r/cross_file/source.R:entry:13:0",
+      "target_key": null,
+      "confidence": "1.000"
+    },
+    {
+      "key": "fixtures/extraction/r/cross_file/source.R:library:call:7:0",
+      "name": "library",
+      "kind": "call",
+      "language": "r",
+      "file_path": "fixtures/extraction/r/cross_file/source.R",
+      "start_line": 7,
+      "start_column": 0,
+      "end_line": 7,
+      "end_column": 7,
+      "start_byte": 314,
+      "end_byte": 321,
+      "containing_key": "fixtures/extraction/r/cross_file/source.R:other:7:0",
+      "target_key": null,
+      "confidence": "1.000"
+    },
+    {
+      "key": "fixtures/extraction/r/cross_file/source.R:local_helper:call:15:2",
+      "name": "local_helper",
+      "kind": "call",
+      "language": "r",
+      "file_path": "fixtures/extraction/r/cross_file/source.R",
+      "start_line": 15,
+      "start_column": 2,
+      "end_line": 15,
+      "end_column": 14,
+      "start_byte": 411,
+      "end_byte": 423,
+      "containing_key": "fixtures/extraction/r/cross_file/source.R:entry:13:0",
+      "target_key": null,
+      "confidence": "1.000"
+    },
+    {
+      "key": "fixtures/extraction/r/cross_file/source.R:other:variable_ref:7:8",
+      "name": "other",
+      "kind": "variable_ref",
+      "language": "r",
+      "file_path": "fixtures/extraction/r/cross_file/source.R",
+      "start_line": 7,
+      "start_column": 8,
+      "end_line": 7,
+      "end_column": 13,
+      "start_byte": 322,
+      "end_byte": 327,
+      "containing_key": "fixtures/extraction/r/cross_file/source.R:other:7:0",
+      "target_key": null,
+      "confidence": "1.000"
+    }
+  ],
+  "types": [],
+  "parse_diagnostics": []
+}
