@@ -107,6 +107,23 @@ enum CommitKind {
     Commit,
 }
 
+/// Task 5.1: lock the canonical path of `fixtures/extraction/capabilities.json`.
+/// The crate consumes this file via `include_str!("../../../fixtures/extraction/capabilities.json")`
+/// from `src/capability_snapshot.rs`, and ~44 in-repo references point at the
+/// same path. Moving this file requires updating every consumer; the test
+/// makes any accidental relocation fail loudly.
+#[test]
+fn capabilities_json_canonical_path_exists() {
+    let path = workspace_root().join("fixtures/extraction/capabilities.json");
+    assert!(
+        path.exists(),
+        "capabilities.json must remain at fixtures/extraction/capabilities.json — \
+         this is the single source of truth and the include_str! path in \
+         crates/julie-extractors/src/capability_snapshot.rs targets it. \
+         Moving this file requires updating both that include_str! and ~44 other refs."
+    );
+}
+
 #[test]
 fn capability_matrix_matches_registry_entries() {
     let root = workspace_root();
