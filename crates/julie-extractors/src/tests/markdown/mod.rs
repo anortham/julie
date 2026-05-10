@@ -4,6 +4,7 @@
 // Comprehensive test coverage matching the quality of TypeScript/Rust extractors
 // Target: 400+ lines with edge cases, special syntax, and real-world validation
 
+pub mod cross_file_pending;
 pub mod relationships;
 pub mod semantics;
 

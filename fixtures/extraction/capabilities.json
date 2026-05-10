@@ -385,6 +385,11 @@
           "name": "basic",
           "source": "fixtures/extraction/css/basic/source.css",
           "expected": "fixtures/extraction/css/basic/expected.json"
+        },
+        {
+          "name": "cross_file",
+          "source": "fixtures/extraction/css/cross_file/source.css",
+          "expected": "fixtures/extraction/css/cross_file/expected.json"
         }
       ],
       "target_capabilities": {
@@ -397,27 +402,25 @@
       "capability_gaps": [
         {
           "capability": "pending_relationships",
-          "status": "open",
+          "status": "exception",
           "reason": "CSS @import directives resolve at extraction time and current relationship extraction emits direct edges. CSS has no forward-reference construct that would benefit from pending relationships.",
           "required_closure": "N/A — domain limitation.",
           "evidence": {
-            "kind": "commit",
-            "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
-            "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
-          },
-          "planned_closure_task": "Phase 4c"
+            "kind": "test",
+            "value": "css_pending_relationships_intra_document_only",
+            "command": "cargo nextest run -p julie-extractors --lib tests::css::cross_file_pending::css_pending_relationships_intra_document_only"
+          }
         },
         {
           "capability": "types",
-          "status": "open",
+          "status": "exception",
           "reason": "CSS has no static type system. Custom property values are runtime strings; there is no type metadata to extract.",
           "required_closure": "N/A — domain limitation.",
           "evidence": {
             "kind": "commit",
             "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
             "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
-          },
-          "planned_closure_task": "Phase 4c"
+          }
         }
       ]
     },
@@ -1202,6 +1205,11 @@
           "name": "basic",
           "source": "fixtures/extraction/regex/basic/source.regex",
           "expected": "fixtures/extraction/regex/basic/expected.json"
+        },
+        {
+          "name": "cross_file",
+          "source": "fixtures/extraction/regex/cross_file/source.regex",
+          "expected": "fixtures/extraction/regex/cross_file/expected.json"
         }
       ],
       "target_capabilities": {
@@ -1214,15 +1222,14 @@
       "capability_gaps": [
         {
           "capability": "pending_relationships",
-          "status": "open",
+          "status": "exception",
           "reason": "Regex backreferences are within-pattern only; there is no cross-file forward-reference construct in regex syntax.",
           "required_closure": "N/A — domain limitation.",
           "evidence": {
-            "kind": "commit",
-            "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
-            "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
-          },
-          "planned_closure_task": "Phase 4c"
+            "kind": "test",
+            "value": "regex_pending_relationships_within_pattern_only",
+            "command": "cargo nextest run -p julie-extractors --lib tests::regex::cross_file_pending::regex_pending_relationships_within_pattern_only"
+          }
         }
       ]
     },
@@ -1246,6 +1253,11 @@
           "name": "basic",
           "source": "fixtures/extraction/markdown/basic/source.md",
           "expected": "fixtures/extraction/markdown/basic/expected.json"
+        },
+        {
+          "name": "cross_file",
+          "source": "fixtures/extraction/markdown/cross_file/source.md",
+          "expected": "fixtures/extraction/markdown/cross_file/expected.json"
         }
       ],
       "target_capabilities": {
@@ -1258,27 +1270,25 @@
       "capability_gaps": [
         {
           "capability": "pending_relationships",
-          "status": "open",
+          "status": "exception",
           "reason": "Markdown links and footnote references are within-document. Cross-file links are URL/path strings, not symbol references.",
           "required_closure": "N/A — domain limitation.",
           "evidence": {
-            "kind": "commit",
-            "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
-            "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
-          },
-          "planned_closure_task": "Phase 4d"
+            "kind": "test",
+            "value": "markdown_pending_relationships_intra_document_only",
+            "command": "cargo nextest run -p julie-extractors --lib tests::markdown::cross_file_pending::markdown_pending_relationships_intra_document_only"
+          }
         },
         {
           "capability": "types",
-          "status": "open",
+          "status": "exception",
           "reason": "Markdown is a presentation format with no static type system.",
           "required_closure": "N/A — domain limitation.",
           "evidence": {
             "kind": "commit",
             "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
             "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
-          },
-          "planned_closure_task": "Phase 4d"
+          }
         }
       ]
     },
@@ -1308,6 +1318,11 @@
           "name": "refs",
           "source": "fixtures/extraction/json/refs/source.json",
           "expected": "fixtures/extraction/json/refs/expected.json"
+        },
+        {
+          "name": "cross_file",
+          "source": "fixtures/extraction/json/cross_file/source.json",
+          "expected": "fixtures/extraction/json/cross_file/expected.json"
         }
       ],
       "target_capabilities": {
@@ -1360,6 +1375,11 @@
           "name": "pyproject",
           "source": "fixtures/extraction/toml/pyproject/pyproject.toml",
           "expected": "fixtures/extraction/toml/pyproject/expected.json"
+        },
+        {
+          "name": "cross_file",
+          "source": "fixtures/extraction/toml/cross_file/source.toml",
+          "expected": "fixtures/extraction/toml/cross_file/expected.json"
         }
       ],
       "target_capabilities": {
@@ -1414,6 +1434,11 @@
           "name": "basic",
           "source": "fixtures/extraction/yaml/basic/source.yaml",
           "expected": "fixtures/extraction/yaml/basic/expected.json"
+        },
+        {
+          "name": "cross_file",
+          "source": "fixtures/extraction/yaml/cross_file/source.yaml",
+          "expected": "fixtures/extraction/yaml/cross_file/expected.json"
         }
       ],
       "target_capabilities": {
@@ -1426,27 +1451,25 @@
       "capability_gaps": [
         {
           "capability": "pending_relationships",
-          "status": "open",
+          "status": "exception",
           "reason": "YAML anchors/aliases are within-document. YAML has no cross-document forward-reference construct.",
           "required_closure": "N/A — domain limitation.",
           "evidence": {
-            "kind": "commit",
-            "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
-            "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
-          },
-          "planned_closure_task": "Phase 4d"
+            "kind": "test",
+            "value": "yaml_pending_relationships_intra_document_only",
+            "command": "cargo nextest run -p julie-extractors --lib tests::yaml::cross_file_pending::yaml_pending_relationships_intra_document_only"
+          }
         },
         {
           "capability": "types",
-          "status": "open",
+          "status": "exception",
           "reason": "YAML has no static type system. Tag types (!!str, !!int) are format-level, not extracted as TypeInfo.",
           "required_closure": "N/A — domain limitation.",
           "evidence": {
             "kind": "commit",
             "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
             "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
-          },
-          "planned_closure_task": "Phase 4d"
+          }
         }
       ]
     }

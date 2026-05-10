@@ -1,6 +1,7 @@
 // Submodule declarations
 pub mod advanced_features;
 pub mod classes;
+pub mod cross_file_pending;
 pub mod extractor;
 pub mod flags;
 pub mod groups;

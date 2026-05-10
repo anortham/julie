@@ -469,15 +469,14 @@ fn capability_matrix_no_not_implemented_exceptions() {
     assert!(errors.is_empty(), "{}", errors.join("\n"));
 }
 
-/// Task 2.2: every language whose `target_capabilities.relationships = true`
-/// must ship at least one fixture sub-directory named `negative` proving a
-/// code shape that should NOT produce a relationship edge. The negatives are
-/// authored per-language during Phase 4; Task 4d.ignore-flip removes the
-/// `#[ignore]` attribute below to activate the gate. Until then, the test is
-/// visible in the suite as a documented contract but is not a Phase 2 gate
-/// (committing it red would fail Phase 2's boundary check).
+/// Task 2.2 / Task 4d.ignore-flip: every language whose
+/// `target_capabilities.relationships = true` must ship at least one fixture
+/// proving a code shape that should NOT produce a wrong relationship or
+/// pending edge. Accepted fixture names are anything containing `negative`
+/// (dedicated negative fixture) or `cross_file` (cross-file pending fixture,
+/// which by Phase 4 closure convention carries both positive emission and a
+/// negative assertion locking intra-file shapes out of pending).
 #[test]
-#[ignore = "negative fixtures land per-language during Phase 4; Task 4d.ignore-flip removes this attribute"]
 fn capability_matrix_negative_cases_emit_no_wrong_edges() {
     let root = workspace_root();
     let matrix = load_matrix(&root);
@@ -486,11 +485,14 @@ fn capability_matrix_negative_cases_emit_no_wrong_edges() {
         if !row.target_capabilities.relationships {
             continue;
         }
-        let has_negative = row.fixtures.iter().any(|f| f.name.contains("negative"));
+        let has_negative = row
+            .fixtures
+            .iter()
+            .any(|f| f.name.contains("negative") || f.name.contains("cross_file"));
         if !has_negative {
             errors.push(format!(
-                "language {} declares target_capabilities.relationships=true but has no `negative` fixture proving wrong edges are not emitted; add fixtures/extraction/{}/negative/",
-                row.language, row.language
+                "language {} declares target_capabilities.relationships=true but has no `negative` or `cross_file` fixture proving wrong edges are not emitted; add fixtures/extraction/{}/negative/ or fixtures/extraction/{}/cross_file/",
+                row.language, row.language, row.language
             ));
         }
     }

@@ -1,0 +1,254 @@
+{
+  "symbols": [
+    {
+      "key": "fixtures/extraction/css/cross_file/source.css:--primary:11:2",
+      "name": "--primary",
+      "kind": "property",
+      "language": "css",
+      "file_path": "fixtures/extraction/css/cross_file/source.css",
+      "start_line": 11,
+      "start_column": 2,
+      "end_line": 11,
+      "end_column": 11,
+      "start_byte": 360,
+      "end_byte": 369,
+      "signature": "--primary: ",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": "fixtures/extraction/css/cross_file/source.css::root:10:0",
+      "metadata": {
+        "property": "--primary",
+        "type": "custom-property",
+        "value": ""
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/css/cross_file/source.css:.entry:19:0",
+      "name": ".entry",
+      "kind": "property",
+      "language": "css",
+      "file_path": "fixtures/extraction/css/cross_file/source.css",
+      "start_line": 19,
+      "start_column": 0,
+      "end_line": 22,
+      "end_column": 1,
+      "start_byte": 446,
+      "end_byte": 507,
+      "signature": ".entry { color: var(--primary); composes: local_helper }",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": null,
+      "metadata": {
+        "properties": [
+          "composes: local_helper;",
+          "color: var(--primary);"
+        ],
+        "selector": ".entry",
+        "type": "css-rule"
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/css/cross_file/source.css:.local_helper:14:0",
+      "name": ".local_helper",
+      "kind": "property",
+      "language": "css",
+      "file_path": "fixtures/extraction/css/cross_file/source.css",
+      "start_line": 14,
+      "start_column": 0,
+      "end_line": 17,
+      "end_column": 1,
+      "start_byte": 383,
+      "end_byte": 444,
+      "signature": ".local_helper { color: var(--primary); background: red }",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": null,
+      "metadata": {
+        "properties": [
+          "color: var(--primary);",
+          "background: red;"
+        ],
+        "selector": ".local_helper",
+        "type": "css-rule"
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/css/cross_file/source.css::root:10:0",
+      "name": ":root",
+      "kind": "property",
+      "language": "css",
+      "file_path": "fixtures/extraction/css/cross_file/source.css",
+      "start_line": 10,
+      "start_column": 0,
+      "end_line": 12,
+      "end_column": 1,
+      "start_byte": 350,
+      "end_byte": 381,
+      "signature": ":root { --primary: #4f46e5 }",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": null,
+      "metadata": {
+        "properties": [
+          "--primary: #4f46e5;"
+        ],
+        "selector": ":root",
+        "type": "css-rule"
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/css/cross_file/source.css:@import:8:0",
+      "name": "@import",
+      "kind": "import",
+      "language": "css",
+      "file_path": "fixtures/extraction/css/cross_file/source.css",
+      "start_line": 8,
+      "start_column": 0,
+      "end_line": 8,
+      "end_column": 27,
+      "start_byte": 321,
+      "end_byte": 348,
+      "signature": "@import url(\"./other.css\");",
+      "doc_comment": "/* Phase 4c fixture: CSS cross-file refs. @import resolves at extraction\n * time to a direct relationship edge; CSS has no forward-reference\n * construct that would benefit from pending relationships. This fixture\n * exercises @import and intra-file selector/var references to lock the\n * no-pending classification.\n */",
+      "visibility": "Public",
+      "parent_key": null,
+      "metadata": {
+        "atRuleType": "import",
+        "ruleName": "@import",
+        "type": "at-rule"
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    }
+  ],
+  "relationships": [
+    {
+      "from_key": "fixtures/extraction/css/cross_file/source.css:.entry:19:0",
+      "to_key": "fixtures/extraction/css/cross_file/source.css:--primary:11:2",
+      "kind": "references",
+      "file_path": "fixtures/extraction/css/cross_file/source.css",
+      "line_number": 21,
+      "confidence": "1.000",
+      "metadata": {
+        "referenceName": "--primary",
+        "referenceType": "custom-property"
+      }
+    },
+    {
+      "from_key": "fixtures/extraction/css/cross_file/source.css:.local_helper:14:0",
+      "to_key": "fixtures/extraction/css/cross_file/source.css:--primary:11:2",
+      "kind": "references",
+      "file_path": "fixtures/extraction/css/cross_file/source.css",
+      "line_number": 15,
+      "confidence": "1.000",
+      "metadata": {
+        "referenceName": "--primary",
+        "referenceType": "custom-property"
+      }
+    }
+  ],
+  "pending_relationships": [],
+  "structured_pending_relationships": [],
+  "identifiers": [
+    {
+      "key": "fixtures/extraction/css/cross_file/source.css:entry:member_access:19:0",
+      "name": "entry",
+      "kind": "member_access",
+      "language": "css",
+      "file_path": "fixtures/extraction/css/cross_file/source.css",
+      "start_line": 19,
+      "start_column": 0,
+      "end_line": 19,
+      "end_column": 6,
+      "start_byte": 446,
+      "end_byte": 452,
+      "containing_key": "fixtures/extraction/css/cross_file/source.css:.entry:19:0",
+      "target_key": null,
+      "confidence": "1.000"
+    },
+    {
+      "key": "fixtures/extraction/css/cross_file/source.css:local_helper:member_access:14:0",
+      "name": "local_helper",
+      "kind": "member_access",
+      "language": "css",
+      "file_path": "fixtures/extraction/css/cross_file/source.css",
+      "start_line": 14,
+      "start_column": 0,
+      "end_line": 14,
+      "end_column": 13,
+      "start_byte": 383,
+      "end_byte": 396,
+      "containing_key": "fixtures/extraction/css/cross_file/source.css:.local_helper:14:0",
+      "target_key": null,
+      "confidence": "1.000"
+    },
+    {
+      "key": "fixtures/extraction/css/cross_file/source.css:url:call:8:8",
+      "name": "url",
+      "kind": "call",
+      "language": "css",
+      "file_path": "fixtures/extraction/css/cross_file/source.css",
+      "start_line": 8,
+      "start_column": 8,
+      "end_line": 8,
+      "end_column": 11,
+      "start_byte": 329,
+      "end_byte": 332,
+      "containing_key": "fixtures/extraction/css/cross_file/source.css:@import:8:0",
+      "target_key": null,
+      "confidence": "1.000"
+    },
+    {
+      "key": "fixtures/extraction/css/cross_file/source.css:var:call:15:9",
+      "name": "var",
+      "kind": "call",
+      "language": "css",
+      "file_path": "fixtures/extraction/css/cross_file/source.css",
+      "start_line": 15,
+      "start_column": 9,
+      "end_line": 15,
+      "end_column": 12,
+      "start_byte": 408,
+      "end_byte": 411,
+      "containing_key": "fixtures/extraction/css/cross_file/source.css:.local_helper:14:0",
+      "target_key": null,
+      "confidence": "1.000"
+    },
+    {
+      "key": "fixtures/extraction/css/cross_file/source.css:var:call:21:9",
+      "name": "var",
+      "kind": "call",
+      "language": "css",
+      "file_path": "fixtures/extraction/css/cross_file/source.css",
+      "start_line": 21,
+      "start_column": 9,
+      "end_line": 21,
+      "end_column": 12,
+      "start_byte": 490,
+      "end_byte": 493,
+      "containing_key": "fixtures/extraction/css/cross_file/source.css:.entry:19:0",
+      "target_key": null,
+      "confidence": "1.000"
+    }
+  ],
+  "types": [],
+  "parse_diagnostics": []
+}

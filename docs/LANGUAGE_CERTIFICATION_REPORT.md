@@ -4,14 +4,14 @@
 
 ## Summary
 
-- Current HEAD: `dce7cceaa6b6e12e6215304c680166c0e6473f94`
+- Current HEAD: `24564d0f98056e7a52ec7f12afdc023c803398bc`
 - Registry rows: `36`
-- Golden fixtures: `70`
+- Golden fixtures: `76`
 - Historical matrix rows: `33`
 - Raw historical OSS reports: `13`
 - Current real-world verified repos: `13`
 - Current real-world skipped repos: `0`
-- Rows with open gaps: `6`
+- Rows with open gaps: `2`
 - Rows without gap entries: `26`
 
 ## Historical Coverage Delta
@@ -45,7 +45,7 @@
 
 | symbols | relationships | pending | structured pending | identifiers | types | parse diagnostics |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 387 | 96 | 41 | 41 | 198 | 142 | 6 |
+| 425 | 104 | 41 | 41 | 208 | 145 | 6 |
 
 ## Gap Counts
 
@@ -58,15 +58,8 @@
 
 | language | capability | status | evidence | required closure |
 | --- | --- | --- | --- | --- |
-| `css` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | N/A — domain limitation. |
-| `css` | `types` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | N/A — domain limitation. |
 | `lua` | `types` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Out of scope — Lua is dynamic. Luau-style type annotations would be a separate language target. |
 | `r` | `types` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | N/A — domain limitation. Future work could harvest roxygen type annotations into TypeInfo. |
-| `regex` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | N/A — domain limitation. |
-| `markdown` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | N/A — domain limitation. |
-| `markdown` | `types` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | N/A — domain limitation. |
-| `yaml` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | N/A — domain limitation. |
-| `yaml` | `types` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | N/A — domain limitation. |
 
 ## Per-Language Fixture Evidence
 
@@ -82,7 +75,7 @@
 | `javascript` | `tree-sitter-javascript` | `current` | 2 | 9 | 2 | 1 | 1 | 5 | 0 | 0 | 0 |
 | `jsx` | `tree-sitter-javascript` | `current` | 2 | 9 | 3 | 2 | 2 | 5 | 0 | 0 | 0 |
 | `html` | `tree-sitter-html` | `current` | 2 | 20 | 3 | 2 | 2 | 3 | 0 | 0 | 0 |
-| `css` | `tree-sitter-css` | `current` | 1 | 6 | 1 | 0 | 0 | 4 | 0 | 0 | 2 |
+| `css` | `tree-sitter-css` | `current` | 2 | 11 | 3 | 0 | 0 | 9 | 0 | 0 | 2 |
 | `vue` | `tree-sitter-html` | `current` | 2 | 8 | 5 | 3 | 3 | 4 | 4 | 0 | 0 |
 | `python` | `tree-sitter-python` | `current` | 2 | 8 | 2 | 1 | 1 | 5 | 2 | 0 | 0 |
 | `java` | `tree-sitter-java` | `current` | 2 | 11 | 3 | 2 | 2 | 6 | 6 | 0 | 0 |
@@ -103,11 +96,11 @@
 | `gdscript` | `tree-sitter-gdscript` | `current` | 2 | 9 | 2 | 1 | 1 | 12 | 6 | 0 | 0 |
 | `razor` | `tree-sitter-razor` | `git_pinned` | 2 | 9 | 3 | 0 | 0 | 4 | 9 | 0 | 1 |
 | `sql` | `tree-sitter-sequel` | `current` | 2 | 15 | 4 | 1 | 1 | 3 | 13 | 1 | 0 |
-| `regex` | `tree-sitter-regex` | `current` | 1 | 5 | 2 | 0 | 0 | 3 | 5 | 0 | 1 |
-| `markdown` | `tree-sitter-md` | `current` | 1 | 4 | 1 | 0 | 0 | 0 | 0 | 0 | 2 |
-| `json` | `tree-sitter-json` | `current` | 2 | 15 | 1 | 1 | 1 | 0 | 0 | 0 | 1 |
-| `toml` | `tree-sitter-toml-ng` | `current` | 3 | 25 | 7 | 0 | 0 | 0 | 0 | 0 | 2 |
-| `yaml` | `tree-sitter-yaml` | `current` | 1 | 5 | 1 | 0 | 0 | 1 | 0 | 0 | 2 |
+| `regex` | `tree-sitter-regex` | `current` | 2 | 8 | 4 | 0 | 0 | 6 | 8 | 0 | 1 |
+| `markdown` | `tree-sitter-md` | `current` | 2 | 11 | 2 | 0 | 0 | 0 | 0 | 0 | 2 |
+| `json` | `tree-sitter-json` | `current` | 3 | 22 | 2 | 1 | 1 | 0 | 0 | 0 | 1 |
+| `toml` | `tree-sitter-toml-ng` | `current` | 4 | 33 | 7 | 0 | 0 | 0 | 0 | 0 | 2 |
+| `yaml` | `tree-sitter-yaml` | `current` | 2 | 13 | 3 | 0 | 0 | 3 | 0 | 0 | 2 |
 
 ## Rows Without Gap Entries
 
