@@ -1,14 +1,14 @@
 # Best-in-Class Tree-Sitter — Design
 
-> Status: design approved 2026-05-10. Implementation plan to be produced via `razorback:writing-plans`. Operational rubric the autonomous run grades against lives in `docs/plans/2026-05-10-best-in-class-tree-sitter-rubric.md`.
+> Status: design approved 2026-05-10, revised same day to incorporate adversarial review findings (Codex gpt-5.5 high). Implementation plan to be produced via `razorback:writing-plans`. Operational rubric the autonomous run grades against lives in `docs/plans/2026-05-10-best-in-class-tree-sitter-rubric.md`.
 
 ## Context
 
 Julie ships 34 tree-sitter languages plus TSX/JSX variants (36 registry rows). The current state has three real problems:
 
 1. **Doc rot.** `capabilities.json` cites `docs/findings/COMPILED-FINDINGS.md` from 33 gap rows — that file does not exist in the repo. Two restored historical docs (`LANGUAGE_VERIFICATION_CHECKLIST.md`, `LANGUAGE_VERIFICATION_RESULTS.md`) self-mark as secondary but still appear in the file tree. `LANGUAGE_CERTIFICATION_REPORT.md` is stamped at HEAD `72138dc0`; current main is `64fc84ec`.
-2. **Evidence asymmetry.** Restored real-world profile covers 13 repos. The `release` profile in `tree-sitter-real-world-corpus.toml` defines 21 repos but is never run as committed evidence. VB.NET has registry support and a golden fixture but has never been verified against a real-world repo.
-3. **Reusability deficit.** `julie-extractors` is structurally a public crate (separate from `julie` itself) but lacks a documented contract, runtime capability declaration, or an example consumer. Other Rust projects depending on it would be working from source-spelunking.
+2. **Evidence asymmetry.** Restored real-world profile covers 13 repos. The `release` profile in `tree-sitter-real-world-corpus.toml` defines 21 repos but is never run as committed evidence. VB.NET has registry support and a golden fixture but has never been verified against a real-world repo. Existing `min_relationships` thresholds are mostly `1`, so "passing" the real-world gate proves "non-zero relationships," not correctness.
+3. **Reusability deficit.** `julie-extractors` is structurally a public crate (separate from `julie` itself) but lacks a documented contract, runtime capability declaration, or example consumer. Other Rust projects depending on it would be working from source-spelunking.
 
 `docs/TREE_SITTER_QUALITY_BAR.md` already defines a fixed best-in-class target with tier groups, capability contract, golden fixture contract, relationship precision contract, real-world contract, semantic repair contract, parser upgrade contract, and release gates. The Quality Bar lists current open gaps, all unmet at HEAD. This design plans the work to close them and adds reusability work the Quality Bar doesn't cover.
 
@@ -21,35 +21,36 @@ The work has one spine: tier-uniform quality, executable confidence, and crate r
 Adopt the four target groups already in `TREE_SITTER_QUALITY_BAR.md`:
 
 - **General programming languages.** rust, c, cpp, go, zig, typescript, tsx, javascript, jsx, python, java, csharp, vbnet, php, ruby, swift, kotlin, scala, dart, elixir, bash, powershell, gdscript, lua, r. Required: symbols, parent structure, identifiers, local relationships, structured pending relationships for cross-file or unresolved references, doc comments where syntax supports them, type output where syntax or stable inference supports it.
-- **Component and template languages.** vue, razor, qml, html. Required: structural symbols, relationships for component use, template references, event handlers, links/resources/bindings, embedded code calls, structured pending output for external references.
-- **Query and declarative languages.** sql, css, regex. Required: domain symbols plus domain references — SQL table/view/CTE/function dependencies, CSS custom property/keyframe/selector relationships where syntactically provable, regex capture group and backreference relationships.
+- **Component and template languages.** vue, razor, qml, html. Required: structural symbols, relationships for component use, template references, event handlers, links/resources/bindings, embedded code calls, structured pending output for external references. Razor's external references go through the embedded C# extractor; the Razor extractor itself does not need to emit pending relationships, but the tier contract is satisfied because Razor compiles into C# and the C# extractor emits the pending shape on its behalf. HTML's pending output covers external script/style references.
+- **Query and declarative languages.** sql, css, regex. Required: domain symbols plus domain references — SQL table/view/CTE/function dependencies (including structured pending FK targets for cross-file references), CSS custom property/keyframe/selector relationships where syntactically provable, regex capture group and backreference relationships.
 - **Documentation and data languages.** markdown, json, toml, yaml. Required: stable document/data structure symbols, meaningful identifiers/keys, links/anchors/aliases where the language has references, explicit absence of call/type outputs when not meaningful.
 
-Within each tier, no language is anomalously weak. Wrong edges are blockers; missing edges are gaps; intrinsic-N/A is an exception that must name a locking test.
+Within each tier, no language is anomalously weak. Wrong edges are blockers; missing edges are gaps; intrinsic-N/A is an exception that must name a locking test and pass a schema rule banning "not implemented" exceptions.
 
 ### Pillar 2 — Executable confidence everywhere
 
 The verification surface becomes generated and machine-checked, not manually maintained. The artifacts:
 
-- `fixtures/extraction/capabilities.json` — single source of truth for tier, target capability, implemented capability, gap status, exception reason, and evidence pointer per language. Every gap row's `evidence` field points at a concrete test name or commit SHA. Closed via `cargo nextest run -p julie-extractors capability_matrix`.
-- `docs/LANGUAGE_CERTIFICATION_REPORT.md` — generated by `cargo xtask certify tree-sitter`, gated by `cargo xtask certify tree-sitter --check`. Always reflects current HEAD.
-- `docs/LANGUAGE_REAL_WORLD_EVIDENCE.{json,md}` — generated by `cargo xtask certify tree-sitter --real-world --profile release --out docs/LANGUAGE_REAL_WORLD_EVIDENCE.json`. Covers all 21 repos in the `release` profile defined in `tree-sitter-real-world-corpus.toml`.
-- `docs/EXTRACTION_CONTRACT.md` — new, ≤200 lines. Human-readable contract that explains what each tier guarantees, what `gap_status` means, and where to find the machine-checked sources. Replaces the manual checklist concept.
+- **`fixtures/extraction/capabilities.json`** — single source of truth for tier, target capability, implemented capability, gap status, exception reason, and evidence pointer per language. The current `evidence: <string>` field is replaced with a typed evidence object: `{ "kind": "test" | "fixture" | "commit", "value": "<test-name|path|sha>", "command": "<verification-command>" }`. The capability matrix test validates that every evidence entry resolves: test names exist in the test inventory, fixture paths exist on disk, commits resolve, and no entry references the deleted `docs/findings/COMPILED-FINDINGS.md`.
+- **`docs/LANGUAGE_CERTIFICATION_REPORT.md`** — generated by `cargo xtask certify tree-sitter`, gated by `cargo xtask certify tree-sitter --check`. Always reflects current HEAD.
+- **`docs/LANGUAGE_REAL_WORLD_EVIDENCE.{json,md}`** — generated by `cargo xtask certify tree-sitter --real-world --profile release --out docs/LANGUAGE_REAL_WORLD_EVIDENCE.json`. Covers all repos in the `release` profile defined in `tree-sitter-real-world-corpus.toml` plus VB.NET (added during this work). Each repo carries a representative-correctness spec — a small list of expected symbols, identifiers, parent links, relationship endpoints, and reference counts that act as semantic regression guards beyond the existing `min_relationships` count threshold.
+- **`docs/EXTRACTION_CONTRACT.md`** — new, ≤200 lines. Human-readable contract that explains what each tier guarantees, what `gap_status` means, what the typed evidence schema looks like, and where to find the machine-checked sources. Replaces the manual checklist concept.
 
 The Quality Bar's release-gate sequence (formatter, certification check, extractor bucket, parser-upgrade bucket, changed tier, dev tier, system tier, dogfood tier, full tier, release build) runs at HEAD with results recorded in a verification ledger row alongside the design.
 
 ### Pillar 3 — Crate reusability for downstream Rust projects
 
-`julie-extractors` becomes consumable as a stable Rust crate. Specifically:
+`julie-extractors` becomes consumable as a stable Rust crate. The goal is to **document and harden the existing public surface**, not introduce a parallel API.
 
-- **Public API audit.** Every `pub` item in `crates/julie-extractors/src/lib.rs` and re-exports is reviewed. Internals dropped to `pub(crate)`. The remaining public surface is the documented stability surface.
-- **Runtime capability declaration.** New `pub fn capabilities() -> &'static CapabilitySnapshot` on the crate, deriving the same data as `capabilities.json` at compile time via build script. Consumers can ask "what does this crate guarantee for Rust?" without reading docs.
-- **Semantic engine version constant.** `pub const SEMANTIC_ENGINE_VERSION: &str` (currently `"2026-05-05.reference-identifier-v3"`). Consumers compare to detect engine drift.
-- **`ExtractionResults` shape doc.** Field-by-field invariants for `Symbol`, `Relationship`, `Identifier`, `TypeInfo`, `ParseDiagnostic`, `NormalizedSpan`. Lives in `docs/EXTRACTION_CONTRACT.md`.
-- **Crate-level rustdoc.** Cleaned-up `lib.rs` doc comment with quickstart code block.
-- **Example consumer.** New `examples/extract_file.rs` (or a sibling crate) — minimal binary that takes a file path and prints extracted symbols plus the capability snapshot for that language. Compiled in CI via `cargo build --examples`.
+- **Public API audit (non-breaking).** Document every `pub` item already exposed by `crates/julie-extractors/src/lib.rs` (`extract_canonical`, `ExtractorManager`, `LanguageCapabilities`, `LanguageRegistryEntry`, `capabilities_for_language`, plus per-language modules). Add doc comments. Mark stability tier per item. Items currently public are kept public — the main `julie` crate re-exports them via `src/extractors/mod.rs:6`, so pruning them to `pub(crate)` would be breaking. New private items should default to `pub(crate)`; existing public items keep their visibility unless a deprecation cycle is run.
+- **Runtime capability snapshot.** New `pub fn capability_snapshot() -> &'static CapabilitySnapshot`. The `CapabilitySnapshot` type carries per-language tier, target capabilities, implemented capabilities, gap status, exception reasons, and evidence entries — read from `fixtures/extraction/capabilities.json` via `include_str!` + `serde_json::from_str` behind `OnceLock`. The capabilities.json file is moved (or copied via `cargo:rerun-if-changed`) into the crate's source tree to keep `cargo package` self-contained — `include_str!` requires in-crate paths. **No build script.** Existing `capabilities_for_language` stays as the cheap "what booleans does this language emit" accessor; `capability_snapshot` is the rich downstream-facing surface.
+- **`EXTRACTION_CONTRACT_VERSION` constant.** New `pub const EXTRACTION_CONTRACT_VERSION: &str` on the crate. Distinct from the workspace's `SEMANTIC_ENGINE_VERSION` (which lives in `src/tools/workspace/indexing/engine_version.rs` and covers DB + search + vector persistence — broader than extraction). The main crate's engine version composes from `EXTRACTION_CONTRACT_VERSION` + DB schema version + index format version.
+- **`ExtractionResults` shape doc.** Field-by-field invariants for `Symbol`, `Relationship`, `Identifier`, `TypeInfo`, `ParseDiagnostic`, `NormalizedSpan`, including the structured pending relationship contract (target.terminalName, receiver, namespacePath, importContext, callerScopeSymbolId, span). Lives in `docs/EXTRACTION_CONTRACT.md`.
+- **Crate-level rustdoc.** Cleaned-up `lib.rs` doc comment with a runnable quickstart code block. The block must compile under `cargo test -p julie-extractors --doc` (NOT only under `cargo doc`, which doesn't compile doctests). Existing `ignore` annotation in `lib.rs:9` is removed.
+- **Example consumer.** New `crates/julie-extractors/examples/extract_file.rs` (or equivalent in-crate path). Minimal binary that takes a file path, calls `extract_canonical` (or the public extraction entry point), and prints extracted symbols plus the capability snapshot for the detected language. `cargo build --examples -p julie-extractors` is added to a CI bucket.
+- **Packaging gate.** `cargo package -p julie-extractors --list` succeeds, includes the capability data file, and produces a publishable archive (a publish dry-run; we don't actually publish).
 
-No FFI, no CLI, no breaking refactor. The goal is to make the existing surface stable and documented, not to redesign it.
+No FFI, no CLI, no breaking refactor. The goal is to make the existing surface stable, documented, and consumable.
 
 ## Doc Cleanup Actions
 
@@ -58,9 +59,9 @@ No FFI, no CLI, no breaking refactor. The goal is to make the existing surface s
 | `docs/LANGUAGE_VERIFICATION_CHECKLIST.md` | **Delete** | Self-marked historical; superseded by generated cert report + `capabilities.json`. Per-language gotchas (Lua variable-kind, Elixir dot-qualified names, etc.) move into `capabilities.json` `notes` field per row. |
 | `docs/LANGUAGE_VERIFICATION_RESULTS.md` | **Delete after harvest** | Self-marked historical. Per-language fix history is already in git log + plan ledgers. The "Known Limitations" table (7 rows) ports into `capabilities.json` as exception rows with named locking tests. |
 | `docs/verification/*.md` (13 files) | **Delete** | Raw historical OSS notes. Some FAIL/PARTIAL flags are explicitly superseded by the RESULTS doc. Net signal-to-noise low; git history retains them. |
-| `docs/findings/COMPILED-FINDINGS.md` | **Rewrite all references** | File is missing but cited by 33 `capabilities.json` gap rows. Resolution: rewrite each gap's `evidence` field to point at the actual closing test or commit. The file itself is not restored. |
+| `docs/findings/*` (already staged for deletion) | **Commit deletions** | Includes the dead `COMPILED-FINDINGS.md` plus per-LLM audit dirs. Every `evidence` field in `capabilities.json` that referenced these is rewritten to the typed schema described in Pillar 2. |
 | `docs/LANGUAGE_CERTIFICATION_REPORT.md` | **Regenerate at HEAD** | Auto-regenerated by xtask during the run. |
-| `docs/LANGUAGE_REAL_WORLD_EVIDENCE.{json,md}` | **Regenerate at HEAD with `release` profile** | Switches checked-in evidence from smoke (3 langs) to release (21 repos). |
+| `docs/LANGUAGE_REAL_WORLD_EVIDENCE.{json,md}` | **Regenerate at HEAD with `release` profile + VB.NET** | Switches checked-in evidence from smoke (3 langs) to release + VB.NET (≥22 repos), with semantic assertions per repo. |
 | `docs/TREE_SITTER_QUALITY_BAR.md` | **Update** | "Current Verdict" + "Current Open Gaps" tables refresh once the work lands. Quality Bar contract itself doesn't move. |
 | `docs/TREE_SITTER_REVIEW_FINDINGS_STATUS.md` | **Keep** | All 8 findings closed; useful audit trail. |
 | `docs/TREE_SITTER_UPGRADES.md` | **Keep, refresh dates** | Parser ledger stays current. |
@@ -70,79 +71,91 @@ No FFI, no CLI, no breaking refactor. The goal is to make the existing surface s
 
 ## Per-Language Gap Inventory
 
-Categorized from `capabilities.json`, the certification report, and the real-world evidence file as of HEAD `64fc84ec`:
+Categorized from `capabilities.json`, the certification report, and the real-world evidence file as of HEAD `64fc84ec`. Each language appears in exactly one category for any given capability (no dual classification).
 
 | Category | Rows | Action |
 |---|---|---|
 | Already clean (zero gap rows) | tsx, jsx, vue | Verify still clean at HEAD. No code work. |
-| Intrinsic-N/A only | html (pending), css (pending+types), razor (pending), regex (pending), markdown (pending+types), yaml (pending+types), qml (types), lua (types), r (types) | Rewrite gap rows from `open` to `exception` with named locking tests. No code work. |
-| Fixture-only gap (impl emits pending; small golden fixture doesn't trigger it) | rust, c, cpp, go, zig, typescript, javascript, python, java, csharp, vbnet, php, ruby, swift, kotlin, scala, dart, elixir, lua (pending), r (pending), bash, powershell, gdscript, sql (pending), razor (pending) | Extend each golden fixture to include a cross-file or unresolved reference. ~25 small fixture edits. |
-| Real implementation work | json (relationships: JSON Schema `$ref`), toml (relationships: Cargo dependencies + pyproject tool tables), sql (structured pending FK targets — moves SQL out of `NO_PENDING_CAPABILITIES`) | 3 implementation tasks with TDD: failing test, minimal impl, capability fixture closes. |
-| Real-world coverage gap | vbnet, gdscript (pandora), zig (zls), javascript (express), qml (kirigami), razor (blazor-samples) | Add to `release` profile run. Already in `tree-sitter-real-world-corpus.toml`. Just needs evidence regen + VB.NET reference repo identification. |
-| Known limitations to formalize | C++ header-only zero cross-file refs, C++ within-file constructor disambiguation, Lua class-like tables as variable kind | Move from prose in `LANGUAGE_VERIFICATION_RESULTS.md` to `capabilities.json` exception rows with named locking tests. |
+| Intrinsic-N/A only | css (pending+types), markdown (pending+types), yaml (pending+types), regex (pending), qml (types), lua (types), r (types), razor (pending: handled by embedded C# extractor) | Rewrite gap rows from `open` to `exception` with named locking tests. Each exception passes the schema validator that bans "not implemented" reasons. |
+| Extractor + fixture work (impl currently does NOT emit structured pending; registry macro forces empty arrays for several languages) | rust, c, cpp, go, zig, typescript, javascript, python, java, csharp, vbnet, php, ruby, swift, kotlin, scala, dart, elixir, lua (pending), r (pending), bash, powershell, gdscript, html (pending) | Per-language: extend the extractor (or move the language out of the no-pending registry variant) so it emits structured pending relationships for cross-file or unresolved references, then add a golden fixture proving the structured shape (target.terminalName, receiver, namespacePath, importContext, callerScopeSymbolId, exact byte/line span). Negative test cases prove no wrong edges are emitted. |
+| Real implementation work (new feature) | json (relationships: JSON Schema `$ref`), toml (relationships: Cargo dependencies + pyproject tool tables), sql (move out of `NO_PENDING_CAPABILITIES`; emit structured pending for cross-file FK targets) | TDD: failing test, minimal impl, capability fixture closes. Each language emits exact direction + RelationshipKind + structured pending where targets are external. |
+| Real-world coverage gap | vbnet (no real-world row at all), gdscript (pandora), zig (zls), javascript (express), qml (kirigami), razor (blazor-samples) | Add VB.NET reference repo to `tree-sitter-real-world-corpus.toml` `release` profile (count → 22). Run real-world evidence regen with `release` profile. |
+| Known limitations to formalize | C++ header-only zero cross-file refs, C++ within-file constructor disambiguation, Lua class-like tables as variable kind | Move from prose in `LANGUAGE_VERIFICATION_RESULTS.md` to `capabilities.json` exception rows with named locking tests and reasons that pass the "no not-implemented exceptions" validator. |
 
-VB.NET reference repo selection is open. Candidates: `dotnet/runtime` VB samples, `microsoft/visualstudio-extensibility-samples`, or a small focused VB.NET library. The autonomous run picks one and runs verification; if no good candidate exists, raise an escalation rather than ship without VB.NET real-world evidence.
+VB.NET reference repo selection: search candidate repos at `~/source` and via web (e.g., `dotnet/runtime` VB samples, `microsoft/visualstudio-extensibility-samples`, focused VB.NET libraries). The autonomous run picks one and runs verification; if no good candidate exists, raise an escalation rather than ship without VB.NET real-world evidence.
+
+The "fixture-only" framing in the prior revision was wrong: many full extractors use a registry macro at `crates/julie-extractors/src/registry.rs:40,673` that returns empty `structured_pending_relationships` regardless of input. Fixing this requires either updating the macro or moving languages out of the no-pending variant. That's extractor work, not fixture polish.
+
+## Sequencing
+
+Codex's adversarial review correctly flagged that per-tier-first sequencing risks closing language rows whose pending shape is wrong because the shared contract wasn't validated. Revised order:
+
+1. **Capability schema + report validators.** Add the typed-evidence-object schema to `capabilities.json`. Tighten the capability matrix test to validate evidence resolution, exception-reason quality, and absence of dead `COMPILED-FINDINGS.md` references. Resolve gap-classification contradictions (razor pending → intrinsic-N/A only; sql pending → real-impl only). Pick one path per language per capability.
+2. **Shared extraction-contract regression bar.** Confirm the existing rekeying / parent-id / relationship-id / type-row / structured-pending-identity tests cover the global failure modes. These already exist (e.g., `path_identity.rs:472`, `results_normalization.rs:112`). Tighten any that admit shallow pending implementations.
+3. **Define the structured-pending and relationship shape.** Implement SQL structured pending (move SQL out of `NO_PENDING_CAPABILITIES`), JSON `$ref`, and TOML domain references first. These define the relationship + pending shape that later per-language fixtures must match. Without this, the per-tier work might calcify around an inconsistent shape.
+4. **Per-tier language work.** General programming → component/template → query/declarative → doc/data. Within each tier, fix the registry-macro / no-pending-variant blockers before adding fixtures, then add fixtures with full structured-pending assertions and negative test cases. Workers run only narrow targeted tests; the lead handles `cargo xtask test changed` and `dev` between batches.
+5. **Pillar 3 hardening.** Public API audit, capability snapshot, `EXTRACTION_CONTRACT_VERSION`, rustdoc cleanup, example consumer, packaging gate. Can run in parallel with later phases of step 4 if a separate worker is available.
+6. **Real-world evidence regen.** Run `cargo xtask certify tree-sitter --real-world --profile release` with the new VB.NET entry. Author per-repo semantic assertion specs. Regenerate the certification report. Check in. **This is last** because per-repo expected-output assertions only become meaningful once the upstream extractor contract is settled.
+7. **Doc cleanup execution + Quality Bar refresh.** Delete the historical docs, write `EXTRACTION_CONTRACT.md`, update Quality Bar's "Current Verdict" + "Open Gaps" tables.
+8. **Release gates at HEAD + manual MCP dogfood handoff.**
 
 ## Verification Checklist Replacement
 
 The manual `LANGUAGE_VERIFICATION_CHECKLIST.md` is deleted, not refreshed. Verification is what the gates produce. The contract is:
 
-1. **`capabilities.json`** — every row's gap status is `closed` or `exception`. Every gap has named test evidence.
+1. **`capabilities.json`** — every row's gap status is `closed` or `exception`. Every gap has typed evidence (`{kind, value, command}`) that the matrix test resolves. No row has `gap_status: open`. No exception reason includes "not implemented."
 2. **`LANGUAGE_CERTIFICATION_REPORT.md`** — generated at HEAD; gated by `cargo xtask certify tree-sitter --check`.
-3. **`LANGUAGE_REAL_WORLD_EVIDENCE.json`** — covers all 21 release-profile repos with `status: pass` and zero `hard_failures`.
-4. **`EXTRACTION_CONTRACT.md`** — explains what tiers guarantee, what `gap_status` means, and where to find the three sources above.
+3. **`LANGUAGE_REAL_WORLD_EVIDENCE.json`** — covers all 22 repos (release profile + VB.NET) with `status: pass`, zero `hard_failures`, and per-repo semantic assertion specs satisfied.
+4. **`EXTRACTION_CONTRACT.md`** — explains what tiers guarantee, what `gap_status` means, what the typed evidence schema looks like, and where to find the three sources above.
 5. **Release-gate sequence** — runs green at HEAD per the Quality Bar's table.
 6. **Live MCP dogfood** — handed off to the user after release rebuild.
 
-The agent does not maintain a separate manual matrix. Anyone wanting a per-language verification status reads the cert report.
+The agent does not maintain a separate manual matrix.
 
 ## Operational Spec — Outcome Rubric
 
-The autonomous run grades against `docs/plans/2026-05-10-best-in-class-tree-sitter-rubric.md` (separate file). Rubric format follows the Anthropic Managed Agents pattern: per-criterion gradeable statements. Sections:
-
-1. **Doc hygiene.** Specific deletions completed; specific generated docs refreshed at HEAD; `EXTRACTION_CONTRACT.md` exists; no dead `COMPILED-FINDINGS.md` references in the repo.
-2. **Capability matrix.** Every row in `capabilities.json` has either `gap_status: closed` (with named test evidence) or `gap_status: exception` (with reason + named locking test). No row has `gap_status: open`.
-3. **Real-world evidence.** `LANGUAGE_REAL_WORLD_EVIDENCE.json` covers all 21 repos in the `release` profile. Julie HEAD in evidence matches current HEAD. No `hard_failures` for any repo.
-4. **Pillar-3 deliverables.** All seven items from Pillar 3 exist: public API audit, runtime capability declaration, semantic engine version constant, `ExtractionResults` shape doc, crate-level rustdoc, example consumer, contract reference doc. Example consumer compiles in CI.
-5. **Release gates green at HEAD.** All commands in the Quality Bar's "Release Gates" table pass at the worktree HEAD with timestamps recorded in a verification ledger row.
-6. **Live MCP dogfood (manual handoff).** Quality Bar's live checks pass after release rebuild. The agent stages this for the user; agent cannot rebuild Claude Code itself.
+The autonomous run grades against `docs/plans/2026-05-10-best-in-class-tree-sitter-rubric.md` (sibling file). Rubric format follows the Anthropic Managed Agents pattern: per-criterion gradeable statements. Six sections: doc hygiene, capability matrix, real-world evidence (with semantic assertions), Pillar-3 deliverables, release gates green at HEAD, live MCP dogfood (manual handoff).
 
 ## Execution Loop
 
 - **Worktree.** `.worktrees/best-in-class-treesitter/` created from current main. Full mutation freedom inside.
 - **Driver.** Local Claude Code session via `/loop` self-paced, prompt template references the rubric file path, current `capabilities.json`, and any open escalation notes under `docs/plans/escalations/`.
-- **Cadence.** One iteration = one batch of related edits + targeted tests + small commit. After each tier (general programming → component/template → query/declarative → doc/data), a checkpoint commit + `.memories/` snapshot.
-- **Subagent use.** Where the work permits, the lead dispatches implementer subagents per tier or per language family with disjoint write scopes (per `razorback:subagent-driven-development`). Workers run only narrow targeted tests; the lead handles `cargo xtask test changed` and `dev` between batches.
+- **Cadence.** One iteration = one batch of related edits + targeted tests + small commit. After each phase in the sequencing list, a checkpoint commit + `.memories/` snapshot.
+- **Subagent use.** Where the work permits, the lead dispatches implementer subagents per phase or per language family with disjoint write scopes (per `razorback:subagent-driven-development`). Workers run only narrow targeted tests; the lead handles `cargo xtask test changed` and `dev` between batches.
 
 ## Escalation Policy
 
 - **Per-task budget.** 3 failed iterations OR 90 min wall-clock without measurable progress on a single gap → write `docs/plans/escalations/2026-05-10-<gap-id>.md` describing the blocker, root-cause hypothesis, and what was tried. Continue with other work. The escalation file becomes input to the next iteration's prompt.
-- **Per-batch checkpoint.** After each tier, commit + push + write a brief progress checkpoint to `.memories/`. User can review between phases.
+- **Per-batch checkpoint.** After each phase, commit + push + write a brief progress checkpoint to `.memories/`. User can review between phases.
 - **Hard stop.** 5+ open escalations OR full tier fails after gap closure → stop, write summary, wait for user. Do not silently narrow scope.
 
 ## Architecture Impact Assessment
 
-Limited. Pillar 3 adds:
+Limited but not zero. Pillar 3 adds:
 
-- One read-only public function on `julie-extractors`: `pub fn capabilities() -> &'static CapabilitySnapshot`.
-- One public constant: `pub const SEMANTIC_ENGINE_VERSION: &str`.
+- One read-only public function on `julie-extractors`: `pub fn capability_snapshot() -> &'static CapabilitySnapshot` (uses `include_str!` + `OnceLock`, no build script).
+- One public constant: `pub const EXTRACTION_CONTRACT_VERSION: &str`.
 - One example binary under `examples/`.
-- Build-script generation of `CapabilitySnapshot` from `capabilities.json`.
+- The capabilities.json file moves into the crate's source tree (or is committed there as a copy with a `cargo:rerun-if-changed` linkage from the workspace root copy).
+- Doc comments on every existing `pub` item.
 
-No module restructure. No boundary changes. No breaking refactor. Full `razorback:architecture-quality` review will run during `razorback:writing-plans` for the implementation phase, scoped to the public API surface and build-script behavior.
+No module restructure. No boundary changes. No breaking refactor. The main `julie` crate's re-exports through `src/extractors/mod.rs` continue to work unchanged. Full `razorback:architecture-quality` review will run during `razorback:writing-plans` for the implementation phase, scoped to the public API surface and capability-snapshot lifetime semantics.
+
+The capability matrix test schema change (typed evidence object) is a one-time format migration. Existing rows are rewritten in the same commit that adds the schema check. Backward compatibility is not required because no external consumer reads this file format yet.
 
 ## Out of Scope (Explicit)
 
 - FFI / WASM bindings.
 - A standalone `julie-extract` CLI binary. The `examples/` consumer covers the demo case.
-- Comparative benchmark harness against tree-sitter-graph, GitHub Semantic, Sourcegraph, or LSP servers. No neutral benchmark exists for code-intelligence extraction quality; building one is a separate program.
-- Adding new tree-sitter language registrations. The 34 + 2 variants stay; we deepen what's there rather than broaden.
-- Parser-grammar contributions upstream. If a parser bug surfaces, file an issue and pin the existing rev; do not block on upstream merges.
-- Per-language idiom checklists beyond the tier contract. Idiomatic-construct depth is a follow-up program.
+- Comparative benchmark harness against tree-sitter-graph, GitHub Semantic, Sourcegraph, or LSP servers.
+- Adding new tree-sitter language registrations. The 34 + 2 variants stay; we deepen what's there.
+- Parser-grammar contributions upstream. If a parser bug surfaces, file an issue and pin the existing rev.
+- Per-language idiom-depth checklists beyond the tier contract. Idiomatic-construct depth is a follow-up program.
+- Pruning currently-public items in `julie-extractors` to `pub(crate)`. The main `julie` crate depends on those re-exports; deprecation cycles are out of scope for this run.
 
 ## Acceptance Criteria
 
-The design itself is approved. Implementation starts only after `razorback:writing-plans` produces an executable plan. The implementation plan's acceptance is governed by the rubric file.
+The design itself is approved (with revisions per Codex review). Implementation starts only after `razorback:writing-plans` produces an executable plan. The implementation plan's acceptance is governed by the rubric file.
 
 ## Verification Ledger
 
