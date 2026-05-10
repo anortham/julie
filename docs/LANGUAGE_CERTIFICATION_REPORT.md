@@ -4,15 +4,15 @@
 
 ## Summary
 
-- Current HEAD: `3c51fa6110eb48109818424c4184572d418de3e3`
+- Current HEAD: `cb42f33665dad08b39dcbe95a85b406cb557107e`
 - Registry rows: `36`
-- Golden fixtures: `63`
+- Golden fixtures: `64`
 - Historical matrix rows: `33`
 - Raw historical OSS reports: `13`
 - Current real-world verified repos: `13`
 - Current real-world skipped repos: `0`
-- Rows with open gaps: `10`
-- Rows without gap entries: `24`
+- Rows with open gaps: `9`
+- Rows without gap entries: `25`
 
 ## Historical Coverage Delta
 
@@ -45,13 +45,13 @@
 
 | symbols | relationships | pending | structured pending | identifiers | types | parse diagnostics |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 353 | 85 | 33 | 33 | 178 | 146 | 6 |
+| 356 | 86 | 34 | 34 | 181 | 146 | 6 |
 
 ## Gap Counts
 
 | capability | count |
 | --- | ---: |
-| `pending_relationships` | 10 |
+| `pending_relationships` | 9 |
 | `types` | 8 |
 
 ## Open Capability Gaps
@@ -66,7 +66,6 @@
 | `qml` | `types` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Future work could add structured TypeInfo for QML property declarations. |
 | `r` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
 | `r` | `types` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | N/A — domain limitation. Future work could harvest roxygen type annotations into TypeInfo. |
-| `powershell` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
 | `razor` | `pending_relationships` | `open` | `commit:c729e8636f6bde07fb5596035a76d24db9c47066` | Lock the no-pending classification with `razor_pending_relationships_handled_by_csharp_embed` test in Phase 4b.razor; flip to status=exception with the locking test as evidence once it lands. |
 | `regex` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | N/A — domain limitation. |
 | `markdown` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | N/A — domain limitation. |
@@ -105,7 +104,7 @@
 | `qml` | `tree-sitter-qmljs` | `git_pinned` | 1 | 7 | 2 | 1 | 1 | 10 | 0 | 0 | 1 |
 | `r` | `tree-sitter-r` | `current` | 1 | 4 | 1 | 0 | 0 | 13 | 0 | 0 | 2 |
 | `bash` | `tree-sitter-bash` | `current` | 2 | 11 | 2 | 1 | 1 | 6 | 4 | 0 | 0 |
-| `powershell` | `tree-sitter-powershell` | `git_pinned` | 1 | 9 | 1 | 0 | 0 | 4 | 3 | 0 | 1 |
+| `powershell` | `tree-sitter-powershell` | `git_pinned` | 2 | 12 | 2 | 1 | 1 | 7 | 3 | 0 | 0 |
 | `gdscript` | `tree-sitter-gdscript` | `current` | 2 | 9 | 2 | 1 | 1 | 12 | 6 | 0 | 0 |
 | `razor` | `tree-sitter-razor` | `git_pinned` | 1 | 4 | 1 | 0 | 0 | 2 | 4 | 0 | 1 |
 | `sql` | `tree-sitter-sequel` | `current` | 2 | 15 | 4 | 1 | 1 | 3 | 13 | 1 | 0 |
@@ -117,4 +116,4 @@
 
 ## Rows Without Gap Entries
 
-`rust`, `c`, `cpp`, `go`, `zig`, `typescript`, `tsx`, `javascript`, `jsx`, `vue`, `python`, `java`, `csharp`, `vbnet`, `php`, `ruby`, `swift`, `kotlin`, `scala`, `dart`, `elixir`, `bash`, `gdscript`, `sql`
+`rust`, `c`, `cpp`, `go`, `zig`, `typescript`, `tsx`, `javascript`, `jsx`, `vue`, `python`, `java`, `csharp`, `vbnet`, `php`, `ruby`, `swift`, `kotlin`, `scala`, `dart`, `elixir`, `bash`, `powershell`, `gdscript`, `sql`
