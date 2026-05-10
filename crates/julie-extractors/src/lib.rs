@@ -1,24 +1,38 @@
-//! Julie's Language Extractors Library
+//! # julie-extractors
 //!
-//! Cross-platform code intelligence extractors for 34 languages, plus JSX and TSX aliases.
-//! Each extractor is responsible for parsing source code and extracting symbols, relationships,
-//! and type information using tree-sitter parsers.
+//! Tree-sitter-backed code extraction for 34 languages plus TSX/JSX variants.
+//! Produces a stable [`ExtractionResults`] shape: symbols, relationships,
+//! structured pending relationships, identifiers, type info, and parse
+//! diagnostics. Used by Julie's MCP server but consumable from any Rust crate.
 //!
-//! # Usage
+//! ## Quickstart
 //!
-//! ```rust,ignore
-//! use julie_extractors::{ExtractorManager, Symbol, SymbolKind};
+//! ```
+//! use julie_extractors::{extract_canonical, capability_snapshot};
+//! use std::path::Path;
 //!
-//! let manager = ExtractorManager::new();
-//! let results = manager.extract_all("src/main.rs", content, workspace_root)?;
-//! let symbols = results.symbols;
+//! let source = "fn main() { println!(\"hi\"); }";
+//! let result = extract_canonical(
+//!     "hello.rs",
+//!     source,
+//!     Path::new("."),
+//! ).unwrap();
+//! assert!(!result.symbols.is_empty());
+//!
+//! // Inspect what the crate guarantees for this language:
+//! let cap = capability_snapshot().get("rust").unwrap();
+//! assert!(cap.target_capabilities.symbols);
 //! ```
 //!
-//! # Supported Languages (33 concrete extractors, plus JSX and TSX aliases)
+//! See [`EXTRACTION_CONTRACT_VERSION`] for drift detection. The capability
+//! contract lives in `fixtures/extraction/capabilities.json` and is exposed
+//! to downstream consumers via [`capability_snapshot`].
+//!
+//! ## Supported Languages
 //!
 //! **Systems**: Rust, C, C++, Go, Zig
 //! **Web**: TypeScript, JavaScript, HTML, CSS, Vue, QML
-//! **Backend**: Python, Java, C#, PHP, Ruby, Swift, Kotlin, Dart
+//! **Backend**: Python, Java, C#, VB.NET, PHP, Ruby, Swift, Kotlin, Dart
 //! **Functional**: Elixir, Scala
 //! **Scripting**: Lua, R, Bash, PowerShell
 //! **Specialized**: GDScript, Razor, SQL, Regex
