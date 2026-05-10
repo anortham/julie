@@ -605,10 +605,48 @@ define_structured_full_file_extractors![
 ];
 
 define_no_pending_extractors![
-    (extract_html, "html", crate::html::HTMLExtractor),
     (extract_razor, "razor", crate::razor::RazorExtractor),
     (extract_regex, "regex", crate::regex::RegexExtractor)
 ];
+
+/// Hand-written HTML extractor entry point. Phase 4b.html graduated HTML out
+/// of `define_no_pending_extractors!` so its
+/// `extract_structured_pending_relationships` emissions for external
+/// `<script src=...>` and `<link href=...>` references reach the canonical
+/// extraction results. See `crates/julie-extractors/src/html/relationships.rs`
+/// for the shape contract.
+fn extract_html(
+    tree: &Tree,
+    file_path: &str,
+    content: &str,
+    workspace_root: &Path,
+) -> Result<ExtractionResults, anyhow::Error> {
+    let mut ext = crate::html::HTMLExtractor::new(
+        "html".to_string(),
+        file_path.to_string(),
+        content.to_string(),
+        workspace_root,
+    );
+    let symbols = ext.extract_symbols(tree);
+    let relationships = ext.extract_relationships(tree, &symbols);
+    let identifiers = ext.extract_identifiers(tree, &symbols);
+    let structured_pending_relationships =
+        ext.extract_structured_pending_relationships(tree, &symbols);
+    let pending_relationships = structured_pending_relationships
+        .clone()
+        .into_iter()
+        .map(|pending| pending.into_pending_relationship())
+        .collect();
+    Ok(ExtractionResults {
+        symbols,
+        relationships,
+        pending_relationships,
+        structured_pending_relationships,
+        identifiers,
+        types: HashMap::new(),
+        parse_diagnostics: Vec::new(),
+    })
+}
 
 /// Hand-written SQL extractor entry point. Phase 3.1 graduated SQL out of
 /// `define_no_pending_extractors!` so its `add_structured_pending_relationship`

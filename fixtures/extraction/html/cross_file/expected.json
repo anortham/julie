@@ -1,0 +1,353 @@
+{
+  "symbols": [
+    {
+      "key": "fixtures/extraction/html/cross_file/source.html:DOCTYPE:7:0",
+      "name": "DOCTYPE",
+      "kind": "namespace",
+      "language": "html",
+      "file_path": "fixtures/extraction/html/cross_file/source.html",
+      "start_line": 7,
+      "start_column": 0,
+      "end_line": 7,
+      "end_column": 15,
+      "start_byte": 308,
+      "end_byte": 323,
+      "signature": "<!DOCTYPE html>",
+      "doc_comment": "<!--\n  Phase 4b fixture: cross-file HTML resource references. The HTML extractor\n  must emit StructuredPendingRelationship for external <script src=...> and\n  <link href=...> references targeting other files. Inline <script> blocks\n  with intra-document references must NOT appear as structured pending.\n-->",
+      "visibility": "Public",
+      "parent_key": null,
+      "metadata": {
+        "declaration": "<!DOCTYPE html>",
+        "type": "doctype"
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/html/cross_file/source.html:DOCTYPE:7:2",
+      "name": "DOCTYPE",
+      "kind": "namespace",
+      "language": "html",
+      "file_path": "fixtures/extraction/html/cross_file/source.html",
+      "start_line": 7,
+      "start_column": 2,
+      "end_line": 7,
+      "end_column": 9,
+      "start_byte": 310,
+      "end_byte": 317,
+      "signature": "DOCTYPE",
+      "doc_comment": "<!--\n  Phase 4b fixture: cross-file HTML resource references. The HTML extractor\n  must emit StructuredPendingRelationship for external <script src=...> and\n  <link href=...> references targeting other files. Inline <script> blocks\n  with intra-document references must NOT appear as structured pending.\n-->",
+      "visibility": "Public",
+      "parent_key": "fixtures/extraction/html/cross_file/source.html:DOCTYPE:7:0",
+      "metadata": {
+        "declaration": "DOCTYPE",
+        "type": "doctype"
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/html/cross_file/source.html:body:13:0",
+      "name": "body",
+      "kind": "class",
+      "language": "html",
+      "file_path": "fixtures/extraction/html/cross_file/source.html",
+      "start_line": 13,
+      "start_column": 0,
+      "end_line": 19,
+      "end_column": 7,
+      "start_byte": 428,
+      "end_byte": 594,
+      "signature": "<body>",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": "fixtures/extraction/html/cross_file/source.html:html:8:0",
+      "metadata": {
+        "isSemantic": false,
+        "isVoid": false,
+        "tagName": "body",
+        "type": "html-element"
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/html/cross_file/source.html:div:14:2",
+      "name": "div",
+      "kind": "class",
+      "language": "html",
+      "file_path": "fixtures/extraction/html/cross_file/source.html",
+      "start_line": 14,
+      "start_column": 2,
+      "end_line": 14,
+      "end_column": 24,
+      "start_byte": 437,
+      "end_byte": 459,
+      "signature": "<div id=\"entry\">",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": "fixtures/extraction/html/cross_file/source.html:body:13:0",
+      "metadata": {
+        "attributes": {
+          "id": "entry"
+        },
+        "isSemantic": false,
+        "isVoid": false,
+        "tagName": "div",
+        "type": "html-element"
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/html/cross_file/source.html:head:9:0",
+      "name": "head",
+      "kind": "class",
+      "language": "html",
+      "file_path": "fixtures/extraction/html/cross_file/source.html",
+      "start_line": 9,
+      "start_column": 0,
+      "end_line": 12,
+      "end_column": 7,
+      "start_byte": 331,
+      "end_byte": 427,
+      "signature": "<head>",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": "fixtures/extraction/html/cross_file/source.html:html:8:0",
+      "metadata": {
+        "isSemantic": false,
+        "isVoid": false,
+        "tagName": "head",
+        "type": "html-element"
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/html/cross_file/source.html:html:8:0",
+      "name": "html",
+      "kind": "class",
+      "language": "html",
+      "file_path": "fixtures/extraction/html/cross_file/source.html",
+      "start_line": 8,
+      "start_column": 0,
+      "end_line": 20,
+      "end_column": 7,
+      "start_byte": 324,
+      "end_byte": 602,
+      "signature": "<html>",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": null,
+      "metadata": {
+        "isSemantic": false,
+        "isVoid": false,
+        "tagName": "html",
+        "type": "html-element"
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/html/cross_file/source.html:link:11:2",
+      "name": "link",
+      "kind": "import",
+      "language": "html",
+      "file_path": "fixtures/extraction/html/cross_file/source.html",
+      "start_line": 11,
+      "start_column": 2,
+      "end_line": 12,
+      "end_column": 0,
+      "start_byte": 377,
+      "end_byte": 420,
+      "signature": "<link rel=\"stylesheet\" href=\"./other.css\">",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": "fixtures/extraction/html/cross_file/source.html:head:9:0",
+      "metadata": {
+        "attributes": {
+          "href": "./other.css",
+          "rel": "stylesheet"
+        },
+        "isSemantic": false,
+        "isVoid": true,
+        "tagName": "link",
+        "type": "html-element"
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/html/cross_file/source.html:local_helper:17:4",
+      "name": "local_helper",
+      "kind": "function",
+      "language": "javascript",
+      "file_path": "fixtures/extraction/html/cross_file/source.html",
+      "start_line": 17,
+      "start_column": 4,
+      "end_line": 17,
+      "end_column": 42,
+      "start_byte": 536,
+      "end_byte": 574,
+      "signature": "function local_helper()",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": null,
+      "metadata": {
+        "isArrowFunction": false,
+        "isAsync": false,
+        "isExpression": false,
+        "isGenerator": false,
+        "parameters": []
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/html/cross_file/source.html:script:10:2",
+      "name": "script",
+      "kind": "import",
+      "language": "html",
+      "file_path": "fixtures/extraction/html/cross_file/source.html",
+      "start_line": 10,
+      "start_column": 2,
+      "end_line": 10,
+      "end_column": 36,
+      "start_byte": 340,
+      "end_byte": 374,
+      "signature": "<script src=\"./other.js\">",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": "fixtures/extraction/html/cross_file/source.html:head:9:0",
+      "metadata": {
+        "attributes": {
+          "src": "./other.js"
+        },
+        "isInline": false,
+        "scriptType": "text/javascript",
+        "type": "script-element"
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    }
+  ],
+  "relationships": [
+    {
+      "from_key": "fixtures/extraction/html/cross_file/source.html:link:11:2",
+      "to_key": "unresolved:url:./other.css",
+      "kind": "references",
+      "file_path": "fixtures/extraction/html/cross_file/source.html",
+      "line_number": 11,
+      "confidence": "1.000",
+      "metadata": {
+        "href": "./other.css"
+      }
+    },
+    {
+      "from_key": "fixtures/extraction/html/cross_file/source.html:script:10:2",
+      "to_key": "unresolved:script:./other.js",
+      "kind": "imports",
+      "file_path": "fixtures/extraction/html/cross_file/source.html",
+      "line_number": 10,
+      "confidence": "1.000",
+      "metadata": {
+        "src": "./other.js"
+      }
+    }
+  ],
+  "pending_relationships": [
+    {
+      "from_key": "fixtures/extraction/html/cross_file/source.html:link:11:2",
+      "callee_name": "./other.css",
+      "kind": "imports",
+      "file_path": "fixtures/extraction/html/cross_file/source.html",
+      "line_number": 11,
+      "confidence": "0.900"
+    },
+    {
+      "from_key": "fixtures/extraction/html/cross_file/source.html:script:10:2",
+      "callee_name": "./other.js",
+      "kind": "imports",
+      "file_path": "fixtures/extraction/html/cross_file/source.html",
+      "line_number": 10,
+      "confidence": "0.900"
+    }
+  ],
+  "structured_pending_relationships": [
+    {
+      "pending": {
+        "from_key": "fixtures/extraction/html/cross_file/source.html:link:11:2",
+        "callee_name": "./other.css",
+        "kind": "imports",
+        "file_path": "fixtures/extraction/html/cross_file/source.html",
+        "line_number": 11,
+        "confidence": "0.900"
+      },
+      "target": {
+        "display_name": "./other.css",
+        "terminal_name": "./other.css",
+        "receiver": null,
+        "namespace_path": [],
+        "import_context": "html-link-href"
+      },
+      "caller_scope_key": "fixtures/extraction/html/cross_file/source.html:link:11:2"
+    },
+    {
+      "pending": {
+        "from_key": "fixtures/extraction/html/cross_file/source.html:script:10:2",
+        "callee_name": "./other.js",
+        "kind": "imports",
+        "file_path": "fixtures/extraction/html/cross_file/source.html",
+        "line_number": 10,
+        "confidence": "0.900"
+      },
+      "target": {
+        "display_name": "./other.js",
+        "terminal_name": "./other.js",
+        "receiver": null,
+        "namespace_path": [],
+        "import_context": "html-script-src"
+      },
+      "caller_scope_key": "fixtures/extraction/html/cross_file/source.html:script:10:2"
+    }
+  ],
+  "identifiers": [
+    {
+      "key": "fixtures/extraction/html/cross_file/source.html:entry:member_access:14:7",
+      "name": "entry",
+      "kind": "member_access",
+      "language": "html",
+      "file_path": "fixtures/extraction/html/cross_file/source.html",
+      "start_line": 14,
+      "start_column": 7,
+      "end_line": 14,
+      "end_column": 17,
+      "start_byte": 442,
+      "end_byte": 452,
+      "containing_key": "fixtures/extraction/html/cross_file/source.html:div:14:2",
+      "target_key": null,
+      "confidence": "1.000"
+    }
+  ],
+  "types": [],
+  "parse_diagnostics": []
+}

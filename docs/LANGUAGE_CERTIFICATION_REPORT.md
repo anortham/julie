@@ -4,15 +4,15 @@
 
 ## Summary
 
-- Current HEAD: `9ef313959c251deb652a96857efa8327be88c910`
+- Current HEAD: `7dabdd8a05e9f9abfc9deedc87aacebd54827743`
 - Registry rows: `36`
-- Golden fixtures: `67`
+- Golden fixtures: `68`
 - Historical matrix rows: `33`
 - Raw historical OSS reports: `13`
 - Current real-world verified repos: `13`
 - Current real-world skipped repos: `0`
-- Rows with open gaps: `9`
-- Rows without gap entries: `25`
+- Rows with open gaps: `8`
+- Rows without gap entries: `26`
 
 ## Historical Coverage Delta
 
@@ -45,20 +45,19 @@
 
 | symbols | relationships | pending | structured pending | identifiers | types | parse diagnostics |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 367 | 91 | 38 | 38 | 190 | 147 | 6 |
+| 376 | 93 | 40 | 40 | 191 | 137 | 6 |
 
 ## Gap Counts
 
 | capability | count |
 | --- | ---: |
-| `pending_relationships` | 7 |
+| `pending_relationships` | 6 |
 | `types` | 8 |
 
 ## Open Capability Gaps
 
 | language | capability | status | evidence | required closure |
 | --- | --- | --- | --- | --- |
-| `html` | `pending_relationships` | `open` | `commit:c729e8636f6bde07fb5596035a76d24db9c47066` | Emit pending relationships for external script/style src=... references; close in Phase 4b (HTML task). |
 | `css` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | N/A — domain limitation. |
 | `css` | `types` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | N/A — domain limitation. |
 | `lua` | `types` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Out of scope — Lua is dynamic. Luau-style type annotations would be a separate language target. |
@@ -84,7 +83,7 @@
 | `tsx` | `tree-sitter-typescript` | `current` | 2 | 10 | 2 | 2 | 2 | 7 | 5 | 0 | 0 |
 | `javascript` | `tree-sitter-javascript` | `current` | 2 | 9 | 2 | 1 | 1 | 5 | 0 | 0 | 0 |
 | `jsx` | `tree-sitter-javascript` | `current` | 2 | 9 | 3 | 2 | 2 | 5 | 0 | 0 | 0 |
-| `html` | `tree-sitter-html` | `current` | 1 | 11 | 1 | 0 | 0 | 2 | 10 | 0 | 1 |
+| `html` | `tree-sitter-html` | `current` | 2 | 20 | 3 | 2 | 2 | 3 | 0 | 0 | 0 |
 | `css` | `tree-sitter-css` | `current` | 1 | 6 | 1 | 0 | 0 | 4 | 0 | 0 | 2 |
 | `vue` | `tree-sitter-html` | `current` | 2 | 8 | 5 | 3 | 3 | 4 | 4 | 0 | 0 |
 | `python` | `tree-sitter-python` | `current` | 2 | 8 | 2 | 1 | 1 | 5 | 2 | 0 | 0 |
@@ -114,4 +113,4 @@
 
 ## Rows Without Gap Entries
 
-`rust`, `c`, `cpp`, `go`, `zig`, `typescript`, `tsx`, `javascript`, `jsx`, `vue`, `python`, `java`, `csharp`, `vbnet`, `php`, `ruby`, `swift`, `kotlin`, `scala`, `dart`, `elixir`, `bash`, `powershell`, `gdscript`, `sql`
+`rust`, `c`, `cpp`, `go`, `zig`, `typescript`, `tsx`, `javascript`, `jsx`, `html`, `vue`, `python`, `java`, `csharp`, `vbnet`, `php`, `ruby`, `swift`, `kotlin`, `scala`, `dart`, `elixir`, `bash`, `powershell`, `gdscript`, `sql`

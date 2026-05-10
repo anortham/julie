@@ -341,7 +341,7 @@
       "capabilities": {
         "symbols": true,
         "relationships": true,
-        "pending_relationships": false,
+        "pending_relationships": true,
         "identifiers": true,
         "types": true
       },
@@ -350,29 +350,21 @@
           "name": "basic",
           "source": "fixtures/extraction/html/basic/source.html",
           "expected": "fixtures/extraction/html/basic/expected.json"
+        },
+        {
+          "name": "cross_file",
+          "source": "fixtures/extraction/html/cross_file/source.html",
+          "expected": "fixtures/extraction/html/cross_file/expected.json"
         }
       ],
       "target_capabilities": {
         "symbols": true,
         "relationships": true,
-        "pending_relationships": false,
+        "pending_relationships": true,
         "identifiers": true,
         "types": true
       },
-      "capability_gaps": [
-        {
-          "capability": "pending_relationships",
-          "status": "open",
-          "reason": "Phase 4b targets external <script src=...> and <link href=...> references as cross-file pending relationships. The HTML extractor currently emits no pending output; the Phase 4b.html task wires structured pending for these reference shapes.",
-          "required_closure": "Emit pending relationships for external script/style src=... references; close in Phase 4b (HTML task).",
-          "evidence": {
-            "kind": "commit",
-            "value": "c729e8636f6bde07fb5596035a76d24db9c47066",
-            "command": "git show c729e8636f6bde07fb5596035a76d24db9c47066"
-          },
-          "planned_closure_task": "Phase 4b.html"
-        }
-      ]
+      "capability_gaps": []
     },
     {
       "language": "css",
@@ -461,7 +453,8 @@
         "pending_relationships": true,
         "identifiers": true,
         "types": true
-      }
+      },
+      "capability_gaps": []
     },
     {
       "language": "python",

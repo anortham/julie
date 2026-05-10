@@ -2,6 +2,7 @@
 //
 // Implementation of HTML extractor to idiomatic Rust
 
+use crate::base::relationship_resolution::StructuredPendingRelationship;
 use crate::base::{BaseExtractor, Identifier, Relationship, Symbol};
 use std::collections::HashMap;
 use tree_sitter::{Node, Tree};
@@ -117,6 +118,25 @@ impl HTMLExtractor {
         self.visit_node_for_relationships(tree.root_node(), symbols, &mut relationships);
 
         relationships
+    }
+
+    /// Phase 4b.html — emit StructuredPendingRelationship for external
+    /// `<script src=...>` and `<link href=...>` references. The owning
+    /// caller scope is the nearest parent element symbol if any; otherwise
+    /// the document/root symbol.
+    pub fn extract_structured_pending_relationships(
+        &self,
+        tree: &Tree,
+        symbols: &[Symbol],
+    ) -> Vec<StructuredPendingRelationship> {
+        let mut pending = Vec::new();
+        relationships::RelationshipExtractor::collect_structured_pending(
+            &self.base,
+            tree.root_node(),
+            symbols,
+            &mut pending,
+        );
+        pending
     }
 
     fn visit_node_for_relationships(

@@ -77,7 +77,7 @@ pub(super) const LANGUAGE_SPECS: &[LanguageSpec] = &[
         "html",
         &["html", "htm"],
         "tree-sitter-html",
-        NO_PENDING_CAPABILITIES,
+        FULL_CAPABILITIES,
         parser_html,
         HTML_DOCS,
     ),
