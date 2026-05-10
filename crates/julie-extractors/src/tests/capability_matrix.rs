@@ -469,6 +469,34 @@ fn capability_matrix_no_not_implemented_exceptions() {
     assert!(errors.is_empty(), "{}", errors.join("\n"));
 }
 
+/// Task 2.2: every language whose `target_capabilities.relationships = true`
+/// must ship at least one fixture sub-directory named `negative` proving a
+/// code shape that should NOT produce a relationship edge. The negatives are
+/// authored per-language during Phase 4; Task 4d.ignore-flip removes the
+/// `#[ignore]` attribute below to activate the gate. Until then, the test is
+/// visible in the suite as a documented contract but is not a Phase 2 gate
+/// (committing it red would fail Phase 2's boundary check).
+#[test]
+#[ignore = "negative fixtures land per-language during Phase 4; Task 4d.ignore-flip removes this attribute"]
+fn capability_matrix_negative_cases_emit_no_wrong_edges() {
+    let root = workspace_root();
+    let matrix = load_matrix(&root);
+    let mut errors = Vec::new();
+    for row in &matrix.languages {
+        if !row.target_capabilities.relationships {
+            continue;
+        }
+        let has_negative = row.fixtures.iter().any(|f| f.name.contains("negative"));
+        if !has_negative {
+            errors.push(format!(
+                "language {} declares target_capabilities.relationships=true but has no `negative` fixture proving wrong edges are not emitted; add fixtures/extraction/{}/negative/",
+                row.language, row.language
+            ));
+        }
+    }
+    assert!(errors.is_empty(), "{}", errors.join("\n"));
+}
+
 /// Task 1.2: every `status: open` row must carry `planned_closure_task`
 /// pointing at a literal heading or anchor present in the plan body. Rows in
 /// `closed` or `exception` status must NOT carry this field — closed evidence
