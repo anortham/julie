@@ -46,7 +46,65 @@ struct CapabilityGap {
     status: String,
     reason: String,
     required_closure: String,
-    evidence: String,
+    /// Typed evidence — see `EvidenceRef`. The resolver test in
+    /// `capability_matrix_evidence_resolves` (Task 1.2) verifies the referenced
+    /// artifact actually exists; this struct only carries the shape.
+    evidence: EvidenceRef,
+    /// Names the Phase task that will close this row. Required for
+    /// `status: "open"`; forbidden for `closed`/`exception`. Validated by
+    /// `capability_matrix_open_rows_have_planned_closure_task` (Task 1.2).
+    #[serde(default)]
+    planned_closure_task: Option<String>,
+}
+
+/// Typed evidence reference. Every `capability_gap.evidence` cell must
+/// deserialize as `Test`, `Fixture`, or `Commit`. The legacy bare-string form
+/// parses to `DeadString`, which the
+/// `capability_matrix_evidence_is_typed_object` test rejects.
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum EvidenceRef {
+    Test {
+        #[allow(dead_code)]
+        kind: TestKind,
+        value: String,
+        command: String,
+    },
+    Fixture {
+        #[allow(dead_code)]
+        kind: FixtureKind,
+        value: String,
+        #[allow(dead_code)]
+        command: String,
+    },
+    Commit {
+        #[allow(dead_code)]
+        kind: CommitKind,
+        value: String,
+        #[allow(dead_code)]
+        command: String,
+    },
+    /// Legacy bare-string evidence. Rejected by
+    /// `capability_matrix_evidence_is_typed_object`.
+    DeadString(String),
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum TestKind {
+    Test,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum FixtureKind {
+    Fixture,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum CommitKind {
+    Commit,
 }
 
 #[test]
@@ -252,15 +310,67 @@ fn capability_matrix_requires_target_capabilities() {
                 row.language,
                 gap.capability
             );
-            assert!(
-                root.join(&gap.evidence).exists(),
-                "{} {} gap evidence path does not exist: {}",
-                row.language,
-                gap.capability,
-                gap.evidence
-            );
+            // Typed-evidence shape is enforced by
+            // `capability_matrix_evidence_is_typed_object`; resolution is
+            // enforced by `capability_matrix_evidence_resolves` (Task 1.2).
+            // No path-existence check here — bare strings are gone.
         }
     }
+}
+
+/// Task 1.1: every `capability_gaps[].evidence` cell deserializes as a typed
+/// object (`{kind, value, command}`), not the legacy bare-string form. This is
+/// the shape contract; resolution is enforced by
+/// `capability_matrix_evidence_resolves` in Task 1.2.
+#[test]
+fn capability_matrix_evidence_is_typed_object() {
+    let root = workspace_root();
+    let matrix = load_matrix(&root);
+    let mut errors = Vec::new();
+    for row in &matrix.languages {
+        for gap in &row.capability_gaps {
+            match &gap.evidence {
+                EvidenceRef::DeadString(s) => errors.push(format!(
+                    "language {} gap {} still has bare-string evidence `{}` — \
+                     migrate to typed object {{kind, value, command}}",
+                    row.language, gap.capability, s
+                )),
+                EvidenceRef::Test { value, command, .. } => {
+                    if value.is_empty() {
+                        errors.push(format!(
+                            "language {} gap {} test evidence has empty value",
+                            row.language, gap.capability
+                        ));
+                    }
+                    if !command.starts_with("cargo nextest") {
+                        errors.push(format!(
+                            "language {} gap {} test evidence command must start with \
+                             `cargo nextest`, got `{}`",
+                            row.language, gap.capability, command
+                        ));
+                    }
+                }
+                EvidenceRef::Fixture { value, .. } => {
+                    if value.is_empty() {
+                        errors.push(format!(
+                            "language {} gap {} fixture evidence has empty value",
+                            row.language, gap.capability
+                        ));
+                    }
+                }
+                EvidenceRef::Commit { value, .. } => {
+                    if value.len() != 40 || !value.chars().all(|c| c.is_ascii_hexdigit()) {
+                        errors.push(format!(
+                            "language {} gap {} commit evidence must be a 40-char hex SHA, \
+                             got `{}`",
+                            row.language, gap.capability, value
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    assert!(errors.is_empty(), "{}", errors.join("\n"));
 }
 
 #[test]
