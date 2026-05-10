@@ -4,15 +4,15 @@
 
 ## Summary
 
-- Current HEAD: `2e4c50c7c9967a6963c1c4f74cc4da6c0f0965e7`
+- Current HEAD: `216ecbc872800695269fa2f3e4f7dc8d48e42a07`
 - Registry rows: `36`
-- Golden fixtures: `41`
+- Golden fixtures: `42`
 - Historical matrix rows: `33`
 - Raw historical OSS reports: `13`
 - Current real-world verified repos: `13`
 - Current real-world skipped repos: `0`
-- Rows with open gaps: `30`
-- Rows without gap entries: `4`
+- Rows with open gaps: `29`
+- Rows without gap entries: `5`
 
 ## Historical Coverage Delta
 
@@ -45,20 +45,19 @@
 
 | symbols | relationships | pending | structured pending | identifiers | types | parse diagnostics |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 265 | 63 | 6 | 6 | 121 | 106 | 6 |
+| 268 | 64 | 8 | 8 | 125 | 108 | 6 |
 
 ## Gap Counts
 
 | capability | count |
 | --- | ---: |
-| `pending_relationships` | 30 |
+| `pending_relationships` | 29 |
 | `types` | 8 |
 
 ## Open Capability Gaps
 
 | language | capability | status | evidence | required closure |
 | --- | --- | --- | --- | --- |
-| `rust` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
 | `c` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
 | `cpp` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
 | `go` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
@@ -98,7 +97,7 @@
 
 | language | parser | dependency | fixtures | symbols | relationships | pending | structured pending | identifiers | types | diagnostics | gaps |
 | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| `rust` | `tree-sitter-rust` | `current` | 1 | 5 | 1 | 0 | 0 | 3 | 3 | 0 | 1 |
+| `rust` | `tree-sitter-rust` | `current` | 2 | 8 | 2 | 2 | 2 | 7 | 5 | 0 | 0 |
 | `c` | `tree-sitter-c` | `current` | 1 | 6 | 2 | 0 | 0 | 3 | 3 | 0 | 1 |
 | `cpp` | `tree-sitter-cpp` | `current` | 1 | 9 | 4 | 0 | 0 | 3 | 6 | 0 | 1 |
 | `go` | `tree-sitter-go` | `current` | 2 | 14 | 1 | 0 | 0 | 5 | 3 | 5 | 1 |
@@ -137,4 +136,4 @@
 
 ## Rows Without Gap Entries
 
-`tsx`, `jsx`, `vue`, `sql`
+`rust`, `tsx`, `jsx`, `vue`, `sql`

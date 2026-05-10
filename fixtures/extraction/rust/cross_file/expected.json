@@ -1,0 +1,227 @@
+{
+  "symbols": [
+    {
+      "key": "fixtures/extraction/rust/cross_file/source.rs:Function:7:0",
+      "name": "Function",
+      "kind": "import",
+      "language": "rust",
+      "file_path": "fixtures/extraction/rust/cross_file/source.rs",
+      "start_line": 7,
+      "start_column": 0,
+      "end_line": 7,
+      "end_column": 34,
+      "start_byte": 336,
+      "end_byte": 370,
+      "signature": "use crate::other_module::Function;",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": null,
+      "metadata": {},
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/rust/cross_file/source.rs:entry:13:0",
+      "name": "entry",
+      "kind": "function",
+      "language": "rust",
+      "file_path": "fixtures/extraction/rust/cross_file/source.rs",
+      "start_line": 13,
+      "start_column": 0,
+      "end_line": 16,
+      "end_column": 1,
+      "start_byte": 409,
+      "end_byte": 477,
+      "signature": "pub fn entry() -> i32",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": null,
+      "metadata": {},
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/rust/cross_file/source.rs:local_helper:9:0",
+      "name": "local_helper",
+      "kind": "function",
+      "language": "rust",
+      "file_path": "fixtures/extraction/rust/cross_file/source.rs",
+      "start_line": 9,
+      "start_column": 0,
+      "end_line": 11,
+      "end_column": 1,
+      "start_byte": 372,
+      "end_byte": 407,
+      "signature": "fn local_helper() -> i32",
+      "doc_comment": null,
+      "visibility": "Private",
+      "parent_key": null,
+      "metadata": {},
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    }
+  ],
+  "relationships": [
+    {
+      "from_key": "fixtures/extraction/rust/cross_file/source.rs:entry:13:0",
+      "to_key": "fixtures/extraction/rust/cross_file/source.rs:local_helper:9:0",
+      "kind": "calls",
+      "file_path": "fixtures/extraction/rust/cross_file/source.rs",
+      "line_number": 15,
+      "confidence": "0.900",
+      "metadata": null
+    }
+  ],
+  "pending_relationships": [
+    {
+      "from_key": "fixtures/extraction/rust/cross_file/source.rs:Function:7:0",
+      "callee_name": "crate::other_module::Function",
+      "kind": "imports",
+      "file_path": "fixtures/extraction/rust/cross_file/source.rs",
+      "line_number": 7,
+      "confidence": "1.000"
+    },
+    {
+      "from_key": "fixtures/extraction/rust/cross_file/source.rs:entry:13:0",
+      "callee_name": "Function",
+      "kind": "calls",
+      "file_path": "fixtures/extraction/rust/cross_file/source.rs",
+      "line_number": 14,
+      "confidence": "0.800"
+    }
+  ],
+  "structured_pending_relationships": [
+    {
+      "pending": {
+        "from_key": "fixtures/extraction/rust/cross_file/source.rs:Function:7:0",
+        "callee_name": "crate::other_module::Function",
+        "kind": "imports",
+        "file_path": "fixtures/extraction/rust/cross_file/source.rs",
+        "line_number": 7,
+        "confidence": "1.000"
+      },
+      "target": {
+        "display_name": "crate::other_module::Function",
+        "terminal_name": "Function",
+        "receiver": null,
+        "namespace_path": [
+          "crate",
+          "other_module"
+        ],
+        "import_context": "use crate::other_module::Function;"
+      },
+      "caller_scope_key": "fixtures/extraction/rust/cross_file/source.rs:Function:7:0"
+    },
+    {
+      "pending": {
+        "from_key": "fixtures/extraction/rust/cross_file/source.rs:entry:13:0",
+        "callee_name": "Function",
+        "kind": "calls",
+        "file_path": "fixtures/extraction/rust/cross_file/source.rs",
+        "line_number": 14,
+        "confidence": "0.800"
+      },
+      "target": {
+        "display_name": "Function",
+        "terminal_name": "Function",
+        "receiver": null,
+        "namespace_path": [],
+        "import_context": null
+      },
+      "caller_scope_key": "fixtures/extraction/rust/cross_file/source.rs:entry:13:0"
+    }
+  ],
+  "identifiers": [
+    {
+      "key": "fixtures/extraction/rust/cross_file/source.rs:Function:call:14:12",
+      "name": "Function",
+      "kind": "call",
+      "language": "rust",
+      "file_path": "fixtures/extraction/rust/cross_file/source.rs",
+      "start_line": 14,
+      "start_column": 12,
+      "end_line": 14,
+      "end_column": 20,
+      "start_byte": 445,
+      "end_byte": 453,
+      "containing_key": "fixtures/extraction/rust/cross_file/source.rs:entry:13:0",
+      "target_key": null,
+      "confidence": "1.000"
+    },
+    {
+      "key": "fixtures/extraction/rust/cross_file/source.rs:Function:type_usage:7:25",
+      "name": "Function",
+      "kind": "type_usage",
+      "language": "rust",
+      "file_path": "fixtures/extraction/rust/cross_file/source.rs",
+      "start_line": 7,
+      "start_column": 25,
+      "end_line": 7,
+      "end_column": 33,
+      "start_byte": 361,
+      "end_byte": 369,
+      "containing_key": "fixtures/extraction/rust/cross_file/source.rs:Function:7:0",
+      "target_key": null,
+      "confidence": "1.000"
+    },
+    {
+      "key": "fixtures/extraction/rust/cross_file/source.rs:local_helper:call:15:4",
+      "name": "local_helper",
+      "kind": "call",
+      "language": "rust",
+      "file_path": "fixtures/extraction/rust/cross_file/source.rs",
+      "start_line": 15,
+      "start_column": 4,
+      "end_line": 15,
+      "end_column": 16,
+      "start_byte": 461,
+      "end_byte": 473,
+      "containing_key": "fixtures/extraction/rust/cross_file/source.rs:entry:13:0",
+      "target_key": null,
+      "confidence": "1.000"
+    },
+    {
+      "key": "fixtures/extraction/rust/cross_file/source.rs:other_module:type_usage:7:11",
+      "name": "other_module",
+      "kind": "type_usage",
+      "language": "rust",
+      "file_path": "fixtures/extraction/rust/cross_file/source.rs",
+      "start_line": 7,
+      "start_column": 11,
+      "end_line": 7,
+      "end_column": 23,
+      "start_byte": 347,
+      "end_byte": 359,
+      "containing_key": "fixtures/extraction/rust/cross_file/source.rs:Function:7:0",
+      "target_key": null,
+      "confidence": "1.000"
+    }
+  ],
+  "types": [
+    {
+      "symbol_key": "fixtures/extraction/rust/cross_file/source.rs:entry:13:0",
+      "resolved_type": "i32",
+      "generic_params": null,
+      "constraints": null,
+      "is_inferred": true,
+      "language": "rust",
+      "metadata": null
+    },
+    {
+      "symbol_key": "fixtures/extraction/rust/cross_file/source.rs:local_helper:9:0",
+      "resolved_type": "i32",
+      "generic_params": null,
+      "constraints": null,
+      "is_inferred": true,
+      "language": "rust",
+      "metadata": null
+    }
+  ],
+  "parse_diagnostics": []
+}
