@@ -1,6 +1,7 @@
 //! Tests for Scala extractor
 
 mod ast_debug;
+mod cross_file_pending;
 mod task14;
 
 use crate::base::{IdentifierKind, RelationshipKind, SymbolKind};
