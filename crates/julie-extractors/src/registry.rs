@@ -153,37 +153,6 @@ macro_rules! define_no_pending_extractors {
     };
 }
 
-macro_rules! define_data_only_extractors {
-    ($(($fn_name:ident, $language:literal, $extractor:path)),+ $(,)?) => {
-        $(
-            fn $fn_name(
-                tree: &Tree,
-                file_path: &str,
-                content: &str,
-                workspace_root: &Path,
-            ) -> Result<ExtractionResults, anyhow::Error> {
-                let mut ext = <$extractor>::new(
-                    $language.to_string(),
-                    file_path.to_string(),
-                    content.to_string(),
-                    workspace_root,
-                );
-                let symbols = ext.extract_symbols(tree);
-                let identifiers = ext.extract_identifiers(tree, &symbols);
-                Ok(ExtractionResults {
-                    symbols,
-                    relationships: Vec::new(),
-                    pending_relationships: Vec::new(),
-                    structured_pending_relationships: Vec::new(),
-                    identifiers,
-                    types: HashMap::new(),
-                    parse_diagnostics: Vec::new(),
-                })
-            }
-        )+
-    };
-}
-
 macro_rules! define_relationship_data_extractors {
     ($(($fn_name:ident, $language:literal, $extractor:path)),+ $(,)?) => {
         $(
@@ -720,9 +689,36 @@ define_relationship_data_extractors![
     (extract_yaml, "yaml", crate::yaml::YamlExtractor)
 ];
 
-define_data_only_extractors![
-    (extract_toml, "toml", crate::toml::TomlExtractor)
-];
+/// TOML extractor (Phase 3.3): hand-written so it can emit domain-aware
+/// relationships for Cargo `[dependencies]` and pyproject `[tool.*]`
+/// tables. `pending_relationships` stays empty — TOML's references are
+/// always file-local; `types` stays empty — TOML has no static type
+/// system.
+fn extract_toml(
+    tree: &Tree,
+    file_path: &str,
+    content: &str,
+    workspace_root: &Path,
+) -> Result<ExtractionResults, anyhow::Error> {
+    let mut ext = crate::toml::TomlExtractor::new(
+        "toml".to_string(),
+        file_path.to_string(),
+        content.to_string(),
+        workspace_root,
+    );
+    let symbols = ext.extract_symbols(tree);
+    let relationships = ext.extract_relationships(tree, &symbols);
+    let identifiers = ext.extract_identifiers(tree, &symbols);
+    Ok(ExtractionResults {
+        symbols,
+        relationships,
+        pending_relationships: Vec::new(),
+        structured_pending_relationships: Vec::new(),
+        identifiers,
+        types: HashMap::new(),
+        parse_diagnostics: Vec::new(),
+    })
+}
 
 /// JSON extractor (Phase 3.2): hand-written so it can return relationships
 /// (concrete + structured pending) for JSON Schema `$ref` shapes.

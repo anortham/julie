@@ -4,14 +4,14 @@
 
 ## Summary
 
-- Current HEAD: `8120d04e3e013b4f71443e94f53e02c090ed1e35`
+- Current HEAD: `2e4c50c7c9967a6963c1c4f74cc4da6c0f0965e7`
 - Registry rows: `36`
-- Golden fixtures: `39`
+- Golden fixtures: `41`
 - Historical matrix rows: `33`
 - Raw historical OSS reports: `13`
 - Current real-world verified repos: `13`
 - Current real-world skipped repos: `0`
-- Rows with open gaps: `31`
+- Rows with open gaps: `30`
 - Rows without gap entries: `4`
 
 ## Historical Coverage Delta
@@ -45,14 +45,13 @@
 
 | symbols | relationships | pending | structured pending | identifiers | types | parse diagnostics |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 244 | 56 | 6 | 6 | 121 | 106 | 6 |
+| 265 | 63 | 6 | 6 | 121 | 106 | 6 |
 
 ## Gap Counts
 
 | capability | count |
 | --- | ---: |
 | `pending_relationships` | 30 |
-| `relationships` | 1 |
 | `types` | 8 |
 
 ## Open Capability Gaps
@@ -92,9 +91,6 @@
 | `regex` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | N/A — domain limitation. |
 | `markdown` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | N/A — domain limitation. |
 | `markdown` | `types` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | N/A — domain limitation. |
-| `toml` | `relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Implement domain-specific TOML reference extraction (Cargo.toml dependencies, pyproject tool tables, etc.) with exact resolution. |
-| `toml` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Re-evaluate after TOML relationships are implemented. |
-| `toml` | `types` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | N/A — domain limitation. |
 | `yaml` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | N/A — domain limitation. |
 | `yaml` | `types` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | N/A — domain limitation. |
 
@@ -136,7 +132,7 @@
 | `regex` | `tree-sitter-regex` | `current` | 1 | 5 | 2 | 0 | 0 | 3 | 5 | 0 | 1 |
 | `markdown` | `tree-sitter-md` | `current` | 1 | 4 | 1 | 0 | 0 | 0 | 0 | 0 | 2 |
 | `json` | `tree-sitter-json` | `current` | 2 | 15 | 1 | 1 | 1 | 0 | 0 | 0 | 1 |
-| `toml` | `tree-sitter-toml-ng` | `current` | 1 | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 3 |
+| `toml` | `tree-sitter-toml-ng` | `current` | 3 | 25 | 7 | 0 | 0 | 0 | 0 | 0 | 2 |
 | `yaml` | `tree-sitter-yaml` | `current` | 1 | 5 | 1 | 0 | 0 | 1 | 0 | 0 | 2 |
 
 ## Rows Without Gap Entries

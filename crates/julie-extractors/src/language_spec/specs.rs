@@ -277,7 +277,7 @@ pub(super) const LANGUAGE_SPECS: &[LanguageSpec] = &[
         "toml",
         &["toml"],
         "tree-sitter-toml-ng",
-        DATA_ONLY_CAPABILITIES,
+        RELATIONSHIP_DATA_CAPABILITIES,
         parser_toml,
         EMPTY,
     ),

@@ -5,9 +5,15 @@
 /// - Nested tables: [parent.child] -> SymbolKind::Module
 /// - Array tables: [[array_table]] -> SymbolKind::Module
 /// - Key-value pairs: key = value -> SymbolKind::Property
-use crate::base::{BaseExtractor, Identifier, Symbol, SymbolKind};
+use crate::base::{
+    BaseExtractor, Identifier, PendingRelationship, Relationship, StructuredPendingRelationship,
+    Symbol, SymbolKind,
+};
 use std::collections::HashMap;
 use std::path::Path;
+use tree_sitter::Tree;
+
+mod relationships;
 
 pub struct TomlExtractor {
     pub(crate) base: BaseExtractor,
@@ -213,5 +219,28 @@ impl TomlExtractor {
 
     pub fn infer_types(&self, _symbols: &[Symbol]) -> HashMap<String, String> {
         HashMap::new()
+    }
+
+    /// Extract domain-aware relationships (Phase 3.3): Cargo dependency
+    /// imports and pyproject tool-table references. Other tables emit
+    /// nothing; see `crates/julie-extractors/src/toml/relationships.rs`
+    /// for the file-name dispatch contract.
+    pub fn extract_relationships(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Relationship> {
+        let mut relationships = Vec::new();
+        relationships::extract_relationships_internal(
+            &self.base,
+            tree.root_node(),
+            symbols,
+            &mut relationships,
+        );
+        relationships
+    }
+
+    pub fn get_pending_relationships(&self) -> Vec<PendingRelationship> {
+        self.base.get_pending_relationships()
+    }
+
+    pub fn get_structured_pending_relationships(&self) -> Vec<StructuredPendingRelationship> {
+        self.base.get_structured_pending_relationships()
     }
 }

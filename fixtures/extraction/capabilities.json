@@ -1506,7 +1506,7 @@
       "dependency_status": "current",
       "capabilities": {
         "symbols": true,
-        "relationships": false,
+        "relationships": true,
         "pending_relationships": false,
         "identifiers": true,
         "types": false
@@ -1516,51 +1516,47 @@
           "name": "basic",
           "source": "fixtures/extraction/toml/basic/source.toml",
           "expected": "fixtures/extraction/toml/basic/expected.json"
+        },
+        {
+          "name": "cargo_deps",
+          "source": "fixtures/extraction/toml/cargo_deps/Cargo.toml",
+          "expected": "fixtures/extraction/toml/cargo_deps/expected.json"
+        },
+        {
+          "name": "pyproject",
+          "source": "fixtures/extraction/toml/pyproject/pyproject.toml",
+          "expected": "fixtures/extraction/toml/pyproject/expected.json"
         }
       ],
       "target_capabilities": {
         "symbols": true,
-        "relationships": false,
+        "relationships": true,
         "pending_relationships": false,
         "identifiers": true,
         "types": false
       },
       "capability_gaps": [
         {
-          "capability": "relationships",
-          "status": "open",
-          "reason": "TOML has no inter-key reference construct in the format itself. Domain-specific references (Cargo.toml [dependencies], pyproject [tool.*]) require schema-aware extraction not yet implemented.",
-          "required_closure": "Implement domain-specific TOML reference extraction (Cargo.toml dependencies, pyproject tool tables, etc.) with exact resolution.",
-          "evidence": {
-            "kind": "commit",
-            "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
-            "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
-          },
-          "planned_closure_task": "Phase 3.3"
-        },
-        {
           "capability": "pending_relationships",
-          "status": "open",
-          "reason": "Same scope as the relationships gap above. Depends on domain-specific TOML reference extraction being implemented first.",
-          "required_closure": "Re-evaluate after TOML relationships are implemented.",
+          "status": "exception",
+          "reason": "TOML has no cross-document construct that requires deferred resolution. All references in TOML are file-local (Cargo deps, pyproject tool tables). Domain limitation, not a gap.",
+          "required_closure": "N/A — domain limitation. TOML resolution is always intra-file.",
           "evidence": {
             "kind": "commit",
-            "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
-            "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
-          },
-          "planned_closure_task": "Phase 3.3"
+            "value": "2e4c50c7c9967a6963c1c4f74cc4da6c0f0965e7",
+            "command": "git show 2e4c50c7c9967a6963c1c4f74cc4da6c0f0965e7"
+          }
         },
         {
           "capability": "types",
-          "status": "open",
-          "reason": "TOML has no static type system. Value types (string/int/array) are format-level, not extracted as TypeInfo.",
+          "status": "exception",
+          "reason": "TOML has no static type system. Value types (string/int/array) are format-level, not extracted as TypeInfo. Domain limitation, not a gap.",
           "required_closure": "N/A — domain limitation.",
           "evidence": {
             "kind": "commit",
-            "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
-            "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
-          },
-          "planned_closure_task": "Phase 3.3"
+            "value": "2e4c50c7c9967a6963c1c4f74cc4da6c0f0965e7",
+            "command": "git show 2e4c50c7c9967a6963c1c4f74cc4da6c0f0965e7"
+          }
         }
       ]
     },
