@@ -113,6 +113,7 @@ impl WorkspacePool {
                 workspace_root.display()
             );
         }
+        crate::workspace::root_safety::reject_sensitive_workspace_root(&workspace_root)?;
 
         if let Some(julie_home) = self.indexes_dir.parent() {
             let daemon_paths = crate::paths::DaemonPaths::with_home(julie_home.to_path_buf());

@@ -435,6 +435,30 @@ async fn test_get_or_init_rejects_missing_workspace_without_creating_path_or_row
 }
 
 #[tokio::test]
+async fn test_get_or_init_rejects_sensitive_root_without_registering_row() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let daemon_db = Arc::new(DaemonDatabase::open(&tmp.path().join("daemon.db")).unwrap());
+    let indexes_dir = tmp.path().join("indexes");
+    std::fs::create_dir_all(&indexes_dir).unwrap();
+
+    let workspace_id = "sensitive_root_ws";
+    let pool = WorkspacePool::new(indexes_dir, Some(Arc::clone(&daemon_db)));
+
+    let result = pool
+        .get_or_init(workspace_id, std::path::PathBuf::from("/"))
+        .await;
+
+    assert!(
+        result.is_err(),
+        "sensitive filesystem roots must be rejected before initialization"
+    );
+    assert!(
+        daemon_db.get_workspace(workspace_id).unwrap().is_none(),
+        "sensitive root rejection must not leave a daemon registry row"
+    );
+}
+
+#[tokio::test]
 async fn test_session_attachment_detach_starts_watcher_grace() {
     use crate::daemon::watcher_pool::WatcherPool;
     use std::time::Duration;

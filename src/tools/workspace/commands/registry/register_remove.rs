@@ -38,6 +38,7 @@ impl ManageWorkspaceTool {
         let canonical_path = workspace_path
             .canonicalize()
             .map_err(|e| anyhow!("Failed to canonicalize workspace path '{}': {e}", path))?;
+        crate::workspace::root_safety::reject_sensitive_workspace_root(&canonical_path)?;
         let canonical_path_str = canonical_path.to_string_lossy().to_string();
 
         let existing = registry_store.get_workspace_by_path(&canonical_path_str)?;

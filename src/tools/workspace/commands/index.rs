@@ -129,6 +129,7 @@ impl ManageWorkspaceTool {
         let canonical_path = workspace_path
             .canonicalize()
             .unwrap_or_else(|_| workspace_path.clone());
+        crate::workspace::root_safety::reject_sensitive_workspace_root(&canonical_path)?;
 
         // Derive workspace_id for the gate — same logic used later when registering stats.
         let gate_workspace_id = if is_non_primary_target {

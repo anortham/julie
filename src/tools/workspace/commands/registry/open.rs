@@ -63,6 +63,7 @@ impl ManageWorkspaceTool {
             let canonical_path = PathBuf::from(expanded)
                 .canonicalize()
                 .map_err(|e| anyhow!("Failed to canonicalize workspace path '{}': {e}", path))?;
+            crate::workspace::root_safety::reject_sensitive_workspace_root(&canonical_path)?;
             let canonical_path_str = canonical_path.to_string_lossy().to_string();
 
             if let Some(row) = registry_store.get_workspace_by_path(&canonical_path_str)? {
@@ -140,11 +141,13 @@ impl ManageWorkspaceTool {
             }
             let workspace_id = row.workspace_id;
             let row_path = row.path;
+            let workspace_path = PathBuf::from(&row_path);
+            crate::workspace::root_safety::reject_sensitive_workspace_root(&workspace_path)?;
             let status = row.status;
             OpenTarget {
                 is_primary: current_primary_id.as_deref() == Some(workspace_id.as_str()),
                 workspace_id,
-                workspace_path: PathBuf::from(&row_path),
+                workspace_path,
                 canonical_path: row_path,
                 status,
             }

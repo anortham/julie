@@ -10,6 +10,7 @@
 
 pub mod mutation_gate;
 pub mod registry;
+pub(crate) mod root_safety;
 pub mod startup_hint;
 
 use crate::health::{EmbeddingState, ProjectionState, WatcherState};

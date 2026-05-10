@@ -179,58 +179,6 @@ impl Default for IndexingStatus {
     }
 }
 
-/// Reject paths that should never be auto-bound as a Julie primary workspace
-/// when the only signal is `process cwd`. Sensitive roots include the
-/// filesystem root, the user's home directory, common parent containers for
-/// home directories on each platform, and Windows system locations.
-fn is_sensitive_workspace_root(path: &std::path::Path) -> bool {
-    if path.parent().is_none() {
-        return true;
-    }
-    let target = normalize_sensitive_root_for_compare(path);
-    let mut forbidden: Vec<PathBuf> = Vec::new();
-    if let Some(home) = dirs::home_dir() {
-        forbidden.push(home);
-    }
-    #[cfg(target_os = "macos")]
-    {
-        forbidden.push(PathBuf::from("/Users"));
-        forbidden.push(PathBuf::from("/var/root"));
-    }
-    #[cfg(target_os = "linux")]
-    {
-        forbidden.push(PathBuf::from("/home"));
-        forbidden.push(PathBuf::from("/root"));
-    }
-    #[cfg(windows)]
-    {
-        forbidden.push(PathBuf::from(r"C:\Users"));
-        forbidden.push(PathBuf::from(r"C:\Windows"));
-        forbidden.push(PathBuf::from(r"C:\Windows\System32"));
-        forbidden.push(PathBuf::from(r"C:\Program Files"));
-        forbidden.push(PathBuf::from(r"C:\Program Files (x86)"));
-        forbidden.push(PathBuf::from(r"C:\ProgramData"));
-    }
-    forbidden
-        .iter()
-        .any(|candidate| normalize_sensitive_root_for_compare(candidate) == target)
-}
-
-fn normalize_sensitive_root_for_compare(path: &std::path::Path) -> String {
-    let raw = path.to_string_lossy().to_string();
-    let trimmed = raw.trim_end_matches(|c| c == '/' || c == '\\');
-    let normalized = if trimmed.is_empty() {
-        raw.as_str()
-    } else {
-        trimmed
-    };
-    if cfg!(windows) {
-        normalized.to_lowercase()
-    } else {
-        normalized.to_string()
-    }
-}
-
 /// Julie's custom handler for MCP messages
 ///
 /// This handler manages the core Julie functionality including:
@@ -443,18 +391,12 @@ impl JulieServerHandler {
         if !matches!(startup_hint.source, Some(WorkspaceStartupSource::Cwd)) {
             return Ok(());
         }
-        if is_sensitive_workspace_root(&startup_hint.path) {
-            anyhow::bail!(
-                "Refusing to use sensitive system path {} as Julie primary workspace from process cwd. \
-Set JULIE_WORKSPACE or launch the MCP server from a project directory.",
-                startup_hint.path.display()
-            );
-        }
-        Ok(())
+        crate::workspace::root_safety::reject_sensitive_cwd_workspace_root(&startup_hint.path)
     }
 
     fn primary_binding_for_root(&self, workspace_root: PathBuf) -> Result<PrimaryWorkspaceBinding> {
         let workspace_root = Self::canonicalize_workspace_path(workspace_root);
+        crate::workspace::root_safety::reject_sensitive_workspace_root(&workspace_root)?;
         let workspace_id =
             crate::workspace::registry::generate_workspace_id(&workspace_root.to_string_lossy())?;
         Ok(PrimaryWorkspaceBinding {
