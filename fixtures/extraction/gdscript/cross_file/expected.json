@@ -1,0 +1,176 @@
+{
+  "symbols": [
+    {
+      "key": "fixtures/extraction/gdscript/cross_file/source.gd:entry:11:0",
+      "name": "entry",
+      "kind": "function",
+      "language": "gdscript",
+      "file_path": "fixtures/extraction/gdscript/cross_file/source.gd",
+      "start_line": 11,
+      "start_column": 0,
+      "end_line": 13,
+      "end_column": 25,
+      "start_byte": 364,
+      "end_byte": 429,
+      "signature": "func entry() -> int:",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": null,
+      "metadata": {},
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/gdscript/cross_file/source.gd:local_helper:8:0",
+      "name": "local_helper",
+      "kind": "function",
+      "language": "gdscript",
+      "file_path": "fixtures/extraction/gdscript/cross_file/source.gd",
+      "start_line": 8,
+      "start_column": 0,
+      "end_line": 9,
+      "end_column": 13,
+      "start_byte": 321,
+      "end_byte": 362,
+      "signature": "func local_helper() -> int:",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": null,
+      "metadata": {},
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    }
+  ],
+  "relationships": [
+    {
+      "from_key": "fixtures/extraction/gdscript/cross_file/source.gd:entry:11:0",
+      "to_key": "fixtures/extraction/gdscript/cross_file/source.gd:local_helper:8:0",
+      "kind": "calls",
+      "file_path": "fixtures/extraction/gdscript/cross_file/source.gd",
+      "line_number": 13,
+      "confidence": "0.900",
+      "metadata": null
+    }
+  ],
+  "pending_relationships": [
+    {
+      "from_key": "fixtures/extraction/gdscript/cross_file/source.gd:entry:11:0",
+      "callee_name": "other_method",
+      "kind": "calls",
+      "file_path": "fixtures/extraction/gdscript/cross_file/source.gd",
+      "line_number": 12,
+      "confidence": "0.700"
+    }
+  ],
+  "structured_pending_relationships": [
+    {
+      "pending": {
+        "from_key": "fixtures/extraction/gdscript/cross_file/source.gd:entry:11:0",
+        "callee_name": "other_method",
+        "kind": "calls",
+        "file_path": "fixtures/extraction/gdscript/cross_file/source.gd",
+        "line_number": 12,
+        "confidence": "0.700"
+      },
+      "target": {
+        "display_name": "other_method",
+        "terminal_name": "other_method",
+        "receiver": null,
+        "namespace_path": [],
+        "import_context": null
+      },
+      "caller_scope_key": "fixtures/extraction/gdscript/cross_file/source.gd:entry:11:0"
+    }
+  ],
+  "identifiers": [
+    {
+      "key": "fixtures/extraction/gdscript/cross_file/source.gd:int:type_usage:11:16",
+      "name": "int",
+      "kind": "type_usage",
+      "language": "gdscript",
+      "file_path": "fixtures/extraction/gdscript/cross_file/source.gd",
+      "start_line": 11,
+      "start_column": 16,
+      "end_line": 11,
+      "end_column": 19,
+      "start_byte": 380,
+      "end_byte": 383,
+      "containing_key": "fixtures/extraction/gdscript/cross_file/source.gd:entry:11:0",
+      "target_key": null,
+      "confidence": "1.000"
+    },
+    {
+      "key": "fixtures/extraction/gdscript/cross_file/source.gd:int:type_usage:8:23",
+      "name": "int",
+      "kind": "type_usage",
+      "language": "gdscript",
+      "file_path": "fixtures/extraction/gdscript/cross_file/source.gd",
+      "start_line": 8,
+      "start_column": 23,
+      "end_line": 8,
+      "end_column": 26,
+      "start_byte": 344,
+      "end_byte": 347,
+      "containing_key": "fixtures/extraction/gdscript/cross_file/source.gd:local_helper:8:0",
+      "target_key": null,
+      "confidence": "1.000"
+    },
+    {
+      "key": "fixtures/extraction/gdscript/cross_file/source.gd:local_helper:call:13:11",
+      "name": "local_helper",
+      "kind": "call",
+      "language": "gdscript",
+      "file_path": "fixtures/extraction/gdscript/cross_file/source.gd",
+      "start_line": 13,
+      "start_column": 11,
+      "end_line": 13,
+      "end_column": 23,
+      "start_byte": 415,
+      "end_byte": 427,
+      "containing_key": "fixtures/extraction/gdscript/cross_file/source.gd:entry:11:0",
+      "target_key": null,
+      "confidence": "1.000"
+    },
+    {
+      "key": "fixtures/extraction/gdscript/cross_file/source.gd:other_method:call:12:4",
+      "name": "other_method",
+      "kind": "call",
+      "language": "gdscript",
+      "file_path": "fixtures/extraction/gdscript/cross_file/source.gd",
+      "start_line": 12,
+      "start_column": 4,
+      "end_line": 12,
+      "end_column": 16,
+      "start_byte": 389,
+      "end_byte": 401,
+      "containing_key": "fixtures/extraction/gdscript/cross_file/source.gd:entry:11:0",
+      "target_key": null,
+      "confidence": "1.000"
+    }
+  ],
+  "types": [
+    {
+      "symbol_key": "fixtures/extraction/gdscript/cross_file/source.gd:entry:11:0",
+      "resolved_type": "int",
+      "generic_params": null,
+      "constraints": null,
+      "is_inferred": true,
+      "language": "gdscript",
+      "metadata": null
+    },
+    {
+      "symbol_key": "fixtures/extraction/gdscript/cross_file/source.gd:local_helper:8:0",
+      "resolved_type": "int",
+      "generic_params": null,
+      "constraints": null,
+      "is_inferred": true,
+      "language": "gdscript",
+      "metadata": null
+    }
+  ],
+  "parse_diagnostics": []
+}

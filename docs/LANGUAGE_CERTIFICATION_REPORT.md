@@ -4,15 +4,15 @@
 
 ## Summary
 
-- Current HEAD: `3f9f57a85399188e87abd89c2d185c73fbfff555`
+- Current HEAD: `a301ad04fc54c430193556e31954c14032b7f2ee`
 - Registry rows: `36`
-- Golden fixtures: `46`
+- Golden fixtures: `47`
 - Historical matrix rows: `33`
 - Raw historical OSS reports: `13`
 - Current real-world verified repos: `13`
 - Current real-world skipped repos: `0`
-- Rows with open gaps: `25`
-- Rows without gap entries: `9`
+- Rows with open gaps: `24`
+- Rows without gap entries: `10`
 
 ## Historical Coverage Delta
 
@@ -45,13 +45,13 @@
 
 | symbols | relationships | pending | structured pending | identifiers | types | parse diagnostics |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 284 | 68 | 12 | 12 | 135 | 115 | 6 |
+| 286 | 69 | 13 | 13 | 139 | 117 | 6 |
 
 ## Gap Counts
 
 | capability | count |
 | --- | ---: |
-| `pending_relationships` | 25 |
+| `pending_relationships` | 24 |
 | `types` | 8 |
 
 ## Open Capability Gaps
@@ -81,7 +81,6 @@
 | `r` | `types` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | N/A — domain limitation. Future work could harvest roxygen type annotations into TypeInfo. |
 | `bash` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
 | `powershell` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
-| `gdscript` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
 | `razor` | `pending_relationships` | `open` | `commit:c729e8636f6bde07fb5596035a76d24db9c47066` | Lock the no-pending classification with `razor_pending_relationships_handled_by_csharp_embed` test in Phase 4b.razor; flip to status=exception with the locking test as evidence once it lands. |
 | `regex` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | N/A — domain limitation. |
 | `markdown` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | N/A — domain limitation. |
@@ -121,7 +120,7 @@
 | `r` | `tree-sitter-r` | `current` | 1 | 4 | 1 | 0 | 0 | 13 | 0 | 0 | 2 |
 | `bash` | `tree-sitter-bash` | `current` | 1 | 7 | 1 | 0 | 0 | 2 | 3 | 0 | 1 |
 | `powershell` | `tree-sitter-powershell` | `git_pinned` | 1 | 9 | 1 | 0 | 0 | 4 | 3 | 0 | 1 |
-| `gdscript` | `tree-sitter-gdscript` | `current` | 1 | 7 | 1 | 0 | 0 | 8 | 4 | 0 | 1 |
+| `gdscript` | `tree-sitter-gdscript` | `current` | 2 | 9 | 2 | 1 | 1 | 12 | 6 | 0 | 0 |
 | `razor` | `tree-sitter-razor` | `git_pinned` | 1 | 4 | 1 | 0 | 0 | 2 | 4 | 0 | 1 |
 | `sql` | `tree-sitter-sequel` | `current` | 2 | 15 | 4 | 1 | 1 | 3 | 13 | 1 | 0 |
 | `regex` | `tree-sitter-regex` | `current` | 1 | 5 | 2 | 0 | 0 | 3 | 5 | 0 | 1 |
@@ -132,4 +131,4 @@
 
 ## Rows Without Gap Entries
 
-`rust`, `go`, `zig`, `tsx`, `jsx`, `vue`, `vbnet`, `dart`, `sql`
+`rust`, `go`, `zig`, `tsx`, `jsx`, `vue`, `vbnet`, `dart`, `gdscript`, `sql`
