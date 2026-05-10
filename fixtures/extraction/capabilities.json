@@ -331,6 +331,11 @@
           "name": "basic",
           "source": "fixtures/extraction/jsx/basic/source.jsx",
           "expected": "fixtures/extraction/jsx/basic/expected.json"
+        },
+        {
+          "name": "cross_file",
+          "source": "fixtures/extraction/jsx/cross_file/source.jsx",
+          "expected": "fixtures/extraction/jsx/cross_file/expected.json"
         }
       ],
       "target_capabilities": {
