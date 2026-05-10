@@ -56,6 +56,9 @@ fn visit_relationships(
             );
             extract_call_relationships(extractor, node, symbols, relationships);
         }
+        "object_creation_expression" => {
+            extract_object_creation_relationships(extractor, node, symbols, relationships);
+        }
         _ => {}
     }
 
@@ -271,6 +274,103 @@ fn extract_constructor_parameter_relationships(
             }
         }
     }
+}
+
+fn extract_object_creation_relationships(
+    extractor: &mut CSharpExtractor,
+    node: tree_sitter::Node,
+    symbols: &[Symbol],
+    relationships: &mut Vec<Relationship>,
+) {
+    let type_name = {
+        let base = extractor.get_base();
+        find_first_type_identifier(base, node)
+    };
+    let Some(type_name) = type_name else {
+        return;
+    };
+    if type_name.is_empty() {
+        return;
+    }
+
+    let target = UnresolvedTarget::simple(type_name);
+
+    let caller = extractor
+        .get_base()
+        .find_containing_symbol(&node, symbols)
+        .filter(|symbol| {
+            matches!(
+                symbol.kind,
+                SymbolKind::Function
+                    | SymbolKind::Method
+                    | SymbolKind::Constructor
+                    | SymbolKind::Class
+                    | SymbolKind::Struct
+            )
+        })
+        .cloned();
+
+    let Some(caller) = caller else {
+        return;
+    };
+
+    let symbol_index = ScopedSymbolIndex::new(symbols);
+    let resolution = symbol_index.resolve_call_target(&target.terminal_name, Some(&caller), None);
+
+    if let LocalTargetResolution::Resolved(type_symbol) = resolution {
+        if matches!(
+            type_symbol.kind,
+            SymbolKind::Class | SymbolKind::Struct | SymbolKind::Type
+        ) {
+            relationships.push(Relationship {
+                id: format!(
+                    "{}_{}_{:?}_{}",
+                    caller.id,
+                    type_symbol.id,
+                    RelationshipKind::Instantiates,
+                    node.start_position().row
+                ),
+                from_symbol_id: caller.id.clone(),
+                to_symbol_id: type_symbol.id.clone(),
+                kind: RelationshipKind::Instantiates,
+                file_path: extractor.get_base().file_path.clone(),
+                line_number: node.start_position().row as u32 + 1,
+                confidence: 0.9,
+                metadata: None,
+            });
+            return;
+        }
+    }
+
+    let pending = extractor.get_base().create_pending_relationship(
+        caller.id.clone(),
+        target,
+        RelationshipKind::Instantiates,
+        &node,
+        Some(caller.id.clone()),
+        Some(0.9),
+    );
+    extractor.add_structured_pending_relationship(pending);
+}
+
+fn find_first_type_identifier(
+    base: &crate::base::BaseExtractor,
+    node: tree_sitter::Node,
+) -> Option<String> {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        match child.kind() {
+            "identifier" => return Some(base.get_node_text(&child)),
+            "qualified_name" | "generic_name" | "predefined_type" => {
+                if let Some(name) = find_first_type_identifier(base, child) {
+                    return Some(name);
+                }
+                return Some(base.get_node_text(&child));
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 /// Extract method call relationships

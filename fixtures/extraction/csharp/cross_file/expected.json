@@ -1,0 +1,206 @@
+{
+  "symbols": [
+    {
+      "key": "fixtures/extraction/csharp/cross_file/Source.cs:Entry:13:4",
+      "name": "Entry",
+      "kind": "method",
+      "language": "csharp",
+      "file_path": "fixtures/extraction/csharp/cross_file/Source.cs",
+      "start_line": 13,
+      "start_column": 4,
+      "end_line": 17,
+      "end_column": 5,
+      "start_byte": 390,
+      "end_byte": 484,
+      "signature": "public int Entry()",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": "fixtures/extraction/csharp/cross_file/Source.cs:Source:11:0",
+      "metadata": {},
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/csharp/cross_file/Source.cs:LocalHelper:19:4",
+      "name": "LocalHelper",
+      "kind": "method",
+      "language": "csharp",
+      "file_path": "fixtures/extraction/csharp/cross_file/Source.cs",
+      "start_line": 19,
+      "start_column": 4,
+      "end_line": 22,
+      "end_column": 5,
+      "start_byte": 490,
+      "end_byte": 546,
+      "signature": "private int LocalHelper()",
+      "doc_comment": null,
+      "visibility": "Private",
+      "parent_key": "fixtures/extraction/csharp/cross_file/Source.cs:Source:11:0",
+      "metadata": {},
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/csharp/cross_file/Source.cs:OtherNs:7:0",
+      "name": "OtherNs",
+      "kind": "import",
+      "language": "csharp",
+      "file_path": "fixtures/extraction/csharp/cross_file/Source.cs",
+      "start_line": 7,
+      "start_column": 0,
+      "end_line": 7,
+      "end_column": 14,
+      "start_byte": 328,
+      "end_byte": 342,
+      "signature": "using OtherNs",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": null,
+      "metadata": {},
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/csharp/cross_file/Source.cs:Source:11:0",
+      "name": "Source",
+      "kind": "class",
+      "language": "csharp",
+      "file_path": "fixtures/extraction/csharp/cross_file/Source.cs",
+      "start_line": 11,
+      "start_column": 0,
+      "end_line": 23,
+      "end_column": 1,
+      "start_byte": 364,
+      "end_byte": 548,
+      "signature": "public class Source",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": null,
+      "metadata": {
+        "csharp_visibility": "public"
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    }
+  ],
+  "relationships": [
+    {
+      "from_key": "fixtures/extraction/csharp/cross_file/Source.cs:Entry:13:4",
+      "to_key": "fixtures/extraction/csharp/cross_file/Source.cs:LocalHelper:19:4",
+      "kind": "calls",
+      "file_path": "fixtures/extraction/csharp/cross_file/Source.cs",
+      "line_number": 16,
+      "confidence": "0.900",
+      "metadata": null
+    }
+  ],
+  "pending_relationships": [
+    {
+      "from_key": "fixtures/extraction/csharp/cross_file/Source.cs:Entry:13:4",
+      "callee_name": "OtherClass",
+      "kind": "instantiates",
+      "file_path": "fixtures/extraction/csharp/cross_file/Source.cs",
+      "line_number": 15,
+      "confidence": "0.900"
+    }
+  ],
+  "structured_pending_relationships": [
+    {
+      "pending": {
+        "from_key": "fixtures/extraction/csharp/cross_file/Source.cs:Entry:13:4",
+        "callee_name": "OtherClass",
+        "kind": "instantiates",
+        "file_path": "fixtures/extraction/csharp/cross_file/Source.cs",
+        "line_number": 15,
+        "confidence": "0.900"
+      },
+      "target": {
+        "display_name": "OtherClass",
+        "terminal_name": "OtherClass",
+        "receiver": null,
+        "namespace_path": [],
+        "import_context": null
+      },
+      "caller_scope_key": "fixtures/extraction/csharp/cross_file/Source.cs:Entry:13:4"
+    }
+  ],
+  "identifiers": [
+    {
+      "key": "fixtures/extraction/csharp/cross_file/Source.cs:LocalHelper:call:16:15",
+      "name": "LocalHelper",
+      "kind": "call",
+      "language": "csharp",
+      "file_path": "fixtures/extraction/csharp/cross_file/Source.cs",
+      "start_line": 16,
+      "start_column": 15,
+      "end_line": 16,
+      "end_column": 26,
+      "start_byte": 464,
+      "end_byte": 475,
+      "containing_key": "fixtures/extraction/csharp/cross_file/Source.cs:Entry:13:4",
+      "target_key": null,
+      "confidence": "1.000"
+    },
+    {
+      "key": "fixtures/extraction/csharp/cross_file/Source.cs:OtherClass:call:15:20",
+      "name": "OtherClass",
+      "kind": "call",
+      "language": "csharp",
+      "file_path": "fixtures/extraction/csharp/cross_file/Source.cs",
+      "start_line": 15,
+      "start_column": 20,
+      "end_line": 15,
+      "end_column": 30,
+      "start_byte": 435,
+      "end_byte": 445,
+      "containing_key": "fixtures/extraction/csharp/cross_file/Source.cs:Entry:13:4",
+      "target_key": null,
+      "confidence": "1.000"
+    },
+    {
+      "key": "fixtures/extraction/csharp/cross_file/Source.cs:OtherClass:type_usage:15:20",
+      "name": "OtherClass",
+      "kind": "type_usage",
+      "language": "csharp",
+      "file_path": "fixtures/extraction/csharp/cross_file/Source.cs",
+      "start_line": 15,
+      "start_column": 20,
+      "end_line": 15,
+      "end_column": 30,
+      "start_byte": 435,
+      "end_byte": 445,
+      "containing_key": "fixtures/extraction/csharp/cross_file/Source.cs:Entry:13:4",
+      "target_key": null,
+      "confidence": "1.000"
+    }
+  ],
+  "types": [
+    {
+      "symbol_key": "fixtures/extraction/csharp/cross_file/Source.cs:Entry:13:4",
+      "resolved_type": "int",
+      "generic_params": null,
+      "constraints": null,
+      "is_inferred": true,
+      "language": "csharp",
+      "metadata": null
+    },
+    {
+      "symbol_key": "fixtures/extraction/csharp/cross_file/Source.cs:LocalHelper:19:4",
+      "resolved_type": "int",
+      "generic_params": null,
+      "constraints": null,
+      "is_inferred": true,
+      "language": "csharp",
+      "metadata": null
+    }
+  ],
+  "parse_diagnostics": []
+}
