@@ -4,15 +4,15 @@
 
 ## Summary
 
-- Current HEAD: `386fec9a3acbaa286779b4629ccfcc030b0ccac6`
+- Current HEAD: `86b774499e0c795bdc43688dd8fcd66f8d680889`
 - Registry rows: `36`
-- Golden fixtures: `54`
+- Golden fixtures: `55`
 - Historical matrix rows: `33`
 - Raw historical OSS reports: `13`
 - Current real-world verified repos: `13`
 - Current real-world skipped repos: `0`
-- Rows with open gaps: `19`
-- Rows without gap entries: `15`
+- Rows with open gaps: `18`
+- Rows without gap entries: `16`
 
 ## Historical Coverage Delta
 
@@ -45,20 +45,19 @@
 
 | symbols | relationships | pending | structured pending | identifiers | types | parse diagnostics |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 316 | 76 | 21 | 21 | 156 | 127 | 6 |
+| 319 | 78 | 22 | 22 | 158 | 129 | 6 |
 
 ## Gap Counts
 
 | capability | count |
 | --- | ---: |
-| `pending_relationships` | 19 |
+| `pending_relationships` | 18 |
 | `types` | 8 |
 
 ## Open Capability Gaps
 
 | language | capability | status | evidence | required closure |
 | --- | --- | --- | --- | --- |
-| `c` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
 | `cpp` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
 | `html` | `pending_relationships` | `open` | `commit:c729e8636f6bde07fb5596035a76d24db9c47066` | Emit pending relationships for external script/style src=... references; close in Phase 4b (HTML task). |
 | `css` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | N/A — domain limitation. |
@@ -88,7 +87,7 @@
 | language | parser | dependency | fixtures | symbols | relationships | pending | structured pending | identifiers | types | diagnostics | gaps |
 | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | `rust` | `tree-sitter-rust` | `current` | 2 | 8 | 2 | 2 | 2 | 7 | 5 | 0 | 0 |
-| `c` | `tree-sitter-c` | `current` | 1 | 6 | 2 | 0 | 0 | 3 | 3 | 0 | 1 |
+| `c` | `tree-sitter-c` | `current` | 2 | 9 | 4 | 1 | 1 | 5 | 5 | 0 | 0 |
 | `cpp` | `tree-sitter-cpp` | `current` | 1 | 9 | 4 | 0 | 0 | 3 | 6 | 0 | 1 |
 | `go` | `tree-sitter-go` | `current` | 3 | 18 | 2 | 1 | 1 | 7 | 5 | 5 | 0 |
 | `zig` | `tree-sitter-zig` | `current` | 2 | 9 | 3 | 1 | 1 | 6 | 6 | 0 | 0 |
@@ -126,4 +125,4 @@
 
 ## Rows Without Gap Entries
 
-`rust`, `go`, `zig`, `typescript`, `tsx`, `javascript`, `jsx`, `vue`, `python`, `java`, `csharp`, `vbnet`, `dart`, `gdscript`, `sql`
+`rust`, `c`, `go`, `zig`, `typescript`, `tsx`, `javascript`, `jsx`, `vue`, `python`, `java`, `csharp`, `vbnet`, `dart`, `gdscript`, `sql`
