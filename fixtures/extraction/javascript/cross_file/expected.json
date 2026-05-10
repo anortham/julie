@@ -1,0 +1,190 @@
+{
+  "symbols": [
+    {
+      "key": "fixtures/extraction/javascript/cross_file/source.js:entry:13:0",
+      "name": "entry",
+      "kind": "export",
+      "language": "javascript",
+      "file_path": "fixtures/extraction/javascript/cross_file/source.js",
+      "start_line": 13,
+      "start_column": 0,
+      "end_line": 16,
+      "end_column": 1,
+      "start_byte": 403,
+      "end_byte": 468,
+      "signature": "export function entry() {\n    foo();\n    return local_helper();\n}",
+      "doc_comment": null,
+      "visibility": null,
+      "parent_key": null,
+      "metadata": {
+        "exportedName": "entry",
+        "isDefault": false,
+        "isNamed": true
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/javascript/cross_file/source.js:entry:13:7",
+      "name": "entry",
+      "kind": "function",
+      "language": "javascript",
+      "file_path": "fixtures/extraction/javascript/cross_file/source.js",
+      "start_line": 13,
+      "start_column": 7,
+      "end_line": 16,
+      "end_column": 1,
+      "start_byte": 410,
+      "end_byte": 468,
+      "signature": "function entry()",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": "fixtures/extraction/javascript/cross_file/source.js:entry:13:0",
+      "metadata": {
+        "isArrowFunction": false,
+        "isAsync": false,
+        "isExpression": false,
+        "isGenerator": false,
+        "parameters": []
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/javascript/cross_file/source.js:foo:7:0",
+      "name": "foo",
+      "kind": "import",
+      "language": "javascript",
+      "file_path": "fixtures/extraction/javascript/cross_file/source.js",
+      "start_line": 7,
+      "start_column": 0,
+      "end_line": 7,
+      "end_column": 30,
+      "start_byte": 327,
+      "end_byte": 357,
+      "signature": "import { foo } from './other';",
+      "doc_comment": null,
+      "visibility": null,
+      "parent_key": null,
+      "metadata": {
+        "isDefault": false,
+        "isNamespace": false,
+        "source": "./other",
+        "specifier": "foo"
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/javascript/cross_file/source.js:local_helper:9:0",
+      "name": "local_helper",
+      "kind": "function",
+      "language": "javascript",
+      "file_path": "fixtures/extraction/javascript/cross_file/source.js",
+      "start_line": 9,
+      "start_column": 0,
+      "end_line": 11,
+      "end_column": 1,
+      "start_byte": 359,
+      "end_byte": 401,
+      "signature": "function local_helper()",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": null,
+      "metadata": {
+        "isArrowFunction": false,
+        "isAsync": false,
+        "isExpression": false,
+        "isGenerator": false,
+        "parameters": []
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    }
+  ],
+  "relationships": [
+    {
+      "from_key": "fixtures/extraction/javascript/cross_file/source.js:entry:13:7",
+      "to_key": "fixtures/extraction/javascript/cross_file/source.js:local_helper:9:0",
+      "kind": "calls",
+      "file_path": "fixtures/extraction/javascript/cross_file/source.js",
+      "line_number": 15,
+      "confidence": "1.000",
+      "metadata": null
+    }
+  ],
+  "pending_relationships": [
+    {
+      "from_key": "fixtures/extraction/javascript/cross_file/source.js:entry:13:7",
+      "callee_name": "foo",
+      "kind": "calls",
+      "file_path": "fixtures/extraction/javascript/cross_file/source.js",
+      "line_number": 14,
+      "confidence": "0.800"
+    }
+  ],
+  "structured_pending_relationships": [
+    {
+      "pending": {
+        "from_key": "fixtures/extraction/javascript/cross_file/source.js:entry:13:7",
+        "callee_name": "foo",
+        "kind": "calls",
+        "file_path": "fixtures/extraction/javascript/cross_file/source.js",
+        "line_number": 14,
+        "confidence": "0.800"
+      },
+      "target": {
+        "display_name": "foo",
+        "terminal_name": "foo",
+        "receiver": null,
+        "namespace_path": [],
+        "import_context": "foo"
+      },
+      "caller_scope_key": "fixtures/extraction/javascript/cross_file/source.js:entry:13:7"
+    }
+  ],
+  "identifiers": [
+    {
+      "key": "fixtures/extraction/javascript/cross_file/source.js:foo:call:14:4",
+      "name": "foo",
+      "kind": "call",
+      "language": "javascript",
+      "file_path": "fixtures/extraction/javascript/cross_file/source.js",
+      "start_line": 14,
+      "start_column": 4,
+      "end_line": 14,
+      "end_column": 7,
+      "start_byte": 433,
+      "end_byte": 436,
+      "containing_key": "fixtures/extraction/javascript/cross_file/source.js:entry:13:7",
+      "target_key": null,
+      "confidence": "1.000"
+    },
+    {
+      "key": "fixtures/extraction/javascript/cross_file/source.js:local_helper:call:15:11",
+      "name": "local_helper",
+      "kind": "call",
+      "language": "javascript",
+      "file_path": "fixtures/extraction/javascript/cross_file/source.js",
+      "start_line": 15,
+      "start_column": 11,
+      "end_line": 15,
+      "end_column": 23,
+      "start_byte": 451,
+      "end_byte": 463,
+      "containing_key": "fixtures/extraction/javascript/cross_file/source.js:entry:13:7",
+      "target_key": null,
+      "confidence": "1.000"
+    }
+  ],
+  "types": [],
+  "parse_diagnostics": []
+}

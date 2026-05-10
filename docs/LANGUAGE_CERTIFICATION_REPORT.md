@@ -4,15 +4,15 @@
 
 ## Summary
 
-- Current HEAD: `5495e7a3ce2d6e9e5c52eb8cf5573c68e211d73c`
+- Current HEAD: `fab5ec331aa0b22e2091608ed50eff7f079182aa`
 - Registry rows: `36`
-- Golden fixtures: `52`
+- Golden fixtures: `53`
 - Historical matrix rows: `33`
 - Raw historical OSS reports: `13`
 - Current real-world verified repos: `13`
 - Current real-world skipped repos: `0`
-- Rows with open gaps: `20`
-- Rows without gap entries: `14`
+- Rows with open gaps: `19`
+- Rows without gap entries: `15`
 
 ## Historical Coverage Delta
 
@@ -45,13 +45,13 @@
 
 | symbols | relationships | pending | structured pending | identifiers | types | parse diagnostics |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 307 | 74 | 19 | 19 | 152 | 127 | 6 |
+| 311 | 75 | 20 | 20 | 154 | 127 | 6 |
 
 ## Gap Counts
 
 | capability | count |
 | --- | ---: |
-| `pending_relationships` | 20 |
+| `pending_relationships` | 19 |
 | `types` | 8 |
 
 ## Open Capability Gaps
@@ -60,7 +60,6 @@
 | --- | --- | --- | --- | --- |
 | `c` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
 | `cpp` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
-| `javascript` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
 | `html` | `pending_relationships` | `open` | `commit:c729e8636f6bde07fb5596035a76d24db9c47066` | Emit pending relationships for external script/style src=... references; close in Phase 4b (HTML task). |
 | `css` | `pending_relationships` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | N/A — domain limitation. |
 | `css` | `types` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | N/A — domain limitation. |
@@ -95,7 +94,7 @@
 | `zig` | `tree-sitter-zig` | `current` | 2 | 9 | 3 | 1 | 1 | 6 | 6 | 0 | 0 |
 | `typescript` | `tree-sitter-typescript` | `current` | 2 | 13 | 3 | 1 | 1 | 5 | 4 | 0 | 0 |
 | `tsx` | `tree-sitter-typescript` | `current` | 2 | 10 | 2 | 2 | 2 | 7 | 5 | 0 | 0 |
-| `javascript` | `tree-sitter-javascript` | `current` | 1 | 5 | 1 | 0 | 0 | 3 | 0 | 0 | 1 |
+| `javascript` | `tree-sitter-javascript` | `current` | 2 | 9 | 2 | 1 | 1 | 5 | 0 | 0 | 0 |
 | `jsx` | `tree-sitter-javascript` | `current` | 1 | 4 | 2 | 1 | 1 | 3 | 0 | 0 | 0 |
 | `html` | `tree-sitter-html` | `current` | 1 | 11 | 1 | 0 | 0 | 2 | 10 | 0 | 1 |
 | `css` | `tree-sitter-css` | `current` | 1 | 6 | 1 | 0 | 0 | 4 | 0 | 0 | 2 |
@@ -127,4 +126,4 @@
 
 ## Rows Without Gap Entries
 
-`rust`, `go`, `zig`, `typescript`, `tsx`, `jsx`, `vue`, `python`, `java`, `csharp`, `vbnet`, `dart`, `gdscript`, `sql`
+`rust`, `go`, `zig`, `typescript`, `tsx`, `javascript`, `jsx`, `vue`, `python`, `java`, `csharp`, `vbnet`, `dart`, `gdscript`, `sql`
