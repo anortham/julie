@@ -564,15 +564,18 @@ fn load_test_inventory(root: &Path) -> std::collections::HashSet<String> {
         .expect("cargo nextest list");
     let stdout = String::from_utf8_lossy(&output.stdout);
     let mut names = std::collections::HashSet::new();
-    for line in stdout.lines() {
-        if let Ok(v) = serde_json::from_str::<Value>(line) {
-            if let Some(test_name) = v
-                .get("test")
-                .and_then(|t| t.get("name"))
-                .and_then(|n| n.as_str())
-            {
-                if let Some(bare) = test_name.split("::").last() {
-                    names.insert(bare.to_string());
+    if let Ok(root_value) = serde_json::from_str::<Value>(&stdout) {
+        if let Some(suites) = root_value.get("rust-suites").and_then(Value::as_object) {
+            for (_suite_name, suite_value) in suites {
+                let Some(testcases) = suite_value.get("testcases").and_then(Value::as_object)
+                else {
+                    continue;
+                };
+                for full_name in testcases.keys() {
+                    names.insert(full_name.clone());
+                    if let Some(bare) = full_name.split("::").last() {
+                        names.insert(bare.to_string());
+                    }
                 }
             }
         }

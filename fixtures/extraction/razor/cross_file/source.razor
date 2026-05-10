@@ -1,0 +1,19 @@
+@* Phase 4b fixture: Razor cross-file refs are handled by the embedded
+   C# pipeline, not by Razor's pending path. This fixture locks the
+   no-pending classification — Razor must NOT emit structured pending
+   for @using directives or @code-block C# call sites. *@
+
+@page "/example"
+@using OtherProject.Models
+
+<h3>Example Page</h3>
+<p>@LocalHelper()</p>
+
+@code {
+    private int LocalHelper() { return 42; }
+
+    private void Entry() {
+        var item = new ItemFromOther();
+        _ = LocalHelper();
+    }
+}

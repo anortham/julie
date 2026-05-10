@@ -1116,6 +1116,11 @@
           "name": "basic",
           "source": "fixtures/extraction/razor/basic/source.razor",
           "expected": "fixtures/extraction/razor/basic/expected.json"
+        },
+        {
+          "name": "cross_file",
+          "source": "fixtures/extraction/razor/cross_file/source.razor",
+          "expected": "fixtures/extraction/razor/cross_file/expected.json"
         }
       ],
       "target_capabilities": {
@@ -1128,15 +1133,14 @@
       "capability_gaps": [
         {
           "capability": "pending_relationships",
-          "status": "open",
-          "reason": "Razor @using directives resolve at extraction time to namespace symbols. Cross-file C# references go through the embedded C# pipeline, not through Razor's pending path.",
-          "required_closure": "Lock the no-pending classification with `razor_pending_relationships_handled_by_csharp_embed` test in Phase 4b.razor; flip to status=exception with the locking test as evidence once it lands.",
+          "status": "exception",
+          "reason": "Razor cross-file references resolve through the embedded C# pipeline, not Razor’s own pending path. Locked by razor_pending_relationships_handled_by_csharp_embed test (Phase 4b.razor).",
+          "required_closure": "N/A — domain classification. Locking test in crates/julie-extractors/src/tests/razor/cross_file_pending.rs enforces no-pending classification.",
           "evidence": {
-            "kind": "commit",
-            "value": "c729e8636f6bde07fb5596035a76d24db9c47066",
-            "command": "git show c729e8636f6bde07fb5596035a76d24db9c47066"
-          },
-          "planned_closure_task": "Phase 4b.razor"
+            "kind": "test",
+            "value": "razor_pending_relationships_handled_by_csharp_embed",
+            "command": "cargo nextest run -p julie-extractors --lib tests::razor::cross_file_pending::razor_pending_relationships_handled_by_csharp_embed"
+          }
         }
       ]
     },
