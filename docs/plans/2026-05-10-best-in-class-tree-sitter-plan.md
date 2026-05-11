@@ -1970,9 +1970,10 @@ git commit -m "docs: add live MCP dogfood handoff note for user sign-off"
 | Final extractors bucket | `cargo xtask test bucket extractors` | release-extractors | 94b7f5a3 | Pass — 4/4 commands in 27.1s | 2026-05-10T23:16:49Z | No |
 | Final parser-upgrade bucket | `cargo xtask test bucket parser-upgrade` | release-parser-upgrade | 94b7f5a3 | Pass — 2/2 commands in 1.6s | 2026-05-10T23:16:49Z | No |
 | Final changed tier | `cargo xtask test changed` | release-changed | 94b7f5a3 | Pass — clean tree, no buckets matched | 2026-05-10T23:16:49Z | No |
-| Final system tier | `cargo xtask test system` | release-system | _user-run_ | Pending — broad-tests pre-tool hook blocked autonomous run; handoff doc lists for user | _user-run_ | No |
-| Final dogfood tier | `cargo xtask test dogfood` | release-dogfood | _user-run_ | Pending — broad-tests pre-tool hook blocked autonomous run; handoff doc lists for user | _user-run_ | No |
-| Final full tier | `cargo xtask test full` | release-full | _user-run_ | Pending — broad-tests pre-tool hook blocked autonomous run; handoff doc lists for user | _user-run_ | No |
+| Final system tier | `cargo xtask test system` | release-system | 61a27e42 | Pass — 6/6 buckets in 86.5s (workspace_isolation_smoke matcher repaired to the new line-grouped fast_search output) | 2026-05-11T00:12:55Z | No |
+| Final dogfood tier | `cargo xtask test dogfood` | release-dogfood | 61a27e42 | Pass — 2/2 buckets in 225.3s (tools-dogfood-repo-index + search-quality) | 2026-05-11T00:12:55Z | No |
+| Final full tier | `cargo xtask test full` | release-full | 61a27e42 | Pass — 40/40 buckets in 664.4s | 2026-05-11T00:12:55Z | No |
+| Final dev tier | `cargo xtask test dev` | release-dev | 61a27e42 | Pass — 32/32 buckets in 354.1s | 2026-05-11T00:12:55Z | No |
 | Release build | `cargo build --release` | release-build | 94b7f5a3 | Pass — 3m 10s | 2026-05-10T23:16:49Z | No |
 | Examples build | `cargo build --examples -p julie-extractors` | release-examples | 94b7f5a3 | Pass | 2026-05-10T23:16:49Z | No |
 | Doctest | `cargo test -p julie-extractors --doc` | release-doctest | 94b7f5a3 | Pass — 1 doctest | 2026-05-10T23:16:49Z | No |

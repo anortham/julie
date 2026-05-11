@@ -190,7 +190,7 @@ These are known gaps against the fixed target. This list is allowed to grow as t
 | `capability_matrix_negative_cases_emit_no_wrong_edges` activated | Closed 2026-05-10 | De-ignored in `crates/julie-extractors/src/tests/capability_matrix.rs`; accepted fixtures broadened to `negative|cross_file`. |
 | Full-corpus real-world evidence with raised `min_relationships` | Open | Phase 6 hand-authored work: add VB.NET corpus row, raise `min_relationships` from 1 to 5× per repo, author per-repo `representative_specs`, and regenerate with `--profile release`. |
 | Doc-comment audit on every public item in `julie-extractors` | Open | Phase 5.4 left untouched outside new items added during this run. Mechanical follow-up after the release gates pass. |
-| Fixed-target release evidence at current HEAD | Pending | Phase 8.1 records each release gate against the current HEAD SHA in the Verification Ledger; live MCP dogfood handoff stays with the user (`docs/plans/2026-05-10-best-in-class-tree-sitter-handoff.md`). |
+| Fixed-target release evidence at current HEAD | Closed 2026-05-11 | Phase 8.1 release gates recorded against `94b7f5a3`; broad regression tiers (dev/system/dogfood/full) recorded against `61a27e42` after the workspace_isolation_smoke matcher fix. Live MCP dogfood handoff stays with the user (`docs/plans/2026-05-10-best-in-class-tree-sitter-handoff.md`). |
 
 ## Verification Ledger
 
@@ -223,6 +223,10 @@ Record release evidence with the template in [verification-ledger-template.md](p
 | Crate doctests | `cargo test -p julie-extractors --doc` | doctest-current-contract | `94b7f5a3` | Passed 1 test | 2026-05-10T23:16:49Z | No |
 | Crate rustdoc | `cargo doc -p julie-extractors --no-deps` | rustdoc-current-contract | `94b7f5a3` | Generated (6 missing-docs warnings, expected — Phase 5.4 follow-up) | 2026-05-10T23:16:49Z | No |
 | Pillar-3 downstream-consumer gate | `cargo nextest run -p julie-extractors --test downstream_smoke julie_extractors_works_as_path_dependency_in_downstream_crate` | downstream-smoke-current-contract | `94b7f5a3` | Passed in 17.0s | 2026-05-10T23:16:49Z | No |
+| Dev regression tier | `cargo xtask test dev` | live-dev-current-contract | `61a27e42` | Passed 32 buckets in 354.1s | 2026-05-11T00:12:55Z | No |
+| System regression tier | `cargo xtask test system` | live-system-current-contract | `61a27e42` | Passed 6 buckets in 86.5s (after restoring workspace_isolation_smoke matcher to the new line-grouped fast_search output) | 2026-05-11T00:12:55Z | No |
+| Dogfood regression tier | `cargo xtask test dogfood` | live-dogfood-current-contract | `61a27e42` | Passed 2 buckets in 225.3s (tools-dogfood-repo-index + search-quality) | 2026-05-11T00:12:55Z | No |
+| Full regression tier | `cargo xtask test full` | live-full-current-contract | `61a27e42` | Passed 40 buckets in 664.4s | 2026-05-11T00:12:55Z | No |
 
 ## Exceptions
 
