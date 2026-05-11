@@ -21,7 +21,7 @@ This file tracks concrete review findings that were raised during the v7.8.0 tre
 
 - SQL pending-relationship gaps appear in `docs/LANGUAGE_CERTIFICATION_REPORT.md`.
 - HTML and regex pending-relationship exceptions appear in `docs/LANGUAGE_CERTIFICATION_REPORT.md`.
-- Vue remediation history appears in `docs/findings/COMPILED-FINDINGS.md` and `docs/plans/2026-05-06-tree-sitter-extractor-audit-remediation.md`, but the exact Vue status rows above were not previously captured as current review findings.
+- Vue remediation history appeared in the now-removed historical findings bundle and still appears in `docs/plans/2026-05-06-tree-sitter-extractor-audit-remediation.md`, but the exact Vue status rows above were not previously captured as current review findings.
 
 ## Verification Rule
 
