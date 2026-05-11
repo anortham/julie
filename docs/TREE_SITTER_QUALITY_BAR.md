@@ -8,9 +8,9 @@ Implementation plans and evidence ledgers may link here, but they do not get to 
 
 ## Current Verdict
 
-Status: **closure work landed; release-profile evidence regenerated; live MCP dogfood pending**.
+Status: **closure work landed; release-profile evidence regenerated; daemon-mode live dogfood passed; merge pending**.
 
-The 2026-05-10 autonomous run drove the best-in-class plan (`docs/plans/2026-05-10-best-in-class-tree-sitter-plan.md`) Phases 1–7 to completion against this rubric:
+The 2026-05-10 autonomous run and Codex follow-up drove the best-in-class plan (`docs/plans/2026-05-10-best-in-class-tree-sitter-plan.md`) through release-gate and daemon-mode dogfood evidence against this rubric:
 
 - Phase 4a-d: every relationship-emitting language ships a `cross_file` fixture and locking test. Cross-file pending now emits StructuredPendingRelationship with `target.terminal_name` + `import_context` for 24 languages (Rust, C, C++, Go, Zig, TypeScript, JavaScript, TSX, JSX, Python, Java, C#, VB.NET, PHP, Ruby, Swift, Kotlin, Scala, Dart, Elixir, Lua, R, GDScript, SQL, Vue, HTML, QML). Recipe-B no-pending classifications (CSS, regex, Markdown, YAML, Razor, TOML, JSON) carry locking tests as evidence.
 - Phase 5: Pillar-3 hardening landed. `capability_snapshot()` + `EXTRACTION_CONTRACT_VERSION` exported, `SEMANTIC_INDEX_ENGINE_VERSION` recomposes to embed the contract, downstream-consumer integration test spawns a tempdir consumer crate and runs the public API end-to-end. Extractors bucket now runs the downstream-smoke gate.
@@ -18,7 +18,7 @@ The 2026-05-10 autonomous run drove the best-in-class plan (`docs/plans/2026-05-
 - Phase 7: historical verification docs removed; canonical sources of truth are `fixtures/extraction/capabilities.json` (typed evidence schema, machine-checked) and the regenerated `docs/LANGUAGE_CERTIFICATION_REPORT.md` + `docs/LANGUAGE_REAL_WORLD_EVIDENCE.json`.
 - Phase 5.4 follow-up: `cargo doc -p julie-extractors --no-deps` is warning-free after cleaning broken doc links and HTML-like text in public rustdoc.
 
-Open before release claim: live MCP dogfood after a release rebuild and restart (Phase 8 handoff in `docs/plans/2026-05-10-best-in-class-tree-sitter-handoff.md`). The release-gates ledger (Phase 8.1) records each gate at the current HEAD SHA.
+Live daemon-mode dogfood passed after a release rebuild and restart; see the verification ledger. The Codex-hosted `mcp__julie__` connector in this session still returned `Transport closed`, so the live rows were verified through `julie-server tool ...` against the daemon HTTP transport. Merge back to `main` is still pending.
 
 ## Current Documentation Validation
 
@@ -187,7 +187,7 @@ These are known gaps against the fixed target. This list is allowed to grow as t
 | `capability_matrix_negative_cases_emit_no_wrong_edges` activated | Closed 2026-05-10 | De-ignored in `crates/julie-extractors/src/tests/capability_matrix.rs`; accepted fixtures broadened to `negative|cross_file`. |
 | Full-corpus real-world evidence with raised `min_relationships` | Closed 2026-05-11 | `cargo xtask certify tree-sitter --real-world --profile release --out docs/LANGUAGE_REAL_WORLD_EVIDENCE.json` wrote 22 verified + 0 skipped repos. `samples` supplies VB.NET evidence. `tree-sitter-real-world-corpus.toml` now has 110 representative specs. Relationship floors are 5x language-file count except `blazor-samples` and `riverpod`, which use high actual-output floors because 5x exceeds truthful current relationship output. |
 | Doc-comment audit on every public item in `julie-extractors` | Closed 2026-05-11 | `cargo doc -p julie-extractors --no-deps` emits no warnings after fixing broken intra-doc links, HTML-like generic text, and the ambiguous `capability_snapshot()` rustdoc link. |
-| Fixed-target release evidence at current HEAD | Closed 2026-05-11 | Phase 8.1 release gates recorded against `94b7f5a3`; broad regression tiers (dev/system/dogfood/full) recorded against `61a27e42` after the workspace_isolation_smoke matcher fix. Live MCP dogfood handoff stays with the user (`docs/plans/2026-05-10-best-in-class-tree-sitter-handoff.md`). |
+| Fixed-target release evidence for integration branch | Closed 2026-05-11 | Phase 8.1 release gates recorded against `94b7f5a3`; broad regression tiers (dev/system/dogfood/full) recorded against `61a27e42` after the workspace_isolation_smoke matcher fix; closure and certification evidence recorded against `235bd37c` / `0e8f1357`; current health and daemon-mode live dogfood recorded against `88998e69`. |
 
 ## Verification Ledger
 
@@ -240,6 +240,15 @@ Record release evidence with the template in [verification-ledger-template.md](p
 | Example consumer build | `cargo build --examples -p julie-extractors` | example-build-current-contract | `235bd37c` | Passed | 2026-05-11T01:59:38Z | No |
 | Crate doctests | `cargo test -p julie-extractors --doc` | doctest-current-contract | `235bd37c` | Passed 1 test | 2026-05-11T01:59:38Z | No |
 | Pillar-3 downstream-consumer gate | `cargo nextest run -p julie-extractors --test downstream_smoke julie_extractors_works_as_path_dependency_in_downstream_crate` | downstream-smoke-current-contract | `235bd37c` | Passed in 16.6s | 2026-05-11T01:59:38Z | No |
+| Startup repair planning regression | `cargo nextest run --lib test_startup_noop_repair_does_not_mark_catchup_active_while_planning` | startup-health-noop-regression | `88998e69` | Passed: no-op startup repair does not report catch-up active while only planning | 2026-05-11T03:31:43Z | No |
+| Workspace startup/health focused regression | `cargo nextest run --lib tests::tools::workspace::mod_tests` | workspace-mod-tests | `88998e69` | Passed 41 tests; nextest reported 1 leaky test, exit 0 | 2026-05-11T03:31:43Z | No |
+| System regression tier after startup-health fix | `cargo xtask test system` | system-current-contract | `88998e69` | Passed 6 buckets in 86.5s | 2026-05-11T03:31:43Z | No |
+| Release binary after startup-health fix | `cargo build --release` | release-build-current-contract | `88998e69` | Passed in 2m 29s | 2026-05-11T03:31:43Z | No |
+| Live daemon health after rebuild and restart | `julie-server --workspace . --json tool manage_workspace --params '{"operation":"health"}'` | live-health-current-contract | `88998e69` | READY / FULLY READY: daemon serving, SQLite healthy, 46843 symbols, 56538 relationships, projection current 409/409, embeddings initialized | 2026-05-11T03:31:43Z | No |
+| Live daemon call graph | `julie-server --workspace . --json tool call_path --params '{"from":"extract_symbols_static","to":"extract_canonical","max_hops":6}'` | live-call-path-current-contract | `88998e69` | Found one-hop edge from `extract_symbols_static` to `extract_canonical` at `src/tools/workspace/indexing/extractor.rs:24` -> `crates/julie-extractors/src/pipeline.rs:8` | 2026-05-11T03:31:43Z | No |
+| Live daemon references for extraction API | `julie-server --workspace . --json tool fast_refs --params '{"symbol":"extract_canonical","limit":20}'` | live-fast-refs-current-contract | `88998e69` | Found definition plus 20 visible references, including public API projection and cross-file contract callers | 2026-05-11T03:31:43Z | No |
+| Live semantic state in SQLite | `sqlite3 ~/.julie/indexes/best-in-class-treesitter_2ad7e041/db/symbols.db "SELECT workspace_id, component, version FROM index_engine_state WHERE component='semantic_index_engine';"` | live-sqlite-state-current-contract | `88998e69` | `best-in-class-treesitter_2ad7e041|semantic_index_engine|extractors=2026-05-10.tree-sitter-best-in-class-v1+schema=2026-05-05.reference-identifier-v3` | 2026-05-11T03:31:43Z | No |
+| Live daemon non-force refresh | `julie-server --workspace . --json tool manage_workspace --params '{"operation":"refresh","workspace_id":"best-in-class-treesitter_2ad7e041"}'` | live-refresh-current-contract | `88998e69` | Already up-to-date at canonical revision 409; 1588 files, 46843 symbols, 56538 relationships | 2026-05-11T03:31:43Z | No |
 
 ## Exceptions
 

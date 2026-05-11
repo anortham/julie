@@ -1,7 +1,7 @@
 # Best-in-Class Tree-Sitter — Live Dogfood Handoff
 
-The autonomous run completed the offline tree-sitter quality work through the
-release-gate sweep at worktree HEAD `235bd37c`:
+The tree-sitter quality run completed offline release gates and daemon-mode
+live dogfood through evidence commit `88998e69`:
 
 - `fixtures/extraction/capabilities.json` has 0 open gaps.
 - `docs/LANGUAGE_REAL_WORLD_EVIDENCE.json` is release-profile evidence with 22
@@ -12,7 +12,7 @@ release-gate sweep at worktree HEAD `235bd37c`:
 - `cargo doc -p julie-extractors --no-deps` is warning-free.
 - `docs/LANGUAGE_CERTIFICATION_REPORT.md` is current.
 
-The branch-level offline gates passed at `235bd37c` and are recorded in
+The branch-level offline gates passed and are recorded in
 `docs/plans/2026-05-10-best-in-class-tree-sitter-plan.md` plus
 `docs/TREE_SITTER_QUALITY_BAR.md`:
 
@@ -32,41 +32,33 @@ The branch-level offline gates passed at `235bd37c` and are recorded in
 - `cargo doc -p julie-extractors --no-deps`
 - `cargo nextest run -p julie-extractors --test downstream_smoke julie_extractors_works_as_path_dependency_in_downstream_crate`
 
-## Pending Live MCP Dogfood
+## Daemon-Mode Live Dogfood
 
-Live MCP dogfood is still pending. The Codex session could not complete it
-because the `mcp__julie__` transport returned `Transport closed`. The release
-binary CLI did prove two equivalent data-plane checks:
+The live dogfood rows are now recorded in both verification ledgers. Evidence
+was collected against the running daemon through `julie-server tool ...` because
+the Codex-hosted `mcp__julie__` connector still returned `Transport closed`:
 
-- `./target/release/julie-server --workspace . --json call-path extract_symbols_static extract_canonical --max-hops 6`
-  found a one-hop call edge from `extract_symbols_static` to `extract_canonical`.
-- `./target/release/julie-server --workspace . --json refs extract_canonical -n 20`
-  found the definition plus 20 visible references.
+- `manage_workspace health` returned READY/FULLY READY with SQLite healthy,
+  projection current at 409/409, 46,843 symbols, 56,538 relationships, and the
+  sidecar embeddings provider initialized on MPS.
+- `call_path extract_symbols_static extract_canonical` found the one-hop edge
+  `extract_symbols_static --call--> extract_canonical`.
+- `fast_refs extract_canonical` found the definition plus visible callers,
+  reporting 21 total references.
+- SQLite `index_engine_state` recorded
+  `extractors=2026-05-10.tree-sitter-best-in-class-v1+schema=2026-05-05.reference-identifier-v3`
+  for `semantic_index_engine`.
+- `manage_workspace refresh workspace_id=best-in-class-treesitter_2ad7e041`
+  returned already up-to-date at canonical revision 409.
 
-That CLI evidence is not a substitute for the live MCP rows below.
+The direct Codex MCP connector issue is still unresolved. Current evidence
+proves the daemon HTTP data plane and index state, not Codex's in-process MCP
+transport.
 
-## User Sign-Off Steps
+## Remaining Steps
 
-1. `cargo build --release`
-2. Restart Claude Code or the MCP client so it respawns the new server.
-3. In the Julie workspace, run through the MCP client:
-   - `manage_workspace health` — expect READY status with nonzero symbol and
-     relationship counts.
-   - `call_path extract_symbols_static extract_canonical` — expect a one-hop
-     edge through the canonical pipeline.
-   - `fast_refs extract_canonical` — expect definition + references including
-     public API projection and real-world contract callers.
-   - SQLite check: inspect the on-disk index metadata for the engine-version
-     column actually written by the indexer. Verify the column name against
-     `src/database/schema.rs`; value must contain
-     `2026-05-10.tree-sitter-best-in-class-v1` via
-     `julie_extractors::EXTRACTION_CONTRACT_VERSION`, composed into
-     `SEMANTIC_INDEX_ENGINE_VERSION` at
-     `src/tools/workspace/indexing/engine_version.rs`.
-   - `manage_workspace refresh workspace_id=julie_<id>` — expect
-     already-up-to-date behavior without a full reindex.
-4. Append rows to both verification ledgers:
-   - `docs/TREE_SITTER_QUALITY_BAR.md`
-   - `docs/plans/2026-05-10-best-in-class-tree-sitter-plan.md`
-5. Merge `.worktrees/best-in-class-treesitter/` back to `main` with a merge
-   commit. Do not rebase; the verification ledger cites commit SHAs.
+1. Decide whether the direct Codex `mcp__julie__` connector must be fixed before
+   integration, or track it as a separate harness/adapter issue.
+2. Merge `.worktrees/best-in-class-treesitter/` back to `main` with a merge
+   commit, or open a PR. Do not rebase; the verification ledger cites commit
+   SHAs.

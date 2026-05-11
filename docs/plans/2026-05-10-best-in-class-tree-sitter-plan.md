@@ -1998,11 +1998,15 @@ git commit -m "docs: add live MCP dogfood handoff note for user sign-off"
 | Final doctest | `cargo test -p julie-extractors --doc` | release-doctest | 235bd37c | Pass — 1 doctest | 2026-05-11T01:59:38Z | No |
 | Final rustdoc | `cargo doc -p julie-extractors --no-deps` | release-rustdoc | 235bd37c | Pass — generated with no warnings | 2026-05-11T01:59:38Z | No |
 | Final downstream smoke | `cargo nextest run -p julie-extractors --test downstream_smoke julie_extractors_works_as_path_dependency_in_downstream_crate` | release-downstream-smoke | 235bd37c | Pass — 16.6s | 2026-05-11T01:59:38Z | No |
-| Live MCP health (manual) | `manage_workspace health` | live-health | _TBD_ | _TBD_ (user) | _TBD_ | No |
-| Live MCP call_path (manual) | `call_path extract_symbols_static extract_canonical` | live-call-path | _TBD_ | _TBD_ (user) | _TBD_ | No |
-| Live MCP refs (manual) | `fast_refs extract_canonical` | live-refs | _TBD_ | _TBD_ (user) | _TBD_ | No |
-| Live SQLite state (manual) | `sqlite3 ... select schema_version, semantic_engine_version` | live-sqlite | _TBD_ | _TBD_ (user) | _TBD_ | No |
-| Live MCP refresh (manual) | `manage_workspace refresh` | live-refresh | _TBD_ | _TBD_ (user) | _TBD_ | No |
+| Startup repair planning regression | `cargo nextest run --lib test_startup_noop_repair_does_not_mark_catchup_active_while_planning` | startup-health-noop-regression | 88998e69 | Pass — no-op startup repair does not report catch-up active while only planning | 2026-05-11T03:31:43Z | No |
+| Workspace startup/health focused regression | `cargo nextest run --lib tests::tools::workspace::mod_tests` | workspace-mod-tests | 88998e69 | Pass — 41 tests; nextest reported 1 leaky test, exit 0 | 2026-05-11T03:31:43Z | No |
+| System regression tier after startup-health fix | `cargo xtask test system` | system-current-contract | 88998e69 | Pass — 6 buckets in 86.5s | 2026-05-11T03:31:43Z | No |
+| Release binary after startup-health fix | `cargo build --release` | release-build-current-contract | 88998e69 | Pass — 2m29s | 2026-05-11T03:31:43Z | No |
+| Live daemon health | `julie-server --workspace . --json tool manage_workspace --params '{"operation":"health"}'` | live-health | 88998e69 | Pass — READY / FULLY READY: SQLite healthy, projection current 409/409, 46843 symbols, 56538 relationships, embeddings initialized | 2026-05-11T03:31:43Z | No |
+| Live daemon call_path | `julie-server --workspace . --json tool call_path --params '{"from":"extract_symbols_static","to":"extract_canonical","max_hops":6}'` | live-call-path | 88998e69 | Pass — found one-hop edge from `extract_symbols_static` to `extract_canonical` | 2026-05-11T03:31:43Z | No |
+| Live daemon refs | `julie-server --workspace . --json tool fast_refs --params '{"symbol":"extract_canonical","limit":20}'` | live-refs | 88998e69 | Pass — definition plus 20 visible references | 2026-05-11T03:31:43Z | No |
+| Live SQLite state | `sqlite3 ~/.julie/indexes/best-in-class-treesitter_2ad7e041/db/symbols.db "SELECT workspace_id, component, version FROM index_engine_state WHERE component='semantic_index_engine';"` | live-sqlite | 88998e69 | Pass — `extractors=2026-05-10.tree-sitter-best-in-class-v1+schema=2026-05-05.reference-identifier-v3` | 2026-05-11T03:31:43Z | No |
+| Live daemon refresh | `julie-server --workspace . --json tool manage_workspace --params '{"operation":"refresh","workspace_id":"best-in-class-treesitter_2ad7e041"}'` | live-refresh | 88998e69 | Pass — already up-to-date at canonical revision 409; no full reindex | 2026-05-11T03:31:43Z | No |
 
 **Reuse rule:** If the same HEAD already has a passing ledger entry for the required scope, reuse it instead of rerunning. Each row records its commit SHA so reuse is traceable.
 
