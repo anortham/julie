@@ -1946,7 +1946,7 @@ git commit -m "docs: add live MCP dogfood handoff note for user sign-off"
 - Verify the rubric file's verification ledger has rows for every closed criterion.
 - Verify all open escalation files in `docs/plans/escalations/` either have a resolution note or are summarized in a final escalation report.
 - Push the worktree branch.
-- Notify the user via a final commit message or output that the run is complete and live dogfood is pending.
+- Notify the user via a final commit message or output that daemon-mode live dogfood passed, the direct Codex `mcp__julie__` connector remains a separate transport issue, and integration is ready for merge commit or PR.
 
 ---
 
