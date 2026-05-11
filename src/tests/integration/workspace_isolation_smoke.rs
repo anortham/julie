@@ -41,16 +41,49 @@ mod workspace_isolation_smoke_tests {
     }
 
     fn response_contains_content_match(response: &str, marker: &str) -> bool {
-        response.lines().any(|line| {
+        // The line-level search output groups hits under per-file headers:
+        //     src/main.rs (2 lines)
+        //       9: /// Primary workspace marker function
+        //       11:     println!("PRIMARY_WORKSPACE_MARKER");
+        // We accept either that grouped form or a flat `path:line:content`
+        // form; both must end with real file content (not response chatter
+        // like the echoed query header).
+        let mut in_file_block = false;
+        for line in response.lines() {
+            let trimmed = line.trim_end();
+            // Detect a file header line like `path/file.ext (N lines)`.
+            if trimmed.ends_with(" lines)") && trimmed.contains(" (") {
+                in_file_block = true;
+                continue;
+            }
+            // Blank line ends the current file block.
+            if trimmed.is_empty() {
+                in_file_block = false;
+                continue;
+            }
+            if in_file_block {
+                // Indented `  N: content` entry beneath a file header.
+                let stripped = trimmed.trim_start();
+                if let Some((line_no, rest)) = stripped.split_once(':') {
+                    if line_no.trim().parse::<usize>().is_ok() && rest.contains(marker) {
+                        return true;
+                    }
+                }
+            }
+            // Flat `path:line:content` form (legacy fallback).
             let mut parts = line.splitn(3, ':');
-            let (Some(path), Some(line_number), Some(content)) =
+            if let (Some(path), Some(line_no), Some(content)) =
                 (parts.next(), parts.next(), parts.next())
-            else {
-                return false;
-            };
-
-            !path.is_empty() && line_number.parse::<usize>().is_ok() && content.contains(marker)
-        })
+            {
+                if !path.is_empty()
+                    && line_no.parse::<usize>().is_ok()
+                    && content.contains(marker)
+                {
+                    return true;
+                }
+            }
+        }
+        false
     }
 
     /// Test 1: Verify search NEVER crosses workspace boundaries

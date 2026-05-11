@@ -315,12 +315,13 @@ fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
         (
             "extractors",
             ExpectedBucket {
-                expected_seconds: 30,
-                timeout_seconds: 90,
+                expected_seconds: 60,
+                timeout_seconds: 180,
                 commands: &[
                     "cargo nextest run -p julie-extractors golden",
                     "cargo nextest run -p julie-extractors capability_matrix",
                     "cargo xtask certify tree-sitter --check",
+                    "cargo nextest run -p julie-extractors --test downstream_smoke julie_extractors_works_as_path_dependency_in_downstream_crate",
                 ],
             },
         ),
@@ -787,7 +788,7 @@ fn expected_bucket_metadata() -> BTreeMap<&'static str, ExpectedBucketMetadata> 
                 scope_label: "extractors",
                 owner: "lead",
                 expensive: false,
-                notes: Some("extractor golden and capability matrix"),
+                notes: Some("extractor golden, capability matrix, and Pillar-3 downstream-consumer gate"),
             },
         ),
         (
