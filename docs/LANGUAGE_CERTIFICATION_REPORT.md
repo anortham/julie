@@ -4,13 +4,13 @@
 
 ## Summary
 
-- Current HEAD: `235bd37c685282c223dc0349181a9ff705cd4081`
+- Scope: checked-in tree-sitter evidence state
 - Registry rows: `36`
 - Golden fixtures: `76`
 - Historical matrix rows: `0`
 - Raw historical OSS reports: `0`
-- Current real-world verified repos: `22`
-- Current real-world skipped repos: `0`
+- Checked-in real-world verified repos: `22`
+- Checked-in real-world skipped repos: `0`
 - Rows with open gaps: `0`
 - Rows without gap entries: `26`
 
@@ -18,10 +18,10 @@
 
 Historical matrix evidence is deprecated; current capability, fixture, and real-world evidence are the source of truth.
 
-## Current Real-World OSS Evidence
+## Checked-In Real-World OSS Evidence
 
 - Profile: `release`
-- Julie HEAD in evidence: `235bd37c685282c223dc0349181a9ff705cd4081`
+- Julie HEAD recorded in evidence: `6d8310cc1a8ca89fd82a6483e67dd810ee8f321f`
 - Summary flags: `none`
 
 | repo | language | status | files | language files | symbols | relationships | identifiers | types | diagnostic files | hard failures |

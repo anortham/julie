@@ -134,13 +134,45 @@ fn tree_sitter_certification_tests_report_surfaces_current_contract_and_historic
 
     let markdown = render_tree_sitter_certification_markdown(&report);
     assert!(markdown.contains("# Tree-Sitter Certification Report"));
-    assert!(markdown.contains("Current HEAD: `abc123`"));
+    assert!(markdown.contains("Scope: checked-in tree-sitter evidence state"));
+    assert!(!markdown.contains("Current HEAD: `abc123`"));
     assert!(markdown.contains("Registry rows: `3`"));
     assert!(markdown.contains("Historical matrix rows: `1`"));
     assert!(markdown.contains("`tsx`, `vbnet`"));
     assert!(markdown.contains("| `vbnet` | `pending_relationships` | `open` |"));
-    assert!(markdown.contains("## Current Real-World OSS Evidence"));
+    assert!(markdown.contains("## Checked-In Real-World OSS Evidence"));
     assert!(markdown.contains("| `ready-rust` | `rust` | `pass` |"));
+}
+
+#[test]
+fn tree_sitter_certification_tests_report_is_stable_across_git_head_changes() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    write_minimal_repo(root, true);
+    write_real_world_evidence(root);
+
+    let first_report = build_tree_sitter_certification_report(
+        root,
+        TreeSitterCertificationMetadata {
+            head_sha: "abc123".to_string(),
+        },
+    )
+    .expect("first report should build from complete evidence");
+    let second_report = build_tree_sitter_certification_report(
+        root,
+        TreeSitterCertificationMetadata {
+            head_sha: "def456".to_string(),
+        },
+    )
+    .expect("second report should build from same evidence");
+
+    let first_markdown = render_tree_sitter_certification_markdown(&first_report);
+    let second_markdown = render_tree_sitter_certification_markdown(&second_report);
+
+    assert_eq!(
+        first_markdown, second_markdown,
+        "certification report should not embed the current git head because committed generated files cannot contain their own commit SHA"
+    );
 }
 
 #[test]

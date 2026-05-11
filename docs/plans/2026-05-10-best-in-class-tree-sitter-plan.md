@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use razorback:subagent-driven-development when subagent delegation is available. Fall back to razorback:executing-plans for single-task, tightly-sequential, or no-delegation runs.
 
-**Goal:** Close every open gap in `fixtures/extraction/capabilities.json`, refresh all generated tree-sitter evidence at HEAD, harden `julie-extractors` as a reusable Rust crate, and produce 22-repo real-world evidence with semantic correctness specs — driven by the rubric at `docs/plans/2026-05-10-best-in-class-tree-sitter-rubric.md`.
+**Goal:** Close every open gap in `fixtures/extraction/capabilities.json`, refresh all generated tree-sitter evidence for the checked-in evidence state, harden `julie-extractors` as a reusable Rust crate, and produce 22-repo real-world evidence with semantic correctness specs — driven by the rubric at `docs/plans/2026-05-10-best-in-class-tree-sitter-rubric.md`.
 
 **Architecture:** Treat this as a correctness program with one architecture lever (Pillar 3 public surface). Sequence: validators that prevent contradictory closures → shared contract regression bar → relationship/pending shape implementations → per-tier language work → crate hardening → real-world evidence regen → doc cleanup → release gates. Every per-language change is TDD: failing test → minimal extractor change → narrow targeted test → commit.
 
@@ -129,8 +129,8 @@ docs/
 ├── LANGUAGE_VERIFICATION_RESULTS.md      # DELETE after harvest (Phase 7.2)
 ├── verification/                         # DELETE (Phase 7.3)
 ├── findings/                             # COMMIT staged deletions (Phase 7.4)
-├── LANGUAGE_CERTIFICATION_REPORT.md      # REGENERATE at HEAD (Phase 8.1)
-├── LANGUAGE_REAL_WORLD_EVIDENCE.{json,md} # REGENERATE at HEAD with --profile release (Phase 6.5)
+├── LANGUAGE_CERTIFICATION_REPORT.md      # REGENERATE from checked-in evidence state (Phase 8.1)
+├── LANGUAGE_REAL_WORLD_EVIDENCE.{json,md} # REGENERATE with --profile release (Phase 6.5)
 └── TREE_SITTER_QUALITY_BAR.md            # MODIFY: refresh "Current Verdict" + "Open Gaps" (Phase 7.6)
 
 docs/plans/
@@ -1789,7 +1789,7 @@ For repos the lead doesn't have direct domain knowledge of, query the repo's REA
 
 Per-commit validation: each repo's spec block is committed individually, and `cargo nextest run --test corpus_specs_resolve` (a small test added in Task 6.3 that loads the corpus.toml and runs each `representative_specs` entry against the existing real-world DB) MUST PASS for that commit. If a spec entry names a symbol the DB doesn't contain, the test surfaces `"representative_specs.unresolvable_symbol(...)"` and the commit is rolled back. Commit per ~5 repos (so the diff is reviewable). Each commit message: `feat(corpus): author representative specs for <repo> [, <repo>, ...]`.
 
-### Task 6.5: Regenerate evidence at HEAD with `--profile release`
+### Task 6.5: Regenerate evidence with `--profile release`
 
 **Files:**
 - Modify: `docs/LANGUAGE_REAL_WORLD_EVIDENCE.{json,md}` — regenerated, no hand edits
@@ -1807,7 +1807,7 @@ Commit:
 
 ```bash
 git add docs/LANGUAGE_REAL_WORLD_EVIDENCE.json docs/LANGUAGE_REAL_WORLD_EVIDENCE.md docs/LANGUAGE_CERTIFICATION_REPORT.md
-git commit -m "feat(docs): regenerate real-world evidence with release profile + semantic specs at HEAD"
+git commit -m "feat(docs): regenerate real-world evidence with release profile + semantic specs"
 ```
 
 **Phase 6 boundary gate:** `cargo xtask test changed`, `cargo xtask test dogfood`. Ledger row.

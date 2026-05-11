@@ -1,6 +1,6 @@
 {
   "profile": "release",
-  "julie_head": "235bd37c685282c223dc0349181a9ff705cd4081",
+  "julie_head": "6d8310cc1a8ca89fd82a6483e67dd810ee8f321f",
   "corpus_path": "fixtures/extraction/tree-sitter-real-world-corpus.toml",
   "verified_repos": [
     {

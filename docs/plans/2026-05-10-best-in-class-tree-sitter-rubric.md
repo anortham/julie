@@ -14,8 +14,8 @@
 - `docs/findings/` deletions are committed (the `COMPILED-FINDINGS.md` plus per-LLM audit dirs that were staged for deletion at the start of the run are now gone from the working tree and the index).
 - `docs/EXTRACTION_CONTRACT.md` exists, is ≤200 lines, links to `capabilities.json`, `LANGUAGE_CERTIFICATION_REPORT.md`, and `LANGUAGE_REAL_WORLD_EVIDENCE.json`, explains every tier in the Quality Bar's target group table, documents the typed evidence schema, and documents the structured-pending field contract.
 - No file in the repo references `docs/findings/COMPILED-FINDINGS.md` (verified via repo-wide search). Every `evidence` field in `capabilities.json` is a typed object, not a string path.
-- `docs/LANGUAGE_CERTIFICATION_REPORT.md` was generated at the worktree HEAD (the report's "Current HEAD" line matches `git rev-parse HEAD` exactly).
-- `docs/LANGUAGE_REAL_WORLD_EVIDENCE.{json,md}` were generated with `--profile release` and the JSON's `julie_head_in_evidence` matches `git rev-parse HEAD` exactly.
+- `docs/LANGUAGE_CERTIFICATION_REPORT.md` was regenerated from the checked-in capability, fixture, historical-doc, and real-world evidence state, and `cargo xtask certify tree-sitter --check` passes.
+- `docs/LANGUAGE_REAL_WORLD_EVIDENCE.{json,md}` were generated with `--profile release`; exact HEAD provenance for the generation run is recorded in the verification ledger, not used as a committed self-hash gate.
 - `docs/TREE_SITTER_QUALITY_BAR.md` "Current Verdict" and "Current Open Gaps" sections were updated to reflect the closed state. No stale "open" entries remain.
 
 ## 2. Capability Matrix

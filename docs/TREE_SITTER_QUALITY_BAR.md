@@ -32,7 +32,7 @@ The restored verification docs were historical evidence, not current certificati
 - `fixtures/extraction/tree-sitter-real-world-corpus.toml` includes 110 representative specs, 5 per release-profile repo.
 - `cargo xtask certify tree-sitter --check` verifies [LANGUAGE_CERTIFICATION_REPORT.md](LANGUAGE_CERTIFICATION_REPORT.md) is current for the checked-in capability, fixture, historical-doc, and real-world evidence state.
 
-Release claims must come from generated current-HEAD evidence, not from manually edited historical docs.
+Release claims must come from generated evidence plus verification ledger rows tied to the checked commit, not from manually edited historical docs. Generated docs do not embed a self-referential commit hash.
 
 ## Fixed Target
 
