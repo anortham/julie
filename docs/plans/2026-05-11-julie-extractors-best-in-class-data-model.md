@@ -61,7 +61,7 @@ Version bumps happen only at milestone boundaries:
 | --- | --- | --- |
 | 1 | `trust-contract-v1` | Capability/evidence contract, doc source cleanup, Eros canary |
 | 2 | `additive-identity-v1` | Optional semantic identity and body hash, no `id` replacement |
-| 3 | `useful-richness-v1` | Structured signatures/modifiers/test role for priority languages |
+| 3 | `useful-richness-v1` | Structured signatures/modifiers/test role under the all-language capability contract |
 | 4 | `graph-quality-v1` | Product-driven graph and identifier quality improvements |
 
 ## Verification Strategy
@@ -178,10 +178,11 @@ Acceptance criteria:
 **Goal:** Give Julie and Eros stable tracking data without breaking current `id` users.
 
 **What changes:**
-- Add optional `semantic_id`, `location_id`, and `body_hash` to `Symbol`.
+- Add optional `semantic_id`, `location_id`, `body_span`, and `body_hash` to `Symbol`.
 - Keep current `Symbol.id` unchanged.
 - Persist the new fields through Julie SQLite and row reads.
 - Expose the fields through MCP/search output only where useful and documented.
+- Prove `body_span` and `body_hash` through the same all-language capability contract used for existing extractor claims.
 - Let Eros consume the new fields when ready, while old raw IDs still work.
 
 **Files:**
@@ -199,21 +200,45 @@ Acceptance criteria:
 
 **Tasks:**
 
+### Body Span and Body Hash Contract
+
+`body_span` is a source-coordinate range for the body-bearing part of a symbol. It uses the same coordinate rules as `NormalizedSpan`: 1-based lines, 0-based columns, and byte offsets into the original file content after embedded-language offsets are applied.
+
+A valid `body_span` must:
+- Belong to the same file as the symbol.
+- Be contained by the symbol's declaration span.
+- Exclude leading documentation, comments, decorators, attributes, annotations, and the symbol name/signature/header when the grammar exposes a separable body.
+- Include the complete grammar body node when the body syntax has delimiters or indentation that are required to replace the body safely. For brace languages, this normally means the block node including braces. For indentation languages, this means the suite/block statements. For declarative languages, this means the member/declaration region represented by the grammar body node.
+- Be absent for symbols without a body: variables, constants, imports, exports, enum members without bodies, fields, aliases, schema/table references, headings, and other leaf records.
+
+`body_hash` is a deterministic digest of the normalized token stream inside `body_span`. The hash ignores whitespace-only formatting changes but includes non-whitespace token text, comments, literals, identifiers, operators, punctuation, and delimiters that fall inside `body_span`. If `body_span` is absent, `body_hash` must also be absent.
+
+Capability rules:
+- `capabilities.json` must gain a body-span/body-hash evidence domain for every language row.
+- `supported` means fixture evidence proves every applicable emitted body-bearing symbol kind for that language has correct `body_span` and `body_hash`.
+- `not_applicable` means the language row has no emitted body-bearing symbols for that concept, or the format is non-code and body replacement has no coherent meaning.
+- `open_gaps` means the language emits at least one body-bearing symbol kind whose body span/hash is not proven. Public support is blocked while any applicable language has an open gap.
+- Downstream consumers, including Eros, must read the capability matrix. They must not hardcode per-language allowlists.
+
 ### Task 2.1 - Add Fields Without Changing IDs
 
 Add fields as optional data:
 
 - `semantic_id: Option<String>`
 - `location_id: Option<String>`
+- `body_span: Option<BodySpan>`
 - `body_hash: Option<String>`
 
 `location_id` should equal today's location-based identity. `semantic_id` should be collision-resistant enough for same-name overloads before it is trusted by downstream code. If parameter types are not available, include a documented collision guard and keep consumers on `id`.
+
+`body_span` means the executable/declarative body portion for body-bearing symbols. Non-body symbols and non-code formats must be recorded as `not_applicable`, not quietly omitted. Code languages must not receive public body-span/body-hash support until every applicable language has fixture-backed coverage or a documented exception in the capability matrix.
 
 Acceptance criteria:
 - Moving a symbol down by lines preserves `semantic_id` but changes `location_id`.
 - Token changes change `body_hash`.
 - Formatting-only changes do not change `body_hash` when tokens are unchanged.
 - `Symbol.id` does not change.
+- `cargo xtask certify tree-sitter --check` reports `0 open_gaps` for body-span/body-hash coverage across all applicable languages before any downstream consumer treats the fields as supported.
 
 ### Task 2.2 - Persist and Read Back
 
@@ -231,13 +256,14 @@ Update the plan evidence to prove Eros can either ignore the new fields or consu
 
 Acceptance criteria:
 - Eros existing extraction tests still pass when using the updated Julie extractors, or the Eros adapter changes are recorded as required and tested in Eros.
+- Eros consumes Julie's capability matrix for body-span/body-hash support instead of hardcoding language allowlists.
 - Eros does not depend on `semantic_id` until collision behavior is proven.
 
 ## Milestone 3 - Useful Symbol Richness
 
-**Goal:** Add structured fields that directly improve product workflows: inspection, search, summaries, editing anchors, and test awareness.
+**Goal:** Add structured fields that directly improve product workflows: inspection, search, summaries, editing anchors, and test awareness without creating first-class and second-class language tiers.
 
-**Priority languages:** Rust, Python, TypeScript, JavaScript, C#, and Java. Other languages join only when a product workflow or fixture evidence needs them.
+**Language support rule:** New public extractor capabilities are all-language contracts. A language-specific implementation order is allowed internally, but the capability is not considered supported until the capability matrix records fixture-backed `supported`, `not_applicable`, or documented exception status for every language.
 
 **What changes:**
 - Add optional structured fields:
@@ -253,8 +279,8 @@ Acceptance criteria:
 - Create: `crates/julie-extractors/src/base/symbol_richness.rs`
 - Modify: `crates/julie-extractors/src/base/types.rs`
 - Modify: `crates/julie-extractors/src/base/creation_methods.rs`
-- Modify priority-language extractor files that already compute this information.
-- Modify fixture expected JSON for priority languages.
+- Modify extractor files that already compute this information, then complete the capability matrix for every language before publishing the capability.
+- Modify fixture expected JSON and generated evidence for every applicable language row.
 - Modify persistence/read/search/embedding paths only for fields that Julie actually stores or uses.
 - Modify `docs/EXTRACTION_CONTRACT.md`
 
@@ -269,14 +295,14 @@ Acceptance criteria:
 - Public API re-exports are available from `julie_extractors::*`.
 - Existing consumers compile without reading the new fields.
 
-### Task 3.2 - TypeScript First, Then Priority Languages
+### Task 3.2 - Implement Through the Capability Matrix
 
-TypeScript is the worked example because it already stores `isAsync`, `isStatic`, `isGenerator`, `parameters`, and `returnType` in metadata. After TypeScript passes, apply the same pattern to the other priority languages.
+Use one language as an internal worked example only when it reduces implementation risk. Do not publish or let downstream consumers rely on the new structured fields until every language row has a fixture-backed `supported`, `not_applicable`, or documented exception status.
 
 Acceptance criteria:
 - Typed fields match existing signature/metadata information.
 - No metadata key is removed in the same milestone that introduces its typed replacement.
-- Fixture assertions prove the typed fields for every priority language included.
+- Fixture assertions and generated certification evidence prove typed-field status for every language, with `0 open_gaps` before the fields are treated as supported.
 
 ### Task 3.3 - Search and Embedding Use
 
@@ -379,7 +405,7 @@ Estimated scope:
 
 - Milestone 1: 2-4 days.
 - Milestone 2: 2-4 days.
-- Milestone 3: 4-7 days for priority languages.
+- Milestone 3: estimate after the all-language capability matrix is scoped; no priority-language carveout.
 - Milestone 4: task-sized batches only after product workflows are named.
 
 ## Approval

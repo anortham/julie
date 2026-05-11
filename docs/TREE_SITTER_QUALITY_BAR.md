@@ -28,7 +28,7 @@ The restored verification docs were historical evidence, not current certificati
 
 - `fixtures/extraction/capabilities.json` tracks 36 registry rows: 34 user-facing language rows plus `tsx` and `jsx`.
 - `fixtures/extraction/capabilities.json` records 17 capability-gap rows, all `status: "exception"`; there are no open capability gaps.
-- `fixtures/extraction/capabilities.json` now records fixture-backed per-kind coverage for symbols, relationships, and identifiers. The generated certification report carries the current depth totals.
+- `fixtures/extraction/capabilities.json` now records fixture-backed per-kind coverage for symbols, relationships, identifiers, and body spans. The generated certification report carries the current depth totals.
 - `docs/LANGUAGE_REAL_WORLD_EVIDENCE.json` records release-profile evidence for 22 repos and 0 skipped repos.
 - `fixtures/extraction/tree-sitter-real-world-corpus.toml` includes 110 representative specs, 5 per release-profile repo.
 - `cargo xtask certify tree-sitter --check` verifies [LANGUAGE_CERTIFICATION_REPORT.md](LANGUAGE_CERTIFICATION_REPORT.md) is current for the checked-in capability, fixture, historical-doc, and real-world evidence state.
@@ -75,7 +75,7 @@ The fixture capability file must stop acting as the target. It should distinguis
 - **Gap status:** open, met, or exception.
 - **Exception reason:** only intrinsic non-applicability or documented parser limitation.
 - **Evidence:** golden fixture paths and tests that prove the implemented behavior.
-- **Kind coverage:** per-kind `supported`, `not_applicable`, and `open_gaps` entries for current symbol, relationship, and identifier kinds.
+- **Kind coverage:** per-kind `supported`, `not_applicable`, and `open_gaps` entries for current symbol, relationship, identifier, and body-span/body-hash domains.
 
 A target capability may be false only when the concept does not apply to the language. Examples:
 
@@ -100,6 +100,7 @@ Required coverage:
 - A registry entry without at least one golden fixture fails the matrix test.
 - A target capability marked implemented must have at least one golden fixture proving it.
 - A supported per-kind claim must appear in golden fixture output.
+- A supported body-span claim must appear in golden fixture output with both `body_span` and `body_hash`.
 - A target capability marked open must have at least one failing or pending plan item tied to it. It cannot disappear into prose.
 - A full programming-language fixture includes at least one named definition, one parented or explicit flat-structure assertion, one identifier, one graph output or structured pending output, and one type assertion or explicit no-type target reason.
 - A component/template fixture includes component or element structure, embedded code or binding syntax when supported, graph output for local references, and structured pending output for external references.

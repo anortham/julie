@@ -32,7 +32,7 @@ classification intends. Drift is enforced by
 Each row also carries `kind_coverage`, which records fixture-proven
 `supported`, intrinsic `not_applicable`, and planned `open_gaps`
 entries for current `SymbolKind`, `RelationshipKind`, and
-`IdentifierKind` values.
+`IdentifierKind` values, plus the body-span/body-hash coverage domain.
 
 ## `ExtractionResults` Shape
 
@@ -43,7 +43,8 @@ with seven fields:
 - `symbols: Vec<Symbol>` — every named entity (file, function, class,
   method, field, import, etc.). Each `Symbol` carries `id`,
   `language`, `name`, `kind`, `signature`, `file_path`, line/column
-  spans, optional `parent_id`, `metadata`, `doc_comment`, etc.
+  spans, optional `body_span`, optional `body_hash`, optional
+  `parent_id`, `metadata`, `doc_comment`, etc.
 - `relationships: Vec<Relationship>` — resolved edges. Each carries
   `from_symbol_id`, `to_symbol_id`, `kind`
   (Calls/Uses/Imports/Inherits/References/...), `file_path`,
@@ -69,6 +70,37 @@ with seven fields:
 See
 [`crates/julie-extractors/src/base/types.rs`](../crates/julie-extractors/src/base/types.rs)
 for field-by-field details.
+
+## Body Span And Hash Contract
+
+`body_span` and `body_hash` are additive symbol fields for symbols with
+a coherent executable, declarative, or structural body. They are emitted
+for every applicable language/kind and recorded in
+`kind_coverage.body_spans`.
+
+- `body_span` uses the same coordinate model as declaration spans:
+  1-based lines, 0-based columns, and byte offsets into the original
+  source content after embedded-language offsets are applied.
+- `body_span` must be in the same file as the declaration span and
+  contained by that declaration span.
+- When tree-sitter exposes a body node, `body_span` covers that body
+  node. Delimited and indentation-sensitive languages include the
+  grammar body delimiters or suite when those nodes are part of the
+  body.
+- `body_span` excludes documentation comments, decorators/attributes,
+  and declaration headers when the grammar separates them from the
+  body.
+- Leaf declarations with no coherent body use `body_span = None` and
+  classify the kind as `not_applicable` in
+  `kind_coverage.body_spans`.
+- `body_hash` is present exactly when `body_span` is present. It is a
+  deterministic digest of the normalized token stream inside the body
+  span: whitespace-only formatting changes do not change the hash;
+  comments, literals, identifiers, operators, punctuation, and
+  delimiters do.
+
+Downstream consumers must read `kind_coverage.body_spans`; they must not
+hardcode language allowlists.
 
 ## Structured Pending Relationship Contract
 
@@ -122,7 +154,7 @@ if let Some(rust) = snap.get("rust") {
 }
 
 // Drift detection
-let _version = EXTRACTION_CONTRACT_VERSION; // "2026-05-11.trust-contract-v1"
+let _version = EXTRACTION_CONTRACT_VERSION; // "2026-05-11.body-span-v1"
 ```
 
 The snapshot is loaded from
@@ -171,6 +203,10 @@ Every `kind_coverage` domain has this shape:
 must carry a concrete closure reference. `not_applicable` means the
 kind is intrinsic nonsense for that language/domain, not merely
 unimplemented.
+
+The `body_spans` domain uses the same schema. A `supported` claim means
+at least one golden fixture symbol of that kind carries both
+`body_span` and `body_hash`.
 
 ## Where to Find Machine-Checked Truth
 
