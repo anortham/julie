@@ -640,6 +640,8 @@ fn test_lean_format_skips_redundant_kind_prefix() {
         confidence: None,
         code_context: None,
         content_type: None,
+        body_span: None,
+        body_hash: None,
         annotations: Vec::new(),
     };
 
@@ -664,6 +666,8 @@ fn test_lean_format_skips_redundant_kind_prefix() {
         confidence: None,
         code_context: None,
         content_type: None,
+        body_span: None,
+        body_hash: None,
         annotations: Vec::new(),
     };
 

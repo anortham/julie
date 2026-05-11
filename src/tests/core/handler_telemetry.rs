@@ -41,6 +41,8 @@ fn sample_symbol() -> Symbol {
         confidence: Some(7.5),
         code_context: None,
         content_type: None,
+        body_span: None,
+        body_hash: None,
         annotations: Vec::new(),
     }
 }

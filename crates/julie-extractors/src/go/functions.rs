@@ -72,6 +72,8 @@ impl super::GoExtractor {
                 end_column,
                 start_byte: span.start_byte,
                 end_byte: span.end_byte,
+                body_span: None,
+                body_hash: None,
                 signature: Some(signature),
                 doc_comment: None,
                 visibility: if self.is_public(&name) {

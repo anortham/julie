@@ -78,8 +78,16 @@ fn main() -> anyhow::Result<()> {
             .iter()
             .any(|kind| kind == "calls")
     );
+    assert!(
+        rust.kind_coverage
+            .body_spans
+            .supported
+            .iter()
+            .any(|kind| kind == "function")
+    );
 
     let _version: &str = julie_extractors::EXTRACTION_CONTRACT_VERSION;
+    assert!(julie_extractors::EXTRACTION_CONTRACT_VERSION.contains("body-span-v1"));
     Ok(())
 }
 "#,

@@ -59,6 +59,8 @@ fn symbol(
         confidence: Some(1.0),
         code_context: Some(format!("{name}() {{}}")),
         content_type: None,
+        body_span: None,
+        body_hash: None,
         annotations,
     }
 }
@@ -375,6 +377,8 @@ fn symbol_with_metadata(
         confidence: Some(1.0),
         code_context: Some(format!("{name}() {{}}")),
         content_type: None,
+        body_span: None,
+        body_hash: None,
         annotations,
     }
 }

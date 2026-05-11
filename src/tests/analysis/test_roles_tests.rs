@@ -31,6 +31,8 @@ mod tests {
             visibility: None,
             parent_id: None,
             metadata,
+            body_span: None,
+            body_hash: None,
             annotations,
             semantic_group: None,
             confidence: None,

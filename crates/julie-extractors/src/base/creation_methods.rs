@@ -5,6 +5,7 @@
 use std::collections::HashMap;
 use tree_sitter::Node;
 
+use super::body::{body_hash, infer_body_span};
 use super::extractor::BaseExtractor;
 use super::relationship_resolution::{StructuredPendingRelationship, UnresolvedTarget};
 use super::span::NormalizedSpan;
@@ -34,6 +35,8 @@ impl BaseExtractor {
         options: SymbolOptions,
     ) -> Symbol {
         let id = self.generate_id_for_span(&name, &span);
+        let body_span = infer_body_span(node, &self.content, span);
+        let body_hash = body_span.and_then(|span| body_hash(&self.content, span));
 
         // Extract code context around the symbol
         let code_context = self.extract_code_context(
@@ -60,6 +63,8 @@ impl BaseExtractor {
             end_column: span.end_column,
             start_byte: span.start_byte,
             end_byte: span.end_byte,
+            body_span,
+            body_hash,
             signature: options.signature,
             doc_comment: options.doc_comment.or_else(|| self.find_doc_comment(node)),
             visibility: options.visibility,

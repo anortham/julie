@@ -68,6 +68,8 @@ struct CapabilityKindCoverage {
     relationships: KindCoverage,
     #[serde(default)]
     identifiers: KindCoverage,
+    #[serde(default)]
+    body_spans: KindCoverage,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -432,6 +434,7 @@ impl CapabilityKindCoverage {
             symbols: self.symbols.supported.len(),
             relationships: self.relationships.supported.len(),
             identifiers: self.identifiers.supported.len(),
+            body_spans: self.body_spans.supported.len(),
         }
     }
 }
@@ -455,6 +458,7 @@ fn validate_kind_coverage(row: &CapabilityRow) -> Result<()> {
         row.capabilities.identifiers,
         &row.kind_coverage.identifiers,
     )?;
+    validate_kind_domain(row, "body_spans", false, &row.kind_coverage.body_spans)?;
     Ok(())
 }
 

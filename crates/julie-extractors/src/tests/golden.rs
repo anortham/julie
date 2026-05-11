@@ -53,6 +53,8 @@ struct NormalizedSymbol {
     end_column: u32,
     start_byte: u32,
     end_byte: u32,
+    body_span: Option<NormalizedBodySpan>,
+    body_hash: Option<String>,
     signature: Option<String>,
     doc_comment: Option<String>,
     visibility: Option<String>,
@@ -62,6 +64,16 @@ struct NormalizedSymbol {
     semantic_group: Option<String>,
     confidence: Option<String>,
     content_type: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+struct NormalizedBodySpan {
+    start_line: u32,
+    start_column: u32,
+    end_line: u32,
+    end_column: u32,
+    start_byte: u32,
+    end_byte: u32,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -331,6 +343,8 @@ fn normalize_symbol(symbol: &Symbol, symbol_keys: &HashMap<String, String>) -> N
         end_column: symbol.end_column,
         start_byte: symbol.start_byte,
         end_byte: symbol.end_byte,
+        body_span: symbol.body_span.map(normalize_body_span),
+        body_hash: symbol.body_hash.clone(),
         signature: symbol.signature.clone(),
         doc_comment: symbol.doc_comment.clone(),
         visibility: symbol.visibility.as_ref().map(ToString::to_string),
@@ -343,6 +357,17 @@ fn normalize_symbol(symbol: &Symbol, symbol_keys: &HashMap<String, String>) -> N
         semantic_group: symbol.semantic_group.clone(),
         confidence: symbol.confidence.map(normalize_confidence),
         content_type: symbol.content_type.clone(),
+    }
+}
+
+fn normalize_body_span(span: crate::base::BodySpan) -> NormalizedBodySpan {
+    NormalizedBodySpan {
+        start_line: span.start_line,
+        start_column: span.start_column,
+        end_line: span.end_line,
+        end_column: span.end_column,
+        start_byte: span.start_byte,
+        end_byte: span.end_byte,
     }
 }
 

@@ -39,6 +39,8 @@ mod tests {
             confidence: None,
             code_context: Some(code_context.to_string()),
             content_type: None,
+            body_span: None,
+            body_hash: None,
             annotations: Vec::new(),
         }
     }

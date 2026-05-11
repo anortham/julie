@@ -33,6 +33,8 @@ fn rebound_symbol() -> Symbol {
         confidence: None,
         code_context: Some("pub fn rebound_primary_symbol() {}".to_string()),
         content_type: None,
+        body_span: None,
+        body_hash: None,
         annotations: Vec::new(),
     }
 }

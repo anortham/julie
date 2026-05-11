@@ -12,6 +12,15 @@
       "end_column": 1,
       "start_byte": 366,
       "end_byte": 434,
+      "body_span": {
+        "start_line": 12,
+        "start_column": 12,
+        "end_line": 15,
+        "end_column": 1,
+        "start_byte": 378,
+        "end_byte": 434
+      },
+      "body_hash": "cd5baa0ec3b17c7e21aac628f5a96786",
       "signature": "int entry()",
       "doc_comment": null,
       "visibility": "Public",
@@ -34,6 +43,15 @@
       "end_column": 1,
       "start_byte": 320,
       "end_byte": 364,
+      "body_span": {
+        "start_line": 8,
+        "start_column": 26,
+        "end_line": 10,
+        "end_column": 1,
+        "start_byte": 346,
+        "end_byte": 364
+      },
+      "body_hash": "d2eca0a1521da9f57d8eeb7ec054d1bf",
       "signature": "static int local_helper()",
       "doc_comment": null,
       "visibility": "Public",

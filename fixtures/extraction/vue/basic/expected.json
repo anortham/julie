@@ -12,6 +12,15 @@
       "end_column": 1,
       "start_byte": 257,
       "end_byte": 286,
+      "body_span": {
+        "start_line": 1,
+        "start_column": 8,
+        "end_line": 3,
+        "end_column": 1,
+        "start_byte": 8,
+        "end_byte": 29
+      },
+      "body_hash": "e0278b209ede047a88251f7f94367a42",
       "signature": ".worker { color: #0f766e }",
       "doc_comment": null,
       "visibility": "Public",
@@ -40,6 +49,15 @@
       "end_column": 1,
       "start_byte": 0,
       "end_byte": 287,
+      "body_span": {
+        "start_line": 4,
+        "start_column": 8,
+        "end_line": 19,
+        "end_column": 1,
+        "start_byte": 64,
+        "end_byte": 286
+      },
+      "body_hash": "97560a13bcf4ba7b5fdb26b51ba761fa",
       "signature": "<Source />",
       "doc_comment": "Vue Single File Component: Source",
       "visibility": "Public",
@@ -65,6 +83,15 @@
       "end_column": 1,
       "start_byte": 165,
       "end_byte": 230,
+      "body_span": {
+        "start_line": 11,
+        "start_column": 39,
+        "end_line": 13,
+        "end_column": 1,
+        "start_byte": 204,
+        "end_byte": 230
+      },
+      "body_hash": "610fbeb731a13af644329e41367482b9",
       "signature": "function format(value: string)",
       "doc_comment": null,
       "visibility": "Public",
@@ -89,6 +116,15 @@
       "end_column": 30,
       "start_byte": 138,
       "end_byte": 162,
+      "body_span": {
+        "start_line": 9,
+        "start_column": 20,
+        "end_line": 9,
+        "end_column": 30,
+        "start_byte": 152,
+        "end_byte": 162
+      },
+      "body_hash": "faa84f139a69da88f8f7371e84964fe8",
       "signature": "const title",
       "doc_comment": null,
       "visibility": "Public",

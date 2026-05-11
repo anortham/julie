@@ -1335,6 +1335,8 @@ fn make_symbol(
         end_column,
         start_byte,
         end_byte,
+        body_span: None,
+        body_hash: None,
         signature: None,
         doc_comment: None,
         visibility: None,

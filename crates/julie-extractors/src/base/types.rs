@@ -7,6 +7,7 @@ use md5;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+use super::body::BodySpan;
 use super::relationship_resolution::StructuredPendingRelationship;
 use super::span::NormalizedSpan;
 
@@ -122,6 +123,12 @@ pub struct Symbol {
     pub start_byte: u32,
     /// End byte offset in file
     pub end_byte: u32,
+    /// Body span for body-bearing symbols.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub body_span: Option<BodySpan>,
+    /// Formatting-insensitive hash of the body span token stream.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub body_hash: Option<String>,
     /// Function/method signature
     #[serde(skip_serializing_if = "Option::is_none")]
     pub signature: Option<String>,

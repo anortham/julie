@@ -32,6 +32,8 @@ mod tests {
             metadata: Some(HashMap::new()),
             code_context: None,
             content_type: None,
+            body_span: None,
+            body_hash: None,
             annotations: Vec::new(),
         }
     }

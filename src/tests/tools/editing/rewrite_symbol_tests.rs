@@ -601,6 +601,8 @@ async fn test_rewrite_symbol_uses_current_primary_db_after_rebind() -> Result<()
             confidence: None,
             code_context: None,
             content_type: None,
+            body_span: None,
+            body_hash: None,
             annotations: Vec::new(),
         };
         rebound_db.bulk_store_fresh_atomic(&[file_info], &[symbol], &[], &[], &[], &rebound_id)?;
@@ -709,6 +711,8 @@ async fn test_rewrite_symbol_keeps_primary_binding_snapshot_across_swap_window()
             confidence: None,
             code_context: None,
             content_type: None,
+            body_span: None,
+            body_hash: None,
             annotations: Vec::new(),
         };
         original_db.bulk_store_fresh_atomic(

@@ -12,6 +12,15 @@
       "end_column": 0,
       "start_byte": 0,
       "end_byte": 275,
+      "body_span": {
+        "start_line": 3,
+        "start_column": 11,
+        "end_line": 6,
+        "end_column": 12,
+        "start_byte": 147,
+        "end_byte": 263
+      },
+      "body_hash": "cb2ea6545c04ea5c6d74ddcdc6c31348",
       "signature": "# Phase 4c fixture: regex backreferences are within-pattern only;\n# there is no cross-file forwar...",
       "doc_comment": null,
       "visibility": "Public",
@@ -38,6 +47,15 @@
       "end_column": 12,
       "start_byte": 251,
       "end_byte": 263,
+      "body_span": {
+        "start_line": 6,
+        "start_column": 0,
+        "end_line": 6,
+        "end_column": 12,
+        "start_byte": 251,
+        "end_byte": 263
+      },
+      "body_hash": "b58e2db87b4882d808e006ddc698f6d5",
       "signature": "Named group 'word': (?<word>\\w+)",
       "doc_comment": null,
       "visibility": "Public",
@@ -66,6 +84,15 @@
       "end_column": 15,
       "start_byte": 147,
       "end_byte": 151,
+      "body_span": {
+        "start_line": 3,
+        "start_column": 11,
+        "end_line": 3,
+        "end_column": 15,
+        "start_byte": 147,
+        "end_byte": 151
+      },
+      "body_hash": "33e77d12602e53048ee1827c5fb6027a",
       "signature": "Group: (\\1)",
       "doc_comment": null,
       "visibility": "Public",

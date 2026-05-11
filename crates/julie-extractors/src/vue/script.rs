@@ -417,6 +417,7 @@ pub(super) fn create_symbol_manual(
     documentation: Option<String>,
     metadata: Option<HashMap<String, Value>>,
 ) -> Symbol {
+    use crate::base::body::{body_hash, infer_body_span_from_span};
     use crate::base::{SymbolOptions, Visibility};
 
     let options = SymbolOptions {
@@ -443,6 +444,8 @@ pub(super) fn create_symbol_manual(
         end_byte,
     };
     let id = base.generate_id_for_span(name, &span);
+    let body_span = infer_body_span_from_span(&base.content, span);
+    let body_hash = body_span.and_then(|span| body_hash(&base.content, span));
 
     Symbol {
         id,
@@ -456,6 +459,8 @@ pub(super) fn create_symbol_manual(
         end_column: end_column as u32,
         start_byte,
         end_byte,
+        body_span,
+        body_hash,
         signature: options.signature,
         doc_comment: options.doc_comment,
         visibility: options.visibility,

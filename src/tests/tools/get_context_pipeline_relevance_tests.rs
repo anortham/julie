@@ -60,6 +60,8 @@ mod tests {
                 confidence: Some(0.9),
                 code_context: Some(docs_blob.to_string()),
                 content_type: None,
+                body_span: None,
+                body_hash: None,
                 annotations: Vec::new(),
             },
             Symbol {
@@ -83,6 +85,8 @@ mod tests {
                 confidence: Some(0.9),
                 code_context: Some(docs_blob.to_string()),
                 content_type: None,
+                body_span: None,
+                body_hash: None,
                 annotations: Vec::new(),
             },
             Symbol {
@@ -111,6 +115,8 @@ mod tests {
                         .to_string(),
                 ),
                 content_type: None,
+                body_span: None,
+                body_hash: None,
                 annotations: Vec::new(),
             },
             Symbol {
@@ -139,6 +145,8 @@ mod tests {
                         .to_string(),
                 ),
                 content_type: None,
+                body_span: None,
+                body_hash: None,
                 annotations: Vec::new(),
             },
         ];

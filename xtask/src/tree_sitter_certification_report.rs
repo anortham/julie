@@ -74,13 +74,14 @@ pub fn render_tree_sitter_certification_markdown(report: &TreeSitterCertificatio
     ));
 
     output.push_str("## Kind Coverage Depth\n\n");
-    output.push_str("| symbols | relationships | identifiers |\n");
-    output.push_str("| ---: | ---: | ---: |\n");
+    output.push_str("| symbols | relationships | identifiers | body spans |\n");
+    output.push_str("| ---: | ---: | ---: | ---: |\n");
     output.push_str(&format!(
-        "| {} | {} | {} |\n\n",
+        "| {} | {} | {} | {} |\n\n",
         report.kind_coverage_totals.symbols,
         report.kind_coverage_totals.relationships,
-        report.kind_coverage_totals.identifiers
+        report.kind_coverage_totals.identifiers,
+        report.kind_coverage_totals.body_spans
     ));
 
     output.push_str("## Gap Counts\n\n");
@@ -107,13 +108,13 @@ pub fn render_tree_sitter_certification_markdown(report: &TreeSitterCertificatio
     output.push('\n');
 
     output.push_str("## Per-Language Fixture Evidence\n\n");
-    output.push_str("| language | parser | dependency | fixtures | symbols | relationships | pending | structured pending | identifiers | types | diagnostics | kind symbols | kind relationships | kind identifiers | gaps |\n");
+    output.push_str("| language | parser | dependency | fixtures | symbols | relationships | pending | structured pending | identifiers | types | diagnostics | kind symbols | kind relationships | kind identifiers | kind body spans | gaps |\n");
     output.push_str(
-        "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n",
+        "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n",
     );
     for row in &report.language_rows {
         output.push_str(&format!(
-            "| `{}` | `{}` | `{}` | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} |\n",
+            "| `{}` | `{}` | `{}` | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} |\n",
             row.language,
             row.parser_crate,
             row.dependency_status,
@@ -128,6 +129,7 @@ pub fn render_tree_sitter_certification_markdown(report: &TreeSitterCertificatio
             row.kind_coverage.symbols,
             row.kind_coverage.relationships,
             row.kind_coverage.identifiers,
+            row.kind_coverage.body_spans,
             row.gap_count
         ));
     }

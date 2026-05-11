@@ -55,6 +55,7 @@ pub struct KindCoverageCounts {
     pub symbols: usize,
     pub relationships: usize,
     pub identifiers: usize,
+    pub body_spans: usize,
 }
 
 impl KindCoverageCounts {
@@ -62,6 +63,7 @@ impl KindCoverageCounts {
         self.symbols += other.symbols;
         self.relationships += other.relationships;
         self.identifiers += other.identifiers;
+        self.body_spans += other.body_spans;
     }
 }
 

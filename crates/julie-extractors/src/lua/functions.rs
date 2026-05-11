@@ -147,7 +147,7 @@ pub(super) fn extract_function_definition_statement(
         ..Default::default()
     };
 
-    let symbol = base.create_symbol(&name_node, name, kind, options);
+    let symbol = base.create_symbol(&node, name, kind, options);
     symbols.push(symbol.clone());
     Some(symbol)
 }
@@ -176,7 +176,7 @@ pub(super) fn extract_local_function_definition_statement(
         ..Default::default()
     };
 
-    let symbol = base.create_symbol(&name_node, name, SymbolKind::Function, options);
+    let symbol = base.create_symbol(&node, name, SymbolKind::Function, options);
     symbols.push(symbol.clone());
     Some(symbol)
 }

@@ -118,6 +118,7 @@ fn tree_sitter_certification_tests_report_surfaces_current_contract_and_historic
     assert_eq!(report.kind_coverage_totals.symbols, 3);
     assert_eq!(report.kind_coverage_totals.relationships, 3);
     assert_eq!(report.kind_coverage_totals.identifiers, 3);
+    assert_eq!(report.kind_coverage_totals.body_spans, 3);
     let rust_depth = report
         .language_rows
         .iter()
@@ -127,6 +128,7 @@ fn tree_sitter_certification_tests_report_surfaces_current_contract_and_historic
     assert_eq!(rust_depth.symbols, 1);
     assert_eq!(rust_depth.relationships, 1);
     assert_eq!(rust_depth.identifiers, 1);
+    assert_eq!(rust_depth.body_spans, 1);
     assert_eq!(
         report
             .real_world_evidence
@@ -153,8 +155,9 @@ fn tree_sitter_certification_tests_report_surfaces_current_contract_and_historic
     assert!(markdown.contains("`tsx`, `vbnet`"));
     assert!(markdown.contains("| `vbnet` | `pending_relationships` | `open` |"));
     assert!(markdown.contains("## Kind Coverage Depth"));
+    assert!(markdown.contains("| symbols | relationships | identifiers | body spans |"));
     assert!(markdown.contains(
-        "| `rust` | `tree-sitter-rust` | `current` | 1 | 1 | 1 | 0 | 0 | 1 | 0 | 0 | 1 | 1 | 1 | 0 |"
+        "| `rust` | `tree-sitter-rust` | `current` | 1 | 1 | 1 | 0 | 0 | 1 | 0 | 0 | 1 | 1 | 1 | 1 | 0 |"
     ));
     assert!(markdown.contains("## Checked-In Real-World OSS Evidence"));
     assert!(markdown.contains("| `ready-rust` | `rust` | `pass` |"));
@@ -329,7 +332,8 @@ fn write_minimal_repo(root: &Path, include_gap_evidence: bool) {
       "kind_coverage": {
         "symbols": {"supported": ["function"], "not_applicable": [], "open_gaps": []},
         "relationships": {"supported": ["calls"], "not_applicable": [], "open_gaps": []},
-        "identifiers": {"supported": ["call"], "not_applicable": [], "open_gaps": []}
+        "identifiers": {"supported": ["call"], "not_applicable": [], "open_gaps": []},
+        "body_spans": {"supported": ["function"], "not_applicable": [], "open_gaps": []}
       },
       "fixtures": [
         {
@@ -361,7 +365,8 @@ fn write_minimal_repo(root: &Path, include_gap_evidence: bool) {
       "kind_coverage": {
         "symbols": {"supported": ["function"], "not_applicable": [], "open_gaps": []},
         "relationships": {"supported": ["calls"], "not_applicable": [], "open_gaps": []},
-        "identifiers": {"supported": ["member_access"], "not_applicable": [], "open_gaps": []}
+        "identifiers": {"supported": ["member_access"], "not_applicable": [], "open_gaps": []},
+        "body_spans": {"supported": ["function"], "not_applicable": [], "open_gaps": []}
       },
       "fixtures": [
         {
@@ -393,7 +398,8 @@ fn write_minimal_repo(root: &Path, include_gap_evidence: bool) {
       "kind_coverage": {
         "symbols": {"supported": ["module"], "not_applicable": [], "open_gaps": []},
         "relationships": {"supported": ["calls"], "not_applicable": [], "open_gaps": []},
-        "identifiers": {"supported": ["type_usage"], "not_applicable": [], "open_gaps": []}
+        "identifiers": {"supported": ["type_usage"], "not_applicable": [], "open_gaps": []},
+        "body_spans": {"supported": ["module"], "not_applicable": [], "open_gaps": []}
       },
       "fixtures": [
         {

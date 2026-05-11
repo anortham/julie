@@ -581,6 +581,8 @@ fn processPayment() {
             confidence: None,
             code_context: None,
             content_type: None,
+            body_span: None,
+            body_hash: None,
             annotations: Vec::new(),
         };
         first_db.bulk_store_fresh_atomic(&[first_file], &[first_symbol], &[], &[], &[], ref_id)?;
@@ -637,6 +639,8 @@ fn processPayment() {
                 confidence: None,
                 code_context: None,
                 content_type: None,
+                body_span: None,
+                body_hash: None,
                 annotations: Vec::new(),
             },
             Symbol {
@@ -660,6 +664,8 @@ fn processPayment() {
                 confidence: None,
                 code_context: None,
                 content_type: None,
+                body_span: None,
+                body_hash: None,
                 annotations: Vec::new(),
             },
         ];
@@ -842,6 +848,8 @@ fn processPayment() {
             confidence: None,
             code_context: None,
             content_type: None,
+            body_span: None,
+            body_hash: None,
             annotations: Vec::new(),
         };
         reference_db.bulk_store_fresh_atomic(
@@ -1716,6 +1724,8 @@ fn test_authenticate_user() {
                 confidence: None,
                 code_context: Some("pub fn rebound_search_symbol() {}".to_string()),
                 content_type: None,
+                body_span: None,
+                body_hash: None,
                 annotations: Vec::new(),
             };
             rebound_db.bulk_store_fresh_atomic(

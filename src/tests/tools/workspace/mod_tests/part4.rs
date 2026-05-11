@@ -75,6 +75,8 @@ async fn test_manage_workspace_health_triggers_roots_resolution_when_primary_mis
             confidence: None,
             code_context: None,
             content_type: None,
+                        body_span: None,
+            body_hash: None,
             annotations: Vec::new(),
         };
         roots_db

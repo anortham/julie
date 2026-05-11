@@ -75,6 +75,8 @@ fn symbol(
         end_column,
         start_byte: 0,
         end_byte: 100,
+        body_span: None,
+        body_hash: None,
         signature: None,
         doc_comment: None,
         visibility: None,

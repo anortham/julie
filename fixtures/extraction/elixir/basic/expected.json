@@ -12,6 +12,15 @@
       "end_column": 3,
       "start_byte": 0,
       "end_byte": 114,
+      "body_span": {
+        "start_line": 1,
+        "start_column": 25,
+        "end_line": 9,
+        "end_column": 3,
+        "start_byte": 25,
+        "end_byte": 114
+      },
+      "body_hash": "d5fc3a84a9a3b197ce3fac3ece34fa26",
       "signature": "defmodule Fixture.Worker",
       "doc_comment": null,
       "visibility": "Public",
@@ -34,6 +43,15 @@
       "end_column": 5,
       "start_byte": 69,
       "end_byte": 110,
+      "body_span": {
+        "start_line": 6,
+        "start_column": 21,
+        "end_line": 8,
+        "end_column": 5,
+        "start_byte": 88,
+        "end_byte": 110
+      },
+      "body_hash": "a76d921e954b29b6325178cbdd705d7b",
       "signature": "def helper(value)",
       "doc_comment": null,
       "visibility": "Private",
@@ -56,6 +74,15 @@
       "end_column": 5,
       "start_byte": 30,
       "end_byte": 65,
+      "body_span": {
+        "start_line": 2,
+        "start_column": 14,
+        "end_line": 4,
+        "end_column": 5,
+        "start_byte": 42,
+        "end_byte": 65
+      },
+      "body_hash": "fe68b72fd29b2025fcfd8a9a22e1fe87",
       "signature": "def run(id)",
       "doc_comment": null,
       "visibility": "Public",

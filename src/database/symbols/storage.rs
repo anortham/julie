@@ -57,7 +57,14 @@ impl SymbolDatabase {
                     metadata_json,
                     symbol.semantic_group,
                     symbol.confidence,
-                    symbol.content_type
+                    symbol.content_type,
+                    symbol.body_span.map(|span| span.start_line),
+                    symbol.body_span.map(|span| span.start_column),
+                    symbol.body_span.map(|span| span.end_line),
+                    symbol.body_span.map(|span| span.end_column),
+                    symbol.body_span.map(|span| span.start_byte),
+                    symbol.body_span.map(|span| span.end_byte),
+                    symbol.body_hash
                 ],
             )?;
         }
@@ -110,7 +117,14 @@ impl SymbolDatabase {
                     metadata_json,
                     symbol.semantic_group,
                     symbol.confidence,
-                    symbol.content_type
+                    symbol.content_type,
+                    symbol.body_span.map(|span| span.start_line),
+                    symbol.body_span.map(|span| span.start_column),
+                    symbol.body_span.map(|span| span.end_line),
+                    symbol.body_span.map(|span| span.end_column),
+                    symbol.body_span.map(|span| span.start_byte),
+                    symbol.body_span.map(|span| span.end_byte),
+                    symbol.body_hash
                 ],
             )?;
         }

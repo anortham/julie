@@ -1452,6 +1452,8 @@ async fn test_fast_refs_target_workspace_uses_requested_binding_for_metrics_attr
             confidence: None,
             code_context: None,
             content_type: None,
+            body_span: None,
+            body_hash: None,
             annotations: Vec::new(),
         };
         target_db.bulk_store_fresh_atomic(

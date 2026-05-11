@@ -70,6 +70,8 @@ mod quality_tests {
             confidence: Some(0.95),
             code_context: Some(format!("{} {{ /* {} */ }}", sig, doc)),
             content_type: None,
+            body_span: None,
+            body_hash: None,
             annotations: Vec::new(),
         };
 

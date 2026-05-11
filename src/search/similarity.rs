@@ -172,6 +172,8 @@ mod tests {
             semantic_group: None,
             metadata: None,
             code_context: None,
+            body_span: None,
+            body_hash: None,
             annotations: Vec::new(),
         }
     }

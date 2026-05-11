@@ -35,6 +35,8 @@ mod search_quality_tests {
             confidence: Some(0.95),
             code_context: None,
             content_type: None,
+            body_span: None,
+            body_hash: None,
             annotations: Vec::new(),
         });
 
@@ -60,6 +62,8 @@ mod search_quality_tests {
             confidence: Some(0.85),
             code_context: None,
             content_type: None,
+            body_span: None,
+            body_hash: None,
             annotations: Vec::new(),
         });
 
@@ -85,6 +89,8 @@ mod search_quality_tests {
             confidence: Some(0.80),
             code_context: None,
             content_type: None,
+            body_span: None,
+            body_hash: None,
             annotations: Vec::new(),
         });
 
@@ -373,6 +379,8 @@ mod search_integration_tests {
                 confidence: Some(0.95),
                 code_context: None,
                 content_type: None,
+                body_span: None,
+                body_hash: None,
                 annotations: Vec::new(),
             },
             // snake_case function
@@ -397,6 +405,8 @@ mod search_integration_tests {
                 confidence: Some(0.90),
                 code_context: None,
                 content_type: None,
+                body_span: None,
+                body_hash: None,
                 annotations: Vec::new(),
             },
             // camelCase method
@@ -421,6 +431,8 @@ mod search_integration_tests {
                 confidence: Some(0.88),
                 code_context: None,
                 content_type: None,
+                body_span: None,
+                body_hash: None,
                 annotations: Vec::new(),
             },
         ]

@@ -58,6 +58,8 @@ fn make_symbol(id: &str, name: &str, file_path: &str) -> Symbol {
         confidence: None,
         code_context: Some(format!("fn {}() {{}}", name)),
         content_type: None,
+        body_span: None,
+        body_hash: None,
         annotations: Vec::new(),
     }
 }

@@ -69,6 +69,8 @@ fn make_symbol(
         confidence: Some(0.9),
         code_context: code_context.map(|s| s.to_string()),
         content_type: None,
+        body_span: None,
+        body_hash: None,
         annotations: Vec::new(),
     }
 }

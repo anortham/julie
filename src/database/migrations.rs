@@ -13,7 +13,7 @@ fn get_unix_timestamp() -> Result<i64> {
 }
 
 /// Current schema version - increment when adding migrations
-pub const LATEST_SCHEMA_VERSION: i32 = 24;
+pub const LATEST_SCHEMA_VERSION: i32 = 25;
 
 impl SymbolDatabase {
     // ============================================================
@@ -120,6 +120,7 @@ impl SymbolDatabase {
             22 => self.migration_022_add_sql_performance_indexes()?,
             23 => self.migration_023_add_tool_call_input_bytes()?,
             24 => self.migration_024_add_index_engine_state()?,
+            25 => self.migration_025_add_symbol_body_fields()?,
             _ => return Err(anyhow!("Unknown migration version: {}", version)),
         }
         Ok(())
@@ -152,6 +153,7 @@ impl SymbolDatabase {
             22 => "Add SQL performance indexes",
             23 => "Add input_bytes to tool_calls",
             24 => "Add index_engine_state table",
+            25 => "Add symbol body span and hash columns",
             _ => "Unknown migration",
         };
 
@@ -856,6 +858,34 @@ impl SymbolDatabase {
         info!("Running migration 024: Add index_engine_state table");
         self.create_index_engine_state_table()?;
         info!("Migration 024 complete: index_engine_state table added");
+        Ok(())
+    }
+
+    fn migration_025_add_symbol_body_fields(&self) -> Result<()> {
+        info!("Running migration 025: Add symbol body span and hash columns");
+        if !self.table_exists("symbols")? {
+            debug!("symbols table does not exist, skipping migration 025");
+            return Ok(());
+        }
+
+        for (column, column_type) in [
+            ("body_start_line", "INTEGER"),
+            ("body_start_col", "INTEGER"),
+            ("body_end_line", "INTEGER"),
+            ("body_end_col", "INTEGER"),
+            ("body_start_byte", "INTEGER"),
+            ("body_end_byte", "INTEGER"),
+            ("body_hash", "TEXT"),
+        ] {
+            if !self.has_column("symbols", column)? {
+                self.conn.execute(
+                    &format!("ALTER TABLE symbols ADD COLUMN {column} {column_type}"),
+                    [],
+                )?;
+            }
+        }
+
+        info!("Migration 025 complete: symbol body fields added");
         Ok(())
     }
 

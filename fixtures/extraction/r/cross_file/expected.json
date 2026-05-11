@@ -12,6 +12,15 @@
       "end_column": 1,
       "start_byte": 367,
       "end_byte": 427,
+      "body_span": {
+        "start_line": 13,
+        "start_column": 20,
+        "end_line": 16,
+        "end_column": 1,
+        "start_byte": 387,
+        "end_byte": 427
+      },
+      "body_hash": "425cd556617c0a9ca3a8cae76093b52b",
       "signature": "entry <- function()",
       "doc_comment": null,
       "visibility": null,
@@ -34,6 +43,15 @@
       "end_column": 1,
       "start_byte": 330,
       "end_byte": 365,
+      "body_span": {
+        "start_line": 9,
+        "start_column": 27,
+        "end_line": 11,
+        "end_column": 1,
+        "start_byte": 357,
+        "end_byte": 365
+      },
+      "body_hash": "a48f4c9f9ba5ed9ddb3d61b1f6733165",
       "signature": "local_helper <- function()",
       "doc_comment": null,
       "visibility": null,
@@ -56,6 +74,15 @@
       "end_column": 14,
       "start_byte": 314,
       "end_byte": 328,
+      "body_span": {
+        "start_line": 7,
+        "start_column": 7,
+        "end_line": 7,
+        "end_column": 14,
+        "start_byte": 321,
+        "end_byte": 328
+      },
+      "body_hash": "1a92d00766190697e4aaaba199267fb0",
       "signature": "library(other)",
       "doc_comment": null,
       "visibility": null,

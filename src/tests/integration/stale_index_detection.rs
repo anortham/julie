@@ -987,6 +987,8 @@ async fn test_check_if_indexing_needed_uses_rebound_current_primary_snapshot() -
             confidence: None,
             code_context: Some("fn rebound_primary_only() {}".to_string()),
             content_type: None,
+            body_span: None,
+            body_hash: None,
             annotations: Vec::new(),
         };
         rebound_db.bulk_store_fresh_atomic(&[file_info], &[symbol], &[], &[], &[], &rebound_id)?;

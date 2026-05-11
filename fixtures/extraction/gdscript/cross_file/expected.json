@@ -12,6 +12,15 @@
       "end_column": 25,
       "start_byte": 364,
       "end_byte": 429,
+      "body_span": {
+        "start_line": 11,
+        "start_column": 20,
+        "end_line": 13,
+        "end_column": 25,
+        "start_byte": 384,
+        "end_byte": 429
+      },
+      "body_hash": "a21570e178e2a79830035b29f914a370",
       "signature": "func entry() -> int:",
       "doc_comment": null,
       "visibility": "Public",
@@ -34,6 +43,15 @@
       "end_column": 13,
       "start_byte": 321,
       "end_byte": 362,
+      "body_span": {
+        "start_line": 8,
+        "start_column": 27,
+        "end_line": 9,
+        "end_column": 13,
+        "start_byte": 348,
+        "end_byte": 362
+      },
+      "body_hash": "9ba72a8bff942b11bf13e1adea5cd152",
       "signature": "func local_helper() -> int:",
       "doc_comment": null,
       "visibility": "Public",

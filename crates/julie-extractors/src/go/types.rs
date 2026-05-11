@@ -126,7 +126,7 @@ impl super::GoExtractor {
                 "struct" => {
                     let signature = format!("type {}{} struct", name, type_params);
                     Some(self.base.create_symbol(
-                        &type_id,
+                        &node,
                         name,
                         SymbolKind::Struct,
                         SymbolOptions {

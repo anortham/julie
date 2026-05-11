@@ -93,6 +93,8 @@ mod workspace_isolation {
                 confidence: None,
                 code_context: None,
                 content_type: None,
+                body_span: None,
+                body_hash: None,
                 annotations: Vec::new(),
             };
             ref_db.bulk_store_symbols(&[test_symbol], &reference_id)?;

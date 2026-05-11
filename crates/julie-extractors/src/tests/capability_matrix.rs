@@ -44,6 +44,7 @@ pub(crate) struct CapabilityKindCoverage {
     pub(crate) relationships: KindCoverage,
     #[serde(default)]
     pub(crate) identifiers: KindCoverage,
+    pub(crate) body_spans: Option<KindCoverage>,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -674,6 +675,44 @@ fn capability_matrix_pending_claim_requires_pending_output_in_fixtures() {
 }
 
 #[test]
+fn capability_matrix_requires_body_span_hash_coverage_domain() {
+    let root = workspace_root();
+    let matrix = load_matrix(&root);
+    let mut errors = Vec::new();
+
+    for row in &matrix.languages {
+        if row.kind_coverage.body_spans.is_none() {
+            errors.push(format!(
+                "{} is missing kind_coverage.body_spans for the body_span/body_hash contract",
+                row.language
+            ));
+        }
+    }
+
+    assert!(errors.is_empty(), "{}", errors.join("\n"));
+}
+
+#[test]
+fn capability_matrix_body_span_hash_has_no_open_gaps() {
+    let root = workspace_root();
+    let matrix = load_matrix(&root);
+    let mut errors = Vec::new();
+
+    for row in &matrix.languages {
+        if let Some(body_span_coverage) = &row.kind_coverage.body_spans {
+            for gap in &body_span_coverage.open_gaps {
+                errors.push(format!(
+                    "{} body_spans has open gap for `{}`: {}",
+                    row.language, gap.kind, gap.required_closure
+                ));
+            }
+        }
+    }
+
+    assert!(errors.is_empty(), "{}", errors.join("\n"));
+}
+
+#[test]
 fn capability_matrix_supported_kind_claims_have_fixture_evidence() {
     let root = workspace_root();
     let matrix = load_matrix(&root);
@@ -709,6 +748,17 @@ fn capability_matrix_supported_kind_claims_have_fixture_evidence() {
             &observed.identifiers,
             IdentifierKind::try_from_string,
         );
+        if let Some(body_span_coverage) = &row.kind_coverage.body_spans {
+            assert_supported_kind_claims(
+                &mut errors,
+                row,
+                "body_spans",
+                false,
+                body_span_coverage,
+                &observed.body_spans,
+                SymbolKind::try_from_string,
+            );
+        }
     }
 
     assert!(errors.is_empty(), "{}", errors.join("\n"));
@@ -912,6 +962,7 @@ struct ObservedKindCoverage {
     symbols: BTreeSet<String>,
     relationships: BTreeSet<String>,
     identifiers: BTreeSet<String>,
+    body_spans: BTreeSet<String>,
 }
 
 fn observed_kind_coverage(root: &Path, row: &CapabilityRow) -> ObservedKindCoverage {
@@ -920,6 +971,13 @@ fn observed_kind_coverage(root: &Path, row: &CapabilityRow) -> ObservedKindCover
         let expected = load_expected_fixture(root, fixture);
         collect_kinds(&mut observed.symbols, &expected, &["symbols"], |item| {
             item.get("kind")
+        });
+        collect_kinds(&mut observed.body_spans, &expected, &["symbols"], |item| {
+            if item.get("body_span").is_some() && item.get("body_hash").is_some() {
+                item.get("kind")
+            } else {
+                None
+            }
         });
         collect_kinds(
             &mut observed.relationships,

@@ -12,6 +12,7 @@
 // - tree_methods.rs: Tree navigation and traversal methods
 
 pub mod annotations;
+pub mod body;
 pub mod creation_methods;
 pub mod embedded_span;
 pub mod extractor;
@@ -23,6 +24,7 @@ pub mod types;
 
 // Re-export key types for external use
 pub use annotations::normalize_annotations;
+pub use body::BodySpan;
 pub use embedded_span::EmbeddedSpanOffset;
 pub use extractor::BaseExtractor;
 pub use relationship_resolution::{

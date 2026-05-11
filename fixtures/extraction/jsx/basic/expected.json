@@ -12,6 +12,15 @@
       "end_column": 1,
       "start_byte": 0,
       "end_byte": 169,
+      "body_span": {
+        "start_line": 1,
+        "start_column": 22,
+        "end_line": 7,
+        "end_column": 1,
+        "start_byte": 22,
+        "end_byte": 169
+      },
+      "body_hash": "ac94f5a2caf887c0c6f333d9ce15e488",
       "signature": "export function Badge({ label }) {\n    function handleClick() {\n        return format(label);\n    }\n\n    return <button onClick={handleClick}>{format(label)}</button>;\n}",
       "doc_comment": null,
       "visibility": null,
@@ -38,6 +47,15 @@
       "end_column": 1,
       "start_byte": 7,
       "end_byte": 169,
+      "body_span": {
+        "start_line": 1,
+        "start_column": 33,
+        "end_line": 7,
+        "end_column": 1,
+        "start_byte": 33,
+        "end_byte": 169
+      },
+      "body_hash": "1ae82f31ff2bd183e1c862807175145f",
       "signature": "function Badge({ label })",
       "doc_comment": null,
       "visibility": "Public",
@@ -68,6 +86,15 @@
       "end_column": 1,
       "start_byte": 171,
       "end_byte": 222,
+      "body_span": {
+        "start_line": 9,
+        "start_column": 23,
+        "end_line": 11,
+        "end_column": 1,
+        "start_byte": 194,
+        "end_byte": 222
+      },
+      "body_hash": "610fbeb731a13af644329e41367482b9",
       "signature": "function format(value)",
       "doc_comment": null,
       "visibility": "Public",
@@ -98,6 +125,15 @@
       "end_column": 5,
       "start_byte": 39,
       "end_byte": 99,
+      "body_span": {
+        "start_line": 2,
+        "start_column": 27,
+        "end_line": 4,
+        "end_column": 5,
+        "start_byte": 62,
+        "end_byte": 99
+      },
+      "body_hash": "9e39724b4e9e382fc62b1c8c3e0ebbbe",
       "signature": "function handleClick()",
       "doc_comment": null,
       "visibility": "Public",

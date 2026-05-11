@@ -1,8 +1,10 @@
 use std::path::{Path, PathBuf};
+
+use serde::{Deserialize, Serialize};
 use tracing::warn;
 use tree_sitter::Node;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub struct NormalizedSpan {
     pub start_line: u32,
     pub start_column: u32,

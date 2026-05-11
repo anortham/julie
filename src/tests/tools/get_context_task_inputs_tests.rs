@@ -65,6 +65,8 @@ mod tests {
             confidence: Some(1.0),
             code_context: Some(body.to_string()),
             content_type: None,
+            body_span: None,
+            body_hash: None,
             annotations: Vec::new(),
         }
     }

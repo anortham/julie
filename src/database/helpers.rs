@@ -11,7 +11,9 @@ use anyhow::Result;
 pub(crate) const SYMBOL_COLUMNS: &str = "id, name, kind, language, file_path, signature, \
      start_line, start_col, end_line, end_col, start_byte, end_byte, \
      doc_comment, visibility, code_context, parent_id, \
-     metadata, semantic_group, confidence, content_type";
+     metadata, semantic_group, confidence, content_type, \
+     body_start_line, body_start_col, body_end_line, body_end_col, \
+     body_start_byte, body_end_byte, body_hash";
 
 /// Lightweight SELECT column list — skips expensive columns that are unused in structure mode.
 /// Omits: code_context (large, immediately discarded), metadata (expensive JSON parse),
@@ -19,13 +21,17 @@ pub(crate) const SYMBOL_COLUMNS: &str = "id, name, kind, language, file_path, si
 /// CRITICAL: Must stay in sync with row_to_symbol_lightweight() expectations.
 pub(crate) const SYMBOL_COLUMNS_LIGHTWEIGHT: &str = "id, name, kind, language, file_path, signature, \
      start_line, start_col, end_line, end_col, start_byte, end_byte, \
-     doc_comment, visibility, parent_id";
+     doc_comment, visibility, parent_id, \
+     body_start_line, body_start_col, body_end_line, body_end_col, \
+     body_start_byte, body_end_byte, body_hash";
 
 pub(crate) const SYMBOL_UPSERT_SQL: &str = "INSERT INTO symbols
      (id, name, kind, language, file_path, signature, start_line, start_col,
       end_line, end_col, start_byte, end_byte, doc_comment, visibility, code_context,
-      parent_id, metadata, semantic_group, confidence, content_type)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)
+      parent_id, metadata, semantic_group, confidence, content_type,
+      body_start_line, body_start_col, body_end_line, body_end_col,
+      body_start_byte, body_end_byte, body_hash)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27)
      ON CONFLICT(id) DO UPDATE SET
       name = excluded.name,
       kind = excluded.kind,
@@ -46,6 +52,13 @@ pub(crate) const SYMBOL_UPSERT_SQL: &str = "INSERT INTO symbols
       semantic_group = excluded.semantic_group,
       confidence = excluded.confidence,
       content_type = excluded.content_type,
+      body_start_line = excluded.body_start_line,
+      body_start_col = excluded.body_start_col,
+      body_end_line = excluded.body_end_line,
+      body_end_col = excluded.body_end_col,
+      body_start_byte = excluded.body_start_byte,
+      body_end_byte = excluded.body_end_byte,
+      body_hash = excluded.body_hash,
       file_hash = NULL,
       last_indexed = 0,
       reference_score = 0.0";
@@ -76,6 +89,47 @@ fn parse_symbol_visibility(
 fn parse_relationship_kind(kind: &str) -> rusqlite::Result<RelationshipKind> {
     RelationshipKind::try_from_string(kind)
         .ok_or_else(|| row_conversion_error(3, format!("unknown relationship kind: {kind}")))
+}
+
+fn row_to_body_span(
+    row: &Row,
+) -> rusqlite::Result<Option<crate::extractors::base::NormalizedSpan>> {
+    let start_line: Option<u32> = row.get("body_start_line")?;
+    let start_column: Option<u32> = row.get("body_start_col")?;
+    let end_line: Option<u32> = row.get("body_end_line")?;
+    let end_column: Option<u32> = row.get("body_end_col")?;
+    let start_byte: Option<u32> = row.get("body_start_byte")?;
+    let end_byte: Option<u32> = row.get("body_end_byte")?;
+
+    match (
+        start_line,
+        start_column,
+        end_line,
+        end_column,
+        start_byte,
+        end_byte,
+    ) {
+        (None, None, None, None, None, None) => Ok(None),
+        (
+            Some(start_line),
+            Some(start_column),
+            Some(end_line),
+            Some(end_column),
+            Some(start_byte),
+            Some(end_byte),
+        ) => Ok(Some(crate::extractors::base::NormalizedSpan {
+            start_line,
+            start_column,
+            end_line,
+            end_column,
+            start_byte,
+            end_byte,
+        })),
+        _ => Err(row_conversion_error(
+            20,
+            "incomplete symbol body span columns".to_string(),
+        )),
+    }
 }
 
 impl SymbolDatabase {
@@ -188,6 +242,8 @@ impl SymbolDatabase {
             confidence: row.get("confidence")?,
             code_context: row.get("code_context")?,
             content_type: row.get("content_type")?,
+            body_span: row_to_body_span(row)?,
+            body_hash: row.get("body_hash")?,
             annotations: Vec::new(),
         })
     }
@@ -225,6 +281,8 @@ impl SymbolDatabase {
             confidence: None,
             code_context: None,
             content_type: None,
+            body_span: row_to_body_span(row)?,
+            body_hash: row.get("body_hash")?,
             annotations: Vec::new(),
         })
     }

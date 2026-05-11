@@ -35,6 +35,8 @@ fn sym(id: &str, name: &str, kind: SymbolKind, lang: &str, file_path: &str) -> S
         confidence: None,
         code_context: None,
         content_type: None,
+        body_span: None,
+        body_hash: None,
         annotations: Vec::new(),
     }
 }

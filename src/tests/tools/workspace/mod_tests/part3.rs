@@ -113,6 +113,8 @@ async fn test_manage_workspace_health_uses_rebound_session_primary() {
             confidence: None,
             code_context: None,
             content_type: None,
+                        body_span: None,
+            body_hash: None,
             annotations: Vec::new(),
         };
         rebound_guard
@@ -237,6 +239,8 @@ async fn test_manage_workspace_health_keeps_primary_snapshot_after_completed_swa
             confidence: None,
             code_context: None,
             content_type: None,
+                        body_span: None,
+            body_hash: None,
             annotations: Vec::new(),
         };
         original_guard
@@ -402,6 +406,8 @@ async fn test_manage_workspace_health_detailed_uses_rebound_session_primary() {
             confidence: None,
             code_context: None,
             content_type: None,
+                        body_span: None,
+            body_hash: None,
             annotations: Vec::new(),
         };
         rebound_guard

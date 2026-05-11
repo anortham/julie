@@ -140,6 +140,8 @@ fn make_call_path_symbol(id: &str, name: &str, file_path: &str, start_line: u32)
         confidence: Some(0.9),
         code_context: None,
         content_type: None,
+        body_span: None,
+        body_hash: None,
         annotations: Vec::new(),
     }
 }

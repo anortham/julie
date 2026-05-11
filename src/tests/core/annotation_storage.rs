@@ -53,6 +53,8 @@ fn symbol(id: &str, name: &str, file_path: &str, annotations: Vec<AnnotationMark
         confidence: Some(0.98),
         code_context: Some(format!("fn {name}() {{}}")),
         content_type: None,
+        body_span: None,
+        body_hash: None,
         annotations,
     }
 }

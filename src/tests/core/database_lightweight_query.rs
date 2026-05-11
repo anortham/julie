@@ -6,7 +6,7 @@
 // and large code_context column reads.
 
 use crate::database::{FileInfo, SymbolDatabase};
-use crate::extractors::base::{Symbol, SymbolKind};
+use crate::extractors::base::{NormalizedSpan, Symbol, SymbolKind};
 use tempfile::TempDir;
 
 /// Helper to create a test database with a few symbols including metadata and code_context
@@ -56,6 +56,8 @@ fn setup_test_db_with_rich_symbols() -> (TempDir, SymbolDatabase) {
             confidence: Some(0.95),
             code_context: Some("pub struct UserService {\n    users: Vec<User>,\n}".to_string()),
             content_type: None,
+            body_span: None,
+            body_hash: None,
             annotations: Vec::new(),
         },
         Symbol {
@@ -89,6 +91,15 @@ fn setup_test_db_with_rich_symbols() -> (TempDir, SymbolDatabase) {
                     .to_string(),
             ),
             content_type: None,
+            body_span: Some(NormalizedSpan {
+                start_line: 10,
+                start_column: 52,
+                end_line: 20,
+                end_column: 5,
+                start_byte: 154,
+                end_byte: 300,
+            }),
+            body_hash: Some("sha256:get-user-body".to_string()),
             annotations: Vec::new(),
         },
         Symbol {
@@ -115,6 +126,8 @@ fn setup_test_db_with_rich_symbols() -> (TempDir, SymbolDatabase) {
                     .to_string(),
             ),
             content_type: None,
+            body_span: None,
+            body_hash: None,
             annotations: Vec::new(),
         },
     ];
@@ -155,6 +168,8 @@ fn test_lightweight_query_returns_same_core_fields() {
         assert_eq!(f.doc_comment, l.doc_comment, "doc_comment mismatch");
         assert_eq!(f.visibility, l.visibility, "visibility mismatch");
         assert_eq!(f.parent_id, l.parent_id, "parent_id mismatch");
+        assert_eq!(f.body_span, l.body_span, "body_span mismatch");
+        assert_eq!(f.body_hash, l.body_hash, "body_hash mismatch");
     }
 }
 

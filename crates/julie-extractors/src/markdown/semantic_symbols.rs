@@ -348,6 +348,8 @@ fn line_symbol(
         end_column: span.end_column,
         start_byte: span.start_byte,
         end_byte: span.end_byte,
+        body_span: None,
+        body_hash: None,
         signature,
         doc_comment,
         visibility: None,

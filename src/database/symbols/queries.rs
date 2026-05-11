@@ -162,14 +162,11 @@ impl SymbolDatabase {
 
     /// Get symbols for a specific file
     pub fn get_symbols_for_file(&self, file_path: &str) -> Result<Vec<Symbol>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT id, name, kind, language, file_path, signature, start_line, start_col,
-                    end_line, end_col, start_byte, end_byte, doc_comment, visibility, code_context,
-                    parent_id, metadata, semantic_group, confidence, content_type
-             FROM symbols
-             WHERE file_path = ?1
-             ORDER BY start_line, start_col",
-        )?;
+        let query = format!(
+            "SELECT {} FROM symbols WHERE file_path = ?1 ORDER BY start_line, start_col",
+            SYMBOL_COLUMNS
+        );
+        let mut stmt = self.conn.prepare(&query)?;
 
         let symbol_iter = stmt.query_map(params![file_path], |row| self.row_to_symbol(row))?;
 

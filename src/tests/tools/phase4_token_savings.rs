@@ -34,6 +34,8 @@ mod tests {
             confidence: None,     // NULL
             code_context: None,   // NULL
             content_type: None,   // NULL
+            body_span: None,
+            body_hash: None,
             annotations: Vec::new(),
         }
     }
@@ -168,6 +170,8 @@ mod tests {
             confidence: Some(0.95),
             code_context: Some("fn main() { ... }".to_string()),
             content_type: Some("code".to_string()),
+            body_span: None,
+            body_hash: None,
             annotations: Vec::new(),
         };
 

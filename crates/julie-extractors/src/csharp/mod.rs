@@ -70,6 +70,8 @@ impl CSharpExtractor {
             end_column: end_pos.column as u32,
             start_byte: root.start_byte() as u32,
             end_byte: root.end_byte() as u32,
+            body_span: None,
+            body_hash: None,
             signature: None,
             doc_comment: None,
             visibility: None,

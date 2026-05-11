@@ -50,6 +50,8 @@ fn symbol(id: &str, name: &str, file_path: &str, start_line: u32) -> Symbol {
         confidence: Some(1.0),
         code_context: Some(format!("{name}() {{}}")),
         content_type: None,
+        body_span: None,
+        body_hash: None,
         annotations: vec![marker("HttpGet", "httpget", Some("[HttpGet]"))],
     }
 }

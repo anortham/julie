@@ -40,6 +40,8 @@ mod tests {
             confidence: None,
             code_context: None,
             content_type: None,
+            body_span: None,
+            body_hash: None,
             annotations: Vec::new(),
         }
     }

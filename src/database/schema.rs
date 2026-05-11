@@ -155,6 +155,15 @@ impl SymbolDatabase {
                 -- NULL = code (default), 'documentation' = markdown docs
                 content_type TEXT DEFAULT NULL,
 
+                -- Body span/hash for body-bearing symbols
+                body_start_line INTEGER,
+                body_start_col INTEGER,
+                body_end_line INTEGER,
+                body_end_col INTEGER,
+                body_start_byte INTEGER,
+                body_end_byte INTEGER,
+                body_hash TEXT,
+
                 -- Graph centrality: weighted incoming reference count
                 reference_score REAL NOT NULL DEFAULT 0.0
             )",

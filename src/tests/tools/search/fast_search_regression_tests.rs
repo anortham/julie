@@ -72,6 +72,8 @@ fn rescued_symbol() -> Symbol {
         confidence: None,
         code_context: Some("defmodule Phoenix.Router do\nend".to_string()),
         content_type: None,
+        body_span: None,
+        body_hash: None,
         annotations: Vec::new(),
     }
 }

@@ -85,6 +85,8 @@ async fn test_debug_foreign_key_constraint() {
         confidence: None,
         code_context: None,
         content_type: None,
+        body_span: None,
+        body_hash: None,
         annotations: Vec::new(),
     };
 
@@ -186,6 +188,8 @@ async fn test_symbol_storage_and_retrieval() {
         confidence: None,
         code_context: None,
         content_type: None,
+        body_span: None,
+        body_hash: None,
         annotations: Vec::new(),
     };
 
@@ -292,6 +296,8 @@ async fn test_symbol_with_metadata_and_semantic_fields() {
         confidence: Some(0.95),
         code_context: None,
         content_type: None,
+        body_span: None,
+        body_hash: None,
         annotations: Vec::new(),
     };
 
@@ -376,6 +382,8 @@ async fn test_relationship_with_id_field() {
         confidence: None,
         code_context: None,
         content_type: None,
+        body_span: None,
+        body_hash: None,
         annotations: Vec::new(),
     };
 
@@ -400,6 +408,8 @@ async fn test_relationship_with_id_field() {
         confidence: None,
         code_context: None,
         content_type: None,
+        body_span: None,
+        body_hash: None,
         annotations: Vec::new(),
     };
 
@@ -460,6 +470,8 @@ async fn test_cross_language_semantic_grouping() {
         confidence: Some(1.0),
         code_context: None,
         content_type: None,
+        body_span: None,
+        body_hash: None,
         annotations: Vec::new(),
     };
 
@@ -484,6 +496,8 @@ async fn test_cross_language_semantic_grouping() {
         confidence: Some(0.98),
         code_context: None,
         content_type: None,
+        body_span: None,
+        body_hash: None,
         annotations: Vec::new(),
     };
 
@@ -571,6 +585,8 @@ async fn test_get_outgoing_relationships_for_symbols_batch() {
         confidence: None,
         code_context: None,
         content_type: None,
+        body_span: None,
+        body_hash: None,
         annotations: Vec::new(),
     };
 
@@ -680,6 +696,8 @@ async fn test_extractor_database_integration() {
         confidence: None,     // Will be calculated based on parsing context
         code_context: None,
         content_type: None,
+        body_span: None,
+        body_hash: None,
         annotations: Vec::new(),
     };
 
@@ -753,6 +771,15 @@ async fn test_complete_symbol_field_persistence() {
             "  // line before\n  fn complete_function() {\n  // line after".to_string(),
         ),
         content_type: None,
+        body_span: Some(crate::extractors::base::NormalizedSpan {
+            start_line: 12,
+            start_column: 4,
+            end_line: 18,
+            end_column: 5,
+            start_byte: 180,
+            end_byte: 420,
+        }),
+        body_hash: Some("hash:complete-function-body".to_string()),
         // Regular fields that work:
         signature: Some("fn complete_function() -> Result<()>".to_string()),
         parent_id: None,
@@ -793,6 +820,23 @@ async fn test_complete_symbol_field_persistence() {
         retrieved.code_context,
         Some("  // line before\n  fn complete_function() {\n  // line after".to_string()),
         "code_context should be persisted"
+    );
+    assert_eq!(
+        retrieved.body_span,
+        Some(crate::extractors::base::NormalizedSpan {
+            start_line: 12,
+            start_column: 4,
+            end_line: 18,
+            end_column: 5,
+            start_byte: 180,
+            end_byte: 420,
+        }),
+        "body_span should be persisted"
+    );
+    assert_eq!(
+        retrieved.body_hash,
+        Some("hash:complete-function-body".to_string()),
+        "body_hash should be persisted"
     );
 
     println!("✅ ALL FIELDS PERSISTED CORRECTLY!");
@@ -1140,6 +1184,8 @@ fn test_concurrent_read_access_no_corruption() {
             content_type: None,
             confidence: None,
             semantic_group: None,
+            body_span: None,
+            body_hash: None,
             annotations: Vec::new(),
         }];
 
@@ -1595,6 +1641,8 @@ fn test_get_symbols_by_ids_preserves_order() {
             confidence: None,
             code_context: None,
             content_type: None,
+            body_span: None,
+            body_hash: None,
             annotations: Vec::new(),
         },
         Symbol {
@@ -1618,6 +1666,8 @@ fn test_get_symbols_by_ids_preserves_order() {
             confidence: None,
             code_context: None,
             content_type: None,
+            body_span: None,
+            body_hash: None,
             annotations: Vec::new(),
         },
         Symbol {
@@ -1641,6 +1691,8 @@ fn test_get_symbols_by_ids_preserves_order() {
             confidence: None,
             code_context: None,
             content_type: None,
+            body_span: None,
+            body_hash: None,
             annotations: Vec::new(),
         },
         Symbol {
@@ -1664,6 +1716,8 @@ fn test_get_symbols_by_ids_preserves_order() {
             confidence: None,
             code_context: None,
             content_type: None,
+            body_span: None,
+            body_hash: None,
             annotations: Vec::new(),
         },
     ];
@@ -1730,6 +1784,8 @@ fn test_get_symbols_by_ids_handles_over_32k_ids() {
             confidence: None,
             code_context: None,
             content_type: None,
+            body_span: None,
+            body_hash: None,
             annotations: Vec::new(),
         })
         .collect();

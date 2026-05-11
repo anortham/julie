@@ -51,6 +51,8 @@ fn rebound_symbol() -> Symbol {
         confidence: None,
         code_context: None,
         content_type: None,
+        body_span: None,
+        body_hash: None,
         annotations: Vec::new(),
     }
 }
@@ -77,6 +79,8 @@ fn rebound_caller_symbol() -> Symbol {
         confidence: None,
         code_context: None,
         content_type: None,
+        body_span: None,
+        body_hash: None,
         annotations: Vec::new(),
     }
 }
@@ -117,6 +121,8 @@ fn make_struct_symbol(id: &str, name: &str, file_path: &str, line: u32) -> Symbo
         confidence: None,
         code_context: None,
         content_type: None,
+        body_span: None,
+        body_hash: None,
         annotations: Vec::new(),
     }
 }
@@ -143,6 +149,8 @@ fn make_method_symbol(id: &str, name: &str, file_path: &str, line: u32, parent_i
         confidence: None,
         code_context: None,
         content_type: None,
+        body_span: None,
+        body_hash: None,
         annotations: Vec::new(),
     }
 }
@@ -426,6 +434,8 @@ async fn test_fast_refs_primary_qualified_identifier_fallback_respects_parent_fi
         confidence: None,
         code_context: None,
         content_type: None,
+        body_span: None,
+        body_hash: None,
         annotations: Vec::new(),
     };
 
@@ -450,6 +460,8 @@ async fn test_fast_refs_primary_qualified_identifier_fallback_respects_parent_fi
         confidence: None,
         code_context: None,
         content_type: None,
+        body_span: None,
+        body_hash: None,
         annotations: Vec::new(),
     };
 
@@ -570,6 +582,8 @@ async fn test_fast_refs_primary_identifier_fallback_dedupes_within_batch() -> Re
         confidence: None,
         code_context: None,
         content_type: None,
+        body_span: None,
+        body_hash: None,
         annotations: Vec::new(),
     };
 

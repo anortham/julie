@@ -579,6 +579,8 @@ pub(crate) fn tantivy_symbol_to_symbol(result: crate::search::index::SymbolSearc
         confidence: Some(result.score),
         code_context: None,
         content_type: None,
+        body_span: None,
+        body_hash: None,
         annotations: Vec::new(),
     }
 }
@@ -593,13 +595,27 @@ fn enrich_symbols_from_db(symbols: &mut [Symbol], db: &crate::database::SymbolDa
         Ok(db_symbols) => {
             let enrichment_map: std::collections::HashMap<String, _> = db_symbols
                 .into_iter()
-                .map(|s| (s.id, (s.code_context, s.visibility, s.metadata)))
+                .map(|s| {
+                    (
+                        s.id,
+                        (
+                            s.code_context,
+                            s.visibility,
+                            s.metadata,
+                            s.body_span,
+                            s.body_hash,
+                        ),
+                    )
+                })
                 .collect();
             for symbol in symbols.iter_mut() {
-                if let Some((ctx, vis, meta)) = enrichment_map.get(&symbol.id) {
+                if let Some((ctx, vis, meta, body_span, body_hash)) = enrichment_map.get(&symbol.id)
+                {
                     symbol.code_context = ctx.clone();
                     symbol.visibility = vis.clone();
                     symbol.metadata = meta.clone();
+                    symbol.body_span = *body_span;
+                    symbol.body_hash = body_hash.clone();
                 }
             }
             debug!("✅ Enriched {} symbols from SQLite", enrichment_map.len());
@@ -635,6 +651,8 @@ pub(crate) fn content_result_to_symbol(
         confidence: Some(result.score),
         code_context: None,
         content_type: None,
+        body_span: None,
+        body_hash: None,
         annotations: Vec::new(),
     }
 }

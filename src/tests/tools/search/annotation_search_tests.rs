@@ -41,6 +41,8 @@ fn symbol(
         visibility: None,
         parent_id: parent_id.map(str::to_string),
         metadata: None,
+        body_span: None,
+        body_hash: None,
         annotations,
         semantic_group: None,
         confidence: Some(1.0),

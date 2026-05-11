@@ -59,6 +59,8 @@ mod graph_expansion_tests {
             confidence: Some(0.9),
             code_context: None,
             content_type: None,
+            body_span: None,
+            body_hash: None,
             annotations: Vec::new(),
         }
     }
