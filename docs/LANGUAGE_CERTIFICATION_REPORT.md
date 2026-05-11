@@ -21,7 +21,7 @@ Historical matrix evidence is deprecated; current capability, fixture, and real-
 ## Checked-In Real-World OSS Evidence
 
 - Profile: `release`
-- Julie HEAD recorded in evidence: `6d8310cc1a8ca89fd82a6483e67dd810ee8f321f`
+- Julie HEAD recorded in evidence: `f548160e58641da369f3b9a145161fa4d643dff5`
 - Summary flags: `none`
 
 | repo | language | status | files | language files | symbols | relationships | identifiers | types | diagnostic files | hard failures |
@@ -36,7 +36,7 @@ Historical matrix evidence is deprecated; current capability, fixture, and real-
 | `flask` | `python` | `pass` | 225 | 83 | 4480 | 2399 | 7830 | 540 | 3 | `none` |
 | `gson` | `java` | `pass` | 305 | 259 | 8785 | 11964 | 36900 | 3811 | 0 | `none` |
 | `jq` | `c` | `pass` | 357 | 47 | 12457 | 7686 | 13897 | 2612 | 24 | `none` |
-| `julie` | `rust` | `pass` | 1466 | 1140 | 38279 | 55732 | 182974 | 8702 | 25 | `none` |
+| `julie` | `rust` | `pass` | 1581 | 1189 | 49431 | 56714 | 185846 | 8937 | 25 | `none` |
 | `kirigami` | `qml` | `pass` | 439 | 200 | 12359 | 5449 | 40451 | 1322 | 67 | `none` |
 | `lite` | `lua` | `pass` | 403 | 28 | 50759 | 61989 | 96174 | 21034 | 193 | `none` |
 | `moshi` | `kotlin` | `pass` | 182 | 99 | 6747 | 6805 | 24849 | 2497 | 2 | `none` |
