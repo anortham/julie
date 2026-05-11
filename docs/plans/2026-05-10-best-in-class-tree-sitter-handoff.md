@@ -51,14 +51,13 @@ the Codex-hosted `mcp__julie__` connector still returned `Transport closed`:
 - `manage_workspace refresh workspace_id=best-in-class-treesitter_2ad7e041`
   returned already up-to-date at canonical revision 409.
 
-The direct Codex MCP connector issue is still unresolved. Current evidence
-proves the daemon HTTP data plane and index state, not Codex's in-process MCP
-transport.
+The direct Codex MCP connector issue is still unresolved and is not treated as
+an extractor/data-plane integration blocker. Current evidence proves the daemon
+HTTP data plane and index state, not Codex's in-process MCP transport.
 
 ## Remaining Steps
 
-1. Decide whether the direct Codex `mcp__julie__` connector must be fixed before
-   integration, or track it as a separate harness/adapter issue.
-2. Merge `.worktrees/best-in-class-treesitter/` back to `main` with a merge
-   commit, or open a PR. Do not rebase; the verification ledger cites commit
-   SHAs.
+1. Merge PR #20 back to `main` with a merge commit. Do not rebase; the
+   verification ledger cites commit SHAs.
+2. Track the direct Codex `mcp__julie__` connector failure separately if that
+   harness path needs repair.

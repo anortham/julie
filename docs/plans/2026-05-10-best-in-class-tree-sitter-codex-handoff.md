@@ -25,12 +25,13 @@ and daemon-mode live dogfood:
 
 Still pending:
 
-- Direct Codex `mcp__julie__` connector still returns `Transport closed`.
-  Daemon HTTP transport is verified; Codex's in-process connector is not.
-- Merge to `main` or open a PR. Do not rebase; ledger SHAs matter.
+- Merge PR #20 to `main`. Do not rebase; ledger SHAs matter.
 
 Use `docs/plans/2026-05-10-best-in-class-tree-sitter-handoff.md` as the current
-handoff for the direct-connector caveat and integration step.
+handoff for the direct-connector caveat and integration step. Direct Codex
+`mcp__julie__` still returns `Transport closed`; daemon HTTP transport is
+verified, and the in-process connector is tracked as a separate transport
+concern rather than an extractor/data-plane blocker.
 
 ## What this is
 
@@ -69,17 +70,16 @@ evidence commit `88998e69`.
 
 ## What's left, in priority order
 
-### 1. Decide direct Codex connector handling
+### 1. Merge PR #20
+
+PR: https://github.com/anortham/julie/pull/20
+
+Use a merge commit. Do not rebase; the verification ledger cites commit SHAs.
+
+### 2. Track direct Codex connector separately if needed
 
 The running daemon data plane is verified through `julie-server tool ...`, but
-Codex's hosted `mcp__julie__` connector still returns `Transport closed`. Decide
-whether to fix that before integration or track it separately as a harness /
-adapter issue.
-
-### 2. Merge worktree → main or open PR
-
-Branch `best-in-class-treesitter`, base `c0def8f6`. **Favor a merge commit over
-rebase** because the verification ledger cites commit SHAs.
+Codex's hosted `mcp__julie__` connector still returns `Transport closed`.
 
 ## Conventions that override default behavior
 

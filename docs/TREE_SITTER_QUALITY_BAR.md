@@ -8,7 +8,7 @@ Implementation plans and evidence ledgers may link here, but they do not get to 
 
 ## Current Verdict
 
-Status: **closure work landed; release-profile evidence regenerated; daemon-mode live dogfood passed; merge pending**.
+Status: **closure work landed; release-profile evidence regenerated; daemon-mode live dogfood passed; PR open; merge pending**.
 
 The 2026-05-10 autonomous run and Codex follow-up drove the best-in-class plan (`docs/plans/2026-05-10-best-in-class-tree-sitter-plan.md`) through release-gate and daemon-mode dogfood evidence against this rubric:
 
@@ -18,7 +18,7 @@ The 2026-05-10 autonomous run and Codex follow-up drove the best-in-class plan (
 - Phase 7: historical verification docs removed; canonical sources of truth are `fixtures/extraction/capabilities.json` (typed evidence schema, machine-checked) and the regenerated `docs/LANGUAGE_CERTIFICATION_REPORT.md` + `docs/LANGUAGE_REAL_WORLD_EVIDENCE.json`.
 - Phase 5.4 follow-up: `cargo doc -p julie-extractors --no-deps` is warning-free after cleaning broken doc links and HTML-like text in public rustdoc.
 
-Live daemon-mode dogfood passed after a release rebuild and restart; see the verification ledger. The Codex-hosted `mcp__julie__` connector in this session still returned `Transport closed`, so the live rows were verified through `julie-server tool ...` against the daemon HTTP transport. Merge back to `main` is still pending.
+Live daemon-mode dogfood passed after a release rebuild and restart; see the verification ledger. The Codex-hosted `mcp__julie__` connector in this session still returned `Transport closed`, so the live rows were verified through `julie-server tool ...` against the daemon HTTP transport and the connector issue is tracked as a separate transport concern. PR #20 is open; merge back to `main` is still pending.
 
 ## Current Documentation Validation
 
