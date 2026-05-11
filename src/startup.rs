@@ -125,14 +125,6 @@ async fn run_primary_workspace_repair_body(
         .ok()
         .and_then(|snapshot| snapshot.indexing_runtime);
 
-    if let Some(runtime) = indexing_runtime.as_ref() {
-        let mut runtime = runtime
-            .write()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        runtime.set_catchup_active(true);
-        runtime.set_watcher_paused(true);
-    }
-
     let repair_result = async {
         match plan_primary_workspace_repair(handler).await? {
             Some(plan) => {
@@ -147,6 +139,8 @@ async fn run_primary_workspace_repair_body(
                     let mut runtime = runtime
                         .write()
                         .unwrap_or_else(|poisoned| poisoned.into_inner());
+                    runtime.set_catchup_active(true);
+                    runtime.set_watcher_paused(true);
                     for reason in &plan.reasons {
                         runtime.record_repair_reason(*reason);
                     }
@@ -292,24 +286,45 @@ pub(crate) async fn plan_primary_workspace_repair(
         }));
     }
 
-    // Now lock database (no await while holding this lock)
-    let db: std::sync::MutexGuard<'_, crate::database::SymbolDatabase> = match db_arc.lock() {
-        Ok(guard) => guard,
-        Err(poisoned) => {
-            warn!(
-                "Database mutex poisoned during startup check, recovering: {}",
-                poisoned
-            );
-            poisoned.into_inner()
+    let (has_symbols_result, semantic_version_matches, indexed_files_raw, stored_repairs) = {
+        // Keep the SQLite mutex scoped to database reads. Filesystem scans below
+        // can be slow on large workspaces, and holding this lock makes first
+        // health checks report a false SQLite BUSY state while catch-up is only
+        // planning.
+        let db: std::sync::MutexGuard<'_, crate::database::SymbolDatabase> = match db_arc.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!(
+                    "Database mutex poisoned during startup check, recovering: {}",
+                    poisoned
+                );
+                poisoned.into_inner()
+            }
+        };
+
+        let has_symbols_result = db.has_symbols_for_workspace();
+        match has_symbols_result {
+            Ok(true) => (
+                Ok(true),
+                Some(db.index_engine_version_matches(
+                    &route.workspace_id,
+                    SEMANTIC_INDEX_ENGINE_COMPONENT,
+                    SEMANTIC_INDEX_ENGINE_VERSION,
+                )?),
+                db.get_all_indexed_files()?,
+                db.list_indexing_repairs()?,
+            ),
+            Ok(false) => (Ok(false), None, Vec::new(), db.list_indexing_repairs()?),
+            Err(err) => (Err(err), None, Vec::new(), Vec::new()),
         }
     };
 
-    match db.has_symbols_for_workspace() {
+    match has_symbols_result {
         Ok(has_symbols) => {
             if !has_symbols {
                 info!("📊 Database is empty - indexing needed");
                 let mut reasons = vec![IndexingRepairReason::EmptyDatabase];
-                for repair in db.list_indexing_repairs()? {
+                for repair in stored_repairs {
                     if let Some(reason) = IndexingRepairReason::from_str(&repair.reason) {
                         if !reasons.contains(&reason) {
                             reasons.push(reason);
@@ -321,11 +336,7 @@ pub(crate) async fn plan_primary_workspace_repair(
 
             let mut reasons = Vec::new();
 
-            if !db.index_engine_version_matches(
-                &route.workspace_id,
-                SEMANTIC_INDEX_ENGINE_COMPONENT,
-                SEMANTIC_INDEX_ENGINE_VERSION,
-            )? {
+            if !semantic_version_matches.unwrap_or(false) {
                 info!("📊 Index semantic version changed or missing - full indexing needed");
                 reasons.push(IndexingRepairReason::SemanticVersionChanged);
             }
@@ -345,9 +356,6 @@ pub(crate) async fn plan_primary_workspace_repair(
                 info!("📊 Database is stale (files modified after last index) - indexing needed");
                 reasons.push(IndexingRepairReason::StaleFiles);
             }
-
-            // Check for new files not in database
-            let indexed_files_raw: Vec<String> = db.get_all_indexed_files()?;
 
             // Database stores relative Unix-style paths per CLAUDE.md Path Handling Contract
             // No normalization needed - indexed_files are already relative
@@ -384,7 +392,7 @@ pub(crate) async fn plan_primary_workspace_repair(
                 reasons.push(IndexingRepairReason::DeletedFiles);
             }
 
-            for repair in db.list_indexing_repairs()? {
+            for repair in stored_repairs {
                 if let Some(reason) = IndexingRepairReason::from_str(&repair.reason) {
                     if !reasons.contains(&reason) {
                         reasons.push(reason);

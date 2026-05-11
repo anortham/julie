@@ -376,6 +376,71 @@ async fn test_startup_stale_file_repair_refreshes_embeddings_for_changed_file() 
 }
 
 #[tokio::test]
+async fn test_startup_noop_repair_does_not_mark_catchup_active_while_planning() {
+    unsafe {
+        std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+    }
+
+    let temp_dir = TempDir::new().unwrap();
+    let test_file = temp_dir.path().join("main.rs");
+    fs::write(&test_file, "fn alpha() {}\n").unwrap();
+
+    let handler = JulieServerHandler::new_for_test().await.unwrap();
+    handler
+        .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
+        .await
+        .unwrap();
+
+    let index_tool = ManageWorkspaceTool {
+        operation: "index".to_string(),
+        path: Some(temp_dir.path().to_string_lossy().to_string()),
+        force: Some(false),
+        name: None,
+        workspace_id: None,
+        detailed: None,
+    };
+    index_tool.call_tool(&handler).await.unwrap();
+
+    let database = handler.primary_database().await.unwrap();
+    let database_guard = database.lock().unwrap();
+    let handler_for_thread = handler.clone();
+    let repair_thread = std::thread::spawn(move || {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        runtime.block_on(run_primary_workspace_repair(&handler_for_thread))
+    });
+
+    std::thread::sleep(std::time::Duration::from_millis(50));
+
+    let snapshot = {
+        let workspace = handler.get_workspace().await.unwrap().unwrap();
+        workspace
+            .indexing_runtime
+            .read()
+            .unwrap()
+            .snapshot()
+    };
+    assert!(
+        !snapshot.catchup_active,
+        "no-op startup repair must not report catch-up active before a repair plan exists"
+    );
+    assert!(
+        !snapshot.watcher_paused,
+        "no-op startup repair must not report watcher pause before a repair plan exists"
+    );
+    assert!(
+        snapshot.active_operation.is_none(),
+        "no-op startup repair must not expose an active operation while only checking freshness"
+    );
+
+    drop(database_guard);
+    let repair = repair_thread.join().unwrap().unwrap();
+    assert!(repair.is_none(), "workspace should already be up to date");
+}
+
+#[tokio::test]
 #[serial_test::serial(embedding_env)]
 async fn test_startup_semantic_repair_runs_embeddings_after_full_reindex() {
     let temp_dir = TempDir::new().unwrap();
