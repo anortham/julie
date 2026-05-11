@@ -23,6 +23,10 @@ pub use crate::tree_sitter_real_world_report::{
 };
 use crate::workspace_root;
 
+mod representative_specs;
+pub use representative_specs::RepresentativeSpec;
+use representative_specs::representative_spec_failures;
+
 pub const DEFAULT_TREE_SITTER_REAL_WORLD_CORPUS: &str =
     "fixtures/extraction/tree-sitter-real-world-corpus.toml";
 pub const DEFAULT_TREE_SITTER_REAL_WORLD_EVIDENCE: &str = "docs/LANGUAGE_REAL_WORLD_EVIDENCE.json";
@@ -57,6 +61,8 @@ pub struct TreeSitterRealWorldRepo {
     pub min_relationships: i64,
     #[serde(default)]
     pub max_parse_diagnostic_files: Option<i64>,
+    #[serde(default)]
+    pub representative_specs: Vec<RepresentativeSpec>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -254,7 +260,7 @@ async fn index_and_collect_repo(
         .join("symbols.db");
     let counts = collect_counts(&db_path, &repo.language)
         .with_context(|| format!("failed to collect database counts for {}", repo.name))?;
-    let hard_failures = hard_failures(repo, &counts);
+    let hard_failures = hard_failures(repo, &counts, &db_path);
 
     Ok(TreeSitterRealWorldRepoEvidence {
         repo_name: repo.name.clone(),
@@ -306,7 +312,11 @@ fn count_all(conn: &Connection, table: &str) -> Result<i64> {
     Ok(conn.query_row(&sql, [], |row| row.get(0))?)
 }
 
-fn hard_failures(repo: &TreeSitterRealWorldRepo, counts: &RepoCounts) -> Vec<String> {
+fn hard_failures(
+    repo: &TreeSitterRealWorldRepo,
+    counts: &RepoCounts,
+    db_path: &Path,
+) -> Vec<String> {
     let mut failures = Vec::new();
     if counts.file_count < repo.min_files {
         failures.push(format!(
@@ -340,6 +350,7 @@ fn hard_failures(repo: &TreeSitterRealWorldRepo, counts: &RepoCounts) -> Vec<Str
             ));
         }
     }
+    failures.extend(representative_spec_failures(repo, db_path));
     failures
 }
 

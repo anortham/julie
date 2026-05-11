@@ -1,52 +1,72 @@
 # Best-in-Class Tree-Sitter — Live Dogfood Handoff
 
-The autonomous run completed Phases 1–7 plus the Phase 8.1 release-gate sweep at the branch tip. Live MCP dogfood requires a release rebuild and a fresh client session and so stays with the user.
+The autonomous run completed the offline tree-sitter quality work through the
+release-gate sweep at worktree HEAD `235bd37c`:
 
-After the autonomous run completes, the user runs:
+- `fixtures/extraction/capabilities.json` has 0 open gaps.
+- `docs/LANGUAGE_REAL_WORLD_EVIDENCE.json` is release-profile evidence with 22
+  verified repos, including VB.NET `samples`, 0 skipped repos, and 0 hard
+  failures.
+- `fixtures/extraction/tree-sitter-real-world-corpus.toml` has 110
+  representative specs, 5 per release-profile repo.
+- `cargo doc -p julie-extractors --no-deps` is warning-free.
+- `docs/LANGUAGE_CERTIFICATION_REPORT.md` is current.
 
-1. `cargo build --release` — rebuild the release binary so the MCP client picks it up.
-2. Restart Claude Code (so the MCP client respawns the new server).
-3. In the Julie workspace, run via the MCP client:
-   - `manage_workspace health` — expect READY status with non-zero symbol and relationship counts.
-   - `call_path extract_symbols_static extract_canonical` — expect a one-hop edge through the canonical pipeline.
-   - `fast_refs extract_canonical` — expect definition + a stable set of references including public-API projection and real-world contract callers.
-   - SQLite check: inspect the on-disk index metadata for the engine version column actually written by the indexer (verify the column name against `src/database/schema.rs` before running). The recorded value must contain `2026-05-10.tree-sitter-best-in-class-v1` per `julie_extractors::EXTRACTION_CONTRACT_VERSION`, composed into `SEMANTIC_INDEX_ENGINE_VERSION` at `src/tools/workspace/indexing/engine_version.rs`.
-   - `manage_workspace refresh workspace_id=julie_<id>` — expect "already up-to-date" without a full reindex (because the engine version composition only changes the stored value when the contract bumps).
-4. Sign off: append a ledger row to `docs/TREE_SITTER_QUALITY_BAR.md` Verification Ledger with the live-MCP timestamps + results, citing the current HEAD SHA.
-5. Merge `.worktrees/best-in-class-treesitter/` back to `main` once the live MCP rows are recorded.
-
-## What Phase 8.1 already proved (offline)
-
-The release gates that ran against the working tree at branch HEAD are recorded in the `TREE_SITTER_QUALITY_BAR.md` Verification Ledger and pass without live MCP. They cover:
+The branch-level offline gates passed at `235bd37c` and are recorded in
+`docs/plans/2026-05-10-best-in-class-tree-sitter-plan.md` plus
+`docs/TREE_SITTER_QUALITY_BAR.md`:
 
 - `cargo fmt --check`
 - `git diff --check`
 - `cargo xtask certify tree-sitter --check`
-- `cargo xtask test bucket extractors` (golden + capability_matrix + cert + downstream-smoke)
+- `cargo xtask test bucket extractors`
 - `cargo xtask test bucket parser-upgrade`
-- `cargo xtask test changed` (clean working tree)
-- `cargo build --release`
-- `cargo build --examples -p julie-extractors`
-- `cargo test -p julie-extractors --doc`
-- `cargo doc -p julie-extractors --no-deps` (6 missing-docs warnings, expected — Phase 5.4 follow-up)
-- `cargo nextest run -p julie-extractors --test downstream_smoke julie_extractors_works_as_path_dependency_in_downstream_crate`
-
-The downstream-consumer integration test specifically proves the Pillar-3 contract: a tempdir consumer crate path-deps `julie-extractors` and runs `extract_canonical` + `capability_snapshot()` + `EXTRACTION_CONTRACT_VERSION` end-to-end.
-
-## Gates pending user-run
-
-The repository's broad-tests pre-tool hook blocked the autonomous session from running the broader tiers below. The user runs them locally before tagging:
-
+- `cargo xtask test changed`
 - `cargo xtask test dev`
 - `cargo xtask test system`
 - `cargo xtask test dogfood`
 - `cargo xtask test full`
+- `cargo build --release`
+- `cargo build --examples -p julie-extractors`
+- `cargo test -p julie-extractors --doc`
+- `cargo doc -p julie-extractors --no-deps`
+- `cargo nextest run -p julie-extractors --test downstream_smoke julie_extractors_works_as_path_dependency_in_downstream_crate`
 
-Each pass should append a ledger row at the same HEAD SHA recorded in the `94b7f5a3…` block of `docs/TREE_SITTER_QUALITY_BAR.md`.
+## Pending Live MCP Dogfood
 
-## Items intentionally left for follow-up
+Live MCP dogfood is still pending. The Codex session could not complete it
+because the `mcp__julie__` transport returned `Transport closed`. The release
+binary CLI did prove two equivalent data-plane checks:
 
-These were scoped out of the autonomous run by the iteration discipline and remain visible in `TREE_SITTER_QUALITY_BAR.md` Open Gaps:
+- `./target/release/julie-server --workspace . --json call-path extract_symbols_static extract_canonical --max-hops 6`
+  found a one-hop call edge from `extract_symbols_static` to `extract_canonical`.
+- `./target/release/julie-server --workspace . --json refs extract_canonical -n 20`
+  found the definition plus 20 visible references.
 
-- Phase 6 full-corpus real-world regen with raised `min_relationships` and per-repo `representative_specs`. Smoke-profile evidence was regenerated at HEAD; the larger release-profile evidence and the corpus-spec authoring is hand-authored work that benefits from human curation and is unlikely to land in a single autonomous session.
-- Phase 5.4 doc-comment audit on every existing public item. New items added during this run (capability_snapshot, EXTRACTION_CONTRACT_VERSION, the engine-version composition, EXTRACTION_CONTRACT.md) carry doc comments. The mechanical sweep across the rest of the public surface is straightforward to land as a separate mechanical commit after release.
+That CLI evidence is not a substitute for the live MCP rows below.
+
+## User Sign-Off Steps
+
+1. `cargo build --release`
+2. Restart Claude Code or the MCP client so it respawns the new server.
+3. In the Julie workspace, run through the MCP client:
+   - `manage_workspace health` — expect READY status with nonzero symbol and
+     relationship counts.
+   - `call_path extract_symbols_static extract_canonical` — expect a one-hop
+     edge through the canonical pipeline.
+   - `fast_refs extract_canonical` — expect definition + references including
+     public API projection and real-world contract callers.
+   - SQLite check: inspect the on-disk index metadata for the engine-version
+     column actually written by the indexer. Verify the column name against
+     `src/database/schema.rs`; value must contain
+     `2026-05-10.tree-sitter-best-in-class-v1` via
+     `julie_extractors::EXTRACTION_CONTRACT_VERSION`, composed into
+     `SEMANTIC_INDEX_ENGINE_VERSION` at
+     `src/tools/workspace/indexing/engine_version.rs`.
+   - `manage_workspace refresh workspace_id=julie_<id>` — expect
+     already-up-to-date behavior without a full reindex.
+4. Append rows to both verification ledgers:
+   - `docs/TREE_SITTER_QUALITY_BAR.md`
+   - `docs/plans/2026-05-10-best-in-class-tree-sitter-plan.md`
+5. Merge `.worktrees/best-in-class-treesitter/` back to `main` with a merge
+   commit. Do not rebase; the verification ledger cites commit SHAs.

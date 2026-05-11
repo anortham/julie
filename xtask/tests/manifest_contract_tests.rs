@@ -788,7 +788,9 @@ fn expected_bucket_metadata() -> BTreeMap<&'static str, ExpectedBucketMetadata> 
                 scope_label: "extractors",
                 owner: "lead",
                 expensive: false,
-                notes: Some("extractor golden, capability matrix, and Pillar-3 downstream-consumer gate"),
+                notes: Some(
+                    "extractor golden, capability matrix, and Pillar-3 downstream-consumer gate",
+                ),
             },
         ),
         (

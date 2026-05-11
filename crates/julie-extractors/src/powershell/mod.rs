@@ -2,7 +2,7 @@
 //! Handles PowerShell-specific constructs for Windows/Azure DevOps
 //!
 //! Provides symbol extraction for:
-//! - Functions (simple and advanced with [CmdletBinding()])
+//! - Functions (simple and advanced with `[CmdletBinding()]`)
 //! - Variables (scoped, environment, automatic variables)
 //! - Classes, methods, properties, and enums (PowerShell 5.0+)
 //! - Azure PowerShell cmdlets and Windows management commands

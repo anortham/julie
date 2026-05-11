@@ -4,31 +4,49 @@
 
 ## Summary
 
-- Current HEAD: `9b796ceda4d0c84b0d5c15338728554d24145417`
+- Current HEAD: `235bd37c685282c223dc0349181a9ff705cd4081`
 - Registry rows: `36`
 - Golden fixtures: `76`
 - Historical matrix rows: `0`
 - Raw historical OSS reports: `0`
-- Current real-world verified repos: `3`
+- Current real-world verified repos: `22`
 - Current real-world skipped repos: `0`
-- Rows with open gaps: `2`
+- Rows with open gaps: `0`
 - Rows without gap entries: `26`
 
 ## Historical Coverage Delta
 
-- Current registry rows missing from the restored historical matrix: `bash`, `c`, `cpp`, `csharp`, `css`, `dart`, `elixir`, `gdscript`, `go`, `html`, `java`, `javascript`, `json`, `jsx`, `kotlin`, `lua`, `markdown`, `php`, `powershell`, `python`, `qml`, `r`, `razor`, `regex`, `ruby`, `rust`, `scala`, `sql`, `swift`, `toml`, `tsx`, `typescript`, `vbnet`, `vue`, `yaml`, `zig`
-- Restored historical rows missing from the current registry: `none`
+Historical matrix evidence is deprecated; current capability, fixture, and real-world evidence are the source of truth.
 
 ## Current Real-World OSS Evidence
 
-- Profile: `smoke`
-- Julie HEAD in evidence: `e01563644c32ddfb8e1c0511d56fce620ef6c501`
+- Profile: `release`
+- Julie HEAD in evidence: `235bd37c685282c223dc0349181a9ff705cd4081`
 - Summary flags: `none`
 
 | repo | language | status | files | language files | symbols | relationships | identifiers | types | diagnostic files | hard failures |
 | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `Alamofire` | `swift` | `pass` | 520 | 96 | 100727 | 6032 | 230312 | 7934 | 22 | `none` |
+| `Newtonsoft.Json` | `csharp` | `pass` | 1160 | 945 | 21286 | 39415 | 111147 | 10537 | 45 | `none` |
+| `Slim` | `php` | `pass` | 145 | 125 | 4296 | 1825 | 5858 | 3515 | 0 | `none` |
+| `blazor-samples` | `razor` | `pass` | 5155 | 3069 | 35991 | 1635 | 36871 | 22772 | 683 | `none` |
+| `cats` | `scala` | `pass` | 934 | 835 | 25698 | 16542 | 73619 | 11536 | 14 | `none` |
+| `cobra` | `go` | `pass` | 65 | 36 | 1681 | 2076 | 6760 | 263 | 0 | `none` |
+| `express` | `javascript` | `pass` | 210 | 141 | 5582 | 3668 | 13349 | 93 | 3 | `none` |
 | `flask` | `python` | `pass` | 225 | 83 | 4480 | 2399 | 7830 | 540 | 3 | `none` |
-| `julie` | `rust` | `pass` | 1465 | 1140 | 38272 | 55732 | 182974 | 8702 | 25 | `none` |
+| `gson` | `java` | `pass` | 305 | 259 | 8785 | 11964 | 36900 | 3811 | 0 | `none` |
+| `jq` | `c` | `pass` | 357 | 47 | 12457 | 7686 | 13897 | 2612 | 24 | `none` |
+| `julie` | `rust` | `pass` | 1466 | 1140 | 38279 | 55732 | 182974 | 8702 | 25 | `none` |
+| `kirigami` | `qml` | `pass` | 439 | 200 | 12359 | 5449 | 40451 | 1322 | 67 | `none` |
+| `lite` | `lua` | `pass` | 403 | 28 | 50759 | 61989 | 96174 | 21034 | 193 | `none` |
+| `moshi` | `kotlin` | `pass` | 182 | 99 | 6747 | 6805 | 24849 | 2497 | 2 | `none` |
+| `nlohmann-json` | `cpp` | `pass` | 1135 | 464 | 26445 | 18714 | 87303 | 7553 | 147 | `none` |
+| `pandora` | `gdscript` | `pass` | 884 | 335 | 9698 | 7041 | 25488 | 4403 | 5 | `none` |
+| `phoenix` | `elixir` | `pass` | 455 | 291 | 10308 | 5343 | 37783 | 193 | 117 | `none` |
+| `riverpod` | `dart` | `pass` | 1805 | 1156 | 33949 | 4710 | 95478 | 11474 | 0 | `none` |
+| `samples` | `vbnet` | `pass` | 7377 | 469 | 64503 | 41052 | 192197 | 19903 | 156 | `none` |
+| `sinatra` | `ruby` | `pass` | 288 | 147 | 6575 | 7214 | 16687 | 562 | 0 | `none` |
+| `zls` | `zig` | `pass` | 129 | 104 | 10693 | 9272 | 46574 | 8145 | 2 | `none` |
 | `zod` | `typescript` | `pass` | 504 | 364 | 18536 | 16533 | 51701 | 4329 | 9 | `none` |
 
 ## Fixture Evidence Totals
@@ -48,8 +66,6 @@
 
 | language | capability | status | evidence | required closure |
 | --- | --- | --- | --- | --- |
-| `lua` | `types` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | Out of scope — Lua is dynamic. Luau-style type annotations would be a separate language target. |
-| `r` | `types` | `open` | `commit:c0def8f643af9e3a481d19890f42c15bddd07dfd` | N/A — domain limitation. Future work could harvest roxygen type annotations into TypeInfo. |
 
 ## Per-Language Fixture Evidence
 

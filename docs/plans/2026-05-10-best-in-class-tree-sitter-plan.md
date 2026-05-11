@@ -1979,6 +1979,25 @@ git commit -m "docs: add live MCP dogfood handoff note for user sign-off"
 | Doctest | `cargo test -p julie-extractors --doc` | release-doctest | 94b7f5a3 | Pass — 1 doctest | 2026-05-10T23:16:49Z | No |
 | Rustdoc | `cargo doc -p julie-extractors --no-deps` | release-rustdoc | 94b7f5a3 | Pass — generated (6 missing-docs warnings, Phase 5.4 follow-up) | 2026-05-10T23:16:49Z | No |
 | Pillar 3 downstream smoke | `cargo nextest run -p julie-extractors --test downstream_smoke julie_extractors_works_as_path_dependency_in_downstream_crate` | release-downstream-smoke | 94b7f5a3 | Pass — 17.0s | 2026-05-10T23:16:49Z | No |
+| Phase 5.4 rustdoc cleanup | `cargo doc -p julie-extractors --no-deps 2>&1 \| grep -i warning \|\| true` | phase-5.4-rustdoc-clean | 235bd37c | Pass — no rustdoc warnings after fixing broken doc links / HTML-like comments / ambiguous `capability_snapshot()` link | 2026-05-11T01:35:52Z | No |
+| Phase 6 release real-world evidence | `cargo xtask certify tree-sitter --real-world --profile release --out docs/LANGUAGE_REAL_WORLD_EVIDENCE.json` | phase-6-realworld-release | 235bd37c | Pass — 22 verified + 0 skipped repos, 0 hard failures; corpus includes VB.NET `samples` and 110 representative specs | 2026-05-11T01:35:52Z | No |
+| Phase 6 certification freshness | `cargo xtask certify tree-sitter --check` | phase-6-cert-current | 235bd37c | Pass — certification report current after release-profile evidence and capability gap reclassification | 2026-05-11T01:35:52Z | No |
+| Phase 6 changed gate | `cargo xtask test changed` | phase-6-changed | 235bd37c | Pass — 4 buckets (`xtask-runner`, `extractors`, `parser-upgrade`, `integration`) in 92.2s | 2026-05-11T01:35:52Z | No |
+| Phase 6 dogfood gate | `cargo xtask test dogfood` | phase-6-dogfood | 235bd37c | Pass — 2 buckets in 228.5s (`tools-dogfood-repo-index`, `search-quality`) | 2026-05-11T01:35:52Z | No |
+| Final formatter | `cargo fmt --check` | release-formatter | 235bd37c | Pass | 2026-05-11T01:59:38Z | No |
+| Final diff hygiene | `git diff --check` | release-diff-hygiene | 235bd37c | Pass | 2026-05-11T01:59:38Z | No |
+| Final certification freshness | `cargo xtask certify tree-sitter --check` | release-cert | 235bd37c | Pass — report current | 2026-05-11T01:59:38Z | No |
+| Final extractors bucket | `cargo xtask test bucket extractors` | release-extractors | 235bd37c | Pass — 4/4 commands in 21.8s | 2026-05-11T01:59:38Z | No |
+| Final parser-upgrade bucket | `cargo xtask test bucket parser-upgrade` | release-parser-upgrade | 235bd37c | Pass — 2/2 commands in 1.6s | 2026-05-11T01:59:38Z | No |
+| Final dev tier | `cargo xtask test dev` | release-dev | 235bd37c | Pass — 32 buckets in 353.4s | 2026-05-11T01:59:38Z | No |
+| Final system tier | `cargo xtask test system` | release-system | 235bd37c | Pass — 6 buckets in 88.2s | 2026-05-11T01:59:38Z | No |
+| Final dogfood tier | `cargo xtask test dogfood` | release-dogfood | 235bd37c | Pass — 2 buckets in 228.5s | 2026-05-11T01:59:38Z | Yes — same worktree state as Phase 6 dogfood row |
+| Final full tier | `cargo xtask test full` | release-full | 235bd37c | Pass — 40 buckets in 669.1s | 2026-05-11T01:59:38Z | No |
+| Final release build | `cargo build --release` | release-build | 235bd37c | Pass — 2m44s | 2026-05-11T01:59:38Z | No |
+| Final examples build | `cargo build --examples -p julie-extractors` | release-examples | 235bd37c | Pass | 2026-05-11T01:59:38Z | No |
+| Final doctest | `cargo test -p julie-extractors --doc` | release-doctest | 235bd37c | Pass — 1 doctest | 2026-05-11T01:59:38Z | No |
+| Final rustdoc | `cargo doc -p julie-extractors --no-deps` | release-rustdoc | 235bd37c | Pass — generated with no warnings | 2026-05-11T01:59:38Z | No |
+| Final downstream smoke | `cargo nextest run -p julie-extractors --test downstream_smoke julie_extractors_works_as_path_dependency_in_downstream_crate` | release-downstream-smoke | 235bd37c | Pass — 16.6s | 2026-05-11T01:59:38Z | No |
 | Live MCP health (manual) | `manage_workspace health` | live-health | _TBD_ | _TBD_ (user) | _TBD_ | No |
 | Live MCP call_path (manual) | `call_path extract_symbols_static extract_canonical` | live-call-path | _TBD_ | _TBD_ (user) | _TBD_ | No |
 | Live MCP refs (manual) | `fast_refs extract_canonical` | live-refs | _TBD_ | _TBD_ (user) | _TBD_ | No |

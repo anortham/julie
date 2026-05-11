@@ -1,5 +1,33 @@
 # Julie tree-sitter "best-in-class" — Codex handoff
 
+## Codex follow-up status — 2026-05-11
+
+Codex completed the stale items in this handoff through offline release gates:
+
+- `lua.types` and `r.types` are now `exception`; `capabilities.json` has 0 open
+  gaps.
+- Phase 6 release-profile evidence was regenerated with 22 verified repos,
+  including VB.NET `samples`, 0 skipped repos, and 0 hard failures.
+- `fixtures/extraction/tree-sitter-real-world-corpus.toml` now has 110
+  representative specs enforced by `xtask`.
+- Phase 5.4 rustdoc cleanup is done; `cargo doc -p julie-extractors --no-deps`
+  emits no warnings.
+- The stale historical-matrix section now reports that historical evidence is
+  deprecated instead of listing every registry row as missing.
+- Offline release gates passed at worktree HEAD `235bd37c`; see
+  `docs/plans/2026-05-10-best-in-class-tree-sitter-plan.md` and
+  `docs/TREE_SITTER_QUALITY_BAR.md` ledgers.
+
+Still pending:
+
+- Live MCP dogfood rows. The Codex session could not run MCP tools because
+  `mcp__julie__` returned `Transport closed`. The release CLI proved call-path
+  and refs, but not MCP health/refresh/sign-off.
+- Merge to `main` after live MCP rows are recorded.
+
+Use `docs/plans/2026-05-10-best-in-class-tree-sitter-handoff.md` as the current
+handoff for live dogfood and merge steps.
+
 ## What this is
 
 Julie is a Rust-based code-intelligence MCP server with 34 tree-sitter language extractors (36 registry rows counting TSX/JSX). A multi-day autonomous run drove the "best-in-class tree-sitter" program from spec to near-merge. The work lives on branch `best-in-class-treesitter` in a worktree.

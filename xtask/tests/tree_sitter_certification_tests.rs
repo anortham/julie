@@ -144,6 +144,33 @@ fn tree_sitter_certification_tests_report_surfaces_current_contract_and_historic
 }
 
 #[test]
+fn tree_sitter_certification_tests_report_marks_absent_historical_matrix_as_deprecated() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    write_minimal_repo(root, true);
+    write_real_world_evidence(root);
+    fs::remove_file(root.join("docs/LANGUAGE_VERIFICATION_RESULTS.md")).unwrap();
+    fs::remove_dir_all(root.join("docs/verification")).unwrap();
+
+    let report = build_tree_sitter_certification_report(
+        root,
+        TreeSitterCertificationMetadata {
+            head_sha: "abc123".to_string(),
+        },
+    )
+    .expect("report should build without historical docs");
+
+    assert_eq!(report.historical_matrix_row_count, 0);
+    assert_eq!(report.raw_verification_report_count, 0);
+
+    let markdown = render_tree_sitter_certification_markdown(&report);
+    assert!(markdown.contains("Historical matrix evidence is deprecated"));
+    assert!(
+        !markdown.contains("Current registry rows missing from the restored historical matrix")
+    );
+}
+
+#[test]
 fn tree_sitter_certification_tests_missing_gap_evidence_is_a_hard_failure() {
     let temp = TempDir::new().unwrap();
     let root = temp.path();

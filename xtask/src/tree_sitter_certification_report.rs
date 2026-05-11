@@ -42,14 +42,20 @@ pub fn render_tree_sitter_certification_markdown(report: &TreeSitterCertificatio
     ));
 
     output.push_str("## Historical Coverage Delta\n\n");
-    output.push_str(&format!(
-        "- Current registry rows missing from the restored historical matrix: {}\n",
-        inline_code_list(&report.current_rows_missing_from_historical_matrix)
-    ));
-    output.push_str(&format!(
-        "- Restored historical rows missing from the current registry: {}\n\n",
-        inline_code_list(&report.historical_rows_missing_from_current_registry)
-    ));
+    if report.historical_matrix_row_count == 0 && report.raw_verification_report_count == 0 {
+        output.push_str(
+            "Historical matrix evidence is deprecated; current capability, fixture, and real-world evidence are the source of truth.\n\n",
+        );
+    } else {
+        output.push_str(&format!(
+            "- Current registry rows missing from the restored historical matrix: {}\n",
+            inline_code_list(&report.current_rows_missing_from_historical_matrix)
+        ));
+        output.push_str(&format!(
+            "- Restored historical rows missing from the current registry: {}\n\n",
+            inline_code_list(&report.historical_rows_missing_from_current_registry)
+        ));
+    }
 
     render_real_world_evidence(report, &mut output);
 

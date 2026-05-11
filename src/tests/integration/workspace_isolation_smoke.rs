@@ -75,9 +75,7 @@ mod workspace_isolation_smoke_tests {
             if let (Some(path), Some(line_no), Some(content)) =
                 (parts.next(), parts.next(), parts.next())
             {
-                if !path.is_empty()
-                    && line_no.parse::<usize>().is_ok()
-                    && content.contains(marker)
+                if !path.is_empty() && line_no.parse::<usize>().is_ok() && content.contains(marker)
                 {
                     return true;
                 }

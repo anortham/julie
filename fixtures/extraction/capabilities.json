@@ -887,15 +887,14 @@
       "capability_gaps": [
         {
           "capability": "types",
-          "status": "open",
+          "status": "exception",
           "reason": "Lua is a dynamically typed language with no static type annotations in core syntax. Luau-style annotations are out of scope for the base Lua extractor.",
           "required_closure": "Out of scope — Lua is dynamic. Luau-style type annotations would be a separate language target.",
           "evidence": {
             "kind": "commit",
             "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
             "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
-          },
-          "planned_closure_task": "Phase 4a"
+          }
         }
       ]
     },
@@ -983,15 +982,14 @@
       "capability_gaps": [
         {
           "capability": "types",
-          "status": "open",
+          "status": "exception",
           "reason": "R is a dynamically typed language with no static type system. roxygen @param type tags are documentation-only and not currently extracted as TypeInfo.",
           "required_closure": "N/A — domain limitation. Future work could harvest roxygen type annotations into TypeInfo.",
           "evidence": {
             "kind": "commit",
             "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
             "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
-          },
-          "planned_closure_task": "Phase 4a"
+          }
         }
       ]
     },

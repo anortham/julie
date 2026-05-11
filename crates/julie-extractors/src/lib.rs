@@ -26,7 +26,7 @@
 //!
 //! See [`EXTRACTION_CONTRACT_VERSION`] for drift detection. The capability
 //! contract lives in `fixtures/extraction/capabilities.json` and is exposed
-//! to downstream consumers via [`capability_snapshot`].
+//! to downstream consumers via [`capability_snapshot()`].
 //!
 //! ## Supported Languages
 //!

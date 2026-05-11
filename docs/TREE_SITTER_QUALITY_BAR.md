@@ -1,6 +1,6 @@
 # Tree-Sitter Quality Bar
 
-Updated: 2026-05-10
+Updated: 2026-05-11
 
 This document defines the fixed best-in-class target for Julie's tree-sitter layer. It is not allowed to move down to match the current implementation. Passing the current extractor gates proves the current contract; it does not, by itself, prove this target.
 
@@ -8,32 +8,29 @@ Implementation plans and evidence ledgers may link here, but they do not get to 
 
 ## Current Verdict
 
-Status: **closure work landed; release evidence pending live MCP dogfood**.
+Status: **closure work landed; release-profile evidence regenerated; live MCP dogfood pending**.
 
 The 2026-05-10 autonomous run drove the best-in-class plan (`docs/plans/2026-05-10-best-in-class-tree-sitter-plan.md`) Phases 1–7 to completion against this rubric:
 
 - Phase 4a-d: every relationship-emitting language ships a `cross_file` fixture and locking test. Cross-file pending now emits StructuredPendingRelationship with `target.terminal_name` + `import_context` for 24 languages (Rust, C, C++, Go, Zig, TypeScript, JavaScript, TSX, JSX, Python, Java, C#, VB.NET, PHP, Ruby, Swift, Kotlin, Scala, Dart, Elixir, Lua, R, GDScript, SQL, Vue, HTML, QML). Recipe-B no-pending classifications (CSS, regex, Markdown, YAML, Razor, TOML, JSON) carry locking tests as evidence.
 - Phase 5: Pillar-3 hardening landed. `capability_snapshot()` + `EXTRACTION_CONTRACT_VERSION` exported, `SEMANTIC_INDEX_ENGINE_VERSION` recomposes to embed the contract, downstream-consumer integration test spawns a tempdir consumer crate and runs the public API end-to-end. Extractors bucket now runs the downstream-smoke gate.
+- Phase 6: release-profile real-world evidence now covers 22 repos, including the VB.NET `samples` corpus, with 110 representative specs enforced by the hard-failure gate.
 - Phase 7: historical verification docs removed; canonical sources of truth are `fixtures/extraction/capabilities.json` (typed evidence schema, machine-checked) and the regenerated `docs/LANGUAGE_CERTIFICATION_REPORT.md` + `docs/LANGUAGE_REAL_WORLD_EVIDENCE.json`.
+- Phase 5.4 follow-up: `cargo doc -p julie-extractors --no-deps` is warning-free after cleaning broken doc links and HTML-like text in public rustdoc.
 
 Open before release claim: live MCP dogfood after a release rebuild and restart (Phase 8 handoff in `docs/plans/2026-05-10-best-in-class-tree-sitter-handoff.md`). The release-gates ledger (Phase 8.1) records each gate at the current HEAD SHA.
 
 ## Current Documentation Validation
 
-The restored verification docs are valuable historical evidence, but they are not current certification output.
+The restored verification docs were historical evidence, not current certification output. They were removed in Phase 7.
 
-2026-05-07 validation facts:
+2026-05-11 validation facts:
 
-- `docs/LANGUAGE_VERIFICATION_RESULTS.md` tracks 33 historical user-facing language rows.
-- `fixtures/extraction/capabilities.json` currently tracks 36 registry rows: 34 user-facing language rows plus `tsx` and `jsx`.
-- The restored historical matrix omits VB.NET.
-- The restored historical matrix treats TSX and JSX as TypeScript and JavaScript coverage, not separate variant rows.
-- `docs/verification/` currently contains 13 raw historical OSS verification reports.
-- Some raw per-language reports contain old FAIL/PARTIAL notes that are superseded by later fixes in `docs/LANGUAGE_VERIFICATION_RESULTS.md`; those reports are raw notes, not current verdicts.
-- `docs/LANGUAGE_REAL_WORLD_EVIDENCE.json` currently records current-HEAD real-world smoke evidence for `julie` (`rust`), `zod` (`typescript`), and `flask` (`python`).
-- `fixtures/extraction/capabilities.json` currently records open gap entries for 33 rows. Counts by capability: 32 `pending_relationships`, 3 `relationships`, 8 `types`.
+- `fixtures/extraction/capabilities.json` tracks 36 registry rows: 34 user-facing language rows plus `tsx` and `jsx`.
+- `fixtures/extraction/capabilities.json` records 14 capability-gap rows, all `status: "exception"`; there are no open capability gaps.
+- `docs/LANGUAGE_REAL_WORLD_EVIDENCE.json` records release-profile evidence for 22 repos and 0 skipped repos.
+- `fixtures/extraction/tree-sitter-real-world-corpus.toml` includes 110 representative specs, 5 per release-profile repo.
 - `cargo xtask certify tree-sitter --check` verifies [LANGUAGE_CERTIFICATION_REPORT.md](LANGUAGE_CERTIFICATION_REPORT.md) is current for the checked-in capability, fixture, historical-doc, and real-world evidence state.
-- `cargo xtask test bucket extractors` passed on 2026-05-07 after restoring required `docs/findings/` evidence files and adding certification-report checking.
 
 Release claims must come from generated current-HEAD evidence, not from manually edited historical docs.
 
@@ -159,7 +156,7 @@ A release can claim this quality bar only when there are no open target gaps and
 | --- | --- | --- |
 | Formatter | `cargo fmt --check` | Always |
 | Tree-sitter certification report | `cargo xtask certify tree-sitter --check` | Always for tree-sitter claims |
-| Tree-sitter real-world evidence | `cargo xtask certify tree-sitter --real-world --profile smoke --out docs/LANGUAGE_REAL_WORLD_EVIDENCE.json` | Before updating checked-in real-world evidence |
+| Tree-sitter real-world evidence | `cargo xtask certify tree-sitter --real-world --profile release --out docs/LANGUAGE_REAL_WORLD_EVIDENCE.json` | Before updating checked-in release-profile real-world evidence |
 | Extractor bucket | `cargo xtask test bucket extractors` | Always |
 | Parser-upgrade bucket | `cargo xtask test bucket parser-upgrade` | Always for parser, fixture, or extractor contract changes |
 | Changed tier | `cargo xtask test changed` | Always after localized implementation changes |
@@ -188,8 +185,8 @@ These are known gaps against the fixed target. This list is allowed to grow as t
 | Pillar-3 downstream-consumer usability | Closed 2026-05-10 | `crates/julie-extractors/tests/downstream_smoke.rs::julie_extractors_works_as_path_dependency_in_downstream_crate` proves the crate consumable via a path dependency. |
 | Capability snapshot public API + extraction-contract version | Closed 2026-05-10 | `julie_extractors::capability_snapshot()` + `julie_extractors::EXTRACTION_CONTRACT_VERSION`; `SEMANTIC_INDEX_ENGINE_VERSION` composes from the contract version. |
 | `capability_matrix_negative_cases_emit_no_wrong_edges` activated | Closed 2026-05-10 | De-ignored in `crates/julie-extractors/src/tests/capability_matrix.rs`; accepted fixtures broadened to `negative|cross_file`. |
-| Full-corpus real-world evidence with raised `min_relationships` | Open | Phase 6 hand-authored work: add VB.NET corpus row, raise `min_relationships` from 1 to 5× per repo, author per-repo `representative_specs`, and regenerate with `--profile release`. |
-| Doc-comment audit on every public item in `julie-extractors` | Open | Phase 5.4 left untouched outside new items added during this run. Mechanical follow-up after the release gates pass. |
+| Full-corpus real-world evidence with raised `min_relationships` | Closed 2026-05-11 | `cargo xtask certify tree-sitter --real-world --profile release --out docs/LANGUAGE_REAL_WORLD_EVIDENCE.json` wrote 22 verified + 0 skipped repos. `samples` supplies VB.NET evidence. `tree-sitter-real-world-corpus.toml` now has 110 representative specs. Relationship floors are 5x language-file count except `blazor-samples` and `riverpod`, which use high actual-output floors because 5x exceeds truthful current relationship output. |
+| Doc-comment audit on every public item in `julie-extractors` | Closed 2026-05-11 | `cargo doc -p julie-extractors --no-deps` emits no warnings after fixing broken intra-doc links, HTML-like generic text, and the ambiguous `capability_snapshot()` rustdoc link. |
 | Fixed-target release evidence at current HEAD | Closed 2026-05-11 | Phase 8.1 release gates recorded against `94b7f5a3`; broad regression tiers (dev/system/dogfood/full) recorded against `61a27e42` after the workspace_isolation_smoke matcher fix. Live MCP dogfood handoff stays with the user (`docs/plans/2026-05-10-best-in-class-tree-sitter-handoff.md`). |
 
 ## Verification Ledger
@@ -227,6 +224,22 @@ Record release evidence with the template in [verification-ledger-template.md](p
 | System regression tier | `cargo xtask test system` | live-system-current-contract | `61a27e42` | Passed 6 buckets in 86.5s (after restoring workspace_isolation_smoke matcher to the new line-grouped fast_search output) | 2026-05-11T00:12:55Z | No |
 | Dogfood regression tier | `cargo xtask test dogfood` | live-dogfood-current-contract | `61a27e42` | Passed 2 buckets in 225.3s (tools-dogfood-repo-index + search-quality) | 2026-05-11T00:12:55Z | No |
 | Full regression tier | `cargo xtask test full` | live-full-current-contract | `61a27e42` | Passed 40 buckets in 664.4s | 2026-05-11T00:12:55Z | No |
+| Release-profile real-world evidence | `cargo xtask certify tree-sitter --real-world --profile release --out docs/LANGUAGE_REAL_WORLD_EVIDENCE.json` | realworld-release-current-contract | `235bd37c` | Passed: 22 verified, 0 skipped, 0 hard failures; VB.NET `samples` included; 110 representative specs enforced | 2026-05-11T01:35:52Z | No |
+| Tree-sitter certification freshness | `cargo xtask certify tree-sitter --check` | tree-sitter-cert-current-contract | `235bd37c` | Passed (report current) | 2026-05-11T01:35:52Z | No |
+| Crate rustdoc | `cargo doc -p julie-extractors --no-deps` | rustdoc-current-contract | `235bd37c` | Passed with no warnings | 2026-05-11T01:35:52Z | No |
+| Changed-code regression tier | `cargo xtask test changed` | changed-current-contract | `235bd37c` | Passed 4 buckets in 92.2s (`xtask-runner`, `extractors`, `parser-upgrade`, `integration`) | 2026-05-11T01:35:52Z | No |
+| Dogfood regression tier | `cargo xtask test dogfood` | dogfood-current-contract | `235bd37c` | Passed 2 buckets in 228.5s | 2026-05-11T01:35:52Z | No |
+| Formatter | `cargo fmt --check` | formatter | `235bd37c` | Passed | 2026-05-11T01:59:38Z | No |
+| Diff whitespace | `git diff --check` | diff-hygiene | `235bd37c` | Passed | 2026-05-11T01:59:38Z | No |
+| Extractor bucket (golden + capability_matrix + cert + downstream-smoke) | `cargo xtask test bucket extractors` | extractors-current-contract | `235bd37c` | Passed 4 commands in 21.8s | 2026-05-11T01:59:38Z | No |
+| Parser upgrade current contract | `cargo xtask test bucket parser-upgrade` | parser-upgrade-current-contract | `235bd37c` | Passed 2 commands in 1.6s | 2026-05-11T01:59:38Z | No |
+| Dev regression tier | `cargo xtask test dev` | dev-current-contract | `235bd37c` | Passed 32 buckets in 353.4s | 2026-05-11T01:59:38Z | No |
+| System regression tier | `cargo xtask test system` | system-current-contract | `235bd37c` | Passed 6 buckets in 88.2s | 2026-05-11T01:59:38Z | No |
+| Full regression tier | `cargo xtask test full` | full-current-contract | `235bd37c` | Passed 40 buckets in 669.1s | 2026-05-11T01:59:38Z | No |
+| Release binary build | `cargo build --release` | release-build-current-contract | `235bd37c` | Passed in 2m44s | 2026-05-11T01:59:38Z | No |
+| Example consumer build | `cargo build --examples -p julie-extractors` | example-build-current-contract | `235bd37c` | Passed | 2026-05-11T01:59:38Z | No |
+| Crate doctests | `cargo test -p julie-extractors --doc` | doctest-current-contract | `235bd37c` | Passed 1 test | 2026-05-11T01:59:38Z | No |
+| Pillar-3 downstream-consumer gate | `cargo nextest run -p julie-extractors --test downstream_smoke julie_extractors_works_as_path_dependency_in_downstream_crate` | downstream-smoke-current-contract | `235bd37c` | Passed in 16.6s | 2026-05-11T01:59:38Z | No |
 
 ## Exceptions
 

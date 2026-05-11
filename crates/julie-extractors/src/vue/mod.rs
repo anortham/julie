@@ -187,7 +187,7 @@ impl VueExtractor {
     // ========================================================================
 
     /// Extract all identifier usages (function calls, member access, etc.)
-    /// Vue-specific: Parses <script> section with JavaScript tree-sitter
+    /// Vue-specific: Parses `<script>` section with JavaScript tree-sitter
     pub fn extract_identifiers(&mut self, symbols: &[Symbol]) -> Vec<Identifier> {
         identifiers::extract_identifiers(&mut self.base, symbols)
     }
