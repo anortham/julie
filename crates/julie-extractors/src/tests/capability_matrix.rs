@@ -1,5 +1,6 @@
 use crate::language::language_spec;
 use crate::registry::{capabilities_for_language, supported_languages};
+use crate::{IdentifierKind, RelationshipKind, SymbolKind};
 use serde::Deserialize;
 use serde_json::Value;
 use std::collections::BTreeSet;
@@ -19,6 +20,8 @@ pub(crate) struct CapabilityRow {
     pub(crate) dependency_status: String,
     pub(crate) target_capabilities: CapabilityFlags,
     pub(crate) capabilities: CapabilityFlags,
+    #[serde(default)]
+    pub(crate) kind_coverage: CapabilityKindCoverage,
     pub(crate) fixtures: Vec<FixtureRow>,
     #[serde(default)]
     pub(crate) capability_gaps: Vec<CapabilityGap>,
@@ -33,6 +36,34 @@ pub(crate) struct CapabilityFlags {
     pub(crate) types: bool,
 }
 
+#[derive(Debug, Deserialize, Default)]
+pub(crate) struct CapabilityKindCoverage {
+    #[serde(default)]
+    pub(crate) symbols: KindCoverage,
+    #[serde(default)]
+    pub(crate) relationships: KindCoverage,
+    #[serde(default)]
+    pub(crate) identifiers: KindCoverage,
+}
+
+#[derive(Debug, Deserialize, Default)]
+pub(crate) struct KindCoverage {
+    #[serde(default)]
+    pub(crate) supported: Vec<String>,
+    #[serde(default)]
+    pub(crate) not_applicable: Vec<String>,
+    #[serde(default)]
+    pub(crate) open_gaps: Vec<KindCoverageGap>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct KindCoverageGap {
+    pub(crate) kind: String,
+    pub(crate) reason: String,
+    pub(crate) required_closure: String,
+    pub(crate) planned_closure_task: String,
+}
+
 #[derive(Debug, Deserialize)]
 pub(crate) struct FixtureRow {
     pub(crate) name: String,
@@ -41,7 +72,7 @@ pub(crate) struct FixtureRow {
 }
 
 #[derive(Debug, Deserialize)]
-struct CapabilityGap {
+pub(crate) struct CapabilityGap {
     capability: String,
     status: String,
     reason: String,
@@ -642,6 +673,47 @@ fn capability_matrix_pending_claim_requires_pending_output_in_fixtures() {
     }
 }
 
+#[test]
+fn capability_matrix_supported_kind_claims_have_fixture_evidence() {
+    let root = workspace_root();
+    let matrix = load_matrix(&root);
+    let mut errors = Vec::new();
+
+    for row in &matrix.languages {
+        let observed = observed_kind_coverage(&root, row);
+
+        assert_supported_kind_claims(
+            &mut errors,
+            row,
+            "symbol",
+            row.capabilities.symbols,
+            &row.kind_coverage.symbols,
+            &observed.symbols,
+            SymbolKind::try_from_string,
+        );
+        assert_supported_kind_claims(
+            &mut errors,
+            row,
+            "relationship",
+            row.capabilities.relationships || row.capabilities.pending_relationships,
+            &row.kind_coverage.relationships,
+            &observed.relationships,
+            RelationshipKind::try_from_string,
+        );
+        assert_supported_kind_claims(
+            &mut errors,
+            row,
+            "identifier",
+            row.capabilities.identifiers,
+            &row.kind_coverage.identifiers,
+            &observed.identifiers,
+            IdentifierKind::try_from_string,
+        );
+    }
+
+    assert!(errors.is_empty(), "{}", errors.join("\n"));
+}
+
 // Plan-doc stronger versions: per-language coverage instead of global totals.
 
 #[test]
@@ -832,6 +904,117 @@ fn implemented_capability(row: &CapabilityRow, capability: &str) -> bool {
         "identifiers" => row.capabilities.identifiers,
         "types" => row.capabilities.types,
         other => panic!("unknown capability {other}"),
+    }
+}
+
+#[derive(Default)]
+struct ObservedKindCoverage {
+    symbols: BTreeSet<String>,
+    relationships: BTreeSet<String>,
+    identifiers: BTreeSet<String>,
+}
+
+fn observed_kind_coverage(root: &Path, row: &CapabilityRow) -> ObservedKindCoverage {
+    let mut observed = ObservedKindCoverage::default();
+    for fixture in &row.fixtures {
+        let expected = load_expected_fixture(root, fixture);
+        collect_kinds(&mut observed.symbols, &expected, &["symbols"], |item| {
+            item.get("kind")
+        });
+        collect_kinds(
+            &mut observed.relationships,
+            &expected,
+            &["relationships", "pending_relationships"],
+            |item| item.get("kind"),
+        );
+        collect_kinds(
+            &mut observed.relationships,
+            &expected,
+            &["structured_pending_relationships"],
+            |item| item.get("pending").and_then(|pending| pending.get("kind")),
+        );
+        collect_kinds(
+            &mut observed.identifiers,
+            &expected,
+            &["identifiers"],
+            |item| item.get("kind"),
+        );
+    }
+    observed
+}
+
+fn collect_kinds<F>(into: &mut BTreeSet<String>, expected: &Value, fields: &[&str], get_kind: F)
+where
+    F: Fn(&Value) -> Option<&Value>,
+{
+    for field in fields {
+        let Some(items) = expected.get(*field).and_then(Value::as_array) else {
+            continue;
+        };
+        for item in items {
+            if let Some(kind) = get_kind(item).and_then(Value::as_str) {
+                into.insert(kind.to_string());
+            }
+        }
+    }
+}
+
+fn assert_supported_kind_claims<T>(
+    errors: &mut Vec<String>,
+    row: &CapabilityRow,
+    domain: &str,
+    capability_enabled: bool,
+    coverage: &KindCoverage,
+    observed: &BTreeSet<String>,
+    parse_kind: fn(&str) -> Option<T>,
+) {
+    if capability_enabled && coverage.supported.is_empty() {
+        errors.push(format!(
+            "{} enables {} extraction but has no kind_coverage.{}.supported claims",
+            row.language, domain, domain
+        ));
+    }
+
+    let mut claimed = BTreeSet::new();
+    for kind in coverage
+        .supported
+        .iter()
+        .chain(coverage.not_applicable.iter())
+        .chain(coverage.open_gaps.iter().map(|gap| &gap.kind))
+    {
+        if parse_kind(kind).is_none() {
+            errors.push(format!(
+                "{} kind_coverage.{} references unknown kind `{}`",
+                row.language, domain, kind
+            ));
+        }
+        if !claimed.insert(kind) {
+            errors.push(format!(
+                "{} kind_coverage.{} classifies `{}` more than once",
+                row.language, domain, kind
+            ));
+        }
+    }
+
+    for kind in &coverage.supported {
+        if !observed.contains(kind) {
+            errors.push(format!(
+                "{} claims supported {} kind `{}` but no golden fixture emits it",
+                row.language, domain, kind
+            ));
+        }
+    }
+
+    for gap in &coverage.open_gaps {
+        if gap.reason.trim().is_empty()
+            || gap.required_closure.trim().is_empty()
+            || gap.planned_closure_task.trim().is_empty()
+        {
+            errors.push(format!(
+                "{} kind_coverage.{} open gap `{}` must carry reason, required_closure, and planned_closure_task",
+                row.language, domain, gap.kind
+            ));
+        }
     }
 }
 

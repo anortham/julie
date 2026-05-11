@@ -115,6 +115,18 @@ fn tree_sitter_certification_tests_report_surfaces_current_contract_and_historic
         report.gap_count_by_capability.get("pending_relationships"),
         Some(&1)
     );
+    assert_eq!(report.kind_coverage_totals.symbols, 3);
+    assert_eq!(report.kind_coverage_totals.relationships, 3);
+    assert_eq!(report.kind_coverage_totals.identifiers, 3);
+    let rust_depth = report
+        .language_rows
+        .iter()
+        .find(|row| row.language == "rust")
+        .expect("rust row should exist")
+        .kind_coverage;
+    assert_eq!(rust_depth.symbols, 1);
+    assert_eq!(rust_depth.relationships, 1);
+    assert_eq!(rust_depth.identifiers, 1);
     assert_eq!(
         report
             .real_world_evidence
@@ -140,6 +152,10 @@ fn tree_sitter_certification_tests_report_surfaces_current_contract_and_historic
     assert!(markdown.contains("Historical matrix rows: `1`"));
     assert!(markdown.contains("`tsx`, `vbnet`"));
     assert!(markdown.contains("| `vbnet` | `pending_relationships` | `open` |"));
+    assert!(markdown.contains("## Kind Coverage Depth"));
+    assert!(markdown.contains(
+        "| `rust` | `tree-sitter-rust` | `current` | 1 | 1 | 1 | 0 | 0 | 1 | 0 | 0 | 1 | 1 | 1 | 0 |"
+    ));
     assert!(markdown.contains("## Checked-In Real-World OSS Evidence"));
     assert!(markdown.contains("| `ready-rust` | `rust` | `pass` |"));
 }
@@ -310,6 +326,11 @@ fn write_minimal_repo(root: &Path, include_gap_evidence: bool) {
         "identifiers": true,
         "types": true
       },
+      "kind_coverage": {
+        "symbols": {"supported": ["function"], "not_applicable": [], "open_gaps": []},
+        "relationships": {"supported": ["calls"], "not_applicable": [], "open_gaps": []},
+        "identifiers": {"supported": ["call"], "not_applicable": [], "open_gaps": []}
+      },
       "fixtures": [
         {
           "name": "basic",
@@ -337,6 +358,11 @@ fn write_minimal_repo(root: &Path, include_gap_evidence: bool) {
         "identifiers": true,
         "types": true
       },
+      "kind_coverage": {
+        "symbols": {"supported": ["function"], "not_applicable": [], "open_gaps": []},
+        "relationships": {"supported": ["calls"], "not_applicable": [], "open_gaps": []},
+        "identifiers": {"supported": ["member_access"], "not_applicable": [], "open_gaps": []}
+      },
       "fixtures": [
         {
           "name": "basic",
@@ -363,6 +389,11 @@ fn write_minimal_repo(root: &Path, include_gap_evidence: bool) {
         "pending_relationships": true,
         "identifiers": true,
         "types": true
+      },
+      "kind_coverage": {
+        "symbols": {"supported": ["module"], "not_applicable": [], "open_gaps": []},
+        "relationships": {"supported": ["calls"], "not_applicable": [], "open_gaps": []},
+        "identifiers": {"supported": ["type_usage"], "not_applicable": [], "open_gaps": []}
       },
       "fixtures": [
         {
@@ -418,23 +449,47 @@ fn write_minimal_repo(root: &Path, include_gap_evidence: bool) {
         "Module Program\nEnd Module\n",
     );
     for path in [
-        "fixtures/extraction/rust/basic/expected.json",
-        "fixtures/extraction/tsx/basic/expected.json",
-        "fixtures/extraction/vbnet/basic/expected.json",
+        (
+            "fixtures/extraction/rust/basic/expected.json",
+            "function",
+            "calls",
+            "call",
+        ),
+        (
+            "fixtures/extraction/tsx/basic/expected.json",
+            "function",
+            "calls",
+            "member_access",
+        ),
+        (
+            "fixtures/extraction/vbnet/basic/expected.json",
+            "module",
+            "calls",
+            "type_usage",
+        ),
     ] {
         write_file(
             root,
-            path,
-            r#"{
-  "symbols": [{"name": "sample"}],
-  "relationships": [],
+            path.0,
+            &format!(
+                r#"{{
+  "symbols": [{{"name": "sample", "kind": "{}"}}],
+  "relationships": {},
   "pending_relationships": [],
   "structured_pending_relationships": [],
-  "identifiers": [],
+  "identifiers": [{{"name": "sample", "kind": "{}"}}],
   "types": [],
   "parse_diagnostics": []
-}
+}}
 "#,
+                path.1,
+                if path.2.is_empty() {
+                    "[]".to_string()
+                } else {
+                    format!(r#"[{{"kind": "{}"}}]"#, path.2)
+                },
+                path.3
+            ),
         );
     }
     if include_gap_evidence {

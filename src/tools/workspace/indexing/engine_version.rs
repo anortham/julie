@@ -10,9 +10,8 @@ pub const SEMANTIC_INDEX_ENGINE_COMPONENT: &str = "semantic_index_engine";
 
 /// Composed engine version embedding the extractor crate's
 /// `EXTRACTION_CONTRACT_VERSION` so any shape drift in extractor outputs
-/// triggers a stored-index mismatch. The composition test in
-/// `src/tests/core/engine_version.rs` enforces that this literal contains the
-/// current value of `julie_extractors::EXTRACTION_CONTRACT_VERSION`; when you
-/// bump the extractor contract, bump this literal in lockstep.
+/// triggers a stored-index mismatch. Keep this literal in lockstep with
+/// `julie_extractors::EXTRACTION_CONTRACT_VERSION`; the regression test in
+/// `src/tests/core/engine_version.rs` enforces the link.
 pub const SEMANTIC_INDEX_ENGINE_VERSION: &str =
-    "extractors=2026-05-10.tree-sitter-best-in-class-v1+schema=2026-05-05.reference-identifier-v3";
+    "extractors=2026-05-11.trust-contract-v1+schema=2026-05-05.reference-identifier-v3";

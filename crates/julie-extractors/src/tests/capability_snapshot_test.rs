@@ -1,6 +1,6 @@
-//! Phase 5.2 — capability_snapshot() public API regression bar.
+//! Capability snapshot public API regression bar.
 
-use crate::capability_snapshot;
+use crate::{CapabilitySnapshot, capability_snapshot};
 
 #[test]
 fn test_capability_snapshot_loads_all_languages() {
@@ -32,4 +32,84 @@ fn test_capability_snapshot_uses_oncelock_not_build_script() {
          uses include_str! in src/capability_snapshot.rs instead",
         build_rs.display()
     );
+}
+
+#[test]
+fn test_capability_snapshot_deserializes_mixed_legacy_and_kind_coverage_rows() {
+    let json = r#"
+{
+  "languages": [
+    {
+      "language": "legacy",
+      "parser_crate": "tree-sitter-legacy",
+      "extensions": ["legacy"],
+      "dependency_status": "current",
+      "target_capabilities": {
+        "symbols": true,
+        "relationships": false,
+        "pending_relationships": false,
+        "identifiers": true,
+        "types": false
+      },
+      "capabilities": {
+        "symbols": true,
+        "relationships": false,
+        "pending_relationships": false,
+        "identifiers": true,
+        "types": false
+      },
+      "fixtures": []
+    },
+    {
+      "language": "new",
+      "parser_crate": "tree-sitter-new",
+      "extensions": ["new"],
+      "dependency_status": "current",
+      "target_capabilities": {
+        "symbols": true,
+        "relationships": true,
+        "pending_relationships": true,
+        "identifiers": true,
+        "types": false
+      },
+      "capabilities": {
+        "symbols": true,
+        "relationships": true,
+        "pending_relationships": true,
+        "identifiers": true,
+        "types": false
+      },
+      "kind_coverage": {
+        "symbols": {
+          "supported": ["function"],
+          "not_applicable": ["event"],
+          "open_gaps": []
+        },
+        "relationships": {
+          "supported": ["calls"],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "identifiers": {
+          "supported": ["call"],
+          "not_applicable": [],
+          "open_gaps": []
+        }
+      },
+      "fixtures": []
+    }
+  ]
+}
+"#;
+
+    let snap = CapabilitySnapshot::from_json_str(json).expect("mixed snapshot should parse");
+
+    let legacy = snap.get("legacy").expect("legacy row should be indexed");
+    assert!(legacy.capabilities.symbols);
+    assert!(legacy.kind_coverage.symbols.supported.is_empty());
+
+    let new = snap.get("new").expect("new row should be indexed");
+    assert_eq!(new.kind_coverage.symbols.supported, vec!["function"]);
+    assert_eq!(new.kind_coverage.relationships.supported, vec!["calls"]);
+    assert_eq!(new.kind_coverage.identifiers.supported, vec!["call"]);
 }

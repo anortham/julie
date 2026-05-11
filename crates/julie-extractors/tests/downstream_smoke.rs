@@ -62,7 +62,22 @@ fn main() -> anyhow::Result<()> {
 
     let snap = julie_extractors::capability_snapshot();
     let rust = snap.get("rust").expect("rust language row");
+    let _flags: julie_extractors::CapabilityFlags = rust.capabilities;
     assert!(rust.target_capabilities.symbols);
+    assert!(
+        rust.kind_coverage
+            .symbols
+            .supported
+            .iter()
+            .any(|kind| kind == "function")
+    );
+    assert!(
+        rust.kind_coverage
+            .relationships
+            .supported
+            .iter()
+            .any(|kind| kind == "calls")
+    );
 
     let _version: &str = julie_extractors::EXTRACTION_CONTRACT_VERSION;
     Ok(())

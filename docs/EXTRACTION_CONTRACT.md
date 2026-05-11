@@ -14,20 +14,25 @@ quality rubric this contract is graded against.
 
 ## Tier Model
 
-Languages live in one of four target groups. The classification is
+Languages live in target groups. The classification is
 stored in `fixtures/extraction/capabilities.json` under each row's
 `target_capabilities` flags.
 
 - **Full** (`symbols + relationships + pending_relationships + identifiers + types`) — first-class extractors used by core MCP tools (Rust, TypeScript, Python, C#, Java, Go, etc.).
 - **No-types** (`symbols + relationships + pending_relationships + identifiers`, `types=false`) — structural languages without a static type system (Lua, R, Ruby, etc.).
 - **Relationship-data** (`symbols + relationships + identifiers`, `pending_relationships=false`, `types=false`) — CSS, HTML, and other declarative formats with intra-document references.
-- **Data-only** (`symbols + identifiers`, no relationships, no pending, no types) — JSON, TOML, YAML, Markdown.
+- **Relationship-data without identifiers** (`symbols + relationships`, `pending_relationships=false`, `identifiers=false`, `types=false`) — formats whose keys/headings are already modeled as symbols and relationships, not code identifiers (Markdown, TOML).
+- **Pending relationship data without identifiers** (`symbols + relationships + pending_relationships`, `identifiers=false`, `types=false`) — JSON-like data where schema/domain references are relationships, not code identifiers.
 
 Each row's `capabilities` field reports what the implementation
 actually emits; `target_capabilities` reports what the
 classification intends. Drift is enforced by
 `capability_matrix_matches_registry_entries` in
 `crates/julie-extractors/src/tests/capability_matrix.rs`.
+Each row also carries `kind_coverage`, which records fixture-proven
+`supported`, intrinsic `not_applicable`, and planned `open_gaps`
+entries for current `SymbolKind`, `RelationshipKind`, and
+`IdentifierKind` values.
 
 ## `ExtractionResults` Shape
 
@@ -108,10 +113,16 @@ for row in snap.languages() {
 
 if let Some(rust) = snap.get("rust") {
     assert!(rust.target_capabilities.symbols);
+    assert!(rust
+        .kind_coverage
+        .symbols
+        .supported
+        .iter()
+        .any(|kind| kind == "function"));
 }
 
 // Drift detection
-let _version = EXTRACTION_CONTRACT_VERSION; // "2026-05-10.tree-sitter-best-in-class-v1"
+let _version = EXTRACTION_CONTRACT_VERSION; // "2026-05-11.trust-contract-v1"
 ```
 
 The snapshot is loaded from
@@ -137,6 +148,30 @@ Bare-string evidence is rejected by
 `capability_matrix_evidence_resolves`. The schema is enforced by
 `crates/julie-extractors/src/tests/capability_matrix.rs`.
 
+## Kind Coverage Schema
+
+Every `kind_coverage` domain has this shape:
+
+```json
+{
+  "supported": ["function"],
+  "not_applicable": ["event"],
+  "open_gaps": [
+    {
+      "kind": "overrides",
+      "reason": "why current fixtures do not prove it",
+      "required_closure": "specific fixture or extractor work required",
+      "planned_closure_task": "Milestone/task reference"
+    }
+  ]
+}
+```
+
+`supported` claims must appear in golden fixture output. `open_gaps`
+must carry a concrete closure reference. `not_applicable` means the
+kind is intrinsic nonsense for that language/domain, not merely
+unimplemented.
+
 ## Where to Find Machine-Checked Truth
 
 Three sources of truth, all under regenerable-from-HEAD discipline:
@@ -159,4 +194,5 @@ The Pillar-3 downstream-consumer gate is
 julie_extractors_works_as_path_dependency_in_downstream_crate`.
 This test spawns a tempdir consumer crate, path-deps
 julie-extractors, and runs a program calling `extract_canonical`
-+ `capability_snapshot` + `EXTRACTION_CONTRACT_VERSION`.
++ `capability_snapshot` + `kind_coverage`
++ `EXTRACTION_CONTRACT_VERSION`.

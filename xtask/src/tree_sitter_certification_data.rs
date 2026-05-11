@@ -6,7 +6,7 @@ use anyhow::{Context, Result, bail};
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::tree_sitter_certification::FixtureEvidenceCounts;
+use crate::tree_sitter_certification::{FixtureEvidenceCounts, KindCoverageCounts};
 
 pub struct LoadedCertificationData {
     pub languages: Vec<LoadedCapabilityRow>,
@@ -20,6 +20,7 @@ pub struct LoadedCapabilityRow {
     pub dependency_status: String,
     pub fixture_count: usize,
     pub evidence: FixtureEvidenceCounts,
+    pub kind_coverage: KindCoverageCounts,
     pub gaps: Vec<LoadedCapabilityGap>,
 }
 
@@ -43,6 +44,8 @@ struct CapabilityRow {
     dependency_status: String,
     target_capabilities: CapabilityFlags,
     capabilities: CapabilityFlags,
+    #[serde(default)]
+    kind_coverage: CapabilityKindCoverage,
     fixtures: Vec<FixtureRow>,
     #[serde(default)]
     capability_gaps: Vec<CapabilityGap>,
@@ -55,6 +58,34 @@ struct CapabilityFlags {
     pending_relationships: bool,
     identifiers: bool,
     types: bool,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct CapabilityKindCoverage {
+    #[serde(default)]
+    symbols: KindCoverage,
+    #[serde(default)]
+    relationships: KindCoverage,
+    #[serde(default)]
+    identifiers: KindCoverage,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct KindCoverage {
+    #[serde(default)]
+    supported: Vec<String>,
+    #[serde(default)]
+    not_applicable: Vec<String>,
+    #[serde(default)]
+    open_gaps: Vec<KindCoverageGap>,
+}
+
+#[derive(Debug, Deserialize)]
+struct KindCoverageGap {
+    kind: String,
+    reason: String,
+    required_closure: String,
+    planned_closure_task: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -171,6 +202,7 @@ pub fn load_certification_data(root: &Path) -> Result<LoadedCertificationData> {
             dependency_status: row.dependency_status,
             fixture_count: row.fixtures.len(),
             evidence,
+            kind_coverage: row.kind_coverage.counts(),
             gaps,
         });
     }
@@ -227,6 +259,7 @@ fn validate_matrix_row(root: &Path, row: &CapabilityRow) -> Result<()> {
     for gap in &row.capability_gaps {
         validate_gap(root, row, gap)?;
     }
+    validate_kind_coverage(row)?;
 
     Ok(())
 }
@@ -391,6 +424,87 @@ fn implemented_capability(row: &CapabilityRow, capability: &str) -> bool {
         "types" => row.capabilities.types,
         other => panic!("unknown capability {other}"),
     }
+}
+
+impl CapabilityKindCoverage {
+    fn counts(&self) -> KindCoverageCounts {
+        KindCoverageCounts {
+            symbols: self.symbols.supported.len(),
+            relationships: self.relationships.supported.len(),
+            identifiers: self.identifiers.supported.len(),
+        }
+    }
+}
+
+fn validate_kind_coverage(row: &CapabilityRow) -> Result<()> {
+    validate_kind_domain(
+        row,
+        "symbol",
+        row.capabilities.symbols,
+        &row.kind_coverage.symbols,
+    )?;
+    validate_kind_domain(
+        row,
+        "relationship",
+        row.capabilities.relationships || row.capabilities.pending_relationships,
+        &row.kind_coverage.relationships,
+    )?;
+    validate_kind_domain(
+        row,
+        "identifier",
+        row.capabilities.identifiers,
+        &row.kind_coverage.identifiers,
+    )?;
+    Ok(())
+}
+
+fn validate_kind_domain(
+    row: &CapabilityRow,
+    domain: &str,
+    capability_enabled: bool,
+    coverage: &KindCoverage,
+) -> Result<()> {
+    if capability_enabled && coverage.supported.is_empty() {
+        bail!(
+            "{} enables {} extraction but has no kind_coverage.{}.supported claims",
+            row.language,
+            domain,
+            domain
+        );
+    }
+
+    let mut claimed = BTreeSet::new();
+    for kind in coverage
+        .supported
+        .iter()
+        .chain(coverage.not_applicable.iter())
+        .chain(coverage.open_gaps.iter().map(|gap| &gap.kind))
+    {
+        if !claimed.insert(kind) {
+            bail!(
+                "{} kind_coverage.{} classifies `{}` more than once",
+                row.language,
+                domain,
+                kind
+            );
+        }
+    }
+
+    for gap in &coverage.open_gaps {
+        if gap.reason.trim().is_empty()
+            || gap.required_closure.trim().is_empty()
+            || gap.planned_closure_task.trim().is_empty()
+        {
+            bail!(
+                "{} kind_coverage.{} open gap `{}` must carry reason, required_closure, and planned_closure_task",
+                row.language,
+                domain,
+                gap.kind
+            );
+        }
+    }
+
+    Ok(())
 }
 
 fn load_fixture_evidence(

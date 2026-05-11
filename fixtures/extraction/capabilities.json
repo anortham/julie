@@ -33,7 +33,38 @@
         "identifiers": true,
         "types": true
       },
-      "capability_gaps": []
+      "capability_gaps": [],
+      "kind_coverage": {
+        "symbols": {
+          "supported": [
+            "field",
+            "function",
+            "import",
+            "method",
+            "namespace",
+            "struct"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "relationships": {
+          "supported": [
+            "calls",
+            "imports"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "identifiers": {
+          "supported": [
+            "call",
+            "member_access",
+            "type_usage"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        }
+      }
     },
     {
       "language": "c",
@@ -69,7 +100,37 @@
         "identifiers": true,
         "types": true
       },
-      "capability_gaps": []
+      "capability_gaps": [],
+      "kind_coverage": {
+        "symbols": {
+          "supported": [
+            "field",
+            "function",
+            "import",
+            "struct"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "relationships": {
+          "supported": [
+            "calls",
+            "imports",
+            "uses"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "identifiers": {
+          "supported": [
+            "call",
+            "member_access",
+            "type_usage"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        }
+      }
     },
     {
       "language": "cpp",
@@ -111,7 +172,37 @@
         "identifiers": true,
         "types": true
       },
-      "capability_gaps": []
+      "capability_gaps": [],
+      "kind_coverage": {
+        "symbols": {
+          "supported": [
+            "class",
+            "constructor",
+            "field",
+            "function",
+            "method"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "relationships": {
+          "supported": [
+            "calls",
+            "extends",
+            "uses"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "identifiers": {
+          "supported": [
+            "call",
+            "type_usage"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        }
+      }
     },
     {
       "language": "go",
@@ -151,7 +242,38 @@
         "identifiers": true,
         "types": true
       },
-      "capability_gaps": []
+      "capability_gaps": [],
+      "kind_coverage": {
+        "symbols": {
+          "supported": [
+            "field",
+            "function",
+            "import",
+            "method",
+            "module",
+            "struct"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "relationships": {
+          "supported": [
+            "calls",
+            "uses"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "identifiers": {
+          "supported": [
+            "call",
+            "member_access",
+            "type_usage"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        }
+      }
     },
     {
       "language": "zig",
@@ -186,7 +308,36 @@
         "identifiers": true,
         "types": true
       },
-      "capability_gaps": []
+      "capability_gaps": [],
+      "kind_coverage": {
+        "symbols": {
+          "supported": [
+            "field",
+            "function",
+            "import",
+            "method",
+            "struct",
+            "variable"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "relationships": {
+          "supported": [
+            "calls"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "identifiers": {
+          "supported": [
+            "call",
+            "type_usage"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        }
+      }
     },
     {
       "language": "typescript",
@@ -223,7 +374,41 @@
         "identifiers": true,
         "types": true
       },
-      "capability_gaps": []
+      "capability_gaps": [],
+      "kind_coverage": {
+        "symbols": {
+          "supported": [
+            "class",
+            "constructor",
+            "export",
+            "function",
+            "import",
+            "interface",
+            "method",
+            "variable"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "relationships": {
+          "supported": [
+            "calls",
+            "implements",
+            "instantiates"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "identifiers": {
+          "supported": [
+            "call",
+            "member_access",
+            "type_usage"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        }
+      }
     },
     {
       "language": "tsx",
@@ -257,6 +442,37 @@
         "pending_relationships": true,
         "identifiers": true,
         "types": true
+      },
+      "kind_coverage": {
+        "symbols": {
+          "supported": [
+            "export",
+            "function",
+            "import",
+            "property",
+            "type",
+            "variable"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "relationships": {
+          "supported": [
+            "calls",
+            "instantiates"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "identifiers": {
+          "supported": [
+            "call",
+            "member_access",
+            "type_usage"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        }
       }
     },
     {
@@ -294,7 +510,36 @@
         "identifiers": true,
         "types": true
       },
-      "capability_gaps": []
+      "capability_gaps": [],
+      "kind_coverage": {
+        "symbols": {
+          "supported": [
+            "class",
+            "constructor",
+            "export",
+            "function",
+            "import",
+            "method"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "relationships": {
+          "supported": [
+            "calls"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "identifiers": {
+          "supported": [
+            "call",
+            "member_access"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        }
+      }
     },
     {
       "language": "jsx",
@@ -328,6 +573,33 @@
         "pending_relationships": true,
         "identifiers": true,
         "types": true
+      },
+      "kind_coverage": {
+        "symbols": {
+          "supported": [
+            "export",
+            "function",
+            "import",
+            "variable"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "relationships": {
+          "supported": [
+            "calls",
+            "instantiates"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "identifiers": {
+          "supported": [
+            "call"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        }
       }
     },
     {
@@ -364,7 +636,36 @@
         "identifiers": true,
         "types": true
       },
-      "capability_gaps": []
+      "capability_gaps": [],
+      "kind_coverage": {
+        "symbols": {
+          "supported": [
+            "class",
+            "field",
+            "function",
+            "import",
+            "namespace"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "relationships": {
+          "supported": [
+            "imports",
+            "references"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "identifiers": {
+          "supported": [
+            "call",
+            "member_access"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        }
+      }
     },
     {
       "language": "css",
@@ -422,7 +723,34 @@
             "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
           }
         }
-      ]
+      ],
+      "kind_coverage": {
+        "symbols": {
+          "supported": [
+            "function",
+            "import",
+            "property",
+            "variable"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "relationships": {
+          "supported": [
+            "references"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "identifiers": {
+          "supported": [
+            "call",
+            "member_access"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        }
+      }
     },
     {
       "language": "vue",
@@ -457,7 +785,35 @@
         "identifiers": true,
         "types": true
       },
-      "capability_gaps": []
+      "capability_gaps": [],
+      "kind_coverage": {
+        "symbols": {
+          "supported": [
+            "class",
+            "function",
+            "import",
+            "property",
+            "variable"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "relationships": {
+          "supported": [
+            "calls",
+            "references"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "identifiers": {
+          "supported": [
+            "call"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        }
+      }
     },
     {
       "language": "python",
@@ -494,7 +850,36 @@
         "identifiers": true,
         "types": true
       },
-      "capability_gaps": []
+      "capability_gaps": [],
+      "kind_coverage": {
+        "symbols": {
+          "supported": [
+            "class",
+            "constructor",
+            "function",
+            "import",
+            "method",
+            "property"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "relationships": {
+          "supported": [
+            "calls"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "identifiers": {
+          "supported": [
+            "call",
+            "member_access"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        }
+      }
     },
     {
       "language": "java",
@@ -529,7 +914,38 @@
         "identifiers": true,
         "types": true
       },
-      "capability_gaps": []
+      "capability_gaps": [],
+      "kind_coverage": {
+        "symbols": {
+          "supported": [
+            "class",
+            "constructor",
+            "import",
+            "interface",
+            "method",
+            "property"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "relationships": {
+          "supported": [
+            "calls",
+            "implements"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "identifiers": {
+          "supported": [
+            "call",
+            "member_access",
+            "type_usage"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        }
+      }
     },
     {
       "language": "csharp",
@@ -564,7 +980,38 @@
         "identifiers": true,
         "types": true
       },
-      "capability_gaps": []
+      "capability_gaps": [],
+      "kind_coverage": {
+        "symbols": {
+          "supported": [
+            "class",
+            "constructor",
+            "import",
+            "interface",
+            "method",
+            "property"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "relationships": {
+          "supported": [
+            "calls",
+            "implements",
+            "instantiates"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "identifiers": {
+          "supported": [
+            "call",
+            "type_usage"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        }
+      }
     },
     {
       "language": "vbnet",
@@ -599,7 +1046,38 @@
         "identifiers": true,
         "types": true
       },
-      "capability_gaps": []
+      "capability_gaps": [],
+      "kind_coverage": {
+        "symbols": {
+          "supported": [
+            "class",
+            "import",
+            "interface",
+            "method",
+            "namespace",
+            "property"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "relationships": {
+          "supported": [
+            "calls",
+            "implements",
+            "instantiates"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "identifiers": {
+          "supported": [
+            "call",
+            "member_access"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        }
+      }
     },
     {
       "language": "php",
@@ -635,7 +1113,39 @@
         "identifiers": true,
         "types": true
       },
-      "capability_gaps": []
+      "capability_gaps": [],
+      "kind_coverage": {
+        "symbols": {
+          "supported": [
+            "class",
+            "constructor",
+            "function",
+            "import",
+            "method",
+            "namespace",
+            "property",
+            "variable"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "relationships": {
+          "supported": [
+            "calls",
+            "instantiates"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "identifiers": {
+          "supported": [
+            "call",
+            "member_access"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        }
+      }
     },
     {
       "language": "ruby",
@@ -671,7 +1181,36 @@
         "identifiers": true,
         "types": true
       },
-      "capability_gaps": []
+      "capability_gaps": [],
+      "kind_coverage": {
+        "symbols": {
+          "supported": [
+            "class",
+            "constructor",
+            "import",
+            "method",
+            "variable"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "relationships": {
+          "supported": [
+            "calls"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "identifiers": {
+          "supported": [
+            "call",
+            "member_access",
+            "type_usage"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        }
+      }
     },
     {
       "language": "swift",
@@ -706,7 +1245,38 @@
         "identifiers": true,
         "types": true
       },
-      "capability_gaps": []
+      "capability_gaps": [],
+      "kind_coverage": {
+        "symbols": {
+          "supported": [
+            "class",
+            "function",
+            "import",
+            "interface",
+            "method",
+            "property",
+            "struct"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "relationships": {
+          "supported": [
+            "calls",
+            "implements"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "identifiers": {
+          "supported": [
+            "call",
+            "type_usage"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        }
+      }
     },
     {
       "language": "kotlin",
@@ -742,7 +1312,37 @@
         "identifiers": true,
         "types": true
       },
-      "capability_gaps": []
+      "capability_gaps": [],
+      "kind_coverage": {
+        "symbols": {
+          "supported": [
+            "class",
+            "import",
+            "interface",
+            "method",
+            "namespace",
+            "property"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "relationships": {
+          "supported": [
+            "calls",
+            "implements"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "identifiers": {
+          "supported": [
+            "call",
+            "type_usage"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        }
+      }
     },
     {
       "language": "scala",
@@ -778,7 +1378,36 @@
         "identifiers": true,
         "types": true
       },
-      "capability_gaps": []
+      "capability_gaps": [],
+      "kind_coverage": {
+        "symbols": {
+          "supported": [
+            "class",
+            "import",
+            "method",
+            "namespace",
+            "trait"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "relationships": {
+          "supported": [
+            "calls",
+            "implements"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "identifiers": {
+          "supported": [
+            "call",
+            "type_usage"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        }
+      }
     },
     {
       "language": "dart",
@@ -813,7 +1442,37 @@
         "identifiers": true,
         "types": true
       },
-      "capability_gaps": []
+      "capability_gaps": [],
+      "kind_coverage": {
+        "symbols": {
+          "supported": [
+            "class",
+            "constructor",
+            "field",
+            "function",
+            "import",
+            "method"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "relationships": {
+          "supported": [
+            "calls",
+            "extends"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "identifiers": {
+          "supported": [
+            "call",
+            "type_usage"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        }
+      }
     },
     {
       "language": "elixir",
@@ -849,7 +1508,34 @@
         "identifiers": true,
         "types": true
       },
-      "capability_gaps": []
+      "capability_gaps": [],
+      "kind_coverage": {
+        "symbols": {
+          "supported": [
+            "function",
+            "import",
+            "module"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "relationships": {
+          "supported": [
+            "calls"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "identifiers": {
+          "supported": [
+            "call",
+            "member_access",
+            "type_usage"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        }
+      }
     },
     {
       "language": "lua",
@@ -896,7 +1582,35 @@
             "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
           }
         }
-      ]
+      ],
+      "kind_coverage": {
+        "symbols": {
+          "supported": [
+            "class",
+            "field",
+            "function",
+            "import",
+            "method"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "relationships": {
+          "supported": [
+            "calls"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "identifiers": {
+          "supported": [
+            "call",
+            "member_access"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        }
+      }
     },
     {
       "language": "qml",
@@ -943,7 +1657,38 @@
             "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
           }
         }
-      ]
+      ],
+      "kind_coverage": {
+        "symbols": {
+          "supported": [
+            "class",
+            "event",
+            "function",
+            "import",
+            "property"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "relationships": {
+          "supported": [
+            "calls",
+            "uses"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "identifiers": {
+          "supported": [
+            "call",
+            "member_access",
+            "type_usage",
+            "variable_ref"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        }
+      }
     },
     {
       "language": "r",
@@ -991,7 +1736,34 @@
             "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
           }
         }
-      ]
+      ],
+      "kind_coverage": {
+        "symbols": {
+          "supported": [
+            "function",
+            "import",
+            "variable"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "relationships": {
+          "supported": [
+            "calls"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "identifiers": {
+          "supported": [
+            "call",
+            "member_access",
+            "variable_ref"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        }
+      }
     },
     {
       "language": "bash",
@@ -1027,7 +1799,32 @@
         "identifiers": true,
         "types": true
       },
-      "capability_gaps": []
+      "capability_gaps": [],
+      "kind_coverage": {
+        "symbols": {
+          "supported": [
+            "function",
+            "import",
+            "variable"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "relationships": {
+          "supported": [
+            "calls"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "identifiers": {
+          "supported": [
+            "call"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        }
+      }
     },
     {
       "language": "powershell",
@@ -1064,7 +1861,36 @@
         "identifiers": true,
         "types": true
       },
-      "capability_gaps": []
+      "capability_gaps": [],
+      "kind_coverage": {
+        "symbols": {
+          "supported": [
+            "class",
+            "function",
+            "import",
+            "method",
+            "property",
+            "variable"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "relationships": {
+          "supported": [
+            "calls"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "identifiers": {
+          "supported": [
+            "call",
+            "member_access"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        }
+      }
     },
     {
       "language": "gdscript",
@@ -1099,7 +1925,36 @@
         "identifiers": true,
         "types": true
       },
-      "capability_gaps": []
+      "capability_gaps": [],
+      "kind_coverage": {
+        "symbols": {
+          "supported": [
+            "class",
+            "constructor",
+            "event",
+            "field",
+            "function",
+            "method"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "relationships": {
+          "supported": [
+            "calls"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "identifiers": {
+          "supported": [
+            "call",
+            "type_usage"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        }
+      }
     },
     {
       "language": "razor",
@@ -1147,7 +2002,33 @@
             "command": "cargo nextest run -p julie-extractors --lib tests::razor::cross_file_pending::razor_pending_relationships_handled_by_csharp_embed"
           }
         }
-      ]
+      ],
+      "kind_coverage": {
+        "symbols": {
+          "supported": [
+            "import",
+            "method",
+            "variable"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "relationships": {
+          "supported": [
+            "calls",
+            "uses"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "identifiers": {
+          "supported": [
+            "call"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        }
+      }
     },
     {
       "language": "sql",
@@ -1182,7 +2063,33 @@
         "identifiers": true,
         "types": true
       },
-      "capability_gaps": []
+      "capability_gaps": [],
+      "kind_coverage": {
+        "symbols": {
+          "supported": [
+            "class",
+            "field",
+            "interface",
+            "method"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "relationships": {
+          "supported": [
+            "references"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "identifiers": {
+          "supported": [
+            "member_access"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        }
+      }
     },
     {
       "language": "regex",
@@ -1229,7 +2136,33 @@
             "command": "cargo nextest run -p julie-extractors --lib tests::regex::cross_file_pending::regex_pending_relationships_within_pattern_only"
           }
         }
-      ]
+      ],
+      "kind_coverage": {
+        "symbols": {
+          "supported": [
+            "class",
+            "function",
+            "variable"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "relationships": {
+          "supported": [
+            "references"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "identifiers": {
+          "supported": [
+            "call",
+            "member_access"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        }
+      }
     },
     {
       "language": "markdown",
@@ -1243,7 +2176,7 @@
         "symbols": true,
         "relationships": true,
         "pending_relationships": false,
-        "identifiers": true,
+        "identifiers": false,
         "types": false
       },
       "fixtures": [
@@ -1262,7 +2195,7 @@
         "symbols": true,
         "relationships": true,
         "pending_relationships": false,
-        "identifiers": true,
+        "identifiers": false,
         "types": false
       },
       "capability_gaps": [
@@ -1287,8 +2220,47 @@
             "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
             "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
           }
+        },
+        {
+          "capability": "identifiers",
+          "status": "exception",
+          "reason": "Markdown headings, links, and frontmatter are modeled as symbols and relationships; the extractor emits no code identifiers.",
+          "required_closure": "N/A — domain limitation. Add a new symbol/relationship kind before treating markdown text as identifiers.",
+          "evidence": {
+            "kind": "fixture",
+            "value": "fixtures/extraction/markdown/basic/expected.json",
+            "command": "cargo nextest run -p julie-extractors --lib golden_fixtures_match_canonical_extraction"
+          }
         }
-      ]
+      ],
+      "kind_coverage": {
+        "symbols": {
+          "supported": [
+            "import",
+            "module",
+            "property"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "relationships": {
+          "supported": [
+            "references"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "identifiers": {
+          "supported": [],
+          "not_applicable": [
+            "call",
+            "member_access",
+            "type_usage",
+            "variable_ref"
+          ],
+          "open_gaps": []
+        }
+      }
     },
     {
       "language": "json",
@@ -1303,7 +2275,7 @@
         "symbols": true,
         "relationships": true,
         "pending_relationships": true,
-        "identifiers": true,
+        "identifiers": false,
         "types": false
       },
       "fixtures": [
@@ -1327,7 +2299,7 @@
         "symbols": true,
         "relationships": true,
         "pending_relationships": true,
-        "identifiers": true,
+        "identifiers": false,
         "types": false
       },
       "capability_gaps": [
@@ -1341,8 +2313,46 @@
             "value": "8120d04e3e013b4f71443e94f53e02c090ed1e35",
             "command": "git show 8120d04e3e013b4f71443e94f53e02c090ed1e35"
           }
+        },
+        {
+          "capability": "identifiers",
+          "status": "exception",
+          "reason": "JSON object keys are modeled as symbols and relationships; the extractor emits no code identifiers.",
+          "required_closure": "N/A — domain limitation. JSON Schema-aware identifier output would require a separate schema mode.",
+          "evidence": {
+            "kind": "fixture",
+            "value": "fixtures/extraction/json/basic/expected.json",
+            "command": "cargo nextest run -p julie-extractors --lib golden_fixtures_match_canonical_extraction"
+          }
         }
-      ]
+      ],
+      "kind_coverage": {
+        "symbols": {
+          "supported": [
+            "module",
+            "variable"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "relationships": {
+          "supported": [
+            "references"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "identifiers": {
+          "supported": [],
+          "not_applicable": [
+            "call",
+            "member_access",
+            "type_usage",
+            "variable_ref"
+          ],
+          "open_gaps": []
+        }
+      }
     },
     {
       "language": "toml",
@@ -1355,7 +2365,7 @@
         "symbols": true,
         "relationships": true,
         "pending_relationships": false,
-        "identifiers": true,
+        "identifiers": false,
         "types": false
       },
       "fixtures": [
@@ -1384,7 +2394,7 @@
         "symbols": true,
         "relationships": true,
         "pending_relationships": false,
-        "identifiers": true,
+        "identifiers": false,
         "types": false
       },
       "capability_gaps": [
@@ -1409,8 +2419,47 @@
             "value": "2e4c50c7c9967a6963c1c4f74cc4da6c0f0965e7",
             "command": "git show 2e4c50c7c9967a6963c1c4f74cc4da6c0f0965e7"
           }
+        },
+        {
+          "capability": "identifiers",
+          "status": "exception",
+          "reason": "TOML tables and keys are modeled as symbols and relationships; the extractor emits no code identifiers.",
+          "required_closure": "N/A — domain limitation. TOML key references remain symbol/relationship data.",
+          "evidence": {
+            "kind": "fixture",
+            "value": "fixtures/extraction/toml/basic/expected.json",
+            "command": "cargo nextest run -p julie-extractors --lib golden_fixtures_match_canonical_extraction"
+          }
         }
-      ]
+      ],
+      "kind_coverage": {
+        "symbols": {
+          "supported": [
+            "module",
+            "property"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "relationships": {
+          "supported": [
+            "imports",
+            "references"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "identifiers": {
+          "supported": [],
+          "not_applicable": [
+            "call",
+            "member_access",
+            "type_usage",
+            "variable_ref"
+          ],
+          "open_gaps": []
+        }
+      }
     },
     {
       "language": "yaml",
@@ -1469,7 +2518,31 @@
             "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
           }
         }
-      ]
+      ],
+      "kind_coverage": {
+        "symbols": {
+          "supported": [
+            "module",
+            "variable"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "relationships": {
+          "supported": [
+            "references"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        },
+        "identifiers": {
+          "supported": [
+            "variable_ref"
+          ],
+          "not_applicable": [],
+          "open_gaps": []
+        }
+      }
     }
   ]
 }

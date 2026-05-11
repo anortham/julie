@@ -33,6 +33,7 @@ pub struct TreeSitterCertificationReport {
     pub historical_rows_missing_from_current_registry: Vec<String>,
     pub gap_count_by_capability: BTreeMap<String, usize>,
     pub fixture_totals: FixtureEvidenceCounts,
+    pub kind_coverage_totals: KindCoverageCounts,
     pub language_rows: Vec<LanguageCertificationRow>,
     pub open_gaps: Vec<CapabilityGapReport>,
     pub real_world_evidence: Option<RealWorldCertificationSummary>,
@@ -49,6 +50,21 @@ pub struct FixtureEvidenceCounts {
     pub parse_diagnostics: usize,
 }
 
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct KindCoverageCounts {
+    pub symbols: usize,
+    pub relationships: usize,
+    pub identifiers: usize,
+}
+
+impl KindCoverageCounts {
+    pub(crate) fn add_assign(&mut self, other: &KindCoverageCounts) {
+        self.symbols += other.symbols;
+        self.relationships += other.relationships;
+        self.identifiers += other.identifiers;
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LanguageCertificationRow {
     pub language: String,
@@ -56,6 +72,7 @@ pub struct LanguageCertificationRow {
     pub dependency_status: String,
     pub fixture_count: usize,
     pub evidence: FixtureEvidenceCounts,
+    pub kind_coverage: KindCoverageCounts,
     pub gap_count: usize,
 }
 
@@ -157,6 +174,7 @@ pub fn build_tree_sitter_certification_report(
     let mut rows_without_gap_entries = Vec::new();
     let mut gap_count_by_capability = BTreeMap::new();
     let mut fixture_totals = FixtureEvidenceCounts::default();
+    let mut kind_coverage_totals = KindCoverageCounts::default();
     let mut language_rows = Vec::new();
     let mut open_gaps = Vec::new();
     let mut fixture_count = 0usize;
@@ -164,6 +182,7 @@ pub fn build_tree_sitter_certification_report(
     for row in data.languages {
         fixture_count += row.fixture_count;
         fixture_totals.add_assign(&row.evidence);
+        kind_coverage_totals.add_assign(&row.kind_coverage);
         if row.gaps.is_empty() {
             rows_without_gap_entries.push(row.language.clone());
         }
@@ -192,6 +211,7 @@ pub fn build_tree_sitter_certification_report(
             dependency_status: row.dependency_status,
             fixture_count: row.fixture_count,
             evidence: row.evidence,
+            kind_coverage: row.kind_coverage,
             gap_count: row.gaps.len(),
         });
     }
@@ -215,6 +235,7 @@ pub fn build_tree_sitter_certification_report(
             .collect(),
         gap_count_by_capability,
         fixture_totals,
+        kind_coverage_totals,
         language_rows,
         open_gaps,
         real_world_evidence,

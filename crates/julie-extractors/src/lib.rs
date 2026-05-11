@@ -107,8 +107,8 @@ pub use registry::{LanguageCapabilities, LanguageRegistryEntry};
 
 // Re-export Pillar 3 stable capability snapshot API
 pub use capability_snapshot::{
-    CapabilityFlags, CapabilityGap, CapabilityRow, CapabilitySnapshot, FixtureRef,
-    capability_snapshot,
+    CapabilityFlags, CapabilityGap, CapabilityKindCoverage, CapabilityRow, CapabilitySnapshot,
+    FixtureRef, KindCoverage, KindCoverageGap, capability_snapshot,
 };
 
 /// Stable extraction-contract version string. Downstream consumers and
@@ -117,7 +117,7 @@ pub use capability_snapshot::{
 ///
 /// **Stable.** Bump the suffix after `v` when the canonical extraction shape
 /// changes in a way downstream consumers must observe.
-pub const EXTRACTION_CONTRACT_VERSION: &str = "2026-05-10.tree-sitter-best-in-class-v1";
+pub const EXTRACTION_CONTRACT_VERSION: &str = "2026-05-11.trust-contract-v1";
 
 // Re-export BaseExtractor for language implementors
 pub use base::BaseExtractor;

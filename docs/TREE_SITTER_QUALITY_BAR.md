@@ -13,7 +13,7 @@ Status: **closure work landed; release-profile evidence regenerated; daemon-mode
 The 2026-05-10 autonomous run and Codex follow-up drove the best-in-class plan (`docs/plans/2026-05-10-best-in-class-tree-sitter-plan.md`) through release-gate and daemon-mode dogfood evidence against this rubric:
 
 - Phase 4a-d: every relationship-emitting language ships a `cross_file` fixture and locking test. Cross-file pending now emits StructuredPendingRelationship with `target.terminal_name` + `import_context` for 24 languages (Rust, C, C++, Go, Zig, TypeScript, JavaScript, TSX, JSX, Python, Java, C#, VB.NET, PHP, Ruby, Swift, Kotlin, Scala, Dart, Elixir, Lua, R, GDScript, SQL, Vue, HTML, QML). Recipe-B no-pending classifications (CSS, regex, Markdown, YAML, Razor, TOML, JSON) carry locking tests as evidence.
-- Phase 5: Pillar-3 hardening landed. `capability_snapshot()` + `EXTRACTION_CONTRACT_VERSION` exported, `SEMANTIC_INDEX_ENGINE_VERSION` recomposes to embed the contract, downstream-consumer integration test spawns a tempdir consumer crate and runs the public API end-to-end. Extractors bucket now runs the downstream-smoke gate.
+- Phase 5: Pillar-3 hardening landed. `capability_snapshot()` + `EXTRACTION_CONTRACT_VERSION` exported, `SEMANTIC_INDEX_ENGINE_VERSION` embeds the contract version and is checked by regression tests, downstream-consumer integration test spawns a tempdir consumer crate and runs the public API end-to-end. Extractors bucket now runs the downstream-smoke gate.
 - Phase 6: release-profile real-world evidence now covers 22 repos, including the VB.NET `samples` corpus, with 110 representative specs enforced by the hard-failure gate.
 - Phase 7: historical verification docs removed; canonical sources of truth are `fixtures/extraction/capabilities.json` (typed evidence schema, machine-checked) and the regenerated `docs/LANGUAGE_CERTIFICATION_REPORT.md` + `docs/LANGUAGE_REAL_WORLD_EVIDENCE.json`.
 - Phase 5.4 follow-up: `cargo doc -p julie-extractors --no-deps` is warning-free after cleaning broken doc links and HTML-like text in public rustdoc.
@@ -27,7 +27,8 @@ The restored verification docs were historical evidence, not current certificati
 2026-05-11 validation facts:
 
 - `fixtures/extraction/capabilities.json` tracks 36 registry rows: 34 user-facing language rows plus `tsx` and `jsx`.
-- `fixtures/extraction/capabilities.json` records 14 capability-gap rows, all `status: "exception"`; there are no open capability gaps.
+- `fixtures/extraction/capabilities.json` records 17 capability-gap rows, all `status: "exception"`; there are no open capability gaps.
+- `fixtures/extraction/capabilities.json` now records fixture-backed per-kind coverage for symbols, relationships, and identifiers. The generated certification report carries the current depth totals.
 - `docs/LANGUAGE_REAL_WORLD_EVIDENCE.json` records release-profile evidence for 22 repos and 0 skipped repos.
 - `fixtures/extraction/tree-sitter-real-world-corpus.toml` includes 110 representative specs, 5 per release-profile repo.
 - `cargo xtask certify tree-sitter --check` verifies [LANGUAGE_CERTIFICATION_REPORT.md](LANGUAGE_CERTIFICATION_REPORT.md) is current for the checked-in capability, fixture, historical-doc, and real-world evidence state.
@@ -74,6 +75,7 @@ The fixture capability file must stop acting as the target. It should distinguis
 - **Gap status:** open, met, or exception.
 - **Exception reason:** only intrinsic non-applicability or documented parser limitation.
 - **Evidence:** golden fixture paths and tests that prove the implemented behavior.
+- **Kind coverage:** per-kind `supported`, `not_applicable`, and `open_gaps` entries for current symbol, relationship, and identifier kinds.
 
 A target capability may be false only when the concept does not apply to the language. Examples:
 
@@ -97,6 +99,7 @@ Required coverage:
 - A registry entry without an implementation capability row fails the matrix test.
 - A registry entry without at least one golden fixture fails the matrix test.
 - A target capability marked implemented must have at least one golden fixture proving it.
+- A supported per-kind claim must appear in golden fixture output.
 - A target capability marked open must have at least one failing or pending plan item tied to it. It cannot disappear into prose.
 - A full programming-language fixture includes at least one named definition, one parented or explicit flat-structure assertion, one identifier, one graph output or structured pending output, and one type assertion or explicit no-type target reason.
 - A component/template fixture includes component or element structure, embedded code or binding syntax when supported, graph output for local references, and structured pending output for external references.
@@ -183,7 +186,7 @@ These are known gaps against the fixed target. This list is allowed to grow as t
 | Cross-file pending shape for every relationship-emitting language | Closed 2026-05-10 | Per-language `cross_file` fixtures + `tests::<lang>::cross_file_pending` locking tests across 24 languages (commits 740af24 → 24564d0f). |
 | Recipe-B no-pending classifications | Closed 2026-05-10 (exception) | Locking tests for CSS, regex, Markdown, YAML, Razor wired into `capability_gaps.evidence` as `kind: test`. TOML/JSON exception rows reference domain commits. |
 | Pillar-3 downstream-consumer usability | Closed 2026-05-10 | `crates/julie-extractors/tests/downstream_smoke.rs::julie_extractors_works_as_path_dependency_in_downstream_crate` proves the crate consumable via a path dependency. |
-| Capability snapshot public API + extraction-contract version | Closed 2026-05-10 | `julie_extractors::capability_snapshot()` + `julie_extractors::EXTRACTION_CONTRACT_VERSION`; `SEMANTIC_INDEX_ENGINE_VERSION` composes from the contract version. |
+| Capability snapshot public API + extraction-contract version | Closed 2026-05-10 | `julie_extractors::capability_snapshot()` + `julie_extractors::EXTRACTION_CONTRACT_VERSION`; `SEMANTIC_INDEX_ENGINE_VERSION` embeds the contract version and regression tests enforce the link. |
 | `capability_matrix_negative_cases_emit_no_wrong_edges` activated | Closed 2026-05-10 | De-ignored in `crates/julie-extractors/src/tests/capability_matrix.rs`; accepted fixtures broadened to `negative|cross_file`. |
 | Full-corpus real-world evidence with raised `min_relationships` | Closed 2026-05-11 | `cargo xtask certify tree-sitter --real-world --profile release --out docs/LANGUAGE_REAL_WORLD_EVIDENCE.json` wrote 22 verified + 0 skipped repos. `samples` supplies VB.NET evidence. `tree-sitter-real-world-corpus.toml` now has 110 representative specs. Relationship floors are 5x language-file count except `blazor-samples` and `riverpod`, which use high actual-output floors because 5x exceeds truthful current relationship output. |
 | Doc-comment audit on every public item in `julie-extractors` | Closed 2026-05-11 | `cargo doc -p julie-extractors --no-deps` emits no warnings after fixing broken intra-doc links, HTML-like generic text, and the ambiguous `capability_snapshot()` rustdoc link. |

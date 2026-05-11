@@ -28,6 +28,8 @@ pub struct CapabilityRow {
     pub dependency_status: String,
     pub target_capabilities: CapabilityFlags,
     pub capabilities: CapabilityFlags,
+    #[serde(default)]
+    pub kind_coverage: CapabilityKindCoverage,
     pub fixtures: Vec<FixtureRef>,
     #[serde(default)]
     pub capability_gaps: Vec<CapabilityGap>,
@@ -40,6 +42,34 @@ pub struct CapabilityFlags {
     pub pending_relationships: bool,
     pub identifiers: bool,
     pub types: bool,
+}
+
+#[derive(Debug, Deserialize, Default, Clone)]
+pub struct CapabilityKindCoverage {
+    #[serde(default)]
+    pub symbols: KindCoverage,
+    #[serde(default)]
+    pub relationships: KindCoverage,
+    #[serde(default)]
+    pub identifiers: KindCoverage,
+}
+
+#[derive(Debug, Deserialize, Default, Clone)]
+pub struct KindCoverage {
+    #[serde(default)]
+    pub supported: Vec<String>,
+    #[serde(default)]
+    pub not_applicable: Vec<String>,
+    #[serde(default)]
+    pub open_gaps: Vec<KindCoverageGap>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct KindCoverageGap {
+    pub kind: String,
+    pub reason: String,
+    pub required_closure: String,
+    pub planned_closure_task: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -59,6 +89,12 @@ pub struct CapabilityGap {
 }
 
 impl CapabilitySnapshot {
+    pub fn from_json_str(json: &str) -> Result<Self, serde_json::Error> {
+        let mut snap: CapabilitySnapshot = serde_json::from_str(json)?;
+        snap.rebuild_index();
+        Ok(snap)
+    }
+
     pub fn languages(&self) -> impl Iterator<Item = &CapabilityRow> {
         self.languages.iter()
     }
@@ -66,19 +102,21 @@ impl CapabilitySnapshot {
     pub fn get(&self, language: &str) -> Option<&CapabilityRow> {
         self.by_name.get(language).map(|&i| &self.languages[i])
     }
-}
 
-pub fn capability_snapshot() -> &'static CapabilitySnapshot {
-    static SNAPSHOT: OnceLock<CapabilitySnapshot> = OnceLock::new();
-    SNAPSHOT.get_or_init(|| {
-        let mut snap: CapabilitySnapshot = serde_json::from_str(CAPABILITIES_JSON)
-            .expect("capabilities.json must be valid JSON matching the snapshot schema");
-        snap.by_name = snap
+    fn rebuild_index(&mut self) {
+        self.by_name = self
             .languages
             .iter()
             .enumerate()
             .map(|(i, row)| (row.language.clone(), i))
             .collect();
-        snap
+    }
+}
+
+pub fn capability_snapshot() -> &'static CapabilitySnapshot {
+    static SNAPSHOT: OnceLock<CapabilitySnapshot> = OnceLock::new();
+    SNAPSHOT.get_or_init(|| {
+        CapabilitySnapshot::from_json_str(CAPABILITIES_JSON)
+            .expect("capabilities.json must be valid JSON matching the snapshot schema")
     })
 }

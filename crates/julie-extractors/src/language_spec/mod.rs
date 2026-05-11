@@ -117,6 +117,12 @@ pub const PENDING_NO_TYPES_CAPABILITIES: LanguageCapabilities = LanguageCapabili
     ..FULL_CAPABILITIES
 };
 
+pub const PENDING_NO_TYPES_NO_IDENTIFIERS_CAPABILITIES: LanguageCapabilities =
+    LanguageCapabilities {
+        identifiers: false,
+        ..PENDING_NO_TYPES_CAPABILITIES
+    };
+
 pub const DATA_ONLY_CAPABILITIES: LanguageCapabilities = LanguageCapabilities {
     symbols: true,
     relationships: false,
@@ -132,6 +138,12 @@ pub const RELATIONSHIP_DATA_CAPABILITIES: LanguageCapabilities = LanguageCapabil
     identifiers: true,
     types: false,
 };
+
+pub const RELATIONSHIP_DATA_NO_IDENTIFIERS_CAPABILITIES: LanguageCapabilities =
+    LanguageCapabilities {
+        identifiers: false,
+        ..RELATIONSHIP_DATA_CAPABILITIES
+    };
 
 const EMPTY: &[DocCommentStyle] = &[];
 const RUST_DOCS: &[DocCommentStyle] = &[

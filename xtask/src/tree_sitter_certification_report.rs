@@ -73,6 +73,16 @@ pub fn render_tree_sitter_certification_markdown(report: &TreeSitterCertificatio
         report.fixture_totals.parse_diagnostics
     ));
 
+    output.push_str("## Kind Coverage Depth\n\n");
+    output.push_str("| symbols | relationships | identifiers |\n");
+    output.push_str("| ---: | ---: | ---: |\n");
+    output.push_str(&format!(
+        "| {} | {} | {} |\n\n",
+        report.kind_coverage_totals.symbols,
+        report.kind_coverage_totals.relationships,
+        report.kind_coverage_totals.identifiers
+    ));
+
     output.push_str("## Gap Counts\n\n");
     output.push_str("| capability | count |\n");
     output.push_str("| --- | ---: |\n");
@@ -97,13 +107,13 @@ pub fn render_tree_sitter_certification_markdown(report: &TreeSitterCertificatio
     output.push('\n');
 
     output.push_str("## Per-Language Fixture Evidence\n\n");
-    output.push_str("| language | parser | dependency | fixtures | symbols | relationships | pending | structured pending | identifiers | types | diagnostics | gaps |\n");
+    output.push_str("| language | parser | dependency | fixtures | symbols | relationships | pending | structured pending | identifiers | types | diagnostics | kind symbols | kind relationships | kind identifiers | gaps |\n");
     output.push_str(
-        "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n",
+        "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n",
     );
     for row in &report.language_rows {
         output.push_str(&format!(
-            "| `{}` | `{}` | `{}` | {} | {} | {} | {} | {} | {} | {} | {} | {} |\n",
+            "| `{}` | `{}` | `{}` | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} |\n",
             row.language,
             row.parser_crate,
             row.dependency_status,
@@ -115,6 +125,9 @@ pub fn render_tree_sitter_certification_markdown(report: &TreeSitterCertificatio
             row.evidence.identifiers,
             row.evidence.types,
             row.evidence.parse_diagnostics,
+            row.kind_coverage.symbols,
+            row.kind_coverage.relationships,
+            row.kind_coverage.identifiers,
             row.gap_count
         ));
     }

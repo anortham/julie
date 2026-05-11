@@ -55,10 +55,17 @@ Historical matrix evidence is deprecated; current capability, fixture, and real-
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | 425 | 104 | 41 | 41 | 208 | 145 | 6 |
 
+## Kind Coverage Depth
+
+| symbols | relationships | identifiers |
+| ---: | ---: | ---: |
+| 176 | 61 | 71 |
+
 ## Gap Counts
 
 | capability | count |
 | --- | ---: |
+| `identifiers` | 3 |
 | `pending_relationships` | 6 |
 | `types` | 8 |
 
@@ -69,44 +76,44 @@ Historical matrix evidence is deprecated; current capability, fixture, and real-
 
 ## Per-Language Fixture Evidence
 
-| language | parser | dependency | fixtures | symbols | relationships | pending | structured pending | identifiers | types | diagnostics | gaps |
-| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| `rust` | `tree-sitter-rust` | `current` | 2 | 8 | 2 | 2 | 2 | 7 | 5 | 0 | 0 |
-| `c` | `tree-sitter-c` | `current` | 2 | 9 | 4 | 1 | 1 | 5 | 5 | 0 | 0 |
-| `cpp` | `tree-sitter-cpp` | `current` | 2 | 11 | 5 | 1 | 1 | 5 | 8 | 0 | 0 |
-| `go` | `tree-sitter-go` | `current` | 3 | 18 | 2 | 1 | 1 | 7 | 5 | 5 | 0 |
-| `zig` | `tree-sitter-zig` | `current` | 2 | 9 | 3 | 1 | 1 | 6 | 6 | 0 | 0 |
-| `typescript` | `tree-sitter-typescript` | `current` | 2 | 13 | 3 | 1 | 1 | 5 | 4 | 0 | 0 |
-| `tsx` | `tree-sitter-typescript` | `current` | 2 | 10 | 2 | 2 | 2 | 7 | 5 | 0 | 0 |
-| `javascript` | `tree-sitter-javascript` | `current` | 2 | 9 | 2 | 1 | 1 | 5 | 0 | 0 | 0 |
-| `jsx` | `tree-sitter-javascript` | `current` | 2 | 9 | 3 | 2 | 2 | 5 | 0 | 0 | 0 |
-| `html` | `tree-sitter-html` | `current` | 2 | 20 | 3 | 2 | 2 | 3 | 0 | 0 | 0 |
-| `css` | `tree-sitter-css` | `current` | 2 | 11 | 3 | 0 | 0 | 9 | 0 | 0 | 2 |
-| `vue` | `tree-sitter-html` | `current` | 2 | 8 | 5 | 3 | 3 | 4 | 4 | 0 | 0 |
-| `python` | `tree-sitter-python` | `current` | 2 | 8 | 2 | 1 | 1 | 5 | 2 | 0 | 0 |
-| `java` | `tree-sitter-java` | `current` | 2 | 11 | 3 | 2 | 2 | 6 | 6 | 0 | 0 |
-| `csharp` | `tree-sitter-c-sharp` | `current` | 2 | 11 | 3 | 1 | 1 | 4 | 6 | 0 | 0 |
-| `vbnet` | `tree-sitter-vb-dotnet` | `git_pinned` | 2 | 12 | 3 | 1 | 1 | 3 | 6 | 0 | 0 |
-| `php` | `tree-sitter-php` | `current` | 2 | 13 | 2 | 1 | 1 | 4 | 12 | 0 | 0 |
-| `ruby` | `tree-sitter-ruby` | `current` | 2 | 10 | 1 | 2 | 2 | 4 | 0 | 0 | 0 |
-| `swift` | `tree-sitter-swift` | `current` | 2 | 10 | 3 | 1 | 1 | 4 | 10 | 0 | 0 |
-| `kotlin` | `tree-sitter-kotlin-ng` | `current` | 2 | 12 | 3 | 2 | 2 | 4 | 6 | 0 | 0 |
-| `scala` | `tree-sitter-scala` | `current` | 2 | 11 | 3 | 2 | 2 | 4 | 5 | 0 | 0 |
-| `dart` | `tree-sitter-dart` | `current` | 2 | 10 | 2 | 1 | 1 | 11 | 7 | 0 | 0 |
-| `elixir` | `tree-sitter-elixir` | `current` | 2 | 7 | 4 | 1 | 1 | 7 | 0 | 0 | 0 |
-| `lua` | `tree-sitter-lua` | `current` | 2 | 12 | 2 | 1 | 1 | 11 | 0 | 0 | 1 |
-| `qml` | `tree-sitter-qmljs` | `git_pinned` | 2 | 13 | 3 | 2 | 2 | 15 | 0 | 0 | 1 |
-| `r` | `tree-sitter-r` | `current` | 2 | 7 | 2 | 1 | 1 | 17 | 0 | 0 | 1 |
-| `bash` | `tree-sitter-bash` | `current` | 2 | 11 | 2 | 1 | 1 | 6 | 4 | 0 | 0 |
-| `powershell` | `tree-sitter-powershell` | `git_pinned` | 2 | 12 | 2 | 1 | 1 | 7 | 3 | 0 | 0 |
-| `gdscript` | `tree-sitter-gdscript` | `current` | 2 | 9 | 2 | 1 | 1 | 12 | 6 | 0 | 0 |
-| `razor` | `tree-sitter-razor` | `git_pinned` | 2 | 9 | 3 | 0 | 0 | 4 | 9 | 0 | 1 |
-| `sql` | `tree-sitter-sequel` | `current` | 2 | 15 | 4 | 1 | 1 | 3 | 13 | 1 | 0 |
-| `regex` | `tree-sitter-regex` | `current` | 2 | 8 | 4 | 0 | 0 | 6 | 8 | 0 | 1 |
-| `markdown` | `tree-sitter-md` | `current` | 2 | 11 | 2 | 0 | 0 | 0 | 0 | 0 | 2 |
-| `json` | `tree-sitter-json` | `current` | 3 | 22 | 2 | 1 | 1 | 0 | 0 | 0 | 1 |
-| `toml` | `tree-sitter-toml-ng` | `current` | 4 | 33 | 7 | 0 | 0 | 0 | 0 | 0 | 2 |
-| `yaml` | `tree-sitter-yaml` | `current` | 2 | 13 | 3 | 0 | 0 | 3 | 0 | 0 | 2 |
+| language | parser | dependency | fixtures | symbols | relationships | pending | structured pending | identifiers | types | diagnostics | kind symbols | kind relationships | kind identifiers | gaps |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `rust` | `tree-sitter-rust` | `current` | 2 | 8 | 2 | 2 | 2 | 7 | 5 | 0 | 6 | 2 | 3 | 0 |
+| `c` | `tree-sitter-c` | `current` | 2 | 9 | 4 | 1 | 1 | 5 | 5 | 0 | 4 | 3 | 3 | 0 |
+| `cpp` | `tree-sitter-cpp` | `current` | 2 | 11 | 5 | 1 | 1 | 5 | 8 | 0 | 5 | 3 | 2 | 0 |
+| `go` | `tree-sitter-go` | `current` | 3 | 18 | 2 | 1 | 1 | 7 | 5 | 5 | 6 | 2 | 3 | 0 |
+| `zig` | `tree-sitter-zig` | `current` | 2 | 9 | 3 | 1 | 1 | 6 | 6 | 0 | 6 | 1 | 2 | 0 |
+| `typescript` | `tree-sitter-typescript` | `current` | 2 | 13 | 3 | 1 | 1 | 5 | 4 | 0 | 8 | 3 | 3 | 0 |
+| `tsx` | `tree-sitter-typescript` | `current` | 2 | 10 | 2 | 2 | 2 | 7 | 5 | 0 | 6 | 2 | 3 | 0 |
+| `javascript` | `tree-sitter-javascript` | `current` | 2 | 9 | 2 | 1 | 1 | 5 | 0 | 0 | 6 | 1 | 2 | 0 |
+| `jsx` | `tree-sitter-javascript` | `current` | 2 | 9 | 3 | 2 | 2 | 5 | 0 | 0 | 4 | 2 | 1 | 0 |
+| `html` | `tree-sitter-html` | `current` | 2 | 20 | 3 | 2 | 2 | 3 | 0 | 0 | 5 | 2 | 2 | 0 |
+| `css` | `tree-sitter-css` | `current` | 2 | 11 | 3 | 0 | 0 | 9 | 0 | 0 | 4 | 1 | 2 | 2 |
+| `vue` | `tree-sitter-html` | `current` | 2 | 8 | 5 | 3 | 3 | 4 | 4 | 0 | 5 | 2 | 1 | 0 |
+| `python` | `tree-sitter-python` | `current` | 2 | 8 | 2 | 1 | 1 | 5 | 2 | 0 | 6 | 1 | 2 | 0 |
+| `java` | `tree-sitter-java` | `current` | 2 | 11 | 3 | 2 | 2 | 6 | 6 | 0 | 6 | 2 | 3 | 0 |
+| `csharp` | `tree-sitter-c-sharp` | `current` | 2 | 11 | 3 | 1 | 1 | 4 | 6 | 0 | 6 | 3 | 2 | 0 |
+| `vbnet` | `tree-sitter-vb-dotnet` | `git_pinned` | 2 | 12 | 3 | 1 | 1 | 3 | 6 | 0 | 6 | 3 | 2 | 0 |
+| `php` | `tree-sitter-php` | `current` | 2 | 13 | 2 | 1 | 1 | 4 | 12 | 0 | 8 | 2 | 2 | 0 |
+| `ruby` | `tree-sitter-ruby` | `current` | 2 | 10 | 1 | 2 | 2 | 4 | 0 | 0 | 5 | 1 | 3 | 0 |
+| `swift` | `tree-sitter-swift` | `current` | 2 | 10 | 3 | 1 | 1 | 4 | 10 | 0 | 7 | 2 | 2 | 0 |
+| `kotlin` | `tree-sitter-kotlin-ng` | `current` | 2 | 12 | 3 | 2 | 2 | 4 | 6 | 0 | 6 | 2 | 2 | 0 |
+| `scala` | `tree-sitter-scala` | `current` | 2 | 11 | 3 | 2 | 2 | 4 | 5 | 0 | 5 | 2 | 2 | 0 |
+| `dart` | `tree-sitter-dart` | `current` | 2 | 10 | 2 | 1 | 1 | 11 | 7 | 0 | 6 | 2 | 2 | 0 |
+| `elixir` | `tree-sitter-elixir` | `current` | 2 | 7 | 4 | 1 | 1 | 7 | 0 | 0 | 3 | 1 | 3 | 0 |
+| `lua` | `tree-sitter-lua` | `current` | 2 | 12 | 2 | 1 | 1 | 11 | 0 | 0 | 5 | 1 | 2 | 1 |
+| `qml` | `tree-sitter-qmljs` | `git_pinned` | 2 | 13 | 3 | 2 | 2 | 15 | 0 | 0 | 5 | 2 | 4 | 1 |
+| `r` | `tree-sitter-r` | `current` | 2 | 7 | 2 | 1 | 1 | 17 | 0 | 0 | 3 | 1 | 3 | 1 |
+| `bash` | `tree-sitter-bash` | `current` | 2 | 11 | 2 | 1 | 1 | 6 | 4 | 0 | 3 | 1 | 1 | 0 |
+| `powershell` | `tree-sitter-powershell` | `git_pinned` | 2 | 12 | 2 | 1 | 1 | 7 | 3 | 0 | 6 | 1 | 2 | 0 |
+| `gdscript` | `tree-sitter-gdscript` | `current` | 2 | 9 | 2 | 1 | 1 | 12 | 6 | 0 | 6 | 1 | 2 | 0 |
+| `razor` | `tree-sitter-razor` | `git_pinned` | 2 | 9 | 3 | 0 | 0 | 4 | 9 | 0 | 3 | 2 | 1 | 1 |
+| `sql` | `tree-sitter-sequel` | `current` | 2 | 15 | 4 | 1 | 1 | 3 | 13 | 1 | 4 | 1 | 1 | 0 |
+| `regex` | `tree-sitter-regex` | `current` | 2 | 8 | 4 | 0 | 0 | 6 | 8 | 0 | 3 | 1 | 2 | 1 |
+| `markdown` | `tree-sitter-md` | `current` | 2 | 11 | 2 | 0 | 0 | 0 | 0 | 0 | 3 | 1 | 0 | 3 |
+| `json` | `tree-sitter-json` | `current` | 3 | 22 | 2 | 1 | 1 | 0 | 0 | 0 | 2 | 1 | 0 | 2 |
+| `toml` | `tree-sitter-toml-ng` | `current` | 4 | 33 | 7 | 0 | 0 | 0 | 0 | 0 | 2 | 2 | 0 | 3 |
+| `yaml` | `tree-sitter-yaml` | `current` | 2 | 13 | 3 | 0 | 0 | 3 | 0 | 0 | 2 | 1 | 1 | 2 |
 
 ## Rows Without Gap Entries
 
