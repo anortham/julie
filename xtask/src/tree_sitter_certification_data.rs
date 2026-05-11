@@ -70,7 +70,70 @@ struct CapabilityGap {
     status: String,
     reason: String,
     required_closure: String,
-    evidence: String,
+    evidence: EvidenceRef,
+    #[serde(default)]
+    #[allow(dead_code)]
+    planned_closure_task: Option<String>,
+}
+
+/// Typed evidence reference. Mirrors the
+/// `crates/julie-extractors/src/tests/capability_matrix.rs::EvidenceRef`
+/// shape so the xtask certify command and the in-crate matrix tests parse
+/// the same JSON.
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum EvidenceRef {
+    Test {
+        #[allow(dead_code)]
+        kind: TestKind,
+        value: String,
+        #[allow(dead_code)]
+        command: String,
+    },
+    Fixture {
+        #[allow(dead_code)]
+        kind: FixtureKind,
+        value: String,
+        #[allow(dead_code)]
+        command: String,
+    },
+    Commit {
+        #[allow(dead_code)]
+        kind: CommitKind,
+        value: String,
+        #[allow(dead_code)]
+        command: String,
+    },
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum TestKind {
+    Test,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum FixtureKind {
+    Fixture,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum CommitKind {
+    Commit,
+}
+
+impl EvidenceRef {
+    /// Display string used in the certification markdown report and the
+    /// `LoadedCapabilityGap::evidence` field. Formatted as "kind:value".
+    fn display(&self) -> String {
+        match self {
+            EvidenceRef::Test { value, .. } => format!("test:{value}"),
+            EvidenceRef::Fixture { value, .. } => format!("fixture:{value}"),
+            EvidenceRef::Commit { value, .. } => format!("commit:{value}"),
+        }
+    }
 }
 
 pub fn load_certification_data(root: &Path) -> Result<LoadedCertificationData> {
@@ -98,7 +161,7 @@ pub fn load_certification_data(root: &Path) -> Result<LoadedCertificationData> {
                 capability: gap.capability.clone(),
                 status: gap.status.clone(),
                 required_closure: gap.required_closure.clone(),
-                evidence: gap.evidence.clone(),
+                evidence: gap.evidence.display(),
             })
             .collect();
 
@@ -224,13 +287,57 @@ fn validate_gap(root: &Path, row: &CapabilityRow, gap: &CapabilityGap) -> Result
             gap.capability
         );
     }
-    if !root.join(&gap.evidence).exists() {
-        bail!(
-            "{} {} gap evidence path does not exist: {}",
-            row.language,
-            gap.capability,
-            gap.evidence
-        );
+    match &gap.evidence {
+        EvidenceRef::Fixture { value, .. } => {
+            if !root.join(value).exists() {
+                bail!(
+                    "{} {} gap evidence path does not exist: {}",
+                    row.language,
+                    gap.capability,
+                    value
+                );
+            }
+        }
+        EvidenceRef::Commit { value, .. } => {
+            if value.len() != 40 || !value.chars().all(|c| c.is_ascii_hexdigit()) {
+                bail!(
+                    "{} {} gap commit evidence must be a 40-char hex SHA: {}",
+                    row.language,
+                    gap.capability,
+                    value
+                );
+            }
+            let output = std::process::Command::new("git")
+                .args(["cat-file", "-e", value])
+                .current_dir(root)
+                .output()
+                .with_context(|| format!("git cat-file invocation for {value}"))?;
+            if !output.status.success() {
+                bail!(
+                    "{} {} gap commit evidence does not resolve via git cat-file: {}",
+                    row.language,
+                    gap.capability,
+                    value
+                );
+            }
+        }
+        EvidenceRef::Test { value, command, .. } => {
+            if value.is_empty() {
+                bail!(
+                    "{} {} gap test evidence has empty value",
+                    row.language,
+                    gap.capability
+                );
+            }
+            if !command.starts_with("cargo nextest") {
+                bail!(
+                    "{} {} gap test evidence command must start with `cargo nextest`: {}",
+                    row.language,
+                    gap.capability,
+                    command
+                );
+            }
+        }
     }
     Ok(())
 }
@@ -380,8 +487,19 @@ fn assert_fixture_pending_parity(
 
 fn load_historical_matrix_rows(root: &Path) -> Result<BTreeSet<String>> {
     let path = root.join("docs/LANGUAGE_VERIFICATION_RESULTS.md");
-    let contents = fs::read_to_string(&path)
-        .with_context(|| format!("failed to read historical matrix at {}", path.display()))?;
+    // Phase 7.2 deleted the historical matrix; capability evidence now lives in
+    // fixtures/extraction/capabilities.json. Treat the file as optional so the
+    // certification command runs against the canonical typed-evidence source
+    // of truth instead of failing on a removed legacy file.
+    let contents = match fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(BTreeSet::new()),
+        Err(err) => {
+            return Err(err).with_context(|| {
+                format!("failed to read historical matrix at {}", path.display())
+            });
+        }
+    };
     let summary = summary_matrix_section(&contents);
     let mut languages = BTreeSet::new();
 

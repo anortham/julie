@@ -19,6 +19,11 @@
           "name": "basic",
           "source": "fixtures/extraction/rust/basic/source.rs",
           "expected": "fixtures/extraction/rust/basic/expected.json"
+        },
+        {
+          "name": "cross_file",
+          "source": "fixtures/extraction/rust/cross_file/source.rs",
+          "expected": "fixtures/extraction/rust/cross_file/expected.json"
         }
       ],
       "target_capabilities": {
@@ -28,15 +33,7 @@
         "identifiers": true,
         "types": true
       },
-      "capability_gaps": [
-        {
-          "capability": "pending_relationships",
-          "status": "open",
-          "reason": "Runtime advertises pending relationship support, but the listed golden fixtures do not yet prove pending_relationships or structured_pending_relationships output.",
-          "required_closure": "Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported.",
-          "evidence": "docs/findings/COMPILED-FINDINGS.md"
-        }
-      ]
+      "capability_gaps": []
     },
     {
       "language": "c",
@@ -58,6 +55,11 @@
           "name": "basic",
           "source": "fixtures/extraction/c/basic/source.c",
           "expected": "fixtures/extraction/c/basic/expected.json"
+        },
+        {
+          "name": "cross_file",
+          "source": "fixtures/extraction/c/cross_file/source.c",
+          "expected": "fixtures/extraction/c/cross_file/expected.json"
         }
       ],
       "target_capabilities": {
@@ -67,15 +69,7 @@
         "identifiers": true,
         "types": true
       },
-      "capability_gaps": [
-        {
-          "capability": "pending_relationships",
-          "status": "open",
-          "reason": "Runtime advertises pending relationship support, but the listed golden fixtures do not yet prove pending_relationships or structured_pending_relationships output.",
-          "required_closure": "Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported.",
-          "evidence": "docs/findings/COMPILED-FINDINGS.md"
-        }
-      ]
+      "capability_gaps": []
     },
     {
       "language": "cpp",
@@ -103,6 +97,11 @@
           "name": "basic",
           "source": "fixtures/extraction/cpp/basic/source.cpp",
           "expected": "fixtures/extraction/cpp/basic/expected.json"
+        },
+        {
+          "name": "cross_file",
+          "source": "fixtures/extraction/cpp/cross_file/source.cpp",
+          "expected": "fixtures/extraction/cpp/cross_file/expected.json"
         }
       ],
       "target_capabilities": {
@@ -112,15 +111,7 @@
         "identifiers": true,
         "types": true
       },
-      "capability_gaps": [
-        {
-          "capability": "pending_relationships",
-          "status": "open",
-          "reason": "Runtime advertises pending relationship support, but the listed golden fixtures do not yet prove pending_relationships or structured_pending_relationships output.",
-          "required_closure": "Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported.",
-          "evidence": "docs/findings/COMPILED-FINDINGS.md"
-        }
-      ]
+      "capability_gaps": []
     },
     {
       "language": "go",
@@ -146,6 +137,11 @@
           "name": "malformed_recovery",
           "source": "fixtures/extraction/go/malformed_recovery/source.go",
           "expected": "fixtures/extraction/go/malformed_recovery/expected.json"
+        },
+        {
+          "name": "cross_file",
+          "source": "fixtures/extraction/go/cross_file/source.go",
+          "expected": "fixtures/extraction/go/cross_file/expected.json"
         }
       ],
       "target_capabilities": {
@@ -155,15 +151,7 @@
         "identifiers": true,
         "types": true
       },
-      "capability_gaps": [
-        {
-          "capability": "pending_relationships",
-          "status": "open",
-          "reason": "Runtime advertises pending relationship support, but the listed golden fixtures do not yet prove pending_relationships or structured_pending_relationships output.",
-          "required_closure": "Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported.",
-          "evidence": "docs/findings/COMPILED-FINDINGS.md"
-        }
-      ]
+      "capability_gaps": []
     },
     {
       "language": "zig",
@@ -184,6 +172,11 @@
           "name": "basic",
           "source": "fixtures/extraction/zig/basic/source.zig",
           "expected": "fixtures/extraction/zig/basic/expected.json"
+        },
+        {
+          "name": "cross_file",
+          "source": "fixtures/extraction/zig/cross_file/source.zig",
+          "expected": "fixtures/extraction/zig/cross_file/expected.json"
         }
       ],
       "target_capabilities": {
@@ -193,15 +186,7 @@
         "identifiers": true,
         "types": true
       },
-      "capability_gaps": [
-        {
-          "capability": "pending_relationships",
-          "status": "open",
-          "reason": "Runtime advertises pending relationship support, but the listed golden fixtures do not yet prove pending_relationships or structured_pending_relationships output.",
-          "required_closure": "Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported.",
-          "evidence": "docs/findings/COMPILED-FINDINGS.md"
-        }
-      ]
+      "capability_gaps": []
     },
     {
       "language": "typescript",
@@ -224,6 +209,11 @@
           "name": "basic",
           "source": "fixtures/extraction/typescript/basic/source.ts",
           "expected": "fixtures/extraction/typescript/basic/expected.json"
+        },
+        {
+          "name": "cross_file",
+          "source": "fixtures/extraction/typescript/cross_file/source.ts",
+          "expected": "fixtures/extraction/typescript/cross_file/expected.json"
         }
       ],
       "target_capabilities": {
@@ -233,15 +223,7 @@
         "identifiers": true,
         "types": true
       },
-      "capability_gaps": [
-        {
-          "capability": "pending_relationships",
-          "status": "open",
-          "reason": "Runtime advertises pending relationship support, but the listed golden fixtures do not yet prove pending_relationships or structured_pending_relationships output.",
-          "required_closure": "Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported.",
-          "evidence": "docs/findings/COMPILED-FINDINGS.md"
-        }
-      ]
+      "capability_gaps": []
     },
     {
       "language": "tsx",
@@ -262,6 +244,11 @@
           "name": "basic",
           "source": "fixtures/extraction/tsx/basic/source.tsx",
           "expected": "fixtures/extraction/tsx/basic/expected.json"
+        },
+        {
+          "name": "cross_file",
+          "source": "fixtures/extraction/tsx/cross_file/source.tsx",
+          "expected": "fixtures/extraction/tsx/cross_file/expected.json"
         }
       ],
       "target_capabilities": {
@@ -293,6 +280,11 @@
           "name": "basic",
           "source": "fixtures/extraction/javascript/basic/source.js",
           "expected": "fixtures/extraction/javascript/basic/expected.json"
+        },
+        {
+          "name": "cross_file",
+          "source": "fixtures/extraction/javascript/cross_file/source.js",
+          "expected": "fixtures/extraction/javascript/cross_file/expected.json"
         }
       ],
       "target_capabilities": {
@@ -302,15 +294,7 @@
         "identifiers": true,
         "types": true
       },
-      "capability_gaps": [
-        {
-          "capability": "pending_relationships",
-          "status": "open",
-          "reason": "Runtime advertises pending relationship support, but the listed golden fixtures do not yet prove pending_relationships or structured_pending_relationships output.",
-          "required_closure": "Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported.",
-          "evidence": "docs/findings/COMPILED-FINDINGS.md"
-        }
-      ]
+      "capability_gaps": []
     },
     {
       "language": "jsx",
@@ -331,6 +315,11 @@
           "name": "basic",
           "source": "fixtures/extraction/jsx/basic/source.jsx",
           "expected": "fixtures/extraction/jsx/basic/expected.json"
+        },
+        {
+          "name": "cross_file",
+          "source": "fixtures/extraction/jsx/cross_file/source.jsx",
+          "expected": "fixtures/extraction/jsx/cross_file/expected.json"
         }
       ],
       "target_capabilities": {
@@ -352,7 +341,7 @@
       "capabilities": {
         "symbols": true,
         "relationships": true,
-        "pending_relationships": false,
+        "pending_relationships": true,
         "identifiers": true,
         "types": true
       },
@@ -361,24 +350,21 @@
           "name": "basic",
           "source": "fixtures/extraction/html/basic/source.html",
           "expected": "fixtures/extraction/html/basic/expected.json"
+        },
+        {
+          "name": "cross_file",
+          "source": "fixtures/extraction/html/cross_file/source.html",
+          "expected": "fixtures/extraction/html/cross_file/expected.json"
         }
       ],
       "target_capabilities": {
         "symbols": true,
         "relationships": true,
-        "pending_relationships": false,
+        "pending_relationships": true,
         "identifiers": true,
         "types": true
       },
-      "capability_gaps": [
-        {
-          "capability": "pending_relationships",
-          "status": "open",
-          "reason": "HTML markup has no language-level cross-file forward-reference construct; href/src attributes resolve at extraction time. Pending relationships are not targeted.",
-          "required_closure": "N/A — domain limitation.",
-          "evidence": "docs/findings/COMPILED-FINDINGS.md"
-        }
-      ]
+      "capability_gaps": []
     },
     {
       "language": "css",
@@ -399,6 +385,11 @@
           "name": "basic",
           "source": "fixtures/extraction/css/basic/source.css",
           "expected": "fixtures/extraction/css/basic/expected.json"
+        },
+        {
+          "name": "cross_file",
+          "source": "fixtures/extraction/css/cross_file/source.css",
+          "expected": "fixtures/extraction/css/cross_file/expected.json"
         }
       ],
       "target_capabilities": {
@@ -411,17 +402,25 @@
       "capability_gaps": [
         {
           "capability": "pending_relationships",
-          "status": "open",
+          "status": "exception",
           "reason": "CSS @import directives resolve at extraction time and current relationship extraction emits direct edges. CSS has no forward-reference construct that would benefit from pending relationships.",
           "required_closure": "N/A — domain limitation.",
-          "evidence": "docs/findings/COMPILED-FINDINGS.md"
+          "evidence": {
+            "kind": "test",
+            "value": "css_pending_relationships_intra_document_only",
+            "command": "cargo nextest run -p julie-extractors --lib tests::css::cross_file_pending::css_pending_relationships_intra_document_only"
+          }
         },
         {
           "capability": "types",
-          "status": "open",
+          "status": "exception",
           "reason": "CSS has no static type system. Custom property values are runtime strings; there is no type metadata to extract.",
           "required_closure": "N/A — domain limitation.",
-          "evidence": "docs/findings/COMPILED-FINDINGS.md"
+          "evidence": {
+            "kind": "commit",
+            "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
+            "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
+          }
         }
       ]
     },
@@ -444,6 +443,11 @@
           "name": "basic",
           "source": "fixtures/extraction/vue/basic/source.vue",
           "expected": "fixtures/extraction/vue/basic/expected.json"
+        },
+        {
+          "name": "cross_file",
+          "source": "fixtures/extraction/vue/cross_file/source.vue",
+          "expected": "fixtures/extraction/vue/cross_file/expected.json"
         }
       ],
       "target_capabilities": {
@@ -452,7 +456,8 @@
         "pending_relationships": true,
         "identifiers": true,
         "types": true
-      }
+      },
+      "capability_gaps": []
     },
     {
       "language": "python",
@@ -475,6 +480,11 @@
           "name": "basic",
           "source": "fixtures/extraction/python/basic/source.py",
           "expected": "fixtures/extraction/python/basic/expected.json"
+        },
+        {
+          "name": "cross_file",
+          "source": "fixtures/extraction/python/cross_file/source.py",
+          "expected": "fixtures/extraction/python/cross_file/expected.json"
         }
       ],
       "target_capabilities": {
@@ -484,15 +494,7 @@
         "identifiers": true,
         "types": true
       },
-      "capability_gaps": [
-        {
-          "capability": "pending_relationships",
-          "status": "open",
-          "reason": "Runtime advertises pending relationship support, but the listed golden fixtures do not yet prove pending_relationships or structured_pending_relationships output.",
-          "required_closure": "Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported.",
-          "evidence": "docs/findings/COMPILED-FINDINGS.md"
-        }
-      ]
+      "capability_gaps": []
     },
     {
       "language": "java",
@@ -513,6 +515,11 @@
           "name": "basic",
           "source": "fixtures/extraction/java/basic/source.java",
           "expected": "fixtures/extraction/java/basic/expected.json"
+        },
+        {
+          "name": "cross_file",
+          "source": "fixtures/extraction/java/cross_file/Source.java",
+          "expected": "fixtures/extraction/java/cross_file/expected.json"
         }
       ],
       "target_capabilities": {
@@ -522,15 +529,7 @@
         "identifiers": true,
         "types": true
       },
-      "capability_gaps": [
-        {
-          "capability": "pending_relationships",
-          "status": "open",
-          "reason": "Runtime advertises pending relationship support, but the listed golden fixtures do not yet prove pending_relationships or structured_pending_relationships output.",
-          "required_closure": "Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported.",
-          "evidence": "docs/findings/COMPILED-FINDINGS.md"
-        }
-      ]
+      "capability_gaps": []
     },
     {
       "language": "csharp",
@@ -551,6 +550,11 @@
           "name": "basic",
           "source": "fixtures/extraction/csharp/basic/source.cs",
           "expected": "fixtures/extraction/csharp/basic/expected.json"
+        },
+        {
+          "name": "cross_file",
+          "source": "fixtures/extraction/csharp/cross_file/Source.cs",
+          "expected": "fixtures/extraction/csharp/cross_file/expected.json"
         }
       ],
       "target_capabilities": {
@@ -560,15 +564,7 @@
         "identifiers": true,
         "types": true
       },
-      "capability_gaps": [
-        {
-          "capability": "pending_relationships",
-          "status": "open",
-          "reason": "Runtime advertises pending relationship support, but the listed golden fixtures do not yet prove pending_relationships or structured_pending_relationships output.",
-          "required_closure": "Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported.",
-          "evidence": "docs/findings/COMPILED-FINDINGS.md"
-        }
-      ]
+      "capability_gaps": []
     },
     {
       "language": "vbnet",
@@ -589,6 +585,11 @@
           "name": "basic",
           "source": "fixtures/extraction/vbnet/basic/source.vb",
           "expected": "fixtures/extraction/vbnet/basic/expected.json"
+        },
+        {
+          "name": "cross_file",
+          "source": "fixtures/extraction/vbnet/cross_file/source.vb",
+          "expected": "fixtures/extraction/vbnet/cross_file/expected.json"
         }
       ],
       "target_capabilities": {
@@ -598,15 +599,7 @@
         "identifiers": true,
         "types": true
       },
-      "capability_gaps": [
-        {
-          "capability": "pending_relationships",
-          "status": "open",
-          "reason": "Runtime advertises pending relationship support, but the listed golden fixtures do not yet prove pending_relationships or structured_pending_relationships output.",
-          "required_closure": "Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported.",
-          "evidence": "docs/findings/COMPILED-FINDINGS.md"
-        }
-      ]
+      "capability_gaps": []
     },
     {
       "language": "php",
@@ -628,6 +621,11 @@
           "name": "basic",
           "source": "fixtures/extraction/php/basic/source.php",
           "expected": "fixtures/extraction/php/basic/expected.json"
+        },
+        {
+          "name": "cross_file",
+          "source": "fixtures/extraction/php/cross_file/source.php",
+          "expected": "fixtures/extraction/php/cross_file/expected.json"
         }
       ],
       "target_capabilities": {
@@ -637,15 +635,7 @@
         "identifiers": true,
         "types": true
       },
-      "capability_gaps": [
-        {
-          "capability": "pending_relationships",
-          "status": "open",
-          "reason": "Runtime advertises pending relationship support, but the listed golden fixtures do not yet prove pending_relationships or structured_pending_relationships output.",
-          "required_closure": "Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported.",
-          "evidence": "docs/findings/COMPILED-FINDINGS.md"
-        }
-      ]
+      "capability_gaps": []
     },
     {
       "language": "ruby",
@@ -667,6 +657,11 @@
           "name": "basic",
           "source": "fixtures/extraction/ruby/basic/source.rb",
           "expected": "fixtures/extraction/ruby/basic/expected.json"
+        },
+        {
+          "name": "cross_file",
+          "source": "fixtures/extraction/ruby/cross_file/source.rb",
+          "expected": "fixtures/extraction/ruby/cross_file/expected.json"
         }
       ],
       "target_capabilities": {
@@ -676,15 +671,7 @@
         "identifiers": true,
         "types": true
       },
-      "capability_gaps": [
-        {
-          "capability": "pending_relationships",
-          "status": "open",
-          "reason": "Runtime advertises pending relationship support, but the listed golden fixtures do not yet prove pending_relationships or structured_pending_relationships output.",
-          "required_closure": "Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported.",
-          "evidence": "docs/findings/COMPILED-FINDINGS.md"
-        }
-      ]
+      "capability_gaps": []
     },
     {
       "language": "swift",
@@ -705,6 +692,11 @@
           "name": "basic",
           "source": "fixtures/extraction/swift/basic/source.swift",
           "expected": "fixtures/extraction/swift/basic/expected.json"
+        },
+        {
+          "name": "cross_file",
+          "source": "fixtures/extraction/swift/cross_file/source.swift",
+          "expected": "fixtures/extraction/swift/cross_file/expected.json"
         }
       ],
       "target_capabilities": {
@@ -714,15 +706,7 @@
         "identifiers": true,
         "types": true
       },
-      "capability_gaps": [
-        {
-          "capability": "pending_relationships",
-          "status": "open",
-          "reason": "Runtime advertises pending relationship support, but the listed golden fixtures do not yet prove pending_relationships or structured_pending_relationships output.",
-          "required_closure": "Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported.",
-          "evidence": "docs/findings/COMPILED-FINDINGS.md"
-        }
-      ]
+      "capability_gaps": []
     },
     {
       "language": "kotlin",
@@ -744,6 +728,11 @@
           "name": "basic",
           "source": "fixtures/extraction/kotlin/basic/source.kt",
           "expected": "fixtures/extraction/kotlin/basic/expected.json"
+        },
+        {
+          "name": "cross_file",
+          "source": "fixtures/extraction/kotlin/cross_file/source.kt",
+          "expected": "fixtures/extraction/kotlin/cross_file/expected.json"
         }
       ],
       "target_capabilities": {
@@ -753,15 +742,7 @@
         "identifiers": true,
         "types": true
       },
-      "capability_gaps": [
-        {
-          "capability": "pending_relationships",
-          "status": "open",
-          "reason": "Runtime advertises pending relationship support, but the listed golden fixtures do not yet prove pending_relationships or structured_pending_relationships output.",
-          "required_closure": "Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported.",
-          "evidence": "docs/findings/COMPILED-FINDINGS.md"
-        }
-      ]
+      "capability_gaps": []
     },
     {
       "language": "scala",
@@ -783,6 +764,11 @@
           "name": "basic",
           "source": "fixtures/extraction/scala/basic/source.scala",
           "expected": "fixtures/extraction/scala/basic/expected.json"
+        },
+        {
+          "name": "cross_file",
+          "source": "fixtures/extraction/scala/cross_file/source.scala",
+          "expected": "fixtures/extraction/scala/cross_file/expected.json"
         }
       ],
       "target_capabilities": {
@@ -792,15 +778,7 @@
         "identifiers": true,
         "types": true
       },
-      "capability_gaps": [
-        {
-          "capability": "pending_relationships",
-          "status": "open",
-          "reason": "Runtime advertises pending relationship support, but the listed golden fixtures do not yet prove pending_relationships or structured_pending_relationships output.",
-          "required_closure": "Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported.",
-          "evidence": "docs/findings/COMPILED-FINDINGS.md"
-        }
-      ]
+      "capability_gaps": []
     },
     {
       "language": "dart",
@@ -821,6 +799,11 @@
           "name": "basic",
           "source": "fixtures/extraction/dart/basic/source.dart",
           "expected": "fixtures/extraction/dart/basic/expected.json"
+        },
+        {
+          "name": "cross_file",
+          "source": "fixtures/extraction/dart/cross_file/source.dart",
+          "expected": "fixtures/extraction/dart/cross_file/expected.json"
         }
       ],
       "target_capabilities": {
@@ -830,15 +813,7 @@
         "identifiers": true,
         "types": true
       },
-      "capability_gaps": [
-        {
-          "capability": "pending_relationships",
-          "status": "open",
-          "reason": "Runtime advertises pending relationship support, but the listed golden fixtures do not yet prove pending_relationships or structured_pending_relationships output.",
-          "required_closure": "Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported.",
-          "evidence": "docs/findings/COMPILED-FINDINGS.md"
-        }
-      ]
+      "capability_gaps": []
     },
     {
       "language": "elixir",
@@ -860,6 +835,11 @@
           "name": "basic",
           "source": "fixtures/extraction/elixir/basic/source.ex",
           "expected": "fixtures/extraction/elixir/basic/expected.json"
+        },
+        {
+          "name": "cross_file",
+          "source": "fixtures/extraction/elixir/cross_file/source.ex",
+          "expected": "fixtures/extraction/elixir/cross_file/expected.json"
         }
       ],
       "target_capabilities": {
@@ -869,15 +849,7 @@
         "identifiers": true,
         "types": true
       },
-      "capability_gaps": [
-        {
-          "capability": "pending_relationships",
-          "status": "open",
-          "reason": "Runtime advertises pending relationship support, but the listed golden fixtures do not yet prove pending_relationships or structured_pending_relationships output.",
-          "required_closure": "Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported.",
-          "evidence": "docs/findings/COMPILED-FINDINGS.md"
-        }
-      ]
+      "capability_gaps": []
     },
     {
       "language": "lua",
@@ -898,6 +870,11 @@
           "name": "basic",
           "source": "fixtures/extraction/lua/basic/source.lua",
           "expected": "fixtures/extraction/lua/basic/expected.json"
+        },
+        {
+          "name": "cross_file",
+          "source": "fixtures/extraction/lua/cross_file/source.lua",
+          "expected": "fixtures/extraction/lua/cross_file/expected.json"
         }
       ],
       "target_capabilities": {
@@ -909,18 +886,15 @@
       },
       "capability_gaps": [
         {
-          "capability": "pending_relationships",
-          "status": "open",
-          "reason": "Runtime advertises pending relationship support, but the listed golden fixtures do not yet prove pending_relationships or structured_pending_relationships output.",
-          "required_closure": "Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported.",
-          "evidence": "docs/findings/COMPILED-FINDINGS.md"
-        },
-        {
           "capability": "types",
-          "status": "open",
+          "status": "exception",
           "reason": "Lua is a dynamically typed language with no static type annotations in core syntax. Luau-style annotations are out of scope for the base Lua extractor.",
           "required_closure": "Out of scope — Lua is dynamic. Luau-style type annotations would be a separate language target.",
-          "evidence": "docs/findings/COMPILED-FINDINGS.md"
+          "evidence": {
+            "kind": "commit",
+            "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
+            "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
+          }
         }
       ]
     },
@@ -943,6 +917,11 @@
           "name": "basic",
           "source": "fixtures/extraction/qml/basic/source.qml",
           "expected": "fixtures/extraction/qml/basic/expected.json"
+        },
+        {
+          "name": "cross_file",
+          "source": "fixtures/extraction/qml/cross_file/source.qml",
+          "expected": "fixtures/extraction/qml/cross_file/expected.json"
         }
       ],
       "target_capabilities": {
@@ -955,10 +934,14 @@
       "capability_gaps": [
         {
           "capability": "types",
-          "status": "open",
-          "reason": "QML property bindings carry runtime type names but no static type extraction is implemented. Property type tags are stored on Symbol metadata, not as separate Type rows.",
-          "required_closure": "Future work could add structured TypeInfo for QML property declarations.",
-          "evidence": "docs/findings/COMPILED-FINDINGS.md"
+          "status": "exception",
+          "reason": "QML property bindings carry runtime type names that are stored on Symbol metadata (propertyType field), not as separate TypeInfo rows. QML has no static type system distinct from these tags. Domain classification, not a deferred gap.",
+          "required_closure": "N/A — QML property types are recorded on Symbol metadata. A separate TypeInfo row layer would duplicate, not enrich.",
+          "evidence": {
+            "kind": "commit",
+            "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
+            "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
+          }
         }
       ]
     },
@@ -982,6 +965,11 @@
           "name": "basic",
           "source": "fixtures/extraction/r/basic/source.r",
           "expected": "fixtures/extraction/r/basic/expected.json"
+        },
+        {
+          "name": "cross_file",
+          "source": "fixtures/extraction/r/cross_file/source.R",
+          "expected": "fixtures/extraction/r/cross_file/expected.json"
         }
       ],
       "target_capabilities": {
@@ -993,18 +981,15 @@
       },
       "capability_gaps": [
         {
-          "capability": "pending_relationships",
-          "status": "open",
-          "reason": "Runtime advertises pending relationship support, but the listed golden fixtures do not yet prove pending_relationships or structured_pending_relationships output.",
-          "required_closure": "Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported.",
-          "evidence": "docs/findings/COMPILED-FINDINGS.md"
-        },
-        {
           "capability": "types",
-          "status": "open",
+          "status": "exception",
           "reason": "R is a dynamically typed language with no static type system. roxygen @param type tags are documentation-only and not currently extracted as TypeInfo.",
           "required_closure": "N/A — domain limitation. Future work could harvest roxygen type annotations into TypeInfo.",
-          "evidence": "docs/findings/COMPILED-FINDINGS.md"
+          "evidence": {
+            "kind": "commit",
+            "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
+            "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
+          }
         }
       ]
     },
@@ -1028,6 +1013,11 @@
           "name": "basic",
           "source": "fixtures/extraction/bash/basic/source.sh",
           "expected": "fixtures/extraction/bash/basic/expected.json"
+        },
+        {
+          "name": "cross_file",
+          "source": "fixtures/extraction/bash/cross_file/source.sh",
+          "expected": "fixtures/extraction/bash/cross_file/expected.json"
         }
       ],
       "target_capabilities": {
@@ -1037,15 +1027,7 @@
         "identifiers": true,
         "types": true
       },
-      "capability_gaps": [
-        {
-          "capability": "pending_relationships",
-          "status": "open",
-          "reason": "Runtime advertises pending relationship support, but the listed golden fixtures do not yet prove pending_relationships or structured_pending_relationships output.",
-          "required_closure": "Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported.",
-          "evidence": "docs/findings/COMPILED-FINDINGS.md"
-        }
-      ]
+      "capability_gaps": []
     },
     {
       "language": "powershell",
@@ -1068,6 +1050,11 @@
           "name": "basic",
           "source": "fixtures/extraction/powershell/basic/source.ps1",
           "expected": "fixtures/extraction/powershell/basic/expected.json"
+        },
+        {
+          "name": "cross_file",
+          "source": "fixtures/extraction/powershell/cross_file/source.ps1",
+          "expected": "fixtures/extraction/powershell/cross_file/expected.json"
         }
       ],
       "target_capabilities": {
@@ -1077,15 +1064,7 @@
         "identifiers": true,
         "types": true
       },
-      "capability_gaps": [
-        {
-          "capability": "pending_relationships",
-          "status": "open",
-          "reason": "Runtime advertises pending relationship support, but the listed golden fixtures do not yet prove pending_relationships or structured_pending_relationships output.",
-          "required_closure": "Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported.",
-          "evidence": "docs/findings/COMPILED-FINDINGS.md"
-        }
-      ]
+      "capability_gaps": []
     },
     {
       "language": "gdscript",
@@ -1106,6 +1085,11 @@
           "name": "basic",
           "source": "fixtures/extraction/gdscript/basic/source.gd",
           "expected": "fixtures/extraction/gdscript/basic/expected.json"
+        },
+        {
+          "name": "cross_file",
+          "source": "fixtures/extraction/gdscript/cross_file/source.gd",
+          "expected": "fixtures/extraction/gdscript/cross_file/expected.json"
         }
       ],
       "target_capabilities": {
@@ -1115,15 +1099,7 @@
         "identifiers": true,
         "types": true
       },
-      "capability_gaps": [
-        {
-          "capability": "pending_relationships",
-          "status": "open",
-          "reason": "Runtime advertises pending relationship support, but the listed golden fixtures do not yet prove pending_relationships or structured_pending_relationships output.",
-          "required_closure": "Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported.",
-          "evidence": "docs/findings/COMPILED-FINDINGS.md"
-        }
-      ]
+      "capability_gaps": []
     },
     {
       "language": "razor",
@@ -1145,6 +1121,11 @@
           "name": "basic",
           "source": "fixtures/extraction/razor/basic/source.razor",
           "expected": "fixtures/extraction/razor/basic/expected.json"
+        },
+        {
+          "name": "cross_file",
+          "source": "fixtures/extraction/razor/cross_file/source.razor",
+          "expected": "fixtures/extraction/razor/cross_file/expected.json"
         }
       ],
       "target_capabilities": {
@@ -1157,10 +1138,14 @@
       "capability_gaps": [
         {
           "capability": "pending_relationships",
-          "status": "open",
-          "reason": "Razor @using directives resolve at extraction time to namespace symbols. Cross-file C# references go through the embedded C# pipeline, not through Razor's pending path.",
-          "required_closure": "N/A — handled by embedded C# extractor.",
-          "evidence": "docs/findings/COMPILED-FINDINGS.md"
+          "status": "exception",
+          "reason": "Razor cross-file references resolve through the embedded C# pipeline, not Razor’s own pending path. Locked by razor_pending_relationships_handled_by_csharp_embed test (Phase 4b.razor).",
+          "required_closure": "N/A — domain classification. Locking test in crates/julie-extractors/src/tests/razor/cross_file_pending.rs enforces no-pending classification.",
+          "evidence": {
+            "kind": "test",
+            "value": "razor_pending_relationships_handled_by_csharp_embed",
+            "command": "cargo nextest run -p julie-extractors --lib tests::razor::cross_file_pending::razor_pending_relationships_handled_by_csharp_embed"
+          }
         }
       ]
     },
@@ -1174,7 +1159,7 @@
       "capabilities": {
         "symbols": true,
         "relationships": true,
-        "pending_relationships": false,
+        "pending_relationships": true,
         "identifiers": true,
         "types": true
       },
@@ -1183,24 +1168,21 @@
           "name": "basic",
           "source": "fixtures/extraction/sql/basic/source.sql",
           "expected": "fixtures/extraction/sql/basic/expected.json"
+        },
+        {
+          "name": "cross_file",
+          "source": "fixtures/extraction/sql/cross_file/source.sql",
+          "expected": "fixtures/extraction/sql/cross_file/expected.json"
         }
       ],
       "target_capabilities": {
         "symbols": true,
         "relationships": true,
-        "pending_relationships": false,
+        "pending_relationships": true,
         "identifiers": true,
         "types": true
       },
-      "capability_gaps": [
-        {
-          "capability": "pending_relationships",
-          "status": "open",
-          "reason": "Cross-file foreign-key references are currently suppressed at extraction (crates/julie-extractors/src/sql/relationships.rs around line 115) rather than preserved as pending relationships. Promotion of FK targets to structured pending relationships is deferred.",
-          "required_closure": "Implement structured pending relationships for unresolved FK targets, move SQL out of NO_PENDING_CAPABILITIES, and advance target_capabilities.pending_relationships to true.",
-          "evidence": "docs/findings/COMPILED-FINDINGS.md"
-        }
-      ]
+      "capability_gaps": []
     },
     {
       "language": "regex",
@@ -1221,6 +1203,11 @@
           "name": "basic",
           "source": "fixtures/extraction/regex/basic/source.regex",
           "expected": "fixtures/extraction/regex/basic/expected.json"
+        },
+        {
+          "name": "cross_file",
+          "source": "fixtures/extraction/regex/cross_file/source.regex",
+          "expected": "fixtures/extraction/regex/cross_file/expected.json"
         }
       ],
       "target_capabilities": {
@@ -1233,10 +1220,14 @@
       "capability_gaps": [
         {
           "capability": "pending_relationships",
-          "status": "open",
+          "status": "exception",
           "reason": "Regex backreferences are within-pattern only; there is no cross-file forward-reference construct in regex syntax.",
           "required_closure": "N/A — domain limitation.",
-          "evidence": "docs/findings/COMPILED-FINDINGS.md"
+          "evidence": {
+            "kind": "test",
+            "value": "regex_pending_relationships_within_pattern_only",
+            "command": "cargo nextest run -p julie-extractors --lib tests::regex::cross_file_pending::regex_pending_relationships_within_pattern_only"
+          }
         }
       ]
     },
@@ -1260,6 +1251,11 @@
           "name": "basic",
           "source": "fixtures/extraction/markdown/basic/source.md",
           "expected": "fixtures/extraction/markdown/basic/expected.json"
+        },
+        {
+          "name": "cross_file",
+          "source": "fixtures/extraction/markdown/cross_file/source.md",
+          "expected": "fixtures/extraction/markdown/cross_file/expected.json"
         }
       ],
       "target_capabilities": {
@@ -1272,17 +1268,25 @@
       "capability_gaps": [
         {
           "capability": "pending_relationships",
-          "status": "open",
+          "status": "exception",
           "reason": "Markdown links and footnote references are within-document. Cross-file links are URL/path strings, not symbol references.",
           "required_closure": "N/A — domain limitation.",
-          "evidence": "docs/findings/COMPILED-FINDINGS.md"
+          "evidence": {
+            "kind": "test",
+            "value": "markdown_pending_relationships_intra_document_only",
+            "command": "cargo nextest run -p julie-extractors --lib tests::markdown::cross_file_pending::markdown_pending_relationships_intra_document_only"
+          }
         },
         {
           "capability": "types",
-          "status": "open",
+          "status": "exception",
           "reason": "Markdown is a presentation format with no static type system.",
           "required_closure": "N/A — domain limitation.",
-          "evidence": "docs/findings/COMPILED-FINDINGS.md"
+          "evidence": {
+            "kind": "commit",
+            "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
+            "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
+          }
         }
       ]
     },
@@ -1297,8 +1301,8 @@
       "dependency_status": "current",
       "capabilities": {
         "symbols": true,
-        "relationships": false,
-        "pending_relationships": false,
+        "relationships": true,
+        "pending_relationships": true,
         "identifiers": true,
         "types": false
       },
@@ -1307,36 +1311,36 @@
           "name": "basic",
           "source": "fixtures/extraction/json/basic/source.json",
           "expected": "fixtures/extraction/json/basic/expected.json"
+        },
+        {
+          "name": "refs",
+          "source": "fixtures/extraction/json/refs/source.json",
+          "expected": "fixtures/extraction/json/refs/expected.json"
+        },
+        {
+          "name": "cross_file",
+          "source": "fixtures/extraction/json/cross_file/source.json",
+          "expected": "fixtures/extraction/json/cross_file/expected.json"
         }
       ],
       "target_capabilities": {
         "symbols": true,
-        "relationships": false,
-        "pending_relationships": false,
+        "relationships": true,
+        "pending_relationships": true,
         "identifiers": true,
         "types": false
       },
       "capability_gaps": [
         {
-          "capability": "relationships",
-          "status": "open",
-          "reason": "JSON Schema $ref relationship extraction is not yet implemented. Current extractor emits structural symbols (object keys, array entries) only.",
-          "required_closure": "Implement JSON Schema $ref to schema-definition relationship extraction with exact target resolution.",
-          "evidence": "docs/findings/COMPILED-FINDINGS.md"
-        },
-        {
-          "capability": "pending_relationships",
-          "status": "open",
-          "reason": "JSON has no cross-document construct that requires deferred resolution beyond $ref. Pending support depends on the relationships gap above.",
-          "required_closure": "Once $ref relationships are implemented, evaluate whether unresolved external refs warrant pending promotion.",
-          "evidence": "docs/findings/COMPILED-FINDINGS.md"
-        },
-        {
           "capability": "types",
-          "status": "open",
-          "reason": "JSON has no static type system. JSON Schema type keywords are runtime hints, not extracted as TypeInfo.",
-          "required_closure": "N/A — domain limitation. JSON Schema type extraction would require a schema-aware extractor mode.",
-          "evidence": "docs/findings/COMPILED-FINDINGS.md"
+          "status": "exception",
+          "reason": "JSON has no static type system. JSON Schema type keywords are runtime hints, not extracted as TypeInfo. Domain limitation, not a gap.",
+          "required_closure": "N/A — domain limitation. JSON Schema type extraction would require a schema-aware extractor mode outside the tree-sitter scope.",
+          "evidence": {
+            "kind": "commit",
+            "value": "8120d04e3e013b4f71443e94f53e02c090ed1e35",
+            "command": "git show 8120d04e3e013b4f71443e94f53e02c090ed1e35"
+          }
         }
       ]
     },
@@ -1349,7 +1353,7 @@
       "dependency_status": "current",
       "capabilities": {
         "symbols": true,
-        "relationships": false,
+        "relationships": true,
         "pending_relationships": false,
         "identifiers": true,
         "types": false
@@ -1359,36 +1363,52 @@
           "name": "basic",
           "source": "fixtures/extraction/toml/basic/source.toml",
           "expected": "fixtures/extraction/toml/basic/expected.json"
+        },
+        {
+          "name": "cargo_deps",
+          "source": "fixtures/extraction/toml/cargo_deps/Cargo.toml",
+          "expected": "fixtures/extraction/toml/cargo_deps/expected.json"
+        },
+        {
+          "name": "pyproject",
+          "source": "fixtures/extraction/toml/pyproject/pyproject.toml",
+          "expected": "fixtures/extraction/toml/pyproject/expected.json"
+        },
+        {
+          "name": "cross_file",
+          "source": "fixtures/extraction/toml/cross_file/source.toml",
+          "expected": "fixtures/extraction/toml/cross_file/expected.json"
         }
       ],
       "target_capabilities": {
         "symbols": true,
-        "relationships": false,
+        "relationships": true,
         "pending_relationships": false,
         "identifiers": true,
         "types": false
       },
       "capability_gaps": [
         {
-          "capability": "relationships",
-          "status": "open",
-          "reason": "TOML has no inter-key reference construct in the format itself. Domain-specific references (Cargo.toml [dependencies], pyproject [tool.*]) require schema-aware extraction not yet implemented.",
-          "required_closure": "Implement domain-specific TOML reference extraction (Cargo.toml dependencies, pyproject tool tables, etc.) with exact resolution.",
-          "evidence": "docs/findings/COMPILED-FINDINGS.md"
-        },
-        {
           "capability": "pending_relationships",
-          "status": "open",
-          "reason": "Same scope as the relationships gap above. Depends on domain-specific TOML reference extraction being implemented first.",
-          "required_closure": "Re-evaluate after TOML relationships are implemented.",
-          "evidence": "docs/findings/COMPILED-FINDINGS.md"
+          "status": "exception",
+          "reason": "TOML has no cross-document construct that requires deferred resolution. All references in TOML are file-local (Cargo deps, pyproject tool tables). Domain limitation, not a gap.",
+          "required_closure": "N/A — domain limitation. TOML resolution is always intra-file.",
+          "evidence": {
+            "kind": "commit",
+            "value": "2e4c50c7c9967a6963c1c4f74cc4da6c0f0965e7",
+            "command": "git show 2e4c50c7c9967a6963c1c4f74cc4da6c0f0965e7"
+          }
         },
         {
           "capability": "types",
-          "status": "open",
-          "reason": "TOML has no static type system. Value types (string/int/array) are format-level, not extracted as TypeInfo.",
+          "status": "exception",
+          "reason": "TOML has no static type system. Value types (string/int/array) are format-level, not extracted as TypeInfo. Domain limitation, not a gap.",
           "required_closure": "N/A — domain limitation.",
-          "evidence": "docs/findings/COMPILED-FINDINGS.md"
+          "evidence": {
+            "kind": "commit",
+            "value": "2e4c50c7c9967a6963c1c4f74cc4da6c0f0965e7",
+            "command": "git show 2e4c50c7c9967a6963c1c4f74cc4da6c0f0965e7"
+          }
         }
       ]
     },
@@ -1412,6 +1432,11 @@
           "name": "basic",
           "source": "fixtures/extraction/yaml/basic/source.yaml",
           "expected": "fixtures/extraction/yaml/basic/expected.json"
+        },
+        {
+          "name": "cross_file",
+          "source": "fixtures/extraction/yaml/cross_file/source.yaml",
+          "expected": "fixtures/extraction/yaml/cross_file/expected.json"
         }
       ],
       "target_capabilities": {
@@ -1424,17 +1449,25 @@
       "capability_gaps": [
         {
           "capability": "pending_relationships",
-          "status": "open",
+          "status": "exception",
           "reason": "YAML anchors/aliases are within-document. YAML has no cross-document forward-reference construct.",
           "required_closure": "N/A — domain limitation.",
-          "evidence": "docs/findings/COMPILED-FINDINGS.md"
+          "evidence": {
+            "kind": "test",
+            "value": "yaml_pending_relationships_intra_document_only",
+            "command": "cargo nextest run -p julie-extractors --lib tests::yaml::cross_file_pending::yaml_pending_relationships_intra_document_only"
+          }
         },
         {
           "capability": "types",
-          "status": "open",
+          "status": "exception",
           "reason": "YAML has no static type system. Tag types (!!str, !!int) are format-level, not extracted as TypeInfo.",
           "required_closure": "N/A — domain limitation.",
-          "evidence": "docs/findings/COMPILED-FINDINGS.md"
+          "evidence": {
+            "kind": "commit",
+            "value": "c0def8f643af9e3a481d19890f42c15bddd07dfd",
+            "command": "git show c0def8f643af9e3a481d19890f42c15bddd07dfd"
+          }
         }
       ]
     }

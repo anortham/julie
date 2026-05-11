@@ -4,145 +4,110 @@
 
 ## Summary
 
-- Current HEAD: `72138dc0f7153a5950aae2487f4734091fa10302`
+- Scope: checked-in tree-sitter evidence state
 - Registry rows: `36`
-- Golden fixtures: `37`
-- Historical matrix rows: `33`
-- Raw historical OSS reports: `13`
-- Current real-world verified repos: `13`
-- Current real-world skipped repos: `0`
-- Rows with open gaps: `33`
-- Rows without gap entries: `3`
+- Golden fixtures: `76`
+- Historical matrix rows: `0`
+- Raw historical OSS reports: `0`
+- Checked-in real-world verified repos: `22`
+- Checked-in real-world skipped repos: `0`
+- Rows with open gaps: `0`
+- Rows without gap entries: `26`
 
 ## Historical Coverage Delta
 
-- Current registry rows missing from the restored historical matrix: `jsx`, `tsx`, `vbnet`
-- Restored historical rows missing from the current registry: `none`
+Historical matrix evidence is deprecated; current capability, fixture, and real-world evidence are the source of truth.
 
-## Current Real-World OSS Evidence
+## Checked-In Real-World OSS Evidence
 
-- Profile: `restored`
-- Julie HEAD in evidence: `f1280d3e2bc69475671eaa8939b5031a7c3bf83d`
+- Profile: `release`
+- Julie HEAD recorded in evidence: `6d8310cc1a8ca89fd82a6483e67dd810ee8f321f`
 - Summary flags: `none`
 
 | repo | language | status | files | language files | symbols | relationships | identifiers | types | diagnostic files | hard failures |
 | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| `Alamofire` | `swift` | `pass` | 520 | 96 | 100727 | 4990 | 230312 | 94594 | 22 | `none` |
-| `Newtonsoft.Json` | `csharp` | `pass` | 1160 | 945 | 21286 | 18976 | 111147 | 10537 | 45 | `none` |
-| `Slim` | `php` | `pass` | 145 | 125 | 4296 | 1690 | 5858 | 3515 | 0 | `none` |
-| `cats` | `scala` | `pass` | 934 | 835 | 25698 | 14478 | 73619 | 11536 | 14 | `none` |
-| `cobra` | `go` | `pass` | 65 | 36 | 1681 | 1571 | 6760 | 263 | 0 | `none` |
-| `gson` | `java` | `pass` | 305 | 259 | 8785 | 9175 | 36900 | 3811 | 0 | `none` |
-| `jq` | `c` | `pass` | 357 | 47 | 12457 | 5078 | 13897 | 2612 | 24 | `none` |
-| `lite` | `lua` | `pass` | 403 | 28 | 50759 | 35361 | 96174 | 21047 | 193 | `none` |
-| `moshi` | `kotlin` | `pass` | 182 | 99 | 6747 | 5547 | 24849 | 2497 | 2 | `none` |
-| `nlohmann-json` | `cpp` | `pass` | 1135 | 464 | 26445 | 14338 | 87303 | 7559 | 147 | `none` |
-| `phoenix` | `elixir` | `pass` | 455 | 291 | 10308 | 3882 | 37783 | 193 | 117 | `none` |
-| `riverpod` | `dart` | `pass` | 1805 | 1156 | 33949 | 2617 | 95478 | 11474 | 0 | `none` |
-| `sinatra` | `ruby` | `pass` | 288 | 147 | 6575 | 5720 | 16687 | 562 | 0 | `none` |
+| `Alamofire` | `swift` | `pass` | 520 | 96 | 100727 | 6032 | 230312 | 7934 | 22 | `none` |
+| `Newtonsoft.Json` | `csharp` | `pass` | 1160 | 945 | 21286 | 39415 | 111147 | 10537 | 45 | `none` |
+| `Slim` | `php` | `pass` | 145 | 125 | 4296 | 1825 | 5858 | 3515 | 0 | `none` |
+| `blazor-samples` | `razor` | `pass` | 5155 | 3069 | 35991 | 1635 | 36871 | 22772 | 683 | `none` |
+| `cats` | `scala` | `pass` | 934 | 835 | 25698 | 16542 | 73619 | 11536 | 14 | `none` |
+| `cobra` | `go` | `pass` | 65 | 36 | 1681 | 2076 | 6760 | 263 | 0 | `none` |
+| `express` | `javascript` | `pass` | 210 | 141 | 5582 | 3668 | 13349 | 93 | 3 | `none` |
+| `flask` | `python` | `pass` | 225 | 83 | 4480 | 2399 | 7830 | 540 | 3 | `none` |
+| `gson` | `java` | `pass` | 305 | 259 | 8785 | 11964 | 36900 | 3811 | 0 | `none` |
+| `jq` | `c` | `pass` | 357 | 47 | 12457 | 7686 | 13897 | 2612 | 24 | `none` |
+| `julie` | `rust` | `pass` | 1466 | 1140 | 38279 | 55732 | 182974 | 8702 | 25 | `none` |
+| `kirigami` | `qml` | `pass` | 439 | 200 | 12359 | 5449 | 40451 | 1322 | 67 | `none` |
+| `lite` | `lua` | `pass` | 403 | 28 | 50759 | 61989 | 96174 | 21034 | 193 | `none` |
+| `moshi` | `kotlin` | `pass` | 182 | 99 | 6747 | 6805 | 24849 | 2497 | 2 | `none` |
+| `nlohmann-json` | `cpp` | `pass` | 1135 | 464 | 26445 | 18714 | 87303 | 7553 | 147 | `none` |
+| `pandora` | `gdscript` | `pass` | 884 | 335 | 9698 | 7041 | 25488 | 4403 | 5 | `none` |
+| `phoenix` | `elixir` | `pass` | 455 | 291 | 10308 | 5343 | 37783 | 193 | 117 | `none` |
+| `riverpod` | `dart` | `pass` | 1805 | 1156 | 33949 | 4710 | 95478 | 11474 | 0 | `none` |
+| `samples` | `vbnet` | `pass` | 7377 | 469 | 64503 | 41052 | 192197 | 19903 | 156 | `none` |
+| `sinatra` | `ruby` | `pass` | 288 | 147 | 6575 | 7214 | 16687 | 562 | 0 | `none` |
+| `zls` | `zig` | `pass` | 129 | 104 | 10693 | 9272 | 46574 | 8145 | 2 | `none` |
+| `zod` | `typescript` | `pass` | 504 | 364 | 18536 | 16533 | 51701 | 4329 | 9 | `none` |
 
 ## Fixture Evidence Totals
 
 | symbols | relationships | pending | structured pending | identifiers | types | parse diagnostics |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 227 | 54 | 4 | 4 | 121 | 100 | 6 |
+| 425 | 104 | 41 | 41 | 208 | 145 | 6 |
 
 ## Gap Counts
 
 | capability | count |
 | --- | ---: |
-| `pending_relationships` | 32 |
-| `relationships` | 2 |
+| `pending_relationships` | 6 |
 | `types` | 8 |
 
 ## Open Capability Gaps
 
 | language | capability | status | evidence | required closure |
 | --- | --- | --- | --- | --- |
-| `rust` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
-| `c` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
-| `cpp` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
-| `go` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
-| `zig` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
-| `typescript` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
-| `javascript` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
-| `html` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | N/A — domain limitation. |
-| `css` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | N/A — domain limitation. |
-| `css` | `types` | `open` | `docs/findings/COMPILED-FINDINGS.md` | N/A — domain limitation. |
-| `python` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
-| `java` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
-| `csharp` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
-| `vbnet` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
-| `php` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
-| `ruby` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
-| `swift` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
-| `kotlin` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
-| `scala` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
-| `dart` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
-| `elixir` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
-| `lua` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
-| `lua` | `types` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Out of scope — Lua is dynamic. Luau-style type annotations would be a separate language target. |
-| `qml` | `types` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Future work could add structured TypeInfo for QML property declarations. |
-| `r` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
-| `r` | `types` | `open` | `docs/findings/COMPILED-FINDINGS.md` | N/A — domain limitation. Future work could harvest roxygen type annotations into TypeInfo. |
-| `bash` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
-| `powershell` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
-| `gdscript` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Add a golden fixture with non-empty pending_relationships or structured_pending_relationships for this language, or disable the advertised capability if unsupported. |
-| `razor` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | N/A — handled by embedded C# extractor. |
-| `sql` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Implement structured pending relationships for unresolved FK targets, move SQL out of NO_PENDING_CAPABILITIES, and advance target_capabilities.pending_relationships to true. |
-| `regex` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | N/A — domain limitation. |
-| `markdown` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | N/A — domain limitation. |
-| `markdown` | `types` | `open` | `docs/findings/COMPILED-FINDINGS.md` | N/A — domain limitation. |
-| `json` | `relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Implement JSON Schema $ref to schema-definition relationship extraction with exact target resolution. |
-| `json` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Once $ref relationships are implemented, evaluate whether unresolved external refs warrant pending promotion. |
-| `json` | `types` | `open` | `docs/findings/COMPILED-FINDINGS.md` | N/A — domain limitation. JSON Schema type extraction would require a schema-aware extractor mode. |
-| `toml` | `relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Implement domain-specific TOML reference extraction (Cargo.toml dependencies, pyproject tool tables, etc.) with exact resolution. |
-| `toml` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | Re-evaluate after TOML relationships are implemented. |
-| `toml` | `types` | `open` | `docs/findings/COMPILED-FINDINGS.md` | N/A — domain limitation. |
-| `yaml` | `pending_relationships` | `open` | `docs/findings/COMPILED-FINDINGS.md` | N/A — domain limitation. |
-| `yaml` | `types` | `open` | `docs/findings/COMPILED-FINDINGS.md` | N/A — domain limitation. |
 
 ## Per-Language Fixture Evidence
 
 | language | parser | dependency | fixtures | symbols | relationships | pending | structured pending | identifiers | types | diagnostics | gaps |
 | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| `rust` | `tree-sitter-rust` | `current` | 1 | 5 | 1 | 0 | 0 | 3 | 3 | 0 | 1 |
-| `c` | `tree-sitter-c` | `current` | 1 | 6 | 2 | 0 | 0 | 3 | 3 | 0 | 1 |
-| `cpp` | `tree-sitter-cpp` | `current` | 1 | 9 | 4 | 0 | 0 | 3 | 6 | 0 | 1 |
-| `go` | `tree-sitter-go` | `current` | 2 | 14 | 1 | 0 | 0 | 5 | 3 | 5 | 1 |
-| `zig` | `tree-sitter-zig` | `current` | 1 | 5 | 2 | 0 | 0 | 4 | 5 | 0 | 1 |
-| `typescript` | `tree-sitter-typescript` | `current` | 1 | 8 | 2 | 0 | 0 | 3 | 1 | 0 | 1 |
-| `tsx` | `tree-sitter-typescript` | `current` | 1 | 5 | 1 | 1 | 1 | 4 | 2 | 0 | 0 |
-| `javascript` | `tree-sitter-javascript` | `current` | 1 | 5 | 1 | 0 | 0 | 3 | 0 | 0 | 1 |
-| `jsx` | `tree-sitter-javascript` | `current` | 1 | 4 | 2 | 1 | 1 | 3 | 0 | 0 | 0 |
-| `html` | `tree-sitter-html` | `current` | 1 | 11 | 1 | 0 | 0 | 2 | 10 | 0 | 1 |
-| `css` | `tree-sitter-css` | `current` | 1 | 6 | 1 | 0 | 0 | 4 | 0 | 0 | 2 |
-| `vue` | `tree-sitter-html` | `current` | 1 | 4 | 2 | 1 | 1 | 2 | 3 | 0 | 0 |
-| `python` | `tree-sitter-python` | `current` | 1 | 5 | 1 | 0 | 0 | 3 | 2 | 0 | 1 |
-| `java` | `tree-sitter-java` | `current` | 1 | 7 | 2 | 0 | 0 | 3 | 4 | 0 | 1 |
-| `csharp` | `tree-sitter-c-sharp` | `current` | 1 | 7 | 2 | 0 | 0 | 1 | 4 | 0 | 1 |
-| `vbnet` | `tree-sitter-vb-dotnet` | `git_pinned` | 1 | 7 | 2 | 0 | 0 | 1 | 4 | 0 | 1 |
-| `php` | `tree-sitter-php` | `current` | 1 | 7 | 1 | 0 | 0 | 3 | 6 | 0 | 1 |
-| `ruby` | `tree-sitter-ruby` | `current` | 1 | 6 | 1 | 0 | 0 | 1 | 0 | 0 | 1 |
-| `swift` | `tree-sitter-swift` | `current` | 1 | 6 | 2 | 0 | 0 | 2 | 6 | 0 | 1 |
-| `kotlin` | `tree-sitter-kotlin-ng` | `current` | 1 | 7 | 2 | 0 | 0 | 2 | 4 | 0 | 1 |
-| `scala` | `tree-sitter-scala` | `current` | 1 | 6 | 2 | 0 | 0 | 2 | 3 | 0 | 1 |
-| `dart` | `tree-sitter-dart` | `current` | 1 | 7 | 1 | 0 | 0 | 7 | 5 | 0 | 1 |
-| `elixir` | `tree-sitter-elixir` | `current` | 1 | 3 | 3 | 0 | 0 | 3 | 0 | 0 | 1 |
-| `lua` | `tree-sitter-lua` | `current` | 1 | 8 | 1 | 0 | 0 | 8 | 0 | 0 | 2 |
-| `qml` | `tree-sitter-qmljs` | `git_pinned` | 1 | 7 | 2 | 1 | 1 | 10 | 0 | 0 | 1 |
-| `r` | `tree-sitter-r` | `current` | 1 | 4 | 1 | 0 | 0 | 13 | 0 | 0 | 2 |
-| `bash` | `tree-sitter-bash` | `current` | 1 | 7 | 1 | 0 | 0 | 2 | 3 | 0 | 1 |
-| `powershell` | `tree-sitter-powershell` | `git_pinned` | 1 | 9 | 1 | 0 | 0 | 4 | 3 | 0 | 1 |
-| `gdscript` | `tree-sitter-gdscript` | `current` | 1 | 7 | 1 | 0 | 0 | 8 | 4 | 0 | 1 |
-| `razor` | `tree-sitter-razor` | `git_pinned` | 1 | 4 | 1 | 0 | 0 | 2 | 4 | 0 | 1 |
-| `sql` | `tree-sitter-sequel` | `current` | 1 | 9 | 3 | 0 | 0 | 3 | 7 | 1 | 1 |
-| `regex` | `tree-sitter-regex` | `current` | 1 | 5 | 2 | 0 | 0 | 3 | 5 | 0 | 1 |
-| `markdown` | `tree-sitter-md` | `current` | 1 | 4 | 1 | 0 | 0 | 0 | 0 | 0 | 2 |
-| `json` | `tree-sitter-json` | `current` | 1 | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 3 |
-| `toml` | `tree-sitter-toml-ng` | `current` | 1 | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 3 |
-| `yaml` | `tree-sitter-yaml` | `current` | 1 | 5 | 1 | 0 | 0 | 1 | 0 | 0 | 2 |
+| `rust` | `tree-sitter-rust` | `current` | 2 | 8 | 2 | 2 | 2 | 7 | 5 | 0 | 0 |
+| `c` | `tree-sitter-c` | `current` | 2 | 9 | 4 | 1 | 1 | 5 | 5 | 0 | 0 |
+| `cpp` | `tree-sitter-cpp` | `current` | 2 | 11 | 5 | 1 | 1 | 5 | 8 | 0 | 0 |
+| `go` | `tree-sitter-go` | `current` | 3 | 18 | 2 | 1 | 1 | 7 | 5 | 5 | 0 |
+| `zig` | `tree-sitter-zig` | `current` | 2 | 9 | 3 | 1 | 1 | 6 | 6 | 0 | 0 |
+| `typescript` | `tree-sitter-typescript` | `current` | 2 | 13 | 3 | 1 | 1 | 5 | 4 | 0 | 0 |
+| `tsx` | `tree-sitter-typescript` | `current` | 2 | 10 | 2 | 2 | 2 | 7 | 5 | 0 | 0 |
+| `javascript` | `tree-sitter-javascript` | `current` | 2 | 9 | 2 | 1 | 1 | 5 | 0 | 0 | 0 |
+| `jsx` | `tree-sitter-javascript` | `current` | 2 | 9 | 3 | 2 | 2 | 5 | 0 | 0 | 0 |
+| `html` | `tree-sitter-html` | `current` | 2 | 20 | 3 | 2 | 2 | 3 | 0 | 0 | 0 |
+| `css` | `tree-sitter-css` | `current` | 2 | 11 | 3 | 0 | 0 | 9 | 0 | 0 | 2 |
+| `vue` | `tree-sitter-html` | `current` | 2 | 8 | 5 | 3 | 3 | 4 | 4 | 0 | 0 |
+| `python` | `tree-sitter-python` | `current` | 2 | 8 | 2 | 1 | 1 | 5 | 2 | 0 | 0 |
+| `java` | `tree-sitter-java` | `current` | 2 | 11 | 3 | 2 | 2 | 6 | 6 | 0 | 0 |
+| `csharp` | `tree-sitter-c-sharp` | `current` | 2 | 11 | 3 | 1 | 1 | 4 | 6 | 0 | 0 |
+| `vbnet` | `tree-sitter-vb-dotnet` | `git_pinned` | 2 | 12 | 3 | 1 | 1 | 3 | 6 | 0 | 0 |
+| `php` | `tree-sitter-php` | `current` | 2 | 13 | 2 | 1 | 1 | 4 | 12 | 0 | 0 |
+| `ruby` | `tree-sitter-ruby` | `current` | 2 | 10 | 1 | 2 | 2 | 4 | 0 | 0 | 0 |
+| `swift` | `tree-sitter-swift` | `current` | 2 | 10 | 3 | 1 | 1 | 4 | 10 | 0 | 0 |
+| `kotlin` | `tree-sitter-kotlin-ng` | `current` | 2 | 12 | 3 | 2 | 2 | 4 | 6 | 0 | 0 |
+| `scala` | `tree-sitter-scala` | `current` | 2 | 11 | 3 | 2 | 2 | 4 | 5 | 0 | 0 |
+| `dart` | `tree-sitter-dart` | `current` | 2 | 10 | 2 | 1 | 1 | 11 | 7 | 0 | 0 |
+| `elixir` | `tree-sitter-elixir` | `current` | 2 | 7 | 4 | 1 | 1 | 7 | 0 | 0 | 0 |
+| `lua` | `tree-sitter-lua` | `current` | 2 | 12 | 2 | 1 | 1 | 11 | 0 | 0 | 1 |
+| `qml` | `tree-sitter-qmljs` | `git_pinned` | 2 | 13 | 3 | 2 | 2 | 15 | 0 | 0 | 1 |
+| `r` | `tree-sitter-r` | `current` | 2 | 7 | 2 | 1 | 1 | 17 | 0 | 0 | 1 |
+| `bash` | `tree-sitter-bash` | `current` | 2 | 11 | 2 | 1 | 1 | 6 | 4 | 0 | 0 |
+| `powershell` | `tree-sitter-powershell` | `git_pinned` | 2 | 12 | 2 | 1 | 1 | 7 | 3 | 0 | 0 |
+| `gdscript` | `tree-sitter-gdscript` | `current` | 2 | 9 | 2 | 1 | 1 | 12 | 6 | 0 | 0 |
+| `razor` | `tree-sitter-razor` | `git_pinned` | 2 | 9 | 3 | 0 | 0 | 4 | 9 | 0 | 1 |
+| `sql` | `tree-sitter-sequel` | `current` | 2 | 15 | 4 | 1 | 1 | 3 | 13 | 1 | 0 |
+| `regex` | `tree-sitter-regex` | `current` | 2 | 8 | 4 | 0 | 0 | 6 | 8 | 0 | 1 |
+| `markdown` | `tree-sitter-md` | `current` | 2 | 11 | 2 | 0 | 0 | 0 | 0 | 0 | 2 |
+| `json` | `tree-sitter-json` | `current` | 3 | 22 | 2 | 1 | 1 | 0 | 0 | 0 | 1 |
+| `toml` | `tree-sitter-toml-ng` | `current` | 4 | 33 | 7 | 0 | 0 | 0 | 0 | 0 | 2 |
+| `yaml` | `tree-sitter-yaml` | `current` | 2 | 13 | 3 | 0 | 0 | 3 | 0 | 0 | 2 |
 
 ## Rows Without Gap Entries
 
-`tsx`, `jsx`, `vue`
+`rust`, `c`, `cpp`, `go`, `zig`, `typescript`, `tsx`, `javascript`, `jsx`, `html`, `vue`, `python`, `java`, `csharp`, `vbnet`, `php`, `ruby`, `swift`, `kotlin`, `scala`, `dart`, `elixir`, `bash`, `powershell`, `gdscript`, `sql`

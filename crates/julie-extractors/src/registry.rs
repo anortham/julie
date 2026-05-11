@@ -17,40 +17,6 @@ pub struct LanguageRegistryEntry {
     pub extract: ExtractFn,
 }
 
-macro_rules! define_full_language_extractors {
-    ($(($fn_name:ident, $language:literal, $extractor:path)),+ $(,)?) => {
-        $(
-            fn $fn_name(
-                tree: &Tree,
-                file_path: &str,
-                content: &str,
-                workspace_root: &Path,
-            ) -> Result<ExtractionResults, anyhow::Error> {
-                let mut ext = <$extractor>::new(
-                    $language.to_string(),
-                    file_path.to_string(),
-                    content.to_string(),
-                    workspace_root,
-                );
-                let symbols = ext.extract_symbols(tree);
-                let relationships = ext.extract_relationships(tree, &symbols);
-                let identifiers = ext.extract_identifiers(tree, &symbols);
-                let types = ext.infer_types(&symbols);
-                let pending_relationships = ext.get_pending_relationships();
-                Ok(ExtractionResults {
-                    symbols,
-                    relationships,
-                    pending_relationships,
-                    structured_pending_relationships: Vec::new(),
-                    identifiers,
-                    types: convert_types_map(types, $language),
-                    parse_diagnostics: Vec::new(),
-                })
-            }
-        )+
-    };
-}
-
 macro_rules! define_structured_full_language_extractors {
     ($(($fn_name:ident, $language:literal, $extractor:path)),+ $(,)?) => {
         $(
@@ -153,37 +119,6 @@ macro_rules! define_no_pending_extractors {
     };
 }
 
-macro_rules! define_data_only_extractors {
-    ($(($fn_name:ident, $language:literal, $extractor:path)),+ $(,)?) => {
-        $(
-            fn $fn_name(
-                tree: &Tree,
-                file_path: &str,
-                content: &str,
-                workspace_root: &Path,
-            ) -> Result<ExtractionResults, anyhow::Error> {
-                let mut ext = <$extractor>::new(
-                    $language.to_string(),
-                    file_path.to_string(),
-                    content.to_string(),
-                    workspace_root,
-                );
-                let symbols = ext.extract_symbols(tree);
-                let identifiers = ext.extract_identifiers(tree, &symbols);
-                Ok(ExtractionResults {
-                    symbols,
-                    relationships: Vec::new(),
-                    pending_relationships: Vec::new(),
-                    structured_pending_relationships: Vec::new(),
-                    identifiers,
-                    types: HashMap::new(),
-                    parse_diagnostics: Vec::new(),
-                })
-            }
-        )+
-    };
-}
-
 macro_rules! define_relationship_data_extractors {
     ($(($fn_name:ident, $language:literal, $extractor:path)),+ $(,)?) => {
         $(
@@ -216,9 +151,8 @@ macro_rules! define_relationship_data_extractors {
     };
 }
 
-define_full_language_extractors![(extract_elixir, "elixir", crate::elixir::ElixirExtractor)];
-
 define_structured_full_language_extractors![
+    (extract_elixir, "elixir", crate::elixir::ElixirExtractor),
     (extract_rust, "rust", crate::rust::RustExtractor),
     (extract_dart, "dart", crate::dart::DartExtractor),
     (extract_go, "go", crate::go::GoExtractor),
@@ -671,11 +605,82 @@ define_structured_full_file_extractors![
 ];
 
 define_no_pending_extractors![
-    (extract_sql, "sql", crate::sql::SqlExtractor),
-    (extract_html, "html", crate::html::HTMLExtractor),
     (extract_razor, "razor", crate::razor::RazorExtractor),
     (extract_regex, "regex", crate::regex::RegexExtractor)
 ];
+
+/// Hand-written HTML extractor entry point. Phase 4b.html graduated HTML out
+/// of `define_no_pending_extractors!` so its
+/// `extract_structured_pending_relationships` emissions for external
+/// `<script src=...>` and `<link href=...>` references reach the canonical
+/// extraction results. See `crates/julie-extractors/src/html/relationships.rs`
+/// for the shape contract.
+fn extract_html(
+    tree: &Tree,
+    file_path: &str,
+    content: &str,
+    workspace_root: &Path,
+) -> Result<ExtractionResults, anyhow::Error> {
+    let mut ext = crate::html::HTMLExtractor::new(
+        "html".to_string(),
+        file_path.to_string(),
+        content.to_string(),
+        workspace_root,
+    );
+    let symbols = ext.extract_symbols(tree);
+    let relationships = ext.extract_relationships(tree, &symbols);
+    let identifiers = ext.extract_identifiers(tree, &symbols);
+    let structured_pending_relationships =
+        ext.extract_structured_pending_relationships(tree, &symbols);
+    let pending_relationships = structured_pending_relationships
+        .clone()
+        .into_iter()
+        .map(|pending| pending.into_pending_relationship())
+        .collect();
+    Ok(ExtractionResults {
+        symbols,
+        relationships,
+        pending_relationships,
+        structured_pending_relationships,
+        identifiers,
+        types: HashMap::new(),
+        parse_diagnostics: Vec::new(),
+    })
+}
+
+/// Hand-written SQL extractor entry point. Phase 3.1 graduated SQL out of
+/// `define_no_pending_extractors!` so its `add_structured_pending_relationship`
+/// emissions for cross-schema FK targets reach the canonical extraction
+/// results. See `crates/julie-extractors/src/sql/relationships.rs` for the
+/// FK shape contract.
+fn extract_sql(
+    tree: &Tree,
+    file_path: &str,
+    content: &str,
+    workspace_root: &Path,
+) -> Result<ExtractionResults, anyhow::Error> {
+    let mut ext = crate::sql::SqlExtractor::new(
+        "sql".to_string(),
+        file_path.to_string(),
+        content.to_string(),
+        workspace_root,
+    );
+    let symbols = ext.extract_symbols(tree);
+    let relationships = ext.extract_relationships(tree, &symbols);
+    let identifiers = ext.extract_identifiers(tree, &symbols);
+    let types = ext.infer_types(&symbols);
+    let pending_relationships = ext.get_pending_relationships();
+    let structured_pending_relationships = ext.get_structured_pending_relationships();
+    Ok(ExtractionResults {
+        symbols,
+        relationships,
+        pending_relationships,
+        structured_pending_relationships,
+        identifiers,
+        types: convert_types_map(types, "sql"),
+        parse_diagnostics: Vec::new(),
+    })
+}
 
 define_relationship_data_extractors![
     (extract_css, "css", crate::css::CSSExtractor),
@@ -687,10 +692,67 @@ define_relationship_data_extractors![
     (extract_yaml, "yaml", crate::yaml::YamlExtractor)
 ];
 
-define_data_only_extractors![
-    (extract_json, "json", crate::json::JsonExtractor),
-    (extract_toml, "toml", crate::toml::TomlExtractor)
-];
+/// TOML extractor (Phase 3.3): hand-written so it can emit domain-aware
+/// relationships for Cargo `[dependencies]` and pyproject `[tool.*]`
+/// tables. `pending_relationships` stays empty — TOML's references are
+/// always file-local; `types` stays empty — TOML has no static type
+/// system.
+fn extract_toml(
+    tree: &Tree,
+    file_path: &str,
+    content: &str,
+    workspace_root: &Path,
+) -> Result<ExtractionResults, anyhow::Error> {
+    let mut ext = crate::toml::TomlExtractor::new(
+        "toml".to_string(),
+        file_path.to_string(),
+        content.to_string(),
+        workspace_root,
+    );
+    let symbols = ext.extract_symbols(tree);
+    let relationships = ext.extract_relationships(tree, &symbols);
+    let identifiers = ext.extract_identifiers(tree, &symbols);
+    Ok(ExtractionResults {
+        symbols,
+        relationships,
+        pending_relationships: Vec::new(),
+        structured_pending_relationships: Vec::new(),
+        identifiers,
+        types: HashMap::new(),
+        parse_diagnostics: Vec::new(),
+    })
+}
+
+/// JSON extractor (Phase 3.2): hand-written so it can return relationships
+/// (concrete + structured pending) for JSON Schema `$ref` shapes.
+/// `types` stays empty — JSON has no static type system.
+fn extract_json(
+    tree: &Tree,
+    file_path: &str,
+    content: &str,
+    workspace_root: &Path,
+) -> Result<ExtractionResults, anyhow::Error> {
+    let mut ext = crate::json::JsonExtractor::new(
+        "json".to_string(),
+        file_path.to_string(),
+        content.to_string(),
+        workspace_root,
+    );
+    let symbols = ext.extract_symbols(tree);
+    let relationships = ext.extract_relationships(tree, &symbols);
+    let identifiers = ext.extract_identifiers(tree, &symbols);
+    let pending_relationships = ext.get_pending_relationships();
+    let structured_pending_relationships = ext.get_structured_pending_relationships();
+    Ok(ExtractionResults {
+        symbols,
+        relationships,
+        pending_relationships,
+        structured_pending_relationships,
+        identifiers,
+        types: HashMap::new(),
+        parse_diagnostics: Vec::new(),
+    })
+}
 
 fn extract_vue(
     tree: &Tree,

@@ -41,6 +41,9 @@ fn visit_relationships(
         "invocation_expression" | "invocation" => {
             extract_call_relationships(extractor, node, symbols, relationships);
         }
+        "new_expression" | "object_creation_expression" => {
+            extract_new_expression_relationships(extractor, node, symbols, relationships);
+        }
         _ => {}
     }
 
@@ -521,6 +524,89 @@ fn extract_call_relationships(
             extractor.add_structured_pending_relationship(pending);
         }
     }
+}
+
+fn extract_new_expression_relationships(
+    extractor: &mut VbNetExtractor,
+    node: tree_sitter::Node,
+    symbols: &[Symbol],
+    relationships: &mut Vec<Relationship>,
+) {
+    let type_name = {
+        let base = extractor.get_base();
+        find_first_identifier(base, node)
+    };
+    let Some(type_name) = type_name else {
+        return;
+    };
+    if type_name.is_empty() {
+        return;
+    }
+
+    let Some(target) = helpers::unresolved_type_target(&type_name) else {
+        return;
+    };
+
+    let caller_symbol = extractor
+        .get_base()
+        .find_containing_symbol(&node, symbols)
+        .filter(|symbol| {
+            matches!(
+                symbol.kind,
+                SymbolKind::Function | SymbolKind::Method | SymbolKind::Constructor
+            )
+        })
+        .cloned();
+
+    let Some(caller) = caller_symbol else {
+        return;
+    };
+
+    if let Some(type_symbol) = find_vb_type_symbol(symbols, &target.terminal_name) {
+        relationships.push(Relationship {
+            id: format!(
+                "{}_{}_{:?}_{}",
+                caller.id,
+                type_symbol.id,
+                RelationshipKind::Instantiates,
+                node.start_position().row
+            ),
+            from_symbol_id: caller.id.clone(),
+            to_symbol_id: type_symbol.id.clone(),
+            kind: RelationshipKind::Instantiates,
+            file_path: extractor.get_base().file_path.clone(),
+            line_number: node.start_position().row as u32 + 1,
+            confidence: 0.9,
+            metadata: None,
+        });
+        return;
+    }
+
+    let pending = extractor.get_base().create_pending_relationship(
+        caller.id.clone(),
+        target,
+        RelationshipKind::Instantiates,
+        &node,
+        Some(caller.id.clone()),
+        Some(0.9),
+    );
+    extractor.add_structured_pending_relationship(pending);
+}
+
+fn find_first_identifier(
+    base: &crate::base::BaseExtractor,
+    node: tree_sitter::Node,
+) -> Option<String> {
+    if node.kind() == "identifier" {
+        return Some(base.get_node_text(&node));
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if let Some(name) = find_first_identifier(base, child) {
+            return Some(name);
+        }
+    }
+    None
 }
 
 fn find_vb_type_symbol<'a>(symbols: &'a [Symbol], type_name: &str) -> Option<&'a Symbol> {

@@ -2,6 +2,7 @@
 //
 // Direct Implementation of Kotlin extractor tests (TDD RED phase)
 
+mod cross_file_pending;
 mod task14;
 
 use crate::base::SymbolKind;

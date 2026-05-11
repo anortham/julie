@@ -1,0 +1,272 @@
+{
+  "symbols": [
+    {
+      "key": "fixtures/extraction/php/cross_file/source.php:App\\Other:10:0",
+      "name": "App\\Other",
+      "kind": "import",
+      "language": "php",
+      "file_path": "fixtures/extraction/php/cross_file/source.php",
+      "start_line": 10,
+      "start_column": 0,
+      "end_line": 10,
+      "end_column": 14,
+      "start_byte": 335,
+      "end_byte": 349,
+      "signature": "use App\\Other",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": null,
+      "metadata": {
+        "type": "use"
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/php/cross_file/source.php:Fixture:8:0",
+      "name": "Fixture",
+      "kind": "namespace",
+      "language": "php",
+      "file_path": "fixtures/extraction/php/cross_file/source.php",
+      "start_line": 8,
+      "start_column": 0,
+      "end_line": 8,
+      "end_column": 18,
+      "start_byte": 315,
+      "end_byte": 333,
+      "signature": "namespace Fixture",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": null,
+      "metadata": {
+        "type": "namespace"
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/php/cross_file/source.php:Worker:12:0",
+      "name": "Worker",
+      "kind": "class",
+      "language": "php",
+      "file_path": "fixtures/extraction/php/cross_file/source.php",
+      "start_line": 12,
+      "start_column": 0,
+      "end_line": 21,
+      "end_column": 1,
+      "start_byte": 351,
+      "end_byte": 539,
+      "signature": "class Worker",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": null,
+      "metadata": {
+        "modifiers": [],
+        "type": "class"
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/php/cross_file/source.php:entry:13:4",
+      "name": "entry",
+      "kind": "method",
+      "language": "php",
+      "file_path": "fixtures/extraction/php/cross_file/source.php",
+      "start_line": 13,
+      "start_column": 4,
+      "end_line": 16,
+      "end_column": 5,
+      "start_byte": 370,
+      "end_byte": 469,
+      "signature": "public function entry(): int",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": "fixtures/extraction/php/cross_file/source.php:Worker:12:0",
+      "metadata": {
+        "modifiers": "public",
+        "parameters": "()",
+        "returnType": "int",
+        "type": "function"
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/php/cross_file/source.php:localHelper:18:4",
+      "name": "localHelper",
+      "kind": "method",
+      "language": "php",
+      "file_path": "fixtures/extraction/php/cross_file/source.php",
+      "start_line": 18,
+      "start_column": 4,
+      "end_line": 20,
+      "end_column": 5,
+      "start_byte": 475,
+      "end_byte": 537,
+      "signature": "private function localHelper(): int",
+      "doc_comment": null,
+      "visibility": "Private",
+      "parent_key": "fixtures/extraction/php/cross_file/source.php:Worker:12:0",
+      "metadata": {
+        "modifiers": "private",
+        "parameters": "()",
+        "returnType": "int",
+        "type": "function"
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/php/cross_file/source.php:x:14:8",
+      "name": "x",
+      "kind": "variable",
+      "language": "php",
+      "file_path": "fixtures/extraction/php/cross_file/source.php",
+      "start_line": 14,
+      "start_column": 8,
+      "end_line": 14,
+      "end_column": 24,
+      "start_byte": 409,
+      "end_byte": 425,
+      "signature": "$x = new Other()",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": "fixtures/extraction/php/cross_file/source.php:entry:13:4",
+      "metadata": {
+        "type": "variable_assignment",
+        "value": "new Other()"
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    }
+  ],
+  "relationships": [
+    {
+      "from_key": "fixtures/extraction/php/cross_file/source.php:entry:13:4",
+      "to_key": "fixtures/extraction/php/cross_file/source.php:localHelper:18:4",
+      "kind": "calls",
+      "file_path": "fixtures/extraction/php/cross_file/source.php",
+      "line_number": 15,
+      "confidence": "0.900",
+      "metadata": null
+    }
+  ],
+  "pending_relationships": [
+    {
+      "from_key": "fixtures/extraction/php/cross_file/source.php:entry:13:4",
+      "callee_name": "Other",
+      "kind": "instantiates",
+      "file_path": "fixtures/extraction/php/cross_file/source.php",
+      "line_number": 14,
+      "confidence": "0.700"
+    }
+  ],
+  "structured_pending_relationships": [
+    {
+      "pending": {
+        "from_key": "fixtures/extraction/php/cross_file/source.php:entry:13:4",
+        "callee_name": "Other",
+        "kind": "instantiates",
+        "file_path": "fixtures/extraction/php/cross_file/source.php",
+        "line_number": 14,
+        "confidence": "0.700"
+      },
+      "target": {
+        "display_name": "Other",
+        "terminal_name": "Other",
+        "receiver": null,
+        "namespace_path": [],
+        "import_context": null
+      },
+      "caller_scope_key": "fixtures/extraction/php/cross_file/source.php:entry:13:4"
+    }
+  ],
+  "identifiers": [
+    {
+      "key": "fixtures/extraction/php/cross_file/source.php:localHelper:call:15:22",
+      "name": "localHelper",
+      "kind": "call",
+      "language": "php",
+      "file_path": "fixtures/extraction/php/cross_file/source.php",
+      "start_line": 15,
+      "start_column": 22,
+      "end_line": 15,
+      "end_column": 33,
+      "start_byte": 449,
+      "end_byte": 460,
+      "containing_key": "fixtures/extraction/php/cross_file/source.php:entry:13:4",
+      "target_key": null,
+      "confidence": "1.000"
+    }
+  ],
+  "types": [
+    {
+      "symbol_key": "fixtures/extraction/php/cross_file/source.php:App\\Other:10:0",
+      "resolved_type": "use",
+      "generic_params": null,
+      "constraints": null,
+      "is_inferred": true,
+      "language": "php",
+      "metadata": null
+    },
+    {
+      "symbol_key": "fixtures/extraction/php/cross_file/source.php:Fixture:8:0",
+      "resolved_type": "namespace",
+      "generic_params": null,
+      "constraints": null,
+      "is_inferred": true,
+      "language": "php",
+      "metadata": null
+    },
+    {
+      "symbol_key": "fixtures/extraction/php/cross_file/source.php:Worker:12:0",
+      "resolved_type": "class",
+      "generic_params": null,
+      "constraints": null,
+      "is_inferred": true,
+      "language": "php",
+      "metadata": null
+    },
+    {
+      "symbol_key": "fixtures/extraction/php/cross_file/source.php:entry:13:4",
+      "resolved_type": "int",
+      "generic_params": null,
+      "constraints": null,
+      "is_inferred": true,
+      "language": "php",
+      "metadata": null
+    },
+    {
+      "symbol_key": "fixtures/extraction/php/cross_file/source.php:localHelper:18:4",
+      "resolved_type": "int",
+      "generic_params": null,
+      "constraints": null,
+      "is_inferred": true,
+      "language": "php",
+      "metadata": null
+    },
+    {
+      "symbol_key": "fixtures/extraction/php/cross_file/source.php:x:14:8",
+      "resolved_type": "variable_assignment",
+      "generic_params": null,
+      "constraints": null,
+      "is_inferred": true,
+      "language": "php",
+      "metadata": null
+    }
+  ],
+  "parse_diagnostics": []
+}

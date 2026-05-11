@@ -4,6 +4,8 @@
 // Comprehensive test coverage for YAML extraction
 // Common use cases: GitHub Actions, Kubernetes, Docker Compose, Ansible
 
+pub mod cross_file_pending;
+
 #[cfg(test)]
 mod yaml_extractor_tests {
     #![allow(unused_imports)]

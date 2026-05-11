@@ -1,0 +1,14 @@
+{
+  "$defs": {
+    "Address": {
+      "type": "object",
+      "properties": {
+        "street": { "type": "string" }
+      }
+    }
+  },
+  "properties": {
+    "billing": { "$ref": "#/$defs/Address" },
+    "shipping": { "$ref": "external.json#/$defs/Address" }
+  }
+}

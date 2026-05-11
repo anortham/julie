@@ -6,7 +6,7 @@
 //! - Uses node type switch statement logic
 //! - Preserves signature building algorithms
 //! - Maintains same edge case handling
-//! - Converts to Rust Option<T>, Result<T>, iterators, ownership system
+//! - Converts to Rust `Option<T>`, `Result<T>`, iterators, ownership system
 
 mod assignments;
 mod functions;

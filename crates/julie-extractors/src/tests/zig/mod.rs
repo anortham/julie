@@ -2029,5 +2029,6 @@ fn example() !void {
     }
 }
 
+pub mod cross_file_pending;
 pub mod cross_file_relationships;
 mod types; // Phase 4: Type extraction verification tests

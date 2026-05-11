@@ -74,6 +74,7 @@ pub fn extract_all(code: &str) -> (Vec<Symbol>, Vec<Relationship>, Vec<Identifie
 pub mod basics; // Core R: functions, assignments, variables
 pub mod classes; // S3, S4, R6 class systems
 pub mod control_flow; // if/else, loops, vectorized operations
+pub mod cross_file_pending; // Cross-file structured pending shape (Phase 4a)
 pub mod cross_file_relationships; // Cross-file relationship resolution (pending relationships)
 pub mod data_structures; // data.frame, tibble, vector, list, matrix
 pub mod file_integration_bug; // BUG HUNT: Reproduction test for file extraction failure

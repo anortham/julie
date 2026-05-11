@@ -1,0 +1,221 @@
+{
+  "symbols": [
+    {
+      "key": "fixtures/extraction/swift/cross_file/source.swift:Other:6:0",
+      "name": "Other",
+      "kind": "import",
+      "language": "swift",
+      "file_path": "fixtures/extraction/swift/cross_file/source.swift",
+      "start_line": 6,
+      "start_column": 0,
+      "end_line": 6,
+      "end_column": 12,
+      "start_byte": 283,
+      "end_byte": 295,
+      "signature": "import Other",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": null,
+      "metadata": {
+        "type": "import"
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/swift/cross_file/source.swift:Worker:8:0",
+      "name": "Worker",
+      "kind": "class",
+      "language": "swift",
+      "file_path": "fixtures/extraction/swift/cross_file/source.swift",
+      "start_line": 8,
+      "start_column": 0,
+      "end_line": 17,
+      "end_column": 1,
+      "start_byte": 297,
+      "end_byte": 453,
+      "signature": "class Worker",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": null,
+      "metadata": {
+        "modifiers": "",
+        "type": "class"
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/swift/cross_file/source.swift:entry:9:4",
+      "name": "entry",
+      "kind": "method",
+      "language": "swift",
+      "file_path": "fixtures/extraction/swift/cross_file/source.swift",
+      "start_line": 9,
+      "start_column": 4,
+      "end_line": 12,
+      "end_column": 5,
+      "start_byte": 316,
+      "end_byte": 394,
+      "signature": "func entry() -> Int",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": "fixtures/extraction/swift/cross_file/source.swift:Worker:8:0",
+      "metadata": {
+        "modifiers": "",
+        "parameters": "()",
+        "returnType": "Int",
+        "type": "function"
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/swift/cross_file/source.swift:localHelper:14:4",
+      "name": "localHelper",
+      "kind": "method",
+      "language": "swift",
+      "file_path": "fixtures/extraction/swift/cross_file/source.swift",
+      "start_line": 14,
+      "start_column": 4,
+      "end_line": 16,
+      "end_column": 5,
+      "start_byte": 400,
+      "end_byte": 451,
+      "signature": "func localHelper() -> Int",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": "fixtures/extraction/swift/cross_file/source.swift:Worker:8:0",
+      "metadata": {
+        "modifiers": "",
+        "parameters": "()",
+        "returnType": "Int",
+        "type": "function"
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    }
+  ],
+  "relationships": [
+    {
+      "from_key": "fixtures/extraction/swift/cross_file/source.swift:entry:9:4",
+      "to_key": "fixtures/extraction/swift/cross_file/source.swift:localHelper:14:4",
+      "kind": "calls",
+      "file_path": "fixtures/extraction/swift/cross_file/source.swift",
+      "line_number": 11,
+      "confidence": "0.900",
+      "metadata": null
+    }
+  ],
+  "pending_relationships": [
+    {
+      "from_key": "fixtures/extraction/swift/cross_file/source.swift:entry:9:4",
+      "callee_name": "Other.thing",
+      "kind": "calls",
+      "file_path": "fixtures/extraction/swift/cross_file/source.swift",
+      "line_number": 10,
+      "confidence": "0.700"
+    }
+  ],
+  "structured_pending_relationships": [
+    {
+      "pending": {
+        "from_key": "fixtures/extraction/swift/cross_file/source.swift:entry:9:4",
+        "callee_name": "Other.thing",
+        "kind": "calls",
+        "file_path": "fixtures/extraction/swift/cross_file/source.swift",
+        "line_number": 10,
+        "confidence": "0.700"
+      },
+      "target": {
+        "display_name": "Other.thing",
+        "terminal_name": "thing",
+        "receiver": "Other",
+        "namespace_path": [],
+        "import_context": null
+      },
+      "caller_scope_key": "fixtures/extraction/swift/cross_file/source.swift:entry:9:4"
+    }
+  ],
+  "identifiers": [
+    {
+      "key": "fixtures/extraction/swift/cross_file/source.swift:localHelper:call:11:15",
+      "name": "localHelper",
+      "kind": "call",
+      "language": "swift",
+      "file_path": "fixtures/extraction/swift/cross_file/source.swift",
+      "start_line": 11,
+      "start_column": 15,
+      "end_line": 11,
+      "end_column": 26,
+      "start_byte": 375,
+      "end_byte": 386,
+      "containing_key": "fixtures/extraction/swift/cross_file/source.swift:entry:9:4",
+      "target_key": null,
+      "confidence": "1.000"
+    },
+    {
+      "key": "fixtures/extraction/swift/cross_file/source.swift:thing:call:10:14",
+      "name": "thing",
+      "kind": "call",
+      "language": "swift",
+      "file_path": "fixtures/extraction/swift/cross_file/source.swift",
+      "start_line": 10,
+      "start_column": 14,
+      "end_line": 10,
+      "end_column": 19,
+      "start_byte": 352,
+      "end_byte": 357,
+      "containing_key": "fixtures/extraction/swift/cross_file/source.swift:entry:9:4",
+      "target_key": null,
+      "confidence": "1.000"
+    }
+  ],
+  "types": [
+    {
+      "symbol_key": "fixtures/extraction/swift/cross_file/source.swift:Other:6:0",
+      "resolved_type": "import",
+      "generic_params": null,
+      "constraints": null,
+      "is_inferred": true,
+      "language": "swift",
+      "metadata": null
+    },
+    {
+      "symbol_key": "fixtures/extraction/swift/cross_file/source.swift:Worker:8:0",
+      "resolved_type": "class",
+      "generic_params": null,
+      "constraints": null,
+      "is_inferred": true,
+      "language": "swift",
+      "metadata": null
+    },
+    {
+      "symbol_key": "fixtures/extraction/swift/cross_file/source.swift:entry:9:4",
+      "resolved_type": "Int",
+      "generic_params": null,
+      "constraints": null,
+      "is_inferred": true,
+      "language": "swift",
+      "metadata": null
+    },
+    {
+      "symbol_key": "fixtures/extraction/swift/cross_file/source.swift:localHelper:14:4",
+      "resolved_type": "Int",
+      "generic_params": null,
+      "constraints": null,
+      "is_inferred": true,
+      "language": "swift",
+      "metadata": null
+    }
+  ],
+  "parse_diagnostics": []
+}

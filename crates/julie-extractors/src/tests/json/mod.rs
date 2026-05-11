@@ -8,6 +8,9 @@
 mod task15;
 
 #[cfg(test)]
+mod relationships;
+
+#[cfg(test)]
 mod json_extractor_tests {
     #![allow(unused_imports)]
     #![allow(unused_variables)]

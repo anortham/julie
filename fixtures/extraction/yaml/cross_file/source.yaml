@@ -1,0 +1,16 @@
+# Phase 4d fixture: YAML anchors/aliases are intra-document; YAML has
+# no cross-document forward-reference construct. Tag types (!!str)
+# operate at format level, not as symbol references. Structured pending
+# is intentionally empty.
+
+defaults: &defaults
+  timeout: 30
+  retries: 3
+
+services:
+  api:
+    <<: *defaults
+    port: 8080
+  worker:
+    <<: *defaults
+    port: 9090

@@ -1,5 +1,5 @@
 //! PowerShell function extraction
-//! Handles simple functions, advanced functions with [CmdletBinding()], and parameters
+//! Handles simple functions, advanced functions with `[CmdletBinding()]`, and parameters
 
 use crate::base::{
     BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility, normalize_annotations,

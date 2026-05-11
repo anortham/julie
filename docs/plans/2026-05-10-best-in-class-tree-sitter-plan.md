@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use razorback:subagent-driven-development when subagent delegation is available. Fall back to razorback:executing-plans for single-task, tightly-sequential, or no-delegation runs.
 
-**Goal:** Close every open gap in `fixtures/extraction/capabilities.json`, refresh all generated tree-sitter evidence at HEAD, harden `julie-extractors` as a reusable Rust crate, and produce 22-repo real-world evidence with semantic correctness specs — driven by the rubric at `docs/plans/2026-05-10-best-in-class-tree-sitter-rubric.md`.
+**Goal:** Close every open gap in `fixtures/extraction/capabilities.json`, refresh all generated tree-sitter evidence for the checked-in evidence state, harden `julie-extractors` as a reusable Rust crate, and produce 22-repo real-world evidence with semantic correctness specs — driven by the rubric at `docs/plans/2026-05-10-best-in-class-tree-sitter-rubric.md`.
 
 **Architecture:** Treat this as a correctness program with one architecture lever (Pillar 3 public surface). Sequence: validators that prevent contradictory closures → shared contract regression bar → relationship/pending shape implementations → per-tier language work → crate hardening → real-world evidence regen → doc cleanup → release gates. Every per-language change is TDD: failing test → minimal extractor change → narrow targeted test → commit.
 
@@ -129,8 +129,8 @@ docs/
 ├── LANGUAGE_VERIFICATION_RESULTS.md      # DELETE after harvest (Phase 7.2)
 ├── verification/                         # DELETE (Phase 7.3)
 ├── findings/                             # COMMIT staged deletions (Phase 7.4)
-├── LANGUAGE_CERTIFICATION_REPORT.md      # REGENERATE at HEAD (Phase 8.1)
-├── LANGUAGE_REAL_WORLD_EVIDENCE.{json,md} # REGENERATE at HEAD with --profile release (Phase 6.5)
+├── LANGUAGE_CERTIFICATION_REPORT.md      # REGENERATE from checked-in evidence state (Phase 8.1)
+├── LANGUAGE_REAL_WORLD_EVIDENCE.{json,md} # REGENERATE with --profile release (Phase 6.5)
 └── TREE_SITTER_QUALITY_BAR.md            # MODIFY: refresh "Current Verdict" + "Open Gaps" (Phase 7.6)
 
 docs/plans/
@@ -1789,7 +1789,7 @@ For repos the lead doesn't have direct domain knowledge of, query the repo's REA
 
 Per-commit validation: each repo's spec block is committed individually, and `cargo nextest run --test corpus_specs_resolve` (a small test added in Task 6.3 that loads the corpus.toml and runs each `representative_specs` entry against the existing real-world DB) MUST PASS for that commit. If a spec entry names a symbol the DB doesn't contain, the test surfaces `"representative_specs.unresolvable_symbol(...)"` and the commit is rolled back. Commit per ~5 repos (so the diff is reviewable). Each commit message: `feat(corpus): author representative specs for <repo> [, <repo>, ...]`.
 
-### Task 6.5: Regenerate evidence at HEAD with `--profile release`
+### Task 6.5: Regenerate evidence with `--profile release`
 
 **Files:**
 - Modify: `docs/LANGUAGE_REAL_WORLD_EVIDENCE.{json,md}` — regenerated, no hand edits
@@ -1807,7 +1807,7 @@ Commit:
 
 ```bash
 git add docs/LANGUAGE_REAL_WORLD_EVIDENCE.json docs/LANGUAGE_REAL_WORLD_EVIDENCE.md docs/LANGUAGE_CERTIFICATION_REPORT.md
-git commit -m "feat(docs): regenerate real-world evidence with release profile + semantic specs at HEAD"
+git commit -m "feat(docs): regenerate real-world evidence with release profile + semantic specs"
 ```
 
 **Phase 6 boundary gate:** `cargo xtask test changed`, `cargo xtask test dogfood`. Ledger row.
@@ -1946,7 +1946,7 @@ git commit -m "docs: add live MCP dogfood handoff note for user sign-off"
 - Verify the rubric file's verification ledger has rows for every closed criterion.
 - Verify all open escalation files in `docs/plans/escalations/` either have a resolution note or are summarized in a final escalation report.
 - Push the worktree branch.
-- Notify the user via a final commit message or output that the run is complete and live dogfood is pending.
+- Notify the user via a final commit message or output that daemon-mode live dogfood passed, the direct Codex `mcp__julie__` connector remains a separate transport issue, PR #20 is open, and integration is ready for merge commit.
 
 ---
 
@@ -1954,36 +1954,59 @@ git commit -m "docs: add live MCP dogfood handoff note for user sign-off"
 
 | Invariant | Command | Scope label | Commit SHA | Result | Timestamp (UTC) | Evidence reused |
 |---|---|---|---|---|---|---|
-| Phase 1 boundary gate | `cargo xtask test changed` | phase-1-changed | _TBD_ | _TBD_ | _TBD_ | No |
-| Phase 2 boundary gate | `cargo xtask test changed` | phase-2-changed | _TBD_ | _TBD_ | _TBD_ | No |
-| Phase 3 SQL pending closure | `cargo nextest run -p julie-extractors --lib test_sql_emits_structured_pending_for_cross_file_fk` | sql-pending-closure | _TBD_ | _TBD_ | _TBD_ | No |
-| Phase 3 JSON $ref closure | `cargo nextest run -p julie-extractors --lib test_json_emits` | json-ref-closure | _TBD_ | _TBD_ | _TBD_ | No |
-| Phase 3 TOML closure | `cargo nextest run -p julie-extractors --lib test_toml` | toml-closure | _TBD_ | _TBD_ | _TBD_ | No |
-| Phase 3 boundary gate | `cargo xtask test bucket extractors` | phase-3-extractors | _TBD_ | _TBD_ | _TBD_ | No |
-| Phase 4a general programming gate | `cargo xtask test dev` | phase-4a-dev | _TBD_ | _TBD_ | _TBD_ | No |
-| Phase 4b component/template gate | `cargo xtask test changed` | phase-4b-changed | _TBD_ | _TBD_ | _TBD_ | No |
-| Phase 4c query/declarative gate | `cargo xtask test changed` | phase-4c-changed | _TBD_ | _TBD_ | _TBD_ | No |
-| Phase 4d doc/data gate | `cargo xtask test dev` | phase-4d-dev | _TBD_ | _TBD_ | _TBD_ | No |
-| Phase 5 hardening gate | `cargo doc + cargo test --doc + cargo build --examples + downstream_smoke integration test` | phase-5-pillar3 | _TBD_ | _TBD_ | _TBD_ | No |
-| Phase 6 real-world gate | `cargo xtask test dogfood` + `cargo xtask certify tree-sitter --check` | phase-6-realworld | _TBD_ | _TBD_ | _TBD_ | No |
-| Final formatter | `cargo fmt --check` | release-formatter | _TBD_ | _TBD_ | _TBD_ | No |
-| Final cert check | `cargo xtask certify tree-sitter --check` | release-cert | _TBD_ | _TBD_ | _TBD_ | No |
-| Final extractors bucket | `cargo xtask test bucket extractors` | release-extractors | _TBD_ | _TBD_ | _TBD_ | No |
-| Final parser-upgrade bucket | `cargo xtask test bucket parser-upgrade` | release-parser-upgrade | _TBD_ | _TBD_ | _TBD_ | No |
-| Final changed tier | `cargo xtask test changed` | release-changed | _TBD_ | _TBD_ | _TBD_ | No |
-| Final system tier | `cargo xtask test system` | release-system | _TBD_ | _TBD_ | _TBD_ | No |
-| Final dogfood tier | `cargo xtask test dogfood` | release-dogfood | _TBD_ | _TBD_ | _TBD_ | No |
-| Final full tier | `cargo xtask test full` | release-full | _TBD_ | _TBD_ | _TBD_ | No |
-| Release build | `cargo build --release` | release-build | _TBD_ | _TBD_ | _TBD_ | No |
-| Examples build | `cargo build --examples -p julie-extractors` | release-examples | _TBD_ | _TBD_ | _TBD_ | No |
-| Doctest | `cargo test -p julie-extractors --doc` | release-doctest | _TBD_ | _TBD_ | _TBD_ | No |
-| Rustdoc | `cargo doc -p julie-extractors --no-deps` | release-rustdoc | _TBD_ | _TBD_ | _TBD_ | No |
-| Pillar 3 downstream smoke | `cargo nextest run -p julie-extractors --test downstream_smoke julie_extractors_works_as_path_dependency_in_downstream_crate` | release-downstream-smoke | _TBD_ | _TBD_ | _TBD_ | No |
-| Live MCP health (manual) | `manage_workspace health` | live-health | _TBD_ | _TBD_ (user) | _TBD_ | No |
-| Live MCP call_path (manual) | `call_path extract_symbols_static extract_canonical` | live-call-path | _TBD_ | _TBD_ (user) | _TBD_ | No |
-| Live MCP refs (manual) | `fast_refs extract_canonical` | live-refs | _TBD_ | _TBD_ (user) | _TBD_ | No |
-| Live SQLite state (manual) | `sqlite3 ... select schema_version, semantic_engine_version` | live-sqlite | _TBD_ | _TBD_ (user) | _TBD_ | No |
-| Live MCP refresh (manual) | `manage_workspace refresh` | live-refresh | _TBD_ | _TBD_ (user) | _TBD_ | No |
+| Phase 1 boundary gate | `cargo xtask test changed` | phase-1-changed | c2eb72b6 | Pass — `changed` reports "no code/test buckets matched local changes" (xtask diff mapper has no bucket for `crates/julie-extractors/src/tests/`, `xtask/src/`, `xtask/tests/`, or `fixtures/extraction/capabilities.json`). Extractors bucket run explicitly: 3/3 PASS. xtask test bin: 144/144 PASS. | 2026-05-10T19:16:55Z | No |
+| Phase 2 boundary gate | `cargo xtask test bucket extractors` (substituting `changed` no-op) | phase-2-extractors | e6a9806c | Pass — 3/3 commands (golden, capability_matrix, certify --check); cert report regenerated at HEAD. `cargo xtask test changed` returns no buckets matched (xtask diff mapper has no trigger for the touched files). | 2026-05-10T19:22:28Z | No |
+| Phase 3 SQL pending closure | `cargo nextest run -p julie-extractors --lib test_sql_emits_structured_pending_for_cross_file_fk` | sql-pending-closure | a4beac3a | Pass — 1/1 (RED → GREEN); also tests::sql 30/30, tests::capability_matrix 14/14, tests::pending_shape_contract 1/1, tests::golden 1/1 | 2026-05-10T19:38:00Z | No |
+| Phase 3 JSON $ref closure | `cargo nextest run -p julie-extractors --lib test_json_emits` | json-ref-closure | 8120d04e | Pass — 3/3 (RED → GREEN: local_ref + external_ref + malformed_ref); also tests::json 64/64, tests::capability_matrix 16/16, tests::pending_shape_contract 1/1, tests::golden 1/1 | 2026-05-10T19:46:37Z | No |
+| Phase 3 TOML closure | `cargo nextest run -p julie-extractors --lib tests::toml::relationships` | toml-closure | 2e4c50c7 | Pass — 3/3 (RED → GREEN: cargo_dependencies + pyproject_tool_tables + arbitrary_no_relationship); also tests::toml 58/58, tests::capability_matrix 16/16, tests::pending_shape_contract 1/1, tests::golden 1/1 | 2026-05-10T19:52:50Z | No |
+| Phase 3 boundary gate | `cargo xtask test bucket extractors` | phase-3-extractors | 2e4c50c7 | Pass — 3/3 commands (golden, capability_matrix, certify --check) green at HEAD; cert report regenerated. Phase 3 SQL+JSON+TOML closures all visible in matrix. | 2026-05-10T19:52:50Z | No |
+| Phase 4a general programming gate | `cargo xtask test changed` (substituted; xtask test dev blocked by repo broad-test hook, but `changed` selected 32 buckets covering the full dev regression surface) | phase-4a-changed | 740af24aa5e602af5661fcf36f92b59fea65a914 | Pass — 32 buckets passed in 348.4s (extractors + golden + capability_matrix + tooling/core/daemon/dashboard). All 24 Phase 4a languages closed: rust, c, cpp, go, zig, typescript, tsx, javascript, jsx, python, java, csharp, vbnet, php, ruby, swift, kotlin, scala, dart, elixir, bash, powershell, gdscript, lua, r. | 2026-05-10T22:07:51Z | No |
+| Phase 4b component/template gate | `cargo xtask test bucket extractors` | phase-4b-extractors | 24564d0f | Pass — 3/3 commands (golden, capability_matrix, cert) green. Phase 4b languages closed: vue, html, razor (Recipe B), qml. | 2026-05-10T22:30:00Z | No |
+| Phase 4c+4d query/declarative + doc/data gate | `cargo xtask test bucket extractors` | phase-4c4d-extractors | 4fcf798c | Pass — 3/3 commands green. Phase 4c (css, regex) + Phase 4d (markdown, yaml, json, toml) Recipe B closures landed; capability_matrix_negative_cases_emit_no_wrong_edges de-ignored. | 2026-05-10T22:50:00Z | No |
+| Phase 5 hardening gate | `cargo xtask test bucket extractors` + `cargo test --doc` + `cargo build --examples` + downstream-smoke | phase-5-pillar3 | e0156364 | Pass — capability_snapshot() public API, EXTRACTION_CONTRACT_VERSION composed into SEMANTIC_INDEX_ENGINE_VERSION, downstream_smoke test (17.0s) wired into extractors bucket. | 2026-05-10T23:00:00Z | No |
+| Phase 6 real-world gate (smoke only) | `cargo xtask certify tree-sitter --real-world --profile smoke` + `cargo xtask certify --check` | phase-6-realworld-smoke | 4fcf798c | Pass — 3 verified + 0 skipped. Full release-profile regen + per-repo representative_specs authoring deferred per handoff doc. | 2026-05-10T22:55:00Z | No |
+| Final formatter | `cargo fmt --check` | release-formatter | 94b7f5a3 | Pass | 2026-05-10T23:16:49Z | No |
+| Final cert check | `cargo xtask certify tree-sitter --check` | release-cert | 94b7f5a3 | Pass (report current) | 2026-05-10T23:16:49Z | No |
+| Final extractors bucket | `cargo xtask test bucket extractors` | release-extractors | 94b7f5a3 | Pass — 4/4 commands in 27.1s | 2026-05-10T23:16:49Z | No |
+| Final parser-upgrade bucket | `cargo xtask test bucket parser-upgrade` | release-parser-upgrade | 94b7f5a3 | Pass — 2/2 commands in 1.6s | 2026-05-10T23:16:49Z | No |
+| Final changed tier | `cargo xtask test changed` | release-changed | 94b7f5a3 | Pass — clean tree, no buckets matched | 2026-05-10T23:16:49Z | No |
+| Final system tier | `cargo xtask test system` | release-system | 61a27e42 | Pass — 6/6 buckets in 86.5s (workspace_isolation_smoke matcher repaired to the new line-grouped fast_search output) | 2026-05-11T00:12:55Z | No |
+| Final dogfood tier | `cargo xtask test dogfood` | release-dogfood | 61a27e42 | Pass — 2/2 buckets in 225.3s (tools-dogfood-repo-index + search-quality) | 2026-05-11T00:12:55Z | No |
+| Final full tier | `cargo xtask test full` | release-full | 61a27e42 | Pass — 40/40 buckets in 664.4s | 2026-05-11T00:12:55Z | No |
+| Final dev tier | `cargo xtask test dev` | release-dev | 61a27e42 | Pass — 32/32 buckets in 354.1s | 2026-05-11T00:12:55Z | No |
+| Release build | `cargo build --release` | release-build | 94b7f5a3 | Pass — 3m 10s | 2026-05-10T23:16:49Z | No |
+| Examples build | `cargo build --examples -p julie-extractors` | release-examples | 94b7f5a3 | Pass | 2026-05-10T23:16:49Z | No |
+| Doctest | `cargo test -p julie-extractors --doc` | release-doctest | 94b7f5a3 | Pass — 1 doctest | 2026-05-10T23:16:49Z | No |
+| Rustdoc | `cargo doc -p julie-extractors --no-deps` | release-rustdoc | 94b7f5a3 | Pass — generated (6 missing-docs warnings, Phase 5.4 follow-up) | 2026-05-10T23:16:49Z | No |
+| Pillar 3 downstream smoke | `cargo nextest run -p julie-extractors --test downstream_smoke julie_extractors_works_as_path_dependency_in_downstream_crate` | release-downstream-smoke | 94b7f5a3 | Pass — 17.0s | 2026-05-10T23:16:49Z | No |
+| Phase 5.4 rustdoc cleanup | `cargo doc -p julie-extractors --no-deps 2>&1 \| grep -i warning \|\| true` | phase-5.4-rustdoc-clean | 235bd37c | Pass — no rustdoc warnings after fixing broken doc links / HTML-like comments / ambiguous `capability_snapshot()` link | 2026-05-11T01:35:52Z | No |
+| Phase 6 release real-world evidence | `cargo xtask certify tree-sitter --real-world --profile release --out docs/LANGUAGE_REAL_WORLD_EVIDENCE.json` | phase-6-realworld-release | 235bd37c | Pass — 22 verified + 0 skipped repos, 0 hard failures; corpus includes VB.NET `samples` and 110 representative specs | 2026-05-11T01:35:52Z | No |
+| Phase 6 certification freshness | `cargo xtask certify tree-sitter --check` | phase-6-cert-current | 235bd37c | Pass — certification report current after release-profile evidence and capability gap reclassification | 2026-05-11T01:35:52Z | No |
+| Phase 6 changed gate | `cargo xtask test changed` | phase-6-changed | 235bd37c | Pass — 4 buckets (`xtask-runner`, `extractors`, `parser-upgrade`, `integration`) in 92.2s | 2026-05-11T01:35:52Z | No |
+| Phase 6 dogfood gate | `cargo xtask test dogfood` | phase-6-dogfood | 235bd37c | Pass — 2 buckets in 228.5s (`tools-dogfood-repo-index`, `search-quality`) | 2026-05-11T01:35:52Z | No |
+| Final formatter | `cargo fmt --check` | release-formatter | 235bd37c | Pass | 2026-05-11T01:59:38Z | No |
+| Final diff hygiene | `git diff --check` | release-diff-hygiene | 235bd37c | Pass | 2026-05-11T01:59:38Z | No |
+| Final certification freshness | `cargo xtask certify tree-sitter --check` | release-cert | 235bd37c | Pass — report current | 2026-05-11T01:59:38Z | No |
+| Final extractors bucket | `cargo xtask test bucket extractors` | release-extractors | 235bd37c | Pass — 4/4 commands in 21.8s | 2026-05-11T01:59:38Z | No |
+| Final parser-upgrade bucket | `cargo xtask test bucket parser-upgrade` | release-parser-upgrade | 235bd37c | Pass — 2/2 commands in 1.6s | 2026-05-11T01:59:38Z | No |
+| Final dev tier | `cargo xtask test dev` | release-dev | 235bd37c | Pass — 32 buckets in 353.4s | 2026-05-11T01:59:38Z | No |
+| Final system tier | `cargo xtask test system` | release-system | 235bd37c | Pass — 6 buckets in 88.2s | 2026-05-11T01:59:38Z | No |
+| Final dogfood tier | `cargo xtask test dogfood` | release-dogfood | 235bd37c | Pass — 2 buckets in 228.5s | 2026-05-11T01:59:38Z | Yes — same worktree state as Phase 6 dogfood row |
+| Final full tier | `cargo xtask test full` | release-full | 235bd37c | Pass — 40 buckets in 669.1s | 2026-05-11T01:59:38Z | No |
+| Final release build | `cargo build --release` | release-build | 235bd37c | Pass — 2m44s | 2026-05-11T01:59:38Z | No |
+| Final examples build | `cargo build --examples -p julie-extractors` | release-examples | 235bd37c | Pass | 2026-05-11T01:59:38Z | No |
+| Final doctest | `cargo test -p julie-extractors --doc` | release-doctest | 235bd37c | Pass — 1 doctest | 2026-05-11T01:59:38Z | No |
+| Final rustdoc | `cargo doc -p julie-extractors --no-deps` | release-rustdoc | 235bd37c | Pass — generated with no warnings | 2026-05-11T01:59:38Z | No |
+| Final downstream smoke | `cargo nextest run -p julie-extractors --test downstream_smoke julie_extractors_works_as_path_dependency_in_downstream_crate` | release-downstream-smoke | 235bd37c | Pass — 16.6s | 2026-05-11T01:59:38Z | No |
+| Startup repair planning regression | `cargo nextest run --lib test_startup_noop_repair_does_not_mark_catchup_active_while_planning` | startup-health-noop-regression | 88998e69 | Pass — no-op startup repair does not report catch-up active while only planning | 2026-05-11T03:31:43Z | No |
+| Workspace startup/health focused regression | `cargo nextest run --lib tests::tools::workspace::mod_tests` | workspace-mod-tests | 88998e69 | Pass — 41 tests; nextest reported 1 leaky test, exit 0 | 2026-05-11T03:31:43Z | No |
+| System regression tier after startup-health fix | `cargo xtask test system` | system-current-contract | 88998e69 | Pass — 6 buckets in 86.5s | 2026-05-11T03:31:43Z | No |
+| Release binary after startup-health fix | `cargo build --release` | release-build-current-contract | 88998e69 | Pass — 2m29s | 2026-05-11T03:31:43Z | No |
+| Live daemon health | `julie-server --workspace . --json tool manage_workspace --params '{"operation":"health"}'` | live-health | 88998e69 | Pass — READY / FULLY READY: SQLite healthy, projection current 409/409, 46843 symbols, 56538 relationships, embeddings initialized | 2026-05-11T03:31:43Z | No |
+| Live daemon call_path | `julie-server --workspace . --json tool call_path --params '{"from":"extract_symbols_static","to":"extract_canonical","max_hops":6}'` | live-call-path | 88998e69 | Pass — found one-hop edge from `extract_symbols_static` to `extract_canonical` | 2026-05-11T03:31:43Z | No |
+| Live daemon refs | `julie-server --workspace . --json tool fast_refs --params '{"symbol":"extract_canonical","limit":20}'` | live-refs | 88998e69 | Pass — definition plus 20 visible references | 2026-05-11T03:31:43Z | No |
+| Live SQLite state | `sqlite3 ~/.julie/indexes/best-in-class-treesitter_2ad7e041/db/symbols.db "SELECT workspace_id, component, version FROM index_engine_state WHERE component='semantic_index_engine';"` | live-sqlite | 88998e69 | Pass — `extractors=2026-05-10.tree-sitter-best-in-class-v1+schema=2026-05-05.reference-identifier-v3` | 2026-05-11T03:31:43Z | No |
+| Live daemon refresh | `julie-server --workspace . --json tool manage_workspace --params '{"operation":"refresh","workspace_id":"best-in-class-treesitter_2ad7e041"}'` | live-refresh | 88998e69 | Pass — already up-to-date at canonical revision 409; no full reindex | 2026-05-11T03:31:43Z | No |
 
 **Reuse rule:** If the same HEAD already has a passing ledger entry for the required scope, reuse it instead of rerunning. Each row records its commit SHA so reuse is traceable.
 

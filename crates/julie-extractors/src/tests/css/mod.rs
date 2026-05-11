@@ -242,6 +242,7 @@ pub mod advanced;
 pub mod animations;
 pub mod at_rules;
 pub mod basic;
+pub mod cross_file_pending;
 pub mod custom;
 pub mod doc_comments;
 pub mod identifier_extraction;

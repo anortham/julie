@@ -134,13 +134,72 @@ fn tree_sitter_certification_tests_report_surfaces_current_contract_and_historic
 
     let markdown = render_tree_sitter_certification_markdown(&report);
     assert!(markdown.contains("# Tree-Sitter Certification Report"));
-    assert!(markdown.contains("Current HEAD: `abc123`"));
+    assert!(markdown.contains("Scope: checked-in tree-sitter evidence state"));
+    assert!(!markdown.contains("Current HEAD: `abc123`"));
     assert!(markdown.contains("Registry rows: `3`"));
     assert!(markdown.contains("Historical matrix rows: `1`"));
     assert!(markdown.contains("`tsx`, `vbnet`"));
     assert!(markdown.contains("| `vbnet` | `pending_relationships` | `open` |"));
-    assert!(markdown.contains("## Current Real-World OSS Evidence"));
+    assert!(markdown.contains("## Checked-In Real-World OSS Evidence"));
     assert!(markdown.contains("| `ready-rust` | `rust` | `pass` |"));
+}
+
+#[test]
+fn tree_sitter_certification_tests_report_is_stable_across_git_head_changes() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    write_minimal_repo(root, true);
+    write_real_world_evidence(root);
+
+    let first_report = build_tree_sitter_certification_report(
+        root,
+        TreeSitterCertificationMetadata {
+            head_sha: "abc123".to_string(),
+        },
+    )
+    .expect("first report should build from complete evidence");
+    let second_report = build_tree_sitter_certification_report(
+        root,
+        TreeSitterCertificationMetadata {
+            head_sha: "def456".to_string(),
+        },
+    )
+    .expect("second report should build from same evidence");
+
+    let first_markdown = render_tree_sitter_certification_markdown(&first_report);
+    let second_markdown = render_tree_sitter_certification_markdown(&second_report);
+
+    assert_eq!(
+        first_markdown, second_markdown,
+        "certification report should not embed the current git head because committed generated files cannot contain their own commit SHA"
+    );
+}
+
+#[test]
+fn tree_sitter_certification_tests_report_marks_absent_historical_matrix_as_deprecated() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    write_minimal_repo(root, true);
+    write_real_world_evidence(root);
+    fs::remove_file(root.join("docs/LANGUAGE_VERIFICATION_RESULTS.md")).unwrap();
+    fs::remove_dir_all(root.join("docs/verification")).unwrap();
+
+    let report = build_tree_sitter_certification_report(
+        root,
+        TreeSitterCertificationMetadata {
+            head_sha: "abc123".to_string(),
+        },
+    )
+    .expect("report should build without historical docs");
+
+    assert_eq!(report.historical_matrix_row_count, 0);
+    assert_eq!(report.raw_verification_report_count, 0);
+
+    let markdown = render_tree_sitter_certification_markdown(&report);
+    assert!(markdown.contains("Historical matrix evidence is deprecated"));
+    assert!(
+        !markdown.contains("Current registry rows missing from the restored historical matrix")
+    );
 }
 
 #[test]
@@ -318,7 +377,12 @@ fn write_minimal_repo(root: &Path, include_gap_evidence: bool) {
           "status": "open",
           "reason": "fixture does not prove pending output",
           "required_closure": "add pending fixture evidence",
-          "evidence": "docs/findings/COMPILED-FINDINGS.md"
+          "evidence": {
+            "kind": "fixture",
+            "value": "docs/findings/COMPILED-FINDINGS.md",
+            "command": "cargo nextest run -p julie-extractors --lib golden_fixtures_match_canonical_extraction"
+          },
+          "planned_closure_task": "Phase 4a"
         }
       ]
     }

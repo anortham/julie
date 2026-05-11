@@ -5,6 +5,9 @@
 // Target: 700+ lines with edge cases, special syntax, and real-world validation
 
 #[cfg(test)]
+mod relationships;
+
+#[cfg(test)]
 mod toml_extractor_tests {
     #![allow(unused_imports)]
     #![allow(unused_variables)]

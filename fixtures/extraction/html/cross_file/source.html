@@ -1,0 +1,20 @@
+<!--
+  Phase 4b fixture: cross-file HTML resource references. The HTML extractor
+  must emit StructuredPendingRelationship for external <script src=...> and
+  <link href=...> references targeting other files. Inline <script> blocks
+  with intra-document references must NOT appear as structured pending.
+-->
+<!DOCTYPE html>
+<html>
+<head>
+  <script src="./other.js"></script>
+  <link rel="stylesheet" href="./other.css">
+</head>
+<body>
+  <div id="entry"></div>
+  <script>
+    // Inline script — must not produce structured pending
+    function local_helper() { return 42; }
+  </script>
+</body>
+</html>

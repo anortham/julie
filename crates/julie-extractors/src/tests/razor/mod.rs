@@ -28,6 +28,8 @@ fn extract_relationships(code: &str, symbols: &[Symbol]) -> Vec<Relationship> {
 }
 
 #[cfg(test)]
+mod cross_file_pending;
+#[cfg(test)]
 mod relationships;
 
 #[test]

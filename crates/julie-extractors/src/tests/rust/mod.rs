@@ -4,6 +4,7 @@
 //
 
 // Submodule declarations
+pub mod cross_file_pending;
 pub mod cross_file_relationships;
 pub mod extractor;
 pub mod functions;

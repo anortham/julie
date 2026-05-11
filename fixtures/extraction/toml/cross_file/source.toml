@@ -1,0 +1,13 @@
+# Phase 4d fixture: TOML cross-file refs do not exist as a language
+# construct. Package deps (Cargo, pyproject) name external symbols
+# but resolve at tooling/runtime, not at extraction. This fixture
+# exercises a dependency-style table to lock the no-pending
+# classification.
+
+[package]
+name = "local_helper"
+version = "0.1.0"
+
+[dependencies]
+some_other_crate = "1.0"
+another_crate = { version = "2.0", features = ["entry"] }

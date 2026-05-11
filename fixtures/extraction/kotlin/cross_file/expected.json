@@ -1,0 +1,251 @@
+{
+  "symbols": [
+    {
+      "key": "fixtures/extraction/kotlin/cross_file/source.kt:Worker:10:0",
+      "name": "Worker",
+      "kind": "class",
+      "language": "kotlin",
+      "file_path": "fixtures/extraction/kotlin/cross_file/source.kt",
+      "start_line": 10,
+      "start_column": 0,
+      "end_line": 19,
+      "end_column": 1,
+      "start_byte": 312,
+      "end_byte": 456,
+      "signature": "class Worker",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": null,
+      "metadata": {
+        "modifiers": "",
+        "type": "class"
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/kotlin/cross_file/source.kt:entry:11:4",
+      "name": "entry",
+      "kind": "method",
+      "language": "kotlin",
+      "file_path": "fixtures/extraction/kotlin/cross_file/source.kt",
+      "start_line": 11,
+      "start_column": 4,
+      "end_line": 14,
+      "end_column": 5,
+      "start_byte": 331,
+      "end_byte": 400,
+      "signature": "fun entry(): Int",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": "fixtures/extraction/kotlin/cross_file/source.kt:Worker:10:0",
+      "metadata": {
+        "modifiers": "",
+        "returnType": "Int",
+        "type": "method"
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/kotlin/cross_file/source.kt:fixture:6:0",
+      "name": "fixture",
+      "kind": "namespace",
+      "language": "kotlin",
+      "file_path": "fixtures/extraction/kotlin/cross_file/source.kt",
+      "start_line": 6,
+      "start_column": 0,
+      "end_line": 6,
+      "end_column": 15,
+      "start_byte": 275,
+      "end_byte": 290,
+      "signature": "package fixture",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": null,
+      "metadata": {
+        "type": "package"
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/kotlin/cross_file/source.kt:localHelper:16:4",
+      "name": "localHelper",
+      "kind": "method",
+      "language": "kotlin",
+      "file_path": "fixtures/extraction/kotlin/cross_file/source.kt",
+      "start_line": 16,
+      "start_column": 4,
+      "end_line": 18,
+      "end_column": 5,
+      "start_byte": 406,
+      "end_byte": 454,
+      "signature": "fun localHelper(): Int",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": "fixtures/extraction/kotlin/cross_file/source.kt:Worker:10:0",
+      "metadata": {
+        "modifiers": "",
+        "returnType": "Int",
+        "type": "method"
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/kotlin/cross_file/source.kt:other.Thing:8:0",
+      "name": "other.Thing",
+      "kind": "import",
+      "language": "kotlin",
+      "file_path": "fixtures/extraction/kotlin/cross_file/source.kt",
+      "start_line": 8,
+      "start_column": 0,
+      "end_line": 8,
+      "end_column": 18,
+      "start_byte": 292,
+      "end_byte": 310,
+      "signature": "import other.Thing",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": null,
+      "metadata": {
+        "type": "import"
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    }
+  ],
+  "relationships": [
+    {
+      "from_key": "fixtures/extraction/kotlin/cross_file/source.kt:entry:11:4",
+      "to_key": "fixtures/extraction/kotlin/cross_file/source.kt:localHelper:16:4",
+      "kind": "calls",
+      "file_path": "fixtures/extraction/kotlin/cross_file/source.kt",
+      "line_number": 13,
+      "confidence": "0.900",
+      "metadata": null
+    }
+  ],
+  "pending_relationships": [
+    {
+      "from_key": "fixtures/extraction/kotlin/cross_file/source.kt:entry:11:4",
+      "callee_name": "Thing",
+      "kind": "calls",
+      "file_path": "fixtures/extraction/kotlin/cross_file/source.kt",
+      "line_number": 12,
+      "confidence": "0.700"
+    },
+    {
+      "from_key": "fixtures/extraction/kotlin/cross_file/source.kt:entry:11:4",
+      "callee_name": "Thing",
+      "kind": "calls",
+      "file_path": "fixtures/extraction/kotlin/cross_file/source.kt",
+      "line_number": 12,
+      "confidence": "0.700"
+    }
+  ],
+  "structured_pending_relationships": [
+    {
+      "pending": {
+        "from_key": "fixtures/extraction/kotlin/cross_file/source.kt:entry:11:4",
+        "callee_name": "Thing",
+        "kind": "calls",
+        "file_path": "fixtures/extraction/kotlin/cross_file/source.kt",
+        "line_number": 12,
+        "confidence": "0.700"
+      },
+      "target": {
+        "display_name": "Thing",
+        "terminal_name": "Thing",
+        "receiver": null,
+        "namespace_path": [],
+        "import_context": null
+      },
+      "caller_scope_key": "fixtures/extraction/kotlin/cross_file/source.kt:entry:11:4"
+    },
+    {
+      "pending": {
+        "from_key": "fixtures/extraction/kotlin/cross_file/source.kt:entry:11:4",
+        "callee_name": "Thing",
+        "kind": "calls",
+        "file_path": "fixtures/extraction/kotlin/cross_file/source.kt",
+        "line_number": 12,
+        "confidence": "0.700"
+      },
+      "target": {
+        "display_name": "Thing",
+        "terminal_name": "Thing",
+        "receiver": null,
+        "namespace_path": [],
+        "import_context": null
+      },
+      "caller_scope_key": "fixtures/extraction/kotlin/cross_file/source.kt:entry:11:4"
+    }
+  ],
+  "identifiers": [
+    {
+      "key": "fixtures/extraction/kotlin/cross_file/source.kt:Thing:call:12:8",
+      "name": "Thing",
+      "kind": "call",
+      "language": "kotlin",
+      "file_path": "fixtures/extraction/kotlin/cross_file/source.kt",
+      "start_line": 12,
+      "start_column": 8,
+      "end_line": 12,
+      "end_column": 13,
+      "start_byte": 358,
+      "end_byte": 363,
+      "containing_key": "fixtures/extraction/kotlin/cross_file/source.kt:entry:11:4",
+      "target_key": null,
+      "confidence": "1.000"
+    },
+    {
+      "key": "fixtures/extraction/kotlin/cross_file/source.kt:localHelper:call:13:15",
+      "name": "localHelper",
+      "kind": "call",
+      "language": "kotlin",
+      "file_path": "fixtures/extraction/kotlin/cross_file/source.kt",
+      "start_line": 13,
+      "start_column": 15,
+      "end_line": 13,
+      "end_column": 26,
+      "start_byte": 381,
+      "end_byte": 392,
+      "containing_key": "fixtures/extraction/kotlin/cross_file/source.kt:entry:11:4",
+      "target_key": null,
+      "confidence": "1.000"
+    }
+  ],
+  "types": [
+    {
+      "symbol_key": "fixtures/extraction/kotlin/cross_file/source.kt:entry:11:4",
+      "resolved_type": "Int",
+      "generic_params": null,
+      "constraints": null,
+      "is_inferred": true,
+      "language": "kotlin",
+      "metadata": null
+    },
+    {
+      "symbol_key": "fixtures/extraction/kotlin/cross_file/source.kt:localHelper:16:4",
+      "resolved_type": "Int",
+      "generic_params": null,
+      "constraints": null,
+      "is_inferred": true,
+      "language": "kotlin",
+      "metadata": null
+    }
+  ],
+  "parse_diagnostics": []
+}

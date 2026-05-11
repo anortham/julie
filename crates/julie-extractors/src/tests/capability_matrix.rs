@@ -7,37 +7,37 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Deserialize)]
-struct CapabilityMatrix {
-    languages: Vec<CapabilityRow>,
+pub(crate) struct CapabilityMatrix {
+    pub(crate) languages: Vec<CapabilityRow>,
 }
 
 #[derive(Debug, Deserialize)]
-struct CapabilityRow {
-    language: String,
-    parser_crate: String,
-    extensions: Vec<String>,
-    dependency_status: String,
-    target_capabilities: CapabilityFlags,
-    capabilities: CapabilityFlags,
-    fixtures: Vec<FixtureRow>,
+pub(crate) struct CapabilityRow {
+    pub(crate) language: String,
+    pub(crate) parser_crate: String,
+    pub(crate) extensions: Vec<String>,
+    pub(crate) dependency_status: String,
+    pub(crate) target_capabilities: CapabilityFlags,
+    pub(crate) capabilities: CapabilityFlags,
+    pub(crate) fixtures: Vec<FixtureRow>,
     #[serde(default)]
-    capability_gaps: Vec<CapabilityGap>,
+    pub(crate) capability_gaps: Vec<CapabilityGap>,
 }
 
 #[derive(Debug, Deserialize)]
-struct CapabilityFlags {
-    symbols: bool,
-    relationships: bool,
-    pending_relationships: bool,
-    identifiers: bool,
-    types: bool,
+pub(crate) struct CapabilityFlags {
+    pub(crate) symbols: bool,
+    pub(crate) relationships: bool,
+    pub(crate) pending_relationships: bool,
+    pub(crate) identifiers: bool,
+    pub(crate) types: bool,
 }
 
 #[derive(Debug, Deserialize)]
-struct FixtureRow {
-    name: String,
-    source: String,
-    expected: String,
+pub(crate) struct FixtureRow {
+    pub(crate) name: String,
+    pub(crate) source: String,
+    pub(crate) expected: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -46,7 +46,82 @@ struct CapabilityGap {
     status: String,
     reason: String,
     required_closure: String,
-    evidence: String,
+    /// Typed evidence — see `EvidenceRef`. The resolver test in
+    /// `capability_matrix_evidence_resolves` (Task 1.2) verifies the referenced
+    /// artifact actually exists; this struct only carries the shape.
+    evidence: EvidenceRef,
+    /// Names the Phase task that will close this row. Required for
+    /// `status: "open"`; forbidden for `closed`/`exception`. Validated by
+    /// `capability_matrix_open_rows_have_planned_closure_task` (Task 1.2).
+    #[serde(default)]
+    planned_closure_task: Option<String>,
+}
+
+/// Typed evidence reference. Every `capability_gap.evidence` cell must
+/// deserialize as `Test`, `Fixture`, or `Commit`. The legacy bare-string form
+/// parses to `DeadString`, which the
+/// `capability_matrix_evidence_is_typed_object` test rejects.
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum EvidenceRef {
+    Test {
+        #[allow(dead_code)]
+        kind: TestKind,
+        value: String,
+        command: String,
+    },
+    Fixture {
+        #[allow(dead_code)]
+        kind: FixtureKind,
+        value: String,
+        #[allow(dead_code)]
+        command: String,
+    },
+    Commit {
+        #[allow(dead_code)]
+        kind: CommitKind,
+        value: String,
+        #[allow(dead_code)]
+        command: String,
+    },
+    /// Legacy bare-string evidence. Rejected by
+    /// `capability_matrix_evidence_is_typed_object`.
+    DeadString(String),
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum TestKind {
+    Test,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum FixtureKind {
+    Fixture,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum CommitKind {
+    Commit,
+}
+
+/// Task 5.1: lock the canonical path of `fixtures/extraction/capabilities.json`.
+/// The crate consumes this file via `include_str!("../../../fixtures/extraction/capabilities.json")`
+/// from `src/capability_snapshot.rs`, and ~44 in-repo references point at the
+/// same path. Moving this file requires updating every consumer; the test
+/// makes any accidental relocation fail loudly.
+#[test]
+fn capabilities_json_canonical_path_exists() {
+    let path = workspace_root().join("fixtures/extraction/capabilities.json");
+    assert!(
+        path.exists(),
+        "capabilities.json must remain at fixtures/extraction/capabilities.json — \
+         this is the single source of truth and the include_str! path in \
+         crates/julie-extractors/src/capability_snapshot.rs targets it. \
+         Moving this file requires updating both that include_str! and ~44 other refs."
+    );
 }
 
 #[test]
@@ -252,15 +327,276 @@ fn capability_matrix_requires_target_capabilities() {
                 row.language,
                 gap.capability
             );
-            assert!(
-                root.join(&gap.evidence).exists(),
-                "{} {} gap evidence path does not exist: {}",
-                row.language,
-                gap.capability,
-                gap.evidence
-            );
+            // Typed-evidence shape is enforced by
+            // `capability_matrix_evidence_is_typed_object`; resolution is
+            // enforced by `capability_matrix_evidence_resolves` (Task 1.2).
+            // No path-existence check here — bare strings are gone.
         }
     }
+}
+
+/// Task 1.1: every `capability_gaps[].evidence` cell deserializes as a typed
+/// object (`{kind, value, command}`), not the legacy bare-string form. This is
+/// the shape contract; resolution is enforced by
+/// `capability_matrix_evidence_resolves` in Task 1.2.
+#[test]
+fn capability_matrix_evidence_is_typed_object() {
+    let root = workspace_root();
+    let matrix = load_matrix(&root);
+    let mut errors = Vec::new();
+    for row in &matrix.languages {
+        for gap in &row.capability_gaps {
+            match &gap.evidence {
+                EvidenceRef::DeadString(s) => errors.push(format!(
+                    "language {} gap {} still has bare-string evidence `{}` — \
+                     migrate to typed object {{kind, value, command}}",
+                    row.language, gap.capability, s
+                )),
+                EvidenceRef::Test { value, command, .. } => {
+                    if value.is_empty() {
+                        errors.push(format!(
+                            "language {} gap {} test evidence has empty value",
+                            row.language, gap.capability
+                        ));
+                    }
+                    if !command.starts_with("cargo nextest") {
+                        errors.push(format!(
+                            "language {} gap {} test evidence command must start with \
+                             `cargo nextest`, got `{}`",
+                            row.language, gap.capability, command
+                        ));
+                    }
+                }
+                EvidenceRef::Fixture { value, .. } => {
+                    if value.is_empty() {
+                        errors.push(format!(
+                            "language {} gap {} fixture evidence has empty value",
+                            row.language, gap.capability
+                        ));
+                    }
+                }
+                EvidenceRef::Commit { value, .. } => {
+                    if value.len() != 40 || !value.chars().all(|c| c.is_ascii_hexdigit()) {
+                        errors.push(format!(
+                            "language {} gap {} commit evidence must be a 40-char hex SHA, \
+                             got `{}`",
+                            row.language, gap.capability, value
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    assert!(errors.is_empty(), "{}", errors.join("\n"));
+}
+
+/// Task 1.2: every typed-evidence reference must resolve to a real artifact.
+/// `kind: test` values must appear in the nextest test inventory; `kind:
+/// fixture` paths must exist on disk; `kind: commit` SHAs must resolve via
+/// `git cat-file -e`.
+#[test]
+fn capability_matrix_evidence_resolves() {
+    let root = workspace_root();
+    let matrix = load_matrix(&root);
+    let needs_inventory = matrix
+        .languages
+        .iter()
+        .flat_map(|row| &row.capability_gaps)
+        .any(|gap| matches!(gap.evidence, EvidenceRef::Test { .. }));
+    let test_inventory = if needs_inventory {
+        load_test_inventory(&root)
+    } else {
+        std::collections::HashSet::new()
+    };
+
+    let mut errors = Vec::new();
+    for row in &matrix.languages {
+        for gap in &row.capability_gaps {
+            match &gap.evidence {
+                EvidenceRef::Test { value, .. } => {
+                    if !test_inventory.contains(value) {
+                        errors.push(format!(
+                            "language {} gap {} references test `{}` not present in the nextest inventory",
+                            row.language, gap.capability, value
+                        ));
+                    }
+                }
+                EvidenceRef::Fixture { value, .. } => {
+                    let path = root.join(value);
+                    if !path.exists() {
+                        errors.push(format!(
+                            "language {} gap {} fixture path `{}` does not exist",
+                            row.language,
+                            gap.capability,
+                            path.display()
+                        ));
+                    }
+                }
+                EvidenceRef::Commit { value, .. } => {
+                    let output = std::process::Command::new("git")
+                        .args(["cat-file", "-e", value])
+                        .current_dir(&root)
+                        .output()
+                        .expect("git binary available");
+                    if !output.status.success() {
+                        errors.push(format!(
+                            "language {} gap {} commit `{}` does not resolve via git cat-file",
+                            row.language, gap.capability, value
+                        ));
+                    }
+                }
+                EvidenceRef::DeadString(s) => errors.push(format!(
+                    "language {} gap {} still has bare-string evidence: {}",
+                    row.language, gap.capability, s
+                )),
+            }
+        }
+    }
+    assert!(errors.is_empty(), "{}", errors.join("\n"));
+}
+
+/// Task 1.2: exception reasons must describe an intrinsic-N/A condition or a
+/// documented parser limitation. Placeholder phrases like "not implemented" or
+/// "todo" are banned — they hide work, not document a real limitation.
+#[test]
+fn capability_matrix_no_not_implemented_exceptions() {
+    let root = workspace_root();
+    let matrix = load_matrix(&root);
+    let banned = [
+        "not implemented",
+        "not yet supported",
+        "todo",
+        "coming soon",
+    ];
+    let mut errors = Vec::new();
+    for row in &matrix.languages {
+        for gap in &row.capability_gaps {
+            if gap.status != "exception" {
+                continue;
+            }
+            let lower = gap.reason.to_lowercase();
+            for ban in &banned {
+                if lower.contains(ban) {
+                    errors.push(format!(
+                        "language {} gap {} has exception reason containing `{}`: {}",
+                        row.language, gap.capability, ban, gap.reason
+                    ));
+                }
+            }
+        }
+    }
+    assert!(errors.is_empty(), "{}", errors.join("\n"));
+}
+
+/// Task 2.2 / Task 4d.ignore-flip: every language whose
+/// `target_capabilities.relationships = true` must ship at least one fixture
+/// proving a code shape that should NOT produce a wrong relationship or
+/// pending edge. Accepted fixture names are anything containing `negative`
+/// (dedicated negative fixture) or `cross_file` (cross-file pending fixture,
+/// which by Phase 4 closure convention carries both positive emission and a
+/// negative assertion locking intra-file shapes out of pending).
+#[test]
+fn capability_matrix_negative_cases_emit_no_wrong_edges() {
+    let root = workspace_root();
+    let matrix = load_matrix(&root);
+    let mut errors = Vec::new();
+    for row in &matrix.languages {
+        if !row.target_capabilities.relationships {
+            continue;
+        }
+        let has_negative = row
+            .fixtures
+            .iter()
+            .any(|f| f.name.contains("negative") || f.name.contains("cross_file"));
+        if !has_negative {
+            errors.push(format!(
+                "language {} declares target_capabilities.relationships=true but has no `negative` or `cross_file` fixture proving wrong edges are not emitted; add fixtures/extraction/{}/negative/ or fixtures/extraction/{}/cross_file/",
+                row.language, row.language, row.language
+            ));
+        }
+    }
+    assert!(errors.is_empty(), "{}", errors.join("\n"));
+}
+
+/// Task 1.2: every `status: open` row must carry `planned_closure_task`
+/// pointing at a literal heading or anchor present in the plan body. Rows in
+/// `closed` or `exception` status must NOT carry this field — closed evidence
+/// already names what closed it.
+#[test]
+fn capability_matrix_open_rows_have_planned_closure_task() {
+    let root = workspace_root();
+    let matrix = load_matrix(&root);
+    let plan_path = root.join("docs/plans/2026-05-10-best-in-class-tree-sitter-plan.md");
+    let plan_body = std::fs::read_to_string(&plan_path)
+        .unwrap_or_else(|err| panic!("plan file must exist at {}: {}", plan_path.display(), err));
+    let mut errors = Vec::new();
+    for row in &matrix.languages {
+        for gap in &row.capability_gaps {
+            match gap.status.as_str() {
+                "open" => match gap.planned_closure_task.as_deref() {
+                    None => errors.push(format!(
+                        "language {} gap {} has status=open but no planned_closure_task field",
+                        row.language, gap.capability
+                    )),
+                    Some(task) => {
+                        if !plan_body.contains(task) {
+                            errors.push(format!(
+                                "language {} gap {} planned_closure_task `{}` does not appear in the plan",
+                                row.language, gap.capability, task
+                            ));
+                        }
+                    }
+                },
+                "exception" | "closed" => {
+                    if gap.planned_closure_task.is_some() {
+                        errors.push(format!(
+                            "language {} gap {} status={} but carries planned_closure_task; remove the field",
+                            row.language, gap.capability, gap.status
+                        ));
+                    }
+                }
+                other => errors.push(format!(
+                    "language {} gap {} has unrecognized status `{}` (expected open|exception|closed)",
+                    row.language, gap.capability, other
+                )),
+            }
+        }
+    }
+    assert!(errors.is_empty(), "{}", errors.join("\n"));
+}
+
+fn load_test_inventory(root: &Path) -> std::collections::HashSet<String> {
+    let output = std::process::Command::new("cargo")
+        .args([
+            "nextest",
+            "list",
+            "-p",
+            "julie-extractors",
+            "--message-format",
+            "json",
+        ])
+        .current_dir(root)
+        .output()
+        .expect("cargo nextest list");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut names = std::collections::HashSet::new();
+    if let Ok(root_value) = serde_json::from_str::<Value>(&stdout) {
+        if let Some(suites) = root_value.get("rust-suites").and_then(Value::as_object) {
+            for (_suite_name, suite_value) in suites {
+                let Some(testcases) = suite_value.get("testcases").and_then(Value::as_object)
+                else {
+                    continue;
+                };
+                for full_name in testcases.keys() {
+                    names.insert(full_name.clone());
+                    if let Some(bare) = full_name.split("::").last() {
+                        names.insert(bare.to_string());
+                    }
+                }
+            }
+        }
+    }
+    names
 }
 
 #[test]
@@ -436,7 +772,7 @@ fn regex_capabilities_advertise_golden_relationships() {
     );
 }
 
-fn workspace_root() -> PathBuf {
+pub(crate) fn workspace_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .and_then(Path::parent)
@@ -444,7 +780,7 @@ fn workspace_root() -> PathBuf {
         .to_path_buf()
 }
 
-fn load_matrix(root: &Path) -> CapabilityMatrix {
+pub(crate) fn load_matrix(root: &Path) -> CapabilityMatrix {
     let matrix_path = root.join("fixtures/extraction/capabilities.json");
     let json = fs::read_to_string(&matrix_path).unwrap_or_else(|err| {
         panic!(
@@ -570,7 +906,7 @@ fn assert_fixture_pending_parity(root: &Path, fixture: &FixtureRow, language: &s
     );
 }
 
-fn load_expected_fixture(root: &Path, fixture: &FixtureRow) -> Value {
+pub(crate) fn load_expected_fixture(root: &Path, fixture: &FixtureRow) -> Value {
     let expected_path = root.join(&fixture.expected);
     let json = fs::read_to_string(&expected_path).unwrap_or_else(|err| {
         panic!(

@@ -1,0 +1,144 @@
+{
+  "symbols": [
+    {
+      "key": "fixtures/extraction/cpp/cross_file/source.cpp:entry:12:0",
+      "name": "entry",
+      "kind": "function",
+      "language": "cpp",
+      "file_path": "fixtures/extraction/cpp/cross_file/source.cpp",
+      "start_line": 12,
+      "start_column": 0,
+      "end_line": 15,
+      "end_column": 1,
+      "start_byte": 366,
+      "end_byte": 434,
+      "signature": "int entry()",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": null,
+      "metadata": {},
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/cpp/cross_file/source.cpp:local_helper:8:0",
+      "name": "local_helper",
+      "kind": "function",
+      "language": "cpp",
+      "file_path": "fixtures/extraction/cpp/cross_file/source.cpp",
+      "start_line": 8,
+      "start_column": 0,
+      "end_line": 10,
+      "end_column": 1,
+      "start_byte": 320,
+      "end_byte": 364,
+      "signature": "static int local_helper()",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": null,
+      "metadata": {},
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    }
+  ],
+  "relationships": [
+    {
+      "from_key": "fixtures/extraction/cpp/cross_file/source.cpp:entry:12:0",
+      "to_key": "fixtures/extraction/cpp/cross_file/source.cpp:local_helper:8:0",
+      "kind": "calls",
+      "file_path": "fixtures/extraction/cpp/cross_file/source.cpp",
+      "line_number": 14,
+      "confidence": "0.900",
+      "metadata": null
+    }
+  ],
+  "pending_relationships": [
+    {
+      "from_key": "fixtures/extraction/cpp/cross_file/source.cpp:entry:12:0",
+      "callee_name": "do_thing",
+      "kind": "calls",
+      "file_path": "fixtures/extraction/cpp/cross_file/source.cpp",
+      "line_number": 13,
+      "confidence": "0.700"
+    }
+  ],
+  "structured_pending_relationships": [
+    {
+      "pending": {
+        "from_key": "fixtures/extraction/cpp/cross_file/source.cpp:entry:12:0",
+        "callee_name": "do_thing",
+        "kind": "calls",
+        "file_path": "fixtures/extraction/cpp/cross_file/source.cpp",
+        "line_number": 13,
+        "confidence": "0.700"
+      },
+      "target": {
+        "display_name": "do_thing",
+        "terminal_name": "do_thing",
+        "receiver": null,
+        "namespace_path": [],
+        "import_context": null
+      },
+      "caller_scope_key": "fixtures/extraction/cpp/cross_file/source.cpp:entry:12:0"
+    }
+  ],
+  "identifiers": [
+    {
+      "key": "fixtures/extraction/cpp/cross_file/source.cpp:local_helper:call:14:11",
+      "name": "local_helper",
+      "kind": "call",
+      "language": "cpp",
+      "file_path": "fixtures/extraction/cpp/cross_file/source.cpp",
+      "start_line": 14,
+      "start_column": 11,
+      "end_line": 14,
+      "end_column": 23,
+      "start_byte": 417,
+      "end_byte": 429,
+      "containing_key": "fixtures/extraction/cpp/cross_file/source.cpp:entry:12:0",
+      "target_key": null,
+      "confidence": "1.000"
+    },
+    {
+      "key": "fixtures/extraction/cpp/cross_file/source.cpp:other_ns::do_thing:call:13:4",
+      "name": "other_ns::do_thing",
+      "kind": "call",
+      "language": "cpp",
+      "file_path": "fixtures/extraction/cpp/cross_file/source.cpp",
+      "start_line": 13,
+      "start_column": 4,
+      "end_line": 13,
+      "end_column": 22,
+      "start_byte": 384,
+      "end_byte": 402,
+      "containing_key": "fixtures/extraction/cpp/cross_file/source.cpp:entry:12:0",
+      "target_key": null,
+      "confidence": "1.000"
+    }
+  ],
+  "types": [
+    {
+      "symbol_key": "fixtures/extraction/cpp/cross_file/source.cpp:entry:12:0",
+      "resolved_type": "int",
+      "generic_params": null,
+      "constraints": null,
+      "is_inferred": true,
+      "language": "cpp",
+      "metadata": null
+    },
+    {
+      "symbol_key": "fixtures/extraction/cpp/cross_file/source.cpp:local_helper:8:0",
+      "resolved_type": "int",
+      "generic_params": null,
+      "constraints": null,
+      "is_inferred": true,
+      "language": "cpp",
+      "metadata": null
+    }
+  ],
+  "parse_diagnostics": []
+}

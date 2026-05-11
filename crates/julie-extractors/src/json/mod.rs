@@ -4,9 +4,15 @@
 /// - Top-level keys and nested object keys are extracted
 /// - Objects and arrays are treated as SymbolKind::Module (containers)
 /// - Primitive values are treated as SymbolKind::Variable
-use crate::base::{BaseExtractor, Identifier, Symbol, SymbolKind};
+use crate::base::{
+    BaseExtractor, Identifier, PendingRelationship, Relationship, StructuredPendingRelationship,
+    Symbol, SymbolKind,
+};
 use std::collections::HashMap;
 use std::path::Path;
+use tree_sitter::Tree;
+
+mod relationships;
 
 pub struct JsonExtractor {
     pub(crate) base: BaseExtractor,
@@ -135,5 +141,27 @@ impl JsonExtractor {
 
     pub fn infer_types(&self, _symbols: &[Symbol]) -> HashMap<String, String> {
         HashMap::new()
+    }
+
+    /// Extract JSON Schema `$ref` relationships (Phase 3.2). Local pointers
+    /// resolve to concrete `Relationship`s; external pointers (`<file>#/...`)
+    /// emit structured pending relationships.
+    pub fn extract_relationships(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Relationship> {
+        let mut relationships = Vec::new();
+        relationships::extract_relationships_internal(
+            &mut self.base,
+            tree.root_node(),
+            symbols,
+            &mut relationships,
+        );
+        relationships
+    }
+
+    pub fn get_pending_relationships(&self) -> Vec<PendingRelationship> {
+        self.base.get_pending_relationships()
+    }
+
+    pub fn get_structured_pending_relationships(&self) -> Vec<StructuredPendingRelationship> {
+        self.base.get_structured_pending_relationships()
     }
 }

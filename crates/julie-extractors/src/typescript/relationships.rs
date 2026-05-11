@@ -25,8 +25,83 @@ pub(crate) fn extract_relationships(
         &symbol_index,
         &mut relationships,
     );
+    extract_new_expression_relationships(
+        extractor,
+        tree.root_node(),
+        symbols,
+        &symbol_index,
+        &mut relationships,
+    );
     extract_inheritance_relationships(extractor, tree.root_node(), symbols, &mut relationships);
     relationships
+}
+
+fn extract_new_expression_relationships(
+    extractor: &mut TypeScriptExtractor,
+    node: Node,
+    symbols: &[Symbol],
+    symbol_index: &ScopedSymbolIndex<'_>,
+    relationships: &mut Vec<Relationship>,
+) {
+    if node.kind() == "new_expression" {
+        if let Some(constructor_node) = node.child_by_field_name("constructor") {
+            let target = extract_call_target(extractor, constructor_node);
+            let caller = find_containing_callable_symbol(node, symbols).cloned();
+            if let Some(caller) = caller {
+                let resolution = symbol_index.resolve_call_target(
+                    &target.terminal_name,
+                    Some(&caller),
+                    target.receiver.as_deref(),
+                );
+                if let LocalTargetResolution::Resolved(type_symbol) = &resolution {
+                    if matches!(
+                        type_symbol.kind,
+                        SymbolKind::Class | SymbolKind::Type | SymbolKind::Interface
+                    ) {
+                        relationships.push(Relationship {
+                            id: format!(
+                                "{}_{}_{:?}_{}",
+                                caller.id,
+                                type_symbol.id,
+                                RelationshipKind::Instantiates,
+                                node.start_position().row
+                            ),
+                            from_symbol_id: caller.id.clone(),
+                            to_symbol_id: type_symbol.id.clone(),
+                            kind: RelationshipKind::Instantiates,
+                            file_path: extractor.base().file_path.clone(),
+                            line_number: (node.start_position().row + 1) as u32,
+                            confidence: 1.0,
+                            metadata: None,
+                        });
+                    }
+                } else {
+                    let pending = extractor.base_mut().create_pending_relationship(
+                        caller.id.clone(),
+                        target,
+                        RelationshipKind::Instantiates,
+                        &node,
+                        Some(caller.id.clone()),
+                        Some(0.9),
+                    );
+                    extractor
+                        .base_mut()
+                        .add_structured_pending_relationship(pending);
+                }
+            }
+        }
+    }
+
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        extract_new_expression_relationships(
+            extractor,
+            child,
+            symbols,
+            symbol_index,
+            relationships,
+        );
+    }
 }
 
 /// Extract function call relationships

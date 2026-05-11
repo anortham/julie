@@ -1,0 +1,181 @@
+{
+  "symbols": [
+    {
+      "key": "fixtures/extraction/zig/cross_file/source.zig:_:13:4",
+      "name": "_",
+      "kind": "variable",
+      "language": "zig",
+      "file_path": "fixtures/extraction/zig/cross_file/source.zig",
+      "start_line": 13,
+      "start_column": 4,
+      "end_line": 13,
+      "end_column": 17,
+      "start_byte": 370,
+      "end_byte": 383,
+      "signature": "var _: inferred",
+      "doc_comment": null,
+      "visibility": "Private",
+      "parent_key": "fixtures/extraction/zig/cross_file/source.zig:entry:12:0",
+      "metadata": {},
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/zig/cross_file/source.zig:entry:12:0",
+      "name": "entry",
+      "kind": "function",
+      "language": "zig",
+      "file_path": "fixtures/extraction/zig/cross_file/source.zig",
+      "start_line": 12,
+      "start_column": 0,
+      "end_line": 15,
+      "end_column": 1,
+      "start_byte": 345,
+      "end_byte": 412,
+      "signature": "pub fn entry() i32",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": null,
+      "metadata": {},
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/zig/cross_file/source.zig:local_helper:8:0",
+      "name": "local_helper",
+      "kind": "function",
+      "language": "zig",
+      "file_path": "fixtures/extraction/zig/cross_file/source.zig",
+      "start_line": 8,
+      "start_column": 0,
+      "end_line": 10,
+      "end_column": 1,
+      "start_byte": 303,
+      "end_byte": 343,
+      "signature": "fn local_helper() i32",
+      "doc_comment": null,
+      "visibility": "Private",
+      "parent_key": null,
+      "metadata": {},
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/zig/cross_file/source.zig:m:6:0",
+      "name": "m",
+      "kind": "import",
+      "language": "zig",
+      "file_path": "fixtures/extraction/zig/cross_file/source.zig",
+      "start_line": 6,
+      "start_column": 0,
+      "end_line": 6,
+      "end_column": 31,
+      "start_byte": 270,
+      "end_byte": 301,
+      "signature": "const m = @import(\"other.zig\")",
+      "doc_comment": null,
+      "visibility": "Private",
+      "parent_key": null,
+      "metadata": {
+        "source": "other.zig"
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    }
+  ],
+  "relationships": [
+    {
+      "from_key": "fixtures/extraction/zig/cross_file/source.zig:entry:12:0",
+      "to_key": "fixtures/extraction/zig/cross_file/source.zig:local_helper:8:0",
+      "kind": "calls",
+      "file_path": "fixtures/extraction/zig/cross_file/source.zig",
+      "line_number": 14,
+      "confidence": "0.900",
+      "metadata": null
+    }
+  ],
+  "pending_relationships": [
+    {
+      "from_key": "fixtures/extraction/zig/cross_file/source.zig:entry:12:0",
+      "callee_name": "m.func",
+      "kind": "calls",
+      "file_path": "fixtures/extraction/zig/cross_file/source.zig",
+      "line_number": 13,
+      "confidence": "0.700"
+    }
+  ],
+  "structured_pending_relationships": [
+    {
+      "pending": {
+        "from_key": "fixtures/extraction/zig/cross_file/source.zig:entry:12:0",
+        "callee_name": "m.func",
+        "kind": "calls",
+        "file_path": "fixtures/extraction/zig/cross_file/source.zig",
+        "line_number": 13,
+        "confidence": "0.700"
+      },
+      "target": {
+        "display_name": "m.func",
+        "terminal_name": "func",
+        "receiver": "m",
+        "namespace_path": [],
+        "import_context": null
+      },
+      "caller_scope_key": "fixtures/extraction/zig/cross_file/source.zig:entry:12:0"
+    }
+  ],
+  "identifiers": [
+    {
+      "key": "fixtures/extraction/zig/cross_file/source.zig:func:call:13:10",
+      "name": "func",
+      "kind": "call",
+      "language": "zig",
+      "file_path": "fixtures/extraction/zig/cross_file/source.zig",
+      "start_line": 13,
+      "start_column": 10,
+      "end_line": 13,
+      "end_column": 14,
+      "start_byte": 376,
+      "end_byte": 380,
+      "containing_key": "fixtures/extraction/zig/cross_file/source.zig:entry:12:0",
+      "target_key": null,
+      "confidence": "1.000"
+    },
+    {
+      "key": "fixtures/extraction/zig/cross_file/source.zig:local_helper:call:14:11",
+      "name": "local_helper",
+      "kind": "call",
+      "language": "zig",
+      "file_path": "fixtures/extraction/zig/cross_file/source.zig",
+      "start_line": 14,
+      "start_column": 11,
+      "end_line": 14,
+      "end_column": 23,
+      "start_byte": 395,
+      "end_byte": 407,
+      "containing_key": "fixtures/extraction/zig/cross_file/source.zig:entry:12:0",
+      "target_key": null,
+      "confidence": "1.000"
+    }
+  ],
+  "types": [
+    {
+      "symbol_key": "fixtures/extraction/zig/cross_file/source.zig:_:13:4",
+      "resolved_type": "inferred",
+      "generic_params": null,
+      "constraints": null,
+      "is_inferred": true,
+      "language": "zig",
+      "metadata": null
+    }
+  ],
+  "parse_diagnostics": []
+}

@@ -3,8 +3,7 @@
 /// Handles: use (Uses), @behaviour (Implements), defimpl (Implements), function calls (Calls).
 use super::helpers;
 use crate::base::{
-    BaseExtractor, PendingRelationship, Relationship, RelationshipKind, Symbol, SymbolKind,
-    UnresolvedTarget,
+    BaseExtractor, Relationship, RelationshipKind, Symbol, SymbolKind, UnresolvedTarget,
 };
 use std::collections::HashMap;
 use tree_sitter::Node;
@@ -303,16 +302,15 @@ fn extract_call_relationship(
             metadata: None,
         });
     } else {
-        extractor
-            .base
-            .add_pending_relationship(PendingRelationship {
-                from_symbol_id: caller.id.clone(),
-                callee_name: fn_name.to_string(),
-                kind: RelationshipKind::Calls,
-                file_path: extractor.base.file_path.clone(),
-                line_number,
-                confidence: 0.7,
-            });
+        let pending = extractor.base.create_pending_relationship(
+            caller.id.clone(),
+            unresolved_elixir_alias(fn_name.to_string()),
+            RelationshipKind::Calls,
+            node,
+            Some(caller.id.clone()),
+            Some(0.7),
+        );
+        extractor.base.add_structured_pending_relationship(pending);
     }
 }
 

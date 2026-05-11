@@ -1,3 +1,5 @@
+mod cross_file_pending;
+
 #[cfg(test)]
 mod elixir_tests {
     use crate::base::{SymbolKind, Visibility};

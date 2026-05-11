@@ -1,3 +1,4 @@
+use crate::base::relationship_resolution::{StructuredPendingRelationship, UnresolvedTarget};
 use crate::base::{BaseExtractor, Relationship, RelationshipKind, Symbol};
 use std::collections::HashMap;
 use tree_sitter::Node;
@@ -164,6 +165,83 @@ impl RelationshipExtractor {
                 });
             }
         }
+    }
+
+    /// Phase 4b.html — walk the tree and emit StructuredPendingRelationship
+    /// for external `<script src=...>` and `<link href=...>` references.
+    pub(super) fn collect_structured_pending(
+        base: &BaseExtractor,
+        node: Node,
+        symbols: &[Symbol],
+        pending: &mut Vec<StructuredPendingRelationship>,
+    ) {
+        match node.kind() {
+            "script_element" => {
+                Self::emit_resource_pending(base, node, symbols, "src", "html-script-src", pending);
+            }
+            "element" => {
+                if let Some(tag) = HTMLHelpers::extract_tag_name(base, node) {
+                    if tag.eq_ignore_ascii_case("link") {
+                        Self::emit_resource_pending(
+                            base,
+                            node,
+                            symbols,
+                            "href",
+                            "html-link-href",
+                            pending,
+                        );
+                    } else if tag.eq_ignore_ascii_case("script") {
+                        Self::emit_resource_pending(
+                            base,
+                            node,
+                            symbols,
+                            "src",
+                            "html-script-src",
+                            pending,
+                        );
+                    }
+                }
+            }
+            _ => {}
+        }
+
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            Self::collect_structured_pending(base, child, symbols, pending);
+        }
+    }
+
+    fn emit_resource_pending(
+        base: &BaseExtractor,
+        node: Node,
+        symbols: &[Symbol],
+        attribute: &str,
+        import_context: &str,
+        pending: &mut Vec<StructuredPendingRelationship>,
+    ) {
+        let attributes = HTMLHelpers::extract_attributes(base, node);
+        let Some(value) = attributes.get(attribute) else {
+            return;
+        };
+        if value.trim().is_empty() {
+            return;
+        }
+        let line_number = (node.start_position().row + 1) as u32;
+        let caller = Self::find_element_symbol(base, node, symbols);
+        let caller_id = caller
+            .map(|symbol| symbol.id.clone())
+            .unwrap_or_else(|| format!("file:{}", base.file_path));
+        let mut target = UnresolvedTarget::simple(value.clone());
+        target.import_context = Some(import_context.to_string());
+        pending.push(StructuredPendingRelationship::new(
+            caller_id.clone(),
+            target,
+            Some(caller_id),
+            RelationshipKind::Imports,
+            base.file_path.clone(),
+            line_number,
+            0.9,
+        ));
     }
 
     /// Find the symbol matching a node

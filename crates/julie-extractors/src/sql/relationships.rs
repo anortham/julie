@@ -5,7 +5,10 @@
 //! - JOIN operations
 //! - Table references in queries
 
-use crate::base::{BaseExtractor, Relationship, RelationshipKind, Symbol, SymbolKind};
+use crate::base::{
+    BaseExtractor, Relationship, RelationshipKind, StructuredPendingRelationship, Symbol,
+    SymbolKind, UnresolvedTarget,
+};
 use serde_json::Value;
 use std::collections::HashMap;
 use tree_sitter::Node;
@@ -52,6 +55,20 @@ pub(super) fn extract_relationships_internal(
         "foreign_key_constraint" | "references_clause" => {
             extract_foreign_key_relationship(base, node, symbols, relationships);
         }
+        // Inline REFERENCES on a column definition: tree-sitter-sequel does
+        // not wrap the references in a dedicated `references_clause` node — it
+        // attaches `keyword_references` + `object_reference` directly under
+        // `column_definition`. Phase 3.1 needs to catch this shape so that
+        // cross-schema FKs (e.g., `REFERENCES other_schema.users(id)`) emit
+        // structured pending relationships.
+        "column_definition" => {
+            if base
+                .find_child_by_type(&node, "keyword_references")
+                .is_some()
+            {
+                extract_foreign_key_relationship(base, node, symbols, relationships);
+            }
+        }
         // Plain SELECT/FROM table references are not emitted as top-level edges.
         // CREATE VIEW handles its own FROM dependencies at the view symbol boundary.
         "select_statement" | "from_clause" => {}
@@ -97,6 +114,16 @@ pub(super) fn extract_foreign_key_relationship(
 
     let referenced_table = base.get_node_text(&referenced_table_node);
 
+    // Capture the *full* qualified text (e.g., "other_schema.users") so that
+    // cross-schema references can be split into namespace_path + terminal_name
+    // for structured pending emission below. The unqualified case keeps the
+    // bare identifier shape.
+    let referenced_table_qualified = if let Some(obj_ref) = object_ref_node {
+        base.get_node_text(&obj_ref)
+    } else {
+        referenced_table.clone()
+    };
+
     // Find the source table (parent of this foreign key)
     let mut current_node = node.parent();
     while let Some(current) = current_node {
@@ -135,39 +162,82 @@ pub(super) fn extract_foreign_key_relationship(
         .iter()
         .find(|s| s.name == referenced_table && s.kind == SymbolKind::Class);
 
-    // SQL is in NO_PENDING_CAPABILITIES: only emit a relationship when both the
-    // source and target tables are defined in this file. A missing target means
-    // the referenced table lives in another file; we suppress the relationship
-    // entirely rather than emitting a dead synthetic ID like "external_users".
-    if let (Some(source_symbol), Some(target_symbol)) = (source_symbol, target_symbol) {
-        let mut metadata = HashMap::new();
-        metadata.insert(
-            "targetTable".to_string(),
-            Value::String(referenced_table.clone()),
-        );
-        metadata.insert("sourceTable".to_string(), Value::String(source_table));
-        metadata.insert(
-            "relationshipType".to_string(),
-            Value::String("foreign_key".to_string()),
-        );
-        metadata.insert("isExternal".to_string(), Value::Bool(false));
+    let line_number = node.start_position().row as u32 + 1;
 
-        relationships.push(Relationship {
-            id: format!(
-                "{}_{}_{:?}_{}",
-                source_symbol.id,
-                target_symbol.id,
+    match (source_symbol, target_symbol) {
+        (Some(source_symbol), Some(target_symbol)) => {
+            // Both tables in the same file → emit a concrete relationship.
+            let mut metadata = HashMap::new();
+            metadata.insert(
+                "targetTable".to_string(),
+                Value::String(referenced_table.clone()),
+            );
+            metadata.insert("sourceTable".to_string(), Value::String(source_table));
+            metadata.insert(
+                "relationshipType".to_string(),
+                Value::String("foreign_key".to_string()),
+            );
+            metadata.insert("isExternal".to_string(), Value::Bool(false));
+
+            relationships.push(Relationship {
+                id: format!(
+                    "{}_{}_{:?}_{}",
+                    source_symbol.id,
+                    target_symbol.id,
+                    RelationshipKind::References,
+                    node.start_position().row
+                ),
+                from_symbol_id: source_symbol.id.clone(),
+                to_symbol_id: target_symbol.id.clone(),
+                kind: RelationshipKind::References,
+                file_path: base.file_path.clone(),
+                line_number,
+                confidence: 1.0,
+                metadata: Some(metadata),
+            });
+        }
+        (Some(source_symbol), None) => {
+            // Cross-file FK target → emit a structured pending relationship.
+            // Parse the qualified reference into namespace_path + terminal_name
+            // so the resolver can match against external schemas later.
+            let parts: Vec<&str> = referenced_table_qualified.split('.').collect();
+            let (terminal_name, namespace_path) = match parts.as_slice() {
+                [] => return,
+                [name] => ((*name).to_string(), Vec::new()),
+                _ => (
+                    parts
+                        .last()
+                        .expect("split produces at least one element")
+                        .to_string(),
+                    parts[..parts.len() - 1]
+                        .iter()
+                        .map(|s| s.to_string())
+                        .collect(),
+                ),
+            };
+            let target = UnresolvedTarget {
+                display_name: referenced_table_qualified.clone(),
+                terminal_name,
+                receiver: None,
+                namespace_path,
+                import_context: None,
+            };
+            let pending = StructuredPendingRelationship::new(
+                source_symbol.id.clone(),
+                target,
+                Some(source_symbol.id.clone()),
                 RelationshipKind::References,
-                node.start_position().row
-            ),
-            from_symbol_id: source_symbol.id.clone(),
-            to_symbol_id: target_symbol.id.clone(),
-            kind: RelationshipKind::References,
-            file_path: base.file_path.clone(),
-            line_number: node.start_position().row as u32 + 1,
-            confidence: 1.0,
-            metadata: Some(metadata),
-        });
+                base.file_path.clone(),
+                line_number,
+                1.0,
+            );
+            base.add_structured_pending_relationship(pending);
+        }
+        _ => {
+            // No source table in scope (malformed AST): emit nothing rather
+            // than fabricate a synthetic edge. The capability matrix's
+            // negative-case test requires this branch to exist.
+        }
     }
 }
 

@@ -1,0 +1,189 @@
+{
+  "symbols": [
+    {
+      "key": "fixtures/extraction/lua/cross_file/source.lua:entry:12:15",
+      "name": "entry",
+      "kind": "function",
+      "language": "lua",
+      "file_path": "fixtures/extraction/lua/cross_file/source.lua",
+      "start_line": 12,
+      "start_column": 15,
+      "end_line": 12,
+      "end_column": 20,
+      "start_byte": 385,
+      "end_byte": 390,
+      "signature": "local function entry()",
+      "doc_comment": null,
+      "visibility": "Private",
+      "parent_key": null,
+      "metadata": {},
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/lua/cross_file/source.lua:local_helper:8:15",
+      "name": "local_helper",
+      "kind": "function",
+      "language": "lua",
+      "file_path": "fixtures/extraction/lua/cross_file/source.lua",
+      "start_line": 8,
+      "start_column": 15,
+      "end_line": 8,
+      "end_column": 27,
+      "start_byte": 336,
+      "end_byte": 348,
+      "signature": "local function local_helper()",
+      "doc_comment": null,
+      "visibility": "Private",
+      "parent_key": null,
+      "metadata": {},
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/lua/cross_file/source.lua:other:6:6",
+      "name": "other",
+      "kind": "import",
+      "language": "lua",
+      "file_path": "fixtures/extraction/lua/cross_file/source.lua",
+      "start_line": 6,
+      "start_column": 6,
+      "end_line": 6,
+      "end_column": 11,
+      "start_byte": 295,
+      "end_byte": 300,
+      "signature": "local other = require(\"other\")",
+      "doc_comment": null,
+      "visibility": "Private",
+      "parent_key": null,
+      "metadata": {
+        "dataType": "import"
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    },
+    {
+      "key": "fixtures/extraction/lua/cross_file/source.lua:other:6:6",
+      "name": "other",
+      "kind": "import",
+      "language": "lua",
+      "file_path": "fixtures/extraction/lua/cross_file/source.lua",
+      "start_line": 6,
+      "start_column": 6,
+      "end_line": 6,
+      "end_column": 11,
+      "start_byte": 295,
+      "end_byte": 300,
+      "signature": "other = require(\"other\")",
+      "doc_comment": null,
+      "visibility": "Public",
+      "parent_key": null,
+      "metadata": {
+        "dataType": "import"
+      },
+      "annotations": [],
+      "semantic_group": null,
+      "confidence": null,
+      "content_type": null
+    }
+  ],
+  "relationships": [
+    {
+      "from_key": "fixtures/extraction/lua/cross_file/source.lua:entry:12:15",
+      "to_key": "fixtures/extraction/lua/cross_file/source.lua:local_helper:8:15",
+      "kind": "calls",
+      "file_path": "fixtures/extraction/lua/cross_file/source.lua",
+      "line_number": 14,
+      "confidence": "0.900",
+      "metadata": null
+    }
+  ],
+  "pending_relationships": [
+    {
+      "from_key": "fixtures/extraction/lua/cross_file/source.lua:entry:12:15",
+      "callee_name": "other.fn",
+      "kind": "calls",
+      "file_path": "fixtures/extraction/lua/cross_file/source.lua",
+      "line_number": 13,
+      "confidence": "0.700"
+    }
+  ],
+  "structured_pending_relationships": [
+    {
+      "pending": {
+        "from_key": "fixtures/extraction/lua/cross_file/source.lua:entry:12:15",
+        "callee_name": "other.fn",
+        "kind": "calls",
+        "file_path": "fixtures/extraction/lua/cross_file/source.lua",
+        "line_number": 13,
+        "confidence": "0.700"
+      },
+      "target": {
+        "display_name": "other.fn",
+        "terminal_name": "fn",
+        "receiver": "other",
+        "namespace_path": [],
+        "import_context": null
+      },
+      "caller_scope_key": "fixtures/extraction/lua/cross_file/source.lua:entry:12:15"
+    }
+  ],
+  "identifiers": [
+    {
+      "key": "fixtures/extraction/lua/cross_file/source.lua:fn:call:13:10",
+      "name": "fn",
+      "kind": "call",
+      "language": "lua",
+      "file_path": "fixtures/extraction/lua/cross_file/source.lua",
+      "start_line": 13,
+      "start_column": 10,
+      "end_line": 13,
+      "end_column": 12,
+      "start_byte": 403,
+      "end_byte": 405,
+      "containing_key": null,
+      "target_key": null,
+      "confidence": "1.000"
+    },
+    {
+      "key": "fixtures/extraction/lua/cross_file/source.lua:local_helper:call:14:11",
+      "name": "local_helper",
+      "kind": "call",
+      "language": "lua",
+      "file_path": "fixtures/extraction/lua/cross_file/source.lua",
+      "start_line": 14,
+      "start_column": 11,
+      "end_line": 14,
+      "end_column": 23,
+      "start_byte": 419,
+      "end_byte": 431,
+      "containing_key": null,
+      "target_key": null,
+      "confidence": "1.000"
+    },
+    {
+      "key": "fixtures/extraction/lua/cross_file/source.lua:require:call:6:14",
+      "name": "require",
+      "kind": "call",
+      "language": "lua",
+      "file_path": "fixtures/extraction/lua/cross_file/source.lua",
+      "start_line": 6,
+      "start_column": 14,
+      "end_line": 6,
+      "end_column": 21,
+      "start_byte": 303,
+      "end_byte": 310,
+      "containing_key": null,
+      "target_key": null,
+      "confidence": "1.000"
+    }
+  ],
+  "types": [],
+  "parse_diagnostics": []
+}

@@ -44,6 +44,7 @@ pub fn extract_symbols_and_relationships(code: &str) -> (Vec<Symbol>, Vec<Relati
     (symbols, relationships)
 }
 
+pub mod cross_file_pending;
 pub mod doc_comments;
 pub mod edge_cases;
 pub mod forms;
