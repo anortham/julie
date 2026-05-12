@@ -52,3 +52,27 @@ Data: 1,876 fast_search calls with enriched telemetry (824 before file mode, 1,0
 - [ ] **AST-based complexity metrics** -- Add cyclomatic complexity calculation during AST extraction. Store as symbol metadata. Enables a `/hotspots` skill (complexity x centrality = refactoring targets). Deferred because it requires per-language node-kind mapping across 34 extractors.
 - [ ] **Function body hashing for duplication detection** -- Hash normalized function bodies during extraction to detect near-duplicate functions across a codebase. Low priority.
 - [x] **Scoped path extraction for Rust** -- Implemented as structured scoped-call resolution: Rust `scoped_identifier` calls preserve namespace paths, indexing carries structured pendings, and the resolver uses namespace-aware candidate selection to avoid false edges like `std::collections::HashMap::new()` resolving to local `new`.
+
+
+------------------
+Log file of issue:
+
+lmc       120398 29.4  0.3 3815868 432404 ?      Rl   09:28   0:00 /home/lmc/.cache/julie/embeddings/sidecar/venv/bin/python -c import torch; v=torch.version; print(v.split('+')[0])
+lmc       120400  0.0  0.0 222280 23348 ?        Sl   09:28   0:00 uv pip install --python /home/lmc/.cache/julie/embeddings/sidecar/venv/bin/python --reinstall-package torch torch==2.11.0 --index-url https://download.pytorch.org/whl/cu124
+lmc       120420  0.0  0.0 296032 23556 ?        Sl   09:28   0:00 uv pip install --python /home/lmc/.cache/julie/embeddings/sidecar/venv/bin/python --reinstall-package torch torch==2.11.0 --index-url https://download.pytorch.org/whl/cu124
+lmc       120425  0.0  0.0 222284 23436 ?        Sl   09:28   0:00 uv pip install --python /home/lmc/.cache/julie/embeddings/sidecar/venv/bin/python --reinstall-package torch torch==2.11.0 --index-url https://download.pytorch.org/whl/cu124
+lmc       120467  0.0  0.0 222284 23076 ?        Sl   09:28   0:00 uv pip install --python /home/lmc/.cache/julie/embeddings/sidecar/venv/bin/python --reinstall-package torch torch==2.11.0 --index-url https://download.pytorch.org/whl/cu124
+lmc       120487 31.3  0.3 3805772 420724 ?      Rl   09:28   0:00 /home/lmc/.cache/julie/embeddings/sidecar/venv/bin/python -c import torch; v=torch.version; print(v.split('+')[0])
+lmc       120510 33.6  0.3 3802128 414764 ?      Rl   09:28   0:00 /home/lmc/.cache/julie/embeddings/sidecar/venv/bin/python -c import torch; v=torch.version; print(v.split('+')[0])
+lmc       120528  0.0  0.0 222284 23120 ?        Sl   09:28   0:00 uv pip install --python /home/lmc/.cache/julie/embeddings/sidecar/venv/bin/python --reinstall-package torch torch==2.11.0 --index-url https://download.pytorch.org/whl/cu124
+lmc       120529  0.0  0.0 222284 23136 ?        Sl   09:28   0:00 uv pip install --python /home/lmc/.cache/julie/embeddings/sidecar/venv/bin/python --reinstall-package torch torch==2.11.0 --index-url https://download.pytorch.org/whl/cu124
+lmc       120537 32.5  0.3 3758232 403368 ?      Rl   09:28   0:00 /home/lmc/.cache/julie/embeddings/sidecar/venv/bin/python -m sidecar.main
+lmc       120561  0.0  0.0 222284 23332 ?        Sl   09:28   0:00 uv pip install --python /home/lmc/.cache/julie/embeddings/sidecar/venv/bin/python --reinstall-package torch torch==2.11.0 --index-url https://download.pytorch.org/whl/cu124
+lmc       120600 41.4  0.3 3793504 408084 ?      Rl   09:28   0:00 /home/lmc/.cache/julie/embeddings/sidecar/venv/bin/python -c import torch; v=torch.version; print(v.split('+')[0])
+lmc       120640 30.3  0.2 3054604 373620 ?      R    09:28   0:00 /home/lmc/.cache/julie/embeddings/sidecar/venv/bin/python -c import torch; v=torch.version; print(v.split('+')[0])
+lmc       120641  0.0  0.0 222284 23428 ?        Sl   09:28   0:00 uv pip install --python /home/lmc/.cache/julie/embeddings/sidecar/venv/bin/python --reinstall-package torch torch==2.11.0 --index-url https://download.pytorch.org/whl/cu124
+lmc       120713 31.1  0.2 3041316 346732 ?      R    09:28   0:00 /home/lmc/.cache/julie/embeddings/sidecar/venv/bin/python -c import torch; v=torch.version; print(v.split('+')[0])
+lmc       120752  0.0  0.0 222280 23056 ?        Sl   09:28   0:00 uv pip install --python /home/lmc/.cache/julie/embeddings/sidecar/venv/bin/python --reinstall-package torch torch==2.11.0 --index-url https://download.pytorch.org/whl/cu124
+lmc       120762 36.1  0.2 3033836 335008 ?      R    09:28   0:00 /home/lmc/.cache/julie/embeddings/sidecar/venv/bin/python -c import torch; v=torch.version; print(v.split('+')[0])
+lmc       120779  0.0  0.0 228432 23108 ?        Sl   09:28   0:00 uv pip install --python /home/lmc/.cache/julie/embeddings/sidecar/venv/bin/python --reinstall-package torch torch==2.11.0 --index-url https://download.pytorch.org/whl/cu124
+lmc       120818 43.8  0.2 3005792 297140 ?      R    09:28   0:00 /home/lmc/.cache/julie/embeddings/sidecar/venv/bin/python -c import torch; v=torch.version; print(v.split('+')[0])

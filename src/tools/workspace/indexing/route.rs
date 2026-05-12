@@ -71,30 +71,39 @@ impl IndexRoute {
         workspace_root: PathBuf,
         is_primary: bool,
     ) -> std::result::Result<Self, IndexRouteError> {
-        let db_path = handler
-            .workspace_db_file_path_for(&workspace_id)
-            .await
-            .map_err(|err| {
-                IndexRouteError::new(
-                    IndexRouteRepairReason::StorageAnchorUnavailable,
-                    format!(
-                        "failed to resolve database path for workspace '{}': {err}",
-                        workspace_id
-                    ),
-                )
-            })?;
-        let tantivy_path = handler
-            .workspace_tantivy_dir_for(&workspace_id)
-            .await
-            .map_err(|err| {
-                IndexRouteError::new(
-                    IndexRouteRepairReason::StorageAnchorUnavailable,
-                    format!(
-                        "failed to resolve Tantivy path for workspace '{}': {err}",
-                        workspace_id
-                    ),
-                )
-            })?;
+        let (db_path, tantivy_path) = if let Some(pool) = handler.workspace_pool.as_ref() {
+            let workspace_index_dir = pool.indexes_dir().join(&workspace_id);
+            (
+                workspace_index_dir.join("db").join("symbols.db"),
+                workspace_index_dir.join("tantivy"),
+            )
+        } else {
+            let db_path = handler
+                .workspace_db_file_path_for(&workspace_id)
+                .await
+                .map_err(|err| {
+                    IndexRouteError::new(
+                        IndexRouteRepairReason::StorageAnchorUnavailable,
+                        format!(
+                            "failed to resolve database path for workspace '{}': {err}",
+                            workspace_id
+                        ),
+                    )
+                })?;
+            let tantivy_path = handler
+                .workspace_tantivy_dir_for(&workspace_id)
+                .await
+                .map_err(|err| {
+                    IndexRouteError::new(
+                        IndexRouteRepairReason::StorageAnchorUnavailable,
+                        format!(
+                            "failed to resolve Tantivy path for workspace '{}': {err}",
+                            workspace_id
+                        ),
+                    )
+                })?;
+            (db_path, tantivy_path)
+        };
 
         Ok(Self {
             workspace_id,

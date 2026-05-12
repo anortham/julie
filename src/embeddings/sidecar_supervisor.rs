@@ -26,7 +26,6 @@ pub struct SidecarLaunchConfig {
 }
 
 pub fn build_sidecar_launch_config() -> Result<SidecarLaunchConfig> {
-    let sidecar_root = sidecar_root_path()?;
     let script_override = std::env::var(SIDECAR_SCRIPT_ENV)
         .ok()
         .map(|value| value.trim().to_string())
@@ -43,6 +42,7 @@ pub fn build_sidecar_launch_config() -> Result<SidecarLaunchConfig> {
             .ok()
             .as_deref()
             .is_some_and(is_truthy_env_flag);
+        let sidecar_root = sidecar_root_path()?;
 
         return build_program_override_launch_config(
             program,
@@ -54,6 +54,8 @@ pub fn build_sidecar_launch_config() -> Result<SidecarLaunchConfig> {
     }
 
     let venv_path = managed_venv_path();
+    let _bootstrap_lock = sidecar_bootstrap::acquire_bootstrap_lock(&venv_path)?;
+    let sidecar_root = sidecar_root_path()?;
     sidecar_bootstrap::ensure_venv_exists(&venv_path)?;
 
     let venv_python = sidecar_bootstrap::managed_venv_python_path(&venv_path);

@@ -6,16 +6,57 @@
 //! sidecar package via pip.
 
 use std::ffi::{OsStr, OsString};
+use std::fs::{File, OpenOptions};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use anyhow::{Context, Result, bail};
+use fs2::FileExt;
 use tracing::warn;
 
 use super::sidecar_supervisor::{RUNTIME_EDITABLE_REQUIREMENT, SUPPORTED_PYTHON_MINORS};
 
 const SIDECAR_BOOTSTRAP_PYTHON_ENV: &str = "JULIE_EMBEDDING_SIDECAR_BOOTSTRAP_PYTHON";
 const INSTALL_MARKER: &str = ".julie-sidecar-install-root";
+const BOOTSTRAP_LOCK: &str = ".julie-sidecar-bootstrap.lock";
+
+pub(super) struct SidecarBootstrapLock {
+    file: File,
+}
+
+impl Drop for SidecarBootstrapLock {
+    fn drop(&mut self) {
+        let _ = self.file.unlock();
+    }
+}
+
+pub(super) fn acquire_bootstrap_lock(venv_path: &Path) -> Result<SidecarBootstrapLock> {
+    let lock_dir = venv_path.parent().unwrap_or(venv_path);
+    std::fs::create_dir_all(lock_dir).with_context(|| {
+        format!(
+            "sidecar bootstrap failed to create lock directory '{}'",
+            lock_dir.display()
+        )
+    })?;
+
+    let lock_path = lock_dir.join(BOOTSTRAP_LOCK);
+    let file = OpenOptions::new()
+        .create(true)
+        .read(true)
+        .write(true)
+        .truncate(false)
+        .open(&lock_path)
+        .with_context(|| {
+            format!(
+                "sidecar bootstrap failed to open lock '{}'",
+                lock_path.display()
+            )
+        })?;
+    file.lock_exclusive()
+        .with_context(|| format!("sidecar bootstrap failed to lock '{}'", lock_path.display()))?;
+
+    Ok(SidecarBootstrapLock { file })
+}
 
 /// On Windows, prevent spawned processes from opening visible console windows.
 #[cfg(windows)]
