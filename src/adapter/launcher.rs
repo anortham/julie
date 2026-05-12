@@ -79,7 +79,7 @@ impl DaemonLauncher {
             Some(_pid) => {
                 match std::fs::read_to_string(self.paths.daemon_state()) {
                     Ok(s) if s.trim() == "ready" => DaemonReadiness::Ready,
-                    Ok(s) if s.trim() == "draining" => DaemonReadiness::Ready,
+                    Ok(s) if s.trim() == "draining" => DaemonReadiness::Stopping,
                     Ok(s) if s.trim() == "stopping" => DaemonReadiness::Stopping,
                     _ => {
                         // State file missing or unreadable.
@@ -224,7 +224,10 @@ impl DaemonLauncher {
                     return Ok(());
                 }
                 if target_state == "ready" && state == "draining" {
-                    return Ok(());
+                    return Err(io::Error::new(
+                        io::ErrorKind::Interrupted,
+                        "Daemon transitioned to draining before reaching ready",
+                    ));
                 }
                 if target_state == "ready" && state == "stopping" {
                     return Err(io::Error::new(

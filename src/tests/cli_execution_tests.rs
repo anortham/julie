@@ -436,6 +436,45 @@ async fn test_bootstrap_standalone_handler_missing_workspace() {
     );
 }
 
+#[cfg(unix)]
+#[tokio::test]
+#[serial_test::serial(home_env)]
+async fn test_bootstrap_standalone_handler_rejects_home_workspace_before_writing_julie_dir() {
+    let temp_home = tempfile::Builder::new()
+        .prefix("julie_cli_home_guard_")
+        .tempdir()
+        .unwrap();
+    let old_home = std::env::var_os("HOME");
+    unsafe {
+        std::env::set_var("HOME", temp_home.path());
+    }
+
+    let result = bootstrap_standalone_handler(temp_home.path()).await;
+
+    if let Some(old_home) = old_home {
+        unsafe {
+            std::env::set_var("HOME", old_home);
+        }
+    } else {
+        unsafe {
+            std::env::remove_var("HOME");
+        }
+    }
+
+    let err = result
+        .err()
+        .expect("Expected error for home workspace root");
+    let err_msg = err.to_string();
+    assert!(
+        err_msg.contains("sensitive system path"),
+        "Expected sensitive-root error, got: {err_msg}"
+    );
+    assert!(
+        !temp_home.path().join(".julie").exists(),
+        "standalone bootstrap must reject home roots before creating .julie"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Standalone handler bootstrap: real workspace init
 // ---------------------------------------------------------------------------

@@ -283,7 +283,7 @@ pub fn stale_binary_accept_action(
     } else if active_sessions == 0 {
         IncomingSessionAction::ShutdownForRestart(RestartReason::StaleBinary)
     } else if restart_pending {
-        IncomingSessionAction::Accept
+        IncomingSessionAction::RejectForRestart(RestartReason::StaleBinary)
     } else {
         IncomingSessionAction::AcceptWithRestartPending(RestartReason::StaleBinary)
     }

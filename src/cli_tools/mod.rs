@@ -280,6 +280,7 @@ pub async fn bootstrap_standalone_handler(
             workspace_root.display()
         );
     }
+    crate::workspace::root_safety::reject_sensitive_workspace_root(workspace_root)?;
 
     let handler = JulieServerHandler::new(workspace_root.to_path_buf())
         .await

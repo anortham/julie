@@ -348,10 +348,17 @@ impl HttpJulieService {
     }
 
     fn remove_session_registration(&self, registration: &HttpSessionRegistration) {
-        let remaining = if let Some(sessions) = &self.dependencies.sessions {
+        Self::remove_session_registration_for(&self.dependencies, registration);
+    }
+
+    fn remove_session_registration_for(
+        dependencies: &DaemonSessionDependencies,
+        registration: &HttpSessionRegistration,
+    ) {
+        let remaining = if let Some(sessions) = &dependencies.sessions {
             sessions.remove_session(&registration.session_id);
             let remaining = sessions.active_count();
-            if let Some(tx) = &self.dependencies.dashboard_tx {
+            if let Some(tx) = &dependencies.dashboard_tx {
                 let _ = tx.send(DashboardEvent::SessionChange {
                     active_count: remaining,
                 });
@@ -360,11 +367,11 @@ impl HttpJulieService {
         } else {
             0
         };
-        self.apply_disconnect_action(remaining);
+        Self::apply_disconnect_action_for(dependencies, remaining);
     }
 
-    fn apply_disconnect_action(&self, remaining: usize) {
-        let Some(admission) = &self.dependencies.http_admission else {
+    fn apply_disconnect_action_for(dependencies: &DaemonSessionDependencies, remaining: usize) {
+        let Some(admission) = &dependencies.http_admission else {
             return;
         };
 
@@ -531,31 +538,68 @@ impl HttpJulieService {
 }
 
 impl Drop for HttpJulieService {
+    // Cleanup invariant:
+    //
+    // The session must remain in `SessionTracker` until async DELETE cleanup
+    // (DB commit, watcher pool detach, etc.) completes so drain accounting
+    // stays honest while the daemon is shutting down. To preserve that, we
+    // spawn `session.finish()` AND tracker removal together on the Tokio
+    // runtime — pre-fix, tracker removal happened synchronously here while
+    // `finish()` was awaited later, which could leave the daemon counting an
+    // empty session as drained even though work was still in flight.
+    //
+    // Trade-off: if the runtime is torn down before the spawned task runs to
+    // completion (panic, SIGKILL, abrupt drop), both `session.finish()` and
+    // tracker removal are lost. In normal shutdown the runtime is kept alive
+    // until drain completes, so this holds. The no-runtime branch below runs
+    // tracker removal synchronously as a best-effort fallback.
+    //
+    // Lock contention: `try_lock()` on either Mutex is expected to succeed
+    // because Drop runs while the last `Arc<HttpJulieService>` reference is
+    // being released. If it fails, log loudly — the missing cleanup means a
+    // tracker entry could linger and drain/restart accounting could stall.
     fn drop(&mut self) {
-        let registration = self
-            .session_registration
-            .try_lock()
-            .ok()
-            .and_then(|mut guard| guard.take());
-        if let Some(registration) = &registration {
-            self.remove_session_registration(registration);
-        }
-
-        let session = self
-            .session
-            .try_lock()
-            .ok()
-            .and_then(|mut guard| guard.take());
-        let Some(session) = session else {
-            return;
+        let dependencies = Arc::clone(&self.dependencies);
+        let registration = match self.session_registration.try_lock() {
+            Ok(mut guard) => guard.take(),
+            Err(_) => {
+                warn!(
+                    "HTTP Julie session dropped while session_registration lock was held; \
+                     registration cleanup skipped — drain accounting may stay stale"
+                );
+                None
+            }
         };
+        let session = match self.session.try_lock() {
+            Ok(mut guard) => guard.take(),
+            Err(_) => {
+                warn!(
+                    "HTTP Julie session dropped while session lock was held; \
+                     async session cleanup skipped"
+                );
+                None
+            }
+        };
+        if registration.is_none() && session.is_none() {
+            return;
+        }
 
         if let Ok(handle) = tokio::runtime::Handle::try_current() {
             handle.spawn(async move {
-                session.finish().await;
+                if let Some(session) = session {
+                    session.finish().await;
+                }
+                if let Some(registration) = registration {
+                    HttpJulieService::remove_session_registration_for(&dependencies, &registration);
+                }
             });
         } else {
-            warn!("HTTP Julie session dropped without a Tokio runtime; async cleanup skipped");
+            if let Some(registration) = &registration {
+                HttpJulieService::remove_session_registration_for(&dependencies, registration);
+            }
+            if session.is_some() {
+                warn!("HTTP Julie session dropped without a Tokio runtime; async cleanup skipped");
+            }
         }
     }
 }

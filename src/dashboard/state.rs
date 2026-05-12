@@ -221,6 +221,19 @@ impl DashboardState {
         self.restart_pending.load(Ordering::Relaxed)
     }
 
+    /// Current daemon phase as observed by the dashboard.
+    pub fn daemon_phase_kind(&self) -> DashboardDaemonPhase {
+        self.daemon_phase
+            .read()
+            .unwrap_or_else(|p| p.into_inner())
+            .kind()
+    }
+
+    /// Whether dashboard routes may start workspace mutations.
+    pub fn accepts_workspace_actions(&self) -> bool {
+        self.daemon_phase_kind() == DashboardDaemonPhase::Ready && !self.is_restart_pending()
+    }
+
     /// Time elapsed since the daemon started.
     pub fn uptime(&self) -> Duration {
         self.start_time.elapsed()

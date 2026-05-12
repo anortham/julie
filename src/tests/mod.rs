@@ -110,6 +110,7 @@ pub mod tools {
         pub mod refresh_routing; // Primary force-refresh should reuse full index path
         pub mod registry; // Workspace registry tests
         pub mod resolver; // Cross-file relationship resolution tests
+        pub mod root_safety; // Sensitive workspace root rejection tests
         pub mod utils; // Workspace utilities tests // Registry service tests
     }
 

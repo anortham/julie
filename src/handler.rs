@@ -1346,6 +1346,7 @@ impl JulieServerHandler {
         let target_canonical = target_path
             .canonicalize()
             .unwrap_or_else(|_| target_path.clone());
+        crate::workspace::root_safety::reject_sensitive_workspace_root(&target_canonical)?;
         let loaded_workspace_root_changed = {
             let workspace_guard = self.workspace.read().await;
             workspace_guard.as_ref().is_some_and(|workspace| {

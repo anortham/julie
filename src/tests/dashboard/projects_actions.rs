@@ -8,10 +8,13 @@ use axum::http::Request;
 use tower::ServiceExt;
 
 use crate::daemon::database::DaemonDatabase;
-use crate::daemon::lifecycle::LifecyclePhase;
+use crate::daemon::lifecycle::{LifecyclePhase, ShutdownCause};
 use crate::daemon::session::SessionTracker;
 use crate::daemon::watcher_pool::WatcherPool;
 use crate::daemon::workspace_pool::WorkspacePool;
+use crate::dashboard::routes::projects_actions::{
+    cleanup_dashboard_anchor, dashboard_handler, disconnect_dashboard_attached_workspaces,
+};
 use crate::dashboard::state::DashboardState;
 use crate::dashboard::{DashboardConfig, create_router};
 use crate::workspace::registry::generate_workspace_id;
@@ -29,6 +32,18 @@ fn action_ready_state() -> (
     Arc<WorkspacePool>,
     tempfile::TempDir,
 ) {
+    action_state_with_phase(LifecyclePhase::Ready, false)
+}
+
+fn action_state_with_phase(
+    phase: LifecyclePhase,
+    restart_pending: bool,
+) -> (
+    DashboardState,
+    Arc<DaemonDatabase>,
+    Arc<WorkspacePool>,
+    tempfile::TempDir,
+) {
     let temp_dir = tempfile::tempdir().expect("tempdir");
     let daemon_db =
         Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).expect("open daemon"));
@@ -41,8 +56,8 @@ fn action_ready_state() -> (
     let state = DashboardState::new_with_watcher_pool(
         sessions,
         Some(Arc::clone(&daemon_db)),
-        Arc::new(AtomicBool::new(false)),
-        Arc::new(RwLock::new(LifecyclePhase::Ready)),
+        Arc::new(AtomicBool::new(restart_pending)),
+        Arc::new(RwLock::new(phase)),
         Instant::now(),
         None,
         Some(watcher_pool),
@@ -51,6 +66,21 @@ fn action_ready_state() -> (
     );
 
     (state, daemon_db, workspace_pool, temp_dir)
+}
+
+fn action_state_without_daemon() -> (DashboardState, tempfile::TempDir) {
+    let temp_dir = tempfile::tempdir().expect("tempdir");
+    let state = DashboardState::new(
+        Arc::new(SessionTracker::new()),
+        None,
+        Arc::new(AtomicBool::new(false)),
+        Arc::new(RwLock::new(LifecyclePhase::Ready)),
+        Instant::now(),
+        None,
+        None,
+        50,
+    );
+    (state, temp_dir)
 }
 
 fn write_workspace_source(path: &std::path::Path) {
@@ -223,6 +253,134 @@ async fn test_projects_register_action_indexes_workspace_without_activating_it()
     assert_eq!(row.status, "ready");
     assert_eq!(row.session_count, 0);
     assert!(row.symbol_count.unwrap_or(0) > 0);
+}
+
+#[tokio::test]
+async fn test_projects_register_action_renders_tool_error_as_danger_notice() {
+    let (state, temp_dir) = action_state_without_daemon();
+    let workspace_root = temp_dir.path().join("register-target");
+    write_workspace_source(&workspace_root);
+    let csrf_token = state.action_csrf_token().to_string();
+
+    let config = DashboardConfig::default();
+    let app = create_router(state, config).unwrap();
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/projects/register")
+                .header("content-type", "application/x-www-form-urlencoded")
+                .body(Body::from(format!(
+                    "path={}&csrf_token={}",
+                    workspace_root.to_string_lossy(),
+                    csrf_token,
+                )))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status().as_u16(), 200);
+    let html = body_to_string(response.into_body()).await;
+    assert!(html.contains("Workspace registration requires daemon mode"));
+    assert!(
+        html.contains("rgba(212, 70, 88, 0.35)"),
+        "tool-level errors must render as danger notices, html={html}"
+    );
+}
+
+#[tokio::test]
+#[serial_test::serial(dashboard_cwd)]
+async fn test_dashboard_handler_does_not_write_project_log_under_process_cwd() {
+    let (state, _daemon_db, _workspace_pool, temp_dir) = action_ready_state();
+    let cwd = temp_dir.path().join("process-cwd");
+    std::fs::create_dir_all(&cwd).expect("create cwd");
+    let old_cwd = std::env::current_dir().expect("current dir");
+    std::env::set_current_dir(&cwd).expect("switch cwd");
+
+    let result = dashboard_handler(&crate::dashboard::AppState {
+        dashboard: state.clone(),
+        tera: std::sync::Arc::new(tokio::sync::RwLock::new(tera::Tera::default())),
+        config: DashboardConfig::default(),
+    })
+    .await;
+
+    std::env::set_current_dir(old_cwd).expect("restore cwd");
+    let (handler, _anchor_dir, anchor_id) = result.expect("dashboard handler");
+    disconnect_dashboard_attached_workspaces(&handler).await;
+    cleanup_dashboard_anchor(
+        &crate::dashboard::AppState {
+            dashboard: state,
+            tera: std::sync::Arc::new(tokio::sync::RwLock::new(tera::Tera::default())),
+            config: DashboardConfig::default(),
+        },
+        &anchor_id,
+    )
+    .await;
+
+    assert!(
+        !cwd.join(".julie").exists(),
+        "dashboard synthetic handler must not create project logs under process cwd"
+    );
+}
+
+#[tokio::test]
+async fn test_cleanup_dashboard_anchor_does_not_remove_paths_outside_indexes_dir() {
+    let (state, _daemon_db, _workspace_pool, temp_dir) = action_ready_state();
+    std::fs::create_dir_all(temp_dir.path().join("indexes")).expect("indexes dir");
+    let outside = temp_dir.path().join("outside-anchor-target");
+    std::fs::create_dir_all(&outside).expect("outside dir");
+    std::fs::write(outside.join("keep.txt"), "keep").expect("outside marker");
+    let app_state = crate::dashboard::AppState {
+        dashboard: state,
+        tera: std::sync::Arc::new(tokio::sync::RwLock::new(tera::Tera::default())),
+        config: DashboardConfig::default(),
+    };
+
+    cleanup_dashboard_anchor(&app_state, "../outside-anchor-target").await;
+
+    assert!(
+        outside.join("keep.txt").exists(),
+        "dashboard anchor cleanup must not follow path traversal outside indexes dir"
+    );
+}
+
+#[tokio::test]
+async fn test_projects_refresh_action_blocks_while_daemon_is_stopping() {
+    let (state, daemon_db, _workspace_pool, _temp_dir) = action_state_with_phase(
+        LifecyclePhase::Stopping {
+            cause: ShutdownCause::RestartRequired,
+        },
+        true,
+    );
+    let csrf_token = state.action_csrf_token().to_string();
+
+    let config = DashboardConfig::default();
+    let app = create_router(state, config).unwrap();
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/projects/missing_ws/refresh")
+                .header("content-type", "application/x-www-form-urlencoded")
+                .body(Body::from(format!("csrf_token={csrf_token}")))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status().as_u16(), 200);
+    let html = body_to_string(response.into_body()).await;
+    assert!(html.contains("Workspace Action Blocked"));
+    assert!(html.contains("daemon STOPPING"));
+    assert!(
+        !html.contains("Workspace not found"),
+        "shutdown guard must short-circuit before workspace action dispatch"
+    );
+    assert!(
+        daemon_db.list_workspaces().unwrap().is_empty(),
+        "blocked dashboard action must not create registry rows"
+    );
 }
 
 #[tokio::test]

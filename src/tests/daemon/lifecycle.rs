@@ -166,6 +166,14 @@ fn test_stale_binary_accept_action_marks_restart_pending_when_busy() {
 }
 
 #[test]
+fn test_stale_binary_accept_action_rejects_new_sessions_after_restart_pending() {
+    assert_eq!(
+        stale_binary_accept_action(true, 1, true),
+        IncomingSessionAction::RejectForRestart(RestartReason::StaleBinary)
+    );
+}
+
+#[test]
 fn test_stale_binary_disconnect_action_marks_restart_pending_with_sessions_remaining() {
     assert_eq!(
         stale_binary_disconnect_action(true, false, 2),

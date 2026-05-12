@@ -7,6 +7,7 @@ use serde::Deserialize;
 
 use crate::dashboard::AppState;
 use crate::dashboard::routes::projects::{ProjectsNotice, render_projects_page};
+use crate::dashboard::state::DashboardDaemonPhase;
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::CallToolResult;
 use crate::tools::workspace::ManageWorkspaceTool;
@@ -47,7 +48,7 @@ pub(crate) async fn dashboard_handler(
     let anchor_path = anchor_dir.path().to_path_buf();
     let anchor_id = generate_workspace_id(&anchor_path.to_string_lossy())?;
     let workspace_root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    let handler = JulieServerHandler::new_deferred_daemon_startup_hint(
+    let handler = JulieServerHandler::new_deferred_daemon_startup_hint_without_project_log(
         WorkspaceStartupHint {
             path: workspace_root,
             source: Some(WorkspaceStartupSource::Cwd),
@@ -95,12 +96,31 @@ pub(crate) async fn cleanup_dashboard_anchor(state: &AppState, anchor_id: &str) 
     if let Some(pool) = state.dashboard.workspace_pool() {
         let anchor_index_dir = pool.indexes_dir().join(anchor_id);
         if anchor_index_dir.exists() {
-            let _ = tokio::fs::remove_dir_all(anchor_index_dir).await;
+            let indexes_dir = pool.indexes_dir();
+            let remove_allowed = indexes_dir
+                .canonicalize()
+                .ok()
+                .zip(anchor_index_dir.canonicalize().ok())
+                .is_some_and(|(indexes_dir, anchor_index_dir)| {
+                    anchor_index_dir.starts_with(indexes_dir)
+                });
+            if remove_allowed {
+                let _ = tokio::fs::remove_dir_all(anchor_index_dir).await;
+            } else {
+                warn!(
+                    anchor_id,
+                    "Refusing to clean dashboard anchor outside indexes directory"
+                );
+            }
         }
     }
 }
 
 async fn run_workspace_action(state: &AppState, tool: ManageWorkspaceTool) -> ProjectsNotice {
+    if let Some(notice) = workspace_action_blocked_notice(state) {
+        return notice;
+    }
+
     let (handler, _anchor_dir, anchor_id) = match dashboard_handler(state).await {
         Ok(handler) => handler,
         Err(error) => return ProjectsNotice::error("Workspace Action Failed", error.to_string()),
@@ -111,9 +131,33 @@ async fn run_workspace_action(state: &AppState, tool: ManageWorkspaceTool) -> Pr
     cleanup_dashboard_anchor(state, &anchor_id).await;
 
     match action_result {
-        Ok(result) => ProjectsNotice::from_text(extract_text_from_result(&result)),
+        Ok(result) => {
+            let mut notice = ProjectsNotice::from_text(extract_text_from_result(&result));
+            if result.is_error.unwrap_or(false) {
+                notice.kind = "danger".to_string();
+            }
+            notice
+        }
         Err(error) => ProjectsNotice::error("Workspace Action Failed", error.to_string()),
     }
+}
+
+fn workspace_action_blocked_notice(state: &AppState) -> Option<ProjectsNotice> {
+    if state.dashboard.accepts_workspace_actions() {
+        return None;
+    }
+
+    let phase = state.dashboard.daemon_phase_kind();
+    let detail = if phase != DashboardDaemonPhase::Ready {
+        format!(
+            "daemon {} is not accepting dashboard workspace actions. Reload after shutdown or restart completes.",
+            phase.label()
+        )
+    } else {
+        "daemon restart is pending. Reload after restart completes.".to_string()
+    };
+
+    Some(ProjectsNotice::error("Workspace Action Blocked", detail))
 }
 
 fn csrf_invalid_notice() -> ProjectsNotice {
