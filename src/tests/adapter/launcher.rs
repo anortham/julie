@@ -51,6 +51,42 @@ mod tests {
         assert!(!paths.daemon_pid().exists());
     }
 
+    /// Regression for P2 of the 577-daemon cascade fix: a freshly-created
+    /// empty PID file (from a racing daemon mid-`create_exclusive`) must
+    /// classify as `Starting`, not `Dead`. Pre-fix, the empty file fed
+    /// back as `None` from `check_running`, so `daemon_readiness` returned
+    /// `Dead` and unlinked the state file — the launcher then spawned a
+    /// replacement daemon every poll tick. The state file MUST also be
+    /// preserved (a daemon may have already written "ready" to it before
+    /// the empty PID-file window opened).
+    #[test]
+    fn test_readiness_starting_when_pid_file_is_fresh_but_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DaemonPaths::with_home(dir.path().to_path_buf());
+        fs::create_dir_all(dir.path()).unwrap();
+        // Fresh empty PID file (mtime = now).
+        fs::write(paths.daemon_pid(), b"").unwrap();
+        // State file pre-existing (could be written by the in-flight daemon).
+        fs::write(paths.daemon_state(), "starting").unwrap();
+
+        let launcher = DaemonLauncher::new(paths.clone());
+
+        assert_eq!(
+            launcher.daemon_readiness(),
+            DaemonReadiness::Starting,
+            "fresh empty PID file must classify the daemon as Starting, \
+             not Dead — otherwise the launcher respawns into a racing daemon"
+        );
+        assert!(
+            paths.daemon_pid().exists(),
+            "Indeterminate path must NOT unlink the PID file"
+        );
+        assert!(
+            paths.daemon_state().exists(),
+            "Indeterminate path must NOT unlink the state file"
+        );
+    }
+
     #[test]
     fn test_launcher_uses_correct_paths() {
         let dir = tempfile::tempdir().unwrap();

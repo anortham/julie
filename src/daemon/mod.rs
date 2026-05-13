@@ -10,6 +10,7 @@ pub mod lifecycle;
 pub mod mcp_session;
 pub mod pid;
 pub mod project_log;
+pub mod singleton;
 pub mod session;
 #[cfg(windows)]
 pub mod shutdown_event;
@@ -39,6 +40,7 @@ use self::lifecycle::{DaemonLifecycleController, LifecyclePhase, ShutdownCause};
 use self::mcp_session::{DaemonSessionDependencies, HttpJulieService, HttpSessionAdmission};
 use self::pid::PidFile;
 use self::session::SessionTracker;
+use self::singleton::{SingletonLock, SingletonLockError};
 use self::watcher_pool::WatcherPool;
 use self::workspace_pool::WorkspacePool;
 use self::workspace_registry_store::WorkspaceRegistryStore;
@@ -284,6 +286,39 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
         .ensure_dirs()
         .context("Failed to create daemon directories")?;
     let daemon_state_path = paths.daemon_state();
+
+    // Singleton invariant: only one daemon per JULIE_HOME. Held for the
+    // lifetime of `run_daemon` via the `_singleton_lock` binding.
+    //
+    // This is the kernel-enforced layer beneath PID-file management.
+    // PidFile::create_exclusive may unlink + recreate the PID file on stale
+    // recovery, breaking flock-on-the-PID-file as a singleton mechanism.
+    // The singleton lock file is never unlinked, so concurrent acquirers
+    // contend on a stable inode and at most one wins. Acquired BEFORE the
+    // PID file so a racing daemon cannot overwrite the PID file before
+    // discovering it lost the singleton race.
+    //
+    // Regression context (2026-05-12 "577-daemon cascade"): a Linux
+    // creation-time drift bug caused live daemons' PID files to be
+    // unlinked, which let the adapter's poll loop spawn replacement
+    // daemons every ~50ms. The drift bug itself is fixed in `pid.rs`;
+    // this lock is the defense-in-depth layer guaranteeing that even if
+    // another single-flight invariant regresses, only one daemon process
+    // ever runs.
+    let _singleton_lock = match SingletonLock::try_acquire(&paths.daemon_singleton_lock()) {
+        Ok(guard) => guard,
+        Err(SingletonLockError::AlreadyHeld { path }) => {
+            return Err(anyhow::anyhow!(
+                "Another Julie daemon is already running for this JULIE_HOME \
+                 (singleton lock held: {}). Exiting without starting a duplicate.",
+                path.display()
+            ));
+        }
+        Err(other) => {
+            return Err(anyhow::anyhow!("{}", other))
+                .context("Failed to acquire daemon singleton lock");
+        }
+    };
 
     // Atomically check-and-create the PID file. create_exclusive uses O_CREAT|O_EXCL
     // internally, eliminating the TOCTOU window between check_running and create

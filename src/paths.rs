@@ -106,6 +106,16 @@ impl DaemonPaths {
         self.julie_home.join("daemon.lock")
     }
 
+    /// Singleton lock file held by the running daemon process.
+    ///
+    /// Distinct from `daemon_lock` (held by the adapter across readiness
+    /// wait) and `daemon_pid` (may be unlinked + recreated). The singleton
+    /// lock file is never unlinked, so concurrent `flock` acquirers always
+    /// contend on the same inode regardless of PID-file state.
+    pub fn daemon_singleton_lock(&self) -> PathBuf {
+        self.julie_home.join("daemon.singleton.lock")
+    }
+
     /// Daemon lifecycle log
     pub fn daemon_log(&self) -> PathBuf {
         self.julie_home.join("daemon.log")

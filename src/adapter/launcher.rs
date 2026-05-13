@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 use fs2::FileExt;
 use tracing::{debug, info};
 
-use crate::daemon::pid::PidFile;
+use crate::daemon::pid::{PidFile, PidFileStatus};
 use crate::daemon::transport::TransportEndpoint;
 use crate::paths::DaemonPaths;
 
@@ -48,9 +48,14 @@ impl DaemonLauncher {
     /// Check whether a daemon process is currently running.
     ///
     /// Reads the PID file, validates the process is alive, and cleans up
-    /// stale PID files as a side effect.
+    /// stale PID files as a side effect. Treats `Indeterminate` (e.g.,
+    /// fresh empty PID file from a racing daemon mid-write) as "present"
+    /// so the poll loop does not declare BrokenPipe and spawn a duplicate.
     fn is_daemon_running(&self) -> bool {
-        PidFile::check_running(&self.paths.daemon_pid()).is_some()
+        !matches!(
+            PidFile::check_status(&self.paths.daemon_pid()),
+            PidFileStatus::Dead
+        )
     }
 
     pub fn transport_endpoint(&self) -> io::Result<TransportEndpoint> {
@@ -70,13 +75,27 @@ impl DaemonLauncher {
     /// Cleans up stale files as a side effect when the daemon is dead.
     /// When PID is alive but the state file is missing or unreadable (old binary,
     /// write failure, permissions), falls back to probing the daemon transport endpoint.
+    ///
+    /// `Indeterminate` PID-file status (e.g., racing daemon mid-write of
+    /// `create_exclusive`) maps to `Starting`: the caller should wait, not
+    /// declare the daemon dead and spawn a replacement. This is the
+    /// launcher half of the P2 fix for the 577-daemon cascade — pre-fix,
+    /// an empty PID file fed back as `None` from `check_running` and the
+    /// launcher unlinked the state file + spawned a new daemon.
     pub fn daemon_readiness(&self) -> DaemonReadiness {
-        match PidFile::check_running(&self.paths.daemon_pid()) {
-            None => {
+        match PidFile::check_status(&self.paths.daemon_pid()) {
+            PidFileStatus::Dead => {
                 let _ = std::fs::remove_file(self.paths.daemon_state());
                 DaemonReadiness::Dead
             }
-            Some(_pid) => {
+            PidFileStatus::Indeterminate => {
+                // Fresh empty / unparseable PID file — a daemon is likely
+                // mid-`create_exclusive`. Treat as starting; do NOT delete
+                // the state file (it may already say "starting" or even
+                // "ready" written by the in-flight daemon).
+                DaemonReadiness::Starting
+            }
+            PidFileStatus::Alive(_pid) => {
                 match std::fs::read_to_string(self.paths.daemon_state()) {
                     Ok(s) if s.trim() == "ready" => DaemonReadiness::Ready,
                     Ok(s) if s.trim() == "draining" => DaemonReadiness::Stopping,

@@ -8,9 +8,23 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::daemon::pid::PidFile;
+    use crate::daemon::pid::{PidFile, PidFileStatus};
     use std::fs;
+    use std::time::{Duration, SystemTime};
     use tempfile::TempDir;
+
+    /// Set the mtime of `path` to `age_secs` in the past, used to simulate
+    /// fresh-vs-old empty PID files in tests.
+    fn set_mtime_age_secs(path: &std::path::Path, age_secs: u64) {
+        let mtime = SystemTime::now()
+            .checked_sub(Duration::from_secs(age_secs))
+            .expect("system time should be far enough from UNIX_EPOCH for this test");
+        let f = fs::OpenOptions::new()
+            .write(true)
+            .open(path)
+            .expect("file should exist for mtime adjustment");
+        f.set_modified(mtime).expect("set_modified should succeed");
+    }
 
     fn temp_pid_path() -> (TempDir, std::path::PathBuf) {
         let dir = tempfile::tempdir().unwrap();
@@ -246,6 +260,328 @@ mod tests {
         assert!(
             !path.exists(),
             "dead legacy PID file should be removed by check_running"
+        );
+    }
+
+    // ── Finding 1: Linux PID identity must survive clock steps ───────────────
+    //
+    // P0 (btime + ticks) traded one drift bug for another: `/proc/stat btime`
+    // is `getboottime64` = `offs_real − offs_boot`, and `settimeofday` shifts
+    // `offs_real`. A wall-clock step (NTP large step, manual `date`, VM
+    // suspend/resume across DST) would change btime, change the computed
+    // creation_time, and cause `check_status` to unlink a live daemon's PID
+    // file. The singleton lock would still prevent 577 concurrent processes
+    // but the adapter would loop on Dead→spawn→singleton-fail→Dead until the
+    // 60s deadline expired. The fix: identity is keyed on `/proc/sys/kernel/
+    // random/boot_id` (UUID, stable for the boot session, NOT affected by
+    // clock changes) plus raw `/proc/<pid>/stat` start_ticks (stable for the
+    // process's lifetime).
+
+    /// Identity for the SAME boot_id + ticks must be deterministic — same
+    /// inputs always produce the same u64. This is the core invariant
+    /// that `check_status` relies on for exact-equality comparison.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn test_linux_process_identity_is_deterministic_for_same_inputs() {
+        use crate::daemon::pid::linux_process_identity_from_parts;
+        let a = linux_process_identity_from_parts(
+            "12345678-1234-5678-1234-567890abcdef",
+            42_000,
+        );
+        let b = linux_process_identity_from_parts(
+            "12345678-1234-5678-1234-567890abcdef",
+            42_000,
+        );
+        assert_eq!(
+            a, b,
+            "same boot_id + same ticks must produce the same identity \
+             (otherwise check_status would never accept a live daemon)"
+        );
+    }
+
+    /// Different boot_id (same ticks) must produce DIFFERENT identity.
+    /// This is the across-reboot PID-recycle defense: PID 12345 from
+    /// before the reboot with starttime 100 ticks must not collide with a
+    /// post-reboot PID 12345 whose starttime is also 100 ticks. boot_id
+    /// is the disambiguator.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn test_linux_process_identity_changes_when_boot_id_changes() {
+        use crate::daemon::pid::linux_process_identity_from_parts;
+        let pre = linux_process_identity_from_parts(
+            "12345678-1234-5678-1234-567890abcdef",
+            42_000,
+        );
+        let post = linux_process_identity_from_parts(
+            "ffffffff-ffff-ffff-ffff-ffffffffffff",
+            42_000,
+        );
+        assert_ne!(
+            pre, post,
+            "different boot_id must produce different identity — otherwise a \
+             rebooted system could classify a recycled PID as the original daemon"
+        );
+    }
+
+    /// Different start_ticks (same boot_id) must produce DIFFERENT identity.
+    /// Within a single boot, two processes that happen to share a PID
+    /// (impossible — but the test guards the hash mixing) must still be
+    /// distinguishable.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn test_linux_process_identity_changes_when_ticks_change() {
+        use crate::daemon::pid::linux_process_identity_from_parts;
+        let a = linux_process_identity_from_parts(
+            "12345678-1234-5678-1234-567890abcdef",
+            42_000,
+        );
+        let b = linux_process_identity_from_parts(
+            "12345678-1234-5678-1234-567890abcdef",
+            42_001,
+        );
+        assert_ne!(
+            a, b,
+            "different start_ticks must produce different identity — \
+             otherwise the hash collapses too aggressively"
+        );
+    }
+
+    /// Regression: 577-daemon cascade incident (2026-05-12).
+    ///
+    /// On Linux, `process_creation_time_micros` derived an absolute epoch
+    /// value from `SystemTime::now() - /proc/uptime + ticks/HZ`. Because
+    /// `now` and `/proc/uptime` are sampled by separate syscalls and the
+    /// arithmetic uses f64, repeated calls for the same live PID produced
+    /// slightly different values. The exact-equality check in
+    /// `check_running` at the `creation_time_micros` comparison then
+    /// classified the live daemon as PID-recycled and **removed the
+    /// running daemon's PID file**. The adapter's poll loop saw the file
+    /// disappear, declared the daemon dead, spawned a replacement, and
+    /// repeated the cycle every ~50ms.
+    ///
+    /// This test exercises the bug end-to-end through the public API:
+    /// create_exclusive for the current process, then call check_running
+    /// in a tight loop. Each call MUST return Some(self_pid) and the file
+    /// MUST still exist at the end.
+    #[test]
+    fn test_check_running_is_idempotent_for_live_daemon() {
+        let (_dir, path) = temp_pid_path();
+        let pid_file = PidFile::create_exclusive(&path).unwrap();
+        let our_pid = std::process::id();
+
+        for iteration in 0..10 {
+            let result = PidFile::check_running(&path);
+            assert_eq!(
+                result,
+                Some(our_pid),
+                "iteration {}: check_running must return Some({}) for the live current process; \
+                 returning None here means the creation-time validation drifted and the live \
+                 daemon's PID file was unlinked (regression: 577-daemon cascade incident)",
+                iteration,
+                our_pid,
+            );
+            assert!(
+                path.exists(),
+                "iteration {}: check_running must NOT unlink a live daemon's PID file",
+                iteration,
+            );
+        }
+
+        pid_file.cleanup().unwrap();
+    }
+
+    // ── P2: 3-state classification via `check_status` ─────────────────────────
+    //
+    // `check_running` collapses Indeterminate ("racing daemon mid-write") to
+    // None, which the launcher cannot distinguish from "no daemon". The
+    // result was that an empty PID file (a daemon mid-startup) triggered the
+    // same Dead-respawn path as a missing PID file. `check_status` exposes
+    // the third state so the launcher can wait instead of respawn.
+
+    /// A live daemon's PID file (matching creation_time) must resolve to
+    /// `Alive(self_pid)` via `check_status`. Sanity check + back-compat
+    /// proof that the public 3-state API agrees with `check_running` on
+    /// the happy path.
+    #[test]
+    fn test_check_status_returns_alive_for_live_daemon() {
+        let (_dir, path) = temp_pid_path();
+        let pid_file = PidFile::create_exclusive(&path).unwrap();
+
+        let status = PidFile::check_status(&path);
+        assert_eq!(
+            status,
+            PidFileStatus::Alive(std::process::id()),
+            "check_status must return Alive(self_pid) for the current process"
+        );
+
+        pid_file.cleanup().unwrap();
+    }
+
+    /// A freshly-created empty PID file (mtime ≈ now) MUST be classified
+    /// as `Indeterminate` — it likely represents a daemon that just won
+    /// the `O_CREAT|O_EXCL` race and is about to write its content. The
+    /// file MUST NOT be removed; doing so unlinks a legitimate
+    /// mid-startup daemon's PID file.
+    #[test]
+    fn test_check_status_returns_indeterminate_for_fresh_empty_file() {
+        let (_dir, path) = temp_pid_path();
+        // Empty file with mtime = now.
+        fs::write(&path, b"").unwrap();
+        assert!(path.exists(), "test setup: empty PID file must exist");
+
+        let status = PidFile::check_status(&path);
+
+        assert_eq!(
+            status,
+            PidFileStatus::Indeterminate,
+            "fresh empty PID file must classify as Indeterminate, got: {:?}",
+            status,
+        );
+        assert!(
+            path.exists(),
+            "Indeterminate status must NOT remove the file — a racing daemon \
+             mid-write owns it and would observe a gone inode otherwise"
+        );
+    }
+
+    /// An old empty PID file (mtime far in the past) is a crash leftover —
+    /// the daemon that created it died before writing. This MUST classify
+    /// as `Dead` and the file MUST be removed so the next acquirer can
+    /// proceed.
+    #[test]
+    fn test_check_status_returns_dead_for_old_empty_file() {
+        let (_dir, path) = temp_pid_path();
+        fs::write(&path, b"").unwrap();
+        set_mtime_age_secs(&path, 30);
+
+        let status = PidFile::check_status(&path);
+
+        assert_eq!(
+            status,
+            PidFileStatus::Dead,
+            "stale empty PID file (mtime far in past) must classify as Dead"
+        );
+        assert!(
+            !path.exists(),
+            "Dead status from a stale empty file must remove it"
+        );
+    }
+
+    // ── Finding 3 (Codex 2026-05-12): tighten PID-file freshness ────────────
+    //
+    // Pre-fix, `is_pid_file_fresh` treated any future-mtime as fresh (the
+    // conservative choice for clock skew), and `classify_legacy_or_unparseable`
+    // mapped any unparseable nonempty content within the freshness window to
+    // `Indeterminate`. Combined, that meant a corrupt PID file with a
+    // far-future mtime would pin the launcher in `Starting` until wall-time
+    // caught up — every adapter session times out after 60s.
+    //
+    // The fix:
+    //   - Only EMPTY content is eligible for the Indeterminate fresh path
+    //     (the "racing daemon mid-write" scenario this was designed for).
+    //     Nonempty unparseable content is always treated as Dead — a crash
+    //     artifact, not an in-flight daemon.
+    //   - Future mtimes are only fresh within a small skew tolerance (a
+    //     few seconds, matching `PID_FILE_FRESH_WINDOW`). Beyond that, the
+    //     file is treated as stale.
+
+    /// Empty PID file with a far-future mtime MUST be classified `Dead`
+    /// (not `Indeterminate`), and the file MUST be removed. Otherwise a
+    /// corrupt fs/restore event with a bogus timestamp could pin the
+    /// launcher forever.
+    #[test]
+    fn test_check_status_returns_dead_for_far_future_empty_file() {
+        let (_dir, path) = temp_pid_path();
+        fs::write(&path, b"").unwrap();
+        // Mtime 1 hour in the future — far beyond the small skew tolerance.
+        let future = SystemTime::now()
+            .checked_add(Duration::from_secs(3600))
+            .expect("future time should fit in SystemTime");
+        let f = fs::OpenOptions::new().write(true).open(&path).unwrap();
+        f.set_modified(future).unwrap();
+
+        let status = PidFile::check_status(&path);
+
+        assert_eq!(
+            status,
+            PidFileStatus::Dead,
+            "empty PID file with far-future mtime must be Dead, not Indeterminate; \
+             got {:?} (would pin the launcher in Starting forever)",
+            status,
+        );
+        assert!(!path.exists(), "Dead status must remove the file");
+    }
+
+    /// Nonempty unparseable PID file (e.g. "junk\n" or a corrupted
+    /// partial write that survived a crash) with a fresh mtime MUST be
+    /// classified `Dead`. Pre-fix, this would have been Indeterminate
+    /// and the launcher would have waited indefinitely.
+    #[test]
+    fn test_check_status_returns_dead_for_fresh_nonempty_unparseable_file() {
+        let (_dir, path) = temp_pid_path();
+        // Nonempty but not a valid PID (not "<digits>"). Mtime defaults to
+        // now (well within the freshness window).
+        fs::write(&path, b"not-a-pid-garbage\n").unwrap();
+
+        let status = PidFile::check_status(&path);
+
+        assert_eq!(
+            status,
+            PidFileStatus::Dead,
+            "nonempty unparseable PID file must be Dead, not Indeterminate; \
+             got {:?} (a crash artifact must not pin the launcher)",
+            status,
+        );
+        assert!(!path.exists(), "Dead status must remove the file");
+    }
+
+    /// Empty PID file with mtime slightly in the future (within a small
+    /// skew tolerance — e.g. an NTP step of a few seconds) is still
+    /// classified `Indeterminate` and preserved. The skew tolerance
+    /// matters for hosts where the daemon's clock briefly disagrees with
+    /// the file system; we don't want to unlink a legitimate in-flight
+    /// daemon's PID file over a 100ms wobble.
+    #[test]
+    fn test_check_status_returns_indeterminate_for_empty_file_within_skew() {
+        let (_dir, path) = temp_pid_path();
+        fs::write(&path, b"").unwrap();
+        // 1 second in the future — within typical NTP skew.
+        let near_future = SystemTime::now()
+            .checked_add(Duration::from_secs(1))
+            .expect("near-future should fit");
+        let f = fs::OpenOptions::new().write(true).open(&path).unwrap();
+        f.set_modified(near_future).unwrap();
+
+        let status = PidFile::check_status(&path);
+
+        assert_eq!(
+            status,
+            PidFileStatus::Indeterminate,
+            "empty PID file with small-skew future mtime should remain Indeterminate"
+        );
+        assert!(path.exists(), "Indeterminate status must NOT remove the file");
+    }
+
+    /// `check_running` collapses both `Dead` and `Indeterminate` to `None`
+    /// for back-compat with existing callers (notably `lifecycle::stop_daemon`
+    /// which only cares whether there's an identifiable PID). The new
+    /// `check_status` is the right API when the third state matters.
+    #[test]
+    fn test_check_running_collapses_indeterminate_to_none() {
+        let (_dir, path) = temp_pid_path();
+        fs::write(&path, b"").unwrap();
+        // Fresh empty → check_status returns Indeterminate.
+        assert_eq!(PidFile::check_status(&path), PidFileStatus::Indeterminate);
+        // check_running must still report None (no identifiable PID) but
+        // MUST NOT have removed the file.
+        let result = PidFile::check_running(&path);
+        assert_eq!(
+            result, None,
+            "check_running must return None for Indeterminate (back-compat)"
+        );
+        assert!(
+            path.exists(),
+            "check_running must NOT remove a file classified as Indeterminate"
         );
     }
 

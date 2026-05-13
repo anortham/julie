@@ -156,6 +156,21 @@ async fn run_primary_workspace_repair_body(
                     detailed: None,
                 };
 
+                // `repair_rebuilds_embedding_inputs` covers reasons that
+                // require running the embedding pipeline after repair:
+                //   - Reasons that rebuild symbol text (EmptyDatabase,
+                //     StaleFiles, NewFiles, DeletedFiles, ExtractorFailure,
+                //     WatcherOverflow, SemanticVersionChanged) — embedding
+                //     inputs changed and existing vectors are now stale.
+                //   - MissingEmbeddings — symbols are intact but no
+                //     vectors exist. The index path does not rebuild
+                //     symbols here, but the "no files changed but
+                //     embedding_count == 0" catch-up branch in
+                //     `commands/index.rs` fires only when
+                //     `skip_embeddings` is false. Including
+                //     MissingEmbeddings here is what threads the catch-up
+                //     through the existing scheduling logic instead of
+                //     duplicating it.
                 let repair_rebuilds_embedding_inputs = plan.reasons.iter().any(|reason| {
                     matches!(
                         reason,
@@ -166,6 +181,7 @@ async fn run_primary_workspace_repair_body(
                             | IndexingRepairReason::ExtractorFailure
                             | IndexingRepairReason::WatcherOverflow
                             | IndexingRepairReason::SemanticVersionChanged
+                            | IndexingRepairReason::MissingEmbeddings
                     )
                 });
                 let skip_embeddings = !repair_rebuilds_embedding_inputs;
@@ -396,6 +412,59 @@ pub(crate) async fn plan_primary_workspace_repair(
                 if let Some(reason) = IndexingRepairReason::from_str(&repair.reason) {
                     if !reasons.contains(&reason) {
                         reasons.push(reason);
+                    }
+                }
+            }
+
+            // Catch-up: the workspace may have been indexed before the
+            // embedding sidecar finished bootstrapping (cold start can take
+            // 30-60s while the index path runs in <5s). If symbols are
+            // present but no embeddings exist, schedule embedding
+            // generation instead of reporting "up-to-date" indefinitely.
+            //
+            // Only check when no other repair reason fires — if files
+            // changed or the semantic version drifted, the full re-index
+            // path already covers embedding regeneration. We also skip
+            // this when MissingEmbeddings is already recorded as a stored
+            // repair (handled in the loop above) to avoid double-counting.
+            if reasons.is_empty() {
+                let embedding_count = match db_arc.lock() {
+                    Ok(db) => db.embedding_count().unwrap_or(0),
+                    Err(poisoned) => poisoned.into_inner().embedding_count().unwrap_or(0),
+                };
+                if embedding_count == 0 {
+                    // Skip MissingEmbeddings if an embedding task is
+                    // already in flight for this workspace. Otherwise
+                    // every concurrent session connect would see
+                    // `embedding_count == 0` (the running task hasn't
+                    // stored its first batch yet), build a
+                    // MissingEmbeddings plan, and the body's
+                    // `cancel_primary_embedding_task` call would kill
+                    // and restart the in-flight task. Repeated session
+                    // connects would cancel-loop the embedding pipeline
+                    // indefinitely.
+                    //
+                    // We can't reach `handler.embedding_tasks` from this
+                    // synchronous SQLite section without taking a tokio
+                    // Mutex, so the lookup is hoisted out of the lock
+                    // scope. Pattern mirrors the `task_already_running`
+                    // guard in `commands/index.rs:462-465`.
+                    let workspace_id = handler.require_primary_workspace_identity().ok();
+                    let task_already_running = match workspace_id.as_ref() {
+                        Some(ws_id) => handler.embedding_tasks.lock().await.contains_key(ws_id),
+                        None => false,
+                    };
+
+                    if task_already_running {
+                        debug!(
+                            "Skipping MissingEmbeddings — embedding task already in flight \
+                             for the primary workspace"
+                        );
+                    } else {
+                        info!(
+                            "📊 Workspace has symbols but 0 embeddings - scheduling catch-up embedding"
+                        );
+                        reasons.push(IndexingRepairReason::MissingEmbeddings);
                     }
                 }
             }

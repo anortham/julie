@@ -46,6 +46,15 @@ pub(crate) enum IndexingRepairReason {
     WatcherOverflow,
     TantivyDirty,
     SemanticVersionChanged,
+    /// Symbols are present on disk but no embeddings exist for them. This
+    /// is the "indexed before the embedding sidecar was ready" case:
+    /// initial indexing skipped embeddings (provider in Initializing
+    /// state), the workspace is otherwise up to date, and a subsequent
+    /// session connect must schedule the missing embeddings rather than
+    /// report "Index is up-to-date — no indexing needed" indefinitely.
+    /// Triggers `spawn_workspace_embedding` without a full symbol
+    /// re-extraction.
+    MissingEmbeddings,
 }
 
 impl IndexingRepairReason {
@@ -60,6 +69,7 @@ impl IndexingRepairReason {
             Self::WatcherOverflow => "watcher_overflow",
             Self::TantivyDirty => "tantivy_dirty",
             Self::SemanticVersionChanged => "semantic_version_changed",
+            Self::MissingEmbeddings => "missing_embeddings",
         }
     }
 
@@ -74,6 +84,7 @@ impl IndexingRepairReason {
             "watcher_overflow" => Some(Self::WatcherOverflow),
             "tantivy_dirty" => Some(Self::TantivyDirty),
             "semantic_version_changed" => Some(Self::SemanticVersionChanged),
+            "missing_embeddings" => Some(Self::MissingEmbeddings),
             _ => None,
         }
     }
