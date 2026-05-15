@@ -479,12 +479,16 @@ async fn test_spawn_workspace_embedding_skips_stdio_reinit_when_runtime_status_a
     env_guard.set("JULIE_EMBEDDING_SIDECAR_INIT_TIMEOUT_MS", "5000");
     env_guard.remove("JULIE_SKIP_EMBEDDINGS");
 
-    let embedded_count =
+    let outcome =
         spawn_workspace_embedding(&handler, "missing-workspace-id".to_string()).await;
 
     assert_eq!(
-        embedded_count, 0,
+        outcome.symbols, 0,
         "embedding should be skipped when runtime status already records an unavailable provider"
+    );
+    assert!(
+        !outcome.deferred,
+        "stdio degraded-state path must not report deferred=true"
     );
     assert!(
         !marker_path.exists(),
@@ -544,12 +548,16 @@ async fn test_spawn_workspace_embedding_skips_when_daemon_service_is_unavailable
         *ws_guard = Some(workspace);
     }
 
-    let embedded_count =
+    let outcome =
         spawn_workspace_embedding(&handler, "missing-workspace-id".to_string()).await;
 
     assert_eq!(
-        embedded_count, 0,
+        outcome.symbols, 0,
         "embedding should be skipped when daemon service is unavailable"
+    );
+    assert!(
+        !outcome.deferred,
+        "daemon Unavailable path must not report deferred=true (it has settled, just to an error)"
     );
     assert!(
         !marker_path.exists(),
@@ -557,10 +565,16 @@ async fn test_spawn_workspace_embedding_skips_when_daemon_service_is_unavailable
     );
 }
 
+/// Task 2 behavior change: when the daemon embedding service is still
+/// `Initializing`, `spawn_workspace_embedding` no longer blocks the foreground
+/// caller on `wait_until_settled(120s)`. Instead it returns immediately with
+/// `deferred = true` and queues a background task that runs the pipeline once
+/// the service settles. This test pins that contract so future refactors don't
+/// silently re-introduce the foreground wait.
 #[cfg(feature = "embeddings-sidecar")]
-#[tokio::test(start_paused = true)]
+#[tokio::test]
 #[serial(embedding_env)]
-async fn test_spawn_workspace_embedding_skips_when_daemon_service_times_out() {
+async fn test_spawn_workspace_embedding_returns_deferred_when_daemon_service_initializing() {
     let temp_dir = TempDir::new().unwrap();
     let marker_path = temp_dir.path().join("health.marker");
 
@@ -578,22 +592,38 @@ async fn test_spawn_workspace_embedding_skips_when_daemon_service_times_out() {
         let mut ws_guard = handler.workspace.write().await;
         *ws_guard = Some(workspace);
     }
+    // `workspace_storage_anchor` requires a loaded workspace identity to
+    // compute the target DB path. Without this, the deferred path errors out
+    // before it gets to publish `deferred = true`, which would silently mask
+    // the regression this test exists to catch.
+    *handler
+        .workspace_id
+        .write()
+        .unwrap_or_else(|p| p.into_inner()) = Some("test-workspace".to_string());
 
-    let task = tokio::spawn(async move {
-        spawn_workspace_embedding(&handler, "missing-workspace-id".to_string()).await
-    });
+    // Call directly without spawning. If the old blocking behavior crept back,
+    // this would hang for ~120s instead of returning in milliseconds.
+    let start = std::time::Instant::now();
+    let outcome =
+        spawn_workspace_embedding(&handler, "missing-workspace-id".to_string()).await;
+    let elapsed = start.elapsed();
 
-    tokio::time::advance(Duration::from_secs(121)).await;
-
-    let embedded_count = task
-        .await
-        .expect("spawn_workspace_embedding task should not panic");
+    assert!(
+        outcome.deferred,
+        "Initializing daemon service must produce deferred=true (got {outcome:?})"
+    );
     assert_eq!(
-        embedded_count, 0,
-        "embedding should be skipped after daemon wait timeout"
+        outcome.symbols, 0,
+        "deferred outcome reports 0 symbols since the pipeline has not run yet"
+    );
+    // Allow generous slack for slow CI; the regression case is 120s, not 200ms.
+    assert!(
+        elapsed < Duration::from_secs(5),
+        "spawn_workspace_embedding must return without blocking on the 120s settle timeout; \
+         elapsed={elapsed:?}"
     );
     assert!(
         !marker_path.exists(),
-        "daemon-mode spawn_workspace_embedding should not fall through to stdio init after shared service timeout"
+        "daemon-mode spawn_workspace_embedding must not fall through to stdio init while service is Initializing"
     );
 }

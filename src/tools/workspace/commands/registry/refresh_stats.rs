@@ -15,7 +15,7 @@ pub(crate) struct RefreshWorkspaceSuccess {
     pub(crate) files_total: usize,
     pub(crate) symbols_total: usize,
     pub(crate) relationships_total: usize,
-    pub(crate) embed_count: usize,
+    pub(crate) embed_outcome: crate::tools::workspace::indexing::embeddings::EmbeddingOutcome,
 }
 
 pub(crate) enum RefreshWorkspaceOutcome {
@@ -89,8 +89,9 @@ impl ManageWorkspaceTool {
                             warn!("Failed to update workspace stats: {}", e);
                         }
 
+                        use crate::tools::workspace::indexing::embeddings::EmbeddingOutcome;
                         let db_mutated = result.files_processed > 0 || result.orphans_cleaned > 0;
-                        let embed_count = if db_mutated || effective_force_reindex {
+                        let embed_outcome: EmbeddingOutcome = if db_mutated || effective_force_reindex {
                             crate::tools::workspace::indexing::embeddings::spawn_workspace_embedding(
                                 handler,
                                 workspace_id.to_string(),
@@ -129,7 +130,7 @@ impl ManageWorkspaceTool {
                                 )
                                 .await
                             } else {
-                                0
+                                EmbeddingOutcome { symbols: 0, deferred: false }
                             }
                         };
 
@@ -152,7 +153,7 @@ impl ManageWorkspaceTool {
                             files_total: result.files_total,
                             symbols_total: result.symbols_total,
                             relationships_total: result.relationships_total,
-                            embed_count,
+                            embed_outcome,
                         }))
                     }
                     Err(e) => {
@@ -243,10 +244,12 @@ impl ManageWorkspaceTool {
                     success.symbols_total,
                     success.relationships_total,
                 );
-                if success.embed_count > 0 {
+                if success.embed_outcome.deferred {
+                    message.push_str("\nEmbedding queued while provider initializes.");
+                } else if success.embed_outcome.symbols > 0 {
                     message.push_str(&format!(
                         "\nEmbedding {} symbols in background...",
-                        success.embed_count
+                        success.embed_outcome.symbols
                     ));
                 }
                 Ok(CallToolResult::text_content(vec![Content::text(message)]))

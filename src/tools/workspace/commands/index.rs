@@ -416,15 +416,19 @@ impl ManageWorkspaceTool {
                                 }
                             }
 
-                            let embed_count =
+                            let embed_outcome =
                                 crate::tools::workspace::indexing::embeddings::spawn_workspace_embedding(
                                     handler, ws_id,
                                 )
                                 .await;
-                            if embed_count > 0 {
+                            if embed_outcome.deferred {
+                                message.push_str(
+                                    "\nEmbedding queued while provider initializes.",
+                                );
+                            } else if embed_outcome.symbols > 0 {
                                 message.push_str(&format!(
                                     "\nEmbedding {} symbols in background...",
-                                    embed_count
+                                    embed_outcome.symbols
                                 ));
                             }
                         } else {
@@ -469,15 +473,19 @@ impl ManageWorkspaceTool {
                                     symbols_total,
                                     "Workspace has symbols but 0 embeddings, scheduling catch-up embedding"
                                 );
-                                let embed_count =
+                                let embed_outcome =
                                     crate::tools::workspace::indexing::embeddings::spawn_workspace_embedding(
                                         handler, ws_id,
                                     )
                                     .await;
-                                if embed_count > 0 {
+                                if embed_outcome.deferred {
+                                    message.push_str(
+                                        "\nEmbedding queued while provider initializes.",
+                                    );
+                                } else if embed_outcome.symbols > 0 {
                                     message.push_str(&format!(
                                         "\nEmbedding {} symbols in background...",
-                                        embed_count
+                                        embed_outcome.symbols
                                     ));
                                 }
                             } else {

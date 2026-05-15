@@ -101,6 +101,7 @@ pub mod tools {
     pub mod workspace {
         pub mod deferred_open; // Deferred-session workspace open path tests
         pub mod discovery; // Vendor pattern detection and .julieignore auto-generation tests
+        pub mod embedding_deferred; // Deferred-embedding non-blocking semantics (Task 2)
         pub mod file_policy; // Shared watcher/indexer extraction and path policy parity tests
         pub mod global_targeting; // Explicit workspace open/activation tests
         pub mod index_embedding_tests; // Embedding pipeline fixes: embedding_count reflects DB total

@@ -253,9 +253,15 @@ impl EmbeddingService {
     }
 
     /// Return `Some(settled)` if the current state is already terminal,
-    /// else `None`. Used by the `wait_until_settled` fast path.
-    fn snapshot_settled(&self) -> Option<EmbeddingServiceSettled> {
+    /// else `None`. Used by the `wait_until_settled` fast path and by
+    /// callers that want a non-blocking readiness probe.
+    pub fn try_settled(&self) -> Option<EmbeddingServiceSettled> {
         Self::state_to_settled(&self.state_rx.borrow())
+    }
+
+    /// Internal alias preserved for readability inside `wait_until_settled`.
+    fn snapshot_settled(&self) -> Option<EmbeddingServiceSettled> {
+        self.try_settled()
     }
 
     /// Convert a borrowed `EmbeddingServiceState` to a settled outcome, if

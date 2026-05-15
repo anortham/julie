@@ -100,7 +100,7 @@ impl ManageWorkspaceTool {
                     Some(result.duration_ms),
                 )?;
 
-                let embed_count =
+                let embed_outcome =
                     crate::tools::workspace::indexing::embeddings::spawn_workspace_embedding(
                         handler,
                         workspace_id.clone(),
@@ -122,10 +122,12 @@ impl ManageWorkspaceTool {
                     result.relationships_total,
                     workspace_id,
                 );
-                if embed_count > 0 {
+                if embed_outcome.deferred {
+                    message.push_str("\nEmbedding queued while provider initializes.");
+                } else if embed_outcome.symbols > 0 {
                     message.push_str(&format!(
                         "\nEmbedding {} symbols in background...",
-                        embed_count
+                        embed_outcome.symbols
                     ));
                 }
                 Ok(CallToolResult::text_content(vec![Content::text(message)]))
