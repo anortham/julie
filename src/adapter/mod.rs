@@ -15,7 +15,10 @@ use crate::workspace::startup_hint::WorkspaceStartupHint;
 mod http_stdio;
 
 #[cfg(test)]
-pub(crate) use http_stdio::forward_http_stdio_transport;
+pub(crate) use http_stdio::{
+    AdapterError, AdapterRetryDecision, MAX_RETRIES, classify_adapter_error, forward_http_stdio_transport,
+    retry_backoff,
+};
 
 use self::http_stdio::run_http_adapter;
 use self::launcher::DaemonLauncher;

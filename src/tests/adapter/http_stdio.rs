@@ -220,6 +220,7 @@ mod tests {
 
         let outcome = forward_http_stdio_transport(transport, stdin, &mut stdout)
             .await
+            .map_err(|e| format!("{}", e))
             .expect("HTTP stdio bridge should complete");
 
         assert_eq!(outcome, ForwardOutcome::SessionEnded);
@@ -270,6 +271,7 @@ mod tests {
 
         let outcome = forward_http_stdio_transport(transport, stdin, &mut stdout)
             .await
+            .map_err(|e| format!("{}", e))
             .expect("HTTP stdio bridge should complete");
 
         assert_eq!(outcome, ForwardOutcome::SessionEnded);
@@ -322,6 +324,7 @@ mod tests {
         )
         .await
         .expect("bridge should read the client roots response while initialize is in flight")
+        .map_err(|e| format!("{}", e))
         .expect("HTTP stdio bridge should complete");
 
         assert_eq!(outcome, ForwardOutcome::SessionEnded);
@@ -363,6 +366,7 @@ mod tests {
 
         let outcome = forward_http_stdio_transport(transport, stdin, &mut stdout)
             .await
+            .map_err(|e| format!("{}", e))
             .expect("HTTP stdio bridge should surface restart handoff");
 
         assert_eq!(outcome, ForwardOutcome::ImmediateDaemonDisconnect);

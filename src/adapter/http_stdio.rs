@@ -1,4 +1,5 @@
 use std::collections::VecDeque;
+use std::time::Duration;
 
 use anyhow::{Context, Result};
 use rmcp::model::{ClientJsonRpcMessage, JsonRpcMessage, RequestId, ServerJsonRpcMessage};
@@ -14,17 +15,106 @@ use crate::daemon::http_client::http_client_config_for_endpoint;
 use crate::daemon::lifecycle::{RestartHandoffAction, RestartReason, restart_handoff_action};
 use crate::workspace::startup_hint::WorkspaceStartupHint;
 
+/// Error variants returned by the HTTP adapter forwarder.
+///
+/// Distinguishes daemon-side transport failures (potentially recoverable by
+/// retry/respawn) from MCP-client side I/O failures (terminal).
+#[derive(Debug)]
+pub(crate) enum AdapterError {
+    /// Failure while talking to the daemon over HTTP MCP. `wrote_any_output`
+    /// captures whether any server response has already been forwarded to the
+    /// MCP client; if so, replaying the session would risk double-applying
+    /// non-idempotent tool calls.
+    Transport {
+        error: anyhow::Error,
+        wrote_any_output: bool,
+    },
+    /// Failure reading from MCP client stdin or writing to its stdout. The
+    /// MCP client is gone; retrying makes no sense.
+    Stdin(std::io::Error),
+}
+
+impl std::fmt::Display for AdapterError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AdapterError::Transport { error, .. } => write!(f, "{}", error),
+            AdapterError::Stdin(error) => write!(f, "MCP client stdio error: {}", error),
+        }
+    }
+}
+
+impl std::error::Error for AdapterError {}
+
+/// Outcome of classifying an AdapterError for the retry loop.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AdapterRetryDecision {
+    /// Daemon transport error before any output; retry against a fresh daemon.
+    Retry,
+    /// Stdin error, or transport error after output was already written.
+    /// Mid-session retry would require a new MCP handshake and could
+    /// double-apply non-idempotent tools, so we exit cleanly.
+    Terminal,
+    /// Retry budget exhausted.
+    Exhausted,
+}
+
+/// Decide whether to retry, exit cleanly, or fail after exhausting retries.
+pub(crate) fn classify_adapter_error(
+    error: &AdapterError,
+    attempt: u32,
+    max_retries: u32,
+) -> AdapterRetryDecision {
+    match error {
+        AdapterError::Stdin(_) => AdapterRetryDecision::Terminal,
+        AdapterError::Transport {
+            wrote_any_output: true,
+            ..
+        } => AdapterRetryDecision::Terminal,
+        AdapterError::Transport {
+            wrote_any_output: false,
+            ..
+        } => match restart_handoff_action(attempt, max_retries, RestartReason::ImmediateDisconnect)
+        {
+            RestartHandoffAction::Retry { .. } => AdapterRetryDecision::Retry,
+            RestartHandoffAction::Exhausted { .. } => AdapterRetryDecision::Exhausted,
+        },
+    }
+}
+
+/// Maximum number of retry attempts after the first connect.
+///
+/// Combined with exponential backoff (1s, 2s, 4s, 8s, 16s) this yields a
+/// total retry window of ~31s, which fits within the daemon drain timeout.
+pub(crate) const MAX_RETRIES: u32 = 5;
+
+/// Compute the backoff to apply before the given retry attempt.
+///
+/// `attempt` is the 1-based retry attempt number (the first retry is 1).
+/// Returns 1s, 2s, 4s, 8s, 16s, ... clamped at 16s.
+pub(crate) fn retry_backoff(attempt: u32) -> Duration {
+    let shift = attempt.saturating_sub(1).min(4);
+    Duration::from_secs(1u64 << shift)
+}
+
 pub(crate) async fn run_http_adapter(
     startup_hint: WorkspaceStartupHint,
     launcher: DaemonLauncher,
 ) -> Result<()> {
-    const MAX_RETRIES: u32 = 2;
-
     let mut stdin_lines = spawn_stdin_line_reader(tokio::io::stdin());
     let mut stdout = tokio::io::stdout();
     let mut pending_lines = VecDeque::new();
 
     for attempt in 0..=MAX_RETRIES {
+        if attempt > 0 {
+            let backoff = retry_backoff(attempt);
+            info!(
+                attempt = attempt + 1,
+                backoff_secs = backoff.as_secs(),
+                "HTTP adapter backing off before retry"
+            );
+            tokio::time::sleep(backoff).await;
+        }
+
         tokio::task::block_in_place(|| launcher.ensure_daemon_ready())
             .context("Failed to ensure daemon is ready")?;
 
@@ -114,10 +204,48 @@ pub(crate) async fn run_http_adapter(
                     }
                 }
             }
-            Err(error) => {
-                error!("HTTP adapter connection lost: {}", error);
-                return Ok(());
-            }
+            Err(adapter_error) => match classify_adapter_error(
+                &adapter_error,
+                attempt,
+                MAX_RETRIES,
+            ) {
+                AdapterRetryDecision::Retry => {
+                    info!(
+                        attempt = attempt + 1,
+                        error = %adapter_error,
+                        "HTTP adapter transport error before output, retrying"
+                    );
+                    continue;
+                }
+                AdapterRetryDecision::Terminal => {
+                    match adapter_error {
+                        AdapterError::Stdin(error) => {
+                            info!("HTTP adapter MCP client stdio closed: {}", error);
+                        }
+                        AdapterError::Transport { error, .. } => {
+                            error!(
+                                "HTTP adapter transport error after output written, exiting: {}",
+                                error
+                            );
+                        }
+                    }
+                    return Ok(());
+                }
+                AdapterRetryDecision::Exhausted => match adapter_error {
+                    AdapterError::Transport { error, .. } => {
+                        return Err(error).context(format!(
+                            "HTTP adapter transport error before output after {} attempts",
+                            MAX_RETRIES + 1
+                        ));
+                    }
+                    AdapterError::Stdin(error) => {
+                        // Stdin errors are classified as Terminal above; reaching
+                        // Exhausted with a Stdin error indicates a logic bug.
+                        return Err(anyhow::Error::from(error))
+                            .context("Unexpected exhausted decision for stdin error");
+                    }
+                },
+            },
         }
     }
 
@@ -129,7 +257,7 @@ pub(crate) async fn forward_http_stdio_transport<T, In, Out>(
     transport: T,
     stdin: In,
     stdout: &mut Out,
-) -> Result<ForwardOutcome>
+) -> Result<ForwardOutcome, AdapterError>
 where
     T: Transport<RoleClient>,
     In: AsyncRead + Send + Unpin + 'static,
@@ -177,7 +305,7 @@ async fn forward_http_stdio_transport_with_pending<T, Out>(
     stdin_lines: &mut mpsc::Receiver<Result<Vec<u8>, std::io::Error>>,
     stdout: &mut Out,
     pending_lines: &mut VecDeque<Vec<u8>>,
-) -> Result<ForwardOutcome>
+) -> Result<ForwardOutcome, AdapterError>
 where
     T: Transport<RoleClient>,
     Out: AsyncWrite + Unpin,
@@ -188,15 +316,31 @@ where
 
     loop {
         if let Some(line) = pending_lines.pop_front() {
-            send_client_line(&mut transport, line, &mut in_flight_requests).await?;
+            if let Err(error) =
+                send_client_line(&mut transport, line, &mut in_flight_requests).await
+            {
+                if !wrote_any_output {
+                    requeue_in_flight(pending_lines, &mut in_flight_requests);
+                }
+                return Err(AdapterError::Transport {
+                    error,
+                    wrote_any_output,
+                });
+            }
             continue;
         }
 
         if stdin_done && in_flight_requests.is_empty() {
-            transport
+            if let Err(error) = transport
                 .close()
                 .await
-                .context("Failed to close HTTP MCP transport")?;
+                .context("Failed to close HTTP MCP transport")
+            {
+                return Err(AdapterError::Transport {
+                    error,
+                    wrote_any_output,
+                });
+            }
             return Ok(ForwardOutcome::SessionEnded);
         }
 
@@ -204,11 +348,18 @@ where
             line = stdin_lines.recv(), if !stdin_done => {
                 match line {
                     Some(Ok(line)) => {
-                        send_client_line(&mut transport, line, &mut in_flight_requests).await?;
+                        if let Err(error) = send_client_line(&mut transport, line, &mut in_flight_requests).await {
+                            if !wrote_any_output {
+                                requeue_in_flight(pending_lines, &mut in_flight_requests);
+                            }
+                            return Err(AdapterError::Transport {
+                                error,
+                                wrote_any_output,
+                            });
+                        }
                     }
                     Some(Err(error)) => {
-                        return Err(anyhow::Error::from(error))
-                            .context("Failed to read MCP client stdin");
+                        return Err(AdapterError::Stdin(error));
                     }
                     None => {
                         stdin_done = true;
@@ -238,7 +389,13 @@ where
                 }
 
                 remove_completed_request(&mut in_flight_requests, &response);
-                write_server_message(stdout, &response).await?;
+                if let Err(error) = write_server_message(stdout, &response).await {
+                    let io_error = match error.downcast::<std::io::Error>() {
+                        Ok(io) => io,
+                        Err(other) => std::io::Error::new(std::io::ErrorKind::Other, other.to_string()),
+                    };
+                    return Err(AdapterError::Stdin(io_error));
+                }
                 wrote_any_output = true;
             }
         }
