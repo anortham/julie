@@ -433,9 +433,16 @@ where
         return Ok(());
     }
 
-    let message: ClientJsonRpcMessage = serde_json::from_slice(&line)
-        .context("Failed to parse MCP client JSON-RPC message")
-        .map_err(|e| (e, line.clone()))?;
+    let message: ClientJsonRpcMessage = match serde_json::from_slice(&line) {
+        Ok(m) => m,
+        Err(e) => {
+            // Client sent malformed JSON -- this is a client-side error, not
+            // a daemon transport problem.  Return Ok and skip the line rather
+            // than poisoning the retry budget.
+            tracing::warn!("Ignoring malformed MCP client message: {e}");
+            return Ok(());
+        }
+    };
     let expected_response_id = client_request_id(&message);
 
     // `transport.send()` takes ownership of `message`, not `line`, so
