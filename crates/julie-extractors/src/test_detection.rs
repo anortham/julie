@@ -73,7 +73,7 @@ pub fn is_test_symbol(
 
     match language {
         "rust" => detect_rust(annotation_keys),
-        "python" => detect_python(name, annotation_keys),
+        "python" => detect_python(name, file_path, annotation_keys),
         "java" | "kotlin" => detect_java_kotlin(annotation_keys),
         "scala" => detect_scala(name, file_path, annotation_keys),
         "elixir" => detect_elixir(name, file_path),
@@ -100,8 +100,8 @@ fn detect_rust(annotation_keys: &[String]) -> bool {
         .any(|a| a == "test" || a == "tokio::test" || a == "rstest")
 }
 
-fn detect_python(name: &str, annotation_keys: &[String]) -> bool {
-    // Annotation-key-based: pytest.* or unittest.*
+fn detect_python(name: &str, file_path: &str, annotation_keys: &[String]) -> bool {
+    // Annotation-key-based: pytest.* or unittest.* (path-independent)
     if annotation_keys
         .iter()
         .any(|d| d.starts_with("pytest") || d.starts_with("unittest"))
@@ -112,8 +112,9 @@ fn detect_python(name: &str, annotation_keys: &[String]) -> bool {
     if matches!(name, "setUp" | "tearDown" | "setUpClass" | "tearDownClass") {
         return true;
     }
-    // Name-based: test_ prefix for functions/methods (class filter already handled by kind gate)
-    name.starts_with("test_")
+    // Name-based: test_ prefix, but only in test paths. Source APIs like
+    // test_result_histories should not be flagged as tests.
+    name.starts_with("test_") && is_test_path(file_path)
 }
 
 fn detect_scala(name: &str, file_path: &str, annotation_keys: &[String]) -> bool {
@@ -216,7 +217,7 @@ fn matches_script_test_name(
     keywords: &[&str],
 ) -> bool {
     let normalized = name.to_ascii_lowercase();
-    if allow_test_prefix && normalized.starts_with("test_") {
+    if allow_test_prefix && normalized.starts_with("test_") && is_test_path(file_path) {
         return true;
     }
 

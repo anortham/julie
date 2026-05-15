@@ -137,6 +137,44 @@ fn python_test_class_returns_false() {
 }
 
 #[test]
+fn python_test_prefix_in_source_not_test_path() {
+    // test_result_histories in a source file should NOT be marked as a test
+    assert!(!check(
+        "python",
+        "test_result_histories",
+        "python/eros/store/sqlite.py",
+        &SymbolKind::Function,
+        &[],
+        None,
+    ));
+}
+
+#[test]
+fn python_test_prefix_in_test_path_still_detected() {
+    assert!(check(
+        "python",
+        "test_result_histories",
+        "tests/store/test_sqlite.py",
+        &SymbolKind::Function,
+        &[],
+        None,
+    ));
+}
+
+#[test]
+fn python_pytest_decorator_in_source_still_detected() {
+    // Annotation-driven detection stays path-independent
+    assert!(check(
+        "python",
+        "test_something",
+        "src/mypackage/helpers.py",
+        &SymbolKind::Function,
+        &[s("pytest.mark.parametrize")],
+        None,
+    ));
+}
+
+#[test]
 fn python_regular_function() {
     assert!(!check(
         "python",
@@ -520,10 +558,20 @@ fn ruby_test_prefix_in_test_dir() {
 
 #[test]
 fn test_bash_powershell_and_ruby_test_framework_detection_covers_common_frameworks() {
-    assert!(check(
+    // test_ prefix in non-test path is NOT a test (path guard added)
+    assert!(!check(
         "bash",
         "test_helper",
         "scripts/build.sh",
+        &SymbolKind::Function,
+        &[],
+        None,
+    ));
+    // test_ prefix in test path IS a test
+    assert!(check(
+        "bash",
+        "test_helper",
+        "tests/build.sh",
         &SymbolKind::Function,
         &[],
         None,
@@ -565,10 +613,20 @@ fn test_bash_powershell_and_ruby_test_framework_detection_covers_common_framewor
         None,
     ));
 
-    assert!(check(
+    // test_ prefix in non-test path is NOT a test (path guard added)
+    assert!(!check(
         "ruby",
         "test_login",
         "lib/payment.rb",
+        &SymbolKind::Method,
+        &[],
+        None,
+    ));
+    // test_ prefix in test path IS a test
+    assert!(check(
+        "ruby",
+        "test_login",
+        "test/payment_test.rb",
         &SymbolKind::Method,
         &[],
         None,
@@ -1154,7 +1212,7 @@ fn test_is_test_symbol_dispatch_across_languages() {
             None,
             true,
         ),
-        // Python: test_ prefix works even in non-test path (no path guard in detect_python)
+        // Python: test_ prefix in non-test path is NOT a test (path guard added)
         (
             "python",
             "test_login",
@@ -1162,7 +1220,7 @@ fn test_is_test_symbol_dispatch_across_languages() {
             SymbolKind::Function,
             vec![],
             None,
-            true,
+            false,
         ),
         // Python: pytest annotation key
         (
