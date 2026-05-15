@@ -66,7 +66,7 @@ pub(crate) async fn drain_sessions(sessions: &SessionTracker, timeout: Duration)
 }
 
 const DRAIN_TIMEOUT_ENV: &str = "JULIE_DAEMON_DRAIN_TIMEOUT_SECS";
-const DEFAULT_DRAIN_TIMEOUT_SECS: u64 = 10;
+const DEFAULT_DRAIN_TIMEOUT_SECS: u64 = 60;
 const MIN_DRAIN_TIMEOUT_SECS: u64 = 1;
 const MAX_DRAIN_TIMEOUT_SECS: u64 = 120;
 
@@ -74,9 +74,9 @@ const MAX_DRAIN_TIMEOUT_SECS: u64 = 120;
 ///
 /// Reads `JULIE_DAEMON_DRAIN_TIMEOUT_SECS` from the environment. Valid range
 /// is [1, 120] seconds. Values outside this range, or unparseable strings,
-/// fall back to the default (10 s) with a warning. The default is intentionally
-/// larger than the old 5 s literal to handle Windows NTFS fsync latency during
-/// stale-binary restarts.
+/// fall back to the default (60 s) with a warning. The default is intentionally
+/// generous so adapter-issued stops over slow filesystems (Windows NTFS fsync,
+/// network mounts) finish in-flight work rather than abort it.
 pub(crate) fn drain_timeout() -> Duration {
     match std::env::var(DRAIN_TIMEOUT_ENV) {
         Ok(s) => match s.parse::<u64>() {
@@ -403,6 +403,21 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
     let pool = Arc::new(WorkspacePool::new(paths.indexes_dir(), daemon_db.clone()));
     let cleanup_pool = Arc::clone(&pool);
     let sessions = Arc::new(SessionTracker::new());
+
+    // Idle workspace eviction: each tracked workspace holds Tantivy file
+    // handles and SQLite connections. Without an eviction loop the daemon
+    // accumulates FDs across many opened workspaces and eventually hits EMFILE
+    // on eval-style workloads that touch hundreds of repos.
+    let idle_threshold = self::workspace_pool::idle_timeout();
+    let idle_sweep_handle = pool.spawn_idle_sweep(
+        Arc::clone(&watcher_pool_for_handlers),
+        Duration::from_secs(60),
+        idle_threshold,
+    );
+    info!(
+        idle_threshold_secs = idle_threshold.as_secs(),
+        "WorkspacePool idle sweeper started (interval=60s)"
+    );
 
     let cleanup_sweep_handle = daemon_db.as_ref().map(|daemon_db| {
         let registry_store =
@@ -749,6 +764,7 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
     // These tasks hold Arcs into the pools; aborting them first prevents
     // them from racing with the explicit shutdown calls below.
     reaper_handle.abort();
+    idle_sweep_handle.abort();
     if let Some(cleanup_sweep_handle) = cleanup_sweep_handle {
         cleanup_sweep_handle.abort();
     }

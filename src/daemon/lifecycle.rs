@@ -394,7 +394,8 @@ pub fn stop_daemon(paths: &DaemonPaths) -> anyhow::Result<()> {
                 }
             }
 
-            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+            let timeout = super::drain_timeout();
+            let deadline = std::time::Instant::now() + timeout;
             loop {
                 if !PidFile::is_process_alive(pid) {
                     let _ = std::fs::remove_file(paths.daemon_pid());
@@ -404,8 +405,9 @@ pub fn stop_daemon(paths: &DaemonPaths) -> anyhow::Result<()> {
                 }
                 if std::time::Instant::now() >= deadline {
                     anyhow::bail!(
-                        "Daemon did not stop within 10s (PID {}). \
+                        "Daemon did not stop within {}s (PID {}). \
                          Use `kill {}` to force.",
+                        timeout.as_secs(),
                         pid,
                         pid
                     );

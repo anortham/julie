@@ -1,13 +1,52 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex as StdMutex};
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
+use tokio::task::JoinHandle;
 use tracing::{info, warn};
 
 use crate::daemon::database::DaemonDatabase;
+use crate::daemon::watcher_pool::WatcherPool;
 use crate::tools::workspace::indexing::state::IndexingRuntimeSnapshot;
 use crate::workspace::JulieWorkspace;
+
+/// Default idle threshold before an unused workspace is evicted from the pool.
+const DEFAULT_IDLE_TIMEOUT_SECS: u64 = 300;
+const MIN_IDLE_TIMEOUT_SECS: u64 = 60;
+const MAX_IDLE_TIMEOUT_SECS: u64 = 3600;
+const IDLE_TIMEOUT_ENV: &str = "JULIE_WORKSPACE_IDLE_TIMEOUT_SECS";
+
+/// Read the configured idle-workspace eviction threshold from the environment.
+pub fn idle_timeout() -> Duration {
+    match std::env::var(IDLE_TIMEOUT_ENV) {
+        Ok(s) => match s.parse::<u64>() {
+            Ok(v) if (MIN_IDLE_TIMEOUT_SECS..=MAX_IDLE_TIMEOUT_SECS).contains(&v) => {
+                Duration::from_secs(v)
+            }
+            Ok(v) => {
+                warn!(
+                    value = v,
+                    "JULIE_WORKSPACE_IDLE_TIMEOUT_SECS out of range [{},{}]; using default {}s",
+                    MIN_IDLE_TIMEOUT_SECS,
+                    MAX_IDLE_TIMEOUT_SECS,
+                    DEFAULT_IDLE_TIMEOUT_SECS
+                );
+                Duration::from_secs(DEFAULT_IDLE_TIMEOUT_SECS)
+            }
+            Err(e) => {
+                warn!(
+                    error = %e,
+                    "JULIE_WORKSPACE_IDLE_TIMEOUT_SECS unparseable; using default {}s",
+                    DEFAULT_IDLE_TIMEOUT_SECS
+                );
+                Duration::from_secs(DEFAULT_IDLE_TIMEOUT_SECS)
+            }
+        },
+        Err(_) => Duration::from_secs(DEFAULT_IDLE_TIMEOUT_SECS),
+    }
+}
 
 /// A pool of shared `JulieWorkspace` instances for the daemon.
 ///
@@ -24,6 +63,31 @@ pub struct WorkspacePool {
 
 struct WorkspaceEntry {
     workspace: Arc<JulieWorkspace>,
+    last_accessed: StdMutex<Instant>,
+}
+
+impl WorkspaceEntry {
+    fn new(workspace: Arc<JulieWorkspace>) -> Self {
+        Self {
+            workspace,
+            last_accessed: StdMutex::new(Instant::now()),
+        }
+    }
+
+    fn touch(&self) {
+        let mut guard = self
+            .last_accessed
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        *guard = Instant::now();
+    }
+
+    fn last_accessed(&self) -> Instant {
+        *self
+            .last_accessed
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
 }
 
 impl WorkspacePool {
@@ -58,9 +122,13 @@ impl WorkspacePool {
 
     /// Get an existing workspace without initializing.
     /// Returns `None` if the workspace hasn't been initialized yet.
+    /// Refreshes the entry's `last_accessed` timestamp on a cache hit so the
+    /// idle sweeper does not evict an actively-used workspace.
     pub async fn get(&self, workspace_id: &str) -> Option<Arc<JulieWorkspace>> {
         let guard = self.workspaces.read().await;
-        guard.get(workspace_id).map(|e| Arc::clone(&e.workspace))
+        let entry = guard.get(workspace_id)?;
+        entry.touch();
+        Some(Arc::clone(&entry.workspace))
     }
 
     /// Get an existing workspace or initialize a new one.
@@ -79,7 +147,10 @@ impl WorkspacePool {
         // Fast path: read lock (drop before any async work to avoid holding across awaits)
         let cached_ws = {
             let guard = self.workspaces.read().await;
-            guard.get(workspace_id).map(|e| Arc::clone(&e.workspace))
+            guard.get(workspace_id).map(|e| {
+                e.touch();
+                Arc::clone(&e.workspace)
+            })
         };
 
         if let Some(ws) = cached_ws {
@@ -91,6 +162,7 @@ impl WorkspacePool {
 
         // Double-check: another task may have initialized while we waited for the write lock
         if let Some(entry) = guard.get(workspace_id) {
+            entry.touch();
             let ws = Arc::clone(&entry.workspace);
             return Ok(ws);
         }
@@ -157,9 +229,7 @@ impl WorkspacePool {
         let ws = Arc::new(workspace);
         guard.insert(
             workspace_id.to_string(),
-            WorkspaceEntry {
-                workspace: Arc::clone(&ws),
-            },
+            WorkspaceEntry::new(Arc::clone(&ws)),
         );
         Ok(ws)
     }
@@ -183,9 +253,129 @@ impl WorkspacePool {
         })
     }
 
+    /// Evict a single workspace from the pool, releasing its Tantivy file
+    /// locks. Removes the entry under the write lock first, then calls
+    /// `SearchIndex::shutdown()` on the removed entry outside the lock to
+    /// avoid a concurrent `get()` returning a half-shutdown workspace.
+    ///
+    /// Returns `true` when an entry was removed, `false` when no such
+    /// workspace was tracked.
     pub async fn evict_workspace(&self, workspace_id: &str) -> bool {
-        let mut guard = self.workspaces.write().await;
-        guard.remove(workspace_id).is_some()
+        let entry = {
+            let mut guard = self.workspaces.write().await;
+            guard.remove(workspace_id)
+        };
+        let Some(entry) = entry else {
+            return false;
+        };
+        shutdown_workspace_entry(workspace_id, entry).await;
+        true
+    }
+
+    /// Sweep the pool for entries idle longer than `idle_threshold` and evict
+    /// them. Before removing each candidate, asks `watcher_pool` to drop the
+    /// watcher; if the watcher still has refs (an attached session) the
+    /// workspace is preserved.
+    ///
+    /// Returns the list of evicted workspace IDs.
+    pub async fn sweep_idle_workspaces(
+        &self,
+        watcher_pool: &WatcherPool,
+        idle_threshold: Duration,
+    ) -> Vec<String> {
+        // Collect candidates under a read lock.
+        let now = Instant::now();
+        let candidates: Vec<String> = {
+            let guard = self.workspaces.read().await;
+            guard
+                .iter()
+                .filter_map(|(id, entry)| {
+                    let age = now.saturating_duration_since(entry.last_accessed());
+                    if age >= idle_threshold {
+                        Some(id.clone())
+                    } else {
+                        None
+                    }
+                })
+                .collect()
+        };
+
+        if candidates.is_empty() {
+            return Vec::new();
+        }
+
+        let mut evicted = Vec::new();
+        for workspace_id in candidates {
+            // Watcher cleanup first: if the watcher still has refs (sessions
+            // attached), skip this workspace entirely.
+            let watcher_released = match watcher_pool.remove_if_inactive(&workspace_id).await {
+                Ok(released) => released,
+                Err(e) => {
+                    warn!(
+                        workspace_id = %workspace_id,
+                        "Idle sweep: failed to release watcher: {e:#}"
+                    );
+                    continue;
+                }
+            };
+            if !watcher_released {
+                continue;
+            }
+
+            // Take a brief write lock, re-check age (a concurrent `get()` may
+            // have refreshed the timestamp), and remove the entry.
+            let entry = {
+                let mut guard = self.workspaces.write().await;
+                let Some(entry) = guard.get(&workspace_id) else {
+                    continue;
+                };
+                let age = Instant::now().saturating_duration_since(entry.last_accessed());
+                if age < idle_threshold {
+                    continue;
+                }
+                guard.remove(&workspace_id)
+            };
+            let Some(entry) = entry else {
+                continue;
+            };
+            shutdown_workspace_entry(&workspace_id, entry).await;
+            info!(workspace_id = %workspace_id, "Evicted idle workspace");
+            evicted.push(workspace_id);
+        }
+
+        evicted
+    }
+
+    /// Spawn a periodic background task that sweeps idle workspaces from the
+    /// pool. Returns a handle the caller should abort on shutdown.
+    ///
+    /// `interval` controls how often the sweeper runs (e.g. 60 s).
+    /// `idle_threshold` is the per-workspace age above which the entry is
+    /// considered evictable (e.g. 300 s).
+    pub fn spawn_idle_sweep(
+        self: &Arc<Self>,
+        watcher_pool: Arc<WatcherPool>,
+        interval: Duration,
+        idle_threshold: Duration,
+    ) -> JoinHandle<()> {
+        let pool = Arc::clone(self);
+        tokio::spawn(async move {
+            let mut tick = tokio::time::interval(interval);
+            // First tick fires immediately; skip it so the sweeper waits one
+            // interval before its first sweep.
+            tick.tick().await;
+            loop {
+                tick.tick().await;
+                let evicted = pool.sweep_idle_workspaces(&watcher_pool, idle_threshold).await;
+                if !evicted.is_empty() {
+                    info!(
+                        count = evicted.len(),
+                        "Idle sweep evicted {} workspace(s)",
+                        evicted.len()
+                    );
+                }
+            }
+        })
     }
 
     pub(crate) async fn indexing_snapshots(
@@ -351,5 +541,58 @@ impl WorkspacePool {
         workspace.initialize_search_index()?;
 
         Ok(workspace)
+    }
+}
+
+/// Shut down a single removed workspace entry's search index. Mirrors the
+/// per-workspace block used by `WorkspacePool::shutdown` so eviction releases
+/// Tantivy file locks the same way as full daemon shutdown.
+async fn shutdown_workspace_entry(workspace_id: &str, entry: WorkspaceEntry) {
+    const PER_WORKSPACE_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(2);
+
+    let Some(search_index) = entry.workspace.search_index.clone() else {
+        return;
+    };
+    let workspace_id_for_task = workspace_id.to_string();
+    let join = tokio::task::spawn_blocking(move || match search_index.lock() {
+        Ok(idx) => idx.shutdown().map_err(|e| format!("shutdown error: {e}")),
+        Err(poisoned) => {
+            let idx = poisoned.into_inner();
+            let _ = idx.shutdown();
+            Err(format!(
+                "recovered from poisoned mutex while shutting down {}",
+                workspace_id_for_task
+            ))
+        }
+    });
+
+    match tokio::time::timeout(PER_WORKSPACE_SHUTDOWN_TIMEOUT, join).await {
+        Ok(Ok(Ok(()))) => {
+            info!(
+                workspace_id = %workspace_id,
+                "Search index shut down, Tantivy file lock released"
+            );
+        }
+        Ok(Ok(Err(msg))) => {
+            warn!(
+                workspace_id = %workspace_id,
+                "Failed to shut down search index: {}",
+                msg
+            );
+        }
+        Ok(Err(join_err)) => {
+            warn!(
+                workspace_id = %workspace_id,
+                "Search index shutdown task panicked: {}",
+                join_err
+            );
+        }
+        Err(_) => {
+            warn!(
+                workspace_id = %workspace_id,
+                timeout_secs = PER_WORKSPACE_SHUTDOWN_TIMEOUT.as_secs(),
+                "Search index shutdown timed out; Tantivy lock may not release until process exit"
+            );
+        }
     }
 }

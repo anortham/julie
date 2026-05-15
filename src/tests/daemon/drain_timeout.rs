@@ -65,8 +65,8 @@ fn test_drain_timeout_default_when_unset() {
     let _guard = without_env(ENV_KEY);
     assert_eq!(
         drain_timeout(),
-        Duration::from_secs(10),
-        "drain_timeout() should default to 10s when env var is unset"
+        Duration::from_secs(60),
+        "drain_timeout() should default to 60s when env var is unset"
     );
 }
 
@@ -77,8 +77,8 @@ fn test_drain_timeout_clamps_out_of_range() {
     let _guard = with_env(ENV_KEY, "0");
     assert_eq!(
         drain_timeout(),
-        Duration::from_secs(10),
-        "value 0 is below range [1,120] and should fall back to default 10s"
+        Duration::from_secs(60),
+        "value 0 is below range [1,120] and should fall back to default 60s"
     );
     drop(_guard);
 
@@ -86,8 +86,8 @@ fn test_drain_timeout_clamps_out_of_range() {
     let _guard2 = with_env(ENV_KEY, "500");
     assert_eq!(
         drain_timeout(),
-        Duration::from_secs(10),
-        "value 500 is above range [1,120] and should fall back to default 10s"
+        Duration::from_secs(60),
+        "value 500 is above range [1,120] and should fall back to default 60s"
     );
     drop(_guard2);
 
@@ -95,7 +95,7 @@ fn test_drain_timeout_clamps_out_of_range() {
     let _guard3 = with_env(ENV_KEY, "abc");
     assert_eq!(
         drain_timeout(),
-        Duration::from_secs(10),
-        "unparseable value 'abc' should fall back to default 10s"
+        Duration::from_secs(60),
+        "unparseable value 'abc' should fall back to default 60s"
     );
 }
