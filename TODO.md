@@ -133,6 +133,15 @@ Data: 1,876 fast_search calls with enriched telemetry (824 before file mode, 1,0
   succeeded in daemon mode. Current evidence points to the current harness MCP session staying closed
   after a prior transport death, not to the rebuilt binary being missing or unable to initialize.
 
+- [ ] **Python extractor should not mark source `test_*` callables as tests by name alone** --
+  Observed 2026-05-15T20:23Z while dogfooding Eros confidence packs: source methods such as
+  `python/eros/store/sqlite.py::test_result_histories` can be emitted with `metadata.is_test`
+  because `detect_python()` in `crates/julie-extractors/src/test_detection.rs` returns true for
+  any callable name starting with `test_` without checking `is_test_path(file_path)`. Eros then
+  treats those source methods as test cases, and `assess_change` can list them as likely tests for
+  source-file edits. Keep annotation/decorator-driven Python test detection path-independent, but
+  gate name-only `test_*` detection on a test path to avoid source API false positives.
+
 ## Future Ideas
 
 - [x] **Full CLI mode for all Julie tools** -- Implemented. CLI execution now supports daemon/fallback/standalone modes, named wrappers, generic tool dispatch, and output formats (`src/cli_tools/`, `src/main.rs`, `src/tests/cli/`, `src/tests/cli_execution_tests.rs`).
