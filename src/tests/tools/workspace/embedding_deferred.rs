@@ -104,6 +104,80 @@ fn embedding_outcome_deferred_flag_is_observable() {
     assert_eq!(outcome.symbols, 0);
 }
 
+// ---- sync_vector_count_on_terminal tests ----
+
+/// When `daemon_db` is `None`, `sync_vector_count_on_terminal` is a no-op
+/// (no panic, no side effect).
+#[tokio::test]
+async fn sync_vector_count_noop_when_no_daemon_db() {
+    use crate::tools::workspace::indexing::embeddings::sync_vector_count_on_terminal;
+
+    let db_path = std::path::PathBuf::from("/nonexistent/path/symbols.db");
+    // Should complete without error even though daemon_db is None.
+    sync_vector_count_on_terminal(&None, "ws-test", &db_path).await;
+}
+
+/// When `daemon_db` is `Some` but `db_path` does not exist, vector count
+/// should be set to 0 (the DB can't be read, so there are no embeddings).
+#[tokio::test]
+async fn sync_vector_count_zero_when_db_missing() {
+    use crate::daemon::database::DaemonDatabase;
+    use crate::tools::workspace::indexing::embeddings::sync_vector_count_on_terminal;
+
+    let tmp = tempfile::TempDir::new().unwrap();
+    let daemon_path = tmp.path().join("daemon.db");
+    let daemon = DaemonDatabase::open(&daemon_path).unwrap();
+    daemon.upsert_workspace("ws-test", "/fake", "ready").unwrap();
+    // Seed a stale vector count to prove the sync overwrites it.
+    daemon.update_vector_count("ws-test", 999).unwrap();
+
+    let daemon_db: Option<Arc<DaemonDatabase>> = Some(Arc::new(daemon));
+    let nonexistent = tmp.path().join("does-not-exist/symbols.db");
+
+    sync_vector_count_on_terminal(&daemon_db, "ws-test", &nonexistent).await;
+
+    let daemon_ref = daemon_db.as_ref().unwrap();
+    let ws = daemon_ref.get_workspace("ws-test").unwrap().unwrap();
+    assert_eq!(
+        ws.vector_count,
+        Some(0),
+        "vector_count must be 0 when workspace DB is missing"
+    );
+}
+
+/// When `daemon_db` is `Some` and `db_path` exists with a valid (empty)
+/// SymbolDatabase, vector count should reflect the actual embedding count (0).
+#[tokio::test]
+async fn sync_vector_count_reads_actual_from_existing_db() {
+    use crate::daemon::database::DaemonDatabase;
+    use crate::database::SymbolDatabase;
+    use crate::tools::workspace::indexing::embeddings::sync_vector_count_on_terminal;
+
+    let tmp = tempfile::TempDir::new().unwrap();
+
+    // Create a real SymbolDatabase (empty -- 0 embeddings).
+    let sym_db_path = tmp.path().join("symbols.db");
+    let _sym_db = SymbolDatabase::new(&sym_db_path).unwrap();
+
+    // Create daemon DB with a stale vector count.
+    let daemon_path = tmp.path().join("daemon.db");
+    let daemon = DaemonDatabase::open(&daemon_path).unwrap();
+    daemon.upsert_workspace("ws-test", "/fake", "ready").unwrap();
+    daemon.update_vector_count("ws-test", 42).unwrap();
+
+    let daemon_db: Option<Arc<DaemonDatabase>> = Some(Arc::new(daemon));
+
+    sync_vector_count_on_terminal(&daemon_db, "ws-test", &sym_db_path).await;
+
+    let daemon_ref = daemon_db.as_ref().unwrap();
+    let ws = daemon_ref.get_workspace("ws-test").unwrap().unwrap();
+    assert_eq!(
+        ws.vector_count,
+        Some(0),
+        "vector_count must match actual embedding count in the workspace DB (0 for empty DB)"
+    );
+}
+
 // ---- helpers ----
 
 fn describe(s: &Option<EmbeddingServiceSettled>) -> &'static str {

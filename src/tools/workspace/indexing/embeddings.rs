@@ -400,6 +400,12 @@ async fn spawn_deferred_daemon_embedding(
                     &cancel_for_task,
                 )
                 .await;
+                sync_vector_count_on_terminal(
+                    &daemon_db,
+                    &workspace_id_for_task,
+                    &db_path,
+                )
+                .await;
                 return;
             }
             EmbeddingServiceSettled::Timeout => {
@@ -411,6 +417,12 @@ async fn spawn_deferred_daemon_embedding(
                     &embedding_tasks_for_task,
                     &workspace_id_for_task,
                     &cancel_for_task,
+                )
+                .await;
+                sync_vector_count_on_terminal(
+                    &daemon_db,
+                    &workspace_id_for_task,
+                    &db_path,
                 )
                 .await;
                 return;
@@ -442,6 +454,13 @@ async fn spawn_deferred_daemon_embedding(
                 &cancel_for_task,
             )
             .await;
+            // DB missing: vector count is definitionally 0.
+            sync_vector_count_on_terminal(
+                &daemon_db,
+                &workspace_id_for_task,
+                &db_path,
+            )
+            .await;
             return;
         }
 
@@ -460,6 +479,13 @@ async fn spawn_deferred_daemon_embedding(
                     &cancel_for_task,
                 )
                 .await;
+                // DB unreadable: treat vector count as 0.
+                sync_vector_count_on_terminal(
+                    &daemon_db,
+                    &workspace_id_for_task,
+                    &db_path,
+                )
+                .await;
                 return;
             }
             Err(e) => {
@@ -468,6 +494,13 @@ async fn spawn_deferred_daemon_embedding(
                     &embedding_tasks_for_task,
                     &workspace_id_for_task,
                     &cancel_for_task,
+                )
+                .await;
+                // DB open panicked: treat vector count as 0.
+                sync_vector_count_on_terminal(
+                    &daemon_db,
+                    &workspace_id_for_task,
+                    &db_path,
                 )
                 .await;
                 return;
@@ -503,6 +536,34 @@ async fn spawn_deferred_daemon_embedding(
     EmbeddingOutcome {
         symbols: 0,
         deferred: true,
+    }
+}
+
+/// After a deferred embedding task exits on a terminal path (Unavailable,
+/// Timeout, missing DB, DB-open failure), sync the actual vector count into
+/// `daemon.db` so it doesn't show stale numbers left over from a prior run
+/// (e.g. after force-reindex cleared embeddings).
+pub(crate) async fn sync_vector_count_on_terminal(
+    daemon_db: &Option<Arc<crate::daemon::database::DaemonDatabase>>,
+    workspace_id: &str,
+    db_path: &std::path::Path,
+) {
+    if let Some(daemon) = daemon_db {
+        let actual_count = if db_path.exists() {
+            tokio::task::spawn_blocking({
+                let path = db_path.to_path_buf();
+                move || {
+                    SymbolDatabase::new(path)
+                        .and_then(|db| db.embedding_count())
+                        .unwrap_or(0)
+                }
+            })
+            .await
+            .unwrap_or(0)
+        } else {
+            0
+        };
+        let _ = daemon.update_vector_count(workspace_id, actual_count);
     }
 }
 
