@@ -124,6 +124,15 @@ Data: 1,876 fast_search calls with enriched telemetry (824 before file mode, 1,0
 
 - [ ] **Validate adapter retry fix under real-world daemon restart** -- The adapter retry code (commit b3e0c3cc, MAX_RETRIES=5, exponential backoff) shipped 2026-05-15 but has not been validated with the new release binary. During this same session, Julie's MCP transport died silently when the daemon received SIGTERM -- the old binary was still running. Repro: `cargo build --release && cargo xtask dev-restart`, then immediately call a Julie tool. The adapter should reconnect within ~31s instead of dying permanently. Also validate: malformed-JSON skip (043800b3), lost-line preservation (9811af54).
 
+  Additional validation 2026-05-15T20:23Z: after the user patched/rebuilt Julie, Codex's already-open
+  `mcp__julie__` transport still returned `Transport closed` on `manage_workspace(operation="list")`
+  and `manage_workspace(operation="health")`. The configured binary exists at
+  `/Users/murphy/Source/julie/target/release/julie-server`, reports `julie-server 7.9.3`, and is the
+  command in `~/.codex/config.toml`. Direct newline-framed adapter probing returned a valid MCP
+  `initialize` response, and direct CLI `julie-server --workspace /Users/murphy/Source/eros-confidence-artifacts-deadlock --json workspace health`
+  succeeded in daemon mode. Current evidence points to the current harness MCP session staying closed
+  after a prior transport death, not to the rebuilt binary being missing or unable to initialize.
+
 ## Future Ideas
 
 - [x] **Full CLI mode for all Julie tools** -- Implemented. CLI execution now supports daemon/fallback/standalone modes, named wrappers, generic tool dispatch, and output formats (`src/cli_tools/`, `src/main.rs`, `src/tests/cli/`, `src/tests/cli_execution_tests.rs`).
