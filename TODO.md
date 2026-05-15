@@ -114,6 +114,8 @@ Data: 1,876 fast_search calls with enriched telemetry (824 before file mode, 1,0
   verification command confidence summaries tool schemas routes readiness confidence linker tests")`.
   The harness continued by falling back to Eros/source inspection.
 
+- [ ] **Validate adapter retry fix under real-world daemon restart** -- The adapter retry code (commit b3e0c3cc, MAX_RETRIES=5, exponential backoff) shipped 2026-05-15 but has not been validated with the new release binary. During this same session, Julie's MCP transport died silently when the daemon received SIGTERM -- the old binary was still running. Repro: `cargo build --release && cargo xtask dev-restart`, then immediately call a Julie tool. The adapter should reconnect within ~31s instead of dying permanently. Also validate: malformed-JSON skip (043800b3), lost-line preservation (9811af54).
+
 ## Future Ideas
 
 - [x] **Full CLI mode for all Julie tools** -- Implemented. CLI execution now supports daemon/fallback/standalone modes, named wrappers, generic tool dispatch, and output formats (`src/cli_tools/`, `src/main.rs`, `src/tests/cli/`, `src/tests/cli_execution_tests.rs`).
