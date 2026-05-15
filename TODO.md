@@ -122,7 +122,7 @@ Data: 1,876 fast_search calls with enriched telemetry (824 before file mode, 1,0
   `4d42a365` was present locally, so the session still cannot rely on Julie MCP for codebase
   orientation.
 
-- [ ] **Validate adapter retry fix under real-world daemon restart** -- The adapter retry code (commit b3e0c3cc, MAX_RETRIES=5, exponential backoff) shipped 2026-05-15 but has not been validated with the new release binary. During this same session, Julie's MCP transport died silently when the daemon received SIGTERM -- the old binary was still running. Repro: `cargo build --release && cargo xtask dev-restart`, then immediately call a Julie tool. The adapter should reconnect within ~31s instead of dying permanently. Also validate: malformed-JSON skip (043800b3), lost-line preservation (9811af54).
+- [x] **Validate adapter retry fix under real-world daemon restart** -- The adapter retry code (commit b3e0c3cc, MAX_RETRIES=5, exponential backoff) shipped 2026-05-15 but has not been validated with the new release binary. During this same session, Julie's MCP transport died silently when the daemon received SIGTERM -- the old binary was still running. Repro: `cargo build --release && cargo xtask dev-restart`, then immediately call a Julie tool. The adapter should reconnect within ~31s instead of dying permanently. Also validate: malformed-JSON skip (043800b3), lost-line preservation (9811af54).
 
   Additional observation 2026-05-15: during the daemon reliability implementation session,
   Julie MCP transport died twice -- once after `dev-restart` triggered a daemon SIGTERM, and
