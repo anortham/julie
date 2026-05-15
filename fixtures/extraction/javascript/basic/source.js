@@ -8,6 +8,10 @@ export class Worker {
     }
 }
 
+/**
+ * Increment a worker id.
+ * @returns {number}
+ */
 function helper(value) {
     return value + 1;
 }

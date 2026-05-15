@@ -1,4 +1,5 @@
 defmodule Fixture.Worker do
+  @spec run(integer()) :: integer()
   def run(id) do
     helper(id)
   end

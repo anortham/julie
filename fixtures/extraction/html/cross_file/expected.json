@@ -408,6 +408,79 @@
       "confidence": "1.000"
     }
   ],
-  "types": [],
+  "types": [
+    {
+      "symbol_key": "fixtures/extraction/html/cross_file/source.html:DOCTYPE:7:0",
+      "resolved_type": "doctype",
+      "generic_params": null,
+      "constraints": null,
+      "is_inferred": true,
+      "language": "html",
+      "metadata": null
+    },
+    {
+      "symbol_key": "fixtures/extraction/html/cross_file/source.html:DOCTYPE:7:2",
+      "resolved_type": "doctype",
+      "generic_params": null,
+      "constraints": null,
+      "is_inferred": true,
+      "language": "html",
+      "metadata": null
+    },
+    {
+      "symbol_key": "fixtures/extraction/html/cross_file/source.html:body:13:0",
+      "resolved_type": "html-element",
+      "generic_params": null,
+      "constraints": null,
+      "is_inferred": true,
+      "language": "html",
+      "metadata": null
+    },
+    {
+      "symbol_key": "fixtures/extraction/html/cross_file/source.html:div:14:2",
+      "resolved_type": "html-element",
+      "generic_params": null,
+      "constraints": null,
+      "is_inferred": true,
+      "language": "html",
+      "metadata": null
+    },
+    {
+      "symbol_key": "fixtures/extraction/html/cross_file/source.html:head:9:0",
+      "resolved_type": "html-element",
+      "generic_params": null,
+      "constraints": null,
+      "is_inferred": true,
+      "language": "html",
+      "metadata": null
+    },
+    {
+      "symbol_key": "fixtures/extraction/html/cross_file/source.html:html:8:0",
+      "resolved_type": "html-element",
+      "generic_params": null,
+      "constraints": null,
+      "is_inferred": true,
+      "language": "html",
+      "metadata": null
+    },
+    {
+      "symbol_key": "fixtures/extraction/html/cross_file/source.html:link:11:2",
+      "resolved_type": "html-element",
+      "generic_params": null,
+      "constraints": null,
+      "is_inferred": true,
+      "language": "html",
+      "metadata": null
+    },
+    {
+      "symbol_key": "fixtures/extraction/html/cross_file/source.html:script:10:2",
+      "resolved_type": "script-element",
+      "generic_params": null,
+      "constraints": null,
+      "is_inferred": true,
+      "language": "html",
+      "metadata": null
+    }
+  ],
   "parse_diagnostics": []
 }

@@ -75,28 +75,28 @@
       "content_type": null
     },
     {
-      "key": "fixtures/extraction/jsx/basic/source.jsx:format:9:0",
+      "key": "fixtures/extraction/jsx/basic/source.jsx:format:13:0",
       "name": "format",
       "kind": "function",
       "language": "jsx",
       "file_path": "fixtures/extraction/jsx/basic/source.jsx",
-      "start_line": 9,
+      "start_line": 13,
       "start_column": 0,
-      "end_line": 11,
+      "end_line": 15,
       "end_column": 1,
-      "start_byte": 171,
-      "end_byte": 222,
+      "start_byte": 227,
+      "end_byte": 278,
       "body_span": {
-        "start_line": 9,
+        "start_line": 13,
         "start_column": 23,
-        "end_line": 11,
+        "end_line": 15,
         "end_column": 1,
-        "start_byte": 194,
-        "end_byte": 222
+        "start_byte": 250,
+        "end_byte": 278
       },
       "body_hash": "610fbeb731a13af644329e41367482b9",
       "signature": "function format(value)",
-      "doc_comment": null,
+      "doc_comment": "/**\n * Format the badge label.\n * @returns {string}\n */",
       "visibility": "Public",
       "parent_key": null,
       "metadata": {
@@ -154,7 +154,7 @@
   "relationships": [
     {
       "from_key": "fixtures/extraction/jsx/basic/source.jsx:Badge:1:7",
-      "to_key": "fixtures/extraction/jsx/basic/source.jsx:format:9:0",
+      "to_key": "fixtures/extraction/jsx/basic/source.jsx:format:13:0",
       "kind": "calls",
       "file_path": "fixtures/extraction/jsx/basic/source.jsx",
       "line_number": 6,
@@ -163,7 +163,7 @@
     },
     {
       "from_key": "fixtures/extraction/jsx/basic/source.jsx:handleClick:2:4",
-      "to_key": "fixtures/extraction/jsx/basic/source.jsx:format:9:0",
+      "to_key": "fixtures/extraction/jsx/basic/source.jsx:format:13:0",
       "kind": "calls",
       "file_path": "fixtures/extraction/jsx/basic/source.jsx",
       "line_number": 3,
@@ -173,22 +173,22 @@
   ],
   "pending_relationships": [
     {
-      "from_key": "fixtures/extraction/jsx/basic/source.jsx:format:9:0",
+      "from_key": "fixtures/extraction/jsx/basic/source.jsx:format:13:0",
       "callee_name": "value.trim",
       "kind": "calls",
       "file_path": "fixtures/extraction/jsx/basic/source.jsx",
-      "line_number": 10,
+      "line_number": 14,
       "confidence": "0.700"
     }
   ],
   "structured_pending_relationships": [
     {
       "pending": {
-        "from_key": "fixtures/extraction/jsx/basic/source.jsx:format:9:0",
+        "from_key": "fixtures/extraction/jsx/basic/source.jsx:format:13:0",
         "callee_name": "value.trim",
         "kind": "calls",
         "file_path": "fixtures/extraction/jsx/basic/source.jsx",
-        "line_number": 10,
+        "line_number": 14,
         "confidence": "0.700"
       },
       "target": {
@@ -198,7 +198,7 @@
         "namespace_path": [],
         "import_context": null
       },
-      "caller_scope_key": "fixtures/extraction/jsx/basic/source.jsx:format:9:0"
+      "caller_scope_key": "fixtures/extraction/jsx/basic/source.jsx:format:13:0"
     }
   ],
   "identifiers": [
@@ -235,22 +235,32 @@
       "confidence": "1.000"
     },
     {
-      "key": "fixtures/extraction/jsx/basic/source.jsx:trim:call:10:17",
+      "key": "fixtures/extraction/jsx/basic/source.jsx:trim:call:14:17",
       "name": "trim",
       "kind": "call",
       "language": "jsx",
       "file_path": "fixtures/extraction/jsx/basic/source.jsx",
-      "start_line": 10,
+      "start_line": 14,
       "start_column": 17,
-      "end_line": 10,
+      "end_line": 14,
       "end_column": 21,
-      "start_byte": 213,
-      "end_byte": 217,
-      "containing_key": "fixtures/extraction/jsx/basic/source.jsx:format:9:0",
+      "start_byte": 269,
+      "end_byte": 273,
+      "containing_key": "fixtures/extraction/jsx/basic/source.jsx:format:13:0",
       "target_key": null,
       "confidence": "1.000"
     }
   ],
-  "types": [],
+  "types": [
+    {
+      "symbol_key": "fixtures/extraction/jsx/basic/source.jsx:format:13:0",
+      "resolved_type": "string",
+      "generic_params": null,
+      "constraints": null,
+      "is_inferred": true,
+      "language": "jsx",
+      "metadata": null
+    }
+  ],
   "parse_diagnostics": []
 }

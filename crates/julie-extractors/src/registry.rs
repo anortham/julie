@@ -630,6 +630,7 @@ fn extract_html(
     let symbols = ext.extract_symbols(tree);
     let relationships = ext.extract_relationships(tree, &symbols);
     let identifiers = ext.extract_identifiers(tree, &symbols);
+    let types = ext.infer_types(&symbols);
     let structured_pending_relationships =
         ext.extract_structured_pending_relationships(tree, &symbols);
     let pending_relationships = structured_pending_relationships
@@ -643,7 +644,7 @@ fn extract_html(
         pending_relationships,
         structured_pending_relationships,
         identifiers,
-        types: HashMap::new(),
+        types: convert_types_map(types, "html"),
         parse_diagnostics: Vec::new(),
     })
 }

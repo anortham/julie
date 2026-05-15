@@ -1,4 +1,6 @@
 class Worker
+  DEFAULT_LABEL = "worker"
+
   def initialize(id)
     @id = id
   end

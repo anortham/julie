@@ -112,28 +112,28 @@
       "content_type": null
     },
     {
-      "key": "fixtures/extraction/javascript/basic/source.js:helper:11:0",
+      "key": "fixtures/extraction/javascript/basic/source.js:helper:15:0",
       "name": "helper",
       "kind": "function",
       "language": "javascript",
       "file_path": "fixtures/extraction/javascript/basic/source.js",
-      "start_line": 11,
+      "start_line": 15,
       "start_column": 0,
-      "end_line": 13,
+      "end_line": 17,
       "end_column": 1,
-      "start_byte": 126,
-      "end_byte": 174,
+      "start_byte": 181,
+      "end_byte": 229,
       "body_span": {
-        "start_line": 11,
+        "start_line": 15,
         "start_column": 23,
-        "end_line": 13,
+        "end_line": 17,
         "end_column": 1,
-        "start_byte": 149,
-        "end_byte": 174
+        "start_byte": 204,
+        "end_byte": 229
       },
       "body_hash": "9d7bfc03ef03477a6cc1004df50e77c5",
       "signature": "function helper(value)",
-      "doc_comment": null,
+      "doc_comment": "/**\n * Increment a worker id.\n * @returns {number}\n */",
       "visibility": "Public",
       "parent_key": null,
       "metadata": {
@@ -193,7 +193,7 @@
   "relationships": [
     {
       "from_key": "fixtures/extraction/javascript/basic/source.js:run:6:4",
-      "to_key": "fixtures/extraction/javascript/basic/source.js:helper:11:0",
+      "to_key": "fixtures/extraction/javascript/basic/source.js:helper:15:0",
       "kind": "calls",
       "file_path": "fixtures/extraction/javascript/basic/source.js",
       "line_number": 7,
@@ -253,6 +253,16 @@
       "confidence": "1.000"
     }
   ],
-  "types": [],
+  "types": [
+    {
+      "symbol_key": "fixtures/extraction/javascript/basic/source.js:helper:15:0",
+      "resolved_type": "number",
+      "generic_params": null,
+      "constraints": null,
+      "is_inferred": true,
+      "language": "javascript",
+      "metadata": null
+    }
+  ],
   "parse_diagnostics": []
 }
