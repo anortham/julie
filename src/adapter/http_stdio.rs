@@ -28,6 +28,12 @@ pub(crate) enum AdapterError {
     Transport {
         error: anyhow::Error,
         wrote_any_output: bool,
+        /// Raw request line bytes that were being sent when the transport
+        /// failed.  Present when `send_client_line` fails *after* parsing
+        /// but *before* the line reaches `in_flight_requests`.  The retry
+        /// loop in `run_http_adapter` pushes this back onto
+        /// `pending_lines` so the request is not silently dropped.
+        lost_line: Option<Vec<u8>>,
     },
     /// Failure reading from MCP client stdin or writing to its stdout. The
     /// MCP client is gone; retrying makes no sense.
@@ -215,6 +221,11 @@ pub(crate) async fn run_http_adapter(
                         error = %adapter_error,
                         "HTTP adapter transport error before output, retrying"
                     );
+                    // Recover the request line that was in-flight when the
+                    // transport failed so it is retried on the next attempt.
+                    if let AdapterError::Transport { lost_line: Some(line), .. } = adapter_error {
+                        pending_lines.push_front(line);
+                    }
                     continue;
                 }
                 AdapterRetryDecision::Terminal => {
@@ -316,7 +327,7 @@ where
 
     loop {
         if let Some(line) = pending_lines.pop_front() {
-            if let Err(error) =
+            if let Err((error, lost_line)) =
                 send_client_line(&mut transport, line, &mut in_flight_requests).await
             {
                 if !wrote_any_output {
@@ -325,6 +336,7 @@ where
                 return Err(AdapterError::Transport {
                     error,
                     wrote_any_output,
+                    lost_line: Some(lost_line),
                 });
             }
             continue;
@@ -339,6 +351,7 @@ where
                 return Err(AdapterError::Transport {
                     error,
                     wrote_any_output,
+                    lost_line: None,
                 });
             }
             return Ok(ForwardOutcome::SessionEnded);
@@ -348,13 +361,14 @@ where
             line = stdin_lines.recv(), if !stdin_done => {
                 match line {
                     Some(Ok(line)) => {
-                        if let Err(error) = send_client_line(&mut transport, line, &mut in_flight_requests).await {
+                        if let Err((error, lost_line)) = send_client_line(&mut transport, line, &mut in_flight_requests).await {
                             if !wrote_any_output {
                                 requeue_in_flight(pending_lines, &mut in_flight_requests);
                             }
                             return Err(AdapterError::Transport {
                                 error,
                                 wrote_any_output,
+                                lost_line: Some(lost_line),
                             });
                         }
                     }
@@ -402,11 +416,16 @@ where
     }
 }
 
+/// Send a parsed JSON-RPC line to the transport and track it for retry.
+///
+/// On success the line is moved into `in_flight_requests` (if it carries a
+/// request id).  On transport failure the raw bytes are returned inside the
+/// error tuple so the caller can push them back onto `pending_lines`.
 async fn send_client_line<T>(
     transport: &mut T,
     line: Vec<u8>,
     in_flight_requests: &mut VecDeque<(RequestId, Vec<u8>)>,
-) -> Result<()>
+) -> Result<(), (anyhow::Error, Vec<u8>)>
 where
     T: Transport<RoleClient>,
 {
@@ -414,13 +433,20 @@ where
         return Ok(());
     }
 
-    let message: ClientJsonRpcMessage =
-        serde_json::from_slice(&line).context("Failed to parse MCP client JSON-RPC message")?;
+    let message: ClientJsonRpcMessage = serde_json::from_slice(&line)
+        .context("Failed to parse MCP client JSON-RPC message")
+        .map_err(|e| (e, line.clone()))?;
     let expected_response_id = client_request_id(&message);
-    transport
+
+    // `transport.send()` takes ownership of `message`, not `line`, so
+    // `line` is still available on the error path without cloning.
+    if let Err(send_err) = transport
         .send(message)
         .await
-        .context("Failed to send JSON-RPC message to HTTP MCP daemon")?;
+        .context("Failed to send JSON-RPC message to HTTP MCP daemon")
+    {
+        return Err((send_err, line));
+    }
 
     if let Some(expected_response_id) = expected_response_id {
         in_flight_requests.push_back((expected_response_id, line));

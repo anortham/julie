@@ -123,6 +123,7 @@ mod tests {
         let error = AdapterError::Transport {
             error: anyhow::anyhow!("simulated"),
             wrote_any_output: false,
+            lost_line: None,
         };
         let decision = classify_adapter_error(&error, 0, MAX_RETRIES);
         assert_eq!(decision, AdapterRetryDecision::Retry);
@@ -133,6 +134,7 @@ mod tests {
         let error = AdapterError::Transport {
             error: anyhow::anyhow!("simulated"),
             wrote_any_output: true,
+            lost_line: None,
         };
         let decision = classify_adapter_error(&error, 0, MAX_RETRIES);
         assert_eq!(
@@ -157,6 +159,7 @@ mod tests {
         let error = AdapterError::Transport {
             error: anyhow::anyhow!("simulated"),
             wrote_any_output: false,
+            lost_line: None,
         };
         let decision = classify_adapter_error(&error, MAX_RETRIES, MAX_RETRIES);
         assert_eq!(decision, AdapterRetryDecision::Exhausted);
@@ -286,6 +289,7 @@ mod tests {
         let post_output_err = AdapterError::Transport {
             error: anyhow::anyhow!("post-output simulated"),
             wrote_any_output: true,
+            lost_line: None,
         };
         assert_eq!(
             classify_adapter_error(&post_output_err, 0, MAX_RETRIES),
@@ -310,6 +314,7 @@ mod tests {
         let error = AdapterError::Transport {
             error: anyhow::anyhow!("daemon went down"),
             wrote_any_output: false,
+            lost_line: None,
         };
         for attempt in 0..MAX_RETRIES {
             assert_eq!(
@@ -323,6 +328,47 @@ mod tests {
             classify_adapter_error(&error, MAX_RETRIES, MAX_RETRIES),
             AdapterRetryDecision::Exhausted
         );
+    }
+
+    // --- Lost line preservation on transport send failure ---
+
+    #[tokio::test]
+    async fn send_failure_preserves_lost_line_for_retry() {
+        // When transport.send() fails, the request line that was being sent
+        // must appear in AdapterError::Transport::lost_line so the retry
+        // loop can push it back onto pending_lines.
+        let transport = AlwaysFailSendTransport::new();
+        let (stdin, mut stdin_writer) = tokio::io::duplex(1024);
+        let mut stdout = Vec::new();
+
+        let request_bytes =
+            br#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test-client","version":"0.0.0"}}}"#;
+
+        stdin_writer.write_all(request_bytes).await.unwrap();
+        stdin_writer.write_all(b"\n").await.unwrap();
+        stdin_writer.shutdown().await.unwrap();
+
+        let result = forward_http_stdio_transport(transport, stdin, &mut stdout).await;
+
+        match result {
+            Err(AdapterError::Transport {
+                wrote_any_output,
+                lost_line,
+                ..
+            }) => {
+                assert!(!wrote_any_output, "no output was ever written");
+                let lost = lost_line.expect("lost_line must be Some when send fails");
+                let lost_parsed: serde_json::Value =
+                    serde_json::from_slice(&lost).expect("lost_line must be valid JSON");
+                let original_parsed: serde_json::Value =
+                    serde_json::from_slice(request_bytes).expect("request bytes must be valid JSON");
+                assert_eq!(
+                    lost_parsed, original_parsed,
+                    "lost_line must contain the original request bytes"
+                );
+            }
+            other => panic!("expected Transport error with lost_line, got {other:?}"),
+        }
     }
 
     // Silence unused-import lint when tokio bits aren't all touched.
