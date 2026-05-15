@@ -38,7 +38,7 @@ Data: 1,876 fast_search calls with enriched telemetry (824 before file mode, 1,0
 
 ## Daemon Reliability
 
-- [ ] **Daemon eval sessions leak or retain too many file descriptors** -- Observed 2026-05-15
+- [x] **Daemon eval sessions leak or retain too many file descriptors** -- Observed 2026-05-15
   during Eros head-to-head benchmarking. A long-lived Julie daemon reached more than `1000` open file
   descriptors and repeatedly logged Tantivy failures opening `meta.json` with `Too many open files
   (os error 24)` while eval workspaces ran startup repair checks. The run became contaminated until
@@ -64,7 +64,7 @@ Data: 1,876 fast_search calls with enriched telemetry (824 before file mode, 1,0
   4. Consider bounding idle workspace retention or eagerly closing per-session resources after
      non-interactive CLI requests.
 
-- [ ] **Cold daemon `workspace index --force` can block on embedding startup/catch-up after index is
+- [x] **Cold daemon `workspace index --force` can block on embedding startup/catch-up after index is
   already complete** -- Observed 2026-05-15 with a clean temporary `HOME` while reproducing Eros
   head-to-head benchmark stability. The first daemon-mode command:
   `julie-server --workspace /Users/murphy/Source/eros-eval-corpus/browser39 --json workspace index
@@ -86,7 +86,7 @@ Data: 1,876 fast_search calls with enriched telemetry (824 before file mode, 1,0
   3. Add a timeout-bounded test with `JULIE_EMBEDDING_PROVIDER=none` or a delayed sidecar to ensure
      canonical indexing can return promptly.
 
-- [ ] **Daemon drain timeout too short for stale-binary restart** -- `drain_timeout_secs=10` (`src/daemon/mod.rs:689`) is aggressive. Observed 2026-05-08: dev-time `cargo build --release` triggers stale-binary auto-restart, in-flight sessions running embeddings/indexing/heavy search can't drain in 10s, force-shutdown logged as `Session drain timeout exceeded, forcing shutdown — in-flight writes may be lost`. Same-day repro showed 3+ forced shutdowns between 17:49–17:56. Fixes to consider:
+- [x] **Daemon drain timeout too short for stale-binary restart** -- `drain_timeout_secs=10` (`src/daemon/mod.rs:689`) is aggressive. Observed 2026-05-08: dev-time `cargo build --release` triggers stale-binary auto-restart, in-flight sessions running embeddings/indexing/heavy search can't drain in 10s, force-shutdown logged as `Session drain timeout exceeded, forcing shutdown — in-flight writes may be lost`. Same-day repro showed 3+ forced shutdowns between 17:49–17:56. Fixes to consider:
   1. Bump drain timeout to 60–120s.
   2. Adapter resilience: when the stdio adapter loses HTTP to the daemon, retry with backoff for ≥30s before dropping the MCP session. Currently the client-side session goes permanently dead and `mcp__julie__*` tools become unavailable until the Claude session restarts.
   3. Optional: skip stale-binary restart if any active session was busy in the last N seconds; treat as "wait until truly idle" rather than time-bounded drain.
