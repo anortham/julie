@@ -124,6 +124,14 @@ Data: 1,876 fast_search calls with enriched telemetry (824 before file mode, 1,0
 
 - [ ] **Validate adapter retry fix under real-world daemon restart** -- The adapter retry code (commit b3e0c3cc, MAX_RETRIES=5, exponential backoff) shipped 2026-05-15 but has not been validated with the new release binary. During this same session, Julie's MCP transport died silently when the daemon received SIGTERM -- the old binary was still running. Repro: `cargo build --release && cargo xtask dev-restart`, then immediately call a Julie tool. The adapter should reconnect within ~31s instead of dying permanently. Also validate: malformed-JSON skip (043800b3), lost-line preservation (9811af54).
 
+  Additional observation 2026-05-15: during the daemon reliability implementation session,
+  Julie MCP transport died twice -- once after `dev-restart` triggered a daemon SIGTERM, and
+  once during a `get_symbols` call. Both times the adapter (old binary without retry code)
+  exited permanently. The new release binary with adapter retry (commits b3e0c3cc, 9811af54,
+  043800b3) was built and deployed via `dev-link` but the current Claude Code session's adapter
+  process was still the old binary. Validation requires starting a fresh session so the adapter
+  spawns with the new binary.
+
   Additional validation 2026-05-15T20:23Z: after the user patched/rebuilt Julie, Codex's already-open
   `mcp__julie__` transport still returned `Transport closed` on `manage_workspace(operation="list")`
   and `manage_workspace(operation="health")`. The configured binary exists at
@@ -133,7 +141,7 @@ Data: 1,876 fast_search calls with enriched telemetry (824 before file mode, 1,0
   succeeded in daemon mode. Current evidence points to the current harness MCP session staying closed
   after a prior transport death, not to the rebuilt binary being missing or unable to initialize.
 
-- [ ] **Python extractor should not mark source `test_*` callables as tests by name alone** --
+- [x] **Python extractor should not mark source `test_*` callables as tests by name alone** --
   Observed 2026-05-15T20:23Z while dogfooding Eros confidence packs: source methods such as
   `python/eros/store/sqlite.py::test_result_histories` can be emitted with `metadata.is_test`
   because `detect_python()` in `crates/julie-extractors/src/test_detection.rs` returns true for
