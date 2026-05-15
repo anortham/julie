@@ -38,12 +38,81 @@ Data: 1,876 fast_search calls with enriched telemetry (824 before file mode, 1,0
 
 ## Daemon Reliability
 
+- [ ] **Daemon eval sessions leak or retain too many file descriptors** -- Observed 2026-05-15
+  during Eros head-to-head benchmarking. A long-lived Julie daemon reached more than `1000` open file
+  descriptors and repeatedly logged Tantivy failures opening `meta.json` with `Too many open files
+  (os error 24)` while eval workspaces ran startup repair checks. The run became contaminated until
+  the daemon was restarted under a higher `ulimit`.
+
+  Evidence:
+  - `lsof -p <daemon_pid> | wc -l` was about `1102` before restart and climbed to about `1500`
+    during the clean benchmark run.
+  - Logs showed repeated failures like:
+    `Failed to index workspace: Tantivy error: Failed to open file for read ... Too many open files
+    ... filepath: "meta.json"`.
+  - The problematic sessions were repeated CLI daemon-mode calls across the Eros eval corpus:
+    `julie-server --workspace <repo> --json workspace index --path <repo> --force`, search, and
+    context calls.
+
+  Fixes to investigate:
+  1. Verify HTTP MCP sessions release all session, Tantivy, watcher, and DB handles after each CLI
+     command.
+  2. Add daemon telemetry/status for FD count, active sessions, loaded workspaces, watcher refs, and
+     open Tantivy readers/writers.
+  3. Add a regression test or stress harness for many sequential daemon-mode CLI calls over multiple
+     workspaces.
+  4. Consider bounding idle workspace retention or eagerly closing per-session resources after
+     non-interactive CLI requests.
+
+- [ ] **Cold daemon `workspace index --force` can block on embedding startup/catch-up after index is
+  already complete** -- Observed 2026-05-15 with a clean temporary `HOME` while reproducing Eros
+  head-to-head benchmark stability. The first daemon-mode command:
+  `julie-server --workspace /Users/murphy/Source/eros-eval-corpus/browser39 --json workspace index
+  --path /Users/murphy/Source/eros-eval-corpus/browser39 --force` timed out from Eros after `30s`,
+  even though canonical indexing itself completed in about `2s`.
+
+  Evidence from the clean Julie log:
+  - Initial index completed quickly: `Indexing complete: 2372 symbols, 51 files, 1964 relationships`.
+  - A later repeat command then logged `Workspace has symbols but 0 embeddings - scheduling catch-up
+    embedding`.
+  - About `50s` elapsed before embedding provider initialization published unavailable:
+    `Embedding provider unavailable ... sidecar process started but health check failed`.
+  - Only after that did the forced index continue and return.
+
+  Fixes to investigate:
+  1. Do not make `workspace index --force` wait on cold embedding provider initialization unless the
+     caller explicitly requests embedding completion.
+  2. Separate canonical index readiness from embedding catch-up readiness in CLI/MCP responses.
+  3. Add a timeout-bounded test with `JULIE_EMBEDDING_PROVIDER=none` or a delayed sidecar to ensure
+     canonical indexing can return promptly.
+
 - [ ] **Daemon drain timeout too short for stale-binary restart** -- `drain_timeout_secs=10` (`src/daemon/mod.rs:689`) is aggressive. Observed 2026-05-08: dev-time `cargo build --release` triggers stale-binary auto-restart, in-flight sessions running embeddings/indexing/heavy search can't drain in 10s, force-shutdown logged as `Session drain timeout exceeded, forcing shutdown — in-flight writes may be lost`. Same-day repro showed 3+ forced shutdowns between 17:49–17:56. Fixes to consider:
   1. Bump drain timeout to 60–120s.
   2. Adapter resilience: when the stdio adapter loses HTTP to the daemon, retry with backoff for ≥30s before dropping the MCP session. Currently the client-side session goes permanently dead and `mcp__julie__*` tools become unavailable until the Claude session restarts.
   3. Optional: skip stale-binary restart if any active session was busy in the last N seconds; treat as "wait until truly idle" rather than time-bounded drain.
 
   Repro is straightforward: open a Claude Code session using the `julie` MCP server (registered to `target/release/julie-server`), run `cargo build --release` in another terminal while the session is active, and watch `~/.julie/daemon.log.*` for the drain-timeout error and the client losing its MCP tools.
+
+  Additional observation 2026-05-15: `julie-server stop` also failed to stop a saturated benchmark
+  daemon within `10s`, requiring `kill <pid>`. The daemon eventually logged workspace pool and watcher
+  shutdown after the forced cleanup path, but the CLI surfaced `Daemon did not stop within 10s`.
+
+  Additional observation 2026-05-15: after the Eros benchmark cleanup/restart cycle, the Codex MCP
+  session's Julie tools all failed with `Transport closed` on `deep_dive`, `fast_refs`, and
+  `get_symbols`. This matches the client-side permanent-dead-session failure mode above; the
+  current harness could not recover the Julie MCP transport without restarting the session.
+
+  Additional observation 2026-05-15: after restarting Codex and resuming Eros lifecycle work,
+  Julie MCP still failed immediately with `Transport closed` on three concurrent `fast_search`
+  calls (`_inspect_test_facts`, SQLite chunking, and inspect confidence lookup). This suggests the
+  transport/session recovery issue can survive a harness restart or recur immediately after startup,
+  not only after a stale-binary or daemon-drain event.
+
+  Additional observation 2026-05-15T17:32:34Z: in a new Eros session after recording the compact
+  confidence-pack workflow artifact, Julie MCP failed immediately with `Transport closed` on
+  `get_context(query="Eros MCP assess_change readiness compact test confidence pack likely tests
+  verification command confidence summaries tool schemas routes readiness confidence linker tests")`.
+  The harness continued by falling back to Eros/source inspection.
 
 ## Future Ideas
 
@@ -52,27 +121,3 @@ Data: 1,876 fast_search calls with enriched telemetry (824 before file mode, 1,0
 - [ ] **AST-based complexity metrics** -- Add cyclomatic complexity calculation during AST extraction. Store as symbol metadata. Enables a `/hotspots` skill (complexity x centrality = refactoring targets). Deferred because it requires per-language node-kind mapping across 34 extractors.
 - [ ] **Function body hashing for duplication detection** -- Hash normalized function bodies during extraction to detect near-duplicate functions across a codebase. Low priority.
 - [x] **Scoped path extraction for Rust** -- Implemented as structured scoped-call resolution: Rust `scoped_identifier` calls preserve namespace paths, indexing carries structured pendings, and the resolver uses namespace-aware candidate selection to avoid false edges like `std::collections::HashMap::new()` resolving to local `new`.
-
-
-------------------
-Log file of issue:
-
-lmc       120398 29.4  0.3 3815868 432404 ?      Rl   09:28   0:00 /home/lmc/.cache/julie/embeddings/sidecar/venv/bin/python -c import torch; v=torch.version; print(v.split('+')[0])
-lmc       120400  0.0  0.0 222280 23348 ?        Sl   09:28   0:00 uv pip install --python /home/lmc/.cache/julie/embeddings/sidecar/venv/bin/python --reinstall-package torch torch==2.11.0 --index-url https://download.pytorch.org/whl/cu124
-lmc       120420  0.0  0.0 296032 23556 ?        Sl   09:28   0:00 uv pip install --python /home/lmc/.cache/julie/embeddings/sidecar/venv/bin/python --reinstall-package torch torch==2.11.0 --index-url https://download.pytorch.org/whl/cu124
-lmc       120425  0.0  0.0 222284 23436 ?        Sl   09:28   0:00 uv pip install --python /home/lmc/.cache/julie/embeddings/sidecar/venv/bin/python --reinstall-package torch torch==2.11.0 --index-url https://download.pytorch.org/whl/cu124
-lmc       120467  0.0  0.0 222284 23076 ?        Sl   09:28   0:00 uv pip install --python /home/lmc/.cache/julie/embeddings/sidecar/venv/bin/python --reinstall-package torch torch==2.11.0 --index-url https://download.pytorch.org/whl/cu124
-lmc       120487 31.3  0.3 3805772 420724 ?      Rl   09:28   0:00 /home/lmc/.cache/julie/embeddings/sidecar/venv/bin/python -c import torch; v=torch.version; print(v.split('+')[0])
-lmc       120510 33.6  0.3 3802128 414764 ?      Rl   09:28   0:00 /home/lmc/.cache/julie/embeddings/sidecar/venv/bin/python -c import torch; v=torch.version; print(v.split('+')[0])
-lmc       120528  0.0  0.0 222284 23120 ?        Sl   09:28   0:00 uv pip install --python /home/lmc/.cache/julie/embeddings/sidecar/venv/bin/python --reinstall-package torch torch==2.11.0 --index-url https://download.pytorch.org/whl/cu124
-lmc       120529  0.0  0.0 222284 23136 ?        Sl   09:28   0:00 uv pip install --python /home/lmc/.cache/julie/embeddings/sidecar/venv/bin/python --reinstall-package torch torch==2.11.0 --index-url https://download.pytorch.org/whl/cu124
-lmc       120537 32.5  0.3 3758232 403368 ?      Rl   09:28   0:00 /home/lmc/.cache/julie/embeddings/sidecar/venv/bin/python -m sidecar.main
-lmc       120561  0.0  0.0 222284 23332 ?        Sl   09:28   0:00 uv pip install --python /home/lmc/.cache/julie/embeddings/sidecar/venv/bin/python --reinstall-package torch torch==2.11.0 --index-url https://download.pytorch.org/whl/cu124
-lmc       120600 41.4  0.3 3793504 408084 ?      Rl   09:28   0:00 /home/lmc/.cache/julie/embeddings/sidecar/venv/bin/python -c import torch; v=torch.version; print(v.split('+')[0])
-lmc       120640 30.3  0.2 3054604 373620 ?      R    09:28   0:00 /home/lmc/.cache/julie/embeddings/sidecar/venv/bin/python -c import torch; v=torch.version; print(v.split('+')[0])
-lmc       120641  0.0  0.0 222284 23428 ?        Sl   09:28   0:00 uv pip install --python /home/lmc/.cache/julie/embeddings/sidecar/venv/bin/python --reinstall-package torch torch==2.11.0 --index-url https://download.pytorch.org/whl/cu124
-lmc       120713 31.1  0.2 3041316 346732 ?      R    09:28   0:00 /home/lmc/.cache/julie/embeddings/sidecar/venv/bin/python -c import torch; v=torch.version; print(v.split('+')[0])
-lmc       120752  0.0  0.0 222280 23056 ?        Sl   09:28   0:00 uv pip install --python /home/lmc/.cache/julie/embeddings/sidecar/venv/bin/python --reinstall-package torch torch==2.11.0 --index-url https://download.pytorch.org/whl/cu124
-lmc       120762 36.1  0.2 3033836 335008 ?      R    09:28   0:00 /home/lmc/.cache/julie/embeddings/sidecar/venv/bin/python -c import torch; v=torch.version; print(v.split('+')[0])
-lmc       120779  0.0  0.0 228432 23108 ?        Sl   09:28   0:00 uv pip install --python /home/lmc/.cache/julie/embeddings/sidecar/venv/bin/python --reinstall-package torch torch==2.11.0 --index-url https://download.pytorch.org/whl/cu124
-lmc       120818 43.8  0.2 3005792 297140 ?      R    09:28   0:00 /home/lmc/.cache/julie/embeddings/sidecar/venv/bin/python -c import torch; v=torch.version; print(v.split('+')[0])
