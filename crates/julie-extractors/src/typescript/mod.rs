@@ -27,12 +27,13 @@ use crate::base::{
     BaseExtractor, Identifier, PendingRelationship, Relationship, RelationshipKind,
     StructuredPendingRelationship, Symbol, SymbolKind, UnresolvedTarget,
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use tree_sitter::Tree;
 
 /// Main TypeScript extractor that orchestrates modular extraction components
 pub struct TypeScriptExtractor {
     base: BaseExtractor,
+    import_bindings: Option<HashSet<String>>,
 }
 
 impl TypeScriptExtractor {
@@ -48,6 +49,7 @@ impl TypeScriptExtractor {
     ) -> Self {
         Self {
             base: BaseExtractor::new(language, file_path, content, workspace_root),
+            import_bindings: None,
         }
     }
 
@@ -215,7 +217,7 @@ impl TypeScriptExtractor {
     }
 
     fn build_unresolved_target(
-        &self,
+        &mut self,
         call_node: tree_sitter::Node,
         function_node: tree_sitter::Node,
         symbol_map: &std::collections::HashMap<String, &Symbol>,
@@ -263,7 +265,7 @@ impl TypeScriptExtractor {
     }
 
     fn find_receiver_import_context(
-        &self,
+        &mut self,
         call_node: tree_sitter::Node,
         receiver_name: &str,
         symbol_map: &std::collections::HashMap<String, &Symbol>,
@@ -336,7 +338,18 @@ impl TypeScriptExtractor {
         None
     }
 
-    fn file_imports_binding(&self, node: tree_sitter::Node, binding_name: &str) -> bool {
+    fn file_imports_binding(&mut self, node: tree_sitter::Node, binding_name: &str) -> bool {
+        self.file_import_bindings(node).contains(binding_name)
+    }
+
+    fn file_import_bindings(&mut self, node: tree_sitter::Node) -> &HashSet<String> {
+        if self.import_bindings.is_some() {
+            return self
+                .import_bindings
+                .as_ref()
+                .expect("import binding cache is initialized");
+        }
+
         let mut current = Some(node);
         let mut root = node;
         while let Some(candidate) = current {
@@ -344,6 +357,7 @@ impl TypeScriptExtractor {
             current = candidate.parent();
         }
 
+        let mut bindings = HashSet::new();
         let mut stack = vec![root];
         while let Some(candidate) = stack.pop() {
             let mut cursor = candidate.walk();
@@ -355,12 +369,66 @@ impl TypeScriptExtractor {
                 continue;
             }
 
-            if self.base.get_node_text(&candidate).contains(binding_name) {
-                return true;
-            }
+            self.collect_import_binding_names(candidate, &mut bindings);
         }
 
-        false
+        self.import_bindings = Some(bindings);
+        self.import_bindings
+            .as_ref()
+            .expect("import binding cache is initialized")
+    }
+
+    fn collect_import_binding_names(
+        &self,
+        import_node: tree_sitter::Node,
+        bindings: &mut HashSet<String>,
+    ) {
+        let Some(clause) = import_node
+            .children(&mut import_node.walk())
+            .find(|child| child.kind() == "import_clause")
+        else {
+            return;
+        };
+
+        let mut cursor = clause.walk();
+        for child in clause.children(&mut cursor) {
+            match child.kind() {
+                "identifier" => {
+                    bindings.insert(self.base.get_node_text(&child));
+                }
+                "named_imports" => self.collect_named_import_bindings(child, bindings),
+                "namespace_import" => {
+                    if let Some(local_node) = child
+                        .children(&mut child.walk())
+                        .find(|candidate| candidate.kind() == "identifier")
+                    {
+                        bindings.insert(self.base.get_node_text(&local_node));
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn collect_named_import_bindings(
+        &self,
+        named_imports: tree_sitter::Node,
+        bindings: &mut HashSet<String>,
+    ) {
+        let mut cursor = named_imports.walk();
+        for specifier in named_imports.children(&mut cursor) {
+            if specifier.kind() != "import_specifier" {
+                continue;
+            }
+
+            let Some(local_node) = specifier
+                .child_by_field_name("alias")
+                .or_else(|| specifier.child_by_field_name("name"))
+            else {
+                continue;
+            };
+            bindings.insert(self.base.get_node_text(&local_node));
+        }
     }
 
     /// Extract all identifiers (function calls, member access, etc.)
@@ -403,5 +471,53 @@ impl TypeScriptExtractor {
     /// Get immutable reference to base extractor (for sub-modules)
     pub(crate) fn base(&self) -> &BaseExtractor {
         &self.base
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+    use tree_sitter::Parser;
+
+    #[test]
+    fn file_import_bindings_are_cached_from_one_tree_walk() {
+        let source = r#"
+            import defaultThing, { helper as renamed, other } from "./deps";
+            import * as namespaceThing from "./namespace";
+
+            function run() {
+                renamed();
+                namespaceThing.call();
+            }
+        "#;
+        let tree = parse_typescript(source);
+        let mut extractor = TypeScriptExtractor::new(
+            "typescript".to_string(),
+            "src/app.ts".to_string(),
+            source.to_string(),
+            Path::new("src"),
+        );
+
+        let bindings = extractor.file_import_bindings(tree.root_node());
+        let first_bindings = bindings as *const HashSet<String>;
+
+        assert!(bindings.contains("defaultThing"));
+        assert!(bindings.contains("renamed"));
+        assert!(bindings.contains("other"));
+        assert!(bindings.contains("namespaceThing"));
+        let second_bindings =
+            extractor.file_import_bindings(tree.root_node()) as *const HashSet<String>;
+        assert_eq!(first_bindings, second_bindings);
+    }
+
+    fn parse_typescript(source: &str) -> tree_sitter::Tree {
+        let mut parser = Parser::new();
+        parser
+            .set_language(&tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into())
+            .expect("failed to set TypeScript language");
+        parser
+            .parse(source, None)
+            .expect("failed to parse TypeScript")
     }
 }

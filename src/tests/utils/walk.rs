@@ -105,6 +105,24 @@ fn test_walk_always_excludes_dot_git() {
 }
 
 #[test]
+fn test_walk_always_excludes_dot_julie() {
+    let dir = TempDir::new().unwrap();
+    let root = dir.path();
+    fs::create_dir_all(root.join(".git")).unwrap();
+    fs::create_dir_all(root.join(".julie/logs")).unwrap();
+    fs::write(root.join(".julie/logs/julie.log"), "mutating log").unwrap();
+    fs::write(root.join(".julie/config.toml"), "[julie]").unwrap();
+    fs::write(root.join("src.rs"), "fn main() {}").unwrap();
+
+    let files = collect_walked_files(root, &WalkConfig::vendor_scan());
+    assert!(
+        !files.iter().any(|f| f.contains(".julie")),
+        ".julie should always be excluded"
+    );
+    assert!(files.iter().any(|f| f.contains("src.rs")));
+}
+
+#[test]
 fn test_walk_includes_dotfiles_like_editorconfig() {
     let dir = TempDir::new().unwrap();
     let root = dir.path();

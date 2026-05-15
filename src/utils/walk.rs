@@ -42,7 +42,7 @@ impl WalkConfig {
 /// - `hidden(false)` — include dotfiles; let .gitignore + blacklist handle exclusion
 /// - `git_ignore(true)` — respect .gitignore (including nested, global, .git/info/exclude)
 /// - `.julieignore` — if `config.use_julieignore`, added as custom ignore filename
-/// - `filter_entry` — always excludes `.git`; optionally excludes BLACKLISTED_DIRECTORIES
+/// - `filter_entry` — always excludes `.git` and `.julie`; optionally excludes BLACKLISTED_DIRECTORIES
 pub fn build_walker(workspace_path: &Path, config: &WalkConfig) -> ignore::Walk {
     let mut builder = WalkBuilder::new(workspace_path);
 
@@ -67,9 +67,9 @@ pub fn build_walker(workspace_path: &Path, config: &WalkConfig) -> ignore::Walk 
     builder.filter_entry(move |entry| {
         let file_name = entry.file_name().to_str().unwrap_or("");
 
-        // Always exclude .git — hidden(false) would otherwise include it.
+        // Always exclude internal state directories — hidden(false) would otherwise include them.
         // See: https://github.com/BurntSushi/ripgrep/issues/3099
-        if file_name == ".git" {
+        if matches!(file_name, ".git" | ".julie") {
             return false;
         }
 

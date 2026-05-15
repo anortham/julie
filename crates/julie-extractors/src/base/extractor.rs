@@ -5,6 +5,7 @@
 
 use md5;
 use std::collections::HashMap;
+use std::ops::Range;
 use tracing::debug;
 use tree_sitter::Node;
 
@@ -22,6 +23,7 @@ pub struct BaseExtractor {
     pub language: String,
     pub file_path: String,
     pub content: String,
+    line_ranges: Vec<Range<usize>>,
     pub symbol_map: HashMap<String, Symbol>,
     pub relationships: Vec<Relationship>,
     pub pending_relationships: Vec<PendingRelationship>,
@@ -44,6 +46,7 @@ impl BaseExtractor {
         workspace_root: &std::path::Path,
     ) -> Self {
         let relative_unix_path = normalize_file_path(&file_path, workspace_root);
+        let line_ranges = content_line_ranges(&content);
 
         debug!(
             "BaseExtractor path: '{}' -> '{}' (relative)",
@@ -54,6 +57,7 @@ impl BaseExtractor {
             language,
             file_path: relative_unix_path, // Phase 2: Store relative Unix-style path
             content,
+            line_ranges,
             symbol_map: HashMap::new(),
             relationships: Vec::new(),
             pending_relationships: Vec::new(),
@@ -181,21 +185,22 @@ impl BaseExtractor {
             return None;
         }
 
-        let lines: Vec<&str> = self.content.lines().collect();
-
-        if lines.is_empty() || start_row >= lines.len() {
+        if self.line_ranges.is_empty() || start_row >= self.line_ranges.len() {
             return None;
         }
 
         // Calculate context bounds using configuration
         let context_start = start_row.saturating_sub(self.context_config.lines_before);
-        let context_end = std::cmp::min(lines.len() - 1, end_row + self.context_config.lines_after);
+        let context_end = std::cmp::min(
+            self.line_ranges.len() - 1,
+            end_row + self.context_config.lines_after,
+        );
 
         // Build context with optional line numbers
         let mut context_lines = Vec::new();
         for i in context_start..=context_end {
             let line_num = i + 1; // 1-based line numbers
-            let mut line_content = lines.get(i).unwrap_or(&"").to_string();
+            let mut line_content = self.content[self.line_ranges[i].clone()].to_string();
 
             // Truncate long lines if configured (respecting UTF-8 boundaries)
             if line_content.len() > self.context_config.max_line_length {
@@ -283,4 +288,56 @@ fn select_doc_comment_block(language: &str, comments_nearest_first: &[String]) -
     }
 
     None
+}
+
+fn content_line_ranges(content: &str) -> Vec<Range<usize>> {
+    let bytes = content.as_bytes();
+    let mut ranges = Vec::new();
+    let mut start = 0;
+
+    for (index, byte) in bytes.iter().enumerate() {
+        if *byte != b'\n' {
+            continue;
+        }
+
+        let end = if index > start && bytes[index - 1] == b'\r' {
+            index - 1
+        } else {
+            index
+        };
+        ranges.push(start..end);
+        start = index + 1;
+    }
+
+    if start < bytes.len() {
+        ranges.push(start..bytes.len());
+    }
+
+    ranges
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn content_line_ranges_match_str_lines() {
+        let cases = [
+            "",
+            "alpha",
+            "alpha\n",
+            "alpha\n\n",
+            "alpha\r\nbeta\n🌊 gamma",
+        ];
+
+        for content in cases {
+            let expected = content.lines().collect::<Vec<_>>();
+            let actual = content_line_ranges(content)
+                .into_iter()
+                .map(|range| &content[range])
+                .collect::<Vec<_>>();
+
+            assert_eq!(actual, expected, "content: {content:?}");
+        }
+    }
 }
