@@ -28,8 +28,8 @@ This plan changes the daemon and adapter substantially. Files written, modified,
 - `src/daemon/legacy_migration.rs` — legacy-file detection, hard-gate logic, attach-to-legacy support for adapter (~200 lines)
 - `src/daemon/token_file.rs` — write `daemon.token` with mode 0600 / restricted ACL, read on adapter side (~80 lines)
 - `src/daemon/shutdown.rs` — bounded drain + recovery markers (~150 lines)
-- `tests/integration/legacy_migration.rs` — end-to-end test: upgraded adapter against running legacy daemon
-- `tests/integration/discovery_atomic.rs` — atomic write durability + pid_creation_time identity under simulated PID reuse
+- `src/tests/integration/legacy_migration.rs` — end-to-end test: upgraded adapter against running legacy daemon
+- `src/tests/integration/discovery_atomic.rs` — atomic write durability + pid_creation_time identity under simulated PID reuse
 
 **Modify:**
 - `Cargo.toml` — add `[[bin]] name = "julie-adapter"` and `[[bin]] name = "julie-daemon"` alongside existing `julie-server`. Keep `julie-server` building for one release cycle as a compatibility shim.
@@ -58,7 +58,7 @@ This plan changes the daemon and adapter substantially. Files written, modified,
 - `src/daemon/workspace_pool.rs` — `WorkspacePool` no longer holds the per-workspace SQLite connection. It still owns Tantivy index handles, watcher handle, and the connection-pool reference. Connections come from `WorkspaceConnectionPool`.
 - `src/handler/tools/*` — adjust each handler to call the connection pool. Read handlers: open `BEGIN DEFERRED TRANSACTION` for snapshot read. Mutating handlers: acquire `mutation_gate::acquire_gate(workspace_id)` then open the connection.
 - `src/workspace/mutation_gate.rs` — already does what's needed; only mechanical change is to ensure all mutating MCP handlers call it. The watcher/catch-up/register paths already do (per design doc).
-- `tests/integration/concurrent_mcp.rs` (new) — 8 concurrent MCP requests (mixed read+write) on one workspace + active filewatcher event stream; verify all complete within bounded time without wedging.
+- `src/tests/integration/concurrent_mcp.rs` (new) — 8 concurrent MCP requests (mixed read+write) on one workspace + active filewatcher event stream; verify all complete within bounded time without wedging. (Path follows julie's `src/tests/**` convention per CLAUDE.md.)
 
 ### Phase B — in-process test harness
 
@@ -144,13 +144,24 @@ This plan changes the daemon and adapter substantially. Files written, modified,
 - Claude: Opus
 - OpenCode: strongest available
 
-**Worker eligibility:** implementation-tier workers may own any single-file or narrow multi-file task in this plan **except**:
-- Phase A.1 task A1.2 (kernel advisory lock implementation — escalation-tier owns, cross-platform safety)
-- Phase A.1 task A1.5 (legacy migration gate — escalation-tier owns, regressing this corrupts indexes)
-- Phase A.2 task A2.3 (concurrent_mcp regression test design + lock-order proof — escalation-tier reviews)
-- Phase C task C.4 (target-specific exclude_tests preservation — escalation-tier reviews, this is the codex finding #7 surface)
+**Worker eligibility:** implementation-tier workers may own any single-file or narrow multi-file task in this plan **except** the following, which require either escalation-tier ownership or coupled-implementation with strategy-tier-owned interface contracts (per RAZORBACK.md: lifecycle, concurrency, shared database/workspace behavior, and search ranking/scoring are non-implementation-tier unattended work):
 
-Mechanical-tier workers can own: fixture file authoring, `Cargo.toml` bin-target adds, plugin manifest update, the `julie-server` compatibility-shim main.rs delegation, ledger row entries.
+**Escalation-tier owns (high blast radius, subtle correctness):**
+- A1.2 — kernel advisory lock implementation (cross-platform OS API safety)
+- A1.5 — legacy migration gate (regressing this corrupts user indexes)
+- A1.7 — bounded shutdown drain (concurrency + recovery semantics; getting drain wrong loses writes silently)
+- A2.3 — concurrent_mcp regression test design + lock-order proof
+- C.4 — target-specific `exclude_tests` preservation (codex finding #7 surface; regression is silent)
+
+**Coupled-implementation tier (strategy-tier owns the interface contract before edits; implementation-tier worker executes against the locked contract):**
+- A1.6 — `DaemonApp` extraction (high blast radius; strategy tier owns the new caller-facing surface, including `DaemonRuntimeContext` field set, before any code moves)
+- A2.2 — wire connection pool + mutation gate into MCP handlers (shared database invariants; strategy tier locks the handler-entry pattern + which handlers are mutating)
+- B.1 — `Registry::new()` + `DaemonRuntimeContext` plumbing (production code must reach gates through the runtime context; strategy tier locks the routing contract so A2.2 has a stable API to wire against)
+- C.1 — `parse_query` semantics (search-ranking invariants; strategy tier locks the intent-classification rules and edge cases before implementation)
+- C.2 — reranker scoring function (search-ranking invariants; strategy tier locks the boost matrix and field-priority rules)
+- C.3 — enriched Tantivy schema (search-schema invariants; strategy tier locks the field set, types, and role-classification rules across all 8+ project layouts)
+
+**Mechanical-tier workers can own:** fixture file authoring, `Cargo.toml` bin-target adds (A1.1), plugin manifest update (A1.9), `julie-server` compatibility-shim main.rs delegation, ledger row entries, the `C.5` flag flip *after* escalation tier signs off on regression evidence.
 
 **Escalation triggers:** see Verification Strategy escalation triggers — they apply here too.
 
@@ -238,7 +249,7 @@ Sequenced tasks. Most independent within the phase; ordering noted where it matt
 
 **Files:**
 - Create: `src/daemon/legacy_migration.rs`
-- Create: `tests/integration/legacy_migration.rs` — full end-to-end test
+- Create: `src/tests/integration/legacy_migration.rs` — full end-to-end test (path per CLAUDE.md `src/tests/**` convention; runs under `cargo nextest run --lib`)
 - Modify: `src/daemon/cli.rs` `start` subcommand — call `legacy_migration::check_or_refuse` before `DaemonApp::serve`
 - Modify: `src/adapter/launcher.rs` `daemon_readiness` / `ensure_daemon_ready` — call `legacy_migration::detect_and_attach` before auto-spawn
 
@@ -249,11 +260,11 @@ For the adapter side: `detect_and_attach(paths) -> Option<TransportEndpoint>` re
 **Approach:** Existing `pid_creation_time` + `SingletonLock::try_acquire` logic informs the implementation. Reuse rather than re-implement. The end-to-end test is the hard part: spin up a real legacy `julie-server daemon` subprocess in a temp `JULIE_HOME`, then invoke `julie-daemon start` in the same `JULIE_HOME` and assert it refuses with the diagnostic. Then invoke `julie-adapter` and assert it attaches to the legacy daemon's HTTP endpoint rather than spawning a new daemon.
 
 **Acceptance criteria:**
-- [ ] End-to-end test in `tests/integration/legacy_migration.rs`: live legacy daemon + new `julie-daemon start` → daemon refuses to start, exit code non-zero, stderr contains "legacy daemon is running".
+- [ ] End-to-end test in `src/tests/integration/legacy_migration.rs`: live legacy daemon + new `julie-daemon start` → daemon refuses to start, exit code non-zero, stderr contains "legacy daemon is running".
 - [ ] End-to-end test: live legacy daemon + new `julie-adapter` → adapter connects to legacy endpoint, forwards a basic MCP request successfully, no new daemon process spawned.
 - [ ] Unit test: dead legacy `daemon.pid` (file exists, recorded pid is dead) → `check_or_refuse` returns `ProceedAndUnlink`.
 - [ ] Unit test: legacy `daemon.singleton.lock` with no process holding the fcntl lock → treated as dead, unlinked.
-- [ ] `cargo nextest run --lib test_legacy_migration_gate` passes.
+- [ ] `cargo nextest run --lib test_legacy_migration_gate` passes (test under `src/tests/integration/` is in the lib test target by julie's convention).
 - [ ] **Escalation tier owns.** This is finding #2; getting it wrong corrupts user indexes.
 
 ### Task A1.6: `DaemonApp` and lifespan refactor
@@ -273,10 +284,11 @@ For the adapter side: `detect_and_attach(paths) -> Option<TransportEndpoint>` re
 
 **Acceptance criteria:**
 - [ ] `src/daemon/mod.rs::run_daemon` is ≤200 lines.
-- [ ] Existing daemon integration tests (`src/tests/integration/daemon_lifecycle.rs`, `src/tests/daemon/server.rs`) still pass — they currently use `run_daemon`, which now delegates to `DaemonApp`. No test changes in this task.
+- [ ] Existing daemon integration tests (`src/tests/integration/daemon_lifecycle.rs`, `src/tests/daemon/server.rs`) still pass — they currently use `run_daemon`, which now delegates to `DaemonApp`.
+- [ ] **New direct test of the embeddable surface** (added in this task): `src/tests/daemon/app_test.rs::test_daemon_app_serve_and_shutdown` — binds `127.0.0.1:0`, calls `DaemonApp::new(test_config)?.serve(listener).await`, hits the `/status` endpoint via reqwest, asserts a 200 response, calls `handle.shutdown().await`, verifies the listener is released (a second `TcpListener::bind` on the same `local_addr` would succeed but we don't rely on that — instead verify the join handle resolved cleanly within 5s). This test must exist and pass in this task; without it the new caller-facing surface is unverified until B.3 migration. Failing-first RED: write the test before code moves, watch it fail with "DaemonApp not defined." GREEN after code moves. Codex review #4 (medium) target.
 - [ ] `DaemonApp::new(config).serve(listener).await` returns a `DaemonHandle` whose `shutdown()` cleanly stops the server.
-- [ ] Worker scope: existing daemon lifecycle tests at the named-test level pass; no new tests in this task.
-- [ ] **Strategy tier owns** the refactor — high blast radius, sequencing critical.
+- [ ] Worker scope: `cargo nextest run --lib test_daemon_app_serve_and_shutdown` passes, plus existing daemon lifecycle tests at the named-test level continue to pass.
+- [ ] **Coupled-implementation tier.** Strategy tier owns the new caller-facing surface (`DaemonApp` / `DaemonConfig` / `DaemonHandle` / `DaemonRuntimeContext` field set) before any code moves; implementation tier executes against the locked contract. High blast radius, sequencing critical.
 
 ### Task A1.7: Bounded shutdown drain + recovery markers
 
@@ -440,9 +452,9 @@ let conn = ctx.connection_pool(workspace_id).acquire().await?;
 Migration: for each existing test, replace subprocess setup with `InProcessDaemon::start(builder).await`, replace HTTP URL construction with `handle.url`, replace teardown with `handle.shutdown().await`. The actual test logic stays the same.
 
 **Acceptance criteria:**
-- [ ] Number of `tokio::process::Command::new("julie-server"|"julie-daemon"|...)` call sites in tests drops to ≤5 (adapter-integration suite).
-- [ ] Measured: `cargo xtask test dev` runtime drops compared to a baseline taken before this task.
-- [ ] `cargo xtask test dev --test-threads=8` passes without `serial_test` annotations on the migrated tests.
+- [ ] Number of `tokio::process::Command::new("julie-server"|"julie-adapter"|"julie-daemon")` call sites in tests drops to ≤5 (adapter-integration suite).
+- [ ] Measured: `cargo xtask test dev` runtime drops compared to a baseline ledger row captured before this task starts. Record both rows in the verification ledger.
+- [ ] Parallelism check (does not use xtask's flag surface — uses nextest directly with the migrated tests): `cargo nextest run --lib --test-threads=8 daemon_lifecycle 2>&1 | tail -20` passes without `serial_test` annotations on the migrated tests. (xtask does not expose a `--test-threads` flag; verify directly via nextest. If julie's xtask later grows one, prefer it.)
 - [ ] Implementation tier per file; **strategy tier reviews** because subtle global state leakage may surface only under parallelism.
 
 ---
@@ -532,11 +544,30 @@ Migration: for each existing test, replace subprocess setup with `InProcessDaemo
 
 The lead orchestrates phases sequentially; tasks within a phase may parallelize where independent.
 
-**Phase A.1:** A1.1 → A1.2 + A1.3 + A1.4 (parallel) → A1.5 → A1.6 → A1.7 → A1.8 → A1.9.
-**Phase A.2:** A2.1 → A2.2 → A2.3.
-**Phase B:** B.1 → B.2 → B.3.
-**Phase C:** C.1 + C.2 + C.3 (parallel) → C.4 → C.5.
+**Phase A.1:** A1.1 → A1.2 → A1.3 + A1.4 (parallel after A1.2) → A1.5 → A1.6 → A1.7 → A1.8 → A1.9.
 
-Between phases, the lead runs `cargo xtask test dev` once and records a ledger row. After Phase C completes, run `cargo xtask test full` as the broad pre-merge confidence gate.
+> **Bridge (runtime-context prep):** B.1 (`Registry::new()` + `DaemonRuntimeContext` plumbing) **MUST run before A2.2**. A2.2 wires handlers to whatever gate API exists when it runs; if B.1 hasn't landed, handlers get wired to the global singleton and have to be rewritten in B.1. Land B.1 between A.1 and A.2.
+
+**Phase A.2:** A2.1 → A2.2 → A2.3.
+**Phase B (remaining):** B.2 → B.3.
+**Phase C:** C.1 + C.2 + C.3 (parallel — touch different files) → C.4 → C.5.
+
+Between phases, the lead runs `cargo xtask test dev` once and records a ledger row. **If `cargo xtask test dev` fails between phases, the lead does not advance to the next phase — fix the regression first or roll back the phase boundary commit.** After Phase C completes, run `cargo xtask test full` as the broad pre-merge confidence gate.
 
 After all phases: razorback:finishing-a-development-branch decides integration; if a pre-merge external reviewer was requested at run-start, razorback:pre-merge-review runs that.
+
+---
+
+## Revision History
+
+**2026-05-16 (v2)** — incorporated codex adversarial plan review (`gpt-5.5` high reasoning). Five findings addressed:
+
+| # | Severity | Finding | Resolution |
+|---|----------|---------|------------|
+| 1 | high | A1.2 + A1.3 parallel but both own `src/daemon/discovery.rs` | Dispatch order sequences A1.2 before A1.3; A1.3 explicitly notes it extends the file A1.2 created |
+| 2 | high | Integration tests planned at `tests/integration/*` but julie convention is `src/tests/**`; `--test-threads=8` not a supported xtask flag | All new integration tests relocated under `src/tests/integration/`; verification commands corrected to `cargo nextest run --lib <test_name>`; B.3 parallelism criterion changed to use nextest directly |
+| 3 | high | A2.2 handler rewrite ordered before B.1 runtime-context gate it depends on | Bridge step added between A.1 and A.2: B.1 must run before A2.2 |
+| 4 | medium | A1.6 creates `DaemonApp` with no test exercising the new interface | A1.6 gains a narrow RED/GREEN acceptance criterion for `DaemonApp::serve` + `DaemonHandle::shutdown` |
+| 5 | high | Worker eligibility under-routes shared-invariant tasks (lifecycle, concurrency, search ranking) | Worker-eligibility section updated: A1.7, A2.2, C.1/C.2/C.3 promoted to coupled-implementation tier with strategy-tier-owned interface contracts before edits |
+
+**2026-05-16 (v1)** — initial plan.
