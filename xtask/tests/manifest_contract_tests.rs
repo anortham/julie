@@ -328,8 +328,10 @@ fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
         (
             "daemon",
             ExpectedBucket {
-                expected_seconds: 12,
-                timeout_seconds: 60,
+                // Bumped to 60s/180s after the 2026-05 daemon-split bucket additions
+                // (lock_test, discovery_test, token_file_test, app_test, shutdown_drain_test).
+                expected_seconds: 60,
+                timeout_seconds: 180,
                 commands: &["cargo nextest run --lib tests::daemon -- --skip search_quality"],
             },
         ),
