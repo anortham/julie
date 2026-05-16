@@ -2129,11 +2129,70 @@ impl JulieServerHandler {
         })
     }
 
+    /// Acquire a per-request `SymbolDatabase` backed by a pooled connection.
+    ///
+    /// **Use this for new handler code.** In daemon mode each call returns a
+    /// fresh `SymbolDatabase` wrapping a `PooledConn` from the workspace's
+    /// `WorkspaceConnectionPool` — distinct handlers no longer serialize on a
+    /// shared `Arc<Mutex<SymbolDatabase>>`. The connection returns to the pool
+    /// when the `SymbolDatabase` is dropped.
+    ///
+    /// In stdio mode (no `workspace_pool`) the implementation falls back to
+    /// opening a fresh owned `SymbolDatabase` per request — stdio handlers
+    /// don't have a concurrency problem to solve, so the extra open cost is
+    /// acceptable and the behavior matches what callers already expect.
+    pub async fn get_pooled_database_for_workspace(
+        &self,
+        workspace_id: &str,
+    ) -> Result<SymbolDatabase> {
+        self.ensure_primary_pool_membership_for(workspace_id)
+            .await?;
+
+        if let Some(workspace_pool) = self.workspace_pool.as_ref() {
+            let workspace = workspace_pool
+                .get(workspace_id)
+                .await
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "Workspace '{}' is not loaded in the daemon workspace pool",
+                        workspace_id
+                    )
+                })?;
+            let conn_pool = workspace_pool
+                .connection_pool(workspace_id)
+                .await
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "Connection pool missing for workspace '{}'",
+                        workspace_id
+                    )
+                })?;
+            return workspace.request_db(&conn_pool).await;
+        }
+
+        // Stdio-mode fallback: open a fresh owned SymbolDatabase. Migrations
+        // are idempotent so the cost is bounded.
+        let db_path = self.workspace_db_file_path_for(workspace_id).await?;
+        if !db_path.exists() {
+            return Err(anyhow::anyhow!(
+                "Database not found for workspace '{}' at {}",
+                workspace_id,
+                db_path.display()
+            ));
+        }
+        tokio::task::spawn_blocking(move || SymbolDatabase::new(&db_path))
+            .await
+            .map_err(|e| anyhow::anyhow!("spawn_blocking join error: {}", e))?
+    }
+
     /// Get the database for a specific workspace by ID.
     ///
     /// In stdio mode: looks in `{project}/.julie/indexes/{workspace_id}/db/symbols.db`.
     /// In daemon mode: looks in `~/.julie/indexes/{workspace_id}/db/symbols.db`
     ///   (sibling of the primary workspace's index dir, not nested under it).
+    ///
+    /// **Prefer `get_pooled_database_for_workspace` for new code** —
+    /// this method returns an Arc<Mutex<...>> that serializes all callers.
     pub async fn get_database_for_workspace(
         &self,
         workspace_id: &str,
