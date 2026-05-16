@@ -3,7 +3,6 @@ use crate::handler::session_workspace::PrimaryWorkspaceBinding;
 use anyhow::Result;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
-use tracing::debug;
 
 use super::evaluation::{overall_from_planes, readiness_from_data_plane};
 use super::{
@@ -170,18 +169,19 @@ impl HealthChecker {
         handler: &JulieServerHandler,
         workspace_id: &str,
     ) -> Result<SystemStatus> {
-        let db = match handler.get_database_for_workspace(workspace_id).await {
+        // Pooled DB: read-only, no mutation gate required. The pool waits async
+        // when no connection is immediately available, so no busy-fallback is
+        // needed (the old Arc<Mutex<>> path treated contention as "data present"
+        // — that heuristic doesn't translate to pool semantics).
+        let pooled_db = match handler
+            .get_pooled_database_for_workspace(workspace_id)
+            .await
+        {
             Ok(db) => db,
             Err(_) => return Ok(SystemStatus::NotReady),
         };
 
-        let symbol_count = match db.try_lock() {
-            Ok(db_lock) => db_lock.get_symbol_count_for_workspace().unwrap_or(0),
-            Err(_busy) => {
-                debug!("Symbol database busy during readiness check; assuming data present");
-                1
-            }
-        };
+        let symbol_count = pooled_db.get_symbol_count_for_workspace().unwrap_or(0);
 
         if symbol_count == 0 {
             return Ok(SystemStatus::NotReady);

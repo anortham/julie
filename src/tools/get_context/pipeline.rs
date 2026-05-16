@@ -205,8 +205,9 @@ pub async fn run(tool: &GetContextTool, handler: &JulieServerHandler) -> Result<
         WorkspaceTarget::Target(target_workspace_id) => {
             debug!("get_context: using workspace {}", target_workspace_id);
 
-            let db_arc = handler
-                .get_database_for_workspace(&target_workspace_id)
+            // Pooled DB: read-only, no mutation gate required.
+            let pooled_db = handler
+                .get_pooled_database_for_workspace(&target_workspace_id)
                 .await?;
             let si_arc = handler
                 .get_search_index_for_workspace(&target_workspace_id)
@@ -222,16 +223,13 @@ pub async fn run(tool: &GetContextTool, handler: &JulieServerHandler) -> Result<
                 let index = si
                     .lock()
                     .map_err(|e| anyhow::anyhow!("Search index lock error: {}", e))?;
-                let db = db_arc
-                    .lock()
-                    .map_err(|e| anyhow::anyhow!("Database lock error: {}", e))?;
                 run_pipeline_with_options(
                     &query,
                     max_tokens,
                     language,
                     file_pattern,
                     format,
-                    &db,
+                    &pooled_db,
                     &index,
                     embedding_provider.as_deref(),
                     Some(&task_signals),

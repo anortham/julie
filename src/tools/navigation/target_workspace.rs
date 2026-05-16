@@ -28,13 +28,13 @@ pub async fn find_references_in_target_workspace(
     limit: u32,
     reference_kind: Option<&str>,
 ) -> Result<(Vec<Symbol>, Vec<Relationship>)> {
-    // Use handler helper for DB access
-    let db_arc = handler
-        .get_database_for_workspace(&target_workspace_id)
+    // Pooled DB: read-only access, no mutation gate required.
+    let ref_db = handler
+        .get_pooled_database_for_workspace(&target_workspace_id)
         .await?;
 
     debug!(
-        "Querying target workspace DB via handler helper: {}",
+        "Querying target workspace DB via pooled connection: {}",
         target_workspace_id
     );
 
@@ -45,12 +45,11 @@ pub async fn find_references_in_target_workspace(
     };
     let reference_kind_owned = reference_kind.map(|s| s.to_string());
 
-    // All DB work in spawn_blocking (SQLite is synchronous)
+    // All DB work in spawn_blocking (SQLite is synchronous).
+    // `ref_db` is an owned SymbolDatabase wrapping a PooledConn; moving it into
+    // the blocking task is what releases the connection back to the pool when
+    // the closure ends.
     let (definitions, mut references) = tokio::task::spawn_blocking(move || -> Result<_> {
-        let ref_db = db_arc
-            .lock()
-            .map_err(|e| anyhow::anyhow!("Database lock error: {}", e))?;
-
         // Strategy 1: Find exact matches by name
         let mut defs = ref_db.get_symbols_by_name(&effective_symbol)?;
 

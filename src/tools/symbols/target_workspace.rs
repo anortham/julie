@@ -26,10 +26,11 @@ pub async fn get_symbols_from_target_workspace(
         target_workspace_id, file_path, max_depth
     );
 
-    // Use handler helpers for DB access. Workspace root lookup is only needed
-    // when we must normalize relative paths against the target workspace.
-    let db_arc = handler
-        .get_database_for_workspace(&target_workspace_id)
+    // Pooled DB: read-only access, no mutation gate required. Workspace root
+    // lookup is only needed when we must normalize relative paths against the
+    // target workspace.
+    let pooled_db = handler
+        .get_pooled_database_for_workspace(&target_workspace_id)
         .await?;
 
     let (query_path, absolute_path) = if std::path::Path::new(file_path).is_absolute() {
@@ -87,33 +88,29 @@ pub async fn get_symbols_from_target_workspace(
         bail!(super::file_not_found_message(file_path, target));
     }
 
-    // Query symbols using relative Unix-style path via Arc<Mutex<>> DB
-    // In structure mode, use lightweight query that skips expensive columns
+    // Query symbols using relative Unix-style path via pooled DB.
+    // In structure mode, use lightweight query that skips expensive columns.
     let mode_owned = mode.to_string();
     let query_path_clone = query_path.clone();
-    let mut symbols = {
-        let db = db_arc
-            .lock()
-            .map_err(|e| anyhow::anyhow!("Database lock error: {}", e))?;
-        if mode_owned == "structure" {
-            db.get_symbols_for_file_lightweight(&query_path_clone)
-                .map_err(|e| anyhow::anyhow!("Failed to get symbols: {}", e))?
-        } else {
-            db.get_symbols_for_file(&query_path_clone)
-                .map_err(|e| anyhow::anyhow!("Failed to get symbols: {}", e))?
-        }
+    let mut symbols = if mode_owned == "structure" {
+        pooled_db
+            .get_symbols_for_file_lightweight(&query_path_clone)
+            .map_err(|e| anyhow::anyhow!("Failed to get symbols: {}", e))?
+    } else {
+        pooled_db
+            .get_symbols_for_file(&query_path_clone)
+            .map_err(|e| anyhow::anyhow!("Failed to get symbols: {}", e))?
     };
 
     if symbols.is_empty() && query_path != file_path {
         let fallback_query = file_path.replace('\\', "/");
-        let db = db_arc
-            .lock()
-            .map_err(|e| anyhow::anyhow!("Database lock error: {}", e))?;
         symbols = if mode_owned == "structure" {
-            db.get_symbols_for_file_lightweight(&fallback_query)
+            pooled_db
+                .get_symbols_for_file_lightweight(&fallback_query)
                 .map_err(|e| anyhow::anyhow!("Failed to get symbols: {}", e))?
         } else {
-            db.get_symbols_for_file(&fallback_query)
+            pooled_db
+                .get_symbols_for_file(&fallback_query)
                 .map_err(|e| anyhow::anyhow!("Failed to get symbols: {}", e))?
         };
     }

@@ -109,17 +109,15 @@ pub async fn run(tool: &BlastRadiusTool, handler: &JulieServerHandler) -> Result
     match workspace_target {
         WorkspaceTarget::Target(target_workspace_id) => {
             debug!("blast_radius: using workspace {}", target_workspace_id);
-            let db = handler
-                .get_database_for_workspace(&target_workspace_id)
+            // Pooled DB: read-only, no mutation gate required.
+            let pooled_db = handler
+                .get_pooled_database_for_workspace(&target_workspace_id)
                 .await?;
 
             tokio::task::spawn_blocking(move || {
-                let db_guard = db
-                    .lock()
-                    .map_err(|e| anyhow!("Database lock error: {}", e))?;
                 run_with_db(
                     &tool,
-                    &db_guard,
+                    &pooled_db,
                     &target_workspace_id,
                     &spillover_store,
                     &session_id,

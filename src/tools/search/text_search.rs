@@ -87,10 +87,12 @@ pub async fn text_search_impl(
     let limit_usize = limit as usize;
     let search_target_clone = search_target;
 
-    // Target workspace: use handler helpers for DB + SearchIndex access.
+    // Target workspace: pooled DB (read-only) + SearchIndex via handler helpers.
     if let Some(target_id) = target_workspace_id {
         let target_embedding_provider = handler.embedding_provider().await;
-        let db_arc = handler.get_database_for_workspace(&target_id).await?;
+        let pooled_db = handler
+            .get_pooled_database_for_workspace(&target_id)
+            .await?;
         let si_arc = handler.get_search_index_for_workspace(&target_id).await?;
 
         let results = tokio::task::spawn_blocking(move || -> Result<(Vec<Symbol>, bool, usize)> {
@@ -104,9 +106,6 @@ pub async fn text_search_impl(
             let index = si_arc
                 .lock()
                 .map_err(|e| anyhow::anyhow!("Search index lock error: {}", e))?;
-            let db_lock = db_arc
-                .lock()
-                .map_err(|e| anyhow::anyhow!("Database lock error: {}", e))?;
 
             match search_target_clone {
                 SearchTarget::Definitions => definition_search_with_index(
@@ -114,7 +113,7 @@ pub async fn text_search_impl(
                     &filter,
                     limit_usize,
                     &index,
-                    Some(&db_lock),
+                    Some(&pooled_db),
                     target_embedding_provider.as_deref(),
                 ),
                 SearchTarget::Content => content_search_with_index(
@@ -122,7 +121,7 @@ pub async fn text_search_impl(
                     &filter,
                     limit_usize,
                     &index,
-                    Some(&db_lock),
+                    Some(&pooled_db),
                 ),
                 SearchTarget::Files => {
                     anyhow::bail!("search_target=\"files\" is not implemented yet")

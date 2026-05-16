@@ -91,17 +91,14 @@ impl DeepDiveTool {
 
         match workspace_target {
             WorkspaceTarget::Target(target_workspace_id) => {
-                // Target workspace: use handler helper for DB access.
-                let db_arc = handler
-                    .get_database_for_workspace(&target_workspace_id)
+                // Target workspace: pooled DB, read-only, no mutation gate required.
+                let pooled_db = handler
+                    .get_pooled_database_for_workspace(&target_workspace_id)
                     .await?;
 
                 let result = tokio::task::spawn_blocking(move || -> Result<String> {
-                    let db = db_arc
-                        .lock()
-                        .map_err(|e| anyhow::anyhow!("Database lock error: {}", e))?;
                     deep_dive_query(
-                        &db,
+                        &pooled_db,
                         &symbol_name,
                         context_file.as_deref(),
                         &depth_owned,

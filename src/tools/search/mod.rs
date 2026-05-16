@@ -287,6 +287,9 @@ impl FastSearchTool {
 
                     let primary_id = handler.require_primary_workspace_identity()?;
 
+                    // Probe-only: legacy method is intentional here. The pooled
+                    // accessor requires workspace_pool membership; this probe
+                    // just checks DB existence to choose the right error message.
                     if handler
                         .get_database_for_workspace(&primary_id)
                         .await
@@ -311,6 +314,8 @@ impl FastSearchTool {
                 }
 
                 if let Some(ref target_workspace_id) = target_workspace_id {
+                    // Probe-only: see note above; legacy method does file-level
+                    // probing without requiring workspace_pool membership.
                     if handler
                         .get_database_for_workspace(target_workspace_id)
                         .await
@@ -390,6 +395,7 @@ impl FastSearchTool {
                     }
                 }
                 WorkspaceTarget::Target(id) => {
+                    // Probe-only: legacy method intentionally used here.
                     handler.get_database_for_workspace(id).await?;
                     if handler.get_search_index_for_workspace(id).await?.is_none() {
                         let message = format!(
@@ -536,6 +542,7 @@ impl FastSearchTool {
                 }
             }
             WorkspaceTarget::Target(id) => {
+                // Probe-only: legacy method intentionally used here.
                 handler.get_database_for_workspace(id).await?;
                 if handler.get_search_index_for_workspace(id).await?.is_none() {
                     let message = missing_index_message(search_target, Some(id));
@@ -548,6 +555,7 @@ impl FastSearchTool {
         }
 
         if let Some(ref target_workspace_id) = target_workspace_id {
+            // Probe-only: legacy method intentionally used here.
             if handler
                 .get_database_for_workspace(target_workspace_id)
                 .await
