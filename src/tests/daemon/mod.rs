@@ -1,4 +1,5 @@
 pub mod admit_initialize_short_circuit;
+pub mod app_test;
 pub mod daemon_state_atomic;
 pub mod discovery_test;
 pub mod database;

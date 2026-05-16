@@ -2,6 +2,7 @@
 //!
 //! The canonical adapter path is Streamable HTTP over localhost.
 
+pub mod app;
 pub mod cli;
 
 pub mod database;
@@ -31,25 +32,20 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
 use anyhow::{Context, Result};
-use tokio::sync::{Notify, broadcast};
-use tracing::{error, info, warn};
-
-use crate::dashboard::state::DashboardEvent;
+use tracing::{info, warn};
 
 use crate::paths::DaemonPaths;
 use crate::workspace::registry::generate_workspace_id;
 
+pub use self::app::{DaemonApp, DaemonConfig, DaemonHandle, DaemonRuntimeContext};
+
 use self::database::DaemonDatabase;
 use self::embedding_service::EmbeddingService;
-use self::http_transport::{HttpTransportConfig, HttpTransportServer, generate_bearer_token};
-use self::lifecycle::{DaemonLifecycleController, LifecyclePhase, ShutdownCause};
-use self::mcp_session::{DaemonSessionDependencies, HttpJulieService, HttpSessionAdmission};
+use self::http_transport::HttpTransportServer;
 use self::pid::PidFile;
 use self::session::SessionTracker;
-use self::singleton::{SingletonLock, SingletonLockError};
 use self::watcher_pool::WatcherPool;
 use self::workspace_pool::WorkspacePool;
-use self::workspace_registry_store::WorkspaceRegistryStore;
 
 /// Wait for all active daemon sessions to finish, with a deadline.
 ///
@@ -125,7 +121,7 @@ pub(crate) fn drain_timeout() -> Duration {
 /// without byte changes, (c) a delete + new-name + rename sequence done out of band.
 /// It does NOT fire for in-place developer rebuilds on Windows; the developer must
 /// stop the daemon first.
-fn binary_mtime() -> Option<SystemTime> {
+pub(crate) fn binary_mtime() -> Option<SystemTime> {
     std::env::current_exe()
         .ok()
         .and_then(|p| std::fs::metadata(p).ok())
@@ -137,7 +133,7 @@ fn binary_mtime() -> Option<SystemTime> {
 /// Scans each workspace's symbols.db for stored embeddings and writes the count
 /// to daemon.db if missing. Runs once at daemon startup so the dashboard shows
 /// accurate vector counts without waiting for a session to connect.
-fn backfill_all_vector_counts(daemon_db: &DaemonDatabase, indexes_dir: &Path) {
+pub(crate) fn backfill_all_vector_counts(daemon_db: &DaemonDatabase, indexes_dir: &Path) {
     let workspaces = match daemon_db.list_workspaces() {
         Ok(ws) => ws,
         Err(_) => return,
@@ -174,7 +170,7 @@ fn backfill_all_vector_counts(daemon_db: &DaemonDatabase, indexes_dir: &Path) {
 ///
 /// Compares each workspace's stored ID against the current generate_workspace_id
 /// output. If they differ, renames the index directory and batch-updates the DB.
-fn migrate_stale_workspace_ids(daemon_db: &DaemonDatabase, indexes_dir: &Path) {
+pub(crate) fn migrate_stale_workspace_ids(daemon_db: &DaemonDatabase, indexes_dir: &Path) {
     let workspaces = match daemon_db.list_workspaces() {
         Ok(ws) => ws,
         Err(e) => {
@@ -287,516 +283,45 @@ fn migrate_stale_workspace_ids(daemon_db: &DaemonDatabase, indexes_dir: &Path) {
 ///
 /// This function blocks until a shutdown signal (SIGTERM/SIGINT) is received.
 /// HTTP is the daemon MCP transport.
+/// Run the Julie daemon: bind HTTP transport, accept connections, serve MCP.
+///
+/// Thin wrapper around `DaemonApp::new` + `serve`. Blocks until a shutdown
+/// signal (SIGTERM/SIGINT on POSIX, ctrl_c on Windows) is received. HTTP is
+/// the daemon MCP transport.
+///
+/// Retained as the public entry point so existing callers (`julie daemon`,
+/// `julie-server daemon`, the integration test suite) keep working without
+/// modification. New callers should construct a `DaemonApp` directly and
+/// drive `serve`/`shutdown` themselves.
 pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Result<()> {
     paths
         .ensure_dirs()
         .context("Failed to create daemon directories")?;
-    let daemon_state_path = paths.daemon_state();
 
-    // Singleton invariant: only one daemon per JULIE_HOME. Held for the
-    // lifetime of `run_daemon` via the `_singleton_lock` binding.
-    //
-    // This is the kernel-enforced layer beneath PID-file management.
-    // PidFile::create_exclusive may unlink + recreate the PID file on stale
-    // recovery, breaking flock-on-the-PID-file as a singleton mechanism.
-    // The singleton lock file is never unlinked, so concurrent acquirers
-    // contend on a stable inode and at most one wins. Acquired BEFORE the
-    // PID file so a racing daemon cannot overwrite the PID file before
-    // discovering it lost the singleton race.
-    //
-    // Regression context (2026-05-12 "577-daemon cascade"): a Linux
-    // creation-time drift bug caused live daemons' PID files to be
-    // unlinked, which let the adapter's poll loop spawn replacement
-    // daemons every ~50ms. The drift bug itself is fixed in `pid.rs`;
-    // this lock is the defense-in-depth layer guaranteeing that even if
-    // another single-flight invariant regresses, only one daemon process
-    // ever runs.
-    let _singleton_lock = match SingletonLock::try_acquire(&paths.daemon_singleton_lock()) {
-        Ok(guard) => guard,
-        Err(SingletonLockError::AlreadyHeld { path }) => {
-            return Err(anyhow::anyhow!(
-                "Another Julie daemon is already running for this JULIE_HOME \
-                 (singleton lock held: {}). Exiting without starting a duplicate.",
-                path.display()
-            ));
-        }
-        Err(other) => {
-            return Err(anyhow::anyhow!("{}", other))
-                .context("Failed to acquire daemon singleton lock");
-        }
+    // Port fallback: try requested port, fall back to auto-assign on
+    // EADDRINUSE. The listener we hand to DaemonApp::serve is the MCP HTTP
+    // listener; the dashboard binds its own port internally.
+    let listener = self::app::bind_mcp_listener_with_fallback(port).await?;
+    let actual_port = listener.local_addr()?.port();
+
+    let config = DaemonConfig {
+        paths,
+        port: actual_port,
+        no_dashboard,
+        runtime: DaemonRuntimeContext::default(),
     };
 
-    // Atomically check-and-create the PID file. create_exclusive uses O_CREAT|O_EXCL
-    // internally, eliminating the TOCTOU window between check_running and create
-    // that allowed two concurrent invocations to both believe they were first.
-    let pid_file =
-        PidFile::create_exclusive(&paths.daemon_pid()).context("Failed to start daemon")?;
-    info!(pid = std::process::id(), "Daemon PID file created");
-    let lifecycle = DaemonLifecycleController::new(daemon_state_path.clone());
+    let handle = DaemonApp::new(config)?.serve(listener).await?;
 
-    // Open persistent daemon database, resetting stale session counts from
-    // any previous run (crash recovery) and pruning old tool call records.
-    let daemon_db: Option<Arc<DaemonDatabase>> = match DaemonDatabase::open(&paths.daemon_db()) {
-        Ok(db) => {
-            if let Err(e) = db.reset_all_session_counts() {
-                warn!("Failed to reset session counts: {}", e);
-            }
-            if let Err(e) = db.prune_tool_calls(90) {
-                warn!("Failed to prune old tool calls: {}", e);
-            }
-            info!("Daemon database ready: {}", paths.daemon_db().display());
-            Some(Arc::new(db))
-        }
-        Err(e) => {
-            warn!(
-                "Failed to open daemon.db, continuing without persistence: {}",
-                e
-            );
-            None
-        }
-    };
-
-    // Migrate stale workspace IDs from pre-v6.0.4 normalize_path behavior.
-    // Must run before WorkspacePool is created so sessions see correct IDs.
-    if let Some(ref db) = daemon_db {
-        migrate_stale_workspace_ids(db, &paths.indexes_dir());
-
-        // Normalize path separators (fixes adapter's previous forward-slash storage)
-        // and restore "ready" status for workspaces stuck at "pending".
-        match db.normalize_workspace_paths() {
-            Ok(0) => {}
-            Ok(n) => info!(count = n, "Normalized workspace paths in daemon.db"),
-            Err(e) => warn!("Failed to normalize workspace paths: {}", e),
-        }
-
-        // Backfill vector_count for workspaces that have embeddings but no count
-        // in daemon.db (handles workspaces embedded before this stat was tracked).
-        backfill_all_vector_counts(db, &paths.indexes_dir());
+    // Block on shutdown signal. The named-event waker for `julie stop` /
+    // `julie restart` on Windows lives inside `DaemonApp::serve` and triggers
+    // shutdown by the same handle.shutdown() path on macOS/Linux.
+    if let Err(e) = self::app::shutdown_signal().await {
+        warn!("Signal handler setup failed: {}", e);
     }
+    info!("Shutdown signal received, stopping daemon");
 
-    // Construct the shared embedding service in `Initializing` state. The
-    // real provider bootstrap (Python sidecar + PyTorch + CodeRankEmbed model
-    // load, ~36-39s on typical hardware) runs as a background task spawned
-    // below, after HTTP transport is bound and `ready` state is published.
-    // This keeps the daemon off the critical path so MCP clients (e.g.
-    // Claude Code, whose MCP_TIMEOUT defaults to 30s) don't time out on the
-    // first connection after a cold start. See
-    // docs/plans/2026-04-09-daemon-lazy-embedding-init-design.md for the
-    // full rationale.
-    let embedding_service = Arc::new(EmbeddingService::initializing());
-    info!(
-        "Shared embedding service constructed in Initializing state; background init will start after HTTP transport bind"
-    );
-
-    // Capture binary mtime at startup for stale-binary detection.
-    // If the binary is rebuilt while the daemon is running, the next session
-    // disconnect will detect the mismatch and trigger a graceful restart.
-    let startup_binary_mtime = binary_mtime();
-    if startup_binary_mtime.is_some() {
-        info!("Binary mtime captured for stale-binary detection");
-    } else {
-        warn!("Could not determine binary mtime; stale-binary detection disabled");
-    }
-
-    // Shared state
-    let watcher_pool = Arc::new(WatcherPool::new(Duration::from_secs(300)));
-    let reaper_handle = watcher_pool.spawn_reaper(Duration::from_secs(60));
-    info!("WatcherPool started (grace=300s, reaper=60s)");
-    // Keep a clone so per-session handlers can pause/resume non-primary workspace watchers.
-    let watcher_pool_for_handlers = Arc::clone(&watcher_pool);
-    let watcher_pool_for_cleanup = Arc::clone(&watcher_pool);
-
-    let pool = Arc::new(WorkspacePool::new(paths.indexes_dir(), daemon_db.clone()));
-    let cleanup_pool = Arc::clone(&pool);
-    let sessions = Arc::new(SessionTracker::new());
-
-    // Idle workspace eviction: each tracked workspace holds Tantivy file
-    // handles and SQLite connections. Without an eviction loop the daemon
-    // accumulates FDs across many opened workspaces and eventually hits EMFILE
-    // on eval-style workloads that touch hundreds of repos.
-    let idle_threshold = self::workspace_pool::idle_timeout();
-    let idle_sweep_handle = pool.spawn_idle_sweep(
-        Arc::clone(&watcher_pool_for_handlers),
-        Duration::from_secs(60),
-        idle_threshold,
-    );
-    info!(
-        idle_threshold_secs = idle_threshold.as_secs(),
-        "WorkspacePool idle sweeper started (interval=60s)"
-    );
-
-    let cleanup_sweep_handle = daemon_db.as_ref().map(|daemon_db| {
-        let registry_store =
-            WorkspaceRegistryStore::new(Arc::clone(daemon_db), paths.indexes_dir());
-        tokio::spawn(async move {
-            let mut tick = tokio::time::interval(Duration::from_secs(600));
-            loop {
-                tick.tick().await;
-                let cleanup_activity =
-                    crate::tools::workspace::commands::registry::cleanup::WorkspaceCleanupActivity::new(
-                        Some(&cleanup_pool),
-                        Some(&watcher_pool_for_cleanup),
-                    );
-                match crate::tools::workspace::commands::registry::cleanup::run_cleanup_sweep(
-                    &registry_store,
-                    &cleanup_activity,
-                )
-                .await
-                {
-                    Ok(summary) => {
-                        if !summary.pruned_workspaces.is_empty()
-                            || !summary.pruned_orphan_dirs.is_empty()
-                        {
-                            info!(
-                                pruned_workspaces = summary.pruned_workspaces.len(),
-                                pruned_orphan_dirs = summary.pruned_orphan_dirs.len(),
-                                blocked_workspaces = summary.blocked_workspaces.len(),
-                                "Background workspace cleanup sweep removed stale entries"
-                            );
-                        }
-                    }
-                    Err(e) => {
-                        warn!("Background workspace cleanup sweep failed: {}", e);
-                    }
-                }
-            }
-        })
-    });
-
-    // Named event for graceful shutdown from `julie stop` / `julie restart`.
-    // On Windows, ctrl_c() requires a console (which CREATE_NO_WINDOW daemons
-    // lack), so this named event is the primary graceful shutdown mechanism.
-    let stop_notify = Arc::new(Notify::new());
-    #[cfg(windows)]
-    {
-        let event_name = paths.daemon_shutdown_event();
-        match shutdown_event::ShutdownEvent::create(&event_name) {
-            Ok(event) => {
-                info!("Shutdown event created: {}", event_name);
-                let notify = Arc::clone(&stop_notify);
-                let event = Arc::new(event);
-                tokio::task::spawn_blocking(move || {
-                    event.wait();
-                    notify.notify_one();
-                });
-            }
-            Err(e) => {
-                warn!(
-                    "Failed to create shutdown event: {}. \
-                     Graceful stop via `julie stop` unavailable.",
-                    e
-                );
-            }
-        }
-    }
-
-    // --- Dashboard HTTP server ---
-    // Pass the EmbeddingService Arc directly so DashboardState reads its
-    // state live. With lazy init, the service starts in Initializing and
-    // transitions to Ready (or Unavailable) once the background task
-    // finishes, and the dashboard reflects this without a restart.
-    let dashboard_state = crate::dashboard::state::DashboardState::new_with_watcher_pool(
-        Arc::clone(&sessions),
-        daemon_db.clone(),
-        lifecycle.restart_pending_handle(),
-        lifecycle.phase_handle(),
-        std::time::Instant::now(),
-        Some(Arc::clone(&embedding_service)),
-        Some(Arc::clone(&watcher_pool_for_handlers)),
-        Some(Arc::clone(&pool)),
-        50, // error buffer capacity
-    );
-
-    // Extract the broadcast sender before dashboard_state is moved into the router.
-    // Cloned cheaply (Arc-backed) and passed to each HTTP session for live-feed events.
-    let dashboard_tx: broadcast::Sender<DashboardEvent> = dashboard_state.sender();
-
-    let http_session_dependencies = Arc::new(
-        DaemonSessionDependencies::new(
-            Arc::clone(&pool),
-            daemon_db.clone(),
-            Arc::clone(&embedding_service),
-            lifecycle.restart_pending_handle(),
-            Some(dashboard_tx.clone()),
-            Some(Arc::clone(&watcher_pool_for_handlers)),
-            Arc::clone(&sessions),
-        )
-        .with_http_admission(HttpSessionAdmission::new(
-            lifecycle.clone(),
-            startup_binary_mtime,
-            binary_mtime,
-        )),
-    );
-    let http_service_dependencies = Arc::clone(&http_session_dependencies);
-    let http_transport = HttpTransportServer::bind(
-        paths.clone(),
-        HttpTransportConfig {
-            bearer_token: Some(generate_bearer_token()),
-            ..HttpTransportConfig::default()
-        },
-        move || {
-            Ok(HttpJulieService::new(Arc::clone(
-                &http_service_dependencies,
-            )))
-        },
-    )
-    .await
-    .context("Failed to bind HTTP MCP transport")?;
-
-    let dashboard_config = crate::dashboard::DashboardConfig::default();
-    let dashboard_router = crate::dashboard::create_router(dashboard_state, dashboard_config)
-        .context("Failed to initialize dashboard templates")?;
-
-    // Try requested port, fall back to auto-assign
-    let http_listener = match tokio::net::TcpListener::bind(format!("127.0.0.1:{}", port)).await {
-        Ok(l) => l,
-        Err(_) if port != 0 => {
-            warn!("Port {} in use, falling back to auto-assign", port);
-            tokio::net::TcpListener::bind("127.0.0.1:0")
-                .await
-                .context("Failed to bind HTTP server on any port")?
-        }
-        Err(e) => return Err(anyhow::anyhow!("Failed to bind HTTP server: {}", e)),
-    };
-
-    let actual_port = http_listener.local_addr()?.port();
-
-    // Write port file so `julie dashboard` can find it
-    let port_file = paths.daemon_port();
-    std::fs::write(&port_file, actual_port.to_string())
-        .context("Failed to write daemon port file")?;
-
-    let dashboard_url = format!("http://localhost:{}", actual_port);
-    info!(port = actual_port, url = %dashboard_url, "Dashboard HTTP server started");
-
-    // Auto-open browser unless suppressed. Runs in a background task so
-    // `opener::open` (which shells out to `cmd /c start <url>` on Windows
-    // and can take 1-3s on a cold system) doesn't block daemon readiness.
-    // Browser launch is purely a UX nicety.
-    if !no_dashboard {
-        let url = dashboard_url.clone();
-        tokio::spawn(async move {
-            if let Err(e) = opener::open(&url) {
-                warn!("Failed to open browser: {}", e);
-            }
-        });
-    }
-
-    // Spawn HTTP server as background task
-    tokio::spawn(async move {
-        if let Err(e) = axum::serve(http_listener, dashboard_router).await {
-            tracing::error!("Dashboard HTTP server error: {}", e);
-        }
-    });
-
-    lifecycle.startup_complete();
-
-    // Spawn the background embedding provider initialization task. This runs
-    // concurrently with HTTP session handling so the daemon becomes ready
-    // quickly even though `create_embedding_provider` itself can take tens of seconds
-    // (Python sidecar + torch + model load). Downstream callers that need
-    // the provider (spawn_workspace_embedding, nl_embeddings, watchers, the
-    // dashboard) are all daemon-mode aware and wait on
-    // `EmbeddingService::wait_until_settled` with a bounded timeout rather
-    // than hanging indefinitely. See Task 2 of
-    // docs/plans/2026-04-09-daemon-lazy-embedding-init.md for the rationale
-    // and failure-mode analysis, especially the `Err(join_err)` arm. That
-    // arm is critical: without it, a panicking init task would leave the
-    // service stuck in `Initializing` forever and every future
-    // `wait_until_settled` would time out rather than report the real
-    // failure.
-    {
-        let embedding_service_for_init = Arc::clone(&embedding_service);
-        let daemon_db_for_init = daemon_db.clone();
-        let watcher_pool_for_init = Arc::clone(&watcher_pool_for_handlers);
-        tokio::spawn(async move {
-            info!("Background embedding init task started");
-            let init_result =
-                tokio::task::spawn_blocking(|| crate::embeddings::create_embedding_provider())
-                    .await;
-
-            match init_result {
-                Ok((Some(provider), Some(status))) => {
-                    let model_name = provider.device_info().model_name.clone();
-                    embedding_service_for_init.publish_ready(Arc::clone(&provider), status);
-
-                    // Propagate the provider to any watchers that were
-                    // attached during the warmup window. They start with
-                    // None in their SharedEmbeddingProvider RwLock cell
-                    // (because shared_embedding_provider() returned None
-                    // while the service was Initializing), and would never
-                    // see the new provider without this push. Watchers
-                    // attached AFTER publish_ready get the provider via
-                    // their normal attach path, so this only matters for
-                    // the warmup race.
-                    watcher_pool_for_init
-                        .update_all_provider(Some(Arc::clone(&provider)))
-                        .await;
-
-                    // Sync embedding_model for workspaces that have vectors
-                    // but a missing or stale model name. Previously ran on the
-                    // critical path right after EmbeddingService::initialize;
-                    // now it runs here, once the background init actually
-                    // produces a provider.
-                    if let Some(ref db) = daemon_db_for_init {
-                        if let Ok(workspaces) = db.list_workspaces() {
-                            let mut count = 0;
-                            for ws in &workspaces {
-                                if ws.vector_count.map_or(false, |v| v > 0)
-                                    && ws.embedding_model.as_deref() != Some(model_name.as_str())
-                                {
-                                    let _ =
-                                        db.update_embedding_model(&ws.workspace_id, &model_name);
-                                    count += 1;
-                                }
-                            }
-                            if count > 0 {
-                                info!(
-                                    count,
-                                    model = %model_name,
-                                    "Synced embedding_model for workspaces"
-                                );
-                            }
-                        }
-                    }
-                }
-                Ok((Some(provider), None)) => {
-                    // create_embedding_provider invariants say this should
-                    // never happen. Success always produces a runtime
-                    // status. Handle it defensively by publishing Ready
-                    // with a synthesized status so the provider is still
-                    // usable.
-                    warn!(
-                        "create_embedding_provider returned a provider without runtime status; \
-                         publishing Ready with synthesized status"
-                    );
-                    let status = crate::embeddings::EmbeddingRuntimeStatus {
-                        requested_backend: crate::embeddings::EmbeddingBackend::Unresolved,
-                        resolved_backend: crate::embeddings::EmbeddingBackend::Unresolved,
-                        accelerated: false,
-                        degraded_reason: Some(
-                            "provider returned without runtime status (invariant violation)"
-                                .to_string(),
-                        ),
-                    };
-                    embedding_service_for_init.publish_ready(Arc::clone(&provider), status);
-                    // Propagate to warmup-window watchers (see (Some, Some) arm comment).
-                    watcher_pool_for_init
-                        .update_all_provider(Some(provider))
-                        .await;
-                }
-                Ok((None, status)) => {
-                    // Provider failed to initialize or was intentionally
-                    // disabled (e.g. JULIE_EMBEDDING_PROVIDER=none). Status
-                    // is Some on failure, None on explicit disable.
-                    let reason = status
-                        .as_ref()
-                        .and_then(|s| s.degraded_reason.clone())
-                        .unwrap_or_else(|| {
-                            "embedding provider disabled or failed to initialize".to_string()
-                        });
-                    embedding_service_for_init.publish_unavailable(reason, status);
-                }
-                Err(join_err) => {
-                    // The spawn_blocking task panicked or was cancelled.
-                    // CRITICAL: publish Unavailable so callers parked on
-                    // wait_until_settled see the failure instead of hanging
-                    // until their timeout elapses.
-                    warn!(
-                        error = ?join_err,
-                        "Background embedding init task panicked or was cancelled; publishing Unavailable"
-                    );
-                    embedding_service_for_init.publish_unavailable(
-                        format!("init task panicked/cancelled: {}", join_err),
-                        None,
-                    );
-                }
-            }
-        });
-    }
-
-    let restart_notify = lifecycle.restart_notify();
-    let (result, shutdown_cause) = tokio::select! {
-        res = shutdown_signal() => {
-            if let Err(e) = res {
-                warn!("Signal handler setup failed: {}", e);
-            }
-            info!("Shutdown signal received, stopping daemon");
-            (Ok(()), ShutdownCause::Signal)
-        }
-        _ = restart_notify.notified() => {
-            info!("Stale binary restart triggered, stopping daemon");
-            (Ok(()), ShutdownCause::RestartRequired)
-        }
-        _ = stop_notify.notified() => {
-            info!("Shutdown event received from `julie stop`, stopping daemon");
-            (Ok(()), ShutdownCause::StopCommand)
-        }
-    };
-
-    // Give active sessions time to finish before tearing down shared resources.
-    // Without this drain, sessions that are mid-request get dropped immediately
-    // on SIGTERM, which can corrupt in-flight writes or leave daemon.db in an
-    // inconsistent state.
-    let remaining = sessions.active_count();
-    let phase = lifecycle.request_shutdown(shutdown_cause, remaining);
-    if remaining > 0 {
-        let timeout = drain_timeout();
-        info!(
-            active_sessions = remaining,
-            timeout_secs = timeout.as_secs(),
-            "Draining active sessions"
-        );
-        let drained = drain_sessions(&sessions, timeout).await;
-        if drained {
-            info!("All sessions drained cleanly");
-        } else {
-            error!(
-                remaining = sessions.active_count(),
-                "Session drain timeout exceeded, forcing shutdown — in-flight writes may be lost"
-            );
-        }
-    }
-    if matches!(phase, LifecyclePhase::Draining { .. }) {
-        lifecycle.sessions_drained();
-    }
-
-    info!(
-        active_sessions = sessions.active_count(),
-        "Daemon shutting down"
-    );
-
-    // Abort background tasks before tearing down shared resources.
-    // These tasks hold Arcs into the pools; aborting them first prevents
-    // them from racing with the explicit shutdown calls below.
-    reaper_handle.abort();
-    idle_sweep_handle.abort();
-    if let Some(cleanup_sweep_handle) = cleanup_sweep_handle {
-        cleanup_sweep_handle.abort();
-    }
-
-    // LIFO shutdown: HTTP transport first (stops new requests from reaching
-    // any service), then embedding service, then pools in dependency order
-    // (workspace pool commits Tantivy writes before watcher pool releases OS
-    // file-watcher handles).
-    let port_path = paths.daemon_port();
-    let artifacts = ShutdownArtifacts {
-        port_path: &port_path,
-        pid_file,
-        state_path: &daemon_state_path,
-    };
-    perform_shutdown_sequence(
-        http_transport,
-        embedding_service,
-        pool,
-        watcher_pool,
-        artifacts,
-        None,
-    )
-    .await;
-
-    info!("Daemon stopped");
-    result
+    handle.shutdown().await
 }
 
 /// Files and resources cleaned up at the end of the shutdown sequence.
@@ -870,29 +395,4 @@ pub(crate) async fn perform_shutdown_sequence(
     let _ = std::fs::remove_file(artifacts.state_path);
 }
 
-/// Wait for a shutdown signal (SIGTERM or SIGINT on Unix).
-async fn shutdown_signal() -> Result<()> {
-    #[cfg(unix)]
-    {
-        use tokio::signal::unix::{SignalKind, signal};
-        let mut sigterm =
-            signal(SignalKind::terminate()).context("failed to register SIGTERM handler")?;
-        let mut sigint =
-            signal(SignalKind::interrupt()).context("failed to register SIGINT handler")?;
 
-        tokio::select! {
-            _ = sigterm.recv() => info!("Received SIGTERM"),
-            _ = sigint.recv() => info!("Received SIGINT"),
-        }
-    }
-
-    #[cfg(windows)]
-    {
-        tokio::signal::ctrl_c()
-            .await
-            .context("failed to listen for ctrl-c")?;
-        info!("Received Ctrl+C");
-    }
-
-    Ok(())
-}

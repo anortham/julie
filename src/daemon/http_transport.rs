@@ -84,6 +84,11 @@ pub struct HttpTransportServer {
 }
 
 impl HttpTransportServer {
+        /// Bind a new MCP HTTP transport on an auto-assigned loopback port.
+    ///
+    /// Convenience wrapper around `bind_with_listener` that performs its own
+    /// `TcpListener::bind` against `config.bind_host`. Used by the existing
+    /// test suite and any caller that does not want to pre-bind a listener.
     pub async fn bind<S>(
         paths: DaemonPaths,
         config: HttpTransportConfig,
@@ -98,16 +103,48 @@ impl HttpTransportServer {
                 config.bind_host
             );
         }
-        validate_route_path(config.mcp_path)?;
-        validate_route_path(config.readiness_path)?;
-
         paths
             .ensure_dirs()
             .context("Failed to create daemon dirs")?;
         let listener = TcpListener::bind(SocketAddr::new(config.bind_host, 0))
             .await
             .context("Failed to bind HTTP MCP transport listener")?;
-        let local_addr = listener.local_addr()?;
+        Self::bind_with_listener(listener, paths, config, service_factory).await
+    }
+
+    /// Bind a new MCP HTTP transport on an externally-provided listener.
+    ///
+    /// Lets callers (notably `DaemonApp::serve`) own the listening socket so
+    /// they can pick a specific port up-front, share the address with health
+    /// probes, or inject a pre-bound socket from a test harness. The listener
+    /// must already be bound to loopback; remote-reachable addresses are
+    /// rejected as a defense-in-depth check on top of the bind validation.
+    pub async fn bind_with_listener<S>(
+        listener: TcpListener,
+        paths: DaemonPaths,
+        config: HttpTransportConfig,
+        service_factory: impl Fn() -> io::Result<S> + Send + Sync + 'static,
+    ) -> Result<Self>
+    where
+        S: Service<RoleServer> + Send + 'static,
+    {
+        validate_route_path(config.mcp_path)?;
+        validate_route_path(config.readiness_path)?;
+
+        paths
+            .ensure_dirs()
+            .context("Failed to create daemon dirs")?;
+
+        let local_addr = listener
+            .local_addr()
+            .context("Failed to query MCP transport listener local_addr")?;
+        if !local_addr.ip().is_loopback() {
+            anyhow::bail!(
+                "HTTP MCP transport listener must be bound to loopback, got {}",
+                local_addr.ip()
+            );
+        }
+
         let cancellation = CancellationToken::new();
         let token_path = if let Some(token) = config.bearer_token.as_deref() {
             validate_bearer_token(token)?;
