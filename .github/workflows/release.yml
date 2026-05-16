@@ -13,7 +13,15 @@ env:
 
 jobs:
   # ==========================================================================
-  # Server binary builds (julie-server)
+  # Server binary builds (julie-server + julie-adapter + julie-daemon)
+  #
+  # The daemon split (A1.8) ships three binaries from the same workspace:
+  #   - julie-adapter: thin stdio<->HTTP forwarder; plugins spawn this.
+  #   - julie-daemon: heavy-state daemon; spawned by julie-adapter on demand.
+  #   - julie-server: compatibility shim that dispatches argv to the above.
+  # All three are bundled in the same archive per platform so the plugin's
+  # run.cjs sees both julie-adapter (primary entrypoint) and julie-daemon
+  # (used for preflight stop) after extraction.
   # ==========================================================================
   build:
     name: Build ${{ matrix.target }}
@@ -25,22 +33,22 @@ jobs:
           # Windows (sidecar handles CUDA/DirectML/CPU via PyTorch)
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            binary_name: julie-server.exe
+            exe_suffix: ".exe"
 
           # macOS Apple Silicon (sidecar for MPS acceleration)
           - os: macos-latest
             target: aarch64-apple-darwin
-            binary_name: julie-server
+            exe_suffix: ""
 
           # macOS Intel
           - os: macos-15-intel
             target: x86_64-apple-darwin
-            binary_name: julie-server
+            exe_suffix: ""
 
           # Linux (sidecar for CUDA/CPU acceleration)
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            binary_name: julie-server
+            exe_suffix: ""
 
     steps:
       - name: Checkout code
@@ -65,31 +73,45 @@ jobs:
         with:
           key: ${{ matrix.target }}
 
-      - name: Build release binary
+      - name: Build release binaries (julie-server + julie-adapter + julie-daemon)
         run: |
-          cargo build --release --target ${{ matrix.target }} --bin julie-server
+          cargo build --release --target ${{ matrix.target }} \
+            --bin julie-server \
+            --bin julie-adapter \
+            --bin julie-daemon
 
-      - name: Strip binary (Linux/macOS)
+      - name: Strip binaries (Linux/macOS)
         if: matrix.os != 'windows-latest'
         run: |
-          strip target/${{ matrix.target }}/release/${{ matrix.binary_name }}
+          strip target/${{ matrix.target }}/release/julie-server${{ matrix.exe_suffix }}
+          strip target/${{ matrix.target }}/release/julie-adapter${{ matrix.exe_suffix }}
+          strip target/${{ matrix.target }}/release/julie-daemon${{ matrix.exe_suffix }}
 
       - name: Ad-hoc codesign (macOS)
         if: startsWith(matrix.os, 'macos')
         run: |
-          codesign --force --sign - target/${{ matrix.target }}/release/${{ matrix.binary_name }}
+          codesign --force --sign - target/${{ matrix.target }}/release/julie-server${{ matrix.exe_suffix }}
+          codesign --force --sign - target/${{ matrix.target }}/release/julie-adapter${{ matrix.exe_suffix }}
+          codesign --force --sign - target/${{ matrix.target }}/release/julie-daemon${{ matrix.exe_suffix }}
 
       - name: Create archive
         shell: bash
         run: |
           VERSION=${GITHUB_REF#refs/tags/v}
+          SERVER_BIN="julie-server${{ matrix.exe_suffix }}"
+          ADAPTER_BIN="julie-adapter${{ matrix.exe_suffix }}"
+          DAEMON_BIN="julie-daemon${{ matrix.exe_suffix }}"
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
             ARCHIVE="julie-v${VERSION}-${{ matrix.target }}.zip"
-            cp "./target/${{ matrix.target }}/release/${{ matrix.binary_name }}" "${{ matrix.binary_name }}"
-            7z a "${ARCHIVE}" "${{ matrix.binary_name }}"
+            cp "./target/${{ matrix.target }}/release/${SERVER_BIN}" "${SERVER_BIN}"
+            cp "./target/${{ matrix.target }}/release/${ADAPTER_BIN}" "${ADAPTER_BIN}"
+            cp "./target/${{ matrix.target }}/release/${DAEMON_BIN}" "${DAEMON_BIN}"
+            7z a "${ARCHIVE}" "${SERVER_BIN}" "${ADAPTER_BIN}" "${DAEMON_BIN}"
           else
             ARCHIVE="julie-v${VERSION}-${{ matrix.target }}.tar.gz"
-            tar -czf "${ARCHIVE}" -C target/${{ matrix.target }}/release ${{ matrix.binary_name }}
+            tar -czf "${ARCHIVE}" \
+              -C target/${{ matrix.target }}/release \
+              "${SERVER_BIN}" "${ADAPTER_BIN}" "${DAEMON_BIN}"
           fi
           echo "ARCHIVE=${ARCHIVE}" >> $GITHUB_ENV
 
@@ -133,8 +155,11 @@ jobs:
 
           ### What's Included
 
-          **\`julie-server\`** — MCP server for code intelligence (search, navigation, refactoring)
-          - Download the archive for your platform, extract, and add to PATH
+          Each archive ships three binaries (daemon-split architecture):
+
+          - **\`julie-adapter\`** — Thin stdio<->HTTP forwarder. This is the MCP entry point your client should spawn.
+          - **\`julie-daemon\`** — Heavy-state daemon (search, indexing, embeddings). Spawned automatically by \`julie-adapter\` on demand and shared across MCP sessions.
+          - **\`julie-server\`** — Backwards-compatibility shim that dispatches argv to the adapter or daemon. Keeps existing scripts working.
 
           ### Platform Support
           | Platform | Archive |
@@ -146,8 +171,9 @@ jobs:
 
           ### Quick Start
           \`\`\`bash
-          # 1. Extract julie-server for your platform and add to PATH
-          # 2. Configure your MCP client to use julie-server
+          # 1. Extract the archive for your platform; all three binaries land in the same directory.
+          # 2. Configure your MCP client to spawn julie-adapter.
+          # 3. Use \`julie-daemon stop|status\` for lifecycle control.
           \`\`\`
 
           See [README.md](https://github.com/${{ github.repository }}) for full documentation.
@@ -179,7 +205,7 @@ jobs:
         run: |
           echo "Release v${{ steps.version.outputs.version }} created successfully"
           echo ""
-          echo "Server binary: julie-server"
+          echo "Bundled binaries: julie-server, julie-adapter, julie-daemon"
           echo ""
           echo "Platforms built:"
           echo "  - Windows (x86_64-pc-windows-msvc)"
