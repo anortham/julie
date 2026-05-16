@@ -172,6 +172,7 @@ pub mod utils {
 // ============================================================================
 pub mod integration {
     pub mod bulk_storage_atomicity; // Bulk storage atomicity tests (TDD) - verify transaction safety
+    pub mod concurrent_mcp; // A2.3 concurrent MCP regression test (deadlock detector across pool + gate + watcher)
     pub mod daemon_lifecycle;
     pub mod documentation_indexing;
     pub mod legacy_migration; // Daemon legacy-migration gate tests (A1.5) // Documentation indexing E2E tests (RAG POC)
