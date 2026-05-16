@@ -18,24 +18,3 @@ pub(crate) mod target_workspace; // Public for use by other tools
 // Re-export public APIs
 pub use call_path::CallPathTool;
 pub use fast_refs::FastRefsTool;
-
-use std::sync::{Arc, Mutex};
-
-/// Lock the database mutex, recovering from poisoning if necessary.
-/// Centralizes the lock+recover pattern used throughout navigation tools.
-fn lock_db<'a>(
-    db: &'a Arc<Mutex<crate::database::SymbolDatabase>>,
-    context: &str,
-) -> std::sync::MutexGuard<'a, crate::database::SymbolDatabase> {
-    match db.lock() {
-        Ok(guard) => guard,
-        Err(poisoned) => {
-            tracing::warn!(
-                "Database mutex poisoned in {}, recovering: {}",
-                context,
-                poisoned
-            );
-            poisoned.into_inner()
-        }
-    }
-}

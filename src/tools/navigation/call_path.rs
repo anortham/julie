@@ -1,5 +1,4 @@
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::sync::{Arc, Mutex};
 
 use anyhow::{Result, anyhow};
 use rmcp::model::{CallToolResult, Content};
@@ -13,7 +12,6 @@ use crate::handler::JulieServerHandler;
 use crate::mcp_compat::CallToolResultExt;
 use crate::tools::deep_dive::data::find_symbol;
 
-use super::lock_db;
 use super::resolution::{WorkspaceTarget, file_path_matches_suffix, resolve_workspace_filter};
 
 const DEFAULT_MAX_HOPS: u32 = 6;
@@ -75,10 +73,6 @@ pub struct CallPathHop {
     pub target_file: String,
     #[serde(default)]
     pub target_start_line: u32,
-}
-
-struct WorkspaceQueryTarget {
-    db: Arc<Mutex<SymbolDatabase>>,
 }
 
 #[derive(Clone)]
@@ -351,17 +345,12 @@ impl CallPathTool {
     async fn resolve_workspace_target(
         &self,
         handler: &JulieServerHandler,
-    ) -> Result<WorkspaceQueryTarget> {
+    ) -> Result<SymbolDatabase> {
         match resolve_workspace_filter(self.workspace.as_deref(), handler).await? {
-            WorkspaceTarget::Primary => {
-                let snapshot = handler.primary_workspace_snapshot().await?;
-                Ok(WorkspaceQueryTarget {
-                    db: snapshot.database.clone(),
-                })
+            WorkspaceTarget::Primary => handler.primary_pooled_database().await,
+            WorkspaceTarget::Target(workspace_id) => {
+                handler.get_pooled_database_for_workspace(&workspace_id).await
             }
-            WorkspaceTarget::Target(workspace_id) => Ok(WorkspaceQueryTarget {
-                db: handler.get_database_for_workspace(&workspace_id).await?,
-            }),
         }
     }
 
@@ -377,8 +366,8 @@ impl CallPathTool {
             )));
         }
 
-        let target = match self.resolve_workspace_target(handler).await {
-            Ok(target) => target,
+        let db = match self.resolve_workspace_target(handler).await {
+            Ok(db) => db,
             Err(error) => {
                 return Self::response_result(&Self::diagnostic_response(format!(
                     "Workspace resolution failed: {error}"
@@ -392,7 +381,6 @@ impl CallPathTool {
         let to_file_path = self.to_file_path.clone();
 
         let response = tokio::task::spawn_blocking(move || -> Result<CallPathResponse> {
-            let db = lock_db(&target.db, "call_path");
             let endpoints = resolve_endpoints(
                 &db,
                 &from,

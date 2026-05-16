@@ -2,7 +2,6 @@ use crate::handler::JulieServerHandler;
 use crate::handler::session_workspace::PrimaryWorkspaceBinding;
 use anyhow::Result;
 use std::sync::atomic::Ordering;
-use std::sync::{Arc, Mutex};
 
 use super::evaluation::{overall_from_planes, readiness_from_data_plane};
 use super::{
@@ -14,35 +13,10 @@ use super::{
 pub struct HealthChecker;
 
 #[derive(Clone)]
-pub(crate) struct CachedWorkspaceStats {
-    pub symbol_count: i64,
-    pub file_count: i64,
-    pub embedding_count: i64,
-}
-
-impl CachedWorkspaceStats {
-    fn from_workspace_row(row: crate::daemon::database::WorkspaceRow) -> Option<Self> {
-        let symbol_count = row.symbol_count.unwrap_or(0);
-        let file_count = row.file_count.unwrap_or(0);
-        if symbol_count <= 0 && file_count <= 0 {
-            return None;
-        }
-
-        Some(Self {
-            symbol_count,
-            file_count,
-            embedding_count: row.vector_count.unwrap_or(0),
-        })
-    }
-}
-
-#[derive(Clone)]
 pub(crate) struct PrimaryWorkspaceState {
     pub binding: PrimaryWorkspaceBinding,
-    pub database: Option<Arc<Mutex<crate::database::SymbolDatabase>>>,
     pub search_index_ready: bool,
     pub indexing_runtime: Option<crate::tools::workspace::indexing::state::IndexingRuntimeSnapshot>,
-    pub cached_stats: Option<CachedWorkspaceStats>,
 }
 
 pub(crate) enum PrimaryWorkspaceHealth {
@@ -51,24 +25,11 @@ pub(crate) enum PrimaryWorkspaceHealth {
 }
 
 impl HealthChecker {
-    fn cached_workspace_stats(
-        handler: &JulieServerHandler,
-        workspace_id: &str,
-    ) -> Option<CachedWorkspaceStats> {
-        handler
-            .daemon_db
-            .as_ref()
-            .and_then(|db| db.get_workspace(workspace_id).ok().flatten())
-            .and_then(CachedWorkspaceStats::from_workspace_row)
-    }
-
     pub(crate) async fn primary_workspace_health(
         handler: &JulieServerHandler,
     ) -> Result<PrimaryWorkspaceHealth> {
         match handler.primary_workspace_snapshot().await {
             Ok(snapshot) => {
-                let cached_stats =
-                    Self::cached_workspace_stats(handler, &snapshot.binding.workspace_id);
                 let search_index_ready = handler
                     .get_search_index_for_workspace(&snapshot.binding.workspace_id)
                     .await?
@@ -76,7 +37,6 @@ impl HealthChecker {
 
                 Ok(PrimaryWorkspaceHealth::Ready(PrimaryWorkspaceState {
                     binding: snapshot.binding,
-                    database: Some(snapshot.database),
                     search_index_ready,
                     indexing_runtime: snapshot.indexing_runtime.as_ref().map(|runtime| {
                         runtime
@@ -84,7 +44,6 @@ impl HealthChecker {
                             .unwrap_or_else(|poisoned| poisoned.into_inner())
                             .snapshot()
                     }),
-                    cached_stats,
                 }))
             }
             Err(err) => {
@@ -103,15 +62,6 @@ impl HealthChecker {
                     return Err(err);
                 }
 
-                let database = match handler
-                    .get_database_for_workspace(&binding.workspace_id)
-                    .await
-                {
-                    Ok(db) => Some(db),
-                    Err(_) => None,
-                };
-                let cached_stats = Self::cached_workspace_stats(handler, &binding.workspace_id);
-
                 let search_index_ready = handler
                     .get_search_index_for_workspace(&binding.workspace_id)
                     .await?
@@ -119,10 +69,8 @@ impl HealthChecker {
 
                 Ok(PrimaryWorkspaceHealth::Ready(PrimaryWorkspaceState {
                     binding,
-                    database,
                     search_index_ready,
                     indexing_runtime: None,
-                    cached_stats,
                 }))
             }
         }
@@ -131,7 +79,7 @@ impl HealthChecker {
     pub async fn system_snapshot(handler: &JulieServerHandler) -> Result<SystemHealthSnapshot> {
         let primary = Self::primary_workspace_health(handler).await?;
         let control_plane = Self::build_control_plane(handler, &primary).await?;
-        let data_plane = build_data_plane(&primary)?;
+        let data_plane = build_data_plane(handler, &primary).await?;
         let runtime_plane = Self::build_runtime_plane(handler).await?;
         let readiness = readiness_from_data_plane(&data_plane);
         let overall = overall_from_planes(

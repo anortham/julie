@@ -11,6 +11,7 @@ use serde_json::{Value, json};
 use std::path::Path;
 use tracing::debug;
 
+use crate::database::SymbolDatabase;
 use crate::extractors::{ExtractorManager, Symbol};
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::CallToolResultExt;
@@ -120,8 +121,16 @@ pub struct RewriteSymbolTool {
 }
 
 struct WorkspaceEditTarget {
-    db: std::sync::Arc<std::sync::Mutex<crate::database::SymbolDatabase>>,
+    workspace_id: String,
     workspace_root: std::path::PathBuf,
+}
+
+impl WorkspaceEditTarget {
+    async fn pooled_db(&self, handler: &JulieServerHandler) -> Result<SymbolDatabase> {
+        handler
+            .get_pooled_database_for_workspace(&self.workspace_id)
+            .await
+    }
 }
 
 struct LiveSymbolContext {
@@ -196,7 +205,7 @@ fn validate_operation(operation: &str) -> bool {
 }
 
 fn check_file_freshness(
-    db: &std::sync::MutexGuard<'_, crate::database::SymbolDatabase>,
+    db: &crate::database::SymbolDatabase,
     file_path: &str,
     current_hash: &str,
 ) -> Result<()> {
@@ -568,14 +577,18 @@ impl RewriteSymbolTool {
             WorkspaceTarget::Primary => {
                 let primary_snapshot = handler.primary_workspace_snapshot().await?;
                 Ok(WorkspaceEditTarget {
-                    db: primary_snapshot.database.clone(),
+                    workspace_id: primary_snapshot.binding.workspace_id,
                     workspace_root: primary_snapshot.binding.workspace_root,
                 })
             }
-            WorkspaceTarget::Target(workspace_id) => Ok(WorkspaceEditTarget {
-                db: handler.get_database_for_workspace(&workspace_id).await?,
-                workspace_root: handler.get_workspace_root_for_target(&workspace_id).await?,
-            }),
+            WorkspaceTarget::Target(workspace_id) => {
+                let workspace_root =
+                    handler.get_workspace_root_for_target(&workspace_id).await?;
+                Ok(WorkspaceEditTarget {
+                    workspace_id,
+                    workspace_root,
+                })
+            }
         }
     }
 
@@ -608,13 +621,10 @@ impl RewriteSymbolTool {
         let symbol_name_for_lookup = symbol_name.clone();
         let file_path_filter = self.file_path.clone();
         let file_path_for_error = self.file_path.clone();
-        let db_arc = target.db.clone();
+        let lookup_db = target.pooled_db(handler).await?;
         let matches = tokio::task::spawn_blocking(move || -> Result<Vec<Symbol>> {
-            let db = db_arc
-                .lock()
-                .map_err(|error| anyhow!("Database lock error: {}", error))?;
             let symbols =
-                crate::tools::deep_dive::data::find_symbol(&db, &symbol_name_for_lookup, None)?;
+                crate::tools::deep_dive::data::find_symbol(&lookup_db, &symbol_name_for_lookup, None)?;
             let filtered = if let Some(ref filter) = file_path_filter {
                 symbols
                     .into_iter()
@@ -724,11 +734,9 @@ impl RewriteSymbolTool {
             .to_hex()
             .to_string();
         {
-            let db = target
-                .db
-                .lock()
-                .map_err(|error| anyhow!("Database lock error: {}", error))?;
-            if let Err(error) = check_file_freshness(&db, &indexed_symbol.file_path, &current_hash)
+            let freshness_db = target.pooled_db(handler).await?;
+            if let Err(error) =
+                check_file_freshness(&freshness_db, &indexed_symbol.file_path, &current_hash)
             {
                 return Err(rewrite_symbol_error("stale_index", error.to_string()));
             }
