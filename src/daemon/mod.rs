@@ -24,6 +24,7 @@ pub mod shutdown;
 pub mod shutdown_event;
 pub mod transport;
 pub mod watcher_pool;
+pub mod connection_pool;
 pub mod workspace_pool;
 pub mod workspace_registry_store;
 pub mod workspace_session_attachment;
@@ -39,6 +40,7 @@ use crate::paths::DaemonPaths;
 use crate::workspace::registry::generate_workspace_id;
 
 pub use self::app::{DaemonApp, DaemonConfig, DaemonHandle, DaemonRuntimeContext};
+pub use self::connection_pool::{WorkspaceConnectionPool, PooledConn};
 
 use self::database::DaemonDatabase;
 use self::embedding_service::EmbeddingService;

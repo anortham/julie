@@ -29,6 +29,7 @@ pub mod transport;
 pub mod watcher_pool;
 pub mod watcher_pool_shutdown;
 pub mod workspace_cleanup;
+pub mod connection_pool_test;
 pub mod workspace_pool;
 pub mod workspace_pool_eviction;
 pub mod workspace_pool_shutdown;
