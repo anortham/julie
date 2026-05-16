@@ -102,3 +102,35 @@ async fn test_for_test_registries_are_isolated() {
     .expect("isolated runtime contexts must not share gate locks");
     drop(gb);
 }
+
+/// `install_tracing` must be idempotent.
+///
+/// Invariant proved (B.2 acceptance criterion): calling `install_tracing`
+/// twice in the same process succeeds without panicking. The first call
+/// installs the subscriber; the second call detects via the internal
+/// `OnceLock` (or `try_init`'s error path) that one is already installed and
+/// returns `Ok(())` without touching it. Without this, the InProcessDaemon
+/// test fixture (B.3) — which spins many daemons in one process — would
+/// panic on the second daemon's tracing init.
+#[test]
+fn test_install_tracing_is_idempotent() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let paths = DaemonPaths::with_home(tmp.path().to_path_buf());
+    paths.ensure_dirs().expect("ensure_dirs");
+
+    let ctx = DaemonRuntimeContext::default();
+
+    // First install: may either succeed in installing or no-op (if another
+    // test already installed in this process). Either way it must not panic.
+    ctx.install_tracing(&paths).expect("first install_tracing must not error");
+
+    // Second install in the same process: MUST be a clean no-op. This is the
+    // load-bearing assertion — the old `.init()`-based code panicked here.
+    ctx.install_tracing(&paths).expect("second install_tracing must not panic");
+
+    // A third call from a different runtime context (mimicking what would
+    // happen when InProcessDaemon spins a fresh runtime per test) must also
+    // be a no-op.
+    let ctx_b = DaemonRuntimeContext::for_test();
+    ctx_b.install_tracing(&paths).expect("install_tracing on a second runtime context must not panic");
+}

@@ -16,8 +16,6 @@ use std::fs;
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use tracing::info;
-use tracing_appender::non_blocking;
-use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
 use crate::paths::DaemonPaths;
 
@@ -118,30 +116,10 @@ pub async fn start_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> 
     }
 
     // Logging setup: file-only, no ANSI, daily rotation.
-    let filter = EnvFilter::try_from_default_env()
-        .or_else(|_| EnvFilter::try_new("julie=info"))
-        .map_err(|e| anyhow::anyhow!("Failed to initialize logging filter: {}", e))?;
-
-    let log_dir = paths.julie_home();
-    fs::create_dir_all(&log_dir).unwrap_or_else(|e| {
-        eprintln!("Failed to create log directory at {:?}: {}", log_dir, e);
-    });
-
-    let writer = crate::logging::LocalRollingWriter::new(&log_dir, "daemon.log");
-    let (non_blocking_file, _file_guard) = non_blocking(writer);
-
-    tracing_subscriber::registry()
-        .with(filter)
-        .with(
-            fmt::layer()
-                .with_writer(non_blocking_file)
-                .with_timer(crate::logging::LocalTimer)
-                .with_target(true)
-                .with_ansi(false)
-                .with_file(true)
-                .with_line_number(true),
-        )
-        .init();
+    // Idempotent via DaemonRuntimeContext::install_tracing — a second call in
+    // the same process (e.g. from the InProcessDaemon test fixture in B.3)
+    // is a no-op instead of a panic.
+    crate::daemon::app::DaemonRuntimeContext::default().install_tracing(&paths)?;
 
     info!("Starting Julie daemon v{}", env!("CARGO_PKG_VERSION"));
     crate::daemon::run_daemon(paths, port, no_dashboard).await
