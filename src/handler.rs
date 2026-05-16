@@ -1857,6 +1857,21 @@ impl JulieServerHandler {
         Ok(self.primary_workspace_snapshot().await?.database)
     }
 
+    /// Pool-aware accessor for the primary workspace database.
+    ///
+    /// Returns an owned `SymbolDatabase` wrapping a pooled connection (or, in
+    /// stdio mode, a fresh owned connection). Multiple sessions or in-flight
+    /// requests can hold their own connections concurrently — unlike
+    /// [`primary_database`], which returns a shared `Arc<Mutex<>>` that
+    /// serializes all callers.
+    ///
+    /// Prefer this method for new code. Migration from `primary_database`
+    /// proceeds incrementally; see Task A2.2c-followup.
+    pub(crate) async fn primary_pooled_database(&self) -> Result<SymbolDatabase> {
+        let workspace_id = self.require_primary_workspace_identity()?;
+        self.get_pooled_database_for_workspace(&workspace_id).await
+    }
+
     pub(crate) async fn primary_database_and_search_index(
         &self,
     ) -> Result<(

@@ -37,14 +37,8 @@ impl RenameSymbolTool {
         };
         let workspace_target =
             resolve_workspace_filter(refs_tool.workspace.as_deref(), handler).await?;
-        let primary_db = match &workspace_target {
-            crate::tools::navigation::resolution::WorkspaceTarget::Primary => {
-                Some(handler.primary_database().await?)
-            }
-            crate::tools::navigation::resolution::WorkspaceTarget::Target(_) => None,
-        };
         let (definitions, references) = refs_tool
-            .find_references_and_definitions(handler, workspace_target, primary_db)
+            .find_references_and_definitions(handler, workspace_target)
             .await?;
 
         let mut file_locations = build_file_locations(&definitions, &references);
@@ -168,14 +162,8 @@ impl SmartRefactorTool {
 
         let workspace_target =
             resolve_workspace_filter(refs_tool.workspace.as_deref(), handler).await?;
-        let primary_db = match &workspace_target {
-            crate::tools::navigation::resolution::WorkspaceTarget::Primary => {
-                Some(handler.primary_database().await?)
-            }
-            crate::tools::navigation::resolution::WorkspaceTarget::Target(_) => None,
-        };
         let (definitions, references) = refs_tool
-            .find_references_and_definitions(handler, workspace_target, primary_db)
+            .find_references_and_definitions(handler, workspace_target)
             .await?;
 
         // Build file -> line-number map directly from structured data (no text parsing)

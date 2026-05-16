@@ -292,8 +292,8 @@ where
 }
 
 fn run_line_mode_workspace_fetch(
-    db: Arc<Mutex<SymbolDatabase>>,
-    search_index: Arc<Mutex<SearchIndex>>,
+    db: &SymbolDatabase,
+    search_index: &Arc<Mutex<SearchIndex>>,
     query: String,
     match_strategy: LineMatchStrategy,
     file_pattern: Option<String>,
@@ -321,15 +321,8 @@ fn run_line_mode_workspace_fetch(
             Ok(index.search_content(&query, &filter, fetch_limit)?)
         },
         |file_results| {
-            let db_lock = match db.lock() {
-                Ok(guard) => guard,
-                Err(poisoned) => {
-                    warn!("Database mutex poisoned, recovering: {}", poisoned);
-                    poisoned.into_inner()
-                }
-            };
             collect_matches_from_file_results(
-                &db_lock,
+                db,
                 file_results,
                 file_pattern.as_deref(),
                 language.as_deref(),
@@ -352,8 +345,8 @@ fn run_line_mode_workspace_fetch(
 }
 
 fn run_line_mode_with_scope_rescue(
-    db: Arc<Mutex<SymbolDatabase>>,
-    search_index: Arc<Mutex<SearchIndex>>,
+    db: &SymbolDatabase,
+    search_index: &Arc<Mutex<SearchIndex>>,
     query: String,
     match_strategy: LineMatchStrategy,
     file_pattern: Option<String>,
@@ -362,8 +355,8 @@ fn run_line_mode_with_scope_rescue(
     base_limit: usize,
 ) -> Result<LineModeScopedOutcome> {
     let first = run_line_mode_workspace_fetch(
-        Arc::clone(&db),
-        Arc::clone(&search_index),
+        db,
+        search_index,
         query.clone(),
         match_strategy.clone(),
         file_pattern.clone(),
@@ -551,8 +544,10 @@ pub(crate) async fn line_mode_matches(
 
     let scoped_outcome = match workspace_target {
         WorkspaceTarget::Primary => {
+            // Pooled DB: read-only, no mutation gate required.
+            let pooled_db = handler.primary_pooled_database().await?;
+            // search_index still lives behind Arc<Mutex<>>; not pool-migrated.
             let primary_snapshot = handler.primary_workspace_snapshot().await?;
-            let db = primary_snapshot.database;
             let search_index = primary_snapshot.search_index.ok_or_else(|| {
                     anyhow::anyhow!(
                         "Line-level content search requires a Tantivy index for the current primary workspace. Run manage_workspace(operation=\"refresh\") first."
@@ -566,8 +561,8 @@ pub(crate) async fn line_mode_matches(
 
             tokio::task::spawn_blocking(move || {
                 run_line_mode_with_scope_rescue(
-                    db,
-                    search_index,
+                    &pooled_db,
+                    &search_index,
                     query,
                     match_strategy,
                     file_pattern_clone,
@@ -579,7 +574,10 @@ pub(crate) async fn line_mode_matches(
             .await??
         }
         WorkspaceTarget::Target(workspace_id) => {
-            let db_arc = handler.get_database_for_workspace(workspace_id).await?;
+            // Pooled DB: read-only, no mutation gate required.
+            let pooled_db = handler
+                .get_pooled_database_for_workspace(workspace_id)
+                .await?;
             let si_arc = handler.get_search_index_for_workspace(workspace_id).await?;
             let target_workspace_id = workspace_id.clone();
 
@@ -601,8 +599,8 @@ pub(crate) async fn line_mode_matches(
                 };
 
                 run_line_mode_with_scope_rescue(
-                    db_arc,
-                    search_index,
+                    &pooled_db,
+                    &search_index,
                     query_clone,
                     strategy,
                     ref_file_pattern,
