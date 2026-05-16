@@ -11,6 +11,7 @@ pub mod index;
 pub mod language_config;
 pub mod projection;
 pub mod query;
+pub mod query_parse;
 pub mod schema;
 pub mod scoring;
 pub mod similarity;
