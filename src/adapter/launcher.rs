@@ -122,6 +122,29 @@ impl DaemonLauncher {
     /// daemon.lock through the entire readiness check to prevent multi-adapter
     /// races.
     pub fn ensure_daemon_ready(&self) -> io::Result<()> {
+        // A1.5: legacy detection. If a legacy julie-server daemon is
+        // already running for this JULIE_HOME, attach to its HTTP endpoint
+        // instead of spawning a new daemon. This is the upgrade path: the
+        // adapter keeps working against the old daemon until the operator
+        // restarts it. The legacy daemon writes daemon.port + daemon.pid;
+        // the new daemon writes discovery.json (A1.3) which is picked up
+        // by self.daemon_readiness() through the regular path below.
+        //
+        // We do NOT short-circuit when detect_and_attach returns Some — the
+        // legacy endpoint goes via the existing transport-discovery path,
+        // and the spawn logic below sees a live daemon and stays out of
+        // the way. Future work (A1.8) will switch the spawn target from
+        // julie-server to julie-daemon; the legacy-attach path remains
+        // unchanged.
+        if let Some(_legacy_endpoint) =
+            crate::daemon::legacy_migration::detect_and_attach(&self.paths)
+        {
+            debug!(
+                "Legacy julie-server daemon detected via daemon.pid + daemon.port; attaching to legacy endpoint"
+            );
+            return Ok(());
+        }
+
         // Fast path (no lock): if daemon is already ready, skip the lock.
         // If the daemon transitions to stopping between this check and the
         // HTTP adapter connection, run_adapter's retry loop catches it.

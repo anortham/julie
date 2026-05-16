@@ -10,6 +10,7 @@ pub mod discovery;
 pub mod embedding_service;
 pub mod http_client;
 pub mod http_transport;
+pub mod legacy_migration;
 pub mod lifecycle;
 pub mod mcp_session;
 pub mod pid;

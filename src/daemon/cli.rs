@@ -60,6 +60,45 @@ pub async fn run() -> Result<()> {
 
     match cli.command {
         DaemonCommand::Start { port, no_dashboard } => {
+            // A1.5: hard legacy-migration gate. Refuse to start if a legacy
+            // julie-server daemon is running for the same JULIE_HOME — both
+            // would write to the same workspace SQLite/Tantivy files and
+            // corrupt the indexes silently.
+            //
+            // We perform this check BEFORE setting up logging so the
+            // diagnostic goes to stderr where the operator can see it (no
+            // log routing has been initialized yet).
+            match crate::daemon::legacy_migration::check_or_refuse(&paths)? {
+                crate::daemon::legacy_migration::MigrationDecision::LegacyDaemonAlive {
+                    pid,
+                    hint,
+                } => {
+                    eprintln!(
+                        "Refusing to start: legacy julie-server daemon is running (PID {}). \
+                         Hint: {}. Stop it first via `julie-server stop` or `kill {}`.",
+                        pid, hint, pid
+                    );
+                    std::process::exit(2);
+                }
+                crate::daemon::legacy_migration::MigrationDecision::ProceedAndUnlink {
+                    files_to_clean,
+                } => {
+                    // Best-effort cleanup of legacy stale files. We
+                    // continue even on error: the new daemon's own
+                    // create_exclusive / try_acquire calls will fail
+                    // cleanly if any legacy file is still load-bearing.
+                    for path in files_to_clean {
+                        if let Err(err) = fs::remove_file(&path) {
+                            eprintln!(
+                                "Warning: failed to remove stale legacy file {}: {}",
+                                path.display(),
+                                err
+                            );
+                        }
+                    }
+                }
+            }
+
             // Logging setup: identical to the `Command::Daemon` branch in
             // `src/main.rs` — file-only, no ANSI, daily rotation.
             let filter = EnvFilter::try_from_default_env()
