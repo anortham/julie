@@ -19,6 +19,7 @@ pub mod project_log;
 pub mod singleton;
 pub mod token_file;
 pub mod session;
+pub mod shutdown;
 #[cfg(windows)]
 pub mod shutdown_event;
 pub mod transport;

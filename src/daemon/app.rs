@@ -30,9 +30,10 @@ use super::session::SessionTracker;
 use super::singleton::{SingletonLock, SingletonLockError};
 use super::watcher_pool::WatcherPool;
 use super::workspace_pool::WorkspacePool;
-use super::{
-    ShutdownArtifacts, binary_mtime, drain_sessions, drain_timeout, perform_shutdown_sequence,
+use super::shutdown::{
+    DrainOutcome, RecoveryMarker, drain_with_markers, publish_discovery_phase, read_recovery_markers,
 };
+use super::{ShutdownArtifacts, binary_mtime, drain_timeout, perform_shutdown_sequence};
 
 /// Injectable runtime context. EMPTY for A1.6 — B.1 will populate fields
 /// (mutation_gate_registry, tracing_handle, env_overrides, etc.).
@@ -75,11 +76,23 @@ pub struct DaemonApp {
     // Reaper task; moved into the handle's abort list to preserve today's
     // `reaper_handle.abort()` ordering ahead of pool shutdown.
     reaper_handle: Option<JoinHandle<()>>,
+    /// Recovery markers read from disk at construction time. Surfaced via
+    /// `DashboardState` so the `/status` endpoint can show the operator
+    /// that a previous daemon shutdown timed out with in-flight requests.
+    /// Cloned into the handle so it survives `serve`'s consumption of self.
+    recovery_markers: Arc<Vec<RecoveryMarker>>,
     #[allow(dead_code)] // Reserved for B.1
     runtime: DaemonRuntimeContext,
 }
 
 impl DaemonApp {
+    /// Recovery markers detected at startup (read from the previous daemon
+    /// run's `unclean_shutdown.json`). Empty if the previous run drained
+    /// cleanly or no daemon ran before this one. Cheap to clone (`Arc`).
+    pub fn recovery_markers(&self) -> Arc<Vec<RecoveryMarker>> {
+        Arc::clone(&self.recovery_markers)
+    }
+
     /// Acquire the singleton lock, open the daemon DB (migrations + crash
     /// recovery), construct shared state (pools, sessions, embedding service
     /// in `Initializing`), capture binary mtime, set up the lifecycle
@@ -151,6 +164,19 @@ impl DaemonApp {
         let workspace_pool = Arc::new(WorkspacePool::new(paths.indexes_dir(), daemon_db.clone()));
         let sessions = Arc::new(SessionTracker::new());
 
+        // Read recovery markers from the previous daemon run so the dashboard
+        // /status route can surface "last shutdown timed out with N in-flight
+        // requests" to the operator. Read is best-effort — corrupt or missing
+        // marker file returns an empty Vec.
+        let recovery_markers = Arc::new(read_recovery_markers(&paths));
+        if !recovery_markers.is_empty() {
+            warn!(
+                count = recovery_markers.len(),
+                "Recovery markers from previous daemon run detected; \
+                 surfacing via dashboard /status until cleared"
+            );
+        }
+
         Ok(Self {
             paths,
             no_dashboard,
@@ -165,6 +191,7 @@ impl DaemonApp {
             embedding_service,
             startup_binary_mtime,
             reaper_handle: Some(reaper_handle),
+            recovery_markers,
             runtime,
         })
     }
@@ -206,7 +233,8 @@ impl DaemonApp {
             Some(Arc::clone(&watcher_pool_for_handlers)),
             Some(Arc::clone(&self.workspace_pool)),
             50, // error buffer capacity
-        );
+        )
+        .with_recovery_markers(Arc::clone(&self.recovery_markers));
         let dashboard_tx: broadcast::Sender<DashboardEvent> = dashboard_state.sender();
 
         // HTTP MCP transport on the caller-provided listener.
@@ -302,6 +330,8 @@ impl DaemonApp {
             .expect("DaemonApp::serve called on app with no reaper handle");
         let stop_notify_for_shutdown = Arc::clone(&stop_notify);
 
+        let transport_shutdown_state = http_transport.shutdown_state();
+
         Ok(DaemonHandle {
             local_addr: mcp_local_addr,
             paths: self.paths.clone(),
@@ -309,6 +339,7 @@ impl DaemonApp {
             singleton_lock: Some(singleton_lock),
             pid_file: Some(pid_file),
             http_transport: Some(http_transport),
+            transport_shutdown_state,
             embedding_service: Arc::clone(&self.embedding_service),
             workspace_pool: Arc::clone(&self.workspace_pool),
             watcher_pool: Arc::clone(&self.watcher_pool),
@@ -349,6 +380,10 @@ pub struct DaemonHandle {
     singleton_lock: Option<SingletonLock>,
     pid_file: Option<PidFile>,
     http_transport: Option<HttpTransportServer>,
+    /// Shared shutdown-state handle for the HTTP transport. Cloned out of
+    /// the transport at `serve` time so `shutdown` can flip it to draining /
+    /// aborted without holding the transport itself.
+    transport_shutdown_state: super::http_transport::TransportShutdownState,
     embedding_service: Arc<EmbeddingService>,
     workspace_pool: Arc<WorkspacePool>,
     watcher_pool: Arc<WatcherPool>,
@@ -374,41 +409,67 @@ impl DaemonHandle {
 
     /// Trigger graceful shutdown and wait for the serve task to complete.
     ///
-    /// LIFO order: drain sessions, abort background tasks, shut down HTTP
-    /// transport, embedding service, workspace pool, watcher pool, then
-    /// remove port/PID/state files and release the singleton lock. See
-    /// `perform_shutdown_sequence` in `daemon/mod.rs` for steps 3-5.
+    /// LIFO order: flip transport to 503 (draining), rewrite discovery.json
+    /// `phase=stopping`, drain sessions, on timeout flip transport to 502
+    /// (aborted) and persist recovery markers, abort background tasks, shut
+    /// down HTTP transport, embedding service, workspace pool, watcher
+    /// pool, then remove port/PID/state files and release the singleton
+    /// lock. See `perform_shutdown_sequence` in `daemon/mod.rs` for steps
+    /// 3-5.
     pub async fn shutdown(mut self) -> Result<()> {
-        // Drain sessions before tearing down shared resources; otherwise
-        // in-flight writes can corrupt daemon.db.
+        // Step 0: announce that we're shutting down.
+        // (a) Flip HTTP transport into the draining state so any NEW request
+        //     after this point bounces with 503 Retry-After. In-flight
+        //     requests continue running and are observed by the drain below.
+        // (b) Rewrite discovery.json with phase=stopping so adapters / the
+        //     dashboard reading the file see the lifecycle change without
+        //     waiting for the transport to fully tear down. (No-op until
+        //     A1.8 publishes the initial discovery.json.)
+        self.transport_shutdown_state.mark_draining();
+        publish_discovery_phase(&self.paths, "stopping");
+
         let remaining = self.sessions.active_count();
         let phase = self
             .lifecycle
             .request_shutdown(ShutdownCause::Signal, remaining);
-        if remaining > 0 {
+        let drain_timed_out = if remaining > 0 {
             let timeout = drain_timeout();
             info!(
                 active_sessions = remaining,
                 timeout_secs = timeout.as_secs(),
                 "Draining active sessions"
             );
-            let drained = drain_sessions(&self.sessions, timeout).await;
-            if drained {
-                info!("All sessions drained cleanly");
-            } else {
-                error!(
-                    remaining = self.sessions.active_count(),
-                    "Session drain timeout exceeded, forcing shutdown — \
-                     in-flight writes may be lost"
-                );
+            let outcome = drain_with_markers(&self.sessions, &self.paths, timeout).await;
+            match outcome {
+                DrainOutcome::Clean => {
+                    info!("All sessions drained cleanly");
+                    false
+                }
+                DrainOutcome::TimedOut { active_sessions } => {
+                    // Flip the transport into the aborted state so any
+                    // in-flight handler that tries to write a response after
+                    // this point gets a 502 instead of a torn-down resource
+                    // (e.g. a dropped sidecar). The recovery marker has
+                    // already been written by drain_with_markers.
+                    self.transport_shutdown_state.mark_aborted();
+                    error!(
+                        remaining = active_sessions,
+                        "Session drain timeout exceeded, force-aborting in-flight requests — \
+                         recovery marker written for the next startup"
+                    );
+                    true
+                }
             }
-        }
+        } else {
+            false
+        };
         if matches!(phase, LifecyclePhase::Draining { .. }) {
             self.lifecycle.sessions_drained();
         }
 
         info!(
             active_sessions = self.sessions.active_count(),
+            drain_timed_out,
             "Daemon shutting down"
         );
 

@@ -20,6 +20,7 @@ pub mod session;
 pub mod session_workspace;
 #[cfg(windows)]
 pub mod shutdown_event;
+pub mod shutdown_drain_test;
 pub mod shutdown_ordering;
 pub mod singleton_lock;
 pub mod state;

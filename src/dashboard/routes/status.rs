@@ -60,6 +60,7 @@ pub async fn live(State(state): State<AppState>) -> Result<impl IntoResponse, St
 
     let active_sessions = health.control_plane.active_sessions;
     let workspace_count = health.data_plane.workspace_count;
+    let recovery_markers = state.dashboard.recovery_markers();
 
     let body = serde_json::json!({
         "uptime": uptime_str,
@@ -69,6 +70,10 @@ pub async fn live(State(state): State<AppState>) -> Result<impl IntoResponse, St
         "embedding_available": health.runtime_plane.embedding_available,
         "embedding_initializing": health.runtime_plane.embedding_initializing,
         "health": health,
+        // A1.7: surface recovery markers from the previous unclean shutdown
+        // so operators can see how many in-flight requests were aborted and
+        // which workspaces were affected. Empty array on a clean restart.
+        "recovery_markers": recovery_markers,
     })
     .to_string();
 

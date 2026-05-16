@@ -134,6 +134,10 @@ pub struct DashboardState {
     daemon_phase: Arc<RwLock<LifecyclePhase>>,
     start_time: Instant,
     error_buffer: ErrorBuffer,
+    /// Recovery markers from a previous unclean daemon shutdown (A1.7).
+    /// Surfaced through the `/api/status` endpoint until the operator
+    /// clears them. Default empty.
+    recovery_markers: Arc<Vec<crate::daemon::shutdown::RecoveryMarker>>,
     /// Live reference to the daemon's shared embedding service. Stored as a
     /// reference (not a snapshot bool) so the dashboard reflects state
     /// transitions as the background init task progresses from
@@ -195,11 +199,30 @@ impl DashboardState {
             daemon_phase,
             start_time,
             error_buffer,
+            recovery_markers: Arc::new(Vec::new()),
             embedding_service,
             watcher_pool,
             workspace_pool,
             tx,
         }
+    }
+
+    /// Attach the `RecoveryMarker` list (from a previous unclean shutdown)
+    /// that the dashboard `/api/status` route should surface.
+    ///
+    /// Empty `markers` is equivalent to "no markers": the `/status` endpoint
+    /// will still report the field but with an empty array.
+    pub fn with_recovery_markers(
+        mut self,
+        markers: Arc<Vec<crate::daemon::shutdown::RecoveryMarker>>,
+    ) -> Self {
+        self.recovery_markers = markers;
+        self
+    }
+
+    /// Snapshot of recovery markers visible to dashboard handlers.
+    pub fn recovery_markers(&self) -> &[crate::daemon::shutdown::RecoveryMarker] {
+        &self.recovery_markers
     }
 
     /// Reference to the session tracker.

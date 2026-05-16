@@ -144,6 +144,35 @@ pub async fn run() -> Result<()> {
                     println!("Julie daemon not running");
                 }
             }
+            // A1.7: surface any recovery markers from a previous unclean
+            // shutdown so the operator knows in-flight requests were aborted
+            // before the current daemon (if any) came up.
+            let markers = crate::daemon::shutdown::read_recovery_markers(&paths);
+            if !markers.is_empty() {
+                println!(
+                    "Recovery markers: {} unclean shutdown(s) from previous run(s):",
+                    markers.len()
+                );
+                for (idx, marker) in markers.iter().enumerate() {
+                    println!(
+                        "  [{}] {} active session(s) at timeout (drain={}s, ts_micros={})",
+                        idx,
+                        marker.active_sessions_at_timeout,
+                        marker.drain_timeout_secs,
+                        marker.shutdown_timestamp_micros,
+                    );
+                    if !marker.affected_workspaces.is_empty() {
+                        println!(
+                            "        affected workspaces: {}",
+                            marker.affected_workspaces.join(", ")
+                        );
+                    }
+                }
+                println!(
+                    "  (Clear with: rm {})",
+                    crate::daemon::shutdown::recovery_marker_path(&paths).display()
+                );
+            }
         }
     }
 

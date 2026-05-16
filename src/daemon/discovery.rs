@@ -271,6 +271,12 @@ pub struct DiscoveryRecord {
 
     /// UNIX epoch time in microseconds when the daemon wrote this record.
     pub started_at: u64,
+
+    /// Lifecycle phase string ("running", "stopping"). Optional for forward
+    /// compatibility — records written by daemons predating A1.7 omit this
+    /// field; readers must treat `None` as "running".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub phase: Option<String>,
 }
 
 impl DiscoveryRecord {
@@ -302,6 +308,7 @@ impl DiscoveryRecord {
             protocol_version: PROTOCOL_VERSION.to_owned(),
             schema_version: SCHEMA_VERSION,
             started_at,
+            phase: Some("running".to_string()),
         }
     }
 }

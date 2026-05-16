@@ -4,6 +4,7 @@ use std::io::{self, Write};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::Path;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
@@ -75,12 +76,59 @@ impl HttpTransportConfig {
     }
 }
 
+/// Shutdown-state value: server is accepting requests normally.
+pub const TRANSPORT_RUNNING: u8 = 0;
+/// Shutdown-state value: server is draining — new requests get 503.
+pub const TRANSPORT_DRAINING: u8 = 1;
+/// Shutdown-state value: drain timed out — in-flight requests get 502.
+pub const TRANSPORT_ABORTED: u8 = 2;
+
+/// Wrapper around `Arc<AtomicU8>` for the HTTP transport's shutdown state.
+///
+/// Shared between [`HttpTransportServer`], the request-gate middleware, and
+/// `DaemonHandle::shutdown`. The gate middleware returns:
+///   - 200/whatever-the-handler-does when state == `TRANSPORT_RUNNING`
+///   - 503 Service Unavailable when state == `TRANSPORT_DRAINING` (caller
+///     should retry — daemon is draining sessions before shutdown)
+///   - 502 Bad Gateway when state == `TRANSPORT_ABORTED` (caller's request
+///     did not complete; state may be partially mutated)
+#[derive(Debug, Clone, Default)]
+pub struct TransportShutdownState {
+    inner: Arc<AtomicU8>,
+}
+
+impl TransportShutdownState {
+    /// Construct in the running state.
+    pub fn new() -> Self {
+        Self {
+            inner: Arc::new(AtomicU8::new(TRANSPORT_RUNNING)),
+        }
+    }
+
+    /// Current state byte.
+    pub fn current(&self) -> u8 {
+        self.inner.load(Ordering::Acquire)
+    }
+
+    /// Flip to draining. Returns the previous value (so the caller can detect
+    /// double-shutdown attempts).
+    pub fn mark_draining(&self) -> u8 {
+        self.inner.swap(TRANSPORT_DRAINING, Ordering::AcqRel)
+    }
+
+    /// Flip to aborted. Returns the previous value.
+    pub fn mark_aborted(&self) -> u8 {
+        self.inner.swap(TRANSPORT_ABORTED, Ordering::AcqRel)
+    }
+}
+
 pub struct HttpTransportServer {
     local_addr: SocketAddr,
     discovery_path: std::path::PathBuf,
     token_path: Option<std::path::PathBuf>,
     cancellation: CancellationToken,
     server_task: JoinHandle<()>,
+    shutdown_state: TransportShutdownState,
 }
 
 impl HttpTransportServer {
@@ -168,6 +216,9 @@ impl HttpTransportServer {
         let session_manager = Arc::new(local_session_manager);
         let mcp_service = StreamableHttpService::new(service_factory, session_manager, sdk_config);
 
+        let shutdown_state = TransportShutdownState::new();
+        let readiness_path_owned: Arc<str> = Arc::from(config.readiness_path);
+
         let mut router = Router::new()
             .route(config.readiness_path, get(readiness))
             .route_service(config.mcp_path, mcp_service);
@@ -177,6 +228,14 @@ impl HttpTransportServer {
                 require_bearer_token,
             ));
         }
+        // Shutdown gate runs AFTER auth so we don't leak service-state info to
+        // unauthenticated clients. Readiness route is exempted so adapters can
+        // still probe a draining daemon and see its lifecycle phase via
+        // discovery.json + dashboard rather than a confusing 503.
+        router = router.layer(middleware::from_fn_with_state(
+            (shutdown_state.clone(), readiness_path_owned),
+            shutdown_gate,
+        ));
 
         let shutdown = cancellation.clone();
         let server_task = tokio::spawn(async move {
@@ -222,11 +281,21 @@ impl HttpTransportServer {
             token_path,
             cancellation,
             server_task,
+            shutdown_state,
         })
     }
 
     pub fn local_addr(&self) -> SocketAddr {
         self.local_addr
+    }
+
+    /// Handle to the shared shutdown state. Cloning is cheap (Arc).
+    ///
+    /// `DaemonHandle::shutdown` uses this to flip the transport into 503
+    /// (draining) at the start of shutdown and 502 (aborted) when the
+    /// drain timeout expires.
+    pub fn shutdown_state(&self) -> TransportShutdownState {
+        self.shutdown_state.clone()
     }
 
     pub async fn shutdown(self) -> Result<()> {
@@ -244,6 +313,45 @@ impl HttpTransportServer {
 
 async fn readiness() -> StatusCode {
     StatusCode::NO_CONTENT
+}
+
+/// Short-circuit middleware that enforces the transport's shutdown state.
+///
+/// - `TRANSPORT_RUNNING`: passes the request through untouched.
+/// - `TRANSPORT_DRAINING`: returns `503 Service Unavailable` with a
+///   `Retry-After: 1` hint so the caller knows to retry — the daemon is
+///   draining sessions before shutdown.
+/// - `TRANSPORT_ABORTED`: returns `502 Bad Gateway` — the drain timer
+///   expired with sessions still active and the daemon is being torn down.
+///   The caller's request did not complete; state may be partially
+///   mutated. A recovery marker has been written to disk.
+///
+/// The readiness route is exempted: adapters still need a 204 from
+/// `/mcp/ready` while the daemon is draining so they can distinguish
+/// "transport still up but in lifecycle stop" from "transport gone".
+async fn shutdown_gate(
+    State((state, readiness_path)): State<(TransportShutdownState, Arc<str>)>,
+    request: Request<Body>,
+    next: Next,
+) -> Response {
+    if request.uri().path() == readiness_path.as_ref() {
+        return next.run(request).await;
+    }
+
+    match state.current() {
+        TRANSPORT_RUNNING => next.run(request).await,
+        TRANSPORT_DRAINING => {
+            let mut response = StatusCode::SERVICE_UNAVAILABLE.into_response();
+            response
+                .headers_mut()
+                .insert("Retry-After", "1".parse().expect("static value"));
+            response
+        }
+        TRANSPORT_ABORTED => StatusCode::BAD_GATEWAY.into_response(),
+        // Defensive default: unknown state byte (impossible under current
+        // constants) — fail closed with 502 rather than silently passing.
+        _ => StatusCode::BAD_GATEWAY.into_response(),
+    }
 }
 
 async fn require_bearer_token(
