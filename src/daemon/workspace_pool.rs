@@ -7,6 +7,7 @@ use anyhow::{Context, Result};
 use tokio::task::JoinHandle;
 use tracing::{info, warn};
 
+use crate::daemon::connection_pool::WorkspaceConnectionPool;
 use crate::daemon::database::DaemonDatabase;
 use crate::daemon::watcher_pool::WatcherPool;
 use crate::tools::workspace::indexing::state::IndexingRuntimeSnapshot;
@@ -64,13 +65,15 @@ pub struct WorkspacePool {
 struct WorkspaceEntry {
     workspace: Arc<JulieWorkspace>,
     last_accessed: StdMutex<Instant>,
+    connection_pool: Arc<WorkspaceConnectionPool>,
 }
 
 impl WorkspaceEntry {
-    fn new(workspace: Arc<JulieWorkspace>) -> Self {
+    fn new(workspace: Arc<JulieWorkspace>, connection_pool: Arc<WorkspaceConnectionPool>) -> Self {
         Self {
             workspace,
             last_accessed: StdMutex::new(Instant::now()),
+            connection_pool,
         }
     }
 
@@ -129,6 +132,17 @@ impl WorkspacePool {
         let entry = guard.get(workspace_id)?;
         entry.touch();
         Some(Arc::clone(&entry.workspace))
+    }
+
+    /// Return the `WorkspaceConnectionPool` for an already-initialized workspace,
+    /// or `None` if the workspace hasn't been loaded yet.
+    pub async fn connection_pool(
+        &self,
+        workspace_id: &str,
+    ) -> Option<Arc<WorkspaceConnectionPool>> {
+        let map = self.workspaces.read().await;
+        map.get(workspace_id)
+            .map(|entry| Arc::clone(&entry.connection_pool))
     }
 
     /// Get an existing workspace or initialize a new one.
@@ -226,10 +240,31 @@ impl WorkspacePool {
             .await
             .with_context(|| format!("Failed to initialize workspace '{workspace_id}' in pool"))?;
 
+        // Build a connection pool using the exact path the database was opened
+        // at.  We read it from the initialized SymbolDatabase rather than
+        // calling workspace.db_path(), because in daemon mode with an
+        // index_root_override the actual db lives under the shared indexes dir
+        // (workspace_db_path), not under julie_dir (db_path).
+        let actual_db_path = workspace
+            .db
+            .as_ref()
+            .map(|db| db.lock().unwrap_or_else(|p| p.into_inner()).file_path.clone())
+            .with_context(|| {
+                format!(
+                    "Workspace '{workspace_id}' has no database after initialize_database()"
+                )
+            })?;
+        let conn_pool = WorkspaceConnectionPool::new(actual_db_path)
+            .with_context(|| {
+                format!(
+                    "Failed to create connection pool for workspace '{workspace_id}'"
+                )
+            })?;
+
         let ws = Arc::new(workspace);
         guard.insert(
             workspace_id.to_string(),
-            WorkspaceEntry::new(Arc::clone(&ws)),
+            WorkspaceEntry::new(Arc::clone(&ws), Arc::new(conn_pool)),
         );
         Ok(ws)
     }

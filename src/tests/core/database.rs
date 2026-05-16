@@ -107,7 +107,7 @@ fn test_individual_table_creation() {
     // Create a SymbolDatabase instance manually to test each table individually
     let conn = open_test_connection(&db_path).unwrap();
     let db = SymbolDatabase {
-        conn,
+        conn: crate::database::SymbolDatabaseConn::Owned(conn),
         file_path: db_path,
     };
 

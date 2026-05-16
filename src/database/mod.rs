@@ -11,6 +11,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Once;
 use tracing::{debug, info, warn};
 
+use crate::daemon::connection_pool::PooledConn;
+
 use crate::extractors::{Relationship, RelationshipKind, Symbol, SymbolKind};
 
 // Module declarations
@@ -61,9 +63,40 @@ pub use identifiers::IdentifierRef;
 pub use migrations::LATEST_SCHEMA_VERSION;
 pub use types::*;
 
+/// Backing storage for a `SymbolDatabase` connection — either an owned
+/// `rusqlite::Connection` (created by `SymbolDatabase::new`) or a pooled
+/// connection borrowed from a `WorkspaceConnectionPool` (created by
+/// `SymbolDatabase::from_pooled`).
+///
+/// Both variants deref to `&Connection` / `&mut Connection` so every
+/// `SymbolDatabase` method works unchanged regardless of which variant is held.
+pub(crate) enum SymbolDatabaseConn {
+    Owned(Connection),
+    Pooled(PooledConn),
+}
+
+impl std::ops::Deref for SymbolDatabaseConn {
+    type Target = Connection;
+    fn deref(&self) -> &Connection {
+        match self {
+            SymbolDatabaseConn::Owned(c) => c,
+            SymbolDatabaseConn::Pooled(p) => p, // PooledConn already derefs to Connection
+        }
+    }
+}
+
+impl std::ops::DerefMut for SymbolDatabaseConn {
+    fn deref_mut(&mut self) -> &mut Connection {
+        match self {
+            SymbolDatabaseConn::Owned(c) => c,
+            SymbolDatabaseConn::Pooled(p) => p,
+        }
+    }
+}
+
 /// The main database connection and operations
 pub struct SymbolDatabase {
-    pub(crate) conn: Connection,
+    pub(crate) conn: SymbolDatabaseConn,
     pub(crate) file_path: PathBuf,
 }
 
@@ -117,7 +150,10 @@ impl SymbolDatabase {
         // This prevents WAL from growing to 20MB+ which causes "database malformed" errors
         conn.pragma_update(None, "wal_autocheckpoint", 2000)?;
 
-        let mut db = Self { conn, file_path };
+        let mut db = Self {
+            conn: SymbolDatabaseConn::Owned(conn),
+            file_path,
+        };
 
         // 🔥 DEVELOPMENT MODE SAFETY: Detect schema version mismatches during development
         // When building a new version with schema changes while old MCP is running,
@@ -211,6 +247,19 @@ impl SymbolDatabase {
 
         Ok((busy, log, checkpointed))
     }
+
+    /// Wrap a pooled connection in a `SymbolDatabase`.
+    ///
+    /// The caller is responsible for schema state — this constructor assumes
+    /// the database has already been fully initialized (migrations + schema)
+    /// by a prior `SymbolDatabase::new` call on the same file.  It does NOT
+    /// run migrations or WAL setup.
+    pub fn from_pooled(pooled: PooledConn, file_path: PathBuf) -> Self {
+        Self {
+            conn: SymbolDatabaseConn::Pooled(pooled),
+            file_path,
+        }
+    }
 }
 
 fn acquire_database_init_lock(db_path: &Path) -> Result<File> {
@@ -249,6 +298,16 @@ fn database_init_lock_path(db_path: &Path) -> Result<PathBuf> {
 // This prevents corruption when process terminates while WAL has uncommitted changes
 impl Drop for SymbolDatabase {
     fn drop(&mut self) {
+        // Only checkpoint for Owned connections.  Pooled connections are
+        // returned to the WorkspaceConnectionPool by PooledConn's own Drop;
+        // the pool is responsible for any checkpoint it may choose to do at
+        // idle-eviction time.  Running a WAL checkpoint here for a pooled
+        // connection would race with the pool's logic and could interfere with
+        // other in-flight connections sharing the same WAL file.
+        if !matches!(self.conn, SymbolDatabaseConn::Owned(_)) {
+            return;
+        }
+
         // Best-effort checkpoint - log error but don't panic
         // We can't return Result from Drop, so just log failures
         if let Err(e) = self.checkpoint_wal() {

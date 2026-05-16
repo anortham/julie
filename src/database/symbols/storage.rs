@@ -139,7 +139,7 @@ impl SymbolDatabase {
     }
 
     pub fn delete_symbols_for_file(&self, file_path: &str) -> Result<()> {
-        delete_annotations_for_file(&self.conn, file_path)?;
+        delete_annotations_for_file(&*self.conn, file_path)?;
         self.conn.execute(
             "DELETE FROM symbols WHERE file_path = ?1",
             params![file_path],
@@ -148,7 +148,7 @@ impl SymbolDatabase {
     }
 
     pub fn delete_symbols_for_file_in_workspace(&self, file_path: &str) -> Result<()> {
-        delete_annotations_for_file(&self.conn, file_path)?;
+        delete_annotations_for_file(&*self.conn, file_path)?;
         let count = self.conn.execute(
             "DELETE FROM symbols WHERE file_path = ?1",
             params![file_path],

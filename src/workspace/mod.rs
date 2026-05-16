@@ -799,6 +799,36 @@ impl JulieWorkspace {
         }
         Ok(())
     }
+
+    /// Acquire a per-request `SymbolDatabase` backed by a pooled connection.
+    ///
+    /// The workspace's database must have been initialized previously
+    /// (`initialize_database`) — this method assumes the schema is current and
+    /// does NOT run migrations.
+    pub async fn request_db(
+        &self,
+        pool: &Arc<crate::daemon::connection_pool::WorkspaceConnectionPool>,
+    ) -> Result<crate::database::SymbolDatabase> {
+        // Use the actual db file_path from the initialized SymbolDatabase
+        // rather than self.db_path(), because in daemon mode the database is
+        // located at workspace_db_path (under the shared indexes dir), not at
+        // julie_dir/db/symbols.db.
+        let file_path = self
+            .db
+            .as_ref()
+            .map(|db| {
+                db.lock()
+                    .unwrap_or_else(|p| p.into_inner())
+                    .file_path
+                    .clone()
+            })
+            .unwrap_or_else(|| self.db_path());
+        let pooled = pool
+            .acquire()
+            .await
+            .context("acquiring workspace connection from pool")?;
+        Ok(crate::database::SymbolDatabase::from_pooled(pooled, file_path))
+    }
 }
 
 /// Health status of a Julie workspace
