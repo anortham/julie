@@ -22,6 +22,7 @@ pub mod shutdown_event;
 pub mod shutdown_ordering;
 pub mod singleton_lock;
 pub mod state;
+pub mod token_file_test;
 pub mod transport;
 pub mod watcher_pool;
 pub mod watcher_pool_shutdown;

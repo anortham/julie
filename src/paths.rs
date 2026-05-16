@@ -152,6 +152,12 @@ impl DaemonPaths {
         self.julie_home.join("discovery.json")
     }
 
+    /// Daemon bearer token file (mode 0600 on POSIX).  The adapter reads this
+    /// to authenticate HTTP requests to the daemon's localhost endpoint.
+    pub fn token_file(&self) -> PathBuf {
+        self.julie_home.join("daemon.token")
+    }
+
     /// Daemon lifecycle state file (starting/ready/stopping)
     pub fn daemon_state(&self) -> PathBuf {
         self.julie_home.join("daemon.state")

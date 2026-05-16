@@ -15,6 +15,7 @@ pub mod mcp_session;
 pub mod pid;
 pub mod project_log;
 pub mod singleton;
+pub mod token_file;
 pub mod session;
 #[cfg(windows)]
 pub mod shutdown_event;
