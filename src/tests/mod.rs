@@ -15,6 +15,7 @@ pub mod analysis; // Test quality metrics engine tests
 // TEST FIXTURES - Pre-indexed databases and test data
 // ============================================================================
 pub mod fixtures; // Test fixtures (JulieTestFixture for fast dogfooding tests)
+pub mod harness; // Plan B.3: InProcessDaemon fixture for in-process daemon tests
 
 // ============================================================================
 // CLI TESTS - Argument parsing and workspace resolution
