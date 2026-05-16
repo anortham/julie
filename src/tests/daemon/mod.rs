@@ -1,5 +1,6 @@
 pub mod admit_initialize_short_circuit;
 pub mod daemon_state_atomic;
+pub mod discovery_test;
 pub mod database;
 pub mod drain_timeout;
 pub mod embedding_service;

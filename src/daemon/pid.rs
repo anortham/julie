@@ -65,7 +65,7 @@ impl fmt::Display for PidFileContents {
 /// Linux: `/proc/<pid>/stat` field 21 (starttime ticks since boot).
 /// macOS: `sysctl(KERN_PROC_PID)` — raw kinfo_proc buffer, p_starttime at offset 0.
 /// Windows: `OpenProcess` + `GetProcessTimes`.
-fn process_creation_time_micros(pid: u32) -> Option<u64> {
+pub(crate) fn process_creation_time_micros(pid: u32) -> Option<u64> {
     #[cfg(target_os = "linux")]
     {
         linux_process_creation_time(pid)

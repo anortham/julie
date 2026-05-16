@@ -146,6 +146,12 @@ impl DaemonPaths {
         self.julie_home.join("daemon-mcp.token")
     }
 
+    /// Discovery file — adapter reads this to learn the daemon's HTTP
+    /// endpoint, bearer token path, and identity (pid + creation time).
+    pub fn discovery_file(&self) -> PathBuf {
+        self.julie_home.join("discovery.json")
+    }
+
     /// Daemon lifecycle state file (starting/ready/stopping)
     pub fn daemon_state(&self) -> PathBuf {
         self.julie_home.join("daemon.state")
