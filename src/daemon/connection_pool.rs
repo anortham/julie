@@ -94,6 +94,12 @@ pub struct WorkspaceConnectionPool {
 }
 
 impl WorkspaceConnectionPool {
+    /// The DB file path this pool serves. Exposed so callers can build a
+    /// `SymbolDatabase::from_pooled` without locking any legacy mutex.
+    pub fn db_path(&self) -> &Path {
+        &self.db_path
+    }
+
     /// Construct the pool with default limits.
     ///
     /// `min` = 2; `max` = `min(available_parallelism * 2, 16)`.

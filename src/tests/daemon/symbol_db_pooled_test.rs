@@ -1,7 +1,7 @@
 //! Tests that SymbolDatabase wrapping a PooledConn behaves identically to one
 //! wrapping an owned Connection.
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use tempfile::tempdir;
@@ -130,4 +130,91 @@ async fn test_pooled_symbol_database_supports_concurrent_readers() {
         stats.idle >= 1,
         "pool should retain at least the min (1) idle connection"
     );
+}
+
+/// A2.2c-codex-follow-up regression net: `JulieWorkspace::request_db` must NOT
+/// lock the legacy `Arc<Mutex<SymbolDatabase>>` (`workspace.db`) when acquiring
+/// a pooled connection.
+///
+/// **The bug Codex caught:** `request_db` originally cloned `file_path` by
+/// locking `self.db` before calling `pool.acquire()`. Watcher / bulk-indexer /
+/// any legacy write path holds that same mutex, so pooled readers (including
+/// health snapshots) serialized behind those writers — defeating the whole
+/// purpose of pooling.
+///
+/// **The fix:** `request_db` now reads `file_path` from `pool.db_path()` and
+/// never touches `workspace.db`. This test holds `workspace.db.lock()` and
+/// asserts `request_db` still completes under a tight timeout.
+///
+/// If the regression returns (e.g., someone adds a `self.db.lock()` back into
+/// `request_db`), the spawned task will block on the lock and the outer
+/// `timeout(500ms)` will fail the test.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_request_db_does_not_block_on_legacy_workspace_mutex() {
+    use crate::workspace::JulieWorkspace;
+
+    let dir = tempdir().unwrap();
+    let workspace_root = dir.path().to_path_buf();
+
+    // Step 1: build a real JulieWorkspace; this initializes `workspace.db`
+    // (the legacy Arc<Mutex<SymbolDatabase>>) under `<root>/.julie/db/`.
+    let workspace = Arc::new(
+        JulieWorkspace::initialize(workspace_root.clone())
+            .await
+            .expect("workspace init"),
+    );
+    let legacy_db = workspace
+        .db
+        .as_ref()
+        .expect("initialize must populate workspace.db")
+        .clone();
+
+    // Extract the canonical db file path from the initialized SymbolDatabase.
+    // We can't use `workspace.db_path()` (that's the legacy stdio path) — the
+    // real path lives on the initialized DB (under workspace_db_path which
+    // includes the workspace_id). Production daemon code does the same one-
+    // time extraction inside WorkspacePool::init_workspace_locked.
+    let canonical_db_path = {
+        let guard = legacy_db.lock().expect("legacy db lock for setup");
+        guard.file_path.clone()
+    };
+
+    // Step 2: build the connection pool over the SAME db file the workspace
+    // initialized. Pre-warming min=1 ensures `acquire()` is instant.
+    let pool = Arc::new(
+        WorkspaceConnectionPool::with_limits(canonical_db_path, 1, 2)
+            .expect("pool init over real workspace db"),
+    );
+
+    // Step 3: simulate a writer holding the legacy mutex. Pre-fix,
+    // `request_db` would call `self.db.lock()` to clone file_path and would
+    // block here until we release.
+    let writer_guard = legacy_db.lock().expect("hold legacy writer mutex");
+
+    // Step 4: call request_db under a tight timeout. The spawned task gets a
+    // clone of the workspace Arc and the pool Arc; if request_db touches
+    // `self.db.lock()` it will deadlock against `writer_guard`.
+    let workspace_for_task = Arc::clone(&workspace);
+    let pool_for_task = Arc::clone(&pool);
+    let pooled_db = timeout(Duration::from_millis(500), async move {
+        workspace_for_task
+            .request_db(&pool_for_task)
+            .await
+            .expect("request_db should succeed")
+    })
+    .await
+    .expect(
+        "request_db must NOT lock workspace.db — \
+         the pool was supposed to free us from that contention",
+    );
+
+    // Sanity-check the pooled DB actually works while the legacy mutex is
+    // still held. Counting symbols on a fresh schema returns 0.
+    let count = pooled_db
+        .count_symbols_for_workspace()
+        .expect("count via pooled conn");
+    assert_eq!(count, 0, "fresh workspace schema is empty");
+
+    // Step 5: release the legacy mutex; clean drop ordering.
+    drop(writer_guard);
 }
