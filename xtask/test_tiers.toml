@@ -350,8 +350,13 @@ commands = ["cargo nextest run --lib tests::analysis -- --skip search_quality"]
 # Daemon-mode tests: handler construction, HTTP session lifecycle,
 # MCP roots flow, and SessionWorkspaceState invariants. Real transport/session
 # coverage needs to run in CI to defend the rebind machinery.
-expected_seconds = 12
-timeout_seconds = 60
+#
+# The 2026-05 daemon split (A1.2-A1.8) added lock_test, discovery_test,
+# token_file_test, app_test, and shutdown_drain_test. The end-to-end app
+# serve/shutdown and discovery-publishing tests run ~10s each, so the bucket
+# now lives in the 60-120s range rather than the original ~12s.
+expected_seconds = 60
+timeout_seconds = 180
 scope_label = "daemon"
 notes = "daemon-mode protocol coverage"
 commands = ["cargo nextest run --lib tests::daemon -- --skip search_quality"]
