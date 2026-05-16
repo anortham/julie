@@ -39,32 +39,68 @@ use tokio::sync::{Mutex as AsyncMutex, OwnedMutexGuard};
 
 use std::sync::Arc;
 
-/// Returns (or initialises) the process-wide cache mapping workspace IDs to
-/// their corresponding async mutex.
-fn gate_cache() -> &'static StdMutex<HashMap<String, Arc<AsyncMutex<()>>>> {
-    static GATES: OnceLock<StdMutex<HashMap<String, Arc<AsyncMutex<()>>>>> = OnceLock::new();
-    GATES.get_or_init(|| StdMutex::new(HashMap::new()))
+/// An injectable registry of per-workspace async mutexes.
+///
+/// Each `Registry` instance has its own independent cache: two registries
+/// for the same workspace ID do **not** share locks.  This makes it possible
+/// to inject an isolated registry in tests while production code continues
+/// using the process-wide singleton via [`Registry::global`].
+pub struct Registry {
+    cache: StdMutex<HashMap<String, Arc<AsyncMutex<()>>>>,
 }
 
-/// Look up or create the `Arc<AsyncMutex<()>>` for a given workspace ID.
-///
-/// Two calls with the same `workspace_id` always return a clone of the same
-/// `Arc`, so acquiring the mutex from either side actually contends on the
-/// same lock.
-fn gate_arc_for(workspace_id: &str) -> Arc<AsyncMutex<()>> {
-    let mut map = match gate_cache().lock() {
-        Ok(g) => g,
-        Err(poisoned) => {
-            tracing::warn!(
-                "Mutation gate cache mutex poisoned, recovering: {}",
-                poisoned
-            );
-            poisoned.into_inner()
+impl Registry {
+    /// Create a new, empty registry.  Useful for test isolation.
+    pub fn new() -> Self {
+        Self {
+            cache: StdMutex::new(HashMap::new()),
         }
-    };
-    map.entry(workspace_id.to_owned())
-        .or_insert_with(|| Arc::new(AsyncMutex::new(())))
-        .clone()
+    }
+
+    /// Return the process-wide singleton registry.
+    ///
+    /// All production callers (including [`acquire_gate`]) delegate here so
+    /// that every mutation in the same process contends on the same per-workspace
+    /// lock.
+    pub fn global() -> &'static Arc<Registry> {
+        static GLOBAL: OnceLock<Arc<Registry>> = OnceLock::new();
+        GLOBAL.get_or_init(|| Arc::new(Registry::new()))
+    }
+
+    /// Look up or create the `Arc<AsyncMutex<()>>` for `workspace_id` within
+    /// this registry.
+    pub(crate) fn arc_for(&self, workspace_id: &str) -> Arc<AsyncMutex<()>> {
+        let mut map = match self.cache.lock() {
+            Ok(g) => g,
+            Err(poisoned) => {
+                tracing::warn!(
+                    "Mutation gate cache mutex poisoned, recovering: {}",
+                    poisoned
+                );
+                poisoned.into_inner()
+            }
+        };
+        map.entry(workspace_id.to_owned())
+            .or_insert_with(|| Arc::new(AsyncMutex::new(())))
+            .clone()
+    }
+
+    /// Acquire the mutation gate for `workspace_id`, blocking until any other
+    /// writer using this registry releases it.
+    pub async fn acquire(&self, workspace_id: &str) -> MutationGuard<'static> {
+        let arc = self.arc_for(workspace_id);
+        let guard = arc.lock_owned().await;
+        MutationGuard {
+            _guard: guard,
+            _lifetime: std::marker::PhantomData,
+        }
+    }
+}
+
+impl Default for Registry {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// Proof token: holds the async mutex guard for the duration of a mutation.
@@ -86,8 +122,9 @@ pub struct MutationGuard<'a> {
 /// Acquire the workspace mutation gate for `workspace_id`, blocking until any
 /// other writer releases it.
 ///
-/// Returns a [`MutationGuard`] that must be passed (by reference) to every
-/// mutation function.  The lock is released when the guard is dropped.
+/// Delegates to [`Registry::global`].  Returns a [`MutationGuard`] that must
+/// be passed (by reference) to every mutation function.  The lock is released
+/// when the guard is dropped.
 ///
 /// # Deadlock note
 ///
@@ -97,21 +134,20 @@ pub struct MutationGuard<'a> {
 /// compile time: if you already have a `&MutationGuard<'_>` in scope, pass
 /// that reference instead of calling `acquire_gate` again.
 pub async fn acquire_gate(workspace_id: &str) -> MutationGuard<'static> {
-    let arc = gate_arc_for(workspace_id);
-    let guard = arc.lock_owned().await;
-    MutationGuard {
-        _guard: guard,
-        _lifetime: std::marker::PhantomData,
-    }
+    Registry::global().acquire(workspace_id).await
 }
 
 /// Clear the process-wide gate cache.
 ///
 /// Only for use in tests.  Resets all per-workspace mutexes so that each test
 /// starts from a clean state.
+///
+/// Prefer [`Registry::new`] for new tests — it provides true isolation without
+/// touching the global registry.
 #[cfg(test)]
+#[deprecated(note = "Use Registry::new() for test isolation. Will be removed in v8.0.")]
 pub fn clear_cache_for_test() {
-    if let Ok(mut map) = gate_cache().lock() {
+    if let Ok(mut map) = Registry::global().cache.lock() {
         map.clear();
     }
 }
@@ -126,10 +162,9 @@ mod tests {
     /// Same workspace_id produces the same Arc (pointer equality).
     #[tokio::test]
     async fn test_same_workspace_id_returns_same_arc() {
-        clear_cache_for_test();
-
-        let a = gate_arc_for("ws_aabbccdd");
-        let b = gate_arc_for("ws_aabbccdd");
+        let reg = Registry::new();
+        let a = reg.arc_for("ws_aabbccdd");
+        let b = reg.arc_for("ws_aabbccdd");
 
         assert!(
             Arc::ptr_eq(&a, &b),
@@ -140,10 +175,9 @@ mod tests {
     /// Different workspace IDs produce different Arcs (separate locks).
     #[tokio::test]
     async fn test_different_workspace_ids_return_different_arcs() {
-        clear_cache_for_test();
-
-        let a = gate_arc_for("ws_aabbccdd");
-        let b = gate_arc_for("ws_11223344");
+        let reg = Registry::new();
+        let a = reg.arc_for("ws_aabbccdd");
+        let b = reg.arc_for("ws_11223344");
 
         assert!(
             !Arc::ptr_eq(&a, &b),
@@ -155,16 +189,15 @@ mod tests {
     /// on the same workspace should not deadlock.
     #[tokio::test]
     async fn test_guard_drop_releases_lock() {
-        clear_cache_for_test();
-
+        let reg = Registry::new();
         {
-            let _g = acquire_gate("ws_drop_test").await;
+            let _g = reg.acquire("ws_drop_test").await;
             // _g is dropped here
         }
 
         // If the guard was not released, this would deadlock; the timeout makes
         // the test fail instead.
-        let result = timeout(Duration::from_millis(200), acquire_gate("ws_drop_test")).await;
+        let result = timeout(Duration::from_millis(200), reg.acquire("ws_drop_test")).await;
         assert!(result.is_ok(), "Lock should be released after guard drop");
     }
 
@@ -172,15 +205,18 @@ mod tests {
     /// second caller cannot proceed until the first releases the lock.
     #[tokio::test]
     async fn test_concurrent_acquisition_serializes() {
-        clear_cache_for_test();
+        let reg = Registry::new();
 
-        // Acquire the gate and hold it in a background task.
-        let arc = gate_arc_for("ws_concurrent");
-        // Lock the underlying mutex directly so we can hold it without a MutationGuard.
+        // Acquire the underlying Arc directly so we can hold it without a
+        // MutationGuard (which would move into the spawned task).
+        let arc = reg.arc_for("ws_concurrent");
         let direct_lock = arc.clone().lock_owned().await;
 
         // Spawn a task that tries to acquire the gate for the same workspace.
-        let handle = tokio::spawn(async { acquire_gate("ws_concurrent").await });
+        // The registry is cloned into the task via Arc.
+        let reg2 = Arc::new(reg);
+        let reg2_task = Arc::clone(&reg2);
+        let handle = tokio::spawn(async move { reg2_task.acquire("ws_concurrent").await });
 
         // The spawned task should NOT be able to acquire the gate while we hold
         // `direct_lock`.  Give it 100 ms; if it resolves within that window,
@@ -188,17 +224,17 @@ mod tests {
         let should_timeout = timeout(Duration::from_millis(100), handle).await;
         assert!(
             should_timeout.is_err(),
-            "Second acquire_gate should block while first lock is held"
+            "Second acquire should block while first lock is held"
         );
 
         // Now release the lock and verify the spawned task can finish.
         drop(direct_lock);
 
         // Spawn a fresh task since the original handle was consumed.
-        let result = timeout(Duration::from_millis(200), acquire_gate("ws_concurrent")).await;
+        let result = timeout(Duration::from_millis(200), reg2.acquire("ws_concurrent")).await;
         assert!(
             result.is_ok(),
-            "acquire_gate should succeed after first lock is released"
+            "acquire should succeed after first lock is released"
         );
     }
 
@@ -208,7 +244,6 @@ mod tests {
     /// doctest on `MutationGuard`.
     #[tokio::test]
     async fn test_proof_token_required_to_call_gated_fn() {
-        clear_cache_for_test();
 
         fn gated_mutation(_guard: &MutationGuard<'_>) -> &'static str {
             "mutation ran"
@@ -217,5 +252,46 @@ mod tests {
         let guard = acquire_gate("ws_proof").await;
         let result = gated_mutation(&guard);
         assert_eq!(result, "mutation ran");
+    }
+
+    /// Two Registry instances must not share locks — each has its own cache.
+    #[tokio::test]
+    async fn test_two_registries_do_not_share_locks() {
+        let a = Registry::new();
+        let b = Registry::new();
+        let _guard_a = a.acquire("ws").await;
+        // b should not block — different cache.
+        let guard_b = tokio::time::timeout(
+            std::time::Duration::from_millis(50),
+            b.acquire("ws"),
+        )
+        .await
+        .expect("registry b should acquire immediately, lock is per-Registry");
+        drop(guard_b);
+        drop(_guard_a);
+    }
+
+    /// Registry::global() must return the same Arc on every call.
+    #[tokio::test]
+    async fn test_global_registry_is_singleton() {
+        let g1 = Registry::global();
+        let g2 = Registry::global();
+        assert!(Arc::ptr_eq(g1, g2));
+    }
+
+    /// acquire_gate must delegate to Registry::global(): a guard from
+    /// acquire_gate must contend with a guard from Registry::global() on the
+    /// same workspace_id.
+    #[tokio::test]
+    async fn test_acquire_gate_delegates_to_global() {
+        // Holding a guard from the module-level helper must block a guard from
+        // Registry::global() for the same workspace_id (proves delegation).
+        let _outer = acquire_gate("ws-delegate").await;
+        let attempt = tokio::time::timeout(
+            std::time::Duration::from_millis(50),
+            Registry::global().acquire("ws-delegate"),
+        )
+        .await;
+        assert!(attempt.is_err(), "Registry::global() must contend on the same lock as acquire_gate");
     }
 }

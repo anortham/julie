@@ -35,11 +35,38 @@ use super::shutdown::{
 };
 use super::{ShutdownArtifacts, binary_mtime, drain_timeout, perform_shutdown_sequence};
 
-/// Injectable runtime context. EMPTY for A1.6 — B.1 will populate fields
-/// (mutation_gate_registry, tracing_handle, env_overrides, etc.).
-#[derive(Default, Clone)]
+/// Injectable runtime context for a daemon instance.
+///
+/// Holds cross-cutting singletons that tests can swap out for isolated
+/// alternatives.  Production code constructs this via `Default`, which wires
+/// in the process-wide singletons.  Test code calls `for_test()` to get an
+/// independent set of registries so concurrent test daemons do not contend.
+#[derive(Clone)]
 pub struct DaemonRuntimeContext {
-    // Intentionally empty until B.1.
+    /// Mutation-gate registry used by all workspace writers in this daemon
+    /// instance.  In production this is the global singleton; in tests it is
+    /// an isolated instance so concurrent test daemons do not contend.
+    pub mutation_gate_registry: Arc<crate::workspace::mutation_gate::Registry>,
+}
+
+impl Default for DaemonRuntimeContext {
+    fn default() -> Self {
+        Self {
+            mutation_gate_registry: Arc::clone(
+                crate::workspace::mutation_gate::Registry::global(),
+            ),
+        }
+    }
+}
+
+impl DaemonRuntimeContext {
+    /// Test-only constructor with an isolated mutation-gate registry.
+    /// Two `for_test()` instances do not share locks.
+    pub fn for_test() -> Self {
+        Self {
+            mutation_gate_registry: Arc::new(crate::workspace::mutation_gate::Registry::new()),
+        }
+    }
 }
 
 /// Configuration for constructing a `DaemonApp`.
@@ -50,7 +77,8 @@ pub struct DaemonConfig {
     pub port: u16,
     /// Suppress `opener::open` browser launch for the dashboard.
     pub no_dashboard: bool,
-    /// Injectable runtime context (empty until B.1).
+    /// Injectable runtime context. Production uses the singleton-backed
+    /// `Default`; tests use `DaemonRuntimeContext::for_test()` for isolation.
     pub runtime: DaemonRuntimeContext,
 }
 
@@ -81,7 +109,7 @@ pub struct DaemonApp {
     /// that a previous daemon shutdown timed out with in-flight requests.
     /// Cloned into the handle so it survives `serve`'s consumption of self.
     recovery_markers: Arc<Vec<RecoveryMarker>>,
-    #[allow(dead_code)] // Reserved for B.1
+    #[allow(dead_code)] // Consumed by A.2.2 (handler runtime-context wiring).
     runtime: DaemonRuntimeContext,
 }
 

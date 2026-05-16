@@ -83,3 +83,22 @@ async fn test_daemon_app_serve_and_shutdown() {
         discovery_path.display()
     );
 }
+
+/// Two `DaemonRuntimeContext::for_test()` instances must not share gate locks.
+///
+/// Invariant proved: isolated runtime contexts use independent `Registry`
+/// instances, so acquiring a gate in one does not block acquisition in the
+/// other for the same workspace_id.
+#[tokio::test]
+async fn test_for_test_registries_are_isolated() {
+    let a = DaemonRuntimeContext::for_test();
+    let b = DaemonRuntimeContext::for_test();
+    let _ga = a.mutation_gate_registry.acquire("ws").await;
+    let gb = tokio::time::timeout(
+        std::time::Duration::from_millis(50),
+        b.mutation_gate_registry.acquire("ws"),
+    )
+    .await
+    .expect("isolated runtime contexts must not share gate locks");
+    drop(gb);
+}
