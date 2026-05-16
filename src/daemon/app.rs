@@ -307,6 +307,50 @@ impl DaemonApp {
 
         self.lifecycle.startup_complete();
 
+        // A1.8: publish the initial discovery.json now that the HTTP transport
+        // is bound and the lifecycle state file says `ready`. This is the file
+        // the adapter reads to find the daemon and the file A1.7's
+        // `publish_discovery_phase` rewrites at shutdown — without an initial
+        // publish here, those phase rewrites silently no-op and adapters cannot
+        // observe lifecycle transitions.
+        //
+        // The bearer token has already been written to disk by
+        // `HttpTransportServer::bind_with_listener`; we only record its path.
+        // If the transport was bound without a token (test harness), we fall
+        // back to `paths.daemon_mcp_token()` as a stable placeholder — the
+        // file will not exist, and adapters connecting against an unauthed
+        // transport will simply ignore the token.
+        let token_path = http_transport
+            .token_path()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| self.paths.daemon_mcp_token());
+        let log_path = self
+            .paths
+            .julie_home()
+            .join(format!("daemon.log.{}", chrono::Local::now().format("%Y-%m-%d")));
+        let discovery_record =
+            crate::daemon::discovery::DiscoveryRecord::for_current_process(
+                mcp_local_addr.port(),
+                token_path,
+                log_path,
+            );
+        let discovery_path = self.paths.discovery_file();
+        if let Err(error) =
+            crate::daemon::discovery::DiscoveryFile::write_atomic(&discovery_path, &discovery_record)
+        {
+            warn!(
+                path = %discovery_path.display(),
+                %error,
+                "Failed to publish initial discovery.json; adapters and dashboard cannot observe daemon identity"
+            );
+        } else {
+            info!(
+                path = %discovery_path.display(),
+                port = mcp_local_addr.port(),
+                "Published initial discovery.json (phase=running)"
+            );
+        }
+
         // Background embedding init runs concurrently with HTTP session
         // handling; see helpers.rs for the panic/cancel handling rationale.
         let embedding_init_handle = spawn_embedding_init(

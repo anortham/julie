@@ -1,8 +1,23 @@
-use std::fs;
-
-use tracing::info;
-use tracing_appender::non_blocking;
-use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
+//! `julie-server` — legacy entry point preserved as a compatibility shim.
+//!
+//! A1.8: the new world ships two binaries: `julie-adapter` (stdio↔HTTP forward)
+//! and `julie-daemon` (lifecycle).  `julie-server` is kept as a single-binary
+//! shim so existing plugin manifests, scripts, and operator muscle-memory
+//! continue to work during the transition.
+//!
+//! Argv dispatch:
+//!   - no args                 → adapter codepath (forward stdio to daemon)
+//!   - `daemon`                → `julie-daemon start` codepath (start_daemon)
+//!   - `stop` / `restart`      → `julie-daemon stop` codepath  (stop_daemon)
+//!   - `status`                → `julie-daemon status` codepath (status_daemon)
+//!   - `dashboard`             → open dashboard URL in browser (unchanged)
+//!   - tool subcommands        → run_cli_tool (unchanged from today)
+//!
+//! All daemon lifecycle paths route through
+//! `julie::daemon::cli::{start_daemon, stop_daemon, status_daemon}` so the
+//! shim and `julie-daemon` share a single implementation. This is load-bearing:
+//! `start_daemon` enforces the A1.5 legacy-migration gate, and skipping it
+//! would re-open the silent-corruption window the gate exists to close.
 
 use clap::Parser;
 use julie::cli::{Cli, Command, resolve_workspace_startup_hint};
@@ -15,36 +30,11 @@ async fn main() -> anyhow::Result<()> {
 
     match cli.command {
         Some(Command::Daemon { port, no_dashboard }) => {
+            // Route through the shared helper used by `julie-daemon start`.
+            // Logging + legacy-migration gate + blocking run_daemon all live
+            // in one place to keep the two entry points behaviorally identical.
             let paths = julie::paths::DaemonPaths::new();
-
-            // Set up daemon logging (to ~/.julie/daemon.log)
-            let filter = EnvFilter::try_from_default_env()
-                .or_else(|_| EnvFilter::try_new("julie=info"))
-                .map_err(|e| anyhow::anyhow!("Failed to initialize logging filter: {}", e))?;
-
-            let log_dir = paths.julie_home();
-            fs::create_dir_all(&log_dir).unwrap_or_else(|e| {
-                eprintln!("Failed to create log directory at {:?}: {}", log_dir, e);
-            });
-
-            let writer = julie::logging::LocalRollingWriter::new(&log_dir, "daemon.log");
-            let (non_blocking_file, _file_guard) = non_blocking(writer);
-
-            tracing_subscriber::registry()
-                .with(filter)
-                .with(
-                    fmt::layer()
-                        .with_writer(non_blocking_file)
-                        .with_timer(julie::logging::LocalTimer)
-                        .with_target(true)
-                        .with_ansi(false)
-                        .with_file(true)
-                        .with_line_number(true),
-                )
-                .init();
-
-            info!("Starting Julie daemon v{}", env!("CARGO_PKG_VERSION"));
-            julie::daemon::run_daemon(paths, port, no_dashboard).await?;
+            julie::daemon::cli::start_daemon(paths, port, no_dashboard).await?;
         }
         Some(Command::Dashboard) => {
             let paths = julie::paths::DaemonPaths::new();
@@ -66,23 +56,15 @@ async fn main() -> anyhow::Result<()> {
         }
         Some(Command::Stop) => {
             let paths = julie::paths::DaemonPaths::new();
-            julie::daemon::lifecycle::stop_daemon(&paths)?;
-            println!("Daemon stopped");
+            julie::daemon::cli::stop_daemon(&paths)?;
         }
         Some(Command::Status) => {
             let paths = julie::paths::DaemonPaths::new();
-            match julie::daemon::lifecycle::check_status(&paths) {
-                julie::daemon::lifecycle::DaemonStatus::Running { pid } => {
-                    println!("Julie daemon running (PID {})", pid);
-                }
-                julie::daemon::lifecycle::DaemonStatus::NotRunning => {
-                    println!("Julie daemon not running");
-                }
-            }
+            julie::daemon::cli::status_daemon(&paths);
         }
         Some(Command::Restart) => {
             let paths = julie::paths::DaemonPaths::new();
-            julie::daemon::lifecycle::stop_daemon(&paths)?;
+            julie::daemon::cli::stop_daemon(&paths)?;
             println!("Daemon stopped. Will auto-restart on next tool call.");
         }
 
@@ -116,7 +98,8 @@ async fn main() -> anyhow::Result<()> {
         }
 
         None => {
-            // Adapter mode: auto-start daemon, forward stdio to HTTP MCP.
+            // Adapter mode: auto-start daemon (via launcher → `julie-daemon
+            // start` per A1.8), forward stdio to HTTP MCP.
             julie::adapter::run_adapter(startup_hint).await?;
         }
     }

@@ -30,7 +30,7 @@ pub enum Command {
     // -- Lifecycle commands --------------------------------------------------
     /// Run as persistent daemon (HTTP + IPC transport)
     Daemon {
-        /// HTTP port for dashboard (default: 7890, fallback to auto if taken)
+        /// MCP HTTP port for the daemon (default: 7890, fallback to auto if taken). Dashboard auto-assigns its own port.
         #[arg(long, default_value = "7890")]
         port: u16,
         /// Disable auto-opening dashboard in browser

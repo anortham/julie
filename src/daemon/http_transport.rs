@@ -298,6 +298,16 @@ impl HttpTransportServer {
         self.shutdown_state.clone()
     }
 
+    /// Absolute path to the bearer token file the adapter must read in order
+    /// to authenticate against this transport's HTTP endpoint.
+    ///
+    /// Returns `None` when the transport was bound without a bearer token
+    /// (e.g. test harnesses that disable auth).  A1.8 publishes this into
+    /// `discovery.json` so adapters have a single file to consult.
+    pub fn token_path(&self) -> Option<&std::path::Path> {
+        self.token_path.as_deref()
+    }
+
     pub async fn shutdown(self) -> Result<()> {
         self.cancellation.cancel();
         self.server_task

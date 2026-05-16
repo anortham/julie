@@ -192,6 +192,7 @@ pub mod integration {
     pub mod target_workspace; // Target-workspace tests
     pub mod tracing;
     pub mod watcher; // File watcher tests
+    pub mod wiring_a1_8; // A1.8 end-to-end wiring tests (adapter + daemon split)
     pub mod watcher_handlers; // File watcher handler tests (incremental indexing)
     pub mod watcher_mutation_gate; // Per-workspace mutation gate concurrency contract (LEAD-OWNED)
     pub mod watcher_observability; // INFO-level observability regression tests (rate limiter, gate timing)

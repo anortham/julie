@@ -118,9 +118,18 @@ impl DaemonLauncher {
     /// Ensure the daemon is running and ready to accept connections.
     ///
     /// State-file aware: instead of just checking PID liveness, reads the
-    /// daemon.state file to distinguish starting/ready/stopping. Holds
-    /// daemon.lock through the entire readiness check to prevent multi-adapter
-    /// races.
+    /// daemon.state file to distinguish starting/ready/stopping.
+    ///
+    /// **Locking strategy (A1.8)**: holds `daemon.lock` ONLY across the
+    /// "should I spawn?" decision and the spawn syscall itself, then drops
+    /// the lock before polling for readiness. The lock cannot be held across
+    /// the entire wait because the spawned daemon's legacy-migration gate
+    /// (A1.5) probes `daemon.lock`, sees `AlreadyHeld`, and exits 2 —
+    /// effectively making the spawn path unreachable. The kernel-held
+    /// singleton lock (A1.2) inside the new daemon still prevents multiple
+    /// daemons from running simultaneously, so the worst case of two
+    /// adapters spawning concurrently is one of them losing the singleton
+    /// race and exiting cleanly; the surviving daemon serves both adapters.
     pub fn ensure_daemon_ready(&self) -> io::Result<()> {
         // A1.5: legacy detection. If a legacy julie-server daemon is
         // already running for this JULIE_HOME, attach to its HTTP endpoint
@@ -129,13 +138,6 @@ impl DaemonLauncher {
         // restarts it. The legacy daemon writes daemon.port + daemon.pid;
         // the new daemon writes discovery.json (A1.3) which is picked up
         // by self.daemon_readiness() through the regular path below.
-        //
-        // We do NOT short-circuit when detect_and_attach returns Some — the
-        // legacy endpoint goes via the existing transport-discovery path,
-        // and the spawn logic below sees a live daemon and stays out of
-        // the way. Future work (A1.8) will switch the spawn target from
-        // julie-server to julie-daemon; the legacy-attach path remains
-        // unchanged.
         if let Some(_legacy_endpoint) =
             crate::daemon::legacy_migration::detect_and_attach(&self.paths)
         {
@@ -146,14 +148,22 @@ impl DaemonLauncher {
         }
 
         // Fast path (no lock): if daemon is already ready, skip the lock.
-        // If the daemon transitions to stopping between this check and the
-        // HTTP adapter connection, run_adapter's retry loop catches it.
         if matches!(self.daemon_readiness(), DaemonReadiness::Ready) {
             debug!("Daemon already ready (fast path)");
             return Ok(());
         }
 
-        // Ensure the julie home directory exists for the lock file
+        let deadline = Instant::now() + Duration::from_secs(60);
+        self.wait_for_daemon_ready(deadline)
+    }
+
+    /// Acquire `daemon.lock` for the brief window of evaluating "should I
+    /// spawn?" + the `spawn_daemon` syscall, then release. The kernel-held
+    /// singleton lock inside the spawned daemon prevents duplicates beyond
+    /// this point. See `ensure_daemon_ready` for the rationale on why the
+    /// lock cannot wrap the readiness wait.
+    fn spawn_under_lock(&self) -> io::Result<()> {
+        // Ensure the julie home directory exists for the lock file.
         self.paths.ensure_dirs().map_err(|e| {
             io::Error::new(
                 io::ErrorKind::Other,
@@ -161,7 +171,6 @@ impl DaemonLauncher {
             )
         })?;
 
-        // Acquire advisory lock to serialize daemon startup across adapters
         let lock_path = self.paths.daemon_lock();
         let lock_file = std::fs::OpenOptions::new()
             .create(true)
@@ -172,15 +181,20 @@ impl DaemonLauncher {
         debug!("Acquiring daemon startup lock: {}", lock_path.display());
         lock_file.lock_exclusive()?;
 
-        let deadline = Instant::now() + Duration::from_secs(60);
+        // Re-check readiness under the lock: another adapter may have
+        // spawned a daemon between our pre-lock check and acquiring the lock.
+        let spawn_result = match self.daemon_readiness() {
+            DaemonReadiness::Dead => self.spawn_daemon(),
+            _ => Ok(()),
+        };
 
-        let result = self.wait_for_daemon_ready(deadline);
-
-        // Release lock
+        // Release the lock IMMEDIATELY after spawn (or skip). Holding it
+        // longer would block the spawned daemon's legacy-migration gate
+        // from succeeding (it probes daemon.lock and refuses on AlreadyHeld).
         lock_file.unlock()?;
         drop(lock_file);
 
-        result
+        spawn_result
     }
 
     /// Internal: poll until the daemon reaches Ready state or deadline expires.
@@ -216,7 +230,7 @@ impl DaemonLauncher {
                 }
                 DaemonReadiness::Dead => {
                     info!("Daemon not running, spawning...");
-                    self.spawn_daemon()?;
+                    self.spawn_under_lock()?;
                     match self.poll_for_state_change("ready", deadline) {
                         Ok(()) => {} // Will re-check in next loop iteration
                         Err(e) if e.kind() == io::ErrorKind::Interrupted => {
@@ -306,31 +320,122 @@ impl DaemonLauncher {
 
     /// Spawn the daemon as a detached background process.
     ///
-    /// Runs the same executable with the `daemon` subcommand. The child process
-    /// inherits nothing (stdin/stdout/stderr all null), so it survives the
-    /// adapter process exiting.
+    /// A1.8: invokes `julie-daemon start` (the new dedicated daemon binary)
+    /// rather than re-execing the current binary as `julie-server daemon`.
+    /// The child detaches from the adapter's process group so it survives
+    /// adapter exit:
+    ///
+    ///   * POSIX: `setsid` via `pre_exec` puts the daemon in its own session,
+    ///     immune to the adapter's controlling terminal closing.
+    ///   * Windows: `DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP` so the
+    ///     daemon does not inherit the adapter's console and is unaffected
+    ///     by Ctrl+C sent to the adapter.
+    ///
+    /// The child inherits nothing (stdin/stdout/stderr null) so its file
+    /// descriptors cannot keep the adapter's stdio pipes open.
     fn spawn_daemon(&self) -> io::Result<()> {
-        let exe = std::env::current_exe()?;
-        info!("Spawning daemon: {} daemon", exe.display());
+        let daemon_exe = locate_julie_daemon()?;
+        info!("Spawning daemon: {} start", daemon_exe.display());
 
-        let mut cmd = std::process::Command::new(&exe);
-        cmd.arg("daemon")
+        let mut cmd = std::process::Command::new(&daemon_exe);
+        cmd.arg("start")
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null());
 
-        // Prevent a console window from flashing on Windows when the daemon
-        // is spawned as a background process. Without this flag, Command::new
-        // inherits the parent's console or creates a new one.
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::CommandExt as _;
+            // Detach the child from the adapter's process group via setsid()
+            // so it cannot be killed by a SIGHUP to the controlling terminal
+            // and survives adapter exit.
+            //
+            // SAFETY: setsid is async-signal-safe (POSIX.1-2008). Calling it
+            // in pre_exec — between fork() and exec() — is the standard recipe
+            // for a daemonized child. We ignore EPERM (already a session
+            // leader, e.g. test harness): the child is still detached enough
+            // for our purposes (no controlling terminal inherited because
+            // stdio is null), and propagating EPERM here would block daemon
+            // spawn whenever the adapter inherits an unusual session layout.
+            unsafe {
+                cmd.pre_exec(|| {
+                    if libc::setsid() == -1 {
+                        let err = io::Error::last_os_error();
+                        if err.raw_os_error() != Some(libc::EPERM) {
+                            return Err(err);
+                        }
+                    }
+                    Ok(())
+                });
+            }
+        }
+
         #[cfg(windows)]
         {
             use std::os::windows::process::CommandExt;
+            // DETACHED_PROCESS         (0x00000008): child has no console
+            // CREATE_NEW_PROCESS_GROUP (0x00000200): immune to adapter Ctrl+C
+            // CREATE_NO_WINDOW         (0x08000000): no console window flash
+            const DETACHED_PROCESS: u32 = 0x00000008;
+            const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
             const CREATE_NO_WINDOW: u32 = 0x08000000;
-            cmd.creation_flags(CREATE_NO_WINDOW);
+            cmd.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW);
         }
 
         cmd.spawn()?;
 
         Ok(())
     }
+}
+
+/// Locate the `julie-daemon` binary the adapter should spawn.
+///
+/// Search order:
+///   1. Same directory as the running adapter's own executable. This is the
+///      plugin's installed layout: both binaries ship inside
+///      `<plugin>/bin/<arch>/`, so the daemon is the sibling file.
+///   2. `PATH`, by handing a bare name to `Command::new` (the OS resolves it
+///      at spawn time).
+///
+/// We surface a clear error if neither path works so operators don't have to
+/// guess why their adapter cannot find the daemon binary.
+fn locate_julie_daemon() -> io::Result<std::path::PathBuf> {
+    let bin_name = if cfg!(windows) {
+        "julie-daemon.exe"
+    } else {
+        "julie-daemon"
+    };
+
+    // (1) Sibling of the current adapter executable.
+    if let Ok(adapter_exe) = std::env::current_exe() {
+        if let Some(parent) = adapter_exe.parent() {
+            let sibling = parent.join(bin_name);
+            if sibling.is_file() {
+                debug!("Resolved julie-daemon as adapter sibling: {}", sibling.display());
+                return Ok(sibling);
+            }
+        }
+    }
+
+    // (2) PATH lookup: hand a bare name to Command::new and let the OS try.
+    //     We verify it exists somewhere on PATH so the error message lands
+    //     here rather than in a confusing spawn() failure with no context.
+    if let Ok(path_env) = std::env::var("PATH") {
+        let sep = if cfg!(windows) { ';' } else { ':' };
+        for entry in path_env.split(sep) {
+            let candidate = std::path::Path::new(entry).join(bin_name);
+            if candidate.is_file() {
+                debug!("Resolved julie-daemon via PATH: {}", candidate.display());
+                return Ok(candidate);
+            }
+        }
+    }
+
+    Err(io::Error::new(
+        io::ErrorKind::NotFound,
+        format!(
+            "{} binary not found next to julie-adapter or on PATH; check installation",
+            bin_name
+        ),
+    ))
 }
