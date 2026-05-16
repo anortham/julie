@@ -7,6 +7,7 @@ pub mod embedding_service_shutdown;
 pub mod handler;
 pub mod http_transport;
 pub mod lifecycle;
+pub mod lock_test;
 pub mod mcp_session;
 pub mod paths;
 pub mod pid;

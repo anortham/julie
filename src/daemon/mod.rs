@@ -3,7 +3,10 @@
 //! The canonical adapter path is Streamable HTTP over localhost.
 
 pub mod cli;
+
 pub mod database;
+
+pub mod discovery;
 pub mod embedding_service;
 pub mod http_client;
 pub mod http_transport;
