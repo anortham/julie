@@ -20,6 +20,17 @@ use super::weights::SearchWeightProfile;
 use crate::database::SymbolDatabase;
 use crate::embeddings::EmbeddingProvider;
 
+/// Per-side over-fetch multiplier for the hybrid candidate pool.
+///
+/// Before the cascade fix this was hardcoded at 2× per side, so `limit=8`
+/// produced 16+16 candidates merged via RRF. That asymmetry against the
+/// keyword-only path's 4× over-fetch (`NL_RERANK_OVERFETCH_FACTOR` in
+/// `search/index.rs`) starved the reranker on hybrid NL queries —
+/// correct answers that only matched in body text fell off the candidate
+/// cliff before the reranker could rescue them. Aligning to 4× gives the
+/// reranker a comparable working set on both paths.
+const HYBRID_CANDIDATE_OVERFETCH_FACTOR: usize = 4;
+
 /// Merge two ranked lists of search results using Reciprocal Rank Fusion.
 ///
 /// # Arguments
@@ -188,9 +199,10 @@ pub fn hybrid_search(
     embedding_provider: Option<&dyn EmbeddingProvider>,
     weight_profile: Option<SearchWeightProfile>,
 ) -> Result<SymbolSearchResults> {
-    // Over-fetch when we'll merge; exact limit when keyword-only
+    // Over-fetch when we'll merge; exact limit when keyword-only.
+    // See HYBRID_CANDIDATE_OVERFETCH_FACTOR for the rationale on 4×.
     let tantivy_limit = if embedding_provider.is_some() {
-        limit * 2
+        limit.saturating_mul(HYBRID_CANDIDATE_OVERFETCH_FACTOR)
     } else {
         limit
     };
@@ -205,7 +217,12 @@ pub fn hybrid_search(
     };
 
     // Step 3: Try semantic search — any failure degrades gracefully
-    let semantic_results = match run_semantic_search(query, limit * 2, db, provider) {
+    let semantic_results = match run_semantic_search(
+        query,
+        limit.saturating_mul(HYBRID_CANDIDATE_OVERFETCH_FACTOR),
+        db,
+        provider,
+    ) {
         Ok(results) => results,
         Err(e) => {
             warn!("Semantic search failed, falling back to keyword-only: {e}");

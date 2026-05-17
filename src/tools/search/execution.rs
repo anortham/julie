@@ -93,7 +93,15 @@ fn sort_hits_by_score_desc(hits: &mut [SearchHit]) {
     hits.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(Ordering::Equal));
 }
 
-fn sort_file_hits(hits: &mut [SearchHit]) {
+/// Sort file-target hits by:
+/// 1. `match_kind` (ExactPath < ExactBasename < PathFragment < Glob)
+/// 2. Path-role bucket (source < test < docs < fixture), inverted for
+///    test-intent queries so tests rank above source — fixes the eros-corpus
+///    test-intent category where julie pushed the expected test below its
+///    production counterpart.
+/// 3. Score descending
+/// 4. File path lexicographic (deterministic tie-break)
+pub(crate) fn sort_file_hits(hits: &mut [SearchHit], test_intent: bool) {
     hits.sort_by(|left, right| {
         file_match_rank(
             left.as_file_result()
@@ -107,7 +115,24 @@ fn sort_file_hits(hits: &mut [SearchHit]) {
                 .unwrap_or(FileMatchKind::PathFragment),
         ))
         .then_with(|| {
-            file_path_priority_bucket(&left.file).cmp(&file_path_priority_bucket(&right.file))
+            let bucket = |path: &str| -> u8 {
+                if test_intent {
+                    // For test-intent queries, swap: test paths win over source.
+                    // Docs / fixtures still get their normal demotion.
+                    if is_test_path(path) {
+                        0
+                    } else if crate::search::scoring::is_docs_path(path) {
+                        2
+                    } else if crate::search::scoring::is_fixture_path(path) {
+                        3
+                    } else {
+                        1
+                    }
+                } else {
+                    file_path_priority_bucket(path)
+                }
+            };
+            bucket(&left.file).cmp(&bucket(&right.file))
         })
         .then_with(|| {
             right
@@ -384,7 +409,7 @@ async fn execute_file_search(
         );
     }
 
-    sort_file_hits(&mut hits);
+    sort_file_hits(&mut hits, crate::search::scoring::has_test_intent(params.query));
     hits.truncate(base_limit);
 
     Ok(SearchExecutionResult::new(

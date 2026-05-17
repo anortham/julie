@@ -13,7 +13,8 @@ use crate::search::SearchFilter;
 use crate::search::query_parse::parse_query;
 use crate::search::reranker::{Candidate, rerank_content_score, rerank_symbol_score};
 use crate::search::scoring::{
-    DOC_LANGUAGES, apply_centrality_boost, classify_role, is_test_path, promote_exact_name_matches,
+    DOC_LANGUAGES, apply_centrality_boost, apply_language_affinity_prior, apply_nl_path_prior,
+    classify_role, compute_dominant_language, is_test_path, promote_exact_name_matches,
     test_subrole,
 };
 
@@ -526,6 +527,18 @@ fn definition_search_with_index(
             apply_centrality_boost(&mut hybrid_results.results, &ref_scores);
         }
         apply_reranker_to_symbol_results(query, &mut hybrid_results.results, Some(db));
+        // NL path prior: demote test/docs/fixture paths for natural-language
+        // queries so production code wins on "how does X work"-style asks.
+        // No-op for identifier-like queries.
+        apply_nl_path_prior(&mut hybrid_results.results, query);
+        // Language affinity: demote foreign-language candidates when one
+        // language dominates the workspace. No-op on mixed repos.
+        let dominant_lang = compute_dominant_language(db);
+        apply_language_affinity_prior(
+            &mut hybrid_results.results,
+            dominant_lang.as_deref(),
+            query,
+        );
         promote_exact_name_matches(&mut hybrid_results.results, query);
 
         let mut symbols: Vec<Symbol> = hybrid_results
@@ -577,6 +590,9 @@ fn definition_search_with_index(
             }
         }
         apply_reranker_to_symbol_results(query, &mut filtered_results, db);
+        apply_nl_path_prior(&mut filtered_results, query);
+        let dominant_lang = db.and_then(compute_dominant_language);
+        apply_language_affinity_prior(&mut filtered_results, dominant_lang.as_deref(), query);
         promote_exact_name_matches(&mut filtered_results, query);
 
         let mut symbols: Vec<Symbol> = filtered_results

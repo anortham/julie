@@ -6,6 +6,7 @@
 
 use std::collections::HashMap;
 
+use crate::database::SymbolDatabase;
 use crate::search::index::SymbolSearchResult;
 use crate::search::language_config::LanguageConfigs;
 
@@ -20,9 +21,19 @@ pub const CENTRALITY_WEIGHT: f32 = 0.3;
 /// The intent is to gently prefer production code over docs/tests/fixtures when
 /// the query looks like natural language, without overwhelming text relevance.
 pub(crate) const NL_PATH_BOOST_SRC: f32 = 1.08;
-pub(crate) const NL_PATH_PENALTY_DOCS: f32 = 0.95;
-pub(crate) const NL_PATH_PENALTY_TESTS: f32 = 0.95;
-pub(crate) const NL_PATH_PENALTY_FIXTURES: f32 = 0.75;
+pub(crate) const NL_PATH_PENALTY_DOCS: f32 = 0.92;
+pub(crate) const NL_PATH_PENALTY_TESTS: f32 = 0.85;
+pub(crate) const NL_PATH_PENALTY_FIXTURES: f32 = 0.70;
+
+/// Soft penalty applied to candidates whose language is not the workspace's
+/// dominant language when running natural-language queries. Prevents Python
+/// fixtures from outranking Rust production code on Rust-dominant repos.
+pub(crate) const NL_LANGUAGE_AFFINITY_PENALTY: f32 = 0.85;
+
+/// Minimum share (0.0–1.0) of files in a single language required to treat
+/// it as the workspace's dominant language. Below this, the language
+/// affinity prior is a no-op (mixed-language repos don't get penalized).
+pub(crate) const NL_LANGUAGE_DOMINANCE_THRESHOLD: f64 = 0.70;
 
 /// Symbol names that are too ubiquitous to benefit from centrality scoring.
 ///
@@ -127,10 +138,20 @@ pub fn apply_centrality_boost(
 ///
 /// Identifier-like queries are explicitly excluded so exact symbol searches
 /// are not perturbed.
+///
+/// **Test-intent override**: when the query has test intent (tokens like
+/// `test`, `tests`, `spec`, `fixture`, `conftest`, or `test_*`/`*_test`
+/// shapes), the test-path penalty AND the source-path boost are both
+/// skipped — otherwise tests for the queried behavior get pushed below their
+/// production counterparts even though they are exactly what the user asked
+/// for. Docs and fixtures still get their penalty. Caught by eros benchmark
+/// (julie scored 0/16 on test-intent lookups).
 pub fn apply_nl_path_prior(results: &mut [SymbolSearchResult], query: &str) {
     if !is_nl_like_query(query) {
         return;
     }
+
+    let test_intent = has_test_intent(query);
 
     for result in results.iter_mut() {
         let path = result.file_path.as_str();
@@ -138,18 +159,120 @@ pub fn apply_nl_path_prior(results: &mut [SymbolSearchResult], query: &str) {
         // Order matters: check test before source, since test paths may live
         // inside source directories (e.g. src/tests/, src/test/java/).
         if is_test_path(path) {
-            result.score *= NL_PATH_PENALTY_TESTS;
+            if !test_intent {
+                result.score *= NL_PATH_PENALTY_TESTS;
+            }
+            // test_intent: leave test-path scores untouched so they compete
+            // on BM25 with source candidates — the query terms typically
+            // appear verbatim in the test function name.
         } else if is_docs_path(path) {
             result.score *= NL_PATH_PENALTY_DOCS;
         } else if is_fixture_path(path) {
             result.score *= NL_PATH_PENALTY_FIXTURES;
-        } else {
+        } else if !test_intent {
             // Everything that isn't test/docs/fixtures is presumed source code.
+            // Skip the source boost on test-intent queries so we don't lift
+            // production code above the tests that match the query verbatim.
             result.score *= NL_PATH_BOOST_SRC;
         }
     }
 
     sort_results_by_score_desc(results);
+}
+
+/// True when the query is asking about tests / specs / fixtures rather
+/// than about production behavior.
+///
+/// Detects:
+/// - Bare tokens: `test`, `tests`, `spec`, `specs`, `fixture`, `fixtures`,
+///   `conftest`.
+/// - Identifier shapes: `test_<thing>`, `<thing>_test`, `<thing>_spec`,
+///   `spec_<thing>`.
+///
+/// Case-insensitive. Operates on whitespace-split tokens.
+pub(crate) fn has_test_intent(query: &str) -> bool {
+    const TEST_TOKENS: &[&str] = &[
+        "test", "tests", "spec", "specs", "fixture", "fixtures", "conftest",
+    ];
+
+    for token in query.split_whitespace() {
+        let lower = token.to_ascii_lowercase();
+        if TEST_TOKENS.contains(&lower.as_str()) {
+            return true;
+        }
+        if lower.starts_with("test_")
+            || lower.starts_with("spec_")
+            || lower.ends_with("_test")
+            || lower.ends_with("_tests")
+            || lower.ends_with("_spec")
+            || lower.ends_with("_specs")
+        {
+            return true;
+        }
+    }
+
+    false
+}
+
+/// Compute the workspace's dominant language if one language accounts for
+/// at least [`NL_LANGUAGE_DOMINANCE_THRESHOLD`] of indexed files.
+///
+/// Returns `None` for mixed-language workspaces (no single language above
+/// the threshold). The caller passes the result into
+/// [`apply_language_affinity_prior`] — `None` makes that a no-op.
+///
+/// Cheap single SQL query (one row per language); call once per search.
+pub fn compute_dominant_language(db: &SymbolDatabase) -> Option<String> {
+    let counts = db.count_files_by_language().ok()?;
+    if counts.is_empty() {
+        return None;
+    }
+    let total: i64 = counts.iter().map(|(_, n)| *n).sum();
+    if total <= 0 {
+        return None;
+    }
+    let (lang, top_count) = counts.into_iter().next()?;
+    if (top_count as f64) / (total as f64) >= NL_LANGUAGE_DOMINANCE_THRESHOLD {
+        Some(lang)
+    } else {
+        None
+    }
+}
+
+/// Demote candidates whose language differs from the workspace's dominant
+/// language, for natural-language queries only.
+///
+/// Fixes the cross-language leakage observed in dogfood: Python test files
+/// ranking #1 for Rust-targeted NL queries on a 95%-Rust workspace. The
+/// penalty is soft (`NL_LANGUAGE_AFFINITY_PENALTY`) so a strongly-matched
+/// foreign-language symbol can still surface.
+///
+/// No-op when:
+/// - the workspace has no dominant language (mixed repo)
+/// - the query looks like an identifier (exact symbol lookup)
+pub fn apply_language_affinity_prior(
+    results: &mut [SymbolSearchResult],
+    dominant_language: Option<&str>,
+    query: &str,
+) {
+    let Some(dominant) = dominant_language else {
+        return;
+    };
+    if !is_nl_like_query(query) {
+        return;
+    }
+
+    let mut touched = false;
+    for result in results.iter_mut() {
+        if result.language != dominant {
+            result.score *= NL_LANGUAGE_AFFINITY_PENALTY;
+            touched = true;
+        }
+    }
+
+    if touched {
+        sort_results_by_score_desc(results);
+    }
 }
 
 /// Detect whether a file path indicates test code, using language-agnostic heuristics.

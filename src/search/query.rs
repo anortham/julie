@@ -22,7 +22,12 @@ const NORMALIZED_GROUP_WEIGHT: f32 = 2.5;
 const NAME_FIELD_BOOST: f32 = 5.0;
 const SIGNATURE_FIELD_BOOST: f32 = 3.0;
 const DOC_FIELD_BOOST: f32 = 2.0;
-const BODY_FIELD_BOOST: f32 = 1.0;
+// Bumped 1.0 → 1.5 so symbols whose only match is in body
+// (e.g. `shutdown_signal` matching the literal "SIGTERM" in its function body)
+// survive the candidate cliff that earlier buried them behind any symbol
+// whose NAME contains a generic English noun like "Handle". Still well below
+// signature/doc weight so exact-name searches are unaffected.
+const BODY_FIELD_BOOST: f32 = 1.5;
 const FILE_PATH_EXACT_BOOST: f32 = 40.0;
 const BASENAME_EXACT_BOOST: f32 = 25.0;
 const PATH_TEXT_TERM_BOOST: f32 = 3.0;
