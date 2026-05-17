@@ -1,0 +1,338 @@
+{
+  "version": 1,
+  "created": "2026-05-17",
+  "workspace": "julie (this repo)",
+  "purpose": "Labeled query corpus for the search-consolidation ablation harness (P2.2). Each query targets symbols/files that exist on this repo's main branch as of the corpus creation date. expected_paths lists files where a correct top-K hit must appear; the matcher should succeed if ANY hit's file_path matches ANY expected path (substring or exact, defined by the harness).",
+  "categories": {
+    "exact-symbol": "Identifier-shaped lookup (CamelCase, snake_case). Pipeline target: definitions search, name promotion path.",
+    "symbol-intent": "Multi-word query that should resolve to one named symbol (mixed prose + identifier). Tests the reranker's intent classification + symbol-intent boost.",
+    "test-intent": "Query implies the user wants test code. Tests `has_test_intent` and the test-intent override on NL path prior.",
+    "file-path": "User wants a file by name/path fragment. Tests file-target search and basename matching.",
+    "concept": "Natural-language behavior question, no specific symbol named. Tests NL path prior (production code over docs/tests/fixtures) and hybrid retrieval.",
+    "qualified-name": "Partial qualified name (e.g. last segment of a dotted/colon-joined name). Tests the DB-rescue path that surfaces qualified-name definitions Tantivy buried."
+  },
+  "queries": [
+    {
+      "id": "exact-1",
+      "query": "SymbolDatabase",
+      "category": "exact-symbol",
+      "expected_paths": ["src/database/mod.rs"],
+      "source": "author"
+    },
+    {
+      "id": "exact-2",
+      "query": "apply_nl_path_prior",
+      "category": "exact-symbol",
+      "expected_paths": ["src/search/scoring.rs"],
+      "source": "author"
+    },
+    {
+      "id": "exact-3",
+      "query": "FastSearchTool",
+      "category": "exact-symbol",
+      "expected_paths": ["src/tools/search/mod.rs", "src/tools/search/fast_search.rs"],
+      "source": "author"
+    },
+    {
+      "id": "exact-4",
+      "query": "definition_search_with_index",
+      "category": "exact-symbol",
+      "expected_paths": ["src/tools/search/text_search.rs"],
+      "source": "author"
+    },
+    {
+      "id": "exact-5",
+      "query": "tantivy_symbol_to_symbol",
+      "category": "exact-symbol",
+      "expected_paths": ["src/tools/search/text_search.rs"],
+      "source": "author"
+    },
+    {
+      "id": "exact-6",
+      "query": "create_schema",
+      "category": "exact-symbol",
+      "expected_paths": ["src/search/schema.rs"],
+      "source": "author"
+    },
+    {
+      "id": "exact-7",
+      "query": "JulieServerHandler",
+      "category": "exact-symbol",
+      "expected_paths": ["src/handler.rs"],
+      "source": "author"
+    },
+    {
+      "id": "exact-8",
+      "query": "compute_dominant_language",
+      "category": "exact-symbol",
+      "expected_paths": ["src/search/scoring.rs"],
+      "source": "author"
+    },
+
+    {
+      "id": "symbol-intent-1",
+      "query": "rerank symbol score",
+      "category": "symbol-intent",
+      "expected_paths": ["src/search/reranker.rs"],
+      "source": "author"
+    },
+    {
+      "id": "symbol-intent-2",
+      "query": "apply centrality boost",
+      "category": "symbol-intent",
+      "expected_paths": ["src/search/scoring.rs"],
+      "source": "author"
+    },
+    {
+      "id": "symbol-intent-3",
+      "query": "build symbol query weighted",
+      "category": "symbol-intent",
+      "expected_paths": ["src/search/query.rs"],
+      "source": "author"
+    },
+    {
+      "id": "symbol-intent-4",
+      "query": "build symbol candidate",
+      "category": "symbol-intent",
+      "expected_paths": ["src/tools/search/text_search.rs"],
+      "source": "author"
+    },
+    {
+      "id": "symbol-intent-5",
+      "query": "promote exact name matches",
+      "category": "symbol-intent",
+      "expected_paths": ["src/search/scoring.rs"],
+      "source": "author"
+    },
+    {
+      "id": "symbol-intent-6",
+      "query": "hybrid search merge",
+      "category": "symbol-intent",
+      "expected_paths": ["src/search/hybrid.rs"],
+      "source": "author"
+    },
+    {
+      "id": "symbol-intent-7",
+      "query": "watcher mutation gate",
+      "category": "symbol-intent",
+      "expected_paths": ["src/workspace/mutation_gate.rs"],
+      "source": "author"
+    },
+    {
+      "id": "symbol-intent-8",
+      "query": "schema compatibility signature",
+      "category": "symbol-intent",
+      "expected_paths": ["src/search/schema.rs"],
+      "source": "author"
+    },
+
+    {
+      "id": "test-1",
+      "query": "test apply_nl_path_prior",
+      "category": "test-intent",
+      "expected_paths": ["src/tests/tools/search/tantivy_path_prior_tests.rs", "src/tests/tools/search/nl_path_prior_pipeline_tests.rs"],
+      "source": "author"
+    },
+    {
+      "id": "test-2",
+      "query": "test reranker ordering",
+      "category": "test-intent",
+      "expected_paths": ["src/tests/tools/search/reranker_ordering_tests.rs"],
+      "source": "author"
+    },
+    {
+      "id": "test-3",
+      "query": "hybrid search tests",
+      "category": "test-intent",
+      "expected_paths": ["src/tests/tools/hybrid_search_tests.rs"],
+      "source": "author"
+    },
+    {
+      "id": "test-4",
+      "query": "watcher mutation gate tests",
+      "category": "test-intent",
+      "expected_paths": ["src/tests/integration/watcher_mutation_gate.rs"],
+      "source": "author"
+    },
+    {
+      "id": "test-5",
+      "query": "test schema migration recreates stale index",
+      "category": "test-intent",
+      "expected_paths": ["src/tests/tools/search/tantivy_index_tests.rs"],
+      "source": "author"
+    },
+    {
+      "id": "test-6",
+      "query": "test centrality boost",
+      "category": "test-intent",
+      "expected_paths": ["src/tests/tools/search/tantivy_scoring_tests.rs", "src/tests/tools/search/c3_enriched_schema_tests.rs"],
+      "source": "author"
+    },
+    {
+      "id": "test-7",
+      "query": "annotation search tests",
+      "category": "test-intent",
+      "expected_paths": ["src/tests/tools/search/annotation_search_tests.rs"],
+      "source": "author"
+    },
+    {
+      "id": "test-8",
+      "query": "test_search_symbols_relaxed",
+      "category": "test-intent",
+      "expected_paths": ["src/tests/tools/search/tantivy_index_tests.rs"],
+      "source": "author"
+    },
+
+    {
+      "id": "file-1",
+      "query": "src/search/index.rs",
+      "category": "file-path",
+      "expected_paths": ["src/search/index.rs"],
+      "source": "author"
+    },
+    {
+      "id": "file-2",
+      "query": "tantivy_path_prior_tests",
+      "category": "file-path",
+      "expected_paths": ["src/tests/tools/search/tantivy_path_prior_tests.rs"],
+      "source": "author"
+    },
+    {
+      "id": "file-3",
+      "query": "schema.rs",
+      "category": "file-path",
+      "expected_paths": ["src/search/schema.rs"],
+      "source": "author"
+    },
+    {
+      "id": "file-4",
+      "query": "watcher/handlers",
+      "category": "file-path",
+      "expected_paths": ["src/watcher/handlers.rs"],
+      "source": "author"
+    },
+    {
+      "id": "file-5",
+      "query": "search/reranker",
+      "category": "file-path",
+      "expected_paths": ["src/search/reranker.rs"],
+      "source": "author"
+    },
+    {
+      "id": "file-6",
+      "query": "ARCHITECTURE.md",
+      "category": "file-path",
+      "expected_paths": ["docs/ARCHITECTURE.md"],
+      "source": "author"
+    },
+
+    {
+      "id": "concept-1",
+      "query": "how does the file watcher process changes",
+      "category": "concept",
+      "expected_paths": ["src/watcher/handlers.rs", "src/watcher/runtime.rs"],
+      "source": "author"
+    },
+    {
+      "id": "concept-2",
+      "query": "natural language path prior multipliers",
+      "category": "concept",
+      "expected_paths": ["src/search/scoring.rs"],
+      "source": "author"
+    },
+    {
+      "id": "concept-3",
+      "query": "rerank candidate over fetch limit calculation",
+      "category": "concept",
+      "expected_paths": ["src/search/index.rs"],
+      "source": "author"
+    },
+    {
+      "id": "concept-4",
+      "query": "RRF score rescaling to BM25",
+      "category": "concept",
+      "expected_paths": ["src/tools/search/text_search.rs"],
+      "source": "author"
+    },
+    {
+      "id": "concept-5",
+      "query": "hybrid search graceful degradation when embeddings fail",
+      "category": "concept",
+      "expected_paths": ["src/search/hybrid.rs"],
+      "source": "author"
+    },
+    {
+      "id": "concept-6",
+      "query": "stale binary detection daemon restart",
+      "category": "concept",
+      "expected_paths": ["src/daemon/lifecycle.rs", "src/daemon/app.rs"],
+      "source": "author"
+    },
+    {
+      "id": "concept-7",
+      "query": "MCP session admission control",
+      "category": "concept",
+      "expected_paths": ["src/daemon/mcp_session.rs"],
+      "source": "author"
+    },
+    {
+      "id": "concept-8",
+      "query": "atomic incremental update bulk operations",
+      "category": "concept",
+      "expected_paths": ["src/database/bulk_operations.rs"],
+      "source": "author"
+    },
+    {
+      "id": "concept-9",
+      "query": "schema compatibility detection and rebuild",
+      "category": "concept",
+      "expected_paths": ["src/search/schema.rs", "src/search/index.rs"],
+      "source": "author"
+    },
+    {
+      "id": "concept-10",
+      "query": "background embedding initialization",
+      "category": "concept",
+      "expected_paths": ["src/embeddings/init.rs", "src/daemon/app/helpers.rs"],
+      "source": "author"
+    },
+
+    {
+      "id": "qualified-1",
+      "query": "WatcherPool",
+      "category": "qualified-name",
+      "expected_paths": ["src/daemon/watcher_pool.rs"],
+      "notes": "Julie-domain pool type; DB rescue must surface the struct definition ahead of import sites.",
+      "source": "author"
+    },
+    {
+      "id": "qualified-2",
+      "query": "ParentReferenceContext",
+      "category": "qualified-name",
+      "expected_paths": ["src/tools/workspace/indexing/resolver.rs"],
+      "source": "author"
+    },
+    {
+      "id": "qualified-3",
+      "query": "ManageWorkspaceTool",
+      "category": "qualified-name",
+      "expected_paths": ["src/tools/workspace/commands/mod.rs"],
+      "source": "author"
+    },
+    {
+      "id": "qualified-4",
+      "query": "Candidate",
+      "category": "qualified-name",
+      "expected_paths": ["src/search/reranker.rs"],
+      "notes": "Common name; expect reranker's domain Candidate to win, not generic candidate variables.",
+      "source": "author"
+    },
+    {
+      "id": "qualified-5",
+      "query": "MutationGuard",
+      "category": "qualified-name",
+      "expected_paths": ["src/workspace/mutation_gate.rs"],
+      "source": "author"
+    }
+  ]
+}

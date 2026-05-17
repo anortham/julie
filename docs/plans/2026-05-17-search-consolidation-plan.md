@@ -222,8 +222,8 @@ admission/shutdown/session cleanup. Track separately.
 | P1.1 NL path prior applied exactly once across keyword pipeline | `cargo nextest run --lib nl_path_prior_pipeline_tests` | targeted | `00b71b37` | PASS (3/3) | 2026-05-17T20:04Z | no |
 | P1.1 no search regressions | `cargo xtask test changed` | tooling+dogfood | `00b71b37` | PASS (11 buckets, 305.7s) | 2026-05-17T20:04Z | no |
 | P1.1 dev tier green | `cargo xtask test dev` | dev | `00b71b37` | PASS (32 buckets, 469.0s) | 2026-05-17T20:04Z | no |
-| P1.2 capability_flags removed without regression | `cargo xtask test changed` | tooling+dogfood+daemon+system | `<pending>` | PASS (16 buckets, 392.2s) | 2026-05-17T20:14Z | no |
-| P1.2 dev tier green | `cargo xtask test dev` | dev | `<pending>` | PASS (32 buckets, 481.4s) | 2026-05-17T20:21Z | no |
+| P1.2 capability_flags removed without regression | `cargo xtask test changed` | tooling+dogfood+daemon+system | `88dc0930` | PASS (16 buckets, 392.2s) | 2026-05-17T20:14Z | no |
+| P1.2 dev tier green | `cargo xtask test dev` | dev | `88dc0930` | PASS (32 buckets, 481.4s) | 2026-05-17T20:21Z | no |
 
 ---
 
