@@ -307,6 +307,9 @@ admission/shutdown/session cleanup. Track separately.
 | P1.2 dev tier green | `cargo xtask test dev` | dev | `88dc0930` | PASS (32 buckets, 481.4s) | 2026-05-17T20:21Z | no |
 | P2.2 ablation harness builds and runs end-to-end | `cargo run -p xtask -- eval ablation --out /tmp/ablation-smoke.json` | xtask | `1f77cd93` | PASS (45 queries × 2 ran modes, 2 skipped) | 2026-05-17T20:55Z | no |
 | P2.3 baseline ablation captured at HEAD | `cargo run -p xtask -- eval ablation` | xtask | `1f77cd93` | PASS — keyword-only MRR@10=0.324, keyword+reranker MRR@10=0.332 (+2.5% global; concept-category +33%). Hybrid modes skipped — fixture has no embeddings. | 2026-05-17T20:57Z | no |
+| P3.1 decision recorded (KEEP reranker, revisit after corpus expansion) | manual review of baseline JSON | docs-only | `287a64d9` | PASS — rationale documented above; no code change | 2026-05-17T21:30Z | no |
+| P3.3 verified — pipeline has exactly one pass per concern | manual code audit of `definition_search_with_index` | docs-only | `287a64d9` | PASS — audit table documented above; no code change | 2026-05-17T21:30Z | no |
+| Phase 3 batch — dev tier green | `cargo xtask test dev` | dev | `eb429d58` | PASS (32 buckets, 490.3s) | 2026-05-17T21:38Z | no |
 
 ---
 
