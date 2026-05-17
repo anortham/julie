@@ -8,7 +8,7 @@ use std::io;
 use std::time::{Duration, Instant};
 
 use fs2::FileExt;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 use crate::daemon::discovery::{DiscoveryFile, DiscoveryRecord, DiscoveryState};
 use crate::daemon::http_transport::{MCP_PATH, READINESS_PATH};
@@ -154,16 +154,17 @@ impl DaemonLauncher {
     /// State-file aware: instead of just checking PID liveness, reads the
     /// daemon.state file to distinguish starting/ready/stopping.
     ///
-    /// **Locking strategy (A1.8)**: holds `daemon.lock` ONLY across the
-    /// "should I spawn?" decision and the spawn syscall itself, then drops
-    /// the lock before polling for readiness. The lock cannot be held across
-    /// the entire wait because the spawned daemon's legacy-migration gate
-    /// (A1.5) probes `daemon.lock`, sees `AlreadyHeld`, and exits 2 —
-    /// effectively making the spawn path unreachable. The kernel-held
-    /// singleton lock (A1.2) inside the new daemon still prevents multiple
-    /// daemons from running simultaneously, so the worst case of two
-    /// adapters spawning concurrently is one of them losing the singleton
-    /// race and exiting cleanly; the surviving daemon serves both adapters.
+    /// **Locking strategy**: serialization across concurrent adapter spawns
+    /// runs on `daemon-startup.lock` (launcher-only; the daemon never opens
+    /// it). The launcher holds that lock across the "should I spawn?"
+    /// decision, the spawn syscall, AND a short wait for the spawned
+    /// daemon to publish liveness (`discovery.json` or `daemon.pid`), then
+    /// releases. Subsequent adapters waiting on the lock then see
+    /// `Starting`/`Ready` on their re-check and skip the spawn instead of
+    /// cascading. The daemon-side singleton lock (`daemon.lock`,
+    /// kernel-held) remains the ultimate guarantee that only one daemon
+    /// runs at a time. See `spawn_under_startup_lock_with` for the wait
+    /// rationale.
     pub fn ensure_daemon_ready(&self) -> io::Result<()> {
         // A1.5: legacy detection. If a legacy julie-server daemon is
         // already running for this JULIE_HOME, attach to its HTTP endpoint
@@ -192,12 +193,40 @@ impl DaemonLauncher {
         self.wait_for_daemon_ready(deadline)
     }
 
-    /// Acquire `daemon.lock` for the brief window of evaluating "should I
-    /// spawn?" + the `spawn_daemon` syscall, then release. The kernel-held
-    /// singleton lock inside the spawned daemon prevents duplicates beyond
-    /// this point. See `ensure_daemon_ready` for the rationale on why the
-    /// lock cannot wrap the readiness wait.
+    /// Acquire `daemon-startup.lock`, re-check readiness, spawn if Dead,
+    /// wait for the new daemon to publish liveness, then release. See
+    /// `spawn_under_startup_lock_with` for the wait-under-lock rationale.
     fn spawn_under_lock(&self) -> io::Result<()> {
+        self.spawn_under_startup_lock_with(|| self.spawn_daemon(), Duration::from_secs(5))
+    }
+
+    /// Test-friendly variant: acquire `daemon-startup.lock`, re-check
+    /// readiness, invoke `spawn_fn` if Dead, wait until the spawned daemon
+    /// publishes liveness (PID file or discovery.json appears) or
+    /// `liveness_timeout` elapses, then release the lock.
+    ///
+    /// The wait-for-liveness window is what prevents the concurrent-adapter
+    /// spawn cascade: without it, adapter A spawns a daemon then releases
+    /// the lock before the child has written its PID file, so adapter B
+    /// acquires the lock, re-checks readiness, still sees `Dead`, and
+    /// spawns ANOTHER daemon. The daemon-side singleton lock
+    /// (`daemon.lock`) kills the losers silently, but each loser still
+    /// burns a fork+exec and surfaces transient processes in `ps`. With
+    /// the wait, adapter B sees `Starting` on its re-check and skips.
+    ///
+    /// **Why holding `daemon-startup.lock` across the wait is safe**: only
+    /// the launcher contends on this file; the daemon contends on the
+    /// separate `daemon.lock` (kernel singleton) and never opens
+    /// `daemon-startup.lock`, so no deadlock with the just-spawned daemon
+    /// is possible.
+    pub(crate) fn spawn_under_startup_lock_with<F>(
+        &self,
+        spawn_fn: F,
+        liveness_timeout: Duration,
+    ) -> io::Result<()>
+    where
+        F: FnOnce() -> io::Result<()>,
+    {
         // Ensure the julie home directory exists for the lock file.
         self.paths.ensure_dirs().map_err(|e| {
             io::Error::new(
@@ -219,17 +248,53 @@ impl DaemonLauncher {
         // Re-check readiness under the lock: another adapter may have
         // spawned a daemon between our pre-lock check and acquiring the lock.
         let spawn_result = match self.daemon_readiness() {
-            DaemonReadiness::Dead => self.spawn_daemon(),
+            DaemonReadiness::Dead => {
+                let result = spawn_fn();
+                if result.is_ok() {
+                    self.wait_for_spawned_liveness(liveness_timeout);
+                }
+                result
+            }
             _ => Ok(()),
         };
 
-        // Release the lock IMMEDIATELY after spawn (or skip). Holding it
-        // longer would block the spawned daemon's legacy-migration gate
-        // from succeeding (it probes daemon.lock and refuses on AlreadyHeld).
         lock_file.unlock()?;
         drop(lock_file);
 
         spawn_result
+    }
+
+    /// Poll readiness until the spawned daemon leaves `Dead` (PID file or
+    /// discovery.json appears) or the timeout expires. Best-effort: on
+    /// timeout we release the lock anyway so the outer `wait_for_daemon_ready`
+    /// loop can re-evaluate.
+    fn wait_for_spawned_liveness(&self, timeout: Duration) {
+        let deadline = Instant::now() + timeout;
+        let mut delay = Duration::from_millis(10);
+        let max_delay = Duration::from_millis(100);
+
+        loop {
+            if !matches!(self.daemon_readiness(), DaemonReadiness::Dead) {
+                return;
+            }
+
+            if Instant::now() >= deadline {
+                // Cascade protection failed: the spawned daemon did not
+                // publish liveness in time, so other waiting adapters
+                // will re-check Dead and may spawn duplicates that the
+                // kernel singleton lock will then kill silently. Log
+                // loud so operators notice repeated occurrences.
+                warn!(
+                    "Spawned daemon did not publish liveness within {:?}; \
+                     releasing startup lock — concurrent adapters may spawn duplicates",
+                    timeout
+                );
+                return;
+            }
+
+            std::thread::sleep(delay);
+            delay = (delay * 2).min(max_delay);
+        }
     }
 
     /// Internal: poll until the daemon reaches Ready state or deadline expires.

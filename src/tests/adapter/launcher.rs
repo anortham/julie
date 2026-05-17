@@ -415,6 +415,116 @@ mod tests {
         assert!(result.is_ok());
     }
 
+    /// Helper: run N adapters concurrently against
+    /// `spawn_under_startup_lock_with`, where each spawn_fn schedules a
+    /// "fake daemon" background thread that publishes liveness after
+    /// `liveness_delay`. Asserts exactly one spawn_fn call ran.
+    fn run_cascade_test_with<F>(n_adapters: usize, liveness_delay: Duration, publish_liveness: F)
+    where
+        F: Fn(&DaemonPaths) + Send + Sync + 'static + Clone,
+    {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::{Arc, Barrier};
+
+        const LIVENESS_WAIT_TIMEOUT: Duration = Duration::from_secs(5);
+
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DaemonPaths::with_home(dir.path().to_path_buf());
+        fs::create_dir_all(dir.path()).unwrap();
+
+        let spawn_count = Arc::new(AtomicUsize::new(0));
+        let barrier = Arc::new(Barrier::new(n_adapters));
+
+        let mut handles = vec![];
+        for _ in 0..n_adapters {
+            let paths = paths.clone();
+            let count = Arc::clone(&spawn_count);
+            let barrier = Arc::clone(&barrier);
+            let publish = publish_liveness.clone();
+
+            handles.push(thread::spawn(move || {
+                let launcher = DaemonLauncher::new(paths.clone());
+                barrier.wait();
+                launcher
+                    .spawn_under_startup_lock_with(
+                        || {
+                            // Mimic cmd.spawn() returning before the child
+                            // has written any liveness file: spin up a
+                            // background "daemon" thread that publishes
+                            // liveness after a delay.
+                            let paths = paths.clone();
+                            let publish = publish.clone();
+                            std::thread::spawn(move || {
+                                std::thread::sleep(liveness_delay);
+                                publish(&paths);
+                            });
+                            count.fetch_add(1, Ordering::SeqCst);
+                            Ok(())
+                        },
+                        LIVENESS_WAIT_TIMEOUT,
+                    )
+                    .unwrap();
+            }));
+        }
+
+        for h in handles {
+            h.join().unwrap();
+        }
+
+        assert_eq!(
+            spawn_count.load(Ordering::SeqCst),
+            1,
+            "exactly one launcher must spawn; the rest must observe \
+             liveness under lock and skip (count was {})",
+            spawn_count.load(Ordering::SeqCst)
+        );
+    }
+
+    /// Regression for the concurrent-adapter spawn cascade observed in
+    /// daemon.log at 2026-05-17T09:24:33: six adapters all spawned a
+    /// daemon within the same millisecond. Root cause was that
+    /// `spawn_under_lock` released `daemon-startup.lock` immediately after
+    /// the `cmd.spawn()` syscall returned — before the new daemon could
+    /// publish liveness — so the next waiting adapter's re-check of
+    /// `daemon_readiness()` still saw `Dead` and spawned another daemon.
+    /// The daemon-side singleton lock killed the losers silently, but
+    /// each loser burned a fork+exec.
+    ///
+    /// The fix: hold the startup lock across the spawn AND across a short
+    /// wait for the spawned daemon to publish liveness. Subsequent
+    /// adapters then see `Starting` on their re-check and skip the spawn
+    /// entirely.
+    ///
+    /// This variant exercises the legacy `daemon.pid` signal path
+    /// (`PidFile::check_status` → `Alive`).
+    #[test]
+    fn test_spawn_under_startup_lock_serializes_concurrent_spawns_via_pid_file() {
+        run_cascade_test_with(6, Duration::from_millis(100), |paths| {
+            // Legacy signal: write a PID file pointing at the current
+            // process so PidFile::check_status returns Alive.
+            fs::write(
+                paths.daemon_pid(),
+                format!("{}\n", std::process::id()),
+            )
+            .unwrap();
+        });
+    }
+
+    /// Same regression, but exercises the production new-daemon signal:
+    /// `discovery.json` written with phase=running. This is the path
+    /// modern daemons take — `app_test.rs::test_daemon_app_does_not_write_legacy_artifacts`
+    /// asserts new daemons do NOT write `daemon.pid`.
+    #[test]
+    fn test_spawn_under_startup_lock_serializes_concurrent_spawns_via_discovery_json() {
+        run_cascade_test_with(6, Duration::from_millis(100), |paths| {
+            // Production signal: write a Live DiscoveryRecord. The
+            // transport endpoint won't actually respond on this port,
+            // so daemon_readiness returns Starting (not Ready) — which
+            // is exactly what an adapter sees during the spawn window.
+            write_live_discovery(paths, 1, "running");
+        });
+    }
+
     /// When a daemon transitions from "starting" to "draining" (e.g. stale
     /// binary detected during startup), readiness should classify it as a
     /// shutdown handoff instead of ready for fresh sessions.
