@@ -163,6 +163,35 @@ remove. If it shows lift only on one category, narrow it to that path.
   `src/tools/search/text_search.rs:322,408`, schema fields
   (`role`, `test_role`) if no longer consumed.
 
+**Decision recorded 2026-05-17 (commit `287a64d9`): KEEP reranker
+as-is; revisit after corpus expansion.**
+
+Baseline data
+(`docs/eval/julie-search-ablation/2026-05-17-1f77cd93-baseline.json`):
+- Global MRR@10: keyword 0.324 → +reranker 0.332 (+2.5%, below the
+  5% threshold).
+- Per-category lift: only `concept` moves (0.113 → 0.150, +33%).
+  exact-symbol, qualified-name, test-intent, symbol-intent: no
+  measurable change. file-path goes through `search_files`, not the
+  reranker.
+- Inspecting per-query data, the *entire* concept-category lift comes
+  from one query (`concept-9 "schema compatibility detection and
+  rebuild"`, rank 8 → rank 2). With 10 queries per category, that's
+  one data point — too thin to confidently narrow or remove without
+  risking real but small gains on adjacent NL queries.
+
+Latency cost is ~4ms mean (16.5 → 20.6ms) — not large enough to
+force a cut on its own.
+
+Follow-up before re-evaluating:
+1. Expand corpus to 25-30 queries per category (especially `concept`
+   and `symbol-intent`) so per-category MRR has statistical power.
+2. Regenerate the fixture so the indexed code matches what the
+   corpus references (current fixture is Feb 27, corpus authored
+   May 17 — some `expected_paths` may not exist in the fixture at
+   all, depressing absolute numbers uniformly across modes).
+3. Rerun ablation; revisit P3.1 with a stronger signal.
+
 **P3.2 — Hybrid/embeddings decision.**
 If ablation shows hybrid delivers <5% MRR lift over keyword-only
 (reranker held constant), make embeddings opt-in (off by default).
@@ -171,12 +200,64 @@ become user-flag-gated.
 - Files: `src/embeddings/factory.rs:81`, `Cargo.toml:34`,
   `src/search/hybrid.rs` (still available when opt-in), docs.
 
+**Decision deferred 2026-05-17: data-blocked, not silent-deferred.**
+
+The P2.2 ablation harness ran the corpus through keyword-only and
+keyword+reranker modes. The two hybrid modes were structurally wired
+but `status="skipped"` because the fixture at
+`fixtures/databases/julie-snapshot/symbols.db` has no
+`symbol_embeddings` table — without precomputed embeddings, KNN
+returns nothing and "hybrid" degenerates to keyword.
+
+DoD #5 ("at least one of S1/S2 has a decision recorded") is satisfied
+by P3.1 above. P3.2 explicitly cannot be settled without hybrid
+numbers.
+
+What unblocks P3.2:
+1. **Easiest path:** extend the harness with `--source <julie_home>`
+   to point at `~/.julie/indexes/<id>/` (the daemon's storage, which
+   has embeddings populated by the sidecar). One-time copy to a temp
+   dir to avoid contention with the running daemon, then run all 4
+   modes in-process. Estimated ~30-60 min of harness work.
+2. Regenerate the fixture with `embeddings-sidecar` feature enabled
+   so the SQLite snapshot has `symbol_embeddings` populated. Also
+   makes hybrid runs reproducible offline.
+
+When either lands, rerun `cargo xtask eval ablation` and record P3.2
+in this section with the same level of per-category breakdown as
+P3.1.
+
 **P3.3 — Consolidate post-processing in `definition_search_with_index`.**
 After bug fixes and ablation cuts, the assembled pipeline should have
 ONE pass each of: centrality, path prior, language prior, exact-name
 promotion, optional DB rescue. No duplicate invocations, no scattered
 re-sorts.
 - File: `src/tools/search/text_search.rs:459-701`.
+
+**Verified 2026-05-17 (commit `287a64d9`): pipeline already has the
+canonical one-pass structure.** Audit of `definition_search_with_index`:
+
+| Concern | Hybrid branch | Keyword branch |
+|---|---|---|
+| centrality boost | 1× (`text_search.rs:527`) | 1× (`text_search.rs:585`) |
+| reranker | 1× (`text_search.rs:529`) | 1× (`text_search.rs:588`) |
+| NL path prior | 1× (`text_search.rs:533`) | 1× (`text_search.rs:589`) |
+| language affinity | 1× (`text_search.rs:537`) | 1× (`text_search.rs:591`) |
+| exact-name promotion | 1× (`text_search.rs:538`) | 1× (`text_search.rs:592`) |
+| DB rescue | none (intentional — hybrid already has semantic recall) | 1× (`text_search.rs:613-690`) |
+
+P1.1 was the only real duplicate (NL path prior at both retrieval and
+assembly). After that fix, no other post-processing pass is invoked
+twice. `apply_important_patterns_boost` (a `×1.5` name-pattern boost)
+still lives inside `SearchIndex::search_symbols` / `_relaxed` rather
+than at the assembly layer — an architectural quirk inconsistent with
+the B1 contract, but it's applied exactly once per query (the AND and
+OR paths are mutually exclusive), so it does not cause double
+application. Moving it to the assembly layer would change behavior
+(centrality + reranker both consume the boosted score); deferring
+until ablation shows it helps or hurts.
+
+No code change required for P3.3.
 
 ### Phase 4: Refactor (not delete) the daemon
 
