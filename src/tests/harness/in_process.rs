@@ -112,6 +112,9 @@ impl InProcessDaemonBuilder {
             // test, with isolated paths, so the lock-acquisition path is the
             // canonical one to exercise here.
             daemon_lock: None,
+            // Real binary mtime; harness exercises the production stale-
+            // binary detection path.
+            current_binary_mtime: None,
         };
 
         let app = DaemonApp::new(config)?;

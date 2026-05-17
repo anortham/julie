@@ -36,6 +36,7 @@ async fn test_daemon_app_uses_new_daemon_lock_without_legacy_pid_files() {
         no_dashboard: true,
         runtime: DaemonRuntimeContext::default(),
         daemon_lock: None,
+        current_binary_mtime: None,
     };
 
     let _app = DaemonApp::new(config).expect("DaemonApp::new");
@@ -86,6 +87,7 @@ async fn test_daemon_app_serve_and_shutdown() {
         no_dashboard: true,
         runtime: DaemonRuntimeContext::default(),
         daemon_lock: None,
+        current_binary_mtime: None,
     };
 
     let app = DaemonApp::new(config).expect("DaemonApp::new");

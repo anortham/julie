@@ -332,6 +332,8 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
         no_dashboard,
         runtime: DaemonRuntimeContext::default(),
         daemon_lock: Some(daemon_lock),
+        // Production: read live binary mtime via super::binary_mtime.
+        current_binary_mtime: None,
     };
 
     let handle = DaemonApp::new(config)?.serve(listener).await?;

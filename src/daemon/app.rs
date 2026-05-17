@@ -56,6 +56,16 @@ pub struct DaemonConfig {
     /// killed them. Tests and the InProcessDaemon harness pass `None` and
     /// rely on `DaemonApp::new` to acquire the lock itself.
     pub daemon_lock: Option<DaemonLockGuard>,
+    /// Testing seam for the current-binary mtime check threaded into
+    /// `HttpSessionAdmission`. Production callers pass `None`, which falls
+    /// back to `super::binary_mtime` (reads the live julie-server binary).
+    /// Tests pass `Some(closure)` to control mtime without touching the
+    /// actual binary on disk — needed to exercise stale-binary admission
+    /// arms (`AcceptWithRestartPending`, `RejectForRestart`,
+    /// `ShutdownForRestart`) end-to-end through `DaemonApp::serve`. Bug-
+    /// orthogonal to the restart-listener fix; the bridge in `serve` is
+    /// what actually wakes the daemon out of `restart_pending`.
+    pub current_binary_mtime: Option<Arc<dyn Fn() -> Option<SystemTime> + Send + Sync>>,
 }
 
 /// Heavy daemon state constructed by `DaemonApp::new` and consumed by `serve`.
@@ -76,6 +86,11 @@ pub struct DaemonApp {
     sessions: Arc<SessionTracker>,
     embedding_service: Arc<EmbeddingService>,
     startup_binary_mtime: Option<SystemTime>,
+    /// Optional override for the current-binary mtime check used by
+    /// `HttpSessionAdmission`. `None` falls back to production
+    /// `super::binary_mtime`. See `DaemonConfig::current_binary_mtime`.
+    current_binary_mtime_override:
+        Option<Arc<dyn Fn() -> Option<SystemTime> + Send + Sync>>,
     // Reaper task; moved into the handle's abort list to preserve today's
     // `reaper_handle.abort()` ordering ahead of pool shutdown.
     reaper_handle: Option<JoinHandle<()>>,
@@ -110,6 +125,7 @@ impl DaemonApp {
             no_dashboard,
             runtime,
             daemon_lock: preacquired_lock,
+            current_binary_mtime: current_binary_mtime_override,
         } = config;
 
         paths
@@ -197,6 +213,7 @@ impl DaemonApp {
             sessions,
             embedding_service,
             startup_binary_mtime,
+            current_binary_mtime_override,
             reaper_handle: Some(reaper_handle),
             recovery_markers,
             runtime,
@@ -245,6 +262,19 @@ impl DaemonApp {
         let dashboard_tx: broadcast::Sender<DashboardEvent> = dashboard_state.sender();
 
         // HTTP MCP transport on the caller-provided listener.
+        //
+        // Mtime closure: production callers leave
+        // `DaemonConfig::current_binary_mtime` as `None` and we use the
+        // process-wide `super::binary_mtime` reader. Tests that need to
+        // exercise stale-binary admission arms end-to-end through this
+        // serve path (e.g. `restart_listener_bridge_routes_via_daemon_app`)
+        // pass `Some(Arc<dyn Fn() -> Option<SystemTime>>)` to drive the
+        // gate without touching the on-disk binary.
+        let current_binary_mtime: Arc<dyn Fn() -> Option<SystemTime> + Send + Sync> =
+            self.current_binary_mtime_override
+                .take()
+                .unwrap_or_else(|| Arc::new(binary_mtime));
+        let current_binary_mtime_for_admission = Arc::clone(&current_binary_mtime);
         let http_session_dependencies = Arc::new(
             DaemonSessionDependencies::new(
                 Arc::clone(&self.workspace_pool),
@@ -259,7 +289,7 @@ impl DaemonApp {
             .with_http_admission(HttpSessionAdmission::new(
                 self.lifecycle.clone(),
                 self.startup_binary_mtime,
-                binary_mtime,
+                move || current_binary_mtime_for_admission(),
             )),
         );
         let http_service_dependencies = Arc::clone(&http_session_dependencies);
