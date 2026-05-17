@@ -148,6 +148,9 @@ pub struct RestartPendingTransition {
 #[derive(Debug, Clone)]
 pub struct DaemonLifecycleController {
     phase: Arc<RwLock<LifecyclePhase>>,
+    /// One-way bit; the only legitimate clear is process exit. The first call
+    /// to `mark_restart_pending` signals the restart channel, which the
+    /// listener in `DaemonApp::serve` bridges into the SIGTERM exit path.
     restart_pending: Arc<AtomicBool>,
     restart_notify: Arc<Notify>,
     state_path: Arc<PathBuf>,
@@ -207,6 +210,15 @@ impl DaemonLifecycleController {
     ) -> RestartPendingTransition {
         let first_request = !self.restart_pending.swap(true, Ordering::Relaxed);
         let next_phase = self.request_shutdown(cause, active_sessions);
+        if first_request {
+            // First transition commits to shutdown. The listener wired in
+            // DaemonApp::serve bridges this signal into the SIGTERM exit path,
+            // which runs the 60s drain and full LIFO teardown. Gating on
+            // first_request matches the existing flag semantics and avoids
+            // spurious permits if the listener task is restarted by a future
+            // refactor. Notify::notify_one would coalesce anyway.
+            self.notify_restart();
+        }
         RestartPendingTransition {
             first_request,
             next_phase,

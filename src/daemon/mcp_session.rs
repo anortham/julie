@@ -407,8 +407,9 @@ impl HttpJulieService {
         }
 
         if remaining == 0 && admission.lifecycle.restart_pending() {
+            // Restart notify is handled by the earlier mark_restart_pending call;
+            // the first transition signals the restart channel internally.
             info!("Last HTTP session disconnected and restart is pending. Triggering restart.");
-            admission.lifecycle.notify_restart();
         }
     }
 
@@ -449,7 +450,8 @@ impl HttpJulieService {
                     gate,
                     "Rejecting HTTP session and triggering daemon restart"
                 );
-                admission.lifecycle.notify_restart();
+                // Restart notify is handled by the mark_restart_pending call above;
+                // the first transition signals the restart channel internally.
                 Err(restart_required_error())
             }
             IncomingSessionAction::RejectForRestart(reason) => {

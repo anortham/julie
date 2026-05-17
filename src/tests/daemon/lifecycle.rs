@@ -312,6 +312,80 @@ fn test_controller_restart_pending_preserves_existing_shutdown_phase() {
     assert_eq!(fs::read_to_string(&state_path).unwrap(), "stopping");
 }
 
+#[tokio::test]
+async fn test_mark_restart_pending_signals_listener_on_first_transition() {
+    use std::time::Duration;
+    use tokio::time::timeout;
+
+    let dir = tempfile::tempdir().unwrap();
+    let state_path = dir.path().join("daemon.state");
+    let controller = DaemonLifecycleController::new(state_path);
+    controller.startup_complete();
+
+    // Register a waiter on the restart channel BEFORE triggering the transition.
+    let restart_notify = controller.restart_notify();
+    let waiter = tokio::spawn(async move {
+        restart_notify.notified().await;
+    });
+
+    // Give the waiter a tick to actually arm `.notified()`.
+    tokio::task::yield_now().await;
+
+    // First mark_restart_pending call must wake the waiter via the restart channel.
+    let transition = controller.mark_restart_pending(2, ShutdownCause::RestartRequired);
+    assert!(transition.first_request);
+
+    // Waiter must wake within 100ms; otherwise the restart channel has no signal.
+    timeout(Duration::from_millis(100), waiter)
+        .await
+        .expect("restart_notify waiter did not wake within 100ms of mark_restart_pending")
+        .expect("restart_notify waiter task panicked");
+}
+
+#[tokio::test]
+async fn test_mark_restart_pending_does_not_double_signal() {
+    use std::time::Duration;
+    use tokio::time::timeout;
+
+    let dir = tempfile::tempdir().unwrap();
+    let state_path = dir.path().join("daemon.state");
+    let controller = DaemonLifecycleController::new(state_path);
+    controller.startup_complete();
+
+    // Consume the first signal with a waiter so no permit is left behind.
+    let first_notify = controller.restart_notify();
+    let first_waiter = tokio::spawn(async move {
+        first_notify.notified().await;
+    });
+    tokio::task::yield_now().await;
+
+    let first = controller.mark_restart_pending(2, ShutdownCause::RestartRequired);
+    assert!(first.first_request);
+    timeout(Duration::from_millis(100), first_waiter)
+        .await
+        .expect("first restart_notify waiter did not wake within 100ms")
+        .expect("first restart_notify waiter task panicked");
+
+    // Register a fresh waiter, then call mark_restart_pending again.
+    // The second call must NOT signal the channel (first_request gate).
+    let second_notify = controller.restart_notify();
+    let second_waiter = tokio::spawn(async move {
+        second_notify.notified().await;
+    });
+    tokio::task::yield_now().await;
+
+    let second = controller.mark_restart_pending(2, ShutdownCause::RestartRequired);
+    assert!(!second.first_request);
+
+    // The fresh waiter must NOT wake within a short window — the first_request
+    // gate should suppress a second notify.
+    let did_wake = timeout(Duration::from_millis(50), second_waiter).await.is_ok();
+    assert!(
+        !did_wake,
+        "second mark_restart_pending unexpectedly signaled the restart channel; first_request gate is broken"
+    );
+}
+
 #[test]
 fn test_controller_sessions_drained_transitions_to_stopping() {
     let dir = tempfile::tempdir().unwrap();
