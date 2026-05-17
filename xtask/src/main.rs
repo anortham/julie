@@ -15,6 +15,7 @@ use xtask::runner::{
     ProcessCommandExecutor, render_manifest_listing, render_summary, run_bucket, run_named_buckets,
     run_tier,
 };
+use xtask::search_ablation::run_eval_ablation_command;
 use xtask::search_matrix::run_search_matrix_command;
 use xtask::tree_sitter_certification::run_tree_sitter_certification;
 use xtask::tree_sitter_real_world::run_tree_sitter_real_world_certification;
@@ -50,7 +51,8 @@ fn main() -> anyhow::Result<()> {
                 | CliCommand::Certify(_)
                 | CliCommand::SyncPlugin(_)
                 | CliCommand::DevLink(_)
-                | CliCommand::DevRestart(_) => unreachable!("validated test command changed shape"),
+                | CliCommand::DevRestart(_)
+                | CliCommand::Eval(_) => unreachable!("validated test command changed shape"),
             };
 
             match command {
@@ -128,6 +130,9 @@ fn main() -> anyhow::Result<()> {
         }
         CliCommand::SearchMatrix(command) => {
             run_search_matrix_command(&command, &mut stdout)?;
+        }
+        CliCommand::Eval(command) => {
+            run_eval_ablation_command(&command, &mut stdout)?;
         }
         CliCommand::SyncPlugin(SyncPluginCommand {
             plugin_root,

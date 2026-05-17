@@ -224,6 +224,8 @@ admission/shutdown/session cleanup. Track separately.
 | P1.1 dev tier green | `cargo xtask test dev` | dev | `00b71b37` | PASS (32 buckets, 469.0s) | 2026-05-17T20:04Z | no |
 | P1.2 capability_flags removed without regression | `cargo xtask test changed` | tooling+dogfood+daemon+system | `88dc0930` | PASS (16 buckets, 392.2s) | 2026-05-17T20:14Z | no |
 | P1.2 dev tier green | `cargo xtask test dev` | dev | `88dc0930` | PASS (32 buckets, 481.4s) | 2026-05-17T20:21Z | no |
+| P2.2 ablation harness builds and runs end-to-end | `cargo run -p xtask -- eval ablation --out /tmp/ablation-smoke.json` | xtask | `1f77cd93` | PASS (45 queries × 2 ran modes, 2 skipped) | 2026-05-17T20:55Z | no |
+| P2.3 baseline ablation captured at HEAD | `cargo run -p xtask -- eval ablation` | xtask | `1f77cd93` | PASS — keyword-only MRR@10=0.324, keyword+reranker MRR@10=0.332 (+2.5% global; concept-category +33%). Hybrid modes skipped — fixture has no embeddings. | 2026-05-17T20:57Z | no |
 
 ---
 

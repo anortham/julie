@@ -704,6 +704,26 @@ pub(crate) fn definition_search_with_index_for_test(
     definition_search_with_index(query, filter, limit, index, db, None)
 }
 
+/// Run the assembled definition-search pipeline with an explicit embedding
+/// provider toggle. Used by the search-consolidation ablation harness
+/// (`xtask/src/search_ablation.rs`) so it can call the same pipeline that
+/// production traverses for both keyword-only and hybrid modes without
+/// going through the handler's stateful embedding provider.
+///
+/// Reranker on/off is still controlled by `JULIE_RERANKER_ENABLED` (read
+/// inside `apply_reranker_to_symbol_results`), so the ablation runner sets
+/// that env var per mode.
+pub fn definition_search_with_index_for_ablation(
+    query: &str,
+    filter: &SearchFilter,
+    limit: usize,
+    index: &crate::search::index::SearchIndex,
+    db: Option<&crate::database::SymbolDatabase>,
+    embedding_provider: Option<&dyn crate::embeddings::EmbeddingProvider>,
+) -> Result<(Vec<Symbol>, bool, usize)> {
+    definition_search_with_index(query, filter, limit, index, db, embedding_provider)
+}
+
 /// Run a content search with post-verification against actual file content.
 ///
 /// Returns `(symbols, relaxed, pre_truncation_total)`.

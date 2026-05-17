@@ -79,6 +79,21 @@ pub struct DevRestartCommand {
     pub force: bool,
 }
 
+/// `cargo xtask eval ablation [options]`.
+///
+/// Runs the search-consolidation ablation harness against the labeled query
+/// corpus. Each mode toggles the reranker (env var) and the embedding
+/// provider (per-call) so we can attribute MRR/latency to specific pipeline
+/// components.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EvalCommand {
+    Ablation {
+        corpus: PathBuf,
+        out: Option<PathBuf>,
+        limit: u32,
+    },
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CliCommand {
     Test(TestCommand),
@@ -87,6 +102,7 @@ pub enum CliCommand {
     SyncPlugin(SyncPluginCommand),
     DevLink(DevLinkCommand),
     DevRestart(DevRestartCommand),
+    Eval(EvalCommand),
 }
 
 pub fn parse_cli_command<I, S>(args: I) -> Result<CliCommand>
@@ -110,6 +126,7 @@ where
         "sync-plugin" => Ok(CliCommand::SyncPlugin(parse_sync_plugin_command(args)?)),
         "dev-link" => Ok(CliCommand::DevLink(parse_dev_link_command(args)?)),
         "dev-restart" => parse_dev_restart_command(args),
+        "eval" => Ok(CliCommand::Eval(parse_eval_command(args)?)),
         other => bail!("unsupported xtask command `{other}`"),
     }
 }
@@ -240,7 +257,62 @@ pub fn validate_cli_command(manifest: &TestManifest, command: CliCommand) -> Res
         CliCommand::SyncPlugin(command) => Ok(CliCommand::SyncPlugin(command)),
         CliCommand::DevLink(command) => Ok(CliCommand::DevLink(command)),
         CliCommand::DevRestart(command) => Ok(CliCommand::DevRestart(command)),
+        CliCommand::Eval(command) => Ok(CliCommand::Eval(command)),
     }
+}
+
+fn parse_eval_command(args: Vec<String>) -> Result<EvalCommand> {
+    let mut tail = args.into_iter().skip(2);
+    let Some(kind) = tail.next() else {
+        bail!("missing `cargo xtask eval <ablation>` subcommand");
+    };
+
+    match kind.as_str() {
+        "ablation" => parse_eval_ablation_command(tail.collect()),
+        other => bail!("unsupported `cargo xtask eval` subcommand `{other}`"),
+    }
+}
+
+fn parse_eval_ablation_command(args: Vec<String>) -> Result<EvalCommand> {
+    let mut corpus: Option<PathBuf> = None;
+    let mut out: Option<PathBuf> = None;
+    let mut limit: u32 = 10;
+
+    let mut iter = args.into_iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--corpus" => {
+                let raw = iter
+                    .next()
+                    .ok_or_else(|| anyhow!("missing value for --corpus"))?;
+                corpus = Some(PathBuf::from(raw));
+            }
+            "--out" => {
+                let raw = iter
+                    .next()
+                    .ok_or_else(|| anyhow!("missing value for --out"))?;
+                out = Some(PathBuf::from(raw));
+            }
+            "--limit" => {
+                let raw = iter
+                    .next()
+                    .ok_or_else(|| anyhow!("missing value for --limit"))?;
+                limit = raw
+                    .parse::<u32>()
+                    .map_err(|_| anyhow!("--limit must be a positive integer (got `{raw}`)"))?;
+                if limit == 0 {
+                    bail!("--limit must be >= 1");
+                }
+            }
+            other => bail!("unexpected argument for `eval ablation`: {other}"),
+        }
+    }
+
+    let corpus = corpus.unwrap_or_else(|| {
+        PathBuf::from("docs/eval/julie-search-corpus-v1.json")
+    });
+
+    Ok(EvalCommand::Ablation { corpus, out, limit })
 }
 
 fn parse_certify_command(args: Vec<String>) -> Result<CertifyCommand> {

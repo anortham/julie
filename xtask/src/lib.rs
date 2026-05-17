@@ -5,6 +5,7 @@ pub mod inventory;
 pub mod manifest;
 pub mod runner;
 pub mod search_matrix;
+pub mod search_ablation;
 pub mod search_matrix_mine;
 pub mod search_matrix_report;
 pub mod sync_plugin;
