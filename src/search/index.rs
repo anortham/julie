@@ -371,6 +371,14 @@ impl SearchIndex {
         tantivy_doc.add_text(f.kind, &doc.kind);
         tantivy_doc.add_u64(f.start_line, doc.start_line as u64);
 
+        // C.3 enriched fields. Derived from path + language; capability_flags
+        // is empty for now (julie has no contract-capability metadata yet).
+        let role = crate::search::scoring::classify_role(&doc.file_path, &doc.language);
+        let test_role = crate::search::scoring::test_subrole(&doc.file_path);
+        tantivy_doc.add_text(f.role, role);
+        tantivy_doc.add_text(f.test_role, test_role);
+        tantivy_doc.add_text(f.capability_flags, "");
+
         let guard = self.get_or_create_writer()?;
         let writer = guard.as_ref().unwrap();
         writer.add_document(tantivy_doc)?;

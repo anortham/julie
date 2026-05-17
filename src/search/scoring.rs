@@ -252,6 +252,93 @@ pub(crate) fn is_fixture_path(path: &str) -> bool {
     false
 }
 
+/// Detect whether a file path indicates vendored / third-party code.
+///
+/// Matches path segments: `node_modules`, `vendor`, `third_party`, `deps`,
+/// `external`, `Pods` (CocoaPods), `bower_components`.
+pub(crate) fn is_vendor_path(path: &str) -> bool {
+    for segment in path.split('/') {
+        match segment {
+            "node_modules"
+            | "vendor"
+            | "Vendor"
+            | "third_party"
+            | "third-party"
+            | "deps"
+            | "external"
+            | "Pods"
+            | "bower_components" => return true,
+            _ => {}
+        }
+    }
+    false
+}
+
+/// Detect whether a file path indicates generated / build-output code.
+///
+/// Matches path segments: `target`, `build`, `dist`, `out`, `bin`, `obj`,
+/// `generated`, `__generated__`, `gen`.
+pub(crate) fn is_generated_path(path: &str) -> bool {
+    for segment in path.split('/') {
+        match segment {
+            "target"
+            | "build"
+            | "Build"
+            | "dist"
+            | "out"
+            | "bin"
+            | "obj"
+            | "generated"
+            | "Generated"
+            | "__generated__"
+            | "gen" => return true,
+            _ => {}
+        }
+    }
+    false
+}
+
+/// Classify a file path + language into a [`role`] string for the C.3
+/// Tantivy schema. Ordering: vendor → generated → test → docs → source.
+/// `test` is checked AFTER vendor/generated so that vendored tests don't
+/// pollute the test bucket.
+pub(crate) fn classify_role(path: &str, language: &str) -> &'static str {
+    if is_vendor_path(path) {
+        "vendor"
+    } else if is_generated_path(path) {
+        "generated"
+    } else if is_test_path(path) {
+        "test"
+    } else if is_docs_path(path) || DOC_LANGUAGES.contains(&language) {
+        "docs"
+    } else {
+        "source"
+    }
+}
+
+/// If `path` is a test path, return its sub-role (`unit | integration |
+/// smoke`) or empty string when no sub-role segment is present.
+pub(crate) fn test_subrole(path: &str) -> &'static str {
+    if !is_test_path(path) {
+        return "";
+    }
+    for segment in path.split('/') {
+        match segment {
+            "integration" | "integration_tests" | "Integration" => return "integration",
+            "smoke" | "Smoke" => return "smoke",
+            "unit" | "Unit" => return "unit",
+            _ => {}
+        }
+    }
+    ""
+}
+
+/// True when `language` denotes source code (not docs/data formats).
+#[allow(dead_code)] // C.4 wiring will consume this.
+pub(crate) fn is_source_language(language: &str) -> bool {
+    !DOC_LANGUAGES.contains(&language)
+}
+
 pub(crate) fn file_path_priority_bucket(path: &str) -> u8 {
     if is_test_path(path) {
         return 1;

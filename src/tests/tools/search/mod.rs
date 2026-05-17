@@ -2,6 +2,7 @@
 // These were previously inline tests that have been moved to follow project standards
 
 mod annotation_search_tests;
+mod c3_enriched_schema_tests;
 mod content_scoring_tests;
 mod definition_overfetch_tests;
 mod definition_promotion_tests;

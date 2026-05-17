@@ -39,6 +39,10 @@ pub mod fields {
     pub const KIND: &str = "kind";
     pub const START_LINE: &str = "start_line";
     pub const CONTENT: &str = "content";
+    // C.3 enriched schema: role/test_role/capability_flags for the reranker.
+    pub const ROLE: &str = "role";
+    pub const TEST_ROLE: &str = "test_role";
+    pub const CAPABILITY_FLAGS: &str = "capability_flags";
 }
 
 /// Build the Tantivy schema for code search.
@@ -83,6 +87,13 @@ pub fn create_schema() -> Schema {
     builder.add_text_field(fields::KIND, STRING | STORED);
     builder.add_u64_field(fields::START_LINE, NumericOptions::default().set_stored());
 
+    // C.3 enriched fields. STRING | STORED so the reranker can filter/read
+    // them as exact-match text. capability_flags is stored as a space-
+    // separated list; empty when no flags apply.
+    builder.add_text_field(fields::ROLE, STRING | STORED);
+    builder.add_text_field(fields::TEST_ROLE, STRING | STORED);
+    builder.add_text_field(fields::CAPABILITY_FLAGS, STRING | STORED);
+
     // File content field (code-tokenized, not stored)
     builder.add_text_field(fields::CONTENT, code_text_not_stored);
 
@@ -126,6 +137,9 @@ pub struct SchemaFields {
     pub kind: Field,
     pub start_line: Field,
     pub content: Field,
+    pub role: Field,
+    pub test_role: Field,
+    pub capability_flags: Field,
 }
 
 impl SchemaFields {
@@ -151,6 +165,9 @@ impl SchemaFields {
             kind: schema.get_field(fields::KIND).unwrap(),
             start_line: schema.get_field(fields::START_LINE).unwrap(),
             content: schema.get_field(fields::CONTENT).unwrap(),
+            role: schema.get_field(fields::ROLE).unwrap(),
+            test_role: schema.get_field(fields::TEST_ROLE).unwrap(),
+            capability_flags: schema.get_field(fields::CAPABILITY_FLAGS).unwrap(),
         }
     }
 }
