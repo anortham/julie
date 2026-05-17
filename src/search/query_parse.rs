@@ -57,10 +57,7 @@ const SYMBOL_KIND_KEYWORDS: &[&str] = &[
 /// right (e.g. searching for a symbol literally named `function` should
 /// still work as a free-text query).
 pub fn parse_query(raw: &str) -> ParsedQuery {
-    let terms: Vec<String> = raw
-        .split_whitespace()
-        .map(|s| s.to_lowercase())
-        .collect();
+    let terms: Vec<String> = raw.split_whitespace().map(|s| s.to_lowercase()).collect();
 
     if terms.len() >= 3 {
         let first = terms[0].as_str();

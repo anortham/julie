@@ -1,5 +1,6 @@
 //! Daemon lifecycle management: process status, state transitions, and restart decisions.
 
+use crate::daemon::discovery::{DiscoveryFile, DiscoveryState};
 use crate::daemon::pid::PidFile;
 use crate::paths::DaemonPaths;
 #[cfg(unix)]
@@ -354,6 +355,11 @@ fn publish_phase(target: &RwLock<LifecyclePhase>, path: &Path, phase: LifecycleP
 
 /// Check whether the daemon is currently running by inspecting the PID file.
 pub fn check_status(paths: &DaemonPaths) -> DaemonStatus {
+    if let DiscoveryState::Live(record) = DiscoveryFile::read_and_validate(&paths.discovery_file())
+    {
+        return DaemonStatus::Running { pid: record.pid };
+    }
+
     match PidFile::check_running(&paths.daemon_pid()) {
         Some(pid) => DaemonStatus::Running { pid },
         None => DaemonStatus::NotRunning,
@@ -366,7 +372,12 @@ pub fn check_status(paths: &DaemonPaths) -> DaemonStatus {
 /// event that the daemon waits on, falling back to `taskkill /F` for older
 /// daemons that predate the event mechanism.
 pub fn stop_daemon(paths: &DaemonPaths) -> anyhow::Result<()> {
-    match PidFile::check_running(&paths.daemon_pid()) {
+    let discovery_pid = match DiscoveryFile::read_and_validate(&paths.discovery_file()) {
+        DiscoveryState::Live(record) => Some(record.pid),
+        DiscoveryState::Missing | DiscoveryState::Stale | DiscoveryState::Corrupt(_) => None,
+    };
+
+    match discovery_pid.or_else(|| PidFile::check_running(&paths.daemon_pid())) {
         Some(pid) => {
             info!("Sending shutdown signal to daemon PID {}", pid);
 
@@ -398,8 +409,7 @@ pub fn stop_daemon(paths: &DaemonPaths) -> anyhow::Result<()> {
             let deadline = std::time::Instant::now() + timeout;
             loop {
                 if !PidFile::is_process_alive(pid) {
-                    let _ = std::fs::remove_file(paths.daemon_pid());
-                    let _ = std::fs::remove_file(paths.daemon_state());
+                    remove_lifecycle_files(paths);
                     info!("Daemon stopped");
                     return Ok(());
                 }
@@ -416,10 +426,17 @@ pub fn stop_daemon(paths: &DaemonPaths) -> anyhow::Result<()> {
             }
         }
         None => {
-            let _ = std::fs::remove_file(paths.daemon_pid());
-            let _ = std::fs::remove_file(paths.daemon_state());
+            remove_lifecycle_files(paths);
             info!("Daemon is not running (cleaned stale files if any)");
             Ok(())
         }
     }
+}
+
+fn remove_lifecycle_files(paths: &DaemonPaths) {
+    let _ = std::fs::remove_file(paths.daemon_pid());
+    let _ = std::fs::remove_file(paths.daemon_state());
+    let _ = std::fs::remove_file(paths.discovery_file());
+    let _ = std::fs::remove_file(paths.token_file());
+    let _ = std::fs::remove_file(paths.daemon_mcp_transport());
 }

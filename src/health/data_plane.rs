@@ -156,8 +156,7 @@ pub(crate) async fn build_data_plane(
                     projected_revision: None,
                     revision_lag: None,
                     repair_needed: false,
-                    detail: "No SQLite database is connected for the primary workspace"
-                        .to_string(),
+                    detail: "No SQLite database is connected for the primary workspace".to_string(),
                 },
             };
 

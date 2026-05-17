@@ -198,6 +198,7 @@ fn expected_tiers() -> BTreeMap<String, Vec<String>> {
                 "lifecycle".to_string(),
                 "workspace-runtime".to_string(),
                 "workspace-init".to_string(),
+                "documentation-indexing".to_string(),
                 "integration".to_string(),
                 "tools-dogfood-repo-index".to_string(),
                 "search-quality".to_string(),
@@ -224,6 +225,7 @@ fn expected_tiers() -> BTreeMap<String, Vec<String>> {
                 "lifecycle".to_string(),
                 "workspace-runtime".to_string(),
                 "workspace-init".to_string(),
+                "documentation-indexing".to_string(),
                 "integration".to_string(),
             ],
         ),
@@ -359,7 +361,19 @@ fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
             ExpectedBucket {
                 expected_seconds: 130,
                 timeout_seconds: 240,
-                commands: &["cargo nextest run --lib tests::integration -- --skip search_quality"],
+                commands: &[
+                    "cargo nextest run --lib tests::integration -- --skip search_quality --skip documentation_indexing",
+                ],
+            },
+        ),
+        (
+            "documentation-indexing",
+            ExpectedBucket {
+                expected_seconds: 25,
+                timeout_seconds: 90,
+                commands: &[
+                    "cargo nextest run --lib tests::integration::documentation_indexing -- --skip search_quality",
+                ],
             },
         ),
         (
@@ -612,9 +626,11 @@ fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
         (
             "tools-search-query",
             ExpectedBucket {
-                expected_seconds: 5,
-                timeout_seconds: 30,
+                expected_seconds: 8,
+                timeout_seconds: 45,
                 commands: &[
+                    "cargo nextest run --lib search::query_parse::tests -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::search::reranker_tests -- --skip search_quality",
                     "cargo nextest run --lib tools::search::query_preprocessor::tests -- --skip search_quality",
                 ],
             },
@@ -832,6 +848,15 @@ fn expected_bucket_metadata() -> BTreeMap<&'static str, ExpectedBucketMetadata> 
             },
         ),
         (
+            "documentation-indexing",
+            ExpectedBucketMetadata {
+                scope_label: "system",
+                owner: "lead",
+                expensive: false,
+                notes: Some("documentation indexing integration coverage"),
+            },
+        ),
+        (
             "lifecycle",
             ExpectedBucketMetadata {
                 scope_label: "system",
@@ -1039,7 +1064,7 @@ fn expected_bucket_metadata() -> BTreeMap<&'static str, ExpectedBucketMetadata> 
                 scope_label: "tooling",
                 owner: "lead",
                 expensive: false,
-                notes: Some("search query preprocessing"),
+                notes: Some("search query parsing and preprocessing"),
             },
         ),
         (

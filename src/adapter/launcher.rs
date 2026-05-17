@@ -10,6 +10,8 @@ use std::time::{Duration, Instant};
 use fs2::FileExt;
 use tracing::{debug, info};
 
+use crate::daemon::discovery::{DiscoveryFile, DiscoveryRecord, DiscoveryState};
+use crate::daemon::http_transport::{MCP_PATH, READINESS_PATH};
 use crate::daemon::pid::{PidFile, PidFileStatus};
 use crate::daemon::transport::TransportEndpoint;
 use crate::paths::DaemonPaths;
@@ -52,6 +54,13 @@ impl DaemonLauncher {
     /// fresh empty PID file from a racing daemon mid-write) as "present"
     /// so the poll loop does not declare BrokenPipe and spawn a duplicate.
     fn is_daemon_running(&self) -> bool {
+        if matches!(
+            DiscoveryFile::read_and_validate(&self.paths.discovery_file()),
+            DiscoveryState::Live(_)
+        ) {
+            return true;
+        }
+
         !matches!(
             PidFile::check_status(&self.paths.daemon_pid()),
             PidFileStatus::Dead
@@ -59,6 +68,15 @@ impl DaemonLauncher {
     }
 
     pub fn transport_endpoint(&self) -> io::Result<TransportEndpoint> {
+        match DiscoveryFile::read_and_validate(&self.paths.discovery_file()) {
+            DiscoveryState::Live(record) => return discovery_endpoint(&record),
+            DiscoveryState::Missing | DiscoveryState::Stale | DiscoveryState::Corrupt(_) => {}
+        }
+
+        if let Some(endpoint) = crate::daemon::legacy_migration::detect_and_attach(&self.paths) {
+            return Ok(endpoint);
+        }
+
         TransportEndpoint::read_discovery(&self.paths.daemon_mcp_transport())
     }
 
@@ -83,6 +101,22 @@ impl DaemonLauncher {
     /// an empty PID file fed back as `None` from `check_running` and the
     /// launcher unlinked the state file + spawned a new daemon.
     pub fn daemon_readiness(&self) -> DaemonReadiness {
+        match DiscoveryFile::read_and_validate(&self.paths.discovery_file()) {
+            DiscoveryState::Live(record) => {
+                if matches!(record.phase.as_deref(), Some("stopping") | Some("draining")) {
+                    return DaemonReadiness::Stopping;
+                }
+
+                return match discovery_endpoint(&record)
+                    .map(|endpoint| endpoint.probe_readiness().is_ready())
+                {
+                    Ok(true) => DaemonReadiness::Ready,
+                    Ok(false) | Err(_) => DaemonReadiness::Starting,
+                };
+            }
+            DiscoveryState::Missing | DiscoveryState::Stale | DiscoveryState::Corrupt(_) => {}
+        }
+
         match PidFile::check_status(&self.paths.daemon_pid()) {
             PidFileStatus::Dead => {
                 let _ = std::fs::remove_file(self.paths.daemon_state());
@@ -135,14 +169,15 @@ impl DaemonLauncher {
         // already running for this JULIE_HOME, attach to its HTTP endpoint
         // instead of spawning a new daemon. This is the upgrade path: the
         // adapter keeps working against the old daemon until the operator
-        // restarts it. The legacy daemon writes daemon.port + daemon.pid;
-        // the new daemon writes discovery.json (A1.3) which is picked up
+        // restarts it. The legacy daemon writes daemon.pid plus
+        // daemon-mcp-transport.json; the new daemon writes discovery.json
+        // (A1.3) which is picked up
         // by self.daemon_readiness() through the regular path below.
         if let Some(_legacy_endpoint) =
             crate::daemon::legacy_migration::detect_and_attach(&self.paths)
         {
             debug!(
-                "Legacy julie-server daemon detected via daemon.pid + daemon.port; attaching to legacy endpoint"
+                "Legacy julie-server daemon detected via daemon.pid + daemon-mcp-transport.json; attaching to legacy endpoint"
             );
             return Ok(());
         }
@@ -171,7 +206,7 @@ impl DaemonLauncher {
             )
         })?;
 
-        let lock_path = self.paths.daemon_lock();
+        let lock_path = self.paths.daemon_startup_lock();
         let lock_file = std::fs::OpenOptions::new()
             .create(true)
             .write(true)
@@ -271,6 +306,17 @@ impl DaemonLauncher {
                     io::ErrorKind::BrokenPipe,
                     "Daemon exited while waiting for readiness",
                 ));
+            }
+
+            match self.daemon_readiness() {
+                DaemonReadiness::Ready => return Ok(()),
+                DaemonReadiness::Stopping if target_state == "ready" => {
+                    return Err(io::Error::new(
+                        io::ErrorKind::Interrupted,
+                        "Daemon transitioned to stopping before reaching ready",
+                    ));
+                }
+                DaemonReadiness::Starting | DaemonReadiness::Dead | DaemonReadiness::Stopping => {}
             }
 
             // Check current state
@@ -388,6 +434,16 @@ impl DaemonLauncher {
     }
 }
 
+fn discovery_endpoint(record: &DiscoveryRecord) -> io::Result<TransportEndpoint> {
+    TransportEndpoint::streamable_http(
+        record.host.clone(),
+        record.port,
+        MCP_PATH,
+        READINESS_PATH,
+        Some(record.token_path.clone()),
+    )
+}
+
 /// Locate the `julie-daemon` binary the adapter should spawn.
 ///
 /// Search order:
@@ -411,7 +467,10 @@ fn locate_julie_daemon() -> io::Result<std::path::PathBuf> {
         if let Some(parent) = adapter_exe.parent() {
             let sibling = parent.join(bin_name);
             if sibling.is_file() {
-                debug!("Resolved julie-daemon as adapter sibling: {}", sibling.display());
+                debug!(
+                    "Resolved julie-daemon as adapter sibling: {}",
+                    sibling.display()
+                );
                 return Ok(sibling);
             }
         }

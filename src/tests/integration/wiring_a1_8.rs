@@ -25,7 +25,7 @@ use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
-use crate::daemon::pid::PidFile;
+use crate::daemon::discovery::{DiscoveryFile, DiscoveryState};
 use crate::paths::DaemonPaths;
 
 // ---------------------------------------------------------------------------
@@ -79,10 +79,7 @@ fn round_trip_initialize(adapter: &mut Child, timeout: Duration) -> String {
 /// Send a minimal MCP `initialize` WITHOUT closing stdin. The adapter
 /// stays running afterward, so the caller can observe its lifecycle
 /// reaction to external events (e.g. the daemon dying).
-fn send_initialize_keep_stdin(
-    adapter: &mut Child,
-    timeout: Duration,
-) -> String {
+fn send_initialize_keep_stdin(adapter: &mut Child, timeout: Duration) -> String {
     let initialize = r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"wiring-a1_8-test","version":"0.0.1"}}}"#;
     // Borrow stdin instead of taking it, so the caller's Child still owns
     // the handle. This keeps the adapter's stdin open after we return.
@@ -108,15 +105,18 @@ fn send_initialize_keep_stdin(
 
 /// Poll until the daemon writes its discovery.json (i.e. it has reached
 /// `phase=running`). Returns true on success.
+fn live_discovery_pid(paths: &DaemonPaths) -> Option<u32> {
+    match DiscoveryFile::read_and_validate(&paths.discovery_file()) {
+        DiscoveryState::Live(record) => Some(record.pid),
+        DiscoveryState::Missing | DiscoveryState::Stale | DiscoveryState::Corrupt(_) => None,
+    }
+}
+
 fn wait_for_daemon_ready(paths: &DaemonPaths, timeout: Duration) -> bool {
     let deadline = Instant::now() + timeout;
     while Instant::now() < deadline {
-        if paths.discovery_file().exists() && paths.daemon_pid().exists() {
-            if let Some(pid) = PidFile::read_pid(&paths.daemon_pid()) {
-                if PidFile::is_process_alive(pid) {
-                    return true;
-                }
-            }
+        if live_discovery_pid(paths).is_some() {
+            return true;
         }
         std::thread::sleep(Duration::from_millis(100));
     }
@@ -152,14 +152,12 @@ impl Drop for DaemonGuard {
         }
         // Also kill any daemon spawned via the launcher (it's detached, so
         // not a direct child of the test process).
-        if let Some(pid) = PidFile::read_pid(&self.paths.daemon_pid()) {
-            if PidFile::is_process_alive(pid) {
-                unsafe {
-                    // SIGKILL: the test is already over, no graceful shutdown
-                    // needed. Daemon's own cleanup (file removal) is best-
-                    // effort either way.
-                    libc::kill(pid as libc::pid_t, libc::SIGKILL);
-                }
+        if let Some(pid) = live_discovery_pid(&self.paths) {
+            unsafe {
+                // SIGKILL: the test is already over, no graceful shutdown
+                // needed. Daemon's own cleanup (file removal) is best-
+                // effort either way.
+                libc::kill(pid as libc::pid_t, libc::SIGKILL);
             }
         }
     }
@@ -201,16 +199,10 @@ fn test_e2e_julie_server_no_args_spawns_daemon() {
         response.trim()
     );
 
-    // Daemon must have been spawned (discovery.json + pid exist).
     assert!(
-        paths.discovery_file().exists(),
-        "daemon must have published discovery.json at {}",
+        live_discovery_pid(&paths).is_some(),
+        "daemon must have published a live discovery.json at {}",
         paths.discovery_file().display()
-    );
-    assert!(
-        paths.daemon_pid().exists(),
-        "daemon must have written daemon.pid at {}",
-        paths.daemon_pid().display()
     );
 }
 
@@ -288,9 +280,8 @@ fn test_e2e_julie_adapter_attaches_to_running_daemon() {
         "pre-started daemon must reach readiness within 45s"
     );
 
-    // Snapshot the PID before starting the adapter.
-    let pre_pid =
-        PidFile::read_pid(&paths.daemon_pid()).expect("daemon.pid must be readable");
+    // Snapshot the daemon identity before starting the adapter.
+    let pre_pid = live_discovery_pid(&paths).expect("discovery.json must be live");
 
     // Now run the adapter; it must attach, NOT spawn a replacement.
     let adapter_bin = binary_path("julie-adapter");
@@ -314,16 +305,11 @@ fn test_e2e_julie_adapter_attaches_to_running_daemon() {
     );
 
     // Crucial invariant: adapter must NOT have replaced the daemon.
-    let post_pid =
-        PidFile::read_pid(&paths.daemon_pid()).expect("daemon.pid must be readable post-adapter");
+    let post_pid = live_discovery_pid(&paths).expect("discovery.json must stay live post-adapter");
     assert_eq!(
         pre_pid, post_pid,
         "adapter must attach to running daemon — not spawn a replacement (pre_pid={}, post_pid={})",
         pre_pid, post_pid
-    );
-    assert!(
-        PidFile::is_process_alive(post_pid),
-        "pre-started daemon must still be alive after adapter exit"
     );
 }
 
@@ -364,9 +350,9 @@ fn test_e2e_daemon_survives_adapter_exit() {
     // Daemon must still be alive a moment later (detached spawn).
     std::thread::sleep(Duration::from_secs(1));
     let pid =
-        PidFile::read_pid(&paths.daemon_pid()).expect("daemon.pid must exist after adapter exit");
+        live_discovery_pid(&paths).expect("discovery.json must remain live after adapter exit");
     assert!(
-        PidFile::is_process_alive(pid),
+        pid > 0,
         "daemon (PID {}) must survive adapter exit — detached spawn is the contract",
         pid
     );
@@ -402,8 +388,7 @@ fn test_e2e_adapter_exits_when_daemon_dies() {
         "daemon must reach readiness within 60s"
     );
 
-    let daemon_pid =
-        PidFile::read_pid(&paths.daemon_pid()).expect("daemon.pid must be readable");
+    let daemon_pid = live_discovery_pid(&paths).expect("discovery.json must be live");
 
     // Send a minimal MCP initialize WITHOUT closing stdin. The adapter
     // stays running after the response.

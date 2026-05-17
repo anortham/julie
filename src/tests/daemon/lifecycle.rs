@@ -1,3 +1,4 @@
+use crate::daemon::discovery::{DiscoveryFile, DiscoveryRecord};
 use crate::daemon::lifecycle::{
     DaemonLifecycleController, DaemonStatus, DisconnectLifecycleAction, IncomingSessionAction,
     LifecycleEvent, LifecyclePhase, RestartHandoffAction, RestartReason, ShutdownCause,
@@ -25,6 +26,25 @@ fn test_status_reports_running_with_valid_pid() {
     match check_status(&paths) {
         DaemonStatus::Running { pid } => assert_eq!(pid, std::process::id()),
         other => panic!("Expected Running, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_status_reports_running_with_valid_discovery_without_pid_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = DaemonPaths::with_home(dir.path().to_path_buf());
+    paths.ensure_dirs().unwrap();
+    let record = DiscoveryRecord::for_current_process(
+        "127.0.0.1",
+        17892,
+        paths.token_file(),
+        paths.julie_home().join("daemon.log"),
+    );
+    DiscoveryFile::write_atomic(&paths.discovery_file(), &record).unwrap();
+
+    match check_status(&paths) {
+        DaemonStatus::Running { pid } => assert_eq!(pid, std::process::id()),
+        other => panic!("Expected Running from discovery.json, got {:?}", other),
     }
 }
 

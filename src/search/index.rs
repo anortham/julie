@@ -150,6 +150,12 @@ fn symbol_result_matches_filter(result: &SymbolSearchResult, filter: &SearchFilt
 }
 
 /// A symbol search result with relevance score.
+///
+/// `role`, `test_role`, and `capability_flags` are populated from the
+/// C.3-enriched Tantivy schema fields when present, or re-derived from
+/// `file_path + language` for non-Tantivy result sources (e.g. KNN/embedding
+/// fallback in `hybrid.rs`). Consumers can therefore rely on these always
+/// being set without inspecting which engine produced the result.
 #[derive(Debug, Clone)]
 pub struct SymbolSearchResult {
     pub id: String,
@@ -161,6 +167,13 @@ pub struct SymbolSearchResult {
     pub language: String,
     pub start_line: u32,
     pub score: f32,
+    /// `"src"`, `"test"`, `"docs"`, `"vendor"`, `"generated"`, `"config"`,
+    /// `"build"`, or `""` if unclassified.
+    pub role: String,
+    /// `"impl_test"`, `"helper_test"`, `"fixture_test"`, `"smoke_test"`, or `""`.
+    pub test_role: String,
+    /// Reserved for future contract-capability metadata. Empty in current schema.
+    pub capability_flags: String,
 }
 
 /// Result from search_symbols, includes metadata about the search.
@@ -578,6 +591,9 @@ impl SearchIndex {
                 language: Self::get_text_field(&doc, f.language),
                 start_line: Self::get_u64_field(&doc, f.start_line) as u32,
                 score,
+                role: Self::get_text_field(&doc, f.role),
+                test_role: Self::get_text_field(&doc, f.test_role),
+                capability_flags: Self::get_text_field(&doc, f.capability_flags),
             });
         }
 
@@ -670,6 +686,9 @@ impl SearchIndex {
                 language: Self::get_text_field(&doc, f.language),
                 start_line: Self::get_u64_field(&doc, f.start_line) as u32,
                 score,
+                role: Self::get_text_field(&doc, f.role),
+                test_role: Self::get_text_field(&doc, f.test_role),
+                capability_flags: Self::get_text_field(&doc, f.capability_flags),
             });
         }
 

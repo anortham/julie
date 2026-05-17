@@ -153,9 +153,7 @@ impl FastRefsTool {
 
         if definitions.is_empty() && references.is_empty() {
             // Attempt semantic fallback (works for both primary and explicit workspaces)
-            let semantic_section = self
-                .try_semantic_fallback(handler, &workspace_target)
-                .await;
+            let semantic_section = self.try_semantic_fallback(handler, &workspace_target).await;
 
             let empty_names = HashMap::new();
             let mut result_text = format_lean_refs_results(&self.symbol, &[], &[], &empty_names);

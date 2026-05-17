@@ -284,14 +284,8 @@ mod tests {
     #[cfg(target_os = "linux")]
     fn test_linux_process_identity_is_deterministic_for_same_inputs() {
         use crate::daemon::pid::linux_process_identity_from_parts;
-        let a = linux_process_identity_from_parts(
-            "12345678-1234-5678-1234-567890abcdef",
-            42_000,
-        );
-        let b = linux_process_identity_from_parts(
-            "12345678-1234-5678-1234-567890abcdef",
-            42_000,
-        );
+        let a = linux_process_identity_from_parts("12345678-1234-5678-1234-567890abcdef", 42_000);
+        let b = linux_process_identity_from_parts("12345678-1234-5678-1234-567890abcdef", 42_000);
         assert_eq!(
             a, b,
             "same boot_id + same ticks must produce the same identity \
@@ -308,14 +302,9 @@ mod tests {
     #[cfg(target_os = "linux")]
     fn test_linux_process_identity_changes_when_boot_id_changes() {
         use crate::daemon::pid::linux_process_identity_from_parts;
-        let pre = linux_process_identity_from_parts(
-            "12345678-1234-5678-1234-567890abcdef",
-            42_000,
-        );
-        let post = linux_process_identity_from_parts(
-            "ffffffff-ffff-ffff-ffff-ffffffffffff",
-            42_000,
-        );
+        let pre = linux_process_identity_from_parts("12345678-1234-5678-1234-567890abcdef", 42_000);
+        let post =
+            linux_process_identity_from_parts("ffffffff-ffff-ffff-ffff-ffffffffffff", 42_000);
         assert_ne!(
             pre, post,
             "different boot_id must produce different identity — otherwise a \
@@ -331,14 +320,8 @@ mod tests {
     #[cfg(target_os = "linux")]
     fn test_linux_process_identity_changes_when_ticks_change() {
         use crate::daemon::pid::linux_process_identity_from_parts;
-        let a = linux_process_identity_from_parts(
-            "12345678-1234-5678-1234-567890abcdef",
-            42_000,
-        );
-        let b = linux_process_identity_from_parts(
-            "12345678-1234-5678-1234-567890abcdef",
-            42_001,
-        );
+        let a = linux_process_identity_from_parts("12345678-1234-5678-1234-567890abcdef", 42_000);
+        let b = linux_process_identity_from_parts("12345678-1234-5678-1234-567890abcdef", 42_001);
         assert_ne!(
             a, b,
             "different start_ticks must produce different identity — \
@@ -559,7 +542,10 @@ mod tests {
             PidFileStatus::Indeterminate,
             "empty PID file with small-skew future mtime should remain Indeterminate"
         );
-        assert!(path.exists(), "Indeterminate status must NOT remove the file");
+        assert!(
+            path.exists(),
+            "Indeterminate status must NOT remove the file"
+        );
     }
 
     /// `check_running` collapses both `Dead` and `Indeterminate` to `None`

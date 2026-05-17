@@ -97,6 +97,7 @@ impl DeepDiveTool {
                     .await?;
 
                 let result = tokio::task::spawn_blocking(move || -> Result<String> {
+                    let pooled_db = pooled_db.into_read_snapshot()?;
                     deep_dive_query(
                         &pooled_db,
                         &symbol_name,
@@ -117,13 +118,11 @@ impl DeepDiveTool {
         }
 
         // Primary workspace: use the current-primary DB store, not the stale loaded one.
-        let db_arc = handler.primary_database().await?;
+        let pooled_db = handler.primary_pooled_database().await?;
 
         // All database work in spawn_blocking (SQLite is synchronous)
         let result = tokio::task::spawn_blocking(move || -> Result<String> {
-            let db = db_arc
-                .lock()
-                .map_err(|e| anyhow::anyhow!("Database lock error: {}", e))?;
+            let db = pooled_db.into_read_snapshot()?;
             deep_dive_query(
                 &db,
                 &symbol_name,

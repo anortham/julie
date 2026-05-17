@@ -2,7 +2,7 @@ use super::ManageWorkspaceTool;
 use super::force_safeguards::{cancel_embedding_tasks, workspace_ids_for_force_reindex};
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::{CallToolResult, CallToolResultExt, Content};
-use crate::workspace::mutation_gate::{MutationGuard, acquire_gate};
+use crate::workspace::mutation_gate::MutationGuard;
 use anyhow::Result;
 use std::path::{Path, PathBuf};
 use tracing::{debug, error, info, warn};
@@ -26,8 +26,8 @@ impl ManageWorkspaceTool {
     }
 
     /// Variant for callers that already hold the workspace mutation gate.
-    /// Skips the internal `acquire_gate` call (which would deadlock) and uses
-    /// the caller's guard as the proof token.
+    /// Skips internal mutation-gate acquisition (which would deadlock) and
+    /// uses the caller's guard as the proof token.
     pub(crate) async fn handle_index_command_with_guard(
         &self,
         handler: &JulieServerHandler,
@@ -147,7 +147,7 @@ impl ManageWorkspaceTool {
         let _mutation_guard: &MutationGuard<'_> = match existing_guard {
             Some(g) => g,
             None => {
-                _local_guard = acquire_gate(&gate_workspace_id).await;
+                _local_guard = handler.acquire_mutation_gate(&gate_workspace_id).await;
                 &_local_guard
             }
         };
@@ -422,9 +422,7 @@ impl ManageWorkspaceTool {
                                 )
                                 .await;
                             if embed_outcome.deferred {
-                                message.push_str(
-                                    "\nEmbedding queued while provider initializes.",
-                                );
+                                message.push_str("\nEmbedding queued while provider initializes.");
                             } else if embed_outcome.symbols > 0 {
                                 message.push_str(&format!(
                                     "\nEmbedding {} symbols in background...",
@@ -479,9 +477,8 @@ impl ManageWorkspaceTool {
                                     )
                                     .await;
                                 if embed_outcome.deferred {
-                                    message.push_str(
-                                        "\nEmbedding queued while provider initializes.",
-                                    );
+                                    message
+                                        .push_str("\nEmbedding queued while provider initializes.");
                                 } else if embed_outcome.symbols > 0 {
                                     message.push_str(&format!(
                                         "\nEmbedding {} symbols in background...",
@@ -509,8 +506,8 @@ impl ManageWorkspaceTool {
 
     /// Perform workspace indexing while holding the mutation gate.
     ///
-    /// The caller must acquire the gate via [`acquire_gate`] and pass the
-    /// resulting [`MutationGuard`] here as a proof token.  This makes it
+    /// The caller must pass the resulting [`MutationGuard`] here as a proof
+    /// token.  This makes it
     /// impossible (at compile time) to call this function without holding
     /// the shared workspace mutex.
     pub(crate) async fn index_workspace_inner(

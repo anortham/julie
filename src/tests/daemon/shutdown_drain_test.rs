@@ -237,9 +237,13 @@ fn test_publish_discovery_phase_rewrites_existing_record() {
     // read_and_validate also returns Live (PID is alive == us).
     let token_path = dir.path().join("daemon.token");
     let log_path = dir.path().join("daemon.log");
-    let original = DiscoveryRecord::for_current_process(4242, token_path.clone(), log_path.clone());
-    DiscoveryFile::write_atomic(&discovery_path, &original)
-        .expect("seed initial discovery.json");
+    let original = DiscoveryRecord::for_current_process(
+        "127.0.0.1",
+        4242,
+        token_path.clone(),
+        log_path.clone(),
+    );
+    DiscoveryFile::write_atomic(&discovery_path, &original).expect("seed initial discovery.json");
 
     // Sanity: it round-trips and the original phase is "running".
     match DiscoveryFile::read_and_validate(&discovery_path) {
@@ -280,13 +284,17 @@ fn test_recovery_marker_json_shape() {
         json["shutdown_timestamp_micros"], 1_700_000_000_000_000i64,
         "shutdown_timestamp_micros must be present"
     );
-    assert_eq!(json["drain_timeout_secs"], 60, "drain_timeout_secs must be present");
+    assert_eq!(
+        json["drain_timeout_secs"], 60,
+        "drain_timeout_secs must be present"
+    );
     assert_eq!(
         json["active_sessions_at_timeout"], 3,
         "active_sessions_at_timeout must be present"
     );
     assert_eq!(
-        json["affected_workspaces"], serde_json::json!(["ws_abc"]),
+        json["affected_workspaces"],
+        serde_json::json!(["ws_abc"]),
         "affected_workspaces must be present"
     );
 }
@@ -414,23 +422,21 @@ async fn test_http_transport_returns_503_then_502_on_shutdown_state() {
     // Sanity: state is running, MCP path responds with something that is
     // not 503/502. We don't assert exact code — the MCP handler does its
     // own protocol validation; we only care that the gate didn't fire.
-    let (status, _body) = tokio::task::spawn_blocking(move || {
-        raw_http(addr, "POST", MCP_PATH, Some("{}"))
-    })
-    .await
-    .expect("blocking join")
-    .expect("running-state POST");
+    let (status, _body) =
+        tokio::task::spawn_blocking(move || raw_http(addr, "POST", MCP_PATH, Some("{}")))
+            .await
+            .expect("blocking join")
+            .expect("running-state POST");
     assert_ne!(status, 503, "before draining, MCP path must not return 503");
     assert_ne!(status, 502, "before draining, MCP path must not return 502");
 
     // Flip to draining: new requests get 503 Retry-After.
     transport.shutdown_state().mark_draining();
-    let (status, body) = tokio::task::spawn_blocking(move || {
-        raw_http(addr, "POST", MCP_PATH, Some("{}"))
-    })
-    .await
-    .expect("blocking join")
-    .expect("draining-state POST");
+    let (status, body) =
+        tokio::task::spawn_blocking(move || raw_http(addr, "POST", MCP_PATH, Some("{}")))
+            .await
+            .expect("blocking join")
+            .expect("draining-state POST");
     assert_eq!(status, 503, "while draining, MCP path must return 503");
     assert!(
         has_retry_after_1(&body),
@@ -438,12 +444,11 @@ async fn test_http_transport_returns_503_then_502_on_shutdown_state() {
     );
 
     // Readiness must still work so adapters know the transport is reachable.
-    let (ready_status, _) = tokio::task::spawn_blocking(move || {
-        raw_http(addr, "GET", READINESS_PATH, None)
-    })
-    .await
-    .expect("blocking join")
-    .expect("readiness probe");
+    let (ready_status, _) =
+        tokio::task::spawn_blocking(move || raw_http(addr, "GET", READINESS_PATH, None))
+            .await
+            .expect("blocking join")
+            .expect("readiness probe");
     assert_eq!(
         ready_status, 204,
         "readiness route must remain 204 while draining"
@@ -451,13 +456,76 @@ async fn test_http_transport_returns_503_then_502_on_shutdown_state() {
 
     // Flip to aborted: requests bouncing through the gate get 502.
     transport.shutdown_state().mark_aborted();
-    let (status, _) = tokio::task::spawn_blocking(move || {
-        raw_http(addr, "POST", MCP_PATH, Some("{}"))
-    })
-    .await
-    .expect("blocking join")
-    .expect("aborted-state POST");
+    let (status, _) =
+        tokio::task::spawn_blocking(move || raw_http(addr, "POST", MCP_PATH, Some("{}")))
+            .await
+            .expect("blocking join")
+            .expect("aborted-state POST");
     assert_eq!(status, 502, "after abort, MCP path must return 502");
 
     transport.shutdown().await.expect("transport shutdown");
+}
+
+/// A stuck client connection must not make forced transport shutdown wait
+/// forever after the daemon has already declared the drain aborted.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_http_transport_forced_shutdown_returns_with_stuck_connection() {
+    use std::io::Write;
+    use std::net::{IpAddr, Ipv4Addr, TcpStream};
+
+    use rmcp::ServerHandler;
+
+    use crate::daemon::http_transport::{HttpTransportConfig, HttpTransportServer, MCP_PATH};
+
+    #[derive(Clone)]
+    struct NoopHandler;
+    impl ServerHandler for NoopHandler {}
+
+    let (paths, _dir) = make_paths();
+    let transport = HttpTransportServer::bind(
+        paths,
+        HttpTransportConfig {
+            bind_host: IpAddr::V4(Ipv4Addr::LOCALHOST),
+            bearer_token: None,
+            ..HttpTransportConfig::default()
+        },
+        || Ok(NoopHandler),
+    )
+    .await
+    .expect("bind test transport");
+
+    let addr = transport.local_addr();
+    let stuck_client = tokio::task::spawn_blocking(move || {
+        let mut stream = TcpStream::connect(addr).expect("connect stuck client");
+        stream
+            .write_all(
+                format!(
+                    "POST {MCP_PATH} HTTP/1.1\r\n\
+                     Host: {addr}\r\n\
+                     Content-Type: application/json\r\n\
+                     Content-Length: 1024\r\n\
+                     \r\n\
+                     {{"
+                )
+                .as_bytes(),
+            )
+            .expect("write partial request");
+        std::thread::sleep(Duration::from_secs(5));
+    });
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    transport.shutdown_state().mark_aborted();
+
+    let forced = tokio::time::timeout(
+        Duration::from_secs(1),
+        transport.shutdown_forced(Duration::from_millis(100)),
+    )
+    .await;
+
+    assert!(
+        forced.is_ok(),
+        "forced shutdown must return even when a client keeps a request open"
+    );
+    forced.unwrap().expect("forced transport shutdown");
+    stuck_client.abort();
 }

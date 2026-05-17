@@ -51,8 +51,7 @@ mod tests {
     fn test_daemon_lock_try_acquire_fails_when_held() {
         let (_dir, path) = temp_lock_path();
 
-        let _first =
-            DaemonLockGuard::try_acquire(&path).expect("first acquire must succeed");
+        let _first = DaemonLockGuard::try_acquire(&path).expect("first acquire must succeed");
 
         let result = DaemonLockGuard::try_acquire(&path);
 
@@ -63,7 +62,10 @@ mod tests {
                     "LockAlreadyHeld must report the contended path"
                 );
             }
-            Err(AcquireError::Io { path: io_path, source }) => panic!(
+            Err(AcquireError::Io {
+                path: io_path,
+                source,
+            }) => panic!(
                 "expected AcquireError::AlreadyHeld, got Io error at {}: {}",
                 io_path.display(),
                 source
@@ -83,8 +85,7 @@ mod tests {
         let (_dir, path) = temp_lock_path();
 
         {
-            let first =
-                DaemonLockGuard::try_acquire(&path).expect("first acquire must succeed");
+            let first = DaemonLockGuard::try_acquire(&path).expect("first acquire must succeed");
             drop(first);
         }
 

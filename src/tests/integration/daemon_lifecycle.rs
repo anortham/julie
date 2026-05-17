@@ -14,6 +14,7 @@ mod tests {
     use anyhow::Result;
 
     use crate::daemon::database::DaemonDatabase;
+    use crate::daemon::discovery::{DiscoveryFile, DiscoveryState};
     use crate::daemon::lifecycle::stop_daemon;
     use crate::daemon::transport::TransportEndpoint;
     use crate::daemon::watcher_pool::WatcherPool;
@@ -50,7 +51,7 @@ mod tests {
     }
 
     // ---------------------------------------------------------------
-    // Test 1: Daemon starts, creates PID, stops cleanly
+    // Test 1: Daemon starts, publishes discovery, cleans state
     // ---------------------------------------------------------------
 
     /// Poll for a file to appear, up to a deadline.
@@ -137,21 +138,20 @@ mod tests {
         let mut daemon_handle =
             tokio::spawn(async move { crate::daemon::run_daemon(paths_for_daemon, 0, true).await });
 
-        // Poll for the PID file rather than using a fixed sleep. The embedding
-        // service init can take several seconds on first run, so a fixed 300ms
-        // window is too tight.
-        let pid_path = paths.daemon_pid();
+        let discovery_path = paths.discovery_file();
         assert!(
-            wait_for_file(&pid_path, std::time::Duration::from_secs(30)).await,
-            "PID file should appear within 30s at {}",
-            pid_path.display()
+            wait_for_file(&discovery_path, std::time::Duration::from_secs(30)).await,
+            "discovery.json should appear within 30s at {}",
+            discovery_path.display()
         );
-        // After the v7.7.x format change the file is `<pid> <ctime> <mtime>`,
-        // so use the first-field parser instead of treating the whole file as
-        // a single integer.
-        let pid =
-            crate::daemon::pid::PidFile::read_pid(&pid_path).expect("PID file should be readable");
-        assert_eq!(pid, std::process::id(), "PID should match our process");
+        match DiscoveryFile::read_and_validate(&discovery_path) {
+            DiscoveryState::Live(record) => assert_eq!(
+                record.pid,
+                std::process::id(),
+                "in-process daemon should publish the current process PID"
+            ),
+            other => panic!("expected live discovery.json, got {other:?}"),
+        }
 
         // State file plus HTTP readiness is the daemon startup contract.
         wait_for_daemon_ready(
@@ -168,9 +168,9 @@ mod tests {
         let _ = daemon_handle.await;
 
         // `stop_daemon` is for an out-of-process daemon. Drop the in-process
-        // PID file first so it takes the stale cleanup path instead of waiting
-        // for the current test process to exit.
-        let _ = std::fs::remove_file(&pid_path);
+        // discovery file first so cleanup takes the stale path instead of
+        // signaling the current test process.
+        let _ = std::fs::remove_file(&discovery_path);
         let stop_result = stop_daemon(&paths);
         assert!(
             stop_result.is_ok(),

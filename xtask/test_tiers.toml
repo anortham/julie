@@ -7,10 +7,10 @@ nano = ["core-database", "core-fast"]
 smoke = ["cli", "core-database", "core-embeddings", "tools-get-context-pipeline"]
 dev = ["cli", "xtask-runner", "core-database", "core-embeddings", "tools-get-context-pipeline", "tools-get-context-format", "tools-get-context-graph", "tools-search-tantivy", "tools-search-line", "tools-search-file-mode", "tools-search-zero-hit", "tools-search-promotion", "tools-search-format-quality", "tools-search-context", "tools-search-text", "tools-search-hybrid", "tools-search-query", "tools-workspace", "tools-workspace-targeting", "tools-get-symbols", "tools-editing", "tools-deep-dive", "tools-call-path", "tools-fast-refs", "tools-blast-spillover", "tools-refactoring", "tools-metrics", "tools-format-filter", "analysis", "core-fast", "daemon", "dashboard"]
 # System coverage kept separate from fast local buckets.
-system = ["projection", "transport", "lifecycle", "workspace-runtime", "workspace-init", "integration"]
+system = ["projection", "transport", "lifecycle", "workspace-runtime", "workspace-init", "documentation-indexing", "integration"]
 # Dogfood stays isolated because it is the long pole.
 dogfood = ["tools-dogfood-repo-index", "search-quality"]
-full = ["cli", "xtask-runner", "core-database", "core-embeddings", "tools-get-context-pipeline", "tools-get-context-format", "tools-get-context-graph", "tools-search-tantivy", "tools-search-line", "tools-search-file-mode", "tools-search-zero-hit", "tools-search-promotion", "tools-search-format-quality", "tools-search-context", "tools-search-text", "tools-search-hybrid", "tools-search-query", "tools-workspace", "tools-workspace-targeting", "tools-get-symbols", "tools-editing", "tools-deep-dive", "tools-call-path", "tools-fast-refs", "tools-blast-spillover", "tools-refactoring", "tools-metrics", "tools-format-filter", "analysis", "core-fast", "daemon", "dashboard", "projection", "transport", "lifecycle", "workspace-runtime", "workspace-init", "integration", "tools-dogfood-repo-index", "search-quality"]
+full = ["cli", "xtask-runner", "core-database", "core-embeddings", "tools-get-context-pipeline", "tools-get-context-format", "tools-get-context-graph", "tools-search-tantivy", "tools-search-line", "tools-search-file-mode", "tools-search-zero-hit", "tools-search-promotion", "tools-search-format-quality", "tools-search-context", "tools-search-text", "tools-search-hybrid", "tools-search-query", "tools-workspace", "tools-workspace-targeting", "tools-get-symbols", "tools-editing", "tools-deep-dive", "tools-call-path", "tools-fast-refs", "tools-blast-spillover", "tools-refactoring", "tools-metrics", "tools-format-filter", "analysis", "core-fast", "daemon", "dashboard", "projection", "transport", "lifecycle", "workspace-runtime", "workspace-init", "documentation-indexing", "integration", "tools-dogfood-repo-index", "search-quality"]
 
 [blocked_tiers]
 
@@ -189,11 +189,15 @@ notes = "hybrid search coverage"
 commands = ["cargo nextest run --lib tests::tools::hybrid_search_tests -- --skip search_quality"]
 
 [buckets.tools-search-query]
-expected_seconds = 5
-timeout_seconds = 30
+expected_seconds = 8
+timeout_seconds = 45
 scope_label = "tooling"
-notes = "search query preprocessing"
-commands = ["cargo nextest run --lib tools::search::query_preprocessor::tests -- --skip search_quality"]
+notes = "search query parsing and preprocessing"
+commands = [
+  "cargo nextest run --lib search::query_parse::tests -- --skip search_quality",
+  "cargo nextest run --lib tests::tools::search::reranker_tests -- --skip search_quality",
+  "cargo nextest run --lib tools::search::query_preprocessor::tests -- --skip search_quality",
+]
 
 [buckets.tools-workspace]
 # Workspace management without the heavy targeting fixtures (carved out into
@@ -453,7 +457,17 @@ expected_seconds = 130
 timeout_seconds = 240
 scope_label = "system"
 notes = "cross-cutting integration"
-commands = ["cargo nextest run --lib tests::integration -- --skip search_quality"]
+commands = ["cargo nextest run --lib tests::integration -- --skip search_quality --skip documentation_indexing"]
+
+[buckets.documentation-indexing]
+# Documentation indexing is a heavy indexing slice and can starve inside the
+# all-integration nextest process. Keep the coverage, but run it as its own
+# system bucket with a bounded budget.
+expected_seconds = 25
+timeout_seconds = 90
+scope_label = "system"
+notes = "documentation indexing integration coverage"
+commands = ["cargo nextest run --lib tests::integration::documentation_indexing -- --skip search_quality"]
 
 [buckets.tools-dogfood-repo-index]
 # Dogfood test that indexes the full julie repo (~164s). Isolated from tools-misc

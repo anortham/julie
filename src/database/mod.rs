@@ -100,6 +100,10 @@ pub struct SymbolDatabase {
     pub(crate) file_path: PathBuf,
 }
 
+pub(crate) struct ReadSnapshot {
+    db: SymbolDatabase,
+}
+
 impl SymbolDatabase {
     /// Create a new database connection and initialize schema
     pub fn new<P: AsRef<Path>>(db_path: P) -> Result<Self> {
@@ -258,6 +262,36 @@ impl SymbolDatabase {
         Self {
             conn: SymbolDatabaseConn::Pooled(pooled),
             file_path,
+        }
+    }
+
+    pub(crate) fn into_read_snapshot(self) -> Result<ReadSnapshot> {
+        self.conn.execute_batch("BEGIN DEFERRED TRANSACTION")?;
+        Ok(ReadSnapshot { db: self })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn is_autocommit_for_test(&self) -> bool {
+        self.conn.is_autocommit()
+    }
+}
+
+impl std::ops::Deref for ReadSnapshot {
+    type Target = SymbolDatabase;
+
+    fn deref(&self) -> &SymbolDatabase {
+        &self.db
+    }
+}
+
+impl Drop for ReadSnapshot {
+    fn drop(&mut self) {
+        if self.db.conn.is_autocommit() {
+            return;
+        }
+
+        if let Err(error) = self.db.conn.execute_batch("ROLLBACK") {
+            warn!("Failed to roll back read snapshot transaction: {}", error);
         }
     }
 }

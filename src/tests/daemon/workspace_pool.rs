@@ -181,6 +181,85 @@ async fn test_concurrent_get_or_init_different_workspaces() {
     assert!(Arc::ptr_eq(&ws_b, &cached_b));
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn test_concurrent_same_workspace_init_does_not_hold_global_map_lock() {
+    use fs2::FileExt;
+
+    let indexes_dir = temp_indexes_dir();
+    let pool = Arc::new(WorkspacePool::new(indexes_dir.path().to_path_buf(), None));
+
+    let cached_root = temp_workspace_root();
+    let cached_ws = pool
+        .get_or_init("cached_ws", cached_root.path().to_path_buf())
+        .await
+        .expect("cached workspace should initialize");
+
+    let race_root = temp_workspace_root();
+    let race_db_dir = indexes_dir.path().join("race_ws").join("db");
+    std::fs::create_dir_all(&race_db_dir).expect("race db dir should be creatable");
+    let lock_path = race_db_dir.join(".symbols.db.init.lock");
+    let lock_file = std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(false)
+        .open(&lock_path)
+        .expect("database init lock file should open");
+    lock_file
+        .lock_exclusive()
+        .expect("test should acquire database init lock");
+
+    let pool_for_first = Arc::clone(&pool);
+    let first_root = race_root.path().to_path_buf();
+    let first =
+        tokio::spawn(async move { pool_for_first.get_or_init("race_ws", first_root).await });
+
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+    let pool_for_second = Arc::clone(&pool);
+    let second_root = race_root.path().to_path_buf();
+    let second =
+        tokio::spawn(async move { pool_for_second.get_or_init("race_ws", second_root).await });
+
+    let cached_lookup =
+        tokio::time::timeout(std::time::Duration::from_millis(200), pool.get("cached_ws")).await;
+
+    lock_file
+        .unlock()
+        .expect("test should release database init lock");
+
+    let cached_lookup = cached_lookup
+        .expect("cached workspace lookup must not wait on a different workspace initialization")
+        .expect("cached workspace should remain available");
+    assert!(
+        Arc::ptr_eq(&cached_ws, &cached_lookup),
+        "cached lookup should return the original workspace"
+    );
+
+    let first_ws = tokio::time::timeout(std::time::Duration::from_secs(5), first)
+        .await
+        .expect("first initializer should finish after lock release")
+        .expect("first initializer task should not panic")
+        .expect("first initializer should succeed");
+    let second_ws = tokio::time::timeout(std::time::Duration::from_secs(5), second)
+        .await
+        .expect("second initializer should finish after lock release")
+        .expect("second initializer task should not panic")
+        .expect("second initializer should succeed");
+
+    assert!(
+        Arc::ptr_eq(&first_ws, &second_ws),
+        "same-key concurrent initialization should return one canonical workspace"
+    );
+    let cached_race = pool
+        .get("race_ws")
+        .await
+        .expect("race workspace should be cached");
+    assert!(
+        Arc::ptr_eq(&first_ws, &cached_race),
+        "pool cache should hold the same canonical workspace returned to callers"
+    );
+}
+
 #[tokio::test]
 async fn test_workspace_pool_accepts_daemon_db() {
     let tmp = tempfile::TempDir::new().unwrap();

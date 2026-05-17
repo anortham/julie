@@ -35,6 +35,7 @@ use crate::database::SymbolDatabase;
 use crate::extractors::ExtractorManager;
 use crate::tools::workspace::indexing::state::{IndexingRepairReason, SharedIndexingRuntime};
 use crate::workspace::mutation_gate::MutationGuard;
+use crate::workspace::mutation_gate::Registry as MutationGateRegistry;
 
 pub use types::{FileChangeEvent, FileChangeType, IndexingStats};
 
@@ -108,6 +109,7 @@ pub struct IncrementalIndexer {
 
     /// Shared indexing runtime snapshot for health and dashboard reporting.
     indexing_runtime: SharedIndexingRuntime,
+    mutation_gate_registry: Arc<MutationGateRegistry>,
 
     /// Join handles for the event detector and queue processor tasks.
     /// Stored so stop() can join them for a clean, non-aborting shutdown (Fix D).
@@ -330,6 +332,26 @@ impl IncrementalIndexer {
         embedding_provider: SharedEmbeddingProvider,
         indexing_runtime: SharedIndexingRuntime,
     ) -> Result<Self> {
+        Self::new_with_mutation_gate_registry(
+            workspace_root,
+            db,
+            extractor_manager,
+            search_index,
+            embedding_provider,
+            indexing_runtime,
+            Arc::clone(MutationGateRegistry::global()),
+        )
+    }
+
+    pub(crate) fn new_with_mutation_gate_registry(
+        workspace_root: PathBuf,
+        db: Arc<StdMutex<SymbolDatabase>>,
+        extractor_manager: Arc<ExtractorManager>,
+        search_index: Option<Arc<StdMutex<crate::search::SearchIndex>>>,
+        embedding_provider: SharedEmbeddingProvider,
+        indexing_runtime: SharedIndexingRuntime,
+        mutation_gate_registry: Arc<MutationGateRegistry>,
+    ) -> Result<Self> {
         let supported_extensions = filtering::build_supported_extensions();
         let gitignore = filtering::build_gitignore_matcher(&workspace_root)?;
         let lang_configs =
@@ -359,6 +381,7 @@ impl IncrementalIndexer {
             needs_rescan: Arc::new(AtomicBool::new(false)),
             tantivy_dirty: Arc::new(StdMutex::new(std::collections::HashSet::new())),
             indexing_runtime,
+            mutation_gate_registry,
             event_task: None,
             queue_task: None,
         })
@@ -465,9 +488,11 @@ impl IncrementalIndexer {
             self.supported_extensions.clone(),
             self.workspace_root.clone(),
             self.workspace_id.clone(),
+            Arc::clone(&self.cancel_flag),
             Arc::clone(&self.needs_rescan),
             Arc::clone(&self.tantivy_dirty),
             Arc::clone(&self.indexing_runtime),
+            Arc::clone(&self.mutation_gate_registry),
         );
 
         let queue_handle = tokio::spawn(async move {

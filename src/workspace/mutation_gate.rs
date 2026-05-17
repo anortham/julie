@@ -95,6 +95,19 @@ impl Registry {
             _lifetime: std::marker::PhantomData,
         }
     }
+
+    /// Try to acquire the mutation gate without waiting.
+    ///
+    /// Used by shutdown paths that must not block forever when the caller
+    /// already owns the same workspace gate.
+    pub(crate) fn try_acquire(&self, workspace_id: &str) -> Option<MutationGuard<'static>> {
+        let arc = self.arc_for(workspace_id);
+        let guard = arc.try_lock_owned().ok()?;
+        Some(MutationGuard {
+            _guard: guard,
+            _lifetime: std::marker::PhantomData,
+        })
+    }
 }
 
 impl Default for Registry {
@@ -244,7 +257,6 @@ mod tests {
     /// doctest on `MutationGuard`.
     #[tokio::test]
     async fn test_proof_token_required_to_call_gated_fn() {
-
         fn gated_mutation(_guard: &MutationGuard<'_>) -> &'static str {
             "mutation ran"
         }
@@ -261,12 +273,9 @@ mod tests {
         let b = Registry::new();
         let _guard_a = a.acquire("ws").await;
         // b should not block — different cache.
-        let guard_b = tokio::time::timeout(
-            std::time::Duration::from_millis(50),
-            b.acquire("ws"),
-        )
-        .await
-        .expect("registry b should acquire immediately, lock is per-Registry");
+        let guard_b = tokio::time::timeout(std::time::Duration::from_millis(50), b.acquire("ws"))
+            .await
+            .expect("registry b should acquire immediately, lock is per-Registry");
         drop(guard_b);
         drop(_guard_a);
     }
@@ -292,6 +301,9 @@ mod tests {
             Registry::global().acquire("ws-delegate"),
         )
         .await;
-        assert!(attempt.is_err(), "Registry::global() must contend on the same lock as acquire_gate");
+        assert!(
+            attempt.is_err(),
+            "Registry::global() must contend on the same lock as acquire_gate"
+        );
     }
 }

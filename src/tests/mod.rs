@@ -176,8 +176,8 @@ pub mod integration {
     pub mod concurrent_mcp; // A2.3 concurrent MCP regression test (deadlock detector across pool + gate + watcher)
     pub mod daemon_lifecycle;
     pub mod documentation_indexing;
-    pub mod legacy_migration; // Daemon legacy-migration gate tests (A1.5) // Documentation indexing E2E tests (RAG POC)
     pub mod indexing_pipeline;
+    pub mod legacy_migration; // Daemon legacy-migration gate tests (A1.5) // Documentation indexing E2E tests (RAG POC)
     pub mod lock_contention; // Lock contention regression tests
     pub mod projection_repair;
     pub mod query_preprocessor_tests; // Query preprocessor comprehensive test suite (TDD)
@@ -194,11 +194,11 @@ pub mod integration {
     pub mod target_workspace; // Target-workspace tests
     pub mod tracing;
     pub mod watcher; // File watcher tests
-    pub mod wiring_a1_8; // A1.8 end-to-end wiring tests (adapter + daemon split)
     pub mod watcher_handlers; // File watcher handler tests (incremental indexing)
     pub mod watcher_mutation_gate; // Per-workspace mutation gate concurrency contract (LEAD-OWNED)
     pub mod watcher_observability; // INFO-level observability regression tests (rate limiter, gate timing)
     pub mod watcher_queue; // Watcher queue coalescing and overflow policy tests
+    pub mod wiring_a1_8; // A1.8 end-to-end wiring tests (adapter + daemon split)
     pub mod workspace_isolation_smoke; // Fast workspace isolation smoke tests // Tracing integration tests (dogfooding tests) // Daemon + adapter integration tests (lifecycle, pool sharing, IPC, migration)
     pub mod zero_hit_replay_task3; // Task 3 diagnostic harness (ignored): replay content zero-hit fixture.
     pub mod zero_hit_replay_tests; // Task 12 acceptance harness (ignored): replay zero-hit fixture end-to-end and assert rates.

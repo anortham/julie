@@ -63,7 +63,9 @@ pub async fn run() -> Result<()> {
     let paths = DaemonPaths::new();
 
     match cli.command {
-        DaemonCommand::Start { port, no_dashboard } => start_daemon(paths, port, no_dashboard).await,
+        DaemonCommand::Start { port, no_dashboard } => {
+            start_daemon(paths, port, no_dashboard).await
+        }
         DaemonCommand::Stop => stop_daemon(&paths),
         DaemonCommand::Status => {
             status_daemon(&paths);

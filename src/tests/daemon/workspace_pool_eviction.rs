@@ -25,10 +25,7 @@ fn temp_workspace_root() -> tempfile::TempDir {
     dir
 }
 
-async fn make_workspace(
-    pool: &Arc<WorkspacePool>,
-    index: usize,
-) -> (String, tempfile::TempDir) {
+async fn make_workspace(pool: &Arc<WorkspacePool>, index: usize) -> (String, tempfile::TempDir) {
     let root = temp_workspace_root();
     let base_id = generate_workspace_id(root.path().to_str().expect("path is valid utf-8"))
         .expect("generate_workspace_id should succeed");
@@ -80,13 +77,60 @@ async fn test_sweep_preserves_recently_accessed_workspace() {
         .sweep_idle_workspaces(&watcher_pool, Duration::from_millis(40))
         .await;
 
-    assert!(evicted.contains(&id_idle), "idle workspace should be evicted");
+    assert!(
+        evicted.contains(&id_idle),
+        "idle workspace should be evicted"
+    );
     assert!(
         !evicted.contains(&id_active),
         "recently-accessed workspace should be preserved"
     );
     assert!(pool.get(&id_active).await.is_some());
     assert!(pool.get(&id_idle).await.is_none());
+}
+
+#[tokio::test]
+async fn test_sweep_evicts_idle_connections_for_warm_workspace() {
+    let indexes_dir = temp_indexes_dir();
+    let pool = Arc::new(WorkspacePool::new(indexes_dir.path().to_path_buf(), None));
+    let watcher_pool = Arc::new(WatcherPool::new(Duration::from_secs(300)));
+
+    let (workspace_id, _root) = make_workspace(&pool, 0).await;
+    let connection_pool = pool
+        .connection_pool(&workspace_id)
+        .await
+        .expect("connection pool should exist");
+
+    let c1 = connection_pool.acquire().await.expect("acquire c1");
+    let c2 = connection_pool.acquire().await.expect("acquire c2");
+    let c3 = connection_pool.acquire().await.expect("acquire c3");
+    let c4 = connection_pool.acquire().await.expect("acquire c4");
+    drop(c1);
+    drop(c2);
+    drop(c3);
+    drop(c4);
+    assert_eq!(
+        connection_pool.stats().idle,
+        4,
+        "test setup should leave surplus idle pooled connections"
+    );
+
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    let _ = pool.get(&workspace_id).await;
+
+    let evicted_workspaces = pool
+        .sweep_idle_workspaces(&watcher_pool, Duration::from_millis(20))
+        .await;
+
+    assert!(
+        evicted_workspaces.is_empty(),
+        "recently touched workspace should stay loaded"
+    );
+    assert_eq!(
+        connection_pool.stats().idle,
+        2,
+        "sweeper should evict stale idle DB connections down to pool minimum"
+    );
 }
 
 #[tokio::test]
@@ -131,7 +175,10 @@ async fn test_evict_workspace_shuts_down_search_index() {
     drop(workspace);
 
     let removed = pool.evict_workspace(&workspace_id).await;
-    assert!(removed, "evict_workspace should return true when entry existed");
+    assert!(
+        removed,
+        "evict_workspace should return true when entry existed"
+    );
 
     let idx = idx_arc.lock().expect("mutex should not be poisoned");
     assert!(

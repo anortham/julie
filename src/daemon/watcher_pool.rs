@@ -19,6 +19,7 @@ use tokio::sync::RwLock;
 use tracing::{info, warn};
 
 use crate::watcher::IncrementalIndexer;
+use crate::workspace::mutation_gate::Registry as MutationGateRegistry;
 
 /// Entry in the WatcherPool for a single workspace.
 struct WatcherEntry {
@@ -37,6 +38,7 @@ struct WatcherEntry {
 pub struct WatcherPool {
     entries: RwLock<HashMap<String, WatcherEntry>>,
     grace_period: Duration,
+    mutation_gate_registry: Arc<MutationGateRegistry>,
 }
 
 impl WatcherPool {
@@ -45,9 +47,20 @@ impl WatcherPool {
     /// `grace_period` is how long after the last session disconnects before
     /// the watcher is stopped. Typical production value: 5 minutes.
     pub fn new(grace_period: Duration) -> Self {
+        Self::new_with_mutation_gate_registry(
+            grace_period,
+            Arc::clone(MutationGateRegistry::global()),
+        )
+    }
+
+    pub fn new_with_mutation_gate_registry(
+        grace_period: Duration,
+        mutation_gate_registry: Arc<MutationGateRegistry>,
+    ) -> Self {
         Self {
             entries: RwLock::new(HashMap::new()),
             grace_period,
+            mutation_gate_registry,
         }
     }
 
@@ -122,13 +135,14 @@ impl WatcherPool {
             if let (Some(db), Some(search_index)) = (&workspace.db, &workspace.search_index) {
                 let extractor_mgr = Arc::new(crate::extractors::ExtractorManager::new());
                 let shared_provider = Arc::new(std::sync::RwLock::new(embedding_provider.clone()));
-                let mut indexer = IncrementalIndexer::new(
+                let mut indexer = IncrementalIndexer::new_with_mutation_gate_registry(
                     workspace.root.clone(),
                     db.clone(),
                     extractor_mgr,
                     Some(search_index.clone()),
                     shared_provider,
                     Arc::clone(&workspace.indexing_runtime),
+                    Arc::clone(&self.mutation_gate_registry),
                 )?;
                 indexer.start_watching().await?;
                 entry.watcher = Some(indexer);

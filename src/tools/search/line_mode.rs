@@ -12,6 +12,8 @@ use crate::database::SymbolDatabase;
 use crate::handler::JulieServerHandler;
 use crate::search::SearchFilter;
 use crate::search::index::SearchIndex;
+use crate::search::query_parse::{QueryIntent, parse_query};
+use crate::search::scoring::is_nl_like_query;
 use crate::tools::navigation::resolution::WorkspaceTarget;
 
 use super::hint_formatter::build_scope_rescue_header;
@@ -19,6 +21,7 @@ use super::line_output::format_grouped_line_matches;
 use super::query::{
     line_match_strategy, line_matches, looks_like_whitespace_separated_globs, matches_glob_pattern,
 };
+use super::text_search;
 use super::trace::{FilePatternDiagnostic, ZeroHitReason};
 use super::types::{LineMatch, LineMatchStrategy};
 
@@ -90,6 +93,14 @@ pub(crate) fn query_uses_file_level_header(query: &str) -> bool {
         line_match_strategy(query),
         LineMatchStrategy::FileLevel { .. }
     )
+}
+
+fn effective_content_exclude_tests(query: &str, exclude_tests: Option<bool>) -> bool {
+    if let Some(explicit) = exclude_tests {
+        return explicit;
+    }
+
+    parse_query(query).intent != QueryIntent::Test && is_nl_like_query(query)
 }
 
 fn scoped_fetch_limits(base_limit: usize, has_file_filter: bool) -> (usize, usize) {
@@ -318,7 +329,9 @@ fn run_line_mode_workspace_fetch(
                     poisoned.into_inner()
                 }
             };
-            Ok(index.search_content(&query, &filter, fetch_limit)?)
+            let mut results = index.search_content(&query, &filter, fetch_limit)?;
+            text_search::apply_reranker_to_content_results(&query, &mut results.results);
+            Ok(results)
         },
         |file_results| {
             collect_matches_from_file_results(
@@ -534,7 +547,7 @@ pub(crate) async fn line_mode_matches(
 ) -> Result<LineModeSearchResult> {
     debug!("📄 Line-level search for: '{}'", query);
 
-    let exclude_test_files = exclude_tests.unwrap_or(false);
+    let exclude_test_files = effective_content_exclude_tests(query, exclude_tests);
     let workspace_label = match workspace_target {
         WorkspaceTarget::Primary => "primary".to_string(),
         WorkspaceTarget::Target(id) => id.clone(),

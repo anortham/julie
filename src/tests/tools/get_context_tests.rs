@@ -19,6 +19,9 @@ mod tests {
             language: "rust".to_string(),
             start_line: 1,
             score,
+            role: String::new(),
+            test_role: String::new(),
+            capability_flags: String::new(),
         }
     }
 
@@ -132,6 +135,9 @@ mod tests {
                 language: "rust".to_string(),
                 start_line: 10,
                 score: 8.0,
+                role: String::new(),
+                test_role: String::new(),
+                capability_flags: String::new(),
             },
             // Production file has lower raw text score
             SymbolSearchResult {
@@ -144,6 +150,9 @@ mod tests {
                 language: "rust".to_string(),
                 start_line: 42,
                 score: 5.0,
+                role: String::new(),
+                test_role: String::new(),
+                capability_flags: String::new(),
             },
         ];
 
@@ -173,6 +182,9 @@ mod tests {
                 language: "rust".to_string(),
                 start_line: 5,
                 score: 10.0,
+                role: String::new(),
+                test_role: String::new(),
+                capability_flags: String::new(),
             },
             // Actual struct definition — should be selected
             SymbolSearchResult {
@@ -185,6 +197,9 @@ mod tests {
                 language: "rust".to_string(),
                 start_line: 33,
                 score: 7.0,
+                role: String::new(),
+                test_role: String::new(),
+                capability_flags: String::new(),
             },
         ];
 
@@ -216,6 +231,9 @@ mod tests {
                 language: "markdown".to_string(),
                 start_line: 1,
                 score: 9.0,
+                role: String::new(),
+                test_role: String::new(),
+                capability_flags: String::new(),
             },
             // Design doc also matches
             SymbolSearchResult {
@@ -228,6 +246,9 @@ mod tests {
                 language: "markdown".to_string(),
                 start_line: 1,
                 score: 8.0,
+                role: String::new(),
+                test_role: String::new(),
+                capability_flags: String::new(),
             },
             // Actual source code with lower text score
             SymbolSearchResult {
@@ -240,6 +261,9 @@ mod tests {
                 language: "rust".to_string(),
                 start_line: 42,
                 score: 5.0,
+                role: String::new(),
+                test_role: String::new(),
+                capability_flags: String::new(),
             },
         ];
 

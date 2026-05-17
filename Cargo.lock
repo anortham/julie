@@ -1724,6 +1724,7 @@ dependencies = [
  "tracing-subscriber",
  "tree-sitter",
  "uuid",
+ "windows-sys 0.60.2",
  "zerocopy 0.7.35",
 ]
 

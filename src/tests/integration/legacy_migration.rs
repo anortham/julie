@@ -11,7 +11,7 @@
 
 use std::fs;
 
-use crate::daemon::legacy_migration::{check_or_refuse, detect_and_attach, MigrationDecision};
+use crate::daemon::legacy_migration::{MigrationDecision, check_or_refuse, detect_and_attach};
 use crate::daemon::pid::PidFile;
 use crate::daemon::singleton::SingletonLock;
 use crate::daemon::transport::TransportEndpoint;
@@ -90,9 +90,7 @@ fn test_check_or_refuse_unowned_singleton_lock_proceeds() {
     let lock_path = paths.daemon_singleton_lock();
     fs::write(&lock_path, b"").unwrap();
 
-    match check_or_refuse(&paths)
-        .expect("check_or_refuse on unowned singleton lock must succeed")
-    {
+    match check_or_refuse(&paths).expect("check_or_refuse on unowned singleton lock must succeed") {
         MigrationDecision::ProceedAndUnlink { files_to_clean } => {
             assert!(
                 files_to_clean.iter().any(|p| p == &lock_path),
@@ -190,25 +188,33 @@ fn test_detect_and_attach_no_legacy_returns_none() {
 /// `detect_and_attach` returns a TransportEndpoint pointing at
 /// 127.0.0.1:<port>.
 #[test]
-fn test_detect_and_attach_legacy_port_returns_endpoint() {
+fn test_detect_and_attach_reads_legacy_mcp_transport_not_dashboard_port() {
     let dir = tempfile::tempdir().unwrap();
     let paths = DaemonPaths::with_home(dir.path().to_path_buf());
     paths.ensure_dirs().unwrap();
 
-    // Simulate a live legacy daemon: PID file for the current process +
-    // daemon.port pointing at a (made-up but valid) port.
+    // Simulate a live legacy daemon. The legacy MCP endpoint is published in
+    // daemon-mcp-transport.json; daemon.port is the dashboard port and must
+    // not be used for adapter MCP attachment.
     let _pid_handle = PidFile::create(&paths.daemon_pid()).unwrap();
-    let legacy_port: u16 = 17890; // Arbitrary; we don't connect, just inspect.
-    fs::write(&paths.daemon_port(), legacy_port.to_string()).unwrap();
+    let dashboard_port: u16 = 17890;
+    let mcp_port: u16 = 17891;
+    fs::write(&paths.daemon_port(), dashboard_port.to_string()).unwrap();
+    TransportEndpoint::streamable_http("127.0.0.1", mcp_port, "/mcp", "/mcp/ready", None)
+        .unwrap()
+        .publish_discovery(&paths.daemon_mcp_transport())
+        .unwrap();
 
-    let endpoint = detect_and_attach(&paths)
-        .expect("legacy port + live pid must return Some(endpoint)");
+    let endpoint =
+        detect_and_attach(&paths).expect("legacy MCP discovery + live pid must return endpoint");
 
-    // Endpoint must be Streamable HTTP on 127.0.0.1:<port>.
     match endpoint {
         TransportEndpoint::StreamableHttp { host, port, .. } => {
             assert_eq!(host, "127.0.0.1", "legacy daemon binds to localhost");
-            assert_eq!(port, legacy_port, "endpoint port must match daemon.port");
+            assert_eq!(
+                port, mcp_port,
+                "endpoint port must match MCP transport discovery"
+            );
         }
     }
 }
@@ -248,11 +254,22 @@ fn test_detect_and_attach_dead_pid_with_port_returns_none() {
 #[cfg(unix)]
 mod e2e {
     use std::env;
-    use std::io::{BufRead, BufReader, Write};
+    use std::fs;
+    use std::io::{BufRead, BufReader, Read, Write};
+    use std::net::{TcpListener, TcpStream};
     use std::path::PathBuf;
-    use std::process::{Child, Command, Stdio};
+    use std::process::{Command, Stdio};
+    use std::sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    };
+    use std::thread::{self, JoinHandle};
     use std::time::{Duration, Instant};
 
+    use crate::daemon::http_transport::{MCP_PATH, READINESS_PATH};
+    use crate::daemon::pid::PidFile;
+    use crate::daemon::singleton::SingletonLock;
+    use crate::daemon::transport::TransportEndpoint;
     use crate::paths::DaemonPaths;
 
     /// Locate a binary in `target/<profile>/`. Tries `debug` first (the usual
@@ -277,68 +294,207 @@ mod e2e {
         );
     }
 
-    /// Spawn the legacy `julie-server daemon` binary with `HOME=<tempdir>`
-    /// so all daemon paths route under `<tempdir>/.julie/`. Returns the
-    /// child process and the DaemonPaths the subprocess will use.
-    ///
-    /// IMPORTANT: `DaemonPaths::new()` (called by the subprocess) reads
-    /// `$HOME` and joins `.julie`. The test process must mirror that exact
-    /// path or it will inspect the wrong directory.
-    fn spawn_legacy_daemon(home: &std::path::Path) -> (Child, DaemonPaths) {
+    fn legacy_paths_for_home(home: &std::path::Path) -> DaemonPaths {
         let julie_home = home.join(".julie");
         let paths = DaemonPaths::with_home(julie_home.clone());
         paths.ensure_dirs().expect("ensure_dirs on temp HOME");
-
-        let bin = binary_path("julie-server");
-        let mut cmd = Command::new(&bin);
-        cmd.arg("daemon")
-            .arg("--port")
-            .arg("0") // Auto-assign port to avoid clashes in parallel tests.
-            .arg("--no-dashboard")
-            .env("HOME", home)
-            // Some embedded test envs ignore HOME — set XDG_CONFIG_HOME as a
-            // belt-and-suspenders backup, even though Julie doesn't read it.
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null());
-
-        let child = cmd
-            .spawn()
-            .expect("failed to spawn julie-server daemon subprocess");
-
-        (child, paths)
+        paths
     }
 
-    /// Poll for the legacy daemon to reach readiness: `daemon.pid` exists +
-    /// `daemon.port` exists + the PID inside daemon.pid is alive. Returns
-    /// true on success, false on timeout.
-    fn wait_for_legacy_ready(paths: &DaemonPaths, timeout: Duration) -> bool {
-        let deadline = Instant::now() + timeout;
-        while Instant::now() < deadline {
-            if paths.daemon_pid().exists() && paths.daemon_port().exists() {
-                if let Some(pid) = crate::daemon::pid::PidFile::read_pid(&paths.daemon_pid()) {
-                    if crate::daemon::pid::PidFile::is_process_alive(pid) {
-                        return true;
+    struct LegacyDaemonFixture {
+        paths: DaemonPaths,
+        port: u16,
+        stop: Arc<AtomicBool>,
+        thread: Option<JoinHandle<()>>,
+        _pid_file: PidFile,
+        _singleton_lock: SingletonLock,
+    }
+
+    impl LegacyDaemonFixture {
+        fn spawn(home: &std::path::Path) -> Self {
+            let paths = legacy_paths_for_home(home);
+            let listener =
+                TcpListener::bind("127.0.0.1:0").expect("bind fake legacy HTTP MCP listener");
+            listener
+                .set_nonblocking(true)
+                .expect("set fake legacy listener nonblocking");
+            let port = listener
+                .local_addr()
+                .expect("fake legacy listener local_addr")
+                .port();
+
+            let singleton_lock = SingletonLock::try_acquire(&paths.daemon_singleton_lock())
+                .expect("hold legacy singleton lock");
+            let pid_file = PidFile::create(&paths.daemon_pid()).expect("write legacy pid file");
+            fs::write(paths.daemon_port(), format!("{port}\n"))
+                .expect("write legacy dashboard port");
+            fs::write(paths.daemon_state(), "ready\n").expect("write legacy ready state");
+            TransportEndpoint::streamable_http("127.0.0.1", port, MCP_PATH, READINESS_PATH, None)
+                .expect("build fake legacy transport endpoint")
+                .publish_discovery(&paths.daemon_mcp_transport())
+                .expect("publish fake legacy MCP transport discovery");
+
+            let stop = Arc::new(AtomicBool::new(false));
+            let stop_for_thread = Arc::clone(&stop);
+            let thread = thread::spawn(move || {
+                while !stop_for_thread.load(Ordering::SeqCst) {
+                    match listener.accept() {
+                        Ok((stream, _)) => handle_legacy_http_connection(stream),
+                        Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
+                            thread::sleep(Duration::from_millis(10));
+                        }
+                        Err(_) => break,
                     }
                 }
+            });
+
+            Self {
+                paths,
+                port,
+                stop,
+                thread: Some(thread),
+                _pid_file: pid_file,
+                _singleton_lock: singleton_lock,
             }
-            std::thread::sleep(Duration::from_millis(100));
         }
-        false
+
+        fn wait_ready(&self, timeout: Duration) -> bool {
+            let deadline = Instant::now() + timeout;
+            while Instant::now() < deadline {
+                let pid_alive = PidFile::read_pid(&self.paths.daemon_pid())
+                    .map(PidFile::is_process_alive)
+                    .unwrap_or(false);
+                let endpoint_ready =
+                    TransportEndpoint::read_discovery(&self.paths.daemon_mcp_transport())
+                        .map(|endpoint| endpoint.probe_readiness().is_ready())
+                        .unwrap_or(false);
+                if pid_alive && endpoint_ready {
+                    return true;
+                }
+                thread::sleep(Duration::from_millis(25));
+            }
+            false
+        }
     }
 
-    /// RAII guard: ensures the legacy daemon child process is terminated
-    /// when the guard drops, even on test panic. Uses SIGKILL because tests
-    /// don't need graceful shutdown.
-    struct DaemonGuard {
-        child: Child,
-    }
-
-    impl Drop for DaemonGuard {
+    impl Drop for LegacyDaemonFixture {
         fn drop(&mut self) {
-            let _ = self.child.kill();
-            let _ = self.child.wait();
+            self.stop.store(true, Ordering::SeqCst);
+            let _ = TcpStream::connect(("127.0.0.1", self.port));
+            if let Some(thread) = self.thread.take() {
+                let _ = thread.join();
+            }
         }
+    }
+
+    fn handle_legacy_http_connection(mut stream: TcpStream) {
+        let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
+        let request = match read_http_request(&mut stream) {
+            Some(request) => request,
+            None => return,
+        };
+
+        let header_end = match find_header_end(&request) {
+            Some(end) => end,
+            None => return,
+        };
+        let headers = String::from_utf8_lossy(&request[..header_end]);
+        let request_line = headers.lines().next().unwrap_or_default();
+        let body = String::from_utf8_lossy(&request[header_end..]).to_string();
+
+        if request_line.starts_with("GET /mcp/ready ") {
+            write_http_response(&mut stream, "200 OK", "ok", "text/plain");
+            return;
+        }
+
+        if request_line.starts_with("POST /mcp ") {
+            if body.contains("\"method\":\"initialize\"")
+                || body.contains("\"method\": \"initialize\"")
+            {
+                let id = serde_json::from_str::<serde_json::Value>(&body)
+                    .ok()
+                    .and_then(|value| value.get("id").cloned())
+                    .unwrap_or_else(|| serde_json::json!(1));
+                let response = serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": {
+                        "protocolVersion": "2024-11-05",
+                        "capabilities": {},
+                        "serverInfo": {
+                            "name": "legacy-migration-fixture",
+                            "version": "0.0.0"
+                        }
+                    }
+                });
+                write_http_response(
+                    &mut stream,
+                    "200 OK",
+                    &response.to_string(),
+                    "application/json",
+                );
+            } else {
+                write_http_empty_response(&mut stream, "202 Accepted");
+            }
+            return;
+        }
+
+        write_http_empty_response(&mut stream, "404 Not Found");
+    }
+
+    fn read_http_request(stream: &mut TcpStream) -> Option<Vec<u8>> {
+        let mut request = Vec::new();
+        let mut buf = [0u8; 1024];
+        loop {
+            match stream.read(&mut buf) {
+                Ok(0) => return None,
+                Ok(n) => {
+                    request.extend_from_slice(&buf[..n]);
+                    if http_request_complete(&request) {
+                        return Some(request);
+                    }
+                }
+                Err(_) => return None,
+            }
+        }
+    }
+
+    fn http_request_complete(request: &[u8]) -> bool {
+        let Some(header_end) = find_header_end(request) else {
+            return false;
+        };
+        let headers = String::from_utf8_lossy(&request[..header_end]);
+        let content_length = headers
+            .lines()
+            .find_map(|line| {
+                let (name, value) = line.split_once(':')?;
+                name.eq_ignore_ascii_case("content-length")
+                    .then(|| value.trim().parse::<usize>().ok())
+                    .flatten()
+            })
+            .unwrap_or(0);
+        request.len() >= header_end + content_length
+    }
+
+    fn find_header_end(request: &[u8]) -> Option<usize> {
+        request
+            .windows(4)
+            .position(|window| window == b"\r\n\r\n")
+            .map(|pos| pos + 4)
+    }
+
+    fn write_http_response(stream: &mut TcpStream, status: &str, body: &str, content_type: &str) {
+        let response = format!(
+            "HTTP/1.1 {status}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            body.len()
+        );
+        let _ = stream.write_all(response.as_bytes());
+    }
+
+    fn write_http_empty_response(stream: &mut TcpStream, status: &str) {
+        let response =
+            format!("HTTP/1.1 {status}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+        let _ = stream.write_all(response.as_bytes());
     }
 
     /// End-to-end: live legacy daemon + new `julie-daemon start` →
@@ -348,15 +504,14 @@ mod e2e {
         let tmp = tempfile::tempdir().expect("tempdir");
         let home = tmp.path().to_path_buf();
 
-        let (child, paths) = spawn_legacy_daemon(&home);
-        let _guard = DaemonGuard { child };
+        let fixture = LegacyDaemonFixture::spawn(&home);
 
         // Wait for legacy daemon to become ready.
         assert!(
-            wait_for_legacy_ready(&paths, Duration::from_secs(45)),
-            "legacy daemon must reach readiness within 45s; daemon.pid={}, daemon.port={}",
-            paths.daemon_pid().display(),
-            paths.daemon_port().display(),
+            fixture.wait_ready(Duration::from_secs(5)),
+            "legacy fixture must reach readiness within 5s; daemon.pid={}, transport={}",
+            fixture.paths.daemon_pid().display(),
+            fixture.paths.daemon_mcp_transport().display(),
         );
 
         // Now invoke the new `julie-daemon start` against the SAME HOME.
@@ -396,16 +551,15 @@ mod e2e {
         let tmp = tempfile::tempdir().expect("tempdir");
         let home = tmp.path().to_path_buf();
 
-        let (child, paths) = spawn_legacy_daemon(&home);
-        let _guard = DaemonGuard { child };
+        let fixture = LegacyDaemonFixture::spawn(&home);
 
         assert!(
-            wait_for_legacy_ready(&paths, Duration::from_secs(45)),
-            "legacy daemon must reach readiness within 45s"
+            fixture.wait_ready(Duration::from_secs(5)),
+            "legacy fixture must reach readiness within 5s"
         );
 
         // Snapshot the legacy PID before starting the adapter.
-        let legacy_pid = crate::daemon::pid::PidFile::read_pid(&paths.daemon_pid())
+        let legacy_pid = crate::daemon::pid::PidFile::read_pid(&fixture.paths.daemon_pid())
             .expect("legacy daemon.pid must be readable");
 
         // Spawn julie-adapter against the same HOME. Pipe stdin/stdout so we
@@ -456,7 +610,7 @@ mod e2e {
 
         // The legacy daemon must still be alive and the same PID. The adapter
         // must NOT have spawned a replacement.
-        let post_pid = crate::daemon::pid::PidFile::read_pid(&paths.daemon_pid())
+        let post_pid = crate::daemon::pid::PidFile::read_pid(&fixture.paths.daemon_pid())
             .expect("legacy daemon.pid must still be readable after adapter exit");
         assert_eq!(
             post_pid, legacy_pid,
@@ -468,5 +622,3 @@ mod e2e {
         );
     }
 }
-
-

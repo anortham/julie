@@ -582,8 +582,7 @@ impl RewriteSymbolTool {
                 })
             }
             WorkspaceTarget::Target(workspace_id) => {
-                let workspace_root =
-                    handler.get_workspace_root_for_target(&workspace_id).await?;
+                let workspace_root = handler.get_workspace_root_for_target(&workspace_id).await?;
                 Ok(WorkspaceEditTarget {
                     workspace_id,
                     workspace_root,
@@ -623,8 +622,11 @@ impl RewriteSymbolTool {
         let file_path_for_error = self.file_path.clone();
         let lookup_db = target.pooled_db(handler).await?;
         let matches = tokio::task::spawn_blocking(move || -> Result<Vec<Symbol>> {
-            let symbols =
-                crate::tools::deep_dive::data::find_symbol(&lookup_db, &symbol_name_for_lookup, None)?;
+            let symbols = crate::tools::deep_dive::data::find_symbol(
+                &lookup_db,
+                &symbol_name_for_lookup,
+                None,
+            )?;
             let filtered = if let Some(ref filter) = file_path_filter {
                 symbols
                     .into_iter()

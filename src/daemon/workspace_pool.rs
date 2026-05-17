@@ -4,6 +4,7 @@ use std::sync::{Arc, Mutex as StdMutex};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
+use tokio::sync::Notify;
 use tokio::task::JoinHandle;
 use tracing::{info, warn};
 
@@ -56,10 +57,15 @@ pub fn idle_timeout() -> Duration {
 /// Indexes are stored under a shared directory (typically `~/.julie/indexes/`)
 /// rather than per-project `.julie/indexes/`.
 pub struct WorkspacePool {
-    workspaces: tokio::sync::RwLock<HashMap<String, WorkspaceEntry>>,
+    workspaces: tokio::sync::RwLock<HashMap<String, WorkspaceSlot>>,
     indexes_dir: PathBuf,
     daemon_db: Option<Arc<DaemonDatabase>>,
     project_local_julie_dir: bool,
+}
+
+enum WorkspaceSlot {
+    Initializing(Arc<Notify>),
+    Ready(WorkspaceEntry),
 }
 
 struct WorkspaceEntry {
@@ -129,7 +135,9 @@ impl WorkspacePool {
     /// idle sweeper does not evict an actively-used workspace.
     pub async fn get(&self, workspace_id: &str) -> Option<Arc<JulieWorkspace>> {
         let guard = self.workspaces.read().await;
-        let entry = guard.get(workspace_id)?;
+        let WorkspaceSlot::Ready(entry) = guard.get(workspace_id)? else {
+            return None;
+        };
         entry.touch();
         Some(Arc::clone(&entry.workspace))
     }
@@ -141,14 +149,16 @@ impl WorkspacePool {
         workspace_id: &str,
     ) -> Option<Arc<WorkspaceConnectionPool>> {
         let map = self.workspaces.read().await;
-        map.get(workspace_id)
-            .map(|entry| Arc::clone(&entry.connection_pool))
+        let WorkspaceSlot::Ready(entry) = map.get(workspace_id)? else {
+            return None;
+        };
+        Some(Arc::clone(&entry.connection_pool))
     }
 
     /// Get an existing workspace or initialize a new one.
     ///
-    /// Uses double-checked locking: takes a read lock first (fast path),
-    /// then upgrades to a write lock only when initialization is needed.
+    /// Uses a global map only to publish ready entries or per-key initializing
+    /// markers. Slow workspace construction happens outside the map lock.
     ///
     /// When `daemon_db` is present, the workspace is registered as `pending`.
     /// Session counts and watcher refs are mutated by
@@ -158,29 +168,126 @@ impl WorkspacePool {
         workspace_id: &str,
         workspace_root: PathBuf,
     ) -> Result<Arc<JulieWorkspace>> {
-        // Fast path: read lock (drop before any async work to avoid holding across awaits)
-        let cached_ws = {
-            let guard = self.workspaces.read().await;
-            guard.get(workspace_id).map(|e| {
-                e.touch();
-                Arc::clone(&e.workspace)
-            })
+        loop {
+            let wait_for_initializer = {
+                let guard = self.workspaces.read().await;
+                match guard.get(workspace_id) {
+                    Some(WorkspaceSlot::Ready(entry)) => {
+                        entry.touch();
+                        return Ok(Arc::clone(&entry.workspace));
+                    }
+                    Some(WorkspaceSlot::Initializing(notify)) => {
+                        Some(Arc::clone(notify).notified_owned())
+                    }
+                    None => None,
+                }
+            };
+
+            if let Some(wait_for_initializer) = wait_for_initializer {
+                wait_for_initializer.await;
+                continue;
+            }
+
+            let init_notify = Arc::new(Notify::new());
+            let should_initialize = {
+                let mut guard = self.workspaces.write().await;
+                match guard.get(workspace_id) {
+                    Some(WorkspaceSlot::Ready(entry)) => {
+                        entry.touch();
+                        return Ok(Arc::clone(&entry.workspace));
+                    }
+                    Some(WorkspaceSlot::Initializing(_)) => false,
+                    None => {
+                        guard.insert(
+                            workspace_id.to_string(),
+                            WorkspaceSlot::Initializing(Arc::clone(&init_notify)),
+                        );
+                        true
+                    }
+                }
+            };
+
+            if !should_initialize {
+                continue;
+            }
+
+            match self
+                .create_workspace_entry(workspace_id, workspace_root.clone())
+                .await
+            {
+                Ok(entry) => {
+                    return Ok(self
+                        .finish_workspace_init(workspace_id, init_notify, entry)
+                        .await);
+                }
+                Err(error) => {
+                    self.clear_failed_workspace_init(workspace_id, &init_notify)
+                        .await;
+                    return Err(error);
+                }
+            }
+        }
+    }
+
+    async fn finish_workspace_init(
+        &self,
+        workspace_id: &str,
+        init_notify: Arc<Notify>,
+        entry: WorkspaceEntry,
+    ) -> Arc<JulieWorkspace> {
+        let mut duplicate_entry = None;
+        let workspace = {
+            let mut guard = self.workspaces.write().await;
+            match guard.get(workspace_id) {
+                Some(WorkspaceSlot::Initializing(current))
+                    if Arc::ptr_eq(current, &init_notify) =>
+                {
+                    let workspace = Arc::clone(&entry.workspace);
+                    guard.insert(workspace_id.to_string(), WorkspaceSlot::Ready(entry));
+                    workspace
+                }
+                Some(WorkspaceSlot::Ready(existing)) => {
+                    existing.touch();
+                    duplicate_entry = Some(entry);
+                    Arc::clone(&existing.workspace)
+                }
+                _ => {
+                    let workspace = Arc::clone(&entry.workspace);
+                    guard.insert(workspace_id.to_string(), WorkspaceSlot::Ready(entry));
+                    workspace
+                }
+            }
         };
 
-        if let Some(ws) = cached_ws {
-            return Ok(ws);
+        init_notify.notify_waiters();
+        if let Some(entry) = duplicate_entry {
+            shutdown_workspace_entry(workspace_id, entry).await;
         }
+        workspace
+    }
 
-        // Slow path: write lock + initialization
-        let mut guard = self.workspaces.write().await;
+    async fn clear_failed_workspace_init(&self, workspace_id: &str, init_notify: &Arc<Notify>) {
+        let removed = {
+            let mut guard = self.workspaces.write().await;
+            match guard.get(workspace_id) {
+                Some(WorkspaceSlot::Initializing(current)) if Arc::ptr_eq(current, init_notify) => {
+                    guard.remove(workspace_id);
+                    true
+                }
+                _ => false,
+            }
+        };
 
-        // Double-check: another task may have initialized while we waited for the write lock
-        if let Some(entry) = guard.get(workspace_id) {
-            entry.touch();
-            let ws = Arc::clone(&entry.workspace);
-            return Ok(ws);
+        if removed {
+            init_notify.notify_waiters();
         }
+    }
 
+    async fn create_workspace_entry(
+        &self,
+        workspace_id: &str,
+        workspace_root: PathBuf,
+    ) -> Result<WorkspaceEntry> {
         info!(
             workspace_id = workspace_id,
             root = %workspace_root.display(),
@@ -241,32 +348,28 @@ impl WorkspacePool {
             .with_context(|| format!("Failed to initialize workspace '{workspace_id}' in pool"))?;
 
         // Build a connection pool using the exact path the database was opened
-        // at.  We read it from the initialized SymbolDatabase rather than
+        // at. We read it from the initialized SymbolDatabase rather than
         // calling workspace.db_path(), because in daemon mode with an
         // index_root_override the actual db lives under the shared indexes dir
         // (workspace_db_path), not under julie_dir (db_path).
         let actual_db_path = workspace
             .db
             .as_ref()
-            .map(|db| db.lock().unwrap_or_else(|p| p.into_inner()).file_path.clone())
+            .map(|db| {
+                db.lock()
+                    .unwrap_or_else(|p| p.into_inner())
+                    .file_path
+                    .clone()
+            })
             .with_context(|| {
-                format!(
-                    "Workspace '{workspace_id}' has no database after initialize_database()"
-                )
+                format!("Workspace '{workspace_id}' has no database after initialize_database()")
             })?;
-        let conn_pool = WorkspaceConnectionPool::new(actual_db_path)
-            .with_context(|| {
-                format!(
-                    "Failed to create connection pool for workspace '{workspace_id}'"
-                )
-            })?;
+        let conn_pool = WorkspaceConnectionPool::new(actual_db_path).with_context(|| {
+            format!("Failed to create connection pool for workspace '{workspace_id}'")
+        })?;
 
-        let ws = Arc::new(workspace);
-        guard.insert(
-            workspace_id.to_string(),
-            WorkspaceEntry::new(Arc::clone(&ws), Arc::new(conn_pool)),
-        );
-        Ok(ws)
+        let workspace = Arc::new(workspace);
+        Ok(WorkspaceEntry::new(workspace, Arc::new(conn_pool)))
     }
 
     pub fn indexes_dir(&self) -> &std::path::Path {
@@ -278,14 +381,17 @@ impl WorkspacePool {
         workspace_id: &str,
     ) -> Option<IndexingRuntimeSnapshot> {
         let guard = self.workspaces.read().await;
-        guard.get(workspace_id).map(|entry| {
+        let WorkspaceSlot::Ready(entry) = guard.get(workspace_id)? else {
+            return None;
+        };
+        Some(
             entry
                 .workspace
                 .indexing_runtime
                 .read()
                 .unwrap_or_else(|poisoned| poisoned.into_inner())
-                .snapshot()
-        })
+                .snapshot(),
+        )
     }
 
     /// Evict a single workspace from the pool, releasing its Tantivy file
@@ -298,7 +404,13 @@ impl WorkspacePool {
     pub async fn evict_workspace(&self, workspace_id: &str) -> bool {
         let entry = {
             let mut guard = self.workspaces.write().await;
-            guard.remove(workspace_id)
+            match guard.get(workspace_id) {
+                Some(WorkspaceSlot::Ready(_)) => match guard.remove(workspace_id) {
+                    Some(WorkspaceSlot::Ready(entry)) => Some(entry),
+                    _ => None,
+                },
+                _ => None,
+            }
         };
         let Some(entry) = entry else {
             return false;
@@ -324,7 +436,19 @@ impl WorkspacePool {
             let guard = self.workspaces.read().await;
             guard
                 .iter()
-                .filter_map(|(id, entry)| {
+                .filter_map(|(id, slot)| {
+                    let WorkspaceSlot::Ready(entry) = slot else {
+                        return None;
+                    };
+                    let evicted_connections = entry.connection_pool.evict_idle(idle_threshold, now);
+                    if evicted_connections > 0 {
+                        info!(
+                            workspace_id = %id,
+                            evicted_connections,
+                            "Evicted idle workspace database connections"
+                        );
+                    }
+
                     let age = now.saturating_duration_since(entry.last_accessed());
                     if age >= idle_threshold {
                         Some(id.clone())
@@ -361,14 +485,17 @@ impl WorkspacePool {
             // have refreshed the timestamp), and remove the entry.
             let entry = {
                 let mut guard = self.workspaces.write().await;
-                let Some(entry) = guard.get(&workspace_id) else {
+                let Some(WorkspaceSlot::Ready(entry)) = guard.get(&workspace_id) else {
                     continue;
                 };
                 let age = Instant::now().saturating_duration_since(entry.last_accessed());
                 if age < idle_threshold {
                     continue;
                 }
-                guard.remove(&workspace_id)
+                match guard.remove(&workspace_id) {
+                    Some(WorkspaceSlot::Ready(entry)) => Some(entry),
+                    _ => None,
+                }
             };
             let Some(entry) = entry else {
                 continue;
@@ -401,7 +528,9 @@ impl WorkspacePool {
             tick.tick().await;
             loop {
                 tick.tick().await;
-                let evicted = pool.sweep_idle_workspaces(&watcher_pool, idle_threshold).await;
+                let evicted = pool
+                    .sweep_idle_workspaces(&watcher_pool, idle_threshold)
+                    .await;
                 if !evicted.is_empty() {
                     info!(
                         count = evicted.len(),
@@ -422,14 +551,17 @@ impl WorkspacePool {
         let guard = self.workspaces.read().await;
         guard
             .iter()
-            .map(|(workspace_id, entry)| {
+            .filter_map(|(workspace_id, slot)| {
+                let WorkspaceSlot::Ready(entry) = slot else {
+                    return None;
+                };
                 let snapshot = entry
                     .workspace
                     .indexing_runtime
                     .read()
                     .unwrap_or_else(|poisoned| poisoned.into_inner())
                     .snapshot();
-                (workspace_id.clone(), snapshot)
+                Some((workspace_id.clone(), snapshot))
             })
             .collect()
     }
@@ -444,7 +576,10 @@ impl WorkspacePool {
         let guard = self.workspaces.read().await;
         let mut inputs: Vec<_> = guard
             .iter()
-            .filter_map(|(workspace_id, entry)| {
+            .filter_map(|(workspace_id, slot)| {
+                let WorkspaceSlot::Ready(entry) = slot else {
+                    return None;
+                };
                 entry.workspace.db.as_ref().map(|db| {
                     (
                         workspace_id.clone(),
@@ -479,7 +614,16 @@ impl WorkspacePool {
         // any blocking work so we don't hold it across SearchIndex::shutdown().
         let entries: Vec<(String, WorkspaceEntry)> = {
             let mut guard = self.workspaces.write().await;
-            guard.drain().collect()
+            guard
+                .drain()
+                .filter_map(|(workspace_id, slot)| match slot {
+                    WorkspaceSlot::Ready(entry) => Some((workspace_id, entry)),
+                    WorkspaceSlot::Initializing(notify) => {
+                        notify.notify_waiters();
+                        None
+                    }
+                })
+                .collect()
         };
 
         for (workspace_id, entry) in entries {

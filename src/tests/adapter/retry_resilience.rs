@@ -255,8 +255,7 @@ mod tests {
         // On stdin EOF, the forwarder calls transport.close(), which fails.
         // Expected: AdapterError::Transport { wrote_any_output: true } so the
         // run_http_adapter loop exits cleanly without replaying the session.
-        let transport =
-            CloseFailsAfterResponseTransport::new(vec![initialize_response(1)]);
+        let transport = CloseFailsAfterResponseTransport::new(vec![initialize_response(1)]);
         let (stdin, mut stdin_writer) = tokio::io::duplex(2048);
         let mut stdout = Vec::new();
 
@@ -360,8 +359,8 @@ mod tests {
                 let lost = lost_line.expect("lost_line must be Some when send fails");
                 let lost_parsed: serde_json::Value =
                     serde_json::from_slice(&lost).expect("lost_line must be valid JSON");
-                let original_parsed: serde_json::Value =
-                    serde_json::from_slice(request_bytes).expect("request bytes must be valid JSON");
+                let original_parsed: serde_json::Value = serde_json::from_slice(request_bytes)
+                    .expect("request bytes must be valid JSON");
                 assert_eq!(
                     lost_parsed, original_parsed,
                     "lost_line must contain the original request bytes"

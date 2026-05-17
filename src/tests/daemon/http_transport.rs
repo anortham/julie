@@ -201,6 +201,7 @@ mod tests {
                     dashboard_tx,
                     None,
                     Arc::clone(&sessions),
+                    Arc::clone(crate::workspace::mutation_gate::Registry::global()),
                 )
                 .with_http_admission(HttpSessionAdmission::new(
                     lifecycle.clone(),
@@ -363,6 +364,11 @@ mod tests {
         let token_path = endpoint
             .token_path()
             .expect("token path should be published");
+        assert_eq!(
+            token_path,
+            paths.token_file().as_path(),
+            "HTTP transport must publish the canonical daemon.token path"
+        );
         assert_eq!(
             std::fs::read_to_string(token_path).unwrap(),
             "secret-token\n"

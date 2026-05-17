@@ -215,6 +215,7 @@ pub async fn run(tool: &GetContextTool, handler: &JulieServerHandler) -> Result<
             let embedding_provider = handler.embedding_provider().await;
 
             let result = tokio::task::spawn_blocking(move || -> Result<String> {
+                let pooled_db = pooled_db.into_read_snapshot()?;
                 let si = si_arc.ok_or_else(|| {
                     anyhow::anyhow!(
                         "No search index for workspace. Run manage_workspace(operation=\"refresh\") first."
@@ -243,23 +244,21 @@ pub async fn run(tool: &GetContextTool, handler: &JulieServerHandler) -> Result<
             Ok(result)
         }
         WorkspaceTarget::Primary => {
-            let (db, search_index) = handler.primary_database_and_search_index().await?;
+            let (db, search_index) = handler.primary_pooled_database_and_search_index().await?;
             let embedding_provider = handler.embedding_provider().await;
 
             let result = tokio::task::spawn_blocking(move || -> Result<String> {
+                let db = db.into_read_snapshot()?;
                 let index = search_index
                     .lock()
                     .map_err(|e| anyhow::anyhow!("Search index lock error: {}", e))?;
-                let db_guard = db
-                    .lock()
-                    .map_err(|e| anyhow::anyhow!("Database lock error: {}", e))?;
                 run_pipeline_with_options(
                     &query,
                     max_tokens,
                     language,
                     file_pattern,
                     format,
-                    &db_guard,
+                    &db,
                     &index,
                     embedding_provider.as_deref(),
                     Some(&task_signals),

@@ -127,7 +127,9 @@ async fn sync_vector_count_zero_when_db_missing() {
     let tmp = tempfile::TempDir::new().unwrap();
     let daemon_path = tmp.path().join("daemon.db");
     let daemon = DaemonDatabase::open(&daemon_path).unwrap();
-    daemon.upsert_workspace("ws-test", "/fake", "ready").unwrap();
+    daemon
+        .upsert_workspace("ws-test", "/fake", "ready")
+        .unwrap();
     // Seed a stale vector count to prove the sync overwrites it.
     daemon.update_vector_count("ws-test", 999).unwrap();
 
@@ -162,7 +164,9 @@ async fn sync_vector_count_reads_actual_from_existing_db() {
     // Create daemon DB with a stale vector count.
     let daemon_path = tmp.path().join("daemon.db");
     let daemon = DaemonDatabase::open(&daemon_path).unwrap();
-    daemon.upsert_workspace("ws-test", "/fake", "ready").unwrap();
+    daemon
+        .upsert_workspace("ws-test", "/fake", "ready")
+        .unwrap();
     daemon.update_vector_count("ws-test", 42).unwrap();
 
     let daemon_db: Option<Arc<DaemonDatabase>> = Some(Arc::new(daemon));

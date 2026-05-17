@@ -27,6 +27,7 @@ use crate::daemon::workspace_session_attachment::WorkspaceSessionAttachment;
 use crate::dashboard::state::DashboardEvent;
 use crate::handler::JulieServerHandler;
 use crate::handler::session_workspace::SessionWorkspaceState;
+use crate::workspace::mutation_gate::Registry as MutationGateRegistry;
 use crate::workspace::registry::generate_workspace_id;
 use crate::workspace::startup_hint::{WorkspaceStartupHint, WorkspaceStartupSource};
 
@@ -97,6 +98,7 @@ pub(crate) struct DaemonSessionDependencies {
     watcher_pool: Option<Arc<WatcherPool>>,
     sessions: Option<Arc<SessionTracker>>,
     http_admission: Option<HttpSessionAdmission>,
+    mutation_gate_registry: Arc<MutationGateRegistry>,
 }
 
 impl DaemonSessionDependencies {
@@ -108,6 +110,7 @@ impl DaemonSessionDependencies {
         dashboard_tx: Option<broadcast::Sender<DashboardEvent>>,
         watcher_pool: Option<Arc<WatcherPool>>,
         sessions: Arc<SessionTracker>,
+        mutation_gate_registry: Arc<MutationGateRegistry>,
     ) -> Self {
         Self {
             pool,
@@ -118,6 +121,7 @@ impl DaemonSessionDependencies {
             watcher_pool,
             sessions: Some(sessions),
             http_admission: None,
+            mutation_gate_registry,
         }
     }
 
@@ -258,6 +262,7 @@ impl DaemonMcpSession {
                 return Err(error).context("Failed to create daemon MCP session");
             }
         };
+        handler.set_mutation_gate_registry(Arc::clone(&dependencies.mutation_gate_registry));
 
         if let Some(session_lifecycle) = session_lifecycle {
             handler.attach_session_lifecycle(session_lifecycle);

@@ -213,7 +213,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
-use crate::daemon::pid::{process_creation_time_micros, PidFile};
+use crate::daemon::pid::{PidFile, process_creation_time_micros};
 
 /// The current protocol version string written into every discovery record.
 /// Bump when the semantics or wire format change incompatibly.
@@ -282,25 +282,28 @@ pub struct DiscoveryRecord {
 impl DiscoveryRecord {
     /// Build a record for the current process.
     ///
+    /// `host` is the hostname or IP address the HTTP server is actually bound to.
     /// `port` is the TCP port the HTTP server is bound to.
     /// `token_path` is where the bearer token will be written (A1.4).
     /// `log_path` is the daemon log path for this run.
-    pub fn for_current_process(port: u16, token_path: PathBuf, log_path: PathBuf) -> Self {
+    pub fn for_current_process(
+        host: impl Into<String>,
+        port: u16,
+        token_path: PathBuf,
+        log_path: PathBuf,
+    ) -> Self {
         let pid = std::process::id();
-        let pid_creation_time_micros =
-            process_creation_time_micros(pid).unwrap_or(0);
+        let pid_creation_time_micros = process_creation_time_micros(pid).unwrap_or(0);
 
         let started_at = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_micros() as u64;
 
-        let host = hostname();
-
         Self {
             pid,
             pid_creation_time_micros,
-            host,
+            host: host.into(),
             port,
             token_path,
             log_path,
@@ -310,37 +313,6 @@ impl DiscoveryRecord {
             started_at,
             phase: Some("running".to_string()),
         }
-    }
-}
-
-/// Returns the local hostname, falling back to `"127.0.0.1"` on error.
-fn hostname() -> String {
-    // Use the system hostname crate-free: read /etc/hostname on Linux,
-    // gethostname on POSIX, GetComputerNameExW on Windows. A simple
-    // cross-platform approach that avoids an extra dep: delegate to the
-    // std environment if available, else fall back.
-    #[cfg(unix)]
-    {
-        let mut buf = [0u8; 256];
-        let ret = unsafe { libc::gethostname(buf.as_mut_ptr() as *mut libc::c_char, buf.len()) };
-        if ret == 0 {
-            let end = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
-            if let Ok(s) = std::str::from_utf8(&buf[..end]) {
-                return s.to_owned();
-            }
-        }
-        "127.0.0.1".to_owned()
-    }
-
-    #[cfg(windows)]
-    {
-        // On Windows, fall back to 127.0.0.1 — adapters connect locally.
-        "127.0.0.1".to_owned()
-    }
-
-    #[cfg(not(any(unix, windows)))]
-    {
-        "127.0.0.1".to_owned()
     }
 }
 
@@ -396,8 +368,7 @@ impl DiscoveryFile {
         })?;
 
         // 1. Serialize into a temp file.
-        let json =
-            serde_json::to_string_pretty(record).map_err(|e| std::io::Error::other(e))?;
+        let json = serde_json::to_string_pretty(record).map_err(|e| std::io::Error::other(e))?;
         let mut tmp_file = File::create(&tmp)?;
         use std::io::Write as _;
         tmp_file.write_all(json.as_bytes())?;

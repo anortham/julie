@@ -20,7 +20,12 @@ mod tests {
     /// Build a synthetic record for the current process, using the supplied
     /// directory as the location for sibling paths (token_path, log_path).
     fn current_process_record(dir: &TempDir) -> DiscoveryRecord {
-        DiscoveryRecord::for_current_process(1234, dir.path().join("daemon.token"), dir.path().join("daemon.log"))
+        DiscoveryRecord::for_current_process(
+            "127.0.0.1",
+            1234,
+            dir.path().join("daemon.token"),
+            dir.path().join("daemon.log"),
+        )
     }
 
     // -----------------------------------------------------------------------

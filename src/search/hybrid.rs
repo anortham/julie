@@ -136,11 +136,17 @@ pub fn knn_to_search_results(
     // Build lookup map: symbol ID → Symbol
     let symbol_map: HashMap<&str, _> = symbols.iter().map(|s| (s.id.as_str(), s)).collect();
 
-    // Convert in KNN order, skipping missing symbols
+    // Convert in KNN order, skipping missing symbols.
+    // role / test_role are re-derived here because the KNN path queries the
+    // symbol DB (not Tantivy), so the C.3 schema fields aren't directly
+    // accessible. The classification is a pure function of file_path +
+    // language, so the result matches what Tantivy would have stored.
     let results = knn_results
         .iter()
         .filter_map(|(id, distance)| {
             let sym = symbol_map.get(id.as_str())?;
+            let role = crate::search::scoring::classify_role(&sym.file_path, &sym.language);
+            let test_role = crate::search::scoring::test_subrole(&sym.file_path);
             Some(SymbolSearchResult {
                 id: sym.id.clone(),
                 name: sym.name.clone(),
@@ -151,6 +157,9 @@ pub fn knn_to_search_results(
                 signature: sym.signature.clone().unwrap_or_default(),
                 doc_comment: sym.doc_comment.clone().unwrap_or_default(),
                 score: (1.0 - distance).max(0.0) as f32,
+                role: role.to_string(),
+                test_role: test_role.to_string(),
+                capability_flags: String::new(),
             })
         })
         .collect();

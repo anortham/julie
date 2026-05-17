@@ -259,15 +259,8 @@ pub(crate) fn is_fixture_path(path: &str) -> bool {
 pub(crate) fn is_vendor_path(path: &str) -> bool {
     for segment in path.split('/') {
         match segment {
-            "node_modules"
-            | "vendor"
-            | "Vendor"
-            | "third_party"
-            | "third-party"
-            | "deps"
-            | "external"
-            | "Pods"
-            | "bower_components" => return true,
+            "node_modules" | "vendor" | "Vendor" | "third_party" | "third-party" | "deps"
+            | "external" | "Pods" | "bower_components" => return true,
             _ => {}
         }
     }
@@ -281,17 +274,8 @@ pub(crate) fn is_vendor_path(path: &str) -> bool {
 pub(crate) fn is_generated_path(path: &str) -> bool {
     for segment in path.split('/') {
         match segment {
-            "target"
-            | "build"
-            | "Build"
-            | "dist"
-            | "out"
-            | "bin"
-            | "obj"
-            | "generated"
-            | "Generated"
-            | "__generated__"
-            | "gen" => return true,
+            "target" | "build" | "Build" | "dist" | "out" | "bin" | "obj" | "generated"
+            | "Generated" | "__generated__" | "gen" => return true,
             _ => {}
         }
     }

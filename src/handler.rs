@@ -33,6 +33,7 @@ use self::session_workspace::{PrimaryWorkspaceBinding, SessionWorkspaceState};
 use crate::database::SymbolDatabase;
 use crate::search::{SearchIndex, SearchProjection};
 use crate::workspace::JulieWorkspace;
+use crate::workspace::mutation_gate::{MutationGuard, Registry as MutationGateRegistry};
 use crate::workspace::startup_hint::WorkspaceStartupHint;
 use crate::workspace::startup_hint::WorkspaceStartupSource;
 use tokio::sync::RwLock;
@@ -263,6 +264,8 @@ pub struct JulieServerHandler {
     pub(crate) workspace_pool: Option<Arc<crate::daemon::workspace_pool::WorkspacePool>>,
     /// Broadcast sender for dashboard live-feed events. None in stdio/test mode.
     dashboard_tx: Option<broadcast::Sender<DashboardEvent>>,
+    /// Mutation-gate registry used by workspace writer paths in this handler.
+    mutation_gate_registry: Arc<MutationGateRegistry>,
     /// Keeps isolated temp roots alive for test-only handlers.
     #[cfg(test)]
     test_temp_guard: Option<Arc<tempfile::TempDir>>,
@@ -745,6 +748,7 @@ impl JulieServerHandler {
             ref_db_cache: Arc::new(RwLock::new(HashMap::new())),
             workspace_pool: None,
             dashboard_tx: None,
+            mutation_gate_registry: Arc::clone(MutationGateRegistry::global()),
             #[cfg(test)]
             test_temp_guard: None,
         })
@@ -862,6 +866,7 @@ impl JulieServerHandler {
             ref_db_cache: Arc::new(RwLock::new(HashMap::new())),
             workspace_pool,
             dashboard_tx,
+            mutation_gate_registry: Arc::clone(MutationGateRegistry::global()),
             #[cfg(test)]
             test_temp_guard: None,
         };
@@ -971,6 +976,7 @@ impl JulieServerHandler {
             ref_db_cache: Arc::new(RwLock::new(HashMap::new())),
             workspace_pool,
             dashboard_tx,
+            mutation_gate_registry: Arc::clone(MutationGateRegistry::global()),
             #[cfg(test)]
             test_temp_guard: None,
         })
@@ -1064,6 +1070,17 @@ impl JulieServerHandler {
             .read()
             .unwrap_or_else(|p| p.into_inner())
             .current_workspace_id()
+    }
+
+    pub(crate) async fn acquire_mutation_gate<'a>(
+        &'a self,
+        workspace_id: &'a str,
+    ) -> MutationGuard<'a> {
+        self.mutation_gate_registry.acquire(workspace_id).await
+    }
+
+    pub(crate) fn set_mutation_gate_registry(&mut self, registry: Arc<MutationGateRegistry>) {
+        self.mutation_gate_registry = registry;
     }
 
     pub fn is_primary_workspace_swap_in_progress(&self) -> bool {
@@ -1872,6 +1889,12 @@ impl JulieServerHandler {
         self.get_pooled_database_for_workspace(&workspace_id).await
     }
 
+    /// Legacy accessor returning the workspace's `Arc<Mutex<SymbolDatabase>>` paired
+    /// with its `Arc<Mutex<SearchIndex>>`. Production callers have migrated to
+    /// [`Self::primary_pooled_database_and_search_index`]; this is retained only for
+    /// upgrade-path tests that need to manipulate the legacy mutex directly (e.g.
+    /// `stale_index_detection`).
+    #[allow(dead_code)]
     pub(crate) async fn primary_database_and_search_index(
         &self,
     ) -> Result<(
@@ -1886,6 +1909,22 @@ impl JulieServerHandler {
         })?;
 
         Ok((snapshot.database, search_index))
+    }
+
+    pub(crate) async fn primary_pooled_database_and_search_index(
+        &self,
+    ) -> Result<(SymbolDatabase, Arc<std::sync::Mutex<SearchIndex>>)> {
+        let snapshot = self.primary_workspace_snapshot().await?;
+        let search_index = snapshot.search_index.ok_or_else(|| {
+            anyhow::anyhow!(
+                "Search index not initialized. Run manage_workspace(operation=\"index\") first."
+            )
+        })?;
+        let database = self
+            .get_pooled_database_for_workspace(&snapshot.binding.workspace_id)
+            .await?;
+
+        Ok((database, search_index))
     }
 
     /// Active workspace IDs for this session, sorted for stable output.
@@ -2164,23 +2203,17 @@ impl JulieServerHandler {
             .await?;
 
         if let Some(workspace_pool) = self.workspace_pool.as_ref() {
-            let workspace = workspace_pool
-                .get(workspace_id)
-                .await
-                .ok_or_else(|| {
-                    anyhow::anyhow!(
-                        "Workspace '{}' is not loaded in the daemon workspace pool",
-                        workspace_id
-                    )
-                })?;
+            let workspace = workspace_pool.get(workspace_id).await.ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Workspace '{}' is not loaded in the daemon workspace pool",
+                    workspace_id
+                )
+            })?;
             let conn_pool = workspace_pool
                 .connection_pool(workspace_id)
                 .await
                 .ok_or_else(|| {
-                    anyhow::anyhow!(
-                        "Connection pool missing for workspace '{}'",
-                        workspace_id
-                    )
+                    anyhow::anyhow!("Connection pool missing for workspace '{}'", workspace_id)
                 })?;
             return workspace.request_db(&conn_pool).await;
         }

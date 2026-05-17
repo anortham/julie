@@ -4,6 +4,7 @@
 mod tests {
     use crate::adapter::launcher::DaemonLauncher;
     use crate::adapter::launcher::DaemonReadiness;
+    use crate::daemon::discovery::{DiscoveryFile, DiscoveryRecord};
     use crate::daemon::pid::PidFile;
     use crate::daemon::transport::TransportEndpoint;
     use crate::paths::DaemonPaths;
@@ -168,6 +169,83 @@ mod tests {
                 .write_all(b"HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n")
                 .unwrap();
         })
+    }
+
+    fn write_live_discovery(paths: &DaemonPaths, port: u16, phase: &str) -> std::path::PathBuf {
+        let token_path = paths.token_file();
+        let log_path = paths.julie_home().join("daemon.log");
+        let mut record =
+            DiscoveryRecord::for_current_process("127.0.0.1", port, token_path.clone(), log_path);
+        record.phase = Some(phase.to_string());
+        fs::write(&token_path, "test-token\n").unwrap();
+        DiscoveryFile::write_atomic(&paths.discovery_file(), &record).unwrap();
+        token_path
+    }
+
+    #[test]
+    fn test_discovery_json_running_is_ready_without_pid_or_state() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DaemonPaths::with_home(dir.path().to_path_buf());
+        fs::create_dir_all(dir.path()).unwrap();
+
+        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = spawn_http_readiness_server(listener);
+        write_live_discovery(&paths, port, "running");
+
+        let launcher = DaemonLauncher::new(paths);
+        assert_eq!(launcher.daemon_readiness(), DaemonReadiness::Ready);
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn test_discovery_json_stopping_is_stopping_without_pid_or_state() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DaemonPaths::with_home(dir.path().to_path_buf());
+        fs::create_dir_all(dir.path()).unwrap();
+        write_live_discovery(&paths, 4242, "stopping");
+
+        let launcher = DaemonLauncher::new(paths);
+        assert_eq!(launcher.daemon_readiness(), DaemonReadiness::Stopping);
+    }
+
+    #[test]
+    fn test_transport_endpoint_uses_discovery_json_token_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DaemonPaths::with_home(dir.path().to_path_buf());
+        fs::create_dir_all(dir.path()).unwrap();
+        let token_path = write_live_discovery(&paths, 4242, "running");
+
+        let launcher = DaemonLauncher::new(paths);
+        let endpoint = launcher.transport_endpoint().expect("transport endpoint");
+
+        assert_eq!(endpoint.token_path(), Some(token_path.as_path()));
+        assert_eq!(
+            endpoint.mcp_url().as_deref(),
+            Some("http://127.0.0.1:4242/mcp")
+        );
+    }
+
+    #[test]
+    fn test_transport_endpoint_falls_back_to_legacy_mcp_transport_discovery() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DaemonPaths::with_home(dir.path().to_path_buf());
+        fs::create_dir_all(dir.path()).unwrap();
+        let _pid_file = PidFile::create(&paths.daemon_pid()).unwrap();
+        fs::write(paths.daemon_port(), "4243\n").unwrap();
+        TransportEndpoint::streamable_http("127.0.0.1", 4242, "/mcp", "/mcp/ready", None)
+            .unwrap()
+            .publish_discovery(&paths.daemon_mcp_transport())
+            .unwrap();
+
+        let launcher = DaemonLauncher::new(paths);
+        let endpoint = launcher.transport_endpoint().expect("legacy endpoint");
+
+        assert_eq!(endpoint.token_path(), None);
+        assert_eq!(
+            endpoint.mcp_url().as_deref(),
+            Some("http://127.0.0.1:4242/mcp")
+        );
     }
 
     #[test]

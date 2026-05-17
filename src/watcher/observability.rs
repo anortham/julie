@@ -3,14 +3,14 @@
 //! Provides:
 //! - `RateLimiter` — token-bucket rate limiter using `AtomicU64`, no extra crates.
 //! - `LogCapture` — a `tracing_subscriber::Layer` that records INFO+ events for tests.
-//! - `timed_acquire_gate` — wraps `acquire_gate` and logs INFO if wait > threshold.
+//! - `timed_acquire_gate` — wraps mutation-gate acquisition and logs INFO if wait > threshold.
 //!
 //! All public types are available for use in integration tests via
 //! `crate::watcher::observability`.
 
-use crate::workspace::mutation_gate::{MutationGuard, acquire_gate};
+use crate::workspace::mutation_gate::{MutationGuard, Registry as MutationGateRegistry};
 use std::collections::VecDeque;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tracing::Level;
@@ -97,8 +97,16 @@ pub async fn timed_acquire_gate<'a>(
     workspace_id: &'a str,
     threshold: Duration,
 ) -> MutationGuard<'a> {
+    timed_acquire_gate_with_registry(MutationGateRegistry::global(), workspace_id, threshold).await
+}
+
+pub async fn timed_acquire_gate_with_registry<'a>(
+    registry: &MutationGateRegistry,
+    workspace_id: &'a str,
+    threshold: Duration,
+) -> MutationGuard<'a> {
     let start = Instant::now();
-    let guard = acquire_gate(workspace_id).await;
+    let guard = registry.acquire(workspace_id).await;
     let elapsed = start.elapsed();
     if elapsed >= threshold {
         tracing::info!(
@@ -110,6 +118,58 @@ pub async fn timed_acquire_gate<'a>(
         );
     }
     guard
+}
+
+pub async fn timed_acquire_gate_with_registry_or_cancelled(
+    registry: &MutationGateRegistry,
+    workspace_id: &str,
+    threshold: Duration,
+    cancel_flag: &AtomicBool,
+) -> Option<MutationGuard<'static>> {
+    let start = Instant::now();
+    let mut logged_wait = false;
+
+    loop {
+        if let Some(guard) = registry.try_acquire(workspace_id) {
+            let elapsed = start.elapsed();
+            if elapsed >= threshold {
+                tracing::info!(
+                    workspace_id = workspace_id,
+                    wait_ms = elapsed.as_millis() as u64,
+                    "Waited {}ms for mutation gate on workspace {}",
+                    elapsed.as_millis(),
+                    workspace_id,
+                );
+            }
+            return Some(guard);
+        }
+
+        if cancel_flag.load(Ordering::Acquire) {
+            let elapsed = start.elapsed();
+            tracing::warn!(
+                workspace_id = workspace_id,
+                wait_ms = elapsed.as_millis() as u64,
+                "Cancelled mutation gate wait during watcher shutdown for workspace {} after {}ms",
+                workspace_id,
+                elapsed.as_millis(),
+            );
+            return None;
+        }
+
+        if !logged_wait && start.elapsed() >= threshold {
+            logged_wait = true;
+            let elapsed = start.elapsed();
+            tracing::info!(
+                workspace_id = workspace_id,
+                wait_ms = elapsed.as_millis() as u64,
+                "Waited {}ms for mutation gate on workspace {}",
+                elapsed.as_millis(),
+                workspace_id,
+            );
+        }
+
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
 }
 
 // ---------------------------------------------------------------------------

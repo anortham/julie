@@ -13,9 +13,10 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use rusqlite::Connection;
 use tokio::sync::Notify;
+use tracing::warn;
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Public types
@@ -55,6 +56,45 @@ impl std::ops::DerefMut for PooledConn {
 impl Drop for PooledConn {
     fn drop(&mut self) {
         if let Some(conn) = self.conn.take() {
+            if !conn.is_autocommit() {
+                if let Err(error) = conn.execute_batch("ROLLBACK") {
+                    // Discarding the connection rather than returning it to
+                    // `idle` shrinks effective pool capacity by one. `acquire`
+                    // will reopen via `OpenNew` on next demand once
+                    // `total = idle.len() + in_use < max`, so capacity
+                    // self-heals at steady state. Logged at warn so operators
+                    // can correlate with persistent sqlite-side issues
+                    // (corrupted journal, full disk, etc.) if discards become
+                    // sustained rather than transient.
+                    warn!(
+                        "Pool: dropping connection (rollback failed: {}). Pool capacity reduced by 1 until next acquire reopens.",
+                        error
+                    );
+                    let mut inner = self.pool.inner.lock().expect("pool mutex poisoned");
+                    inner.in_use = inner.in_use.saturating_sub(1);
+                    drop(inner);
+                    self.pool.notify.notify_one();
+                    return;
+                }
+
+                if !conn.is_autocommit() {
+                    // Same capacity-shrink semantics as the rollback-error
+                    // branch above; see comment there. This branch is for
+                    // sqlite reporting `ROLLBACK` succeeded but still
+                    // claiming an open transaction (e.g. nested savepoints
+                    // we don't manage), which means the connection can't be
+                    // safely reused.
+                    warn!(
+                        "Pool: dropping connection (transaction remained open after rollback). Pool capacity reduced by 1 until next acquire reopens."
+                    );
+                    let mut inner = self.pool.inner.lock().expect("pool mutex poisoned");
+                    inner.in_use = inner.in_use.saturating_sub(1);
+                    drop(inner);
+                    self.pool.notify.notify_one();
+                    return;
+                }
+            }
+
             let mut inner = self.pool.inner.lock().expect("pool mutex poisoned");
             inner.in_use = inner.in_use.saturating_sub(1);
             inner.idle.push(IdleEntry {

@@ -35,10 +35,7 @@ mod tests {
 
         let meta = std::fs::metadata(&path).expect("metadata failed");
         let mode = meta.permissions().mode() & 0o777;
-        assert_eq!(
-            mode, 0o600,
-            "expected mode 0600, got {mode:04o}"
-        );
+        assert_eq!(mode, 0o600, "expected mode 0600, got {mode:04o}");
     }
 
     /// Second write wins; mode is still 0600 after overwrite.
@@ -61,7 +58,10 @@ mod tests {
                 .permissions()
                 .mode()
                 & 0o777;
-            assert_eq!(mode, 0o600, "mode after overwrite: expected 0600 got {mode:04o}");
+            assert_eq!(
+                mode, 0o600,
+                "mode after overwrite: expected 0600 got {mode:04o}"
+            );
         }
     }
 

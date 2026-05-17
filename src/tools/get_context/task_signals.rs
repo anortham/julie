@@ -402,6 +402,8 @@ fn signal_symbol_names(signals: &TaskSignals) -> Vec<String> {
 }
 
 fn symbol_to_search_result(symbol: Symbol, score: f32) -> SymbolSearchResult {
+    let role = crate::search::scoring::classify_role(&symbol.file_path, &symbol.language);
+    let test_role = crate::search::scoring::test_subrole(&symbol.file_path);
     SymbolSearchResult {
         id: symbol.id,
         name: symbol.name,
@@ -412,6 +414,9 @@ fn symbol_to_search_result(symbol: Symbol, score: f32) -> SymbolSearchResult {
         language: symbol.language,
         start_line: symbol.start_line,
         score,
+        role: role.to_string(),
+        test_role: test_role.to_string(),
+        capability_flags: String::new(),
     }
 }
 

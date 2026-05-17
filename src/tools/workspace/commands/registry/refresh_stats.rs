@@ -4,7 +4,6 @@ use super::super::force_safeguards::{
 use super::ManageWorkspaceTool;
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::{CallToolResult, CallToolResultExt, Content};
-use crate::workspace::mutation_gate::acquire_gate;
 use anyhow::Result;
 use tracing::{info, warn};
 
@@ -43,7 +42,7 @@ impl ManageWorkspaceTool {
                 let workspace_path = std::path::PathBuf::from(&ws_row.path);
 
                 // Acquire the shared mutation gate before touching workspace state.
-                let mutation_guard = acquire_gate(workspace_id).await;
+                let mutation_guard = handler.acquire_mutation_gate(workspace_id).await;
                 info!("Starting re-indexing of workspace: {}", workspace_id);
 
                 let force = self.force.unwrap_or(false);
@@ -91,7 +90,9 @@ impl ManageWorkspaceTool {
 
                         use crate::tools::workspace::indexing::embeddings::EmbeddingOutcome;
                         let db_mutated = result.files_processed > 0 || result.orphans_cleaned > 0;
-                        let embed_outcome: EmbeddingOutcome = if db_mutated || effective_force_reindex {
+                        let embed_outcome: EmbeddingOutcome = if db_mutated
+                            || effective_force_reindex
+                        {
                             crate::tools::workspace::indexing::embeddings::spawn_workspace_embedding(
                                 handler,
                                 workspace_id.to_string(),
@@ -130,7 +131,10 @@ impl ManageWorkspaceTool {
                                 )
                                 .await
                             } else {
-                                EmbeddingOutcome { symbols: 0, deferred: false }
+                                EmbeddingOutcome {
+                                    symbols: 0,
+                                    deferred: false,
+                                }
                             }
                         };
 

@@ -13,6 +13,9 @@ fn make_result(id: &str, file_path: &str, score: f32) -> SymbolSearchResult {
         language: "rust".to_string(),
         start_line: 1,
         score,
+        role: String::new(),
+        test_role: String::new(),
+        capability_flags: String::new(),
     }
 }
 

@@ -68,7 +68,7 @@ mod tests {
     use crate::tools::navigation::FastRefsTool;
     use crate::tools::refactoring::RenameSymbolTool;
     use crate::tools::search::FastSearchTool;
-    use crate::tools::{GetSymbolsTool, ManageWorkspaceTool};
+    use crate::tools::{BlastRadiusTool, GetContextTool, GetSymbolsTool, ManageWorkspaceTool};
     use crate::workspace::registry::generate_workspace_id;
 
     struct ConcurrentFixture {
@@ -160,10 +160,12 @@ mod tests {
 
         let ws_root_str = ws_root.to_string_lossy().to_string();
         let workspace_id = generate_workspace_id(&ws_root_str)?;
-        let shared_ws = timeout(Duration::from_secs(20), workspace_pool
-            .get_or_init(&workspace_id, ws_root.clone()))
-            .await
-            .map_err(|_| anyhow!("setup hung in pool.get_or_init (>20s)"))??;
+        let shared_ws = timeout(
+            Duration::from_secs(20),
+            workspace_pool.get_or_init(&workspace_id, ws_root.clone()),
+        )
+        .await
+        .map_err(|_| anyhow!("setup hung in pool.get_or_init (>20s)"))??;
 
         // Pass watcher_pool to handler so its session_attachment implicit
         // attach fires the watcher at construction time. An explicit
@@ -171,17 +173,20 @@ mod tests {
         // macOS (notify settle latency); the implicit one runs before the
         // initial index, giving the FSEvents stream time to warm up.
         let handler = Arc::new(
-            timeout(Duration::from_secs(20), JulieServerHandler::new_with_shared_workspace(
-                Arc::clone(&shared_ws),
-                ws_root.clone(),
-                Some(Arc::clone(&daemon_db)),
-                Some(workspace_id.clone()),
-                None,
-                None,
-                None,
-                Some(Arc::clone(&watcher_pool)),
-                Some(Arc::clone(&workspace_pool)),
-            ))
+            timeout(
+                Duration::from_secs(20),
+                JulieServerHandler::new_with_shared_workspace(
+                    Arc::clone(&shared_ws),
+                    ws_root.clone(),
+                    Some(Arc::clone(&daemon_db)),
+                    Some(workspace_id.clone()),
+                    None,
+                    None,
+                    None,
+                    Some(Arc::clone(&watcher_pool)),
+                    Some(Arc::clone(&workspace_pool)),
+                ),
+            )
             .await
             .map_err(|_| anyhow!("setup hung in new_with_shared_workspace (>20s)"))??,
         );
@@ -192,15 +197,18 @@ mod tests {
         // running and observing the workspace root; the .rs files already
         // exist so FSEvents won't fire create events for them, and the
         // index step does not modify any source file.
-        timeout(Duration::from_secs(30), ManageWorkspaceTool {
-            operation: "index".to_string(),
-            path: Some(ws_root_str.clone()),
-            name: None,
-            workspace_id: None,
-            force: Some(true),
-            detailed: None,
-        }
-        .call_tool(&handler))
+        timeout(
+            Duration::from_secs(30),
+            ManageWorkspaceTool {
+                operation: "index".to_string(),
+                path: Some(ws_root_str.clone()),
+                name: None,
+                workspace_id: None,
+                force: Some(true),
+                detailed: None,
+            }
+            .call_tool(&handler),
+        )
         .await
         .map_err(|_| anyhow!("setup hung in initial manage_workspace index (>30s)"))??;
 
@@ -218,15 +226,165 @@ mod tests {
     /// workspace_id (not "primary") so the workload exercises the pooled
     /// connection path that this test exists to guard.
     #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
+    async fn test_primary_read_handlers_do_not_block_on_legacy_db_mutex() -> Result<()> {
+        let fixture = setup_concurrent_workspace().await?;
+        let handler = Arc::clone(&fixture.handler);
+        let legacy_db = handler.primary_database().await?;
+
+        let (locked_tx, locked_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let holder = std::thread::spawn(move || {
+            let _guard = legacy_db.lock().expect("legacy db mutex lock");
+            locked_tx.send(()).expect("signal locked");
+            let _ = release_rx.recv();
+        });
+        locked_rx
+            .recv_timeout(Duration::from_secs(2))
+            .expect("legacy db mutex holder should start");
+
+        let mut set: JoinSet<Result<(&'static str, CallToolResult)>> = JoinSet::new();
+        {
+            let h = Arc::clone(&handler);
+            set.spawn(async move {
+                let result = GetSymbolsTool {
+                    file_path: "src/beta.rs".to_string(),
+                    max_depth: 2,
+                    target: None,
+                    limit: Some(50),
+                    mode: Some("structure".to_string()),
+                    workspace: None,
+                }
+                .call_tool(&h)
+                .await?;
+                Ok(("get_symbols_primary", result))
+            });
+        }
+        {
+            let h = Arc::clone(&handler);
+            set.spawn(async move {
+                let result = DeepDiveTool {
+                    symbol: "alpha_func".to_string(),
+                    depth: DeepDiveDepth::Overview,
+                    context_file: None,
+                    workspace: None,
+                }
+                .call_tool(&h)
+                .await?;
+                Ok(("deep_dive_primary", result))
+            });
+        }
+        {
+            let h = Arc::clone(&handler);
+            set.spawn(async move {
+                let result = BlastRadiusTool {
+                    symbol_ids: Vec::new(),
+                    file_paths: vec!["src/alpha.rs".to_string()],
+                    from_revision: None,
+                    to_revision: None,
+                    max_depth: 1,
+                    limit: 10,
+                    include_tests: false,
+                    format: Some("compact".to_string()),
+                    workspace: None,
+                }
+                .call_tool(&h)
+                .await?;
+                Ok(("blast_radius_primary", result))
+            });
+        }
+        {
+            let h = Arc::clone(&handler);
+            set.spawn(async move {
+                let result = GetContextTool {
+                    query: "alpha".to_string(),
+                    max_tokens: Some(400),
+                    workspace: None,
+                    language: Some("rust".to_string()),
+                    file_pattern: None,
+                    format: Some("compact".to_string()),
+                    edited_files: None,
+                    entry_symbols: None,
+                    stack_trace: None,
+                    failing_test: None,
+                    max_hops: Some(1),
+                    prefer_tests: Some(false),
+                }
+                .call_tool(&h)
+                .await?;
+                Ok(("get_context_primary", result))
+            });
+        }
+        // FastSearch is the most-used primary tool path. Pre-fix it locked
+        // the legacy `Arc<Mutex<SymbolDatabase>>` for the full search body
+        // (`text_search.rs` primary branch), so this task would wedge under a
+        // held legacy mutex. Post-fix it acquires a pooled connection via
+        // `primary_pooled_database_and_search_index` and must finish.
+        {
+            let h = Arc::clone(&handler);
+            set.spawn(async move {
+                let result = FastSearchTool {
+                    query: "alpha_func".to_string(),
+                    search_target: "definitions".to_string(),
+                    language: Some("rust".to_string()),
+                    file_pattern: None,
+                    limit: 5,
+                    context_lines: Some(0),
+                    exclude_tests: None,
+                    workspace: None,
+                    return_format: "locations".to_string(),
+                }
+                .call_tool(&h)
+                .await?;
+                Ok(("fast_search_primary", result))
+            });
+        }
+
+        let completed = timeout(Duration::from_millis(800), async {
+            let mut completed = Vec::with_capacity(5);
+            while let Some(joined) = set.join_next().await {
+                completed.push(joined.expect("primary read task panicked")?);
+            }
+            anyhow::Ok(completed)
+        })
+        .await;
+
+        let _ = release_tx.send(());
+        holder
+            .join()
+            .expect("legacy db mutex holder thread panicked");
+
+        let completed = completed.expect(
+            "primary read handlers must use pooled request connections and not block on the legacy shared DB mutex",
+        )?;
+        assert_eq!(
+            completed.len(),
+            5,
+            "all primary read handlers should finish"
+        );
+        let errors: Vec<_> = completed
+            .iter()
+            .filter_map(|(label, result)| result.is_error.unwrap_or(false).then_some(*label))
+            .collect();
+        assert!(
+            errors.is_empty(),
+            "primary read tools returned errors: {errors:?}"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
     async fn test_concurrent_mcp_requests_do_not_wedge() -> Result<()> {
         let fixture = setup_concurrent_workspace().await?;
         let ws_root = fixture.ws_root.clone();
         let handler = Arc::clone(&fixture.handler);
         let workspace_pool = Arc::clone(&fixture.workspace_pool);
         let workspace_id = fixture.workspace_id.clone();
-        // Tools route by explicit id, NOT "primary". Primary routing in
-        // text_search/get_symbols still uses the legacy Arc<Mutex<DB>>; we
-        // want the pooled path on every call.
+        // Tools route by explicit id, NOT "primary". This exercises the
+        // target-workspace branch of every tool. The companion test
+        // `test_primary_read_handlers_do_not_block_on_legacy_db_mutex`
+        // covers the primary branch (including the now-pooled FastSearch
+        // primary path).
         let ws_filter = workspace_id.clone();
 
         // ── Watcher proof-of-life ──
@@ -490,11 +648,7 @@ mod tests {
             .filter_map(|(label, result, err)| {
                 if let Some(e) = err {
                     Some((*label, e.clone()))
-                } else if result
-                    .as_ref()
-                    .and_then(|r| r.is_error)
-                    .unwrap_or(false)
-                {
+                } else if result.as_ref().and_then(|r| r.is_error).unwrap_or(false) {
                     Some((*label, "tool returned is_error=true".to_string()))
                 } else {
                     None

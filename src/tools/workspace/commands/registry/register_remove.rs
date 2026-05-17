@@ -5,7 +5,6 @@ use super::cleanup::{
 use super::{ManageWorkspaceTool, cleanup_activity_for_handler, registry_store_for_handler};
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::{CallToolResult, CallToolResultExt, Content};
-use crate::workspace::mutation_gate::acquire_gate;
 use crate::workspace::registry::generate_workspace_id;
 use anyhow::{Result, anyhow};
 use tracing::{info, warn};
@@ -84,7 +83,7 @@ impl ManageWorkspaceTool {
         // Acquire the shared mutation gate before writing to this workspace's index.
         // Previously this call bypassed all writer coordination — this gate brings
         // register into the same serialization contract as index and refresh.
-        let mutation_guard = acquire_gate(&workspace_id).await;
+        let mutation_guard = handler.acquire_mutation_gate(&workspace_id).await;
         match self
             .index_workspace_inner(&mutation_guard, handler, &canonical_path, force)
             .await

@@ -115,6 +115,7 @@ pub async fn run(tool: &BlastRadiusTool, handler: &JulieServerHandler) -> Result
                 .await?;
 
             tokio::task::spawn_blocking(move || {
+                let pooled_db = pooled_db.into_read_snapshot()?;
                 run_with_db(
                     &tool,
                     &pooled_db,
@@ -126,13 +127,11 @@ pub async fn run(tool: &BlastRadiusTool, handler: &JulieServerHandler) -> Result
             .await?
         }
         WorkspaceTarget::Primary => {
-            let db = handler.primary_database().await?;
+            let db = handler.primary_pooled_database().await?;
             let workspace_id = handler.require_primary_workspace_identity()?;
 
             tokio::task::spawn_blocking(move || {
-                let db_guard = db
-                    .lock()
-                    .map_err(|e| anyhow!("Database lock error: {}", e))?;
+                let db_guard = db.into_read_snapshot()?;
                 run_with_db(
                     &tool,
                     &db_guard,

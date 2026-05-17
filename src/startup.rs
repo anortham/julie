@@ -9,7 +9,7 @@ use crate::tools::workspace::indexing::engine_version::{
     SEMANTIC_INDEX_ENGINE_COMPONENT, SEMANTIC_INDEX_ENGINE_VERSION,
 };
 use crate::tools::workspace::indexing::state::IndexingRepairReason;
-use crate::workspace::mutation_gate::{MutationGuard, acquire_gate};
+use crate::workspace::mutation_gate::MutationGuard;
 use crate::workspace::startup_hint::WorkspaceStartupSource;
 use anyhow::{Context, Result};
 use std::collections::HashSet;
@@ -79,7 +79,7 @@ pub(crate) async fn run_primary_workspace_repair(
 ) -> Result<Option<PrimaryWorkspaceRepairPlan>> {
     match handler.require_primary_workspace_identity() {
         Ok(workspace_id) => {
-            let guard = acquire_gate(&workspace_id).await;
+            let guard = handler.acquire_mutation_gate(&workspace_id).await;
             run_primary_workspace_repair_inner(&guard, handler).await
         }
         Err(_) => {
@@ -94,8 +94,8 @@ pub(crate) async fn run_primary_workspace_repair(
 }
 
 /// Inner repair implementation. Takes a `&MutationGuard<'_>` as a proof token
-/// that the caller already holds the workspace mutation gate. Does NOT call
-/// `acquire_gate` — doing so would deadlock since the gate is not reentrant.
+/// that the caller already holds the workspace mutation gate. Does not acquire
+/// another guard — doing so would deadlock since the gate is not reentrant.
 ///
 /// Call chains originating from here must use other `_inner` variants (never
 /// `_gated` variants) to avoid re-acquiring the gate.

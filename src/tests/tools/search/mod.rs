@@ -20,6 +20,8 @@ mod primary_workspace_bug;
 mod promotion_tests;
 mod quality;
 mod race_condition;
+mod reranker_ordering_tests;
+mod reranker_tests;
 mod tantivy_affix_tests;
 mod tantivy_index_tests;
 mod tantivy_integration_tests;

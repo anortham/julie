@@ -523,6 +523,58 @@ async fn test_overflow_repair_skips_unchanged_indexed_files() {
 }
 
 #[tokio::test]
+async fn test_stop_with_pending_queue_does_not_wait_forever_when_gate_is_held() {
+    use crate::database::SymbolDatabase;
+    use crate::extractors::ExtractorManager;
+    use crate::workspace::mutation_gate::Registry as MutationGateRegistry;
+    use std::time::Duration;
+
+    let temp_dir = crate::tests::helpers::unique_temp_dir("watcher_stop_gate_held");
+    let workspace_root = temp_dir.path().canonicalize().unwrap();
+    let queued_file = workspace_root.join("queued.rs");
+    fs::write(&queued_file, "fn queued_symbol() {}\n").unwrap();
+
+    let db_path = workspace_root.join("test.db");
+    let db = Arc::new(Mutex::new(SymbolDatabase::new(&db_path).unwrap()));
+    let extractor_manager = Arc::new(ExtractorManager::new());
+    let shared_provider = Arc::new(std::sync::RwLock::new(None));
+    let mutation_gate_registry = Arc::new(MutationGateRegistry::new());
+    let workspace_id =
+        crate::workspace::registry::generate_workspace_id(&workspace_root.to_string_lossy())
+            .unwrap();
+
+    let mut indexer = IncrementalIndexer::new_with_mutation_gate_registry(
+        workspace_root.clone(),
+        db,
+        extractor_manager,
+        None,
+        shared_provider,
+        crate::tools::workspace::indexing::state::IndexingRuntimeState::shared(),
+        Arc::clone(&mutation_gate_registry),
+    )
+    .unwrap();
+    indexer.start_watching().await.unwrap();
+
+    indexer.index_queue.lock().await.push_back(FileChangeEvent {
+        path: queued_file,
+        change_type: FileChangeType::Modified,
+        timestamp: SystemTime::now(),
+    });
+
+    let _gate = mutation_gate_registry.acquire(&workspace_id).await;
+    let stopped = tokio::time::timeout(Duration::from_millis(500), indexer.stop()).await;
+
+    assert!(
+        stopped.is_ok(),
+        "watcher stop should not wait forever for a mutation gate already held by its caller"
+    );
+    assert!(
+        indexer.needs_rescan.load(Ordering::Acquire),
+        "skipped pending watcher work should leave a rescan marker instead of disappearing silently"
+    );
+}
+
+#[tokio::test]
 async fn test_overflow_repair_processes_changed_deleted_new_supported_and_text_only() {
     use crate::database::SymbolDatabase;
     use crate::extractors::ExtractorManager;

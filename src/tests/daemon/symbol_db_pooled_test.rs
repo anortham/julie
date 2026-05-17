@@ -1,7 +1,7 @@
 //! Tests that SymbolDatabase wrapping a PooledConn behaves identically to one
 //! wrapping an owned Connection.
 
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
 
 use tempfile::tempdir;
@@ -55,9 +55,40 @@ async fn test_pooled_symbol_database_drop_returns_connection() {
     // After drop, the pooled connection should be returned.
     let final_stats = pool.stats();
     assert_eq!(
-        final_stats.in_use,
-        initial_stats.in_use,
+        final_stats.in_use, initial_stats.in_use,
         "drop of pooled SymbolDatabase must return conn"
+    );
+}
+
+#[tokio::test]
+async fn test_pooled_symbol_database_read_snapshot_rolls_back_on_drop() {
+    let dir = tempdir().unwrap();
+    let db_path = dir.path().join("snapshot.db");
+    let owned = SymbolDatabase::new(&db_path).expect("owned init");
+    drop(owned);
+
+    let pool = Arc::new(WorkspaceConnectionPool::with_limits(db_path.clone(), 1, 1).unwrap());
+
+    {
+        let pooled = pool.acquire().await.unwrap();
+        let db = SymbolDatabase::from_pooled(pooled, db_path.clone());
+        let snapshot = db.into_read_snapshot().expect("begin read snapshot");
+        assert!(
+            !snapshot.is_autocommit_for_test(),
+            "read snapshot must hold a transaction while alive"
+        );
+        assert_eq!(
+            snapshot
+                .count_symbols_for_workspace()
+                .expect("read inside snapshot"),
+            0
+        );
+    }
+
+    let pooled = pool.acquire().await.unwrap();
+    assert!(
+        pooled.is_autocommit(),
+        "dropping the read snapshot must return an autocommit connection to the pool"
     );
 }
 

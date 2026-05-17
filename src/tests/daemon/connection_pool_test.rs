@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 use tempfile::tempdir;
 use tokio::time::timeout;
 
-use crate::daemon::connection_pool::{WorkspaceConnectionPool, PoolStats};
+use crate::daemon::connection_pool::{PoolStats, WorkspaceConnectionPool};
 
 fn make_pool(min: usize, max: usize) -> Arc<WorkspaceConnectionPool> {
     let dir = tempdir().unwrap();
@@ -23,10 +23,8 @@ fn make_pool(min: usize, max: usize) -> Arc<WorkspaceConnectionPool> {
 async fn test_acquire_returns_working_connection() {
     let pool = make_pool(2, 4);
     let conn = pool.acquire().await.unwrap();
-    conn.execute_batch(
-        "CREATE TABLE foo (x INT); INSERT INTO foo VALUES (42);",
-    )
-    .unwrap();
+    conn.execute_batch("CREATE TABLE foo (x INT); INSERT INTO foo VALUES (42);")
+        .unwrap();
     let val: i64 = conn
         .query_row("SELECT x FROM foo", [], |row| row.get(0))
         .unwrap();
@@ -105,6 +103,38 @@ async fn test_drop_returns_connection_to_pool() {
     assert_eq!(in_use, 0, "expected 0 in_use after drop");
 }
 
+#[tokio::test]
+async fn test_drop_rolls_back_open_transaction_before_reuse() {
+    let pool = make_pool(1, 1);
+
+    {
+        let conn = pool.acquire().await.unwrap();
+        conn.execute_batch(
+            "CREATE TABLE tx_probe (value INTEGER);
+             BEGIN DEFERRED TRANSACTION;
+             INSERT INTO tx_probe VALUES (42);",
+        )
+        .unwrap();
+        assert!(
+            !conn.is_autocommit(),
+            "test setup must leave an open transaction on the pooled connection"
+        );
+    }
+
+    let conn = pool.acquire().await.unwrap();
+    assert!(
+        conn.is_autocommit(),
+        "pool must not return a connection with an open transaction"
+    );
+    let count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM tx_probe", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(
+        count, 0,
+        "uncommitted work from a leaked transaction must be rolled back before reuse"
+    );
+}
+
 // ─────────────────────────────────────────────
 // Test 5: evict_idle never goes below min
 // ─────────────────────────────────────────────
@@ -164,7 +194,10 @@ async fn test_evict_idle_keeps_recent() {
     // but we must keep (idle + in_use) >= min. in_use=1 ≥ min=1, so idle can hit 0.
     let evicted2 = pool.evict_idle(Duration::from_secs(60), t0 + Duration::from_secs(120));
     // With in_use=1 already at or above min=1, both idle entries can be evicted.
-    assert_eq!(evicted2, 2, "both stale entries evictable when in_use covers min");
+    assert_eq!(
+        evicted2, 2,
+        "both stale entries evictable when in_use covers min"
+    );
     assert_eq!(pool.stats().idle, 0);
 
     drop(c3);
@@ -215,7 +248,10 @@ async fn test_acquire_never_exceeds_max() {
     let p = Arc::clone(&pool);
     let sixth = tokio::spawn(async move { p.acquire().await.unwrap() });
     let timed_out = timeout(Duration::from_millis(50), sixth).await;
-    assert!(timed_out.is_err(), "6th acquire must block with max=3 all in-use");
+    assert!(
+        timed_out.is_err(),
+        "6th acquire must block with max=3 all in-use"
+    );
 
     // Drop all 5 tasks by letting them be cancelled (they still hold the guards in handles).
     // Actually the handles haven't returned yet — the 3 that got connections are waiting

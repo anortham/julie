@@ -5,6 +5,7 @@ use std::time::Duration;
 use std::{io::Read, io::Write};
 
 use crate::daemon;
+use crate::daemon::discovery::{DiscoveryFile, DiscoveryState};
 use crate::daemon::session::SessionTracker;
 use crate::daemon::transport::{TransportEndpoint, TransportMode, TransportProbe};
 use crate::paths::DaemonPaths;
@@ -89,10 +90,9 @@ fn raw_http_readiness_response_sync(endpoint: &TransportEndpoint) -> String {
     }
 }
 
-/// Verify the daemon starts up, creates a PID file, and shuts down cleanly
-/// when the shutdown signal fires.
+/// Verify the daemon starts up and publishes live discovery metadata.
 #[tokio::test]
-async fn test_daemon_starts_and_creates_pid_file() {
+async fn test_daemon_starts_and_publishes_live_discovery() {
     let tmp = tempfile::tempdir().expect("Failed to create temp dir");
     let paths = DaemonPaths::with_home(tmp.path().to_path_buf());
     paths.ensure_dirs().expect("Failed to create dirs");
@@ -101,30 +101,25 @@ async fn test_daemon_starts_and_creates_pid_file() {
     let paths_clone = paths.clone();
     let handle = tokio::spawn(async move { daemon::run_daemon(paths_clone, 0, true).await });
 
-    // Poll for the PID file rather than using a fixed sleep. The embedding
-    // service init can take several seconds on first run, so a fixed 200ms
-    // window is too tight.
-    let pid_path = paths.daemon_pid();
+    let discovery_path = paths.discovery_file();
     assert!(
-        wait_for_file(&pid_path, Duration::from_secs(30)).await,
-        "PID file should appear within 30s at {}",
-        pid_path.display()
+        wait_for_file(&discovery_path, Duration::from_secs(30)).await,
+        "discovery.json should appear within 30s at {}",
+        discovery_path.display()
     );
 
-    // Read the PID and verify it matches our process. After the v7.7.x
-    // format change, the file contains `<pid> <creation_time> <binary_mtime>`,
-    // so use the dedicated parser instead of treating the whole contents as
-    // a single integer.
-    let pid = daemon::pid::PidFile::read_pid(&pid_path).expect("PID file should be readable");
-    assert_eq!(pid, std::process::id(), "PID should match current process");
+    match DiscoveryFile::read_and_validate(&discovery_path) {
+        DiscoveryState::Live(record) => assert_eq!(
+            record.pid,
+            std::process::id(),
+            "in-process run_daemon should publish the current process PID"
+        ),
+        other => panic!("expected live discovery.json, got {other:?}"),
+    }
 
-    // Send a shutdown signal to stop the daemon.
     // We abort the task since we can't easily send SIGTERM to ourselves in a test.
     handle.abort();
     let _ = handle.await;
-
-    // After abort, the PID file may still exist (abort doesn't run cleanup).
-    // This is expected; real shutdown via SIGTERM would clean up.
 }
 
 #[tokio::test]
@@ -158,7 +153,6 @@ async fn test_daemon_publishes_http_transport_discovery_with_private_token() {
         let raw_response = raw_http_readiness_response(&endpoint).await;
         handle.abort();
         let _ = handle.await;
-        let _ = std::fs::remove_file(paths.daemon_pid());
         let _ = crate::daemon::lifecycle::stop_daemon(&paths);
         panic!(
             "HTTP MCP transport discovery should probe ready; raw readiness response: {raw_response}"
@@ -182,7 +176,6 @@ async fn test_daemon_publishes_http_transport_discovery_with_private_token() {
 
     handle.abort();
     let _ = handle.await;
-    let _ = std::fs::remove_file(paths.daemon_pid());
     let _ = crate::daemon::lifecycle::stop_daemon(&paths);
 }
 

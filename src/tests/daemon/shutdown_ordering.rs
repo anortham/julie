@@ -16,7 +16,6 @@ use std::time::Duration;
 
 use crate::daemon::embedding_service::EmbeddingService;
 use crate::daemon::http_transport::{HttpTransportConfig, HttpTransportServer};
-use crate::daemon::pid::PidFile;
 use crate::daemon::watcher_pool::WatcherPool;
 use crate::daemon::workspace_pool::WorkspacePool;
 use crate::daemon::{ShutdownArtifacts, perform_shutdown_sequence};
@@ -50,10 +49,6 @@ async fn bind_test_transport(paths: DaemonPaths) -> HttpTransportServer {
     .expect("bind test transport")
 }
 
-fn make_pid_file(paths: &DaemonPaths) -> PidFile {
-    PidFile::create(&paths.daemon_pid()).expect("create pid file")
-}
-
 // ---- tests ----
 
 /// `WorkspacePool::shutdown` and `WatcherPool::shutdown` must be called AFTER
@@ -67,16 +62,16 @@ async fn test_shutdown_calls_pools_after_transport() {
     let embedding_service = Arc::new(EmbeddingService::initialize_for_test(None));
     let workspace_pool = Arc::new(WorkspacePool::new(paths.indexes_dir().to_path_buf(), None));
     let watcher_pool = Arc::new(WatcherPool::new(Duration::from_secs(300)));
-    let pid_file = make_pid_file(&paths);
 
     let call_log: Arc<Mutex<Vec<&'static str>>> = Arc::new(Mutex::new(Vec::new()));
 
     let port_path = paths.daemon_port();
+    let discovery_path = paths.discovery_file();
     let state_path = paths.daemon_state();
 
     let artifacts = ShutdownArtifacts {
         port_path: &port_path,
-        pid_file,
+        discovery_path: &discovery_path,
         state_path: &state_path,
     };
     perform_shutdown_sequence(
@@ -123,16 +118,16 @@ async fn test_shutdown_calls_workspace_pool_before_watcher_pool() {
     let embedding_service = Arc::new(EmbeddingService::initialize_for_test(None));
     let workspace_pool = Arc::new(WorkspacePool::new(paths.indexes_dir().to_path_buf(), None));
     let watcher_pool = Arc::new(WatcherPool::new(Duration::from_secs(300)));
-    let pid_file = make_pid_file(&paths);
 
     let call_log: Arc<Mutex<Vec<&'static str>>> = Arc::new(Mutex::new(Vec::new()));
 
     let port_path = paths.daemon_port();
+    let discovery_path = paths.discovery_file();
     let state_path = paths.daemon_state();
 
     let artifacts = ShutdownArtifacts {
         port_path: &port_path,
-        pid_file,
+        discovery_path: &discovery_path,
         state_path: &state_path,
     };
     perform_shutdown_sequence(

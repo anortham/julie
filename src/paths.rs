@@ -101,17 +101,17 @@ impl DaemonPaths {
         self.julie_home.join("daemon.pid")
     }
 
-    /// Advisory lock file for adapter startup serialization
+    /// Kernel-held singleton lock for the running daemon.
     pub fn daemon_lock(&self) -> PathBuf {
         self.julie_home.join("daemon.lock")
     }
 
-    /// Singleton lock file held by the running daemon process.
-    ///
-    /// Distinct from `daemon_lock` (held by the adapter across readiness
-    /// wait) and `daemon_pid` (may be unlinked + recreated). The singleton
-    /// lock file is never unlinked, so concurrent `flock` acquirers always
-    /// contend on the same inode regardless of PID-file state.
+    /// Short-lived adapter lock for serializing spawn attempts only.
+    pub fn daemon_startup_lock(&self) -> PathBuf {
+        self.julie_home.join("daemon-startup.lock")
+    }
+
+    /// Legacy singleton lock file held by pre-split daemon processes.
     pub fn daemon_singleton_lock(&self) -> PathBuf {
         self.julie_home.join("daemon.singleton.lock")
     }

@@ -1,8 +1,7 @@
 //! Daemon-owned Streamable HTTP MCP transport.
 
-use std::io::{self, Write};
+use std::io;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::time::{Duration, Instant};
@@ -24,6 +23,7 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
+use crate::daemon::token_file;
 use crate::daemon::transport::TransportEndpoint;
 use crate::paths::DaemonPaths;
 
@@ -132,7 +132,7 @@ pub struct HttpTransportServer {
 }
 
 impl HttpTransportServer {
-        /// Bind a new MCP HTTP transport on an auto-assigned loopback port.
+    /// Bind a new MCP HTTP transport on an auto-assigned loopback port.
     ///
     /// Convenience wrapper around `bind_with_listener` that performs its own
     /// `TcpListener::bind` against `config.bind_host`. Used by the existing
@@ -196,8 +196,8 @@ impl HttpTransportServer {
         let cancellation = CancellationToken::new();
         let token_path = if let Some(token) = config.bearer_token.as_deref() {
             validate_bearer_token(token)?;
-            let token_path = paths.daemon_mcp_token();
-            write_token_file(&token_path, token)
+            let token_path = paths.token_file();
+            token_file::write_token(&token_path, token)
                 .context("Failed to write HTTP MCP transport bearer token")?;
             Some(token_path)
         } else {
@@ -309,16 +309,58 @@ impl HttpTransportServer {
     }
 
     pub async fn shutdown(self) -> Result<()> {
-        self.cancellation.cancel();
-        self.server_task
-            .await
-            .context("HTTP MCP transport task join failed")?;
-        let _ = std::fs::remove_file(&self.discovery_path);
-        if let Some(path) = self.token_path {
+        let force_after =
+            (self.shutdown_state.current() == TRANSPORT_ABORTED).then_some(Duration::from_secs(5));
+        self.shutdown_inner(force_after).await
+    }
+
+    pub async fn shutdown_forced(self, force_after: Duration) -> Result<()> {
+        self.shutdown_inner(Some(force_after)).await
+    }
+
+    async fn shutdown_inner(self, force_after: Option<Duration>) -> Result<()> {
+        let Self {
+            discovery_path,
+            token_path,
+            cancellation,
+            server_task,
+            ..
+        } = self;
+
+        cancellation.cancel();
+        await_server_task(server_task, force_after).await?;
+        let _ = std::fs::remove_file(&discovery_path);
+        if let Some(path) = token_path {
             let _ = std::fs::remove_file(path);
         }
         Ok(())
     }
+}
+
+async fn await_server_task(
+    mut server_task: JoinHandle<()>,
+    force_after: Option<Duration>,
+) -> Result<()> {
+    if let Some(force_after) = force_after {
+        match tokio::time::timeout(force_after, &mut server_task).await {
+            Ok(result) => {
+                result.context("HTTP MCP transport task join failed")?;
+            }
+            Err(_) => {
+                warn!(
+                    timeout_ms = force_after.as_millis(),
+                    "HTTP MCP transport graceful shutdown timed out; aborting server task"
+                );
+                server_task.abort();
+                let _ = server_task.await;
+            }
+        }
+    } else {
+        server_task
+            .await
+            .context("HTTP MCP transport task join failed")?;
+    }
+    Ok(())
 }
 
 async fn readiness() -> StatusCode {
@@ -445,27 +487,4 @@ fn validate_route_path(path: &str) -> io::Result<()> {
             format!("HTTP MCP route path must be absolute and single-line, got {path:?}"),
         ))
     }
-}
-
-fn write_token_file(path: &Path, token: &str) -> io::Result<()> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-
-    let mut options = std::fs::OpenOptions::new();
-    options.create(true).write(true).truncate(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600);
-    }
-
-    let mut file = options.open(path)?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
-    }
-    writeln!(file, "{token}")?;
-    Ok(())
 }

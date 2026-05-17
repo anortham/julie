@@ -78,6 +78,50 @@ fn rescued_symbol() -> Symbol {
     }
 }
 
+fn helper_symbol(id: &str, name: &str, metadata: Option<serde_json::Value>) -> Symbol {
+    let metadata = metadata.and_then(|value| {
+        value.as_object().map(|object| {
+            object
+                .iter()
+                .map(|(key, value)| (key.clone(), value.clone()))
+                .collect()
+        })
+    });
+
+    Symbol {
+        id: id.to_string(),
+        name: name.to_string(),
+        kind: SymbolKind::Function,
+        language: "rust".to_string(),
+        file_path: "src/lib.rs".to_string(),
+        start_line: 1,
+        start_column: 0,
+        end_line: 1,
+        end_column: 20,
+        start_byte: 0,
+        end_byte: 20,
+        signature: Some(format!("fn {name}()")),
+        doc_comment: None,
+        visibility: None,
+        parent_id: None,
+        metadata,
+        semantic_group: None,
+        confidence: None,
+        code_context: Some(format!("fn {name}() {{}}")),
+        content_type: None,
+        body_span: None,
+        body_hash: None,
+        annotations: Vec::new(),
+    }
+}
+
+fn test_metadata() -> serde_json::Value {
+    serde_json::json!({
+        "is_test": true,
+        "test_role": "test_case"
+    })
+}
+
 #[test]
 fn fast_search_deserializes_limit_with_public_bounds() {
     let low: FastSearchTool =
@@ -123,6 +167,205 @@ fn sqlite_rescue_counts_rescued_hits_in_pre_trunc_total() -> Result<()> {
     assert_eq!(symbols.len(), 1);
     assert_eq!(symbols[0].name, "Phoenix.Router");
     assert_eq!(total, 1);
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn content_nl_default_excludes_tests_but_explicit_false_includes_them() -> Result<()> {
+    let temp_dir = TempDir::new()?;
+    let workspace_path = temp_dir.path();
+    fs::create_dir_all(workspace_path.join("src/tests"))?;
+    fs::write(
+        workspace_path.join("src/auth.rs"),
+        "pub fn refresh_token() {\n    let refresh = \"token\";\n}\n",
+    )?;
+    fs::write(
+        workspace_path.join("src/tests/auth_test.rs"),
+        "#[test]\nfn refresh_token_test() {\n    let refresh = \"token\";\n}\n",
+    )?;
+
+    let handler = index_workspace(workspace_path).await?;
+
+    let default_run = FastSearchTool {
+        query: "refresh token".to_string(),
+        search_target: "content".to_string(),
+        limit: 10,
+        workspace: Some("primary".to_string()),
+        context_lines: Some(0),
+        exclude_tests: None,
+        ..Default::default()
+    }
+    .execute_with_trace(&handler)
+    .await?
+    .execution
+    .expect("content search should populate execution trace");
+
+    assert!(
+        default_run.hits.iter().any(|hit| hit.file == "src/auth.rs"),
+        "NL content default should keep source hits, got: {:?}",
+        default_run
+            .hits
+            .iter()
+            .map(|hit| hit.file.as_str())
+            .collect::<Vec<_>>()
+    );
+    assert!(
+        default_run
+            .hits
+            .iter()
+            .all(|hit| hit.file != "src/tests/auth_test.rs"),
+        "NL content default should exclude tests unless caller opts in, got: {:?}",
+        default_run
+            .hits
+            .iter()
+            .map(|hit| hit.file.as_str())
+            .collect::<Vec<_>>()
+    );
+
+    let explicit_include = FastSearchTool {
+        query: "refresh token".to_string(),
+        search_target: "content".to_string(),
+        limit: 10,
+        workspace: Some("primary".to_string()),
+        context_lines: Some(0),
+        exclude_tests: Some(false),
+        ..Default::default()
+    }
+    .execute_with_trace(&handler)
+    .await?
+    .execution
+    .expect("content search should populate execution trace");
+
+    assert!(
+        explicit_include
+            .hits
+            .iter()
+            .any(|hit| hit.file == "src/tests/auth_test.rs"),
+        "explicit exclude_tests=false should include test hits, got: {:?}",
+        explicit_include
+            .hits
+            .iter()
+            .map(|hit| hit.file.as_str())
+            .collect::<Vec<_>>()
+    );
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn content_test_intent_keeps_and_ranks_test_files() -> Result<()> {
+    let temp_dir = TempDir::new()?;
+    let workspace_path = temp_dir.path();
+    fs::create_dir_all(workspace_path.join("src/tests"))?;
+    fs::write(
+        workspace_path.join("src/aaa_refresh_token.rs"),
+        "pub fn refresh_token_probe() {\n    // test refresh token behavior is described here\n}\n",
+    )?;
+    fs::write(
+        workspace_path.join("src/tests/zzz_refresh_token_test.rs"),
+        "#[test]\nfn refresh_token_probe_test() {\n    // test refresh token behavior is verified here\n}\n",
+    )?;
+
+    let handler = index_workspace(workspace_path).await?;
+    let execution = FastSearchTool {
+        query: "test refresh token".to_string(),
+        search_target: "content".to_string(),
+        limit: 10,
+        workspace: Some("primary".to_string()),
+        context_lines: Some(0),
+        exclude_tests: None,
+        ..Default::default()
+    }
+    .execute_with_trace(&handler)
+    .await?
+    .execution
+    .expect("content search should populate execution trace");
+
+    assert!(
+        execution
+            .hits
+            .iter()
+            .any(|hit| hit.file == "src/tests/zzz_refresh_token_test.rs"),
+        "test intent should keep matching tests, got: {:?}",
+        execution
+            .hits
+            .iter()
+            .map(|hit| hit.file.as_str())
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(
+        execution.hits.first().map(|hit| hit.file.as_str()),
+        Some("src/tests/zzz_refresh_token_test.rs"),
+        "test intent should rank test files before source files, got: {:?}",
+        execution
+            .hits
+            .iter()
+            .map(|hit| hit.file.as_str())
+            .collect::<Vec<_>>()
+    );
+
+    Ok(())
+}
+
+#[test]
+fn definition_test_intent_uses_metadata_for_inline_test_helpers_before_centrality() -> Result<()> {
+    let db_dir = TempDir::new()?;
+    let db_path = db_dir.path().join("symbols.db");
+    let mut db = SymbolDatabase::new(&db_path)?;
+    db.store_file_info(&FileInfo {
+        path: "src/lib.rs".to_string(),
+        language: "rust".to_string(),
+        hash: "hash".to_string(),
+        size: 100,
+        last_modified: 1,
+        last_indexed: 1,
+        symbol_count: 2,
+        line_count: 6,
+        content: Some(
+            "fn helper_refresh() {}\n#[cfg(test)] mod tests { #[test] fn helper_refresh_case() {} }\n"
+                .to_string(),
+        ),
+    })?;
+
+    let source = helper_symbol("source-helper", "helper_refresh", None);
+    let test_helper = helper_symbol("test-helper", "helper_refresh_case", Some(test_metadata()));
+    db.store_symbols(&[source.clone(), test_helper.clone()])?;
+    db.conn.execute(
+        "UPDATE symbols SET reference_score = ?1 WHERE id = ?2",
+        rusqlite::params![10.0_f64, "source-helper"],
+    )?;
+
+    let index_dir = TempDir::new()?;
+    let index = SearchIndex::create(index_dir.path())?;
+    for symbol in [&source, &test_helper] {
+        index.add_symbol(&crate::search::SymbolDocument::from_symbol(symbol))?;
+    }
+    index.commit()?;
+
+    let filter = SearchFilter {
+        language: Some("rust".to_string()),
+        kind: None,
+        file_pattern: None,
+        exclude_tests: false,
+    };
+    let (symbols, _relaxed, _total) = definition_search_with_index_for_test(
+        "test helper refresh",
+        &filter,
+        2,
+        &index,
+        Some(&db),
+    )?;
+
+    assert_eq!(
+        symbols.first().map(|symbol| symbol.id.as_str()),
+        Some("test-helper"),
+        "test intent should use metadata for inline test helpers before centrality can dominate; got: {:?}",
+        symbols
+            .iter()
+            .map(|symbol| (symbol.id.as_str(), symbol.name.as_str(), symbol.confidence))
+            .collect::<Vec<_>>()
+    );
 
     Ok(())
 }

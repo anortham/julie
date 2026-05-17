@@ -1,18 +1,20 @@
 //! Text-based search using Tantivy with code-aware tokenization.
 
 use anyhow::Result;
+use std::collections::HashMap;
 use tracing::{debug, info, warn};
 
 use super::query::matches_glob_pattern;
 use super::target::SearchTarget;
+use crate::analysis::test_roles;
 use crate::extractors::{Symbol, SymbolKind};
 use crate::handler::JulieServerHandler;
 use crate::search::SearchFilter;
 use crate::search::query_parse::parse_query;
-use crate::search::reranker::{Candidate, rerank_score};
+use crate::search::reranker::{Candidate, rerank_content_score, rerank_symbol_score};
 use crate::search::scoring::{
-    DOC_LANGUAGES, apply_centrality_boost, classify_role, is_test_path,
-    promote_exact_name_matches, test_subrole,
+    DOC_LANGUAGES, apply_centrality_boost, classify_role, is_test_path, promote_exact_name_matches,
+    test_subrole,
 };
 
 // Re-export for tests
@@ -140,20 +142,19 @@ pub async fn text_search_impl(
         ));
     }
 
-    // Primary workspace: use the current-primary DB/search store. When current primary
-    // differs from the loaded workspace, route through handler helpers instead of the
-    // stale loaded workspace object.
-    let (search_index_clone, db_clone, embedding_provider) = {
-        let (db, search_index) = handler.primary_database_and_search_index().await?;
-        (search_index, db, handler.embedding_provider().await)
+    // Primary workspace: pooled DB (read-only) + SearchIndex via handler helpers.
+    // Mirrors the target-workspace branch above. Holds NO mutex across spawn_blocking;
+    // the previous version locked the legacy Arc<Mutex<SymbolDatabase>> for the full
+    // search body, serializing every primary fast_search and defeating pool concurrency.
+    let (pooled_db, search_index_clone, embedding_provider) = {
+        let (db, search_index) = handler.primary_pooled_database_and_search_index().await?;
+        (db, search_index, handler.embedding_provider().await)
     };
 
     let results = tokio::task::spawn_blocking(move || -> Result<(Vec<Symbol>, bool, usize)> {
-        let index = search_index_clone.lock().unwrap_or_else(|p| p.into_inner());
-        let db_guard = db_clone.lock().unwrap_or_else(|poisoned| {
-            warn!("Database mutex poisoned, recovering");
-            poisoned.into_inner()
-        });
+        let index = search_index_clone
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Search index lock error: {}", e))?;
 
         match search_target_clone {
             SearchTarget::Definitions => definition_search_with_index(
@@ -161,7 +162,7 @@ pub async fn text_search_impl(
                 &filter,
                 limit_usize,
                 &index,
-                Some(&db_guard),
+                Some(&pooled_db),
                 embedding_provider.as_deref(),
             ),
             SearchTarget::Content => content_search_with_index(
@@ -169,7 +170,7 @@ pub async fn text_search_impl(
                 &filter,
                 limit_usize,
                 &index,
-                Some(&db_guard),
+                Some(&pooled_db),
             ),
             SearchTarget::Files => anyhow::bail!("search_target=\"files\" is not implemented yet"),
         }
@@ -246,17 +247,49 @@ fn reranker_enabled() -> bool {
     )
 }
 
+fn metadata_test_role(symbol: Option<&Symbol>) -> Option<String> {
+    symbol
+        .and_then(|symbol| symbol.metadata.as_ref())
+        .and_then(|metadata| metadata.get("test_role"))
+        .and_then(|value| value.as_str())
+        .filter(|role| !role.is_empty())
+        .map(str::to_string)
+}
+
 /// Build a [`Candidate`] from a Tantivy [`SymbolSearchResult`].
 ///
 /// `body` is signature + doc_comment because `code_body` is indexed but
 /// not returned in SymbolSearchResult — the reranker's body-term boost
 /// matches against what we have. If dogfood shows we need code_body, we
 /// add it to SymbolSearchResult.
-fn build_symbol_candidate(r: &crate::search::index::SymbolSearchResult) -> Candidate {
+fn build_symbol_candidate(
+    r: &crate::search::index::SymbolSearchResult,
+    db_symbol: Option<&Symbol>,
+) -> Candidate {
     let kind = SymbolKind::try_from_string(&r.kind).unwrap_or(SymbolKind::Variable);
-    let role = classify_role(&r.file_path, &r.language).to_string();
-    let test_role = test_subrole(&r.file_path).to_string();
-    let is_test = role == "test";
+    let metadata_is_test = db_symbol.is_some_and(test_roles::is_test_related);
+    // Prefer the C.3-enriched Tantivy-stored role/test_role; fall back to
+    // path-derived values when the result didn't come from Tantivy (KNN/
+    // task-signal/rescue paths populate these from `classify_role` themselves,
+    // so the fallback also handles them correctly).
+    let stored_role = if r.role.is_empty() {
+        classify_role(&r.file_path, &r.language).to_string()
+    } else {
+        r.role.clone()
+    };
+    let role = if metadata_is_test {
+        "test".to_string()
+    } else {
+        stored_role
+    };
+    let test_role = metadata_test_role(db_symbol).unwrap_or_else(|| {
+        if r.test_role.is_empty() {
+            test_subrole(&r.file_path).to_string()
+        } else {
+            r.test_role.clone()
+        }
+    });
+    let is_test = metadata_is_test || role == "test";
     let is_file_doc = role == "docs";
     let is_source_language = !DOC_LANGUAGES.contains(&r.language.as_str());
 
@@ -288,14 +321,43 @@ fn build_symbol_candidate(r: &crate::search::index::SymbolSearchResult) -> Candi
 fn apply_reranker_to_symbol_results(
     query: &str,
     results: &mut Vec<crate::search::index::SymbolSearchResult>,
+    db: Option<&crate::database::SymbolDatabase>,
 ) {
     if !reranker_enabled() || results.is_empty() {
         return;
     }
     let parsed = parse_query(query);
-    for r in results.iter_mut() {
-        let candidate = build_symbol_candidate(r);
-        r.score = rerank_score(&parsed, &candidate);
+    let symbols_by_id: HashMap<String, Symbol> = db
+        .map(|db| {
+            let ids: Vec<String> = results.iter().map(|r| r.id.clone()).collect();
+            db.get_symbols_by_ids(&ids).map(|symbols| {
+                symbols
+                    .into_iter()
+                    .map(|symbol| (symbol.id.clone(), symbol))
+                    .collect()
+            })
+        })
+        .transpose()
+        .unwrap_or_else(|e| {
+            warn!("Could not enrich reranker candidates from SQLite metadata: {e}");
+            None
+        })
+        .unwrap_or_default();
+
+    // Build candidates first so the I4 two-pass intent check can scan the
+    // full batch before any scoring. Without this, a `Symbol(K)` query whose
+    // batch contains no `kind == K` candidate would still apply the intent
+    // boost to partial-name same-kind candidates, promoting them above
+    // exact-name wrong-kind matches.
+    let candidates: Vec<Candidate> = results
+        .iter()
+        .map(|r| build_symbol_candidate(r, symbols_by_id.get(&r.id)))
+        .collect();
+
+    let effective_query = effective_intent_query(&parsed, &candidates);
+
+    for (r, candidate) in results.iter_mut().zip(candidates.iter()) {
+        r.score = rerank_symbol_score(&effective_query, candidate);
     }
     results.sort_by(|a, b| {
         b.score
@@ -306,12 +368,43 @@ fn apply_reranker_to_symbol_results(
     });
 }
 
+/// Mirror of the in-batch intent downgrade that `reranker::rerank` performs
+/// internally. We need the same decision here because this rescorer calls
+/// `rerank_symbol_score` per-candidate (so the in-place sort is stable
+/// without re-cloning the results vec), and per-candidate scoring can't
+/// observe the rest of the batch.
+fn effective_intent_query(
+    query: &crate::search::query_parse::ParsedQuery,
+    candidates: &[Candidate],
+) -> crate::search::query_parse::ParsedQuery {
+    use crate::search::query_parse::QueryIntent;
+    let requested_kind = match &query.intent {
+        QueryIntent::Symbol(k) => k.clone(),
+        _ => return query.clone(),
+    };
+
+    let any_realizes = candidates.iter().any(|c| {
+        c.kind == requested_kind && {
+            let title_lc = c.title.to_lowercase();
+            query.target_terms.iter().any(|t| title_lc.contains(t))
+        }
+    });
+
+    if any_realizes {
+        query.clone()
+    } else {
+        let mut downgraded = query.clone();
+        downgraded.intent = QueryIntent::Free;
+        downgraded
+    }
+}
+
 /// File-level reranker for content search. Same flag, leaner inputs:
 /// content results are file-level so `title` is the basename, `body` is
 /// empty, and `kind` is the sentinel `Module`. The reranker mostly
 /// contributes role/path reweighting here — useful for de-emphasizing
 /// vendor / generated / test files on NL content queries.
-fn apply_reranker_to_content_results(
+pub(crate) fn apply_reranker_to_content_results(
     query: &str,
     results: &mut Vec<crate::search::index::ContentSearchResult>,
 ) {
@@ -343,7 +436,11 @@ fn apply_reranker_to_content_results(
             .is_source_language(is_source_language)
             .tantivy_score(r.score)
             .build();
-        r.score = rerank_score(&parsed, &candidate);
+        // Content scoring path: empty body, Module sentinel kind. Use the
+        // content-specific scorer so phrase/body/intent/kind boosts that
+        // can never meaningfully fire are skipped at the type-level, not
+        // just suppressed by happenstance.
+        r.score = rerank_content_score(&parsed, &candidate);
     }
     results.sort_by(|a, b| {
         b.score
@@ -402,12 +499,24 @@ fn definition_search_with_index(
         )?;
         let relaxed = hybrid_results.relaxed;
 
-        // C.4: rerank on the raw hybrid scores BEFORE centrality boost so
-        // role/intent/kind reweighting feeds into the same ranking pipeline
-        // as keyword-only search. No-op when the flag is off.
-        apply_reranker_to_symbol_results(query, &mut hybrid_results.results);
+        // C2: rescale RRF base scores into the same order of magnitude as
+        // BM25 (Tantivy AND/OR path scores live in ~1-30; RRF scores live
+        // in ~0-0.1). Without this, the additive reranker boosts (10-460)
+        // swamp the RRF base by ~3 orders of magnitude, making the
+        // keyword/semantic merge functionally irrelevant on NL queries.
+        // Multiplying by `RRF_TO_BM25_SCALE = 200` brings RRF top-rank
+        // (~0.016 for weight=1.0) to ~3, and a hot multi-hit RRF score
+        // (~0.05) to ~10, matching BM25 mid-rank. Centrality + reranker
+        // boosts then layer on a base that can actually discriminate.
+        const RRF_TO_BM25_SCALE: f32 = 200.0;
+        for r in hybrid_results.results.iter_mut() {
+            r.score *= RRF_TO_BM25_SCALE;
+        }
 
-        // Apply centrality boost + exact-name promotion + truncate
+        // Centrality is part of the base score (multiplicative on the
+        // now-scaled base). The reranker then adds intent/title/role
+        // boosts on top, so graph popularity cannot multiply those
+        // additive bonuses.
         let symbol_ids: Vec<&str> = hybrid_results
             .results
             .iter()
@@ -416,6 +525,7 @@ fn definition_search_with_index(
         if let Ok(ref_scores) = db.get_reference_scores(&symbol_ids) {
             apply_centrality_boost(&mut hybrid_results.results, &ref_scores);
         }
+        apply_reranker_to_symbol_results(query, &mut hybrid_results.results, Some(db));
         promote_exact_name_matches(&mut hybrid_results.results, query);
 
         let mut symbols: Vec<Symbol> = hybrid_results
@@ -457,17 +567,16 @@ fn definition_search_with_index(
             search.results
         };
 
-        // C.4: rerank on the raw Tantivy scores BEFORE centrality + promotion.
-        // No-op when JULIE_RERANKER_ENABLED is unset.
-        apply_reranker_to_symbol_results(query, &mut filtered_results);
-
-        // Apply centrality boost + exact-name promotion on Tantivy results
+        // Centrality is part of the base score. The reranker then adds
+        // intent/title/role boosts on top, so graph popularity cannot
+        // multiply those additive bonuses.
         if let Some(db) = db {
             let symbol_ids: Vec<&str> = filtered_results.iter().map(|r| r.id.as_str()).collect();
             if let Ok(ref_scores) = db.get_reference_scores(&symbol_ids) {
                 apply_centrality_boost(&mut filtered_results, &ref_scores);
             }
         }
+        apply_reranker_to_symbol_results(query, &mut filtered_results, db);
         promote_exact_name_matches(&mut filtered_results, query);
 
         let mut symbols: Vec<Symbol> = filtered_results
@@ -525,6 +634,11 @@ fn definition_search_with_index(
                         .map(|s| {
                             let score =
                                 ref_scores.get(&s.id).copied().unwrap_or(1.0).max(1.0) as f32;
+                            let role = crate::search::scoring::classify_role(
+                                &s.file_path,
+                                &s.language,
+                            );
+                            let test_role = crate::search::scoring::test_subrole(&s.file_path);
                             let sym = tantivy_symbol_to_symbol(
                                 crate::search::index::SymbolSearchResult {
                                     id: s.id,
@@ -541,6 +655,9 @@ fn definition_search_with_index(
                                     language: s.language,
                                     start_line: s.start_line,
                                     score,
+                                    role: role.to_string(),
+                                    test_role: test_role.to_string(),
+                                    capability_flags: String::new(),
                                 },
                             );
                             // Enrich from DB for code_context etc.

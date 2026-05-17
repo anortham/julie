@@ -16,8 +16,8 @@
 //!   files for the caller to remove.
 //!
 //! - `detect_and_attach(paths)` — call this at `julie-adapter` startup. If
-//!   `daemon.port` is readable AND `daemon.pid` corresponds to a live
-//!   process, returns a `TransportEndpoint` pointing at the legacy daemon's
+//!   `daemon-mcp-transport.json` is readable AND `daemon.pid` corresponds
+//!   to a live process, returns a `TransportEndpoint` pointing at the legacy daemon's
 //!   HTTP server. The adapter can then forward MCP traffic to it without
 //!   spawning a duplicate daemon.
 //!
@@ -254,14 +254,8 @@ pub fn detect_and_attach(paths: &DaemonPaths) -> Option<TransportEndpoint> {
         PidFileStatus::Dead | PidFileStatus::Indeterminate => return None,
     };
 
-    // Port file must exist and parse.
-    let port_path = paths.daemon_port();
-    let port_str = fs::read_to_string(&port_path).ok()?;
-    let port: u16 = port_str.trim().parse().ok()?;
-
-    // Build a legacy-shape transport endpoint. The legacy daemon's MCP
-    // path is `/mcp` and readiness is `/mcp/ready` (same as the new
-    // daemon — see src/daemon/http_transport.rs). No token: legacy
-    // didn't have token-file auth.
-    TransportEndpoint::streamable_http("127.0.0.1", port, "/mcp", "/mcp/ready", None).ok()
+    // Legacy julie-server publishes the MCP endpoint in daemon-mcp-transport.json.
+    // daemon.port is the dashboard port, so using it here routes the adapter to
+    // a non-MCP HTTP server during upgrade.
+    TransportEndpoint::read_discovery(&paths.daemon_mcp_transport()).ok()
 }

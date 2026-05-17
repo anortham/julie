@@ -7,6 +7,7 @@ pub mod cli;
 
 pub mod database;
 
+pub mod connection_pool;
 pub mod discovery;
 pub mod embedding_service;
 pub mod http_client;
@@ -16,15 +17,14 @@ pub mod lifecycle;
 pub mod mcp_session;
 pub mod pid;
 pub mod project_log;
-pub mod singleton;
-pub mod token_file;
 pub mod session;
 pub mod shutdown;
 #[cfg(windows)]
 pub mod shutdown_event;
+pub mod singleton;
+pub mod token_file;
 pub mod transport;
 pub mod watcher_pool;
-pub mod connection_pool;
 pub mod workspace_pool;
 pub mod workspace_registry_store;
 pub mod workspace_session_attachment;
@@ -40,12 +40,11 @@ use crate::paths::DaemonPaths;
 use crate::workspace::registry::generate_workspace_id;
 
 pub use self::app::{DaemonApp, DaemonConfig, DaemonHandle, DaemonRuntimeContext};
-pub use self::connection_pool::{WorkspaceConnectionPool, PooledConn};
+pub use self::connection_pool::{PooledConn, WorkspaceConnectionPool};
 
 use self::database::DaemonDatabase;
 use self::embedding_service::EmbeddingService;
 use self::http_transport::HttpTransportServer;
-use self::pid::PidFile;
 use self::session::SessionTracker;
 use self::watcher_pool::WatcherPool;
 use self::workspace_pool::WorkspacePool;
@@ -315,12 +314,20 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
     };
 
     let handle = DaemonApp::new(config)?.serve(listener).await?;
+    let stop_notify = handle.stop_notify();
 
-    // Block on shutdown signal. The named-event waker for `julie stop` /
-    // `julie restart` on Windows lives inside `DaemonApp::serve` and triggers
-    // shutdown by the same handle.shutdown() path on macOS/Linux.
-    if let Err(e) = self::app::shutdown_signal().await {
-        warn!("Signal handler setup failed: {}", e);
+    // Block on either the platform signal path or the Windows named-event
+    // stop path. On Unix, setup_stop_notify returns an unused Notify so this
+    // remains signal-driven.
+    tokio::select! {
+        signal = self::app::shutdown_signal() => {
+            if let Err(e) = signal {
+                warn!("Signal handler setup failed: {}", e);
+            }
+        }
+        _ = stop_notify.notified() => {
+            info!("Daemon stop notification received");
+        }
     }
     info!("Shutdown signal received, stopping daemon");
 
@@ -330,7 +337,7 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
 /// Files and resources cleaned up at the end of the shutdown sequence.
 pub(crate) struct ShutdownArtifacts<'a> {
     pub port_path: &'a Path,
-    pub pid_file: PidFile,
+    pub discovery_path: &'a Path,
     pub state_path: &'a Path,
 }
 
@@ -345,7 +352,7 @@ pub(crate) struct ShutdownArtifacts<'a> {
 ///   3. WorkspacePool — commits Tantivy writes and releases file locks.
 ///   4. WatcherPool — drops OS file-watcher handles; goes last because it
 ///      has the fewest downstream dependencies.
-///   5. Housekeeping — removes port file, pid file, and daemon state file.
+///   5. Housekeeping — removes port file, discovery.json, and daemon state file.
 ///
 /// The `call_log` parameter is a test hook: when `Some`, each step records its
 /// name to the log before executing. Pass `None` in production (zero overhead).
@@ -392,10 +399,6 @@ pub(crate) async fn perform_shutdown_sequence(
 
     // Step 5: Housekeeping
     let _ = std::fs::remove_file(artifacts.port_path);
-    if let Err(e) = artifacts.pid_file.cleanup() {
-        warn!("Failed to clean up PID file: {}", e);
-    }
+    let _ = std::fs::remove_file(artifacts.discovery_path);
     let _ = std::fs::remove_file(artifacts.state_path);
 }
-
-

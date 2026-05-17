@@ -6,136 +6,36 @@
 //! Public surface (DaemonApp, DaemonConfig, DaemonHandle, DaemonRuntimeContext)
 //! is locked by the plan — do not redesign without strategy sign-off.
 
-use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use anyhow::{Context, Result};
 use tokio::net::TcpListener;
-use tokio::sync::{Notify, broadcast};
+use tokio::sync::broadcast;
 use tokio::task::JoinHandle;
-use tracing::{error, info, warn};
+use tracing::{info, warn};
 
 use crate::dashboard::state::DashboardEvent;
 use crate::paths::DaemonPaths;
 
+use super::binary_mtime;
 use super::database::DaemonDatabase;
+use super::discovery::{AcquireError, DaemonLockGuard};
 use super::embedding_service::EmbeddingService;
 use super::http_transport::{HttpTransportConfig, HttpTransportServer, generate_bearer_token};
-use super::lifecycle::{DaemonLifecycleController, LifecyclePhase, ShutdownCause};
+use super::lifecycle::DaemonLifecycleController;
 use super::mcp_session::{DaemonSessionDependencies, HttpJulieService, HttpSessionAdmission};
-use super::pid::PidFile;
 use super::session::SessionTracker;
-use super::singleton::{SingletonLock, SingletonLockError};
+use super::shutdown::{RecoveryMarker, read_recovery_markers};
 use super::watcher_pool::WatcherPool;
 use super::workspace_pool::WorkspacePool;
-use super::shutdown::{
-    DrainOutcome, RecoveryMarker, drain_with_markers, publish_discovery_phase, read_recovery_markers,
-};
-use super::{ShutdownArtifacts, binary_mtime, drain_timeout, perform_shutdown_sequence};
 
-/// Injectable runtime context for a daemon instance.
-///
-/// Holds cross-cutting singletons that tests can swap out for isolated
-/// alternatives.  Production code constructs this via `Default`, which wires
-/// in the process-wide singletons.  Test code calls `for_test()` to get an
-/// independent set of registries so concurrent test daemons do not contend.
-#[derive(Clone)]
-pub struct DaemonRuntimeContext {
-    /// Mutation-gate registry used by all workspace writers in this daemon
-    /// instance.  In production this is the global singleton; in tests it is
-    /// an isolated instance so concurrent test daemons do not contend.
-    pub mutation_gate_registry: Arc<crate::workspace::mutation_gate::Registry>,
-}
+mod handle;
+mod runtime;
 
-impl Default for DaemonRuntimeContext {
-    fn default() -> Self {
-        Self {
-            mutation_gate_registry: Arc::clone(
-                crate::workspace::mutation_gate::Registry::global(),
-            ),
-        }
-    }
-}
-
-impl DaemonRuntimeContext {
-    /// Test-only constructor with an isolated mutation-gate registry.
-    /// Two `for_test()` instances do not share locks.
-    pub fn for_test() -> Self {
-        Self {
-            mutation_gate_registry: Arc::new(crate::workspace::mutation_gate::Registry::new()),
-        }
-    }
-
-    /// Install the global tracing subscriber for this process.
-    ///
-    /// Idempotent: a second call within the same process is a no-op (returns
-    /// `Ok(())` without re-initializing). Use this from `daemon_main` and
-    /// from in-process test fixtures (B.3) where multiple daemons may run
-    /// in the same process — `tracing_subscriber::registry().init()` panics
-    /// on second call, so the in-process fixture must call this.
-    ///
-    /// The `WorkerGuard` for the non-blocking file appender is stored in a
-    /// process-wide `OnceLock` so it lives for the process lifetime; without
-    /// it the background worker thread would shut down and log writes would
-    /// silently drop.
-    pub fn install_tracing(&self, paths: &crate::paths::DaemonPaths) -> Result<()> {
-        use std::sync::OnceLock;
-        use tracing_appender::non_blocking::{NonBlocking, WorkerGuard};
-        use tracing_appender::non_blocking;
-        use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
-
-        static TRACING_GUARD: OnceLock<WorkerGuard> = OnceLock::new();
-
-        if TRACING_GUARD.get().is_some() {
-            // Already installed in this process. No-op.
-            return Ok(());
-        }
-
-        let filter = EnvFilter::try_from_default_env()
-            .or_else(|_| EnvFilter::try_new("julie=info"))
-            .map_err(|e| anyhow::anyhow!("Failed to initialize logging filter: {}", e))?;
-
-        let log_dir = paths.julie_home();
-        std::fs::create_dir_all(&log_dir).unwrap_or_else(|e| {
-            eprintln!("Failed to create log directory at {:?}: {}", log_dir, e);
-        });
-
-        let writer = crate::logging::LocalRollingWriter::new(&log_dir, "daemon.log");
-        let (non_blocking_file, file_guard): (NonBlocking, WorkerGuard) = non_blocking(writer);
-
-        let try_init_result = tracing_subscriber::registry()
-            .with(filter)
-            .with(
-                fmt::layer()
-                    .with_writer(non_blocking_file)
-                    .with_timer(crate::logging::LocalTimer)
-                    .with_target(true)
-                    .with_ansi(false)
-                    .with_file(true)
-                    .with_line_number(true),
-            )
-            .try_init();
-
-        match try_init_result {
-            Ok(()) => {
-                // Park the worker guard for process lifetime. If another
-                // thread raced and won set(), drop our guard — its writer
-                // is the active one, ours never installed a subscriber.
-                let _ = TRACING_GUARD.set(file_guard);
-                Ok(())
-            }
-            Err(_err) => {
-                // A subscriber was already installed (e.g. by an earlier
-                // install_tracing() call or by an in-process test). That's
-                // acceptable — the guarantee is "second call doesn't panic",
-                // not "second call replaces the subscriber".
-                Ok(())
-            }
-        }
-    }
-}
+pub use handle::DaemonHandle;
+pub use runtime::DaemonRuntimeContext;
 
 /// Configuration for constructing a `DaemonApp`.
 pub struct DaemonConfig {
@@ -151,17 +51,16 @@ pub struct DaemonConfig {
 }
 
 /// Heavy daemon state constructed by `DaemonApp::new` and consumed by `serve`.
-/// Holds the singleton lock for the lifetime of the daemon and owns all
-/// shared pools and services. The lifecycle controller writes the initial
+/// Holds the daemon lock for the lifetime of the daemon and owns all shared
+/// pools and services. The lifecycle controller writes the initial
 /// `daemon.state = starting` marker on construction.
 pub struct DaemonApp {
     paths: DaemonPaths,
     no_dashboard: bool,
     daemon_state_path: PathBuf,
-    // Option-wrapped so `serve` can move lock + pid_file + reaper into the
-    // handle without partial-move conflicts. They're always `Some` in `new`.
-    singleton_lock: Option<SingletonLock>,
-    pid_file: Option<PidFile>,
+    // Option-wrapped so `serve` can move the lock + reaper into the handle
+    // without partial-move conflicts. They're always `Some` in `new`.
+    daemon_lock: Option<DaemonLockGuard>,
     lifecycle: DaemonLifecycleController,
     daemon_db: Option<Arc<DaemonDatabase>>,
     watcher_pool: Arc<WatcherPool>,
@@ -209,29 +108,22 @@ impl DaemonApp {
             .context("Failed to create daemon directories")?;
         let daemon_state_path = paths.daemon_state();
 
-        // Singleton invariant: kernel-enforced layer beneath PID-file management.
-        // Acquired BEFORE the PID file so a racing daemon cannot overwrite it.
-        // See "577-daemon cascade" regression (2026-05-12) for the rationale.
-        let singleton_lock = match SingletonLock::try_acquire(&paths.daemon_singleton_lock()) {
+        // New daemon singleton: a kernel-held lock on daemon.lock, released by
+        // the OS when this process exits. Legacy daemon.pid and
+        // daemon.singleton.lock are reserved for migration detection only.
+        let daemon_lock = match DaemonLockGuard::try_acquire(&paths.daemon_lock()) {
             Ok(guard) => guard,
-            Err(SingletonLockError::AlreadyHeld { path }) => {
+            Err(AcquireError::AlreadyHeld(held)) => {
                 return Err(anyhow::anyhow!(
                     "Another Julie daemon is already running for this JULIE_HOME \
-                     (singleton lock held: {}). Exiting without starting a duplicate.",
-                    path.display()
+                     (daemon lock held: {}). Exiting without starting a duplicate.",
+                    held.path.display()
                 ));
             }
             Err(other) => {
-                return Err(anyhow::anyhow!("{}", other))
-                    .context("Failed to acquire daemon singleton lock");
+                return Err(anyhow::anyhow!("{}", other)).context("Failed to acquire daemon lock");
             }
         };
-
-        // Atomic PID-file creation (O_CREAT|O_EXCL) closes the TOCTOU window
-        // between check_running and create.
-        let pid_file =
-            PidFile::create_exclusive(&paths.daemon_pid()).context("Failed to start daemon")?;
-        info!(pid = std::process::id(), "Daemon PID file created");
 
         let lifecycle = DaemonLifecycleController::new(daemon_state_path.clone());
 
@@ -253,7 +145,10 @@ impl DaemonApp {
 
         // Watcher pool + reaper come up first; reaper handle is stashed so
         // `serve` can abort it ahead of `WatcherPool::shutdown`.
-        let watcher_pool = Arc::new(WatcherPool::new(Duration::from_secs(300)));
+        let watcher_pool = Arc::new(WatcherPool::new_with_mutation_gate_registry(
+            Duration::from_secs(300),
+            Arc::clone(&runtime.mutation_gate_registry),
+        ));
         let reaper_handle = watcher_pool.spawn_reaper(Duration::from_secs(60));
         info!("WatcherPool started (grace=300s, reaper=60s)");
 
@@ -277,8 +172,7 @@ impl DaemonApp {
             paths,
             no_dashboard,
             daemon_state_path,
-            singleton_lock: Some(singleton_lock),
-            pid_file: Some(pid_file),
+            daemon_lock: Some(daemon_lock),
             lifecycle,
             daemon_db,
             watcher_pool,
@@ -343,6 +237,7 @@ impl DaemonApp {
                 Some(dashboard_tx.clone()),
                 Some(Arc::clone(&watcher_pool_for_handlers)),
                 Arc::clone(&self.sessions),
+                Arc::clone(&self.runtime.mutation_gate_registry),
             )
             .with_http_admission(HttpSessionAdmission::new(
                 self.lifecycle.clone(),
@@ -370,9 +265,8 @@ impl DaemonApp {
         let mcp_local_addr = http_transport.local_addr();
 
         let dashboard_config = crate::dashboard::DashboardConfig::default();
-        let dashboard_router =
-            crate::dashboard::create_router(dashboard_state, dashboard_config)
-                .context("Failed to initialize dashboard templates")?;
+        let dashboard_router = crate::dashboard::create_router(dashboard_state, dashboard_config)
+            .context("Failed to initialize dashboard templates")?;
         let port_file = self.paths.daemon_port();
         let (dashboard_listener, dashboard_port) =
             bind_dashboard_listener_and_publish(&port_file).await?;
@@ -413,27 +307,28 @@ impl DaemonApp {
         // The bearer token has already been written to disk by
         // `HttpTransportServer::bind_with_listener`; we only record its path.
         // If the transport was bound without a token (test harness), we fall
-        // back to `paths.daemon_mcp_token()` as a stable placeholder — the
+        // back to `paths.token_file()` as a stable placeholder — the
         // file will not exist, and adapters connecting against an unauthed
         // transport will simply ignore the token.
         let token_path = http_transport
             .token_path()
             .map(|p| p.to_path_buf())
-            .unwrap_or_else(|| self.paths.daemon_mcp_token());
-        let log_path = self
-            .paths
-            .julie_home()
-            .join(format!("daemon.log.{}", chrono::Local::now().format("%Y-%m-%d")));
-        let discovery_record =
-            crate::daemon::discovery::DiscoveryRecord::for_current_process(
-                mcp_local_addr.port(),
-                token_path,
-                log_path,
-            );
+            .unwrap_or_else(|| self.paths.token_file());
+        let log_path = self.paths.julie_home().join(format!(
+            "daemon.log.{}",
+            chrono::Local::now().format("%Y-%m-%d")
+        ));
+        let discovery_record = crate::daemon::discovery::DiscoveryRecord::for_current_process(
+            mcp_local_addr.ip().to_string(),
+            mcp_local_addr.port(),
+            token_path,
+            log_path,
+        );
         let discovery_path = self.paths.discovery_file();
-        if let Err(error) =
-            crate::daemon::discovery::DiscoveryFile::write_atomic(&discovery_path, &discovery_record)
-        {
+        if let Err(error) = crate::daemon::discovery::DiscoveryFile::write_atomic(
+            &discovery_path,
+            &discovery_record,
+        ) {
             warn!(
                 path = %discovery_path.display(),
                 %error,
@@ -455,15 +350,11 @@ impl DaemonApp {
             Arc::clone(&watcher_pool_for_handlers),
         );
 
-        // ---- Build the handle (owns lock, pid file, pools, background tasks) ----
-        let singleton_lock = self
-            .singleton_lock
+        // ---- Build the handle (owns lock, pools, background tasks) ----
+        let daemon_lock = self
+            .daemon_lock
             .take()
-            .expect("DaemonApp::serve called on app with no singleton lock");
-        let pid_file = self
-            .pid_file
-            .take()
-            .expect("DaemonApp::serve called on app with no pid file");
+            .expect("DaemonApp::serve called on app with no daemon lock");
         let reaper_handle = self
             .reaper_handle
             .take()
@@ -476,8 +367,7 @@ impl DaemonApp {
             local_addr: mcp_local_addr,
             paths: self.paths.clone(),
             daemon_state_path: self.daemon_state_path.clone(),
-            singleton_lock: Some(singleton_lock),
-            pid_file: Some(pid_file),
+            daemon_lock: Some(daemon_lock),
             http_transport: Some(http_transport),
             transport_shutdown_state,
             embedding_service: Arc::clone(&self.embedding_service),
@@ -501,201 +391,13 @@ impl Drop for DaemonApp {
         if let Some(handle) = self.reaper_handle.take() {
             handle.abort();
         }
-        if let Some(pid_file) = self.pid_file.take() {
-            if let Err(e) = pid_file.cleanup() {
-                warn!("Failed to clean up PID file during DaemonApp drop: {}", e);
-            }
-        }
-        let _ = self.singleton_lock.take();
-    }
-}
-
-/// Handle to a running `DaemonApp`. Query the bound MCP HTTP address and
-/// trigger graceful shutdown via `shutdown`. Option-wrapped fields get moved
-/// out during shutdown to avoid partial-move conflicts.
-pub struct DaemonHandle {
-    local_addr: SocketAddr,
-    paths: DaemonPaths,
-    daemon_state_path: PathBuf,
-    singleton_lock: Option<SingletonLock>,
-    pid_file: Option<PidFile>,
-    http_transport: Option<HttpTransportServer>,
-    /// Shared shutdown-state handle for the HTTP transport. Cloned out of
-    /// the transport at `serve` time so `shutdown` can flip it to draining /
-    /// aborted without holding the transport itself.
-    transport_shutdown_state: super::http_transport::TransportShutdownState,
-    embedding_service: Arc<EmbeddingService>,
-    workspace_pool: Arc<WorkspacePool>,
-    watcher_pool: Arc<WatcherPool>,
-    sessions: Arc<SessionTracker>,
-    lifecycle: DaemonLifecycleController,
-    // Reaper aborted BEFORE pool teardown so it cannot race with
-    // `WatcherPool::shutdown`.
-    reaper_handle: Option<JoinHandle<()>>,
-    idle_sweep_handle: Option<JoinHandle<()>>,
-    cleanup_sweep_handle: Option<JoinHandle<()>>,
-    dashboard_task: Option<JoinHandle<()>>,
-    embedding_init_handle: Option<JoinHandle<()>>,
-    // Shared with the Windows shutdown-event waker task.
-    #[allow(dead_code)]
-    stop_notify: Arc<Notify>,
-}
-
-impl DaemonHandle {
-    /// Bound MCP HTTP address (the one from the listener passed to `serve`).
-    pub fn local_addr(&self) -> SocketAddr {
-        self.local_addr
-    }
-
-    /// Trigger graceful shutdown and wait for the serve task to complete.
-    ///
-    /// LIFO order: flip transport to 503 (draining), rewrite discovery.json
-    /// `phase=stopping`, drain sessions, on timeout flip transport to 502
-    /// (aborted) and persist recovery markers, abort background tasks, shut
-    /// down HTTP transport, embedding service, workspace pool, watcher
-    /// pool, then remove port/PID/state files and release the singleton
-    /// lock. See `perform_shutdown_sequence` in `daemon/mod.rs` for steps
-    /// 3-5.
-    pub async fn shutdown(mut self) -> Result<()> {
-        // Step 0: announce that we're shutting down.
-        // (a) Flip HTTP transport into the draining state so any NEW request
-        //     after this point bounces with 503 Retry-After. In-flight
-        //     requests continue running and are observed by the drain below.
-        // (b) Rewrite discovery.json with phase=stopping so adapters / the
-        //     dashboard reading the file see the lifecycle change without
-        //     waiting for the transport to fully tear down. (No-op until
-        //     A1.8 publishes the initial discovery.json.)
-        self.transport_shutdown_state.mark_draining();
-        publish_discovery_phase(&self.paths, "stopping");
-
-        let remaining = self.sessions.active_count();
-        let phase = self
-            .lifecycle
-            .request_shutdown(ShutdownCause::Signal, remaining);
-        let drain_timed_out = if remaining > 0 {
-            let timeout = drain_timeout();
-            info!(
-                active_sessions = remaining,
-                timeout_secs = timeout.as_secs(),
-                "Draining active sessions"
-            );
-            let outcome = drain_with_markers(&self.sessions, &self.paths, timeout).await;
-            match outcome {
-                DrainOutcome::Clean => {
-                    info!("All sessions drained cleanly");
-                    false
-                }
-                DrainOutcome::TimedOut { active_sessions } => {
-                    // Flip the transport into the aborted state so any
-                    // in-flight handler that tries to write a response after
-                    // this point gets a 502 instead of a torn-down resource
-                    // (e.g. a dropped sidecar). The recovery marker has
-                    // already been written by drain_with_markers.
-                    self.transport_shutdown_state.mark_aborted();
-                    error!(
-                        remaining = active_sessions,
-                        "Session drain timeout exceeded, force-aborting in-flight requests — \
-                         recovery marker written for the next startup"
-                    );
-                    true
-                }
-            }
-        } else {
-            false
-        };
-        if matches!(phase, LifecyclePhase::Draining { .. }) {
-            self.lifecycle.sessions_drained();
-        }
-
-        info!(
-            active_sessions = self.sessions.active_count(),
-            drain_timed_out,
-            "Daemon shutting down"
-        );
-
-        // Abort background tasks before tearing down shared resources to
-        // prevent races with explicit shutdown calls. Order matches today's
-        // run_daemon: reaper, idle sweep, cleanup sweep, serve-spawned tasks.
-        for handle in [
-            self.reaper_handle.take(),
-            self.idle_sweep_handle.take(),
-            self.cleanup_sweep_handle.take(),
-            self.dashboard_task.take(),
-            self.embedding_init_handle.take(),
-        ]
-        .into_iter()
-        .flatten()
-        {
-            handle.abort();
-        }
-
-        // LIFO shutdown via perform_shutdown_sequence (HTTP transport first).
-        let port_path = self.paths.daemon_port();
-        let pid_file = self
-            .pid_file
-            .take()
-            .expect("DaemonHandle::shutdown called twice");
-        let http_transport = self
-            .http_transport
-            .take()
-            .expect("DaemonHandle::shutdown called twice");
-        let artifacts = ShutdownArtifacts {
-            port_path: &port_path,
-            pid_file,
-            state_path: &self.daemon_state_path,
-        };
-        perform_shutdown_sequence(
-            http_transport,
-            Arc::clone(&self.embedding_service),
-            Arc::clone(&self.workspace_pool),
-            Arc::clone(&self.watcher_pool),
-            artifacts,
-            None,
-        )
-        .await;
-
-        // Release singleton lock LAST so a racing daemon cannot start before
-        // shared resources are released.
-        let _ = self.singleton_lock.take();
-
-        info!("Daemon stopped");
-        Ok(())
-    }
-}
-
-impl Drop for DaemonHandle {
-    /// Best-effort cleanup if the handle is dropped without an explicit
-    /// `shutdown` call (e.g. panic / `?` early-exit). Cleans up PID file,
-    /// singleton lock, state files, and background tasks. The async HTTP
-    /// transport shutdown can't run here; its cancellation token + JoinHandle
-    /// abort handle the unclean path.
-    fn drop(&mut self) {
-        if let Some(pid_file) = self.pid_file.take() {
-            if let Err(e) = pid_file.cleanup() {
-                warn!("Failed to clean up PID file during DaemonHandle drop: {}", e);
-            }
-        }
-        let _ = self.singleton_lock.take();
-        let _ = std::fs::remove_file(self.paths.daemon_port());
-        let _ = std::fs::remove_file(&self.daemon_state_path);
-        for h in [
-            self.reaper_handle.take(),
-            self.idle_sweep_handle.take(),
-            self.cleanup_sweep_handle.take(),
-            self.dashboard_task.take(),
-            self.embedding_init_handle.take(),
-        ]
-        .into_iter()
-        .flatten()
-        {
-            h.abort();
-        }
+        let _ = self.daemon_lock.take();
     }
 }
 
 mod helpers;
-pub(crate) use helpers::{bind_mcp_listener_with_fallback, shutdown_signal};
 use helpers::{
     bind_dashboard_listener_and_publish, open_and_migrate_daemon_db, setup_stop_notify,
     spawn_cleanup_sweep, spawn_embedding_init,
 };
+pub(crate) use helpers::{bind_mcp_listener_with_fallback, shutdown_signal};

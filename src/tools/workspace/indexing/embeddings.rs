@@ -9,8 +9,8 @@ use std::sync::{Arc, Mutex};
 use tracing::{debug, info, warn};
 
 use crate::database::SymbolDatabase;
-use crate::embeddings::pipeline::run_embedding_pipeline_cancellable;
 use crate::embeddings::EmbeddingProvider;
+use crate::embeddings::pipeline::run_embedding_pipeline_cancellable;
 use crate::handler::JulieServerHandler;
 
 /// Outcome of `spawn_workspace_embedding`.
@@ -400,12 +400,7 @@ async fn spawn_deferred_daemon_embedding(
                     &cancel_for_task,
                 )
                 .await;
-                sync_vector_count_on_terminal(
-                    &daemon_db,
-                    &workspace_id_for_task,
-                    &db_path,
-                )
-                .await;
+                sync_vector_count_on_terminal(&daemon_db, &workspace_id_for_task, &db_path).await;
                 return;
             }
             EmbeddingServiceSettled::Timeout => {
@@ -419,12 +414,7 @@ async fn spawn_deferred_daemon_embedding(
                     &cancel_for_task,
                 )
                 .await;
-                sync_vector_count_on_terminal(
-                    &daemon_db,
-                    &workspace_id_for_task,
-                    &db_path,
-                )
-                .await;
+                sync_vector_count_on_terminal(&daemon_db, &workspace_id_for_task, &db_path).await;
                 return;
             }
         };
@@ -455,12 +445,7 @@ async fn spawn_deferred_daemon_embedding(
             )
             .await;
             // DB missing: vector count is definitionally 0.
-            sync_vector_count_on_terminal(
-                &daemon_db,
-                &workspace_id_for_task,
-                &db_path,
-            )
-            .await;
+            sync_vector_count_on_terminal(&daemon_db, &workspace_id_for_task, &db_path).await;
             return;
         }
 
@@ -480,12 +465,7 @@ async fn spawn_deferred_daemon_embedding(
                 )
                 .await;
                 // DB unreadable: treat vector count as 0.
-                sync_vector_count_on_terminal(
-                    &daemon_db,
-                    &workspace_id_for_task,
-                    &db_path,
-                )
-                .await;
+                sync_vector_count_on_terminal(&daemon_db, &workspace_id_for_task, &db_path).await;
                 return;
             }
             Err(e) => {
@@ -497,12 +477,7 @@ async fn spawn_deferred_daemon_embedding(
                 )
                 .await;
                 // DB open panicked: treat vector count as 0.
-                sync_vector_count_on_terminal(
-                    &daemon_db,
-                    &workspace_id_for_task,
-                    &db_path,
-                )
-                .await;
+                sync_vector_count_on_terminal(&daemon_db, &workspace_id_for_task, &db_path).await;
                 return;
             }
         };

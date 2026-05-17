@@ -349,7 +349,9 @@ impl CallPathTool {
         match resolve_workspace_filter(self.workspace.as_deref(), handler).await? {
             WorkspaceTarget::Primary => handler.primary_pooled_database().await,
             WorkspaceTarget::Target(workspace_id) => {
-                handler.get_pooled_database_for_workspace(&workspace_id).await
+                handler
+                    .get_pooled_database_for_workspace(&workspace_id)
+                    .await
             }
         }
     }

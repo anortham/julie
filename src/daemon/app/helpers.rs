@@ -113,10 +113,7 @@ pub(crate) async fn bind_mcp_listener_with_fallback(port: u16) -> Result<TcpList
                 .await
                 .context("Failed to bind MCP HTTP transport on any port")
         }
-        Err(e) => Err(anyhow::anyhow!(
-            "Failed to bind MCP HTTP transport: {}",
-            e
-        )),
+        Err(e) => Err(anyhow::anyhow!("Failed to bind MCP HTTP transport: {}", e)),
     }
 }
 
@@ -211,8 +208,7 @@ pub(crate) async fn bind_dashboard_listener_and_publish(
         .await
         .context("Failed to bind dashboard HTTP server")?;
     let port = listener.local_addr()?.port();
-    std::fs::write(port_file, port.to_string())
-        .context("Failed to write daemon port file")?;
+    std::fs::write(port_file, port.to_string()).context("Failed to write daemon port file")?;
     Ok((listener, port))
 }
 

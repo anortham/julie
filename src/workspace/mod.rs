@@ -821,7 +821,9 @@ impl JulieWorkspace {
             .acquire()
             .await
             .context("acquiring workspace connection from pool")?;
-        Ok(crate::database::SymbolDatabase::from_pooled(pooled, file_path))
+        Ok(crate::database::SymbolDatabase::from_pooled(
+            pooled, file_path,
+        ))
     }
 }
 

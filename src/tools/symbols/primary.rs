@@ -27,7 +27,10 @@ pub async fn get_symbols_from_primary(
 
     let binding = handler.require_primary_workspace_binding()?;
     let current_workspace_root = binding.workspace_root;
-    let db_arc = handler.primary_database().await?;
+    let db = handler
+        .primary_pooled_database()
+        .await?
+        .into_read_snapshot()?;
 
     // Phase 2: Database stores relative Unix-style paths for token efficiency
     // We need TWO paths:
@@ -81,26 +84,12 @@ pub async fn get_symbols_from_primary(
     // Query symbols for this file using relative Unix-style path.
     // In structure mode, use lightweight query that skips expensive columns
     // (code_context, metadata, semantic_group, confidence, content_type).
-    let symbols = {
-        let db_lock = match db_arc.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!(
-                    "Database mutex poisoned in get_symbols_from_primary, recovering: {}",
-                    poisoned
-                );
-                poisoned.into_inner()
-            }
-        };
-        if mode == "structure" {
-            db_lock
-                .get_symbols_for_file_lightweight(&query_path)
-                .map_err(|e| anyhow::anyhow!("Failed to get symbols: {}", e))?
-        } else {
-            db_lock
-                .get_symbols_for_file(&query_path)
-                .map_err(|e| anyhow::anyhow!("Failed to get symbols: {}", e))?
-        }
+    let symbols = if mode == "structure" {
+        db.get_symbols_for_file_lightweight(&query_path)
+            .map_err(|e| anyhow::anyhow!("Failed to get symbols: {}", e))?
+    } else {
+        db.get_symbols_for_file(&query_path)
+            .map_err(|e| anyhow::anyhow!("Failed to get symbols: {}", e))?
     };
 
     if symbols.is_empty() {

@@ -177,9 +177,8 @@ pub fn clear_recovery_markers(paths: &DaemonPaths) -> Result<()> {
     match std::fs::remove_file(&path) {
         Ok(()) => Ok(()),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(e) => Err(e).with_context(|| {
-            format!("failed to remove recovery marker at {}", path.display())
-        }),
+        Err(e) => Err(e)
+            .with_context(|| format!("failed to remove recovery marker at {}", path.display())),
     }
 }
 
@@ -200,8 +199,7 @@ fn append_recovery_marker(paths: &DaemonPaths, marker: &RecoveryMarker) -> Resul
     std::fs::create_dir_all(parent)
         .with_context(|| format!("create parent dir {}", parent.display()))?;
 
-    let json = serde_json::to_vec_pretty(&existing)
-        .context("serialize recovery markers")?;
+    let json = serde_json::to_vec_pretty(&existing).context("serialize recovery markers")?;
     write_atomic(&path, &json)?;
     Ok(())
 }

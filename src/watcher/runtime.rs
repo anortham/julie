@@ -4,7 +4,8 @@ use crate::extractors::ExtractorManager;
 use crate::tools::workspace::indexing::state::{
     IndexingOperation, IndexingRepairReason, SharedIndexingRuntime,
 };
-use crate::watcher::observability::timed_acquire_gate;
+use crate::watcher::observability::timed_acquire_gate_with_registry_or_cancelled;
+use crate::workspace::mutation_gate::{MutationGuard, Registry as MutationGateRegistry};
 use anyhow::Result;
 use ignore::gitignore::Gitignore;
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -37,6 +38,8 @@ pub(super) struct QueueRuntime {
     workspace_root: PathBuf,
     /// Stable workspace identifier used as the mutation-gate key.
     workspace_id: String,
+    /// Shared cancellation flag from the owning watcher.
+    cancel_flag: Arc<AtomicBool>,
     needs_rescan: Arc<AtomicBool>,
     tantivy_dirty: Arc<StdMutex<HashSet<String>>>,
     /// Per-file failure counter for the dirty-Tantivy retry loop. Once a file
@@ -44,6 +47,7 @@ pub(super) struct QueueRuntime {
     /// single ERROR log instead of spamming WARN every tick.
     tantivy_failure_attempts: Arc<StdMutex<HashMap<String, u32>>>,
     indexing_runtime: SharedIndexingRuntime,
+    mutation_gate_registry: Arc<MutationGateRegistry>,
 }
 
 impl QueueRuntime {
@@ -59,10 +63,12 @@ impl QueueRuntime {
             supported_extensions: indexer.supported_extensions.clone(),
             workspace_root: indexer.workspace_root.clone(),
             workspace_id: indexer.workspace_id.clone(),
+            cancel_flag: Arc::clone(&indexer.cancel_flag),
             needs_rescan: Arc::clone(&indexer.needs_rescan),
             tantivy_dirty: Arc::clone(&indexer.tantivy_dirty),
             tantivy_failure_attempts: Arc::new(StdMutex::new(HashMap::new())),
             indexing_runtime: Arc::clone(&indexer.indexing_runtime),
+            mutation_gate_registry: Arc::clone(&indexer.mutation_gate_registry),
         }
     }
 
@@ -77,9 +83,11 @@ impl QueueRuntime {
         supported_extensions: HashSet<String>,
         workspace_root: PathBuf,
         workspace_id: String,
+        cancel_flag: Arc<AtomicBool>,
         needs_rescan: Arc<AtomicBool>,
         tantivy_dirty: Arc<StdMutex<HashSet<String>>>,
         indexing_runtime: SharedIndexingRuntime,
+        mutation_gate_registry: Arc<MutationGateRegistry>,
     ) -> Self {
         Self {
             db,
@@ -92,11 +100,44 @@ impl QueueRuntime {
             supported_extensions,
             workspace_root,
             workspace_id,
+            cancel_flag,
             needs_rescan,
             tantivy_dirty,
             tantivy_failure_attempts: Arc::new(StdMutex::new(HashMap::new())),
             indexing_runtime,
+            mutation_gate_registry,
         }
+    }
+
+    async fn acquire_gate_or_mark_rescan(&self, context: &str) -> Option<MutationGuard<'static>> {
+        let guard = timed_acquire_gate_with_registry_or_cancelled(
+            &self.mutation_gate_registry,
+            &self.workspace_id,
+            Duration::from_millis(100),
+            &self.cancel_flag,
+        )
+        .await;
+
+        if guard.is_none() {
+            self.mark_rescan_pending_due_to_cancelled_gate(context);
+        }
+
+        guard
+    }
+
+    fn mark_rescan_pending_due_to_cancelled_gate(&self, context: &str) {
+        self.needs_rescan.store(true, Ordering::Release);
+        let mut runtime = self
+            .indexing_runtime
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        runtime.set_watcher_rescan_pending(true);
+        runtime.record_repair_reason(IndexingRepairReason::WatcherOverflow);
+        warn!(
+            workspace_id = %self.workspace_id,
+            context,
+            "Watcher shutdown skipped queued mutation because the mutation gate was held; rescan marked pending"
+        );
     }
 
     pub(super) async fn run_cycle(&self) {
@@ -136,9 +177,9 @@ impl QueueRuntime {
             // calling retry_dirty_tantivy (which acquires its own gate).
             // Holding both simultaneously would deadlock on the same workspace_id.
             {
-                let _guard =
-                    timed_acquire_gate(&self.workspace_id, std::time::Duration::from_millis(100))
-                        .await;
+                let Some(guard) = self.acquire_gate_or_mark_rescan("shutdown drain").await else {
+                    return;
+                };
                 while let Some(event) = self.index_queue.lock().await.pop_front() {
                     let provider_snapshot = self
                         .embedding_provider
@@ -155,11 +196,11 @@ impl QueueRuntime {
                         &self.lang_configs,
                         &self.tantivy_dirty,
                         &self.indexing_runtime,
-                        &_guard,
+                        &guard,
                     )
                     .await;
                 }
-            } // _guard dropped here, gate released
+            } // guard dropped here, gate released
         }
 
         self.retry_dirty_tantivy().await;
@@ -196,8 +237,12 @@ impl QueueRuntime {
         }
 
         // Acquire the mutation gate before dispatching repair events.
-        let _guard =
-            timed_acquire_gate(&self.workspace_id, std::time::Duration::from_millis(100)).await;
+        let Some(guard) = self
+            .acquire_gate_or_mark_rescan("persisted repair retry")
+            .await
+        else {
+            return 0;
+        };
 
         let gitignore = match super::filtering::build_gitignore_matcher(&self.workspace_root) {
             Ok(gitignore) => Some(gitignore),
@@ -276,7 +321,7 @@ impl QueueRuntime {
                 &self.lang_configs,
                 &self.tantivy_dirty,
                 &self.indexing_runtime,
-                &_guard,
+                &guard,
             )
             .await;
             replayed += 1;
@@ -370,8 +415,12 @@ impl QueueRuntime {
         };
 
         // Acquire the mutation gate before writing to Tantivy.
-        let _guard =
-            timed_acquire_gate(&self.workspace_id, std::time::Duration::from_millis(100)).await;
+        let Some(_guard) = self
+            .acquire_gate_or_mark_rescan("dirty Tantivy retry")
+            .await
+        else {
+            return;
+        };
 
         self.indexing_runtime
             .write()
@@ -535,8 +584,9 @@ impl QueueRuntime {
         // Acquire the mutation gate for the duration of the batch.  Held until
         // all events in this tick are dispatched so catch-up indexing cannot
         // interleave writes mid-batch.
-        let _guard =
-            timed_acquire_gate(&self.workspace_id, std::time::Duration::from_millis(100)).await;
+        let Some(guard) = self.acquire_gate_or_mark_rescan("queue batch").await else {
+            return 0;
+        };
 
         let mut processed_count = 0usize;
         let mut dropped_duplicates = 0usize;
@@ -619,7 +669,7 @@ impl QueueRuntime {
                 &self.lang_configs,
                 &self.tantivy_dirty,
                 &self.indexing_runtime,
-                &_guard,
+                &guard,
             )
             .await;
 
@@ -669,8 +719,9 @@ impl QueueRuntime {
         }
 
         // Acquire the mutation gate after early-return checks pass.
-        let _guard =
-            timed_acquire_gate(&self.workspace_id, std::time::Duration::from_millis(100)).await;
+        let Some(guard) = self.acquire_gate_or_mark_rescan("repair scan").await else {
+            return;
+        };
 
         self.needs_rescan.store(false, Ordering::Release);
         self.indexing_runtime
@@ -769,7 +820,7 @@ impl QueueRuntime {
                     &self.lang_configs,
                     &self.tantivy_dirty,
                     &self.indexing_runtime,
-                    &_guard,
+                    &guard,
                 )
                 .await;
                 deleted_files += 1;
@@ -793,7 +844,7 @@ impl QueueRuntime {
                         &self.lang_configs,
                         &self.tantivy_dirty,
                         &self.indexing_runtime,
-                        &_guard,
+                        &guard,
                     )
                     .await;
                     modified_files += 1;
@@ -838,7 +889,7 @@ impl QueueRuntime {
                 &self.lang_configs,
                 &self.tantivy_dirty,
                 &self.indexing_runtime,
-                &_guard,
+                &guard,
             )
             .await;
             new_files += 1;

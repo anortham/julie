@@ -210,53 +210,55 @@ pub(crate) async fn run_http_adapter(
                     }
                 }
             }
-            Err(adapter_error) => match classify_adapter_error(
-                &adapter_error,
-                attempt,
-                MAX_RETRIES,
-            ) {
-                AdapterRetryDecision::Retry => {
-                    info!(
-                        attempt = attempt + 1,
-                        error = %adapter_error,
-                        "HTTP adapter transport error before output, retrying"
-                    );
-                    // Recover the request line that was in-flight when the
-                    // transport failed so it is retried on the next attempt.
-                    if let AdapterError::Transport { lost_line: Some(line), .. } = adapter_error {
-                        pending_lines.push_front(line);
-                    }
-                    continue;
-                }
-                AdapterRetryDecision::Terminal => {
-                    match adapter_error {
-                        AdapterError::Stdin(error) => {
-                            info!("HTTP adapter MCP client stdio closed: {}", error);
+            Err(adapter_error) => {
+                match classify_adapter_error(&adapter_error, attempt, MAX_RETRIES) {
+                    AdapterRetryDecision::Retry => {
+                        info!(
+                            attempt = attempt + 1,
+                            error = %adapter_error,
+                            "HTTP adapter transport error before output, retrying"
+                        );
+                        // Recover the request line that was in-flight when the
+                        // transport failed so it is retried on the next attempt.
+                        if let AdapterError::Transport {
+                            lost_line: Some(line),
+                            ..
+                        } = adapter_error
+                        {
+                            pending_lines.push_front(line);
                         }
+                        continue;
+                    }
+                    AdapterRetryDecision::Terminal => {
+                        match adapter_error {
+                            AdapterError::Stdin(error) => {
+                                info!("HTTP adapter MCP client stdio closed: {}", error);
+                            }
+                            AdapterError::Transport { error, .. } => {
+                                error!(
+                                    "HTTP adapter transport error after output written, exiting: {}",
+                                    error
+                                );
+                            }
+                        }
+                        return Ok(());
+                    }
+                    AdapterRetryDecision::Exhausted => match adapter_error {
                         AdapterError::Transport { error, .. } => {
-                            error!(
-                                "HTTP adapter transport error after output written, exiting: {}",
-                                error
-                            );
+                            return Err(error).context(format!(
+                                "HTTP adapter transport error before output after {} attempts",
+                                MAX_RETRIES + 1
+                            ));
                         }
-                    }
-                    return Ok(());
+                        AdapterError::Stdin(error) => {
+                            // Stdin errors are classified as Terminal above; reaching
+                            // Exhausted with a Stdin error indicates a logic bug.
+                            return Err(anyhow::Error::from(error))
+                                .context("Unexpected exhausted decision for stdin error");
+                        }
+                    },
                 }
-                AdapterRetryDecision::Exhausted => match adapter_error {
-                    AdapterError::Transport { error, .. } => {
-                        return Err(error).context(format!(
-                            "HTTP adapter transport error before output after {} attempts",
-                            MAX_RETRIES + 1
-                        ));
-                    }
-                    AdapterError::Stdin(error) => {
-                        // Stdin errors are classified as Terminal above; reaching
-                        // Exhausted with a Stdin error indicates a logic bug.
-                        return Err(anyhow::Error::from(error))
-                            .context("Unexpected exhausted decision for stdin error");
-                    }
-                },
-            },
+            }
         }
     }
 

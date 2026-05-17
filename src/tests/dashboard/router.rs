@@ -111,7 +111,8 @@ async fn test_router_status_live_recovery_markers_empty_by_default() {
     let json: serde_json::Value = serde_json::from_str(&body_str).expect("parse json");
 
     assert_eq!(
-        json["recovery_markers"], serde_json::json!([]),
+        json["recovery_markers"],
+        serde_json::json!([]),
         "recovery_markers must default to an empty array"
     );
 }

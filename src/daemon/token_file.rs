@@ -9,11 +9,8 @@
 //! * **POSIX**: mode `0600` is set both at `open()` time (via
 //!   [`OpenOptionsExt::mode`]) and enforced with a post-write
 //!   [`set_permissions`] call to defend against umask stripping.
-//! * **Windows**: The stdlib offers no clean ACL-restriction path for regular
-//!   files without a third-party crate.  The token is written without
-//!   additional ACL hardening.  A `tracing::warn!` is emitted so operators
-//!   are aware.  TODO A1.4 follow-up: add `windows-acl` or `windows-sys`
-//!   `SECURITY_DESCRIPTOR` hardening once the plan is approved.
+//! * **Windows**: the file DACL is replaced with a protected ACL granting
+//!   access only to the current user SID.
 
 use std::io::Write as _;
 use std::path::Path;
@@ -25,8 +22,7 @@ use anyhow::Context as _;
 /// On POSIX the file is created with mode `0600` and permissions are
 /// explicitly re-applied after the write to resist umask stripping.
 ///
-/// On Windows the file is written without ACL restriction (see module-level
-/// doc for the rationale and follow-up reference).
+/// On Windows the file DACL is restricted to the current user after writing.
 ///
 /// Parent directories are created automatically if absent.
 pub fn write_token(path: &Path, token: &str) -> anyhow::Result<()> {
@@ -45,19 +41,6 @@ pub fn write_token(path: &Path, token: &str) -> anyhow::Result<()> {
         options.mode(0o600);
     }
 
-    #[cfg(windows)]
-    {
-        // No clean stdlib path to restrict file ACLs on Windows without an
-        // external crate.  We emit a warning so operators are aware.
-        // TODO A1.4 follow-up: add windows-sys SECURITY_DESCRIPTOR hardening.
-        tracing::warn!(
-            path = %path.display(),
-            "daemon token file ACL hardening not implemented on Windows; \
-             token is readable by any process running as the same user — \
-             TODO A1.4 follow-up"
-        );
-    }
-
     let mut file = options
         .open(path)
         .with_context(|| format!("open token file {}", path.display()))?;
@@ -72,8 +55,13 @@ pub fn write_token(path: &Path, token: &str) -> anyhow::Result<()> {
             .with_context(|| format!("set_permissions 0600 on {}", path.display()))?;
     }
 
-    writeln!(file, "{token}")
-        .with_context(|| format!("write token to {}", path.display()))?;
+    writeln!(file, "{token}").with_context(|| format!("write token to {}", path.display()))?;
+    file.sync_all()
+        .with_context(|| format!("sync token file {}", path.display()))?;
+
+    #[cfg(windows)]
+    restrict_current_user_acl(path)
+        .with_context(|| format!("restrict token file ACL on {}", path.display()))?;
 
     Ok(())
 }
@@ -86,4 +74,118 @@ pub fn read_token(path: &Path) -> anyhow::Result<String> {
     let raw = std::fs::read_to_string(path)
         .with_context(|| format!("read token file {}", path.display()))?;
     Ok(raw.trim_end().to_owned())
+}
+
+#[cfg(windows)]
+fn restrict_current_user_acl(path: &Path) -> anyhow::Result<()> {
+    use std::ffi::c_void;
+    use std::os::windows::ffi::OsStrExt as _;
+    use std::ptr::{NonNull, null_mut};
+
+    use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, LocalFree};
+    use windows_sys::Win32::Security::Authorization::{
+        EXPLICIT_ACCESS_W, NO_INHERITANCE, NO_MULTIPLE_TRUSTEE, SE_FILE_OBJECT, SET_ACCESS,
+        SetEntriesInAclW, SetNamedSecurityInfoW, TRUSTEE_IS_SID, TRUSTEE_IS_USER, TRUSTEE_W,
+    };
+    use windows_sys::Win32::Security::{
+        DACL_SECURITY_INFORMATION, GetTokenInformation, OpenProcessToken,
+        PROTECTED_DACL_SECURITY_INFORMATION, TOKEN_QUERY, TOKEN_USER, TokenUser,
+    };
+    use windows_sys::Win32::Storage::FileSystem::FILE_ALL_ACCESS;
+    use windows_sys::Win32::System::Threading::GetCurrentProcess;
+
+    struct Handle(HANDLE);
+    impl Drop for Handle {
+        fn drop(&mut self) {
+            if self.0 != 0 {
+                unsafe {
+                    CloseHandle(self.0);
+                }
+            }
+        }
+    }
+
+    struct LocalAllocPtr(NonNull<c_void>);
+    impl Drop for LocalAllocPtr {
+        fn drop(&mut self) {
+            unsafe {
+                LocalFree(self.0.as_ptr());
+            }
+        }
+    }
+
+    let mut token_handle: HANDLE = 0;
+    let opened = unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token_handle) };
+    if opened == 0 {
+        return Err(std::io::Error::last_os_error()).context("OpenProcessToken");
+    }
+    let token_handle = Handle(token_handle);
+
+    let mut token_len = 0u32;
+    unsafe {
+        GetTokenInformation(token_handle.0, TokenUser, null_mut(), 0, &mut token_len);
+    }
+    if token_len == 0 {
+        return Err(std::io::Error::last_os_error()).context("GetTokenInformation size");
+    }
+
+    let mut token_buf = vec![0u8; token_len as usize];
+    let got_token = unsafe {
+        GetTokenInformation(
+            token_handle.0,
+            TokenUser,
+            token_buf.as_mut_ptr().cast(),
+            token_len,
+            &mut token_len,
+        )
+    };
+    if got_token == 0 {
+        return Err(std::io::Error::last_os_error()).context("GetTokenInformation token user");
+    }
+
+    let token_user = unsafe { &*(token_buf.as_ptr() as *const TOKEN_USER) };
+    let sid = token_user.User.Sid;
+    if sid.is_null() {
+        anyhow::bail!("current user token has null SID");
+    }
+
+    let mut explicit_access = EXPLICIT_ACCESS_W {
+        grfAccessPermissions: FILE_ALL_ACCESS,
+        grfAccessMode: SET_ACCESS,
+        grfInheritance: NO_INHERITANCE,
+        Trustee: TRUSTEE_W {
+            pMultipleTrustee: null_mut(),
+            MultipleTrusteeOperation: NO_MULTIPLE_TRUSTEE,
+            TrusteeForm: TRUSTEE_IS_SID,
+            TrusteeType: TRUSTEE_IS_USER,
+            ptstrName: sid.cast(),
+        },
+    };
+
+    let mut acl = null_mut();
+    let set_acl = unsafe { SetEntriesInAclW(1, &mut explicit_access, null_mut(), &mut acl) };
+    if set_acl != 0 {
+        return Err(std::io::Error::from_raw_os_error(set_acl as i32)).context("SetEntriesInAclW");
+    }
+    let acl =
+        LocalAllocPtr(NonNull::new(acl.cast()).context("SetEntriesInAclW returned null ACL")?);
+
+    let mut wide_path: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+    let set_security = unsafe {
+        SetNamedSecurityInfoW(
+            wide_path.as_mut_ptr(),
+            SE_FILE_OBJECT,
+            DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
+            null_mut(),
+            null_mut(),
+            acl.0.as_ptr().cast(),
+            null_mut(),
+        )
+    };
+    if set_security != 0 {
+        return Err(std::io::Error::from_raw_os_error(set_security as i32))
+            .context("SetNamedSecurityInfoW");
+    }
+
+    Ok(())
 }

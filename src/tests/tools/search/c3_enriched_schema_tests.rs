@@ -87,10 +87,7 @@ fn test_classify_role_generated_target_dir() {
 
 #[test]
 fn test_classify_role_generated_dist() {
-    assert_eq!(
-        classify_role("dist/bundle.js", "javascript"),
-        "generated"
-    );
+    assert_eq!(classify_role("dist/bundle.js", "javascript"), "generated");
 }
 
 #[test]
@@ -122,10 +119,7 @@ fn test_test_subrole_empty_for_non_test_path() {
 
 #[test]
 fn test_test_subrole_integration() {
-    assert_eq!(
-        test_subrole("src/tests/integration/foo.rs"),
-        "integration"
-    );
+    assert_eq!(test_subrole("src/tests/integration/foo.rs"), "integration");
     assert_eq!(
         test_subrole("tests/integration_tests/foo.rs"),
         "integration"

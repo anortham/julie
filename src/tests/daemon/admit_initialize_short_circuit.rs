@@ -115,6 +115,7 @@ mod tests {
                     None,
                     None,
                     sessions,
+                    Arc::clone(crate::workspace::mutation_gate::Registry::global()),
                 )
                 .with_http_admission(admission),
             );

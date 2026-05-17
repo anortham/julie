@@ -31,7 +31,8 @@ pub async fn get_symbols_from_target_workspace(
     // target workspace.
     let pooled_db = handler
         .get_pooled_database_for_workspace(&target_workspace_id)
-        .await?;
+        .await?
+        .into_read_snapshot()?;
 
     let (query_path, absolute_path) = if std::path::Path::new(file_path).is_absolute() {
         // Absolute path input

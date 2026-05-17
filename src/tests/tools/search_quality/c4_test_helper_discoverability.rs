@@ -40,8 +40,7 @@ fn load_suite() -> QuerySuite {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(FIXTURE_RELATIVE_PATH);
     let raw = std::fs::read_to_string(&path)
         .unwrap_or_else(|e| panic!("read fixture {}: {}", path.display(), e));
-    serde_json::from_str(&raw)
-        .unwrap_or_else(|e| panic!("parse fixture {}: {}", path.display(), e))
+    serde_json::from_str(&raw).unwrap_or_else(|e| panic!("parse fixture {}: {}", path.display(), e))
 }
 
 /// Helper that overrides `JULIE_RERANKER_ENABLED` for the duration of
@@ -98,7 +97,12 @@ async fn test_c4_test_helpers_discoverable_with_reranker_enabled() {
     for spec in &suite.queries {
         let results = search_definitions(&handler, &spec.query, top_n)
             .await
-            .unwrap_or_else(|e| panic!("query '{}' (id={}): search error: {}", spec.query, spec.id, e));
+            .unwrap_or_else(|e| {
+                panic!(
+                    "query '{}' (id={}): search error: {}",
+                    spec.query, spec.id, e
+                )
+            });
 
         let found = results.iter().any(|s| s.name == spec.expect_name_in_top);
         if !found {
@@ -143,7 +147,12 @@ async fn test_c4_test_helpers_discoverable_baseline_reranker_off() {
     for spec in &suite.queries {
         let results = search_definitions(&handler, &spec.query, top_n)
             .await
-            .unwrap_or_else(|e| panic!("query '{}' (id={}): search error: {}", spec.query, spec.id, e));
+            .unwrap_or_else(|e| {
+                panic!(
+                    "query '{}' (id={}): search error: {}",
+                    spec.query, spec.id, e
+                )
+            });
         if !results.iter().any(|s| s.name == spec.expect_name_in_top) {
             failures.push(format!(
                 "[{}] {:?} not in top {} (baseline, reranker off)",
