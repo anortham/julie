@@ -234,15 +234,20 @@ async fn setup_handler_inner() -> JulieServerHandler {
     let indexes_dir = julie_dir.join("indexes");
     fs::create_dir_all(&indexes_dir).expect("Failed to create indexes dir");
 
-    // Get workspace ID for temp workspace
+    // Get the canonical workspace ID. `generate_workspace_id` already
+    // returns the full `{safe_name}_{hash8}` form — use it directly so
+    // the directory layout and registry entry match what the pooled-DB
+    // lookup (e.g. fast_refs after A2.2c) expects. Previously this
+    // function rebuilt the ID from `temp_root.file_name() + first-8-of-
+    // full-id`, which produced a non-canonical name like
+    // `.tmpbaRV03_ws__tmpb` and broke fast_refs identifier tests.
     use crate::workspace::registry::generate_workspace_id;
-    let workspace_id = generate_workspace_id(&temp_root.to_string_lossy())
+    let full_workspace_id = generate_workspace_id(&temp_root.to_string_lossy())
         .expect("Failed to generate workspace ID");
     let workspace_name = temp_root
         .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or("workspace");
-    let full_workspace_id = format!("{}_{}", workspace_name, &workspace_id[..8]);
 
     // Create workspace index directory
     let workspace_dir = indexes_dir.join(&full_workspace_id);
