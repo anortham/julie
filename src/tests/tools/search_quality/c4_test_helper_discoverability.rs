@@ -44,20 +44,32 @@ fn load_suite() -> QuerySuite {
         .unwrap_or_else(|e| panic!("parse fixture {}: {}", path.display(), e))
 }
 
-/// Helper that flips `JULIE_RERANKER_ENABLED` for the duration of `body`.
-/// Restores prior value on drop so a panicking test doesn't leak the env
-/// var to siblings.
+/// Helper that overrides `JULIE_RERANKER_ENABLED` for the duration of
+/// `body` and restores prior value on drop so a panicking test doesn't
+/// leak the env var to siblings.
+///
+/// C.5: reranker is default-on, so `enable()` is a no-op semantically
+/// (it explicitly sets `"1"` to defeat an inherited `"0"` from a parent
+/// shell). `disable()` sets `"0"` to exercise the legacy-off path.
 struct RerankerEnvGuard {
     prior: Option<String>,
 }
 
 impl RerankerEnvGuard {
     fn enable() -> Self {
+        Self::set("1")
+    }
+
+    fn disable() -> Self {
+        Self::set("0")
+    }
+
+    fn set(value: &str) -> Self {
         let prior = std::env::var(RERANKER_ENV).ok();
         // SAFETY: env var mutation is non-thread-safe; tests using this
         // helper are `#[serial]`.
         unsafe {
-            std::env::set_var(RERANKER_ENV, "1");
+            std::env::set_var(RERANKER_ENV, value);
         }
         Self { prior }
     }
@@ -112,61 +124,39 @@ async fn test_c4_test_helpers_discoverable_with_reranker_enabled() {
     );
 }
 
-/// Baseline sanity: the same queries also resolve with the reranker
-/// disabled. This catches the case where a test helper is missing from
-/// the fixture entirely (which would otherwise look like a reranker
-/// regression).
+/// Diagnostic baseline: the same queries also resolve with the reranker
+/// explicitly disabled via `JULIE_RERANKER_ENABLED=0`. This catches the
+/// case where a test helper is missing from the fixture entirely (which
+/// would otherwise look like a reranker regression rather than the
+/// fixture-staleness it actually is).
+///
+/// C.5: reranker is default-on, so "off" requires an explicit opt-out.
 #[tokio::test(flavor = "multi_thread")]
 #[serial]
 async fn test_c4_test_helpers_discoverable_baseline_reranker_off() {
-    // SAFETY: serial test isolates env mutation.
-    let prior = std::env::var(RERANKER_ENV).ok();
-    unsafe {
-        std::env::remove_var(RERANKER_ENV);
-    }
-    let result = std::panic::AssertUnwindSafe(async {
-        let handler = setup_handler_with_fixture().await;
-        let suite = load_suite();
-        let top_n = suite.default_top_n as u32;
+    let _guard = RerankerEnvGuard::disable();
+    let handler = setup_handler_with_fixture().await;
+    let suite = load_suite();
+    let top_n = suite.default_top_n as u32;
 
-        let mut failures: Vec<String> = Vec::new();
-        for spec in &suite.queries {
-            let results = match search_definitions(&handler, &spec.query, top_n).await {
-                Ok(r) => r,
-                Err(e) => {
-                    failures.push(format!("[{}] search error: {}", spec.id, e));
-                    continue;
-                }
-            };
-            if !results.iter().any(|s| s.name == spec.expect_name_in_top) {
-                failures.push(format!(
-                    "[{}] {:?} not in top {} (baseline, reranker off)",
-                    spec.id, spec.expect_name_in_top, top_n
-                ));
-            }
-        }
-
-        if !failures.is_empty() {
-            panic!(
-                "baseline (reranker off): {}/{} queries failed — fixture may not contain these symbols:\n{}",
-                failures.len(),
-                suite.queries.len(),
-                failures.join("\n")
-            );
-        }
-    });
-
-    let outcome = futures::FutureExt::catch_unwind(result).await;
-
-    // Restore env var no matter what.
-    unsafe {
-        match prior {
-            Some(v) => std::env::set_var(RERANKER_ENV, v),
-            None => std::env::remove_var(RERANKER_ENV),
+    let mut failures: Vec<String> = Vec::new();
+    for spec in &suite.queries {
+        let results = search_definitions(&handler, &spec.query, top_n)
+            .await
+            .unwrap_or_else(|e| panic!("query '{}' (id={}): search error: {}", spec.query, spec.id, e));
+        if !results.iter().any(|s| s.name == spec.expect_name_in_top) {
+            failures.push(format!(
+                "[{}] {:?} not in top {} (baseline, reranker off)",
+                spec.id, spec.expect_name_in_top, top_n
+            ));
         }
     }
 
-    if let Err(panic_info) = outcome {
-        std::panic::resume_unwind(panic_info);
-    }
+    assert!(
+        failures.is_empty(),
+        "baseline (reranker off): {}/{} queries failed — fixture may not contain these symbols:\n{}",
+        failures.len(),
+        suite.queries.len(),
+        failures.join("\n")
+    );
 }

@@ -234,14 +234,15 @@ fn filter_test_symbols(symbols: &mut Vec<Symbol>, exclude: bool) {
 
 /// True when the reranker is enabled for this process.
 ///
-/// Currently gated behind `JULIE_RERANKER_ENABLED=1` env var so the rollout
-/// is opt-in. C.5 flips this to default-on once `cargo xtask test dogfood`
-/// confirms no regression on the existing search-quality fixture and the
-/// new `test-helper-discoverability.json`.
+/// C.5: default-on. Set `JULIE_RERANKER_ENABLED=0` (or `false` / `FALSE`)
+/// to disable for diagnostic comparison. Sign-off evidence in
+/// `9848748f` (C.4): 33/35 dogfood pass with the flag ON, identical to
+/// flag-OFF baseline. The 10-query test-helper-discoverability fixture
+/// also passes with flag ON.
 fn reranker_enabled() -> bool {
-    matches!(
+    !matches!(
         std::env::var("JULIE_RERANKER_ENABLED").as_deref(),
-        Ok("1") | Ok("true") | Ok("TRUE")
+        Ok("0") | Ok("false") | Ok("FALSE")
     )
 }
 
