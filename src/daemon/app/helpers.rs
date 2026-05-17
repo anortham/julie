@@ -226,6 +226,35 @@ pub(crate) fn setup_stop_notify(paths: &DaemonPaths) -> Arc<Notify> {
     stop_notify
 }
 
+/// Spawn the one-shot bridge task that funnels a `restart_notify` signal
+/// into `stop_notify`. The bridge is the missing consumer of
+/// `DaemonLifecycleController::restart_notify`: before this fix, every
+/// `notify_restart()` call fired into a void and the daemon could sit in
+/// `restart_pending=true` indefinitely.
+///
+/// `Notify::notify_one` is permit-based, so a `notify_restart()` that fires
+/// before the bridge is spawned is preserved as a permit and consumed on
+/// the bridge's first `.notified()` poll. Startup races are safe.
+///
+/// One-shot is sufficient: `stop_notify` triggers the daemon's only exit
+/// path (drain + LIFO teardown + publish_discovery_phase("stopping")).
+/// Once fired, `restart_pending` is moot — the daemon is on its way out.
+///
+/// The `tracing::info!` log is REQUIRED for live validation per
+/// `docs/plans/2026-05-17-daemon-restart-listener-fix.md`. Operators need
+/// to distinguish "restart via the new fix" from "restart via SIGTERM" in
+/// daemon.log when verifying recovery.
+pub(crate) fn spawn_restart_bridge(
+    restart_notify: Arc<Notify>,
+    stop_notify: Arc<Notify>,
+) -> JoinHandle<()> {
+    tokio::spawn(async move {
+        restart_notify.notified().await;
+        info!("Restart channel signaled; triggering daemon shutdown via stop_notify");
+        stop_notify.notify_one();
+    })
+}
+
 /// Bind the dashboard HTTP listener (auto-assigned port) and write the
 /// resolved port to `daemon_port` so `julie dashboard` can find it.
 ///

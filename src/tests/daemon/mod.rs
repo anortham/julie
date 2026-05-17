@@ -15,6 +15,7 @@ pub mod mcp_session;
 pub mod paths;
 pub mod pid;
 pub mod pid_file_format;
+pub mod restart_listener;
 pub mod roots;
 pub mod server;
 pub mod session;

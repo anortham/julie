@@ -314,6 +314,21 @@ impl DaemonApp {
 
         self.lifecycle.startup_complete();
 
+        // Bridge restart_notify → stop_notify. Before this fix,
+        // `DaemonLifecycleController::restart_notify` had no consumer
+        // anywhere in src/, so every `notify_restart()` call (from
+        // `mark_restart_pending` and the HTTP session disconnect path)
+        // fired into a void and the daemon could sit in
+        // `restart_pending=true` indefinitely while every new MCP init
+        // was rejected. This one-shot listener funnels restart signals
+        // into the existing SIGTERM exit path (drain → LIFO teardown →
+        // publish_discovery_phase("stopping")). See
+        // docs/plans/2026-05-17-daemon-restart-listener-fix.md Task 2.
+        let _restart_bridge_handle = spawn_restart_bridge(
+            self.lifecycle.restart_notify(),
+            Arc::clone(&stop_notify),
+        );
+
         // A1.8: publish the initial discovery.json now that the HTTP transport
         // is bound and the lifecycle state file says `ready`. This is the file
         // the adapter reads to find the daemon and the file A1.7's
@@ -415,6 +430,7 @@ impl Drop for DaemonApp {
 mod helpers;
 pub(crate) use helpers::{
     acquire_or_yield_to_existing_daemon, bind_mcp_listener_with_fallback, shutdown_signal,
+    spawn_restart_bridge,
 };
 use helpers::{
     bind_dashboard_listener_and_publish, open_and_migrate_daemon_db, setup_stop_notify,
