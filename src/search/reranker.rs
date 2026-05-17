@@ -215,6 +215,14 @@ pub fn rerank(query: &ParsedQuery, candidates: &[Candidate]) -> Vec<Ranked> {
     out
 }
 
+/// Score a single candidate per the C.3 algorithm without sorting.
+///
+/// Useful when the caller already has a result list with stable IDs and
+/// wants to update each item's score in place, then sort itself.
+pub fn rerank_score(query: &ParsedQuery, candidate: &Candidate) -> f32 {
+    score_one(query, candidate)
+}
+
 fn score_one(query: &ParsedQuery, c: &Candidate) -> f32 {
     let mut score = c.tantivy_score;
     let title_lc = c.title.to_lowercase();

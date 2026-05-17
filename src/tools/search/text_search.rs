@@ -8,8 +8,11 @@ use super::target::SearchTarget;
 use crate::extractors::{Symbol, SymbolKind};
 use crate::handler::JulieServerHandler;
 use crate::search::SearchFilter;
+use crate::search::query_parse::parse_query;
+use crate::search::reranker::{Candidate, rerank_score};
 use crate::search::scoring::{
-    DOC_LANGUAGES, apply_centrality_boost, is_test_path, promote_exact_name_matches,
+    DOC_LANGUAGES, apply_centrality_boost, classify_role, is_test_path,
+    promote_exact_name_matches, test_subrole,
 };
 
 // Re-export for tests
@@ -225,6 +228,130 @@ fn filter_test_symbols(symbols: &mut Vec<Symbol>, exclude: bool) {
     });
 }
 
+// ---------------------------------------------------------------------------
+// C.4: reranker wiring
+// ---------------------------------------------------------------------------
+
+/// True when the reranker is enabled for this process.
+///
+/// Currently gated behind `JULIE_RERANKER_ENABLED=1` env var so the rollout
+/// is opt-in. C.5 flips this to default-on once `cargo xtask test dogfood`
+/// confirms no regression on the existing search-quality fixture and the
+/// new `test-helper-discoverability.json`.
+fn reranker_enabled() -> bool {
+    matches!(
+        std::env::var("JULIE_RERANKER_ENABLED").as_deref(),
+        Ok("1") | Ok("true") | Ok("TRUE")
+    )
+}
+
+/// Build a [`Candidate`] from a Tantivy [`SymbolSearchResult`].
+///
+/// `body` is signature + doc_comment because `code_body` is indexed but
+/// not returned in SymbolSearchResult — the reranker's body-term boost
+/// matches against what we have. If dogfood shows we need code_body, we
+/// add it to SymbolSearchResult.
+fn build_symbol_candidate(r: &crate::search::index::SymbolSearchResult) -> Candidate {
+    let kind = SymbolKind::try_from_string(&r.kind).unwrap_or(SymbolKind::Variable);
+    let role = classify_role(&r.file_path, &r.language).to_string();
+    let test_role = test_subrole(&r.file_path).to_string();
+    let is_test = role == "test";
+    let is_file_doc = role == "docs";
+    let is_source_language = !DOC_LANGUAGES.contains(&r.language.as_str());
+
+    let mut body = String::with_capacity(r.signature.len() + r.doc_comment.len() + 1);
+    body.push_str(&r.signature);
+    if !r.signature.is_empty() && !r.doc_comment.is_empty() {
+        body.push(' ');
+    }
+    body.push_str(&r.doc_comment);
+
+    Candidate::builder()
+        .title(r.name.clone())
+        .path(r.file_path.clone())
+        .body(body)
+        .kind(kind)
+        .role(role)
+        .test_role(test_role)
+        .is_test(is_test)
+        .is_file_doc(is_file_doc)
+        .is_source_language(is_source_language)
+        .tantivy_score(r.score)
+        .build()
+}
+
+/// Reweight Tantivy symbol results in place per the C.3 reranker, then
+/// re-sort by the new score (descending, stable on ties).
+///
+/// No-op when the reranker flag is off or the list is empty.
+fn apply_reranker_to_symbol_results(
+    query: &str,
+    results: &mut Vec<crate::search::index::SymbolSearchResult>,
+) {
+    if !reranker_enabled() || results.is_empty() {
+        return;
+    }
+    let parsed = parse_query(query);
+    for r in results.iter_mut() {
+        let candidate = build_symbol_candidate(r);
+        r.score = rerank_score(&parsed, &candidate);
+    }
+    results.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.name.cmp(&b.name))
+            .then_with(|| a.file_path.cmp(&b.file_path))
+    });
+}
+
+/// File-level reranker for content search. Same flag, leaner inputs:
+/// content results are file-level so `title` is the basename, `body` is
+/// empty, and `kind` is the sentinel `Module`. The reranker mostly
+/// contributes role/path reweighting here — useful for de-emphasizing
+/// vendor / generated / test files on NL content queries.
+fn apply_reranker_to_content_results(
+    query: &str,
+    results: &mut Vec<crate::search::index::ContentSearchResult>,
+) {
+    if !reranker_enabled() || results.is_empty() {
+        return;
+    }
+    let parsed = parse_query(query);
+    for r in results.iter_mut() {
+        let basename = std::path::Path::new(&r.file_path)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or(&r.file_path)
+            .to_string();
+        let role = classify_role(&r.file_path, &r.language).to_string();
+        let test_role = test_subrole(&r.file_path).to_string();
+        let is_test = role == "test";
+        let is_file_doc = role == "docs";
+        let is_source_language = !DOC_LANGUAGES.contains(&r.language.as_str());
+
+        let candidate = Candidate::builder()
+            .title(basename)
+            .path(r.file_path.clone())
+            .body(String::new())
+            .kind(SymbolKind::Module)
+            .role(role)
+            .test_role(test_role)
+            .is_test(is_test)
+            .is_file_doc(is_file_doc)
+            .is_source_language(is_source_language)
+            .tantivy_score(r.score)
+            .build();
+        r.score = rerank_score(&parsed, &candidate);
+    }
+    results.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.file_path.cmp(&b.file_path))
+    });
+}
+
 /// Run a definition search: hybrid (keyword + semantic) if NL query with embeddings,
 /// otherwise pure keyword with over-fetch + exact-name promotion.
 ///
@@ -273,6 +400,11 @@ fn definition_search_with_index(
             Some(profile),
         )?;
         let relaxed = hybrid_results.relaxed;
+
+        // C.4: rerank on the raw hybrid scores BEFORE centrality boost so
+        // role/intent/kind reweighting feeds into the same ranking pipeline
+        // as keyword-only search. No-op when the flag is off.
+        apply_reranker_to_symbol_results(query, &mut hybrid_results.results);
 
         // Apply centrality boost + exact-name promotion + truncate
         let symbol_ids: Vec<&str> = hybrid_results
@@ -323,6 +455,10 @@ fn definition_search_with_index(
         } else {
             search.results
         };
+
+        // C.4: rerank on the raw Tantivy scores BEFORE centrality + promotion.
+        // No-op when JULIE_RERANKER_ENABLED is unset.
+        apply_reranker_to_symbol_results(query, &mut filtered_results);
 
         // Apply centrality boost + exact-name promotion on Tantivy results
         if let Some(db) = db {
@@ -460,7 +596,11 @@ fn content_search_with_index(
     };
     let content_search = index.search_content(query, filter, fetch_limit)?;
     let relaxed = content_search.relaxed;
-    let search_results = content_search.results;
+    let mut search_results = content_search.results;
+    // C.4: rerank file-level results BEFORE the verification loop so the
+    // limit-truncation downstream picks role-reweighted candidates.
+    // No-op when JULIE_RERANKER_ENABLED is unset.
+    apply_reranker_to_content_results(query, &mut search_results);
     let candidate_total = search_results.len();
 
     let query_words: Vec<String> = query

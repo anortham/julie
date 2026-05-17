@@ -1,0 +1,88 @@
+{
+  "suite": "test-helper-discoverability",
+  "version": 1,
+  "description": "C.4 regression fixture. Proves that target=\"definitions\" continues to surface test-helper symbols even with the reranker enabled, per the role-aware-reweighting design in 2026-05-15-daemon-split-and-search-reranker-design.md §C.4.\n\nEach query targets a known test-helper symbol in julie's own codebase. The acceptance bar is: the expected symbol appears in the top 10 definition results with the default exclude_tests behavior (none = include tests for definition search).\n\nNote: queries are scoped to symbols that exist in the current pre-built fixture (target/julie-fixture). If you rename a helper or add new ones (e.g. B.3's InProcessDaemon), rebuild the fixture: `cargo test --lib build_julie_fixture -- --ignored --nocapture`, then expand this fixture to cover the additions.",
+  "default_top_n": 10,
+  "queries": [
+    {
+      "id": "helper-julie-test-fixture",
+      "category": "test_helpers",
+      "description": "Fixture builder struct used across dogfood tests",
+      "target": "definitions",
+      "query": "JulieTestFixture",
+      "expect_name_in_top": "JulieTestFixture"
+    },
+    {
+      "id": "helper-setup-handler-with-fixture",
+      "category": "test_helpers",
+      "description": "Async helper that constructs a JulieServerHandler from the fixture DB",
+      "target": "definitions",
+      "query": "setup_handler_with_fixture",
+      "expect_name_in_top": "setup_handler_with_fixture"
+    },
+    {
+      "id": "helper-search-definitions",
+      "category": "test_helpers",
+      "description": "Wrapper that calls text_search_impl with target=definitions",
+      "target": "definitions",
+      "query": "search_definitions",
+      "expect_name_in_top": "search_definitions"
+    },
+    {
+      "id": "helper-search-content",
+      "category": "test_helpers",
+      "description": "Wrapper that calls text_search_impl with target=content",
+      "target": "definitions",
+      "query": "search_content",
+      "expect_name_in_top": "search_content"
+    },
+    {
+      "id": "helper-assert-min-results",
+      "category": "test_helpers",
+      "description": "Assertion helper used by dogfood tests",
+      "target": "definitions",
+      "query": "assert_min_results",
+      "expect_name_in_top": "assert_min_results"
+    },
+    {
+      "id": "helper-assert-contains-path",
+      "category": "test_helpers",
+      "description": "Assertion helper that checks a path-pattern appears in results",
+      "target": "definitions",
+      "query": "assert_contains_path",
+      "expect_name_in_top": "assert_contains_path"
+    },
+    {
+      "id": "helper-format-results",
+      "category": "test_helpers",
+      "description": "Result formatter used in test diagnostic output",
+      "target": "definitions",
+      "query": "format_results",
+      "expect_name_in_top": "format_results"
+    },
+    {
+      "id": "helper-build-julie-fixture",
+      "category": "test_helpers",
+      "description": "Ignored test that rebuilds the fixture DB",
+      "target": "definitions",
+      "query": "build_julie_fixture",
+      "expect_name_in_top": "build_julie_fixture"
+    },
+    {
+      "id": "helper-setup-test-env",
+      "category": "test_helpers",
+      "description": "Generic test env setup used by get_context pipeline tests",
+      "target": "definitions",
+      "query": "setup_test_env",
+      "expect_name_in_top": "setup_test_env"
+    },
+    {
+      "id": "helper-setup-test-workspace",
+      "category": "test_helpers",
+      "description": "Tempdir-rooted workspace setup helper",
+      "target": "definitions",
+      "query": "setup_test_workspace",
+      "expect_name_in_top": "setup_test_workspace"
+    }
+  ]
+}

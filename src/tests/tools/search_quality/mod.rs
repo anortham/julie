@@ -24,6 +24,7 @@
 //! 2. Fix the underlying issue
 //! 3. Test passes - regression prevented!
 
+mod c4_test_helper_discoverability;
 mod comparison;
 mod dogfood_tests;
 mod helpers;
