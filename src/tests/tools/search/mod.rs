@@ -17,6 +17,7 @@ mod line_mode;
 mod line_mode_or_fallback_tests;
 mod line_mode_second_pass_tests;
 mod line_output_tests;
+mod nl_path_prior_pipeline_tests;
 mod primary_workspace_bug;
 mod promotion_tests;
 mod quality;

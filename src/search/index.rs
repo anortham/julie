@@ -30,7 +30,7 @@ use crate::search::schema::{
     SchemaCompatibilitySignature, SchemaFields, compatibility_signature, create_schema,
 };
 use crate::search::scoring::{
-    apply_important_patterns_boost, apply_nl_path_prior, is_nl_like_query, is_test_path,
+    apply_important_patterns_boost, is_nl_like_query, is_test_path,
 };
 use crate::search::tokenizer::{CodeTokenizer, TokenizerCompatibilitySignature, split_camel_case};
 use crate::tools::search::matches_glob_pattern;
@@ -603,7 +603,9 @@ impl SearchIndex {
         if let Some(configs) = &self.language_configs {
             apply_important_patterns_boost(&mut results, configs);
         }
-        apply_nl_path_prior(&mut results, query_str);
+        // NL path prior is owned by the assembly layer
+        // (`text_search::definition_search_with_index`) so the multiplier is
+        // applied exactly once across the pipeline. Do not apply it here.
         if results.len() > limit {
             results.truncate(limit);
         }
@@ -698,7 +700,8 @@ impl SearchIndex {
         if let Some(configs) = &self.language_configs {
             apply_important_patterns_boost(&mut results, configs);
         }
-        apply_nl_path_prior(&mut results, query_str);
+        // NL path prior is owned by the assembly layer
+        // (`text_search::definition_search_with_index`); not applied here.
         if results.len() > limit {
             results.truncate(limit);
         }

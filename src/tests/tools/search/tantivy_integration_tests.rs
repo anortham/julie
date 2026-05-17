@@ -250,6 +250,8 @@ mod tests {
 
     #[test]
     fn test_nl_query_prefers_code_over_docs() {
+        use crate::tools::search::text_search::definition_search_with_index_for_test;
+
         let (_dir, index) = create_test_index();
 
         // Docs symbol intentionally inserted first so equal-score ties prefer docs
@@ -284,6 +286,8 @@ mod tests {
             .unwrap();
 
         // Production symbol with identical textual relevance should win after NL path prior.
+        // Path contains "routing" so the reranker's per-term path boost matches
+        // the docs candidate's — leaving the NL path prior as the differentiator.
         index
             .add_symbol(&SymbolDocument {
                 id: "3".into(),
@@ -291,7 +295,7 @@ mod tests {
                 signature: "fn workspace_routing_handler()".into(),
                 doc_comment: "Handles workspace routing for requests.".into(),
                 code_body: "workspace routing handler".into(),
-                file_path: "src/workspace/router.rs".into(),
+                file_path: "src/workspace/routing.rs".into(),
                 kind: "function".into(),
                 language: "rust".into(),
                 start_line: 32,
@@ -300,36 +304,42 @@ mod tests {
 
         index.commit().unwrap();
 
-        let results = index
-            .search_symbols("workspace routing", &SearchFilter::default(), 2)
-            .unwrap()
-            .results;
+        // Path prior is owned by the assembly layer, so run the full pipeline.
+        let (symbols, _relaxed, _total) = definition_search_with_index_for_test(
+            "workspace routing",
+            &SearchFilter::default(),
+            2,
+            &index,
+            None,
+        )
+        .unwrap();
 
         assert_eq!(
-            results[0].file_path,
-            "src/workspace/router.rs",
+            symbols[0].file_path, "src/workspace/routing.rs",
             "Production code should be preferred over docs/tests for NL query: {:?}",
-            results
+            symbols
                 .iter()
-                .map(|r| (&r.file_path, r.score))
+                .map(|s| (&s.file_path, s.confidence))
                 .collect::<Vec<_>>()
         );
-        let docs_rank = results
+        let docs_rank = symbols
             .iter()
-            .position(|r| r.file_path == "docs/workspace/routing.md");
+            .position(|s| s.file_path == "docs/workspace/routing.md");
         assert_ne!(
             docs_rank,
             Some(0),
             "Docs result must not outrank production code for NL query: {:?}",
-            results
+            symbols
                 .iter()
-                .map(|r| (&r.file_path, r.score))
+                .map(|s| (&s.file_path, s.confidence))
                 .collect::<Vec<_>>()
         );
     }
 
     #[test]
     fn test_nl_path_prior_can_change_top1_with_small_limit() {
+        use crate::tools::search::text_search::definition_search_with_index_for_test;
+
         let (_dir, index) = create_test_index();
 
         // Insert docs first so pre-rerank TopDocs(limit=1) would otherwise return docs.
@@ -354,7 +364,10 @@ mod tests {
                 signature: "fn workspace_routing_handler()".into(),
                 doc_comment: "Handles workspace routing for requests.".into(),
                 code_body: "workspace routing handler".into(),
-                file_path: "src/workspace/router.rs".into(),
+                // Same path tokens as the docs candidate so the reranker's
+                // path-token boost is equal for both — the assembly-layer
+                // NL path prior is the only differentiator.
+                file_path: "src/workspace/routing.rs".into(),
                 kind: "function".into(),
                 language: "rust".into(),
                 start_line: 1,
@@ -362,15 +375,22 @@ mod tests {
             .unwrap();
         index.commit().unwrap();
 
-        let results = index
-            .search_symbols("workspace routing", &SearchFilter::default(), 1)
-            .unwrap()
-            .results;
+        // The NL path prior lives at the assembly layer, so the assertion
+        // must run through `definition_search_with_index` — that's where
+        // the over-fetch + prior interaction now lives.
+        let (symbols, _relaxed, _total) = definition_search_with_index_for_test(
+            "workspace routing",
+            &SearchFilter::default(),
+            1,
+            &index,
+            None,
+        )
+        .unwrap();
 
-        assert_eq!(results.len(), 1);
+        assert_eq!(symbols.len(), 1);
         assert_eq!(
-            results[0].file_path, "src/workspace/router.rs",
-            "With over-fetch + rerank, NL path prior should be able to influence final top-1"
+            symbols[0].file_path, "src/workspace/routing.rs",
+            "With over-fetch + assembly-layer NL path prior, src/ should outrank docs/ at top-1"
         );
     }
 

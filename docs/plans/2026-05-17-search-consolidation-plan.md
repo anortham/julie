@@ -219,6 +219,9 @@ admission/shutdown/session cleanup. Track separately.
 
 | Invariant | Command | Scope Label | Commit SHA | Result | Timestamp (UTC) | Evidence Reused |
 |---|---|---|---|---|---|---|
+| P1.1 NL path prior applied exactly once across keyword pipeline | `cargo nextest run --lib nl_path_prior_pipeline_tests` | targeted | `<pending>` | PASS (3/3) | 2026-05-17T20:04Z | no |
+| P1.1 no search regressions | `cargo xtask test changed` | tooling+dogfood | `<pending>` | PASS (11 buckets, 305.7s) | 2026-05-17T20:04Z | no |
+| P1.1 dev tier green | `cargo xtask test dev` | dev | `<pending>` | PASS (32 buckets, 469.0s) | 2026-05-17T20:04Z | no |
 
 ---
 
