@@ -54,39 +54,59 @@ pub(crate) async fn run_metrics_writer(mut rx: tokio::sync::mpsc::Receiver<Metri
         }
 
         if let Some(ws) = resolved_workspace.as_ref() {
-            if let Some(ref workspace_id) = task.workspace_id {
-                let db_path = metrics_db_path_for_workspace(
-                    ws.index_root_override.as_deref(),
-                    &task.current_workspace_root,
-                    workspace_id,
-                );
-                if db_path.exists() {
-                    if let Ok(db) = SymbolDatabase::new(db_path) {
-                        source_bytes = if !task.source_file_paths.is_empty() {
-                            let path_refs: Vec<&str> =
-                                task.source_file_paths.iter().map(|s| s.as_str()).collect();
-                            db.get_total_file_sizes(&path_refs).ok()
-                        } else {
+            // Preferred path: pooled connection via WorkspacePool. Avoids
+            // the per-tool-call `SymbolDatabase::new` cold-open (which runs
+            // pragmas + migrations + schema init every time). Falls back to
+            // the legacy `Arc<Mutex<SymbolDatabase>>` only when the pool
+            // is not available (stdio mode / pre-A2.2c tests).
+            let pooled_db = if let (Some(pool), Some(workspace_id)) =
+                (&task.workspace_pool, task.workspace_id.as_ref())
+            {
+                if let Some(conn_pool) = pool.connection_pool(workspace_id).await {
+                    match conn_pool.acquire().await {
+                        Ok(pooled) => Some(SymbolDatabase::from_pooled(
+                            pooled,
+                            conn_pool.db_path().to_path_buf(),
+                        )),
+                        Err(e) => {
+                            warn!(
+                                "Metrics writer: failed to acquire pooled connection for {}: {}",
+                                workspace_id, e
+                            );
                             None
-                        };
-                        if let Some(sb) = source_bytes {
-                            task.session_metrics
-                                .total_source_bytes
-                                .fetch_add(sb, Ordering::Relaxed);
                         }
-                        let _ = db.insert_tool_call_with_input_bytes(
-                            &task.session_id,
-                            &task.tool_name,
-                            task.duration_ms,
-                            task.result_count,
-                            source_bytes,
-                            task.input_bytes,
-                            Some(task.output_bytes),
-                            task.success,
-                            task.metadata_str.as_deref(),
-                        );
                     }
+                } else {
+                    None
                 }
+            } else {
+                None
+            };
+
+            if let Some(db) = pooled_db {
+                source_bytes = if !task.source_file_paths.is_empty() {
+                    let path_refs: Vec<&str> =
+                        task.source_file_paths.iter().map(|s| s.as_str()).collect();
+                    db.get_total_file_sizes(&path_refs).ok()
+                } else {
+                    None
+                };
+                if let Some(sb) = source_bytes {
+                    task.session_metrics
+                        .total_source_bytes
+                        .fetch_add(sb, Ordering::Relaxed);
+                }
+                let _ = db.insert_tool_call_with_input_bytes(
+                    &task.session_id,
+                    &task.tool_name,
+                    task.duration_ms,
+                    task.result_count,
+                    source_bytes,
+                    task.input_bytes,
+                    Some(task.output_bytes),
+                    task.success,
+                    task.metadata_str.as_deref(),
+                );
             } else if let Some(db_arc) = &ws.db {
                 if let Ok(db) = db_arc.lock() {
                     source_bytes = if !task.source_file_paths.is_empty() {

@@ -107,6 +107,11 @@ impl InProcessDaemonBuilder {
             port: local_addr.port(),
             no_dashboard: self.no_dashboard,
             runtime: self.runtime,
+            // No pre-acquired lock: `DaemonApp::new` will acquire it itself.
+            // The InProcessDaemon harness owns the full daemon lifecycle per
+            // test, with isolated paths, so the lock-acquisition path is the
+            // canonical one to exercise here.
+            daemon_lock: None,
         };
 
         let app = DaemonApp::new(config)?;

@@ -48,6 +48,14 @@ pub struct DaemonConfig {
     /// Injectable runtime context. Production uses the singleton-backed
     /// `Default`; tests use `DaemonRuntimeContext::for_test()` for isolation.
     pub runtime: DaemonRuntimeContext,
+    /// Pre-acquired daemon singleton lock. When `Some`, `DaemonApp::new`
+    /// uses it instead of acquiring its own — this lets `run_daemon`
+    /// acquire the lock BEFORE binding any listener, eliminating the
+    /// startup thundering herd where N concurrent daemon spawns would
+    /// each bind a port + run partial init before the in-app lock check
+    /// killed them. Tests and the InProcessDaemon harness pass `None` and
+    /// rely on `DaemonApp::new` to acquire the lock itself.
+    pub daemon_lock: Option<DaemonLockGuard>,
 }
 
 /// Heavy daemon state constructed by `DaemonApp::new` and consumed by `serve`.
@@ -101,6 +109,7 @@ impl DaemonApp {
             port: _,
             no_dashboard,
             runtime,
+            daemon_lock: preacquired_lock,
         } = config;
 
         paths
@@ -108,21 +117,29 @@ impl DaemonApp {
             .context("Failed to create daemon directories")?;
         let daemon_state_path = paths.daemon_state();
 
-        // New daemon singleton: a kernel-held lock on daemon.lock, released by
-        // the OS when this process exits. Legacy daemon.pid and
-        // daemon.singleton.lock are reserved for migration detection only.
-        let daemon_lock = match DaemonLockGuard::try_acquire(&paths.daemon_lock()) {
-            Ok(guard) => guard,
-            Err(AcquireError::AlreadyHeld(held)) => {
-                return Err(anyhow::anyhow!(
-                    "Another Julie daemon is already running for this JULIE_HOME \
-                     (daemon lock held: {}). Exiting without starting a duplicate.",
-                    held.path.display()
-                ));
-            }
-            Err(other) => {
-                return Err(anyhow::anyhow!("{}", other)).context("Failed to acquire daemon lock");
-            }
+        // Daemon singleton: a kernel-held lock on daemon.lock, released by
+        // the OS when this process exits. Prefer the pre-acquired guard from
+        // `run_daemon` (which acquires BEFORE binding to avoid the startup
+        // thundering herd); fall back to acquiring here for callers that
+        // don't pass one in (tests, InProcessDaemon harness). Legacy
+        // daemon.pid and daemon.singleton.lock are reserved for migration
+        // detection only.
+        let daemon_lock = match preacquired_lock {
+            Some(guard) => guard,
+            None => match DaemonLockGuard::try_acquire(&paths.daemon_lock()) {
+                Ok(guard) => guard,
+                Err(AcquireError::AlreadyHeld(held)) => {
+                    return Err(anyhow::anyhow!(
+                        "Another Julie daemon is already running for this JULIE_HOME \
+                         (daemon lock held: {}). Exiting without starting a duplicate.",
+                        held.path.display()
+                    ));
+                }
+                Err(other) => {
+                    return Err(anyhow::anyhow!("{}", other))
+                        .context("Failed to acquire daemon lock");
+                }
+            },
         };
 
         let lifecycle = DaemonLifecycleController::new(daemon_state_path.clone());
@@ -400,4 +417,6 @@ use helpers::{
     bind_dashboard_listener_and_publish, open_and_migrate_daemon_db, setup_stop_notify,
     spawn_cleanup_sweep, spawn_embedding_init,
 };
-pub(crate) use helpers::{bind_mcp_listener_with_fallback, shutdown_signal};
+pub(crate) use helpers::{
+    acquire_or_yield_to_existing_daemon, bind_mcp_listener_with_fallback, shutdown_signal,
+};

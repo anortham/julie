@@ -65,6 +65,20 @@ pub struct DevLinkCommand {
     pub dry_run: bool,
 }
 
+/// `cargo xtask dev-restart [--force]`.
+///
+/// Default (`force == false`): report daemon status and binary mtime, but do
+/// not SIGTERM. The daemon's existing stale-binary detection will pick up the
+/// new binary on the next session disconnect or new session, so the calling
+/// MCP session stays alive.
+///
+/// `--force`: legacy SIGTERM behavior. Kills any in-flight sessions on drain
+/// timeout — use only when the calling session is expendable.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DevRestartCommand {
+    pub force: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CliCommand {
     Test(TestCommand),
@@ -72,7 +86,7 @@ pub enum CliCommand {
     Certify(CertifyCommand),
     SyncPlugin(SyncPluginCommand),
     DevLink(DevLinkCommand),
-    DevRestart,
+    DevRestart(DevRestartCommand),
 }
 
 pub fn parse_cli_command<I, S>(args: I) -> Result<CliCommand>
@@ -125,14 +139,14 @@ fn parse_dev_link_command(args: Vec<String>) -> Result<DevLinkCommand> {
 }
 
 fn parse_dev_restart_command(args: Vec<String>) -> Result<CliCommand> {
-    let extra: Vec<String> = args.into_iter().skip(2).collect();
-    if !extra.is_empty() {
-        bail!(
-            "unexpected arguments for `dev-restart`: {}",
-            extra.join(" ")
-        );
+    let mut force = false;
+    for arg in args.into_iter().skip(2) {
+        match arg.as_str() {
+            "--force" => force = true,
+            other => bail!("unexpected argument for `dev-restart`: {other}"),
+        }
     }
-    Ok(CliCommand::DevRestart)
+    Ok(CliCommand::DevRestart(DevRestartCommand { force }))
 }
 
 fn parse_sync_plugin_command(args: Vec<String>) -> Result<SyncPluginCommand> {
@@ -225,7 +239,7 @@ pub fn validate_cli_command(manifest: &TestManifest, command: CliCommand) -> Res
         CliCommand::Certify(command) => Ok(CliCommand::Certify(command)),
         CliCommand::SyncPlugin(command) => Ok(CliCommand::SyncPlugin(command)),
         CliCommand::DevLink(command) => Ok(CliCommand::DevLink(command)),
-        CliCommand::DevRestart => Ok(CliCommand::DevRestart),
+        CliCommand::DevRestart(command) => Ok(CliCommand::DevRestart(command)),
     }
 }
 
@@ -622,5 +636,32 @@ commands = ["cargo test --lib tests::cli_tests"]
             CliCommand::SearchMatrix(SearchMatrixCommand::Baseline { profile, out: None })
                 if profile == "smoke"
         ));
+    }
+
+    #[test]
+    fn cli_tests_dev_restart_defaults_to_soft_mode() {
+        let parsed = parse_cli_command(["xtask", "dev-restart"]).unwrap();
+        assert_eq!(
+            parsed,
+            CliCommand::DevRestart(DevRestartCommand { force: false })
+        );
+    }
+
+    #[test]
+    fn cli_tests_dev_restart_accepts_force_flag() {
+        let parsed = parse_cli_command(["xtask", "dev-restart", "--force"]).unwrap();
+        assert_eq!(
+            parsed,
+            CliCommand::DevRestart(DevRestartCommand { force: true })
+        );
+    }
+
+    #[test]
+    fn cli_tests_dev_restart_rejects_unknown_args() {
+        let err = parse_cli_command(["xtask", "dev-restart", "--bogus"]).unwrap_err();
+        assert!(
+            err.to_string().contains("--bogus"),
+            "expected error to mention `--bogus`, got: {err}"
+        );
     }
 }

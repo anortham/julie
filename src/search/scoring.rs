@@ -342,7 +342,13 @@ pub(crate) fn is_nl_like_query(query: &str) -> bool {
         return false;
     }
 
-    if terms.iter().any(|term| looks_like_identifier_token(term)) {
+    // Veto only when EVERY term looks like an identifier — that's a pure
+    // multi-symbol lookup (e.g. "parse_query rerank_symbol_score") which
+    // should stay on the keyword-only path. Mixed queries that pair an
+    // identifier with prose context (e.g. "how does fast_refs find callers",
+    // "parse_query reranker intent classification") are NL-shaped and must
+    // engage hybrid + reranker so docs don't outrank the actual definitions.
+    if terms.iter().all(|term| looks_like_identifier_token(term)) {
         return false;
     }
 

@@ -13,12 +13,43 @@ use tokio::task::JoinHandle;
 use tracing::{info, warn};
 
 use crate::daemon::database::DaemonDatabase;
+use crate::daemon::discovery::{AcquireError, DaemonLockGuard};
 use crate::daemon::embedding_service::EmbeddingService;
 use crate::daemon::watcher_pool::WatcherPool;
 use crate::daemon::workspace_pool::WorkspacePool;
 use crate::daemon::workspace_registry_store::WorkspaceRegistryStore;
 use crate::daemon::{backfill_all_vector_counts, migrate_stale_workspace_ids};
 use crate::paths::DaemonPaths;
+
+/// Acquire the daemon singleton lock, yielding to any existing daemon.
+///
+/// This is the FIRST gate in `run_daemon` startup. Acquiring the lock here
+/// (before binding any listening sockets) collapses the previous startup
+/// thundering herd where N concurrent `julie-server daemon` invocations
+/// would each bind a port (falling back to auto-assigned) and run partial
+/// init before the in-app lock check killed all but one.
+///
+/// Returns `Ok(Some(guard))` if this process is the unique daemon for the
+/// JULIE_HOME. Caller holds the guard for the daemon's lifetime; the
+/// kernel releases the lock on process exit (clean or crash).
+///
+/// Returns `Ok(None)` if another daemon is already running. Caller should
+/// exit silently with status 0 — this is the expected outcome when the
+/// adapter spawns a daemon and one is already up.
+///
+/// Returns `Err` only on real I/O failures (permission denied, parent dir
+/// missing, etc).
+pub(crate) fn acquire_or_yield_to_existing_daemon(
+    paths: &DaemonPaths,
+) -> Result<Option<DaemonLockGuard>> {
+    match DaemonLockGuard::try_acquire(&paths.daemon_lock()) {
+        Ok(guard) => Ok(Some(guard)),
+        Err(AcquireError::AlreadyHeld(_)) => Ok(None),
+        Err(other) => {
+            Err(anyhow::anyhow!("{}", other)).context("Failed to acquire daemon lock")
+        }
+    }
+}
 
 /// Open the persistent daemon database with crash recovery and run all
 /// startup-time migrations (stale workspace IDs, normalized paths, vector

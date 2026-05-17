@@ -108,8 +108,49 @@ fn test_identifier_query_does_not_apply_path_prior() {
     );
 }
 
+/// Mixed queries that pair an identifier name with prose context — the most
+/// common dogfood pattern (e.g. "workspace get_reference_scores",
+/// "how does fast_refs find callers") — are NL-shaped and MUST engage the
+/// path prior so docs/plans don't outrank actual production code definitions.
+///
+/// Prior to 2026-05-17 this was vetoed because `is_nl_like_query` rejected
+/// any query containing a single identifier-like term; that silently disabled
+/// hybrid + reranker for the queries users care about most.
 #[test]
-fn test_mixed_nl_and_identifier_query_does_not_apply_path_prior() {
+fn test_mixed_nl_and_identifier_query_applies_path_prior() {
+    let mut results = vec![
+        make_result("docs", "docs/SEARCH_FLOW.md", 2.0),
+        make_result("src", "src/tools/search/index.rs", 1.0),
+    ];
+
+    crate::search::scoring::apply_nl_path_prior(&mut results, "workspace get_reference_scores");
+
+    let docs_after = results
+        .iter()
+        .find(|r| r.id == "docs")
+        .expect("docs result present")
+        .score;
+    let src_after = results
+        .iter()
+        .find(|r| r.id == "src")
+        .expect("src result present")
+        .score;
+
+    assert!(
+        docs_after < 2.0,
+        "docs/** score should be penalized by NL path prior, got {docs_after}"
+    );
+    assert!(
+        src_after > 1.0,
+        "src/** score should be boosted by NL path prior, got {src_after}"
+    );
+}
+
+/// Regression guard: queries where EVERY term is identifier-like are still a
+/// pure multi-symbol lookup and must stay off the NL path. The path prior
+/// must remain a no-op so exact symbol searches aren't perturbed.
+#[test]
+fn test_all_identifier_terms_query_does_not_apply_path_prior() {
     let mut results = vec![
         make_result("docs", "docs/SEARCH_FLOW.md", 2.0),
         make_result("src", "src/tools/search/index.rs", 1.0),
@@ -120,7 +161,10 @@ fn test_mixed_nl_and_identifier_query_does_not_apply_path_prior() {
         .map(|r| (r.id.clone(), r.score))
         .collect::<Vec<_>>();
 
-    crate::search::scoring::apply_nl_path_prior(&mut results, "workspace get_reference_scores");
+    crate::search::scoring::apply_nl_path_prior(
+        &mut results,
+        "extract_identifiers rrf_merge",
+    );
 
     let after = results
         .iter()
@@ -129,7 +173,7 @@ fn test_mixed_nl_and_identifier_query_does_not_apply_path_prior() {
 
     assert_eq!(
         after, before,
-        "mixed NL + identifier query should not trigger path prior"
+        "all-identifier query should not trigger path prior"
     );
 }
 

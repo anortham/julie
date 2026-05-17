@@ -35,6 +35,7 @@ async fn test_daemon_app_uses_new_daemon_lock_without_legacy_pid_files() {
         port: 0,
         no_dashboard: true,
         runtime: DaemonRuntimeContext::default(),
+        daemon_lock: None,
     };
 
     let _app = DaemonApp::new(config).expect("DaemonApp::new");
@@ -84,6 +85,7 @@ async fn test_daemon_app_serve_and_shutdown() {
         port: local_addr.port(),
         no_dashboard: true,
         runtime: DaemonRuntimeContext::default(),
+        daemon_lock: None,
     };
 
     let app = DaemonApp::new(config).expect("DaemonApp::new");
@@ -267,4 +269,81 @@ fn test_install_tracing_is_idempotent() {
     ctx_b
         .install_tracing(&paths)
         .expect("install_tracing on a second runtime context must not panic");
+}
+
+// ---------------------------------------------------------------------------
+// Singleton gate (`acquire_or_yield_to_existing_daemon`) — startup thundering
+// herd fix. The helper is the first gate in `run_daemon`: it acquires the
+// daemon.lock BEFORE binding any listener, so N concurrent
+// `julie-server daemon` invocations collapse to one winner without any of
+// the losers doing init work or binding ports.
+// ---------------------------------------------------------------------------
+
+/// On an uncontended JULIE_HOME the helper returns `Ok(Some(guard))` — the
+/// caller proceeds with daemon startup.
+#[test]
+fn test_acquire_or_yield_returns_some_when_uncontended() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let paths = DaemonPaths::with_home(tmp.path().to_path_buf());
+    paths.ensure_dirs().expect("ensure_dirs");
+
+    let guard = crate::daemon::app::acquire_or_yield_to_existing_daemon(&paths)
+        .expect("uncontended acquire must not error")
+        .expect("uncontended acquire must return Some");
+
+    assert_eq!(
+        guard.path(),
+        paths.daemon_lock(),
+        "guard must hold the canonical daemon.lock path"
+    );
+}
+
+/// When another holder already owns daemon.lock, the helper returns
+/// `Ok(None)` — the caller must exit silently with status 0. This is the
+/// load-bearing assertion: 11 of 12 racing daemons take this branch and
+/// avoid all init work, including binding a port.
+#[test]
+fn test_acquire_or_yield_returns_none_when_lock_held() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let paths = DaemonPaths::with_home(tmp.path().to_path_buf());
+    paths.ensure_dirs().expect("ensure_dirs");
+
+    // First daemon wins the lock and holds it.
+    let _winner = DaemonLockGuard::try_acquire(&paths.daemon_lock())
+        .expect("first acquire must succeed");
+
+    // Subsequent daemon invocation: helper sees the lock is held and
+    // returns Ok(None) so `run_daemon` can early-return without any work.
+    let result = crate::daemon::app::acquire_or_yield_to_existing_daemon(&paths)
+        .expect("helper must not error on contention");
+
+    assert!(
+        result.is_none(),
+        "helper must return None when another daemon holds the lock; \
+         got Some, which would let a duplicate daemon start binding ports"
+    );
+}
+
+/// After the previous holder releases, a fresh helper call wins the lock
+/// again. Confirms the helper exposes the same Drop-releases-lock contract
+/// as the underlying `DaemonLockGuard`.
+#[test]
+fn test_acquire_or_yield_returns_some_after_previous_guard_dropped() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let paths = DaemonPaths::with_home(tmp.path().to_path_buf());
+    paths.ensure_dirs().expect("ensure_dirs");
+
+    {
+        let _first = crate::daemon::app::acquire_or_yield_to_existing_daemon(&paths)
+            .expect("first helper call must not error")
+            .expect("first helper call must return Some");
+    }
+
+    let second = crate::daemon::app::acquire_or_yield_to_existing_daemon(&paths)
+        .expect("second helper call must not error")
+        .expect(
+            "second helper call must return Some after the first guard \
+             dropped — otherwise daemon restarts couldn't reacquire the lock",
+        );
+    assert_eq!(second.path(), paths.daemon_lock());
 }

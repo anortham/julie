@@ -6,8 +6,8 @@ use xtask::changed::{
     ChangedSelectionMode, collect_changed_paths, render_changed_selection, select_changed_buckets,
 };
 use xtask::cli::{
-    CertifyCommand, CliCommand, DevLinkCommand, SyncPluginCommand, TestCommand, parse_cli_command,
-    validate_cli_command,
+    CertifyCommand, CliCommand, DevLinkCommand, DevRestartCommand, SyncPluginCommand, TestCommand,
+    parse_cli_command, validate_cli_command,
 };
 use xtask::inventory::{ProcessInventoryExecutor, render_inventory_report, run_inventory};
 use xtask::manifest::TestManifest;
@@ -50,7 +50,7 @@ fn main() -> anyhow::Result<()> {
                 | CliCommand::Certify(_)
                 | CliCommand::SyncPlugin(_)
                 | CliCommand::DevLink(_)
-                | CliCommand::DevRestart => unreachable!("validated test command changed shape"),
+                | CliCommand::DevRestart(_) => unreachable!("validated test command changed shape"),
             };
 
             match command {
@@ -146,8 +146,8 @@ fn main() -> anyhow::Result<()> {
             let cache = cache_root.unwrap_or_else(xtask::dev_workflow::default_cache_root);
             xtask::dev_workflow::run_dev_link(&workspace, dry_run, &cache, &mut stdout)?;
         }
-        CliCommand::DevRestart => {
-            xtask::dev_workflow::run_dev_restart(&mut stdout)?;
+        CliCommand::DevRestart(DevRestartCommand { force }) => {
+            xtask::dev_workflow::run_dev_restart(&mut stdout, force)?;
         }
         CliCommand::Certify(command) => match command {
             CertifyCommand::TreeSitter {

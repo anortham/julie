@@ -86,10 +86,12 @@ Data: 1,876 fast_search calls with enriched telemetry (824 before file mode, 1,0
   3. Add a timeout-bounded test with `JULIE_EMBEDDING_PROVIDER=none` or a delayed sidecar to ensure
      canonical indexing can return promptly.
 
-- [x] **Daemon drain timeout too short for stale-binary restart** -- `drain_timeout_secs=10` (`src/daemon/mod.rs:689`) is aggressive. Observed 2026-05-08: dev-time `cargo build --release` triggers stale-binary auto-restart, in-flight sessions running embeddings/indexing/heavy search can't drain in 10s, force-shutdown logged as `Session drain timeout exceeded, forcing shutdown — in-flight writes may be lost`. Same-day repro showed 3+ forced shutdowns between 17:49–17:56. Fixes to consider:
-  1. Bump drain timeout to 60–120s.
-  2. Adapter resilience: when the stdio adapter loses HTTP to the daemon, retry with backoff for ≥30s before dropping the MCP session. Currently the client-side session goes permanently dead and `mcp__julie__*` tools become unavailable until the Claude session restarts.
-  3. Optional: skip stale-binary restart if any active session was busy in the last N seconds; treat as "wait until truly idle" rather than time-bounded drain.
+- [x] **Daemon drain timeout too short for stale-binary restart** -- `drain_timeout_secs=10` (`src/daemon/mod.rs:689`) is aggressive. Observed 2026-05-08: dev-time `cargo build --release` triggers stale-binary auto-restart, in-flight sessions running embeddings/indexing/heavy search can't drain in 10s, force-shutdown logged as `Session drain timeout exceeded, forcing shutdown — in-flight writes may be lost`. Same-day repro showed 3+ forced shutdowns between 17:49–17:56.
+
+  **Resolved 2026-05-06 / 2026-05-17:**
+  - **Default drain bumped to 60s, clamped to [1, 120], env-tunable via `JULIE_DAEMON_DRAIN_TIMEOUT_SECS`.** See `src/daemon/mod.rs` (`DEFAULT_DRAIN_TIMEOUT_SECS = 60`) and `src/tests/daemon/drain_timeout.rs` (env override, default, clamp coverage). All drain callsites (`stop_daemon` in `lifecycle.rs:408`, `DaemonHandle::shutdown` in `app/handle.rs:88`) go through the single `drain_timeout()` helper.
+  - **Adapter retry on transport loss** lives in `src/adapter/http_stdio.rs` (`MAX_RETRIES=5`, exponential backoff). Note: post-output transport errors classify as `Terminal` (intentional — re-handshake on a session that's already written responses is unsafe). `dev-restart` now defaults to soft mode (no SIGTERM) so the calling session is not torn down in the first place; see `xtask/src/dev_workflow.rs::run_dev_restart`.
+  - **Skip stale-binary restart while sessions are busy:** the disconnect-time check (`stale_binary_disconnect_action` in `lifecycle.rs:294`) already only shuts down when remaining_sessions == 0, otherwise just flips `restart_pending`. Existing sessions are not forcibly drained.
 
   Repro is straightforward: open a Claude Code session using the `julie` MCP server (registered to `target/release/julie-server`), run `cargo build --release` in another terminal while the session is active, and watch `~/.julie/daemon.log.*` for the drain-timeout error and the client losing its MCP tools.
 

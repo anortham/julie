@@ -989,6 +989,50 @@ mod nl_query_detection_tests {
         assert!(!is_nl_like_query("extract_identifiers"));
         assert!(!is_nl_like_query("rrf_merge"));
     }
+
+    /// Mixed queries (identifier name + prose context) are the most common
+    /// dogfood pattern — e.g. "how does fast_refs find callers". Before the
+    /// fix, any term containing `_` or mixedCase vetoed NL detection for the
+    /// whole query, silently disabling hybrid search and the reranker for
+    /// these queries. They must be treated as NL so the reranker engages.
+    #[test]
+    fn test_is_nl_like_query_mixed_identifier_and_prose() {
+        // Dogfound failures from 2026-05-17 reranker session:
+        assert!(
+            is_nl_like_query("how does fast_refs find callers"),
+            "NL question that names a symbol should engage hybrid search"
+        );
+        assert!(
+            is_nl_like_query("parse_query reranker intent classification"),
+            "symbol + topical context should engage hybrid search"
+        );
+
+        // Minimal mixed cases:
+        assert!(
+            is_nl_like_query("parse_query bug"),
+            "single identifier + prose word should engage hybrid search"
+        );
+        assert!(
+            is_nl_like_query("UserService refactor"),
+            "mixedCase identifier + prose word should engage hybrid search"
+        );
+        assert!(
+            is_nl_like_query("the rrf_merge function"),
+            "prose + identifier + prose should engage hybrid search"
+        );
+    }
+
+    /// Regression guard: when ALL terms look like identifiers, the query is
+    /// still a code search and must NOT trigger hybrid. This keeps exact
+    /// multi-symbol lookups ("parse_query rrf_merge", "UserService AuthHandler")
+    /// out of the NL path.
+    #[test]
+    fn test_is_nl_like_query_all_identifiers_stays_code() {
+        assert!(!is_nl_like_query("extract_identifiers rrf_merge"));
+        assert!(!is_nl_like_query("UserService AuthHandler"));
+        assert!(!is_nl_like_query("foo_bar baz_qux"));
+        assert!(!is_nl_like_query("parse_query rerank_symbol_score"));
+    }
 }
 
 /// KNN-to-SymbolSearchResult conversion tests.

@@ -42,7 +42,7 @@ cargo xtask test changed       # After a localized change (diff-scoped buckets)
 cargo xtask test dev           # Batch gate before handoff — not per edit
 cargo xtask sync-plugin        # Mirror skills source → ~/source/julie-plugin (`--dry-run` to preview)
 cargo xtask dev-link           # (maintainer-only) Symlink installed plugin binaries → target/release (`--dry-run` to preview)
-cargo xtask dev-restart        # (maintainer-only) Graceful daemon stop so adapter respawns on freshly-built binary
+cargo xtask dev-restart        # (maintainer-only) Soft restart — leaves daemon alive so calling MCP session survives; --force to SIGTERM
 cargo fmt                      # Format code
 cargo clippy                  # Lint
 ```
@@ -304,10 +304,10 @@ builds after `cargo clean`.
    - Test features in live MCP session
 4. **Maintainer dev loop (`dev-link` + `dev-restart`)**: One-time and per-iteration commands that make the dev loop survive plugin installs:
    - **One-time setup**: `cargo build --release && cargo xtask dev-link` — replaces the bundled `julie-server` inside `~/.claude/plugins/cache/julie-plugin/julie/<v>/bin/<arch>/` with a symlink to `target/release/julie-server`. After this, every harness that points at the plugin (Claude Code) and every harness configured to point at `target/release/julie-server` directly (Codex CLI, OpenCode per their `~/.codex/config.toml` / `~/.config/opencode/opencode.json`) all run the same dev binary.
-   - **Per-edit loop**: `cargo build --release && cargo xtask dev-restart` — graceful SIGTERM to the running daemon (uses `lifecycle::stop_daemon`, no drain timeout, no force-kill). Adapter respawns on next MCP request and picks up the new binary via the symlink.
+   - **Per-edit loop**: `cargo build --release && cargo xtask dev-restart` — soft restart by default. Does NOT SIGTERM the daemon; leaves it alive so the calling MCP session (Claude Code, etc.) is not interrupted. The daemon's stale-binary detection will pick up the new binary on the next session disconnect or new session connect. Pass `--force` to SIGTERM immediately (legacy behavior — drains in-flight requests for 10s then force-aborts; will likely kill the calling session because the adapter classifies post-output transport errors as `Terminal`).
    - **Idempotent**: re-run `dev-link` after any plugin update; it'll relink in place. Reports `already-linked` for entries that are still pointing at the dev binary.
    - **Maintainer-only**: regular users install the plugin and never run these. Codex CLI and OpenCode users typically point their MCP `command` at a chosen path themselves; this just means dev-link mostly affects the Claude Code plugin cache. (`xtask/src/dev_workflow.rs`)
-5. **🔴 Windows Binary Lock**: On Windows, the running `julie-server.exe` process (spawned by the MCP client) holds an exclusive file lock on the release binary. **Do NOT attempt `cargo build --release` while a session is active** — it will fail with "Access is denied" (os error 5). Only `cargo build` (debug) works while the release binary is running. The user must exit their MCP client (Claude Code, VS Code, etc.) before rebuilding release. The `dev-restart` xtask helps here: it gracefully stops the daemon before you rebuild.
+5. **🔴 Windows Binary Lock**: On Windows, the running `julie-server.exe` process (spawned by the MCP client) holds an exclusive file lock on the release binary. **Do NOT attempt `cargo build --release` while a session is active** — it will fail with "Access is denied" (os error 5). Only `cargo build` (debug) works while the release binary is running. The user must exit their MCP client (Claude Code, VS Code, etc.) before rebuilding release. On Windows, soft `dev-restart` won't help (the file lock prevents the rebuild itself); use `cargo xtask dev-restart --force` after closing the MCP client.
 6. **Backward Compatibility**: We don't need it (stdio MCP server, not a public API)
 7. **Target User**: YOU (Claude) and other AI coding agents are the target user
    - Review code from standpoint of you being the user

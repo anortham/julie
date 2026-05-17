@@ -132,36 +132,85 @@ pub fn run_dev_link(
     Ok(report)
 }
 
-/// Gracefully stop the running Julie daemon so the adapter respawns it on the
-/// freshly-built binary without going through the stale-binary force-kill path.
-pub fn run_dev_restart(out: &mut impl Write) -> Result<DevRestartReport> {
+/// Soft-restart the running Julie daemon.
+///
+/// **Default (`force == false`):** does NOT SIGTERM. The daemon's existing
+/// stale-binary detection (in `stale_binary_disconnect_action` and
+/// `stale_binary_accept_action`) will swap to the new binary the next time a
+/// session disconnects or a new session connects. The calling MCP session
+/// (e.g., the Claude Code instance the user is iterating from) stays alive.
+///
+/// Previously this command always SIGTERMed the daemon, which entered the
+/// drain path and force-aborted in-flight requests after the drain timeout.
+/// That killed the calling session because the adapter classifies transport
+/// errors after `wrote_any_output: true` as `Terminal` and exits.
+///
+/// **`force == true`:** legacy SIGTERM behavior. Use only when no live session
+/// matters (e.g., terminal-only iteration, no Claude Code running).
+pub fn run_dev_restart(out: &mut impl Write, force: bool) -> Result<DevRestartReport> {
     let paths = DaemonPaths::new();
     let was_running = matches!(
         lifecycle::check_status(&paths),
         lifecycle::DaemonStatus::Running { .. }
     );
 
-    if was_running {
-        writeln!(out, "dev-restart: stopping daemon (graceful SIGTERM)...")?;
-    } else {
-        writeln!(out, "dev-restart: daemon not running")?;
+    if !was_running {
+        writeln!(
+            out,
+            "dev-restart: daemon not running; next MCP request will spawn a fresh daemon \
+             with the latest binary"
+        )?;
+        return Ok(DevRestartReport {
+            was_running: false,
+            forced: force,
+            sigterm_sent: false,
+        });
     }
 
-    lifecycle::stop_daemon(&paths)?;
-
-    if was_running {
+    if force {
+        writeln!(
+            out,
+            "dev-restart: --force given; sending SIGTERM (in-flight sessions will be drained \
+             then force-aborted on timeout)"
+        )?;
+        lifecycle::stop_daemon(&paths)?;
         writeln!(
             out,
             "dev-restart: daemon stopped; adapter will respawn on next MCP request"
         )?;
+        Ok(DevRestartReport {
+            was_running: true,
+            forced: true,
+            sigterm_sent: true,
+        })
+    } else {
+        writeln!(
+            out,
+            "dev-restart: daemon running; leaving it alive so the calling MCP session is not \
+             interrupted"
+        )?;
+        writeln!(
+            out,
+            "  the daemon will auto-pick up the new binary on the next session disconnect \
+             or new session connect"
+        )?;
+        writeln!(
+            out,
+            "  pass --force to SIGTERM immediately (kills in-flight sessions on drain timeout)"
+        )?;
+        Ok(DevRestartReport {
+            was_running: true,
+            forced: false,
+            sigterm_sent: false,
+        })
     }
-
-    Ok(DevRestartReport { was_running })
 }
 
 #[derive(Debug)]
 pub struct DevRestartReport {
     pub was_running: bool,
+    pub forced: bool,
+    pub sigterm_sent: bool,
 }
 
 pub fn default_cache_root() -> PathBuf {

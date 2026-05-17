@@ -300,9 +300,29 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
         .ensure_dirs()
         .context("Failed to create daemon directories")?;
 
+    // Acquire the daemon singleton lock BEFORE binding any listener. When
+    // multiple `julie-server daemon` invocations race (the typical case when
+    // 3+ MCP harnesses fire session-start hooks in parallel), this gate
+    // collapses the thundering herd to one winner — losers exit silently
+    // with status 0 before doing any init work or binding any sockets.
+    let daemon_lock = match self::app::acquire_or_yield_to_existing_daemon(&paths)? {
+        Some(guard) => guard,
+        None => {
+            // Another daemon is already up for this JULIE_HOME. Not an
+            // error — this is the expected outcome when an adapter spawns
+            // a daemon and one is already running. Stay silent on stderr;
+            // the adapter will discover the existing daemon via
+            // discovery.json on its next request.
+            return Ok(());
+        }
+    };
+
     // Port fallback: try requested port, fall back to auto-assign on
     // EADDRINUSE. The listener we hand to DaemonApp::serve is the MCP HTTP
-    // listener; the dashboard binds its own port internally.
+    // listener; the dashboard binds its own port internally. With the lock
+    // held above, a fallback here would indicate a real problem (e.g. a
+    // leftover socket in TIME_WAIT from a crashed daemon) and is logged
+    // accordingly inside `bind_mcp_listener_with_fallback`.
     let listener = self::app::bind_mcp_listener_with_fallback(port).await?;
     let actual_port = listener.local_addr()?.port();
 
@@ -311,6 +331,7 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
         port: actual_port,
         no_dashboard,
         runtime: DaemonRuntimeContext::default(),
+        daemon_lock: Some(daemon_lock),
     };
 
     let handle = DaemonApp::new(config)?.serve(listener).await?;
