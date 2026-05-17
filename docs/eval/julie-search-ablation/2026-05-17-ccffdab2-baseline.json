@@ -1,9 +1,10 @@
 {
   "corpus_version": 1,
   "corpus_created": "2026-05-17",
-  "commit": "1f77cd93",
-  "timestamp": "2026-05-17T20:54:41Z",
+  "commit": "ccffdab2",
+  "timestamp": "2026-05-17T21:28:35Z",
   "query_count": 45,
+  "k": 10,
   "fixture_path": "/Users/murphy/source/julie/fixtures/databases/julie-snapshot/symbols.db",
   "fixture_symbol_count": 27347,
   "fixture_indexed_symbols": 27347,
@@ -15,46 +16,46 @@
       "total_queries": 45,
       "top1_relevant": 14,
       "top1_relevant_pct": 31.11111111111111,
-      "mrr_at_10": 0.32407407407407407,
-      "latency_ms_mean": 16.511111111111113,
+      "mrr_at_k": 0.32407407407407407,
+      "latency_ms_mean": 17.155555555555555,
       "latency_ms_p50": 9,
-      "latency_ms_p95": 41,
+      "latency_ms_p95": 42,
       "by_category": {
         "concept": {
           "queries": 10,
           "top1_relevant": 1,
           "top1_relevant_pct": 10.0,
-          "mrr_at_10": 0.1125
+          "mrr_at_k": 0.1125
         },
         "exact-symbol": {
           "queries": 8,
           "top1_relevant": 5,
           "top1_relevant_pct": 62.5,
-          "mrr_at_10": 0.6666666666666667
+          "mrr_at_k": 0.6666666666666667
         },
         "file-path": {
           "queries": 6,
           "top1_relevant": 4,
           "top1_relevant_pct": 66.66666666666666,
-          "mrr_at_10": 0.6666666666666666
+          "mrr_at_k": 0.6666666666666666
         },
         "qualified-name": {
           "queries": 5,
           "top1_relevant": 1,
           "top1_relevant_pct": 20.0,
-          "mrr_at_10": 0.2
+          "mrr_at_k": 0.2
         },
         "symbol-intent": {
           "queries": 8,
           "top1_relevant": 1,
           "top1_relevant_pct": 12.5,
-          "mrr_at_10": 0.140625
+          "mrr_at_k": 0.140625
         },
         "test-intent": {
           "queries": 8,
           "top1_relevant": 2,
           "top1_relevant_pct": 25.0,
-          "mrr_at_10": 0.25
+          "mrr_at_k": 0.25
         }
       },
       "per_query": [
@@ -68,7 +69,7 @@
           "top1_path": "src/database/mod.rs",
           "relevant_rank": 1,
           "hit_count": 10,
-          "latency_ms": 31
+          "latency_ms": 28
         },
         {
           "id": "exact-2",
@@ -93,7 +94,7 @@
           "top1_path": "src/tools/search/mod.rs",
           "relevant_rank": 1,
           "hit_count": 10,
-          "latency_ms": 14
+          "latency_ms": 13
         },
         {
           "id": "exact-4",
@@ -105,7 +106,7 @@
           "top1_path": "src/tests/tools/search_quality/dogfood_tests.rs",
           "relevant_rank": 3,
           "hit_count": 10,
-          "latency_ms": 10
+          "latency_ms": 9
         },
         {
           "id": "exact-5",
@@ -141,7 +142,7 @@
           "top1_path": "src/handler.rs",
           "relevant_rank": 1,
           "hit_count": 10,
-          "latency_ms": 25
+          "latency_ms": 24
         },
         {
           "id": "exact-8",
@@ -189,7 +190,7 @@
           "top1_path": "src/tools/get_context/pipeline.rs",
           "relevant_rank": null,
           "hit_count": 2,
-          "latency_ms": 7
+          "latency_ms": 8
         },
         {
           "id": "symbol-intent-4",
@@ -225,7 +226,7 @@
           "top1_path": "src/utils/token_estimation.rs",
           "relevant_rank": null,
           "hit_count": 10,
-          "latency_ms": 38
+          "latency_ms": 41
         },
         {
           "id": "symbol-intent-7",
@@ -237,7 +238,7 @@
           "top1_path": "src/workspace/mod.rs",
           "relevant_rank": null,
           "hit_count": 10,
-          "latency_ms": 21
+          "latency_ms": 22
         },
         {
           "id": "symbol-intent-8",
@@ -249,7 +250,7 @@
           "top1_path": "fixtures/databases/julie-snapshot/metadata.json",
           "relevant_rank": null,
           "hit_count": 1,
-          "latency_ms": 8
+          "latency_ms": 9
         },
         {
           "id": "test-1",
@@ -262,7 +263,7 @@
           "top1_path": "src/tools/symbols/filtering.rs",
           "relevant_rank": null,
           "hit_count": 10,
-          "latency_ms": 41
+          "latency_ms": 42
         },
         {
           "id": "test-2",
@@ -274,7 +275,7 @@
           "top1_path": "src/tools/navigation/resolution.rs",
           "relevant_rank": null,
           "hit_count": 10,
-          "latency_ms": 41
+          "latency_ms": 40
         },
         {
           "id": "test-3",
@@ -323,7 +324,7 @@
           "top1_path": "src/tests/tools/search/tantivy_scoring_tests.rs",
           "relevant_rank": 1,
           "hit_count": 10,
-          "latency_ms": 9
+          "latency_ms": 10
         },
         {
           "id": "test-7",
@@ -335,7 +336,7 @@
           "top1_path": "crates/julie-extractors/src/tests/java/mod.rs",
           "relevant_rank": null,
           "hit_count": 10,
-          "latency_ms": 40
+          "latency_ms": 42
         },
         {
           "id": "test-8",
@@ -347,7 +348,606 @@
           "top1_path": "src/tests/tools/search/tantivy_index_tests.rs",
           "relevant_rank": 1,
           "hit_count": 10,
+          "latency_ms": 9
+        },
+        {
+          "id": "file-1",
+          "category": "file-path",
+          "query": "src/search/index.rs",
+          "expected_paths": [
+            "src/search/index.rs"
+          ],
+          "top1_path": "src/search/index.rs",
+          "relevant_rank": 1,
+          "hit_count": 2,
+          "latency_ms": 0
+        },
+        {
+          "id": "file-2",
+          "category": "file-path",
+          "query": "tantivy_path_prior_tests",
+          "expected_paths": [
+            "src/tests/tools/search/tantivy_path_prior_tests.rs"
+          ],
+          "top1_path": "src/tests/integration/query_preprocessor_tests.rs",
+          "relevant_rank": null,
+          "hit_count": 10,
+          "latency_ms": 1
+        },
+        {
+          "id": "file-3",
+          "category": "file-path",
+          "query": "schema.rs",
+          "expected_paths": [
+            "src/search/schema.rs"
+          ],
+          "top1_path": "src/search/schema.rs",
+          "relevant_rank": 1,
+          "hit_count": 4,
+          "latency_ms": 0
+        },
+        {
+          "id": "file-4",
+          "category": "file-path",
+          "query": "watcher/handlers",
+          "expected_paths": [
+            "src/watcher/handlers.rs"
+          ],
+          "top1_path": "src/watcher/handlers.rs",
+          "relevant_rank": 1,
+          "hit_count": 2,
+          "latency_ms": 0
+        },
+        {
+          "id": "file-5",
+          "category": "file-path",
+          "query": "search/reranker",
+          "expected_paths": [
+            "src/search/reranker.rs"
+          ],
+          "top1_path": "src/search/index.rs",
+          "relevant_rank": null,
+          "hit_count": 10,
+          "latency_ms": 0
+        },
+        {
+          "id": "file-6",
+          "category": "file-path",
+          "query": "ARCHITECTURE.md",
+          "expected_paths": [
+            "docs/ARCHITECTURE.md"
+          ],
+          "top1_path": "docs/ARCHITECTURE.md",
+          "relevant_rank": 1,
+          "hit_count": 2,
+          "latency_ms": 0
+        },
+        {
+          "id": "concept-1",
+          "category": "concept",
+          "query": "how does the file watcher process changes",
+          "expected_paths": [
+            "src/watcher/handlers.rs",
+            "src/watcher/runtime.rs"
+          ],
+          "top1_path": "fixtures/databases/julie-snapshot/metadata.json",
+          "relevant_rank": null,
+          "hit_count": 1,
+          "latency_ms": 9
+        },
+        {
+          "id": "concept-2",
+          "category": "concept",
+          "query": "natural language path prior multipliers",
+          "expected_paths": [
+            "src/search/scoring.rs"
+          ],
+          "top1_path": "src/tools/refactoring/utils.rs",
+          "relevant_rank": null,
+          "hit_count": 10,
+          "latency_ms": 40
+        },
+        {
+          "id": "concept-3",
+          "category": "concept",
+          "query": "rerank candidate over fetch limit calculation",
+          "expected_paths": [
+            "src/search/index.rs"
+          ],
+          "top1_path": "src/tools/workspace/indexing/resolver.rs",
+          "relevant_rank": null,
+          "hit_count": 10,
+          "latency_ms": 41
+        },
+        {
+          "id": "concept-4",
+          "category": "concept",
+          "query": "RRF score rescaling to BM25",
+          "expected_paths": [
+            "src/tools/search/text_search.rs"
+          ],
+          "top1_path": "src/utils/path_relevance.rs",
+          "relevant_rank": null,
+          "hit_count": 10,
+          "latency_ms": 40
+        },
+        {
+          "id": "concept-5",
+          "category": "concept",
+          "query": "hybrid search graceful degradation when embeddings fail",
+          "expected_paths": [
+            "src/search/hybrid.rs"
+          ],
+          "top1_path": "fixtures/databases/julie-snapshot/metadata.json",
+          "relevant_rank": null,
+          "hit_count": 1,
+          "latency_ms": 9
+        },
+        {
+          "id": "concept-6",
+          "category": "concept",
+          "query": "stale binary detection daemon restart",
+          "expected_paths": [
+            "src/daemon/lifecycle.rs",
+            "src/daemon/app.rs"
+          ],
+          "top1_path": "crates/julie-extractors/src/r/mod.rs",
+          "relevant_rank": null,
+          "hit_count": 10,
+          "latency_ms": 27
+        },
+        {
+          "id": "concept-7",
+          "category": "concept",
+          "query": "MCP session admission control",
+          "expected_paths": [
+            "src/daemon/mcp_session.rs"
+          ],
+          "top1_path": "src/workspace/registry.rs",
+          "relevant_rank": null,
+          "hit_count": 10,
+          "latency_ms": 28
+        },
+        {
+          "id": "concept-8",
+          "category": "concept",
+          "query": "atomic incremental update bulk operations",
+          "expected_paths": [
+            "src/database/bulk_operations.rs"
+          ],
+          "top1_path": "src/database/bulk_operations.rs",
+          "relevant_rank": 1,
+          "hit_count": 10,
           "latency_ms": 8
+        },
+        {
+          "id": "concept-9",
+          "category": "concept",
+          "query": "schema compatibility detection and rebuild",
+          "expected_paths": [
+            "src/search/schema.rs",
+            "src/search/index.rs"
+          ],
+          "top1_path": "src/tracing/mod.rs",
+          "relevant_rank": 8,
+          "hit_count": 10,
+          "latency_ms": 45
+        },
+        {
+          "id": "concept-10",
+          "category": "concept",
+          "query": "background embedding initialization",
+          "expected_paths": [
+            "src/embeddings/init.rs",
+            "src/daemon/app/helpers.rs"
+          ],
+          "top1_path": "src/tests/tools/search/race_condition.rs",
+          "relevant_rank": null,
+          "hit_count": 2,
+          "latency_ms": 8
+        },
+        {
+          "id": "qualified-1",
+          "category": "qualified-name",
+          "query": "WatcherPool",
+          "expected_paths": [
+            "src/daemon/watcher_pool.rs"
+          ],
+          "top1_path": null,
+          "relevant_rank": null,
+          "hit_count": 0,
+          "latency_ms": 7
+        },
+        {
+          "id": "qualified-2",
+          "category": "qualified-name",
+          "query": "ParentReferenceContext",
+          "expected_paths": [
+            "src/tools/workspace/indexing/resolver.rs"
+          ],
+          "top1_path": null,
+          "relevant_rank": null,
+          "hit_count": 0,
+          "latency_ms": 7
+        },
+        {
+          "id": "qualified-3",
+          "category": "qualified-name",
+          "query": "ManageWorkspaceTool",
+          "expected_paths": [
+            "src/tools/workspace/commands/mod.rs"
+          ],
+          "top1_path": "src/tools/workspace/commands/mod.rs",
+          "relevant_rank": 1,
+          "hit_count": 10,
+          "latency_ms": 19
+        },
+        {
+          "id": "qualified-4",
+          "category": "qualified-name",
+          "query": "Candidate",
+          "expected_paths": [
+            "src/search/reranker.rs"
+          ],
+          "top1_path": "src/tools/workspace/indexing/resolver.rs",
+          "relevant_rank": null,
+          "hit_count": 10,
+          "latency_ms": 11
+        },
+        {
+          "id": "qualified-5",
+          "category": "qualified-name",
+          "query": "MutationGuard",
+          "expected_paths": [
+            "src/workspace/mutation_gate.rs"
+          ],
+          "top1_path": null,
+          "relevant_rank": null,
+          "hit_count": 0,
+          "latency_ms": 8
+        }
+      ]
+    },
+    {
+      "mode": "keyword+reranker",
+      "status": "ran",
+      "skip_reason": null,
+      "total_queries": 45,
+      "top1_relevant": 14,
+      "top1_relevant_pct": 31.11111111111111,
+      "mrr_at_k": 0.33209876543209876,
+      "latency_ms_mean": 22.466666666666665,
+      "latency_ms_p50": 10,
+      "latency_ms_p95": 60,
+      "by_category": {
+        "concept": {
+          "queries": 10,
+          "top1_relevant": 1,
+          "top1_relevant_pct": 10.0,
+          "mrr_at_k": 0.15
+        },
+        "exact-symbol": {
+          "queries": 8,
+          "top1_relevant": 5,
+          "top1_relevant_pct": 62.5,
+          "mrr_at_k": 0.6666666666666667
+        },
+        "file-path": {
+          "queries": 6,
+          "top1_relevant": 4,
+          "top1_relevant_pct": 66.66666666666666,
+          "mrr_at_k": 0.6666666666666666
+        },
+        "qualified-name": {
+          "queries": 5,
+          "top1_relevant": 1,
+          "top1_relevant_pct": 20.0,
+          "mrr_at_k": 0.2
+        },
+        "symbol-intent": {
+          "queries": 8,
+          "top1_relevant": 1,
+          "top1_relevant_pct": 12.5,
+          "mrr_at_k": 0.1388888888888889
+        },
+        "test-intent": {
+          "queries": 8,
+          "top1_relevant": 2,
+          "top1_relevant_pct": 25.0,
+          "mrr_at_k": 0.25
+        }
+      },
+      "per_query": [
+        {
+          "id": "exact-1",
+          "category": "exact-symbol",
+          "query": "SymbolDatabase",
+          "expected_paths": [
+            "src/database/mod.rs"
+          ],
+          "top1_path": "src/database/mod.rs",
+          "relevant_rank": 1,
+          "hit_count": 10,
+          "latency_ms": 26
+        },
+        {
+          "id": "exact-2",
+          "category": "exact-symbol",
+          "query": "apply_nl_path_prior",
+          "expected_paths": [
+            "src/search/scoring.rs"
+          ],
+          "top1_path": null,
+          "relevant_rank": null,
+          "hit_count": 0,
+          "latency_ms": 8
+        },
+        {
+          "id": "exact-3",
+          "category": "exact-symbol",
+          "query": "FastSearchTool",
+          "expected_paths": [
+            "src/tools/search/mod.rs",
+            "src/tools/search/fast_search.rs"
+          ],
+          "top1_path": "src/tools/search/mod.rs",
+          "relevant_rank": 1,
+          "hit_count": 10,
+          "latency_ms": 15
+        },
+        {
+          "id": "exact-4",
+          "category": "exact-symbol",
+          "query": "definition_search_with_index",
+          "expected_paths": [
+            "src/tools/search/text_search.rs"
+          ],
+          "top1_path": "src/tests/tools/search_quality/dogfood_tests.rs",
+          "relevant_rank": 3,
+          "hit_count": 10,
+          "latency_ms": 10
+        },
+        {
+          "id": "exact-5",
+          "category": "exact-symbol",
+          "query": "tantivy_symbol_to_symbol",
+          "expected_paths": [
+            "src/tools/search/text_search.rs"
+          ],
+          "top1_path": "src/tools/search/text_search.rs",
+          "relevant_rank": 1,
+          "hit_count": 10,
+          "latency_ms": 16
+        },
+        {
+          "id": "exact-6",
+          "category": "exact-symbol",
+          "query": "create_schema",
+          "expected_paths": [
+            "src/search/schema.rs"
+          ],
+          "top1_path": "src/search/schema.rs",
+          "relevant_rank": 1,
+          "hit_count": 10,
+          "latency_ms": 9
+        },
+        {
+          "id": "exact-7",
+          "category": "exact-symbol",
+          "query": "JulieServerHandler",
+          "expected_paths": [
+            "src/handler.rs"
+          ],
+          "top1_path": "src/handler.rs",
+          "relevant_rank": 1,
+          "hit_count": 10,
+          "latency_ms": 36
+        },
+        {
+          "id": "exact-8",
+          "category": "exact-symbol",
+          "query": "compute_dominant_language",
+          "expected_paths": [
+            "src/search/scoring.rs"
+          ],
+          "top1_path": null,
+          "relevant_rank": null,
+          "hit_count": 0,
+          "latency_ms": 8
+        },
+        {
+          "id": "symbol-intent-1",
+          "category": "symbol-intent",
+          "query": "rerank symbol score",
+          "expected_paths": [
+            "src/search/reranker.rs"
+          ],
+          "top1_path": "docs/plans/2026-02-24-phase3-get-context-tool.md",
+          "relevant_rank": null,
+          "hit_count": 7,
+          "latency_ms": 8
+        },
+        {
+          "id": "symbol-intent-2",
+          "category": "symbol-intent",
+          "query": "apply centrality boost",
+          "expected_paths": [
+            "src/search/scoring.rs"
+          ],
+          "top1_path": "src/search/scoring.rs",
+          "relevant_rank": 1,
+          "hit_count": 10,
+          "latency_ms": 12
+        },
+        {
+          "id": "symbol-intent-3",
+          "category": "symbol-intent",
+          "query": "build symbol query weighted",
+          "expected_paths": [
+            "src/search/query.rs"
+          ],
+          "top1_path": "src/tools/get_context/pipeline.rs",
+          "relevant_rank": null,
+          "hit_count": 2,
+          "latency_ms": 8
+        },
+        {
+          "id": "symbol-intent-4",
+          "category": "symbol-intent",
+          "query": "build symbol candidate",
+          "expected_paths": [
+            "src/tools/search/text_search.rs"
+          ],
+          "top1_path": "src/tools/workspace/indexing/resolver.rs",
+          "relevant_rank": 9,
+          "hit_count": 10,
+          "latency_ms": 9
+        },
+        {
+          "id": "symbol-intent-5",
+          "category": "symbol-intent",
+          "query": "promote exact name matches",
+          "expected_paths": [
+            "src/search/scoring.rs"
+          ],
+          "top1_path": "docs/plans/2026-02-07-toolset-redesign.md",
+          "relevant_rank": null,
+          "hit_count": 2,
+          "latency_ms": 7
+        },
+        {
+          "id": "symbol-intent-6",
+          "category": "symbol-intent",
+          "query": "hybrid search merge",
+          "expected_paths": [
+            "src/search/hybrid.rs"
+          ],
+          "top1_path": "fixtures/real-world/python/test_database.py",
+          "relevant_rank": null,
+          "hit_count": 10,
+          "latency_ms": 54
+        },
+        {
+          "id": "symbol-intent-7",
+          "category": "symbol-intent",
+          "query": "watcher mutation gate",
+          "expected_paths": [
+            "src/workspace/mutation_gate.rs"
+          ],
+          "top1_path": "src/watcher/mod.rs",
+          "relevant_rank": null,
+          "hit_count": 10,
+          "latency_ms": 31
+        },
+        {
+          "id": "symbol-intent-8",
+          "category": "symbol-intent",
+          "query": "schema compatibility signature",
+          "expected_paths": [
+            "src/search/schema.rs"
+          ],
+          "top1_path": "fixtures/databases/julie-snapshot/metadata.json",
+          "relevant_rank": null,
+          "hit_count": 1,
+          "latency_ms": 8
+        },
+        {
+          "id": "test-1",
+          "category": "test-intent",
+          "query": "test apply_nl_path_prior",
+          "expected_paths": [
+            "src/tests/tools/search/tantivy_path_prior_tests.rs",
+            "src/tests/tools/search/nl_path_prior_pipeline_tests.rs"
+          ],
+          "top1_path": "src/tools/symbols/filtering.rs",
+          "relevant_rank": null,
+          "hit_count": 10,
+          "latency_ms": 55
+        },
+        {
+          "id": "test-2",
+          "category": "test-intent",
+          "query": "test reranker ordering",
+          "expected_paths": [
+            "src/tests/tools/search/reranker_ordering_tests.rs"
+          ],
+          "top1_path": "src/tests/core/database_lightweight_query.rs",
+          "relevant_rank": null,
+          "hit_count": 10,
+          "latency_ms": 57
+        },
+        {
+          "id": "test-3",
+          "category": "test-intent",
+          "query": "hybrid search tests",
+          "expected_paths": [
+            "src/tests/tools/hybrid_search_tests.rs"
+          ],
+          "top1_path": ".memories/2025-11-20/160206_82d5.json",
+          "relevant_rank": null,
+          "hit_count": 10,
+          "latency_ms": 16
+        },
+        {
+          "id": "test-4",
+          "category": "test-intent",
+          "query": "watcher mutation gate tests",
+          "expected_paths": [
+            "src/tests/integration/watcher_mutation_gate.rs"
+          ],
+          "top1_path": "src/tests/integration/watcher.rs",
+          "relevant_rank": null,
+          "hit_count": 10,
+          "latency_ms": 60
+        },
+        {
+          "id": "test-5",
+          "category": "test-intent",
+          "query": "test schema migration recreates stale index",
+          "expected_paths": [
+            "src/tests/tools/search/tantivy_index_tests.rs"
+          ],
+          "top1_path": "src/tests/integration/stale_index_detection.rs",
+          "relevant_rank": null,
+          "hit_count": 10,
+          "latency_ms": 61
+        },
+        {
+          "id": "test-6",
+          "category": "test-intent",
+          "query": "test centrality boost",
+          "expected_paths": [
+            "src/tests/tools/search/tantivy_scoring_tests.rs",
+            "src/tests/tools/search/c3_enriched_schema_tests.rs"
+          ],
+          "top1_path": "src/tests/tools/search/tantivy_scoring_tests.rs",
+          "relevant_rank": 1,
+          "hit_count": 10,
+          "latency_ms": 12
+        },
+        {
+          "id": "test-7",
+          "category": "test-intent",
+          "query": "annotation search tests",
+          "expected_paths": [
+            "src/tests/tools/search/annotation_search_tests.rs"
+          ],
+          "top1_path": "crates/julie-extractors/src/tests/java/annotation_tests.rs",
+          "relevant_rank": null,
+          "hit_count": 10,
+          "latency_ms": 60
+        },
+        {
+          "id": "test-8",
+          "category": "test-intent",
+          "query": "test_search_symbols_relaxed",
+          "expected_paths": [
+            "src/tests/tools/search/tantivy_index_tests.rs"
+          ],
+          "top1_path": "src/tests/tools/search/tantivy_index_tests.rs",
+          "relevant_rank": 1,
+          "hit_count": 10,
+          "latency_ms": 10
         },
         {
           "id": "file-1",
@@ -444,7 +1044,7 @@
           "top1_path": "src/tools/refactoring/utils.rs",
           "relevant_rank": null,
           "hit_count": 10,
-          "latency_ms": 38
+          "latency_ms": 55
         },
         {
           "id": "concept-3",
@@ -456,7 +1056,7 @@
           "top1_path": "src/tools/workspace/indexing/resolver.rs",
           "relevant_rank": null,
           "hit_count": 10,
-          "latency_ms": 40
+          "latency_ms": 59
         },
         {
           "id": "concept-4",
@@ -466,610 +1066,11 @@
             "src/tools/search/text_search.rs"
           ],
           "top1_path": "src/utils/path_relevance.rs",
-          "relevant_rank": null,
-          "hit_count": 10,
-          "latency_ms": 38
-        },
-        {
-          "id": "concept-5",
-          "category": "concept",
-          "query": "hybrid search graceful degradation when embeddings fail",
-          "expected_paths": [
-            "src/search/hybrid.rs"
-          ],
-          "top1_path": "fixtures/databases/julie-snapshot/metadata.json",
-          "relevant_rank": null,
-          "hit_count": 1,
-          "latency_ms": 8
-        },
-        {
-          "id": "concept-6",
-          "category": "concept",
-          "query": "stale binary detection daemon restart",
-          "expected_paths": [
-            "src/daemon/lifecycle.rs",
-            "src/daemon/app.rs"
-          ],
-          "top1_path": "crates/julie-extractors/src/r/mod.rs",
-          "relevant_rank": null,
-          "hit_count": 10,
-          "latency_ms": 26
-        },
-        {
-          "id": "concept-7",
-          "category": "concept",
-          "query": "MCP session admission control",
-          "expected_paths": [
-            "src/daemon/mcp_session.rs"
-          ],
-          "top1_path": "src/workspace/registry.rs",
-          "relevant_rank": null,
-          "hit_count": 10,
-          "latency_ms": 27
-        },
-        {
-          "id": "concept-8",
-          "category": "concept",
-          "query": "atomic incremental update bulk operations",
-          "expected_paths": [
-            "src/database/bulk_operations.rs"
-          ],
-          "top1_path": "src/database/bulk_operations.rs",
-          "relevant_rank": 1,
-          "hit_count": 10,
-          "latency_ms": 8
-        },
-        {
-          "id": "concept-9",
-          "category": "concept",
-          "query": "schema compatibility detection and rebuild",
-          "expected_paths": [
-            "src/search/schema.rs",
-            "src/search/index.rs"
-          ],
-          "top1_path": "src/tracing/mod.rs",
-          "relevant_rank": 8,
-          "hit_count": 10,
-          "latency_ms": 37
-        },
-        {
-          "id": "concept-10",
-          "category": "concept",
-          "query": "background embedding initialization",
-          "expected_paths": [
-            "src/embeddings/init.rs",
-            "src/daemon/app/helpers.rs"
-          ],
-          "top1_path": "src/tests/tools/search/race_condition.rs",
-          "relevant_rank": null,
-          "hit_count": 2,
-          "latency_ms": 8
-        },
-        {
-          "id": "qualified-1",
-          "category": "qualified-name",
-          "query": "WatcherPool",
-          "expected_paths": [
-            "src/daemon/watcher_pool.rs"
-          ],
-          "top1_path": null,
-          "relevant_rank": null,
-          "hit_count": 0,
-          "latency_ms": 6
-        },
-        {
-          "id": "qualified-2",
-          "category": "qualified-name",
-          "query": "ParentReferenceContext",
-          "expected_paths": [
-            "src/tools/workspace/indexing/resolver.rs"
-          ],
-          "top1_path": null,
-          "relevant_rank": null,
-          "hit_count": 0,
-          "latency_ms": 6
-        },
-        {
-          "id": "qualified-3",
-          "category": "qualified-name",
-          "query": "ManageWorkspaceTool",
-          "expected_paths": [
-            "src/tools/workspace/commands/mod.rs"
-          ],
-          "top1_path": "src/tools/workspace/commands/mod.rs",
-          "relevant_rank": 1,
-          "hit_count": 10,
-          "latency_ms": 17
-        },
-        {
-          "id": "qualified-4",
-          "category": "qualified-name",
-          "query": "Candidate",
-          "expected_paths": [
-            "src/search/reranker.rs"
-          ],
-          "top1_path": "src/tools/workspace/indexing/resolver.rs",
-          "relevant_rank": null,
-          "hit_count": 10,
-          "latency_ms": 9
-        },
-        {
-          "id": "qualified-5",
-          "category": "qualified-name",
-          "query": "MutationGuard",
-          "expected_paths": [
-            "src/workspace/mutation_gate.rs"
-          ],
-          "top1_path": null,
-          "relevant_rank": null,
-          "hit_count": 0,
-          "latency_ms": 6
-        }
-      ]
-    },
-    {
-      "mode": "keyword+reranker",
-      "status": "ran",
-      "skip_reason": null,
-      "total_queries": 45,
-      "top1_relevant": 14,
-      "top1_relevant_pct": 31.11111111111111,
-      "mrr_at_10": 0.33209876543209876,
-      "latency_ms_mean": 20.555555555555557,
-      "latency_ms_p50": 9,
-      "latency_ms_p95": 56,
-      "by_category": {
-        "concept": {
-          "queries": 10,
-          "top1_relevant": 1,
-          "top1_relevant_pct": 10.0,
-          "mrr_at_10": 0.15
-        },
-        "exact-symbol": {
-          "queries": 8,
-          "top1_relevant": 5,
-          "top1_relevant_pct": 62.5,
-          "mrr_at_10": 0.6666666666666667
-        },
-        "file-path": {
-          "queries": 6,
-          "top1_relevant": 4,
-          "top1_relevant_pct": 66.66666666666666,
-          "mrr_at_10": 0.6666666666666666
-        },
-        "qualified-name": {
-          "queries": 5,
-          "top1_relevant": 1,
-          "top1_relevant_pct": 20.0,
-          "mrr_at_10": 0.2
-        },
-        "symbol-intent": {
-          "queries": 8,
-          "top1_relevant": 1,
-          "top1_relevant_pct": 12.5,
-          "mrr_at_10": 0.1388888888888889
-        },
-        "test-intent": {
-          "queries": 8,
-          "top1_relevant": 2,
-          "top1_relevant_pct": 25.0,
-          "mrr_at_10": 0.25
-        }
-      },
-      "per_query": [
-        {
-          "id": "exact-1",
-          "category": "exact-symbol",
-          "query": "SymbolDatabase",
-          "expected_paths": [
-            "src/database/mod.rs"
-          ],
-          "top1_path": "src/database/mod.rs",
-          "relevant_rank": 1,
-          "hit_count": 10,
-          "latency_ms": 24
-        },
-        {
-          "id": "exact-2",
-          "category": "exact-symbol",
-          "query": "apply_nl_path_prior",
-          "expected_paths": [
-            "src/search/scoring.rs"
-          ],
-          "top1_path": null,
-          "relevant_rank": null,
-          "hit_count": 0,
-          "latency_ms": 6
-        },
-        {
-          "id": "exact-3",
-          "category": "exact-symbol",
-          "query": "FastSearchTool",
-          "expected_paths": [
-            "src/tools/search/mod.rs",
-            "src/tools/search/fast_search.rs"
-          ],
-          "top1_path": "src/tools/search/mod.rs",
-          "relevant_rank": 1,
-          "hit_count": 10,
-          "latency_ms": 13
-        },
-        {
-          "id": "exact-4",
-          "category": "exact-symbol",
-          "query": "definition_search_with_index",
-          "expected_paths": [
-            "src/tools/search/text_search.rs"
-          ],
-          "top1_path": "src/tests/tools/search_quality/dogfood_tests.rs",
-          "relevant_rank": 3,
-          "hit_count": 10,
-          "latency_ms": 8
-        },
-        {
-          "id": "exact-5",
-          "category": "exact-symbol",
-          "query": "tantivy_symbol_to_symbol",
-          "expected_paths": [
-            "src/tools/search/text_search.rs"
-          ],
-          "top1_path": "src/tools/search/text_search.rs",
-          "relevant_rank": 1,
-          "hit_count": 10,
-          "latency_ms": 13
-        },
-        {
-          "id": "exact-6",
-          "category": "exact-symbol",
-          "query": "create_schema",
-          "expected_paths": [
-            "src/search/schema.rs"
-          ],
-          "top1_path": "src/search/schema.rs",
-          "relevant_rank": 1,
-          "hit_count": 10,
-          "latency_ms": 8
-        },
-        {
-          "id": "exact-7",
-          "category": "exact-symbol",
-          "query": "JulieServerHandler",
-          "expected_paths": [
-            "src/handler.rs"
-          ],
-          "top1_path": "src/handler.rs",
-          "relevant_rank": 1,
-          "hit_count": 10,
-          "latency_ms": 33
-        },
-        {
-          "id": "exact-8",
-          "category": "exact-symbol",
-          "query": "compute_dominant_language",
-          "expected_paths": [
-            "src/search/scoring.rs"
-          ],
-          "top1_path": null,
-          "relevant_rank": null,
-          "hit_count": 0,
-          "latency_ms": 6
-        },
-        {
-          "id": "symbol-intent-1",
-          "category": "symbol-intent",
-          "query": "rerank symbol score",
-          "expected_paths": [
-            "src/search/reranker.rs"
-          ],
-          "top1_path": "docs/plans/2026-02-24-phase3-get-context-tool.md",
-          "relevant_rank": null,
-          "hit_count": 7,
-          "latency_ms": 6
-        },
-        {
-          "id": "symbol-intent-2",
-          "category": "symbol-intent",
-          "query": "apply centrality boost",
-          "expected_paths": [
-            "src/search/scoring.rs"
-          ],
-          "top1_path": "src/search/scoring.rs",
-          "relevant_rank": 1,
-          "hit_count": 10,
-          "latency_ms": 10
-        },
-        {
-          "id": "symbol-intent-3",
-          "category": "symbol-intent",
-          "query": "build symbol query weighted",
-          "expected_paths": [
-            "src/search/query.rs"
-          ],
-          "top1_path": "src/tools/get_context/pipeline.rs",
-          "relevant_rank": null,
-          "hit_count": 2,
-          "latency_ms": 6
-        },
-        {
-          "id": "symbol-intent-4",
-          "category": "symbol-intent",
-          "query": "build symbol candidate",
-          "expected_paths": [
-            "src/tools/search/text_search.rs"
-          ],
-          "top1_path": "src/tools/workspace/indexing/resolver.rs",
-          "relevant_rank": 9,
-          "hit_count": 10,
-          "latency_ms": 8
-        },
-        {
-          "id": "symbol-intent-5",
-          "category": "symbol-intent",
-          "query": "promote exact name matches",
-          "expected_paths": [
-            "src/search/scoring.rs"
-          ],
-          "top1_path": "docs/plans/2026-02-07-toolset-redesign.md",
-          "relevant_rank": null,
-          "hit_count": 2,
-          "latency_ms": 7
-        },
-        {
-          "id": "symbol-intent-6",
-          "category": "symbol-intent",
-          "query": "hybrid search merge",
-          "expected_paths": [
-            "src/search/hybrid.rs"
-          ],
-          "top1_path": "fixtures/real-world/python/test_database.py",
-          "relevant_rank": null,
-          "hit_count": 10,
-          "latency_ms": 50
-        },
-        {
-          "id": "symbol-intent-7",
-          "category": "symbol-intent",
-          "query": "watcher mutation gate",
-          "expected_paths": [
-            "src/workspace/mutation_gate.rs"
-          ],
-          "top1_path": "src/watcher/mod.rs",
-          "relevant_rank": null,
-          "hit_count": 10,
-          "latency_ms": 30
-        },
-        {
-          "id": "symbol-intent-8",
-          "category": "symbol-intent",
-          "query": "schema compatibility signature",
-          "expected_paths": [
-            "src/search/schema.rs"
-          ],
-          "top1_path": "fixtures/databases/julie-snapshot/metadata.json",
-          "relevant_rank": null,
-          "hit_count": 1,
-          "latency_ms": 7
-        },
-        {
-          "id": "test-1",
-          "category": "test-intent",
-          "query": "test apply_nl_path_prior",
-          "expected_paths": [
-            "src/tests/tools/search/tantivy_path_prior_tests.rs",
-            "src/tests/tools/search/nl_path_prior_pipeline_tests.rs"
-          ],
-          "top1_path": "src/tools/symbols/filtering.rs",
-          "relevant_rank": null,
-          "hit_count": 10,
-          "latency_ms": 53
-        },
-        {
-          "id": "test-2",
-          "category": "test-intent",
-          "query": "test reranker ordering",
-          "expected_paths": [
-            "src/tests/tools/search/reranker_ordering_tests.rs"
-          ],
-          "top1_path": "src/tests/core/database_lightweight_query.rs",
-          "relevant_rank": null,
-          "hit_count": 10,
-          "latency_ms": 51
-        },
-        {
-          "id": "test-3",
-          "category": "test-intent",
-          "query": "hybrid search tests",
-          "expected_paths": [
-            "src/tests/tools/hybrid_search_tests.rs"
-          ],
-          "top1_path": ".memories/2025-11-20/160206_82d5.json",
-          "relevant_rank": null,
-          "hit_count": 10,
-          "latency_ms": 14
-        },
-        {
-          "id": "test-4",
-          "category": "test-intent",
-          "query": "watcher mutation gate tests",
-          "expected_paths": [
-            "src/tests/integration/watcher_mutation_gate.rs"
-          ],
-          "top1_path": "src/tests/mod.rs",
           "relevant_rank": null,
           "hit_count": 10,
           "latency_ms": 55
         },
         {
-          "id": "test-5",
-          "category": "test-intent",
-          "query": "test schema migration recreates stale index",
-          "expected_paths": [
-            "src/tests/tools/search/tantivy_index_tests.rs"
-          ],
-          "top1_path": "src/tests/integration/stale_index_detection.rs",
-          "relevant_rank": null,
-          "hit_count": 10,
-          "latency_ms": 56
-        },
-        {
-          "id": "test-6",
-          "category": "test-intent",
-          "query": "test centrality boost",
-          "expected_paths": [
-            "src/tests/tools/search/tantivy_scoring_tests.rs",
-            "src/tests/tools/search/c3_enriched_schema_tests.rs"
-          ],
-          "top1_path": "src/tests/tools/search/tantivy_scoring_tests.rs",
-          "relevant_rank": 1,
-          "hit_count": 10,
-          "latency_ms": 12
-        },
-        {
-          "id": "test-7",
-          "category": "test-intent",
-          "query": "annotation search tests",
-          "expected_paths": [
-            "src/tests/tools/search/annotation_search_tests.rs"
-          ],
-          "top1_path": "crates/julie-extractors/src/tests/java/annotation_tests.rs",
-          "relevant_rank": null,
-          "hit_count": 10,
-          "latency_ms": 56
-        },
-        {
-          "id": "test-8",
-          "category": "test-intent",
-          "query": "test_search_symbols_relaxed",
-          "expected_paths": [
-            "src/tests/tools/search/tantivy_index_tests.rs"
-          ],
-          "top1_path": "src/tests/tools/search/tantivy_index_tests.rs",
-          "relevant_rank": 1,
-          "hit_count": 10,
-          "latency_ms": 9
-        },
-        {
-          "id": "file-1",
-          "category": "file-path",
-          "query": "src/search/index.rs",
-          "expected_paths": [
-            "src/search/index.rs"
-          ],
-          "top1_path": "src/search/index.rs",
-          "relevant_rank": 1,
-          "hit_count": 2,
-          "latency_ms": 0
-        },
-        {
-          "id": "file-2",
-          "category": "file-path",
-          "query": "tantivy_path_prior_tests",
-          "expected_paths": [
-            "src/tests/tools/search/tantivy_path_prior_tests.rs"
-          ],
-          "top1_path": "src/tests/integration/query_preprocessor_tests.rs",
-          "relevant_rank": null,
-          "hit_count": 10,
-          "latency_ms": 0
-        },
-        {
-          "id": "file-3",
-          "category": "file-path",
-          "query": "schema.rs",
-          "expected_paths": [
-            "src/search/schema.rs"
-          ],
-          "top1_path": "src/search/schema.rs",
-          "relevant_rank": 1,
-          "hit_count": 4,
-          "latency_ms": 0
-        },
-        {
-          "id": "file-4",
-          "category": "file-path",
-          "query": "watcher/handlers",
-          "expected_paths": [
-            "src/watcher/handlers.rs"
-          ],
-          "top1_path": "src/watcher/handlers.rs",
-          "relevant_rank": 1,
-          "hit_count": 2,
-          "latency_ms": 0
-        },
-        {
-          "id": "file-5",
-          "category": "file-path",
-          "query": "search/reranker",
-          "expected_paths": [
-            "src/search/reranker.rs"
-          ],
-          "top1_path": "src/search/index.rs",
-          "relevant_rank": null,
-          "hit_count": 10,
-          "latency_ms": 0
-        },
-        {
-          "id": "file-6",
-          "category": "file-path",
-          "query": "ARCHITECTURE.md",
-          "expected_paths": [
-            "docs/ARCHITECTURE.md"
-          ],
-          "top1_path": "docs/ARCHITECTURE.md",
-          "relevant_rank": 1,
-          "hit_count": 2,
-          "latency_ms": 0
-        },
-        {
-          "id": "concept-1",
-          "category": "concept",
-          "query": "how does the file watcher process changes",
-          "expected_paths": [
-            "src/watcher/handlers.rs",
-            "src/watcher/runtime.rs"
-          ],
-          "top1_path": "fixtures/databases/julie-snapshot/metadata.json",
-          "relevant_rank": null,
-          "hit_count": 1,
-          "latency_ms": 8
-        },
-        {
-          "id": "concept-2",
-          "category": "concept",
-          "query": "natural language path prior multipliers",
-          "expected_paths": [
-            "src/search/scoring.rs"
-          ],
-          "top1_path": "src/tools/refactoring/utils.rs",
-          "relevant_rank": null,
-          "hit_count": 10,
-          "latency_ms": 53
-        },
-        {
-          "id": "concept-3",
-          "category": "concept",
-          "query": "rerank candidate over fetch limit calculation",
-          "expected_paths": [
-            "src/search/index.rs"
-          ],
-          "top1_path": "src/tools/workspace/indexing/resolver.rs",
-          "relevant_rank": null,
-          "hit_count": 10,
-          "latency_ms": 58
-        },
-        {
-          "id": "concept-4",
-          "category": "concept",
-          "query": "RRF score rescaling to BM25",
-          "expected_paths": [
-            "src/tools/search/text_search.rs"
-          ],
-          "top1_path": "src/utils/path_relevance.rs",
-          "relevant_rank": null,
-          "hit_count": 10,
-          "latency_ms": 53
-        },
-        {
           "id": "concept-5",
           "category": "concept",
           "query": "hybrid search graceful degradation when embeddings fail",
@@ -1079,7 +1080,7 @@
           "top1_path": "fixtures/databases/julie-snapshot/metadata.json",
           "relevant_rank": null,
           "hit_count": 1,
-          "latency_ms": 7
+          "latency_ms": 9
         },
         {
           "id": "concept-6",
@@ -1092,7 +1093,7 @@
           "top1_path": "crates/julie-extractors/src/r/mod.rs",
           "relevant_rank": null,
           "hit_count": 10,
-          "latency_ms": 41
+          "latency_ms": 44
         },
         {
           "id": "concept-7",
@@ -1104,7 +1105,7 @@
           "top1_path": "src/workspace/registry.rs",
           "relevant_rank": null,
           "hit_count": 10,
-          "latency_ms": 41
+          "latency_ms": 45
         },
         {
           "id": "concept-8",
@@ -1116,7 +1117,7 @@
           "top1_path": "src/database/bulk_operations.rs",
           "relevant_rank": 1,
           "hit_count": 10,
-          "latency_ms": 8
+          "latency_ms": 9
         },
         {
           "id": "concept-9",
@@ -1129,7 +1130,7 @@
           "top1_path": "src/search/mod.rs",
           "relevant_rank": 2,
           "hit_count": 10,
-          "latency_ms": 55
+          "latency_ms": 60
         },
         {
           "id": "concept-10",
@@ -1142,7 +1143,7 @@
           "top1_path": "src/tests/tools/search/race_condition.rs",
           "relevant_rank": null,
           "hit_count": 2,
-          "latency_ms": 7
+          "latency_ms": 9
         },
         {
           "id": "qualified-1",
@@ -1154,7 +1155,7 @@
           "top1_path": null,
           "relevant_rank": null,
           "hit_count": 0,
-          "latency_ms": 6
+          "latency_ms": 7
         },
         {
           "id": "qualified-2",
@@ -1166,7 +1167,7 @@
           "top1_path": null,
           "relevant_rank": null,
           "hit_count": 0,
-          "latency_ms": 6
+          "latency_ms": 7
         },
         {
           "id": "qualified-3",
@@ -1178,7 +1179,7 @@
           "top1_path": "src/tools/workspace/commands/mod.rs",
           "relevant_rank": 1,
           "hit_count": 10,
-          "latency_ms": 24
+          "latency_ms": 27
         },
         {
           "id": "qualified-4",
@@ -1190,7 +1191,7 @@
           "top1_path": "src/tools/workspace/indexing/resolver.rs",
           "relevant_rank": null,
           "hit_count": 10,
-          "latency_ms": 11
+          "latency_ms": 13
         },
         {
           "id": "qualified-5",
@@ -1202,7 +1203,7 @@
           "top1_path": null,
           "relevant_rank": null,
           "hit_count": 0,
-          "latency_ms": 6
+          "latency_ms": 7
         }
       ]
     },
@@ -1213,7 +1214,7 @@
       "total_queries": 45,
       "top1_relevant": 0,
       "top1_relevant_pct": 0.0,
-      "mrr_at_10": 0.0,
+      "mrr_at_k": 0.0,
       "latency_ms_mean": 0.0,
       "latency_ms_p50": 0,
       "latency_ms_p95": 0,
@@ -1227,7 +1228,7 @@
       "total_queries": 45,
       "top1_relevant": 0,
       "top1_relevant_pct": 0.0,
-      "mrr_at_10": 0.0,
+      "mrr_at_k": 0.0,
       "latency_ms_mean": 0.0,
       "latency_ms_p50": 0,
       "latency_ms_p95": 0,

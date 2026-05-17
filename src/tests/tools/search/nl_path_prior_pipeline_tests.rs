@@ -7,9 +7,19 @@
 //! point (`text_search.rs`); the low-level Tantivy search must not apply it.
 //!
 //! These tests enforce that contract:
-//! 1. `search_symbols` returns raw BM25 scores — no path prior baked in.
-//! 2. The pipeline (`definition_search_with_index`) still applies the prior
-//!    exactly once.
+//! 1. `search_symbols` / `_relaxed` return raw BM25 scores — no path prior
+//!    baked in (`search_symbols_does_not_apply_nl_path_prior`,
+//!    `search_symbols_relaxed_does_not_apply_nl_path_prior`).
+//! 2. The pipeline (`definition_search_with_index`, keyword branch) applies
+//!    the prior exactly once
+//!    (`definition_search_pipeline_applies_nl_path_prior_after_reranker`).
+//! 3. The hybrid branch never re-applies the prior — `hybrid::hybrid_search`
+//!    is a pure retrieval/merge step and must not contain
+//!    `apply_nl_path_prior`
+//!    (`hybrid_search_does_not_apply_nl_path_prior_source_check`). This is
+//!    a source-text contract test because building a hybrid pipeline with a
+//!    fake embedding provider + `symbol_vectors` virtual table is more
+//!    setup than the contract is worth.
 //!
 //! Function-level coverage of `apply_nl_path_prior` itself lives in
 //! `tantivy_path_prior_tests.rs`.
@@ -170,5 +180,45 @@ fn definition_search_pipeline_applies_nl_path_prior_after_reranker() {
          observed src/tests ratio = {observed_ratio:.4}, \
          expected single = {expected_single:.4}. \
          src.score = {src_score:.4}, tests.score = {tests_score:.4}"
+    );
+}
+
+/// **B1 contract (hybrid branch, static):** `hybrid::hybrid_search` must
+/// never apply the NL path prior. It's a retrieval+merge primitive; the
+/// score-shaping pass belongs to the assembly layer. We pin this
+/// statically rather than dynamically because building a real hybrid
+/// fixture (mock `EmbeddingProvider` + populated `symbol_vectors` vec0
+/// table + paired BM25 candidates) costs more than the contract is worth.
+///
+/// If the function moves, gets a wrapper, or a future refactor folds NL
+/// shaping back inside `hybrid_search`, this test fails loudly and points
+/// at the consolidation plan. Codex review 2026-05-17 flagged the dynamic
+/// test gap; this is the cheap-but-strict cover.
+#[test]
+fn hybrid_search_does_not_apply_nl_path_prior_source_check() {
+    let source = include_str!("../../../search/hybrid.rs");
+    assert!(
+        !source.contains("apply_nl_path_prior"),
+        "src/search/hybrid.rs must not invoke `apply_nl_path_prior`. \
+         Ownership of the NL path prior lives in \
+         `text_search::definition_search_with_index` per the B1 contract \
+         (docs/plans/2026-05-17-search-consolidation-plan.md). If hybrid \
+         now genuinely needs path shaping, fold it into the assembly \
+         layer instead of re-introducing a second application point."
+    );
+}
+
+/// **B1 contract (low-level retrieval, static):** mirrors the dynamic
+/// `search_symbols_does_not_apply_nl_path_prior` tests but covers the
+/// case where someone re-adds the call through a helper that the
+/// scoring-ratio tests don't observe (e.g. a `pub(crate)` wrapper).
+#[test]
+fn search_index_does_not_apply_nl_path_prior_source_check() {
+    let source = include_str!("../../../search/index.rs");
+    assert!(
+        !source.contains("apply_nl_path_prior"),
+        "src/search/index.rs must not invoke `apply_nl_path_prior`. The \
+         comment at the existing call site already documents this; this \
+         test is the durable guard."
     );
 }

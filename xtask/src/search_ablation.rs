@@ -104,6 +104,9 @@ struct AblationReport {
     commit: String,
     timestamp: String,
     query_count: usize,
+    /// Per-mode `--limit` — also the K in MRR@K below. Recorded so a reader
+    /// who finds the JSON later doesn't have to guess what `mrr_at_k` means.
+    k: usize,
     fixture_path: String,
     fixture_symbol_count: usize,
     fixture_indexed_symbols: usize,
@@ -118,7 +121,10 @@ struct ModeResult {
     total_queries: usize,
     top1_relevant: usize,
     top1_relevant_pct: f64,
-    mrr_at_10: f64,
+    /// MRR@K, where K is `AblationReport::k` (matches `--limit`). Renamed
+    /// from `mrr_at_10` after the Codex review pointed out that the metric
+    /// silently truncates to the actual K, not 10.
+    mrr_at_k: f64,
     latency_ms_mean: f64,
     latency_ms_p50: u64,
     latency_ms_p95: u64,
@@ -131,7 +137,7 @@ struct CategoryMetrics {
     queries: usize,
     top1_relevant: usize,
     top1_relevant_pct: f64,
-    mrr_at_10: f64,
+    mrr_at_k: f64,
 }
 
 #[derive(Debug, Serialize)]
@@ -231,10 +237,11 @@ pub fn run_eval_ablation_command(
         )?;
     }
 
-    // Snapshot existing env to restore after the run so we don't bleed state
-    // into the rest of the xtask process.
-    let prior_reranker = std::env::var("JULIE_RERANKER_ENABLED").ok();
-    let prior_embedding = std::env::var("JULIE_EMBEDDING_PROVIDER").ok();
+    // Snapshot existing env in an RAII guard so an early-return from any
+    // mode (e.g. a `?` from definition_search_with_index_for_ablation)
+    // still restores prior state. Per Codex review 2026-05-17: the previous
+    // post-loop restore leaked env vars on error.
+    let _env_guard = EnvGuard::capture(&["JULIE_RERANKER_ENABLED", "JULIE_EMBEDDING_PROVIDER"]);
 
     let mut mode_results = Vec::new();
     for mode in [
@@ -255,18 +262,17 @@ pub fn run_eval_ablation_command(
         )?;
         writeln!(
             stdout,
-            "  status={} top1={}/{}  MRR@10={:.3}  mean_latency_ms={:.1}",
+            "  status={} top1={}/{}  MRR@{}={:.3}  mean_latency_ms={:.1}",
             result.status,
             result.top1_relevant,
             result.total_queries,
-            result.mrr_at_10,
+            limit,
+            result.mrr_at_k,
             result.latency_ms_mean
         )?;
         mode_results.push(result);
     }
-
-    restore_env("JULIE_RERANKER_ENABLED", prior_reranker.as_deref());
-    restore_env("JULIE_EMBEDDING_PROVIDER", prior_embedding.as_deref());
+    // _env_guard drops here, restoring snapshot.
 
     let report = AblationReport {
         corpus_version: corpus_data.version,
@@ -274,6 +280,7 @@ pub fn run_eval_ablation_command(
         commit: git_short_sha().unwrap_or_else(|| "unknown".to_string()),
         timestamp: iso_timestamp_now(),
         query_count: corpus_data.queries.len(),
+        k: limit,
         fixture_path: fixture_db_path.to_string_lossy().into_owned(),
         fixture_symbol_count: fixture_symbol_count as usize,
         fixture_indexed_symbols: indexed_symbols,
@@ -333,7 +340,7 @@ fn run_mode(
             total_queries: queries.len(),
             top1_relevant: 0,
             top1_relevant_pct: 0.0,
-            mrr_at_10: 0.0,
+            mrr_at_k: 0.0,
             latency_ms_mean: 0.0,
             latency_ms_p50: 0,
             latency_ms_p95: 0,
@@ -388,8 +395,11 @@ fn run_mode(
         if relevant_rank == Some(1) {
             top1_relevant += 1;
         }
+        // MRR@K — K matches the per-mode limit, not a hardcoded 10. The
+        // hit_paths vec is already truncated to `limit` by the search call,
+        // so any `Some(rank)` is in range; this gate is defensive.
         if let Some(rank) = relevant_rank {
-            if rank <= 10 {
+            if rank <= limit {
                 reciprocal_sum += 1.0 / rank as f64;
             }
         }
@@ -400,8 +410,8 @@ fn run_mode(
             cat.top1_relevant += 1;
         }
         if let Some(rank) = relevant_rank {
-            if rank <= 10 {
-                cat.mrr_at_10 += 1.0 / rank as f64;
+            if rank <= limit {
+                cat.mrr_at_k += 1.0 / rank as f64;
             }
         }
 
@@ -419,7 +429,7 @@ fn run_mode(
 
     for cat in by_category.values_mut() {
         if cat.queries > 0 {
-            cat.mrr_at_10 /= cat.queries as f64;
+            cat.mrr_at_k /= cat.queries as f64;
             cat.top1_relevant_pct = cat.top1_relevant as f64 / cat.queries as f64 * 100.0;
         }
     }
@@ -445,7 +455,7 @@ fn run_mode(
         total_queries: total,
         top1_relevant,
         top1_relevant_pct: top1_pct,
-        mrr_at_10: mrr,
+        mrr_at_k: mrr,
         latency_ms_mean: mean_ms,
         latency_ms_p50: p50,
         latency_ms_p95: p95,
@@ -493,18 +503,34 @@ fn load_corpus(path: &Path) -> Result<CorpusFile> {
     Ok(corpus)
 }
 
+/// Julie stores symbol embeddings in the `symbol_vectors` virtual table
+/// (sqlite-vec / vec0, see `src/database/vectors.rs:3`). An earlier version
+/// of this probe checked for `embeddings` / `symbol_embeddings` which never
+/// exist — that meant hybrid modes were silently skipped even on a workspace
+/// that *did* have embeddings populated. Fixed via the Codex review of
+/// 2026-05-17.
 fn db_has_embeddings(db_path: &Path) -> bool {
     let conn = match rusqlite::Connection::open(db_path) {
         Ok(c) => c,
         Err(_) => return false,
     };
+    // sqlite_master.type for vec0 virtual tables is 'table'; the name match
+    // is sufficient because the table only exists when migration 010 has run.
     let row: rusqlite::Result<String> = conn.query_row(
         "SELECT name FROM sqlite_master WHERE type='table' \
-         AND name IN ('embeddings','symbol_embeddings') LIMIT 1",
+         AND name = 'symbol_vectors' LIMIT 1",
         [],
         |row| row.get(0),
     );
-    row.is_ok()
+    if row.is_err() {
+        return false;
+    }
+    // The table can exist with zero rows (e.g. sidecar never finished). Treat
+    // that as "no embeddings" so we don't run a hybrid mode that would silently
+    // degenerate to keyword.
+    let count: rusqlite::Result<i64> =
+        conn.query_row("SELECT COUNT(*) FROM symbol_vectors", [], |row| row.get(0));
+    matches!(count, Ok(n) if n > 0)
 }
 
 fn count_symbols(db_path: &Path) -> Result<i64> {
@@ -516,11 +542,37 @@ fn count_symbols(db_path: &Path) -> Result<i64> {
     Ok(count)
 }
 
-fn restore_env(key: &str, prior: Option<&str>) {
-    unsafe {
-        match prior {
-            Some(v) => std::env::set_var(key, v),
-            None => std::env::remove_var(key),
+/// RAII guard that snapshots the requested env vars on construction and
+/// restores their prior values on drop. Used to keep ablation env tweaks
+/// (`JULIE_RERANKER_ENABLED`, `JULIE_EMBEDDING_PROVIDER`) from bleeding
+/// into the rest of the xtask process — including when a `?` propagates
+/// out of a mid-run search call.
+struct EnvGuard {
+    saved: Vec<(String, Option<String>)>,
+}
+
+impl EnvGuard {
+    fn capture(keys: &[&str]) -> Self {
+        let saved = keys
+            .iter()
+            .map(|k| ((*k).to_string(), std::env::var(k).ok()))
+            .collect();
+        Self { saved }
+    }
+}
+
+impl Drop for EnvGuard {
+    fn drop(&mut self) {
+        for (key, value) in self.saved.drain(..) {
+            // SAFETY: single-threaded xtask context; this restores the
+            // pre-capture state and matches the unsafe `set_var` used in
+            // `run_mode`.
+            unsafe {
+                match value {
+                    Some(v) => std::env::set_var(&key, v),
+                    None => std::env::remove_var(&key),
+                }
+            }
         }
     }
 }
@@ -579,11 +631,12 @@ fn epoch_secs_to_ymd(secs: u64) -> (i32, u32, u32) {
 }
 
 fn print_delta_table(report: &AblationReport, stdout: &mut dyn Write) -> Result<()> {
-    writeln!(stdout, "\n=== Ablation Summary ===")?;
+    let mrr_label = format!("MRR@{}", report.k);
+    writeln!(stdout, "\n=== Ablation Summary (K={}) ===", report.k)?;
     writeln!(
         stdout,
         "{:<22}  {:>9}  {:>10}  {:>11}  {:>9}  {:>9}",
-        "mode", "top1", "MRR@10", "mean_ms", "p50_ms", "p95_ms"
+        "mode", "top1", mrr_label, "mean_ms", "p50_ms", "p95_ms"
     )?;
     for m in &report.modes {
         if m.status == "skipped" {
@@ -601,7 +654,7 @@ fn print_delta_table(report: &AblationReport, stdout: &mut dyn Write) -> Result<
             m.mode,
             m.top1_relevant,
             m.total_queries,
-            m.mrr_at_10,
+            m.mrr_at_k,
             m.latency_ms_mean,
             m.latency_ms_p50,
             m.latency_ms_p95,
@@ -616,7 +669,7 @@ fn print_delta_table(report: &AblationReport, stdout: &mut dyn Write) -> Result<
         }
     }
     if !categories.is_empty() {
-        writeln!(stdout, "\nBy category (top1 / total, MRR@10):")?;
+        writeln!(stdout, "\nBy category (top1 / total, {mrr_label}):")?;
         let mut header = format!("{:<16}", "category");
         for m in &report.modes {
             if m.status == "ran" {
@@ -633,7 +686,7 @@ fn print_delta_table(report: &AblationReport, stdout: &mut dyn Write) -> Result<
                 let cell = m
                     .by_category
                     .get(cat)
-                    .map(|c| format!("{:>4}/{:<4} {:.3}", c.top1_relevant, c.queries, c.mrr_at_10))
+                    .map(|c| format!("{:>4}/{:<4} {:.3}", c.top1_relevant, c.queries, c.mrr_at_k))
                     .unwrap_or_else(|| "—".to_string());
                 line.push_str(&format!("  {:>22}", cell));
             }

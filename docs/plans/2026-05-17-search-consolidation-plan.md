@@ -163,13 +163,20 @@ remove. If it shows lift only on one category, narrow it to that path.
   `src/tools/search/text_search.rs:322,408`, schema fields
   (`role`, `test_role`) if no longer consumed.
 
-**Decision recorded 2026-05-17 (commit `287a64d9`): KEEP reranker
-as-is; revisit after corpus expansion.**
+**Decision recorded 2026-05-17 (commit `287a64d9`, updated post-Codex
+review): DEFER reranker removal/narrowing — evidence is too thin to
+take action either way.**
+
+The original framing here said "KEEP as-is." Codex review correctly
+pointed out that's too definitive: the data isn't strong enough to
+justify a positive "keep" verdict, only to justify *not* taking an
+action that could regress something we can't currently measure.
 
 Baseline data
-(`docs/eval/julie-search-ablation/2026-05-17-1f77cd93-baseline.json`):
+(`docs/eval/julie-search-ablation/2026-05-17-ccffdab2-baseline.json`,
+re-emitted after the schema renames below):
 - Global MRR@10: keyword 0.324 → +reranker 0.332 (+2.5%, below the
-  5% threshold).
+  5% threshold the plan named for "remove if no category clears it").
 - Per-category lift: only `concept` moves (0.113 → 0.150, +33%).
   exact-symbol, qualified-name, test-intent, symbol-intent: no
   measurable change. file-path goes through `search_files`, not the
@@ -177,11 +184,15 @@ Baseline data
 - Inspecting per-query data, the *entire* concept-category lift comes
   from one query (`concept-9 "schema compatibility detection and
   rebuild"`, rank 8 → rank 2). With 10 queries per category, that's
-  one data point — too thin to confidently narrow or remove without
-  risking real but small gains on adjacent NL queries.
+  one data point. A t-test wouldn't rescue n=10 with one moving
+  point; expanding the corpus is the only honest way out.
 
 Latency cost is ~4ms mean (16.5 → 20.6ms) — not large enough to
 force a cut on its own.
+
+What "defer" means in practice: leave the code alone, but the next
+person who touches this area should rerun the harness against an
+expanded corpus before assuming the reranker is load-bearing.
 
 Follow-up before re-evaluating:
 1. Expand corpus to 25-30 queries per category (especially `concept`
@@ -310,6 +321,8 @@ admission/shutdown/session cleanup. Track separately.
 | P3.1 decision recorded (KEEP reranker, revisit after corpus expansion) | manual review of baseline JSON | docs-only | `287a64d9` | PASS — rationale documented above; no code change | 2026-05-17T21:30Z | no |
 | P3.3 verified — pipeline has exactly one pass per concern | manual code audit of `definition_search_with_index` | docs-only | `287a64d9` | PASS — audit table documented above; no code change | 2026-05-17T21:30Z | no |
 | Phase 3 batch — dev tier green | `cargo xtask test dev` | dev | `eb429d58` | PASS (32 buckets, 490.3s) | 2026-05-17T21:38Z | no |
+| Codex review applied: hybrid NL-prior contract tests pinned | `cargo nextest run --lib nl_path_prior_pipeline_tests` | targeted | (this commit) | PASS (5/5, 0.44s) | 2026-05-17T22:00Z | no |
+| Codex review applied: harness fixes (env RAII, mrr_at_k rename, symbol_vectors probe) compile & rerun clean | `cargo run -p xtask -- eval ablation` | xtask | (this commit) | PASS — identical metrics (keyword 0.324, keyword+reranker 0.332) with corrected JSON schema | 2026-05-17T22:00Z | no |
 
 ---
 
