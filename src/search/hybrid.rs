@@ -170,7 +170,6 @@ pub fn knn_to_search_results(
                 score: (1.0 - distance).max(0.0) as f32,
                 role: role.to_string(),
                 test_role: test_role.to_string(),
-                capability_flags: String::new(),
             })
         })
         .collect();

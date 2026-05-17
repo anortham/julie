@@ -502,11 +502,7 @@ mod tests {
         run_cascade_test_with(6, Duration::from_millis(100), |paths| {
             // Legacy signal: write a PID file pointing at the current
             // process so PidFile::check_status returns Alive.
-            fs::write(
-                paths.daemon_pid(),
-                format!("{}\n", std::process::id()),
-            )
-            .unwrap();
+            fs::write(paths.daemon_pid(), format!("{}\n", std::process::id())).unwrap();
         });
     }
 

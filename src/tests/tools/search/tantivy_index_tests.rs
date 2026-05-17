@@ -1343,5 +1343,3 @@ fn test_open_or_create_recreates_when_compat_marker_missing() {
     assert!(outcome.repair_required());
     assert_eq!(outcome.index.num_docs(), 0);
 }
-
-

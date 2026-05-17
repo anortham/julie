@@ -409,7 +409,10 @@ async fn execute_file_search(
         );
     }
 
-    sort_file_hits(&mut hits, crate::search::scoring::has_test_intent(params.query));
+    sort_file_hits(
+        &mut hits,
+        crate::search::scoring::has_test_intent(params.query),
+    );
     hits.truncate(base_limit);
 
     Ok(SearchExecutionResult::new(

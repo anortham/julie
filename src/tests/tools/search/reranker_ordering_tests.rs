@@ -79,10 +79,14 @@ mod tests {
         let ranked = ranks("router", vec![vendor_exact, source_partial]);
 
         assert_eq!(
-            ranked[0].candidate.title, "router_inner",
+            ranked[0].candidate.title,
+            "router_inner",
             "source partial-title match should outrank vendor exact-title match \
              (vendor demotion is the policy). got order: {:?}",
-            ranked.iter().map(|r| &r.candidate.title).collect::<Vec<_>>()
+            ranked
+                .iter()
+                .map(|r| &r.candidate.title)
+                .collect::<Vec<_>>()
         );
     }
 
@@ -107,10 +111,14 @@ mod tests {
         let ranked = ranks("router", vec![vendor_exact, source_nomatch]);
 
         assert_eq!(
-            ranked[0].candidate.title, "router",
+            ranked[0].candidate.title,
+            "router",
             "vendor exact-title match should still beat a source non-match \
              (demotion should not bury vendor hits entirely). got order: {:?}",
-            ranked.iter().map(|r| &r.candidate.title).collect::<Vec<_>>()
+            ranked
+                .iter()
+                .map(|r| &r.candidate.title)
+                .collect::<Vec<_>>()
         );
     }
 
@@ -133,9 +141,13 @@ mod tests {
         let ranked = ranks("router", vec![generated_exact, source_partial]);
 
         assert_eq!(
-            ranked[0].candidate.title, "router_inner",
+            ranked[0].candidate.title,
+            "router_inner",
             "source partial-title match should outrank generated exact-title match. got: {:?}",
-            ranked.iter().map(|r| &r.candidate.title).collect::<Vec<_>>()
+            ranked
+                .iter()
+                .map(|r| &r.candidate.title)
+                .collect::<Vec<_>>()
         );
     }
 
@@ -158,10 +170,7 @@ mod tests {
             10.0,
         );
 
-        let ranked = ranks(
-            "function process data",
-            vec![struct_match, function_match],
-        );
+        let ranked = ranks("function process data", vec![struct_match, function_match]);
 
         assert_eq!(
             ranked[0].candidate.kind,
@@ -204,18 +213,8 @@ mod tests {
         //                      (intent boost suppressed by I4 since no
         //                      candidate is Function+missing_name)
         // fn helper_function → no title match, no kind boost. base 10.
-        let class_exact = cand(
-            "missing_name",
-            "src/types.rs",
-            SymbolKind::Class,
-            10.0,
-        );
-        let fn_unrelated = cand(
-            "helper_function",
-            "src/util.rs",
-            SymbolKind::Function,
-            10.0,
-        );
+        let class_exact = cand("missing_name", "src/types.rs", SymbolKind::Class, 10.0);
+        let fn_unrelated = cand("helper_function", "src/util.rs", SymbolKind::Function, 10.0);
 
         let ranked = ranks(
             "function missing_name target",
@@ -223,11 +222,15 @@ mod tests {
         );
 
         assert_eq!(
-            ranked[0].candidate.title, "missing_name",
+            ranked[0].candidate.title,
+            "missing_name",
             "I4 two-pass intent downgrade: when no candidate is both Function \
              AND title matches the term, an unrelated Function should NOT \
              outrank an exact-title-match Class via intent boost. got order: {:?}",
-            ranked.iter().map(|r| &r.candidate.title).collect::<Vec<_>>()
+            ranked
+                .iter()
+                .map(|r| &r.candidate.title)
+                .collect::<Vec<_>>()
         );
     }
 
@@ -252,10 +255,14 @@ mod tests {
         let ranked = ranks("test render output", vec![production, test]);
 
         assert_eq!(
-            ranked[0].candidate.title, "test_render",
+            ranked[0].candidate.title,
+            "test_render",
             "Test intent should promote the test-file candidate above the \
              production candidate. got order: {:?}",
-            ranked.iter().map(|r| &r.candidate.title).collect::<Vec<_>>()
+            ranked
+                .iter()
+                .map(|r| &r.candidate.title)
+                .collect::<Vec<_>>()
         );
     }
 
@@ -306,7 +313,8 @@ mod tests {
         );
 
         assert_eq!(
-            ranked[0].candidate.title, "readme",
+            ranked[0].candidate.title,
+            "readme",
             "phrase boost in file doc should outrank a source exact-title \
              match with no phrase. got: {:?}",
             ranked
@@ -332,7 +340,8 @@ mod tests {
         let ranked = ranks("process", vec![low_base, high_base]);
 
         assert_eq!(
-            ranked[0].candidate.path, "src/a.rs",
+            ranked[0].candidate.path,
+            "src/a.rs",
             "with identical reranker boosts, the higher base tantivy score \
              must win. got: {:?}",
             ranked

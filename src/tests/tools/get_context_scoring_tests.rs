@@ -25,7 +25,6 @@ mod tests {
             score,
             role: String::new(),
             test_role: String::new(),
-            capability_flags: String::new(),
         }
     }
 
@@ -49,7 +48,6 @@ mod tests {
             score,
             role: String::new(),
             test_role: String::new(),
-            capability_flags: String::new(),
         }
     }
 

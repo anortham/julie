@@ -29,9 +29,7 @@ use crate::search::query::{
 use crate::search::schema::{
     SchemaCompatibilitySignature, SchemaFields, compatibility_signature, create_schema,
 };
-use crate::search::scoring::{
-    apply_important_patterns_boost, is_nl_like_query, is_test_path,
-};
+use crate::search::scoring::{apply_important_patterns_boost, is_nl_like_query, is_test_path};
 use crate::search::tokenizer::{CodeTokenizer, TokenizerCompatibilitySignature, split_camel_case};
 use crate::tools::search::matches_glob_pattern;
 
@@ -151,11 +149,11 @@ fn symbol_result_matches_filter(result: &SymbolSearchResult, filter: &SearchFilt
 
 /// A symbol search result with relevance score.
 ///
-/// `role`, `test_role`, and `capability_flags` are populated from the
-/// C.3-enriched Tantivy schema fields when present, or re-derived from
-/// `file_path + language` for non-Tantivy result sources (e.g. KNN/embedding
-/// fallback in `hybrid.rs`). Consumers can therefore rely on these always
-/// being set without inspecting which engine produced the result.
+/// `role` and `test_role` are populated from the C.3-enriched Tantivy schema
+/// fields when present, or re-derived from `file_path + language` for
+/// non-Tantivy result sources (e.g. KNN/embedding fallback in `hybrid.rs`).
+/// Consumers can therefore rely on these always being set without inspecting
+/// which engine produced the result.
 #[derive(Debug, Clone)]
 pub struct SymbolSearchResult {
     pub id: String,
@@ -172,8 +170,6 @@ pub struct SymbolSearchResult {
     pub role: String,
     /// `"impl_test"`, `"helper_test"`, `"fixture_test"`, `"smoke_test"`, or `""`.
     pub test_role: String,
-    /// Reserved for future contract-capability metadata. Empty in current schema.
-    pub capability_flags: String,
 }
 
 /// Result from search_symbols, includes metadata about the search.
@@ -384,13 +380,11 @@ impl SearchIndex {
         tantivy_doc.add_text(f.kind, &doc.kind);
         tantivy_doc.add_u64(f.start_line, doc.start_line as u64);
 
-        // C.3 enriched fields. Derived from path + language; capability_flags
-        // is empty for now (julie has no contract-capability metadata yet).
+        // C.3 enriched fields. Derived from path + language.
         let role = crate::search::scoring::classify_role(&doc.file_path, &doc.language);
         let test_role = crate::search::scoring::test_subrole(&doc.file_path);
         tantivy_doc.add_text(f.role, role);
         tantivy_doc.add_text(f.test_role, test_role);
-        tantivy_doc.add_text(f.capability_flags, "");
 
         let guard = self.get_or_create_writer()?;
         let writer = guard.as_ref().unwrap();
@@ -593,7 +587,6 @@ impl SearchIndex {
                 score,
                 role: Self::get_text_field(&doc, f.role),
                 test_role: Self::get_text_field(&doc, f.test_role),
-                capability_flags: Self::get_text_field(&doc, f.capability_flags),
             });
         }
 
@@ -690,7 +683,6 @@ impl SearchIndex {
                 score,
                 role: Self::get_text_field(&doc, f.role),
                 test_role: Self::get_text_field(&doc, f.test_role),
-                capability_flags: Self::get_text_field(&doc, f.capability_flags),
             });
         }
 

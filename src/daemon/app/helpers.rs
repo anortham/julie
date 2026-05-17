@@ -45,9 +45,7 @@ pub(crate) fn acquire_or_yield_to_existing_daemon(
     match DaemonLockGuard::try_acquire(&paths.daemon_lock()) {
         Ok(guard) => Ok(Some(guard)),
         Err(AcquireError::AlreadyHeld(_)) => Ok(None),
-        Err(other) => {
-            Err(anyhow::anyhow!("{}", other)).context("Failed to acquire daemon lock")
-        }
+        Err(other) => Err(anyhow::anyhow!("{}", other)).context("Failed to acquire daemon lock"),
     }
 }
 

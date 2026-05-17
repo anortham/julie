@@ -315,7 +315,8 @@ mod tests {
         .unwrap();
 
         assert_eq!(
-            symbols[0].file_path, "src/workspace/routing.rs",
+            symbols[0].file_path,
+            "src/workspace/routing.rs",
             "Production code should be preferred over docs/tests for NL query: {:?}",
             symbols
                 .iter()

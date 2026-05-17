@@ -21,7 +21,6 @@ mod tests {
             score,
             role: String::new(),
             test_role: String::new(),
-            capability_flags: String::new(),
         }
     }
 
@@ -137,7 +136,6 @@ mod tests {
                 score: 8.0,
                 role: String::new(),
                 test_role: String::new(),
-                capability_flags: String::new(),
             },
             // Production file has lower raw text score
             SymbolSearchResult {
@@ -152,7 +150,6 @@ mod tests {
                 score: 5.0,
                 role: String::new(),
                 test_role: String::new(),
-                capability_flags: String::new(),
             },
         ];
 
@@ -184,7 +181,6 @@ mod tests {
                 score: 10.0,
                 role: String::new(),
                 test_role: String::new(),
-                capability_flags: String::new(),
             },
             // Actual struct definition — should be selected
             SymbolSearchResult {
@@ -199,7 +195,6 @@ mod tests {
                 score: 7.0,
                 role: String::new(),
                 test_role: String::new(),
-                capability_flags: String::new(),
             },
         ];
 
@@ -233,7 +228,6 @@ mod tests {
                 score: 9.0,
                 role: String::new(),
                 test_role: String::new(),
-                capability_flags: String::new(),
             },
             // Design doc also matches
             SymbolSearchResult {
@@ -248,7 +242,6 @@ mod tests {
                 score: 8.0,
                 role: String::new(),
                 test_role: String::new(),
-                capability_flags: String::new(),
             },
             // Actual source code with lower text score
             SymbolSearchResult {
@@ -263,7 +256,6 @@ mod tests {
                 score: 5.0,
                 role: String::new(),
                 test_role: String::new(),
-                capability_flags: String::new(),
             },
         ];
 

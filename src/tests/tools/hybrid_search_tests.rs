@@ -24,7 +24,6 @@ mod tests {
             score,
             role: String::new(),
             test_role: String::new(),
-            capability_flags: String::new(),
         }
     }
 
@@ -663,7 +662,6 @@ mod weighted_rrf_tests {
             score,
             role: String::new(),
             test_role: String::new(),
-            capability_flags: String::new(),
         }
     }
 

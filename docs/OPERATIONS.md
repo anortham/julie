@@ -35,7 +35,7 @@ On every `SearchIndex::open`, Julie compares the expected signatures against wha
 2. The workspace open path notices `SearchIndexOpenDisposition::RecreatedIncompatible` and calls `projection.repair_recreated_open_if_needed`, which **rebuilds the Tantivy projection from SQLite** (canonical source-of-truth). One `WARN` log line: `Tantivy search index at <path> was recreated empty during open; rebuilding projection from canonical SQLite state`.
 3. Concurrent re-creation is guarded by a `.recreating` lock file inside the index directory; concurrent openers either reuse the freshly created index or back off and rebuild locally.
 
-**Operator impact when upgrading across a schema-changing release** (e.g., the C.3 reranker upgrade that added `role`, `test_role`, `capability_flags` fields):
+**Operator impact when upgrading across a schema-changing release** (e.g., the C.3 reranker upgrade that added `role` and `test_role` fields, or the v7.9.x cleanup that dropped the unused `capability_flags` field):
 
 - First daemon start after upgrade triggers the auto-rebuild for every workspace whose Tantivy index pre-dates the new schema. SQLite is untouched; only the Tantivy directory is recreated.
 - Rebuild cost is proportional to symbol count (the rebuild iterates `symbols` rows in SQLite and writes Tantivy documents). On a workspace with N symbols, expect roughly the same wall-clock as an initial `manage_workspace operation="index"` — typically seconds, not minutes.

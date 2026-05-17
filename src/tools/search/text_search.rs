@@ -534,11 +534,7 @@ fn definition_search_with_index(
         // Language affinity: demote foreign-language candidates when one
         // language dominates the workspace. No-op on mixed repos.
         let dominant_lang = compute_dominant_language(db);
-        apply_language_affinity_prior(
-            &mut hybrid_results.results,
-            dominant_lang.as_deref(),
-            query,
-        );
+        apply_language_affinity_prior(&mut hybrid_results.results, dominant_lang.as_deref(), query);
         promote_exact_name_matches(&mut hybrid_results.results, query);
 
         let mut symbols: Vec<Symbol> = hybrid_results
@@ -650,10 +646,8 @@ fn definition_search_with_index(
                         .map(|s| {
                             let score =
                                 ref_scores.get(&s.id).copied().unwrap_or(1.0).max(1.0) as f32;
-                            let role = crate::search::scoring::classify_role(
-                                &s.file_path,
-                                &s.language,
-                            );
+                            let role =
+                                crate::search::scoring::classify_role(&s.file_path, &s.language);
                             let test_role = crate::search::scoring::test_subrole(&s.file_path);
                             let sym = tantivy_symbol_to_symbol(
                                 crate::search::index::SymbolSearchResult {
@@ -673,7 +667,6 @@ fn definition_search_with_index(
                                     score,
                                     role: role.to_string(),
                                     test_role: test_role.to_string(),
-                                    capability_flags: String::new(),
                                 },
                             );
                             // Enrich from DB for code_context etc.

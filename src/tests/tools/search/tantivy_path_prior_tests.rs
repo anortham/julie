@@ -24,7 +24,6 @@ fn make_result_with_language(
         score,
         role: String::new(),
         test_role: String::new(),
-        capability_flags: String::new(),
     }
 }
 
@@ -170,10 +169,7 @@ fn test_all_identifier_terms_query_does_not_apply_path_prior() {
         .map(|r| (r.id.clone(), r.score))
         .collect::<Vec<_>>();
 
-    crate::search::scoring::apply_nl_path_prior(
-        &mut results,
-        "extract_identifiers rrf_merge",
-    );
+    crate::search::scoring::apply_nl_path_prior(&mut results, "extract_identifiers rrf_merge");
 
     let after = results
         .iter()
@@ -872,7 +868,10 @@ fn test_language_affinity_penalizes_non_dominant_language_on_nl_query() {
     // Rust candidates keep their score; python gets 0.85x.
     let scores: std::collections::HashMap<_, _> =
         results.iter().map(|r| (r.id.clone(), r.score)).collect();
-    assert_eq!(scores["rust1"], 10.0, "dominant-language candidate untouched");
+    assert_eq!(
+        scores["rust1"], 10.0,
+        "dominant-language candidate untouched"
+    );
     assert!(
         (scores["py1"] - 10.0 * 0.85).abs() < 1e-5,
         "non-dominant candidate multiplied by NL_LANGUAGE_AFFINITY_PENALTY (0.85); got {}",

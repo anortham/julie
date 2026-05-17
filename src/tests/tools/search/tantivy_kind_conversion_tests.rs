@@ -23,7 +23,6 @@ mod tests {
             score: 1.0,
             role: String::new(),
             test_role: String::new(),
-            capability_flags: String::new(),
         }
     }
 

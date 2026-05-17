@@ -56,11 +56,7 @@ fn search_symbols_does_not_apply_nl_path_prior() {
     add_twin_candidates(&index, "src/auth.rs", "src/tests/auth_test.rs");
 
     let results = index
-        .search_symbols(
-            "user authentication service",
-            &SearchFilter::default(),
-            10,
-        )
+        .search_symbols("user authentication service", &SearchFilter::default(), 10)
         .unwrap()
         .results;
 
@@ -99,11 +95,7 @@ fn search_symbols_relaxed_does_not_apply_nl_path_prior() {
     add_twin_candidates(&index, "src/auth.rs", "src/tests/auth_test.rs");
 
     let results = index
-        .search_symbols_relaxed(
-            "user authentication service",
-            &SearchFilter::default(),
-            10,
-        )
+        .search_symbols_relaxed("user authentication service", &SearchFilter::default(), 10)
         .unwrap()
         .results;
 

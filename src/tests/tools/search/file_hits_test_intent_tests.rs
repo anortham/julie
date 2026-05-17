@@ -29,7 +29,11 @@ fn test_test_intent_ranks_test_path_above_source() {
     // With the override: test must rank first because bucket 0 < bucket 1
     // is INVERTED for test-intent queries.
     let mut hits = vec![
-        make_file_hit("python/eros/eval/extraction.py", FileMatchKind::PathFragment, 1.0),
+        make_file_hit(
+            "python/eros/eval/extraction.py",
+            FileMatchKind::PathFragment,
+            1.0,
+        ),
         make_file_hit(
             "tests/benchmark/test_extraction_eval.py",
             FileMatchKind::PathFragment,
@@ -40,7 +44,8 @@ fn test_test_intent_ranks_test_path_above_source() {
     sort_file_hits(&mut hits, /* test_intent */ true);
 
     assert_eq!(
-        hits[0].file, "tests/benchmark/test_extraction_eval.py",
+        hits[0].file,
+        "tests/benchmark/test_extraction_eval.py",
         "test-intent query must rank test paths above source paths in file search; got order: {:?}",
         hits.iter().map(|h| &h.file).collect::<Vec<_>>()
     );

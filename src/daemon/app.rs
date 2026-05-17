@@ -413,10 +413,10 @@ impl Drop for DaemonApp {
 }
 
 mod helpers;
+pub(crate) use helpers::{
+    acquire_or_yield_to_existing_daemon, bind_mcp_listener_with_fallback, shutdown_signal,
+};
 use helpers::{
     bind_dashboard_listener_and_publish, open_and_migrate_daemon_db, setup_stop_notify,
     spawn_cleanup_sweep, spawn_embedding_init,
-};
-pub(crate) use helpers::{
-    acquire_or_yield_to_existing_daemon, bind_mcp_listener_with_fallback, shutdown_signal,
 };

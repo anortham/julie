@@ -416,7 +416,6 @@ fn symbol_to_search_result(symbol: Symbol, score: f32) -> SymbolSearchResult {
         score,
         role: role.to_string(),
         test_role: test_role.to_string(),
-        capability_flags: String::new(),
     }
 }
 

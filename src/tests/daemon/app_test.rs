@@ -309,8 +309,8 @@ fn test_acquire_or_yield_returns_none_when_lock_held() {
     paths.ensure_dirs().expect("ensure_dirs");
 
     // First daemon wins the lock and holds it.
-    let _winner = DaemonLockGuard::try_acquire(&paths.daemon_lock())
-        .expect("first acquire must succeed");
+    let _winner =
+        DaemonLockGuard::try_acquire(&paths.daemon_lock()).expect("first acquire must succeed");
 
     // Subsequent daemon invocation: helper sees the lock is held and
     // returns Ok(None) so `run_daemon` can early-return without any work.

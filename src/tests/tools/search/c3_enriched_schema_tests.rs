@@ -156,10 +156,6 @@ fn test_schema_contains_c3_enriched_fields() {
         schema.get_field("test_role").is_ok(),
         "schema must define `test_role` field"
     );
-    assert!(
-        schema.get_field("capability_flags").is_ok(),
-        "schema must define `capability_flags` field"
-    );
 }
 
 #[test]
