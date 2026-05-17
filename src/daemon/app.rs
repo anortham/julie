@@ -324,6 +324,13 @@ impl DaemonApp {
         // into the existing SIGTERM exit path (drain → LIFO teardown →
         // publish_discovery_phase("stopping")). See
         // docs/plans/2026-05-17-daemon-restart-listener-fix.md Task 2.
+        //
+        // Bridge task is intentionally fire-and-forget: it either fires
+        // exactly once and exits, or is aborted with the runtime at
+        // daemon shutdown. No DaemonHandle tracking needed — unlike
+        // reaper_handle / idle_sweep_handle / cleanup_sweep_handle /
+        // embedding_init_handle which have ongoing work and are
+        // explicitly aborted at shutdown (see app/handle.rs).
         let _restart_bridge_handle = spawn_restart_bridge(
             self.lifecycle.restart_notify(),
             Arc::clone(&stop_notify),
