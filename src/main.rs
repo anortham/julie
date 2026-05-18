@@ -20,13 +20,16 @@
 //! would re-open the silent-corruption window the gate exists to close.
 
 use clap::Parser;
-use julie::cli::{Cli, Command, resolve_workspace_startup_hint};
+use julie::cli::{
+    Cli, Command, cli_command_needs_workspace_startup_hint, dashboard_url_from_port_file_contents,
+    resolve_workspace_startup_hint,
+};
 use julie::cli_tools::run_cli_tool;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
-    let startup_hint = resolve_workspace_startup_hint(cli.workspace.clone());
+    let needs_workspace_startup_hint = cli_command_needs_workspace_startup_hint(&cli.command);
 
     match cli.command {
         Some(Command::Daemon { port, no_dashboard }) => {
@@ -40,14 +43,19 @@ async fn main() -> anyhow::Result<()> {
             let paths = julie::paths::DaemonPaths::new();
             let port_file = paths.daemon_port();
             match std::fs::read_to_string(&port_file) {
-                Ok(port) => {
-                    let url = format!("http://localhost:{}", port.trim());
-                    println!("Opening {}", url);
-                    if let Err(e) = opener::open(&url) {
-                        eprintln!("Failed to open browser: {}", e);
-                        println!("Dashboard URL: {}", url);
+                Ok(port) => match dashboard_url_from_port_file_contents(&port) {
+                    Ok(url) => {
+                        println!("Opening {}", url);
+                        if let Err(e) = opener::open(&url) {
+                            eprintln!("Failed to open browser: {}", e);
+                            println!("Dashboard URL: {}", url);
+                        }
                     }
-                }
+                    Err(e) => {
+                        eprintln!("Dashboard not available: {e}");
+                        std::process::exit(1);
+                    }
+                },
                 Err(_) => {
                     eprintln!("Dashboard not available. Is the daemon running?");
                     std::process::exit(1);
@@ -98,6 +106,8 @@ async fn main() -> anyhow::Result<()> {
         }
 
         None => {
+            debug_assert!(needs_workspace_startup_hint);
+            let startup_hint = resolve_workspace_startup_hint(cli.workspace);
             // Adapter mode: auto-start daemon (via launcher → `julie-daemon
             // start` per A1.8), forward stdio to HTTP MCP.
             //

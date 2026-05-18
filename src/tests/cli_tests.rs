@@ -1,6 +1,9 @@
 //! Tests for CLI argument parsing (clap) and workspace resolution.
 
-use crate::cli::{Cli, Command, resolve_workspace_root, resolve_workspace_startup_hint};
+use crate::cli::{
+    Cli, Command, cli_command_needs_workspace_startup_hint, dashboard_url_from_port_file_contents,
+    resolve_workspace_root, resolve_workspace_startup_hint,
+};
 use crate::workspace::startup_hint::WorkspaceStartupSource;
 use clap::Parser;
 use std::path::PathBuf;
@@ -105,6 +108,35 @@ fn test_stop_subcommand() {
 fn test_status_subcommand() {
     let cli = Cli::parse_from(["julie-server", "status"]);
     assert!(matches!(cli.command, Some(Command::Status)));
+}
+
+#[test]
+fn test_dashboard_rejects_invalid_port_file_contents_before_url_construction() {
+    let err = dashboard_url_from_port_file_contents("80@example.com\n")
+        .expect_err("invalid port-file content must not produce a URL");
+
+    assert!(
+        err.to_string().contains("invalid dashboard port"),
+        "error should clearly identify invalid dashboard port: {err}"
+    );
+}
+
+#[test]
+fn test_dashboard_builds_url_only_after_u16_port_parse() {
+    let url = dashboard_url_from_port_file_contents("49231\n").expect("valid u16 port");
+
+    assert_eq!(url, "http://localhost:49231");
+}
+
+#[test]
+fn test_workspace_startup_hint_is_adapter_only() {
+    let adapter = Cli::parse_from(["julie-server"]);
+    let tool = Cli::parse_from(["julie-server", "--workspace", "/tmp/ignored", "status"]);
+
+    assert!(cli_command_needs_workspace_startup_hint(&adapter.command));
+    assert!(!cli_command_needs_workspace_startup_hint(&tool.command));
+
+    assert!(matches!(tool.command, Some(Command::Status)));
 }
 
 #[test]

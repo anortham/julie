@@ -72,6 +72,49 @@ fn inventory_tests_reports_non_inventoryable_commands() {
     assert!(output.contains("NON-INVENTORYABLE cli: cargo build"));
 }
 
+#[test]
+fn inventory_tests_tier_target_aggregates_bucket_commands() {
+    let manifest = sample_manifest();
+    let executor = FakeInventoryExecutor::new([
+        (
+            "cargo nextest list --lib tests::cli_tests",
+            "tests::cli_tests::test_one\n",
+        ),
+        (
+            "cargo nextest list --lib tests::tools::search::line_ -- --skip search_quality",
+            "tests::tools::search::line_mode::test_beta\n\
+tests::tools::search::line_mode::test_delta\n",
+        ),
+        (
+            "cargo nextest list --lib tests::tools::search::file_ -- --skip search_quality",
+            "tests::tools::search::line_mode::test_delta\n\
+tests::tools::search::file_mode::test_gamma\n",
+        ),
+    ]);
+
+    let report = run_inventory(
+        &manifest,
+        &InventoryTarget::Tier("dev".to_string()),
+        &executor,
+    )
+    .unwrap();
+    let output = render_inventory_report(&report);
+
+    assert_eq!(
+        executor.calls(),
+        vec![
+            "cargo nextest list --lib tests::cli_tests",
+            "cargo nextest list --lib tests::tools::search::line_ -- --skip search_quality",
+            "cargo nextest list --lib tests::tools::search::file_ -- --skip search_quality",
+        ]
+    );
+    assert!(output.contains("INVENTORY: target tier dev"));
+    assert!(output.contains("INVENTORY: selected tests = 4"));
+    assert!(output.contains("INVENTORY: duplicate selected tests = 1"));
+    assert!(output.contains("DUPLICATE tests::tools::search::line_mode::test_delta"));
+    assert!(output.contains("NON-INVENTORYABLE cli: cargo build"));
+}
+
 fn sample_manifest() -> TestManifest {
     TestManifest::from_str(
         r#"

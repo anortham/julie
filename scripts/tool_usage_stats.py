@@ -4,6 +4,7 @@ Simple tool usage statistics from Julie logs.
 Usage: python scripts/tool_usage_stats.py [--days N] [--json]
 """
 
+import io
 import re
 import sys
 from pathlib import Path
@@ -11,7 +12,12 @@ from datetime import datetime, timedelta
 from collections import Counter
 import json
 import argparse
-import io
+
+CURRENT_TOOL_PATTERN = re.compile(
+    r"\btool_call:\s+([A-Za-z0-9_:-]+)\s+\(\d+(?:\.\d+)?ms,\s+\d+ bytes output\)"
+)
+LEGACY_TOOL_PATTERN = re.compile(r"🛠️\s+Executing tool: (\S+)")
+TOOL_ROUTER_PATTERN = re.compile(r"Self::tool_router_([A-Za-z0-9_]+)\(\)")
 
 # Fix Windows console encoding for emojis
 if sys.platform == 'win32':
@@ -36,22 +42,33 @@ def find_log_files(days=1):
     return log_files
 
 
+def discover_known_tools(source_root=None):
+    """Return tool names registered in src/handler.rs, or None if unavailable."""
+    root = Path.cwd() if source_root is None else Path(source_root)
+    handler_path = root / "src" / "handler.rs"
+    try:
+        handler_source = handler_path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+
+    tools = set(TOOL_ROUTER_PATTERN.findall(handler_source))
+    return tools or None
+
 def parse_tool_usage(log_files):
-    """Extract tool usage from log files."""
-    tool_pattern = re.compile(r'🛠️\s+Executing tool: (\S+)')
+    """Extract tool usage from current and legacy log files."""
     tools = []
 
     for log_file in log_files:
         with open(log_file, 'r', encoding='utf-8') as f:
             for line in f:
-                match = tool_pattern.search(line)
+                match = CURRENT_TOOL_PATTERN.search(line) or LEGACY_TOOL_PATTERN.search(line)
                 if match:
                     tools.append(match.group(1))
 
     return Counter(tools)
 
 
-def print_stats(tool_counts, total, output_json=False):
+def print_stats(tool_counts, total, output_json=False, known_tools=None):
     """Print statistics in human-readable format or JSON."""
     if output_json:
         stats = {
@@ -90,9 +107,12 @@ def print_stats(tool_counts, total, output_json=False):
         top_5_pct = (top_5_count / total * 100) if total > 0 else 0
         print(f"💡 Top 5 tools account for {top_5_pct:.1f}% of all usage")
 
-    unused_count = 15 - len(tool_counts)
-    if unused_count > 0:
-        print(f"⚠️  {unused_count} tools have zero usage in this period")
+    if known_tools is None:
+        known_tools = discover_known_tools()
+    if known_tools:
+        unused_count = len(set(known_tools) - set(tool_counts))
+        if unused_count > 0:
+            print(f"⚠️  {unused_count} tools have zero usage in this period")
     print()
 
 

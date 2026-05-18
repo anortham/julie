@@ -132,6 +132,25 @@ fn changed_tests_selects_search_and_dogfood_for_search_core_changes() {
 }
 
 #[test]
+fn changed_tests_checked_in_manifest_routes_representative_paths_to_production_buckets() {
+    let manifest = load_checked_in_manifest();
+
+    for (path, expected_buckets) in [
+        ("src/database/connection.rs", vec!["core-database"]),
+        ("src/tools/editing/edit_file.rs", vec!["tools-editing"]),
+        ("src/dashboard/mod.rs", vec!["dashboard"]),
+        ("src/analysis/symbol_quality.rs", vec!["analysis"]),
+        ("src/daemon/transport.rs", vec!["transport"]),
+    ] {
+        let selection = select_changed_buckets(&manifest, &[path.to_string()]);
+
+        assert_eq!(selection.mode, ChangedSelectionMode::Buckets, "{path}");
+        assert_eq!(selection.bucket_names, expected_buckets, "{path}");
+        assert!(selection.fallback_paths.is_empty(), "{path}");
+    }
+}
+
+#[test]
 fn changed_tests_dogfood_repo_index_file_routes_to_new_bucket() {
     let manifest = sample_manifest();
 
@@ -664,6 +683,10 @@ fn changed_tests_ignored_docs_only_output_remains_concise() {
         "CHANGED: no code/test buckets matched local changes\n\
 CHANGED: ignored non-executable paths: .memories/checkpoints/example.md, docs/PRE-RELEASE-FINDINGS.md\n"
     );
+}
+
+fn load_checked_in_manifest() -> TestManifest {
+    TestManifest::load(format!("{}/test_tiers.toml", env!("CARGO_MANIFEST_DIR"))).unwrap()
 }
 
 fn sample_manifest() -> TestManifest {

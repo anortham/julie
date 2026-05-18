@@ -5,10 +5,11 @@ use crate::search::language_config::{LanguageConfig, LanguageConfigs};
 #[test]
 fn test_load_embedded_configs() {
     let configs = LanguageConfigs::load_embedded();
-    // We have 31 supported languages
+    // Embedded search configs are not the canonical extractor-language count,
+    // but this should stay close to the supported-language surface.
     assert!(
-        configs.len() >= 28,
-        "Expected at least 28 languages, got {}",
+        configs.len() >= 33,
+        "Expected at least 33 language configs, got {}",
         configs.len()
     );
 }

@@ -1,6 +1,6 @@
 // Identifier query operations - unlocking the identifiers table for fast_refs
 //
-// The identifiers table stores every usage site extracted by all 31 language extractors.
+// The identifiers table stores every usage site extracted by all 34 language extractors.
 // Each row represents a place where a symbol name appears in code (calls, type usages,
 // member access, imports, variable references). This module provides read access to
 // that data, which fast_refs uses to find references beyond what the relationships

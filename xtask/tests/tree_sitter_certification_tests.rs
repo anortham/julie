@@ -12,6 +12,11 @@ use xtask::tree_sitter_real_world::{
     DEFAULT_TREE_SITTER_REAL_WORLD_HOME, run_tree_sitter_real_world_with_head,
 };
 
+#[path = "support/toml_fixture.rs"]
+mod toml_fixture;
+
+use toml_fixture::toml_roots_from_paths;
+
 #[test]
 fn tree_sitter_certification_tests_parse_default_command() {
     let parsed = parse_cli_command(["xtask", "certify", "tree-sitter"])
@@ -258,11 +263,12 @@ fn tree_sitter_real_world_tests_indexes_repo_without_writing_project_julie_dir()
     );
 
     let corpus_path = temp.path().join("real-world.toml");
+    let roots = toml_roots_from_paths(&[&source_root]);
     write_file_at(
         &corpus_path,
         &format!(
             r#"
-roots = ["{}"]
+{roots}
 
 [profiles.smoke]
 repos = ["ready-rust"]
@@ -273,8 +279,7 @@ language = "rust"
 profile_tags = ["smoke"]
 min_files = 1
 min_symbols = 1
-"#,
-            source_root.display()
+"#
         ),
     );
 

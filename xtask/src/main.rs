@@ -21,26 +21,34 @@ use xtask::tree_sitter_certification::run_tree_sitter_certification;
 use xtask::tree_sitter_real_world::run_tree_sitter_real_world_certification;
 use xtask::workspace_root;
 
+fn clean_coverage_data(stdout: &mut dyn Write) -> anyhow::Result<()> {
+    stdout.write_all(b"COVERAGE: cleaning previous profraw data\n")?;
+    let status = Command::new("cargo")
+        .args(["llvm-cov", "clean", "--workspace"])
+        .status()?;
+    if !status.success() {
+        return Err(anyhow!("cargo llvm-cov clean failed"));
+    }
+    Ok(())
+}
+
+fn begin_coverage_run(
+    coverage: bool,
+    stdout: &mut dyn Write,
+    should_report_coverage: &mut bool,
+) -> anyhow::Result<()> {
+    if coverage {
+        clean_coverage_data(stdout)?;
+        *should_report_coverage = true;
+    }
+    Ok(())
+}
+
 fn main() -> anyhow::Result<()> {
     let raw_command = parse_cli_command(std::env::args())?;
     let executor = ProcessCommandExecutor;
     let mut stdout = io::stdout().lock();
-
-    let coverage = matches!(
-        &raw_command,
-        CliCommand::Test(TestCommand::Tier { coverage: true, .. })
-            | CliCommand::Test(TestCommand::Bucket { coverage: true, .. })
-    );
-
-    if coverage {
-        stdout.write_all(b"COVERAGE: cleaning previous profraw data\n")?;
-        let status = Command::new("cargo")
-            .args(["llvm-cov", "clean", "--workspace"])
-            .status()?;
-        if !status.success() {
-            return Err(anyhow!("cargo llvm-cov clean failed"));
-        }
-    }
+    let mut should_report_coverage = false;
 
     match raw_command {
         CliCommand::Test(command) => {
@@ -68,6 +76,8 @@ fn main() -> anyhow::Result<()> {
                         return Ok(());
                     }
 
+                    begin_coverage_run(coverage, &mut stdout, &mut should_report_coverage)?;
+
                     match run_named_buckets(
                         &manifest,
                         &selection.bucket_names,
@@ -94,38 +104,44 @@ fn main() -> anyhow::Result<()> {
                     name,
                     timeout_multiplier,
                     coverage,
-                } => match run_tier(
-                    &manifest,
-                    &name,
-                    timeout_multiplier,
-                    coverage,
-                    &executor,
-                    &mut stdout,
-                ) {
-                    Ok(summary) => stdout.write_all(render_summary(&summary).as_bytes())?,
-                    Err(error) => {
-                        stdout.write_all(render_summary(&error.summary).as_bytes())?;
-                        return Err(anyhow!(error));
+                } => {
+                    begin_coverage_run(coverage, &mut stdout, &mut should_report_coverage)?;
+                    match run_tier(
+                        &manifest,
+                        &name,
+                        timeout_multiplier,
+                        coverage,
+                        &executor,
+                        &mut stdout,
+                    ) {
+                        Ok(summary) => stdout.write_all(render_summary(&summary).as_bytes())?,
+                        Err(error) => {
+                            stdout.write_all(render_summary(&error.summary).as_bytes())?;
+                            return Err(anyhow!(error));
+                        }
                     }
-                },
+                }
                 TestCommand::Bucket {
                     name,
                     timeout_multiplier,
                     coverage,
-                } => match run_bucket(
-                    &manifest,
-                    &name,
-                    timeout_multiplier,
-                    coverage,
-                    &executor,
-                    &mut stdout,
-                ) {
-                    Ok(summary) => stdout.write_all(render_summary(&summary).as_bytes())?,
-                    Err(error) => {
-                        stdout.write_all(render_summary(&error.summary).as_bytes())?;
-                        return Err(anyhow!(error));
+                } => {
+                    begin_coverage_run(coverage, &mut stdout, &mut should_report_coverage)?;
+                    match run_bucket(
+                        &manifest,
+                        &name,
+                        timeout_multiplier,
+                        coverage,
+                        &executor,
+                        &mut stdout,
+                    ) {
+                        Ok(summary) => stdout.write_all(render_summary(&summary).as_bytes())?,
+                        Err(error) => {
+                            stdout.write_all(render_summary(&error.summary).as_bytes())?;
+                            return Err(anyhow!(error));
+                        }
                     }
-                },
+                }
             }
         }
         CliCommand::SearchMatrix(command) => {
@@ -178,7 +194,7 @@ fn main() -> anyhow::Result<()> {
         },
     }
 
-    if coverage {
+    if should_report_coverage {
         stdout.write_all(b"\nCOVERAGE: generating report\n")?;
         drop(stdout); // release lock so cargo llvm-cov can print to stdout
         let status = Command::new("cargo")

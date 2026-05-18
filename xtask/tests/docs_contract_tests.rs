@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::PathBuf;
 
@@ -118,10 +119,18 @@ fn docs_contract_tests_site_marketing_page_stays_current() {
     let skills = extract_section(&html, "skills");
     let codex_panel = extract_section(&html, "panel-codex");
 
-    let tool_cards = tools.matches("class=\"tool-name\"").count();
+    let package_version = root_package_version();
     assert!(
-        tools.contains(&format!("{tool_cards} focused tools")),
-        "tools section count should match rendered cards"
+        html.contains(&format!("<span>v{package_version}</span>")),
+        "site footer should display Cargo.toml package version v{package_version}"
+    );
+
+    let expected_tools = public_tool_names();
+    let rendered_tools = extract_tool_names(&tools);
+    assert_eq!(rendered_tools, expected_tools);
+    assert!(
+        tools.contains(&format!("{} focused tools", expected_tools.len())),
+        "tools section count should match public tool source of truth"
     );
     assert!(skills.contains("/web-research"));
     assert!(html.contains("og-card.svg"));
@@ -146,6 +155,67 @@ fn assert_contains_public_commands(contents: &str) {
             "missing public command `{command}`"
         );
     }
+}
+
+fn root_package_version() -> String {
+    let manifest: toml::Value = read_repo_file("Cargo.toml").parse().unwrap();
+    manifest["package"]["version"]
+        .as_str()
+        .expect("root Cargo.toml package.version should be a string")
+        .to_string()
+}
+
+fn public_tool_names() -> BTreeSet<String> {
+    let handler = read_repo_file("src/handler.rs");
+    let tools_mod = read_repo_file("src/handler/tools/mod.rs");
+    let mut names = BTreeSet::new();
+
+    for line in handler.lines() {
+        let Some(start) = line.find("Self::tool_router_") else {
+            continue;
+        };
+        let after_prefix = &line[start + "Self::tool_router_".len()..];
+        let Some(end) = after_prefix.find("()") else {
+            continue;
+        };
+        let name = &after_prefix[..end];
+        let module_decl = format!("pub(crate) mod {name};");
+        assert!(
+            tools_mod.contains(&module_decl),
+            "handler router references `{name}`, but src/handler/tools/mod.rs is missing `{module_decl}`"
+        );
+        let tool_file = read_repo_file(&format!("src/handler/tools/{name}.rs"));
+        assert!(
+            tool_file.contains(&format!("tool_router_{name}")),
+            "src/handler/tools/{name}.rs should define router tool_router_{name}"
+        );
+        assert!(
+            tool_file.contains("#[tool("),
+            "src/handler/tools/{name}.rs should expose an rmcp #[tool] method"
+        );
+        names.insert(name.to_string());
+    }
+
+    assert!(!names.is_empty(), "expected at least one public MCP tool");
+    names
+}
+
+fn extract_tool_names(section: &str) -> BTreeSet<String> {
+    let marker = "class=\"tool-name\">";
+    let mut names = BTreeSet::new();
+    let mut rest = section;
+
+    while let Some(start) = rest.find(marker) {
+        let after_marker = &rest[start + marker.len()..];
+        let end = after_marker
+            .find("</div>")
+            .expect("tool-name div should close");
+        names.insert(after_marker[..end].trim().to_string());
+        rest = &after_marker[end..];
+    }
+
+    assert!(!names.is_empty(), "tools section should render tool cards");
+    names
 }
 
 fn read_repo_file(relative_path: &str) -> String {

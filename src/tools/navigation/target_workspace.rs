@@ -150,7 +150,7 @@ pub async fn find_references_in_target_workspace(
         .for_each(|rel| refs.push(rel));
 
         // Strategy 4: Identifier-based reference discovery
-        // The identifiers table stores every usage site extracted by all 31 language extractors.
+        // The identifiers table stores every usage site extracted by all 34 language extractors.
         // This catches references that relationships miss (struct type usages, function calls
         // without extracted relationships, member accesses, etc.)
         let mut all_names = vec![effective_symbol.clone()];

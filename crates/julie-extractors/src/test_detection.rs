@@ -1,4 +1,4 @@
-//! Test symbol detection for all 31 supported languages.
+//! Test symbol detection for all 34 supported languages.
 //!
 //! Provides [`is_test_symbol`] — a pure, data-driven function that determines whether
 //! a symbol is a test based on its language, name, file path, kind, annotation keys,

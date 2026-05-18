@@ -379,5 +379,5 @@ pub mod migration;
 // ============================================================================
 // EXTRACTOR TESTS - Moved to julie-extractors crate
 // ============================================================================
-// All 31 language extractor tests are now in crates/julie-extractors/src/tests/
+// All 34 language extractor tests are now in crates/julie-extractors/src/tests/
 // Run with: cargo test -p julie-extractors

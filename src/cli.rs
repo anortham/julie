@@ -1,3 +1,4 @@
+use anyhow::Context;
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
@@ -116,6 +117,18 @@ pub fn resolve_workspace_startup_hint(cli_workspace: Option<PathBuf>) -> Workspa
 
 pub fn resolve_workspace_root(cli_workspace: Option<PathBuf>) -> PathBuf {
     resolve_workspace_startup_hint(cli_workspace).path
+}
+
+pub fn dashboard_url_from_port_file_contents(contents: &str) -> anyhow::Result<String> {
+    let port: u16 = contents
+        .trim()
+        .parse()
+        .context("invalid dashboard port in daemon port file")?;
+    Ok(format!("http://localhost:{port}"))
+}
+
+pub fn cli_command_needs_workspace_startup_hint(command: &Option<Command>) -> bool {
+    command.is_none()
 }
 
 fn resolve_explicit_workspace_candidate(

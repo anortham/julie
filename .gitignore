@@ -30,6 +30,7 @@ julie-server
 *.db-journal
 .julie/
 .coa/
+.clawpatch/
 
 # Logs
 *.log

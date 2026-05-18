@@ -15,6 +15,11 @@ use xtask::search_matrix::{
 use xtask::search_matrix_mine::mine_search_matrix_seed_report;
 use xtask::workspace_root;
 
+#[path = "support/toml_fixture.rs"]
+mod toml_fixture;
+
+use toml_fixture::{toml_roots, toml_roots_from_paths};
+
 #[test]
 fn search_matrix_contract_tests_parse_mine_command() {
     let parsed = parse_cli_command([
@@ -113,6 +118,20 @@ fn search_matrix_contract_tests_reject_days_flag_for_baseline() {
             .contains("`--days` is not valid for `cargo xtask search-matrix baseline`"),
         "got: {error}"
     );
+}
+
+#[test]
+fn search_matrix_contract_tests_toml_roots_escape_windows_paths() {
+    let windows_root = r"C:\Users\runner\source".to_string();
+    let toml_text = toml_roots(&[windows_root.clone()]);
+    let parsed: toml::Value = toml::from_str(&toml_text).expect("roots TOML should parse");
+    let roots = parsed
+        .get("roots")
+        .and_then(toml::Value::as_array)
+        .expect("roots should be an array");
+
+    assert_eq!(roots.len(), 1);
+    assert_eq!(roots[0].as_str(), Some(windows_root.as_str()));
 }
 
 #[test]
@@ -477,11 +496,12 @@ expected_mode = "expect_hits"
     .expect("write cases fixture");
 
     let corpus_path = temp_dir.path().join("corpus.toml");
+    let roots = toml_roots_from_paths(&[&source_root]);
     fs::write(
         &corpus_path,
         format!(
             r#"
-roots = ["{}"]
+{roots}
 
 [profiles.smoke]
 repos = ["ready-repo", "pending-repo"]
@@ -495,8 +515,7 @@ profile_tags = ["smoke"]
 name = "pending-repo"
 language = "rust"
 profile_tags = ["smoke"]
-"#,
-            source_root.display()
+"#
         ),
     )
     .expect("write corpus fixture");
@@ -580,11 +599,12 @@ expected_mode = "expect_hits"
     .expect("write cases fixture");
 
     let corpus_path = temp_dir.path().join("corpus.toml");
+    let roots = toml_roots_from_paths(&[&preferred_root]);
     fs::write(
         &corpus_path,
         format!(
             r#"
-roots = ["{}"]
+{roots}
 
 [profiles.smoke]
 repos = ["shared-repo"]
@@ -593,8 +613,7 @@ repos = ["shared-repo"]
 name = "shared-repo"
 language = "rust"
 profile_tags = ["smoke"]
-"#,
-            preferred_root.display()
+"#
         ),
     )
     .expect("write corpus fixture");
@@ -658,11 +677,12 @@ expected_mode = "observational"
     .expect("write cases fixture");
 
     let corpus_path = temp_dir.path().join("corpus.toml");
+    let roots = toml_roots_from_paths(&[&source_root]);
     fs::write(
         &corpus_path,
         format!(
             r#"
-roots = ["{}"]
+{roots}
 
 [profiles.smoke]
 repos = ["dense-repo"]
@@ -671,8 +691,7 @@ repos = ["dense-repo"]
 name = "dense-repo"
 language = "rust"
 profile_tags = ["smoke"]
-"#,
-            source_root.display()
+"#
         ),
     )
     .expect("write corpus fixture");
@@ -737,11 +756,12 @@ expected_mode = "expect_hits"
     .expect("write cases fixture");
 
     let corpus_path = temp_dir.path().join("corpus.toml");
+    let roots = toml_roots_from_paths(&[&source_root]);
     fs::write(
         &corpus_path,
         format!(
             r#"
-roots = ["{}"]
+{roots}
 
 [profiles.smoke]
 repos = ["ready-repo"]
@@ -750,8 +770,7 @@ repos = ["ready-repo"]
 name = "ready-repo"
 language = "rust"
 profile_tags = ["smoke"]
-"#,
-            source_root.display()
+"#
         ),
     )
     .expect("write corpus fixture");

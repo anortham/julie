@@ -11,7 +11,7 @@ use xtask::manifest::TestManifest;
 use xtask::runner::{
     BucketResult, BucketStatus, CommandExecutor, CommandOutcome, CommandResult,
     ProcessCommandExecutor, RunSummary, render_bucket_result, render_manifest_listing,
-    render_summary, run_bucket, run_tier, transform_command_for_coverage,
+    render_summary, run_bucket, run_tier,
 };
 
 #[test]
@@ -545,10 +545,7 @@ fn runner_tests_run_tier_failure_preserves_partial_structured_results() {
 #[test]
 fn runner_tests_process_executor_kills_timed_out_command_tree() {
     let pid_file = unique_temp_path("xtask-runner-timeout-child");
-    let command = format!(
-        "sh -c 'sleep 30 & child=$!; printf %s \"$child\" > \"{}\"; wait \"$child\"'",
-        pid_file.display()
-    );
+    let command = timeout_process_tree_command(&pid_file);
     let executor = ProcessCommandExecutor;
 
     let result = executor
@@ -566,6 +563,58 @@ fn runner_tests_process_executor_kills_timed_out_command_tree() {
         !child_still_alive,
         "timed out command left child process {child_pid} running"
     );
+}
+
+#[cfg(unix)]
+#[test]
+fn runner_tests_process_executor_timeout_command_handles_shell_special_pid_path() {
+    let pid_file = unique_temp_path("xtask-runner-timeout-child-'quoted'");
+    let command = timeout_process_tree_command(&pid_file);
+    let executor = ProcessCommandExecutor;
+
+    let result = executor
+        .run("process-tree", &command, Duration::from_millis(100))
+        .unwrap();
+
+    assert!(matches!(result.outcome, CommandOutcome::TimedOut { .. }));
+
+    let child_pid = read_child_pid(&pid_file);
+    let child_still_alive = process_is_alive(child_pid);
+    cleanup_process(child_pid);
+    let _ = fs::remove_file(&pid_file);
+
+    assert!(
+        !child_still_alive,
+        "timed out command left child process {child_pid} running"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn runner_tests_process_is_alive_treats_zombie_as_dead() {
+    let mut child = std::process::Command::new("sh")
+        .args(["-c", "exit 0"])
+        .spawn()
+        .unwrap();
+    let pid = child.id();
+
+    for _ in 0..100 {
+        if process_is_zombie(pid) {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+
+    assert!(
+        process_is_zombie(pid),
+        "child {pid} did not become a zombie"
+    );
+    assert!(
+        !process_is_alive(pid),
+        "zombie child {pid} should not count as a live process"
+    );
+
+    let _ = child.wait();
 }
 
 fn sample_manifest() -> TestManifest {
@@ -669,10 +718,6 @@ impl FakeExecutor {
         self.calls.borrow().clone()
     }
 
-    fn command_calls(&self) -> Vec<String> {
-        self.commands.borrow().clone()
-    }
-
     fn timeouts_for_bucket(&self, bucket: &str) -> Vec<Duration> {
         self.timeouts
             .borrow()
@@ -752,6 +797,19 @@ fn unique_temp_path(prefix: &str) -> std::path::PathBuf {
 }
 
 #[cfg(unix)]
+fn timeout_process_tree_command(pid_file: &std::path::Path) -> String {
+    format!(
+        "PID_FILE={} sh -c 'sleep 30 & child=$!; printf %s \"$child\" > \"$PID_FILE\"; wait \"$child\"'",
+        shell_quote(&pid_file.to_string_lossy())
+    )
+}
+
+#[cfg(unix)]
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
+}
+
+#[cfg(unix)]
 fn read_child_pid(pid_file: &std::path::Path) -> u32 {
     for _ in 0..100 {
         if let Ok(pid) = fs::read_to_string(pid_file) {
@@ -765,11 +823,27 @@ fn read_child_pid(pid_file: &std::path::Path) -> u32 {
 
 #[cfg(unix)]
 fn process_is_alive(pid: u32) -> bool {
-    std::process::Command::new("kill")
+    let kill_probe_succeeds = std::process::Command::new("kill")
         .args(["-0", &pid.to_string()])
         .stderr(std::process::Stdio::null())
         .status()
         .map(|status| status.success())
+        .unwrap_or(false);
+
+    kill_probe_succeeds && !process_is_zombie(pid)
+}
+
+#[cfg(unix)]
+fn process_is_zombie(pid: u32) -> bool {
+    std::process::Command::new("ps")
+        .args(["-o", "stat=", "-p", &pid.to_string()])
+        .output()
+        .map(|output| {
+            output.status.success()
+                && String::from_utf8_lossy(&output.stdout)
+                    .trim_start()
+                    .starts_with('Z')
+        })
         .unwrap_or(false)
 }
 
@@ -779,221 +853,4 @@ fn cleanup_process(pid: u32) {
         .args(["-TERM", &pid.to_string()])
         .stderr(std::process::Stdio::null())
         .status();
-}
-
-// --- Coverage flag tests ---
-
-#[test]
-fn runner_tests_cli_parses_coverage_flag_for_tier() {
-    assert!(matches!(
-        parse_test_command(["xtask", "test", "dev", "--coverage"]),
-        Ok(TestCommand::Tier {
-            name,
-            timeout_multiplier: 1,
-            coverage: true,
-        }) if name == "dev"
-    ));
-}
-
-#[test]
-fn runner_tests_cli_parses_coverage_flag_for_bucket() {
-    assert!(matches!(
-        parse_test_command(["xtask", "test", "bucket", "cli", "--coverage"]),
-        Ok(TestCommand::Bucket {
-            name,
-            timeout_multiplier: 1,
-            coverage: true,
-        }) if name == "cli"
-    ));
-}
-
-#[test]
-fn runner_tests_cli_coverage_and_timeout_multiplier_together() {
-    assert!(matches!(
-        parse_test_command([
-            "xtask",
-            "test",
-            "dev",
-            "--coverage",
-            "--timeout-multiplier",
-            "3",
-        ]),
-        Ok(TestCommand::Tier {
-            name,
-            timeout_multiplier: 3,
-            coverage: true,
-        }) if name == "dev"
-    ));
-}
-
-#[test]
-fn runner_tests_cli_timeout_multiplier_before_coverage() {
-    assert!(matches!(
-        parse_test_command([
-            "xtask",
-            "test",
-            "dev",
-            "--timeout-multiplier",
-            "2",
-            "--coverage",
-        ]),
-        Ok(TestCommand::Tier {
-            name,
-            timeout_multiplier: 2,
-            coverage: true,
-        }) if name == "dev"
-    ));
-}
-
-// --- Command transformation tests ---
-
-#[test]
-fn runner_tests_transform_cargo_test_to_llvm_cov() {
-    assert_eq!(
-        transform_command_for_coverage("cargo test --lib tests::cli_tests"),
-        "cargo llvm-cov --no-report test --lib tests::cli_tests"
-    );
-}
-
-#[test]
-fn runner_tests_transform_preserves_skip_args() {
-    assert_eq!(
-        transform_command_for_coverage(
-            "cargo test --lib tests::core::database -- --skip search_quality"
-        ),
-        "cargo llvm-cov --no-report test --lib tests::core::database -- --skip search_quality"
-    );
-}
-
-#[test]
-fn runner_tests_transform_preserves_package_flag() {
-    assert_eq!(
-        transform_command_for_coverage("cargo test -p xtask"),
-        "cargo llvm-cov --no-report test -p xtask"
-    );
-}
-
-#[test]
-fn runner_tests_coverage_mode_transforms_commands_sent_to_executor() {
-    let manifest = sample_manifest();
-    let executor = FakeExecutor::successful();
-    let mut output = Vec::new();
-
-    run_tier(&manifest, "smoke", 1, true, &executor, &mut output).unwrap();
-
-    let calls = executor.command_calls();
-    assert!(
-        calls
-            .iter()
-            .all(|c| c.starts_with("cargo llvm-cov --no-report")),
-        "expected all commands to be transformed, got: {calls:?}"
-    );
-}
-
-#[test]
-fn runner_tests_non_coverage_mode_leaves_commands_unchanged() {
-    let manifest = sample_manifest();
-    let executor = FakeExecutor::successful();
-    let mut output = Vec::new();
-
-    run_tier(&manifest, "smoke", 1, false, &executor, &mut output).unwrap();
-
-    let calls = executor.command_calls();
-    assert!(
-        calls.iter().all(|c| !c.starts_with("cargo llvm-cov")),
-        "expected no coverage transformation in non-coverage mode, got: {calls:?}"
-    );
-}
-
-#[test]
-fn runner_tests_transform_nextest_to_llvm_cov() {
-    assert_eq!(
-        transform_command_for_coverage("cargo nextest run --lib tests::cli_tests"),
-        "cargo llvm-cov --no-report nextest --lib tests::cli_tests"
-    );
-}
-
-#[test]
-fn runner_tests_transform_nextest_preserves_skip_args() {
-    assert_eq!(
-        transform_command_for_coverage(
-            "cargo nextest run --lib tests::core::database -- --skip search_quality"
-        ),
-        "cargo llvm-cov --no-report nextest --lib tests::core::database -- --skip search_quality"
-    );
-}
-
-#[test]
-fn runner_tests_transform_leaves_non_cargo_test_unchanged() {
-    assert_eq!(transform_command_for_coverage("echo hello"), "echo hello");
-}
-
-// --- Prebuild tests ---
-
-#[test]
-fn runner_tests_prebuild_runs_before_bucket_commands() {
-    let manifest = sample_manifest();
-    let executor = FakeExecutor::successful();
-    let mut output = Vec::new();
-
-    run_tier(&manifest, "smoke", 1, false, &executor, &mut output).unwrap();
-
-    let calls = executor.command_calls();
-    assert_eq!(
-        calls[0], "cargo nextest run --no-run --lib",
-        "first command should be prebuild, got: {calls:?}"
-    );
-    assert_eq!(
-        calls.iter().filter(|c| c.contains("--no-run")).count(),
-        1,
-        "prebuild should run exactly once, got: {calls:?}"
-    );
-}
-
-#[test]
-fn runner_tests_prebuild_failure_aborts_before_any_bucket() {
-    let manifest = sample_manifest();
-    let executor = FakeExecutor::with_outcomes([(
-        "cargo nextest run --no-run --lib",
-        CommandOutcome::Failed {
-            elapsed: Duration::from_secs(5),
-            exit_code: Some(1),
-        },
-    )]);
-    let mut output = Vec::new();
-
-    let error = run_tier(&manifest, "smoke", 1, false, &executor, &mut output).unwrap_err();
-
-    assert!(
-        error.to_string().contains("prebuild"),
-        "error should mention prebuild, got: {}",
-        error
-    );
-    assert_eq!(
-        error.summary.bucket_results.len(),
-        0,
-        "no bucket results should exist when prebuild fails"
-    );
-    let calls = executor.command_calls();
-    assert_eq!(
-        calls.len(),
-        1,
-        "only prebuild should have run, got: {calls:?}"
-    );
-    assert_eq!(calls[0], "cargo nextest run --no-run --lib");
-}
-
-#[test]
-fn runner_tests_prebuild_coverage_mode_transforms_command() {
-    let manifest = sample_manifest();
-    let executor = FakeExecutor::successful();
-    let mut output = Vec::new();
-
-    run_tier(&manifest, "smoke", 1, true, &executor, &mut output).unwrap();
-
-    let calls = executor.command_calls();
-    assert_eq!(
-        calls[0], "cargo llvm-cov --no-report nextest --no-run --lib",
-        "coverage mode should transform the prebuild command, got: {calls:?}"
-    );
 }

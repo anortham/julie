@@ -218,12 +218,21 @@ unsafe extern "C" {
 /// Transforms a `cargo test` command into a `cargo llvm-cov --no-report` command
 /// for coverage accumulation. Non-`cargo test` commands are returned unchanged.
 pub fn transform_command_for_coverage(command: &str) -> String {
-    if let Some(rest) = command.strip_prefix("cargo test") {
+    if let Some(rest) = strip_exact_command_prefix(command, "cargo test") {
         format!("cargo llvm-cov --no-report test{rest}")
-    } else if let Some(rest) = command.strip_prefix("cargo nextest run") {
+    } else if let Some(rest) = strip_exact_command_prefix(command, "cargo nextest run") {
         format!("cargo llvm-cov --no-report nextest{rest}")
     } else {
         command.to_string()
+    }
+}
+
+fn strip_exact_command_prefix<'a>(command: &'a str, prefix: &str) -> Option<&'a str> {
+    let rest = command.strip_prefix(prefix)?;
+    if rest.is_empty() || rest.starts_with(char::is_whitespace) {
+        Some(rest)
+    } else {
+        None
     }
 }
 
