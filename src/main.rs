@@ -100,6 +100,23 @@ async fn main() -> anyhow::Result<()> {
         None => {
             // Adapter mode: auto-start daemon (via launcher → `julie-daemon
             // start` per A1.8), forward stdio to HTTP MCP.
+            //
+            // Install adapter-side file tracing before run_adapter so all
+            // launcher info!/warn!/error! land in ~/.julie/adapter.log.
+            // Without this, the adapter is silent — operators have no way
+            // to see why a cold-start spawn is slow, retried, or failing.
+            // Logs go to a separate file from the daemon so the daemon's
+            // own subscriber (installed in start_daemon) is not affected.
+            let paths = julie::paths::DaemonPaths::new();
+            if let Err(e) = julie::logging::install_file_tracing(
+                &paths.julie_home(),
+                "adapter.log",
+                "julie=info",
+            ) {
+                // Never fail the adapter over logging — stderr is fine for
+                // this last-resort signal; MCP protocol owns stdout only.
+                eprintln!("Julie adapter: failed to install file tracing: {}", e);
+            }
             julie::adapter::run_adapter(startup_hint).await?;
         }
     }

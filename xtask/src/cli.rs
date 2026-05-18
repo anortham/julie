@@ -308,9 +308,7 @@ fn parse_eval_ablation_command(args: Vec<String>) -> Result<EvalCommand> {
         }
     }
 
-    let corpus = corpus.unwrap_or_else(|| {
-        PathBuf::from("docs/eval/julie-search-corpus-v1.json")
-    });
+    let corpus = corpus.unwrap_or_else(|| PathBuf::from("docs/eval/julie-search-corpus-v1.json"));
 
     Ok(EvalCommand::Ablation { corpus, out, limit })
 }

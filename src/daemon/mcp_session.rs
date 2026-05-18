@@ -409,9 +409,7 @@ impl HttpJulieService {
         if remaining == 0 && admission.lifecycle.restart_pending() {
             // Restart notify is handled by the earlier mark_restart_pending call;
             // the first transition signals the restart channel internally.
-            info!(
-                "Last HTTP session disconnected; restart already armed via mark_restart_pending"
-            );
+            info!("Last HTTP session disconnected; restart already armed via mark_restart_pending");
         }
     }
 

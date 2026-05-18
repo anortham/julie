@@ -43,10 +43,8 @@ async fn restart_listener_bridge_routes_notify() {
     let restart_notify = Arc::new(Notify::new());
     let stop_notify = Arc::new(Notify::new());
 
-    let _bridge_handle = spawn_restart_bridge(
-        Arc::clone(&restart_notify),
-        Arc::clone(&stop_notify),
-    );
+    let _bridge_handle =
+        spawn_restart_bridge(Arc::clone(&restart_notify), Arc::clone(&stop_notify));
 
     // Give the spawned task a moment to arm `.notified()` before we fire.
     // Even without this, `Notify::notify_one` would coalesce a permit
@@ -79,10 +77,8 @@ async fn restart_listener_handles_pre_spawn_notify() {
     // the bridge's `.notified()` will consume on its first poll.
     restart_notify.notify_one();
 
-    let _bridge_handle = spawn_restart_bridge(
-        Arc::clone(&restart_notify),
-        Arc::clone(&stop_notify),
-    );
+    let _bridge_handle =
+        spawn_restart_bridge(Arc::clone(&restart_notify), Arc::clone(&stop_notify));
 
     timeout(Duration::from_millis(100), stop_notify.notified())
         .await
@@ -158,11 +154,7 @@ impl Drop for EnvGuard {
 /// `#[tokio::test(flavor = "multi_thread", worker_threads = 2)]` provides
 /// the second runtime thread so the daemon can still service the request
 /// while this call blocks the test's main task.
-fn post_initialize(
-    addr: SocketAddr,
-    workspace: &std::path::Path,
-    bearer_token: &str,
-) -> String {
+fn post_initialize(addr: SocketAddr, workspace: &std::path::Path, bearer_token: &str) -> String {
     let body = r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"julie-test","version":"0.0.0"}}}"#;
     let host = format!("127.0.0.1:{}", addr.port());
     let mut request = format!(
@@ -205,8 +197,7 @@ async fn daemon_exits_within_drain_when_active_session_never_disconnects() {
     // discovery files don't collide with other tests.
     let home = tempfile::tempdir().expect("home tempdir");
     let workspace_root = tempfile::tempdir().expect("workspace tempdir");
-    std::fs::create_dir_all(workspace_root.path().join(".julie"))
-        .expect("create workspace .julie");
+    std::fs::create_dir_all(workspace_root.path().join(".julie")).expect("create workspace .julie");
 
     let paths = DaemonPaths::with_home(home.path().join("julie-home"));
     paths.ensure_dirs().expect("ensure_dirs");

@@ -196,7 +196,13 @@ impl DaemonLauncher {
     /// Acquire `daemon-startup.lock`, re-check readiness, spawn if Dead,
     /// wait for the new daemon to publish liveness, then release. See
     /// `spawn_under_startup_lock_with` for the wait-under-lock rationale.
-    fn spawn_under_lock(&self) -> io::Result<()> {
+    ///
+    /// Returns `true` if the spawn closure actually ran (re-check inside the
+    /// lock confirmed Dead), `false` if it was skipped (re-check found
+    /// Stopping/Starting/Ready — another daemon is already mid-lifecycle).
+    /// Callers must inspect this flag instead of unconditionally polling for
+    /// "ready" — see the bug fix in `wait_for_daemon_ready` for why.
+    fn spawn_under_lock(&self) -> io::Result<bool> {
         self.spawn_under_startup_lock_with(|| self.spawn_daemon(), Duration::from_secs(5))
     }
 
@@ -219,11 +225,22 @@ impl DaemonLauncher {
     /// separate `daemon.lock` (kernel singleton) and never opens
     /// `daemon-startup.lock`, so no deadlock with the just-spawned daemon
     /// is possible.
+    ///
+    /// Returns `Ok(true)` if `spawn_fn` actually ran (re-check confirmed
+    /// Dead), `Ok(false)` if the re-check found a daemon already alive
+    /// in some other phase (Stopping/Starting/Ready) and the spawn was
+    /// skipped. The boolean lets `wait_for_daemon_ready` distinguish "I
+    /// just started a daemon, poll for it to reach ready" from "someone
+    /// else's daemon is here, re-evaluate state from the top" — without
+    /// it the caller blindly polls for "ready" against a dying daemon
+    /// that will never get there, burning the full drain window before
+    /// `is_daemon_running()` finally reports BrokenPipe (the 83s cold-start
+    /// hang observed in adapter.log at 2026-05-17T19:40-19:42).
     pub(crate) fn spawn_under_startup_lock_with<F>(
         &self,
         spawn_fn: F,
         liveness_timeout: Duration,
-    ) -> io::Result<()>
+    ) -> io::Result<bool>
     where
         F: FnOnce() -> io::Result<()>,
     {
@@ -247,21 +264,27 @@ impl DaemonLauncher {
 
         // Re-check readiness under the lock: another adapter may have
         // spawned a daemon between our pre-lock check and acquiring the lock.
-        let spawn_result = match self.daemon_readiness() {
+        let (spawn_ran, spawn_result): (bool, io::Result<()>) = match self.daemon_readiness() {
             DaemonReadiness::Dead => {
                 let result = spawn_fn();
                 if result.is_ok() {
                     self.wait_for_spawned_liveness(liveness_timeout);
                 }
-                result
+                (true, result)
             }
-            _ => Ok(()),
+            other => {
+                debug!(
+                    ?other,
+                    "Daemon readiness re-check inside startup lock returned non-Dead; skipping spawn"
+                );
+                (false, Ok(()))
+            }
         };
 
         lock_file.unlock()?;
         drop(lock_file);
 
-        spawn_result
+        spawn_result.map(|_| spawn_ran)
     }
 
     /// Poll readiness until the spawned daemon leaves `Dead` (PID file or
@@ -330,7 +353,27 @@ impl DaemonLauncher {
                 }
                 DaemonReadiness::Dead => {
                     info!("Daemon not running, spawning...");
-                    self.spawn_under_lock()?;
+                    let spawn_ran = self.spawn_under_lock()?;
+                    if !spawn_ran {
+                        // Re-check inside the startup lock found a daemon
+                        // that wasn't visible to our outer check — usually
+                        // one mid-drain whose discovery.json/PID file
+                        // flickered as Stale during shutdown. Polling for
+                        // "ready" here would wait the full drain window
+                        // because the dying daemon is heading to "stopped",
+                        // not "ready" (observed in adapter.log at
+                        // 2026-05-17T19:40-19:42: 83s hang). Sleep briefly
+                        // to avoid a tight loop while state stabilizes,
+                        // then let the outer match re-dispatch on the
+                        // actual phase (Stopping → wait_for_pid_exit,
+                        // Starting/Ready → poll, Dead again → retry spawn).
+                        info!(
+                            "Spawn skipped under lock (another daemon is alive); \
+                             re-evaluating readiness"
+                        );
+                        std::thread::sleep(Duration::from_millis(50));
+                        continue;
+                    }
                     match self.poll_for_state_change("ready", deadline) {
                         Ok(()) => {} // Will re-check in next loop iteration
                         Err(e) if e.kind() == io::ErrorKind::Interrupted => {

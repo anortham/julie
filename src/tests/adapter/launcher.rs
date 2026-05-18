@@ -521,6 +521,100 @@ mod tests {
         });
     }
 
+    /// Regression for the cold-start "zombie spawn" race observed in
+    /// adapter.log around 2026-05-17T19:40-19:42:
+    ///
+    /// ```
+    /// 19:40:40.328  Daemon not running, spawning...    ← outer check: Dead
+    /// 19:41:09.450  Daemon not running, spawning...    ← no "Spawning daemon:" between
+    /// 19:41:09.965  Daemon not running, spawning...
+    /// 19:42:03.505  Daemon not running, spawning...
+    /// 19:42:03.505  Spawning daemon: ...               ← finally spawned, 83s later
+    /// ```
+    ///
+    /// Multiple "Daemon not running" logs with NO matching "Spawning daemon:"
+    /// = `spawn_under_startup_lock_with` skipped `spawn_fn` (re-check inside
+    /// the lock saw non-Dead) without telling the caller. The caller then
+    /// blindly called `poll_for_state_change("ready")`, which polled the
+    /// dying daemon for a "ready" state it would never reach — burning the
+    /// full drain window before the loop could recover.
+    ///
+    /// Fix: `spawn_under_startup_lock_with` returns `bool` indicating whether
+    /// spawn_fn actually ran. Callers that see `false` know to re-evaluate
+    /// readiness from scratch instead of polling for "ready".
+    #[test]
+    fn test_spawn_under_startup_lock_returns_false_when_recheck_sees_stopping() {
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DaemonPaths::with_home(dir.path().to_path_buf());
+        fs::create_dir_all(dir.path()).unwrap();
+
+        // Pre-populate: existing daemon mid-drain. PID alive + state=stopping
+        // is what the re-check inside the lock will observe.
+        let _pid_file = PidFile::create(&paths.daemon_pid()).unwrap();
+        fs::write(paths.daemon_state(), "stopping").unwrap();
+
+        let launcher = DaemonLauncher::new(paths);
+        let spawn_called = Arc::new(AtomicBool::new(false));
+        let spawn_called_clone = Arc::clone(&spawn_called);
+
+        let result = launcher.spawn_under_startup_lock_with(
+            || {
+                spawn_called_clone.store(true, Ordering::SeqCst);
+                Ok(())
+            },
+            Duration::from_millis(100),
+        );
+
+        let spawn_ran = result.expect("spawn_under_startup_lock_with should succeed");
+        assert!(
+            !spawn_ran,
+            "spawn_fn must NOT be reported as run when re-check found a non-Dead daemon"
+        );
+        assert!(
+            !spawn_called.load(Ordering::SeqCst),
+            "spawn_fn closure must not be called when re-check sees Stopping"
+        );
+    }
+
+    /// Companion to the above: when the re-check inside the lock still sees
+    /// Dead (no race), spawn_fn IS called and the return value reports
+    /// `true`. Locks in the contract from the happy path.
+    #[test]
+    fn test_spawn_under_startup_lock_returns_true_when_spawn_ran() {
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DaemonPaths::with_home(dir.path().to_path_buf());
+        fs::create_dir_all(dir.path()).unwrap();
+
+        // No PID file, no discovery.json → readiness is Dead.
+        let launcher = DaemonLauncher::new(paths);
+        let spawn_called = Arc::new(AtomicBool::new(false));
+        let spawn_called_clone = Arc::clone(&spawn_called);
+
+        let result = launcher.spawn_under_startup_lock_with(
+            || {
+                spawn_called_clone.store(true, Ordering::SeqCst);
+                Ok(())
+            },
+            Duration::from_millis(100),
+        );
+
+        let spawn_ran = result.expect("spawn_under_startup_lock_with should succeed");
+        assert!(
+            spawn_ran,
+            "spawn_fn must be reported as run when Dead at re-check"
+        );
+        assert!(
+            spawn_called.load(Ordering::SeqCst),
+            "spawn_fn closure must be invoked when Dead at re-check"
+        );
+    }
+
     /// When a daemon transitions from "starting" to "draining" (e.g. stale
     /// binary detected during startup), readiness should classify it as a
     /// shutdown handoff instead of ready for fresh sessions.

@@ -379,7 +379,9 @@ async fn test_mark_restart_pending_does_not_double_signal() {
 
     // The fresh waiter must NOT wake within a short window — the first_request
     // gate should suppress a second notify.
-    let did_wake = timeout(Duration::from_millis(50), second_waiter).await.is_ok();
+    let did_wake = timeout(Duration::from_millis(50), second_waiter)
+        .await
+        .is_ok();
     assert!(
         !did_wake,
         "second mark_restart_pending unexpectedly signaled the restart channel; first_request gate is broken"

@@ -89,8 +89,7 @@ pub struct DaemonApp {
     /// Optional override for the current-binary mtime check used by
     /// `HttpSessionAdmission`. `None` falls back to production
     /// `super::binary_mtime`. See `DaemonConfig::current_binary_mtime`.
-    current_binary_mtime_override:
-        Option<Arc<dyn Fn() -> Option<SystemTime> + Send + Sync>>,
+    current_binary_mtime_override: Option<Arc<dyn Fn() -> Option<SystemTime> + Send + Sync>>,
     // Reaper task; moved into the handle's abort list to preserve today's
     // `reaper_handle.abort()` ordering ahead of pool shutdown.
     reaper_handle: Option<JoinHandle<()>>,
@@ -270,10 +269,10 @@ impl DaemonApp {
         // serve path (e.g. `restart_listener_bridge_routes_via_daemon_app`)
         // pass `Some(Arc<dyn Fn() -> Option<SystemTime>>)` to drive the
         // gate without touching the on-disk binary.
-        let current_binary_mtime: Arc<dyn Fn() -> Option<SystemTime> + Send + Sync> =
-            self.current_binary_mtime_override
-                .take()
-                .unwrap_or_else(|| Arc::new(binary_mtime));
+        let current_binary_mtime: Arc<dyn Fn() -> Option<SystemTime> + Send + Sync> = self
+            .current_binary_mtime_override
+            .take()
+            .unwrap_or_else(|| Arc::new(binary_mtime));
         let current_binary_mtime_for_admission = Arc::clone(&current_binary_mtime);
         let http_session_dependencies = Arc::new(
             DaemonSessionDependencies::new(
@@ -361,10 +360,8 @@ impl DaemonApp {
         // reaper_handle / idle_sweep_handle / cleanup_sweep_handle /
         // embedding_init_handle which have ongoing work and are
         // explicitly aborted at shutdown (see app/handle.rs).
-        let _restart_bridge_handle = spawn_restart_bridge(
-            self.lifecycle.restart_notify(),
-            Arc::clone(&stop_notify),
-        );
+        let _restart_bridge_handle =
+            spawn_restart_bridge(self.lifecycle.restart_notify(), Arc::clone(&stop_notify));
 
         // A1.8: publish the initial discovery.json now that the HTTP transport
         // is bound and the lifecycle state file says `ready`. This is the file

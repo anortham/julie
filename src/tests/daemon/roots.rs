@@ -2675,6 +2675,130 @@ async fn test_first_primary_fast_search_with_deferred_cwd_indexes_before_search(
 }
 
 #[tokio::test]
+async fn test_target_fast_search_after_refresh_in_deferred_cwd_without_primary() -> Result<()> {
+    let indexes_dir = tempfile::tempdir()?;
+    let startup_root = tempfile::tempdir()?;
+    let target_root = tempfile::tempdir()?;
+    std::fs::create_dir_all(startup_root.path().join("src"))?;
+    std::fs::write(
+        startup_root.path().join("src/lib.rs"),
+        "pub fn startup_marker_symbol() {}\n",
+    )?;
+    std::fs::create_dir_all(target_root.path().join("src"))?;
+    std::fs::write(
+        target_root.path().join("src/lib.rs"),
+        "pub fn target_workspace_marker_symbol() {}\n",
+    )?;
+
+    let daemon_db_path = indexes_dir.path().join("daemon.db");
+    let daemon_db = Arc::new(DaemonDatabase::open(&daemon_db_path)?);
+    let embedding_service = Arc::new(EmbeddingService::initializing());
+    embedding_service.publish_unavailable("test: embeddings disabled".to_string(), None);
+    let pool = Arc::new(WorkspacePool::new(
+        indexes_dir.path().to_path_buf(),
+        Some(Arc::clone(&daemon_db)),
+    ));
+    let restart_pending = Arc::new(AtomicBool::new(false));
+
+    let startup_path = startup_root.path().canonicalize()?;
+    let handler = JulieServerHandler::new_deferred_daemon_startup_hint(
+        WorkspaceStartupHint {
+            path: startup_path,
+            source: Some(WorkspaceStartupSource::Cwd),
+        },
+        Some(Arc::clone(&daemon_db)),
+        Some(Arc::clone(&embedding_service)),
+        Some(Arc::clone(&restart_pending)),
+        None,
+        None,
+        Some(Arc::clone(&pool)),
+    )
+    .await?;
+
+    let (server_transport, client_transport) = tokio::io::duplex(512);
+    let service =
+        serve_directly::<rmcp::RoleServer, _, _, _, _>(handler.clone(), server_transport, None);
+    let (_read_half, mut write_half) = tokio::io::split(client_transport);
+
+    send_json_line(
+        &mut write_half,
+        &serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "notifications/initialized"
+        }),
+    )
+    .await?;
+
+    sleep(Duration::from_millis(50)).await;
+    assert!(handler.get_workspace().await?.is_none());
+    assert_eq!(handler.current_workspace_id(), None);
+
+    let target_path = target_root.path().canonicalize()?;
+    let target_path_str = target_path.to_string_lossy().to_string();
+    let target_workspace_id =
+        crate::workspace::registry::generate_workspace_id(&target_path.to_string_lossy())?;
+    daemon_db.upsert_workspace(&target_workspace_id, &target_path_str, "ready")?;
+
+    let refresh_result = <JulieServerHandler as ServerHandler>::call_tool(
+        &handler,
+        CallToolRequestParams::new("manage_workspace").with_arguments(
+            serde_json::json!({
+                "operation": "refresh",
+                "workspace_id": target_workspace_id.clone(),
+                "force": true
+            })
+            .as_object()
+            .expect("manage_workspace refresh args")
+            .clone(),
+        ),
+        RequestContext::new(NumberOrString::Number(36), service.peer().clone()),
+    )
+    .await?;
+    let refresh_text = extract_text(&refresh_result);
+    assert!(
+        refresh_text.contains("Workspace Refresh:"),
+        "target refresh should succeed before any primary tool call: {refresh_text}"
+    );
+    assert_eq!(
+        handler.current_workspace_id(),
+        None,
+        "refreshing an explicit target must not bind the deferred cwd primary"
+    );
+
+    let search_result = <JulieServerHandler as ServerHandler>::call_tool(
+        &handler,
+        CallToolRequestParams::new("fast_search").with_arguments(
+            serde_json::json!({
+                "query": "target_workspace_marker_symbol",
+                "search_target": "definitions",
+                "limit": 5,
+                "workspace": target_workspace_id.clone()
+            })
+            .as_object()
+            .expect("target fast_search args")
+            .clone(),
+        ),
+        RequestContext::new(NumberOrString::Number(37), service.peer().clone()),
+    )
+    .await?;
+
+    let search_text = extract_text(&search_result);
+    assert!(
+        search_text.contains("target_workspace_marker_symbol"),
+        "target search should use the target workspace storage path without requiring primary init: {search_text}"
+    );
+    assert_eq!(
+        handler.current_workspace_id(),
+        None,
+        "target search must keep the deferred cwd primary unbound"
+    );
+
+    drop(write_half);
+    let _ = service.cancel().await;
+    Ok(())
+}
+
+#[tokio::test]
 async fn test_roots_list_changed_resolves_deferred_auto_index() -> Result<()> {
     let indexes_dir = tempfile::tempdir()?;
     let startup_root = tempfile::tempdir()?;

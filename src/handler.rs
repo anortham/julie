@@ -2132,55 +2132,43 @@ impl JulieServerHandler {
         ))
     }
 
-    pub(crate) async fn workspace_db_file_path_for(&self, workspace_id: &str) -> Result<PathBuf> {
+    pub(crate) async fn workspace_index_dir_for(&self, workspace_id: &str) -> Result<PathBuf> {
+        if let Some(pool) = self.workspace_pool.as_ref() {
+            return Ok(pool.indexes_dir().join(workspace_id));
+        }
+
         let (anchor_root, anchor_override) = self.workspace_storage_anchor().await?;
         Ok(if let Some(ref override_root) = anchor_override {
             override_root
                 .parent()
-                .map(|shared_indexes| {
-                    shared_indexes
-                        .join(workspace_id)
-                        .join("db")
-                        .join("symbols.db")
-                })
+                .map(|shared_indexes| shared_indexes.join(workspace_id))
                 .unwrap_or_else(|| {
                     anchor_root
                         .join(".julie")
                         .join("indexes")
                         .join(workspace_id)
-                        .join("db")
-                        .join("symbols.db")
                 })
         } else {
             anchor_root
                 .join(".julie")
                 .join("indexes")
                 .join(workspace_id)
-                .join("db")
-                .join("symbols.db")
         })
     }
 
+    pub(crate) async fn workspace_db_file_path_for(&self, workspace_id: &str) -> Result<PathBuf> {
+        Ok(self
+            .workspace_index_dir_for(workspace_id)
+            .await?
+            .join("db")
+            .join("symbols.db"))
+    }
+
     pub(crate) async fn workspace_tantivy_dir_for(&self, workspace_id: &str) -> Result<PathBuf> {
-        let (anchor_root, anchor_override) = self.workspace_storage_anchor().await?;
-        Ok(if let Some(ref override_root) = anchor_override {
-            override_root
-                .parent()
-                .map(|shared_indexes| shared_indexes.join(workspace_id).join("tantivy"))
-                .unwrap_or_else(|| {
-                    anchor_root
-                        .join(".julie")
-                        .join("indexes")
-                        .join(workspace_id)
-                        .join("tantivy")
-                })
-        } else {
-            anchor_root
-                .join(".julie")
-                .join("indexes")
-                .join(workspace_id)
-                .join("tantivy")
-        })
+        Ok(self
+            .workspace_index_dir_for(workspace_id)
+            .await?
+            .join("tantivy"))
     }
 
     /// Acquire a per-request `SymbolDatabase` backed by a pooled connection.

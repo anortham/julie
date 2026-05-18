@@ -43,7 +43,7 @@ fn test_local_timer_implements_format_time() {
 #[test]
 fn test_rolling_writer_creates_file_with_local_date() {
     let dir = TempDir::new().unwrap();
-    let mut writer = LocalRollingWriter::new(dir.path(), "app.log");
+    let mut writer = LocalRollingWriter::new(dir.path(), "app.log").unwrap();
 
     write!(writer, "hello\n").unwrap();
     writer.flush().unwrap();
@@ -59,7 +59,7 @@ fn test_rolling_writer_creates_file_with_local_date() {
 #[test]
 fn test_rolling_writer_appends_to_existing_file() {
     let dir = TempDir::new().unwrap();
-    let mut writer = LocalRollingWriter::new(dir.path(), "app.log");
+    let mut writer = LocalRollingWriter::new(dir.path(), "app.log").unwrap();
 
     write!(writer, "line 1\n").unwrap();
     write!(writer, "line 2\n").unwrap();
@@ -75,7 +75,7 @@ fn test_rolling_writer_creates_log_directory() {
     let dir = TempDir::new().unwrap();
     let nested = dir.path().join("deep").join("nested").join("logs");
 
-    let mut writer = LocalRollingWriter::new(&nested, "app.log");
+    let mut writer = LocalRollingWriter::new(&nested, "app.log").unwrap();
     write!(writer, "works\n").unwrap();
     writer.flush().unwrap();
 
@@ -91,7 +91,7 @@ fn test_rolling_writer_rotates_on_date_change() {
     let today = chrono::Local::now().format("%Y-%m-%d").to_string();
     let today_file = dir.path().join(format!("app.log.{}", today));
 
-    let mut writer = LocalRollingWriter::new(dir.path(), "app.log");
+    let mut writer = LocalRollingWriter::new(dir.path(), "app.log").unwrap();
 
     write!(writer, "before rotation\n").unwrap();
     writer.flush().unwrap();
@@ -138,10 +138,41 @@ fn test_rolling_writer_rotates_on_date_change() {
     );
 }
 
+/// Regression for the silent-drop bug caught by Codex adversarial review on
+/// the adapter-logging change: `LocalRollingWriter::new` used to swallow
+/// `create_dir_all` errors and return a writer with `current_file: None`,
+/// causing every subsequent `write` to report success while dropping bytes.
+/// `install_file_tracing` then installed a NonBlocking subscriber over that
+/// silent sink and returned `Ok(())`, so adapter/daemon callers had no way
+/// to detect that logging was broken — exactly the failure mode the cold-
+/// start diagnostics change was meant to make impossible.
+///
+/// The fail-fast contract: initial setup propagates `io::Error`. Mid-run
+/// rotation failures still fall back to the previous handle (covered by
+/// `test_rolling_writer_keeps_old_file_on_rotation_failure`).
+#[test]
+fn test_rolling_writer_new_returns_err_when_log_path_blocked_by_directory() {
+    let dir = TempDir::new().unwrap();
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    // Squat the spot where today's log file would land with a *directory*.
+    // OpenOptions::append on a directory path returns an OS error on every
+    // supported platform — portable way to simulate "initial open fails."
+    let blocking = dir.path().join(format!("app.log.{}", today));
+    fs::create_dir_all(&blocking).unwrap();
+
+    let result = LocalRollingWriter::new(dir.path(), "app.log");
+    assert!(
+        result.is_err(),
+        "LocalRollingWriter::new must fail fast when the initial log file \
+         cannot be opened — silent failure would let install_file_tracing \
+         install a sink that drops every log line"
+    );
+}
+
 #[test]
 fn test_rolling_writer_keeps_old_file_on_rotation_failure() {
     let dir = TempDir::new().unwrap();
-    let mut writer = LocalRollingWriter::new(dir.path(), "app.log");
+    let mut writer = LocalRollingWriter::new(dir.path(), "app.log").unwrap();
 
     write!(writer, "before\n").unwrap();
     writer.flush().unwrap();

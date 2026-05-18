@@ -37,9 +37,7 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use anyhow::{Context, Result, bail};
 use julie::database::SymbolDatabase;
 use julie::search::index::FileSearchResult;
-use julie::search::{
-    FileDocument, LanguageConfigs, SearchFilter, SearchIndex, SymbolDocument,
-};
+use julie::search::{FileDocument, LanguageConfigs, SearchFilter, SearchIndex, SymbolDocument};
 use julie::tools::search::text_search::definition_search_with_index_for_ablation;
 use serde::{Deserialize, Serialize};
 
@@ -152,10 +150,7 @@ struct PerQueryResult {
     latency_ms: u64,
 }
 
-pub fn run_eval_ablation_command(
-    command: &EvalCommand,
-    stdout: &mut dyn Write,
-) -> Result<()> {
+pub fn run_eval_ablation_command(command: &EvalCommand, stdout: &mut dyn Write) -> Result<()> {
     let EvalCommand::Ablation { corpus, out, limit } = command;
     let limit = *limit as usize;
 
@@ -371,7 +366,12 @@ fn run_mode(
             // end-to-end; the reranker env var is set, just no-op for this path.
             let res = index
                 .search_files(&entry.query, &filter, limit)
-                .with_context(|| format!("search_files failed for `{}` (id {})", entry.query, entry.id))?;
+                .with_context(|| {
+                    format!(
+                        "search_files failed for `{}` (id {})",
+                        entry.query, entry.id
+                    )
+                })?;
             res.results.iter().map(file_path_of_file_hit).collect()
         } else {
             let (symbols, _relaxed, _total) = definition_search_with_index_for_ablation(
@@ -383,7 +383,10 @@ fn run_mode(
                 embedding_provider,
             )
             .with_context(|| {
-                format!("search failed for query `{}` (id {})", entry.query, entry.id)
+                format!(
+                    "search failed for query `{}` (id {})",
+                    entry.query, entry.id
+                )
             })?;
             symbols.iter().map(|s| s.file_path.clone()).collect()
         };
@@ -435,7 +438,11 @@ fn run_mode(
     }
 
     let total = queries.len();
-    let mrr = if total == 0 { 0.0 } else { reciprocal_sum / total as f64 };
+    let mrr = if total == 0 {
+        0.0
+    } else {
+        reciprocal_sum / total as f64
+    };
     let mean_ms = if latencies_ms.is_empty() {
         0.0
     } else {
@@ -696,5 +703,3 @@ fn print_delta_table(report: &AblationReport, stdout: &mut dyn Write) -> Result<
 
     Ok(())
 }
-
-
