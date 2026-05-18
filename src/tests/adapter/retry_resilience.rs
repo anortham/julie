@@ -4,6 +4,7 @@
 #[cfg(test)]
 mod tests {
     use std::collections::VecDeque;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
 
@@ -11,11 +12,16 @@ mod tests {
     use rmcp::service::RoleClient;
     use rmcp::transport::Transport;
     use tokio::io::AsyncWriteExt;
+    use tokio::sync::Notify;
 
     use crate::adapter::{
-        AdapterError, AdapterRetryDecision, ForwardOutcome, MAX_RETRIES, classify_adapter_error,
-        forward_http_stdio_transport, retry_backoff,
+        AdapterError, AdapterRetryDecision, DaemonAdapterControl, ForwardOutcome, MAX_RETRIES,
+        classify_adapter_error, forward_http_stdio_transport, retry_backoff,
+        run_http_adapter_inner,
     };
+    use crate::daemon::http_transport::{MCP_PATH, READINESS_PATH};
+    use crate::daemon::transport::TransportEndpoint;
+    use crate::workspace::startup_hint::{WorkspaceStartupHint, WorkspaceStartupSource};
 
     #[derive(Debug, Clone)]
     struct FakeTransportError(&'static str);
@@ -100,6 +106,94 @@ mod tests {
                     "simulated close failure after output written",
                 ))
             }
+        }
+    }
+
+    /// Transport that waits until two requests have been sent, writes one
+    /// response, then closes while the second request is still in flight.
+    struct DisconnectsWithOutstandingRequestTransport {
+        sent_count: Arc<AtomicUsize>,
+        sent_notify: Arc<Notify>,
+        response_sent: bool,
+    }
+
+    impl DisconnectsWithOutstandingRequestTransport {
+        fn new() -> Self {
+            Self {
+                sent_count: Arc::new(AtomicUsize::new(0)),
+                sent_notify: Arc::new(Notify::new()),
+                response_sent: false,
+            }
+        }
+    }
+
+    impl Transport<RoleClient> for DisconnectsWithOutstandingRequestTransport {
+        type Error = FakeTransportError;
+
+        fn send(
+            &mut self,
+            _item: ClientJsonRpcMessage,
+        ) -> impl Future<Output = Result<(), Self::Error>> + Send + 'static {
+            let sent_count = Arc::clone(&self.sent_count);
+            let sent_notify = Arc::clone(&self.sent_notify);
+            async move {
+                sent_count.fetch_add(1, Ordering::SeqCst);
+                sent_notify.notify_waiters();
+                Ok(())
+            }
+        }
+
+        async fn receive(&mut self) -> Option<ServerJsonRpcMessage> {
+            while self.sent_count.load(Ordering::SeqCst) < 2 {
+                self.sent_notify.notified().await;
+            }
+
+            if self.response_sent {
+                None
+            } else {
+                self.response_sent = true;
+                Some(initialize_response(1))
+            }
+        }
+
+        fn close(&mut self) -> impl Future<Output = Result<(), Self::Error>> + Send {
+            async move { Ok(()) }
+        }
+    }
+
+    struct CountingDaemonControl {
+        ensure_calls: AtomicUsize,
+        endpoint: TransportEndpoint,
+    }
+
+    impl CountingDaemonControl {
+        fn new() -> Self {
+            Self {
+                ensure_calls: AtomicUsize::new(0),
+                endpoint: TransportEndpoint::streamable_http(
+                    "127.0.0.1",
+                    7890,
+                    MCP_PATH,
+                    READINESS_PATH,
+                    None,
+                )
+                .expect("valid test endpoint"),
+            }
+        }
+
+        fn ensure_calls(&self) -> usize {
+            self.ensure_calls.load(Ordering::SeqCst)
+        }
+    }
+
+    impl DaemonAdapterControl for CountingDaemonControl {
+        fn ensure_daemon_ready(&self) -> std::io::Result<()> {
+            self.ensure_calls.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+
+        fn transport_endpoint(&self) -> std::io::Result<TransportEndpoint> {
+            Ok(self.endpoint.clone())
         }
     }
 
@@ -293,6 +387,92 @@ mod tests {
         assert_eq!(
             classify_adapter_error(&post_output_err, 0, MAX_RETRIES),
             AdapterRetryDecision::Terminal
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn post_output_transport_error_recovers_daemon_before_terminal_exit() {
+        let control = CountingDaemonControl::new();
+        let (stdin, mut stdin_writer) = tokio::io::duplex(2048);
+        let mut stdout = Vec::new();
+        let startup_hint = WorkspaceStartupHint {
+            path: std::env::current_dir().expect("current dir"),
+            source: Some(WorkspaceStartupSource::Cwd),
+        };
+
+        stdin_writer
+            .write_all(br#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test-client","version":"0.0.0"}}}"#)
+            .await
+            .unwrap();
+        stdin_writer.write_all(b"\n").await.unwrap();
+        stdin_writer.shutdown().await.unwrap();
+
+        let result = run_http_adapter_inner(
+            startup_hint,
+            &control,
+            stdin,
+            &mut stdout,
+            |_endpoint, _startup_hint| {
+                Ok(CloseFailsAfterResponseTransport::new(vec![
+                    initialize_response(1),
+                ]))
+            },
+        )
+        .await;
+
+        assert!(
+            result.is_ok(),
+            "terminal post-output transport loss should exit cleanly after daemon recovery: {result:?}"
+        );
+        assert!(
+            !stdout.is_empty(),
+            "the successful response before transport loss should still reach stdout"
+        );
+        assert_eq!(
+            control.ensure_calls(),
+            2,
+            "adapter must ensure daemon readiness once before connecting and once more before terminal exit"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn post_output_daemon_eof_with_outstanding_request_recovers_daemon() {
+        let control = CountingDaemonControl::new();
+        let (stdin, mut stdin_writer) = tokio::io::duplex(4096);
+        let mut stdout = Vec::new();
+        let startup_hint = WorkspaceStartupHint {
+            path: std::env::current_dir().expect("current dir"),
+            source: Some(WorkspaceStartupSource::Cwd),
+        };
+
+        let initialize_request = br#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test-client","version":"0.0.0"}}}"#;
+        stdin_writer.write_all(initialize_request).await.unwrap();
+        stdin_writer.write_all(b"\n").await.unwrap();
+        stdin_writer.write_all(initialize_request).await.unwrap();
+        stdin_writer.write_all(b"\n").await.unwrap();
+        stdin_writer.shutdown().await.unwrap();
+
+        let result = run_http_adapter_inner(
+            startup_hint,
+            &control,
+            stdin,
+            &mut stdout,
+            |_endpoint, _startup_hint| Ok(DisconnectsWithOutstandingRequestTransport::new()),
+        )
+        .await;
+
+        assert!(
+            result.is_ok(),
+            "post-output daemon EOF with outstanding work should exit cleanly after daemon recovery: {result:?}"
+        );
+        assert!(
+            !stdout.is_empty(),
+            "the first response should have reached stdout before daemon EOF"
+        );
+        assert_eq!(
+            control.ensure_calls(),
+            2,
+            "adapter must recover daemon readiness before terminal exit when daemon EOF leaves a request in flight"
         );
     }
 

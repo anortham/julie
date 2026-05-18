@@ -12,12 +12,15 @@ use anyhow::Result;
 use crate::paths::DaemonPaths;
 use crate::workspace::startup_hint::WorkspaceStartupHint;
 
+mod forwarder;
 mod http_stdio;
 
 #[cfg(test)]
+pub(crate) use forwarder::{AdapterError, forward_http_stdio_transport};
+#[cfg(test)]
 pub(crate) use http_stdio::{
-    AdapterError, AdapterRetryDecision, MAX_RETRIES, classify_adapter_error,
-    forward_http_stdio_transport, retry_backoff,
+    AdapterRetryDecision, DaemonAdapterControl, MAX_RETRIES, classify_adapter_error, retry_backoff,
+    run_http_adapter_inner,
 };
 
 use self::http_stdio::run_http_adapter;
