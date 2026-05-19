@@ -84,20 +84,20 @@ fn restrict_current_user_acl(path: &Path) -> anyhow::Result<()> {
 
     use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, LocalFree};
     use windows_sys::Win32::Security::Authorization::{
-        EXPLICIT_ACCESS_W, NO_INHERITANCE, NO_MULTIPLE_TRUSTEE, SE_FILE_OBJECT, SET_ACCESS,
-        SetEntriesInAclW, SetNamedSecurityInfoW, TRUSTEE_IS_SID, TRUSTEE_IS_USER, TRUSTEE_W,
+        EXPLICIT_ACCESS_W, NO_MULTIPLE_TRUSTEE, SE_FILE_OBJECT, SET_ACCESS, SetEntriesInAclW,
+        SetNamedSecurityInfoW, TRUSTEE_IS_SID, TRUSTEE_IS_USER, TRUSTEE_W,
     };
     use windows_sys::Win32::Security::{
-        DACL_SECURITY_INFORMATION, GetTokenInformation, OpenProcessToken,
+        DACL_SECURITY_INFORMATION, GetTokenInformation, NO_INHERITANCE,
         PROTECTED_DACL_SECURITY_INFORMATION, TOKEN_QUERY, TOKEN_USER, TokenUser,
     };
     use windows_sys::Win32::Storage::FileSystem::FILE_ALL_ACCESS;
-    use windows_sys::Win32::System::Threading::GetCurrentProcess;
+    use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
 
     struct Handle(HANDLE);
     impl Drop for Handle {
         fn drop(&mut self) {
-            if self.0 != 0 {
+            if !self.0.is_null() {
                 unsafe {
                     CloseHandle(self.0);
                 }
@@ -114,7 +114,7 @@ fn restrict_current_user_acl(path: &Path) -> anyhow::Result<()> {
         }
     }
 
-    let mut token_handle: HANDLE = 0;
+    let mut token_handle: HANDLE = std::ptr::null_mut();
     let opened = unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token_handle) };
     if opened == 0 {
         return Err(std::io::Error::last_os_error()).context("OpenProcessToken");
