@@ -92,7 +92,7 @@ Successful JSON reports use this shape:
   "workspace_id": "external:...",
   "db_path": "/var/lib/code.sqlite",
   "root": "/repo",
-  "julie_version": "7.9.3",
+  "julie_version": "7.10.0",
   "schema_version": 26,
   "schema_state": "current",
   "extract_contract_version": 1,
