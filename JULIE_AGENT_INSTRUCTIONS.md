@@ -54,6 +54,20 @@ When you need execution-path evidence, capture stderr mode output (`julie: mode=
 
 Do not use grep/find when Julie tools are available. Do not read files without get_symbols first. Do not chain multiple tools when deep_dive does it in one call.
 
+## External Extract CLI (Non-MCP)
+
+`julie-server extract` is a separate, process-facing CLI for hosts that want Julie's parser data in a caller-owned SQLite DB. It does NOT use the daemon, MCP transport, Tantivy, or embeddings. It is not an MCP tool — do not try to call it through `tool` or `manage_workspace`.
+
+Use it when the user is integrating Julie into a Go/C#/other-runtime host, writing a watcher driver, or asking for a SQLite extraction without the MCP server. Reference: `docs/EXTERNAL_EXTRACT.md`. Commands:
+
+- `julie-server extract scan --root <dir> --db <file.sqlite> --json` (incremental; add `--force` for full rebuild)
+- `julie-server extract update --root <dir> --db <file.sqlite> --file <path> --json`
+- `julie-server extract delete --root <dir> --db <file.sqlite> --file <path> --json`
+- `julie-server extract analyze --db <file.sqlite> --json` (DB-derived reference scores and test linkage)
+- `julie-server extract info --db <file.sqlite> --json` (read-only metadata + counts + schema state)
+
+For all MCP-facing work (search, navigation, editing, refactoring) keep using the MCP tools above. Extract is the integration path, not the dogfood path.
+
 ## Subagent Dispatching
 
 Subagents (Agent tool) do NOT receive Julie's session guidance. When dispatching subagents that will explore or modify code, paste this block into the prompt:

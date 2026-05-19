@@ -1,6 +1,6 @@
 # Julie
 
-**[Website](https://anortham.github.io/julie/)** · **[Installation](#installation)** · **[Tools](#tools-10)** · **[Skills](#skills)** · **[34 Languages](#supported-languages-34)**
+**[Website](https://anortham.github.io/julie/)** · **[Installation](#installation)** · **[Tools](#tools-12)** · **[External Extract](#external-extract-host-integration)** · **[Skills](#skills)** · **[34 Languages](#supported-languages-34)**
 
 A cross-platform code intelligence server built in Rust, providing LSP-quality features across 34 programming languages via the Model Context Protocol (MCP).
 
@@ -392,6 +392,39 @@ third-party/
 ```
 
 Patterns use glob syntax (`**/` for recursive, `*` for wildcard). Default patterns cover 99% of use cases - only use `.julieignore` for project-specific needs.
+
+## External Extract (Host Integration)
+
+Beyond the MCP server, Julie ships a process-facing extractor for hosts written in Go, C#, or any runtime that owns its own process management and file watching. `julie-server extract` parses a project root and writes the canonical SQLite schema into a caller-owned database file. It does not use the daemon, MCP transport, Tantivy, or embeddings.
+
+```bash
+# Full scan (incremental — only changed files are re-extracted)
+julie-server extract scan --root /repo --db /var/lib/code.sqlite --json
+
+# Rebuild from scratch in one transaction
+julie-server extract scan --root /repo --db /var/lib/code.sqlite --force --json
+
+# Single-file updates from a watcher
+julie-server extract update --root /repo --db /var/lib/code.sqlite --file src/lib.rs --json
+julie-server extract delete --root /repo --db /var/lib/code.sqlite --file src/lib.rs --json
+
+# Recompute reference scores and test linkage after mutations
+julie-server extract analyze --db /var/lib/code.sqlite --json
+
+# Read schema version, totals, and analysis state without taking the write lock
+julie-server extract info --db /var/lib/code.sqlite --json
+```
+
+Key properties:
+
+- **Idempotent.** Repeated calls with unchanged inputs return `unchanged` and commit nothing.
+- **Caller-owned DB.** Julie owns the schema; hosts own the file, backups, and lifecycle.
+- **Per-DB exclusive write lock** at `<db_path>.julie-extract.lock` (30s default timeout). `extract info` is read-only.
+- **Single canonical root per DB.** Pointing the same DB at a different root fails unless you use `scan --force`.
+- **Hard-coded ignore policy** (`.gitignore`, `.julieignore`, hard blacklist, 1 MiB per-file cap). Repeatable `--ignore-file` narrows the indexable set but cannot override the blacklist.
+- **No silent data loss.** A parser failure that would erase known-good rows exits non-zero and preserves existing data.
+
+See **[docs/EXTERNAL_EXTRACT.md](docs/EXTERNAL_EXTRACT.md)** for the full report schema, exit codes, watcher integration recipe, and SQLite contract.
 
 ## Test Detection
 

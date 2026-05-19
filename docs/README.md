@@ -18,6 +18,8 @@ This directory contains **current** documentation for Julie. Code is the source 
 - **`DEVELOPMENT.md`** - Daily commands and development workflows
 - **`FILEWATCHER.md`** - File watcher architecture and incremental re-indexing
 - **`RELATIVE_PATHS_CONTRACT.md`** - Relative Unix-style path storage contract
+- **`EXTERNAL_EXTRACT.md`** - `julie-server extract` CLI for caller-owned SQLite extraction (host integration, no daemon/MCP)
+- **`EXTRACTION_CONTRACT.md`** - Tree-sitter extraction contract and per-language requirements
 - **`operations/embedding-sidecar.md`** - Embedding sidecar env vars, configuration, and troubleshooting
 
 ## Quality Reports
