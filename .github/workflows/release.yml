@@ -74,6 +74,7 @@ jobs:
           key: ${{ matrix.target }}
 
       - name: Build release binaries (julie-server + julie-adapter + julie-daemon)
+        shell: bash
         run: |
           cargo build --release --target ${{ matrix.target }} \
             --bin julie-server \
