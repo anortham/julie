@@ -8,7 +8,7 @@
 // - Dotfile inclusion (e.g., .editorconfig)
 // - Non-git workspaces
 
-use crate::utils::walk::{WalkConfig, build_walker};
+use crate::utils::walk::{WalkConfig, build_walker, try_build_single_path_walker};
 use std::fs;
 use tempfile::TempDir;
 
@@ -24,6 +24,17 @@ fn collect_walked_files(root: &std::path::Path, config: &WalkConfig) -> Vec<Stri
                 .replace('\\', "/")
         })
         .collect()
+}
+
+fn single_path_walker_includes(
+    root: &std::path::Path,
+    path: &std::path::Path,
+    config: &WalkConfig,
+) -> bool {
+    try_build_single_path_walker(root, path, config)
+        .unwrap()
+        .filter_map(|r| r.ok())
+        .any(|entry| entry.path() == path)
 }
 
 #[test]
@@ -197,4 +208,24 @@ fn test_walk_works_without_git_repo() {
         files.iter().any(|f| f.contains("file.rs")),
         "walker should work without a .git directory"
     );
+}
+
+#[test]
+fn test_single_path_walk_respects_parent_gitignore() {
+    let dir = TempDir::new().unwrap();
+    let root = dir.path();
+    fs::write(root.join(".gitignore"), "ignored.rs\n").unwrap();
+    fs::write(root.join("ignored.rs"), "fn ignored() {}").unwrap();
+    fs::write(root.join("kept.rs"), "fn kept() {}").unwrap();
+
+    assert!(!single_path_walker_includes(
+        root,
+        &root.join("ignored.rs"),
+        &WalkConfig::full_index()
+    ));
+    assert!(single_path_walker_includes(
+        root,
+        &root.join("kept.rs"),
+        &WalkConfig::full_index()
+    ));
 }

@@ -1,31 +1,37 @@
 //! File processing helpers for indexing stages.
-//! Handles reading, parsing, and extracting symbols from individual files.
+//!
+//! The shared implementations live in `indexing_core::extraction` so external
+//! process-facing extraction can use them without a workspace tool instance.
 
-use crate::extractors::{ExtractionResults, PendingRelationship, Relationship, Symbol};
+#[cfg(test)]
+use crate::extractors::ExtractionResults;
+#[cfg(test)]
+use crate::indexing_core::extraction::{ExtractedFileDisposition, ExtractedFileRecord};
+#[cfg(test)]
 use crate::tools::workspace::commands::ManageWorkspaceTool;
-use crate::tools::workspace::indexing::file_policy::{ExtractionMode, determine_extraction_mode};
+#[cfg(test)]
+use crate::tools::workspace::indexing::state::{IndexedFileDisposition, IndexingBatchState};
+#[cfg(test)]
 use anyhow::Result;
-use julie_extractors::base::StructuredPendingRelationship;
+#[cfg(test)]
 use std::collections::HashMap;
+#[cfg(test)]
 use std::path::{Path, PathBuf};
-use tracing::{debug, trace, warn};
 
+#[cfg(test)]
 type ParserFileProcessResult = (
-    Vec<Symbol>,
-    Vec<Relationship>,
-    Vec<PendingRelationship>,
-    Vec<StructuredPendingRelationship>,
+    Vec<crate::extractors::Symbol>,
+    Vec<crate::extractors::Relationship>,
+    Vec<crate::extractors::PendingRelationship>,
+    Vec<julie_extractors::base::StructuredPendingRelationship>,
     Vec<crate::extractors::Identifier>,
-    HashMap<String, crate::extractors::base::TypeInfo>,
+    std::collections::HashMap<String, crate::extractors::base::TypeInfo>,
     Vec<crate::extractors::base::ParseDiagnostic>,
     crate::database::FileInfo,
 );
 
+#[cfg(test)]
 impl ManageWorkspaceTool {
-    /// Queue cleanup and file metadata refresh after parser extraction fails.
-    ///
-    /// This prevents stale symbol/identifier/type rows from surviving when a file
-    /// changed but extraction failed for that indexing pass.
     pub(crate) async fn queue_failed_parser_file_for_cleanup(
         &self,
         file_path: &Path,
@@ -34,262 +40,106 @@ impl ManageWorkspaceTool {
         files_to_clean: &mut Vec<String>,
         all_file_infos: &mut Vec<crate::database::FileInfo>,
     ) {
-        let relative_path = if file_path.is_absolute() {
-            crate::utils::paths::to_relative_unix_style(file_path, workspace_root)
-                .unwrap_or_else(|_| file_path.to_string_lossy().replace('\\', "/"))
-        } else {
-            file_path.to_string_lossy().replace('\\', "/")
-        };
-        files_to_clean.push(relative_path.clone());
-
-        let file_path_buf = file_path.to_path_buf();
-        let language_owned = language.to_string();
-        let workspace_root_buf = workspace_root.to_path_buf();
-        match tokio::task::spawn_blocking(move || {
-            crate::database::create_file_info(&file_path_buf, &language_owned, &workspace_root_buf)
-        })
-        .await
-        {
-            Ok(Ok(file_info)) => all_file_infos.push(file_info),
-            Ok(Err(e)) => warn!(
-                "Failed to refresh file metadata after parser failure for {}: {}",
-                relative_path, e
-            ),
-            Err(e) => warn!(
-                "File metadata refresh task panicked for {}: {}",
-                relative_path, e
-            ),
-        }
+        crate::indexing_core::extraction::queue_failed_parser_file_for_cleanup(
+            file_path,
+            language,
+            workspace_root,
+            files_to_clean,
+            all_file_infos,
+        )
+        .await;
     }
 
-    /// Process a single file with symbol extraction
-    ///
-    /// Returns (symbols, relationships, file_info) for bulk storage.
-    ///
-    /// # Phase 2: Relative Unix-Style Path Storage
-    /// Now requires workspace_root for relative path storage in extractors
     pub(crate) async fn process_file_with_parser(
         &self,
         file_path: &Path,
         language: &str,
-        workspace_root: &Path, // NEW: Phase 2 - workspace root for relative paths
+        workspace_root: &Path,
     ) -> Result<ParserFileProcessResult> {
-        self.process_file_with_parser_using(
+        crate::indexing_core::extraction::process_file_with_parser(
             file_path,
             language,
             workspace_root,
-            |relative_path, content, workspace_root_path| {
-                crate::tools::workspace::ManageWorkspaceTool::extract_symbols_static(
-                    &relative_path,
-                    &content,
-                    &workspace_root_path,
-                )
-            },
         )
         .await
     }
 
-    #[cfg(test)]
     pub(crate) async fn process_file_with_parser_for_test<F>(
         &self,
         file_path: &Path,
         language: &str,
         workspace_root: &Path,
         extract: F,
-    ) -> Result<ParserFileProcessResult>
+    ) -> Result<(
+        Vec<crate::extractors::Symbol>,
+        Vec<crate::extractors::Relationship>,
+        Vec<crate::extractors::PendingRelationship>,
+        Vec<julie_extractors::base::StructuredPendingRelationship>,
+        Vec<crate::extractors::Identifier>,
+        std::collections::HashMap<String, crate::extractors::base::TypeInfo>,
+        Vec<crate::extractors::base::ParseDiagnostic>,
+        crate::database::FileInfo,
+    )>
     where
         F: FnOnce(String, String, PathBuf) -> Result<ExtractionResults> + Send + 'static,
     {
-        self.process_file_with_parser_using(file_path, language, workspace_root, extract)
-            .await
-    }
-
-    async fn process_file_with_parser_using<F>(
-        &self,
-        file_path: &Path,
-        language: &str,
-        workspace_root: &Path,
-        extract: F,
-    ) -> Result<ParserFileProcessResult>
-    where
-        F: FnOnce(String, String, PathBuf) -> Result<ExtractionResults> + Send + 'static,
-    {
-        // 🚨 CRITICAL FIX: Wrap ALL blocking filesystem I/O in spawn_blocking to prevent tokio deadlock
-        // When processing hundreds of large files (500KB+), blocking I/O in async functions
-        // starves the tokio runtime and causes silent hangs (discovered in PsychiatricIntake workspace)
-        let file_path_clone = file_path.to_path_buf();
-        let language_clone = language.to_string();
-        let workspace_root_clone = workspace_root.to_path_buf();
-
-        let (_canonical_file_path, content, mut file_info) =
-            tokio::task::spawn_blocking(move || {
-                // Blocking operation 1: canonicalize (resolves symlinks: macOS /var -> /private/var)
-                let canonical = file_path_clone
-                    .canonicalize()
-                    .unwrap_or_else(|_| file_path_clone.clone());
-
-                // Blocking operation 2: read file content
-                let file_content = std::fs::read_to_string(&canonical)
-                    .map_err(|e| anyhow::anyhow!("Failed to read file {:?}: {}", canonical, e))?;
-
-                // Blocking operation 3: create file info (does metadata, hash, etc)
-                let info = crate::database::create_file_info(
-                    &file_path_clone,
-                    &language_clone,
-                    &workspace_root_clone,
-                )?;
-
-                Ok::<_, anyhow::Error>((canonical, file_content, info))
-            })
-            .await
-            .map_err(|e| anyhow::anyhow!("Failed to spawn blocking file I/O task: {}", e))??;
-
-        tracing::trace!("✅ spawn_blocking completed for: {:?}", file_path);
-
-        if determine_extraction_mode(language, &content) == ExtractionMode::TextOnly {
-            debug!(
-                "⏭️  Switching to text-only indexing for {} ({})",
-                file_path.display(),
-                language
-            );
-            return Ok((
-                Vec::new(),
-                Vec::new(),
-                Vec::new(),
-                Vec::new(),
-                Vec::new(),
-                HashMap::new(),
-                Vec::new(),
-                file_info,
-            ));
-        }
-
-        // 🔥 CRITICAL: Convert to relative Unix-style path for storage
-        // File paths from discovery might be absolute OR relative - handle both
-        let relative_path = if file_path.is_absolute() {
-            // Absolute path - convert to relative
-            crate::utils::paths::to_relative_unix_style(file_path, workspace_root)?
-        } else {
-            // Already relative - use as-is (just normalize to Unix-style)
-            file_path.to_string_lossy().replace('\\', "/")
-        };
-
-        // Parsing and extraction are CPU-heavy. Run canonical extraction on the
-        // blocking pool and await completion to avoid detached long-running jobs.
-        let relative_path_clone = relative_path.clone();
-        let content_clone = content.clone();
-        let workspace_root_clone2 = workspace_root.to_path_buf();
-
-        let extract_start = std::time::Instant::now();
-        let task = tokio::task::spawn_blocking(move || {
-            extract(relative_path_clone, content_clone, workspace_root_clone2)
-        });
-
-        let results = match task.await {
-            Ok(result) => result?,
-            Err(e) => return Err(anyhow::anyhow!("Spawn blocking task panicked: {}", e)),
-        };
-
-        let extract_elapsed = extract_start.elapsed();
-        if extract_elapsed.as_millis() > 100 {
-            debug!(
-                "Slow file processing: {} - extraction: {:?}",
-                relative_path, extract_elapsed
-            );
-        }
-
-        // Destructure ExtractionResults into all fields
-        let symbols = results.symbols;
-
-        // Update file_info with actual symbol count (was initialized to 0)
-        file_info.symbol_count = symbols.len() as i32;
-        let relationships = results.relationships;
-        let pending_relationships = results.pending_relationships;
-        let structured_pending_relationships = results.structured_pending_relationships;
-        let identifiers = results.identifiers;
-        let types = results.types;
-        let parse_diagnostics = results.parse_diagnostics;
-
-        // Only log if there are many symbols to avoid spam
-        if symbols.len() > 10 {
-            debug!(
-                "📊 Extracted {} symbols from {}",
-                symbols.len(),
-                relative_path
-            );
-        }
-
-        // Log pending relationships for cross-file resolution
-        if !pending_relationships.is_empty() {
-            debug!(
-                "📎 Found {} pending relationships in {} (need cross-file resolution)",
-                pending_relationships.len(),
-                relative_path
-            );
-        }
-
-        // Return data for bulk operations (SQLite storage)
-        Ok((
-            symbols,
-            relationships,
-            pending_relationships,
-            structured_pending_relationships,
-            identifiers,
-            types,
-            parse_diagnostics,
-            file_info,
-        ))
-    }
-
-    /// Process a file without a tree-sitter parser (no symbol extraction)
-    ///
-    /// Files without parsers are still indexed for full-text search via database.
-    pub(crate) async fn process_file_without_parser(
-        &self,
-        file_path: &Path,
-        language: &str,
-        workspace_root: &Path, // NEW: Required for relative path conversion
-    ) -> Result<(Vec<Symbol>, Vec<Relationship>, crate::database::FileInfo)> {
-        tracing::trace!(
-            "📂 Processing file without parser: {:?} (language: {})",
+        crate::indexing_core::extraction::process_file_with_parser_for_test(
             file_path,
-            language
-        );
-
-        // 🚨 CRITICAL FIX: Wrap ALL blocking filesystem I/O in spawn_blocking to prevent tokio deadlock
-        let file_path_clone = file_path.to_path_buf();
-        let language_clone = language.to_string();
-        let workspace_root_clone = workspace_root.to_path_buf();
-
-        let (_canonical_file_path, content, file_info) = tokio::task::spawn_blocking(move || {
-            tracing::trace!(
-                "🔄 Inside spawn_blocking (no parser) for: {:?}",
-                file_path_clone
-            );
-            // Blocking operation 1: canonicalize (resolves symlinks: macOS /var -> /private/var)
-            let canonical = file_path_clone
-                .canonicalize()
-                .unwrap_or_else(|_| file_path_clone.clone());
-
-            // Blocking operation 2: read file content
-            let file_content = std::fs::read_to_string(&canonical)
-                .map_err(|e| anyhow::anyhow!("Failed to read file {:?}: {}", canonical, e))?;
-
-            // Blocking operation 3: create file info (does metadata, hash, etc)
-            let info = crate::database::create_file_info(
-                &file_path_clone,
-                &language_clone,
-                &workspace_root_clone,
-            )?;
-
-            Ok::<_, anyhow::Error>((canonical, file_content, info))
-        })
+            language,
+            workspace_root,
+            extract,
+        )
         .await
-        .map_err(|e| anyhow::anyhow!("Failed to spawn blocking file I/O task: {}", e))??;
+    }
 
-        trace!("Read {} bytes from file without parser", content.len());
+    pub(crate) async fn extract_index_batch(
+        &self,
+        files_by_language: HashMap<String, Vec<PathBuf>>,
+        workspace_root: &Path,
+        state: &mut IndexingBatchState,
+    ) -> Result<crate::indexing_core::batch::ExtractedBatch> {
+        let (batch, records) =
+            crate::indexing_core::extraction::extract_files_for_indexing_with_records(
+                files_by_language,
+                workspace_root,
+            )
+            .await?;
+        record_extracted_file_records(state, records);
+        Ok(batch)
+    }
+}
 
-        // No symbols extracted (no parser available), but file_info created in spawn_blocking above
-        Ok((Vec::new(), Vec::new(), file_info))
+#[cfg(test)]
+fn record_extracted_file_records(
+    state: &mut IndexingBatchState,
+    records: Vec<ExtractedFileRecord>,
+) {
+    for record in records {
+        match record.disposition {
+            ExtractedFileDisposition::Parsed => {
+                state.record_file(
+                    record.relative_path,
+                    record.language,
+                    IndexedFileDisposition::Parsed,
+                    None,
+                );
+            }
+            ExtractedFileDisposition::TextOnly => {
+                state.record_file(
+                    record.relative_path,
+                    record.language,
+                    IndexedFileDisposition::TextOnly,
+                    None,
+                );
+            }
+            ExtractedFileDisposition::RepairNeeded { detail } => {
+                state.record_file(
+                    record.relative_path,
+                    record.language,
+                    IndexedFileDisposition::RepairNeeded,
+                    Some(detail),
+                );
+            }
+        }
     }
 }

@@ -13,7 +13,7 @@ fn get_unix_timestamp() -> Result<i64> {
 }
 
 /// Current schema version - increment when adding migrations
-pub const LATEST_SCHEMA_VERSION: i32 = 25;
+pub const LATEST_SCHEMA_VERSION: i32 = 26;
 
 impl SymbolDatabase {
     // ============================================================
@@ -121,6 +121,7 @@ impl SymbolDatabase {
             23 => self.migration_023_add_tool_call_input_bytes()?,
             24 => self.migration_024_add_index_engine_state()?,
             25 => self.migration_025_add_symbol_body_fields()?,
+            26 => self.migration_026_add_external_extract_metadata()?,
             _ => return Err(anyhow!("Unknown migration version: {}", version)),
         }
         Ok(())
@@ -154,6 +155,7 @@ impl SymbolDatabase {
             23 => "Add input_bytes to tool_calls",
             24 => "Add index_engine_state table",
             25 => "Add symbol body span and hash columns",
+            26 => "Add external extract metadata table",
             _ => "Unknown migration",
         };
 
@@ -886,6 +888,13 @@ impl SymbolDatabase {
         }
 
         info!("Migration 025 complete: symbol body fields added");
+        Ok(())
+    }
+
+    fn migration_026_add_external_extract_metadata(&self) -> Result<()> {
+        info!("Running migration 026: Add external_extract_metadata table");
+        self.create_external_extract_metadata_table()?;
+        info!("Migration 026 complete: external_extract_metadata table added");
         Ok(())
     }
 

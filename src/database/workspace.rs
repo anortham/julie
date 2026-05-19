@@ -1,9 +1,5 @@
 // Workspace management operations
 
-use super::revision_changes::{
-    RevisionChangeKind, RevisionFileChange, record_revision_file_changes_tx,
-    snapshot_file_hashes_tx,
-};
 use super::*;
 use anyhow::Result;
 use tracing::info;
@@ -18,77 +14,8 @@ impl SymbolDatabase {
             return Ok(None);
         }
 
-        let tx = self.conn.transaction()?;
-        let existing_file_hashes = snapshot_file_hashes_tx(&tx, orphaned_files)?;
-
-        for file_path in orphaned_files {
-            tx.execute(
-                "DELETE FROM symbol_vectors WHERE symbol_id IN (
-                    SELECT id FROM symbols WHERE file_path = ?1
-                )",
-                rusqlite::params![file_path],
-            )?;
-            tx.execute(
-                "DELETE FROM relationships
-                 WHERE from_symbol_id IN (SELECT id FROM symbols WHERE file_path = ?1)
-                    OR to_symbol_id IN (SELECT id FROM symbols WHERE file_path = ?1)",
-                rusqlite::params![file_path],
-            )?;
-            tx.execute(
-                "DELETE FROM identifiers
-                 WHERE file_path = ?1
-                    OR containing_symbol_id IN (SELECT id FROM symbols WHERE file_path = ?1)",
-                rusqlite::params![file_path],
-            )?;
-            tx.execute(
-                "DELETE FROM types WHERE symbol_id IN (SELECT id FROM symbols WHERE file_path = ?1)",
-                rusqlite::params![file_path],
-            )?;
-            tx.execute(
-                "DELETE FROM indexing_repairs WHERE path = ?1",
-                rusqlite::params![file_path],
-            )?;
-            tx.execute(
-                "DELETE FROM symbols WHERE file_path = ?1",
-                rusqlite::params![file_path],
-            )?;
-            tx.execute(
-                "DELETE FROM files WHERE path = ?1",
-                rusqlite::params![file_path],
-            )?;
-        }
-
-        let revision = super::revisions::record_canonical_revision_tx(
-            &tx,
-            workspace_id,
-            CanonicalRevisionKind::Incremental,
-            orphaned_files.len() as i64,
-            0,
-            0,
-            0,
-            0,
-            0,
-        )?;
-
-        let revision_changes: Vec<RevisionFileChange> = orphaned_files
-            .iter()
-            .filter_map(|file_path| {
-                existing_file_hashes
-                    .get(file_path)
-                    .map(|old_hash| RevisionFileChange {
-                        revision,
-                        workspace_id: workspace_id.to_string(),
-                        file_path: file_path.clone(),
-                        change_kind: RevisionChangeKind::Deleted,
-                        old_hash: Some(old_hash.clone()),
-                        new_hash: None,
-                    })
-            })
-            .collect();
-        record_revision_file_changes_tx(&tx, revision, workspace_id, &revision_changes)?;
-
-        tx.commit()?;
-        Ok(Some(revision))
+        self.incremental_update_atomic(orphaned_files, &[], &[], &[], &[], &[], workspace_id)?;
+        self.get_current_canonical_revision(workspace_id)
     }
 
     pub fn delete_workspace_data(&mut self) -> Result<WorkspaceCleanupStats> {

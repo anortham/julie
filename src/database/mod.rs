@@ -17,6 +17,7 @@ use crate::extractors::{Relationship, RelationshipKind, Symbol, SymbolKind};
 
 // Module declarations
 pub mod analytics;
+pub(crate) mod bulk;
 mod bulk_operations;
 mod files;
 mod helpers;

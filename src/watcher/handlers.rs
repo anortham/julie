@@ -9,7 +9,7 @@ use crate::search::SearchIndex;
 use crate::tools::workspace::indexing::file_policy::{
     ExtractionMode, detect_language_for_indexing, determine_extraction_mode,
 };
-use crate::tools::workspace::indexing::pipeline::resolve_pending_relationships;
+use crate::tools::workspace::indexing::finalize::resolve_pending_relationships;
 use crate::tools::workspace::indexing::state::IndexingRepairReason;
 use crate::workspace::mutation_gate::MutationGuard;
 use anyhow::{Context, Result};
@@ -83,19 +83,14 @@ pub(crate) async fn handle_file_created_or_modified_static(
 ) -> Result<FileIndexOutcome> {
     debug!("Processing file: {}", path.display());
 
-    // 1. Read file content and calculate hash
     let content = tokio::fs::read(&path)
         .await
         .context("Failed to read file content")?;
     let new_hash = blake3::hash(&content);
 
-    // 2. Normalize path to relative Unix-style for database operations
-    // CRITICAL FIX: Watcher provides absolute paths, but database stores relative paths
-    // This caused hash lookups to fail, triggering unnecessary re-indexing on every save
     let relative_path = crate::utils::paths::to_relative_unix_style(&path, workspace_root)
         .context("Failed to convert path to relative")?;
 
-    // 3. Check if file actually changed using Blake3
     {
         let db_lock = match db.lock() {
             Ok(guard) => guard,
@@ -122,7 +117,6 @@ pub(crate) async fn handle_file_created_or_modified_static(
         }
     }
 
-    // 4. Detect language and apply the same extraction contract as batch indexing.
     let language = detect_language_for_indexing(Path::new(&relative_path));
     let content_str = String::from_utf8_lossy(&content).into_owned();
     let extraction_mode = determine_extraction_mode(&language, &content_str);
@@ -195,7 +189,6 @@ pub(crate) async fn handle_file_created_or_modified_static(
     let structured_pending_relationships = results.structured_pending_relationships.clone();
     let parse_diagnostics = results.parse_diagnostics.clone();
 
-    // 5. Update SQLite database atomically (symbols + identifiers + types + relationships)
     {
         let mut db_lock = match db.lock() {
             Ok(guard) => guard,
@@ -265,12 +258,12 @@ pub(crate) async fn handle_file_created_or_modified_static(
             content: Some(content_str.clone()),
         };
 
-        // Convert types HashMap to Vec for bulk storage
         let types_vec: Vec<_> = results.types.into_values().collect();
 
-        // Use incremental_update_atomic for a single atomic transaction that stores
-        // ALL extracted data: symbols, identifiers, types, and relationships.
-        // This replaces the old approach that only stored symbols.
+        let workspace_key = workspace_root.to_string_lossy();
+        let workspace_id = crate::workspace::registry::generate_workspace_id(&workspace_key)
+            .unwrap_or_else(|_| workspace_key.into_owned());
+
         db_lock.incremental_update_atomic(
             &[relative_path.clone()],
             &[file_info],
@@ -278,10 +271,9 @@ pub(crate) async fn handle_file_created_or_modified_static(
             &results.relationships,
             &results.identifiers,
             &types_vec,
-            "", // workspace_id unused by this method
+            &workspace_id,
         )?;
 
-        // Update file hash after successful atomic update
         db_lock.update_file_hash(&relative_path, &new_hash_str)?;
         db_lock.store_file_parse_diagnostics(&relative_path, &parse_diagnostics)?;
         db_lock.clear_indexing_repair(&relative_path)?;
@@ -293,10 +285,6 @@ pub(crate) async fn handle_file_created_or_modified_static(
         &structured_pending_relationships,
     );
 
-    // 6. Update Tantivy search index (if available)
-    // CRITICAL: Must re-add BOTH symbol docs AND file content doc after removal.
-    // remove_by_file_path() deletes all doc types for the file path.
-    // Fix B-b: Track Tantivy success so callers can add to a dirty-file retry set.
     let tantivy_ok = if let Some(search_index) = search_index {
         let symbols = results.symbols.clone();
         let file_content_doc = crate::search::FileDocument {

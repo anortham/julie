@@ -6,6 +6,7 @@ use crate::cli_tools::subcommands::{
     BlastRadiusArgs, CallPathArgs, ContextArgs, GenericToolArgs, GlobalToolFlags, RefsArgs,
     SearchArgs, SignalsArgs, SymbolsArgs, WorkspaceArgs,
 };
+use crate::external_extract::ExternalExtractRawArgs;
 use crate::workspace::startup_hint::{WorkspaceStartupHint, WorkspaceStartupSource};
 
 #[derive(Parser)]
@@ -65,6 +66,8 @@ pub enum Command {
     Workspace(WorkspaceArgs),
     /// Generate early warning signals report
     Signals(SignalsArgs),
+    /// Extract parser data into a caller-owned SQLite database
+    Extract(ExternalExtractRawArgs),
 
     // -- Generic tool fallback -----------------------------------------------
     /// Run any tool by name with JSON params

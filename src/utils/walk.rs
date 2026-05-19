@@ -1,12 +1,16 @@
 use crate::tools::shared::BLACKLISTED_DIRECTORIES;
+use anyhow::{Context, Result};
 use ignore::WalkBuilder;
+use ignore::gitignore::{Gitignore, GitignoreBuilder};
 use std::collections::HashSet;
-use std::path::Path;
+use std::fs;
+use std::path::{Path, PathBuf};
 
 /// Configuration for how the walker filters entries.
 pub struct WalkConfig {
     pub use_julieignore: bool,
     pub use_blacklisted_dirs: bool,
+    pub extra_ignore_files: Vec<PathBuf>,
 }
 
 impl WalkConfig {
@@ -17,6 +21,7 @@ impl WalkConfig {
         Self {
             use_julieignore: false,
             use_blacklisted_dirs: false,
+            extra_ignore_files: Vec::new(),
         }
     }
 
@@ -26,6 +31,7 @@ impl WalkConfig {
         Self {
             use_julieignore: true,
             use_blacklisted_dirs: true,
+            extra_ignore_files: Vec::new(),
         }
     }
 
@@ -33,6 +39,11 @@ impl WalkConfig {
     /// Used by startup.rs to detect changed files.
     pub fn stale_scan() -> Self {
         Self::full_index()
+    }
+
+    pub fn with_ignore_files(mut self, ignore_files: Vec<PathBuf>) -> Self {
+        self.extra_ignore_files = ignore_files;
+        self
     }
 }
 
@@ -44,8 +55,39 @@ impl WalkConfig {
 /// - `.julieignore` — if `config.use_julieignore`, added as custom ignore filename
 /// - `filter_entry` — always excludes `.git` and `.julie`; optionally excludes BLACKLISTED_DIRECTORIES
 pub fn build_walker(workspace_path: &Path, config: &WalkConfig) -> ignore::Walk {
-    let mut builder = WalkBuilder::new(workspace_path);
+    try_build_walker(workspace_path, config).expect("walker configuration should be valid")
+}
 
+pub fn try_build_walker(workspace_path: &Path, config: &WalkConfig) -> Result<ignore::Walk> {
+    let mut builder = WalkBuilder::new(workspace_path);
+    configure_walker_builder(&mut builder, workspace_path, config)?;
+    Ok(builder.build())
+}
+
+pub fn try_build_single_path_walker(
+    workspace_path: &Path,
+    path: &Path,
+    config: &WalkConfig,
+) -> Result<ignore::Walk> {
+    let mut builder = if path == workspace_path {
+        let mut builder = WalkBuilder::new(path);
+        builder.max_depth(Some(0));
+        builder
+    } else {
+        let walk_root = path.parent().unwrap_or(path);
+        let mut builder = WalkBuilder::new(walk_root);
+        builder.max_depth(Some(1));
+        builder
+    };
+    configure_walker_builder(&mut builder, workspace_path, config)?;
+    Ok(builder.build())
+}
+
+fn configure_walker_builder(
+    builder: &mut WalkBuilder,
+    workspace_path: &Path,
+    config: &WalkConfig,
+) -> Result<()> {
     builder
         .hidden(false) // Include dotfiles — we filter .git explicitly
         .git_ignore(true) // Respect .gitignore (nested, global, .git/info/exclude)
@@ -54,9 +96,14 @@ pub fn build_walker(workspace_path: &Path, config: &WalkConfig) -> ignore::Walk 
         .follow_links(false)
         .ignore(false); // Don't read .ignore files — only .gitignore + .julieignore
 
+    builder.add_custom_ignore_filename(".gitignore");
+
     if config.use_julieignore {
         builder.add_custom_ignore_filename(".julieignore");
     }
+
+    let extra_ignore_matcher =
+        build_extra_ignore_matcher(workspace_path, &config.extra_ignore_files)?;
 
     let blacklisted_dirs: HashSet<&'static str> = if config.use_blacklisted_dirs {
         BLACKLISTED_DIRECTORIES.iter().copied().collect()
@@ -66,6 +113,13 @@ pub fn build_walker(workspace_path: &Path, config: &WalkConfig) -> ignore::Walk 
 
     builder.filter_entry(move |entry| {
         let file_name = entry.file_name().to_str().unwrap_or("");
+        let is_dir = entry.file_type().is_some_and(|ft| ft.is_dir());
+
+        if let Some(matcher) = &extra_ignore_matcher {
+            if matcher.matched(entry.path(), is_dir).is_ignore() {
+                return false;
+            }
+        }
 
         // Always exclude internal state directories — hidden(false) would otherwise include them.
         // See: https://github.com/BurntSushi/ripgrep/issues/3099
@@ -74,15 +128,40 @@ pub fn build_walker(workspace_path: &Path, config: &WalkConfig) -> ignore::Walk 
         }
 
         // Filter blacklisted directories when enabled
-        if !blacklisted_dirs.is_empty()
-            && entry.file_type().map_or(false, |ft| ft.is_dir())
-            && blacklisted_dirs.contains(file_name)
-        {
+        if !blacklisted_dirs.is_empty() && is_dir && blacklisted_dirs.contains(file_name) {
             return false;
         }
 
         true
     });
 
-    builder.build()
+    Ok(())
+}
+
+fn build_extra_ignore_matcher(root: &Path, ignore_files: &[PathBuf]) -> Result<Option<Gitignore>> {
+    if ignore_files.is_empty() {
+        return Ok(None);
+    }
+
+    let mut builder = GitignoreBuilder::new(root);
+    for ignore_file in ignore_files {
+        let path = if ignore_file.is_absolute() {
+            ignore_file.to_path_buf()
+        } else {
+            root.join(ignore_file)
+        };
+        let contents = fs::read_to_string(&path)
+            .with_context(|| format!("failed to read ignore file {}", path.display()))?;
+        for line in contents.lines() {
+            let trimmed = line.trim_start();
+            if trimmed.starts_with('!') {
+                continue;
+            }
+            builder
+                .add_line(None, line)
+                .with_context(|| format!("invalid ignore pattern in {}", path.display()))?;
+        }
+    }
+
+    Ok(Some(builder.build()?))
 }

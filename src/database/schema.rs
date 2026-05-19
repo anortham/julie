@@ -26,6 +26,7 @@ impl SymbolDatabase {
         self.create_symbols_table()?;
         self.create_symbol_annotations_table()?;
         self.create_early_warning_reports_table()?;
+        self.create_external_extract_metadata_table()?;
         self.create_identifiers_table()?; // Reference tracking
         self.create_types_table()?; // Type intelligence
         self.create_relationships_table()?;
@@ -262,6 +263,20 @@ impl SymbolDatabase {
         )?;
 
         debug!("Created early_warning_reports table and indexes");
+        Ok(())
+    }
+
+    pub(crate) fn create_external_extract_metadata_table(&self) -> Result<()> {
+        self.conn.execute(
+            "CREATE TABLE IF NOT EXISTS external_extract_metadata (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at INTEGER NOT NULL
+            )",
+            [],
+        )?;
+
+        debug!("Created external_extract_metadata table");
         Ok(())
     }
 

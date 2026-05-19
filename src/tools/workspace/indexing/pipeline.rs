@@ -1,19 +1,21 @@
-use std::collections::{HashMap, HashSet};
-use std::path::{Path, PathBuf};
+use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 
 use anyhow::Context;
 use anyhow::Result;
-use futures::stream::{self, StreamExt};
-use tracing::{debug, info, trace, warn};
+use tracing::{debug, info, warn};
 
-use super::resolver;
+use super::finalize::{analyze_batch, resolve_pending_relationships};
 use super::route::IndexRoute;
 use super::state::{IndexedFileDisposition, IndexingBatchState, IndexingOperation, IndexingStage};
-use crate::extractors::{Identifier, PendingRelationship, Relationship, Symbol};
+use crate::extractors::Symbol;
 use crate::handler::JulieServerHandler;
+use crate::indexing_core::batch::ExtractedBatch;
+use crate::indexing_core::extraction::{
+    ExtractedFileDisposition, ExtractedFileRecord, extract_files_for_indexing_with_records,
+};
 use crate::tools::workspace::commands::ManageWorkspaceTool;
-use julie_extractors::base::{ParseDiagnostic, StructuredPendingRelationship};
 
 pub(crate) struct IndexingPipelineResult {
     pub state: IndexingBatchState,
@@ -21,40 +23,8 @@ pub(crate) struct IndexingPipelineResult {
     pub canonical_revision: Option<i64>,
 }
 
-pub(crate) struct ExtractedBatch {
-    pub(crate) all_symbols: Vec<Symbol>,
-    pub(crate) all_relationships: Vec<Relationship>,
-    pub(crate) all_pending_relationships: Vec<PendingRelationship>,
-    pub(crate) all_structured_pending_relationships: Vec<StructuredPendingRelationship>,
-    pub(crate) all_identifiers: Vec<Identifier>,
-    pub(crate) all_types: Vec<crate::extractors::base::TypeInfo>,
-    pub(crate) all_file_infos: Vec<crate::database::FileInfo>,
-    pub(crate) parse_diagnostics_by_file: Vec<(String, Vec<ParseDiagnostic>)>,
-    pub(crate) files_to_clean: Vec<String>,
-    pub(crate) repair_entries: Vec<(String, String)>,
-    pub(crate) files_processed: usize,
-}
-
 struct PersistBatchResult {
     canonical_revision: Option<i64>,
-}
-
-impl ExtractedBatch {
-    fn new() -> Self {
-        Self {
-            all_symbols: Vec::new(),
-            all_relationships: Vec::new(),
-            all_pending_relationships: Vec::new(),
-            all_structured_pending_relationships: Vec::new(),
-            all_identifiers: Vec::new(),
-            all_types: Vec::new(),
-            all_file_infos: Vec::new(),
-            parse_diagnostics_by_file: Vec::new(),
-            files_to_clean: Vec::new(),
-            repair_entries: Vec::new(),
-            files_processed: 0,
-        }
-    }
 }
 
 pub(crate) async fn run_indexing_pipeline(
@@ -72,9 +42,9 @@ pub(crate) async fn run_indexing_pipeline(
     info!("🚀 Processing {} languages", files_by_language.len());
 
     transition_stage(&mut state, route, IndexingStage::Extracting);
-    let mut batch = tool
-        .extract_index_batch(files_by_language, &route.workspace_root, &mut state)
-        .await?;
+    let (mut batch, extracted_records) =
+        extract_files_for_indexing_with_records(files_by_language, &route.workspace_root).await?;
+    record_extracted_file_records(&mut state, extracted_records);
 
     // Classify test roles from annotation configs before persisting.
     // This enriches symbol metadata with test_role and is_test fields.
@@ -156,213 +126,6 @@ pub(crate) async fn run_indexing_pipeline(
     })
 }
 
-impl ManageWorkspaceTool {
-    pub(crate) async fn extract_index_batch(
-        &self,
-        files_by_language: HashMap<String, Vec<PathBuf>>,
-        workspace_root: &Path,
-        state: &mut IndexingBatchState,
-    ) -> Result<ExtractedBatch> {
-        // Cap concurrency at available parallelism. Each in-flight parse holds
-        // file content + AST in memory, and process_file_with_parser internally
-        // uses spawn_blocking, so polling N futures concurrently yields N CPU
-        // cores worth of parallel parsing.
-        let concurrency = std::thread::available_parallelism()
-            .map(|n| n.get())
-            .unwrap_or(8);
-
-        // Flatten across languages so the executor can interleave files freely
-        // instead of being serialized per language. Tag each entry with whether
-        // a tree-sitter parser is available so we route to the right path.
-        let mut per_language_counts: HashMap<String, (usize, bool)> = HashMap::new();
-        let work: Vec<(String, PathBuf, bool)> = files_by_language
-            .into_iter()
-            .filter(|(_, paths)| !paths.is_empty())
-            .flat_map(|(language, file_paths)| {
-                let has_parser = crate::language::get_tree_sitter_language(&language).is_ok();
-                per_language_counts
-                    .entry(language.clone())
-                    .or_insert((file_paths.len(), has_parser));
-                file_paths
-                    .into_iter()
-                    .map(move |path| (language.clone(), path, has_parser))
-            })
-            .collect();
-
-        if work.is_empty() {
-            return Ok(ExtractedBatch::new());
-        }
-
-        info!(
-            "🚀 Extracting {} files in parallel (concurrency={}, languages={})",
-            work.len(),
-            concurrency,
-            per_language_counts.len()
-        );
-        for (language, (count, has_parser)) in &per_language_counts {
-            debug!(
-                "Extraction plan: {} {} files ({})",
-                count,
-                language,
-                if *has_parser {
-                    "tree-sitter parser"
-                } else {
-                    "text-only"
-                }
-            );
-        }
-
-        let extract_start = std::time::Instant::now();
-        let outcomes: Vec<(String, PathBuf, ExtractOutcome)> = stream::iter(work)
-            .map(|(language, file_path, has_parser)| async move {
-                let outcome = if has_parser {
-                    ExtractOutcome::WithParser(
-                        self.process_file_with_parser(&file_path, &language, workspace_root)
-                            .await,
-                    )
-                } else {
-                    ExtractOutcome::WithoutParser(
-                        self.process_file_without_parser(&file_path, &language, workspace_root)
-                            .await,
-                    )
-                };
-                (language, file_path, outcome)
-            })
-            .buffer_unordered(concurrency)
-            .collect()
-            .await;
-
-        info!(
-            "⏱️  parallel extraction complete: {:.2}s ({} files)",
-            extract_start.elapsed().as_secs_f64(),
-            outcomes.len()
-        );
-
-        // Apply outcomes sequentially: state and batch fields require &mut.
-        let mut batch = ExtractedBatch::new();
-        for (language, file_path, outcome) in outcomes {
-            let relative_path = relative_path_for_storage(&file_path, workspace_root);
-            match outcome {
-                ExtractOutcome::WithParser(Ok((
-                    symbols,
-                    relationships,
-                    pending_rels,
-                    structured_pending_rels,
-                    identifiers,
-                    types,
-                    parse_diagnostics,
-                    file_info,
-                ))) => {
-                    state.record_file(
-                        relative_path.clone(),
-                        language,
-                        IndexedFileDisposition::Parsed,
-                        None,
-                    );
-                    batch.files_processed += 1;
-                    trace!(
-                        "File {} extracted {} symbols, {} pending relationships",
-                        file_path.display(),
-                        symbols.len(),
-                        pending_rels.len()
-                    );
-                    batch.files_to_clean.push(relative_path.clone());
-                    batch.all_symbols.extend(symbols);
-                    batch.all_relationships.extend(relationships);
-                    batch.all_pending_relationships.extend(pending_rels);
-                    batch
-                        .all_structured_pending_relationships
-                        .extend(structured_pending_rels);
-                    batch.all_identifiers.extend(identifiers);
-                    batch.all_types.extend(types.into_values());
-                    batch
-                        .parse_diagnostics_by_file
-                        .push((relative_path.clone(), parse_diagnostics));
-                    batch.all_file_infos.push(file_info);
-                    if batch.files_processed.is_multiple_of(50) {
-                        debug!(
-                            "Progress: {} files processed, {} symbols collected",
-                            batch.files_processed,
-                            batch.all_symbols.len()
-                        );
-                    }
-                }
-                ExtractOutcome::WithParser(Err(e)) => {
-                    warn!("Failed to process file {:?}: {}", file_path, e);
-                    self.queue_failed_parser_file_for_cleanup(
-                        &file_path,
-                        &language,
-                        workspace_root,
-                        &mut batch.files_to_clean,
-                        &mut batch.all_file_infos,
-                    )
-                    .await;
-                    state.record_file(
-                        relative_path.clone(),
-                        language,
-                        IndexedFileDisposition::RepairNeeded,
-                        Some(e.to_string()),
-                    );
-                    batch.repair_entries.push((relative_path, e.to_string()));
-                }
-                ExtractOutcome::WithoutParser(Ok((symbols, relationships, file_info))) => {
-                    debug!("📄 Processed file without parser: {:?}", file_path);
-                    state.record_file(
-                        relative_path.clone(),
-                        language,
-                        IndexedFileDisposition::TextOnly,
-                        None,
-                    );
-                    batch.files_processed += 1;
-                    batch.files_to_clean.push(relative_path);
-                    batch.all_symbols.extend(symbols);
-                    batch.all_relationships.extend(relationships);
-                    batch.all_file_infos.push(file_info);
-                }
-                ExtractOutcome::WithoutParser(Err(e)) => {
-                    warn!(
-                        "Failed to process file without parser {:?}: {}",
-                        file_path, e
-                    );
-                    self.queue_failed_parser_file_for_cleanup(
-                        &file_path,
-                        &language,
-                        workspace_root,
-                        &mut batch.files_to_clean,
-                        &mut batch.all_file_infos,
-                    )
-                    .await;
-                    state.record_file(
-                        relative_path.clone(),
-                        language,
-                        IndexedFileDisposition::RepairNeeded,
-                        Some(e.to_string()),
-                    );
-                    batch.repair_entries.push((relative_path, e.to_string()));
-                }
-            }
-        }
-
-        Ok(batch)
-    }
-}
-
-enum ExtractOutcome {
-    WithParser(
-        Result<(
-            Vec<Symbol>,
-            Vec<Relationship>,
-            Vec<PendingRelationship>,
-            Vec<StructuredPendingRelationship>,
-            Vec<Identifier>,
-            HashMap<String, crate::extractors::base::TypeInfo>,
-            Vec<ParseDiagnostic>,
-            crate::database::FileInfo,
-        )>,
-    ),
-    WithoutParser(Result<(Vec<Symbol>, Vec<Relationship>, crate::database::FileInfo)>),
-}
-
 fn group_files_by_language(
     tool: &ManageWorkspaceTool,
     files_to_index: Vec<PathBuf>,
@@ -380,12 +143,37 @@ fn group_files_by_language(
     files_by_language
 }
 
-fn relative_path_for_storage(file_path: &Path, workspace_root: &Path) -> String {
-    if file_path.is_absolute() {
-        crate::utils::paths::to_relative_unix_style(file_path, workspace_root)
-            .unwrap_or_else(|_| file_path.to_string_lossy().replace('\\', "/"))
-    } else {
-        file_path.to_string_lossy().replace('\\', "/")
+fn record_extracted_file_records(
+    state: &mut IndexingBatchState,
+    records: Vec<ExtractedFileRecord>,
+) {
+    for record in records {
+        match record.disposition {
+            ExtractedFileDisposition::Parsed => {
+                state.record_file(
+                    record.relative_path,
+                    record.language,
+                    IndexedFileDisposition::Parsed,
+                    None,
+                );
+            }
+            ExtractedFileDisposition::TextOnly => {
+                state.record_file(
+                    record.relative_path,
+                    record.language,
+                    IndexedFileDisposition::TextOnly,
+                    None,
+                );
+            }
+            ExtractedFileDisposition::RepairNeeded { detail } => {
+                state.record_file(
+                    record.relative_path,
+                    record.language,
+                    IndexedFileDisposition::RepairNeeded,
+                    Some(detail),
+                );
+            }
+        }
     }
 }
 
@@ -649,168 +437,6 @@ async fn project_batch(
                     ),
                     None => format!("tantivy projection task panicked: {e}"),
                 });
-            }
-        }
-    }
-
-    Ok(())
-}
-
-pub(crate) fn resolve_pending_relationships(
-    db: &std::sync::Arc<std::sync::Mutex<crate::database::SymbolDatabase>>,
-    pending_relationships: &[PendingRelationship],
-    structured_pending_relationships: &[StructuredPendingRelationship],
-) {
-    if pending_relationships.is_empty() && structured_pending_relationships.is_empty() {
-        return;
-    }
-
-    let resolution_start = std::time::Instant::now();
-    let mut db_lock = match db.lock() {
-        Ok(guard) => guard,
-        Err(poisoned) => {
-            warn!("Database mutex poisoned during relationship resolution, recovering");
-            poisoned.into_inner()
-        }
-    };
-
-    let (resolved_relationships, stats) = if structured_pending_relationships.is_empty() {
-        resolver::resolve_batch(pending_relationships, &db_lock)
-    } else {
-        let (mut resolved, mut stats) =
-            resolver::resolve_structured_batch(structured_pending_relationships, &db_lock);
-        let structured_keys: HashSet<_> = structured_pending_relationships
-            .iter()
-            .map(|structured| pending_key(&structured.pending))
-            .collect();
-        let legacy_only: Vec<PendingRelationship> = pending_relationships
-            .iter()
-            .filter(|pending| !structured_keys.contains(&pending_key(pending)))
-            .cloned()
-            .collect();
-        if !legacy_only.is_empty() {
-            let (legacy_resolved, legacy_stats) = resolver::resolve_batch(&legacy_only, &db_lock);
-            resolved.extend(legacy_resolved);
-            stats.total += legacy_stats.total;
-            stats.resolved += legacy_stats.resolved;
-            stats.no_candidates += legacy_stats.no_candidates;
-            stats.no_valid_candidates += legacy_stats.no_valid_candidates;
-            stats.lookup_errors += legacy_stats.lookup_errors;
-        }
-        (resolved, stats)
-    };
-    if !resolved_relationships.is_empty() {
-        if let Err(e) = db_lock.bulk_store_relationships(&resolved_relationships) {
-            warn!("Failed to store resolved relationships: {}", e);
-        }
-    }
-
-    stats.log_summary();
-    info!(
-        "⏱️  resolve_pending_relationships: {:.2}s",
-        resolution_start.elapsed().as_secs_f64()
-    );
-}
-
-fn pending_key(
-    pending: &PendingRelationship,
-) -> (
-    &str,
-    &str,
-    &crate::extractors::base::RelationshipKind,
-    &str,
-    u32,
-) {
-    (
-        pending.from_symbol_id.as_str(),
-        pending.callee_name.as_str(),
-        &pending.kind,
-        pending.file_path.as_str(),
-        pending.line_number,
-    )
-}
-
-fn analyze_batch(
-    handler: &JulieServerHandler,
-    route: &IndexRoute,
-    db: &std::sync::Arc<std::sync::Mutex<crate::database::SymbolDatabase>>,
-) -> Result<()> {
-    let t = std::time::Instant::now();
-    {
-        let db_lock = match db.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Database mutex poisoned during reference scoring, recovering");
-                poisoned.into_inner()
-            }
-        };
-        if let Err(e) = db_lock.compute_reference_scores() {
-            warn!("Failed to compute reference scores: {}", e);
-        }
-    }
-    info!(
-        "⏱️  compute_reference_scores: {:.2}s",
-        t.elapsed().as_secs_f64()
-    );
-
-    let language_configs = crate::search::LanguageConfigs::load_embedded();
-    let t = std::time::Instant::now();
-    {
-        let db_lock = match db.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Database mutex poisoned during test quality analysis, recovering");
-                poisoned.into_inner()
-            }
-        };
-        if let Err(e) = crate::analysis::compute_test_quality_metrics(&db_lock, &language_configs) {
-            warn!("Failed to compute test quality metrics: {}", e);
-        }
-    }
-    info!(
-        "⏱️  compute_test_quality_metrics: {:.2}s",
-        t.elapsed().as_secs_f64()
-    );
-
-    let t = std::time::Instant::now();
-    {
-        let db_lock = match db.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Database mutex poisoned during test linkage analysis, recovering");
-                poisoned.into_inner()
-            }
-        };
-        if let Err(e) = crate::analysis::compute_test_linkage(&db_lock) {
-            warn!("Failed to compute test linkage: {}", e);
-        }
-    }
-    info!(
-        "⏱️  compute_test_linkage: {:.2}s",
-        t.elapsed().as_secs_f64()
-    );
-
-    if let Some(ref daemon_db) = handler.daemon_db {
-        let current_primary_id = if route.is_primary {
-            handler
-                .current_workspace_id()
-                .or_else(|| handler.loaded_workspace_id())
-        } else {
-            None
-        };
-        let snapshot_ws_id = current_primary_id.as_deref().unwrap_or(&route.workspace_id);
-        {
-            let db_lock = match db.lock() {
-                Ok(guard) => guard,
-                Err(poisoned) => {
-                    warn!("Database mutex poisoned during codehealth snapshot, recovering");
-                    poisoned.into_inner()
-                }
-            };
-            if let Err(e) = daemon_db.snapshot_codehealth_from_db(snapshot_ws_id, &db_lock) {
-                warn!("Failed to capture codehealth snapshot: {}", e);
-            } else {
-                info!(workspace_id = %snapshot_ws_id, "Codehealth snapshot captured");
             }
         }
     }

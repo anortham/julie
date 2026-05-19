@@ -267,6 +267,46 @@ fn test_call_path_global_workspace_and_target_workspace_parse() {
     }
 }
 
+#[test]
+fn test_cli_extract_command_parses_and_validates_without_workspace_startup() {
+    use crate::cli::{Cli, Command, cli_command_needs_workspace_startup_hint};
+
+    let cli = Cli::try_parse_from([
+        "julie-server",
+        "--json",
+        "extract",
+        "scan",
+        "--db",
+        "external.sqlite",
+        "--root",
+        "/repo",
+        "--ignore-file",
+        ".gitignore",
+        "--analyze",
+    ])
+    .expect("extract command parses");
+
+    assert_eq!(cli.tool_flags.effective_format(), OutputFormat::Json);
+    assert!(!cli_command_needs_workspace_startup_hint(&cli.command));
+
+    let Command::Extract(raw) = cli.command.expect("expected extract command") else {
+        panic!("expected extract command");
+    };
+    let args = raw.validate().expect("validated extract args");
+
+    assert_eq!(args.db, std::path::PathBuf::from("external.sqlite"));
+    assert_eq!(args.root, Some(std::path::PathBuf::from("/repo")));
+    assert_eq!(
+        args.ignore_files,
+        vec![std::path::PathBuf::from(".gitignore")]
+    );
+    assert!(args.analyze);
+    assert!(matches!(
+        args.command,
+        crate::external_extract::ExternalExtractCommand::Scan { force: false }
+    ));
+}
+
 // ---------------------------------------------------------------------------
 // blast-radius
 // ---------------------------------------------------------------------------

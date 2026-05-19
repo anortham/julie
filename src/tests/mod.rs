@@ -24,6 +24,7 @@ pub mod cli; // End-to-end CLI integration tests (binary invocation via std::pro
 pub mod cli_execution_tests; // CLI execution core (daemon/standalone mode, handler bootstrap)
 pub mod cli_tests; // CLI argument parsing (clap) and workspace resolution tests
 pub mod cli_tools_tests; // CLI tool subcommand parsing (search, refs, symbols, etc.)
+pub mod external_extract;
 
 // ============================================================================
 // MAIN SERVER TESTS - Entry point error handling

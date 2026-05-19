@@ -104,6 +104,9 @@ async fn main() -> anyhow::Result<()> {
         Some(Command::Signals(args)) => {
             run_signals_command(&args, &cli.tool_flags, cli.workspace).await?;
         }
+        Some(Command::Extract(raw_args)) => {
+            run_extract_command(raw_args, &cli.tool_flags).await?;
+        }
 
         None => {
             debug_assert!(needs_workspace_startup_hint);
@@ -143,6 +146,31 @@ async fn run_signals_command(
     let output = julie::cli_tools::run_signals_report(args, cli_workspace).await?;
     let formatted =
         julie::cli_tools::output::format_signals_report(&output, flags.effective_format());
+    println!("{}", formatted);
+    Ok(())
+}
+
+/// Run external extraction against a caller-owned SQLite database.
+async fn run_extract_command(
+    raw_args: julie::external_extract::ExternalExtractRawArgs,
+    flags: &julie::cli_tools::GlobalToolFlags,
+) -> anyhow::Result<()> {
+    let args = raw_args.validate().unwrap_or_else(|error| error.exit());
+    let report = match julie::external_extract::run_external_extract(&args).await {
+        Ok(report) => report,
+        Err(error) => {
+            let report = julie::external_extract::failed_external_extract_report(&args, &error);
+            let formatted = julie::external_extract::format_external_extract_report(
+                &report,
+                flags.effective_format(),
+            )?;
+            println!("{}", formatted);
+            std::process::exit(1);
+        }
+    };
+
+    let formatted =
+        julie::external_extract::format_external_extract_report(&report, flags.effective_format())?;
     println!("{}", formatted);
     Ok(())
 }
