@@ -80,3 +80,4 @@ __pycache__/
 .claude/settings.local.json
 
 docs/future/
+.codenav
