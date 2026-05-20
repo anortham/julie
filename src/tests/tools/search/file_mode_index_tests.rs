@@ -169,6 +169,27 @@ fn test_search_files_does_not_match_wrong_extension() {
 
 #[test]
 fn test_search_files_extensionless_file_still_matches() {
+    let temp_dir = TempDir::new().unwrap();
+    let index = SearchIndex::create(temp_dir.path()).unwrap();
+
+    add_file_doc(&index, "src/Makefile", "makefile");
+    index.commit().unwrap();
+
+    let results = index
+        .search_files("Makefile", &SearchFilter::default(), 10)
+        .unwrap()
+        .results;
+
+    assert!(
+        !results.is_empty(),
+        "query 'Makefile' should return results"
+    );
+    assert_eq!(results[0].file_path, "src/Makefile");
+    assert!(
+        matches!(results[0].match_kind, FileMatchKind::ExactBasename),
+        "Makefile should classify as ExactBasename through search_files"
+    );
+
     // Query "Makefile" against file "src/Makefile" — no extension, so basename
     // equality catches it as ExactBasename (no dot to strip).
     let kind = classify_file_match("Makefile", "Makefile", "src/Makefile");
@@ -180,6 +201,42 @@ fn test_search_files_extensionless_file_still_matches() {
 
 #[test]
 fn test_search_files_hidden_file_suffix_not_promoted() {
+    let temp_dir = TempDir::new().unwrap();
+    let index = SearchIndex::create(temp_dir.path()).unwrap();
+
+    add_file_doc(&index, ".gitignore", "gitignore");
+    index.commit().unwrap();
+
+    let results = index
+        .search_files("gitignore", &SearchFilter::default(), 10)
+        .unwrap()
+        .results;
+
+    assert!(
+        !results.is_empty(),
+        "query 'gitignore' should return results"
+    );
+    assert_eq!(results[0].file_path, ".gitignore");
+    assert!(
+        matches!(results[0].match_kind, FileMatchKind::PathFragment),
+        "query 'gitignore' should not promote .gitignore to ExactBasename through search_files"
+    );
+
+    let results = index
+        .search_files(".gitignore", &SearchFilter::default(), 10)
+        .unwrap()
+        .results;
+
+    assert!(
+        !results.is_empty(),
+        "query '.gitignore' should return results"
+    );
+    assert_eq!(results[0].file_path, ".gitignore");
+    assert!(
+        matches!(results[0].match_kind, FileMatchKind::ExactPath),
+        "query '.gitignore' should match .gitignore via ExactPath through search_files"
+    );
+
     // Query "gitignore" against file ".gitignore" — stem is empty, so NO ExactBasename
     let kind = classify_file_match("gitignore", "gitignore", ".gitignore");
     assert!(
@@ -197,6 +254,24 @@ fn test_search_files_hidden_file_suffix_not_promoted() {
 
 #[test]
 fn test_search_files_dotted_extension_file_classifies_correctly() {
+    let temp_dir = TempDir::new().unwrap();
+    let index = SearchIndex::create(temp_dir.path()).unwrap();
+
+    add_file_doc(&index, ".env.local", "dotenv");
+    index.commit().unwrap();
+
+    let results = index
+        .search_files(".env", &SearchFilter::default(), 10)
+        .unwrap()
+        .results;
+
+    assert!(!results.is_empty(), "query '.env' should return results");
+    assert_eq!(results[0].file_path, ".env.local");
+    assert!(
+        matches!(results[0].match_kind, FileMatchKind::ExactBasename),
+        "query '.env' should promote .env.local to ExactBasename through search_files"
+    );
+
     // .env.local → rsplit_once('.') gives (".env", "local")
     // Query ".env" matches stem ".env" → ExactBasename
     let kind = classify_file_match(".env", ".env", ".env.local");

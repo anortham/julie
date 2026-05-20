@@ -8,7 +8,7 @@ use std::collections::HashSet;
 use tantivy::tokenizer::{TokenStream, Tokenizer};
 use tracing::warn;
 
-use crate::search::tokenizer::CodeTokenizer;
+use crate::search::tokenizer::{CodeTokenizer, split_camel_case};
 
 use super::types::LineMatchStrategy;
 
@@ -368,16 +368,14 @@ fn normalized_literal_patterns(pattern: &str) -> Vec<String> {
 
     // CamelCase boundary: split into components, yield snake_case, kebab-case,
     // and flat-lowercase variants.
-    if has_camel_case_boundary(pattern) {
-        let components = split_camel_case_components(pattern);
-        if components.len() > 1 {
-            let snake = components.join("_");
-            push_unique_variant(&mut variants, snake.clone(), &pattern_lower);
-            let kebab = components.join("-");
-            push_unique_variant(&mut variants, kebab, &pattern_lower);
-            let flat = components.concat();
-            push_unique_variant(&mut variants, flat, &pattern_lower);
-        }
+    let components = split_case_components(pattern);
+    if components.len() > 1 {
+        let snake = components.join("_");
+        push_unique_variant(&mut variants, snake.clone(), &pattern_lower);
+        let kebab = components.join("-");
+        push_unique_variant(&mut variants, kebab, &pattern_lower);
+        let flat = components.concat();
+        push_unique_variant(&mut variants, flat, &pattern_lower);
     }
 
     // Existing punctuation-escape branch: feed its variants through lowercasing.
@@ -526,30 +524,35 @@ fn is_compound_term(term: &str) -> bool {
 }
 
 fn has_camel_case_boundary(term: &str) -> bool {
+    split_case_components(term).len() > 1
+}
+
+fn split_case_components(term: &str) -> Vec<String> {
+    let tokenizer_parts = split_camel_case(term);
+    if tokenizer_parts.len() > 1 {
+        return tokenizer_parts
+            .into_iter()
+            .map(|part| part.to_lowercase())
+            .collect();
+    }
+
+    let mut components = Vec::new();
+    let mut current = String::new();
     let mut previous_was_lower_or_digit = false;
 
     for ch in term.chars() {
-        if previous_was_lower_or_digit && ch.is_uppercase() {
-            return true;
-        }
-        previous_was_lower_or_digit = ch.is_lowercase() || ch.is_ascii_digit();
-    }
-
-    false
-}
-
-fn split_camel_case_components(term: &str) -> Vec<String> {
-    let mut components = Vec::new();
-    let mut current = String::new();
-
-    for ch in term.chars() {
-        if ch.is_uppercase() && !current.is_empty() {
+        if previous_was_lower_or_digit && ch.is_uppercase() && !current.is_empty() {
             components.push(std::mem::take(&mut current));
         }
         current.push(ch.to_ascii_lowercase());
+        previous_was_lower_or_digit = ch.is_lowercase() || ch.is_ascii_digit();
     }
     if !current.is_empty() {
         components.push(current);
+    }
+
+    if components.len() <= 1 {
+        return Vec::new();
     }
 
     components

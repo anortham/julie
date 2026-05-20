@@ -814,6 +814,26 @@ fn test_should_index_file_skips_lockfiles_by_name() {
 }
 
 #[test]
+fn test_should_index_file_accepts_cargo_lock() {
+    let tool = create_tool();
+    let blacklisted_exts: HashSet<&str> = BLACKLISTED_EXTENSIONS.iter().copied().collect();
+    let max_file_size = 1024 * 1024;
+    let temp_dir = TempDir::new().unwrap();
+    let path = temp_dir.path().join("Cargo.lock");
+
+    std::fs::write(&path, "version = 4\n").unwrap();
+
+    let result = tool
+        .should_index_file(&path, &blacklisted_exts, max_file_size, false)
+        .unwrap();
+
+    assert!(
+        result,
+        "Cargo.lock should be indexed as TOML; it is the Rust dependency manifest lockfile"
+    );
+}
+
+#[test]
 fn test_lockfiles_in_blacklisted_filenames() {
     assert!(
         BLACKLISTED_FILENAMES.contains(&"pnpm-lock.yaml"),

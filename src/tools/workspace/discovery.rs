@@ -1,5 +1,8 @@
 use crate::tools::shared::{BLACKLISTED_EXTENSIONS, BLACKLISTED_FILENAMES};
 use crate::tools::workspace::commands::ManageWorkspaceTool;
+use crate::tools::workspace::indexing::file_policy::{
+    allows_blacklisted_extension, should_index_path_candidate, supported_extensions_for_indexing,
+};
 use crate::utils::walk::{WalkConfig, build_walker};
 use anyhow::Result;
 use std::collections::HashMap;
@@ -100,6 +103,10 @@ impl ManageWorkspaceTool {
         skip_minified_check: bool,
     ) -> Result<bool> {
         // Skip blacklisted filenames (lockfiles with non-blacklisted extensions)
+        let extension_blacklist_allowed = file_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(allows_blacklisted_extension);
         if let Some(file_name) = file_path.file_name().and_then(|n| n.to_str()) {
             if BLACKLISTED_FILENAMES.contains(&file_name) {
                 return Ok(false);
@@ -121,7 +128,7 @@ impl ManageWorkspaceTool {
             .unwrap_or_default();
 
         // Skip blacklisted extensions
-        if blacklisted_exts.contains(extension.as_str()) {
+        if blacklisted_exts.contains(extension.as_str()) && !extension_blacklist_allowed {
             return Ok(false);
         }
 
@@ -152,12 +159,10 @@ impl ManageWorkspaceTool {
             return Ok(true);
         }
 
-        Ok(
-            crate::tools::workspace::indexing::file_policy::should_index_path_candidate(
-                file_path,
-                crate::tools::workspace::indexing::file_policy::supported_extensions_for_indexing(),
-            ),
-        )
+        Ok(should_index_path_candidate(
+            file_path,
+            supported_extensions_for_indexing(),
+        ))
     }
 
     /// Check if a file is minified (generated code we should skip)

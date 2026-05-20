@@ -157,10 +157,7 @@ fn classify_file_match(query: &str, normalized_query: &str, file_path: &str) -> 
 - `test_search_files_dotted_extension_file_classifies_correctly`: index `.env.local`; query `.env` promotes to ExactBasename via stem comparison.
 - Existing `test_search_files_prefers_exact_basename_over_fragment_matches` (extension included) must continue to pass — regression guard.
 
-**Test instrumentation note.** The current public `search_files` API returns ranked results without the `FileMatchKind` label. To assert on `match_kind` directly, either:
-- Add a `#[cfg(test)]` accessor that exposes `classify_file_match` for unit-level assertions; or
-- Verify behavior via rank ordering (ExactBasename outranks PathFragment).
-The first is preferred — direct assertions are less brittle than rank inference.
+**Test instrumentation note.** `FileSearchResult.match_kind` is exposed on public `search_files` results, so caller-facing tests should assert `match_kind` directly instead of inferring classification from rank ordering.
 
 ---
 

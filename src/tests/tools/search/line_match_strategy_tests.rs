@@ -472,6 +472,35 @@ mod line_match_strategy_tests {
         );
     }
 
+    #[test]
+    fn test_acronym_camel_case_query_matches_snake_case_line() {
+        let strategy = line_match_strategy("HTTPResponse");
+        assert!(
+            line_matches(&strategy, "let http_response = decode();"),
+            "acronym CamelCase query should match snake_case code line"
+        );
+    }
+
+    #[test]
+    fn test_mixed_acronym_camel_case_query_matches_snake_case_line() {
+        let strategy = line_match_strategy("getHTTPResponse");
+        assert!(
+            line_matches(&strategy, "fn get_http_response() -> Response {"),
+            "mixed acronym CamelCase query should preserve acronym word boundaries"
+        );
+    }
+
+    #[test]
+    fn test_filelevel_acronym_compound_does_not_match_single_subtoken_line() {
+        let strategy = LineMatchStrategy::FileLevel {
+            terms: vec!["HTTPResponse".to_string()],
+        };
+        assert!(
+            !line_matches(&strategy, "let response = decode();"),
+            "acronym compound term should not match a line containing only one subtoken"
+        );
+    }
+
     // ── Finding B: Same-line AND density boosting ──
 
     #[test]
@@ -519,6 +548,23 @@ mod line_match_strategy_tests {
         assert_eq!(
             matches[0].line_number, 2,
             "line with distinct terms should outrank repeated single term"
+        );
+    }
+
+    #[test]
+    fn test_filelevel_density_dedupes_repeated_query_terms_case_insensitively() {
+        use crate::tools::search::line_mode::collect_line_matches;
+        let strategy = LineMatchStrategy::FileLevel {
+            terms: vec!["Alpha".to_string(), "alpha".to_string(), "beta".to_string()],
+        };
+        let content = "beta only\nalpha only";
+        let mut matches = Vec::new();
+        collect_line_matches(&mut matches, content, "test.rs", &strategy, 10);
+        let line_numbers: Vec<usize> = matches.iter().map(|m| m.line_number).collect();
+        assert_eq!(
+            line_numbers,
+            vec![1, 2],
+            "case variants of the same query term should not inflate density"
         );
     }
 

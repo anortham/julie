@@ -761,7 +761,7 @@ pub(crate) fn collect_line_matches(
                 terms
                     .iter()
                     .map(|t| t.as_str())
-                    .filter(|t| seen.insert(*t))
+                    .filter(|t| seen.insert(t.to_lowercase()))
                     .collect()
             };
             if deduped_terms.is_empty() {

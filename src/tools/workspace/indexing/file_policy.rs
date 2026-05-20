@@ -49,6 +49,10 @@ pub(crate) fn supported_extensions_for_indexing() -> &'static HashSet<String> {
     })
 }
 
+pub(crate) fn allows_blacklisted_extension(file_name: &str) -> bool {
+    file_name.eq_ignore_ascii_case("Cargo.lock")
+}
+
 pub(crate) fn determine_extraction_mode(language: &str, content: &str) -> ExtractionMode {
     if content.trim().is_empty()
         || julie_extractors::language::get_tree_sitter_language(language).is_err()
@@ -81,6 +85,9 @@ pub(crate) fn should_index_path_candidate(
     if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
         if BLACKLISTED_FILENAMES.contains(&file_name) {
             return false;
+        }
+        if allows_blacklisted_extension(file_name) {
+            return true;
         }
     }
 
