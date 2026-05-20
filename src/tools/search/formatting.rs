@@ -127,36 +127,11 @@ pub fn format_definition_search_results(
     query: &str,
     response: &OptimizedResponse<Symbol>,
 ) -> String {
-    // Partition into name matches (exact or qualified component) and other matches.
-    // "Router" matches both "Router" (exact) and "Phoenix.Router" (last component).
-    let query_lower = query.to_lowercase();
-    let (mut exact, others): (Vec<&Symbol>, Vec<&Symbol>) = response
-        .results
-        .iter()
-        .partition(|s| is_definition_name_match(&s.name, &query_lower));
-
-    // No exact match → standard format
-    if exact.is_empty() {
+    let Some(DefinitionDisplayParts { exact, others }) =
+        definition_display_parts(query, &response.results)
+    else {
         return format_lean_search_results(query, response);
-    }
-
-    let mut other_candidates = others;
-    if exact
-        .iter()
-        .any(|symbol| is_promotable_definition_match(symbol))
-    {
-        let (promoted, demoted): (Vec<&Symbol>, Vec<&Symbol>) = exact
-            .into_iter()
-            .partition(|symbol| is_promotable_definition_match(symbol));
-        exact = promoted;
-        other_candidates.extend(demoted);
-    }
-
-    let query_key = normalized_definition_match_key(&query_lower);
-    let others: Vec<&Symbol> = other_candidates
-        .into_iter()
-        .filter(|symbol| is_related_definition_other_match(symbol, &query_lower, &query_key))
-        .collect();
+    };
 
     let mut output = String::new();
 
@@ -243,7 +218,14 @@ fn write_definition_other_match_snippet(output: &mut String, symbol: &Symbol, in
 /// Saves 70-90% tokens compared to full format.
 pub fn format_locations_only(query: &str, response: &OptimizedResponse<Symbol>) -> String {
     let mut output = String::new();
-    let count = response.results.len();
+    let display_results: Vec<&Symbol> = if let Some(DefinitionDisplayParts { exact, others }) =
+        definition_display_parts(query, &response.results)
+    {
+        exact.into_iter().chain(others).collect()
+    } else {
+        response.results.iter().collect()
+    };
+    let count = display_results.len();
     let total = response.total_found;
 
     if count == total {
@@ -255,7 +237,7 @@ pub fn format_locations_only(query: &str, response: &OptimizedResponse<Symbol>) 
         ));
     }
 
-    for symbol in &response.results {
+    for symbol in display_results {
         let kind = symbol.kind.to_string();
         output.push_str(&format!(
             "  {}:{} ({})\n",
@@ -264,6 +246,47 @@ pub fn format_locations_only(query: &str, response: &OptimizedResponse<Symbol>) 
     }
 
     output.trim_end().to_string()
+}
+
+struct DefinitionDisplayParts<'a> {
+    exact: Vec<&'a Symbol>,
+    others: Vec<&'a Symbol>,
+}
+
+fn definition_display_parts<'a>(
+    query: &str,
+    symbols: &'a [Symbol],
+) -> Option<DefinitionDisplayParts<'a>> {
+    // Partition into name matches (exact or qualified component) and other matches.
+    // "Router" matches both "Router" (exact) and "Phoenix.Router" (last component).
+    let query_lower = query.to_lowercase();
+    let (mut exact, others): (Vec<&Symbol>, Vec<&Symbol>) = symbols
+        .iter()
+        .partition(|s| is_definition_name_match(&s.name, &query_lower));
+
+    if exact.is_empty() {
+        return None;
+    }
+
+    let mut other_candidates = others;
+    if exact
+        .iter()
+        .any(|symbol| is_promotable_definition_match(symbol))
+    {
+        let (promoted, demoted): (Vec<&Symbol>, Vec<&Symbol>) = exact
+            .into_iter()
+            .partition(|symbol| is_promotable_definition_match(symbol));
+        exact = promoted;
+        other_candidates.extend(demoted);
+    }
+
+    let query_key = normalized_definition_match_key(&query_lower);
+    let others = other_candidates
+        .into_iter()
+        .filter(|symbol| is_related_definition_other_match(symbol, &query_lower, &query_key))
+        .collect();
+
+    Some(DefinitionDisplayParts { exact, others })
 }
 
 pub fn format_file_locations_only(query: &str, response: &OptimizedResponse<SearchHit>) -> String {

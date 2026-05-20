@@ -7,7 +7,8 @@
 mod tests {
     use crate::extractors::base::{Symbol, SymbolKind, Visibility};
     use crate::tools::search::formatting::{
-        format_definition_search_results, format_lean_search_results, is_definition_name_match,
+        format_definition_search_results, format_lean_search_results, format_locations_only,
+        is_definition_name_match,
     };
     use crate::tools::shared::OptimizedResponse;
 
@@ -229,6 +230,66 @@ mod tests {
         assert!(
             other_matches.contains("src/tests/tools/search/lean_format_tests.rs:492"),
             "import should remain visible as a related match. Output:\n{}",
+            output
+        );
+    }
+
+    #[test]
+    fn test_locations_mode_uses_exact_definition_cleanup() {
+        let symbols = vec![
+            make_symbol(
+                "format_definition_search_results",
+                SymbolKind::Function,
+                "src/tools/search/formatting.rs",
+                126,
+                Some(
+                    "pub fn format_definition_search_results(query: &str, response: &OptimizedResponse<Symbol>) -> String",
+                ),
+                Some(Visibility::Public),
+                None,
+            ),
+            make_symbol(
+                "format_lean_refs_results",
+                SymbolKind::Function,
+                "src/tools/navigation/formatting.rs",
+                48,
+                Some("pub fn format_lean_refs_results(...) -> String"),
+                Some(Visibility::Public),
+                None,
+            ),
+            make_symbol(
+                "format_definition_search_results",
+                SymbolKind::Import,
+                "src/tests/tools/search/lean_format_tests.rs",
+                492,
+                Some("use crate::tools::search::formatting::format_definition_search_results;"),
+                Some(Visibility::Public),
+                None,
+            ),
+        ];
+
+        let response = OptimizedResponse::with_total(symbols, 47);
+        let output = format_locations_only("format_definition_search_results", &response);
+
+        assert!(
+            output
+                .contains("2 locations for \"format_definition_search_results\" (showing 2 of 47)"),
+            "locations header should reflect exact-definition cleanup. Output:\n{}",
+            output
+        );
+        assert!(
+            output.contains("src/tools/search/formatting.rs:126 (function)"),
+            "real declaration should remain visible. Output:\n{}",
+            output
+        );
+        assert!(
+            output.contains("src/tests/tools/search/lean_format_tests.rs:492 (import)"),
+            "exact import should remain visible after the declaration. Output:\n{}",
+            output
+        );
+        assert!(
+            !output.contains("src/tools/navigation/formatting.rs:48"),
+            "loose token-only result should be suppressed. Output:\n{}",
             output
         );
     }

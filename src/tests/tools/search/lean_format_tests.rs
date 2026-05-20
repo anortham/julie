@@ -261,10 +261,10 @@ mod tests {
             total_found: 2,
         };
 
-        let output = format_locations_only("call_tool", &response);
+        let output = format_locations_only("tool", &response);
 
         // Header should mention count and query
-        assert!(output.contains("2 locations for \"call_tool\""));
+        assert!(output.contains("2 locations for \"tool\""));
 
         // Should contain file:line for each result
         assert!(output.contains("src/tools/search/mod.rs:42"));
