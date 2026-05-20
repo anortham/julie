@@ -2,7 +2,7 @@
 //!
 //! Provides formatting utilities for search tool responses.
 
-use crate::extractors::Symbol;
+use crate::extractors::{Symbol, SymbolKind};
 use crate::search::index::FileMatchKind;
 use crate::search::scoring::is_test_path;
 use crate::tools::search::trace::SearchHit;
@@ -130,7 +130,7 @@ pub fn format_definition_search_results(
     // Partition into name matches (exact or qualified component) and other matches.
     // "Router" matches both "Router" (exact) and "Phoenix.Router" (last component).
     let query_lower = query.to_lowercase();
-    let (exact, others): (Vec<&Symbol>, Vec<&Symbol>) = response
+    let (mut exact, others): (Vec<&Symbol>, Vec<&Symbol>) = response
         .results
         .iter()
         .partition(|s| is_definition_name_match(&s.name, &query_lower));
@@ -140,8 +140,20 @@ pub fn format_definition_search_results(
         return format_lean_search_results(query, response);
     }
 
+    let mut other_candidates = others;
+    if exact
+        .iter()
+        .any(|symbol| is_promotable_definition_match(symbol))
+    {
+        let (promoted, demoted): (Vec<&Symbol>, Vec<&Symbol>) = exact
+            .into_iter()
+            .partition(|symbol| is_promotable_definition_match(symbol));
+        exact = promoted;
+        other_candidates.extend(demoted);
+    }
+
     let query_key = normalized_definition_match_key(&query_lower);
-    let others: Vec<&Symbol> = others
+    let others: Vec<&Symbol> = other_candidates
         .into_iter()
         .filter(|symbol| is_related_definition_other_match(symbol, &query_lower, &query_key))
         .collect();
@@ -359,6 +371,10 @@ fn is_related_definition_other_match(symbol: &Symbol, query_lower: &str, query_k
         || symbol.signature.as_deref().is_some_and(|signature| {
             definition_text_matches_query(signature, query_lower, query_key)
         })
+}
+
+fn is_promotable_definition_match(symbol: &Symbol) -> bool {
+    !matches!(symbol.kind, SymbolKind::Import | SymbolKind::Export)
 }
 
 fn definition_text_matches_query(text: &str, query_lower: &str, query_key: &str) -> bool {

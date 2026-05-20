@@ -183,6 +183,57 @@ mod tests {
     }
 
     #[test]
+    fn test_exact_match_promotes_declaration_before_import_matches() {
+        let symbols = vec![
+            make_symbol(
+                "format_definition_search_results",
+                SymbolKind::Function,
+                "src/tools/search/formatting.rs",
+                126,
+                Some(
+                    "pub fn format_definition_search_results(query: &str, response: &OptimizedResponse<Symbol>) -> String",
+                ),
+                Some(Visibility::Public),
+                Some(
+                    "pub fn format_definition_search_results(query: &str, response: &OptimizedResponse<Symbol>) -> String",
+                ),
+            ),
+            make_symbol(
+                "format_definition_search_results",
+                SymbolKind::Import,
+                "src/tests/tools/search/lean_format_tests.rs",
+                492,
+                Some("use crate::tools::search::formatting::format_definition_search_results;"),
+                Some(Visibility::Public),
+                Some("use crate::tools::search::formatting::format_definition_search_results;"),
+            ),
+        ];
+
+        let response = OptimizedResponse::new(symbols);
+        let output =
+            format_definition_search_results("format_definition_search_results", &response);
+        let (promoted, other_matches) = output
+            .split_once("\n\nOther matches:")
+            .expect("import matches should move below the promoted declaration");
+
+        assert!(
+            promoted.contains("src/tools/search/formatting.rs:126"),
+            "declaration should remain promoted. Output:\n{}",
+            output
+        );
+        assert!(
+            !promoted.contains("src/tests/tools/search/lean_format_tests.rs"),
+            "import should not appear in the promoted declaration block. Output:\n{}",
+            output
+        );
+        assert!(
+            other_matches.contains("src/tests/tools/search/lean_format_tests.rs:492"),
+            "import should remain visible as a related match. Output:\n{}",
+            output
+        );
+    }
+
+    #[test]
     fn test_no_exact_match_uses_standard_format() {
         let symbols = vec![
             make_symbol(
