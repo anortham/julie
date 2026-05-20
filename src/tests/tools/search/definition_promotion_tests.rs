@@ -96,6 +96,55 @@ mod tests {
     }
 
     #[test]
+    fn test_exact_match_suppresses_loose_token_only_other_matches() {
+        let symbols = vec![
+            make_symbol(
+                "rank_file_search_result",
+                SymbolKind::Function,
+                "src/search/index.rs",
+                1614,
+                Some(
+                    "pub(crate) fn rank_file_search_result(query: &str, result: &FileSearchResult) -> u8",
+                ),
+                Some(Visibility::Public),
+                Some(
+                    "pub(crate) fn rank_file_search_result(query: &str, result: &FileSearchResult) -> u8",
+                ),
+            ),
+            make_symbol(
+                "run_get_context_pipeline",
+                SymbolKind::Function,
+                "src/tools/get_context/pipeline.rs",
+                23,
+                Some("pub async fn run_get_context_pipeline(...)"),
+                Some(Visibility::Public),
+                Some(
+                    "/// Run the full get_context pipeline: search -> rank -> expand -> allocate -> format.",
+                ),
+            ),
+        ];
+
+        let response = OptimizedResponse::new(symbols);
+        let output = format_definition_search_results("rank_file_search_result", &response);
+
+        assert!(
+            output.starts_with("Definition found: rank_file_search_result"),
+            "exact match should still be promoted. Output:\n{}",
+            output
+        );
+        assert!(
+            !output.contains("Other matches:"),
+            "loose token-only matches should not clutter exact symbol lookups. Output:\n{}",
+            output
+        );
+        assert!(
+            !output.contains("src/tools/get_context/pipeline.rs"),
+            "unrelated token-only match should be suppressed. Output:\n{}",
+            output
+        );
+    }
+
+    #[test]
     fn test_no_exact_match_uses_standard_format() {
         let symbols = vec![
             make_symbol(

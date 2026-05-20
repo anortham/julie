@@ -140,6 +140,12 @@ pub fn format_definition_search_results(
         return format_lean_search_results(query, response);
     }
 
+    let query_key = normalized_definition_match_key(&query_lower);
+    let others: Vec<&Symbol> = others
+        .into_iter()
+        .filter(|symbol| is_related_definition_other_match(symbol, &query_lower, &query_key))
+        .collect();
+
     let mut output = String::new();
 
     // === Promoted section ===
@@ -337,6 +343,27 @@ pub(crate) fn is_definition_name_match(symbol_name: &str, query_lower: &str) -> 
         }
     }
     false
+}
+
+fn is_related_definition_other_match(symbol: &Symbol, query_lower: &str, query_key: &str) -> bool {
+    definition_text_matches_query(&symbol.name, query_lower, query_key)
+        || symbol.signature.as_deref().is_some_and(|signature| {
+            definition_text_matches_query(signature, query_lower, query_key)
+        })
+}
+
+fn definition_text_matches_query(text: &str, query_lower: &str, query_key: &str) -> bool {
+    let text_lower = text.to_lowercase();
+    text_lower.contains(query_lower)
+        || (!query_key.is_empty()
+            && normalized_definition_match_key(&text_lower).contains(query_key))
+}
+
+fn normalized_definition_match_key(text: &str) -> String {
+    text.chars()
+        .filter(|ch| ch.is_alphanumeric())
+        .flat_map(|ch| ch.to_lowercase())
+        .collect()
 }
 
 fn write_file_header(
