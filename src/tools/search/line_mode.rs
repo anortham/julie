@@ -13,7 +13,7 @@ use crate::handler::JulieServerHandler;
 use crate::search::SearchFilter;
 use crate::search::index::SearchIndex;
 use crate::search::query_parse::{QueryIntent, parse_query};
-use crate::search::scoring::is_nl_like_query;
+use crate::search::scoring::{is_nl_like_query, is_test_path};
 use crate::tools::navigation::resolution::WorkspaceTarget;
 
 use super::hint_formatter::build_scope_rescue_header;
@@ -96,9 +96,20 @@ pub(crate) fn query_uses_file_level_header(query: &str) -> bool {
     )
 }
 
-fn effective_content_exclude_tests(query: &str, exclude_tests: Option<bool>) -> bool {
+fn effective_content_exclude_tests(
+    query: &str,
+    file_pattern: &Option<String>,
+    exclude_tests: Option<bool>,
+) -> bool {
     if let Some(explicit) = exclude_tests {
         return explicit;
+    }
+
+    if file_pattern
+        .as_deref()
+        .is_some_and(|pattern| is_test_path(pattern))
+    {
+        return false;
     }
 
     parse_query(query).intent != QueryIntent::Test && is_nl_like_query(query)
@@ -548,7 +559,7 @@ pub(crate) async fn line_mode_matches(
 ) -> Result<LineModeSearchResult> {
     debug!("📄 Line-level search for: '{}'", query);
 
-    let exclude_test_files = effective_content_exclude_tests(query, exclude_tests);
+    let exclude_test_files = effective_content_exclude_tests(query, file_pattern, exclude_tests);
     let workspace_label = match workspace_target {
         WorkspaceTarget::Primary => "primary".to_string(),
         WorkspaceTarget::Target(id) => id.clone(),

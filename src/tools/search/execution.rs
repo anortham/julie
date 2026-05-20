@@ -3,7 +3,7 @@ use std::cmp::Ordering;
 use anyhow::{Result, bail};
 
 use crate::handler::JulieServerHandler;
-use crate::search::index::{FileMatchKind, SearchFilter};
+use crate::search::index::{SearchFilter, rank_file_search_result};
 use crate::search::scoring::{file_path_priority_bucket, is_test_path};
 use crate::tools::navigation::resolution::WorkspaceTarget;
 
@@ -94,54 +94,51 @@ fn sort_hits_by_score_desc(hits: &mut [SearchHit]) {
 }
 
 /// Sort file-target hits by:
-/// 1. `match_kind` (ExactPath < ExactBasename < PathFragment < Glob)
+/// 1. File-search rank (exact path, hidden-directory match, match kind)
 /// 2. Path-role bucket (source < test < docs < fixture), inverted for
 ///    test-intent queries so tests rank above source — fixes the eros-corpus
 ///    test-intent category where julie pushed the expected test below its
 ///    production counterpart.
 /// 3. Score descending
 /// 4. File path lexicographic (deterministic tie-break)
-pub(crate) fn sort_file_hits(hits: &mut [SearchHit], test_intent: bool) {
+pub(crate) fn sort_file_hits(hits: &mut [SearchHit], test_intent: bool, query: &str) {
     hits.sort_by(|left, right| {
-        file_match_rank(
-            left.as_file_result()
-                .map(|result| result.match_kind)
-                .unwrap_or(FileMatchKind::PathFragment),
-        )
-        .cmp(&file_match_rank(
-            right
-                .as_file_result()
-                .map(|result| result.match_kind)
-                .unwrap_or(FileMatchKind::PathFragment),
-        ))
-        .then_with(|| {
-            let bucket = |path: &str| -> u8 {
-                if test_intent {
-                    // For test-intent queries, swap: test paths win over source.
-                    // Docs / fixtures still get their normal demotion.
-                    if is_test_path(path) {
-                        0
-                    } else if crate::search::scoring::is_docs_path(path) {
-                        2
-                    } else if crate::search::scoring::is_fixture_path(path) {
-                        3
+        rank_file_hit(query, left)
+            .cmp(&rank_file_hit(query, right))
+            .then_with(|| {
+                let bucket = |path: &str| -> u8 {
+                    if test_intent {
+                        // For test-intent queries, swap: test paths win over source.
+                        // Docs / fixtures still get their normal demotion.
+                        if is_test_path(path) {
+                            0
+                        } else if crate::search::scoring::is_docs_path(path) {
+                            2
+                        } else if crate::search::scoring::is_fixture_path(path) {
+                            3
+                        } else {
+                            1
+                        }
                     } else {
-                        1
+                        file_path_priority_bucket(path)
                     }
-                } else {
-                    file_path_priority_bucket(path)
-                }
-            };
-            bucket(&left.file).cmp(&bucket(&right.file))
-        })
-        .then_with(|| {
-            right
-                .score
-                .partial_cmp(&left.score)
-                .unwrap_or(Ordering::Equal)
-        })
-        .then_with(|| left.file.cmp(&right.file))
+                };
+                bucket(&left.file).cmp(&bucket(&right.file))
+            })
+            .then_with(|| {
+                right
+                    .score
+                    .partial_cmp(&left.score)
+                    .unwrap_or(Ordering::Equal)
+            })
+            .then_with(|| left.file.cmp(&right.file))
     });
+}
+
+fn rank_file_hit(query: &str, hit: &SearchHit) -> u8 {
+    hit.as_file_result()
+        .map(|result| rank_file_search_result(query, result))
+        .unwrap_or(3)
 }
 
 async fn execute_definition_search(
@@ -412,6 +409,7 @@ async fn execute_file_search(
     sort_file_hits(
         &mut hits,
         crate::search::scoring::has_test_intent(params.query),
+        params.query,
     );
     hits.truncate(base_limit);
 
@@ -422,13 +420,4 @@ async fn execute_file_search(
         "fast_search_files",
         SearchExecutionKind::Files,
     ))
-}
-
-fn file_match_rank(kind: FileMatchKind) -> u8 {
-    match kind {
-        FileMatchKind::ExactPath => 0,
-        FileMatchKind::ExactBasename => 1,
-        FileMatchKind::PathFragment => 2,
-        FileMatchKind::Glob => 3,
-    }
 }

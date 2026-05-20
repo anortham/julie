@@ -93,6 +93,43 @@ fn test_search_files_matches_glob_like_queries() {
 }
 
 #[test]
+fn test_search_files_prefers_hidden_directory_path_for_hidden_directory_query() {
+    let temp_dir = TempDir::new().unwrap();
+    let index = SearchIndex::create(temp_dir.path()).unwrap();
+
+    add_file_doc(&index, "Cargo.toml", "toml");
+    add_file_doc(&index, "Cargo.lock", "toml");
+    add_file_doc(&index, ".cargo/config.toml", "toml");
+    index.commit().unwrap();
+
+    let results = index
+        .search_files(".cargo", &SearchFilter::default(), 10)
+        .unwrap()
+        .results;
+
+    assert!(
+        results.len() >= 3,
+        "query '.cargo' should return the hidden directory path and root Cargo files"
+    );
+    assert_eq!(
+        results[0].file_path, ".cargo/config.toml",
+        "hidden directory path should rank ahead of root Cargo files"
+    );
+    assert!(
+        results[1..]
+            .iter()
+            .any(|result| result.file_path == "Cargo.toml"),
+        "Cargo.toml should still be returned behind the hidden directory path"
+    );
+    assert!(
+        results[1..]
+            .iter()
+            .any(|result| result.file_path == "Cargo.lock"),
+        "Cargo.lock should still be returned behind the hidden directory path"
+    );
+}
+
+#[test]
 fn test_open_or_create_recreates_when_compat_marker_version_is_stale() {
     let temp_dir = TempDir::new().unwrap();
     let index_path = temp_dir.path().join("tantivy");

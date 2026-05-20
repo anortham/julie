@@ -891,8 +891,8 @@ impl SearchIndex {
         }
 
         results.sort_by(|left, right| {
-            file_match_rank(left.match_kind)
-                .cmp(&file_match_rank(right.match_kind))
+            file_search_rank(&normalized_query, left)
+                .cmp(&file_search_rank(&normalized_query, right))
                 .then_with(|| right.score.total_cmp(&left.score))
                 .then_with(|| left.file_path.cmp(&right.file_path))
         });
@@ -1609,4 +1609,51 @@ fn file_match_rank(kind: FileMatchKind) -> u8 {
         FileMatchKind::PathFragment => 2,
         FileMatchKind::Glob => 3,
     }
+}
+
+pub(crate) fn rank_file_search_result(query: &str, result: &FileSearchResult) -> u8 {
+    let normalized_query = normalize_file_path(query.trim());
+    file_search_rank(&normalized_query, result)
+}
+
+fn file_search_rank(normalized_query: &str, result: &FileSearchResult) -> u8 {
+    if result.match_kind != FileMatchKind::ExactPath
+        && hidden_directory_path_matches(normalized_query, &result.file_path)
+    {
+        return 1;
+    }
+
+    match result.match_kind {
+        FileMatchKind::ExactPath => 0,
+        _ => file_match_rank(result.match_kind) + 1,
+    }
+}
+
+fn hidden_directory_path_matches(normalized_query: &str, file_path: &str) -> bool {
+    let query_path = normalized_query.trim_matches('/');
+    if query_path.is_empty() {
+        return false;
+    }
+
+    let query_basename = basename_for_path(query_path);
+    if !is_hidden_path_component(query_basename) {
+        return false;
+    }
+
+    if query_path.contains('/') {
+        return file_path == query_path
+            || file_path
+                .strip_prefix(query_path)
+                .is_some_and(|suffix| suffix.starts_with('/'));
+    }
+
+    file_path
+        .split('/')
+        .any(|component| component == query_basename)
+}
+
+fn is_hidden_path_component(component: &str) -> bool {
+    component
+        .strip_prefix('.')
+        .is_some_and(|suffix| !suffix.is_empty())
 }

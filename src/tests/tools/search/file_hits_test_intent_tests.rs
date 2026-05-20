@@ -41,7 +41,11 @@ fn test_test_intent_ranks_test_path_above_source() {
         ),
     ];
 
-    sort_file_hits(&mut hits, /* test_intent */ true);
+    sort_file_hits(
+        &mut hits,
+        /* test_intent */ true,
+        "test extraction eval",
+    );
 
     assert_eq!(
         hits[0].file,
@@ -60,7 +64,7 @@ fn test_non_test_intent_still_ranks_source_above_test() {
         make_file_hit("src/some_module.py", FileMatchKind::PathFragment, 1.0),
     ];
 
-    sort_file_hits(&mut hits, /* test_intent */ false);
+    sort_file_hits(&mut hits, /* test_intent */ false, "some module");
 
     assert_eq!(
         hits[0].file, "src/some_module.py",
@@ -79,7 +83,7 @@ fn test_test_intent_still_demotes_docs_and_fixtures() {
         make_file_hit("tests/test_module.py", FileMatchKind::PathFragment, 1.0),
     ];
 
-    sort_file_hits(&mut hits, /* test_intent */ true);
+    sort_file_hits(&mut hits, /* test_intent */ true, "test module");
 
     // Expected order: test (0), source (1), docs (2), fixtures (3)
     assert_eq!(hits[0].file, "tests/test_module.py", "test ranks #1");
@@ -105,7 +109,7 @@ fn test_test_intent_preserves_match_kind_priority() {
         make_file_hit("tests/test_module.py", FileMatchKind::PathFragment, 1.0),
     ];
 
-    sort_file_hits(&mut hits, /* test_intent */ true);
+    sort_file_hits(&mut hits, /* test_intent */ true, "test module");
 
     assert_eq!(
         hits[0].file, "src/module.py",

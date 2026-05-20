@@ -10,6 +10,7 @@ use crate::mcp_compat::CallToolResult;
 use crate::search::index::{SearchFilter, SearchIndex};
 use crate::tools::search::FastSearchTool;
 use crate::tools::search::text_search::definition_search_with_index_for_test;
+use crate::tools::search::trace::ZeroHitReason;
 use crate::tools::workspace::ManageWorkspaceTool;
 
 fn extract_text(result: &CallToolResult) -> String {
@@ -254,6 +255,82 @@ async fn content_nl_default_excludes_tests_but_explicit_false_includes_them() ->
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn content_auto_exclude_tests_respects_explicit_test_file_pattern() -> Result<()> {
+    let temp_dir = TempDir::new()?;
+    let workspace_path = temp_dir.path();
+    fs::create_dir_all(workspace_path.join("src/tests"))?;
+    fs::write(
+        workspace_path.join("src/tests/query_density_test.rs"),
+        "#[test]\nfn query_density_terms() {\n    let note = \"Density repeated query terms case insensitive\";\n}\n",
+    )?;
+
+    let handler = index_workspace(workspace_path).await?;
+    let query = "density repeated query terms case insensitive";
+
+    let scoped_to_tests = FastSearchTool {
+        query: query.to_string(),
+        search_target: "content".to_string(),
+        language: Some("rust".to_string()),
+        file_pattern: Some("src/tests/**".to_string()),
+        limit: 10,
+        workspace: Some("primary".to_string()),
+        context_lines: Some(0),
+        exclude_tests: None,
+        ..Default::default()
+    }
+    .execute_with_trace(&handler)
+    .await?
+    .execution
+    .expect("content search should populate execution trace");
+
+    assert!(
+        scoped_to_tests
+            .hits
+            .iter()
+            .any(|hit| hit.file == "src/tests/query_density_test.rs"),
+        "auto exclude_tests should not filter an explicit test file_pattern, got hits: {:?}, zero_hit_reason: {:?}",
+        scoped_to_tests
+            .hits
+            .iter()
+            .map(|hit| hit.file.as_str())
+            .collect::<Vec<_>>(),
+        scoped_to_tests.trace.zero_hit_reason
+    );
+    assert_eq!(scoped_to_tests.trace.zero_hit_reason, None);
+
+    let unscoped = FastSearchTool {
+        query: query.to_string(),
+        search_target: "content".to_string(),
+        language: Some("rust".to_string()),
+        limit: 10,
+        workspace: Some("primary".to_string()),
+        context_lines: Some(0),
+        exclude_tests: None,
+        ..Default::default()
+    }
+    .execute_with_trace(&handler)
+    .await?
+    .execution
+    .expect("content search should populate execution trace");
+
+    assert!(
+        unscoped.hits.is_empty(),
+        "unscoped NL auto exclude_tests should still filter tests, got hits: {:?}",
+        unscoped
+            .hits
+            .iter()
+            .map(|hit| hit.file.as_str())
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(
+        unscoped.trace.zero_hit_reason,
+        Some(ZeroHitReason::TestFiltered)
+    );
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn content_test_intent_keeps_and_ranks_test_files() -> Result<()> {
     let temp_dir = TempDir::new()?;
     let workspace_path = temp_dir.path();
@@ -486,6 +563,53 @@ async fn file_search_missing_index_names_file_mode() -> Result<()> {
     assert!(
         !text.contains("Definition search requires"),
         "file mode should not report a definition-search error, got:\n{text}"
+    );
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn file_search_preserves_hidden_directory_ranking_in_tool_output() -> Result<()> {
+    unsafe {
+        std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "0");
+    }
+
+    let temp_dir = TempDir::new()?;
+    let workspace_path = temp_dir.path();
+    fs::create_dir_all(workspace_path.join(".cargo"))?;
+    fs::write(
+        workspace_path.join(".cargo/config.toml"),
+        "[build]\nrustflags = []\n",
+    )?;
+    fs::write(
+        workspace_path.join("Cargo.toml"),
+        "[package]\nname = \"dogfood\"\nversion = \"0.1.0\"\n",
+    )?;
+    fs::write(workspace_path.join("Cargo.lock"), "version = 4\n")?;
+
+    let handler = index_workspace(workspace_path).await?;
+    let execution = FastSearchTool {
+        query: ".cargo".to_string(),
+        search_target: "files".to_string(),
+        limit: 10,
+        workspace: Some("primary".to_string()),
+        context_lines: None,
+        ..Default::default()
+    }
+    .execute_with_trace(&handler)
+    .await?
+    .execution
+    .expect("file search should populate execution trace");
+
+    assert_eq!(
+        execution.hits.first().map(|hit| hit.file.as_str()),
+        Some(".cargo/config.toml"),
+        "fast_search file mode should preserve hidden-directory ranking, got: {:?}",
+        execution
+            .hits
+            .iter()
+            .map(|hit| hit.file.as_str())
+            .collect::<Vec<_>>()
     );
 
     Ok(())
