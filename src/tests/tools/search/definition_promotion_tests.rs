@@ -145,6 +145,44 @@ mod tests {
     }
 
     #[test]
+    fn test_exact_match_other_matches_prefer_signature_over_empty_context() {
+        let symbols = vec![
+            make_symbol(
+                "SearchIndex",
+                SymbolKind::Struct,
+                "src/search/index.rs",
+                261,
+                Some("pub struct SearchIndex"),
+                Some(Visibility::Public),
+                Some("pub struct SearchIndex { ... }"),
+            ),
+            make_symbol(
+                "SearchIndexOpenOutcome",
+                SymbolKind::Struct,
+                "src/search/index.rs",
+                234,
+                Some("pub struct SearchIndexOpenOutcome"),
+                Some(Visibility::Public),
+                Some("}"),
+            ),
+        ];
+
+        let response = OptimizedResponse::new(symbols);
+        let output = format_definition_search_results("SearchIndex", &response);
+
+        assert!(
+            output.contains("Other matches:"),
+            "related SearchIndex symbols should remain visible. Output:\n{}",
+            output
+        );
+        assert!(
+            output.contains("pub struct SearchIndexOpenOutcome"),
+            "other matches should prefer signature over empty context. Output:\n{}",
+            output
+        );
+    }
+
+    #[test]
     fn test_no_exact_match_uses_standard_format() {
         let symbols = vec![
             make_symbol(

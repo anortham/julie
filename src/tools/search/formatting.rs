@@ -194,20 +194,12 @@ pub fn format_definition_search_results(
             if symbols.len() == 1 {
                 let sym = symbols[0];
                 output.push_str(&format!("{}:{}\n", file_path, sym.start_line));
-                if let Some(ctx) = &sym.code_context {
-                    for line in ctx.lines() {
-                        output.push_str(&format!("  {}\n", line));
-                    }
-                }
+                write_definition_other_match_snippet(&mut output, sym, "  ");
             } else {
                 output.push_str(&format!("{}:\n", file_path));
                 for sym in symbols.iter() {
                     output.push_str(&format!("  :{}\n", sym.start_line));
-                    if let Some(ctx) = &sym.code_context {
-                        for line in ctx.lines() {
-                            output.push_str(&format!("    {}\n", line));
-                        }
-                    }
+                    write_definition_other_match_snippet(&mut output, sym, "    ");
                     output.push('\n');
                 }
             }
@@ -216,6 +208,23 @@ pub fn format_definition_search_results(
     }
 
     output.trim_end().to_string()
+}
+
+fn write_definition_other_match_snippet(output: &mut String, symbol: &Symbol, indent: &str) {
+    if let Some(signature) = symbol
+        .signature
+        .as_deref()
+        .filter(|signature| !signature.trim().is_empty())
+    {
+        output.push_str(&format!("{}{}\n", indent, signature));
+        return;
+    }
+
+    if let Some(ctx) = &symbol.code_context {
+        for line in ctx.lines() {
+            output.push_str(&format!("{}{}\n", indent, line));
+        }
+    }
 }
 
 /// Format search results as file:line locations only (no code context).
