@@ -203,7 +203,7 @@ pub fn line_match_strategy(query: &str) -> LineMatchStrategy {
         || trimmed.contains(" AND ")
         || trimmed.contains(" NOT ")
     {
-        return LineMatchStrategy::Substring(trimmed.to_lowercase());
+        return LineMatchStrategy::Substring(trimmed.to_string());
     }
 
     if let Some(terms) = clean_or_disjunction_terms(trimmed) {
@@ -211,14 +211,14 @@ pub fn line_match_strategy(query: &str) -> LineMatchStrategy {
     }
 
     if trimmed.contains(" OR ") {
-        return LineMatchStrategy::Substring(trimmed.to_lowercase());
+        return LineMatchStrategy::Substring(trimmed.to_string());
     }
 
     let words: Vec<&str> = trimmed.split_whitespace().collect();
 
     // Single word (possibly compound like files_by_language) → substring match
     if words.len() == 1 {
-        return LineMatchStrategy::Substring(trimmed.to_lowercase());
+        return LineMatchStrategy::Substring(trimmed.to_string());
     }
 
     // Multi-word: check for exclusion tokens
@@ -227,9 +227,9 @@ pub fn line_match_strategy(query: &str) -> LineMatchStrategy {
 
     for word in &words {
         if word.starts_with('-') && word.len() > 1 {
-            excluded.push(word[1..].to_lowercase());
+            excluded.push(word[1..].to_string());
         } else if !word.is_empty() {
-            required.push(word.to_lowercase());
+            required.push(word.to_string());
         }
     }
 
@@ -240,7 +240,7 @@ pub fn line_match_strategy(query: &str) -> LineMatchStrategy {
 
     // Multi-word without exclusions → FileLevel (cross-line OR, Tantivy guarantees file-level AND)
     if required.is_empty() {
-        LineMatchStrategy::Substring(trimmed.to_lowercase())
+        LineMatchStrategy::Substring(trimmed.to_string())
     } else {
         LineMatchStrategy::FileLevel { terms: required }
     }
@@ -271,12 +271,7 @@ pub(crate) fn clean_or_disjunction_terms(query: &str) -> Option<Vec<String>> {
         return None;
     }
 
-    Some(
-        branches
-            .iter()
-            .map(|branch| branch.to_lowercase())
-            .collect(),
-    )
+    Some(branches.iter().map(|branch| branch.to_string()).collect())
 }
 
 /// Keep the boolean OR heuristic narrow. Hyphenated terms are deliberately
@@ -331,7 +326,8 @@ fn line_matches_literal(line: &str, pattern: &str) -> bool {
     }
 
     let line_lower = line.to_lowercase();
-    if line_lower.contains(pattern) {
+    let pattern_lower = pattern.to_lowercase();
+    if line_lower.contains(&pattern_lower) {
         return true;
     }
 
@@ -344,14 +340,61 @@ fn line_matches_literal(line: &str, pattern: &str) -> bool {
 
 fn normalized_literal_patterns(pattern: &str) -> Vec<String> {
     let mut variants = Vec::new();
-    push_unique_variant(&mut variants, pattern.replace('-', "_"), pattern);
-    push_unique_variant(&mut variants, pattern.replace('_', "-"), pattern);
+    let pattern_lower = pattern.to_lowercase();
 
+    // Always push _ ↔ - swapped lowercase variants.
+    push_unique_variant(
+        &mut variants,
+        pattern_lower.replace('-', "_"),
+        &pattern_lower,
+    );
+    push_unique_variant(
+        &mut variants,
+        pattern_lower.replace('_', "-"),
+        &pattern_lower,
+    );
+
+    // If the pattern has _ or - separators, also push a flat (no-separator)
+    // concatenation so snake_case/kebab-case queries can match camelCase code lines.
+    if pattern_lower.contains('_') || pattern_lower.contains('-') {
+        let flat = pattern_lower
+            .chars()
+            .filter(|ch| *ch != '_' && *ch != '-')
+            .collect::<String>();
+        if !flat.is_empty() {
+            push_unique_variant(&mut variants, flat, &pattern_lower);
+        }
+    }
+
+    // CamelCase boundary: split into components, yield snake_case, kebab-case,
+    // and flat-lowercase variants.
+    if has_camel_case_boundary(pattern) {
+        let components = split_camel_case_components(pattern);
+        if components.len() > 1 {
+            let snake = components.join("_");
+            push_unique_variant(&mut variants, snake.clone(), &pattern_lower);
+            let kebab = components.join("-");
+            push_unique_variant(&mut variants, kebab, &pattern_lower);
+            let flat = components.concat();
+            push_unique_variant(&mut variants, flat, &pattern_lower);
+        }
+    }
+
+    // Existing punctuation-escape branch: feed its variants through lowercasing.
     let unescaped = strip_punctuation_escapes(pattern);
     if unescaped != pattern {
-        push_unique_variant(&mut variants, unescaped.clone(), pattern);
-        push_unique_variant(&mut variants, unescaped.replace('-', "_"), pattern);
-        push_unique_variant(&mut variants, unescaped.replace('_', "-"), pattern);
+        let unescaped_lower = unescaped.to_lowercase();
+        push_unique_variant(&mut variants, unescaped_lower.clone(), &pattern_lower);
+        push_unique_variant(
+            &mut variants,
+            unescaped_lower.replace('-', "_"),
+            &pattern_lower,
+        );
+        push_unique_variant(
+            &mut variants,
+            unescaped_lower.replace('_', "-"),
+            &pattern_lower,
+        );
     }
 
     variants
@@ -386,7 +429,7 @@ fn is_escaped_punctuation(ch: char) -> bool {
     ch.is_ascii_punctuation() && ch != '\\'
 }
 
-fn tokenize_text_for_line_match(text: &str) -> HashSet<String> {
+pub(crate) fn tokenize_text_for_line_match(text: &str) -> HashSet<String> {
     let mut tokenizer = CodeTokenizer::with_default_patterns();
     let mut stream = tokenizer.token_stream(text);
     let mut tokens = HashSet::new();
@@ -469,9 +512,9 @@ fn token_sequence_contains_contiguous_window(haystack: &[String], needle: &[Stri
         .any(|window| window == needle)
 }
 
-fn term_matches_line(term: &str, line: &str, line_tokens: &HashSet<String>) -> bool {
+pub(crate) fn term_matches_line(term: &str, line: &str, line_tokens: &HashSet<String>) -> bool {
     if is_compound_term(term) {
-        return line_matches_literal(line, &term.to_lowercase());
+        return line_matches_literal(line, term);
     }
 
     term_matches_tokens(term, line_tokens)
@@ -493,6 +536,23 @@ fn has_camel_case_boundary(term: &str) -> bool {
     }
 
     false
+}
+
+fn split_camel_case_components(term: &str) -> Vec<String> {
+    let mut components = Vec::new();
+    let mut current = String::new();
+
+    for ch in term.chars() {
+        if ch.is_uppercase() && !current.is_empty() {
+            components.push(std::mem::take(&mut current));
+        }
+        current.push(ch.to_ascii_lowercase());
+    }
+    if !current.is_empty() {
+        components.push(current);
+    }
+
+    components
 }
 
 fn term_matches_tokens(term: &str, line_tokens: &HashSet<String>) -> bool {

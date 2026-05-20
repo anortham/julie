@@ -1,7 +1,8 @@
 use tempfile::TempDir;
 
 use crate::search::index::{
-    FileDocument, SEARCH_COMPAT_MARKER_FILE, SearchFilter, SearchIndex, SearchIndexOpenDisposition,
+    FileDocument, FileMatchKind, SEARCH_COMPAT_MARKER_FILE, SearchFilter, SearchIndex,
+    SearchIndexOpenDisposition, classify_file_match,
 };
 use crate::search::language_config::LanguageConfigs;
 
@@ -116,4 +117,91 @@ fn test_open_or_create_recreates_when_compat_marker_version_is_stale() {
         SearchIndexOpenDisposition::RecreatedIncompatible
     );
     assert_eq!(outcome.index.num_docs(), 0);
+}
+
+// ── Finding C: Extension-blind exact basename matching ──
+
+#[test]
+fn test_search_files_promotes_extensionless_query_to_exact_basename() {
+    let temp_dir = TempDir::new().unwrap();
+    let index = SearchIndex::create(temp_dir.path()).unwrap();
+
+    add_file_doc(&index, "src/foo/bar.rs", "rust");
+    add_file_doc(&index, "src/baz/bar_helper.rs", "rust");
+    index.commit().unwrap();
+
+    let results = index
+        .search_files("bar", &SearchFilter::default(), 10)
+        .unwrap()
+        .results;
+
+    assert!(!results.is_empty(), "query 'bar' should return results");
+    assert_eq!(
+        results[0].file_path, "src/foo/bar.rs",
+        "bar.rs should be ranked ahead via ExactBasename"
+    );
+}
+
+#[test]
+fn test_search_files_does_not_match_wrong_extension() {
+    let temp_dir = TempDir::new().unwrap();
+    let index = SearchIndex::create(temp_dir.path()).unwrap();
+
+    add_file_doc(&index, "bar.rs", "rust");
+    add_file_doc(&index, "bar.py", "python");
+    index.commit().unwrap();
+
+    let results = index
+        .search_files("bar.py", &SearchFilter::default(), 10)
+        .unwrap()
+        .results;
+
+    assert!(!results.is_empty());
+    assert_eq!(results[0].file_path, "bar.py");
+
+    // Verify bar.rs is NOT classified as ExactBasename for query "bar.py"
+    let kind = classify_file_match("bar.py", "bar.py", "bar.rs");
+    assert!(
+        !matches!(kind, FileMatchKind::ExactBasename),
+        "bar.rs should not be ExactBasename for query 'bar.py'"
+    );
+}
+
+#[test]
+fn test_search_files_extensionless_file_still_matches() {
+    // Query "Makefile" against file "src/Makefile" — no extension, so basename
+    // equality catches it as ExactBasename (no dot to strip).
+    let kind = classify_file_match("Makefile", "Makefile", "src/Makefile");
+    assert!(
+        matches!(kind, FileMatchKind::ExactBasename),
+        "Makefile should classify as ExactBasename (regression guard)"
+    );
+}
+
+#[test]
+fn test_search_files_hidden_file_suffix_not_promoted() {
+    // Query "gitignore" against file ".gitignore" — stem is empty, so NO ExactBasename
+    let kind = classify_file_match("gitignore", "gitignore", ".gitignore");
+    assert!(
+        !matches!(kind, FileMatchKind::ExactBasename),
+        "query 'gitignore' should NOT match .gitignore as ExactBasename (stem is empty)"
+    );
+
+    // Query ".gitignore" against file ".gitignore" — equality path catches it as ExactPath
+    let kind = classify_file_match(".gitignore", ".gitignore", ".gitignore");
+    assert!(
+        matches!(kind, FileMatchKind::ExactPath),
+        "query '.gitignore' should match .gitignore via the ExactPath equality path"
+    );
+}
+
+#[test]
+fn test_search_files_dotted_extension_file_classifies_correctly() {
+    // .env.local → rsplit_once('.') gives (".env", "local")
+    // Query ".env" matches stem ".env" → ExactBasename
+    let kind = classify_file_match(".env", ".env", ".env.local");
+    assert!(
+        matches!(kind, FileMatchKind::ExactBasename),
+        "query '.env' should promote .env.local to ExactBasename via stem comparison"
+    );
 }

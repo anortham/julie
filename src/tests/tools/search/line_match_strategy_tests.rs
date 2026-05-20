@@ -22,7 +22,7 @@ mod line_match_strategy_tests {
         let strategy = line_match_strategy("LanguageParserPool");
         match strategy {
             LineMatchStrategy::Substring(s) => {
-                assert_eq!(s, "languageparserpool");
+                assert_eq!(s, "LanguageParserPool");
             }
             other => panic!(
                 "Expected Substring, got {:?}",
@@ -66,7 +66,7 @@ mod line_match_strategy_tests {
             LineMatchStrategy::FileLevel { terms } => {
                 assert_eq!(
                     terms,
-                    &vec!["logging.basicconfig".to_string(), "datefmt".to_string()]
+                    &vec!["logging.basicConfig".to_string(), "datefmt".to_string()]
                 );
             }
             other => panic!(
@@ -84,9 +84,9 @@ mod line_match_strategy_tests {
                 assert_eq!(
                     terms,
                     &vec![
-                        "command::search".to_string(),
-                        "command::refs".to_string(),
-                        "command::tool".to_string(),
+                        "Command::Search".to_string(),
+                        "Command::Refs".to_string(),
+                        "Command::Tool".to_string(),
                     ],
                 );
             }
@@ -101,7 +101,7 @@ mod line_match_strategy_tests {
     fn test_multi_word_or_stays_substring() {
         let strategy = line_match_strategy("INSERT OR REPLACE symbols");
         match strategy {
-            LineMatchStrategy::Substring(s) => assert_eq!(s, "insert or replace symbols"),
+            LineMatchStrategy::Substring(s) => assert_eq!(s, "INSERT OR REPLACE symbols"),
             other => panic!(
                 "Expected Substring, got {:?}",
                 std::mem::discriminant(&other)
@@ -113,7 +113,7 @@ mod line_match_strategy_tests {
     fn test_sql_not_null_stays_substring() {
         let strategy = line_match_strategy("IS NOT NULL");
         match strategy {
-            LineMatchStrategy::Substring(s) => assert_eq!(s, "is not null"),
+            LineMatchStrategy::Substring(s) => assert_eq!(s, "IS NOT NULL"),
             other => panic!(
                 "Expected Substring, got {:?}",
                 std::mem::discriminant(&other)
@@ -125,7 +125,7 @@ mod line_match_strategy_tests {
     fn test_do_not_edit_stays_substring() {
         let strategy = line_match_strategy("DO NOT EDIT");
         match strategy {
-            LineMatchStrategy::Substring(s) => assert_eq!(s, "do not edit"),
+            LineMatchStrategy::Substring(s) => assert_eq!(s, "DO NOT EDIT"),
             other => panic!(
                 "Expected Substring, got {:?}",
                 std::mem::discriminant(&other)
@@ -137,7 +137,7 @@ mod line_match_strategy_tests {
     fn test_quoted_or_phrase_stays_substring() {
         let strategy = line_match_strategy("\"INSERT OR REPLACE\"");
         match strategy {
-            LineMatchStrategy::Substring(s) => assert_eq!(s, "\"insert or replace\""),
+            LineMatchStrategy::Substring(s) => assert_eq!(s, "\"INSERT OR REPLACE\""),
             other => panic!(
                 "Expected Substring, got {:?}",
                 std::mem::discriminant(&other)
@@ -149,7 +149,7 @@ mod line_match_strategy_tests {
     fn test_uppercase_sql_or_stays_substring() {
         let strategy = line_match_strategy("INSERT OR REPLACE");
         match strategy {
-            LineMatchStrategy::Substring(s) => assert_eq!(s, "insert or replace"),
+            LineMatchStrategy::Substring(s) => assert_eq!(s, "INSERT OR REPLACE"),
             other => panic!(
                 "Expected Substring, got {:?}",
                 std::mem::discriminant(&other)
@@ -430,5 +430,129 @@ mod line_match_strategy_tests {
             ),
             "separator fallback should not match unrelated tokens that are split across expressions",
         );
+    }
+
+    // ── Finding A: camelCase / snake_case cross-matching ──
+
+    #[test]
+    fn test_camel_case_query_matches_snake_case_line() {
+        let strategy = line_match_strategy("workspaceIsPrimary");
+        assert!(
+            line_matches(&strategy, "let workspace_is_primary = true;"),
+            "camelCase query should match snake_case code line"
+        );
+    }
+
+    #[test]
+    fn test_snake_case_query_matches_camel_case_line() {
+        let strategy = line_match_strategy("workspace_is_primary");
+        assert!(
+            line_matches(&strategy, "let workspaceIsPrimary = true;"),
+            "snake_case query should match camelCase code line via _↔- swap + case-boundary variants"
+        );
+    }
+
+    #[test]
+    fn test_kebab_case_query_matches_snake_case_line() {
+        let strategy = line_match_strategy("workspace-is-primary");
+        assert!(
+            line_matches(&strategy, "workspace_is_primary"),
+            "kebab-case query should match snake_case code line via _↔- swap"
+        );
+    }
+
+    #[test]
+    fn test_filelevel_camel_case_compound_term_matches_snake_case_line() {
+        let strategy = LineMatchStrategy::FileLevel {
+            terms: vec!["workspaceIsPrimary".to_string()],
+        };
+        assert!(
+            line_matches(&strategy, "workspace_is_primary"),
+            "FileLevel compound camelCase term should match snake_case line"
+        );
+    }
+
+    // ── Finding B: Same-line AND density boosting ──
+
+    #[test]
+    fn test_filelevel_density_sort_promotes_multi_term_line() {
+        use crate::tools::search::line_mode::collect_line_matches;
+        let strategy = LineMatchStrategy::FileLevel {
+            terms: vec!["alpha".to_string(), "beta".to_string()],
+        };
+        let content =
+            "line with alpha only\nline with beta only\nline with alpha and beta together";
+        let mut matches = Vec::new();
+        collect_line_matches(&mut matches, content, "test.rs", &strategy, 10);
+        assert_eq!(matches.len(), 3);
+        assert_eq!(matches[0].line_number, 3, "dense line should be first");
+    }
+
+    #[test]
+    fn test_filelevel_ties_preserve_source_order() {
+        use crate::tools::search::line_mode::collect_line_matches;
+        let strategy = LineMatchStrategy::FileLevel {
+            terms: vec!["alpha".to_string(), "beta".to_string()],
+        };
+        let content = "line with alpha\nline with beta\nanother alpha line\nanother beta line";
+        let mut matches = Vec::new();
+        collect_line_matches(&mut matches, content, "test.rs", &strategy, 10);
+        assert_eq!(matches.len(), 4);
+        // All density=1, so line number order preserved
+        let line_numbers: Vec<usize> = matches.iter().map(|m| m.line_number).collect();
+        assert_eq!(line_numbers, vec![1, 2, 3, 4]);
+    }
+
+    #[test]
+    fn test_filelevel_density_dedupes_repeated_query_terms() {
+        use crate::tools::search::line_mode::collect_line_matches;
+        let strategy = LineMatchStrategy::FileLevel {
+            terms: vec!["alpha".to_string(), "alpha".to_string(), "beta".to_string()],
+        };
+        // Line 1: "alpha alpha" (2 occurrences of same term, but only 1 distinct)
+        // Line 2: "alpha beta" (2 distinct terms)
+        let content = "alpha alpha\nalpha beta";
+        let mut matches = Vec::new();
+        collect_line_matches(&mut matches, content, "test.rs", &strategy, 10);
+        assert_eq!(matches.len(), 2);
+        // Line 2 (alpha beta, density 2 distinct) outranks Line 1 (alpha alpha, density 1 distinct)
+        assert_eq!(
+            matches[0].line_number, 2,
+            "line with distinct terms should outrank repeated single term"
+        );
+    }
+
+    #[test]
+    fn test_substring_strategy_preserves_source_order() {
+        use crate::tools::search::line_mode::collect_line_matches;
+        let strategy = LineMatchStrategy::Substring("alpha".to_string());
+        let content = "beta line\nalpha line\ngamma alpha line";
+        let mut matches = Vec::new();
+        collect_line_matches(&mut matches, content, "test.rs", &strategy, 10);
+        assert_eq!(matches.len(), 2);
+        assert_eq!(matches[0].line_number, 2);
+        assert_eq!(matches[1].line_number, 3);
+    }
+
+    #[test]
+    fn test_tokens_strategy_preserves_source_order() {
+        use crate::tools::search::line_mode::collect_line_matches;
+        let strategy = LineMatchStrategy::Tokens {
+            required: vec!["alpha".to_string()],
+            excluded: Vec::new(),
+        };
+        let content = "beta\nline with alpha3\nalpha line\nmore alpha";
+        let mut matches = Vec::new();
+        collect_line_matches(&mut matches, content, "test.rs", &strategy, 10);
+        // Tokens strategy: "alpha" token should match tokenized forms
+        assert!(matches.len() >= 2);
+        let line_numbers: Vec<usize> = matches.iter().map(|m| m.line_number).collect();
+        // Verify source order preserved (ascending)
+        for i in 1..line_numbers.len() {
+            assert!(
+                line_numbers[i] > line_numbers[i - 1],
+                "source order should be preserved for Tokens"
+            );
+        }
     }
 }

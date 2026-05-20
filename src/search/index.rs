@@ -1566,16 +1566,39 @@ fn extract_glob_literals(query: &str) -> Vec<String> {
         .collect()
 }
 
-fn classify_file_match(query: &str, normalized_query: &str, file_path: &str) -> FileMatchKind {
+pub(crate) fn classify_file_match(
+    query: &str,
+    normalized_query: &str,
+    file_path: &str,
+) -> FileMatchKind {
     if query_contains_glob_syntax(query) {
         return FileMatchKind::Glob;
     }
     if file_path == normalized_query {
         return FileMatchKind::ExactPath;
     }
-    if basename_for_path(file_path) == basename_for_path(normalized_query) {
+
+    let file_basename = basename_for_path(file_path);
+    let query_basename = basename_for_path(normalized_query);
+
+    if file_basename == query_basename {
         return FileMatchKind::ExactBasename;
     }
+
+    // Extension-blind: strip the *last* extension from the file basename only.
+    // This lets query "bar" match file "src/foo/bar.rs" as ExactBasename.
+    // Only the last extension is stripped: "foo.tar.gz" → stem "foo.tar".
+    // Hidden files like ".gitignore" have empty stems and must NOT match
+    // an extensionless query of the suffix (query "gitignore" against file
+    // ".gitignore" stays PathFragment; only ".gitignore" matches ".gitignore"
+    // via the equality path above).
+    if let Some((stem, _ext)) = file_basename.rsplit_once('.')
+        && !stem.is_empty()
+        && stem == query_basename
+    {
+        return FileMatchKind::ExactBasename;
+    }
+
     FileMatchKind::PathFragment
 }
 

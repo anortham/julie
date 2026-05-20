@@ -20,6 +20,7 @@ use super::hint_formatter::build_scope_rescue_header;
 use super::line_output::format_grouped_line_matches;
 use super::query::{
     line_match_strategy, line_matches, looks_like_whitespace_separated_globs, matches_glob_pattern,
+    term_matches_line, tokenize_text_for_line_match,
 };
 use super::text_search;
 use super::trace::{FilePatternDiagnostic, ZeroHitReason};
@@ -739,7 +740,7 @@ fn file_matches_language(file_path: &str, lang: &str) -> bool {
 }
 
 /// Collect line matches from file content using the given strategy
-fn collect_line_matches(
+pub(crate) fn collect_line_matches(
     destination: &mut Vec<LineMatch>,
     content: &str,
     file_path: &str,
@@ -749,16 +750,64 @@ fn collect_line_matches(
     if destination.len() >= max_results {
         return;
     }
-    for (line_idx, line) in content.lines().enumerate() {
-        if line_matches(strategy, line) {
-            destination.push(LineMatch {
-                file_path: file_path.to_string(),
-                line_number: line_idx + 1,
-                line_content: line.trim_end_matches('\r').to_string(),
-            });
 
-            if destination.len() >= max_results {
-                break;
+    match strategy {
+        LineMatchStrategy::FileLevel { terms } => {
+            // Density-based ranking for FileLevel: collect ALL matched lines,
+            // score by count of distinct query terms matched on the line,
+            // sort descending by density then ascending by line number.
+            let deduped_terms: Vec<&str> = {
+                let mut seen = std::collections::HashSet::new();
+                terms
+                    .iter()
+                    .map(|t| t.as_str())
+                    .filter(|t| seen.insert(*t))
+                    .collect()
+            };
+            if deduped_terms.is_empty() {
+                return;
+            }
+
+            let mut scratch: Vec<(usize, usize, LineMatch)> = Vec::new();
+            for (line_idx, line) in content.lines().enumerate() {
+                let line_tokens = tokenize_text_for_line_match(line);
+                let density = deduped_terms
+                    .iter()
+                    .filter(|t| term_matches_line(t, line, &line_tokens))
+                    .count();
+                if density > 0 {
+                    scratch.push((
+                        density,
+                        line_idx,
+                        LineMatch {
+                            file_path: file_path.to_string(),
+                            line_number: line_idx + 1,
+                            line_content: line.trim_end_matches('\r').to_string(),
+                        },
+                    ));
+                }
+            }
+
+            // Sort: density descending, line number ascending
+            scratch.sort_by(|a, b| b.0.cmp(&a.0).then(a.2.line_number.cmp(&b.2.line_number)));
+
+            let budget = max_results - destination.len();
+            destination.extend(scratch.into_iter().take(budget).map(|(_, _, m)| m));
+        }
+        _ => {
+            // Substring and Tokens: preserve source order with early break
+            for (line_idx, line) in content.lines().enumerate() {
+                if line_matches(strategy, line) {
+                    destination.push(LineMatch {
+                        file_path: file_path.to_string(),
+                        line_number: line_idx + 1,
+                        line_content: line.trim_end_matches('\r').to_string(),
+                    });
+
+                    if destination.len() >= max_results {
+                        break;
+                    }
+                }
             }
         }
     }
