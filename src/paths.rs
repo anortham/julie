@@ -16,10 +16,15 @@ impl DaemonPaths {
     ///
     /// Resolution order:
     /// 1. If `JULIE_HOME` is set and non-empty, use it verbatim (no canonicalization,
-    ///    no directory creation).
+    ///    no directory creation). The value MUST be an absolute path; relative paths
+    ///    are rejected because they would yield cwd-dependent daemon identities
+    ///    across the daemon, adapter, and CLI processes.
     /// 2. If `JULIE_HOME` is set but empty, return `Err(InvalidInput)` — this is a
     ///    misconfiguration, not a silent fallback.
-    /// 3. Otherwise, fall back to `dirs::home_dir().join(".julie")`. Returns `Err`
+    /// 3. If `JULIE_HOME` is set but relative, return `Err(InvalidInput)` — same
+    ///    rationale; operators should see the error and fix their config rather
+    ///    than have it silently absolutized.
+    /// 4. Otherwise, fall back to `dirs::home_dir().join(".julie")`. Returns `Err`
     ///    if the OS home directory cannot be determined.
     pub fn try_new() -> Result<Self, std::io::Error> {
         if let Some(value) = std::env::var_os("JULIE_HOME") {
@@ -29,8 +34,18 @@ impl DaemonPaths {
                     "JULIE_HOME is set but empty",
                 ));
             }
+            let candidate = PathBuf::from(value);
+            if !candidate.is_absolute() {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    format!(
+                        "JULIE_HOME must be an absolute path (got '{}')",
+                        candidate.display()
+                    ),
+                ));
+            }
             return Ok(Self {
-                julie_home: PathBuf::from(value),
+                julie_home: candidate,
             });
         }
 
@@ -63,13 +78,51 @@ impl DaemonPaths {
     /// Check whether `candidate` resolves to the same directory as the
     /// configured Julie home.
     ///
-    /// Best-effort canonicalization is performed on both sides; if either
-    /// path cannot be canonicalized (e.g. it does not yet exist), the raw
-    /// `PathBuf` is used for comparison instead. On macOS (case-insensitive
-    /// HFS+/APFS by default), comparison is performed on lowercased lossy
-    /// string forms; on other platforms it compares canonicalized
-    /// `PathBuf`s directly. Never panics. No environment is read.
+    /// When both paths exist on disk, `canonicalize` is used for the
+    /// comparison. This gives the correct answer on both case-insensitive
+    /// (HFS+/APFS default, Windows NTFS) and case-sensitive (APFS optional,
+    /// ext4) filesystems, because the OS itself decides whether two paths
+    /// refer to the same inode.
+    ///
+    /// When either path does NOT exist (e.g. a candidate `.julie/` that has
+    /// not been created yet), we fall back to raw `PathBuf` equality. This
+    /// is deliberately strict: a previous implementation lowercased path
+    /// strings on macOS, which is correct on case-insensitive HFS+/APFS but
+    /// WRONG on case-sensitive APFS where `Home/` and `home/` are distinct
+    /// directories. We prefer false negatives (missing a case-only variant
+    /// that does not exist on disk) over false positives (treating two
+    /// distinct case-sensitive directories as equal). Never panics. No
+    /// environment is read.
     pub fn is_julie_home(&self, candidate: &Path) -> bool {
+        match (candidate.canonicalize(), self.julie_home.canonicalize()) {
+            // Both paths exist: canonicalize handles case-insensitive
+            // filesystems correctly (returns on-disk case) and rejects
+            // same-case paths to different dirs on case-sensitive
+            // filesystems.
+            (Ok(c), Ok(h)) => c == h,
+            // Otherwise fall back to raw PathBuf comparison. We do NOT
+            // lowercase since that would falsely match distinct paths on
+            // case-sensitive filesystems; for non-existent paths we accept
+            // the small chance of missing a case-only variant in exchange
+            // for correctness.
+            _ => candidate == self.julie_home.as_path(),
+        }
+    }
+
+    /// Check whether `candidate` lives under (or is equal to) the configured
+    /// Julie home directory.
+    ///
+    /// This is the canonical exclusion check for the discovery walker and
+    /// file watcher: anything under `julie_home` is daemon state and must
+    /// never be indexed, regardless of filename or extension. It defends
+    /// against the operator footgun of pointing `JULIE_HOME` *inside* a
+    /// workspace tree.
+    ///
+    /// Best-effort canonicalization is applied to both sides; when either
+    /// canonicalization fails (e.g. the candidate doesn't exist yet), the
+    /// raw `PathBuf` is used for the prefix check. `Path::starts_with` is
+    /// component-wise, so `julie-home/` does NOT match `julie-homework/`.
+    pub fn is_under_julie_home(&self, candidate: &Path) -> bool {
         let candidate_canon = candidate
             .canonicalize()
             .unwrap_or_else(|_| candidate.to_path_buf());
@@ -77,13 +130,41 @@ impl DaemonPaths {
             .julie_home
             .canonicalize()
             .unwrap_or_else(|_| self.julie_home.clone());
+        candidate_canon.starts_with(&home_canon)
+    }
 
-        if cfg!(target_os = "macos") {
-            candidate_canon.to_string_lossy().to_lowercase()
-                == home_canon.to_string_lossy().to_lowercase()
-        } else {
-            candidate_canon == home_canon
+    /// Walker-safety check that answers "is this path a Julie home we
+    /// should always skip?" regardless of env-var state.
+    ///
+    /// Returns true if `candidate` matches EITHER:
+    /// 1. The currently configured Julie home (`try_new` success), OR
+    /// 2. The conventional default `~/.julie` (when `dirs::home_dir()`
+    ///    resolves).
+    ///
+    /// This is required because the walker must skip `~/.julie` even when
+    /// `JULIE_HOME` is misconfigured (empty / no home directory). Without
+    /// this defense, an invalid env makes `try_new()` return `None`, and
+    /// the walker can capture `~/.julie` as a workspace and walk into the
+    /// daemon state (or OneDrive-synced folders on Windows, triggering
+    /// mass file downloads).
+    pub fn is_any_known_julie_home(candidate: &Path) -> bool {
+        // 1. Configured override (if any & valid).
+        if let Ok(configured) = Self::try_new() {
+            if configured.is_julie_home(candidate) {
+                return true;
+            }
         }
+
+        // 2. Conventional default `~/.julie`, ALWAYS checked. This is the
+        // belt-and-suspenders defense against a broken JULIE_HOME.
+        if let Some(default_home) = dirs::home_dir() {
+            let default = default_home.join(".julie");
+            if Self::with_home(default).is_julie_home(candidate) {
+                return true;
+            }
+        }
+
+        false
     }
 
     /// Directory containing all workspace indexes

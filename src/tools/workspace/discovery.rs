@@ -102,6 +102,22 @@ impl ManageWorkspaceTool {
         max_file_size: u64,
         skip_minified_check: bool,
     ) -> Result<bool> {
+        // Reject anything under the configured Julie home. This catches all
+        // daemon state files (tokens, transport metadata, discovery, …)
+        // even when the operator points `JULIE_HOME` inside the workspace
+        // tree. Resolving `DaemonPaths::try_new()` may fail (empty env, no
+        // home dir); we treat that as "no exclusion" since the daemon
+        // cannot be running anyway.
+        if let Ok(paths) = crate::paths::DaemonPaths::try_new() {
+            if paths.is_under_julie_home(file_path) {
+                debug!(
+                    "⏭️  Skipping file under JULIE_HOME: {}",
+                    file_path.display()
+                );
+                return Ok(false);
+            }
+        }
+
         // Skip blacklisted filenames (lockfiles with non-blacklisted extensions)
         let extension_blacklist_allowed = file_path
             .file_name()

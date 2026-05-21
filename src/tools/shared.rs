@@ -81,6 +81,21 @@ pub const BLACKLISTED_FILENAMES: &[&str] = &[
     // otherwise cause a scan/index asymmetry (scan_workspace_files filters by
     // extension and excludes it; the indexer accepts extensionless text files).
     ".julieignore",
+    // Julie daemon state files. The primary defense for these files is
+    // `DaemonPaths::is_under_julie_home`, which catches anything under the
+    // configured `JULIE_HOME` regardless of name. The filename blacklist below
+    // is belt-and-suspenders for the small set of filenames that are
+    // specific enough to Julie that no real project would legitimately
+    // ship one with the same name.
+    //
+    // Intentionally NOT blacklisted: `discovery.json`, `migration.json` —
+    // those names are generic enough that some unrelated project might
+    // ship one, and the `is_under_julie_home` check already covers them
+    // when they appear under a configured `JULIE_HOME`.
+    "daemon.token",
+    "daemon-mcp.token",
+    "daemon-mcp-transport.json",
+    "daemon.state",
 ];
 
 /// Blacklisted directory names - directories to exclude from indexing

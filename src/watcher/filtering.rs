@@ -158,14 +158,30 @@ pub fn is_gitignored(path: &Path, gitignore: &Gitignore, workspace_root: &Path) 
         .is_ignore()
 }
 
+/// Returns true if `path` is under the configured JULIE_HOME and must be
+/// excluded from indexing. Resolving `DaemonPaths::try_new()` may fail
+/// (empty env, no home dir); we treat that as "no exclusion" since the
+/// daemon cannot be running anyway, and the conventional `~/.julie`
+/// fallback is handled separately by the workspace-root finder.
+fn is_under_configured_julie_home(path: &Path) -> bool {
+    match crate::paths::DaemonPaths::try_new() {
+        Ok(paths) => paths.is_under_julie_home(path),
+        Err(_) => false,
+    }
+}
+
 /// Check if a file should be indexed based on extension, blacklists, and gitignore.
 ///
 /// Layers (in order):
 /// 1. Must be an existing file on disk
-/// 2. Filename must not be blacklisted (lockfiles, etc.)
-/// 3. Extension must be in supported set
-/// 4. No path component may be a blacklisted directory
-/// 5. Must not match gitignore/julieignore/synthetic patterns
+/// 2. Must NOT live under the configured JULIE_HOME (defends against
+///    operators pointing `JULIE_HOME` inside a workspace tree, which
+///    would otherwise leak daemon tokens, transport metadata, discovery
+///    state, etc. into the index)
+/// 3. Filename must not be blacklisted (lockfiles, etc.)
+/// 4. Extension must be in supported set
+/// 5. No path component may be a blacklisted directory
+/// 6. Must not match gitignore/julieignore/synthetic patterns
 pub fn should_index_file(
     path: &Path,
     supported_extensions: &HashSet<String>,
@@ -173,6 +189,9 @@ pub fn should_index_file(
     workspace_root: &Path,
 ) -> bool {
     if !path.is_file() {
+        return false;
+    }
+    if is_under_configured_julie_home(path) {
         return false;
     }
     if !file_policy::should_watch_path(path, supported_extensions) {
@@ -198,6 +217,9 @@ pub fn should_process_deletion(
     gitignore: &Gitignore,
     workspace_root: &Path,
 ) -> bool {
+    if is_under_configured_julie_home(path) {
+        return false;
+    }
     if !file_policy::should_process_deleted_path(path, supported_extensions) {
         return false;
     }
@@ -659,6 +681,86 @@ mod tests {
                 .matched_path_or_any_parents("packages/core/index.ts", false)
                 .is_ignore(),
             "normal file should not be ignored"
+        );
+    }
+
+    /// Finding 1b: When `JULIE_HOME` lives inside the workspace tree, the
+    /// watcher must reject any path under it — otherwise daemon state files
+    /// (tokens, transport metadata, discovery, migration state, …) get
+    /// indexed.
+    #[test]
+    #[serial_test::serial(julie_home_env)]
+    fn test_should_index_file_rejects_paths_under_julie_home() {
+        use std::fs;
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+        // Operator footgun: JULIE_HOME inside the workspace.
+        let julie_home = workspace.join("julie-home");
+        fs::create_dir_all(&julie_home).unwrap();
+
+        let prev = std::env::var("JULIE_HOME").ok();
+        // SAFETY: serial guard prevents other threads from mutating JULIE_HOME.
+        unsafe { std::env::set_var("JULIE_HOME", &julie_home) };
+
+        // Daemon state file masquerading as ordinary JSON.
+        let discovery = julie_home.join("discovery.json");
+        fs::write(&discovery, "{}\n").unwrap();
+
+        // A normal source file outside JULIE_HOME — must still be accepted.
+        let normal = workspace.join("src.rs");
+        fs::write(&normal, "fn main() {}\n").unwrap();
+
+        let extensions = build_supported_extensions();
+        let gitignore = build_gitignore_matcher(workspace).unwrap();
+
+        let discovery_indexed =
+            should_index_file(&discovery, &extensions, &gitignore, workspace);
+        let normal_indexed = should_index_file(&normal, &extensions, &gitignore, workspace);
+
+        // Restore env BEFORE asserting so a failure does not leak state.
+        match prev {
+            Some(v) => unsafe { std::env::set_var("JULIE_HOME", v) },
+            None => unsafe { std::env::remove_var("JULIE_HOME") },
+        }
+
+        assert!(
+            !discovery_indexed,
+            "files under JULIE_HOME must be rejected by the watcher"
+        );
+        assert!(normal_indexed, "normal source files must still be indexed");
+    }
+
+    #[test]
+    #[serial_test::serial(julie_home_env)]
+    fn test_should_process_deletion_rejects_paths_under_julie_home() {
+        use std::fs;
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+        let julie_home = workspace.join("julie-home");
+        fs::create_dir_all(&julie_home).unwrap();
+
+        let prev = std::env::var("JULIE_HOME").ok();
+        // SAFETY: serial guard prevents other threads from mutating JULIE_HOME.
+        unsafe { std::env::set_var("JULIE_HOME", &julie_home) };
+
+        // Path that "was" under julie_home — deletion must be ignored so we
+        // never even consider scrubbing a daemon-state file from the index.
+        let stale = julie_home.join("daemon-mcp.token");
+
+        let extensions = build_supported_extensions();
+        let gitignore = build_gitignore_matcher(workspace).unwrap();
+
+        let processed =
+            should_process_deletion(&stale, &extensions, &gitignore, workspace);
+
+        match prev {
+            Some(v) => unsafe { std::env::set_var("JULIE_HOME", v) },
+            None => unsafe { std::env::remove_var("JULIE_HOME") },
+        }
+
+        assert!(
+            !processed,
+            "deletion events under JULIE_HOME must not be processed"
         );
     }
 

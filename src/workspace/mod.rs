@@ -367,22 +367,24 @@ impl JulieWorkspace {
     fn find_workspace_root(start_path: &Path) -> Result<Option<PathBuf>> {
         let mut current = start_path.to_path_buf();
 
-        // Resolve the global Julie config dir via DaemonPaths so we can skip it.
-        // Without this guard, walking up from a temp dir or any path without
-        // a .git boundary would find ~/.julie/ and treat the entire home
-        // directory as a workspace — potentially walking OneDrive-synced
-        // folders and triggering mass file downloads on Windows.
-        let daemon_paths = crate::paths::DaemonPaths::try_new().ok();
+        // We use `DaemonPaths::is_any_known_julie_home` to detect the global
+        // Julie home. Unlike a plain `DaemonPaths::try_new().ok()` lookup, this
+        // helper ALWAYS treats `~/.julie` as a known home — even when
+        // `JULIE_HOME` is set to an empty/invalid value. Without this defense,
+        // walking up from a temp dir or any path without a `.git` boundary
+        // would find `~/.julie/` and treat the entire home directory as a
+        // workspace — potentially walking OneDrive-synced folders and
+        // triggering mass file downloads on Windows.
 
         loop {
             let julie_dir = current.join(".julie");
             if julie_dir.exists() && julie_dir.is_dir() {
                 // Skip the global Julie home config dir — it's not a workspace.
-                // `DaemonPaths::is_julie_home` handles canonicalize-with-fallback
-                // and macOS case-insensitive comparison.
-                let is_global = daemon_paths
-                    .as_ref()
-                    .map_or(false, |p| p.is_julie_home(&julie_dir));
+                // The helper handles canonicalize-with-fallback AND combines
+                // the configured override with the conventional ~/.julie
+                // default, so the guard cannot be silently disabled by a
+                // broken env.
+                let is_global = crate::paths::DaemonPaths::is_any_known_julie_home(&julie_dir);
                 if is_global {
                     debug!(
                         "Skipping global Julie home config dir at: {}",
