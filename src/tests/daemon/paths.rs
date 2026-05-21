@@ -1,11 +1,117 @@
 use crate::paths::DaemonPaths;
+use serial_test::serial;
 use std::path::PathBuf;
 
+/// Helper that sets the env var and returns a guard that restores the previous
+/// value on drop. Mirrors the pattern in `src/tests/daemon/drain_timeout.rs`.
+fn with_env(key: &str, value: &str) -> EnvGuard {
+    let previous = std::env::var(key).ok();
+    // SAFETY: single-threaded by serial attribute; no other threads read this var.
+    unsafe { std::env::set_var(key, value) };
+    EnvGuard {
+        key: key.to_owned(),
+        previous,
+    }
+}
+
+fn without_env(key: &str) -> EnvGuard {
+    let previous = std::env::var(key).ok();
+    // SAFETY: single-threaded by serial attribute; no other threads read this var.
+    unsafe { std::env::remove_var(key) };
+    EnvGuard {
+        key: key.to_owned(),
+        previous,
+    }
+}
+
+struct EnvGuard {
+    key: String,
+    previous: Option<String>,
+}
+
+impl Drop for EnvGuard {
+    fn drop(&mut self) {
+        match &self.previous {
+            Some(v) => unsafe { std::env::set_var(&self.key, v) },
+            None => unsafe { std::env::remove_var(&self.key) },
+        }
+    }
+}
+
+const JULIE_HOME_ENV: &str = "JULIE_HOME";
+
 #[test]
+#[serial(julie_home_env)]
 fn test_julie_home_uses_home_dir() {
+    let _guard = without_env(JULIE_HOME_ENV);
     let paths = DaemonPaths::new();
     let home = dirs::home_dir().unwrap();
     assert_eq!(paths.julie_home(), home.join(".julie"));
+}
+
+#[test]
+#[serial(julie_home_env)]
+fn test_julie_home_env_override() {
+    let tmp = tempfile::tempdir().unwrap();
+    let override_home = tmp.path().join("external-julie-home");
+    let _guard = with_env(JULIE_HOME_ENV, override_home.to_str().unwrap());
+
+    let paths = DaemonPaths::try_new().expect("try_new should succeed when JULIE_HOME is set");
+    assert_eq!(paths.julie_home(), override_home);
+    assert_eq!(paths.indexes_dir(), override_home.join("indexes"));
+    assert_eq!(paths.daemon_db(), override_home.join("daemon.db"));
+}
+
+#[test]
+#[serial(julie_home_env)]
+fn test_julie_home_env_empty_is_rejected() {
+    let _guard = with_env(JULIE_HOME_ENV, "");
+
+    match DaemonPaths::try_new() {
+        Ok(_) => panic!("empty JULIE_HOME must be rejected"),
+        Err(err) => {
+            assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+            assert!(
+                err.to_string().contains("JULIE_HOME"),
+                "error message should mention JULIE_HOME, got: {}",
+                err
+            );
+        }
+    }
+}
+
+#[test]
+fn test_is_julie_home_matches_canonicalized_path() {
+    let tmp = tempfile::tempdir().unwrap();
+    let home = tmp.path().join("home");
+    std::fs::create_dir_all(&home).unwrap();
+    let paths = DaemonPaths::with_home(home.clone());
+    assert!(paths.is_julie_home(&home));
+}
+
+#[test]
+fn test_is_julie_home_rejects_unrelated_path() {
+    let tmp = tempfile::tempdir().unwrap();
+    let home = tmp.path().join("home");
+    let other = tmp.path().join("other");
+    std::fs::create_dir_all(&home).unwrap();
+    std::fs::create_dir_all(&other).unwrap();
+    let paths = DaemonPaths::with_home(home);
+    assert!(!paths.is_julie_home(&other));
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn test_is_julie_home_case_insensitive_on_macos() {
+    let tmp = tempfile::tempdir().unwrap();
+    let upper = tmp.path().join("Home");
+    std::fs::create_dir_all(&upper).unwrap();
+    let lower = tmp.path().join("home");
+    let paths = DaemonPaths::with_home(upper);
+    assert!(
+        paths.is_julie_home(&lower),
+        "macOS comparison must be case-insensitive"
+    );
 }
 
 #[test]

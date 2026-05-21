@@ -1,15 +1,39 @@
 use std::path::{Path, PathBuf};
 
 /// Centralized path resolution for Julie daemon infrastructure.
-/// All daemon-related paths derive from `julie_home` (~/.julie/ by default).
+///
+/// All daemon-related paths derive from `julie_home`. The default is `~/.julie/`,
+/// which can be overridden by setting the `JULIE_HOME` environment variable to
+/// an absolute path. An empty `JULIE_HOME` is rejected as a misconfiguration
+/// (rather than silently falling back to `~/.julie/`).
 #[derive(Clone)]
 pub struct DaemonPaths {
     julie_home: PathBuf,
 }
 
 impl DaemonPaths {
-    /// Create with default home (~/.julie/), returning Err if home dir cannot be determined.
+    /// Create using the resolved Julie home directory.
+    ///
+    /// Resolution order:
+    /// 1. If `JULIE_HOME` is set and non-empty, use it verbatim (no canonicalization,
+    ///    no directory creation).
+    /// 2. If `JULIE_HOME` is set but empty, return `Err(InvalidInput)` — this is a
+    ///    misconfiguration, not a silent fallback.
+    /// 3. Otherwise, fall back to `dirs::home_dir().join(".julie")`. Returns `Err`
+    ///    if the OS home directory cannot be determined.
     pub fn try_new() -> Result<Self, std::io::Error> {
+        if let Some(value) = std::env::var_os("JULIE_HOME") {
+            if value.is_empty() {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "JULIE_HOME is set but empty",
+                ));
+            }
+            return Ok(Self {
+                julie_home: PathBuf::from(value),
+            });
+        }
+
         let home = dirs::home_dir().ok_or_else(|| {
             std::io::Error::new(
                 std::io::ErrorKind::NotFound,
@@ -34,6 +58,32 @@ impl DaemonPaths {
     /// Root directory for all Julie daemon state
     pub fn julie_home(&self) -> PathBuf {
         self.julie_home.clone()
+    }
+
+    /// Check whether `candidate` resolves to the same directory as the
+    /// configured Julie home.
+    ///
+    /// Best-effort canonicalization is performed on both sides; if either
+    /// path cannot be canonicalized (e.g. it does not yet exist), the raw
+    /// `PathBuf` is used for comparison instead. On macOS (case-insensitive
+    /// HFS+/APFS by default), comparison is performed on lowercased lossy
+    /// string forms; on other platforms it compares canonicalized
+    /// `PathBuf`s directly. Never panics. No environment is read.
+    pub fn is_julie_home(&self, candidate: &Path) -> bool {
+        let candidate_canon = candidate
+            .canonicalize()
+            .unwrap_or_else(|_| candidate.to_path_buf());
+        let home_canon = self
+            .julie_home
+            .canonicalize()
+            .unwrap_or_else(|_| self.julie_home.clone());
+
+        if cfg!(target_os = "macos") {
+            candidate_canon.to_string_lossy().to_lowercase()
+                == home_canon.to_string_lossy().to_lowercase()
+        } else {
+            candidate_canon == home_canon
+        }
     }
 
     /// Directory containing all workspace indexes
