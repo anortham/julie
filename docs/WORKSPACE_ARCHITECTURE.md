@@ -26,10 +26,10 @@ Each MCP session is independent. Indexes live under the project:
 Stdio mode is centered on the current workspace and has no persistent global registry. It can still index another path and accepts non-`primary` workspace IDs permissively, but the supported global registration and activation flow lives in daemon mode.
 
 ### Daemon Mode (`julie daemon`)
-A background process shares indexes across all MCP sessions. Workspace indexes live under `~/.julie/indexes/<workspace_id>`:
+A background process shares indexes across all MCP sessions. Daemon state and workspace indexes live under `$JULIE_HOME` (default `~/.julie`):
 
 ```
-~/.julie/
+$JULIE_HOME/                     ← Default: ~/.julie. Override via JULIE_HOME env var.
 ├── daemon.db                    ← Registry: workspaces, cleanup events, snapshots, tool calls
 └── indexes/
     ├── julie_316c0b08/
@@ -39,6 +39,8 @@ A background process shares indexes across all MCP sessions. Workspace indexes l
         ├── db/symbols.db
         └── tantivy/
 ```
+
+`JULIE_HOME` overrides the daemon home directory directly — `.julie` is not appended. All Julie processes (adapter, daemon, CLI, MCP clients) must see the same `JULIE_HOME` value, or they will resolve different homes and behave as independent daemons. `JULIE_HOME` is unrelated to `JULIE_WORKSPACE`; the latter only selects the current workspace root and does not move daemon state or indexes. See `docs/OPERATIONS.md` for the migration workflow.
 
 `daemon.db` is the authoritative registry (replaces the old `registry.json`). It tracks:
 - All known workspaces (ID, path, status, file/symbol counts)
@@ -125,14 +127,16 @@ This is the intended lifecycle for deleted worktrees and other short-lived clone
 
 ## Storage Location Summary
 
-| Mode   | Workspace data                 | Registry             |
-|--------|--------------------------------|----------------------|
-| Stdio  | `<project>/.julie/indexes/`    | None (ephemeral)     |
-| Daemon | `~/.julie/indexes/<workspace_id>/` | `~/.julie/daemon.db` |
+| Mode   | Workspace data                          | Registry                  |
+|--------|-----------------------------------------|---------------------------|
+| Stdio  | `<project>/.julie/indexes/`             | None (ephemeral)          |
+| Daemon | `$JULIE_HOME/indexes/<workspace_id>/`   | `$JULIE_HOME/daemon.db`   |
+
+Default `$JULIE_HOME` is `~/.julie`. Set the `JULIE_HOME` env var to relocate daemon state and indexes; see `docs/OPERATIONS.md` for the migration workflow.
 
 ## Log Location
 
-Logs are PROJECT-LEVEL (not user-level) in both modes:
+Per-workspace logs are PROJECT-LEVEL (not user-level) in both modes and are **not** affected by `JULIE_HOME`:
 
 ```bash
 # CORRECT
@@ -142,11 +146,13 @@ Logs are PROJECT-LEVEL (not user-level) in both modes:
 ~/.julie/logs/  ← DOES NOT EXIST
 ```
 
+(Daemon-process and adapter logs are written under `$JULIE_HOME`, which defaults to `~/.julie`.)
+
 ## Key Benefits
 
 - Complete workspace isolation, each workspace has its own db/tantivy index
 - Explicit activation flow for cross-workspace work via `manage_workspace(operation="open", ...)`
-- Centralized daemon storage under `~/.julie/indexes/`
+- Centralized daemon storage under `$JULIE_HOME/indexes/` (default `~/.julie/indexes/`)
 - Daemon mode enables cross-session sharing and persistent metrics
 - Stdio mode works fully offline with no daemon dependency
 

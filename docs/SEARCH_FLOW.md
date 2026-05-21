@@ -370,15 +370,15 @@ both produce stem "estim".
       └── {segment_id}.term    # Term dictionary
 ```
 
-**Daemon mode** (shared across sessions):
+**Daemon mode** (shared across sessions, under `$JULIE_HOME` — default `~/.julie`):
 ```
-~/.julie/indexes/{workspace_id}/
+$JULIE_HOME/indexes/{workspace_id}/
   ├── db/symbols.db
   └── tantivy/
 ```
 
 Each workspace (primary and reference) gets its own Tantivy index directory.
-In daemon mode, the registry of all workspaces and sessions lives in `~/.julie/daemon.db`.
+In daemon mode, the registry of all workspaces and sessions lives in `$JULIE_HOME/daemon.db`. See `docs/OPERATIONS.md` for the `JULIE_HOME` override and migration workflow.
 
 The `SearchIndex` supports `open_or_create` semantics -- if a Tantivy
 directory doesn't exist, it creates one. If it exists, it opens it. A v1-to-v2
