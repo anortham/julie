@@ -87,6 +87,7 @@ Python 3.12 is used because it has the best PyTorch hardware acceleration compat
 
 #### Advanced configuration
 
+- `JULIE_HOME`: relocate daemon state and workspace indexes (default: `~/.julie`). Must be an absolute path; empty or relative values are rejected. Existing installs upgrade in place — set this only if you want to move Julie's storage to another drive or path. See `docs/OPERATIONS.md` for the migration checklist.
 - `JULIE_EMBEDDING_SIDECAR_MODEL_ID`: any HuggingFace model ID (default: `nomic-ai/CodeRankEmbed`, 768d code-optimized). Changing models automatically wipes and re-embeds all vectors on the next indexing run.
 - See `docs/operations/embedding-sidecar.md` for all environment variables and troubleshooting
 
