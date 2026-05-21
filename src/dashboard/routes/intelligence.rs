@@ -197,10 +197,10 @@ pub fn format_duration_ms(ms: i64) -> String {
 
 /// Open a workspace's SymbolDatabase directly from disk.
 ///
-/// Opens the DB file at `~/.julie/indexes/{id}/db/symbols.db` without going
-/// through WorkspacePool, avoiding session side-effects (count increment,
-/// watcher attachment). Works for any registered workspace, even those
-/// without an active session.
+/// Opens the DB file at `$JULIE_HOME/indexes/{id}/db/symbols.db` (default
+/// `~/.julie/indexes/{id}/db/symbols.db`) without going through WorkspacePool,
+/// avoiding session side-effects (count increment, watcher attachment). Works
+/// for any registered workspace, even those without an active session.
 pub(crate) fn open_workspace_db(
     state: &AppState,
     workspace_id: &str,
@@ -227,11 +227,9 @@ pub(crate) fn open_workspace_db(
     let db_path = if let Some(pool) = state.dashboard.workspace_pool() {
         pool.indexes_dir().join(workspace_id).join("db/symbols.db")
     } else {
-        dirs::home_dir()
-            .unwrap_or_default()
-            .join(".julie/indexes")
-            .join(workspace_id)
-            .join("db/symbols.db")
+        let paths =
+            crate::paths::DaemonPaths::try_new().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        paths.workspace_db_path(workspace_id)
     };
 
     if !db_path.exists() {
