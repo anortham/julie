@@ -367,36 +367,25 @@ impl JulieWorkspace {
     fn find_workspace_root(start_path: &Path) -> Result<Option<PathBuf>> {
         let mut current = start_path.to_path_buf();
 
-        // Resolve the global Julie config dir (~/.julie/) so we can skip it.
+        // Resolve the global Julie config dir via DaemonPaths so we can skip it.
         // Without this guard, walking up from a temp dir or any path without
         // a .git boundary would find ~/.julie/ and treat the entire home
         // directory as a workspace — potentially walking OneDrive-synced
         // folders and triggering mass file downloads on Windows.
-        let global_julie_home = std::env::var("HOME")
-            .or_else(|_| std::env::var("USERPROFILE"))
-            .ok()
-            .map(|h| PathBuf::from(h).join(".julie"));
+        let daemon_paths = crate::paths::DaemonPaths::try_new().ok();
 
         loop {
             let julie_dir = current.join(".julie");
             if julie_dir.exists() && julie_dir.is_dir() {
-                // Skip the global ~/.julie/ config dir — it's not a workspace
-                let is_global = global_julie_home.as_ref().map_or(false, |home| {
-                    let julie_canon = julie_dir
-                        .canonicalize()
-                        .unwrap_or_else(|_| julie_dir.clone());
-                    let home_canon = home.canonicalize().unwrap_or_else(|_| home.clone());
-                    // macOS has a case-insensitive FS by default; compare with lowercased paths.
-                    if cfg!(target_os = "macos") {
-                        julie_canon.to_string_lossy().to_lowercase()
-                            == home_canon.to_string_lossy().to_lowercase()
-                    } else {
-                        julie_canon == home_canon
-                    }
-                });
+                // Skip the global Julie home config dir — it's not a workspace.
+                // `DaemonPaths::is_julie_home` handles canonicalize-with-fallback
+                // and macOS case-insensitive comparison.
+                let is_global = daemon_paths
+                    .as_ref()
+                    .map_or(false, |p| p.is_julie_home(&julie_dir));
                 if is_global {
                     debug!(
-                        "Skipping global ~/.julie/ config dir at: {}",
+                        "Skipping global Julie home config dir at: {}",
                         current.display()
                     );
                 } else {

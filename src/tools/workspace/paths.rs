@@ -1,10 +1,3 @@
-/// Get the global Julie home directory (~/.julie/).
-fn julie_home() -> anyhow::Result<std::path::PathBuf> {
-    let home = std::env::var("HOME")
-        .or_else(|_| std::env::var("USERPROFILE"))
-        .map_err(|_| anyhow::anyhow!("Could not determine home directory"))?;
-    Ok(std::path::PathBuf::from(home).join(".julie"))
-}
 use crate::tools::workspace::commands::ManageWorkspaceTool;
 use anyhow::Result;
 use std::env;
@@ -65,16 +58,6 @@ impl ManageWorkspaceTool {
         self.find_workspace_root(&workspace_candidate)
     }
 
-    /// Returns true if the given `.julie` directory path matches the global config dir (~/.julie/).
-    fn is_global_julie_dir(julie_dir_path: &Path, global_julie_home: &Option<PathBuf>) -> bool {
-        global_julie_home.as_ref().map_or(false, |home| {
-            julie_dir_path
-                .canonicalize()
-                .unwrap_or_else(|_| julie_dir_path.to_path_buf())
-                == home.canonicalize().unwrap_or_else(|_| home.clone())
-        })
-    }
-
     /// Find workspace root by looking for common workspace markers
     pub(crate) fn find_workspace_root(&self, start_path: &Path) -> Result<PathBuf> {
         // Trust `.julie` at the requested path, but not above it. Temp parents
@@ -82,16 +65,21 @@ impl ManageWorkspaceTool {
         let ancestor_workspace_markers =
             [".git", ".vscode", "Cargo.toml", "package.json", ".project"];
 
-        let global_julie_home = julie_home().ok();
+        // Resolve the global Julie home via DaemonPaths so `$JULIE_HOME` override
+        // is honored consistently with every other path consumer.
+        let daemon_paths = crate::paths::DaemonPaths::try_new().ok();
 
         // 🔥 CRITICAL FIX: Check if start_path itself has a .julie directory FIRST
         // This prevents walking up and finding a parent workspace when an explicit
         // workspace path is provided (fixes fixture test isolation bug)
         let julie_dir = start_path.join(".julie");
         if julie_dir.exists() && julie_dir.is_dir() {
-            if Self::is_global_julie_dir(&julie_dir, &global_julie_home) {
+            if daemon_paths
+                .as_ref()
+                .map_or(false, |p| p.is_julie_home(&julie_dir))
+            {
                 debug!(
-                    "Skipping global ~/.julie/ config dir at: {}",
+                    "Skipping global Julie home config dir at: {}",
                     start_path.display()
                 );
             } else {
