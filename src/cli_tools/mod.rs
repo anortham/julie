@@ -318,6 +318,22 @@ pub async fn bootstrap_standalone_handler(
             .call_tool_with_options(&handler, true)
             .await
             .context("Failed to index standalone workspace")?;
+
+        // Mark embedding init as "skipped for standalone mode". Without this,
+        // the first NL definitions query (`is_nl_like_query` → true) triggers
+        // `maybe_initialize_embeddings_for_nl_definitions`, which probes and
+        // launches the Python embedding sidecar in `spawn_blocking`. That
+        // probe costs ~8-10s on a cold machine. Standalone mode is a
+        // single-shot CLI tool — launching the sidecar wastes time and would
+        // be torn down immediately. Daemon mode handles embedding init
+        // separately in the background; keyword-only search is the right
+        // degraded mode for standalone.
+        //
+        // Setting `embedding_runtime_status` to `Some(...)` satisfies the
+        // guard in `maybe_initialize_embeddings_for_nl_definitions`:
+        //   if workspace.embedding_runtime_status.is_none() { ... probe ... }
+        // so the slow path is never entered.
+        handler.mark_standalone_embedding_skipped().await;
     } else {
         anyhow::bail!(
             "Workspace not indexed: {}\n\

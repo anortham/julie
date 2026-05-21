@@ -348,9 +348,53 @@ both produce stem "estim".
 
 - **Query latency**: <5ms typical (single-tier, no fallback chain)
 - **Search available**: Immediately after indexing (no background build phase)
-- **Writer heap**: 50MB (configurable via `WRITER_HEAP_SIZE`)
+- **Writer heap**: 256MB (8 threads at 32MB each; see `WRITER_HEAP_SIZE` in `src/search/index.rs`)
 - **Blocking context**: Tantivy uses `std::sync::Mutex` for the writer, so
   search operations run inside `tokio::task::spawn_blocking`
+
+### NL Definition Query Latency — Daemon vs Standalone
+
+**Daemon mode** (normal MCP client path): NL `definitions` queries (`is_nl_like_query` → true)
+take **~100ms** against a 100k-symbol workspace. The Tantivy index is held open in memory
+and the shared `EmbeddingService` is already initialized.
+
+**Standalone mode** (`julie-server search ... --standalone`): Latency depends on whether
+the Tantivy index is already on disk and whether the OS page cache is warm:
+- **No index on disk**: ~40–75s (full workspace indexing + Tantivy segment build + query).
+- **Index on disk, cold OS cache**: ~2s (Tantivy mmaps all segments from disk).
+- **Index on disk, warm OS cache**: ~100–200ms (normal).
+
+**Key implementation note — embedding sidecar probe:**  
+NL `definitions` queries trigger `maybe_initialize_embeddings_for_nl_definitions` in
+`src/tools/search/nl_embeddings.rs`. In daemon mode this returns immediately (the
+`EmbeddingService` is already settled). In standalone mode without the fix below it
+would call `create_embedding_provider()`, which probes and launches the Python sidecar —
+costing **8–10 seconds** even when keywords are sufficient.
+
+The fix (`bootstrap_standalone_handler` in `src/cli_tools/mod.rs`) calls
+`handler.mark_standalone_embedding_skipped()` immediately after indexing. This sets
+`workspace.embedding_runtime_status` to `Some(...)`, satisfying the guard:
+```rust
+if workspace.embedding_runtime_status.is_none() { /* probe sidecar */ }
+```
+so the probe is never entered. Standalone mode degrades to keyword-only search, which
+is correct — the sidecar would be torn down immediately after the one-shot query anyway.
+
+**Profiling evidence (2026-05-21, Alamofire ~520 files / 100k symbols, debug build):**
+
+| Path | Latency |
+|------|---------|
+| Daemon mode, query "function display template" | ~100ms avg |
+| `search_symbols` internals (expand + AND search + OR fallback) | ~1ms |
+| `expand_query_terms("function display template")` | ~340µs |
+| AND pass (Tantivy search, 160 candidate limit) | ~800µs |
+| Standalone (pre-fix, warm cache): sidecar probe | ~8.6s of 9s total |
+| Standalone (post-fix, warm cache): no sidecar probe | ~130ms |
+
+**Invariant (tested in `src/tests/tools/search/nl_symbol_query_latency_tests.rs`):**  
+"NL multi-token symbol-intent queries do not trigger combinatorial expansion."
+`expand_query_terms` for a k-word NL query produces O(k) terms bounded by `MAX_ADDED_TERMS`.
+The AND/OR fallback adds at most one extra Tantivy search call.
 
 ---
 

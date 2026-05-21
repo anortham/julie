@@ -1330,6 +1330,33 @@ impl JulieServerHandler {
             .and_then(|ws| ws.embedding_runtime_status.clone())
     }
 
+    /// Mark embedding initialization as skipped for standalone (single-shot CLI) mode.
+    ///
+    /// Standalone mode is a single-shot CLI invocation. Launching the Python
+    /// embedding sidecar to serve one query costs 8-10s and is torn down
+    /// immediately after. The keyword search path is the correct degraded mode.
+    ///
+    /// Setting `embedding_runtime_status` to `Some(...)` satisfies the guard
+    /// in `maybe_initialize_embeddings_for_nl_definitions`:
+    ///   `if workspace.embedding_runtime_status.is_none() { ... probe ... }`
+    /// so the 8-10s sidecar probe is never entered for NL queries.
+    pub(crate) async fn mark_standalone_embedding_skipped(&self) {
+        let mut ws = self.workspace.write().await;
+        if let Some(workspace) = ws.as_mut() {
+            if workspace.embedding_runtime_status.is_none() {
+                workspace.embedding_runtime_status =
+                    Some(crate::embeddings::EmbeddingRuntimeStatus {
+                        requested_backend: crate::embeddings::EmbeddingBackend::Unresolved,
+                        resolved_backend: crate::embeddings::EmbeddingBackend::Unresolved,
+                        accelerated: false,
+                        degraded_reason: Some(
+                            "standalone mode: embedding sidecar skipped".to_string(),
+                        ),
+                    });
+            }
+        }
+    }
+
     /// Initialize or load workspace and update components to use persistent storage
     pub async fn initialize_workspace(&self, workspace_path: Option<String>) -> Result<()> {
         self.initialize_workspace_with_force(workspace_path, false)
