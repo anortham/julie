@@ -182,6 +182,66 @@ impl SymbolDatabase {
 
     /// Get symbols for a file, skipping expensive columns (code_context, metadata, etc.)
     ///
+    /// Return the lowercase symbol names for each of the given file paths in one
+    /// batched SQL query.  Only `name` and `file_path` columns are read — much
+    /// cheaper than full or lightweight symbol rows.
+    ///
+    /// Results are keyed by the **exact** `file_path` string passed in (after
+    /// deduplication).  Files that have no indexed symbols simply have no entry
+    /// in the returned map.  The query is chunked at 500 paths per statement to
+    /// stay comfortably inside SQLite's 999-parameter limit.
+    pub fn titles_for_files(&self, file_paths: &[&str]) -> Result<HashMap<String, Vec<String>>> {
+        if file_paths.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        // Deduplicate while preserving order (order doesn't matter for the map,
+        // but determinism helps tests).
+        let unique_paths: Vec<&str> = {
+            let mut seen = std::collections::HashSet::new();
+            file_paths
+                .iter()
+                .copied()
+                .filter(|p| seen.insert(*p))
+                .collect()
+        };
+
+        let mut result: HashMap<String, Vec<String>> = HashMap::new();
+
+        const CHUNK_SIZE: usize = 500;
+        for chunk in unique_paths.chunks(CHUNK_SIZE) {
+            let placeholders: String = (1..=chunk.len())
+                .map(|i| format!("?{i}"))
+                .collect::<Vec<_>>()
+                .join(",");
+
+            let query = format!(
+                "SELECT file_path, name FROM symbols WHERE file_path IN ({placeholders})"
+            );
+
+            let mut stmt = self.conn.prepare(&query)?;
+            let params: Vec<&dyn rusqlite::types::ToSql> =
+                chunk.iter().map(|p| p as &dyn rusqlite::types::ToSql).collect();
+
+            let mut rows = stmt.query(&*params)?;
+            while let Some(row) = rows.next()? {
+                let file_path: String = row.get(0)?;
+                let name: String = row.get(1)?;
+                result
+                    .entry(file_path)
+                    .or_default()
+                    .push(name.to_lowercase());
+            }
+        }
+
+        debug!(
+            "titles_for_files: {} paths → {} files with symbols",
+            unique_paths.len(),
+            result.len()
+        );
+        Ok(result)
+    }
+
     /// Use this when the caller doesn't need code bodies or metadata — e.g. structure mode
     /// in get_symbols. Avoids reading large code_context blobs and parsing metadata JSON.
     pub fn get_symbols_for_file_lightweight(&self, file_path: &str) -> Result<Vec<Symbol>> {

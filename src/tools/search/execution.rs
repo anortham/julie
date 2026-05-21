@@ -398,9 +398,26 @@ async fn execute_file_search(
             fetch_limit = next_file_search_fetch_limit(fetch_limit, hard_cap);
         };
 
-        total_results += filtered_results.len();
+        // Apply symbol-title exact-match boost so files containing a symbol
+        // whose name matches the query surface above BM25-only basename-token
+        // matches.  This closes the Pattern-A gap on the files search path.
+        // Best-effort: if DB acquisition fails (e.g. workspace not yet indexed)
+        // we silently skip the boost rather than failing the search.
+        let mut boosted_results = filtered_results;
+        if let Ok(db) = handler
+            .get_pooled_database_for_workspace(&workspace.workspace_id)
+            .await
+        {
+            crate::search::index::apply_symbol_title_boost_to_file_results(
+                params.query,
+                &mut boosted_results,
+                &db,
+            );
+        }
+
+        total_results += boosted_results.len();
         hits.extend(
-            filtered_results
+            boosted_results
                 .into_iter()
                 .map(|result| SearchHit::from_file_result(result, workspace.workspace_id.clone())),
         );

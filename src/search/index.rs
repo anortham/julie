@@ -1657,3 +1657,75 @@ fn is_hidden_path_component(component: &str) -> bool {
         .strip_prefix('.')
         .is_some_and(|suffix| !suffix.is_empty())
 }
+
+/// Apply a symbol-title exact-match score boost to file search results.
+///
+/// For each result whose file contains a symbol whose lowercase name exactly
+/// matches a lowercase query term, `+EXACT_TITLE_BOOST` is added to the
+/// result's score.  Results are then re-sorted so the boosted files surface
+/// before BM25-only matches.
+///
+/// This closes the Pattern-A gap on the **files** search path: a file like
+/// `res.redirect.js` that defines `requestedRedirect` should rank above
+/// `res.location.js` whose basename merely shares a query token, when the
+/// query is `requestedRedirect`.
+///
+/// The DB lookup is batched (one query for all `results`) and capped at
+/// `FILE_TITLE_LOOKUP_CAP` to bound cost on large result sets.
+pub(crate) fn apply_symbol_title_boost_to_file_results(
+    query: &str,
+    results: &mut Vec<FileSearchResult>,
+    db: &crate::database::SymbolDatabase,
+) {
+    if results.is_empty() || query.trim().is_empty() {
+        return;
+    }
+
+    // Tokenise query into lowercase terms for exact matching.
+    let query_terms_lc: Vec<String> = query
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .map(|w| w.to_lowercase())
+        .collect();
+    if query_terms_lc.is_empty() {
+        return;
+    }
+
+    const FILE_TITLE_LOOKUP_CAP: usize = 200;
+    let paths: Vec<&str> = results
+        .iter()
+        .take(FILE_TITLE_LOOKUP_CAP)
+        .map(|r| r.file_path.as_str())
+        .collect();
+
+    let symbol_titles = match db.titles_for_files(&paths) {
+        Ok(map) => map,
+        Err(_) => return,
+    };
+
+    use crate::search::reranker::EXACT_TITLE_BOOST;
+    let mut any_boosted = false;
+    for result in results.iter_mut().take(FILE_TITLE_LOOKUP_CAP) {
+        if let Some(titles) = symbol_titles.get(&result.file_path) {
+            let has_exact = titles
+                .iter()
+                .any(|t| query_terms_lc.iter().any(|q| t == q));
+            if has_exact {
+                result.score += EXACT_TITLE_BOOST;
+                any_boosted = true;
+            }
+        }
+    }
+
+    if any_boosted {
+        // Re-sort: rank (ExactPath/ExactBasename/PathFragment) first, then
+        // boosted score descending, then path for stability.
+        let normalized_query = normalize_file_path(query.trim());
+        results.sort_by(|left, right| {
+            file_search_rank(&normalized_query, left)
+                .cmp(&file_search_rank(&normalized_query, right))
+                .then_with(|| right.score.total_cmp(&left.score))
+                .then_with(|| left.file_path.cmp(&right.file_path))
+        });
+    }
+}

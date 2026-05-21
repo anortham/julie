@@ -405,14 +405,52 @@ fn effective_intent_query(
 /// empty, and `kind` is the sentinel `Module`. The reranker mostly
 /// contributes role/path reweighting here — useful for de-emphasizing
 /// vendor / generated / test files on NL content queries.
+///
+/// When `db` is provided the reranker also applies `+EXACT_TITLE_BOOST` to any
+/// result whose file contains a symbol whose name exactly matches a query term
+/// (case-insensitive).  This closes the Pattern-A gap (duplicate-file
+/// scenarios) on the content search path: the file that actually defines the
+/// queried symbol rises above copies whose filename is unrelated.
+///
+/// The DB lookup is **batched** — one query for the entire candidate set, not
+/// per-hit — and is capped at `SYMBOL_TITLE_LOOKUP_CAP` pre-rerank candidates
+/// to bound cost on wide result sets.
 pub(crate) fn apply_reranker_to_content_results(
     query: &str,
     results: &mut Vec<crate::search::index::ContentSearchResult>,
+    db: Option<&crate::database::SymbolDatabase>,
 ) {
     if !reranker_enabled() || results.is_empty() {
         return;
     }
     let parsed = parse_query(query);
+
+    // Build a lowercase set of query target terms for O(1) membership tests.
+    let target_terms_lc: Vec<String> = parsed
+        .target_terms
+        .iter()
+        .map(|t| t.to_lowercase())
+        .collect();
+
+    // Batched symbol-title lookup: one DB call covers the top N candidates.
+    // Capped so that a huge relaxed-fallback result set doesn't cause a
+    // pathologically large IN-clause.
+    const SYMBOL_TITLE_LOOKUP_CAP: usize = 200;
+    let symbol_titles: HashMap<String, Vec<String>> = if let Some(db) = db {
+        if !target_terms_lc.is_empty() {
+            let paths: Vec<&str> = results
+                .iter()
+                .take(SYMBOL_TITLE_LOOKUP_CAP)
+                .map(|r| r.file_path.as_str())
+                .collect();
+            db.titles_for_files(&paths).unwrap_or_default()
+        } else {
+            HashMap::new()
+        }
+    } else {
+        HashMap::new()
+    };
+
     for r in results.iter_mut() {
         let basename = std::path::Path::new(&r.file_path)
             .file_name()
@@ -442,6 +480,22 @@ pub(crate) fn apply_reranker_to_content_results(
         // can never meaningfully fire are skipped at the type-level, not
         // just suppressed by happenstance.
         r.score = rerank_content_score(&parsed, &candidate);
+
+        // Symbol-title exact-match boost: if the file contains a symbol whose
+        // name matches any query term exactly, this file likely *defines* the
+        // queried concept and should rank above files that merely mention it in
+        // body text or share a filename token.
+        if !target_terms_lc.is_empty() {
+            if let Some(titles) = symbol_titles.get(&r.file_path) {
+                let has_exact = titles
+                    .iter()
+                    .any(|t| target_terms_lc.iter().any(|q| t == q));
+                if has_exact {
+                    use crate::search::reranker::EXACT_TITLE_BOOST;
+                    r.score += EXACT_TITLE_BOOST;
+                }
+            }
+        }
     }
     results.sort_by(|a, b| {
         b.score
@@ -747,7 +801,8 @@ fn content_search_with_index(
     // C.4: rerank file-level results BEFORE the verification loop so the
     // limit-truncation downstream picks role-reweighted candidates.
     // No-op when JULIE_RERANKER_ENABLED is unset.
-    apply_reranker_to_content_results(query, &mut search_results);
+    // Pass `db` so the reranker can apply symbol-title exact-match boosts.
+    apply_reranker_to_content_results(query, &mut search_results, db);
     let candidate_total = search_results.len();
 
     let query_words: Vec<String> = query

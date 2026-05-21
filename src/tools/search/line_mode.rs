@@ -342,7 +342,7 @@ fn run_line_mode_workspace_fetch(
                 }
             };
             let mut results = index.search_content(&query, &filter, fetch_limit)?;
-            text_search::apply_reranker_to_content_results(&query, &mut results.results);
+            text_search::apply_reranker_to_content_results(&query, &mut results.results, Some(db));
             Ok(results)
         },
         |file_results| {
