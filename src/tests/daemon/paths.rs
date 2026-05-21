@@ -115,14 +115,18 @@ fn test_is_julie_home_case_insensitive_on_macos() {
 }
 
 #[test]
+#[serial(julie_home_env)]
 fn test_indexes_dir() {
+    let _guard = without_env(JULIE_HOME_ENV);
     let paths = DaemonPaths::new();
     let expected = dirs::home_dir().unwrap().join(".julie").join("indexes");
     assert_eq!(paths.indexes_dir(), expected);
 }
 
 #[test]
+#[serial(julie_home_env)]
 fn test_workspace_index_path() {
+    let _guard = without_env(JULIE_HOME_ENV);
     let paths = DaemonPaths::new();
     let expected = dirs::home_dir()
         .unwrap()
@@ -133,7 +137,9 @@ fn test_workspace_index_path() {
 }
 
 #[test]
+#[serial(julie_home_env)]
 fn test_workspace_db_path() {
+    let _guard = without_env(JULIE_HOME_ENV);
     let paths = DaemonPaths::new();
     let expected = dirs::home_dir()
         .unwrap()
@@ -146,7 +152,9 @@ fn test_workspace_db_path() {
 }
 
 #[test]
+#[serial(julie_home_env)]
 fn test_workspace_tantivy_path() {
+    let _guard = without_env(JULIE_HOME_ENV);
     let paths = DaemonPaths::new();
     let expected = dirs::home_dir()
         .unwrap()
@@ -158,28 +166,38 @@ fn test_workspace_tantivy_path() {
 }
 
 #[test]
+#[serial(julie_home_env)]
 fn test_daemon_pid_path() {
+    let _guard = without_env(JULIE_HOME_ENV);
     let paths = DaemonPaths::new();
     let expected = dirs::home_dir().unwrap().join(".julie").join("daemon.pid");
     assert_eq!(paths.daemon_pid(), expected);
 }
 
 #[test]
+#[serial(julie_home_env)]
 fn test_daemon_lock_path() {
+    let _guard = without_env(JULIE_HOME_ENV);
     let paths = DaemonPaths::new();
     let expected = dirs::home_dir().unwrap().join(".julie").join("daemon.lock");
     assert_eq!(paths.daemon_lock(), expected);
 }
 
 #[test]
+#[serial(julie_home_env)]
 fn test_daemon_log_path() {
+    let _guard = without_env(JULIE_HOME_ENV);
     let paths = DaemonPaths::new();
     let expected = dirs::home_dir().unwrap().join(".julie").join("daemon.log");
     assert_eq!(paths.daemon_log(), expected);
 }
 
 #[test]
+#[serial(julie_home_env)]
 fn test_project_log_dir() {
+    // project_log_dir doesn't depend on julie_home, but guard for consistency
+    // so the test cannot panic on an invalid JULIE_HOME-influenced path.
+    let _guard = without_env(JULIE_HOME_ENV);
     let project = PathBuf::from("/Users/murphy/source/julie");
     let paths = DaemonPaths::new();
     assert_eq!(
@@ -189,7 +207,9 @@ fn test_project_log_dir() {
 }
 
 #[test]
+#[serial(julie_home_env)]
 fn test_migration_state_path() {
+    let _guard = without_env(JULIE_HOME_ENV);
     let paths = DaemonPaths::new();
     let expected = dirs::home_dir()
         .unwrap()
@@ -239,7 +259,9 @@ fn test_ensure_dirs_creates_directories() {
 }
 
 #[test]
+#[serial(julie_home_env)]
 fn test_default_impl() {
+    let _guard = without_env(JULIE_HOME_ENV);
     // Default should behave the same as new()
     let default_paths = DaemonPaths::default();
     let new_paths = DaemonPaths::new();
