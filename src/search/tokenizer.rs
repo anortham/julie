@@ -17,6 +17,23 @@ static ENGLISH_STEMMER: LazyLock<Stemmer> = LazyLock::new(|| Stemmer::create(Alg
 
 /// Code-aware Tantivy tokenizer with CamelCase/snake_case splitting,
 /// special-character preservation, affix stripping, and English stemming.
+///
+/// # Ablation env vars
+///
+/// Two runtime gates are available for A/B bakeoffs. Both default to **off** (normal behavior).
+///
+/// - `JULIE_ABLATE_STEMMING=1` — disables the English-stemmer step. Tokens are emitted as-is
+///   without morphological variants. Because stemming is applied at *both* index time and query
+///   time, disabling this gate only shifts query-time behavior for an already-indexed corpus;
+///   for a clean A/B measurement the bakeoff harness must rebuild the index with the flag set.
+///
+/// - `JULIE_ABLATE_CAMEL_EMIT=1` — `split_camel_case` is bypassed; the whole identifier is
+///   emitted as a single lowercased token rather than its component parts. The same index-rebuild
+///   caveat applies: tokens split at index time remain split in the existing index.
+///
+/// Both flags are read once at `CodeTokenizer` construction and stored as `bool` fields. The
+/// `TokenizerCompatibilitySignature` includes them, so toggling either flag forces a Tantivy
+/// index rebuild the next time the workspace is opened.
 #[derive(Clone)]
 pub struct CodeTokenizer {
     /// Patterns to preserve as single tokens (e.g., "::", "->")
@@ -28,6 +45,11 @@ pub struct CodeTokenizer {
     strip_prefixes: Vec<String>,
     /// Suffixes to strip from identifiers (e.g., "Service", "Controller")
     strip_suffixes: Vec<String>,
+    /// When true (`JULIE_ABLATE_STEMMING=1`), the English stemmer step is skipped.
+    ablate_stemming: bool,
+    /// When true (`JULIE_ABLATE_CAMEL_EMIT=1`), CamelCase splitting is skipped and the
+    /// full identifier is emitted as one token.
+    ablate_camel_emit: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -36,17 +58,35 @@ pub struct TokenizerCompatibilitySignature {
     pub meaningful_affixes: Vec<String>,
     pub strip_prefixes: Vec<String>,
     pub strip_suffixes: Vec<String>,
+    /// Mirrors `CodeTokenizer::ablate_stemming`. Included so that toggling
+    /// `JULIE_ABLATE_STEMMING` forces a full index rebuild.
+    pub ablate_stemming: bool,
+    /// Mirrors `CodeTokenizer::ablate_camel_emit`. Included so that toggling
+    /// `JULIE_ABLATE_CAMEL_EMIT` forces a full index rebuild.
+    pub ablate_camel_emit: bool,
 }
 
 impl CodeTokenizer {
     pub fn new(preserve_patterns: Vec<String>) -> Self {
         let mut patterns = preserve_patterns;
         patterns.sort_by_key(|b| std::cmp::Reverse(b.len()));
+        // Read ablation env vars once at construction. Any non-empty value other than "0"
+        // enables the gate; unset or "0" preserves the default (normal) behavior.
+        let ablate_stemming = std::env::var("JULIE_ABLATE_STEMMING")
+            .ok()
+            .map(|v| v != "0" && !v.is_empty())
+            .unwrap_or(false);
+        let ablate_camel_emit = std::env::var("JULIE_ABLATE_CAMEL_EMIT")
+            .ok()
+            .map(|v| v != "0" && !v.is_empty())
+            .unwrap_or(false);
         Self {
             preserve_patterns: patterns,
             meaningful_affixes: Vec::new(),
             strip_prefixes: Vec::new(),
             strip_suffixes: Vec::new(),
+            ablate_stemming,
+            ablate_camel_emit,
         }
     }
 
@@ -109,6 +149,8 @@ impl CodeTokenizer {
             meaningful_affixes: canonicalize_signature_values(&self.meaningful_affixes),
             strip_prefixes: canonicalize_signature_values(&self.strip_prefixes),
             strip_suffixes: canonicalize_signature_values(&self.strip_suffixes),
+            ablate_stemming: self.ablate_stemming,
+            ablate_camel_emit: self.ablate_camel_emit,
         }
     }
 }
@@ -130,6 +172,8 @@ impl Tokenizer for CodeTokenizer {
             &self.meaningful_affixes,
             &self.strip_prefixes,
             &self.strip_suffixes,
+            self.ablate_stemming,
+            self.ablate_camel_emit,
         )
     }
 }
@@ -148,6 +192,8 @@ impl<'a> CodeTokenStream<'a> {
         meaningful_affixes: &[String],
         strip_prefixes: &[String],
         strip_suffixes: &[String],
+        ablate_stemming: bool,
+        ablate_camel_emit: bool,
     ) -> Self {
         let tokens = tokenize_code(
             text,
@@ -155,6 +201,8 @@ impl<'a> CodeTokenStream<'a> {
             meaningful_affixes,
             strip_prefixes,
             strip_suffixes,
+            ablate_stemming,
+            ablate_camel_emit,
         );
         Self {
             text,
@@ -189,6 +237,8 @@ fn tokenize_code(
     meaningful_affixes: &[String],
     strip_prefixes: &[String],
     strip_suffixes: &[String],
+    ablate_stemming: bool,
+    ablate_camel_emit: bool,
 ) -> Vec<Token> {
     let mut tokens = Vec::new();
     let mut position = 0;
@@ -222,8 +272,9 @@ fn tokenize_code(
             let mut emitted: std::collections::HashSet<String> = std::collections::HashSet::new();
             emitted.insert(segment_lower.clone());
 
-            // Split CamelCase/PascalCase identifiers
-            if segment.chars().any(|c| c.is_uppercase())
+            // Split CamelCase/PascalCase identifiers (skipped when JULIE_ABLATE_CAMEL_EMIT=1)
+            if !ablate_camel_emit
+                && segment.chars().any(|c| c.is_uppercase())
                 && segment.chars().any(|c| c.is_lowercase())
             {
                 for part in split_camel_case(&segment) {
@@ -283,30 +334,33 @@ fn tokenize_code(
 
             // Stem emitted tokens for morphological matching
             // (e.g., "estimation" → "estim", "processor" → "process")
-            let stems: Vec<String> = emitted
-                .iter()
-                .filter(|t| t.len() >= 4)
-                .filter_map(|t| {
-                    let stem = ENGLISH_STEMMER.stem(t).to_string();
-                    if stem != *t && !emitted.contains(&stem) {
-                        Some(stem)
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-            let mut stems = stems;
-            stems.sort(); // Deterministic ordering (HashSet iteration is non-deterministic)
-            for stem in stems {
-                tokens.push(Token {
-                    offset_from: offset,
-                    offset_to: offset + segment.len(),
-                    position,
-                    text: stem.clone(),
-                    position_length: 1,
-                });
-                position += 1;
-                emitted.insert(stem);
+            // Skipped when JULIE_ABLATE_STEMMING=1.
+            if !ablate_stemming {
+                let stems: Vec<String> = emitted
+                    .iter()
+                    .filter(|t| t.len() >= 4)
+                    .filter_map(|t| {
+                        let stem = ENGLISH_STEMMER.stem(t).to_string();
+                        if stem != *t && !emitted.contains(&stem) {
+                            Some(stem)
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+                let mut stems = stems;
+                stems.sort(); // Deterministic ordering (HashSet iteration is non-deterministic)
+                for stem in stems {
+                    tokens.push(Token {
+                        offset_from: offset,
+                        offset_to: offset + segment.len(),
+                        position,
+                        text: stem.clone(),
+                        position_length: 1,
+                    });
+                    position += 1;
+                    emitted.insert(stem);
+                }
             }
         }
     }
