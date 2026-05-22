@@ -177,6 +177,11 @@ impl CandidateBuilder {
 pub struct Ranked {
     pub candidate: Candidate,
     pub final_score: f32,
+    /// Zero-based index of this candidate in the original `candidates` slice
+    /// passed to [`rerank_unified`].  Stable across sorting so callers can
+    /// write scores back to a parallel array by position rather than by a
+    /// `(path, title)` key that collides for file-rows and same-name symbols.
+    pub original_index: usize,
 }
 
 // ---------------------------------------------------------------------------
@@ -386,7 +391,8 @@ pub fn rerank_unified(query: &ParsedQuery, candidates: &[Candidate]) -> Vec<Rank
 
     let mut ranked: Vec<Ranked> = candidates
         .iter()
-        .map(|c| {
+        .enumerate()
+        .map(|(original_index, c)| {
             let mut score = c.tantivy_score;
 
             let title_lc = c.title.to_lowercase();
@@ -590,6 +596,7 @@ pub fn rerank_unified(query: &ParsedQuery, candidates: &[Candidate]) -> Vec<Rank
             Ranked {
                 candidate: c.clone(),
                 final_score: score,
+                original_index,
             }
         })
         .collect();

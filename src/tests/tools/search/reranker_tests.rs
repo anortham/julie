@@ -306,3 +306,61 @@ fn test_reranker_preserves_tantivy_base_score() {
     let s = score_query("absolutely no overlap here", c);
     assert!((s - 7.5).abs() < 1e-3, "got {s}, expected 7.5 passthrough");
 }
+
+// ----- Codex finding #6: reranker writeback key collision -----
+
+/// A file row with name="foo" at path="src/foo.rs" and a symbol named "foo"
+/// in that same file have identical (path, title) — the old HashMap key used
+/// for score writeback.  With ordinal-based writeback the two candidates must
+/// receive distinct final scores that correctly map back by position.
+#[test]
+fn reranker_writeback_disambiguates_same_name_same_path() {
+    let file_row = Candidate::builder()
+        .title("foo")
+        .path("src/foo.rs")
+        .is_file_doc(true)
+        .tantivy_score(1.5)
+        .build();
+
+    let sym_row = Candidate::builder()
+        .title("foo")
+        .path("src/foo.rs")
+        .is_file_doc(false)
+        .kind(SymbolKind::Function)
+        .tantivy_score(0.8)
+        .build();
+
+    let candidates = vec![file_row, sym_row];
+    let parsed = parse_query("foo");
+    let ranked = rerank_unified(&parsed, &candidates);
+
+    assert_eq!(ranked.len(), 2, "both candidates must appear in ranked output");
+
+    // Each Ranked entry carries its original candidate ordinal.
+    let r_for_0 = ranked.iter().find(|r| r.original_index == 0)
+        .expect("original_index=0 (file row) must appear in ranked output");
+    let r_for_1 = ranked.iter().find(|r| r.original_index == 1)
+        .expect("original_index=1 (symbol row) must appear in ranked output");
+
+    // The file row gets different boosts than the function symbol, so scores must differ.
+    assert_ne!(
+        r_for_0.final_score, r_for_1.final_score,
+        "file row and symbol with the same (path, title) must produce distinct final scores"
+    );
+
+    // Simulate index-based writeback (the fixed approach in search_unified_full).
+    let mut scores = vec![f32::NAN; 2];
+    for r in &ranked {
+        scores[r.original_index] = r.final_score;
+    }
+
+    assert!(
+        scores[0].is_finite() && scores[1].is_finite(),
+        "both hit slots must be populated by index-based writeback"
+    );
+    assert_ne!(
+        scores[0], scores[1],
+        "index-based writeback must assign distinct scores to candidates \
+         that share (path, title) but differ in row type"
+    );
+}

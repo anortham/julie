@@ -1277,27 +1277,20 @@ impl SearchIndex {
                 })
                 .collect();
 
-            // rerank_unified returns sorted output; we need to write scores
-            // back in original `hits` order (hits[i] ↔ candidates[i]).
-            // Build an index: position in candidates → final_score.
-            // Since `rerank_unified` clones candidates into Ranked, we match
-            // by enumerating the original candidates and finding the
-            // corresponding Ranked entry by (path, title) key.
+            // rerank_unified returns sorted output; write scores back to the
+            // original hits using the ordinal index carried in Ranked::original_index.
+            // Index-based writeback is collision-free: the old (path, title) key
+            // aliased file rows (name = basename stem, e.g. "foo" for src/foo.rs)
+            // with same-named symbols in the same file, causing one candidate's
+            // score to overwrite the other's and silently flip their ranks.
             let ranked = rerank_unified(&parsed, &candidates);
 
-            // Build a score lookup: (file_path, name) → final_score.
-            // Duplicates are resolved by taking the highest score (the
-            // reranker returns them sorted, so the first entry wins).
-            let mut score_map: std::collections::HashMap<(&str, &str), f32> =
-                std::collections::HashMap::with_capacity(ranked.len());
+            let mut reranked_scores: Vec<Option<f32>> = vec![None; candidates.len()];
             for r in &ranked {
-                let key = (r.candidate.path.as_str(), r.candidate.title.as_str());
-                score_map.entry(key).or_insert(r.final_score);
+                reranked_scores[r.original_index] = Some(r.final_score);
             }
-
-            for hit in hits.iter_mut() {
-                let key = (hit.file_path.as_str(), hit.name.as_str());
-                if let Some(&s) = score_map.get(&key) {
+            for (hit, score_opt) in hits.iter_mut().zip(reranked_scores.iter()) {
+                if let Some(&s) = score_opt.as_ref() {
                     hit.tantivy_score = s;
                 }
             }
@@ -1426,7 +1419,7 @@ impl SearchIndex {
                     );
                     drop(index);
                     (
-                        Self::recreate_index(path, &expected_schema, &expected_marker)?,
+                        Self::recreate_index_with_lock(path, &expected_schema, &expected_marker)?,
                         SearchIndexOpenDisposition::RecreatedIncompatible,
                     )
                 }
@@ -1437,7 +1430,7 @@ impl SearchIndex {
                     path.display()
                 );
                 (
-                    Self::recreate_index(path, &expected_schema, &expected_marker)?,
+                    Self::recreate_index_with_lock(path, &expected_schema, &expected_marker)?,
                     SearchIndexOpenDisposition::RecreatedOpenFailure,
                 )
             }
@@ -1576,41 +1569,119 @@ impl SearchIndex {
         Ok(index)
     }
 
+    /// Rebuild the Tantivy index at `path` under a cross-process advisory lock.
+    ///
+    /// # Why the lock lives in the PARENT directory
+    ///
+    /// The previous implementation placed the sentinel file inside `path` itself.
+    /// `recreate_index` calls `remove_dir_all(path)`, which deletes the sentinel,
+    /// so a concurrent opener that had already seen `AlreadyExists` on the sentinel
+    /// would then race against the directory teardown — opening a half-deleted tree
+    /// or missing the lock entirely.
+    ///
+    /// The lock file (`<parent>/<dirname>.julie-rebuild.lock`) is a stable sibling
+    /// that survives `remove_dir_all`.  `fs2::FileExt::lock_exclusive` blocks the
+    /// second caller until the first has finished and released the lock; the loser
+    /// then re-checks compatibility and returns the already-rebuilt index early.
+    ///
+    /// # Atomic rename
+    ///
+    /// The rebuilt index is first created in `<parent>/<dirname>.tmp-rebuild`.
+    /// Only after a successful `write_compat_marker` is the old directory removed
+    /// and the temp directory renamed into place.  If the process crashes mid-way,
+    /// the next caller cleans up the orphaned `.tmp-rebuild` before proceeding.
     fn recreate_index_with_lock(
         path: &Path,
         schema: &tantivy::schema::Schema,
         marker: &SearchCompatMarker,
     ) -> Result<Index> {
-        let lock_path = path.join(".recreating");
-        let _lock = match std::fs::OpenOptions::new()
+        use fs2::FileExt;
+
+        // Derive stable sibling names in the PARENT directory.
+        let dir_name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "tantivy".to_string());
+        let parent = path.parent().unwrap_or(path);
+
+        let lock_path = parent.join(format!("{dir_name}.julie-rebuild.lock"));
+        let tmp_path = parent.join(format!("{dir_name}.tmp-rebuild"));
+
+        // Open (creating if needed) the advisory lock file.  Never truncate —
+        // fs2 flocks are bound to the file's inode; truncating would not break
+        // existing holders but is unnecessary.
+        let lock_file = std::fs::OpenOptions::new()
+            .create(true)
+            .read(true)
             .write(true)
-            .create_new(true)
+            .truncate(false)
             .open(&lock_path)
-        {
-            Ok(file) => file,
-            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
-                tracing::warn!(
-                    "Concurrent index recreation detected at {} — reusing existing index",
-                    path.display()
-                );
-                let existing = Index::open_in_dir(path)?;
+            .map_err(|err| {
+                SearchError::IndexError(format!(
+                    "failed to open rebuild lock at {}: {err}",
+                    lock_path.display()
+                ))
+            })?;
+
+        // Block until we hold the exclusive lock.  When a concurrent caller
+        // finishes and drops its lock, we wake and re-check compatibility below.
+        lock_file.lock_exclusive().map_err(|err| {
+            SearchError::IndexError(format!(
+                "failed to acquire rebuild lock at {}: {err}",
+                lock_path.display()
+            ))
+        })?;
+        // Lock is released when `lock_file` is dropped at end of scope.
+
+        // Re-check: the process that held the lock before us may have already
+        // rebuilt a compatible index.  If so, open and return it immediately.
+        if path.exists() {
+            if let Ok(existing) = Index::open_in_dir(path) {
                 if Self::index_is_compatible(path, schema, &existing.schema(), marker) {
+                    tracing::debug!(
+                        "Index at {} was rebuilt by a concurrent opener; reusing",
+                        path.display()
+                    );
                     return Ok(existing);
                 }
-
-                tracing::warn!(
-                    "Concurrent recreation at {} yielded an incompatible index, forcing local recreation",
-                    path.display()
-                );
                 drop(existing);
-                return Self::recreate_index(path, schema, marker);
             }
-            Err(err) => return Err(err.into()),
-        };
+        }
 
-        let recreate_result = Self::recreate_index(path, schema, marker);
-        let _ = std::fs::remove_file(&lock_path);
-        recreate_result
+        // Clean up any orphaned temp directory from a previous crashed rebuild.
+        if tmp_path.exists() {
+            std::fs::remove_dir_all(&tmp_path).map_err(|err| {
+                SearchError::IndexError(format!(
+                    "failed to remove stale tmp rebuild dir {}: {err}",
+                    tmp_path.display()
+                ))
+            })?;
+        }
+
+        // Build the new index into the temp directory.
+        std::fs::create_dir_all(&tmp_path)?;
+        let _tmp_index = Index::create_in_dir(&tmp_path, schema.clone())?;
+        Self::write_compat_marker(&tmp_path, marker)?;
+
+        // Atomically replace: remove old, rename temp into final location.
+        if path.exists() {
+            std::fs::remove_dir_all(path)?;
+        }
+        std::fs::rename(&tmp_path, path).map_err(|err| {
+            SearchError::IndexError(format!(
+                "failed to rename {} → {}: {err}",
+                tmp_path.display(),
+                path.display()
+            ))
+        })?;
+
+        // Re-open from the final location (the index object pointed at tmp_path).
+        Index::open_in_dir(path).map_err(|err| {
+            SearchError::IndexError(format!(
+                "failed to open rebuilt index at {}: {err}",
+                path.display()
+            ))
+        })
     }
 
     /// Check whether on-disk schema metadata matches Julie's expected schema shape.
