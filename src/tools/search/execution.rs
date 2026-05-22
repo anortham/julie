@@ -273,10 +273,19 @@ async fn run_unified_pass(
         // Use `unified_search_hits` (returns raw UnifiedHit) rather than
         // `unified_search_impl` (converts to Symbol) so the "file" kind is
         // preserved end-to-end in the SearchHit.
+        //
+        // Fix #1 (codex review): overfetch before applying external filters.
+        // Requesting exactly `limit` raw hits and then applying file_pattern /
+        // exclude_tests afterwards means valid in-scope hits ranked beyond
+        // position `limit` are silently dropped.  Request a larger candidate
+        // pool so the filters have headroom to yield `limit` in-scope hits.
+        // The final truncation to `limit` happens after the loop below.
+        let raw_fetch_limit = limit.saturating_mul(4).max(50);
+
         let (raw_hits, workspace_total) = text_search::unified_search_hits(
             query,
             &filter,
-            limit,
+            raw_fetch_limit,
             Some(vec![workspace.workspace_id.clone()]),
             handler,
         )
@@ -295,8 +304,15 @@ async fn run_unified_pass(
             pre_test_filter_total += 1;
 
             // Stage 2: NL-default-exclude-tests filter.
+            //
+            // Fix #2 (codex review): also exclude symbols whose role field is
+            // "test", not just those whose file path is a test path.  Inline
+            // #[test] functions in production-looking source files (e.g.
+            // `src/lib.rs`) have role=="test" set by the projection layer from
+            // extractor metadata, but is_test_path() returns false for them.
             if effective_exclude_tests
-                && crate::search::scoring::is_test_path(&raw_hit.file_path)
+                && (crate::search::scoring::is_test_path(&raw_hit.file_path)
+                    || raw_hit.role == "test")
             {
                 continue;
             }
