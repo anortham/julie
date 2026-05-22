@@ -70,6 +70,12 @@ pub fn create_schema() -> Schema {
             .set_index_option(IndexRecordOption::WithFreqsAndPositions),
     );
 
+    let simple_code_text_not_stored = TextOptions::default().set_indexing_options(
+        TextFieldIndexing::default()
+            .set_tokenizer("simple_code")
+            .set_index_option(IndexRecordOption::WithFreqsAndPositions),
+    );
+
     // Common fields (exact match, stored)
     builder.add_text_field(fields::DOC_TYPE, STRING | STORED);
     builder.add_text_field(fields::ID, STRING | STORED);
@@ -82,7 +88,7 @@ pub fn create_schema() -> Schema {
     builder.add_text_field(fields::NAME, code_text_options.clone());
     builder.add_text_field(fields::SIGNATURE, code_text_options.clone());
     builder.add_text_field(fields::DOC_COMMENT, code_text_options.clone());
-    builder.add_text_field(fields::CODE_BODY, code_text_not_stored.clone());
+    builder.add_text_field(fields::CODE_BODY, code_text_options.clone());
     builder.add_text_field(fields::ANNOTATIONS_EXACT, STRING);
     builder.add_text_field(fields::ANNOTATIONS_TEXT, code_text_not_stored.clone());
     builder.add_text_field(fields::OWNER_NAMES_TEXT, code_text_not_stored.clone());
@@ -97,8 +103,11 @@ pub fn create_schema() -> Schema {
     // File content field (code-tokenized, not stored)
     builder.add_text_field(fields::CONTENT, code_text_not_stored.clone());
 
-    // Phase 2 unified schema fields (code-tokenized, not stored).
-    builder.add_text_field(fields::PRETOKENIZED_CODE, code_text_not_stored.clone());
+    // Phase 2 unified schema fields.
+    // `pretokenized_code` is already split at index time and must stay on the
+    // simple tokenizer so the matching field does not reintroduce query-time
+    // code-tokenizer expansion noise.
+    builder.add_text_field(fields::PRETOKENIZED_CODE, simple_code_text_not_stored);
     builder.add_text_field(fields::RELATIONSHIP_TEXT, code_text_not_stored);
 
     builder.build()

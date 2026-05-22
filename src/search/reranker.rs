@@ -320,9 +320,7 @@ pub fn rerank_unified(query: &ParsedQuery, candidates: &[Candidate]) -> Vec<Rank
                 // "Cargo.toml".
                 let query_raw_lc = query.raw.to_lowercase();
                 let path_segment_exact = !query_raw_lc.is_empty()
-                    && path_lc
-                        .split('/')
-                        .any(|segment| segment == query_raw_lc);
+                    && path_lc.split('/').any(|segment| segment == query_raw_lc);
                 if path_segment_exact {
                     score += FILE_PATH_SEGMENT_EXACT_BOOST;
                 }
@@ -336,9 +334,7 @@ pub fn rerank_unified(query: &ParsedQuery, candidates: &[Candidate]) -> Vec<Rank
                     // Title compact match (title field on file rows carries the
                     // file name stored by the indexer).
                     score += EXACT_TITLE_BOOST + FILE_KIND_EXACT_BONUS;
-                } else if !query_compact.is_empty()
-                    && compact_alnum_lc(&path_lc) == query_compact
-                {
+                } else if !query_compact.is_empty() && compact_alnum_lc(&path_lc) == query_compact {
                     // Full-path compact match — for multi-token path queries
                     // like "openclaw plugin index.ts" that match a file path
                     // `openclaw-plugin/index.ts` end-to-end.  The basename
@@ -358,14 +354,9 @@ pub fn rerank_unified(query: &ParsedQuery, candidates: &[Candidate]) -> Vec<Rank
             // per-term branch already contributes EXACT_TITLE_BOOST and
             // first-term-kind_boost would double-count below.
             let mut symbol_compact_fired = false;
-            if !c.is_file_doc
-                && !query_compact.is_empty()
-                && title_compact == query_compact
-            {
-                let per_term_will_match_title = query
-                    .target_terms
-                    .iter()
-                    .any(|t| title_lc == t.as_str());
+            if !c.is_file_doc && !query_compact.is_empty() && title_compact == query_compact {
+                let per_term_will_match_title =
+                    query.target_terms.iter().any(|t| title_lc == t.as_str());
                 if !per_term_will_match_title {
                     score += EXACT_TITLE_BOOST + kind_boost(&c.kind);
                     symbol_compact_fired = true;
@@ -410,9 +401,7 @@ pub fn rerank_unified(query: &ParsedQuery, candidates: &[Candidate]) -> Vec<Rank
                         .rsplit_once('.')
                         .map(|(s, _)| s)
                         .unwrap_or(&basename_lc_for_term);
-                    if !term_compact.is_empty()
-                        && compact_alnum_lc(stem_for_term) == term_compact
-                    {
+                    if !term_compact.is_empty() && compact_alnum_lc(stem_for_term) == term_compact {
                         score += FILE_BASENAME_TERM_BOOST;
                     }
                     // Basename exact (full, with extension).

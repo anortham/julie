@@ -21,7 +21,7 @@ use tantivy::{Index, IndexReader, IndexWriter, Term};
 use crate::search::error::{Result, SearchError};
 use crate::search::expansion::expand_query_terms;
 use crate::search::language_config::LanguageConfigs;
-use crate::search::query::{build_unified_query, parse_annotation_query, UnifiedQueryFieldSet};
+use crate::search::query::{UnifiedQueryFieldSet, build_unified_query, parse_annotation_query};
 use crate::search::schema::{
     SchemaCompatibilitySignature, SchemaFields, compatibility_signature, create_schema,
 };
@@ -77,7 +77,7 @@ pub enum FileMatchKind {
 /// projection layer.
 pub struct SearchDocument {
     // ---- discriminator ----
-    pub doc_type: String,           // "symbol" | "file"
+    pub doc_type: String, // "symbol" | "file"
 
     // ---- shared fields ----
     pub id: String,
@@ -85,9 +85,9 @@ pub struct SearchDocument {
     pub language: String,
     pub file_path: String,
     pub basename: String,
-    pub kind: String,               // symbol kind string, or "file"
-    pub role: String,               // classify_role result
-    pub test_role: String,          // test_subrole result
+    pub kind: String,      // symbol kind string, or "file"
+    pub role: String,      // classify_role result
+    pub test_role: String, // test_subrole result
 
     // ---- symbol fields ----
     pub signature: String,
@@ -149,8 +149,7 @@ impl SearchDocument {
             // Symbol metadata says it's a test but the path doesn't confirm it —
             // inline test helper case.  Override the role and use the metadata
             // test_role when present, otherwise fall back to path test_role.
-            let tr = metadata_test_role
-                .unwrap_or_else(|| path_test_role.to_string());
+            let tr = metadata_test_role.unwrap_or_else(|| path_test_role.to_string());
             ("test".to_string(), tr)
         } else {
             (
@@ -709,8 +708,7 @@ impl SearchIndex {
         // contains only symbol rows.  Without this filter, queries like
         // "format" pull in 1000s of file rows that match the body content
         // and starve symbol candidates out of the over-fetch window.
-        let (hits, relaxed) =
-            self.search_unified_kind_filtered(query_str, filter, limit, false)?;
+        let (hits, relaxed) = self.search_unified_kind_filtered(query_str, filter, limit, false)?;
         let mut results: Vec<SymbolSearchResult> = hits
             .into_iter()
             .map(|h| SymbolSearchResult {
@@ -769,9 +767,7 @@ impl SearchIndex {
         );
 
         let searcher = self.reader.searcher();
-        let candidate_limit = limit
-            .saturating_mul(NL_RERANK_OVERFETCH_FACTOR)
-            .max(500);
+        let candidate_limit = limit.saturating_mul(NL_RERANK_OVERFETCH_FACTOR).max(500);
         let top_docs = searcher.search(
             &query,
             &TopDocs::with_limit(candidate_limit).order_by_score(),
@@ -813,6 +809,12 @@ impl SearchIndex {
                 role: Self::get_text_field(&doc, f.role),
                 test_role: Self::get_text_field(&doc, f.test_role),
             });
+        }
+        if let Some(pattern) = filter.file_pattern.as_deref() {
+            results.retain(|result| matches_glob_pattern(&result.file_path, pattern));
+        }
+        if filter.exclude_tests {
+            results.retain(|result| !is_test_path(&result.file_path) && result.role != "test");
         }
         results.truncate(limit);
         Ok(SymbolSearchResults { results, relaxed })
@@ -888,8 +890,7 @@ impl SearchIndex {
         filter: &SearchFilter,
         limit: usize,
     ) -> Result<FileSearchResults> {
-        let (hits, relaxed) =
-            self.search_unified_kind_filtered(query_str, filter, limit, true)?;
+        let (hits, relaxed) = self.search_unified_kind_filtered(query_str, filter, limit, true)?;
         let normalized_query = normalize_file_path(query_str.trim());
         let results: Vec<FileSearchResult> = hits
             .into_iter()
@@ -989,12 +990,52 @@ impl SearchIndex {
         limit: usize,
         files_only: Option<bool>,
     ) -> Result<(Vec<UnifiedHit>, bool, usize, usize)> {
+        use crate::extractors::SymbolKind;
         use crate::search::query_parse::parse_query;
         use crate::search::reranker::{Candidate, rerank_unified};
-        use crate::extractors::SymbolKind;
-        use crate::search::scoring::{classify_role, test_subrole, DOC_LANGUAGES};
+        use crate::search::scoring::{DOC_LANGUAGES, classify_role, test_subrole};
 
         let f = &self.schema_fields;
+
+        if files_only != Some(true) {
+            let parsed_annotation = parse_annotation_query(query_str);
+            if parsed_annotation.has_annotation_filters() {
+                let symbol_results = self.search_annotation_symbols(query_str, filter, limit)?;
+                let relaxed = symbol_results.relaxed;
+                let hits: Vec<UnifiedHit> = symbol_results
+                    .results
+                    .into_iter()
+                    .map(|symbol| {
+                        let basename = symbol
+                            .file_path
+                            .rsplit('/')
+                            .next()
+                            .unwrap_or(&symbol.file_path)
+                            .to_string();
+                        UnifiedHit {
+                            id: symbol.id,
+                            kind: symbol.kind,
+                            name: symbol.name,
+                            path_text: symbol.file_path.clone(),
+                            file_path: symbol.file_path,
+                            basename,
+                            signature: symbol.signature,
+                            doc_comment: symbol.doc_comment,
+                            code_body: String::new(),
+                            pretokenized_code: String::new(),
+                            relationship_text: String::new(),
+                            language: symbol.language,
+                            start_line: symbol.start_line,
+                            role: symbol.role,
+                            test_role: symbol.test_role,
+                            tantivy_score: symbol.score,
+                        }
+                    })
+                    .collect();
+                let count = hits.len();
+                return Ok((hits, relaxed, count, 0));
+            }
+        }
 
         let expanded = expand_query_terms(query_str);
         // Two-tier original-term shape:
@@ -1035,31 +1076,30 @@ impl SearchIndex {
         // The deleted per-target symbol path used `limit.saturating_mul(20).max(500)`;
         // the unified path matches that floor so the exact-name partitioner
         // can find the canonical symbol in the candidate set.
-        let candidate_limit = limit
-            .saturating_mul(NL_RERANK_OVERFETCH_FACTOR)
-            .max(500);
+        let candidate_limit = limit.saturating_mul(NL_RERANK_OVERFETCH_FACTOR).max(500);
 
         // Optional doc_type filter applied at the Tantivy query level — only
         // documents of the requested type contribute to BM25 candidate
         // selection.  This is the right place for the filter (vs post-fetch)
         // because the candidate set is otherwise dominated by file rows for
         // common terms like "format", starving symbol queries.
-        let wrap_with_doc_type = |inner: Box<dyn tantivy::query::Query>| -> Box<dyn tantivy::query::Query> {
-            match files_only {
-                Some(want_file) => {
-                    let dt = if want_file { "file" } else { "symbol" };
-                    let dt_query = TermQuery::new(
-                        Term::from_field_text(f.doc_type, dt),
-                        IndexRecordOption::Basic,
-                    );
-                    Box::new(BooleanQuery::new(vec![
-                        (Occur::Must, inner),
-                        (Occur::Must, Box::new(dt_query)),
-                    ]))
+        let wrap_with_doc_type =
+            |inner: Box<dyn tantivy::query::Query>| -> Box<dyn tantivy::query::Query> {
+                match files_only {
+                    Some(want_file) => {
+                        let dt = if want_file { "file" } else { "symbol" };
+                        let dt_query = TermQuery::new(
+                            Term::from_field_text(f.doc_type, dt),
+                            IndexRecordOption::Basic,
+                        );
+                        Box::new(BooleanQuery::new(vec![
+                            (Occur::Must, inner),
+                            (Occur::Must, Box::new(dt_query)),
+                        ]))
+                    }
+                    None => inner,
                 }
-                None => inner,
-            }
-        };
+            };
 
         // Field-set follows the kind filter: when the caller restricts to
         // file rows, search only content/path_text; when restricted to
@@ -1126,9 +1166,8 @@ impl SearchIndex {
         // legitimate compound miss, not a `derived_overflow` situation.
         let compound_in_tokens = original_terms.iter().any(|t| t == &query_lower)
             || alias_terms.iter().any(|t| t == &query_lower);
-        let derived_overflow = user_word_count == 1
-            && original_terms.len() > 1
-            && !compound_in_tokens;
+        let derived_overflow =
+            user_word_count == 1 && original_terms.len() > 1 && !compound_in_tokens;
         let mut relaxed = false;
         let mut or_candidate_count: usize = 0;
         let top_docs = if top_docs.is_empty() && (user_word_count > 1 || derived_overflow) {
@@ -1191,9 +1230,7 @@ impl SearchIndex {
             hits.retain(|h| &h.kind == kind);
         }
         if let Some(ref pattern) = filter.file_pattern {
-            hits.retain(|h| {
-                crate::tools::search::matches_glob_pattern(&h.file_path, pattern)
-            });
+            hits.retain(|h| crate::tools::search::matches_glob_pattern(&h.file_path, pattern));
         }
         if filter.exclude_tests {
             // Combine path-based and metadata-based detection so that inline
@@ -1241,17 +1278,20 @@ impl SearchIndex {
                     // not just for doc-role rows. The kind field is the
                     // authoritative discriminator.
                     let is_file_doc = hit.kind == "file";
-                    let is_source_language =
-                        !DOC_LANGUAGES.contains(&hit.language.as_str());
+                    let is_source_language = !DOC_LANGUAGES.contains(&hit.language.as_str());
 
                     let mut body = String::with_capacity(
-                        hit.signature.len() + hit.doc_comment.len() + 1,
+                        hit.signature.len() + hit.doc_comment.len() + hit.code_body.len() + 2,
                     );
                     body.push_str(&hit.signature);
-                    if !hit.signature.is_empty() && !hit.doc_comment.is_empty() {
+                    if !body.is_empty() && !hit.doc_comment.is_empty() {
                         body.push(' ');
                     }
                     body.push_str(&hit.doc_comment);
+                    if !body.is_empty() && !hit.code_body.is_empty() {
+                        body.push(' ');
+                    }
+                    body.push_str(&hit.code_body);
 
                     Candidate::builder()
                         .title(hit.name.clone())
@@ -1441,9 +1481,10 @@ impl SearchIndex {
             .register("code", TextAnalyzer::builder(tokenizer).build());
         // Register the simple tokenizer for the pretokenized_code field (T3 wiring;
         // schema fields are retargeted to "simple_code" at T4/T5).
-        index
-            .tokenizers()
-            .register("simple_code", TextAnalyzer::builder(SimpleCodeTokenizer::new()).build());
+        index.tokenizers().register(
+            "simple_code",
+            TextAnalyzer::builder(SimpleCodeTokenizer::new()).build(),
+        );
     }
 
     fn build_search_index(
@@ -2049,7 +2090,7 @@ fn promote_exact_unified_hits(hits: &mut Vec<UnifiedHit>, query: &str) {
     if hits.is_empty() {
         return;
     }
-    use crate::search::scoring::{is_name_match, is_test_path, DEFINITION_KINDS, DOC_LANGUAGES};
+    use crate::search::scoring::{DEFINITION_KINDS, DOC_LANGUAGES, is_name_match, is_test_path};
 
     let query_lower = query.trim().to_lowercase();
     let mut definitions: Vec<UnifiedHit> = Vec::new();
@@ -2155,7 +2196,11 @@ pub(crate) fn apply_reranker_to_content_results(
             }
         }
     }
-    results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+    results.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 }
 
 /// Title-exact boost for file search results.
@@ -2186,5 +2231,9 @@ pub(crate) fn apply_symbol_title_boost_to_file_results(
             }
         }
     }
-    results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+    results.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 }

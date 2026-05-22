@@ -156,10 +156,7 @@ fn file_exact_beats_symbol_partial() {
 
     // File row — exact basename match.
     index
-        .add_search_doc(&file_doc(
-            "browser_client",
-            "src/browser_client.py",
-        ))
+        .add_search_doc(&file_doc("browser_client", "src/browser_client.py"))
         .unwrap();
 
     // Symbol row — name contains "browser_client" as a substring.

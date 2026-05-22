@@ -204,7 +204,10 @@ async fn test_fast_search_metadata_serializes_unified_trace_fields() {
     );
     // marker_token is a variable identifier; unified search should find it.
     assert!(
-        metadata["trace"]["returned_hit_count"].as_u64().unwrap_or(0) >= 1,
+        metadata["trace"]["returned_hit_count"]
+            .as_u64()
+            .unwrap_or(0)
+            >= 1,
         "unified search for 'marker_token' should return at least one hit"
     );
 }
@@ -559,6 +562,44 @@ fn test_fast_search_metadata_serializes_or_disjunction_detection() {
     let metadata = search_telemetry::fast_search_metadata(&params, Some(&execution));
 
     assert_eq!(metadata["trace"]["or_disjunction_detected"], true);
+}
+
+#[tokio::test]
+async fn test_fast_search_metadata_serializes_or_fallback_relaxed_from_execution() {
+    let (_temp_dir, handler) = seed_workspace(&[
+        (
+            "src/alpha.rs",
+            "pub fn alpha_only_marker() { let alpha_relaxed_marker = 1; }\n",
+        ),
+        (
+            "src/beta.rs",
+            "pub fn beta_only_marker() { let beta_relaxed_marker = 1; }\n",
+        ),
+    ])
+    .await;
+
+    let tool = search_tool("alpha_relaxed_marker beta_relaxed_marker", "content");
+    let execution = tool
+        .execute_with_trace(&handler)
+        .await
+        .expect("OR fallback search should not error")
+        .execution
+        .expect("execute_with_trace should populate execution");
+
+    assert!(
+        !execution.hits.is_empty(),
+        "OR fallback should supply partial-match hits",
+    );
+    assert!(
+        execution.relaxed,
+        "SearchIndex OR fallback relaxed flag must reach FastSearchTool execution",
+    );
+
+    let metadata = search_telemetry::fast_search_metadata(&tool, Some(&execution));
+    assert_eq!(
+        metadata["trace"]["relaxed"], true,
+        "telemetry must serialize the propagated relaxed flag",
+    );
 }
 
 #[test]

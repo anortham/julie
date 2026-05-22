@@ -20,7 +20,7 @@ use tempfile::TempDir;
 use crate::database::{FileInfo, SymbolDatabase};
 use crate::extractors::{Symbol, SymbolKind};
 use crate::search::index::{
-    ContentSearchResult, FileSearchResult, FileMatchKind, SearchDocument, SearchFilter,
+    ContentSearchResult, FileMatchKind, FileSearchResult, SearchDocument, SearchFilter,
     SearchIndex, apply_reranker_to_content_results, apply_symbol_title_boost_to_file_results,
 };
 use crate::search::language_config::LanguageConfigs;
@@ -45,7 +45,12 @@ fn create_test_db() -> (TempDir, SymbolDatabase) {
 }
 
 /// Store a minimal file record and a symbol in the DB.
-fn store_symbol_in_file(db: &mut SymbolDatabase, file_path: &str, symbol_name: &str, language: &str) {
+fn store_symbol_in_file(
+    db: &mut SymbolDatabase,
+    file_path: &str,
+    symbol_name: &str,
+    language: &str,
+) {
     db.store_file_info(&FileInfo {
         path: file_path.to_string(),
         language: language.to_string(),
@@ -105,10 +110,20 @@ fn content_path_symbol_title_exact_boost_ranks_defining_file_first() -> Result<(
     let (_db_dir, mut db) = create_test_db();
 
     // File A defines `displayTemplate` as a symbol.
-    store_symbol_in_file(&mut db, "src/display/template.js", "displayTemplate", "javascript");
+    store_symbol_in_file(
+        &mut db,
+        "src/display/template.js",
+        "displayTemplate",
+        "javascript",
+    );
 
     // File B has the same body text but its only symbol is something else.
-    store_symbol_in_file(&mut db, "vendor/copy/template.js", "someOtherFunction", "javascript");
+    store_symbol_in_file(
+        &mut db,
+        "vendor/copy/template.js",
+        "someOtherFunction",
+        "javascript",
+    );
 
     // Simulate Tantivy returning File B with a higher raw BM25 score (the
     // scenario where BM25 would normally win without the boost).
@@ -135,11 +150,13 @@ fn content_path_symbol_title_exact_boost_ranks_defining_file_first() -> Result<(
         results[0].file_path,
         "src/display/template.js",
         "File defining the symbol should rank first. Got: {:?}",
-        results.iter().map(|r| (&r.file_path, r.score)).collect::<Vec<_>>()
+        results
+            .iter()
+            .map(|r| (&r.file_path, r.score))
+            .collect::<Vec<_>>()
     );
     assert_eq!(
-        results[1].file_path,
-        "vendor/copy/template.js",
+        results[1].file_path, "vendor/copy/template.js",
         "File without the symbol should rank second."
     );
 
@@ -191,7 +208,12 @@ fn files_path_symbol_title_boost_ranks_defining_file_first() -> Result<()> {
     let (_db_dir, mut db) = create_test_db();
 
     // redirect.js has the matching symbol.
-    store_symbol_in_file(&mut db, "res/redirect.js", "requestedRedirect", "javascript");
+    store_symbol_in_file(
+        &mut db,
+        "res/redirect.js",
+        "requestedRedirect",
+        "javascript",
+    );
 
     // location.js shares the "res/" prefix and "js" extension but no name match.
     store_symbol_in_file(&mut db, "res/location.js", "setLocation", "javascript");
@@ -219,11 +241,13 @@ fn files_path_symbol_title_boost_ranks_defining_file_first() -> Result<()> {
         results[0].file_path,
         "res/redirect.js",
         "File defining the symbol should rank first. Got: {:?}",
-        results.iter().map(|r| (&r.file_path, r.score)).collect::<Vec<_>>()
+        results
+            .iter()
+            .map(|r| (&r.file_path, r.score))
+            .collect::<Vec<_>>()
     );
     assert_eq!(
-        results[1].file_path,
-        "res/location.js",
+        results[1].file_path, "res/location.js",
         "File without the symbol should rank second."
     );
 
@@ -287,8 +311,13 @@ fn definitions_path_exact_name_still_ranks_first() -> Result<()> {
 
     index.commit().unwrap();
 
-    let (symbols, _relaxed, _total) =
-        definition_search_with_index_for_test("renderWidget", &SearchFilter::default(), 5, &index, None)?;
+    let (symbols, _relaxed, _total) = definition_search_with_index_for_test(
+        "renderWidget",
+        &SearchFilter::default(),
+        5,
+        &index,
+        None,
+    )?;
 
     assert!(
         !symbols.is_empty(),
@@ -321,7 +350,12 @@ fn titles_for_files_excludes_import_kind_symbols() -> Result<()> {
 
     // File A: the actual definition (kind=Function, the only definition kind
     // used by store_symbol_in_file).
-    store_symbol_in_file(&mut db, "src/database/symbols/mod.rs", "SymbolDatabase", "rust");
+    store_symbol_in_file(
+        &mut db,
+        "src/database/symbols/mod.rs",
+        "SymbolDatabase",
+        "rust",
+    );
 
     // File B: imports SymbolDatabase (kind=Import) but does NOT define it.
     db.store_file_info(&crate::database::FileInfo {
@@ -362,10 +396,7 @@ fn titles_for_files_excludes_import_kind_symbols() -> Result<()> {
         annotations: Vec::new(),
     }])?;
 
-    let paths = vec![
-        "src/database/symbols/mod.rs",
-        "src/tests/core/tracing.rs",
-    ];
+    let paths = vec!["src/database/symbols/mod.rs", "src/tests/core/tracing.rs"];
     let titles = db.titles_for_files(&paths)?;
 
     // The definition file must have "symboldatabase" in its titles.
@@ -466,7 +497,12 @@ fn content_path_compound_query_only_boosts_compact_match_not_per_term() -> Resul
     let (_db_dir, mut db) = create_test_db();
 
     // File A — defines the compound concept.
-    store_symbol_in_file(&mut db, "src/widgets/render.js", "displayTemplate", "javascript");
+    store_symbol_in_file(
+        &mut db,
+        "src/widgets/render.js",
+        "displayTemplate",
+        "javascript",
+    );
     // File B — defines a generic, one-word `display`.
     store_symbol_in_file(&mut db, "src/screen/output.js", "display", "javascript");
 
@@ -492,7 +528,10 @@ fn content_path_compound_query_only_boosts_compact_match_not_per_term() -> Resul
         "src/widgets/render.js",
         "File with compound symbol `displayTemplate` must outrank file with \
          generic `display` symbol for query `display template`. Got: {:?}",
-        results.iter().map(|r| (&r.file_path, r.score)).collect::<Vec<_>>()
+        results
+            .iter()
+            .map(|r| (&r.file_path, r.score))
+            .collect::<Vec<_>>()
     );
 
     Ok(())
@@ -505,7 +544,12 @@ fn content_path_compound_query_only_boosts_compact_match_not_per_term() -> Resul
 fn content_path_compound_query_matches_snake_case_symbol() -> Result<()> {
     let (_db_dir, mut db) = create_test_db();
 
-    store_symbol_in_file(&mut db, "src/widgets/render.py", "display_template", "python");
+    store_symbol_in_file(
+        &mut db,
+        "src/widgets/render.py",
+        "display_template",
+        "python",
+    );
     store_symbol_in_file(&mut db, "src/screen/output.py", "display", "python");
 
     let mut results = vec![
@@ -529,7 +573,10 @@ fn content_path_compound_query_matches_snake_case_symbol() -> Result<()> {
         "src/widgets/render.py",
         "Snake-case symbol `display_template` must match compound query \
          `display template`. Got: {:?}",
-        results.iter().map(|r| (&r.file_path, r.score)).collect::<Vec<_>>()
+        results
+            .iter()
+            .map(|r| (&r.file_path, r.score))
+            .collect::<Vec<_>>()
     );
 
     Ok(())
@@ -542,7 +589,12 @@ fn content_path_compound_query_matches_snake_case_symbol() -> Result<()> {
 fn files_path_compound_query_only_boosts_compact_match_not_per_term() -> Result<()> {
     let (_db_dir, mut db) = create_test_db();
 
-    store_symbol_in_file(&mut db, "src/widgets/render.js", "displayTemplate", "javascript");
+    store_symbol_in_file(
+        &mut db,
+        "src/widgets/render.js",
+        "displayTemplate",
+        "javascript",
+    );
     store_symbol_in_file(&mut db, "src/screen/output.js", "display", "javascript");
 
     let mut results = vec![
@@ -567,7 +619,10 @@ fn files_path_compound_query_only_boosts_compact_match_not_per_term() -> Result<
         "src/widgets/render.js",
         "Files-target boost must use compact-form match for compound queries. \
          Got: {:?}",
-        results.iter().map(|r| (&r.file_path, r.score)).collect::<Vec<_>>()
+        results
+            .iter()
+            .map(|r| (&r.file_path, r.score))
+            .collect::<Vec<_>>()
     );
 
     Ok(())
@@ -603,7 +658,10 @@ fn content_path_single_token_camelcase_query_still_matches() -> Result<()> {
         results[0].file_path,
         "src/workspace/pool.rs",
         "Single-token CamelCase query must still match. Got: {:?}",
-        results.iter().map(|r| (&r.file_path, r.score)).collect::<Vec<_>>()
+        results
+            .iter()
+            .map(|r| (&r.file_path, r.score))
+            .collect::<Vec<_>>()
     );
 
     Ok(())

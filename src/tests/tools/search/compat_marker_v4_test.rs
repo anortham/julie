@@ -7,7 +7,7 @@
 
 use tempfile::TempDir;
 
-use crate::search::index::{SearchIndex, SearchIndexOpenDisposition, SEARCH_COMPAT_MARKER_FILE};
+use crate::search::index::{SEARCH_COMPAT_MARKER_FILE, SearchIndex, SearchIndexOpenDisposition};
 use crate::search::language_config::LanguageConfigs;
 
 // ---------------------------------------------------------------------------
@@ -115,18 +115,29 @@ fn concurrent_rebuild_both_succeed() {
         SearchIndex::open_or_create_with_language_configs_outcome(&p2, &cfgs)
     });
 
-    let r1 = t1.join().expect("thread 1 panicked").expect("thread 1 returned error");
-    let r2 = t2.join().expect("thread 2 panicked").expect("thread 2 returned error");
+    let r1 = t1
+        .join()
+        .expect("thread 1 panicked")
+        .expect("thread 1 returned error");
+    let r2 = t2
+        .join()
+        .expect("thread 2 panicked")
+        .expect("thread 2 returned error");
 
     // At least one thread must have performed a rebuild.
     let any_rebuilt = matches!(
         r1.disposition,
-        SearchIndexOpenDisposition::RecreatedIncompatible | SearchIndexOpenDisposition::RecreatedOpenFailure
+        SearchIndexOpenDisposition::RecreatedIncompatible
+            | SearchIndexOpenDisposition::RecreatedOpenFailure
     ) || matches!(
         r2.disposition,
-        SearchIndexOpenDisposition::RecreatedIncompatible | SearchIndexOpenDisposition::RecreatedOpenFailure
+        SearchIndexOpenDisposition::RecreatedIncompatible
+            | SearchIndexOpenDisposition::RecreatedOpenFailure
     );
-    assert!(any_rebuilt, "at least one thread must have triggered a rebuild");
+    assert!(
+        any_rebuilt,
+        "at least one thread must have triggered a rebuild"
+    );
 
     // The index must now be compatible when re-opened.
     let outcome =

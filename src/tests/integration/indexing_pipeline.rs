@@ -212,8 +212,8 @@ fn expected_stage_history() -> Vec<IndexingStage> {
         IndexingStage::Grouped,
         IndexingStage::Extracting,
         IndexingStage::Persisting,
-        IndexingStage::Projecting,
         IndexingStage::Resolving,
+        IndexingStage::Projecting,
         IndexingStage::Analyzing,
         IndexingStage::Completed,
     ]

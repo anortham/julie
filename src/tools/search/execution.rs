@@ -86,7 +86,6 @@ pub async fn execute_search_unified(
     workspaces: &[SearchExecutionWorkspace],
     handler: &JulieServerHandler,
 ) -> Result<SearchExecutionResult> {
-
     // Normalize empty/whitespace-only file_pattern to None so callers that
     // bypass `execute_search` (e.g., `FastSearchTool::execute_with_trace`)
     // get the same "no filter" behaviour as the rest of the pipeline.
@@ -123,7 +122,7 @@ pub async fn execute_search_unified(
 
     let mut execution = SearchExecutionResult::new(
         first.hits,
-        false, // unified path does not propagate per-workspace relaxed flag to callers
+        first.relaxed,
         first.total_results,
         "search_unified",
         SearchExecutionKind::Definitions,
@@ -178,7 +177,9 @@ pub async fn execute_search_unified(
 
         if !rescue.hits.is_empty() {
             execution.hits = rescue.hits;
+            execution.relaxed = rescue.relaxed;
             execution.total_results = rescue.total_results;
+            execution.trace.refresh_hits(&execution.hits);
             execution.trace.scope_relaxed = true;
             execution.trace.scope_rescue_count = 1;
             execution.trace.original_file_pattern = normalized_file_pattern.clone();
@@ -222,6 +223,7 @@ pub async fn execute_search_unified(
 /// call the same pipeline twice (scoped + unscoped) for scope rescue.
 struct UnifiedPassResult {
     hits: Vec<SearchHit>,
+    relaxed: bool,
     total_results: usize,
     /// Total raw-hit count across all workspaces *before* the file_pattern
     /// filter.  Used to attribute FilePatternFiltered when this is non-zero
@@ -246,72 +248,98 @@ async fn run_unified_pass(
     use crate::search::SearchFilter;
 
     let mut hits = Vec::new();
+    let mut relaxed = false;
     let mut total_results = 0usize;
     let mut pre_test_filter_total = 0usize;
     let mut pre_file_pattern_filter_total = 0usize;
 
     for workspace in workspaces {
-        // Run the unified search WITHOUT post-filters so we can observe which
-        // filter (if any) drops every candidate and attribute the zero-hit
-        // run accordingly.  Tantivy's internal scoring still uses the query
-        // to rank.
         let filter = SearchFilter {
             language: language.clone(),
             kind: None,
-            file_pattern: None,
-            exclude_tests: false,
+            file_pattern: file_pattern.map(str::to_string),
+            exclude_tests: effective_exclude_tests,
         };
 
         // Use `unified_search_hits` (returns raw UnifiedHit) rather than
         // `unified_search_impl` (converts to Symbol) so the "file" kind is
         // preserved end-to-end in the SearchHit.
         //
-        // Fix #1 (codex review): overfetch before applying external filters.
-        // Requesting exactly `limit` raw hits and then applying file_pattern /
-        // exclude_tests afterwards means valid in-scope hits ranked beyond
-        // position `limit` are silently dropped.  Request a larger candidate
-        // pool so the filters have headroom to yield `limit` in-scope hits.
-        // The final truncation to `limit` happens after the loop below.
+        // Apply language/file/test filters in the candidate source. The index
+        // applies these after Tantivy materialization, so scoped zero-hit cases
+        // get one wider scoped retry before any unscoped rescue is considered.
         let raw_fetch_limit = limit.saturating_mul(4).max(50);
 
-        let (raw_hits, workspace_total) = text_search::unified_search_hits(
-            query,
-            &filter,
-            raw_fetch_limit,
-            Some(vec![workspace.workspace_id.clone()]),
-            handler,
-        )
-        .await?;
+        let (mut raw_hits, mut workspace_relaxed, mut workspace_total) =
+            text_search::unified_search_hits(
+                query,
+                &filter,
+                raw_fetch_limit,
+                Some(vec![workspace.workspace_id.clone()]),
+                handler,
+            )
+            .await?;
 
+        if raw_hits.is_empty() && file_pattern.is_some() {
+            let retry_fetch_limit = raw_fetch_limit.saturating_mul(20).max(1_000);
+            if retry_fetch_limit > raw_fetch_limit {
+                let (retry_hits, retry_relaxed, retry_total) = text_search::unified_search_hits(
+                    query,
+                    &filter,
+                    retry_fetch_limit,
+                    Some(vec![workspace.workspace_id.clone()]),
+                    handler,
+                )
+                .await?;
+                raw_hits = retry_hits;
+                workspace_relaxed |= retry_relaxed;
+                workspace_total = retry_total;
+            }
+        }
+
+        relaxed |= workspace_relaxed;
         total_results += workspace_total;
-        pre_file_pattern_filter_total += raw_hits.len();
 
         for raw_hit in raw_hits {
-            // Stage 1: file_pattern filter.
-            if let Some(pattern) = file_pattern
-                && !crate::tools::search::matches_glob_pattern(&raw_hit.file_path, pattern)
-            {
-                continue;
-            }
-            pre_test_filter_total += 1;
-
-            // Stage 2: NL-default-exclude-tests filter.
-            //
-            // Fix #2 (codex review): also exclude symbols whose role field is
-            // "test", not just those whose file path is a test path.  Inline
-            // #[test] functions in production-looking source files (e.g.
-            // `src/lib.rs`) have role=="test" set by the projection layer from
-            // extractor metadata, but is_test_path() returns false for them.
-            if effective_exclude_tests
-                && (crate::search::scoring::is_test_path(&raw_hit.file_path)
-                    || raw_hit.role == "test")
-            {
-                continue;
-            }
             hits.push(SearchHit::from_unified_hit(
                 raw_hit,
                 workspace.workspace_id.clone(),
             ));
+        }
+
+        if hits.is_empty() && (file_pattern.is_some() || effective_exclude_tests) {
+            let diagnostic_filter = SearchFilter {
+                language: language.clone(),
+                kind: None,
+                file_pattern: None,
+                exclude_tests: false,
+            };
+            let diagnostic_fetch_limit = raw_fetch_limit.saturating_mul(20).max(1_000);
+            let (diagnostic_hits, diagnostic_relaxed, _) = text_search::unified_search_hits(
+                query,
+                &diagnostic_filter,
+                diagnostic_fetch_limit,
+                Some(vec![workspace.workspace_id.clone()]),
+                handler,
+            )
+            .await?;
+            relaxed |= diagnostic_relaxed;
+            pre_file_pattern_filter_total += diagnostic_hits.len();
+
+            for raw_hit in diagnostic_hits {
+                if let Some(pattern) = file_pattern
+                    && !crate::tools::search::matches_glob_pattern(&raw_hit.file_path, pattern)
+                {
+                    continue;
+                }
+                pre_test_filter_total += 1;
+                if effective_exclude_tests
+                    && (crate::search::scoring::is_test_path(&raw_hit.file_path)
+                        || raw_hit.role == "test")
+                {
+                    continue;
+                }
+            }
         }
     }
 
@@ -320,6 +348,7 @@ async fn run_unified_pass(
 
     Ok(UnifiedPassResult {
         hits,
+        relaxed,
         total_results,
         pre_file_pattern_filter_total,
         pre_test_filter_total,

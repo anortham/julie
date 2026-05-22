@@ -934,7 +934,8 @@ fn processPayment() {
         // Post-T8: the unified search no longer differentiates target-specific
         // missing-index messages.  All callers see the neutral wording.
         assert!(
-            response_text.contains("Search requires a Tantivy index for the current primary workspace"),
+            response_text
+                .contains("Search requires a Tantivy index for the current primary workspace"),
             "loaded primary search should return an explicit Tantivy-required message: {response_text}"
         );
 
@@ -963,9 +964,8 @@ fn processPayment() {
         // Post-T8: the unified search no longer differentiates target-specific
         // missing-index messages.  All callers see the neutral wording.
         assert!(
-            response_text.contains(
-                "Search requires a Tantivy index for the current primary workspace"
-            ),
+            response_text
+                .contains("Search requires a Tantivy index for the current primary workspace"),
             "loaded primary search should return an explicit Tantivy-required message: {response_text}"
         );
 
@@ -1850,7 +1850,8 @@ fn test_authenticate_user() {
             response_text.contains("No lines found matching")
                 || response_text.contains("0 content matches for")
                 || response_text.contains("No results found for:")
-                || response_text.contains("Search requires a Tantivy index for the current primary workspace"),
+                || response_text
+                    .contains("Search requires a Tantivy index for the current primary workspace"),
             "fast_search should resolve roots first and produce a normal roots-bound search response: {response_text}"
         );
         assert_eq!(handler.current_workspace_id(), Some(roots_id));

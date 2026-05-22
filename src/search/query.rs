@@ -592,10 +592,7 @@ pub fn build_unified_query(
                 let tq = TermQuery::new(t, IndexRecordOption::Basic);
                 per_term_clauses.push((
                     Occur::Should,
-                    Box::new(BoostQuery::new(
-                        Box::new(tq),
-                        field_boost * group_factor,
-                    )),
+                    Box::new(BoostQuery::new(Box::new(tq), field_boost * group_factor)),
                 ));
             }
 

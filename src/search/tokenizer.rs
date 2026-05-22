@@ -228,7 +228,9 @@ fn tokenize_code(
             emitted.insert(segment_lower.clone());
 
             // Split CamelCase/PascalCase identifiers
-            if segment.chars().any(|c| c.is_uppercase()) && segment.chars().any(|c| c.is_lowercase()) {
+            if segment.chars().any(|c| c.is_uppercase())
+                && segment.chars().any(|c| c.is_lowercase())
+            {
                 for part in split_camel_case(&segment) {
                     let lower = part.to_lowercase();
                     if !emitted.contains(&lower) {

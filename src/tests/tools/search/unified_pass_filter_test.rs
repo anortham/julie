@@ -115,8 +115,7 @@ async fn unified_pass_overfetch_surfaces_valid_hit_when_limit_hits_all_filtered(
         "scope-rescue fired — overfetch bug: the 5 lib/ noise hits filled the \
          limit=5 raw pool; the valid src/scope/ hit was never seen \
          (original_fp={:?}, original_reason={:?})",
-        execution.trace.original_file_pattern,
-        execution.trace.original_zero_hit_reason,
+        execution.trace.original_file_pattern, execution.trace.original_zero_hit_reason,
     );
     assert!(
         !execution.hits.is_empty(),
@@ -129,6 +128,71 @@ async fn unified_pass_overfetch_surfaces_valid_hit_when_limit_hits_all_filtered(
             .hits
             .iter()
             .map(|h| h.file.as_str())
+            .collect::<Vec<_>>(),
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn unified_pass_scoped_source_beats_more_than_fifty_out_of_scope_hits() -> Result<()> {
+    let temp_dir = TempDir::new()?;
+    let workspace_path = temp_dir.path();
+
+    fs::create_dir_all(workspace_path.join("lib"))?;
+    for idx in 0..80 {
+        fs::write(
+            workspace_path.join(format!("lib/noise_{idx:03}.rs")),
+            format!("pub fn scoped_starvation_marker_{idx:03}() -> bool {{ true }}\n"),
+        )?;
+    }
+
+    fs::create_dir_all(workspace_path.join("src/scope"))?;
+    fs::write(
+        workspace_path.join("src/scope/core.rs"),
+        "/// scoped_starvation_marker appears inside the requested scope\npub fn scoped_core_fn() -> bool { false }\n",
+    )?;
+
+    let handler = index_workspace(workspace_path).await?;
+
+    let run = FastSearchTool {
+        query: "scoped_starvation_marker".to_string(),
+        limit: 10,
+        file_pattern: Some("src/scope/**".to_string()),
+        exclude_tests: Some(false),
+        workspace: Some("primary".to_string()),
+        ..Default::default()
+    }
+    .execute_with_trace(&handler)
+    .await?;
+
+    let execution = run
+        .execution
+        .expect("unified search should populate execution trace");
+
+    assert!(
+        !execution.trace.scope_relaxed,
+        "scoped source should prevent unscoped rescue even when >50 out-of-scope hits rank first; got files {:?}",
+        execution
+            .hits
+            .iter()
+            .map(|hit| hit.file.as_str())
+            .collect::<Vec<_>>(),
+    );
+    assert!(
+        !execution.hits.is_empty(),
+        "expected the scoped candidate to survive"
+    );
+    assert!(
+        execution
+            .hits
+            .iter()
+            .all(|hit| hit.file == "src/scope/core.rs"),
+        "expected only scoped hits, got {:?}",
+        execution
+            .hits
+            .iter()
+            .map(|hit| hit.file.as_str())
             .collect::<Vec<_>>(),
     );
 

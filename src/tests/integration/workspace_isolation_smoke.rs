@@ -40,7 +40,7 @@ mod workspace_isolation_smoke_tests {
             .join("\n")
     }
 
-/// Test 1: Verify search NEVER crosses workspace boundaries
+    /// Test 1: Verify search NEVER crosses workspace boundaries
     ///
     /// This is the most critical isolation test - searching primary workspace
     /// should NEVER return results from reference workspace and vice versa.

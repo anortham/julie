@@ -18,7 +18,9 @@ fn camel_and_snake_split() {
 
     // Original identifier (case-preserved; SimpleCodeTokenizer lowercases downstream)
     assert!(
-        tokens.iter().any(|t| t.eq_ignore_ascii_case("getUserData_v2")),
+        tokens
+            .iter()
+            .any(|t| t.eq_ignore_ascii_case("getUserData_v2")),
         "output must contain original identifier; got: {result}"
     );
 
@@ -33,7 +35,9 @@ fn camel_and_snake_split() {
     );
     // "Data_v2" is the third camel split (the underscore is inside the last word)
     assert!(
-        tokens.iter().any(|t| t.eq_ignore_ascii_case("data_v2") || t.eq_ignore_ascii_case("Data_v2")),
+        tokens
+            .iter()
+            .any(|t| t.eq_ignore_ascii_case("data_v2") || t.eq_ignore_ascii_case("Data_v2")),
         "output must contain camel split 'Data_v2'; got: {result}"
     );
 
@@ -70,7 +74,11 @@ fn plain_snake_case() {
     let result = pretokenize_code("some_other_thing");
     let tokens: Vec<&str> = result.split_whitespace().collect();
 
-    assert!(tokens.iter().any(|t| t.eq_ignore_ascii_case("some_other_thing")));
+    assert!(
+        tokens
+            .iter()
+            .any(|t| t.eq_ignore_ascii_case("some_other_thing"))
+    );
     assert!(tokens.iter().any(|t| t.eq_ignore_ascii_case("some")));
     assert!(tokens.iter().any(|t| t.eq_ignore_ascii_case("other")));
     assert!(tokens.iter().any(|t| t.eq_ignore_ascii_case("thing")));

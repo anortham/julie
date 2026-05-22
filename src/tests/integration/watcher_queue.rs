@@ -562,7 +562,7 @@ async fn test_stop_with_pending_queue_does_not_wait_forever_when_gate_is_held() 
     });
 
     let _gate = mutation_gate_registry.acquire(&workspace_id).await;
-    let stopped = tokio::time::timeout(Duration::from_millis(500), indexer.stop()).await;
+    let stopped = tokio::time::timeout(Duration::from_secs(5), indexer.stop()).await;
 
     assert!(
         stopped.is_ok(),

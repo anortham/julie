@@ -461,6 +461,13 @@ impl QueueRuntime {
                 let db_guard = db_for_retry
                     .lock()
                     .unwrap_or_else(|poisoned| poisoned.into_inner());
+                let symbol_ids: Vec<String> =
+                    symbols.iter().map(|symbol| symbol.id.clone()).collect();
+                let partner_symbol_ids =
+                    crate::search::projection::collect_relationship_partner_symbol_ids(
+                        &db_guard,
+                        &symbol_ids,
+                    )?;
                 crate::search::projection::apply_uncommitted_documents_from_symbols(
                     &idx,
                     &symbols,
@@ -470,6 +477,14 @@ impl QueueRuntime {
                     std::slice::from_ref(&rel_clone),
                     &db_guard,
                 )?;
+                if !partner_symbol_ids.is_empty() {
+                    crate::search::projection::reproject_partner_symbols(
+                        &idx,
+                        &db_guard,
+                        &partner_symbol_ids,
+                    )?;
+                }
+                idx.commit()?;
                 Ok::<(), anyhow::Error>(())
             })
             .await;

@@ -220,15 +220,28 @@ impl FastSearchTool {
 
         // Validate file_pattern syntax and emit early diagnostic if it looks like
         // whitespace-separated globs.
-        if let Some(diagnostic) =
-            input_diagnostics::build_request_level_file_pattern_diagnostic(&self.query, self.file_pattern.as_deref())
-        {
+        if let Some(diagnostic) = input_diagnostics::build_request_level_file_pattern_diagnostic(
+            &self.query,
+            self.file_pattern.as_deref(),
+        ) {
             return Ok(diagnostic);
         }
 
         // Resolve workspace target once (used for health check and search routing)
         let workspace_target = self.resolve_workspace_filter(handler).await?;
         let effective_limit = self.effective_limit();
+
+        if let WorkspaceTarget::Target(target_workspace_id) = &workspace_target {
+            if let Some(index_error) =
+                Self::ensure_target_workspace_indexed_if_pending(handler, target_workspace_id)
+                    .await?
+            {
+                return Ok(FastSearchExecution {
+                    result: index_error,
+                    execution: None,
+                });
+            }
+        }
 
         // Extract workspace ID for health check
         let target_workspace_id = match &workspace_target {
@@ -311,7 +324,8 @@ impl FastSearchTool {
                     }
                 }
 
-                let message = "Workspace not indexed yet. Run manage_workspace(operation=\"index\") first.";
+                let message =
+                    "Workspace not indexed yet. Run manage_workspace(operation=\"index\") first.";
                 return Ok(FastSearchExecution {
                     result: CallToolResult::text_content(vec![Content::text(message)]),
                     execution: None,
@@ -414,13 +428,14 @@ impl FastSearchTool {
         // Render the full `execution.hits` slice — `format_unified_search_results`
         // handles both kinds and preserves rank order.
         let query_lower = self.query.to_lowercase();
-        execution.trace.definition_exact_match = execution.hits.iter().any(|hit| {
+        let has_exact_name_match = execution.hits.iter().any(|hit| {
             if let Some(symbol) = hit.as_symbol() {
                 formatting::is_definition_name_match(&symbol.name, &query_lower)
             } else {
                 false
             }
         });
+        execution.trace.definition_exact_match = has_exact_name_match;
 
         if execution.hits.is_empty() {
             // Prefer the targeted content zero-hit hint that
@@ -436,8 +451,7 @@ impl FastSearchTool {
                     self.exclude_tests,
                     execution.trace.zero_hit_reason.as_ref(),
                     execution.trace.file_pattern_diagnostic.as_ref(),
-                )
-            {
+                ) {
                 hint_text
             } else {
                 format!(
@@ -452,6 +466,12 @@ impl FastSearchTool {
             });
         }
 
+        if self.return_format != "locations" && !has_exact_name_match {
+            let _ = self
+                .try_enrich_with_line_mode_snippets(handler, &workspace_target, &mut execution.hits)
+                .await;
+        }
+
         // Locations-only mode: skip code context entirely (70-90% token savings)
         if self.return_format == "locations" {
             // T8 follow-up: when locations mode is requested AND the query is
@@ -460,13 +480,6 @@ impl FastSearchTool {
             // the actual matching line rather than the enclosing symbol's
             // declaration line.  This restores the behaviour of the old
             // `execute_content_search` locations path.
-            let has_exact_name_match = execution.hits.iter().any(|hit| {
-                if let Some(symbol) = hit.as_symbol() {
-                    formatting::is_definition_name_match(&symbol.name, &query_lower)
-                } else {
-                    false
-                }
-            });
             if !has_exact_name_match {
                 if let Ok(line_locations_output) = self
                     .try_line_mode_locations(handler, &workspace_target)
@@ -543,10 +556,7 @@ impl FastSearchTool {
                 execution.hits.iter().map(|hit| hit.file.as_str()).collect();
             format!(
                 "{}\n\n{}",
-                hint_formatter::build_scope_rescue_header(
-                    original_pattern,
-                    distinct_files.len(),
-                ),
+                hint_formatter::build_scope_rescue_header(original_pattern, distinct_files.len(),),
                 lean_output,
             )
         } else {
@@ -563,6 +573,42 @@ impl FastSearchTool {
             result: CallToolResult::text_content(vec![Content::text(lean_output)]),
             execution: Some(execution),
         })
+    }
+
+    async fn ensure_target_workspace_indexed_if_pending(
+        handler: &JulieServerHandler,
+        workspace_id: &str,
+    ) -> Result<Option<CallToolResult>> {
+        let Some(daemon_db) = handler.daemon_db.as_ref() else {
+            return Ok(None);
+        };
+        let Some(row) = daemon_db.get_workspace(workspace_id)? else {
+            return Ok(None);
+        };
+        if row.status == "ready" {
+            return Ok(None);
+        }
+
+        let session_target_is_active = handler.is_workspace_active(workspace_id).await
+            || handler.loaded_workspace_id().as_deref() == Some(workspace_id);
+        if !session_target_is_active {
+            return Ok(None);
+        }
+
+        let index_tool = crate::tools::ManageWorkspaceTool {
+            operation: "index".to_string(),
+            path: Some(row.path),
+            name: None,
+            workspace_id: None,
+            force: Some(false),
+            detailed: None,
+        };
+        let result = index_tool.call_tool_with_options(handler, true).await?;
+        if result.is_error.unwrap_or(false) {
+            return Ok(Some(result));
+        }
+
+        Ok(None)
     }
 
     /// Resolve workspace filtering parameter to a WorkspaceTarget.
@@ -643,6 +689,65 @@ impl FastSearchTool {
             &self.query,
             &optimized,
         )))
+    }
+
+    async fn try_enrich_with_line_mode_snippets(
+        &self,
+        handler: &JulieServerHandler,
+        workspace_target: &WorkspaceTarget,
+        hits: &mut [SearchHit],
+    ) -> Result<()> {
+        let line_result = line_mode::line_mode_matches(
+            &self.query,
+            &self.language,
+            &self.file_pattern,
+            self.effective_limit(),
+            self.exclude_tests,
+            workspace_target,
+            handler,
+        )
+        .await?;
+
+        if line_result.matches.is_empty() {
+            return Ok(());
+        }
+
+        let mut snippets_by_file: std::collections::HashMap<String, Vec<String>> =
+            std::collections::HashMap::new();
+        for line_match in line_result.matches {
+            snippets_by_file
+                .entry(line_match.file_path)
+                .or_default()
+                .push(format!(
+                    "{}: {}",
+                    line_match.line_number,
+                    line_match.line_content.trim()
+                ));
+        }
+
+        for hit in hits {
+            let Some(lines) = snippets_by_file.get(&hit.file) else {
+                continue;
+            };
+            let line_snippet = lines.iter().take(3).cloned().collect::<Vec<_>>().join("\n");
+            if let trace::SearchHitBacking::Symbol(symbol) = &mut hit.backing {
+                let snippet = match hit
+                    .snippet
+                    .as_deref()
+                    .filter(|existing| !existing.trim().is_empty())
+                {
+                    Some(existing) if existing.contains(&line_snippet) => existing.to_string(),
+                    Some(existing) => format!("{existing}\n{line_snippet}"),
+                    None => line_snippet.clone(),
+                };
+                hit.snippet = Some(snippet.clone());
+                symbol.code_context = Some(snippet);
+            } else {
+                hit.snippet = Some(line_snippet);
+            }
+        }
+
+        Ok(())
     }
 }
 

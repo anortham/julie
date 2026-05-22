@@ -86,9 +86,8 @@ fn infer_intent(query: &str) -> &'static str {
     ]
     .iter()
     .any(|phrase| normalized.contains(phrase));
-    let has_grep_shape = normalized.contains("todo")
-        || normalized.contains("fixme")
-        || normalized.contains("grep");
+    let has_grep_shape =
+        normalized.contains("todo") || normalized.contains("fixme") || normalized.contains("grep");
 
     if has_tool_phrase {
         "api_tool_lookup"

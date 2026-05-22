@@ -127,7 +127,12 @@ fn build_fixture() -> Result<(TempDir, TempDir, SearchIndex, SymbolDatabase)> {
             content: sym.code_context.clone(),
         })?;
 
-        index.add_search_doc(&SearchDocument::for_symbol(sym, vec![], String::new(), String::new()))?;
+        index.add_search_doc(&SearchDocument::for_symbol(
+            sym,
+            vec![],
+            String::new(),
+            String::new(),
+        ))?;
     }
     db.store_symbols(&symbols)?;
     index.commit()?;
@@ -228,8 +233,13 @@ fn nl_three_token_definition_search_completes_within_latency_bound() -> Result<(
 
     // Measured call: the NL path.
     let start = Instant::now();
-    let (results, _relaxed, _total) =
-        definition_search_with_index_for_test("function display template", &filter, 10, &index, Some(&db))?;
+    let (results, _relaxed, _total) = definition_search_with_index_for_test(
+        "function display template",
+        &filter,
+        10,
+        &index,
+        Some(&db),
+    )?;
     let elapsed = start.elapsed();
 
     // Correctness: the pipeline returns results (not a zero-hit crash).
@@ -336,7 +346,12 @@ fn and_or_fallback_does_not_blow_up_latency() -> Result<()> {
             line_count: 5,
             content: sym.code_context.clone(),
         })?;
-        index.add_search_doc(&SearchDocument::for_symbol(sym, vec![], String::new(), String::new()))?;
+        index.add_search_doc(&SearchDocument::for_symbol(
+            sym,
+            vec![],
+            String::new(),
+            String::new(),
+        ))?;
     }
     db.store_symbols(&[sym_a, sym_b])?;
     index.commit()?;

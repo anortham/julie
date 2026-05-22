@@ -57,8 +57,16 @@ pub(crate) fn definition_search_with_index_for_test(
                 language: h.language,
                 file_path: h.file_path,
                 start_line: h.start_line,
-                signature: if h.signature.is_empty() { None } else { Some(h.signature) },
-                doc_comment: if h.doc_comment.is_empty() { None } else { Some(h.doc_comment) },
+                signature: if h.signature.is_empty() {
+                    None
+                } else {
+                    Some(h.signature)
+                },
+                doc_comment: if h.doc_comment.is_empty() {
+                    None
+                } else {
+                    Some(h.doc_comment)
+                },
                 start_column: 0,
                 end_line: 0,
                 end_column: 0,
@@ -84,10 +92,8 @@ pub(crate) fn definition_search_with_index_for_test(
         let ids: Vec<String> = symbols.iter().map(|s| s.id.clone()).collect();
         if !ids.is_empty() {
             if let Ok(stored) = db_ref.get_symbols_by_ids(&ids) {
-                let by_id: std::collections::HashMap<String, _> = stored
-                    .into_iter()
-                    .map(|s| (s.id.clone(), s))
-                    .collect();
+                let by_id: std::collections::HashMap<String, _> =
+                    stored.into_iter().map(|s| (s.id.clone(), s)).collect();
                 for sym in symbols.iter_mut() {
                     if let Some(s) = by_id.get(&sym.id) {
                         if sym.code_context.is_none() {
@@ -251,14 +257,16 @@ pub async fn unified_search_impl_with_kind_filter(
                 .map_err(|e| anyhow::anyhow!("Search index lock error: {}", e))?;
 
             let (hits, relaxed) = match files_only_flag {
-                Some(flag) => {
-                    index.search_unified_kind_filtered(&query_clone, &filter_clone, limit_usize, flag)?
-                }
+                Some(flag) => index.search_unified_kind_filtered(
+                    &query_clone,
+                    &filter_clone,
+                    limit_usize,
+                    flag,
+                )?,
                 None => index.search_unified_with_meta(&query_clone, &filter_clone, limit_usize)?,
             };
             let count = hits.len();
-            let mut symbols: Vec<Symbol> =
-                hits.into_iter().map(unified_hit_to_symbol).collect();
+            let mut symbols: Vec<Symbol> = hits.into_iter().map(unified_hit_to_symbol).collect();
 
             // Enrich symbols with code_context / visibility / metadata /
             // body_span / body_hash from the SQLite database.  Tantivy
@@ -285,9 +293,12 @@ pub async fn unified_search_impl_with_kind_filter(
             .map_err(|e| anyhow::anyhow!("Search index lock error: {}", e))?;
 
         let (hits, relaxed) = match files_only_flag {
-            Some(flag) => {
-                index.search_unified_kind_filtered(&query_clone, &filter_clone, limit_usize, flag)?
-            }
+            Some(flag) => index.search_unified_kind_filtered(
+                &query_clone,
+                &filter_clone,
+                limit_usize,
+                flag,
+            )?,
             None => index.search_unified_with_meta(&query_clone, &filter_clone, limit_usize)?,
         };
         let count = hits.len();
@@ -306,10 +317,7 @@ pub async fn unified_search_impl_with_kind_filter(
 /// database.  Tantivy stores a truncated `code_body` for search indexing but
 /// callers (dogfood tests, MCP responses) need the full `code_context` from
 /// the symbols table.  Batched lookup by symbol ID.
-fn enrich_symbols_from_db(
-    symbols: &mut [Symbol],
-    db: &crate::database::SymbolDatabase,
-) {
+fn enrich_symbols_from_db(symbols: &mut [Symbol], db: &crate::database::SymbolDatabase) {
     let ids: Vec<String> = symbols.iter().map(|s| s.id.clone()).collect();
     if ids.is_empty() {
         return;
@@ -321,13 +329,18 @@ fn enrich_symbols_from_db(
                 .map(|s| {
                     (
                         s.id,
-                        (s.code_context, s.visibility, s.metadata, s.body_span, s.body_hash),
+                        (
+                            s.code_context,
+                            s.visibility,
+                            s.metadata,
+                            s.body_span,
+                            s.body_hash,
+                        ),
                     )
                 })
                 .collect();
             for symbol in symbols.iter_mut() {
-                if let Some((ctx, vis, meta, body_span, body_hash)) =
-                    enrichment_map.get(&symbol.id)
+                if let Some((ctx, vis, meta, body_span, body_hash)) = enrichment_map.get(&symbol.id)
                 {
                     symbol.code_context = ctx.clone();
                     symbol.visibility = vis.clone();
@@ -352,7 +365,7 @@ pub async fn unified_search_hits(
     limit: u32,
     workspace_ids: Option<Vec<String>>,
     handler: &JulieServerHandler,
-) -> Result<(Vec<crate::search::index::UnifiedHit>, usize)> {
+) -> Result<(Vec<crate::search::index::UnifiedHit>, bool, usize)> {
     let current_primary_id = handler.current_workspace_id();
     let loaded_workspace_id = handler.loaded_workspace_id();
 
@@ -380,17 +393,18 @@ pub async fn unified_search_hits(
         let si_arc = handler.get_search_index_for_workspace(&target_id).await?;
 
         return tokio::task::spawn_blocking(
-            move || -> Result<(Vec<crate::search::index::UnifiedHit>, usize)> {
+            move || -> Result<(Vec<crate::search::index::UnifiedHit>, bool, usize)> {
                 let si_arc = match si_arc {
                     Some(si) => si,
-                    None => return Ok((Vec::new(), 0)),
+                    None => return Ok((Vec::new(), false, 0)),
                 };
                 let index = si_arc
                     .lock()
                     .map_err(|e| anyhow::anyhow!("Search index lock error: {}", e))?;
-                let hits = index.search_unified(&query_clone, &filter_clone, limit_usize)?;
+                let (hits, relaxed) =
+                    index.search_unified_with_meta(&query_clone, &filter_clone, limit_usize)?;
                 let count = hits.len();
-                Ok((hits, count))
+                Ok((hits, relaxed, count))
             },
         )
         .await?;
@@ -400,13 +414,14 @@ pub async fn unified_search_hits(
     let (_, search_index_clone) = handler.primary_pooled_database_and_search_index().await?;
 
     tokio::task::spawn_blocking(
-        move || -> Result<(Vec<crate::search::index::UnifiedHit>, usize)> {
+        move || -> Result<(Vec<crate::search::index::UnifiedHit>, bool, usize)> {
             let index = search_index_clone
                 .lock()
                 .map_err(|e| anyhow::anyhow!("Search index lock error: {}", e))?;
-            let hits = index.search_unified(&query_clone, &filter_clone, limit_usize)?;
+            let (hits, relaxed) =
+                index.search_unified_with_meta(&query_clone, &filter_clone, limit_usize)?;
             let count = hits.len();
-            Ok((hits, count))
+            Ok((hits, relaxed, count))
         },
     )
     .await?

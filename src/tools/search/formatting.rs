@@ -2,11 +2,25 @@
 //!
 //! Provides formatting utilities for search tool responses.
 
-use crate::extractors::Symbol;
-use crate::tools::search::trace::SearchHit;
+use crate::tools::search::trace::{SearchHit, SearchHitBacking};
 use crate::tools::shared::OptimizedResponse;
 
-fn write_definition_other_match_snippet(output: &mut String, symbol: &Symbol, indent: &str) {
+fn write_definition_other_match_snippet(output: &mut String, hit: &SearchHit, indent: &str) {
+    if let Some(snippet) = hit
+        .snippet
+        .as_deref()
+        .filter(|snippet| !snippet.trim().is_empty())
+    {
+        for line in snippet.lines() {
+            output.push_str(&format!("{}{}\n", indent, line.trim()));
+        }
+        return;
+    }
+
+    let SearchHitBacking::Symbol(symbol) = &hit.backing else {
+        return;
+    };
+
     if let Some(signature) = symbol
         .signature
         .as_deref()
@@ -178,11 +192,7 @@ pub fn format_unified_search_results(
 /// Format-only `format_locations_only` analogue for the unified path.  Renders
 /// every hit (symbol + file) as a single path line — file:line for symbols,
 /// just path for files — preserving rank order.
-pub fn format_unified_locations(
-    query: &str,
-    hits: &[SearchHit],
-    total_found: usize,
-) -> String {
+pub fn format_unified_locations(query: &str, hits: &[SearchHit], total_found: usize) -> String {
     let mut output = String::new();
     let count = hits.len();
     if count == total_found {
@@ -244,7 +254,7 @@ fn write_unified_hits_grouped(output: &mut String, hits: &[&SearchHit]) {
             let hit = group_hits[0];
             if let Some(symbol) = hit.as_symbol() {
                 output.push_str(&format!("{}:{}\n", file_path, symbol.start_line));
-                write_definition_other_match_snippet(output, symbol, "  ");
+                write_definition_other_match_snippet(output, hit, "  ");
             } else {
                 // File row: render as a single path line with file marker.
                 let lang = if hit.language.is_empty() {
@@ -259,7 +269,7 @@ fn write_unified_hits_grouped(output: &mut String, hits: &[&SearchHit]) {
             for hit in group_hits {
                 if let Some(symbol) = hit.as_symbol() {
                     output.push_str(&format!("  :{}\n", symbol.start_line));
-                    write_definition_other_match_snippet(output, symbol, "    ");
+                    write_definition_other_match_snippet(output, hit, "    ");
                     output.push('\n');
                 } else {
                     let lang = if hit.language.is_empty() {
@@ -310,7 +320,10 @@ fn file_hit_matches_query(hit: &SearchHit, query_compact: &str) -> bool {
         return false;
     }
     let basename = hit.file.rsplit('/').next().unwrap_or(&hit.file);
-    let stem = basename.rsplit_once('.').map(|(s, _)| s).unwrap_or(basename);
+    let stem = basename
+        .rsplit_once('.')
+        .map(|(s, _)| s)
+        .unwrap_or(basename);
     // Match on basename, stem, or full path compact-form.  Full-path matching
     // handles multi-token queries like "openclaw plugin index.ts" matching
     // the file `openclaw-plugin/index.ts` end-to-end — the basename alone

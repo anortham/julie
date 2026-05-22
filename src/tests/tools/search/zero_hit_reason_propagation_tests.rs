@@ -223,10 +223,7 @@ async fn trace_file_pattern_diagnostic_propagates_no_in_scope_candidates() {
 #[tokio::test(flavor = "multi_thread")]
 async fn trace_hint_kind_prefers_out_of_scope_for_no_in_scope_candidates() {
     let (_dir, handler) = seed_workspace(&[
-        (
-            "src/tests/core.rs",
-            "fn core() { let marker_scope = 1; }\n",
-        ),
+        ("src/tests/core.rs", "fn core() { let marker_scope = 1; }\n"),
         (
             "crates/other/tests/misc.rs",
             "fn misc() { let marker_scope = 2; }\n",
@@ -324,6 +321,26 @@ async fn trace_scope_rescue_labels_out_of_scope_hits() {
     );
     assert_eq!(execution.trace.zero_hit_reason, None);
     assert_eq!(execution.trace.file_pattern_diagnostic, None);
+    assert!(
+        !execution.trace.top_hits.is_empty(),
+        "scope rescue must rebuild trace.top_hits from rescued hits",
+    );
+    let expected_top_files = execution
+        .hits
+        .iter()
+        .take(3)
+        .map(|hit| hit.file.as_str())
+        .collect::<Vec<_>>();
+    let actual_top_files = execution
+        .trace
+        .top_hits
+        .iter()
+        .map(|hit| hit.file.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        actual_top_files, expected_top_files,
+        "trace.top_hits must describe the final rescued hits",
+    );
     assert!(
         text.starts_with(
             "NOTE: 0 matches within file_pattern=src/ui/**. Showing 2 results from the full codebase (outside requested scope).",

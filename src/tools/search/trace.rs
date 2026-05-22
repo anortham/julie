@@ -357,21 +357,7 @@ pub struct SearchTrace {
 impl SearchTrace {
     pub fn from_hits(strategy_id: impl Into<String>, hits: &[SearchHit]) -> Self {
         let strategy_id = strategy_id.into();
-        let top_hits = hits
-            .iter()
-            .take(3)
-            .enumerate()
-            .map(|(idx, hit)| SearchHitSummary {
-                rank: idx + 1,
-                symbol_id: hit.symbol_id.clone(),
-                name: hit.name.clone(),
-                kind: hit.kind.clone(),
-                file: hit.file.clone(),
-                line: hit.line,
-                score: hit.score,
-                workspace: hit.workspace.clone(),
-            })
-            .collect();
+        let top_hits = summarize_top_hits(hits);
 
         Self {
             strategy_id,
@@ -390,6 +376,28 @@ impl SearchTrace {
             or_disjunction_detected: false,
         }
     }
+
+    pub(crate) fn refresh_hits(&mut self, hits: &[SearchHit]) {
+        self.result_count = hits.len();
+        self.top_hits = summarize_top_hits(hits);
+    }
+}
+
+fn summarize_top_hits(hits: &[SearchHit]) -> Vec<SearchHitSummary> {
+    hits.iter()
+        .take(3)
+        .enumerate()
+        .map(|(idx, hit)| SearchHitSummary {
+            rank: idx + 1,
+            symbol_id: hit.symbol_id.clone(),
+            name: hit.name.clone(),
+            kind: hit.kind.clone(),
+            file: hit.file.clone(),
+            line: hit.line,
+            score: hit.score,
+            workspace: hit.workspace.clone(),
+        })
+        .collect()
 }
 
 impl SearchExecutionResult {

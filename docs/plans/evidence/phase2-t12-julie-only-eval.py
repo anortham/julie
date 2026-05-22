@@ -6,7 +6,9 @@ Output: per-repo and overall top1, top5, broken down by category.
 """
 
 import json
+import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -14,9 +16,56 @@ from collections import defaultdict
 from pathlib import Path
 
 CORPUS = "/Users/murphy/.eros-eval/eval/multi-lang-corpus/latest.json"
-JULIE_BIN = "/Users/murphy/source/julie/target/release/julie-server"
+REPO_ROOT = Path(__file__).resolve().parents[3]
 LIMIT = 5
 TIMEOUT = 60
+
+
+def git_head() -> str:
+    proc = subprocess.run(
+        ["git", "rev-parse", "--short", "HEAD"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode != 0:
+        return "unknown"
+    return proc.stdout.strip() or "unknown"
+
+
+def resolve_julie_bin() -> Path:
+    explicit = os.environ.get("JULIE_BIN")
+    candidates = []
+    if explicit:
+        candidates.append(Path(explicit))
+    candidates.extend(
+        [
+            REPO_ROOT / "target" / "debug" / "julie-server",
+            REPO_ROOT / "target" / "release" / "julie-server",
+        ]
+    )
+    discovered = shutil.which("julie-server")
+    if discovered:
+        candidates.append(Path(discovered))
+
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+
+    searched = ", ".join(str(candidate) for candidate in candidates)
+    raise SystemExit(
+        "julie-server binary not found. Build one with `cargo build` or set "
+        f"JULIE_BIN. Searched: {searched}"
+    )
+
+
+def binary_metadata(path: Path) -> dict:
+    stat = path.stat()
+    return {
+        "path": str(path),
+        "mtime": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(stat.st_mtime)),
+        "size_bytes": stat.st_size,
+    }
 
 
 def julie_search_target(category: str) -> str:
@@ -99,9 +148,9 @@ def parse_julie_results(stdout: str):
     return ({"value": payload},)
 
 
-def run_julie(repo: str, query: str, target: str):
+def run_julie(julie_bin: Path, repo: str, query: str, target: str):
     cmd = [
-        JULIE_BIN,
+        str(julie_bin),
         "--workspace", repo,
         "--json",
         "--standalone",
@@ -120,12 +169,22 @@ def run_julie(repo: str, query: str, target: str):
 
 
 def main():
+    commit = git_head()
+    julie_bin = resolve_julie_bin()
+    binary = binary_metadata(julie_bin)
+
     with open(CORPUS) as f:
         corpus = json.load(f)
 
     queries = corpus["queries"]
     n = len(queries)
     print(f"corpus: {n} queries across {len({q['repo'] for q in queries})} repos", flush=True)
+    print(f"commit: {commit}", flush=True)
+    print(
+        f"julie-server: {binary['path']} "
+        f"(mtime={binary['mtime']}, size={binary['size_bytes']})",
+        flush=True,
+    )
 
     rank_counts = defaultdict(int)  # rank -> count
     by_cat = defaultdict(lambda: defaultdict(int))  # category -> rank -> count
@@ -136,7 +195,7 @@ def main():
     start = time.time()
     for i, q in enumerate(queries, start=1):
         target = julie_search_target(q["category"])
-        results, err = run_julie(q["repo"], q["query"], target)
+        results, err = run_julie(julie_bin, q["repo"], q["query"], target)
         if results is None:
             unavailable.append((q["id"], err))
             rank_counts["unavailable"] += 1
@@ -167,7 +226,7 @@ def main():
     top1 = rank_counts[1]
     top5 = sum(rank_counts[r] for r in (1, 2, 3, 4, 5))
     print()
-    print(f"=== JULIE-ONLY EVAL RESULT (commit f46cee0b, broader index post-walker-fix) ===")
+    print(f"=== JULIE-ONLY EVAL RESULT (commit {commit}) ===")
     print(f"Total queries: {n}")
     print(f"Elapsed: {elapsed:.1f}s ({elapsed/n:.2f}s/query)")
     print(f"Top1: {top1}/{n} ({100*top1/n:.1f}%)")
@@ -199,7 +258,8 @@ def main():
     out_path = "/tmp/julie-only-eval-result.json"
     with open(out_path, "w") as f:
         json.dump({
-            "commit": "f46cee0b",
+            "commit": commit,
+            "binary": binary,
             "total_queries": n,
             "top1": top1,
             "top5": top5,

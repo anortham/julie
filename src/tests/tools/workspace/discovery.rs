@@ -1046,7 +1046,11 @@ fn test_should_index_file_rejects_daemon_state_filenames() {
         std::fs::write(&path, "secret\n").unwrap();
         let result = tool.should_index_file(&path, &blacklisted_exts, max_file_size, false);
         assert!(result.is_ok());
-        assert!(!result.unwrap(), "{} must be rejected by filename blacklist", filename);
+        assert!(
+            !result.unwrap(),
+            "{} must be rejected by filename blacklist",
+            filename
+        );
     }
 }
 
@@ -1076,7 +1080,8 @@ fn test_should_index_file_rejects_paths_under_julie_home() {
     unsafe { std::env::set_var("JULIE_HOME", &julie_home) };
 
     // Verify the helper resolves the configured home to what we just set.
-    let paths = DaemonPaths::try_new().expect("DaemonPaths::try_new should succeed with absolute path");
+    let paths =
+        DaemonPaths::try_new().expect("DaemonPaths::try_new should succeed with absolute path");
     assert!(paths.is_under_julie_home(&julie_home));
 
     // A daemon discovery file inside the JULIE_HOME tree must be rejected
@@ -1099,7 +1104,10 @@ fn test_should_index_file_rejects_paths_under_julie_home() {
     let result = tool
         .should_index_file(&normal, &blacklisted_exts, max_file_size, false)
         .expect("should_index_file must not error");
-    assert!(result, "normal source files outside JULIE_HOME must still be indexed");
+    assert!(
+        result,
+        "normal source files outside JULIE_HOME must still be indexed"
+    );
 
     // Restore env.
     match prev {

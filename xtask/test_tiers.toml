@@ -5,12 +5,12 @@
 nano = ["core-database", "core-fast"]
 # Smoke: keep this tiny for frequent local runs.
 smoke = ["cli", "core-database", "core-embeddings", "tools-get-context-pipeline"]
-dev = ["cli", "xtask-runner", "core-database", "core-embeddings", "tools-get-context-pipeline", "tools-get-context-format", "tools-get-context-graph", "tools-search-tantivy", "tools-search-line", "tools-search-file-mode", "tools-search-zero-hit", "tools-search-promotion", "tools-search-format-quality", "tools-search-context", "tools-search-text", "tools-search-hybrid", "tools-search-query", "tools-workspace", "tools-workspace-targeting", "tools-get-symbols", "tools-editing", "tools-deep-dive", "tools-call-path", "tools-fast-refs", "tools-blast-spillover", "tools-refactoring", "tools-metrics", "tools-format-filter", "analysis", "core-fast", "daemon", "dashboard"]
+dev = ["cli", "xtask-runner", "core-database", "core-embeddings", "tools-get-context-pipeline", "tools-get-context-format", "tools-get-context-graph", "tools-search-tantivy", "tools-search-line", "tools-search-file-mode", "tools-search-zero-hit", "tools-search-promotion", "tools-search-format-quality", "tools-search-context", "tools-search-text", "tools-search-hybrid", "tools-search-query", "tools-search-unified", "tools-workspace", "tools-workspace-targeting", "tools-get-symbols", "tools-editing", "tools-deep-dive", "tools-call-path", "tools-fast-refs", "tools-blast-spillover", "tools-refactoring", "tools-metrics", "tools-format-filter", "analysis", "core-fast", "core-handler-telemetry", "daemon", "dashboard"]
 # System coverage kept separate from fast local buckets.
 system = ["projection", "transport", "lifecycle", "workspace-runtime", "workspace-init", "documentation-indexing", "integration"]
 # Dogfood stays isolated because it is the long pole.
 dogfood = ["tools-dogfood-repo-index", "search-quality"]
-full = ["cli", "xtask-runner", "core-database", "core-embeddings", "tools-get-context-pipeline", "tools-get-context-format", "tools-get-context-graph", "tools-search-tantivy", "tools-search-line", "tools-search-file-mode", "tools-search-zero-hit", "tools-search-promotion", "tools-search-format-quality", "tools-search-context", "tools-search-text", "tools-search-hybrid", "tools-search-query", "tools-workspace", "tools-workspace-targeting", "tools-get-symbols", "tools-editing", "tools-deep-dive", "tools-call-path", "tools-fast-refs", "tools-blast-spillover", "tools-refactoring", "tools-metrics", "tools-format-filter", "analysis", "core-fast", "daemon", "dashboard", "projection", "transport", "lifecycle", "workspace-runtime", "workspace-init", "documentation-indexing", "integration", "tools-dogfood-repo-index", "search-quality"]
+full = ["cli", "xtask-runner", "core-database", "core-embeddings", "tools-get-context-pipeline", "tools-get-context-format", "tools-get-context-graph", "tools-search-tantivy", "tools-search-line", "tools-search-file-mode", "tools-search-zero-hit", "tools-search-promotion", "tools-search-format-quality", "tools-search-context", "tools-search-text", "tools-search-hybrid", "tools-search-query", "tools-search-unified", "tools-workspace", "tools-workspace-targeting", "tools-get-symbols", "tools-editing", "tools-deep-dive", "tools-call-path", "tools-fast-refs", "tools-blast-spillover", "tools-refactoring", "tools-metrics", "tools-format-filter", "analysis", "core-fast", "core-handler-telemetry", "daemon", "dashboard", "projection", "transport", "lifecycle", "workspace-runtime", "workspace-init", "documentation-indexing", "integration", "tools-dogfood-repo-index", "search-quality"]
 
 [blocked_tiers]
 
@@ -24,6 +24,7 @@ commands = [
   "cargo nextest run --lib tests::cli_tests",
   "cargo nextest run --lib tests::cli_execution_tests",
   "cargo nextest run --lib tests::cli_tools_tests",
+  "cargo nextest run --lib tests::cli::cli_search_no_target_test",
   "cargo build",
   "cargo nextest run --lib --run-ignored only tests::cli::",
 ]
@@ -199,6 +200,27 @@ commands = [
   "cargo nextest run --lib tools::search::query_preprocessor::tests -- --skip search_quality",
 ]
 
+[buckets.tools-search-unified]
+expected_seconds = 25
+timeout_seconds = 90
+scope_label = "tooling"
+notes = "unified search schema, ranking, reranker, and query-path coverage"
+commands = [
+  "cargo nextest run --lib tests::tools::search::c3_enriched_schema_tests -- --skip search_quality",
+  "cargo nextest run --lib tests::tools::search::compat_marker_v4_test -- --skip search_quality",
+  "cargo nextest run --lib tests::tools::search::fast_search_unified_cutover_test -- --skip search_quality",
+  "cargo nextest run --lib tests::tools::search::nl_path_prior_pipeline_tests -- --skip search_quality",
+  "cargo nextest run --lib tests::tools::search::nl_symbol_query_latency_tests -- --skip search_quality",
+  "cargo nextest run --lib tests::tools::search::pretokenized_emit_test -- --skip search_quality",
+  "cargo nextest run --lib tests::tools::search::projection_search_doc_test -- --skip search_quality",
+  "cargo nextest run --lib tests::tools::search::relationship_text_test -- --skip search_quality",
+  "cargo nextest run --lib tests::tools::search::reranker_ordering_tests -- --skip search_quality",
+  "cargo nextest run --lib tests::tools::search::schema_phase2_fields_test -- --skip search_quality",
+  "cargo nextest run --lib tests::tools::search::title_exact_boost_tests -- --skip search_quality",
+  "cargo nextest run --lib tests::tools::search::tokenizer_simple_test -- --skip search_quality",
+  "cargo nextest run --lib tests::tools::search::unified_ -- --skip search_quality",
+]
+
 [buckets.tools-workspace]
 # Workspace management without the heavy targeting fixtures (carved out into
 # tools-workspace-targeting) and registry (in workspace-runtime).
@@ -338,6 +360,15 @@ commands = [
   "cargo nextest run --lib tests::core::memory_vectors -- --skip search_quality",
   "cargo nextest run --lib tests::core::paths -- --skip search_quality",
   "cargo nextest run --lib tests::core::vector_storage -- --skip search_quality",
+]
+
+[buckets.core-handler-telemetry]
+expected_seconds = 20
+timeout_seconds = 90
+scope_label = "core"
+notes = "handler telemetry metadata contracts"
+commands = [
+  "cargo nextest run --lib tests::core::handler_telemetry -- --skip search_quality",
 ]
 
 [buckets.analysis]

@@ -22,30 +22,30 @@ mod tests {
 
         index
             .add_search_doc(&SearchDocument::symbol_from_parts(
-            "1",
-            "getUserProfile",
-            "async function getUserProfile(id: string): Promise<User>",
-            "Fetches user profile from API",
-            "const response = await fetch(`/api/users/${id}`);",
-            "src/services/user.ts",
-            "function",
-            "typescript",
-            15,
-        ))
+                "1",
+                "getUserProfile",
+                "async function getUserProfile(id: string): Promise<User>",
+                "Fetches user profile from API",
+                "const response = await fetch(`/api/users/${id}`);",
+                "src/services/user.ts",
+                "function",
+                "typescript",
+                15,
+            ))
             .unwrap();
 
         index
             .add_search_doc(&SearchDocument::symbol_from_parts(
-            "2",
-            "get_user_profile",
-            "pub async fn get_user_profile(id: &str) -> Result<User>",
-            "Fetches user profile from database",
-            "let user = db.query_one(\"SELECT * FROM users WHERE id = $1\", &[id]).await?;",
-            "src/services/user.rs",
-            "function",
-            "rust",
-            42,
-        ))
+                "2",
+                "get_user_profile",
+                "pub async fn get_user_profile(id: &str) -> Result<User>",
+                "Fetches user profile from database",
+                "let user = db.query_one(\"SELECT * FROM users WHERE id = $1\", &[id]).await?;",
+                "src/services/user.rs",
+                "function",
+                "rust",
+                42,
+            ))
             .unwrap();
         index.commit().unwrap();
 
@@ -68,30 +68,30 @@ mod tests {
 
         index
             .add_search_doc(&SearchDocument::symbol_from_parts(
-            "1",
-            "getUserProfile",
-            "function getUserProfile()",
-            String::new(),
-            String::new(),
-            "src/user.ts",
-            "function",
-            "typescript",
-            1,
-        ))
+                "1",
+                "getUserProfile",
+                "function getUserProfile()",
+                String::new(),
+                String::new(),
+                "src/user.ts",
+                "function",
+                "typescript",
+                1,
+            ))
             .unwrap();
 
         index
             .add_search_doc(&SearchDocument::symbol_from_parts(
-            "2",
-            "get_user_profile",
-            "pub fn get_user_profile()",
-            String::new(),
-            String::new(),
-            "src/user.rs",
-            "function",
-            "rust",
-            1,
-        ))
+                "2",
+                "get_user_profile",
+                "pub fn get_user_profile()",
+                String::new(),
+                String::new(),
+                "src/user.rs",
+                "function",
+                "rust",
+                1,
+            ))
             .unwrap();
         index.commit().unwrap();
 
@@ -114,30 +114,30 @@ mod tests {
 
         index
             .add_search_doc(&SearchDocument::symbol_from_parts(
-            "1",
-            "target_context_symbol",
-            "pub fn target_context_symbol()",
-            "shared filter token",
-            String::new(),
-            "src/target/context.rs",
-            "function",
-            "rust",
-            1,
-        ))
+                "1",
+                "target_context_symbol",
+                "pub fn target_context_symbol()",
+                "shared filter token",
+                String::new(),
+                "src/target/context.rs",
+                "function",
+                "rust",
+                1,
+            ))
             .unwrap();
 
         index
             .add_search_doc(&SearchDocument::symbol_from_parts(
-            "2",
-            "outside_context_symbol",
-            "pub fn outside_context_symbol()",
-            "shared filter token",
-            String::new(),
-            "src/outside/context.rs",
-            "function",
-            "rust",
-            1,
-        ))
+                "2",
+                "outside_context_symbol",
+                "pub fn outside_context_symbol()",
+                "shared filter token",
+                String::new(),
+                "src/outside/context.rs",
+                "function",
+                "rust",
+                1,
+            ))
             .unwrap();
         index.commit().unwrap();
 
@@ -160,30 +160,30 @@ mod tests {
 
         index
             .add_search_doc(&SearchDocument::symbol_from_parts(
-            "1",
-            "production_context_symbol",
-            "pub fn production_context_symbol()",
-            "shared production token",
-            String::new(),
-            "src/context.rs",
-            "function",
-            "rust",
-            1,
-        ))
+                "1",
+                "production_context_symbol",
+                "pub fn production_context_symbol()",
+                "shared production token",
+                String::new(),
+                "src/context.rs",
+                "function",
+                "rust",
+                1,
+            ))
             .unwrap();
 
         index
             .add_search_doc(&SearchDocument::symbol_from_parts(
-            "2",
-            "test_context_symbol",
-            "fn test_context_symbol()",
-            "shared production token",
-            String::new(),
-            "tests/context_test.rs",
-            "function",
-            "rust",
-            1,
-        ))
+                "2",
+                "test_context_symbol",
+                "fn test_context_symbol()",
+                "shared production token",
+                String::new(),
+                "tests/context_test.rs",
+                "function",
+                "rust",
+                1,
+            ))
             .unwrap();
         index.commit().unwrap();
 
@@ -207,31 +207,31 @@ mod tests {
         // A symbol where "user" appears only in doc_comment
         index
             .add_search_doc(&SearchDocument::symbol_from_parts(
-            "1",
-            "fetchData",
-            "fn fetchData()",
-            "Gets user data from the API",
-            String::new(),
-            "src/api.rs",
-            "function",
-            "rust",
-            1,
-        ))
+                "1",
+                "fetchData",
+                "fn fetchData()",
+                "Gets user data from the API",
+                String::new(),
+                "src/api.rs",
+                "function",
+                "rust",
+                1,
+            ))
             .unwrap();
 
         // A symbol where "user" is in the name
         index
             .add_search_doc(&SearchDocument::symbol_from_parts(
-            "2",
-            "getUser",
-            "fn getUser()",
-            String::new(),
-            String::new(),
-            "src/api.rs",
-            "function",
-            "rust",
-            10,
-        ))
+                "2",
+                "getUser",
+                "fn getUser()",
+                String::new(),
+                String::new(),
+                "src/api.rs",
+                "function",
+                "rust",
+                10,
+            ))
             .unwrap();
         index.commit().unwrap();
 
@@ -256,31 +256,31 @@ mod tests {
         // before reranking.
         index
             .add_search_doc(&SearchDocument::symbol_from_parts(
-            "1",
-            "workspace_routing_handler",
-            "fn workspace_routing_handler()",
-            "Handles workspace routing for requests.",
-            "workspace routing handler",
-            "docs/workspace/routing.md",
-            "function",
-            "markdown",
-            1,
-        ))
+                "1",
+                "workspace_routing_handler",
+                "fn workspace_routing_handler()",
+                "Handles workspace routing for requests.",
+                "workspace routing handler",
+                "docs/workspace/routing.md",
+                "function",
+                "markdown",
+                1,
+            ))
             .unwrap();
 
         // Test symbol with identical textual relevance.
         index
             .add_search_doc(&SearchDocument::symbol_from_parts(
-            "2",
-            "workspace_routing_handler",
-            "fn workspace_routing_handler()",
-            "Handles workspace routing for requests.",
-            "workspace routing handler",
-            "src/tests/search/workspace_routing.rs",
-            "function",
-            "rust",
-            5,
-        ))
+                "2",
+                "workspace_routing_handler",
+                "fn workspace_routing_handler()",
+                "Handles workspace routing for requests.",
+                "workspace routing handler",
+                "src/tests/search/workspace_routing.rs",
+                "function",
+                "rust",
+                5,
+            ))
             .unwrap();
 
         // Production symbol with identical textual relevance should win after NL path prior.
@@ -288,16 +288,16 @@ mod tests {
         // the docs candidate's — leaving the NL path prior as the differentiator.
         index
             .add_search_doc(&SearchDocument::symbol_from_parts(
-            "3",
-            "workspace_routing_handler",
-            "fn workspace_routing_handler()",
-            "Handles workspace routing for requests.",
-            "workspace routing handler",
-            "src/workspace/routing.rs",
-            "function",
-            "rust",
-            32,
-        ))
+                "3",
+                "workspace_routing_handler",
+                "fn workspace_routing_handler()",
+                "Handles workspace routing for requests.",
+                "workspace routing handler",
+                "src/workspace/routing.rs",
+                "function",
+                "rust",
+                32,
+            ))
             .unwrap();
 
         index.commit().unwrap();
@@ -344,30 +344,30 @@ mod tests {
         // Insert docs first so pre-rerank TopDocs(limit=1) would otherwise return docs.
         index
             .add_search_doc(&SearchDocument::symbol_from_parts(
-            "1",
-            "workspace_routing_handler",
-            "fn workspace_routing_handler()",
-            "Handles workspace routing for requests.",
-            "workspace routing handler",
-            "docs/workspace/routing.md",
-            "function",
-            "markdown",
-            1,
-        ))
+                "1",
+                "workspace_routing_handler",
+                "fn workspace_routing_handler()",
+                "Handles workspace routing for requests.",
+                "workspace routing handler",
+                "docs/workspace/routing.md",
+                "function",
+                "markdown",
+                1,
+            ))
             .unwrap();
 
         index
             .add_search_doc(&SearchDocument::symbol_from_parts(
-            "2",
-            "workspace_routing_handler",
-            "fn workspace_routing_handler()",
-            "Handles workspace routing for requests.",
-            "workspace routing handler",
-            "src/workspace/routing.rs",
-            "function",
-            "rust",
-            1,
-        ))
+                "2",
+                "workspace_routing_handler",
+                "fn workspace_routing_handler()",
+                "Handles workspace routing for requests.",
+                "workspace routing handler",
+                "src/workspace/routing.rs",
+                "function",
+                "rust",
+                1,
+            ))
             .unwrap();
         index.commit().unwrap();
 
@@ -396,16 +396,16 @@ mod tests {
 
         index
             .add_search_doc(&SearchDocument::symbol_from_parts(
-            "1",
-            "workspace_router_registry",
-            "fn workspace_router_registry()",
-            "router registry for workspace routing",
-            "workspace router registry",
-            "src/workspace/router.rs",
-            "function",
-            "rust",
-            1,
-        ))
+                "1",
+                "workspace_router_registry",
+                "fn workspace_router_registry()",
+                "router registry for workspace routing",
+                "workspace router registry",
+                "src/workspace/router.rs",
+                "function",
+                "rust",
+                1,
+            ))
             .unwrap();
         index.commit().unwrap();
 
@@ -432,31 +432,31 @@ mod tests {
         // Private function
         index
             .add_search_doc(&SearchDocument::symbol_from_parts(
-            "1",
-            "process_data",
-            "fn process_data()",
-            String::new(),
-            String::new(),
-            "src/internal.rs",
-            "function",
-            "rust",
-            1,
-        ))
+                "1",
+                "process_data",
+                "fn process_data()",
+                String::new(),
+                String::new(),
+                "src/internal.rs",
+                "function",
+                "rust",
+                1,
+            ))
             .unwrap();
 
         // Public function — should get important_patterns boost
         index
             .add_search_doc(&SearchDocument::symbol_from_parts(
-            "2",
-            "process_data",
-            "pub fn process_data()",
-            String::new(),
-            String::new(),
-            "src/lib.rs",
-            "function",
-            "rust",
-            1,
-        ))
+                "2",
+                "process_data",
+                "pub fn process_data()",
+                String::new(),
+                String::new(),
+                "src/lib.rs",
+                "function",
+                "rust",
+                1,
+            ))
             .unwrap();
         index.commit().unwrap();
 
@@ -482,16 +482,16 @@ mod tests {
         // Index a function with "is_" prefix affix
         index
             .add_search_doc(&SearchDocument::symbol_from_parts(
-            "1",
-            "is_empty",
-            "pub fn is_empty(&self) -> bool",
-            "Check if collection is empty",
-            "self.len() == 0",
-            "src/collection.rs",
-            "function",
-            "rust",
-            1,
-        ))
+                "1",
+                "is_empty",
+                "pub fn is_empty(&self) -> bool",
+                "Check if collection is empty",
+                "self.len() == 0",
+                "src/collection.rs",
+                "function",
+                "rust",
+                1,
+            ))
             .unwrap();
         index.commit().unwrap();
 
@@ -514,16 +514,16 @@ mod tests {
         // Index a C#-style interface
         index
             .add_search_doc(&SearchDocument::symbol_from_parts(
-            "1",
-            "IPaymentService",
-            "public interface IPaymentService",
-            "Payment processing contract",
-            String::new(),
-            "src/IPaymentService.cs",
-            "interface",
-            "csharp",
-            1,
-        ))
+                "1",
+                "IPaymentService",
+                "public interface IPaymentService",
+                "Payment processing contract",
+                String::new(),
+                "src/IPaymentService.cs",
+                "interface",
+                "csharp",
+                1,
+            ))
             .unwrap();
         index.commit().unwrap();
 
@@ -550,21 +550,39 @@ mod tests {
 
         // Simulate backfill: add symbols as if reading from SQLite
         let symbols = vec![
-            SearchDocument::symbol_from_parts("1", "getUserProfile",
+            SearchDocument::symbol_from_parts(
+                "1",
+                "getUserProfile",
                 "async function getUserProfile(id: string): Promise<User>",
                 "Fetches user profile",
                 "return await fetch(`/api/users/${id}`)",
-                "src/services/user.ts", "function", "typescript", 15),
-            SearchDocument::symbol_from_parts("2", "process_payment",
+                "src/services/user.ts",
+                "function",
+                "typescript",
+                15,
+            ),
+            SearchDocument::symbol_from_parts(
+                "2",
+                "process_payment",
                 "pub async fn process_payment(amount: f64) -> Result<Receipt>",
                 "Process a payment transaction",
                 "let receipt = gateway.charge(amount).await?;",
-                "src/billing/payment.rs", "function", "rust", 42),
-            SearchDocument::symbol_from_parts("3", "IPaymentGateway",
+                "src/billing/payment.rs",
+                "function",
+                "rust",
+                42,
+            ),
+            SearchDocument::symbol_from_parts(
+                "3",
+                "IPaymentGateway",
                 "public interface IPaymentGateway",
                 "Payment gateway contract",
                 "",
-                "src/IPaymentGateway.cs", "interface", "csharp", 1),
+                "src/IPaymentGateway.cs",
+                "interface",
+                "csharp",
+                1,
+            ),
         ];
 
         for doc in &symbols {
@@ -619,16 +637,17 @@ mod tests {
     fn test_backfill_file_content() {
         // Verifies that file content (for line-level search) can also be
         // backfilled alongside symbols.
-        
 
         let (_dir, index) = create_test_index();
 
         // Simulate backfilling file content from SQLite
-        index.add_search_doc(&SearchDocument::file_from_parts(
-            "src/main.rs",
-            "fn main() {\n    println!(\"hello world\");\n}",
-            "rust",
-        )).unwrap();
+        index
+            .add_search_doc(&SearchDocument::file_from_parts(
+                "src/main.rs",
+                "fn main() {\n    println!(\"hello world\");\n}",
+                "rust",
+            ))
+            .unwrap();
         index.commit().unwrap();
 
         // Search for content

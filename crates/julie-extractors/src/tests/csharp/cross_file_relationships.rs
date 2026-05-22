@@ -7,9 +7,9 @@
 //! - Same-file calls → Relationship (directly resolved)
 //! - Cross-file calls → PendingRelationship (resolved after workspace indexing)
 
+use crate::ExtractionResults;
 use crate::base::RelationshipKind;
 use crate::factory::extract_symbols_and_relationships;
-use crate::ExtractionResults;
 use std::path::PathBuf;
 use tree_sitter::Parser;
 

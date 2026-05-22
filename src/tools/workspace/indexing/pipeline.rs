@@ -70,6 +70,13 @@ pub(crate) async fn run_indexing_pipeline(
     transition_stage(&mut state, route, IndexingStage::Persisting);
     let persist_result = persist_batch(&db, route, operation, &batch)?;
 
+    transition_stage(&mut state, route, IndexingStage::Resolving);
+    resolve_pending_relationships(
+        &db,
+        &batch.all_pending_relationships,
+        &batch.all_structured_pending_relationships,
+    );
+
     transition_stage(&mut state, route, IndexingStage::Projecting);
     project_batch(
         &db,
@@ -79,13 +86,6 @@ pub(crate) async fn run_indexing_pipeline(
         persist_result.canonical_revision,
     )
     .await?;
-
-    transition_stage(&mut state, route, IndexingStage::Resolving);
-    resolve_pending_relationships(
-        &db,
-        &batch.all_pending_relationships,
-        &batch.all_structured_pending_relationships,
-    );
 
     transition_stage(&mut state, route, IndexingStage::Analyzing);
     analyze_batch(handler, route, &db)?;

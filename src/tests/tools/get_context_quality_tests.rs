@@ -164,7 +164,14 @@ mod quality_tests {
 
         db.store_symbols(&symbols).unwrap();
         for sym in &symbols {
-            index.add_search_doc(&SearchDocument::for_symbol(sym, vec![], String::new(), String::new())).unwrap();
+            index
+                .add_search_doc(&SearchDocument::for_symbol(
+                    sym,
+                    vec![],
+                    String::new(),
+                    String::new(),
+                ))
+                .unwrap();
         }
         index.commit().unwrap();
 

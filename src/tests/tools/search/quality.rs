@@ -562,27 +562,45 @@ mod identifier_stability_regression_tests {
         let (_dir, index) = create_test_index();
 
         index
-            .add_search_doc(&SearchDocument::symbol_from_parts("1", "get_reference_scores",
+            .add_search_doc(&SearchDocument::symbol_from_parts(
+                "1",
+                "get_reference_scores",
                 "pub fn get_reference_scores() -> Vec<f32>",
                 "Compute centrality-derived reference scores",
                 "let scores = get_reference_scores();",
-                "src/search/scoring.rs", "function", "rust", 120))
+                "src/search/scoring.rs",
+                "function",
+                "rust",
+                120,
+            ))
             .unwrap();
 
         index
-            .add_search_doc(&SearchDocument::symbol_from_parts("2", "reference_scores_overview",
+            .add_search_doc(&SearchDocument::symbol_from_parts(
+                "2",
+                "reference_scores_overview",
                 "fn reference_scores_overview()",
                 "Guide for get_reference_scores usage and concepts",
                 "This document explains reference scores.",
-                "docs/search/reference_scores.md", "function", "markdown", 1))
+                "docs/search/reference_scores.md",
+                "function",
+                "markdown",
+                1,
+            ))
             .unwrap();
 
         index
-            .add_search_doc(&SearchDocument::symbol_from_parts("3", "get_reference_score",
+            .add_search_doc(&SearchDocument::symbol_from_parts(
+                "3",
+                "get_reference_score",
                 "pub fn get_reference_score() -> f32",
                 "Singular helper for reference score",
                 "get_reference_score()",
-                "src/search/helpers.rs", "function", "rust", 40))
+                "src/search/helpers.rs",
+                "function",
+                "rust",
+                40,
+            ))
             .unwrap();
 
         index.commit().unwrap();

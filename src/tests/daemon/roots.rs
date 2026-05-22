@@ -1554,9 +1554,10 @@ async fn test_secondary_scoped_request_does_not_consume_dirty_roots() -> Result<
         RequestContext::new(NumberOrString::Number(14), service.peer().clone()),
     );
     let secondary_result = secondary_search.await?;
+    let secondary_text = extract_text(&secondary_result);
     assert!(
-        extract_text(&secondary_result).contains("secondary_root"),
-        "secondary-scoped request should keep working while roots are dirty"
+        secondary_text.contains("secondary_root"),
+        "secondary-scoped request should keep working while roots are dirty; got: {secondary_text}"
     );
     assert!(
         handler

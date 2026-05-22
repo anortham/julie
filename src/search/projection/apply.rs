@@ -4,10 +4,10 @@ use tracing::warn;
 
 use crate::database::{FileInfo, SymbolDatabase};
 use crate::extractors::{AnnotationMarker, Symbol};
-use crate::search::index::{SearchDocument, truncate_utf8_bytes};
-use crate::search::tokenizer::pretokenize_code;
 use crate::search::SearchIndex;
+use crate::search::index::{SearchDocument, truncate_utf8_bytes};
 use crate::search::scoring::{classify_role, test_subrole};
+use crate::search::tokenizer::pretokenize_code;
 
 /// Maximum byte length for `relationship_text` per symbol.
 pub(super) const RELATIONSHIP_TEXT_MAX_BYTES: usize = 512;
@@ -114,6 +114,36 @@ pub(crate) fn collect_relationship_names_bounded(
     Ok(result)
 }
 
+pub(crate) fn collect_relationship_partner_symbol_ids(
+    db: &SymbolDatabase,
+    symbol_ids: &[String],
+) -> Result<Vec<String>> {
+    if symbol_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let outgoing = db.get_outgoing_relationships_for_symbols(symbol_ids)?;
+    let incoming = db.get_relationships_to_symbols(symbol_ids)?;
+    let focal_set: HashSet<&str> = symbol_ids.iter().map(String::as_str).collect();
+    let mut partner_ids: Vec<String> = outgoing
+        .into_iter()
+        .filter_map(|rel| {
+            focal_set
+                .contains(rel.from_symbol_id.as_str())
+                .then_some(rel.to_symbol_id)
+        })
+        .chain(incoming.into_iter().filter_map(|rel| {
+            focal_set
+                .contains(rel.to_symbol_id.as_str())
+                .then_some(rel.from_symbol_id)
+        }))
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect();
+    partner_ids.sort_unstable();
+    Ok(partner_ids)
+}
+
 /// Truncate `s` to at most `max_bytes` bytes on a whitespace boundary.
 ///
 /// If `s` fits within `max_bytes`, returns `s` unchanged. Otherwise truncates
@@ -143,22 +173,19 @@ pub(crate) fn apply_uncommitted_documents_from_symbols(
 ) -> Result<()> {
     let symbol_contexts = symbol_contexts_from_symbols(symbols);
     let symbol_ids: Vec<String> = symbols.iter().map(|s| s.id.clone()).collect();
-    let relationship_map = match collect_relationship_names_bounded(
-        db,
-        &symbol_ids,
-        RELATIONSHIP_TEXT_MAX_BYTES,
-    ) {
-        Ok(map) => map,
-        Err(e) => {
-            let msg = e.to_string();
-            if msg.contains("no such table") {
-                warn!("relationship_text skipped: DB not yet migrated ({})", msg);
-                HashMap::new()
-            } else {
-                return Err(e);
+    let relationship_map =
+        match collect_relationship_names_bounded(db, &symbol_ids, RELATIONSHIP_TEXT_MAX_BYTES) {
+            Ok(map) => map,
+            Err(e) => {
+                let msg = e.to_string();
+                if msg.contains("no such table") {
+                    warn!("relationship_text skipped: DB not yet migrated ({})", msg);
+                    HashMap::new()
+                } else {
+                    return Err(e);
+                }
             }
-        }
-    };
+        };
 
     for file_path_to_clean in files_to_clean {
         index.remove_by_file_path(file_path_to_clean)?;
@@ -166,7 +193,10 @@ pub(crate) fn apply_uncommitted_documents_from_symbols(
 
     for symbol in symbols {
         let context = symbol_contexts.get(&symbol.id).cloned().unwrap_or_default();
-        let rel_text = relationship_map.get(&symbol.id).cloned().unwrap_or_default();
+        let rel_text = relationship_map
+            .get(&symbol.id)
+            .cloned()
+            .unwrap_or_default();
         let search_doc = symbol_to_search_document(symbol, &context, rel_text);
         index.add_search_doc(&search_doc)?;
     }
@@ -193,7 +223,10 @@ pub(crate) fn apply_documents_with_context(
 
     for symbol in symbols {
         let context = symbol_contexts.get(&symbol.id).cloned().unwrap_or_default();
-        let rel_text = relationship_map.get(&symbol.id).cloned().unwrap_or_default();
+        let rel_text = relationship_map
+            .get(&symbol.id)
+            .cloned()
+            .unwrap_or_default();
         let search_doc = symbol_to_search_document(symbol, &context, rel_text);
         index.add_search_doc(&search_doc)?;
     }
@@ -225,8 +258,18 @@ pub(crate) fn apply_documents_with_db(
 ) -> Result<()> {
     let symbol_ids: Vec<String> = symbols.iter().map(|s| s.id.clone()).collect();
     let relationship_map =
-        collect_relationship_names_bounded(db, &symbol_ids, RELATIONSHIP_TEXT_MAX_BYTES)
-            .unwrap_or_default();
+        match collect_relationship_names_bounded(db, &symbol_ids, RELATIONSHIP_TEXT_MAX_BYTES) {
+            Ok(map) => map,
+            Err(e) => {
+                let msg = e.to_string();
+                if msg.contains("no such table") {
+                    warn!("relationship_text skipped: DB not yet migrated ({})", msg);
+                    HashMap::new()
+                } else {
+                    return Err(e);
+                }
+            }
+        };
     let symbol_contexts = symbol_contexts_from_symbols(symbols);
     apply_documents_with_context(
         index,
@@ -245,7 +288,11 @@ pub(crate) fn apply_documents_with_db(
 /// for file rows.
 fn file_info_to_search_document(file_info: &FileInfo) -> SearchDocument {
     let normalized_path = file_info.path.replace('\\', "/");
-    let basename = normalized_path.rsplit('/').next().unwrap_or(&normalized_path).to_string();
+    let basename = normalized_path
+        .rsplit('/')
+        .next()
+        .unwrap_or(&normalized_path)
+        .to_string();
     let name = if basename.contains('.') {
         basename[..basename.rfind('.').unwrap()].to_string()
     } else {
@@ -291,7 +338,11 @@ fn symbol_to_search_document(
     relationship_text: String,
 ) -> SearchDocument {
     let normalized_path = symbol.file_path.replace('\\', "/");
-    let basename = normalized_path.rsplit('/').next().unwrap_or(&normalized_path).to_string();
+    let basename = normalized_path
+        .rsplit('/')
+        .next()
+        .unwrap_or(&normalized_path)
+        .to_string();
     let path_role = classify_role(&normalized_path, &symbol.language);
     let path_test_role_str = test_subrole(&normalized_path);
 
@@ -312,8 +363,7 @@ fn symbol_to_search_document(
         .map(str::to_string);
 
     let (role, test_role) = if metadata_is_test && path_role != "test" {
-        let tr = metadata_test_role
-            .unwrap_or_else(|| path_test_role_str.to_string());
+        let tr = metadata_test_role.unwrap_or_else(|| path_test_role_str.to_string());
         ("test".to_string(), tr)
     } else {
         (
@@ -355,7 +405,11 @@ fn symbol_to_search_document(
 /// Build a `SearchDocument` for a file row from raw path/content/language.
 fn raw_file_to_search_document(file_path: &str, content: &str, language: &str) -> SearchDocument {
     let normalized_path = file_path.replace('\\', "/");
-    let basename = normalized_path.rsplit('/').next().unwrap_or(&normalized_path).to_string();
+    let basename = normalized_path
+        .rsplit('/')
+        .next()
+        .unwrap_or(&normalized_path)
+        .to_string();
     let name = if let Some(dot) = basename.rfind('.') {
         basename[..dot].to_string()
     } else {
@@ -413,10 +467,7 @@ pub(crate) fn load_symbol_contexts_from_database(
     db: &SymbolDatabase,
     symbols: &[Symbol],
 ) -> Result<HashMap<String, SymbolIndexContext>> {
-    let target_ids = symbols
-        .iter()
-        .map(|s| s.id.clone())
-        .collect::<Vec<_>>();
+    let target_ids = symbols.iter().map(|s| s.id.clone()).collect::<Vec<_>>();
     if target_ids.is_empty() {
         return Ok(HashMap::new());
     }
@@ -545,10 +596,6 @@ pub fn apply_documents(
     )
 }
 
-/// Maximum number of partner symbols reprojected per watcher event.
-/// Caps the worst-case extra DB + Tantivy work to a bounded amount.
-const MAX_PARTNER_REPROJECT_SYMBOLS: usize = 100;
-
 /// Reproject Tantivy docs for symbols that are relationship partners of a
 /// recently updated file.
 ///
@@ -561,8 +608,7 @@ const MAX_PARTNER_REPROJECT_SYMBOLS: usize = 100;
 ///
 /// Implementation:
 /// 1. Fetch the Symbol objects for `partner_symbol_ids` from SQLite.
-/// 2. Group by `file_path` — at most `MAX_PARTNER_REPROJECT_SYMBOLS` IDs
-///    are processed (a warn is emitted if capped).
+/// 2. Group by `file_path`.
 /// 3. For each unique partner file, fetch **all** symbols in that file and
 ///    the stored file content, then call `apply_documents_with_db` which
 ///    removes stale Tantivy docs for the file and re-adds them with a freshly
@@ -579,20 +625,8 @@ pub(crate) fn reproject_partner_symbols(
         return Ok(());
     }
 
-    let ids_to_process = if partner_symbol_ids.len() > MAX_PARTNER_REPROJECT_SYMBOLS {
-        warn!(
-            "Watcher: {} relationship partner symbols; \
-             capping partner reproject at {}",
-            partner_symbol_ids.len(),
-            MAX_PARTNER_REPROJECT_SYMBOLS
-        );
-        &partner_symbol_ids[..MAX_PARTNER_REPROJECT_SYMBOLS]
-    } else {
-        partner_symbol_ids
-    };
-
     // Resolve partner IDs → Symbol objects to get their file paths.
-    let partner_symbols = db.get_symbols_by_ids(&ids_to_process.to_vec())?;
+    let partner_symbols = db.get_symbols_by_ids(partner_symbol_ids)?;
     if partner_symbols.is_empty() {
         return Ok(());
     }

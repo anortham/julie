@@ -16,7 +16,7 @@
 mod tests {
     use crate::extractors::SymbolKind;
     use crate::search::query_parse::parse_query;
-    use crate::search::reranker::{Candidate, rerank_unified, EXACT_TITLE_BOOST, VENDOR_PENALTY};
+    use crate::search::reranker::{Candidate, EXACT_TITLE_BOOST, VENDOR_PENALTY, rerank_unified};
 
     /// Build a symbol-row candidate.
     fn sym_cand(title: &str, path: &str, kind: SymbolKind, tantivy_score: f32) -> Candidate {
@@ -62,7 +62,12 @@ mod tests {
         let query = "BrowserClient";
         let parsed = parse_query(query);
 
-        let exact = sym_cand("BrowserClient", "src/browser_client.py", SymbolKind::Class, 1.0);
+        let exact = sym_cand(
+            "BrowserClient",
+            "src/browser_client.py",
+            SymbolKind::Class,
+            1.0,
+        );
         let partial = sym_cand(
             "init_browser_client_pool",
             "src/pool.py",

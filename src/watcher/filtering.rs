@@ -724,8 +724,7 @@ mod tests {
         let extensions = build_supported_extensions();
         let gitignore = build_gitignore_matcher(workspace).unwrap();
 
-        let discovery_indexed =
-            should_index_file(&discovery, &extensions, &gitignore, workspace);
+        let discovery_indexed = should_index_file(&discovery, &extensions, &gitignore, workspace);
         let normal_indexed = should_index_file(&normal, &extensions, &gitignore, workspace);
 
         // Restore env BEFORE asserting so a failure does not leak state.
@@ -761,8 +760,7 @@ mod tests {
         let extensions = build_supported_extensions();
         let gitignore = build_gitignore_matcher(workspace).unwrap();
 
-        let processed =
-            should_process_deletion(&stale, &extensions, &gitignore, workspace);
+        let processed = should_process_deletion(&stale, &extensions, &gitignore, workspace);
 
         match prev {
             Some(v) => unsafe { std::env::set_var("JULIE_HOME", v) },

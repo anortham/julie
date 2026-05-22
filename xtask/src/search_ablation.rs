@@ -1,16 +1,22 @@
 //! Search-consolidation ablation harness (Plan P2.2).
 //!
 //! Runs the labeled query corpus (`docs/eval/julie-search-corpus-v1.json`)
-//! through the definition search pipeline four ways:
+//! through a fixture-local `SearchIndex::search_unified` measurement four ways:
 //! - `keyword-only`        — reranker off, no embedding provider
 //! - `keyword+reranker`    — reranker on,  no embedding provider
 //! - `hybrid-only`         — reranker off, embedding provider Some
 //! - `hybrid+reranker`     — reranker on,  embedding provider Some
 //!
+//! This is not default `fast_search` evidence. The harness searches the
+//! unified Tantivy index directly, then applies the corpus category's kind
+//! filter before computing rank metrics: `file-path` keeps `kind=="file"`,
+//! every other category keeps non-file hits. Use the CLI/search-matrix harness
+//! when the evidence needs to represent the public default fast_search surface.
+//!
 //! Reranker is toggled per-mode via `JULIE_RERANKER_ENABLED` (the env var
 //! the production pipeline reads inside `apply_reranker_to_symbol_results`).
-//! Embedding-provider toggle is a per-call parameter on
-//! `definition_search_with_index_for_ablation`.
+//! Embedding-provider toggle is represented by the mode label and skipped
+//! unless the fixture database contains populated vectors.
 //!
 //! ## Scope (flagged, not silent)
 //!
@@ -21,8 +27,8 @@
 //! `skip_reason="fixture lacks symbol embeddings"` until either:
 //!
 //! 1. The fixture is regenerated with the sidecar online, OR
-//! 2. `--source ~/.julie/indexes/<id>` is added to point at a daemon-
-//!    indexed workspace (TODO, follow-up for P3.2).
+//! 2. The harness gains a source-workspace option that points at a daemon-
+//!    indexed workspace with populated vectors.
 //!
 //! The two keyword modes ARE measured and produce the numbers the P3.1
 //! reranker decision needs.
@@ -95,6 +101,7 @@ struct CorpusQuery {
 
 #[derive(Debug, Serialize)]
 struct AblationReport {
+    measurement_scope: String,
     corpus_version: u32,
     corpus_created: String,
     commit: String,
@@ -227,7 +234,7 @@ pub fn run_eval_ablation_command(command: &EvalCommand, stdout: &mut dyn Write) 
     }
 
     // Snapshot existing env in an RAII guard so an early-return from any
-    // mode (e.g. a `?` from definition_search_with_index_for_ablation)
+    // mode (e.g. a `?` from the fixture search loop)
     // still restores prior state. Per Codex review 2026-05-17: the previous
     // post-loop restore leaked env vars on error.
     let _env_guard = EnvGuard::capture(&["JULIE_RERANKER_ENABLED", "JULIE_EMBEDDING_PROVIDER"]);
@@ -264,6 +271,9 @@ pub fn run_eval_ablation_command(command: &EvalCommand, stdout: &mut dyn Write) 
     // _env_guard drops here, restoring snapshot.
 
     let report = AblationReport {
+        measurement_scope:
+            "search_unified fixture index with category kind filter; not default fast_search"
+                .to_string(),
         corpus_version: corpus_data.version,
         corpus_created: corpus_data.created.clone(),
         commit: git_short_sha().unwrap_or_else(|| "unknown".to_string()),
@@ -280,7 +290,7 @@ pub fn run_eval_ablation_command(command: &EvalCommand, stdout: &mut dyn Write) 
         let date = today_yyyymmdd();
         let commit = git_short_sha().unwrap_or_else(|| "unknown".to_string());
         workspace.join(format!(
-            "docs/eval/julie-search-ablation/{date}-{commit}-baseline.json"
+            "docs/eval/julie-search-ablation/{date}-{commit}-unified-kind-filtered.json"
         ))
     });
 
@@ -323,7 +333,7 @@ fn run_mode(
             status: "skipped".to_string(),
             skip_reason: Some(
                 "fixture lacks symbol embeddings; rerun against a daemon-indexed workspace \
-                 (TODO: --source ~/.julie/indexes/<id>) to measure hybrid"
+                 with populated vectors to measure hybrid"
                     .to_string(),
             ),
             total_queries: queries.len(),

@@ -140,10 +140,7 @@ fn query_names_a_test(query: &str) -> bool {
         // `test.<short-ext>` here catches the Go (`_test.go`) and
         // C/C++ (`_test.c`, `_test.cc`, `_test.cpp`) families when
         // the leading underscore was split off into a separate token.
-        "test.go",
-        "test.c",
-        "test.cc",
-        "test.cpp",
+        "test.go", "test.c", "test.cc", "test.cpp",
     ];
     for term in q.split_whitespace() {
         for ending in endings {
@@ -395,10 +392,7 @@ fn run_line_mode_workspace_fetch(
             // Unified search returns both symbol and file hits; line mode only
             // needs file hits. Reranking is already applied inside search_unified.
             let all_hits = index.search_unified(&query, &filter, fetch_limit)?;
-            let file_hits: Vec<_> = all_hits
-                .into_iter()
-                .filter(|h| h.kind == "file")
-                .collect();
+            let file_hits: Vec<_> = all_hits.into_iter().filter(|h| h.kind == "file").collect();
             Ok(file_hits)
         },
         |file_results| {

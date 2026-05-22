@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 
-use crate::search_matrix::{SearchMatrixBaselineReport, SearchMatrixBaselineExecution};
+use crate::search_matrix::{SearchMatrixBaselineExecution, SearchMatrixBaselineReport};
 use crate::search_matrix_mine::SearchMatrixSeedReport;
 
 pub fn write_seed_report(report: &SearchMatrixSeedReport, out_path: &Path) -> Result<()> {
@@ -188,7 +188,10 @@ pub fn diff_baseline_reports(
         })
         .unwrap_or("right");
 
-    writeln!(out, "| diff | repo | case_id | {left_label} top-1 | {right_label} top-1 | {left_label} hits | {right_label} hits |")?;
+    writeln!(
+        out,
+        "| diff | repo | case_id | {left_label} top-1 | {right_label} top-1 | {left_label} hits | {right_label} hits |"
+    )?;
     writeln!(out, "| --- | --- | --- | --- | --- | ---: | ---: |")?;
 
     for (repo, case_id) in &all_keys {

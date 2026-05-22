@@ -71,6 +71,117 @@ fn indexes_symbol_doc() {
     );
 }
 
+#[test]
+fn unified_hit_preserves_symbol_code_body_excerpt() {
+    let (_dir, index) = make_index();
+
+    let doc = SearchDocument {
+        doc_type: "symbol".to_string(),
+        id: "sym-body-001".to_string(),
+        name: "body_marker_fn".to_string(),
+        signature: "fn body_marker_fn()".to_string(),
+        doc_comment: String::new(),
+        code_body: "fn body_marker_fn() { let alpha_beta_gamma_delta = 42; }".to_string(),
+        pretokenized_code: String::new(),
+        relationship_text: String::new(),
+        language: "rust".to_string(),
+        file_path: "src/body_marker.rs".to_string(),
+        basename: "body_marker.rs".to_string(),
+        kind: "function".to_string(),
+        start_line: 7,
+        role: "source".to_string(),
+        test_role: String::new(),
+        annotation_keys: vec![],
+        annotations_text: String::new(),
+        owner_names_text: String::new(),
+        content: String::new(),
+        path_text: String::new(),
+    };
+
+    index.add_search_doc(&doc).unwrap();
+    index.commit().unwrap();
+
+    let hits = index
+        .search_unified("alpha_beta_gamma_delta", &SearchFilter::default(), 10)
+        .unwrap();
+    let hit = hits
+        .iter()
+        .find(|hit| hit.id == "sym-body-001")
+        .expect("body_marker_fn should be returned by code_body search");
+
+    assert!(
+        hit.code_body.contains("alpha_beta_gamma_delta"),
+        "UnifiedHit must preserve the stored code_body excerpt for reranking and output context; got {:?}",
+        hit.code_body
+    );
+}
+
+#[test]
+fn unified_reranker_uses_stored_code_body_for_phrase_boost() {
+    let (_dir, index) = make_index();
+
+    let phrase_doc = SearchDocument {
+        doc_type: "symbol".to_string(),
+        id: "sym-phrase-body-001".to_string(),
+        name: "neutral_phrase_holder".to_string(),
+        signature: "fn neutral_phrase_holder()".to_string(),
+        doc_comment: String::new(),
+        code_body: "fn neutral_phrase_holder() { alpha bravo charlie delta }".to_string(),
+        pretokenized_code: String::new(),
+        relationship_text: String::new(),
+        language: "rust".to_string(),
+        file_path: "src/phrase.rs".to_string(),
+        basename: "phrase.rs".to_string(),
+        kind: "function".to_string(),
+        start_line: 3,
+        role: "source".to_string(),
+        test_role: String::new(),
+        annotation_keys: vec![],
+        annotations_text: String::new(),
+        owner_names_text: String::new(),
+        content: String::new(),
+        path_text: String::new(),
+    };
+
+    let title_decoy = SearchDocument {
+        doc_type: "symbol".to_string(),
+        id: "sym-title-decoy-001".to_string(),
+        name: "alpha_bravo_charlie_delta_decoy".to_string(),
+        signature: "fn alpha_bravo_charlie_delta_decoy()".to_string(),
+        doc_comment: String::new(),
+        code_body: String::new(),
+        pretokenized_code: String::new(),
+        relationship_text: String::new(),
+        language: "rust".to_string(),
+        file_path: "src/decoy.rs".to_string(),
+        basename: "decoy.rs".to_string(),
+        kind: "function".to_string(),
+        start_line: 5,
+        role: "source".to_string(),
+        test_role: String::new(),
+        annotation_keys: vec![],
+        annotations_text: String::new(),
+        owner_names_text: String::new(),
+        content: String::new(),
+        path_text: String::new(),
+    };
+
+    index.add_search_doc(&phrase_doc).unwrap();
+    index.add_search_doc(&title_decoy).unwrap();
+    index.commit().unwrap();
+
+    let hits = index
+        .search_unified("alpha bravo charlie delta", &SearchFilter::default(), 10)
+        .unwrap();
+    let names: Vec<&str> = hits.iter().map(|hit| hit.name.as_str()).collect();
+
+    assert_eq!(
+        names.first(),
+        Some(&"neutral_phrase_holder"),
+        "body phrase boost must use stored code_body and beat a title-term decoy; got {names:?}"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Test 2: file-row SearchDocument is retrievable by path_text and name
 // ---------------------------------------------------------------------------
@@ -173,10 +284,7 @@ fn body_truncation_utf8_safe() {
         .search_symbols("big_symbol", &SearchFilter::default(), 10)
         .unwrap()
         .results;
-    assert!(
-        !results.is_empty(),
-        "must find big_symbol after indexing"
-    );
+    assert!(!results.is_empty(), "must find big_symbol after indexing");
 
     // The truncation helper is internal; verify it directly via the public
     // helper exposed for testing.
@@ -187,8 +295,7 @@ fn body_truncation_utf8_safe() {
         truncated.len()
     );
     // Must be valid UTF-8 (from_utf8 returns Err if not)
-    std::str::from_utf8(truncated.as_bytes())
-        .expect("truncated slice must be valid UTF-8");
+    std::str::from_utf8(truncated.as_bytes()).expect("truncated slice must be valid UTF-8");
     // Must NOT include the emoji (it starts at byte 1998, past the boundary)
     assert!(
         !truncated.contains('😀'),

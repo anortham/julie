@@ -224,7 +224,13 @@ async fn execute_legacy_direct(state: &AppState, case: &CompareCase) -> Result<V
         let want_file = target == "content";
         Ok(all_hits
             .into_iter()
-            .filter(|h| if want_file { h.kind == "file" } else { h.kind != "file" })
+            .filter(|h| {
+                if want_file {
+                    h.kind == "file"
+                } else {
+                    h.kind != "file"
+                }
+            })
             .map(|h| {
                 let is_file = h.kind == "file";
                 SearchHit {

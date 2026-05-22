@@ -218,8 +218,7 @@ impl SymbolDatabase {
         let mut result: HashMap<String, Vec<String>> = HashMap::new();
 
         // Definition kinds — must mirror DEFINITION_KINDS in src/search/scoring.rs.
-        const DEFINITION_KIND_FILTER: &str =
-            "'class','struct','interface','trait','enum','function','method',\
+        const DEFINITION_KIND_FILTER: &str = "'class','struct','interface','trait','enum','function','method',\
              'constructor','module','namespace','type','constant','delegate'";
 
         const CHUNK_SIZE: usize = 500;
@@ -236,8 +235,10 @@ impl SymbolDatabase {
             );
 
             let mut stmt = self.conn.prepare(&query)?;
-            let params: Vec<&dyn rusqlite::types::ToSql> =
-                chunk.iter().map(|p| p as &dyn rusqlite::types::ToSql).collect();
+            let params: Vec<&dyn rusqlite::types::ToSql> = chunk
+                .iter()
+                .map(|p| p as &dyn rusqlite::types::ToSql)
+                .collect();
 
             let mut rows = stmt.query(&*params)?;
             while let Some(row) = rows.next()? {

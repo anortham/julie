@@ -382,7 +382,12 @@ incremental_updates = true
         .get_all_symbols()
         .expect("Failed to get symbols for Tantivy backfill");
     for symbol in &symbols {
-        let doc = crate::search::index::SearchDocument::for_symbol(symbol, vec![], String::new(), String::new());
+        let doc = crate::search::index::SearchDocument::for_symbol(
+            symbol,
+            vec![],
+            String::new(),
+            String::new(),
+        );
         if let Err(e) = search_index.add_search_doc(&doc) {
             eprintln!("Tantivy backfill warning: failed to add symbol: {}", e);
         }

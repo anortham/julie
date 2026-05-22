@@ -14,11 +14,11 @@ mod relationship_text_test {
     use crate::database::types::FileInfo;
     use crate::extractors::{Relationship, RelationshipKind, Symbol, SymbolKind};
     // Access the private apply submodule via the pub(crate) re-exports on the projection module.
-    use crate::search::projection::collect_relationship_names_bounded;
-    use crate::search::projection::apply_documents_with_db;
+    use crate::search::index::UnifiedHit;
     use crate::search::projection::apply_documents;
-    use crate::search::{SearchFilter, SearchIndex};
-    use crate::search::index::UnifiedHit; // for search_unified return type
+    use crate::search::projection::apply_documents_with_db;
+    use crate::search::projection::collect_relationship_names_bounded;
+    use crate::search::{SearchFilter, SearchIndex}; // for search_unified return type
 
     fn make_db(dir: &TempDir) -> SymbolDatabase {
         let db_path = dir.path().join("symbols.db");
@@ -205,8 +205,8 @@ mod relationship_text_test {
         let index = make_index(&dir);
 
         // (a) Empty ID slice → empty map. File rows pass no IDs to this function.
-        let empty_map = collect_relationship_names_bounded(&db, &[], 512)
-            .expect("collect with empty ids");
+        let empty_map =
+            collect_relationship_names_bounded(&db, &[], 512).expect("collect with empty ids");
         assert!(
             empty_map.is_empty(),
             "collect_relationship_names_bounded with no IDs must return empty map"
@@ -231,7 +231,8 @@ mod relationship_text_test {
             symbol_count: 0,
             line_count: 1,
         };
-        apply_documents(&index, &[], std::slice::from_ref(&file_info), &[]).expect("apply_documents");
+        apply_documents(&index, &[], std::slice::from_ref(&file_info), &[])
+            .expect("apply_documents");
 
         // File rows are indexed but do NOT appear in symbol search results.
         let sym_results = index
@@ -415,5 +416,343 @@ mod relationship_text_test {
             names_after.contains(&"callee_in_file_b"),
             "callee_in_file_b must appear after partner reprojection via relationship_text; got: {names_after:?}"
         );
+    }
+
+    #[tokio::test]
+    async fn test_relationship_text_projection_review_regressions() {
+        full_indexing_projects_after_pending_resolution().await;
+        watcher_reprojects_partners_created_by_pending_resolution().await;
+        dirty_tantivy_retry_reprojects_relationship_partners().await;
+        partner_reprojection_processes_every_requested_partner();
+        apply_documents_with_db_propagates_relationship_sql_errors();
+    }
+
+    async fn full_indexing_projects_after_pending_resolution() {
+        use std::sync::Arc;
+
+        use crate::handler::JulieServerHandler;
+        use crate::tools::workspace::ManageWorkspaceTool;
+        use crate::tools::workspace::indexing::pipeline::run_indexing_pipeline;
+        use crate::tools::workspace::indexing::route::IndexRoute;
+        use crate::tools::workspace::indexing::state::IndexingOperation;
+        use crate::workspace::JulieWorkspace;
+
+        let dir = TempDir::new().unwrap();
+        let caller = dir.path().join("caller.rs");
+        let callee = dir.path().join("callee.rs");
+        std::fs::write(
+            &caller,
+            "pub fn full_pending_caller() { full_pending_callee(); }\n",
+        )
+        .unwrap();
+        std::fs::write(&callee, "pub fn full_pending_callee() {}\n").unwrap();
+
+        let workspace = JulieWorkspace::initialize(dir.path().to_path_buf())
+            .await
+            .unwrap();
+        let workspace_root = workspace.root.clone();
+        let workspace_id =
+            crate::workspace::registry::generate_workspace_id(&workspace_root.to_string_lossy())
+                .unwrap();
+        let handler = JulieServerHandler::new_with_shared_workspace(
+            Arc::new(workspace),
+            workspace_root.clone(),
+            None,
+            Some(workspace_id),
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+        let route = IndexRoute::for_workspace_path(&handler, &workspace_root)
+            .await
+            .unwrap();
+        let tool = ManageWorkspaceTool {
+            operation: "index".to_string(),
+            path: None,
+            force: None,
+            name: None,
+            workspace_id: None,
+            detailed: None,
+        };
+
+        run_indexing_pipeline(
+            &tool,
+            &handler,
+            vec![caller, callee],
+            &route,
+            IndexingOperation::Full,
+        )
+        .await
+        .unwrap();
+
+        let search_index = route.search_index_for_write().await.unwrap().unwrap();
+        let idx = search_index.lock().unwrap();
+        let hits = idx
+            .search_unified("full_pending_caller", &SearchFilter::default(), 10)
+            .unwrap();
+        let names: Vec<&str> = hits.iter().map(|hit| hit.name.as_str()).collect();
+        assert!(
+            names.contains(&"full_pending_callee"),
+            "full indexing must project relationship_text after pending resolution; got {names:?}"
+        );
+    }
+
+    async fn watcher_reprojects_partners_created_by_pending_resolution() {
+        use std::sync::{Arc, Mutex};
+
+        use crate::extractors::ExtractorManager;
+        use crate::watcher::handlers::handle_file_created_or_modified_static;
+        use crate::workspace::mutation_gate::acquire_gate;
+
+        let dir = TempDir::new().unwrap();
+        let workspace_root = dir.path().canonicalize().unwrap();
+        let caller = workspace_root.join("watcher_caller.rs");
+        let callee = workspace_root.join("watcher_callee.rs");
+        std::fs::write(&callee, "pub fn watcher_pending_callee() {}\n").unwrap();
+        std::fs::write(
+            &caller,
+            "pub fn watcher_pending_caller() { watcher_pending_callee(); }\n",
+        )
+        .unwrap();
+
+        let db = Arc::new(Mutex::new(
+            SymbolDatabase::new(&workspace_root.join("watcher.db")).unwrap(),
+        ));
+        let search_index = Arc::new(Mutex::new(make_index(&dir)));
+        let extractor_manager = Arc::new(ExtractorManager::new());
+
+        {
+            let guard = acquire_gate("relationship_text_watcher_callee").await;
+            handle_file_created_or_modified_static(
+                callee.canonicalize().unwrap(),
+                &db,
+                &extractor_manager,
+                &workspace_root,
+                Some(&search_index),
+                &guard,
+            )
+            .await
+            .unwrap();
+        }
+        search_index.lock().unwrap().commit().unwrap();
+
+        {
+            let guard = acquire_gate("relationship_text_watcher_caller").await;
+            handle_file_created_or_modified_static(
+                caller.canonicalize().unwrap(),
+                &db,
+                &extractor_manager,
+                &workspace_root,
+                Some(&search_index),
+                &guard,
+            )
+            .await
+            .unwrap();
+        }
+        search_index.lock().unwrap().commit().unwrap();
+
+        let idx = search_index.lock().unwrap();
+        let hits = idx
+            .search_unified("watcher_pending_caller", &SearchFilter::default(), 10)
+            .unwrap();
+        let names: Vec<&str> = hits.iter().map(|hit| hit.name.as_str()).collect();
+        assert!(
+            names.contains(&"watcher_pending_callee"),
+            "watcher must reproject partners created by pending resolution; got {names:?}"
+        );
+    }
+
+    async fn dirty_tantivy_retry_reprojects_relationship_partners() {
+        use std::sync::{Arc, Mutex, RwLock};
+
+        use crate::extractors::ExtractorManager;
+        use crate::tools::workspace::indexing::state::IndexingRuntimeState;
+        use crate::watcher::IncrementalIndexer;
+
+        let dir = TempDir::new().unwrap();
+        let workspace_root = dir.path().canonicalize().unwrap();
+        let mut db = make_db(&dir);
+        let index = make_index(&dir);
+
+        let mut caller = make_symbol("sym-dirty-001", "dirty_retry_caller");
+        caller.file_path = "src/dirty_a.rs".to_string();
+        let mut callee = make_symbol("sym-dirty-002", "dirty_retry_callee");
+        callee.file_path = "src/dirty_b.rs".to_string();
+        let file_a = test_file_info("src/dirty_a.rs", "fn dirty_retry_caller() {}", 1);
+        let file_b = test_file_info("src/dirty_b.rs", "fn dirty_retry_callee() {}", 1);
+
+        db.store_file_info(&file_b).unwrap();
+        db.store_symbols(&[callee.clone()]).unwrap();
+        apply_documents_with_db(
+            &index,
+            &[callee.clone()],
+            std::slice::from_ref(&file_b),
+            &["src/dirty_b.rs".to_string()],
+            &db,
+            true,
+        )
+        .unwrap();
+
+        db.store_file_info(&file_a).unwrap();
+        db.store_symbols(&[caller.clone()]).unwrap();
+        db.store_relationships(&[Relationship {
+            id: "rel-dirty-001".to_string(),
+            from_symbol_id: caller.id.clone(),
+            to_symbol_id: callee.id.clone(),
+            kind: RelationshipKind::Calls,
+            file_path: "src/dirty_a.rs".to_string(),
+            line_number: 1,
+            confidence: 1.0,
+            metadata: None,
+        }])
+        .unwrap();
+
+        let db = Arc::new(Mutex::new(db));
+        let search_index = Arc::new(Mutex::new(index));
+        let indexer = IncrementalIndexer::new(
+            workspace_root,
+            Arc::clone(&db),
+            Arc::new(ExtractorManager::new()),
+            Some(Arc::clone(&search_index)),
+            Arc::new(RwLock::new(None)),
+            IndexingRuntimeState::shared(),
+        )
+        .unwrap();
+        indexer.mark_tantivy_dirty_for_test("src/dirty_a.rs");
+        indexer.process_pending_changes().await.unwrap();
+        search_index.lock().unwrap().commit().unwrap();
+
+        let idx = search_index.lock().unwrap();
+        let hits = idx
+            .search_unified("dirty_retry_caller", &SearchFilter::default(), 10)
+            .unwrap();
+        let names: Vec<&str> = hits.iter().map(|hit| hit.name.as_str()).collect();
+        assert!(
+            names.contains(&"dirty_retry_callee"),
+            "dirty Tantivy retry must refresh relationship partners before clearing dirty state; got {names:?}"
+        );
+    }
+
+    fn partner_reprojection_processes_every_requested_partner() {
+        use crate::search::projection::reproject_partner_symbols;
+
+        let dir = TempDir::new().unwrap();
+        let mut db = make_db(&dir);
+        let index = make_index(&dir);
+
+        let mut hub = make_symbol("sym-all-partners-hub", "all_partner_source");
+        hub.file_path = "src/all_partner_source.rs".to_string();
+        db.store_file_info(&test_file_info(
+            "src/all_partner_source.rs",
+            "fn all_partner_source() {}",
+            1,
+        ))
+        .unwrap();
+        db.store_symbols(&[hub.clone()]).unwrap();
+
+        let partners: Vec<Symbol> = (0..101)
+            .map(|i| {
+                let mut symbol = make_symbol(
+                    &format!("sym-all-partners-{i:03}"),
+                    &format!("all_partner_target_{i:03}"),
+                );
+                symbol.file_path = format!("src/all_partner_target_{i:03}.rs");
+                symbol
+            })
+            .collect();
+        let partner_files: Vec<FileInfo> = partners
+            .iter()
+            .map(|symbol| {
+                test_file_info(&symbol.file_path, &format!("fn {}() {{}}", symbol.name), 1)
+            })
+            .collect();
+        for file in &partner_files {
+            db.store_file_info(file).unwrap();
+        }
+        db.store_symbols(&partners).unwrap();
+        let files_to_clean: Vec<String> = partners
+            .iter()
+            .map(|symbol| symbol.file_path.clone())
+            .collect();
+        apply_documents_with_db(
+            &index,
+            &partners,
+            &partner_files,
+            &files_to_clean,
+            &db,
+            true,
+        )
+        .unwrap();
+
+        let relationships: Vec<Relationship> = partners
+            .iter()
+            .enumerate()
+            .map(|(i, partner)| Relationship {
+                id: format!("rel-all-partners-{i:03}"),
+                from_symbol_id: hub.id.clone(),
+                to_symbol_id: partner.id.clone(),
+                kind: RelationshipKind::Calls,
+                file_path: hub.file_path.clone(),
+                line_number: 1,
+                confidence: 1.0,
+                metadata: None,
+            })
+            .collect();
+        db.store_relationships(&relationships).unwrap();
+
+        let partner_ids: Vec<String> = partners.iter().map(|symbol| symbol.id.clone()).collect();
+        reproject_partner_symbols(&index, &db, &partner_ids).unwrap();
+        index.commit().unwrap();
+
+        let hits = index
+            .search_unified("all_partner_source", &SearchFilter::default(), 150)
+            .unwrap();
+        let names: Vec<&str> = hits.iter().map(|hit| hit.name.as_str()).collect();
+        for partner in &partners {
+            assert!(
+                names.contains(&partner.name.as_str()),
+                "partner reprojection must not silently cap requested partners; missing {} from {names:?}",
+                partner.name
+            );
+        }
+    }
+
+    fn apply_documents_with_db_propagates_relationship_sql_errors() {
+        let dir = TempDir::new().unwrap();
+        let mut db = make_db(&dir);
+        let index = make_index(&dir);
+        let sym = make_symbol("sym-direct-sqlerr-001", "direct_sql_error_fn");
+        seed_symbols(&mut db, std::slice::from_ref(&sym));
+
+        db.conn
+            .execute_batch(
+                "DROP TABLE IF EXISTS relationships; \
+                 CREATE TABLE relationships (id TEXT, bogus_col TEXT);",
+            )
+            .unwrap();
+
+        let result = apply_documents_with_db(&index, &[sym], &[], &[], &db, true);
+        assert!(
+            result.is_err(),
+            "apply_documents_with_db must propagate relationship lookup SQL errors"
+        );
+    }
+
+    fn test_file_info(path: &str, content: &str, symbol_count: i32) -> FileInfo {
+        FileInfo {
+            path: path.to_string(),
+            language: "rust".to_string(),
+            hash: format!("hash-{path}"),
+            size: content.len() as i64,
+            last_modified: 0,
+            last_indexed: 0,
+            symbol_count,
+            line_count: content.lines().count() as i32,
+            content: Some(content.to_string()),
+        }
     }
 }

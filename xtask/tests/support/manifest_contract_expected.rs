@@ -26,6 +26,7 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
                     "cargo nextest run --lib tests::cli_tests",
                     "cargo nextest run --lib tests::cli_execution_tests",
                     "cargo nextest run --lib tests::cli_tools_tests",
+                    "cargo nextest run --lib tests::cli::cli_search_no_target_test",
                     "cargo build",
                     "cargo nextest run --lib --run-ignored only tests::cli::",
                 ],
@@ -90,6 +91,16 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
                     "cargo nextest run --lib tests::core::memory_vectors -- --skip search_quality",
                     "cargo nextest run --lib tests::core::paths -- --skip search_quality",
                     "cargo nextest run --lib tests::core::vector_storage -- --skip search_quality",
+                ],
+            },
+        ),
+        (
+            "core-handler-telemetry",
+            ExpectedBucket {
+                expected_seconds: 20,
+                timeout_seconds: 90,
+                commands: &[
+                    "cargo nextest run --lib tests::core::handler_telemetry -- --skip search_quality",
                 ],
             },
         ),
@@ -415,6 +426,28 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
             },
         ),
         (
+            "tools-search-unified",
+            ExpectedBucket {
+                expected_seconds: 25,
+                timeout_seconds: 90,
+                commands: &[
+                    "cargo nextest run --lib tests::tools::search::c3_enriched_schema_tests -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::search::compat_marker_v4_test -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::search::fast_search_unified_cutover_test -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::search::nl_path_prior_pipeline_tests -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::search::nl_symbol_query_latency_tests -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::search::pretokenized_emit_test -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::search::projection_search_doc_test -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::search::relationship_text_test -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::search::reranker_ordering_tests -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::search::schema_phase2_fields_test -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::search::title_exact_boost_tests -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::search::tokenizer_simple_test -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::search::unified_ -- --skip search_quality",
+                ],
+            },
+        ),
+        (
             "tools-search-promotion",
             ExpectedBucket {
                 expected_seconds: 15,
@@ -568,6 +601,15 @@ pub(crate) fn expected_bucket_metadata() -> BTreeMap<&'static str, ExpectedBucke
                 owner: "lead",
                 expensive: false,
                 notes: Some("misc fast core coverage"),
+            },
+        ),
+        (
+            "core-handler-telemetry",
+            ExpectedBucketMetadata {
+                scope_label: "core",
+                owner: "lead",
+                expensive: false,
+                notes: Some("handler telemetry metadata contracts"),
             },
         ),
         (
@@ -835,6 +877,15 @@ pub(crate) fn expected_bucket_metadata() -> BTreeMap<&'static str, ExpectedBucke
                 owner: "lead",
                 expensive: false,
                 notes: Some("search query parsing and preprocessing"),
+            },
+        ),
+        (
+            "tools-search-unified",
+            ExpectedBucketMetadata {
+                scope_label: "tooling",
+                owner: "lead",
+                expensive: false,
+                notes: Some("unified search schema, ranking, reranker, and query-path coverage"),
             },
         ),
         (

@@ -34,6 +34,7 @@ const SEARCH_TOOL_BUCKETS: &[&str] = &[
     "tools-search-text",
     "tools-search-hybrid",
     "tools-search-query",
+    "tools-search-unified",
 ];
 
 const SEARCH_TOOL_BUCKETS_WITH_QUALITY: &[&str] = &[
@@ -47,7 +48,23 @@ const SEARCH_TOOL_BUCKETS_WITH_QUALITY: &[&str] = &[
     "tools-search-text",
     "tools-search-hybrid",
     "tools-search-query",
+    "tools-search-unified",
     "search-quality",
+];
+
+const SEARCH_TOOL_BUCKETS_WITH_HANDLER_TELEMETRY: &[&str] = &[
+    "tools-search-tantivy",
+    "tools-search-line",
+    "tools-search-file-mode",
+    "tools-search-zero-hit",
+    "tools-search-promotion",
+    "tools-search-format-quality",
+    "tools-search-context",
+    "tools-search-text",
+    "tools-search-hybrid",
+    "tools-search-query",
+    "tools-search-unified",
+    "core-handler-telemetry",
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -153,10 +170,26 @@ pub fn select_changed_buckets(manifest: &TestManifest, paths: &[String]) -> Chan
     }
 
     if !fallback_paths.is_empty() {
+        let mut dev_buckets = manifest.tiers.get("dev").cloned().unwrap_or_default();
+        if bucket_names.is_empty() {
+            return ChangedSelection {
+                mode: ChangedSelectionMode::FallbackToDev,
+                changed_paths,
+                bucket_names: dev_buckets,
+                fallback_paths,
+                rationale,
+                ignored_paths,
+            };
+        }
+
+        for dev_bucket in dev_buckets.drain(..) {
+            maybe_push_bucket(&mut bucket_names, manifest, &dev_bucket);
+        }
+
         return ChangedSelection {
             mode: ChangedSelectionMode::FallbackToDev,
             changed_paths,
-            bucket_names: manifest.tiers.get("dev").cloned().unwrap_or_default(),
+            bucket_names: sort_bucket_names(bucket_names),
             fallback_paths,
             rationale,
             ignored_paths,
@@ -410,6 +443,7 @@ fn buckets_for_path(path: &str) -> &'static [&'static str] {
             "src/tests/cli_tests.rs",
             "src/tests/cli_execution_tests.rs",
             "src/tests/cli_tools_tests.rs",
+            "src/tests/cli/cli_search_no_target_test.rs",
         ],
     ) {
         return &["cli"];
@@ -432,6 +466,10 @@ fn buckets_for_path(path: &str) -> &'static [&'static str] {
         )
     {
         return &["core-database"];
+    }
+
+    if path == "src/tests/core/handler_telemetry.rs" {
+        return &["core-handler-telemetry"];
     }
 
     // Per-test file routing for get_context split.
@@ -728,7 +766,7 @@ fn handler_tool_buckets_for_path(path: &str) -> Option<&'static [&'static str]> 
         "src/handler/tools/edit_file.rs" | "src/handler/tools/rewrite_symbol.rs" => {
             Some(&["tools-editing"])
         }
-        "src/handler/search_telemetry.rs" => Some(SEARCH_TOOL_BUCKETS),
+        "src/handler/search_telemetry.rs" => Some(SEARCH_TOOL_BUCKETS_WITH_HANDLER_TELEMETRY),
         _ => None,
     }
 }
@@ -831,6 +869,27 @@ fn search_test_buckets_for_path(path: &str) -> Option<&'static [&'static str]> {
         return Some(&["tools-search-format-quality"]);
     }
 
+    if matches_exact(
+        path,
+        &[
+            "src/tests/tools/search/c3_enriched_schema_tests.rs",
+            "src/tests/tools/search/compat_marker_v4_test.rs",
+            "src/tests/tools/search/fast_search_unified_cutover_test.rs",
+            "src/tests/tools/search/nl_path_prior_pipeline_tests.rs",
+            "src/tests/tools/search/nl_symbol_query_latency_tests.rs",
+            "src/tests/tools/search/pretokenized_emit_test.rs",
+            "src/tests/tools/search/projection_search_doc_test.rs",
+            "src/tests/tools/search/relationship_text_test.rs",
+            "src/tests/tools/search/reranker_ordering_tests.rs",
+            "src/tests/tools/search/schema_phase2_fields_test.rs",
+            "src/tests/tools/search/title_exact_boost_tests.rs",
+            "src/tests/tools/search/tokenizer_simple_test.rs",
+        ],
+    ) || matches_prefix(path, &["src/tests/tools/search/unified_"])
+    {
+        return Some(&["tools-search-unified"]);
+    }
+
     if matches_exact(path, &["src/tests/tools/search_context_lines.rs"]) {
         return Some(&["tools-search-context"]);
     }
@@ -884,6 +943,7 @@ fn sort_bucket_names(bucket_names: Vec<String>) -> Vec<String> {
         "tools-search-text",
         "tools-search-hybrid",
         "tools-search-query",
+        "tools-search-unified",
         "tools-workspace",
         "tools-workspace-targeting",
         "tools-get-symbols",
@@ -897,6 +957,7 @@ fn sort_bucket_names(bucket_names: Vec<String>) -> Vec<String> {
         "tools-format-filter",
         "analysis",
         "core-fast",
+        "core-handler-telemetry",
         "transport",
         "lifecycle",
         "workspace-runtime",
@@ -942,4 +1003,163 @@ fn matches_exact(path: &str, candidates: &[&str]) -> bool {
 
 fn matches_prefix(path: &str, prefixes: &[&str]) -> bool {
     prefixes.iter().any(|prefix| path.starts_with(prefix))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ChangedSelectionMode, select_changed_buckets};
+    use crate::manifest::TestManifest;
+    use std::path::{Path, PathBuf};
+
+    fn repo_root() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("xtask manifest dir has repo parent")
+            .to_path_buf()
+    }
+
+    fn manifest() -> TestManifest {
+        TestManifest::load(repo_root().join("xtask/test_tiers.toml")).expect("load test manifest")
+    }
+
+    fn bucket_commands<'a>(manifest: &'a TestManifest, bucket_name: &str) -> &'a [String] {
+        manifest
+            .buckets
+            .get(bucket_name)
+            .unwrap_or_else(|| panic!("missing bucket {bucket_name}"))
+            .commands
+            .as_slice()
+    }
+
+    fn command_covers_module(command: &str, module: &str) -> bool {
+        let Some(filter) = command
+            .split("tests::tools::search::")
+            .nth(1)
+            .and_then(|tail| tail.split_whitespace().next())
+        else {
+            return false;
+        };
+
+        module.starts_with(filter) || filter.starts_with(module)
+    }
+
+    fn declared_search_modules(path: &Path) -> Vec<String> {
+        let source = std::fs::read_to_string(path)
+            .unwrap_or_else(|error| panic!("read {}: {error}", path.display()));
+        source
+            .lines()
+            .filter_map(|line| {
+                line.trim()
+                    .strip_prefix("mod ")
+                    .and_then(|rest| rest.strip_suffix(';'))
+                    .map(str::to_string)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn changed_tests_preserve_mapped_buckets_when_other_paths_fallback_to_dev() {
+        let manifest = manifest();
+        let selection = select_changed_buckets(
+            &manifest,
+            &[
+                "src/tests/integration/stale_index_detection.rs".to_string(),
+                "unmapped/tooling-note.txt".to_string(),
+            ],
+        );
+
+        assert_eq!(selection.mode, ChangedSelectionMode::FallbackToDev);
+        assert!(
+            selection
+                .bucket_names
+                .iter()
+                .any(|bucket| bucket == "integration"),
+            "mapped integration coverage must survive fallback; buckets={:?}, rationale={:?}",
+            selection.bucket_names,
+            selection.rationale
+        );
+        assert!(
+            selection
+                .fallback_paths
+                .iter()
+                .any(|path| path == "unmapped/tooling-note.txt"),
+            "fallback path should still be reported"
+        );
+    }
+
+    #[test]
+    fn changed_tests_route_cli_no_target_regression_to_cli_bucket() {
+        let manifest = manifest();
+        let selection = select_changed_buckets(
+            &manifest,
+            &["src/tests/cli/cli_search_no_target_test.rs".to_string()],
+        );
+
+        assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
+        assert_eq!(selection.bucket_names, vec!["cli"]);
+    }
+
+    #[test]
+    fn changed_tests_cli_bucket_runs_cli_no_target_regression() {
+        let manifest = manifest();
+        let commands = bucket_commands(&manifest, "cli");
+
+        assert!(
+            commands
+                .iter()
+                .any(|command| command.contains("tests::cli::cli_search_no_target_test")),
+            "cli bucket must run non-ignored --target parser regression; commands={commands:?}"
+        );
+    }
+
+    #[test]
+    fn changed_tests_route_handler_telemetry_to_dedicated_bucket() {
+        let manifest = manifest();
+        let selection = select_changed_buckets(
+            &manifest,
+            &["src/tests/core/handler_telemetry.rs".to_string()],
+        );
+
+        assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
+        assert_eq!(selection.bucket_names, vec!["core-handler-telemetry"]);
+    }
+
+    #[test]
+    fn changed_tests_handler_telemetry_bucket_runs_module() {
+        let manifest = manifest();
+        let commands = bucket_commands(&manifest, "core-handler-telemetry");
+
+        assert!(
+            commands
+                .iter()
+                .any(|command| command.contains("tests::core::handler_telemetry")),
+            "core-handler-telemetry bucket must run handler telemetry tests; commands={commands:?}"
+        );
+    }
+
+    #[test]
+    fn changed_tests_dev_search_buckets_cover_declared_search_modules() {
+        let manifest = manifest();
+        let dev_buckets = manifest.tiers.get("dev").expect("dev tier exists");
+        let dev_search_commands: Vec<&String> = dev_buckets
+            .iter()
+            .filter(|bucket| bucket.starts_with("tools-search-"))
+            .flat_map(|bucket| bucket_commands(&manifest, bucket))
+            .collect();
+        let modules = declared_search_modules(&repo_root().join("src/tests/tools/search/mod.rs"));
+
+        let uncovered: Vec<String> = modules
+            .into_iter()
+            .filter(|module| {
+                !dev_search_commands
+                    .iter()
+                    .any(|command| command_covers_module(command, module))
+            })
+            .collect();
+
+        assert!(
+            uncovered.is_empty(),
+            "declared search modules must be covered by dev search bucket commands; uncovered={uncovered:?}"
+        );
+    }
 }

@@ -7,7 +7,7 @@
 //!   signature is schema-content-sensitive).
 
 use crate::search::schema::{compatibility_signature, create_schema};
-use tantivy::schema::{IndexRecordOption, Schema, TextFieldIndexing, TextOptions, STORED, STRING};
+use tantivy::schema::{IndexRecordOption, STORED, STRING, Schema, TextFieldIndexing, TextOptions};
 
 // ---------------------------------------------------------------------------
 // Field presence
@@ -19,6 +19,25 @@ fn schema_contains_pretokenized_code_field() {
     assert!(
         schema.get_field("pretokenized_code").is_ok(),
         "schema must define `pretokenized_code` field"
+    );
+}
+
+#[test]
+fn pretokenized_code_uses_simple_code_tokenizer() {
+    let schema = create_schema();
+    let field = schema
+        .get_field("pretokenized_code")
+        .expect("pretokenized_code field");
+    let entry = schema.get_field_entry(field);
+    let field_type = format!("{:?}", entry.field_type());
+
+    assert!(
+        field_type.contains("simple_code"),
+        "pretokenized_code must use simple_code tokenizer, got {field_type}"
+    );
+    assert!(
+        !field_type.contains("tokenizer: \"code\""),
+        "pretokenized_code must not use legacy code tokenizer, got {field_type}"
     );
 }
 

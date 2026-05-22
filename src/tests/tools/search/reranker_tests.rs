@@ -334,12 +334,20 @@ fn reranker_writeback_disambiguates_same_name_same_path() {
     let parsed = parse_query("foo");
     let ranked = rerank_unified(&parsed, &candidates);
 
-    assert_eq!(ranked.len(), 2, "both candidates must appear in ranked output");
+    assert_eq!(
+        ranked.len(),
+        2,
+        "both candidates must appear in ranked output"
+    );
 
     // Each Ranked entry carries its original candidate ordinal.
-    let r_for_0 = ranked.iter().find(|r| r.original_index == 0)
+    let r_for_0 = ranked
+        .iter()
+        .find(|r| r.original_index == 0)
         .expect("original_index=0 (file row) must appear in ranked output");
-    let r_for_1 = ranked.iter().find(|r| r.original_index == 1)
+    let r_for_1 = ranked
+        .iter()
+        .find(|r| r.original_index == 1)
         .expect("original_index=1 (symbol row) must appear in ranked output");
 
     // The file row gets different boosts than the function symbol, so scores must differ.

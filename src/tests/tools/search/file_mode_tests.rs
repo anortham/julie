@@ -72,8 +72,7 @@ fn seed_scoped_mod_rs_workspace(workspace_path: &Path) {
 /// `FastSearchTool` without `search_target` must succeed.
 #[test]
 fn test_fast_search_deserializes_without_search_target() {
-    let tool: FastSearchTool =
-        serde_json::from_str(r#"{"query":"line_mode.rs"}"#).unwrap();
+    let tool: FastSearchTool = serde_json::from_str(r#"{"query":"line_mode.rs"}"#).unwrap();
 
     assert_eq!(tool.query, "line_mode.rs");
     // After T8, context_lines defaults to Some(1) (the unified default) since
@@ -88,21 +87,14 @@ fn test_fast_search_deserializes_without_search_target() {
 #[test]
 fn test_fast_search_ignores_legacy_search_target_field_on_deserialization() {
     // Clients that still send search_target in JSON should not break.
-    let result =
-        serde_json::from_str::<FastSearchTool>(r#"{"query":"line_mode.rs","search_target":"files"}"#);
+    let tool = serde_json::from_str::<FastSearchTool>(
+        r#"{"query":"line_mode.rs","search_target":"files","limit":7}"#,
+    )
+    .expect("legacy clients may still send search_target; it must be ignored");
 
-    // Either succeeds (unknown field ignored) or fails — but must NOT panic.
-    // If it fails that's also acceptable; the important thing is the field was
-    // removed from the struct.
-    match result {
-        Ok(tool) => {
-            assert_eq!(tool.query, "line_mode.rs");
-            // search_target field must not exist on the struct
-        }
-        Err(_) => {
-            // Deserialization rejecting unknown fields is also fine
-        }
-    }
+    assert_eq!(tool.query, "line_mode.rs");
+    assert_eq!(tool.limit, 7);
+    assert_eq!(tool.context_lines, Some(1));
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -171,7 +163,11 @@ async fn fast_search_unified_returns_file_hits_for_filename_query() {
             .iter()
             .any(|h| h.file.ends_with("browser_client.rs")),
         "at least one hit should reference browser_client.rs, got: {:?}",
-        execution.hits.iter().map(|h| h.file.as_str()).collect::<Vec<_>>()
+        execution
+            .hits
+            .iter()
+            .map(|h| h.file.as_str())
+            .collect::<Vec<_>>()
     );
 }
 
@@ -201,7 +197,15 @@ async fn fast_search_file_pattern_scopes_results() {
     let output = extract_text_from_result(&response);
     // Scoped to scope/** — out-of-scope files should not appear.
     assert!(
-        !output.contains("No files found") || output.contains("scope/inside"),
+        output.contains("scope/inside/mod.rs") || output.contains("scope/extra/mod.rs"),
+        "scoped search should return in-scope mod.rs hits, got: {output}"
+    );
+    assert!(
+        !output.contains("aaa"),
+        "file_pattern=scope/** must not return out-of-scope mod.rs hits, got: {output}"
+    );
+    assert!(
+        !output.contains("No files found"),
         "scoped search should not claim there were no results when in-scope files exist, got: {output}"
     );
 }

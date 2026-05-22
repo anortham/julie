@@ -186,7 +186,12 @@ fn tantivy_indexed_qualified_name_found_by_partial_token() -> Result<()> {
     let (symbols, _relaxed, total) =
         definition_search_with_index_for_test("Router", &filter, 5, &index, Some(&db))?;
 
-    assert_eq!(symbols.len(), 1, "Expected one result for 'Router'. Got: {:?}", symbols.iter().map(|s| &s.name).collect::<Vec<_>>());
+    assert_eq!(
+        symbols.len(),
+        1,
+        "Expected one result for 'Router'. Got: {:?}",
+        symbols.iter().map(|s| &s.name).collect::<Vec<_>>()
+    );
     assert_eq!(symbols[0].name, "Phoenix.Router");
     assert_eq!(total, 1);
 
@@ -432,7 +437,12 @@ fn definition_test_intent_uses_metadata_for_inline_test_helpers_before_centralit
     let index_dir = TempDir::new()?;
     let index = SearchIndex::create(index_dir.path())?;
     for symbol in [&source, &test_helper] {
-        index.add_search_doc(&crate::search::index::SearchDocument::for_symbol(symbol, vec![], String::new(), String::new()))?;
+        index.add_search_doc(&crate::search::index::SearchDocument::for_symbol(
+            symbol,
+            vec![],
+            String::new(),
+            String::new(),
+        ))?;
     }
     index.commit()?;
 
@@ -497,6 +507,41 @@ async fn content_locations_format_omits_matching_line_text() -> Result<()> {
     assert!(
         !text.contains("let compact_location_marker"),
         "locations output must omit line snippets, got:\n{text}"
+    );
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn content_full_format_includes_matching_line_text() -> Result<()> {
+    unsafe {
+        std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "0");
+    }
+
+    let temp_dir = TempDir::new()?;
+    let workspace_path = temp_dir.path();
+    let src_dir = workspace_path.join("src");
+    fs::create_dir_all(&src_dir)?;
+    fs::write(
+        src_dir.join("app.rs"),
+        "fn main() {\n    let full_format_context_marker = 1;\n}\n",
+    )?;
+
+    let handler = index_workspace(workspace_path).await?;
+    let result = FastSearchTool {
+        query: "full_format_context_marker".to_string(),
+        return_format: "full".to_string(),
+        limit: 10,
+        workspace: Some("primary".to_string()),
+        ..Default::default()
+    }
+    .call_tool(&handler)
+    .await?;
+
+    let text = extract_text(&result);
+    assert!(
+        text.contains("let full_format_context_marker = 1;"),
+        "full output should include the actual matching line, got:\n{text}"
     );
 
     Ok(())

@@ -312,8 +312,7 @@ async fn run_baseline_async(
                 detailed: None,
             };
             reindex_tool.call_tool_with_options(&handler, true).await?;
-            touched_for_restore
-                .push((workspace_row.workspace_id.clone(), repo_root.clone()));
+            touched_for_restore.push((workspace_row.workspace_id.clone(), repo_root.clone()));
         }
 
         for case in eligible_cases_for_repo(cases, profile, repo_meta) {
@@ -442,7 +441,9 @@ async fn restore_workspace_to_baseline(
     workspace_id: &str,
     repo_root: &std::path::Path,
 ) -> Result<()> {
-    let workspace = pool.get_or_init(workspace_id, repo_root.to_path_buf()).await?;
+    let workspace = pool
+        .get_or_init(workspace_id, repo_root.to_path_buf())
+        .await?;
     let handler = JulieServerHandler::new_with_shared_workspace(
         workspace,
         repo_root.to_path_buf(),

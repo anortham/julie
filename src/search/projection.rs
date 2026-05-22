@@ -15,6 +15,7 @@ pub use apply::apply_documents;
 pub(crate) use apply::apply_documents_with_db;
 pub(crate) use apply::apply_uncommitted_documents_from_symbols;
 pub(crate) use apply::collect_relationship_names_bounded;
+pub(crate) use apply::collect_relationship_partner_symbol_ids;
 pub(crate) use apply::reproject_partner_symbols;
 use apply::{
     RELATIONSHIP_TEXT_MAX_BYTES, SymbolIndexContext, apply_documents_with_context,
@@ -186,9 +187,13 @@ impl SearchProjection {
             }
         };
 
-        if let Err(err) =
-            self.rebuild(index, &symbols, &file_infos, &symbol_contexts, &relationship_map)
-        {
+        if let Err(err) = self.rebuild(
+            index,
+            &symbols,
+            &file_infos,
+            &symbol_contexts,
+            &relationship_map,
+        ) {
             let detail = err.to_string();
             let _ = db.upsert_projection_state(
                 self.projection,
@@ -397,7 +402,11 @@ impl SearchProjection {
                 load_start.elapsed().as_secs_f64(),
                 symbols.len()
             );
-            (current_projected_revision, symbol_contexts, relationship_map)
+            (
+                current_projected_revision,
+                symbol_contexts,
+                relationship_map,
+            )
         };
 
         let apply_start = std::time::Instant::now();

@@ -11,7 +11,9 @@ use crate::dashboard::render_template;
 use crate::dashboard::routes::projects_actions::{
     cleanup_dashboard_anchor, dashboard_handler, disconnect_dashboard_attached_workspaces,
 };
+use crate::tools::navigation::resolution::WorkspaceTarget;
 use crate::tools::search::execution::{self, SearchExecutionWorkspace};
+use crate::tools::search::line_mode;
 use crate::tools::search::trace::{SearchExecutionKind, SearchExecutionResult, SearchHit};
 
 #[derive(Deserialize)]
@@ -87,6 +89,7 @@ pub async fn search(
         &state,
         &query,
         &workspace_id,
+        &search_target,
         &language,
         &file_pattern,
         limit,
@@ -149,6 +152,7 @@ async fn run_search(
     state: &AppState,
     query: &str,
     workspace_id: &str,
+    search_target: &str,
     language: &str,
     file_pattern: &str,
     limit: usize,
@@ -157,7 +161,7 @@ async fn run_search(
         return None;
     }
 
-    let workspaces: Vec<String> = if workspace_id.is_empty() {
+    let workspace_ids: Vec<String> = if workspace_id.is_empty() {
         let db = state.dashboard.daemon_db()?;
         db.list_workspaces()
             .ok()?
@@ -168,7 +172,7 @@ async fn run_search(
         vec![workspace_id.to_string()]
     };
 
-    if workspaces.is_empty() {
+    if workspace_ids.is_empty() {
         return None;
     }
 
@@ -176,13 +180,14 @@ async fn run_search(
         Ok(session) => session,
         Err(_) => return None,
     };
-    let execution_workspaces = workspaces
-        .into_iter()
+    let execution_workspaces = workspace_ids
+        .iter()
+        .cloned()
         .map(SearchExecutionWorkspace::target)
         .collect::<Vec<_>>();
     let language_filter = (!language.is_empty()).then(|| language.to_string());
     let file_pattern_filter = (!file_pattern.is_empty()).then(|| file_pattern.to_string());
-    let result = execution::execute_search(
+    let mut result = execution::execute_search(
         execution::SearchExecutionParams {
             query,
             language: &language_filter,
@@ -197,10 +202,70 @@ async fn run_search(
     .await
     .ok();
 
+    if search_target == "content"
+        && let Some(search_result) = result.as_mut()
+        && let Err(error) = enrich_dashboard_content_previews(
+            search_result,
+            &handler,
+            &workspace_ids,
+            query,
+            &language_filter,
+            &file_pattern_filter,
+            limit as u32,
+        )
+        .await
+    {
+        tracing::warn!("Dashboard content preview enrichment failed: {error}");
+    }
+
     disconnect_dashboard_attached_workspaces(&handler).await;
     cleanup_dashboard_anchor(state, &anchor_id).await;
 
     result.map(normalize_dashboard_results)
+}
+
+async fn enrich_dashboard_content_previews(
+    result: &mut SearchExecutionResult,
+    handler: &crate::handler::JulieServerHandler,
+    workspace_ids: &[String],
+    query: &str,
+    language: &Option<String>,
+    file_pattern: &Option<String>,
+    limit: u32,
+) -> anyhow::Result<()> {
+    let mut previews = std::collections::HashMap::<(String, String), (u32, String)>::new();
+
+    for workspace_id in workspace_ids {
+        let target = WorkspaceTarget::Target(workspace_id.clone());
+        let line_result = line_mode::line_mode_matches(
+            query,
+            language,
+            file_pattern,
+            limit,
+            None,
+            &target,
+            handler,
+        )
+        .await?;
+
+        for line_match in line_result.matches {
+            previews
+                .entry((workspace_id.clone(), line_match.file_path.clone()))
+                .or_insert((
+                    line_match.line_number as u32,
+                    line_match.line_content.clone(),
+                ));
+        }
+    }
+
+    for hit in &mut result.hits {
+        if let Some((line, snippet)) = previews.get(&(hit.workspace.clone(), hit.file.clone())) {
+            hit.line = Some(*line);
+            hit.snippet = Some(snippet.clone());
+        }
+    }
+
+    Ok(())
 }
 
 fn normalize_dashboard_results(result: SearchExecutionResult) -> SearchExecutionResult {

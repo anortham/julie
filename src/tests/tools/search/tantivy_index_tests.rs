@@ -4,8 +4,7 @@ use tempfile::TempDir;
 
 use crate::search::SearchError;
 use crate::search::index::{
-    SearchDocument, SearchFilter, SearchIndex, SearchIndexOpenDisposition,
-    SymbolSearchResults,
+    SearchDocument, SearchFilter, SearchIndex, SearchIndexOpenDisposition, SymbolSearchResults,
 };
 use crate::search::language_config::LanguageConfigs;
 
@@ -184,28 +183,12 @@ fn test_delete_by_file_path() {
 
     index
         .add_search_doc(&SearchDocument::symbol_from_parts(
-            "1",
-            "foo",
-            "fn foo()",
-            "",
-            "",
-            "src/a.rs",
-            "function",
-            "rust",
-            1,
+            "1", "foo", "fn foo()", "", "", "src/a.rs", "function", "rust", 1,
         ))
         .unwrap();
     index
         .add_search_doc(&SearchDocument::symbol_from_parts(
-            "2",
-            "bar",
-            "fn bar()",
-            "",
-            "",
-            "src/b.rs",
-            "function",
-            "rust",
-            1,
+            "2", "bar", "fn bar()", "", "", "src/b.rs", "function", "rust", 1,
         ))
         .unwrap();
     index.commit().unwrap();
@@ -482,10 +465,10 @@ fn test_shutdown_prevents_writer_creation() {
 
     // All write operations should now return Err(Shutdown)
     let result = index.add_search_doc(&SearchDocument::file_from_parts(
-            "src/other.rs",
-            "fn other() {}",
-            "rust",
-        ));
+        "src/other.rs",
+        "fn other() {}",
+        "rust",
+    ));
     assert!(result.is_err());
     assert!(
         matches!(result.unwrap_err(), SearchError::Shutdown),
@@ -514,10 +497,10 @@ fn test_shutdown_releases_lock_for_new_index() {
     // Open index B at the SAME path — this would get LockBusy without shutdown
     let index_b = SearchIndex::open(temp.path()).unwrap();
     let write_result = index_b.add_search_doc(&SearchDocument::file_from_parts(
-            "src/new.rs",
-            "fn new_stuff() {}",
-            "rust",
-        ));
+        "src/new.rs",
+        "fn new_stuff() {}",
+        "rust",
+    ));
     assert!(
         write_result.is_ok(),
         "Index B should be able to write after A was shut down: {:?}",
@@ -998,16 +981,16 @@ fn test_tokenizer_mismatch_reproduces_ref_workspace_bug() {
 
         index
             .add_search_doc(&SearchDocument::symbol_from_parts(
-            "1",
-            "SmartQueryPreprocessor",
-            "public class SmartQueryPreprocessor",
-            "Preprocesses search queries",
-            "public class SmartQueryPreprocessor { }",
-            "Services/SmartQueryPreprocessor.cs",
-            "class",
-            "csharp",
-            31,
-        ))
+                "1",
+                "SmartQueryPreprocessor",
+                "public class SmartQueryPreprocessor",
+                "Preprocesses search queries",
+                "public class SmartQueryPreprocessor { }",
+                "Services/SmartQueryPreprocessor.cs",
+                "class",
+                "csharp",
+                31,
+            ))
             .unwrap();
         index.commit().unwrap();
     }
@@ -1038,30 +1021,30 @@ fn test_ref_workspace_search_with_matching_tokenizer() {
 
         index
             .add_search_doc(&SearchDocument::symbol_from_parts(
-            "1",
-            "SmartQueryPreprocessor",
-            "public class SmartQueryPreprocessor",
-            "Preprocesses search queries",
-            "public class SmartQueryPreprocessor { }",
-            "Services/SmartQueryPreprocessor.cs",
-            "class",
-            "csharp",
-            31,
-        ))
+                "1",
+                "SmartQueryPreprocessor",
+                "public class SmartQueryPreprocessor",
+                "Preprocesses search queries",
+                "public class SmartQueryPreprocessor { }",
+                "Services/SmartQueryPreprocessor.cs",
+                "class",
+                "csharp",
+                31,
+            ))
             .unwrap();
 
         index
             .add_search_doc(&SearchDocument::symbol_from_parts(
-            "2",
-            "SearchMode",
-            "public SearchMode SearchMode { get; set; }",
-            "",
-            "",
-            "Services/SmartQueryPreprocessor.cs",
-            "property",
-            "csharp",
-            395,
-        ))
+                "2",
+                "SearchMode",
+                "public SearchMode SearchMode { get; set; }",
+                "",
+                "",
+                "Services/SmartQueryPreprocessor.cs",
+                "property",
+                "csharp",
+                395,
+            ))
             .unwrap();
 
         index.commit().unwrap();
@@ -1115,16 +1098,16 @@ fn test_same_tokenizer_search_works() {
 
         index
             .add_search_doc(&SearchDocument::symbol_from_parts(
-            "1",
-            "SmartQueryPreprocessor",
-            "public class SmartQueryPreprocessor",
-            "",
-            "",
-            "Services/SmartQueryPreprocessor.cs",
-            "class",
-            "csharp",
-            31,
-        ))
+                "1",
+                "SmartQueryPreprocessor",
+                "public class SmartQueryPreprocessor",
+                "",
+                "",
+                "Services/SmartQueryPreprocessor.cs",
+                "class",
+                "csharp",
+                31,
+            ))
             .unwrap();
         index.commit().unwrap();
     }

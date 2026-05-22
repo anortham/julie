@@ -117,7 +117,12 @@ mod tests {
 
         for symbol in symbols {
             index
-                .add_search_doc(&SearchDocument::for_symbol(symbol, vec![], String::new(), String::new()))
+                .add_search_doc(&SearchDocument::for_symbol(
+                    symbol,
+                    vec![],
+                    String::new(),
+                    String::new(),
+                ))
                 .unwrap();
         }
         index.commit().unwrap();
