@@ -210,6 +210,53 @@ fn test_walk_works_without_git_repo() {
     );
 }
 
+/// Regression test: an ancestor `.julieignore` outside the walked workspace
+/// must NOT influence the walk. A previous bug auto-generated `.julieignore`
+/// at `~/` (when julie was misused to index home), and those anchored
+/// patterns then silently dropped legitimate files from sibling projects on
+/// every subsequent run.
+#[test]
+fn test_walk_ignores_ancestor_julieignore() {
+    let outer = TempDir::new().unwrap();
+    let outer_root = outer.path();
+    let workspace = outer_root.join("workspace");
+    fs::create_dir_all(&workspace).unwrap();
+    fs::create_dir_all(workspace.join(".git")).unwrap();
+    fs::create_dir_all(workspace.join("plugins")).unwrap();
+    fs::write(workspace.join("plugins/source.rs"), "// real source").unwrap();
+
+    // Sibling ancestor `.julieignore` outside the workspace — must be ignored.
+    fs::write(outer_root.join(".julieignore"), "workspace/plugins/\n").unwrap();
+
+    let files = collect_walked_files(&workspace, &WalkConfig::full_index());
+    assert!(
+        files.iter().any(|f| f.contains("plugins/source.rs")),
+        "ancestor .julieignore must not exclude workspace files; got: {files:?}"
+    );
+}
+
+/// Regression test: an ancestor `.gitignore` outside the walked workspace
+/// must also be ignored. Workspace `.gitignore` is the authority; ancestor
+/// patterns can silently drop legitimate files.
+#[test]
+fn test_walk_ignores_ancestor_gitignore() {
+    let outer = TempDir::new().unwrap();
+    let outer_root = outer.path();
+    let workspace = outer_root.join("workspace");
+    fs::create_dir_all(&workspace).unwrap();
+    fs::create_dir_all(workspace.join(".git")).unwrap();
+    fs::write(workspace.join("kept.rs"), "fn main() {}").unwrap();
+
+    // Sibling ancestor `.gitignore` — must be ignored.
+    fs::write(outer_root.join(".gitignore"), "*.rs\n").unwrap();
+
+    let files = collect_walked_files(&workspace, &WalkConfig::full_index());
+    assert!(
+        files.iter().any(|f| f.contains("kept.rs")),
+        "ancestor .gitignore must not exclude workspace files; got: {files:?}"
+    );
+}
+
 #[test]
 fn test_single_path_walk_respects_parent_gitignore() {
     let dir = TempDir::new().unwrap();
