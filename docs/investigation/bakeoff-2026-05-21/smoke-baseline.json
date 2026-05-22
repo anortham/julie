@@ -1,0 +1,199 @@
+{
+  "profile": "smoke",
+  "executions": [
+    {
+      "repo_name": "julie",
+      "workspace_id": "julie_528d4264",
+      "case_id": "rust-exact-workspace-pool",
+      "family": "exact_identifier",
+      "search_target": "definitions",
+      "hit_count": 500,
+      "hit_count_is_lower_bound": false,
+      "relaxed": false,
+      "zero_hit_reason": null,
+      "file_pattern_diagnostic": null,
+      "hint_kind": null,
+      "latency_ms": 55,
+      "top_hits": [
+        {
+          "name": "WorkspacePool",
+          "file": "src/daemon/workspace_pool.rs",
+          "line": 59,
+          "kind": "struct",
+          "score": 566.0779
+        },
+        {
+          "name": "WorkspacePool",
+          "file": "src/daemon/app.rs",
+          "line": 32,
+          "kind": "import",
+          "score": 216.7408
+        },
+        {
+          "name": "WorkspacePool",
+          "file": "src/daemon/mod.rs",
+          "line": 50,
+          "kind": "import",
+          "score": 216.38211
+        }
+      ],
+      "ablation_label": ""
+    },
+    {
+      "repo_name": "julie",
+      "workspace_id": "julie_528d4264",
+      "case_id": "rust-camelcase-fast-search",
+      "family": "camel_case",
+      "search_target": "definitions",
+      "hit_count": 309,
+      "hit_count_is_lower_bound": false,
+      "relaxed": false,
+      "zero_hit_reason": null,
+      "file_pattern_diagnostic": null,
+      "hint_kind": null,
+      "latency_ms": 40,
+      "top_hits": [
+        {
+          "name": "FastSearchTool",
+          "file": "src/tools/search/mod.rs",
+          "line": 57,
+          "kind": "struct",
+          "score": 418.46646
+        },
+        {
+          "name": "FastSearchTool",
+          "file": "src/tools/mod.rs",
+          "line": 25,
+          "kind": "import",
+          "score": 186.03769
+        },
+        {
+          "name": "FastSearchTool",
+          "file": "src/cli_tools/generic.rs",
+          "line": 337,
+          "kind": "import",
+          "score": 185.20996
+        }
+      ],
+      "ablation_label": ""
+    },
+    {
+      "repo_name": "julie",
+      "workspace_id": "julie_528d4264",
+      "case_id": "rust-snake-case-line-matches",
+      "family": "snake_case",
+      "search_target": "content",
+      "hit_count": 10,
+      "hit_count_is_lower_bound": true,
+      "relaxed": false,
+      "zero_hit_reason": null,
+      "file_pattern_diagnostic": null,
+      "hint_kind": null,
+      "latency_ms": 50,
+      "top_hits": [
+        {
+          "name": "query.rs",
+          "file": "src/tools/search/query.rs",
+          "line": 295,
+          "kind": "line",
+          "score": 0.0
+        },
+        {
+          "name": "query.rs",
+          "file": "src/tools/search/query.rs",
+          "line": 296,
+          "kind": "line",
+          "score": 0.0
+        },
+        {
+          "name": "query.rs",
+          "file": "src/tools/search/query.rs",
+          "line": 299,
+          "kind": "line",
+          "score": 0.0
+        }
+      ],
+      "ablation_label": ""
+    },
+    {
+      "repo_name": "julie",
+      "workspace_id": "julie_528d4264",
+      "case_id": "rust-scoped-content-ui",
+      "family": "scoped_content",
+      "search_target": "content",
+      "hit_count": 10,
+      "hit_count_is_lower_bound": true,
+      "relaxed": false,
+      "zero_hit_reason": null,
+      "file_pattern_diagnostic": null,
+      "hint_kind": null,
+      "latency_ms": 107,
+      "top_hits": [
+        {
+          "name": "query.rs",
+          "file": "src/tools/search/query.rs",
+          "line": 295,
+          "kind": "line",
+          "score": 0.0
+        },
+        {
+          "name": "query.rs",
+          "file": "src/tools/search/query.rs",
+          "line": 296,
+          "kind": "line",
+          "score": 0.0
+        },
+        {
+          "name": "query.rs",
+          "file": "src/tools/search/query.rs",
+          "line": 299,
+          "kind": "line",
+          "score": 0.0
+        }
+      ],
+      "ablation_label": ""
+    },
+    {
+      "repo_name": "julie",
+      "workspace_id": "julie_528d4264",
+      "case_id": "rust-file-exact-search-mod",
+      "family": "file_lookup",
+      "search_target": "files",
+      "hit_count": 3,
+      "hit_count_is_lower_bound": false,
+      "relaxed": false,
+      "zero_hit_reason": null,
+      "file_pattern_diagnostic": null,
+      "hint_kind": null,
+      "latency_ms": 12,
+      "top_hits": [
+        {
+          "name": "mod.rs",
+          "file": "src/tools/search/mod.rs",
+          "line": null,
+          "kind": "file",
+          "score": 293.9881
+        },
+        {
+          "name": "mod.rs",
+          "file": "src/tests/tools/search/mod.rs",
+          "line": null,
+          "kind": "file",
+          "score": 24.603569
+        },
+        {
+          "name": "mod.rs",
+          "file": "src/tests/tools/search_quality/mod.rs",
+          "line": null,
+          "kind": "file",
+          "score": 21.574112
+        }
+      ],
+      "ablation_label": ""
+    }
+  ],
+  "skipped_repos": [],
+  "summary_flags": [
+    "unexpected_hint"
+  ]
+}
