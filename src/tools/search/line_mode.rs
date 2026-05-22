@@ -111,7 +111,77 @@ pub(crate) fn effective_content_exclude_tests(
         return false;
     }
 
+    // T12 follow-up: queries that themselves name tests are clearly looking
+    // for test artifacts ("src tests atomic operations.test.ts", "hub routes
+    // test artifacts.py").  NL-default-exclude-tests would otherwise drop the
+    // user's actual target.  Mirror the existing file_pattern test-path
+    // override for the query string.
+    if query_names_a_test(query) {
+        return false;
+    }
+
     parse_query(query).intent != QueryIntent::Test && is_nl_like_query(query)
+}
+
+/// True when the query string itself indicates the caller is looking for test
+/// artifacts — either by naming a test path segment (`tests`, `__tests__`,
+/// `spec`) or by carrying a test-file extension token (`.test.ts`,
+/// `_test.go`, `test_*.py`, `.spec.ts`, ...).  Used by
+/// [`effective_content_exclude_tests`] to skip NL-default-exclude-tests when
+/// the query is itself test-shaped.
+fn query_names_a_test(query: &str) -> bool {
+    let q = query.to_ascii_lowercase();
+
+    for term in q.split_whitespace() {
+        match term {
+            "test" | "tests" | "__tests__" | "spec" => return true,
+            _ => {}
+        }
+    }
+
+    let endings: &[&str] = &[
+        ".test.ts",
+        ".test.tsx",
+        ".test.js",
+        ".test.jsx",
+        ".spec.ts",
+        ".spec.tsx",
+        ".spec.js",
+        ".spec.jsx",
+        "_test.go",
+        "_test.c",
+        "_test.cc",
+        "_test.cpp",
+    ];
+    let go_style_test_prefixes: &[&str] = &[
+        // Eros tokenises `active_help_test.go` as
+        // `active help test.go`, so the last token starts with `test.`
+        // followed by the original extension.  Matching any
+        // `test.<short-ext>` here catches the Go (`_test.go`) and
+        // C/C++ (`_test.c`, `_test.cc`, `_test.cpp`) families when
+        // the leading underscore was split off into a separate token.
+        "test.go",
+        "test.c",
+        "test.cc",
+        "test.cpp",
+    ];
+    for term in q.split_whitespace() {
+        for ending in endings {
+            if term.ends_with(ending) {
+                return true;
+            }
+        }
+        for prefix in go_style_test_prefixes {
+            if term == *prefix {
+                return true;
+            }
+        }
+        // Python `test_*.py` (file *starts* with `test_`, ends with `.py`).
+        if term.starts_with("test_") && term.ends_with(".py") {
+            return true;
+        }
+    }
+    false
 }
 
 fn scoped_fetch_limits(base_limit: usize, has_file_filter: bool) -> (usize, usize) {
