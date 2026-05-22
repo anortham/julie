@@ -198,17 +198,13 @@ mod line_match_strategy_tests {
         assert!(line_matches(&strategy, "SPAWN_BLOCKING is loud"));
     }
 
-    #[test]
-    fn test_file_level_line_matches_tokenized_terms() {
-        let strategy = LineMatchStrategy::FileLevel {
-            terms: vec!["tokens".to_string(), "estimation".to_string()],
-        };
-
-        assert!(
-            line_matches(&strategy, "pub struct TokenEstimator;"),
-            "file-level verifier should honor tokenizer splits/stems, not only raw substrings",
-        );
-    }
+    // Removed (T8 follow-up): the `tokens` -> `Token`, `estimation` -> `Estimator`
+    // expectation depended on the Tantivy English stemmer that T3 removed from
+    // the tokenizer pipeline.  `line_matches` calls `tokenize_text_for_line_match`,
+    // which now emits only CamelCase/snake_case splits with no morphological
+    // normalization, so the assertion can no longer hold.  The non-stemming
+    // file-level behaviour is exercised by
+    // `test_file_level_simple_terms_keep_tokenized_matching` (rewritten below).
 
     #[test]
     fn test_file_level_compound_identifier_matches_contiguous_identifier() {
@@ -278,8 +274,12 @@ mod line_match_strategy_tests {
 
     #[test]
     fn test_file_level_simple_terms_keep_tokenized_matching() {
+        // Post-T3 (stemming removed): `tokens` no longer stems to `Token`, so
+        // the assertion has to use a term that survives CamelCase splitting
+        // verbatim.  Verify that a single lowercase token still matches via
+        // the tokenizer's CamelCase splits.
         let strategy = LineMatchStrategy::FileLevel {
-            terms: vec!["tokens".to_string()],
+            terms: vec!["token".to_string()],
         };
 
         assert!(line_matches(&strategy, "pub struct TokenEstimator;"));
@@ -287,14 +287,19 @@ mod line_match_strategy_tests {
 
     #[test]
     fn test_tokens_strategy_excluded_terms_use_tokenized_forms() {
+        // Post-T3 (stemming removed): the legacy expectation was that
+        // `tests` stems to `test_` and catches `test_format_output`.
+        // Without the English stemmer, only verbatim tokenizer splits match.
+        // Verify that the excluded-term check still rejects an exact-token
+        // match (snake_case split produces `test` from `test_format_output`).
         let strategy = LineMatchStrategy::Tokens {
             required: vec!["format".to_string()],
-            excluded: vec!["tests".to_string()],
+            excluded: vec!["test".to_string()],
         };
 
         assert!(
             !line_matches(&strategy, "fn test_format_output() {}"),
-            "excluded query terms should catch tokenized/stemmed forms on the line",
+            "excluded query terms should catch tokenized forms on the line",
         );
     }
 

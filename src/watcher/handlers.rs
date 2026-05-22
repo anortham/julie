@@ -13,7 +13,7 @@ use crate::tools::workspace::indexing::finalize::resolve_pending_relationships;
 use crate::tools::workspace::indexing::state::IndexingRepairReason;
 use crate::workspace::mutation_gate::MutationGuard;
 use anyhow::{Context, Result};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tracing::{debug, error, info, warn};
@@ -189,6 +189,11 @@ pub(crate) async fn handle_file_created_or_modified_static(
     let structured_pending_relationships = results.structured_pending_relationships.clone();
     let parse_diagnostics = results.parse_diagnostics.clone();
 
+    // Populated inside the DB lock block; moved into the Tantivy spawn_blocking closure.
+    // Default to empty so error paths inside the block can `?` early without
+    // leaving this binding uninitialized.
+    let partner_symbol_ids: Vec<String>;
+
     {
         let mut db_lock = match db.lock() {
             Ok(guard) => guard,
@@ -202,6 +207,26 @@ pub(crate) async fn handle_file_created_or_modified_static(
         };
 
         let existing_symbols = db_lock.get_symbols_for_file(&relative_path)?;
+
+        // Collect the IDs of symbols that have relationships with the current symbols.
+        // These "partners" live in other files and their relationship_text may go stale
+        // once we delete or replace the current file's symbols below.
+        let old_symbol_ids: Vec<String> = existing_symbols.iter().map(|s| s.id.clone()).collect();
+        let mut old_partner_set: HashSet<String> = HashSet::new();
+        if !old_symbol_ids.is_empty() {
+            if let Ok(outgoing) =
+                db_lock.get_outgoing_relationships_for_symbols(&old_symbol_ids)
+            {
+                for rel in outgoing {
+                    old_partner_set.insert(rel.to_symbol_id);
+                }
+            }
+            if let Ok(incoming) = db_lock.get_relationships_to_symbols(&old_symbol_ids) {
+                for rel in incoming {
+                    old_partner_set.insert(rel.from_symbol_id);
+                }
+            }
+        }
 
         // Safeguard against data loss
         if extraction_mode == ExtractionMode::ParserBacked
@@ -274,6 +299,49 @@ pub(crate) async fn handle_file_created_or_modified_static(
             &workspace_id,
         )?;
 
+        // Collect partner IDs for the NEW symbols after the atomic update.
+        // These partners may be missing the new symbol in their relationship_text.
+        let new_symbol_ids: Vec<String> = results.symbols.iter().map(|s| s.id.clone()).collect();
+        let mut new_partner_set: HashSet<String> = HashSet::new();
+        if !new_symbol_ids.is_empty() {
+            if let Ok(outgoing) =
+                db_lock.get_outgoing_relationships_for_symbols(&new_symbol_ids)
+            {
+                for rel in outgoing {
+                    new_partner_set.insert(rel.to_symbol_id);
+                }
+            }
+            if let Ok(incoming) = db_lock.get_relationships_to_symbols(&new_symbol_ids) {
+                for rel in incoming {
+                    new_partner_set.insert(rel.from_symbol_id);
+                }
+            }
+        }
+
+        // Union old and new partner sets; exclude the changed file's own symbol IDs
+        // (they are reprojected by apply_uncommitted_documents_from_symbols); cap to
+        // avoid reprojecting an unbounded number of partner files in large repos.
+        const MAX_PARTNER_REPROJECT: usize = 100;
+        let changed_symbol_ids: HashSet<&str> = old_symbol_ids
+            .iter()
+            .map(String::as_str)
+            .chain(new_symbol_ids.iter().map(String::as_str))
+            .collect();
+        let mut candidates: Vec<String> = old_partner_set
+            .union(&new_partner_set)
+            .filter(|id| !changed_symbol_ids.contains(id.as_str()))
+            .cloned()
+            .collect();
+        if candidates.len() > MAX_PARTNER_REPROJECT {
+            warn!(
+                "Watcher: {} relationship partner symbols to reproject; capping at {}",
+                candidates.len(),
+                MAX_PARTNER_REPROJECT
+            );
+            candidates.truncate(MAX_PARTNER_REPROJECT);
+        }
+        partner_symbol_ids = candidates;
+
         db_lock.update_file_hash(&relative_path, &new_hash_str)?;
         db_lock.store_file_parse_diagnostics(&relative_path, &parse_diagnostics)?;
         db_lock.clear_indexing_repair(&relative_path)?;
@@ -287,14 +355,13 @@ pub(crate) async fn handle_file_created_or_modified_static(
 
     let tantivy_ok = if let Some(search_index) = search_index {
         let symbols = results.symbols.clone();
-        let file_content_doc = crate::search::FileDocument {
-            file_path: relative_path.clone(),
-            content: content_str.clone(),
-            language: language.clone(),
-        };
         let file_to_clean = relative_path.clone();
+        let file_content = content_str.clone();
+        let file_language = language.clone();
 
         let search_index = Arc::clone(search_index);
+        let db_for_tantivy = Arc::clone(db);
+        let partner_ids_for_tantivy = partner_symbol_ids;
         let tantivy_result = tokio::task::spawn_blocking(move || {
             let idx = match search_index.lock() {
                 Ok(guard) => guard,
@@ -303,12 +370,22 @@ pub(crate) async fn handle_file_created_or_modified_static(
                     poisoned.into_inner()
                 }
             };
+            let db_guard = match db_for_tantivy.lock() {
+                Ok(guard) => guard,
+                Err(poisoned) => {
+                    warn!("Database mutex poisoned during Tantivy projection, recovering");
+                    poisoned.into_inner()
+                }
+            };
 
             let ok = match crate::search::projection::apply_uncommitted_documents_from_symbols(
                 &idx,
                 &symbols,
-                std::slice::from_ref(&file_content_doc),
+                &file_to_clean,
+                &file_content,
+                &file_language,
                 std::slice::from_ref(&file_to_clean),
+                &db_guard,
             ) {
                 Ok(()) => true,
                 Err(e) => {
@@ -316,6 +393,24 @@ pub(crate) async fn handle_file_created_or_modified_static(
                     false
                 }
             };
+
+            // Reproject relationship partner symbols so their relationship_text reflects
+            // the just-indexed symbols. Partners live in other files and are not covered
+            // by apply_uncommitted_documents_from_symbols above.
+            if ok && !partner_ids_for_tantivy.is_empty() {
+                if let Err(e) = crate::search::projection::reproject_partner_symbols(
+                    &idx,
+                    &db_guard,
+                    &partner_ids_for_tantivy,
+                ) {
+                    warn!(
+                        "Failed to reproject {} relationship partner symbol(s): {}",
+                        partner_ids_for_tantivy.len(),
+                        e
+                    );
+                }
+            }
+
             // NOTE: commit is intentionally deferred; the caller batches
             // multiple file operations and commits once per tick to avoid
             // Tantivy segment-merge conflicts (FileDoesNotExist on .term files).

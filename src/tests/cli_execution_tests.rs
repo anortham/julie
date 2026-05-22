@@ -84,12 +84,12 @@ fn test_testing_guide_defines_standalone_dogfood_contract() {
 fn test_search_args_tool_name() {
     let args = SearchArgs {
         query: "test".into(),
-        target: "content".into(),
         limit: 10,
         language: None,
         file_pattern: None,
         context_lines: None,
         exclude_tests: false,
+        target: None,
     };
     assert_eq!(args.tool_name(), "fast_search");
 }
@@ -182,16 +182,17 @@ fn test_generic_tool_args_tool_name() {
 fn test_search_to_tool_args_minimal() {
     let args = SearchArgs {
         query: "hello".into(),
-        target: "content".into(),
         limit: 10,
         language: None,
         file_pattern: None,
         context_lines: None,
         exclude_tests: false,
+        target: None,
     };
     let json = args.to_tool_args().unwrap();
     assert_eq!(json["query"], "hello");
-    assert_eq!(json["search_target"], "content");
+    // After T8, search_target is no longer in the tool args.
+    assert!(json.get("search_target").is_none());
     assert_eq!(json["limit"], 10);
     assert!(json.get("language").is_none());
     assert!(json.get("file_pattern").is_none());
@@ -203,16 +204,17 @@ fn test_search_to_tool_args_minimal() {
 fn test_search_to_tool_args_full() {
     let args = SearchArgs {
         query: "parse".into(),
-        target: "definitions".into(),
         limit: 20,
         language: Some("rust".into()),
         file_pattern: Some("src/**/*.rs".into()),
         context_lines: Some(3),
         exclude_tests: true,
+        target: None,
     };
     let json = args.to_tool_args().unwrap();
     assert_eq!(json["query"], "parse");
-    assert_eq!(json["search_target"], "definitions");
+    // After T8, search_target is no longer in the tool args.
+    assert!(json.get("search_target").is_none());
     assert_eq!(json["limit"], 20);
     assert_eq!(json["language"], "rust");
     assert_eq!(json["file_pattern"], "src/**/*.rs");
@@ -386,11 +388,11 @@ fn test_workspace_to_tool_args_with_force() {
 fn test_generic_to_tool_args_valid_json() {
     let args = GenericToolArgs {
         name: "fast_search".into(),
-        params: r#"{"query":"test","search_target":"definitions"}"#.into(),
+        params: r#"{"query":"test","limit":5}"#.into(),
     };
     let json = args.to_tool_args().unwrap();
     assert_eq!(json["query"], "test");
-    assert_eq!(json["search_target"], "definitions");
+    assert_eq!(json["limit"], 5);
 }
 
 #[test]
@@ -522,12 +524,12 @@ async fn test_run_cli_tool_standalone_definition_search_uses_bootstrapped_index(
 
     let args = SearchArgs {
         query: "cli_probe_marker".into(),
-        target: "definitions".into(),
         limit: 10,
         language: Some("rust".into()),
         file_pattern: None,
         context_lines: None,
         exclude_tests: false,
+        target: None,
     };
 
     let output = run_cli_tool(&args, Some(temp.path().to_path_buf()), true)
@@ -643,12 +645,12 @@ async fn test_run_cli_tool_standalone_missing_workspace() {
     let missing_workspace = temp.path().join("missing-workspace");
     let args = SearchArgs {
         query: "test".into(),
-        target: "content".into(),
         limit: 10,
         language: None,
         file_pattern: None,
         context_lines: None,
         exclude_tests: false,
+        target: None,
     };
 
     let result = run_cli_tool(
@@ -705,12 +707,12 @@ async fn test_run_cli_tool_daemon_fallback_missing_workspace() {
 
     let args = SearchArgs {
         query: "test".into(),
-        target: "content".into(),
         limit: 10,
         language: None,
         file_pattern: None,
         context_lines: None,
         exclude_tests: false,
+        target: None,
     };
 
     let result = run_cli_tool(

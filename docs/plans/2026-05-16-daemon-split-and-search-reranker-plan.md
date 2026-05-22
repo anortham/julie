@@ -518,7 +518,7 @@ Migration: for each existing test, replace subprocess setup with `InProcessDaemo
 
 **What to build:** The wiring. Reranker is gated behind a runtime flag (e.g. `JULIE_RERANKER_ENABLED=1` env or a config bool) during development. Once dogfood passes, flag flips to default-on, then flag removed in a follow-up release.
 
-**Approach:** The hard part is preserving today's filtering defaults. Today's `text_search_impl` has different `exclude_tests` defaults based on `search_target`. Document the rule precisely in code comments at the call site. The reranker does not filter; it reweights. Tests must explicitly cover: `target="definitions"` with `exclude_tests=None` finds test helpers; `target="content"` with NL query auto-excludes; explicit `exclude_tests=false` includes; explicit `exclude_tests=true` excludes.
+**Approach:** The hard part is preserving today's filtering defaults. The reranker does not filter; it reweights. Tests must explicitly cover: unified search with `exclude_tests=None` finds test helpers; NL queries auto-exclude test paths; explicit `exclude_tests=false` includes; explicit `exclude_tests=true` excludes.
 
 **Acceptance criteria:**
 - [ ] Regression fixture `fixtures/search-quality/test-helper-discoverability.json` has ≥10 queries proving definition search still finds test helpers.

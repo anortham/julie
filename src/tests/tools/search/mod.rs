@@ -2,12 +2,14 @@
 // These were previously inline tests that have been moved to follow project standards
 
 mod annotation_search_tests;
+mod unified_doc_index_test;
 mod c3_enriched_schema_tests;
+mod compat_marker_v4_test;
+mod schema_phase2_fields_test;
 mod content_scoring_tests;
 mod definition_overfetch_tests;
 mod definition_promotion_tests;
 mod fast_search_regression_tests;
-mod file_hits_test_intent_tests;
 mod file_mode_index_tests;
 mod file_mode_tests;
 mod file_pattern_tests;
@@ -34,10 +36,16 @@ mod tantivy_path_prior_tests;
 mod tantivy_query_expansion_tests;
 mod tantivy_query_weighting_tests;
 mod tantivy_scoring_tests;
-mod tantivy_stemming_tests;
 mod tantivy_tokenizer_tests;
 mod tantivy_variants_tests;
+mod pretokenized_emit_test;
+mod projection_search_doc_test;
+mod relationship_text_test;
 mod title_exact_boost_tests;
-mod tokenizer_ablation_tests;
+mod tokenizer_simple_test;
+mod fast_search_unified_cutover_test;
+mod unified_pass_filter_test;
+mod unified_query_path_test;
+mod unified_reranker_test;
 mod zero_hit_reason_propagation_tests;
 mod zero_hit_reason_tests;

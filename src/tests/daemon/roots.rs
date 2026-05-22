@@ -1730,7 +1730,6 @@ async fn test_fast_search_reference_definitions_first_request_succeeds_without_p
                 serde_json::json!({
                     "query": "secondary_first_request_symbol",
                     "workspace": secondary_id,
-                    "search_target": "definitions",
                     "limit": 5,
                 })
                 .as_object()
@@ -1871,7 +1870,6 @@ async fn test_fast_search_startup_workspace_id_first_request_succeeds_without_pr
                 serde_json::json!({
                     "query": "startup_first_request_symbol",
                     "workspace": startup_workspace_id,
-                    "search_target": "definitions",
                     "limit": 5,
                 })
                 .as_object()
@@ -2647,7 +2645,6 @@ async fn test_first_primary_fast_search_with_deferred_cwd_indexes_before_search(
         CallToolRequestParams::new("fast_search").with_arguments(
             serde_json::json!({
                 "query": "deferred_fast_search_symbol",
-                "search_target": "definitions",
                 "limit": 5
             })
             .as_object()
@@ -2770,7 +2767,6 @@ async fn test_target_fast_search_after_refresh_in_deferred_cwd_without_primary()
         CallToolRequestParams::new("fast_search").with_arguments(
             serde_json::json!({
                 "query": "target_workspace_marker_symbol",
-                "search_target": "definitions",
                 "limit": 5,
                 "workspace": target_workspace_id.clone()
             })

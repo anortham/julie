@@ -507,3 +507,5 @@ fn test_generic_tool_path_get_symbols() {
     assert!(json.get("content").is_some());
     assert!(json.get("isError").is_some());
 }
+
+pub mod cli_search_no_target_test;

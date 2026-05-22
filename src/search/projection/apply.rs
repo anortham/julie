@@ -1,9 +1,16 @@
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
+use tracing::warn;
 
-use crate::database::SymbolDatabase;
+use crate::database::{FileInfo, SymbolDatabase};
 use crate::extractors::{AnnotationMarker, Symbol};
-use crate::search::{FileDocument, SearchIndex, SymbolDocument};
+use crate::search::index::{SearchDocument, truncate_utf8_bytes};
+use crate::search::tokenizer::pretokenize_code;
+use crate::search::SearchIndex;
+use crate::search::scoring::{classify_role, test_subrole};
+
+/// Maximum byte length for `relationship_text` per symbol.
+pub(super) const RELATIONSHIP_TEXT_MAX_BYTES: usize = 512;
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct SymbolIndexContext {
@@ -19,57 +26,368 @@ struct SymbolContextSource {
     annotations: Vec<AnnotationMarker>,
 }
 
+/// Collect related-symbol names for a batch of symbol IDs.
+///
+/// For each symbol in `symbol_ids`, fetches all edges where
+/// `from_symbol_id IN ids OR to_symbol_id IN ids` (one query each direction),
+/// resolves the partner symbol's name, deduplicates, joins with spaces, and
+/// truncates at `max_bytes_per` on the last whitespace boundary.
+///
+/// Returns a `HashMap<symbol_id, relationship_text_blob>`.
+/// Symbols with no relationships are omitted from the map (callers treat
+/// missing keys as empty string).
+pub(crate) fn collect_relationship_names_bounded(
+    db: &SymbolDatabase,
+    symbol_ids: &[String],
+    max_bytes_per: usize,
+) -> Result<HashMap<String, String>> {
+    if symbol_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    // --- ONE batch call each direction ----------------------------------
+    let outgoing = db.get_outgoing_relationships_for_symbols(symbol_ids)?;
+    let incoming = db.get_relationships_to_symbols(symbol_ids)?;
+
+    // Collect all partner IDs we need to resolve to names.
+    // For a given focal symbol_id, the partner is the OTHER end of the edge.
+    // outgoing: from_symbol_id == focal → partner is to_symbol_id
+    // incoming: to_symbol_id == focal → partner is from_symbol_id
+    let focal_set: HashSet<&str> = symbol_ids.iter().map(String::as_str).collect();
+
+    // Build a map: focal_id → set of partner_ids (deduped)
+    let mut focal_to_partners: HashMap<String, HashSet<String>> = HashMap::new();
+
+    for rel in &outgoing {
+        if focal_set.contains(rel.from_symbol_id.as_str()) {
+            focal_to_partners
+                .entry(rel.from_symbol_id.clone())
+                .or_default()
+                .insert(rel.to_symbol_id.clone());
+        }
+    }
+    for rel in &incoming {
+        if focal_set.contains(rel.to_symbol_id.as_str()) {
+            focal_to_partners
+                .entry(rel.to_symbol_id.clone())
+                .or_default()
+                .insert(rel.from_symbol_id.clone());
+        }
+    }
+
+    if focal_to_partners.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    // Gather all unique partner IDs for a single name-lookup batch.
+    let all_partner_ids: Vec<String> = focal_to_partners
+        .values()
+        .flat_map(|s| s.iter().cloned())
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect();
+
+    let partner_symbols = db.get_symbols_by_ids(&all_partner_ids)?;
+    let id_to_name: HashMap<&str, &str> = partner_symbols
+        .iter()
+        .map(|s| (s.id.as_str(), s.name.as_str()))
+        .collect();
+
+    // Build the relationship_text blobs, one per focal symbol.
+    let mut result = HashMap::with_capacity(focal_to_partners.len());
+    for (focal_id, partner_ids) in focal_to_partners {
+        let mut names: Vec<&str> = partner_ids
+            .iter()
+            .filter_map(|pid| id_to_name.get(pid.as_str()).copied())
+            .collect();
+        if names.is_empty() {
+            continue;
+        }
+        names.sort_unstable();
+        let joined = names.join(" ");
+        let blob = truncate_to_whitespace_boundary(&joined, max_bytes_per).to_string();
+        if !blob.is_empty() {
+            result.insert(focal_id, blob);
+        }
+    }
+
+    Ok(result)
+}
+
+/// Truncate `s` to at most `max_bytes` bytes on a whitespace boundary.
+///
+/// If `s` fits within `max_bytes`, returns `s` unchanged. Otherwise truncates
+/// to `max_bytes` bytes (respecting UTF-8 char boundaries via
+/// [`truncate_utf8_bytes`]) then backtracks to the last whitespace so partial
+/// identifiers are never left in the index.
+fn truncate_to_whitespace_boundary(s: &str, max_bytes: usize) -> &str {
+    if s.len() <= max_bytes {
+        return s;
+    }
+    let truncated = truncate_utf8_bytes(s, max_bytes);
+    if let Some(idx) = truncated.rfind(char::is_whitespace) {
+        &truncated[..idx]
+    } else {
+        truncated
+    }
+}
+
 pub(crate) fn apply_uncommitted_documents_from_symbols(
     index: &SearchIndex,
     symbols: &[Symbol],
-    file_docs: &[FileDocument],
+    file_path: &str,
+    file_content: &str,
+    file_language: &str,
     files_to_clean: &[String],
+    db: &SymbolDatabase,
 ) -> Result<()> {
-    let symbol_docs = symbols
-        .iter()
-        .map(SymbolDocument::from_symbol)
-        .collect::<Vec<_>>();
     let symbol_contexts = symbol_contexts_from_symbols(symbols);
-    apply_documents_with_context(
-        index,
-        &symbol_docs,
-        file_docs,
-        files_to_clean,
-        &symbol_contexts,
-        false,
-    )
+    let symbol_ids: Vec<String> = symbols.iter().map(|s| s.id.clone()).collect();
+    let relationship_map = match collect_relationship_names_bounded(
+        db,
+        &symbol_ids,
+        RELATIONSHIP_TEXT_MAX_BYTES,
+    ) {
+        Ok(map) => map,
+        Err(e) => {
+            let msg = e.to_string();
+            if msg.contains("no such table") {
+                warn!("relationship_text skipped: DB not yet migrated ({})", msg);
+                HashMap::new()
+            } else {
+                return Err(e);
+            }
+        }
+    };
+
+    for file_path_to_clean in files_to_clean {
+        index.remove_by_file_path(file_path_to_clean)?;
+    }
+
+    for symbol in symbols {
+        let context = symbol_contexts.get(&symbol.id).cloned().unwrap_or_default();
+        let rel_text = relationship_map.get(&symbol.id).cloned().unwrap_or_default();
+        let search_doc = symbol_to_search_document(symbol, &context, rel_text);
+        index.add_search_doc(&search_doc)?;
+    }
+
+    // Index the file row so line-mode search can find content matches.
+    let file_search_doc = raw_file_to_search_document(file_path, file_content, file_language);
+    index.add_search_doc(&file_search_doc)?;
+
+    Ok(())
 }
 
 pub(crate) fn apply_documents_with_context(
     index: &SearchIndex,
-    symbol_docs: &[SymbolDocument],
-    file_docs: &[FileDocument],
+    symbols: &[Symbol],
+    file_infos: &[FileInfo],
     files_to_clean: &[String],
     symbol_contexts: &HashMap<String, SymbolIndexContext>,
+    relationship_map: &HashMap<String, String>,
     commit: bool,
 ) -> Result<()> {
     for file_path in files_to_clean {
         index.remove_by_file_path(file_path)?;
     }
 
-    for doc in symbol_docs {
-        let context = symbol_contexts.get(&doc.id).cloned().unwrap_or_default();
-        index.add_symbol_with_context(
-            doc,
-            &context.annotation_keys,
-            &context.annotations_text,
-            &context.owner_names_text,
-        )?;
+    for symbol in symbols {
+        let context = symbol_contexts.get(&symbol.id).cloned().unwrap_or_default();
+        let rel_text = relationship_map.get(&symbol.id).cloned().unwrap_or_default();
+        let search_doc = symbol_to_search_document(symbol, &context, rel_text);
+        index.add_search_doc(&search_doc)?;
     }
 
-    for doc in file_docs {
-        index.add_file_content(doc)?;
+    for file_info in file_infos {
+        let search_doc = file_info_to_search_document(file_info);
+        index.add_search_doc(&search_doc)?;
     }
 
     if commit {
         index.commit()?;
     }
     Ok(())
+}
+
+/// Apply documents with full DB-backed relationship enrichment.
+/// Used by the watcher paths that don't go through `project_documents`.
+///
+/// This is the canonical production entry point for relationship_text: it
+/// precomputes the map once per batch then delegates to
+/// `apply_documents_with_context`.
+pub(crate) fn apply_documents_with_db(
+    index: &SearchIndex,
+    symbols: &[Symbol],
+    file_infos: &[FileInfo],
+    files_to_clean: &[String],
+    db: &SymbolDatabase,
+    commit: bool,
+) -> Result<()> {
+    let symbol_ids: Vec<String> = symbols.iter().map(|s| s.id.clone()).collect();
+    let relationship_map =
+        collect_relationship_names_bounded(db, &symbol_ids, RELATIONSHIP_TEXT_MAX_BYTES)
+            .unwrap_or_default();
+    let symbol_contexts = symbol_contexts_from_symbols(symbols);
+    apply_documents_with_context(
+        index,
+        symbols,
+        file_infos,
+        files_to_clean,
+        &symbol_contexts,
+        &relationship_map,
+        commit,
+    )
+}
+
+/// Build a `SearchDocument` (union shape) for a file row from a `FileInfo`.
+/// `code_body` is empty for file rows; `pretokenized_code` is built from the
+/// first ≤ 2000 bytes of content (T4).  `relationship_text` is always empty
+/// for file rows.
+fn file_info_to_search_document(file_info: &FileInfo) -> SearchDocument {
+    let normalized_path = file_info.path.replace('\\', "/");
+    let basename = normalized_path.rsplit('/').next().unwrap_or(&normalized_path).to_string();
+    let name = if basename.contains('.') {
+        basename[..basename.rfind('.').unwrap()].to_string()
+    } else {
+        basename.clone()
+    };
+    let content = file_info.content.as_deref().unwrap_or("");
+    let language = &file_info.language;
+    let role = classify_role(&normalized_path, language);
+    let test_role_str = test_subrole(&normalized_path);
+
+    // pretokenized_code: CamelCase/snake_case-split of the first ≤ 2000 bytes of content.
+    let content_truncated = truncate_utf8_bytes(content, 2000);
+    let pretokenized_code = pretokenize_code(content_truncated);
+
+    SearchDocument {
+        doc_type: "file".to_string(),
+        id: String::new(),
+        name,
+        language: language.clone(),
+        file_path: normalized_path.clone(),
+        basename,
+        kind: "file".to_string(),
+        role: role.to_string(),
+        test_role: test_role_str.to_string(),
+        signature: String::new(),
+        doc_comment: String::new(),
+        code_body: String::new(),
+        annotation_keys: vec![],
+        annotations_text: String::new(),
+        owner_names_text: String::new(),
+        start_line: 0,
+        content: content.to_string(),
+        path_text: normalized_path,
+        pretokenized_code,
+        relationship_text: String::new(),
+    }
+}
+
+/// Build a `SearchDocument` from a `Symbol` and its indexing context.
+fn symbol_to_search_document(
+    symbol: &Symbol,
+    context: &SymbolIndexContext,
+    relationship_text: String,
+) -> SearchDocument {
+    let normalized_path = symbol.file_path.replace('\\', "/");
+    let basename = normalized_path.rsplit('/').next().unwrap_or(&normalized_path).to_string();
+    let path_role = classify_role(&normalized_path, &symbol.language);
+    let path_test_role_str = test_subrole(&normalized_path);
+
+    // Inline test helpers live in non-test files (e.g. `#[cfg(test)]` blocks
+    // inside `src/lib.rs`).  Path heuristics can't detect them; check the
+    // extractor's metadata override so the role and test_role fields carry
+    // the correct classification for the unified reranker and the
+    // `exclude_tests` filter.
+    let meta = symbol.metadata.as_ref();
+    let metadata_is_test = meta
+        .and_then(|m| m.get("is_test"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let metadata_test_role = meta
+        .and_then(|m| m.get("test_role"))
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
+
+    let (role, test_role) = if metadata_is_test && path_role != "test" {
+        let tr = metadata_test_role
+            .unwrap_or_else(|| path_test_role_str.to_string());
+        ("test".to_string(), tr)
+    } else {
+        (
+            path_role.to_string(),
+            metadata_test_role.unwrap_or_else(|| path_test_role_str.to_string()),
+        )
+    };
+
+    let raw_body = symbol.code_context.as_deref().unwrap_or("");
+    let code_body = truncate_utf8_bytes(raw_body, 2000).to_string();
+    let signature = symbol.signature.clone().unwrap_or_default();
+    let pretok_input = format!("{} {} {}", symbol.name, signature, code_body);
+    let pretokenized_code = pretokenize_code(&pretok_input);
+
+    SearchDocument {
+        doc_type: "symbol".to_string(),
+        id: symbol.id.clone(),
+        name: symbol.name.clone(),
+        language: symbol.language.clone(),
+        file_path: normalized_path,
+        basename,
+        kind: symbol.kind.to_string(),
+        role,
+        test_role,
+        signature,
+        doc_comment: symbol.doc_comment.clone().unwrap_or_default(),
+        code_body,
+        annotation_keys: context.annotation_keys.clone(),
+        annotations_text: context.annotations_text.clone(),
+        owner_names_text: context.owner_names_text.clone(),
+        start_line: symbol.start_line,
+        content: String::new(),
+        path_text: String::new(),
+        pretokenized_code,
+        relationship_text,
+    }
+}
+
+/// Build a `SearchDocument` for a file row from raw path/content/language.
+fn raw_file_to_search_document(file_path: &str, content: &str, language: &str) -> SearchDocument {
+    let normalized_path = file_path.replace('\\', "/");
+    let basename = normalized_path.rsplit('/').next().unwrap_or(&normalized_path).to_string();
+    let name = if let Some(dot) = basename.rfind('.') {
+        basename[..dot].to_string()
+    } else {
+        basename.clone()
+    };
+    let role = classify_role(&normalized_path, language);
+    let test_role_str = test_subrole(&normalized_path);
+    let content_truncated = truncate_utf8_bytes(content, 2000);
+    let pretokenized_code = pretokenize_code(content_truncated);
+
+    SearchDocument {
+        doc_type: "file".to_string(),
+        id: String::new(),
+        name,
+        language: language.to_string(),
+        file_path: normalized_path.clone(),
+        basename,
+        kind: "file".to_string(),
+        role: role.to_string(),
+        test_role: test_role_str.to_string(),
+        signature: String::new(),
+        doc_comment: String::new(),
+        code_body: String::new(),
+        annotation_keys: vec![],
+        annotations_text: String::new(),
+        owner_names_text: String::new(),
+        start_line: 0,
+        content: content.to_string(),
+        path_text: normalized_path,
+        pretokenized_code,
+        relationship_text: String::new(),
+    }
 }
 
 pub(crate) fn symbol_contexts_from_symbols(
@@ -93,11 +411,11 @@ pub(crate) fn symbol_contexts_from_symbols(
 
 pub(crate) fn load_symbol_contexts_from_database(
     db: &SymbolDatabase,
-    symbol_docs: &[SymbolDocument],
+    symbols: &[Symbol],
 ) -> Result<HashMap<String, SymbolIndexContext>> {
-    let target_ids = symbol_docs
+    let target_ids = symbols
         .iter()
-        .map(|doc| doc.id.clone())
+        .map(|s| s.id.clone())
         .collect::<Vec<_>>();
     if target_ids.is_empty() {
         return Ok(HashMap::new());
@@ -212,16 +530,124 @@ impl From<&Symbol> for SymbolContextSource {
 
 pub fn apply_documents(
     index: &SearchIndex,
-    symbol_docs: &[SymbolDocument],
-    file_docs: &[FileDocument],
+    symbols: &[Symbol],
+    file_infos: &[FileInfo],
     files_to_clean: &[String],
 ) -> Result<()> {
     apply_documents_with_context(
         index,
-        symbol_docs,
-        file_docs,
+        symbols,
+        file_infos,
         files_to_clean,
+        &HashMap::new(),
         &HashMap::new(),
         true,
     )
+}
+
+/// Maximum number of partner symbols reprojected per watcher event.
+/// Caps the worst-case extra DB + Tantivy work to a bounded amount.
+const MAX_PARTNER_REPROJECT_SYMBOLS: usize = 100;
+
+/// Reproject Tantivy docs for symbols that are relationship partners of a
+/// recently updated file.
+///
+/// When a file is incrementally re-indexed (via the watcher), the SQLite
+/// relationship table is updated atomically, but only the *changed file's*
+/// symbols are re-emitted to Tantivy.  Any symbol in *another* file that has
+/// a relationship edge to/from the changed file now has stale
+/// `relationship_text` in Tantivy.  This function re-emits those partner
+/// symbols with fresh data from SQLite.
+///
+/// Implementation:
+/// 1. Fetch the Symbol objects for `partner_symbol_ids` from SQLite.
+/// 2. Group by `file_path` — at most `MAX_PARTNER_REPROJECT_SYMBOLS` IDs
+///    are processed (a warn is emitted if capped).
+/// 3. For each unique partner file, fetch **all** symbols in that file and
+///    the stored file content, then call `apply_documents_with_db` which
+///    removes stale Tantivy docs for the file and re-adds them with a freshly
+///    computed `relationship_text`.
+///
+/// Callers are responsible for calling `index.commit()` after all partner
+/// reprojections for a tick have been applied.
+pub(crate) fn reproject_partner_symbols(
+    index: &SearchIndex,
+    db: &SymbolDatabase,
+    partner_symbol_ids: &[String],
+) -> Result<()> {
+    if partner_symbol_ids.is_empty() {
+        return Ok(());
+    }
+
+    let ids_to_process = if partner_symbol_ids.len() > MAX_PARTNER_REPROJECT_SYMBOLS {
+        warn!(
+            "Watcher: {} relationship partner symbols; \
+             capping partner reproject at {}",
+            partner_symbol_ids.len(),
+            MAX_PARTNER_REPROJECT_SYMBOLS
+        );
+        &partner_symbol_ids[..MAX_PARTNER_REPROJECT_SYMBOLS]
+    } else {
+        partner_symbol_ids
+    };
+
+    // Resolve partner IDs → Symbol objects to get their file paths.
+    let partner_symbols = db.get_symbols_by_ids(&ids_to_process.to_vec())?;
+    if partner_symbols.is_empty() {
+        return Ok(());
+    }
+
+    // Collect the unique file paths that need reprojection.
+    let mut partner_files: HashSet<String> = HashSet::new();
+    for sym in &partner_symbols {
+        partner_files.insert(sym.file_path.clone());
+    }
+
+    // Fetch file contents for all partner files in one batch.
+    let file_paths_vec: Vec<String> = partner_files.into_iter().collect();
+    let file_contents = db.get_file_contents_by_paths(&file_paths_vec)?;
+
+    for file_path in &file_paths_vec {
+        // Fetch ALL symbols in the partner file (not just the relationship partners),
+        // because remove_by_file_path removes all docs for the file and we must
+        // re-add every symbol to avoid holes in the index.
+        let all_syms = db.get_symbols_for_file(file_path)?;
+        if all_syms.is_empty() {
+            continue;
+        }
+
+        let content = file_contents
+            .get(file_path)
+            .and_then(|c| c.as_deref())
+            .unwrap_or("");
+        let language = all_syms
+            .first()
+            .map(|s| s.language.as_str())
+            .unwrap_or("unknown");
+
+        let file_info = FileInfo {
+            path: file_path.clone(),
+            language: language.to_string(),
+            content: Some(content.to_string()),
+            hash: String::new(),
+            size: 0,
+            last_modified: 0,
+            last_indexed: 0,
+            symbol_count: all_syms.len() as i32,
+            line_count: 0,
+        };
+
+        // Remove stale Tantivy docs and re-add with fresh relationship_text.
+        // `commit: false` — callers batch the commit across all partner files.
+        apply_documents_with_db(
+            index,
+            &all_syms,
+            &[file_info],
+            &[file_path.clone()],
+            db,
+            false,
+        )?;
+    }
+
+    Ok(())
 }

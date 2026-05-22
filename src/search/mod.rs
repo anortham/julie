@@ -21,10 +21,10 @@ pub mod weights;
 
 pub use error::{Result, SearchError};
 pub use index::{
-    ContentSearchResult, ContentSearchResults, FileDocument, SearchFilter, SearchIndex,
-    SymbolDocument, SymbolSearchResult, SymbolSearchResults,
+    ContentSearchResult, ContentSearchResults, SearchDocument, SearchFilter, SearchIndex,
+    SymbolSearchResult, SymbolSearchResults,
 };
 pub use language_config::LanguageConfigs;
 pub use projection::SearchProjection;
 pub use schema::{SchemaFields, create_schema};
-pub use tokenizer::CodeTokenizer;
+pub use tokenizer::{CodeTokenizer, SimpleCodeTokenizer, pretokenize_code};

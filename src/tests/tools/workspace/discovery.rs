@@ -87,7 +87,37 @@ fn test_analyze_vendor_patterns_does_not_flag_libs_directory() {
 }
 
 #[test]
-fn test_analyze_vendor_patterns_detects_plugin_directory() {
+fn test_analyze_vendor_patterns_does_not_flag_bin_directory() {
+    // bin/ overwhelmingly holds user CLI scripts in modern repos
+    // (npm package bin entries, install scripts, executable utilities).
+    // Compiled output is already caught by target/, dist/, build/, out/.
+    let tool = create_tool();
+    let (temp_dir, files) = create_workspace_with_files(vec![
+        "bin/install.js",
+        "bin/cli.js",
+        "bin/run.js",
+        "bin/deploy.js",
+        "bin/setup.js",
+        "bin/migrate.js",
+        "bin/lint.js", // >5 files, would trip the count threshold
+    ]);
+
+    let patterns = tool
+        .analyze_vendor_patterns(&files, temp_dir.path())
+        .expect("Failed to analyze patterns");
+
+    assert!(
+        !patterns.iter().any(|p| p == "bin" || p.starts_with("bin/")),
+        "bin/ must NOT be flagged as vendor — it overwhelmingly holds user CLI scripts. Got: {:?}",
+        patterns,
+    );
+}
+
+#[test]
+fn test_analyze_vendor_patterns_does_not_flag_plugin_directory() {
+    // plugin/plugins commonly hold user-authored code in plugin monorepos
+    // (julie-plugin, codex-plugin-cc) and CMS plugin directories. Third-party
+    // plugins should live under vendor/ or third-party/ when applicable.
     let tool = create_tool();
     let (temp_dir, files) = create_workspace_with_files(vec![
         "Scripts/plugin/plugin1.js",
@@ -102,8 +132,13 @@ fn test_analyze_vendor_patterns_detects_plugin_directory() {
         .analyze_vendor_patterns(&files, temp_dir.path())
         .expect("Failed to analyze patterns");
 
-    assert_eq!(patterns.len(), 1);
-    assert_eq!(patterns[0], "Scripts/plugin");
+    assert!(
+        !patterns
+            .iter()
+            .any(|p| p == "Scripts/plugin" || p == "plugin" || p == "plugins"),
+        "plugin/ must NOT be auto-flagged — user-authored plugin code lives here. Got: {:?}",
+        patterns,
+    );
 }
 
 #[test]
@@ -304,13 +339,13 @@ fn test_analyze_vendor_patterns_detects_multiple_directories() {
         "Scripts/vendor/lib4.js",
         "Scripts/vendor/lib5.js",
         "Scripts/vendor/lib6.js",
-        // Second vendor directory (plugin/)
-        "Scripts/plugin/p1.js",
-        "Scripts/plugin/p2.js",
-        "Scripts/plugin/p3.js",
-        "Scripts/plugin/p4.js",
-        "Scripts/plugin/p5.js",
-        "Scripts/plugin/p6.js",
+        // Second vendor directory (third-party/)
+        "Scripts/third-party/p1.js",
+        "Scripts/third-party/p2.js",
+        "Scripts/third-party/p3.js",
+        "Scripts/third-party/p4.js",
+        "Scripts/third-party/p5.js",
+        "Scripts/third-party/p6.js",
     ]);
 
     let patterns = tool
@@ -319,7 +354,7 @@ fn test_analyze_vendor_patterns_detects_multiple_directories() {
 
     assert_eq!(patterns.len(), 2, "Should detect 2 vendor directories");
     assert!(patterns.contains(&"Scripts/vendor".to_string()));
-    assert!(patterns.contains(&"Scripts/plugin".to_string()));
+    assert!(patterns.contains(&"Scripts/third-party".to_string()));
 }
 
 // ═══════════════════════════════════════════════════════════════════════

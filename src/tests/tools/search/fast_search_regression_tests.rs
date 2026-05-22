@@ -7,7 +7,7 @@ use crate::database::{FileInfo, SymbolDatabase};
 use crate::extractors::{Symbol, SymbolKind};
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::CallToolResult;
-use crate::search::index::{SearchFilter, SearchIndex};
+use crate::search::index::{SearchDocument, SearchFilter, SearchIndex};
 use crate::tools::search::FastSearchTool;
 use crate::tools::search::text_search::definition_search_with_index_for_test;
 use crate::tools::search::trace::ZeroHitReason;
@@ -134,8 +134,16 @@ fn fast_search_deserializes_limit_with_public_bounds() {
     assert_eq!(high.limit, 500);
 }
 
+/// Regression: a qualified-name Elixir symbol (`Phoenix.Router`) must be
+/// returned when querying "Router" (dot-separated names are token-split so
+/// "router" appears as a term).
+///
+/// Previously this tested a SQLite rescue path (symbols stored only in SQLite
+/// but not in Tantivy).  The T9 unified-schema cutover removed that fallback;
+/// symbols must be in both stores.  The invariant under test is now: symbols
+/// indexed in Tantivy via the unified schema are findable by a partial token.
 #[test]
-fn sqlite_rescue_counts_rescued_hits_in_pre_trunc_total() -> Result<()> {
+fn tantivy_indexed_qualified_name_found_by_partial_token() -> Result<()> {
     let db_dir = TempDir::new()?;
     let db_path = db_dir.path().join("symbols.db");
     let mut db = SymbolDatabase::new(&db_path)?;
@@ -154,6 +162,19 @@ fn sqlite_rescue_counts_rescued_hits_in_pre_trunc_total() -> Result<()> {
 
     let index_dir = TempDir::new()?;
     let index = SearchIndex::create(index_dir.path())?;
+    // Index the symbol in Tantivy (the unified path requires it).
+    let sym = rescued_symbol();
+    index.add_search_doc(&SearchDocument::symbol_from_parts(
+        &sym.id,
+        &sym.name,
+        sym.signature.as_deref().unwrap_or(""),
+        sym.doc_comment.as_deref().unwrap_or(""),
+        sym.code_context.as_deref().unwrap_or(""),
+        &sym.file_path,
+        "module",
+        &sym.language,
+        sym.start_line,
+    ))?;
     index.commit()?;
 
     let filter = SearchFilter {
@@ -165,7 +186,7 @@ fn sqlite_rescue_counts_rescued_hits_in_pre_trunc_total() -> Result<()> {
     let (symbols, _relaxed, total) =
         definition_search_with_index_for_test("Router", &filter, 5, &index, Some(&db))?;
 
-    assert_eq!(symbols.len(), 1);
+    assert_eq!(symbols.len(), 1, "Expected one result for 'Router'. Got: {:?}", symbols.iter().map(|s| &s.name).collect::<Vec<_>>());
     assert_eq!(symbols[0].name, "Phoenix.Router");
     assert_eq!(total, 1);
 
@@ -190,7 +211,6 @@ async fn content_nl_default_excludes_tests_but_explicit_false_includes_them() ->
 
     let default_run = FastSearchTool {
         query: "refresh token".to_string(),
-        search_target: "content".to_string(),
         limit: 10,
         workspace: Some("primary".to_string()),
         context_lines: Some(0),
@@ -226,7 +246,6 @@ async fn content_nl_default_excludes_tests_but_explicit_false_includes_them() ->
 
     let explicit_include = FastSearchTool {
         query: "refresh token".to_string(),
-        search_target: "content".to_string(),
         limit: 10,
         workspace: Some("primary".to_string()),
         context_lines: Some(0),
@@ -269,7 +288,6 @@ async fn content_auto_exclude_tests_respects_explicit_test_file_pattern() -> Res
 
     let scoped_to_tests = FastSearchTool {
         query: query.to_string(),
-        search_target: "content".to_string(),
         language: Some("rust".to_string()),
         file_pattern: Some("src/tests/**".to_string()),
         limit: 10,
@@ -300,7 +318,6 @@ async fn content_auto_exclude_tests_respects_explicit_test_file_pattern() -> Res
 
     let unscoped = FastSearchTool {
         query: query.to_string(),
-        search_target: "content".to_string(),
         language: Some("rust".to_string()),
         limit: 10,
         workspace: Some("primary".to_string()),
@@ -347,7 +364,6 @@ async fn content_test_intent_keeps_and_ranks_test_files() -> Result<()> {
     let handler = index_workspace(workspace_path).await?;
     let execution = FastSearchTool {
         query: "test refresh token".to_string(),
-        search_target: "content".to_string(),
         limit: 10,
         workspace: Some("primary".to_string()),
         context_lines: Some(0),
@@ -416,7 +432,7 @@ fn definition_test_intent_uses_metadata_for_inline_test_helpers_before_centralit
     let index_dir = TempDir::new()?;
     let index = SearchIndex::create(index_dir.path())?;
     for symbol in [&source, &test_helper] {
-        index.add_symbol(&crate::search::SymbolDocument::from_symbol(symbol))?;
+        index.add_search_doc(&crate::search::index::SearchDocument::for_symbol(symbol, vec![], String::new(), String::new()))?;
     }
     index.commit()?;
 
@@ -465,7 +481,6 @@ async fn content_locations_format_omits_matching_line_text() -> Result<()> {
     let handler = index_workspace(workspace_path).await?;
     let result = FastSearchTool {
         query: "compact_location_marker".to_string(),
-        search_target: "content".to_string(),
         return_format: "locations".to_string(),
         limit: 10,
         workspace: Some("primary".to_string()),
@@ -505,7 +520,6 @@ async fn definition_search_with_zero_limit_still_returns_one_result() -> Result<
     let handler = index_workspace(workspace_path).await?;
     let result = FastSearchTool {
         query: "zero_limit_should_still_find_one".to_string(),
-        search_target: "definitions".to_string(),
         return_format: "locations".to_string(),
         limit: 0,
         workspace: Some("primary".to_string()),
@@ -546,7 +560,6 @@ async fn file_search_missing_index_names_file_mode() -> Result<()> {
 
     let result = FastSearchTool {
         query: "main.rs".to_string(),
-        search_target: "files".to_string(),
         context_lines: None,
         limit: 10,
         workspace: Some("primary".to_string()),
@@ -556,13 +569,16 @@ async fn file_search_missing_index_names_file_mode() -> Result<()> {
     .await?;
 
     let text = extract_text(&result);
+    // After T8 cutover, the unified surface no longer emits per-mode missing-
+    // index messages.  The neutral "Search requires a Tantivy index..." message
+    // covers all search modes (definition / content / file) uniformly.
     assert!(
-        text.contains("File search requires a Tantivy index"),
-        "file mode should name file search in the missing-index message, got:\n{text}"
+        text.contains("Search requires a Tantivy index"),
+        "missing-index message should name the search index, got:\n{text}"
     );
     assert!(
         !text.contains("Definition search requires"),
-        "file mode should not report a definition-search error, got:\n{text}"
+        "unified path should not report a definition-specific error, got:\n{text}"
     );
 
     Ok(())
@@ -590,7 +606,6 @@ async fn file_search_preserves_hidden_directory_ranking_in_tool_output() -> Resu
     let handler = index_workspace(workspace_path).await?;
     let execution = FastSearchTool {
         query: ".cargo".to_string(),
-        search_target: "files".to_string(),
         limit: 10,
         workspace: Some("primary".to_string()),
         context_lines: None,

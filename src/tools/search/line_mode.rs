@@ -22,7 +22,6 @@ use super::query::{
     line_match_strategy, line_matches, looks_like_whitespace_separated_globs, matches_glob_pattern,
     term_matches_line, tokenize_text_for_line_match,
 };
-use super::text_search;
 use super::trace::{FilePatternDiagnostic, ZeroHitReason};
 use super::types::{LineMatch, LineMatchStrategy};
 
@@ -96,7 +95,7 @@ pub(crate) fn query_uses_file_level_header(query: &str) -> bool {
     )
 }
 
-fn effective_content_exclude_tests(
+pub(crate) fn effective_content_exclude_tests(
     query: &str,
     file_pattern: &Option<String>,
     exclude_tests: Option<bool>,
@@ -112,7 +111,77 @@ fn effective_content_exclude_tests(
         return false;
     }
 
+    // T12 follow-up: queries that themselves name tests are clearly looking
+    // for test artifacts ("src tests atomic operations.test.ts", "hub routes
+    // test artifacts.py").  NL-default-exclude-tests would otherwise drop the
+    // user's actual target.  Mirror the existing file_pattern test-path
+    // override for the query string.
+    if query_names_a_test(query) {
+        return false;
+    }
+
     parse_query(query).intent != QueryIntent::Test && is_nl_like_query(query)
+}
+
+/// True when the query string itself indicates the caller is looking for test
+/// artifacts — either by naming a test path segment (`tests`, `__tests__`,
+/// `spec`) or by carrying a test-file extension token (`.test.ts`,
+/// `_test.go`, `test_*.py`, `.spec.ts`, ...).  Used by
+/// [`effective_content_exclude_tests`] to skip NL-default-exclude-tests when
+/// the query is itself test-shaped.
+fn query_names_a_test(query: &str) -> bool {
+    let q = query.to_ascii_lowercase();
+
+    for term in q.split_whitespace() {
+        match term {
+            "test" | "tests" | "__tests__" | "spec" => return true,
+            _ => {}
+        }
+    }
+
+    let endings: &[&str] = &[
+        ".test.ts",
+        ".test.tsx",
+        ".test.js",
+        ".test.jsx",
+        ".spec.ts",
+        ".spec.tsx",
+        ".spec.js",
+        ".spec.jsx",
+        "_test.go",
+        "_test.c",
+        "_test.cc",
+        "_test.cpp",
+    ];
+    let go_style_test_prefixes: &[&str] = &[
+        // Eros tokenises `active_help_test.go` as
+        // `active help test.go`, so the last token starts with `test.`
+        // followed by the original extension.  Matching any
+        // `test.<short-ext>` here catches the Go (`_test.go`) and
+        // C/C++ (`_test.c`, `_test.cc`, `_test.cpp`) families when
+        // the leading underscore was split off into a separate token.
+        "test.go",
+        "test.c",
+        "test.cc",
+        "test.cpp",
+    ];
+    for term in q.split_whitespace() {
+        for ending in endings {
+            if term.ends_with(ending) {
+                return true;
+            }
+        }
+        for prefix in go_style_test_prefixes {
+            if term == *prefix {
+                return true;
+            }
+        }
+        // Python `test_*.py` (file *starts* with `test_`, ends with `.py`).
+        if term.starts_with("test_") && term.ends_with(".py") {
+            return true;
+        }
+    }
+    false
 }
 
 fn scoped_fetch_limits(base_limit: usize, has_file_filter: bool) -> (usize, usize) {
@@ -136,12 +205,12 @@ fn widened_probe_limit(initial_fetch_limit: usize) -> usize {
 fn diagnose_scoped_file_pattern_miss<S>(
     search_once: &mut S,
     file_pattern: Option<&str>,
-    file_results: &[crate::search::index::ContentSearchResult],
+    file_results: &[crate::search::index::UnifiedHit],
     fetch_limit: usize,
     hard_cap: usize,
 ) -> Result<Option<FilePatternDiagnostic>>
 where
-    S: FnMut(usize) -> Result<crate::search::index::ContentSearchResults>,
+    S: FnMut(usize) -> Result<Vec<crate::search::index::UnifiedHit>>,
 {
     let Some(pattern) = file_pattern else {
         return Ok(None);
@@ -166,7 +235,6 @@ where
 
     let wider_results = search_once(probe_limit)?;
     if wider_results
-        .results
         .iter()
         .any(|result| matches_glob_pattern(&result.file_path, pattern))
     {
@@ -178,7 +246,7 @@ where
 
 fn collect_matches_from_file_results(
     db: &crate::database::SymbolDatabase,
-    file_results: &[crate::search::index::ContentSearchResult],
+    file_results: &[crate::search::index::UnifiedHit],
     file_pattern: Option<&str>,
     language: Option<&str>,
     exclude_test_files: bool,
@@ -253,20 +321,19 @@ fn run_line_mode_fetch_loop<S, C>(
     Option<FilePatternDiagnostic>,
 )>
 where
-    S: FnMut(usize) -> Result<crate::search::index::ContentSearchResults>,
+    S: FnMut(usize) -> Result<Vec<crate::search::index::UnifiedHit>>,
     C: FnMut(
-        &[crate::search::index::ContentSearchResult],
+        &[crate::search::index::UnifiedHit],
     ) -> Result<(Vec<LineMatch>, LineModeStageCounts, bool)>,
 {
     let (mut fetch_limit, hard_cap) = scoped_fetch_limits(base_limit, has_file_filter);
 
     loop {
-        let content_results = search_once(fetch_limit)?;
-        let relaxed = content_results.relaxed;
-        let file_results = content_results.results;
+        let file_results = search_once(fetch_limit)?;
+        let relaxed = false; // OR fallback is internal to search_unified
         let mut counts = LineModeStageCounts {
-            and_candidates: content_results.and_candidate_count,
-            or_candidates: content_results.or_candidate_count,
+            and_candidates: 0,
+            or_candidates: 0,
             tantivy_file_candidates: file_results.len(),
             ..Default::default()
         };
@@ -325,10 +392,16 @@ fn run_line_mode_workspace_fetch(
     base_limit: usize,
 ) -> Result<LineModeFetchOutcome> {
     let has_file_filter = file_pattern.is_some();
+    // The file_pattern filter is applied externally below in
+    // `collect_matches_from_file_results` so `file_pattern_dropped` stage
+    // counters reflect candidates that Tantivy returned but the line-mode
+    // filter rejected.  Passing it through `SearchFilter` would have
+    // `search_unified` drop those candidates before the counter ever saw
+    // them, breaking the stage-count contract.
     let filter = SearchFilter {
         language: language.clone(),
         kind: None,
-        file_pattern: file_pattern.clone(),
+        file_pattern: None,
         exclude_tests: false,
     };
 
@@ -341,9 +414,14 @@ fn run_line_mode_workspace_fetch(
                     poisoned.into_inner()
                 }
             };
-            let mut results = index.search_content(&query, &filter, fetch_limit)?;
-            text_search::apply_reranker_to_content_results(&query, &mut results.results, Some(db));
-            Ok(results)
+            // Unified search returns both symbol and file hits; line mode only
+            // needs file hits. Reranking is already applied inside search_unified.
+            let all_hits = index.search_unified(&query, &filter, fetch_limit)?;
+            let file_hits: Vec<_> = all_hits
+                .into_iter()
+                .filter(|h| h.kind == "file")
+                .collect();
+            Ok(file_hits)
         },
         |file_results| {
             collect_matches_from_file_results(
@@ -537,8 +615,8 @@ pub async fn line_mode_search(
     if result.matches.is_empty() {
         let message = format!(
             "🔍 No lines found matching: '{}'\n\
-            💡 Try search_target=\"definitions\" if looking for a symbol name, or broaden file_pattern/language filters",
-            query
+            💡 Broaden file_pattern/language filters, or search for a symbol name with fast_search(query=\"{}\")",
+            query, query
         );
         return Ok(CallToolResult::text_content(vec![Content::text(message)]));
     }

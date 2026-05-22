@@ -15,11 +15,11 @@
 mod tests {
     use crate::extractors::SymbolKind;
     use crate::search::query_parse::parse_query;
-    use crate::search::reranker::{Candidate, Ranked, rerank};
+    use crate::search::reranker::{Candidate, Ranked, rerank_unified};
 
     fn ranks(query: &str, candidates: Vec<Candidate>) -> Vec<Ranked> {
         let parsed = parse_query(query);
-        rerank(&parsed, &candidates)
+        rerank_unified(&parsed, &candidates)
     }
 
     /// Candidate factory tuned for ordering tests. Sets BM25-ish base score

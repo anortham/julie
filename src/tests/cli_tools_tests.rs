@@ -28,7 +28,7 @@ fn test_tool_command_debug_assert() {
 fn test_search_defaults() {
     let args = SearchArgs::parse_from(["search", "hello"]);
     assert_eq!(args.query, "hello");
-    assert_eq!(args.target, "content");
+    // After T8, --target / search_target removed from the public CLI surface.
     assert_eq!(args.limit, 10);
     assert!(args.language.is_none());
     assert!(args.file_pattern.is_none());
@@ -41,8 +41,6 @@ fn test_search_all_flags() {
     let args = SearchArgs::parse_from([
         "search",
         "parse_token",
-        "--target",
-        "definitions",
         "--limit",
         "20",
         "--language",
@@ -54,7 +52,6 @@ fn test_search_all_flags() {
         "--exclude-tests",
     ]);
     assert_eq!(args.query, "parse_token");
-    assert_eq!(args.target, "definitions");
     assert_eq!(args.limit, 20);
     assert_eq!(args.language.as_deref(), Some("rust"));
     assert_eq!(args.file_pattern.as_deref(), Some("src/**/*.rs"));
@@ -65,9 +62,9 @@ fn test_search_all_flags() {
 #[test]
 fn test_search_short_flags() {
     let args = SearchArgs::parse_from([
-        "search", "query", "-t", "files", "-n", "5", "-l", "python", "-f", "*.py", "-C", "2", "-T",
+        "search", "query", "-n", "5", "-l", "python", "-f", "*.py", "-C", "2", "-T",
     ]);
-    assert_eq!(args.target, "files");
+    // After T8, -t / --target is removed. Other flags still work.
     assert_eq!(args.limit, 5);
     assert_eq!(args.language.as_deref(), Some("python"));
     assert_eq!(args.file_pattern.as_deref(), Some("*.py"));

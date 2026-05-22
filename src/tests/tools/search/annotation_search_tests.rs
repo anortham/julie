@@ -4,7 +4,7 @@ use tempfile::TempDir;
 
 use crate::database::{FileInfo, SymbolDatabase};
 use crate::extractors::{AnnotationMarker, Symbol, SymbolKind};
-use crate::search::{SearchFilter, SearchIndex, SearchProjection, SymbolDocument};
+use crate::search::{SearchFilter, SearchIndex, SearchProjection};
 use crate::tools::search::text_search::definition_search_with_index_for_test;
 
 fn marker(annotation: &str, annotation_key: &str, raw_text: &str) -> AnnotationMarker {
@@ -85,9 +85,8 @@ fn projected_index_with_db(symbols: &[Symbol]) -> (TempDir, TempDir, SymbolDatab
 
     let index_dir = TempDir::new().unwrap();
     let index = SearchIndex::create(index_dir.path()).unwrap();
-    let symbol_docs: Vec<_> = symbols.iter().map(SymbolDocument::from_symbol).collect();
     SearchProjection::tantivy("annotation-search-tests")
-        .project_documents(&mut db, &index, &symbol_docs, &[], &[], Some(1))
+        .project_documents(&mut db, &index, symbols, &[], &[], Some(1))
         .unwrap();
 
     (db_dir, index_dir, db, index)

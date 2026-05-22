@@ -5,7 +5,7 @@ mod tests {
     use tempfile::TempDir;
 
     use crate::database::{FileInfo, SymbolDatabase};
-    use crate::search::index::{SearchIndex, SymbolDocument, SymbolSearchResult};
+    use crate::search::index::{SearchDocument, SearchIndex, SymbolSearchResult};
     use crate::tools::get_context::pipeline::run_pipeline_with_options;
     use crate::tools::get_context::scoring::select_pivots_with_task_signals_for_query;
     use crate::tools::get_context::task_signals::{TaskSignals, hydrate_failing_test_links};
@@ -117,7 +117,7 @@ mod tests {
 
         for symbol in symbols {
             index
-                .add_symbol(&SymbolDocument::from_symbol(symbol))
+                .add_search_doc(&SearchDocument::for_symbol(symbol, vec![], String::new(), String::new()))
                 .unwrap();
         }
         index.commit().unwrap();

@@ -65,20 +65,16 @@ impl GlobalToolFlags {
 // search
 // ---------------------------------------------------------------------------
 
-/// Search code, symbols, or file paths.
+/// Search code and symbols using unified search.
 ///
 /// Examples:
 ///   julie-server search "FastSearchTool"
-///   julie-server search "parse" --target definitions --language rust
-///   julie-server search "*.rs" --target files
+///   julie-server search "parse" --language rust
+///   julie-server search "browser_client.rs"
 #[derive(Debug, Clone, Parser)]
 pub struct SearchArgs {
     /// Search query
     pub query: String,
-
-    /// Search target: content, definitions, or files
-    #[arg(short = 't', long, default_value = "content")]
-    pub target: String,
 
     /// Maximum results (default: 10)
     #[arg(short = 'n', long, default_value = "10")]
@@ -92,13 +88,22 @@ pub struct SearchArgs {
     #[arg(short = 'f', long)]
     pub file_pattern: Option<String>,
 
-    /// Context lines before/after a content match
+    /// Context lines before/after a match
     #[arg(short = 'C', long)]
     pub context_lines: Option<u32>,
 
     /// Exclude test symbols from results
     #[arg(short = 'T', long)]
     pub exclude_tests: bool,
+
+    /// Deprecated and accepted as a no-op since T8 unified-search cutover.
+    /// Older harnesses (e.g. the eros bakeoff comparator) still pass
+    /// `--target definitions|files|content`; we keep the flag so they can run
+    /// against the current unified path without a clap parse error. The value
+    /// is read but otherwise ignored — every query routes through the same
+    /// unified path regardless.
+    #[arg(short = 't', long, hide = true)]
+    pub target: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -337,7 +342,7 @@ pub struct SignalsArgs {
 /// Run any tool by name with JSON parameters.
 ///
 /// Examples:
-///   julie-server tool fast_search --params '{"query":"main","search_target":"definitions"}'
+///   julie-server tool fast_search --params '{"query":"main","limit":5}'
 ///   julie-server tool deep_dive --params '{"symbol":"Command","depth":"full"}'
 ///   julie-server tool call_path --params '{"from":"handle_request","to":"write_response"}'
 #[derive(Debug, Clone, Parser)]

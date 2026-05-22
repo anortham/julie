@@ -1,0 +1,182 @@
+{
+  "commit": "f46cee0b",
+  "total_queries": 406,
+  "top1": 355,
+  "top5": 376,
+  "elapsed_seconds": 45.36798310279846,
+  "rank_counts": {
+    "1": 355,
+    "miss": 30,
+    "3": 7,
+    "2": 13,
+    "4": 1,
+    "5": 0,
+    "unavailable": 0
+  },
+  "by_category": {
+    "exact symbol lookup": {
+      "1": 94,
+      "miss": 1,
+      "2": 1,
+      "3": 1
+    },
+    "documentation phrase lookup": {
+      "1": 57,
+      "miss": 7,
+      "2": 5,
+      "3": 3,
+      "4": 1
+    },
+    "symbol intent lookup": {
+      "1": 76,
+      "miss": 17,
+      "3": 3,
+      "2": 1
+    },
+    "file/path search": {
+      "1": 77,
+      "miss": 3,
+      "2": 3
+    },
+    "likely test lookup": {
+      "1": 35,
+      "2": 3,
+      "miss": 2
+    },
+    "test intent lookup": {
+      "1": 16
+    }
+  },
+  "by_repo": {
+    "Alamofire": {
+      "1": 19,
+      "miss": 5
+    },
+    "browser39": {
+      "1": 19,
+      "miss": 2,
+      "3": 2,
+      "4": 1
+    },
+    "coa-goldfish-mcp": {
+      "1": 24
+    },
+    "cobra": {
+      "1": 24
+    },
+    "codex-plugin-cc": {
+      "1": 19
+    },
+    "eros": {
+      "1": 15,
+      "miss": 6,
+      "2": 3
+    },
+    "express": {
+      "1": 21,
+      "3": 1,
+      "miss": 2
+    },
+    "flask": {
+      "1": 19,
+      "miss": 3,
+      "2": 2
+    },
+    "get-shit-done": {
+      "1": 22,
+      "miss": 1,
+      "2": 1
+    },
+    "gnhf": {
+      "1": 22,
+      "3": 1,
+      "2": 1
+    },
+    "goldfish": {
+      "1": 22,
+      "2": 2
+    },
+    "guava": {
+      "1": 3
+    },
+    "koi": {
+      "1": 22,
+      "2": 2
+    },
+    "mempalace": {
+      "1": 24
+    },
+    "microclaw": {
+      "1": 21,
+      "miss": 3
+    },
+    "nlohmann-json": {
+      "1": 15,
+      "miss": 6,
+      "3": 3
+    },
+    "pi-mcp-adapter": {
+      "1": 23,
+      "2": 1
+    },
+    "riverpod": {
+      "1": 21,
+      "miss": 2,
+      "2": 1
+    }
+  },
+  "unavailable": [],
+  "misses_top1": [
+    "eros:symbol-intent:python-eros-agent-distribution-generator-py:function-generate-agent-bundle",
+    "flask:symbol-intent:docs-conf-py:function-github-link",
+    "gnhf:symbol-intent:src-cli-ts:type-run-info",
+    "microclaw:symbol-intent:build-rs:function-ensure-web-assets",
+    "nlohmann-json:symbol-intent:docs-mkdocs-scripts-check-structure-py:function-check-structure",
+    "pi-mcp-adapter:symbol-intent:types-ts:type-ui-resource-content",
+    "alamofire:documentation-phrase:docs-docsets-alamofire-docset-contents-resources-documents-js-jazzy-js:jazzy-https-github-com-realm-jazzy",
+    "eros:documentation-phrase:python-eros-client-init-py:http-client-for-the-local-eros",
+    "get-shit-done:documentation-phrase:bin-install-js:get-version-from-package-json",
+    "goldfish:documentation-phrase:scripts-sync-agent-skills-ts:sync-script-for-repo-local-agent",
+    "eros:likely-test:python-eros-hub-routes-test-artifacts-py",
+    "nlohmann-json:likely-test:tests-thirdparty-imapdl-filterbr-py",
+    "browser39:symbol-intent:examples-browser39-tools-py:function-ensure-running",
+    "alamofire:documentation-phrase:docs-docsets-alamofire-docset-contents-resources-documents-js-jquery-min-js:jquery-v3-c-openjs-foundation-and",
+    "browser39:documentation-phrase:examples-browser39-tools-rs:browser39-tools-drop-in-web-search",
+    "nlohmann-json:symbol-intent:docs-mkdocs-scripts-check-structure-py:function-check-examples",
+    "eros:symbol-intent:python-eros-agent-distribution-generator-py:function-render-template",
+    "flask:symbol-intent:examples-celery-src-task-app-init-py:function-create-app",
+    "goldfish:documentation-phrase:src-briefs-ts:project-memories-briefs-id-md",
+    "koi:documentation-phrase:src-storage-memory-ts:write-a-memory-to-a-markdown",
+    "nlohmann-json:documentation-phrase:tools-amalgamate-amalgamate-py:amalgamate-py-amalgamate-c-source-and",
+    "eros:documentation-phrase:python-eros-context-init-py:context-assembly-and-token-budgeting",
+    "riverpod:exact-symbol:website-docs-introduction-getting-started-pubspec-tsx:codegen",
+    "alamofire:documentation-phrase:docs-docsets-alamofire-docset-contents-resources-documents-js-lunr-min-js:lunr-http-lunrjs-com-a-bit",
+    "get-shit-done:documentation-phrase:hooks-gsd-context-monitor-js:reads-context-metrics-from-the-statusline",
+    "koi:exact-symbol:src-search-fuse-ts:searchmemories",
+    "nlohmann-json:symbol-intent:docs-mkdocs-scripts-check-structure-py:function-check-links",
+    "alamofire:file-path-search:docs-docsets-alamofire-docset-contents-resources-documents-js-jquery-min-js",
+    "express:exact-symbol:examples-error-index-js:error",
+    "eros:symbol-intent:python-eros-agent-distribution-generator-py:function-plugin-json",
+    "flask:symbol-intent:examples-celery-src-task-app-init-py:function-celery-init-app",
+    "browser39:documentation-phrase:openclaw-plugin-index-ts:openclaw-native-plugin-for-browser39",
+    "express:file-path-search:examples-content-negotiation-index-js",
+    "nlohmann-json:symbol-intent:docs-mkdocs-scripts-check-structure-py:function-collect-links",
+    "riverpod:documentation-phrase:website-src-theme-docpage-layout-index-tsx:import-usedoc-from-docusaurus-theme-common",
+    "alamofire:file-path-search:docs-docsets-alamofire-docset-contents-resources-documents-js-lunr-min-js",
+    "eros:file-path-search:python-eros-agent-distribution-init-py",
+    "flask:likely-test:examples-tutorial-tests-conftest-py",
+    "nlohmann-json:symbol-intent:tools-amalgamate-amalgamate-py:function-actual-path",
+    "eros:symbol-intent:python-eros-agent-distribution-generator-py:function-ensure-no-existing-artifacts",
+    "microclaw:symbol-intent:build-rs:function-default-npm-command",
+    "express:likely-test:test-acceptance-content-negotiation-js",
+    "browser39:symbol-intent:examples-browser39-tools-rs:function-tool-definitions",
+    "eros:file-path-search:python-eros-agent-distribution-generator-py",
+    "nlohmann-json:symbol-intent:tools-amalgamate-amalgamate-py:function-find-included-file",
+    "browser39:documentation-phrase:src-cli-batch-rs:list-with-non-matching-domain",
+    "flask:likely-test:examples-tutorial-tests-test-auth-py",
+    "gnhf:documentation-phrase:src-core-config-ts:abort-after-this-many-consecutive-failures",
+    "microclaw:symbol-intent:build-rs:function-run-command",
+    "nlohmann-json:symbol-intent:tools-amalgamate-amalgamate-py:function-is-within",
+    "riverpod:file-path-search:website-docs-concepts2-family-notifier-index-tsx"
+  ]
+}

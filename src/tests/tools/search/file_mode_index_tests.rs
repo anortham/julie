@@ -1,18 +1,18 @@
 use tempfile::TempDir;
 
 use crate::search::index::{
-    FileDocument, FileMatchKind, SEARCH_COMPAT_MARKER_FILE, SearchFilter, SearchIndex,
+    FileMatchKind, SEARCH_COMPAT_MARKER_FILE, SearchDocument, SearchFilter, SearchIndex,
     SearchIndexOpenDisposition, classify_file_match,
 };
 use crate::search::language_config::LanguageConfigs;
 
 fn add_file_doc(index: &SearchIndex, file_path: &str, language: &str) {
     index
-        .add_file_content(&FileDocument {
-            file_path: file_path.into(),
-            content: format!("// placeholder for {file_path}"),
-            language: language.into(),
-        })
+        .add_search_doc(&SearchDocument::file_from_parts(
+            file_path,
+            format!("// placeholder for {file_path}"),
+            language,
+        ))
         .unwrap();
 }
 

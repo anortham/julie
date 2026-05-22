@@ -1,7 +1,7 @@
 use serde::Serialize;
 
 use crate::extractors::Symbol;
-use crate::search::index::FileSearchResult;
+use crate::search::index::{FileSearchResult, UnifiedHit};
 
 use super::types::LineMatch;
 
@@ -108,6 +108,102 @@ impl SearchHit {
             workspace,
             symbol_id: None,
             backing: SearchHitBacking::File(file_result),
+        }
+    }
+
+    /// Build a [`SearchHit`] directly from a [`UnifiedHit`] returned by
+    /// [`SearchIndex::search_unified`], preserving the original `kind` field.
+    ///
+    /// File rows (`kind == "file"`) are represented with `line = None` and
+    /// `symbol_id = None`, matching the shape returned by `from_file_result`.
+    /// Symbol rows carry their `id` and `start_line` from the index.
+    pub fn from_unified_hit(hit: UnifiedHit, workspace: String) -> Self {
+        let is_file = hit.kind == "file";
+        let name = if is_file {
+            // Use the basename for file hits so the display matches
+            // what `from_file_result` produces.
+            if hit.basename.is_empty() {
+                hit.file_path
+                    .rsplit('/')
+                    .next()
+                    .unwrap_or(&hit.file_path)
+                    .to_string()
+            } else {
+                hit.basename.clone()
+            }
+        } else {
+            hit.name.clone()
+        };
+
+        let snippet = if !hit.signature.is_empty() {
+            Some(hit.signature.clone())
+        } else if !hit.doc_comment.is_empty() {
+            Some(hit.doc_comment.clone())
+        } else {
+            None
+        };
+
+        let symbol_id = if is_file { None } else { Some(hit.id.clone()) };
+        let line = if is_file { None } else { Some(hit.start_line) };
+
+        // Construct a minimal FileSearchResult for the backing when kind=="file"
+        // so downstream code that pattern-matches on SearchHitBacking::File works.
+        let backing = if is_file {
+            SearchHitBacking::File(FileSearchResult {
+                file_path: hit.file_path.clone(),
+                language: hit.language.clone(),
+                score: hit.tantivy_score,
+                match_kind: crate::search::index::FileMatchKind::ExactBasename,
+            })
+        } else {
+            use crate::extractors::SymbolKind;
+            let kind = SymbolKind::try_from_string(&hit.kind).unwrap_or(SymbolKind::Variable);
+            SearchHitBacking::Symbol(Symbol {
+                id: hit.id.clone(),
+                name: hit.name.clone(),
+                kind,
+                language: hit.language.clone(),
+                file_path: hit.file_path.clone(),
+                start_line: hit.start_line,
+                start_column: 0,
+                end_line: 0,
+                end_column: 0,
+                start_byte: 0,
+                end_byte: 0,
+                signature: if hit.signature.is_empty() {
+                    None
+                } else {
+                    Some(hit.signature.clone())
+                },
+                doc_comment: if hit.doc_comment.is_empty() {
+                    None
+                } else {
+                    Some(hit.doc_comment.clone())
+                },
+                visibility: None,
+                parent_id: None,
+                metadata: None,
+                semantic_group: None,
+                confidence: Some(hit.tantivy_score),
+                code_context: None,
+                content_type: None,
+                body_span: None,
+                body_hash: None,
+                annotations: Vec::new(),
+            })
+        };
+
+        Self {
+            name,
+            file: hit.file_path,
+            line,
+            kind: hit.kind,
+            language: hit.language,
+            score: hit.tantivy_score,
+            snippet,
+            workspace,
+            symbol_id,
+            backing,
         }
     }
 

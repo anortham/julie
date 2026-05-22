@@ -36,28 +36,22 @@ pub enum TestCommand {
 /// - `JULIE_ABLATE_CAMEL_EMIT=1` — disables CamelCase split emission.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum Ablation {
-    /// Baseline — no ablation; env vars are unset (default).
+    /// Baseline — no ablation (default). The env-var gates have been removed in T3;
+    /// this variant is kept so `search-matrix baseline --ablation none` still parses
+    /// and `apply_env` / `is_baseline` continue to compile.
     #[default]
     None,
-    /// Disable stemming only (`JULIE_ABLATE_STEMMING=1`).
-    NoStemming,
-    /// Disable CamelCase emit only (`JULIE_ABLATE_CAMEL_EMIT=1`).
-    NoCamel,
-    /// Disable both stemming and CamelCase emit.
-    Both,
 }
 
 impl Ablation {
-    /// Parse from a CLI string. Accepts `none`, `no-stemming`, `no-camel`, `both`.
+    /// Parse from a CLI string. Only `"none"` is accepted; the `no-stemming`, `no-camel`,
+    /// and `both` variants were removed in T3 along with their env-var gates.
     pub fn parse(s: &str) -> Result<Self> {
         match s {
             "none" => Ok(Self::None),
-            "no-stemming" => Ok(Self::NoStemming),
-            "no-camel" => Ok(Self::NoCamel),
-            "both" => Ok(Self::Both),
             other => bail!(
                 "invalid ablation variant `{other}`; \
-                 expected one of: none, no-stemming, no-camel, both"
+                 expected: none  (no-stemming / no-camel / both were removed in T3)"
             ),
         }
     }
@@ -66,50 +60,20 @@ impl Ablation {
     pub fn label(&self) -> &'static str {
         match self {
             Self::None => "",
-            Self::NoStemming => "no-stemming",
-            Self::NoCamel => "no-camel",
-            Self::Both => "both",
         }
     }
 
-    /// Returns true when no ablation is active (i.e. this is a plain baseline run).
+    /// Returns true when no ablation is active (always true now that only `None` exists).
     pub fn is_baseline(&self) -> bool {
         matches!(self, Self::None)
     }
 
-    /// Set the relevant env vars and return a guard that restores prior state on drop.
-    ///
-    /// The `EnvGuard` must be kept alive for the duration of the workspace pool
-    /// lifetime so the tokenizer reads the correct flags at construction time.
-    ///
-    /// # Safety rationale
-    ///
-    /// The xtask binary is single-threaded by design (no Rayon, no parallel
-    /// workspace init). `set_var` / `remove_var` are safe within this constraint.
+    /// Return a no-op env guard.  The env-var gates (`JULIE_ABLATE_STEMMING`,
+    /// `JULIE_ABLATE_CAMEL_EMIT`) were removed in T3; this method exists only so
+    /// existing call sites in `search_matrix.rs` continue to compile unchanged.
     pub fn apply_env(&self) -> EnvGuard {
-        let guard = EnvGuard::capture(&["JULIE_ABLATE_STEMMING", "JULIE_ABLATE_CAMEL_EMIT"]);
-        // SAFETY: single-threaded xtask context; guard restores state on drop.
-        unsafe {
-            match self {
-                Self::None => {
-                    std::env::remove_var("JULIE_ABLATE_STEMMING");
-                    std::env::remove_var("JULIE_ABLATE_CAMEL_EMIT");
-                }
-                Self::NoStemming => {
-                    std::env::set_var("JULIE_ABLATE_STEMMING", "1");
-                    std::env::remove_var("JULIE_ABLATE_CAMEL_EMIT");
-                }
-                Self::NoCamel => {
-                    std::env::remove_var("JULIE_ABLATE_STEMMING");
-                    std::env::set_var("JULIE_ABLATE_CAMEL_EMIT", "1");
-                }
-                Self::Both => {
-                    std::env::set_var("JULIE_ABLATE_STEMMING", "1");
-                    std::env::set_var("JULIE_ABLATE_CAMEL_EMIT", "1");
-                }
-            }
-        }
-        guard
+        // Nothing to set — capture an empty set of keys so the guard is a true no-op.
+        EnvGuard::capture(&[])
     }
 }
 

@@ -434,7 +434,7 @@ impl QueueRuntime {
         );
 
         for rel_path in dirty_paths {
-            let (symbols, file_doc) = {
+            let (symbols, file_content, file_language) = {
                 let db_guard = self
                     .db
                     .lock()
@@ -448,25 +448,27 @@ impl QueueRuntime {
                     .first()
                     .map(|symbol| symbol.language.clone())
                     .unwrap_or_else(|| "unknown".to_string());
-                let file_doc = crate::search::FileDocument {
-                    file_path: rel_path.clone(),
-                    content,
-                    language,
-                };
-                (symbols, file_doc)
+                (symbols, content, language)
             };
 
             let search_index = Arc::clone(search_index);
+            let db_for_retry = Arc::clone(&self.db);
             let rel_clone = rel_path.clone();
             let retry_result = tokio::task::spawn_blocking(move || {
                 let idx = search_index
                     .lock()
                     .unwrap_or_else(|poisoned| poisoned.into_inner());
+                let db_guard = db_for_retry
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
                 crate::search::projection::apply_uncommitted_documents_from_symbols(
                     &idx,
                     &symbols,
-                    std::slice::from_ref(&file_doc),
+                    &rel_clone,
+                    &file_content,
+                    &file_language,
                     std::slice::from_ref(&rel_clone),
+                    &db_guard,
                 )?;
                 Ok::<(), anyhow::Error>(())
             })

@@ -148,13 +148,11 @@ mod tests {
 
         let params = serde_json::json!({
             "query": "test_query",
-            "search_target": "definitions",
             "limit": 5
         });
 
         let tool: FastSearchTool = deserialize_params("fast_search", params).unwrap();
         assert_eq!(tool.query, "test_query");
-        assert_eq!(tool.search_target, "definitions");
         assert_eq!(tool.limit, 5);
     }
 
@@ -365,7 +363,6 @@ mod tests {
 
         let tool: FastSearchTool = deserialize_params("fast_search", params).unwrap();
         assert_eq!(tool.query, "hello");
-        assert_eq!(tool.search_target, "content"); // default
         assert_eq!(tool.limit, 10); // default
         assert_eq!(tool.language, None);
         assert_eq!(tool.file_pattern, None);

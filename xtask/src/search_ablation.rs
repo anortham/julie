@@ -36,9 +36,7 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result, bail};
 use julie::database::SymbolDatabase;
-use julie::search::index::FileSearchResult;
-use julie::search::{FileDocument, LanguageConfigs, SearchFilter, SearchIndex, SymbolDocument};
-use julie::tools::search::text_search::definition_search_with_index_for_ablation;
+use julie::search::{LanguageConfigs, SearchDocument, SearchFilter, SearchIndex};
 use serde::{Deserialize, Serialize};
 
 use crate::cli::EvalCommand;
@@ -202,19 +200,15 @@ pub fn run_eval_ablation_command(command: &EvalCommand, stdout: &mut dyn Write) 
     let symbols = db.get_all_symbols().context("loading symbols")?;
     let mut indexed_symbols = 0usize;
     for sym in &symbols {
-        let doc = SymbolDocument::from_symbol(sym);
-        if index.add_symbol(&doc).is_ok() {
+        let doc = SearchDocument::for_symbol(sym, vec![], String::new(), String::new());
+        if index.add_search_doc(&doc).is_ok() {
             indexed_symbols += 1;
         }
     }
     if let Ok(file_contents) = db.get_all_file_contents_with_language() {
         for (path, language, content) in &file_contents {
-            let doc = FileDocument {
-                file_path: path.clone(),
-                content: content.clone(),
-                language: language.clone(),
-            };
-            let _ = index.add_file_content(&doc);
+            let doc = SearchDocument::file_from_parts(path, content, language);
+            let _ = index.add_search_doc(&doc);
         }
     }
     index.commit().context("committing Tantivy index")?;
@@ -308,7 +302,7 @@ fn run_mode(
     mode: Mode,
     queries: &[CorpusQuery],
     index: &SearchIndex,
-    db: &SymbolDatabase,
+    _db: &SymbolDatabase,
     limit: usize,
     fixture_has_embeddings: bool,
     stdout: &mut dyn Write,
@@ -344,12 +338,6 @@ fn run_mode(
         });
     }
 
-    // Even for hybrid modes we keep `embedding_provider=None` for now — the
-    // fixture has no embeddings, so passing Some would not produce semantic
-    // hits. The `wants_embeddings` branch above already short-circuits;
-    // anything that reaches here is a keyword mode.
-    let embedding_provider: Option<&dyn julie::embeddings::EmbeddingProvider> = None;
-
     let mut latencies_ms = Vec::with_capacity(queries.len());
     let mut per_query = Vec::with_capacity(queries.len());
     let mut top1_relevant = 0usize;
@@ -359,36 +347,30 @@ fn run_mode(
     for entry in queries {
         let filter = SearchFilter::default();
         let started = Instant::now();
-        let hit_paths: Vec<String> = if entry.category == "file-path" {
-            // Production routes file-path queries through SearchIndex::search_files
-            // (a different code path that doesn't run the reranker). We do the
-            // same here so the harness reflects how these queries are handled
-            // end-to-end; the reranker env var is set, just no-op for this path.
-            let res = index
-                .search_files(&entry.query, &filter, limit)
-                .with_context(|| {
-                    format!(
-                        "search_files failed for `{}` (id {})",
-                        entry.query, entry.id
-                    )
-                })?;
-            res.results.iter().map(file_path_of_file_hit).collect()
-        } else {
-            let (symbols, _relaxed, _total) = definition_search_with_index_for_ablation(
-                &entry.query,
-                &filter,
-                limit,
-                index,
-                Some(db),
-                embedding_provider,
-            )
+        // Both file-path and definition queries now go through the unified
+        // search path (T9 cutover).  File-path queries filter to kind=="file"
+        // hits; definition queries filter to non-file hits.  The reranker env
+        // var is still honoured by the unified path.
+        let all_hits = index
+            .search_unified(&entry.query, &filter, limit)
             .with_context(|| {
                 format!(
-                    "search failed for query `{}` (id {})",
+                    "search_unified failed for `{}` (id {})",
                     entry.query, entry.id
                 )
             })?;
-            symbols.iter().map(|s| s.file_path.clone()).collect()
+        let hit_paths: Vec<String> = if entry.category == "file-path" {
+            all_hits
+                .into_iter()
+                .filter(|h| h.kind == "file")
+                .map(|h| h.file_path)
+                .collect()
+        } else {
+            all_hits
+                .into_iter()
+                .filter(|h| h.kind != "file")
+                .map(|h| h.file_path)
+                .collect()
         };
         let latency_ms = started.elapsed().as_millis() as u64;
         latencies_ms.push(latency_ms);
@@ -481,10 +463,6 @@ fn first_relevant_rank_paths(hit_paths: &[String], expected_paths: &[String]) ->
         }
     }
     None
-}
-
-fn file_path_of_file_hit(hit: &FileSearchResult) -> String {
-    hit.file_path.clone()
 }
 
 fn percentiles(values: &mut [u64]) -> (u64, u64) {

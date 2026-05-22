@@ -207,7 +207,7 @@ pub fn hybrid_search(
     };
 
     // Step 1: Tantivy keyword search (always runs)
-    let tantivy_results = search_index.search_symbols(query, filter, tantivy_limit)?;
+    let tantivy_results = search_index.search_symbols_via_unified(query, filter, tantivy_limit)?;
 
     // Step 2: If no embedding provider, return keyword results directly
     let provider = match embedding_provider {

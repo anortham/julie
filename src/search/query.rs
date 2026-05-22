@@ -457,3 +457,183 @@ pub fn build_file_query(
 
     BooleanQuery::new(subqueries)
 }
+
+// ---------------------------------------------------------------------------
+// Phase 2 — unified query
+// ---------------------------------------------------------------------------
+
+/// Per-field boost weights for the unified BM25 sweep.
+/// Derived from Eros's `_field_score` defaults.
+const UNIFIED_NAME_BOOST: f32 = 4.0;
+const UNIFIED_PATH_TEXT_BOOST: f32 = 1.5;
+const UNIFIED_SIGNATURE_BOOST: f32 = 2.0;
+const UNIFIED_DOC_COMMENT_BOOST: f32 = 1.5;
+const UNIFIED_RELATIONSHIP_TEXT_BOOST: f32 = 1.5;
+const UNIFIED_CODE_BODY_BOOST: f32 = 1.0;
+const UNIFIED_PRETOKENIZED_CODE_BOOST: f32 = 1.5;
+/// File-content field is exclusive to file rows.  Weight matches `code_body`
+/// (the symbol-row equivalent) so symbol-vs-file scoring stays balanced when
+/// the kind filter is off and both contribute to the candidate pool.
+const UNIFIED_CONTENT_BOOST: f32 = 1.0;
+
+/// Build a single BM25 sweep across all seven core FTS fields with no
+/// `doc_type` filter, returning mixed-kind hits.
+///
+/// Unlike the per-target builders this function does NOT add a `doc_type`
+/// Must clause — it intentionally matches symbol rows, file rows, and any
+/// other document type stored in the index.
+///
+/// Per-field weights:
+/// - `name`: 4.0  (heaviest — primary symbol/file identifier)
+/// - `signature`: 2.0
+/// - `path_text`: 1.5
+/// - `doc_comment`: 1.5
+/// - `relationship_text`: 1.5
+/// - `pretokenized_code`: 1.5
+/// - `code_body`: 1.0  (baseline)
+///
+/// Term construction: same OR-of-AND-of-OR pattern as
+/// `build_symbol_query_weighted`.  Each term group (original / alias /
+/// normalized) contributes boosted Should clauses across all seven fields.
+/// Term groups are ANDed together when `require_all_terms` is true, otherwise
+/// OR'd (relaxation path).
+/// Field-set selector for [`build_unified_query`].
+///
+/// `Mixed` searches all seven core fields (name/path_text/signature/doc_comment/
+/// relationship_text/code_body/pretokenized_code) plus `content` — used when
+/// the caller wants both symbol and file rows in the candidate pool.
+///
+/// `FilesOnly` searches only `content` and `path_text` — mirrors the pre-T9
+/// `build_content_query_weighted` shape so that file-content queries are not
+/// skewed by name/basename boosts on symbol-shaped fields that file rows don't
+/// populate meaningfully.
+///
+/// `SymbolsOnly` searches the seven core symbol fields but skips `content` —
+/// symbol rows leave `content` empty so including it just dilutes BM25 IDF.
+#[derive(Copy, Clone, Debug)]
+pub enum UnifiedQueryFieldSet {
+    Mixed,
+    FilesOnly,
+    SymbolsOnly,
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn build_unified_query(
+    original_terms: &[String],
+    alias_terms: &[String],
+    normalized_terms: &[String],
+    name_field: Field,
+    path_text_field: Field,
+    signature_field: Field,
+    doc_comment_field: Field,
+    relationship_text_field: Field,
+    code_body_field: Field,
+    pretokenized_code_field: Field,
+    content_field: Field,
+    field_set: UnifiedQueryFieldSet,
+    require_all_terms: bool,
+) -> BooleanQuery {
+    // No doc_type filter — mixed kinds is the whole point.
+    // Each per-term sub-query is tagged with whether it came from the
+    // `original_terms` group; only original terms can become `Must` clauses in
+    // AND mode.  Alias and normalized terms are expansions and may not have a
+    // matching stem in the index, so requiring them to match would unfairly
+    // filter out otherwise-relevant documents (e.g. expansion of
+    // `assert_min_results` produces normalized `result` which is absent from
+    // the indexed `results` token — no stemming at index time).
+    let mut term_clauses: Vec<(Occur, Box<dyn tantivy::query::Query>, bool)> = Vec::new();
+
+    let grouped_terms: [(&[String], f32, bool); 3] = [
+        (original_terms, ORIGINAL_GROUP_WEIGHT, true),
+        (alias_terms, ALIAS_GROUP_WEIGHT, false),
+        (normalized_terms, NORMALIZED_GROUP_WEIGHT, false),
+    ];
+
+    for (terms, group_weight, is_original_group) in grouped_terms {
+        let group_factor = group_weight / ORIGINAL_GROUP_WEIGHT;
+
+        for term in terms {
+            let term_lower = term.to_lowercase();
+
+            // Field-set selection. `FilesOnly` skips symbol-shape fields
+            // (name/signature/code_body/etc.) that file rows leave empty —
+            // including them would otherwise create lopsided BM25 IDF when
+            // a symbol with `name=language` happens to share a token with the
+            // query.  `SymbolsOnly` skips `content` for the inverse reason.
+            let field_boosts: Vec<(Field, f32)> = match field_set {
+                UnifiedQueryFieldSet::Mixed => vec![
+                    (name_field, UNIFIED_NAME_BOOST),
+                    (path_text_field, UNIFIED_PATH_TEXT_BOOST),
+                    (signature_field, UNIFIED_SIGNATURE_BOOST),
+                    (doc_comment_field, UNIFIED_DOC_COMMENT_BOOST),
+                    (relationship_text_field, UNIFIED_RELATIONSHIP_TEXT_BOOST),
+                    (code_body_field, UNIFIED_CODE_BODY_BOOST),
+                    (pretokenized_code_field, UNIFIED_PRETOKENIZED_CODE_BOOST),
+                    (content_field, UNIFIED_CONTENT_BOOST),
+                ],
+                UnifiedQueryFieldSet::FilesOnly => vec![
+                    (content_field, UNIFIED_CONTENT_BOOST),
+                    (path_text_field, UNIFIED_PATH_TEXT_BOOST),
+                ],
+                UnifiedQueryFieldSet::SymbolsOnly => vec![
+                    (name_field, UNIFIED_NAME_BOOST),
+                    (path_text_field, UNIFIED_PATH_TEXT_BOOST),
+                    (signature_field, UNIFIED_SIGNATURE_BOOST),
+                    (doc_comment_field, UNIFIED_DOC_COMMENT_BOOST),
+                    (relationship_text_field, UNIFIED_RELATIONSHIP_TEXT_BOOST),
+                    (code_body_field, UNIFIED_CODE_BODY_BOOST),
+                    (pretokenized_code_field, UNIFIED_PRETOKENIZED_CODE_BOOST),
+                ],
+            };
+
+            let mut per_term_clauses: Vec<(Occur, Box<dyn tantivy::query::Query>)> = Vec::new();
+            for (field, field_boost) in field_boosts {
+                let t = Term::from_field_text(field, &term_lower);
+                let tq = TermQuery::new(t, IndexRecordOption::Basic);
+                per_term_clauses.push((
+                    Occur::Should,
+                    Box::new(BoostQuery::new(
+                        Box::new(tq),
+                        field_boost * group_factor,
+                    )),
+                ));
+            }
+
+            term_clauses.push((
+                Occur::Should,
+                Box::new(BooleanQuery::new(per_term_clauses)),
+                is_original_group,
+            ));
+        }
+    }
+
+    if term_clauses.is_empty() {
+        return BooleanQuery::new(vec![]);
+    }
+
+    if require_all_terms {
+        // AND mode: only ORIGINAL term clauses are `Must`; alias and
+        // normalized clauses contribute scoring boosts as `Should`.
+        let must_clauses: Vec<(Occur, Box<dyn tantivy::query::Query>)> = term_clauses
+            .into_iter()
+            .map(|(_, q, is_original)| {
+                if is_original {
+                    (Occur::Must, q)
+                } else {
+                    (Occur::Should, q)
+                }
+            })
+            .collect();
+        BooleanQuery::new(must_clauses)
+    } else {
+        // OR mode: at least one term must match but we wrap in Must so that
+        // Tantivy's "only Must clauses are required" semantics gives us
+        // genuine OR-of-terms.
+        let or_clauses: Vec<(Occur, Box<dyn tantivy::query::Query>)> = term_clauses
+            .into_iter()
+            .map(|(occur, q, _)| (occur, q))
+            .collect();
+        let or_wrapper = BooleanQuery::new(or_clauses);
+        BooleanQuery::new(vec![(Occur::Must, Box::new(or_wrapper))])
+    }
+}

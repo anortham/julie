@@ -1,39 +1,27 @@
 //! Code-aware tokenization for search indexing.
 //!
-//! Provides a Tantivy-compatible tokenizer that understands code conventions:
-//! - Preserves special character sequences (::, ->, ?., etc.)
-//! - Splits CamelCase into component words
-//! - Splits snake_case into component words
-//! - Keeps original tokens for exact matching
+//! Provides two Tantivy-compatible tokenizers:
+//!
+//! - [`CodeTokenizer`] — the legacy full-featured tokenizer: preserves special-character
+//!   sequences, splits CamelCase/snake_case, strips affixes, and keeps the original token.
+//!   Registered under name `"code"`.
+//!
+//! - [`SimpleCodeTokenizer`] — minimal tokenizer: lowercase + ASCII-fold + length cap (80).
+//!   No CamelCase/snake_case splitting, no stemming.
+//!   Registered under name `"simple_code"`.
+//!   Used for the `pretokenized_code` field: the index-time [`pretokenize_code`] function
+//!   pre-expands identifiers so the simple tokenizer indexes all component parts.
 
-use std::sync::LazyLock;
-
-use rust_stemmers::{Algorithm, Stemmer};
 use tantivy::tokenizer::{Token, TokenStream, Tokenizer};
 
 use crate::search::language_config::LanguageConfigs;
 
-static ENGLISH_STEMMER: LazyLock<Stemmer> = LazyLock::new(|| Stemmer::create(Algorithm::English));
-
 /// Code-aware Tantivy tokenizer with CamelCase/snake_case splitting,
-/// special-character preservation, affix stripping, and English stemming.
+/// special-character preservation, and affix stripping.
 ///
-/// # Ablation env vars
-///
-/// Two runtime gates are available for A/B bakeoffs. Both default to **off** (normal behavior).
-///
-/// - `JULIE_ABLATE_STEMMING=1` — disables the English-stemmer step. Tokens are emitted as-is
-///   without morphological variants. Because stemming is applied at *both* index time and query
-///   time, disabling this gate only shifts query-time behavior for an already-indexed corpus;
-///   for a clean A/B measurement the bakeoff harness must rebuild the index with the flag set.
-///
-/// - `JULIE_ABLATE_CAMEL_EMIT=1` — `split_camel_case` is bypassed; the whole identifier is
-///   emitted as a single lowercased token rather than its component parts. The same index-rebuild
-///   caveat applies: tokens split at index time remain split in the existing index.
-///
-/// Both flags are read once at `CodeTokenizer` construction and stored as `bool` fields. The
-/// `TokenizerCompatibilitySignature` includes them, so toggling either flag forces a Tantivy
-/// index rebuild the next time the workspace is opened.
+/// Registered under name `"code"`. Call sites that need only
+/// lowercase + ASCII-fold + length-cap behaviour should use
+/// [`SimpleCodeTokenizer`] (`"simple_code"`) instead.
 #[derive(Clone)]
 pub struct CodeTokenizer {
     /// Patterns to preserve as single tokens (e.g., "::", "->")
@@ -45,11 +33,6 @@ pub struct CodeTokenizer {
     strip_prefixes: Vec<String>,
     /// Suffixes to strip from identifiers (e.g., "Service", "Controller")
     strip_suffixes: Vec<String>,
-    /// When true (`JULIE_ABLATE_STEMMING=1`), the English stemmer step is skipped.
-    ablate_stemming: bool,
-    /// When true (`JULIE_ABLATE_CAMEL_EMIT=1`), CamelCase splitting is skipped and the
-    /// full identifier is emitted as one token.
-    ablate_camel_emit: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -58,35 +41,17 @@ pub struct TokenizerCompatibilitySignature {
     pub meaningful_affixes: Vec<String>,
     pub strip_prefixes: Vec<String>,
     pub strip_suffixes: Vec<String>,
-    /// Mirrors `CodeTokenizer::ablate_stemming`. Included so that toggling
-    /// `JULIE_ABLATE_STEMMING` forces a full index rebuild.
-    pub ablate_stemming: bool,
-    /// Mirrors `CodeTokenizer::ablate_camel_emit`. Included so that toggling
-    /// `JULIE_ABLATE_CAMEL_EMIT` forces a full index rebuild.
-    pub ablate_camel_emit: bool,
 }
 
 impl CodeTokenizer {
     pub fn new(preserve_patterns: Vec<String>) -> Self {
         let mut patterns = preserve_patterns;
         patterns.sort_by_key(|b| std::cmp::Reverse(b.len()));
-        // Read ablation env vars once at construction. Any non-empty value other than "0"
-        // enables the gate; unset or "0" preserves the default (normal) behavior.
-        let ablate_stemming = std::env::var("JULIE_ABLATE_STEMMING")
-            .ok()
-            .map(|v| v != "0" && !v.is_empty())
-            .unwrap_or(false);
-        let ablate_camel_emit = std::env::var("JULIE_ABLATE_CAMEL_EMIT")
-            .ok()
-            .map(|v| v != "0" && !v.is_empty())
-            .unwrap_or(false);
         Self {
             preserve_patterns: patterns,
             meaningful_affixes: Vec::new(),
             strip_prefixes: Vec::new(),
             strip_suffixes: Vec::new(),
-            ablate_stemming,
-            ablate_camel_emit,
         }
     }
 
@@ -149,8 +114,6 @@ impl CodeTokenizer {
             meaningful_affixes: canonicalize_signature_values(&self.meaningful_affixes),
             strip_prefixes: canonicalize_signature_values(&self.strip_prefixes),
             strip_suffixes: canonicalize_signature_values(&self.strip_suffixes),
-            ablate_stemming: self.ablate_stemming,
-            ablate_camel_emit: self.ablate_camel_emit,
         }
     }
 }
@@ -172,8 +135,6 @@ impl Tokenizer for CodeTokenizer {
             &self.meaningful_affixes,
             &self.strip_prefixes,
             &self.strip_suffixes,
-            self.ablate_stemming,
-            self.ablate_camel_emit,
         )
     }
 }
@@ -192,8 +153,6 @@ impl<'a> CodeTokenStream<'a> {
         meaningful_affixes: &[String],
         strip_prefixes: &[String],
         strip_suffixes: &[String],
-        ablate_stemming: bool,
-        ablate_camel_emit: bool,
     ) -> Self {
         let tokens = tokenize_code(
             text,
@@ -201,8 +160,6 @@ impl<'a> CodeTokenStream<'a> {
             meaningful_affixes,
             strip_prefixes,
             strip_suffixes,
-            ablate_stemming,
-            ablate_camel_emit,
         );
         Self {
             text,
@@ -237,8 +194,6 @@ fn tokenize_code(
     meaningful_affixes: &[String],
     strip_prefixes: &[String],
     strip_suffixes: &[String],
-    ablate_stemming: bool,
-    ablate_camel_emit: bool,
 ) -> Vec<Token> {
     let mut tokens = Vec::new();
     let mut position = 0;
@@ -272,11 +227,8 @@ fn tokenize_code(
             let mut emitted: std::collections::HashSet<String> = std::collections::HashSet::new();
             emitted.insert(segment_lower.clone());
 
-            // Split CamelCase/PascalCase identifiers (skipped when JULIE_ABLATE_CAMEL_EMIT=1)
-            if !ablate_camel_emit
-                && segment.chars().any(|c| c.is_uppercase())
-                && segment.chars().any(|c| c.is_lowercase())
-            {
+            // Split CamelCase/PascalCase identifiers
+            if segment.chars().any(|c| c.is_uppercase()) && segment.chars().any(|c| c.is_lowercase()) {
                 for part in split_camel_case(&segment) {
                     let lower = part.to_lowercase();
                     if !emitted.contains(&lower) {
@@ -331,37 +283,6 @@ fn tokenize_code(
                 &mut tokens,
                 &mut emitted,
             );
-
-            // Stem emitted tokens for morphological matching
-            // (e.g., "estimation" → "estim", "processor" → "process")
-            // Skipped when JULIE_ABLATE_STEMMING=1.
-            if !ablate_stemming {
-                let stems: Vec<String> = emitted
-                    .iter()
-                    .filter(|t| t.len() >= 4)
-                    .filter_map(|t| {
-                        let stem = ENGLISH_STEMMER.stem(t).to_string();
-                        if stem != *t && !emitted.contains(&stem) {
-                            Some(stem)
-                        } else {
-                            None
-                        }
-                    })
-                    .collect();
-                let mut stems = stems;
-                stems.sort(); // Deterministic ordering (HashSet iteration is non-deterministic)
-                for stem in stems {
-                    tokens.push(Token {
-                        offset_from: offset,
-                        offset_to: offset + segment.len(),
-                        position,
-                        text: stem.clone(),
-                        position_length: 1,
-                    });
-                    position += 1;
-                    emitted.insert(stem);
-                }
-            }
         }
     }
 
@@ -576,4 +497,147 @@ pub fn split_camel_case(s: &str) -> Vec<&str> {
 /// Simply splits on `_` and filters out empty parts.
 pub fn split_snake_case(s: &str) -> Vec<&str> {
     s.split('_').filter(|part| !part.is_empty()).collect()
+}
+
+// ─── SimpleCodeTokenizer ────────────────────────────────────────────────────
+
+/// Minimal code tokenizer: lowercase + ASCII-fold + length cap (80 chars).
+///
+/// Registered under name `"simple_code"` (distinct from Tantivy's built-in `"simple"`
+/// and from the legacy `"code"` tokenizer).
+///
+/// No CamelCase splitting, no snake_case splitting, no stemming.  Intended for
+/// use with the `pretokenized_code` schema field, where [`pretokenize_code`] has
+/// already expanded identifiers into their component parts at index time.
+#[derive(Clone, Default)]
+pub struct SimpleCodeTokenizer;
+
+impl SimpleCodeTokenizer {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+/// Token stream produced by [`SimpleCodeTokenizer`].
+pub struct SimpleCodeTokenStream {
+    tokens: Vec<Token>,
+    current: usize,
+}
+
+impl SimpleCodeTokenStream {
+    fn new(text: &str) -> Self {
+        const MAX_TOKEN_LEN: usize = 80;
+        let mut tokens = Vec::new();
+        let mut position = 0usize;
+
+        for word in text.split_whitespace() {
+            // Lowercase + ASCII-fold (non-ASCII chars are lowercased via Unicode rules;
+            // the length cap is applied in bytes after conversion).
+            let lowered = word.to_lowercase();
+            // Truncate to MAX_TOKEN_LEN bytes, respecting char boundaries.
+            let truncated = if lowered.len() > MAX_TOKEN_LEN {
+                let mut end = MAX_TOKEN_LEN;
+                while !lowered.is_char_boundary(end) {
+                    end -= 1;
+                }
+                &lowered[..end]
+            } else {
+                &lowered
+            };
+            tokens.push(Token {
+                offset_from: 0,
+                offset_to: word.len(),
+                position,
+                text: truncated.to_string(),
+                position_length: 1,
+            });
+            position += 1;
+        }
+
+        Self { tokens, current: 0 }
+    }
+}
+
+impl TokenStream for SimpleCodeTokenStream {
+    fn advance(&mut self) -> bool {
+        if self.current < self.tokens.len() {
+            self.current += 1;
+            true
+        } else {
+            false
+        }
+    }
+
+    fn token(&self) -> &Token {
+        &self.tokens[self.current - 1]
+    }
+
+    fn token_mut(&mut self) -> &mut Token {
+        &mut self.tokens[self.current - 1]
+    }
+}
+
+impl Tokenizer for SimpleCodeTokenizer {
+    type TokenStream<'a> = SimpleCodeTokenStream;
+
+    fn token_stream<'a>(&'a mut self, text: &'a str) -> Self::TokenStream<'a> {
+        SimpleCodeTokenStream::new(text)
+    }
+}
+
+// ─── pretokenize_code ───────────────────────────────────────────────────────
+
+/// Expand a code string into a space-separated string for the `pretokenized_code` field.
+///
+/// For each whitespace-separated token in `text`, emits:
+/// 1. The original token (case-preserved; the downstream tokenizer handles lowercasing).
+/// 2. Each part produced by [`split_camel_case`] (only when the token mixes case).
+/// 3. Each part produced by [`split_snake_case`] (only when the token contains `_`).
+///
+/// Duplicate parts are suppressed per source token.  The result is a single space-joined
+/// string intended to be indexed with [`SimpleCodeTokenizer`], so that a search for any
+/// component word finds the original identifier.
+///
+/// # Example
+///
+/// ```text
+/// pretokenize_code("getUserData_v2")
+/// // → "getUserData_v2 get User Data getUserdata_v2 get user data v2"
+/// //   ^^^original^^^  ^camel parts^  ^snake parts incl. whole lower^
+/// ```
+///
+/// (The exact spacing and case of parts follows `split_camel_case` / `split_snake_case`
+/// return values; the downstream simple tokenizer normalises case.)
+pub fn pretokenize_code(text: &str) -> String {
+    let mut out = Vec::new();
+
+    for token in text.split_whitespace() {
+        // Always emit original.
+        out.push(token.to_string());
+
+        let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+        seen.insert(token.to_lowercase());
+
+        // CamelCase splits (only when the token has mixed case).
+        if token.chars().any(|c| c.is_uppercase()) && token.chars().any(|c| c.is_lowercase()) {
+            for part in split_camel_case(token) {
+                let lower = part.to_lowercase();
+                if seen.insert(lower) {
+                    out.push(part.to_string());
+                }
+            }
+        }
+
+        // snake_case splits.
+        if token.contains('_') {
+            for part in split_snake_case(token) {
+                let lower = part.to_lowercase();
+                if seen.insert(lower) {
+                    out.push(part.to_string());
+                }
+            }
+        }
+    }
+
+    out.join(" ")
 }

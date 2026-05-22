@@ -8,7 +8,7 @@ use std::collections::HashMap;
 
 use serde::Serialize;
 
-use crate::search::index::{ContentSearchResults, SearchFilter, SearchIndex, SymbolSearchResult};
+use crate::search::index::{SearchFilter, SearchIndex, SymbolSearchResult};
 use crate::search::scoring::{
     self, CENTRALITY_WEIGHT, NL_PATH_BOOST_SRC, NL_PATH_PENALTY_DOCS, NL_PATH_PENALTY_FIXTURES,
     NL_PATH_PENALTY_TESTS,
@@ -77,18 +77,17 @@ pub fn search_content_debug(
 ) -> crate::search::Result<ContentDebugResults> {
     let query_tokens = search_index.tokenize_query_public(query_str);
 
-    let ContentSearchResults {
-        results, relaxed, ..
-    } = search_index.search_content(query_str, filter, limit)?;
+    let hits = search_index.search_unified(query_str, filter, limit)?;
+    let relaxed = false; // OR fallback is internal to search_unified
 
-    let debug_results: Vec<ContentDebugResult> = results
+    let debug_results: Vec<ContentDebugResult> = hits
         .into_iter()
-        .map(|r| ContentDebugResult {
-            file_path: r.file_path,
-            language: r.language,
-            final_score: r.score,
-            // Content search has no post-Tantivy boosts, so BM25 == final
-            bm25_score: r.score,
+        .filter(|h| h.kind == "file")
+        .map(|h| ContentDebugResult {
+            file_path: h.file_path,
+            language: h.language,
+            final_score: h.tantivy_score,
+            bm25_score: h.tantivy_score,
             query_tokens: query_tokens.clone(),
             relaxed,
         })

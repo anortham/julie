@@ -36,14 +36,18 @@ pub(crate) fn take_nl_definition_embedding_init_attempts(
     attempts.remove(workspace_root).unwrap_or(0)
 }
 
-/// If this is an NL definitions query and no embedding provider exists yet,
-/// attempt a deferred one-shot initialization (single-flighted).
+/// If this query looks like natural language (multi-word, no special chars)
+/// and no embedding provider exists yet, attempt a deferred one-shot
+/// initialization (single-flighted).
+///
+/// After T8 there is no `search_target` parameter — the gate is purely
+/// query-shape-based so embeddings are initialized when the user asks a
+/// conceptual question regardless of former target distinctions.
 pub(super) async fn maybe_initialize_embeddings_for_nl_definitions(
     query: &str,
-    search_target: &str,
     handler: &JulieServerHandler,
 ) {
-    if search_target != "definitions" || !crate::search::scoring::is_nl_like_query(query) {
+    if !crate::search::scoring::is_nl_like_query(query) {
         return;
     }
 
@@ -226,7 +230,6 @@ mod tests {
         // NL-like definitions query that would otherwise trigger lazy init.
         maybe_initialize_embeddings_for_nl_definitions(
             "how does the user authentication flow work",
-            "definitions",
             &handler,
         )
         .await;
@@ -268,7 +271,6 @@ mod tests {
 
         maybe_initialize_embeddings_for_nl_definitions(
             "how does the user authentication flow work",
-            "definitions",
             &handler,
         )
         .await;
@@ -294,12 +296,7 @@ mod tests {
         // No embedding_service set → stdio mode
         // No workspace set → should_attempt_init returns false → early return
 
-        maybe_initialize_embeddings_for_nl_definitions(
-            "how does login work",
-            "definitions",
-            &handler,
-        )
-        .await;
+        maybe_initialize_embeddings_for_nl_definitions("how does login work", &handler).await;
         // If we got here without panicking, the early return path works.
     }
 

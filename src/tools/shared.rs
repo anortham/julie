@@ -111,7 +111,9 @@ pub const BLACKLISTED_DIRECTORIES: &[&str] = &[
     ".idea",
     ".eclipse",
     // Build and output directories
-    "bin",
+    // NOTE: "bin" is intentionally NOT blacklisted — it commonly holds user CLI
+    // scripts (npm package bin entries, install/deploy scripts). .NET-style
+    // bin/Release/ output is still excluded via the "Release" blacklist below.
     "obj",
     "build",
     "dist",

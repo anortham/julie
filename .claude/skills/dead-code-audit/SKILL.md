@@ -72,7 +72,7 @@ If files changed since indexing, refresh or rebuild the debug index before trust
 1. Resolve the exact symbol:
 
 ```text
-fast_search(query="<name>", search_target="definitions", file_pattern="<narrow path>")
+fast_search(query="<name>", file_pattern="<narrow path>")
 ```
 
 2. Check references with identifier fallback:
@@ -94,7 +94,7 @@ Look for trait implementations, `#[cfg(test)]`, CLI/MCP registration, parser fac
 4. Search for non-graph usage:
 
 ```text
-fast_search(query="<symbol-name>", search_target="content", limit=50)
+fast_search(query="<symbol-name>", limit=50)
 ```
 
 Check strings, config, route names, command names, JSON/TOML/YAML keys, shell scripts, CI files, macro sites, and plugin manifests.

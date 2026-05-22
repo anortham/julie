@@ -26,7 +26,7 @@
 
 use tempfile::TempDir;
 
-use crate::search::index::{SearchFilter, SearchIndex, SymbolDocument};
+use crate::search::index::{SearchDocument, SearchFilter, SearchIndex};
 use crate::search::scoring::{NL_PATH_BOOST_SRC, NL_PATH_PENALTY_TESTS};
 use crate::tools::search::text_search::definition_search_with_index_for_test;
 
@@ -38,17 +38,17 @@ fn add_twin_candidates(index: &SearchIndex, src_path: &str, test_path: &str) {
 
     for (id, file_path) in [("src-auth", src_path), ("test-auth", test_path)] {
         index
-            .add_symbol(&SymbolDocument {
-                id: id.into(),
-                name: "AuthService".into(),
-                signature: "pub struct AuthService".into(),
-                doc_comment: shared_content.into(),
-                code_body: String::new(),
-                file_path: file_path.into(),
-                kind: "struct".into(),
-                language: "rust".into(),
-                start_line: 1,
-            })
+            .add_search_doc(&SearchDocument::symbol_from_parts(
+                id,
+                "AuthService",
+                "pub struct AuthService",
+                shared_content,
+                "",
+                file_path,
+                "struct",
+                "rust",
+                1,
+            ))
             .unwrap();
     }
     index.commit().unwrap();

@@ -14,7 +14,7 @@ use crate::tools::metrics::session::ToolCallReport;
 impl JulieServerHandler {
     #[tool(
         name = "fast_search",
-        description = "Search code, symbols, or file paths using code-aware tokenization. Supports multi-word queries with AND/OR logic. Use `search_target=\"definitions\"` for symbol lookup and conceptual semantic search, or `search_target=\"files\"` for path and basename matches. Alias: `search_target=\"paths\"`.",
+        description = "Search code and symbols using unified code-aware full-text search. Supports multi-word queries with AND/OR logic, exact symbol name matches, file-path fragments, and conceptual semantic search — all in one call.",
         annotations(
             title = "Fast Code Search",
             read_only_hint = true,

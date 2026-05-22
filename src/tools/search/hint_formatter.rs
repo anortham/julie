@@ -95,7 +95,7 @@ pub fn build_multi_token_zero_hit_hint(
          \n\
          Content search requires all tokens on the same line (under Tokens strategy) or the same file (under FileLevel strategy). Multi-token zero-hits usually mean:\n\
          - Concept query → try: get_context(query=\"{query}\")\n\
-         - Symbol lookup → try: fast_search(query=\"{first_token}\", search_target=\"definitions\")\n\
+         - Symbol lookup → try: fast_search(query=\"{first_token}\")\n\
          - Literal phrase → drop to 1-2 key tokens\n\
          \n\
          Tokens: [{tokens_list}]\n\
@@ -158,23 +158,22 @@ fn contains_glob_marker(pattern: &str) -> bool {
         .any(|ch| matches!(ch, '*' | '?' | '[' | ']' | '{' | '}'))
 }
 
-fn build_target_hint(query: &str, target: &str, description: &str) -> String {
+fn build_target_hint(query: &str, description: &str) -> String {
     format!(
-        "0 content matches for \"{query}\".\n\
+        "0 matches for \"{query}\".\n\
          \n\
-         This looks like {description}. Try: fast_search(query=\"{query}\", search_target=\"{target}\")",
+         This looks like {description}. Try: fast_search(query=\"{query}\")",
         query = query,
-        target = target,
         description = description,
     )
 }
 
 fn build_file_target_hint(query: &str) -> String {
-    build_target_hint(query, "files", "a path or file name")
+    build_target_hint(query, "a path or file name")
 }
 
 fn build_definitions_target_hint(query: &str) -> String {
-    build_target_hint(query, "definitions", "a symbol name")
+    build_target_hint(query, "a symbol name")
 }
 
 fn has_path_separator(query: &str) -> bool {

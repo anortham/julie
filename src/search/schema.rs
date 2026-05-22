@@ -42,6 +42,9 @@ pub mod fields {
     // C.3 enriched schema: role/test_role for the reranker.
     pub const ROLE: &str = "role";
     pub const TEST_ROLE: &str = "test_role";
+    // Phase 2 unified schema fields.
+    pub const PRETOKENIZED_CODE: &str = "pretokenized_code";
+    pub const RELATIONSHIP_TEXT: &str = "relationship_text";
 }
 
 /// Build the Tantivy schema for code search.
@@ -92,7 +95,11 @@ pub fn create_schema() -> Schema {
     builder.add_text_field(fields::TEST_ROLE, STRING | STORED);
 
     // File content field (code-tokenized, not stored)
-    builder.add_text_field(fields::CONTENT, code_text_not_stored);
+    builder.add_text_field(fields::CONTENT, code_text_not_stored.clone());
+
+    // Phase 2 unified schema fields (code-tokenized, not stored).
+    builder.add_text_field(fields::PRETOKENIZED_CODE, code_text_not_stored.clone());
+    builder.add_text_field(fields::RELATIONSHIP_TEXT, code_text_not_stored);
 
     builder.build()
 }
@@ -136,6 +143,9 @@ pub struct SchemaFields {
     pub content: Field,
     pub role: Field,
     pub test_role: Field,
+    // Phase 2 unified schema fields.
+    pub pretokenized_code: Field,
+    pub relationship_text: Field,
 }
 
 impl SchemaFields {
@@ -163,6 +173,8 @@ impl SchemaFields {
             content: schema.get_field(fields::CONTENT).unwrap(),
             role: schema.get_field(fields::ROLE).unwrap(),
             test_role: schema.get_field(fields::TEST_ROLE).unwrap(),
+            pretokenized_code: schema.get_field(fields::PRETOKENIZED_CODE).unwrap(),
+            relationship_text: schema.get_field(fields::RELATIONSHIP_TEXT).unwrap(),
         }
     }
 }

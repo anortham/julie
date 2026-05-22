@@ -236,18 +236,22 @@ impl ManageWorkspaceTool {
                 // NOTE: "libs" is NOT vendor — it's the standard Nx/Angular monorepo
                 // source directory (apps/ + libs/). Same reasoning as packages/.
                 // NOTE: "lib" is NOT vendor — it's a source directory in Elixir/Ruby/Dart.
+                // NOTE: "bin" is NOT vendor — it commonly holds user CLI scripts
+                // (npm package bin entries, install scripts, etc.). Compiled output
+                // already covered by target/dist/build/out.
+                // NOTE: "plugin"/"plugins" is NOT vendor — user-authored plugin
+                // monorepos (julie-plugin, codex-plugin-cc, etc.) and CMS plugin
+                // directories commonly hold user code. Third-party plugins should
+                // live under vendor/ or third-party/ when applicable.
                 if matches!(
                     dir_name,
-                    "plugin"
-                        | "plugins"
-                        | "vendor"
+                    "vendor"
                         | "third-party"
                         | "target"
                         | "node_modules"
                         | "build"
                         | "dist"
                         | "out"
-                        | "bin"
                         | "obj"
                         | "Debug"
                         | "Release"
@@ -267,16 +271,13 @@ impl ManageWorkspaceTool {
                 if let Some(dir_name) = parent.file_name().and_then(|n| n.to_str()) {
                     if matches!(
                         dir_name,
-                        "plugin"
-                            | "plugins"
-                            | "vendor"
+                        "vendor"
                             | "third-party"
                             | "target"
                             | "node_modules"
                             | "build"
                             | "dist"
                             | "out"
-                            | "bin"
                             | "obj"
                             | "Debug"
                             | "Release"

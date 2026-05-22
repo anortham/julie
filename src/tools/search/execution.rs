@@ -1,16 +1,13 @@
 use std::cmp::Ordering;
 
-use anyhow::{Result, bail};
+use anyhow::Result;
 
 use crate::handler::JulieServerHandler;
-use crate::search::index::{SearchFilter, rank_file_search_result};
-use crate::search::scoring::{file_path_priority_bucket, is_test_path};
 use crate::tools::navigation::resolution::WorkspaceTarget;
 
-use super::formatting;
+use super::hint_formatter;
 use super::line_mode;
 use super::query;
-use super::target::SearchTarget;
 use super::text_search;
 use super::trace::{
     FilePatternDiagnostic, SearchExecutionKind, SearchExecutionResult, SearchHit, ZeroHitReason,
@@ -21,7 +18,6 @@ pub struct SearchExecutionParams<'a> {
     pub language: &'a Option<String>,
     pub file_pattern: &'a Option<String>,
     pub limit: u32,
-    pub search_target: &'a str,
     pub context_lines: Option<u32>,
     pub exclude_tests: Option<bool>,
 }
@@ -71,370 +67,269 @@ pub async fn execute_search(
         language: params.language,
         file_pattern: &normalized_file_pattern,
         limit: params.limit,
-        search_target: params.search_target,
         context_lines: params.context_lines,
         exclude_tests: params.exclude_tests,
     };
 
-    let search_target = SearchTarget::parse(normalized_params.search_target)?;
-
-    match search_target {
-        SearchTarget::Content => {
-            execute_content_search(normalized_params, workspaces, handler).await
-        }
-        SearchTarget::Definitions => {
-            execute_definition_search(normalized_params, workspaces, handler).await
-        }
-        SearchTarget::Files => execute_file_search(normalized_params, workspaces, handler).await,
-    }
+    // T8 cutover: all traffic routes through the unified path.
+    // The per-target execute_* functions (execute_definition_search,
+    // execute_content_search, execute_file_search) still exist but are
+    // unreachable from production callers; T9 will delete them.
+    execute_search_unified(normalized_params, workspaces, handler).await
 }
 
 fn sort_hits_by_score_desc(hits: &mut [SearchHit]) {
     hits.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(Ordering::Equal));
 }
 
-/// Sort file-target hits by:
-/// 1. File-search rank (exact path, hidden-directory match, match kind)
-/// 2. Path-role bucket (source < test < docs < fixture), inverted for
-///    test-intent queries so tests rank above source — fixes the eros-corpus
-///    test-intent category where julie pushed the expected test below its
-///    production counterpart.
-/// 3. Score descending
-/// 4. File path lexicographic (deterministic tie-break)
-pub(crate) fn sort_file_hits(hits: &mut [SearchHit], test_intent: bool, query: &str) {
-    hits.sort_by(|left, right| {
-        rank_file_hit(query, left)
-            .cmp(&rank_file_hit(query, right))
-            .then_with(|| {
-                let bucket = |path: &str| -> u8 {
-                    if test_intent {
-                        // For test-intent queries, swap: test paths win over source.
-                        // Docs / fixtures still get their normal demotion.
-                        if is_test_path(path) {
-                            0
-                        } else if crate::search::scoring::is_docs_path(path) {
-                            2
-                        } else if crate::search::scoring::is_fixture_path(path) {
-                            3
-                        } else {
-                            1
-                        }
-                    } else {
-                        file_path_priority_bucket(path)
-                    }
-                };
-                bucket(&left.file).cmp(&bucket(&right.file))
-            })
-            .then_with(|| {
-                right
-                    .score
-                    .partial_cmp(&left.score)
-                    .unwrap_or(Ordering::Equal)
-            })
-            .then_with(|| left.file.cmp(&right.file))
+// ---------------------------------------------------------------------------
+// Phase 2 — unified execution path
+// ---------------------------------------------------------------------------
+
+/// Execute a unified BM25 search across all FTS fields, returning mixed-kind
+/// [`SearchHit`]s.  No `doc_type` filter — symbol rows and file rows both
+/// contribute to the result set.
+pub async fn execute_search_unified(
+    params: SearchExecutionParams<'_>,
+    workspaces: &[SearchExecutionWorkspace],
+    handler: &JulieServerHandler,
+) -> Result<SearchExecutionResult> {
+
+    // Normalize empty/whitespace-only file_pattern to None so callers that
+    // bypass `execute_search` (e.g., `FastSearchTool::execute_with_trace`)
+    // get the same "no filter" behaviour as the rest of the pipeline.
+    let normalized_file_pattern: Option<String> = params.file_pattern.as_ref().and_then(|s| {
+        if s.trim().is_empty() {
+            None
+        } else {
+            Some(s.clone())
+        }
     });
-}
 
-fn rank_file_hit(query: &str, hit: &SearchHit) -> u8 {
-    hit.as_file_result()
-        .map(|result| rank_file_search_result(query, result))
-        .unwrap_or(3)
-}
-
-async fn execute_definition_search(
-    params: SearchExecutionParams<'_>,
-    workspaces: &[SearchExecutionWorkspace],
-    handler: &JulieServerHandler,
-) -> Result<SearchExecutionResult> {
-    let mut hits = Vec::new();
-    let mut relaxed = false;
-    let mut total_results = 0usize;
-
-    for workspace in workspaces {
-        let (symbols, workspace_relaxed, workspace_total) = text_search::text_search_impl(
-            params.query,
-            params.language,
-            params.file_pattern,
-            params.limit,
-            Some(vec![workspace.workspace_id.clone()]),
-            SearchTarget::Definitions.canonical_name(),
-            params.context_lines,
-            params.exclude_tests,
-            handler,
-        )
-        .await?;
-
-        let symbols = formatting::truncate_code_context(symbols, params.context_lines);
-        relaxed |= workspace_relaxed;
-        total_results += workspace_total;
-        hits.extend(
-            symbols
-                .into_iter()
-                .map(|symbol| SearchHit::from_symbol(symbol, workspace.workspace_id.clone())),
-        );
-    }
-
-    sort_hits_by_score_desc(&mut hits);
-    hits.truncate(params.limit.max(1) as usize);
-
-    Ok(SearchExecutionResult::new(
-        hits,
-        relaxed,
-        total_results,
-        "fast_search_definitions",
-        SearchExecutionKind::Definitions,
-    ))
-}
-
-async fn execute_content_search(
-    params: SearchExecutionParams<'_>,
-    workspaces: &[SearchExecutionWorkspace],
-    handler: &JulieServerHandler,
-) -> Result<SearchExecutionResult> {
-    let mut hits = Vec::new();
-    let mut relaxed = false;
-    let mut total_results = 0usize;
-    // Task 4b: capture the first non-None `zero_hit_reason` surfaced by
-    // `line_mode_matches`. When the aggregated `hits` set ends up empty,
-    // we copy this onto `SearchExecutionResult.trace.zero_hit_reason` so
-    // MCP callers, telemetry, and the dashboard see the same pipeline
-    // attribution that line_mode already computed. First-non-None wins
-    // because all-zero runs share the same culprit across workspaces;
-    // mixing variants would be noisier than useful.
-    let mut last_zero_hit_reason: Option<ZeroHitReason> = None;
-    let mut last_file_pattern_diagnostic: Option<FilePatternDiagnostic> = None;
-    let mut scope_relaxed = false;
-    let mut original_file_pattern: Option<String> = None;
-    let mut original_zero_hit_reason: Option<ZeroHitReason> = None;
-    let mut scope_rescue_count = 0usize;
-    let mut line_match_strategy: Option<String> = None;
-    let file_level = line_mode::query_uses_file_level_header(params.query);
-    let workspace_label = if workspaces.len() == 1 {
-        match &workspaces[0].target {
-            WorkspaceTarget::Primary => Some("primary".to_string()),
-            WorkspaceTarget::Target(id) => Some(id.clone()),
-        }
-    } else {
-        None
-    };
-
-    for workspace in workspaces {
-        let result = line_mode::line_mode_matches(
-            params.query,
-            params.language,
-            params.file_pattern,
-            params.limit,
-            params.exclude_tests,
-            &workspace.target,
-            handler,
-        )
-        .await?;
-
-        relaxed |= result.relaxed;
-        total_results += result.matches.len();
-        if last_zero_hit_reason.is_none() {
-            last_zero_hit_reason = result.zero_hit_reason;
-        }
-        if last_file_pattern_diagnostic.is_none() {
-            last_file_pattern_diagnostic = result.file_pattern_diagnostic;
-        }
-        if result.scope_relaxed {
-            scope_relaxed = true;
-            scope_rescue_count += 1;
-            if original_file_pattern.is_none() {
-                original_file_pattern = result.original_file_pattern.clone();
-            }
-            if original_zero_hit_reason.is_none() {
-                original_zero_hit_reason = result.original_zero_hit_reason.clone();
-            }
-        }
-        if line_match_strategy.is_none() {
-            line_match_strategy = Some(match &result.strategy {
-                super::types::LineMatchStrategy::Substring(_) => "Substring".to_string(),
-                super::types::LineMatchStrategy::Tokens { .. } => "Tokens".to_string(),
-                super::types::LineMatchStrategy::FileLevel { .. } => "FileLevel".to_string(),
-            });
-        }
-
-        // Content (line-mode) hits carry a neutral 0.0 score intentionally.
-        // The previous synthetic `workspace_total - idx as f32` looked like
-        // a score but was count-derived ranking noise — it gave downstream
-        // consumers (dashboard compare bench, telemetry, agent prompts) the
-        // false impression that line-mode results had a meaningful
-        // relevance signal. Real per-line BM25 is deferred (see the
-        // dashboard-scoring doc); until that lands, content hits are
-        // unranked and the list order is the order line_mode_matches
-        // emitted them. `sort_hits_by_score_desc` becomes a stable no-op
-        // here because Rust's sort preserves insertion order for equal
-        // keys.
-        for line_match in result.matches.into_iter() {
-            hits.push(SearchHit::from_line_match(
-                line_match,
-                workspace.workspace_id.clone(),
-                infer_language(params.language),
-                0.0_f32,
-            ));
-        }
-    }
-
-    sort_hits_by_score_desc(&mut hits);
-    hits.truncate(params.limit.max(1) as usize);
-
-    let mut execution_result = SearchExecutionResult::new(
-        hits,
-        relaxed,
-        total_results,
-        "fast_search_content",
-        SearchExecutionKind::Content {
-            workspace_label,
-            file_level,
-        },
+    // T8 follow-up: apply the NL-default-exclude-tests rule that
+    // `execute_content_search` used to provide.  When the caller passes
+    // `exclude_tests: None`, default to excluding tests if the query looks
+    // natural-language-like AND the caller did not scope to a test
+    // file_pattern.  Explicit `exclude_tests: Some(_)` always wins.
+    let effective_exclude_tests = line_mode::effective_content_exclude_tests(
+        params.query,
+        &normalized_file_pattern,
+        params.exclude_tests,
     );
 
-    // Only stamp the reason when the run is genuinely zero-hit and no
-    // earlier stage already set `trace.zero_hit_reason`.
-    if execution_result.hits.is_empty() && execution_result.trace.zero_hit_reason.is_none() {
-        execution_result.trace.zero_hit_reason = last_zero_hit_reason;
-    }
-    if execution_result.hits.is_empty() && execution_result.trace.file_pattern_diagnostic.is_none()
-    {
-        execution_result.trace.file_pattern_diagnostic = last_file_pattern_diagnostic;
-    }
-    execution_result.trace.scope_relaxed = scope_relaxed;
-    execution_result.trace.original_file_pattern = original_file_pattern;
-    execution_result.trace.original_zero_hit_reason = original_zero_hit_reason;
-    execution_result.trace.scope_rescue_count = scope_rescue_count;
-    execution_result.trace.or_disjunction_detected =
+    // First pass: run the unified search with the caller's file_pattern.
+    let first = run_unified_pass(
+        params.query,
+        params.language,
+        normalized_file_pattern.as_deref(),
+        params.limit,
+        effective_exclude_tests,
+        workspaces,
+        handler,
+    )
+    .await?;
+
+    let mut execution = SearchExecutionResult::new(
+        first.hits,
+        false, // unified path does not propagate per-workspace relaxed flag to callers
+        first.total_results,
+        "search_unified",
+        SearchExecutionKind::Definitions,
+    );
+
+    // Stamp OR-disjunction detection on every run (matches the legacy
+    // execute_content_search behaviour so callers and telemetry see the same
+    // signal regardless of hit count).
+    execution.trace.or_disjunction_detected =
         query::clean_or_disjunction_terms(params.query).is_some();
-    execution_result.trace.line_match_strategy = line_match_strategy;
 
-    Ok(execution_result)
+    // Zero-hit attribution (first filter wins): file_pattern drops candidates
+    // before test-exclude does, so attribute to FilePatternFiltered when the
+    // pattern dropped every candidate that the index produced.  Otherwise
+    // attribute to TestFiltered when the exclude-tests filter ate the rest.
+    let mut zero_hit_reason: Option<ZeroHitReason> = None;
+    let mut file_pattern_diagnostic: Option<FilePatternDiagnostic> = None;
+    if execution.hits.is_empty() {
+        if normalized_file_pattern.is_some()
+            && first.pre_file_pattern_filter_total > 0
+            && first.pre_test_filter_total == 0
+        {
+            zero_hit_reason = Some(ZeroHitReason::FilePatternFiltered);
+            file_pattern_diagnostic = Some(FilePatternDiagnostic::NoInScopeCandidates);
+        } else if effective_exclude_tests && first.pre_test_filter_total > 0 {
+            zero_hit_reason = Some(ZeroHitReason::TestFiltered);
+        }
+    }
+
+    // Scope rescue: when the scoped miss is a real out-of-scope request
+    // (NoInScopeCandidates) and the pattern is not a whitespace-separated
+    // multi-glob mistake, re-run the unified search without the file_pattern.
+    // If the unscoped run yields hits, surface them with the scope-relaxed
+    // markers so callers see "0 in scope; here is what exists outside scope".
+    let should_rescue = zero_hit_reason == Some(ZeroHitReason::FilePatternFiltered)
+        && file_pattern_diagnostic == Some(FilePatternDiagnostic::NoInScopeCandidates)
+        && normalized_file_pattern
+            .as_deref()
+            .is_some_and(|pattern| !query::looks_like_whitespace_separated_globs(pattern));
+
+    if should_rescue {
+        let rescue = run_unified_pass(
+            params.query,
+            params.language,
+            None,
+            params.limit,
+            effective_exclude_tests,
+            workspaces,
+            handler,
+        )
+        .await?;
+
+        if !rescue.hits.is_empty() {
+            execution.hits = rescue.hits;
+            execution.total_results = rescue.total_results;
+            execution.trace.scope_relaxed = true;
+            execution.trace.scope_rescue_count = 1;
+            execution.trace.original_file_pattern = normalized_file_pattern.clone();
+            execution.trace.original_zero_hit_reason = zero_hit_reason.take();
+            // Clear in-scope diagnostics — the public trace now describes the
+            // rescued (out-of-scope) result set rather than the scoped miss.
+            file_pattern_diagnostic = None;
+        }
+    }
+
+    // Persist surviving zero-hit attribution on the trace.
+    execution.trace.zero_hit_reason = zero_hit_reason;
+    execution.trace.file_pattern_diagnostic = file_pattern_diagnostic.clone();
+
+    // When the run still ends with zero hits, run the content zero-hit hint
+    // formatter so MCP callers receive a targeted recovery hint instead of
+    // the generic "no results" message.  The hint_kind on the trace lets the
+    // rendering layer pick the right text block.
+    if execution.hits.is_empty()
+        && let Some((hint_kind, _hint_text)) = hint_formatter::build_content_zero_hit_hint(
+            params.query,
+            normalized_file_pattern.as_deref(),
+            params.language.as_deref(),
+            params.exclude_tests,
+            execution.trace.zero_hit_reason.as_ref(),
+            file_pattern_diagnostic.as_ref(),
+        )
+    {
+        execution.trace.target_hint =
+            super::trace::target_hint_label(&hint_kind).map(str::to_string);
+        execution.trace.hint_kind = Some(hint_kind);
+    }
+
+    Ok(execution)
 }
 
-fn infer_language(requested_language: &Option<String>) -> String {
-    requested_language.clone().unwrap_or_default()
+/// Inner helper: run the unified Tantivy/SQLite search across all workspaces
+/// with a single `file_pattern` value, apply test-exclude filtering, and
+/// return both the hits and the pre-filter counts the caller needs to
+/// attribute zero-hit runs.  Splitting this out lets `execute_search_unified`
+/// call the same pipeline twice (scoped + unscoped) for scope rescue.
+struct UnifiedPassResult {
+    hits: Vec<SearchHit>,
+    total_results: usize,
+    /// Total raw-hit count across all workspaces *before* the file_pattern
+    /// filter.  Used to attribute FilePatternFiltered when this is non-zero
+    /// but `pre_test_filter_total` is zero.
+    pre_file_pattern_filter_total: usize,
+    /// Total candidates that *survived* the file_pattern filter and entered
+    /// the test-exclude stage.  Used to attribute TestFiltered when this is
+    /// non-zero but the final hits vector is empty.
+    pre_test_filter_total: usize,
 }
 
-fn file_result_matches_post_filters(
-    result: &crate::search::index::FileSearchResult,
+#[allow(clippy::too_many_arguments)]
+async fn run_unified_pass(
+    query: &str,
+    language: &Option<String>,
     file_pattern: Option<&str>,
-    exclude_tests: bool,
-) -> bool {
-    if exclude_tests && is_test_path(&result.file_path) {
-        return false;
-    }
-    if let Some(pattern) = file_pattern {
-        return query::matches_glob_pattern(&result.file_path, pattern);
-    }
-    true
-}
-
-fn next_file_search_fetch_limit(current: usize, hard_cap: usize) -> usize {
-    current
-        .saturating_mul(2)
-        .max(current.saturating_add(1))
-        .min(hard_cap)
-}
-
-async fn execute_file_search(
-    params: SearchExecutionParams<'_>,
+    limit: u32,
+    effective_exclude_tests: bool,
     workspaces: &[SearchExecutionWorkspace],
     handler: &JulieServerHandler,
-) -> Result<SearchExecutionResult> {
+) -> Result<UnifiedPassResult> {
+    use crate::search::SearchFilter;
+
     let mut hits = Vec::new();
-    let mut relaxed = false;
     let mut total_results = 0usize;
-    let base_limit = params.limit.max(1) as usize;
-    let exclude_tests = params.exclude_tests.unwrap_or(false);
-    let file_pattern = params.file_pattern.as_deref();
-    let has_post_filters = exclude_tests || file_pattern.is_some();
+    let mut pre_test_filter_total = 0usize;
+    let mut pre_file_pattern_filter_total = 0usize;
 
     for workspace in workspaces {
-        let Some(search_index) = handler
-            .get_search_index_for_workspace(&workspace.workspace_id)
-            .await?
-        else {
-            bail!(
-                "File search requires a Tantivy index for workspace '{}'",
-                workspace.workspace_id
-            );
-        };
-
+        // Run the unified search WITHOUT post-filters so we can observe which
+        // filter (if any) drops every candidate and attribute the zero-hit
+        // run accordingly.  Tantivy's internal scoring still uses the query
+        // to rank.
         let filter = SearchFilter {
-            language: params.language.clone(),
+            language: language.clone(),
             kind: None,
             file_pattern: None,
             exclude_tests: false,
         };
 
-        let hard_cap = if has_post_filters { 1000 } else { base_limit };
-        let mut fetch_limit = base_limit;
-        let filtered_results = loop {
-            let results = {
-                let index = search_index.lock().unwrap();
-                index.search_files(params.query, &filter, fetch_limit)?
-            };
+        // Use `unified_search_hits` (returns raw UnifiedHit) rather than
+        // `unified_search_impl` (converts to Symbol) so the "file" kind is
+        // preserved end-to-end in the SearchHit.
+        //
+        // Fix #1 (codex review): overfetch before applying external filters.
+        // Requesting exactly `limit` raw hits and then applying file_pattern /
+        // exclude_tests afterwards means valid in-scope hits ranked beyond
+        // position `limit` are silently dropped.  Request a larger candidate
+        // pool so the filters have headroom to yield `limit` in-scope hits.
+        // The final truncation to `limit` happens after the loop below.
+        let raw_fetch_limit = limit.saturating_mul(4).max(50);
 
-            relaxed |= results.relaxed;
-            let raw_result_count = results.results.len();
-            let filtered_results: Vec<crate::search::index::FileSearchResult> = results
-                .results
-                .into_iter()
-                .filter(|result| {
-                    file_result_matches_post_filters(result, file_pattern, exclude_tests)
-                })
-                .collect();
+        let (raw_hits, workspace_total) = text_search::unified_search_hits(
+            query,
+            &filter,
+            raw_fetch_limit,
+            Some(vec![workspace.workspace_id.clone()]),
+            handler,
+        )
+        .await?;
 
-            let exhausted_results = raw_result_count < fetch_limit;
-            let enough_filtered_results = filtered_results.len() >= base_limit;
-            if !has_post_filters
-                || enough_filtered_results
-                || exhausted_results
-                || fetch_limit >= hard_cap
+        total_results += workspace_total;
+        pre_file_pattern_filter_total += raw_hits.len();
+
+        for raw_hit in raw_hits {
+            // Stage 1: file_pattern filter.
+            if let Some(pattern) = file_pattern
+                && !crate::tools::search::matches_glob_pattern(&raw_hit.file_path, pattern)
             {
-                break filtered_results;
+                continue;
             }
+            pre_test_filter_total += 1;
 
-            fetch_limit = next_file_search_fetch_limit(fetch_limit, hard_cap);
-        };
-
-        // Apply symbol-title exact-match boost so files containing a symbol
-        // whose name matches the query surface above BM25-only basename-token
-        // matches.  This closes the Pattern-A gap on the files search path.
-        // Best-effort: if DB acquisition fails (e.g. workspace not yet indexed)
-        // we silently skip the boost rather than failing the search.
-        let mut boosted_results = filtered_results;
-        if let Ok(db) = handler
-            .get_pooled_database_for_workspace(&workspace.workspace_id)
-            .await
-        {
-            crate::search::index::apply_symbol_title_boost_to_file_results(
-                params.query,
-                &mut boosted_results,
-                &db,
-            );
+            // Stage 2: NL-default-exclude-tests filter.
+            //
+            // Fix #2 (codex review): also exclude symbols whose role field is
+            // "test", not just those whose file path is a test path.  Inline
+            // #[test] functions in production-looking source files (e.g.
+            // `src/lib.rs`) have role=="test" set by the projection layer from
+            // extractor metadata, but is_test_path() returns false for them.
+            if effective_exclude_tests
+                && (crate::search::scoring::is_test_path(&raw_hit.file_path)
+                    || raw_hit.role == "test")
+            {
+                continue;
+            }
+            hits.push(SearchHit::from_unified_hit(
+                raw_hit,
+                workspace.workspace_id.clone(),
+            ));
         }
-
-        total_results += boosted_results.len();
-        hits.extend(
-            boosted_results
-                .into_iter()
-                .map(|result| SearchHit::from_file_result(result, workspace.workspace_id.clone())),
-        );
     }
 
-    sort_file_hits(
-        &mut hits,
-        crate::search::scoring::has_test_intent(params.query),
-        params.query,
-    );
-    hits.truncate(base_limit);
+    sort_hits_by_score_desc(&mut hits);
+    hits.truncate(limit.max(1) as usize);
 
-    Ok(SearchExecutionResult::new(
+    Ok(UnifiedPassResult {
         hits,
-        relaxed,
         total_results,
-        "fast_search_files",
-        SearchExecutionKind::Files,
-    ))
+        pre_file_pattern_filter_total,
+        pre_test_filter_total,
+    })
 }

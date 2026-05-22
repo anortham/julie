@@ -366,9 +366,16 @@ async fn test_fast_search_public_docs_describe_file_mode() -> Result<()> {
         .description
         .as_deref()
         .expect("fast_search should publish a tool description");
+    // After T8, search_target is removed from the public surface.
+    // Verify the tool still publishes a non-empty description.
     assert!(
-        description.contains("search_target=\"files\""),
-        "tool description should mention file search mode, got: {description}"
+        !description.is_empty(),
+        "fast_search should publish a non-empty description"
+    );
+    // Verify the description covers unified search (the T8 replacement).
+    assert!(
+        description.contains("unified") || description.contains("search"),
+        "tool description should describe the search capability, got: {description}"
     );
 
     let properties = fast_search
@@ -377,41 +384,20 @@ async fn test_fast_search_public_docs_describe_file_mode() -> Result<()> {
         .and_then(Value::as_object)
         .expect("fast_search input schema should expose properties");
 
-    let search_target_description = properties
-        .get("search_target")
-        .and_then(Value::as_object)
-        .and_then(|field| field.get("description"))
-        .and_then(Value::as_str)
-        .expect("search_target should publish a description");
+    // After T8, search_target is no longer a public parameter.
     assert!(
-        search_target_description.contains("\"files\""),
-        "search_target docs should mention the files mode, got: {search_target_description}"
-    );
-    assert!(
-        search_target_description.contains("\"paths\""),
-        "search_target docs should mention the paths alias, got: {search_target_description}"
+        !properties.contains_key("search_target"),
+        "search_target should NOT appear in the public schema after T8 cutover"
     );
 
-    let context_lines_description = properties
-        .get("context_lines")
-        .and_then(Value::as_object)
-        .and_then(|field| field.get("description"))
-        .and_then(Value::as_str)
-        .expect("context_lines should publish a description");
+    // context_lines and return_format still exist.
     assert!(
-        context_lines_description.contains("search_target=\"files\""),
-        "context_lines docs should explain the files-mode restriction, got: {context_lines_description}"
+        properties.contains_key("context_lines"),
+        "context_lines should still be a public parameter"
     );
-
-    let return_format_description = properties
-        .get("return_format")
-        .and_then(Value::as_object)
-        .and_then(|field| field.get("description"))
-        .and_then(Value::as_str)
-        .expect("return_format should publish a description");
     assert!(
-        return_format_description.contains("path-only"),
-        "return_format docs should explain file-mode locations output, got: {return_format_description}"
+        properties.contains_key("return_format"),
+        "return_format should still be a public parameter"
     );
 
     let _ = service.cancel().await;

@@ -459,6 +459,8 @@ mod tests {
         assert!(contains_blacklisted_directory(Path::new(
             "/repo/obj/Debug/net9.0/app.dll"
         )));
+        // .NET-style bin/Release output is still excluded via the "Release"
+        // segment, even though "bin" itself is no longer blacklisted.
         assert!(contains_blacklisted_directory(Path::new(
             "/repo/bin/Release/app.exe"
         )));
@@ -478,6 +480,15 @@ mod tests {
         )));
         assert!(!contains_blacklisted_directory(Path::new(
             "/repo/packages/core/index.ts"
+        )));
+        // User CLI scripts under bin/ MUST be indexed — bin/ is commonly
+        // a source directory in modern repos (npm package bin entries,
+        // install scripts, executable utilities).
+        assert!(!contains_blacklisted_directory(Path::new(
+            "/repo/bin/install.js"
+        )));
+        assert!(!contains_blacklisted_directory(Path::new(
+            "/repo/bin/cli.py"
         )));
     }
 

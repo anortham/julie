@@ -357,16 +357,8 @@ async fn project_batch(
     state: &mut IndexingBatchState,
     canonical_revision: Option<i64>,
 ) -> Result<()> {
-    let symbol_docs: Vec<_> = batch
-        .all_symbols
-        .iter()
-        .map(crate::search::SymbolDocument::from_symbol)
-        .collect();
-    let file_docs: Vec<_> = batch
-        .all_file_infos
-        .iter()
-        .map(crate::search::FileDocument::from_file_info)
-        .collect();
+    let symbols = batch.all_symbols.clone();
+    let file_infos = batch.all_file_infos.clone();
     let files_to_clean = batch.files_to_clean.clone();
 
     debug!(
@@ -409,8 +401,8 @@ async fn project_batch(
                 .project_documents_with_locks(
                     &db,
                     &search_index,
-                    &symbol_docs,
-                    &file_docs,
+                    &symbols,
+                    &file_infos,
                     &files_to_clean,
                     canonical_revision,
                 )
