@@ -66,7 +66,6 @@ mod tests {
             file_pattern: None,
             language: None,
             workspace: None,
-            search_target: "content".to_string(),
             context_lines: None,
             exclude_tests: None,
             ..Default::default()
@@ -130,7 +129,6 @@ mod tests {
                     file_pattern: None,
                     language: None,
                     workspace: None,
-                    search_target: "content".to_string(),
                     context_lines: None,
                     exclude_tests: None,
                     ..Default::default()
@@ -185,7 +183,6 @@ mod tests {
             file_pattern: None,
             language: None,
             workspace: None,
-            search_target: "content".to_string(),
             context_lines: None,
             exclude_tests: None,
             ..Default::default()
@@ -256,7 +253,6 @@ pub fn helper_function() {}
                 file_pattern: None,
                 language: None,
                 workspace: None,
-                search_target: "content".to_string(),
                 context_lines: None,
                 exclude_tests: None,
                 ..Default::default()
@@ -268,7 +264,6 @@ pub fn helper_function() {}
                 file_pattern: None,
                 language: None,
                 workspace: None,
-                search_target: "content".to_string(),
                 context_lines: None,
                 exclude_tests: None,
                 ..Default::default()
@@ -378,7 +373,6 @@ pub fn embedding_vector_semantic() {}
             file_pattern: None,
             language: None,
             workspace: None,
-            search_target: "content".to_string(),
             context_lines: None,
             exclude_tests: None,
             ..Default::default()
@@ -493,7 +487,6 @@ pub fn embedding_vector_semantic() {}
             file_pattern: None,
             language: None,
             workspace: Some(workspace_id.clone()),
-            search_target: "content".to_string(),
             context_lines: None,
             exclude_tests: None,
             ..Default::default()

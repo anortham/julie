@@ -64,7 +64,7 @@ fn file_not_found_message(file_path: &str, target: Option<&str>) -> String {
             .map(|f| f.to_string_lossy().to_string())
             .unwrap_or_else(|| file_path.to_string());
         message.push_str(&format!(
-            "\n💡 Try fast_search(query=\"{}\", search_target=\"definitions\") to locate the file",
+            "\n💡 Try fast_search(query=\"{}\") to locate the file",
             filename
         ));
     }

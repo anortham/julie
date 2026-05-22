@@ -142,7 +142,6 @@ mod search_quality_tests {
             file_pattern: None,
             limit: 10,
             workspace: Some("primary".to_string()),
-            search_target: "content".to_string(),
             context_lines: None,
             exclude_tests: None,
             ..Default::default()

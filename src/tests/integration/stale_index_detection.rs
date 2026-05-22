@@ -1149,7 +1149,6 @@ async fn index_workspace(
 async fn fast_search_text(handler: &JulieServerHandler, query: &str) -> Result<String> {
     let result = FastSearchTool {
         query: query.to_string(),
-        search_target: "definitions".to_string(),
         limit: 10,
         ..Default::default()
     }

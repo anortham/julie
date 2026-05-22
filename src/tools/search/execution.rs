@@ -21,7 +21,6 @@ pub struct SearchExecutionParams<'a> {
     pub language: &'a Option<String>,
     pub file_pattern: &'a Option<String>,
     pub limit: u32,
-    pub search_target: &'a str,
     pub context_lines: Option<u32>,
     pub exclude_tests: Option<bool>,
 }
@@ -71,22 +70,15 @@ pub async fn execute_search(
         language: params.language,
         file_pattern: &normalized_file_pattern,
         limit: params.limit,
-        search_target: params.search_target,
         context_lines: params.context_lines,
         exclude_tests: params.exclude_tests,
     };
 
-    let search_target = SearchTarget::parse(normalized_params.search_target)?;
-
-    match search_target {
-        SearchTarget::Content => {
-            execute_content_search(normalized_params, workspaces, handler).await
-        }
-        SearchTarget::Definitions => {
-            execute_definition_search(normalized_params, workspaces, handler).await
-        }
-        SearchTarget::Files => execute_file_search(normalized_params, workspaces, handler).await,
-    }
+    // T8 cutover: all traffic routes through the unified path.
+    // The per-target execute_* functions (execute_definition_search,
+    // execute_content_search, execute_file_search) still exist but are
+    // unreachable from production callers; T9 will delete them.
+    execute_search_unified(normalized_params, workspaces, handler).await
 }
 
 fn sort_hits_by_score_desc(hits: &mut [SearchHit]) {
@@ -468,7 +460,10 @@ pub async fn execute_search_unified(
             exclude_tests: params.exclude_tests.unwrap_or(false),
         };
 
-        let (symbols, workspace_total) = text_search::unified_search_impl(
+        // Use `unified_search_hits` (returns raw UnifiedHit) rather than
+        // `unified_search_impl` (converts to Symbol) so the "file" kind is
+        // preserved end-to-end in the SearchHit.
+        let (raw_hits, workspace_total) = text_search::unified_search_hits(
             params.query,
             &filter,
             params.limit,
@@ -479,9 +474,9 @@ pub async fn execute_search_unified(
 
         total_results += workspace_total;
         hits.extend(
-            symbols
+            raw_hits
                 .into_iter()
-                .map(|symbol| SearchHit::from_symbol(symbol, workspace.workspace_id.clone())),
+                .map(|hit| SearchHit::from_unified_hit(hit, workspace.workspace_id.clone())),
         );
     }
 

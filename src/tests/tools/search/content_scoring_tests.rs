@@ -57,7 +57,6 @@ async fn content_hits_have_neutral_zero_score() {
         language: None,
         file_pattern: None,
         limit: 10,
-        search_target: "content".to_string(),
         context_lines: Some(0),
         exclude_tests: None,
         workspace: Some("primary".to_string()),

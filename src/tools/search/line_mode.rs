@@ -537,8 +537,8 @@ pub async fn line_mode_search(
     if result.matches.is_empty() {
         let message = format!(
             "🔍 No lines found matching: '{}'\n\
-            💡 Try search_target=\"definitions\" if looking for a symbol name, or broaden file_pattern/language filters",
-            query
+            💡 Broaden file_pattern/language filters, or search for a symbol name with fast_search(query=\"{}\")",
+            query, query
         );
         return Ok(CallToolResult::text_content(vec![Content::text(message)]));
     }

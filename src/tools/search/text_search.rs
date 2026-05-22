@@ -41,12 +41,8 @@ pub async fn text_search_impl(
     handler: &JulieServerHandler,
 ) -> Result<(Vec<Symbol>, bool, usize)> {
     let search_target = SearchTarget::parse(search_target)?;
-    super::nl_embeddings::maybe_initialize_embeddings_for_nl_definitions(
-        query,
-        search_target.canonical_name(),
-        handler,
-    )
-    .await;
+    super::nl_embeddings::maybe_initialize_embeddings_for_nl_definitions(query, handler)
+        .await;
 
     let current_primary_id = handler.current_workspace_id();
     let loaded_workspace_id = handler.loaded_workspace_id();
@@ -1118,4 +1114,73 @@ pub async fn unified_search_impl(
     .await??;
 
     Ok(results)
+}
+
+/// Like [`unified_search_impl`] but returns raw [`UnifiedHit`]s instead of
+/// converting them to [`Symbol`].  Used by [`execute_search_unified`] so the
+/// "file" `kind` field is preserved all the way to [`SearchHit`].
+pub async fn unified_search_hits(
+    query: &str,
+    filter: &crate::search::SearchFilter,
+    limit: u32,
+    workspace_ids: Option<Vec<String>>,
+    handler: &JulieServerHandler,
+) -> Result<(Vec<crate::search::index::UnifiedHit>, usize)> {
+    let current_primary_id = handler.current_workspace_id();
+    let loaded_workspace_id = handler.loaded_workspace_id();
+
+    let target_workspace_id = if let Some(ref ids) = workspace_ids {
+        if let Some(id) = ids.first() {
+            let loaded_startup_without_primary =
+                current_primary_id.is_none() && loaded_workspace_id.as_ref() == Some(id);
+            if loaded_startup_without_primary || current_primary_id.as_ref() != Some(id) {
+                Some(id.clone())
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    let query_clone = query.to_string();
+    let limit_usize = limit as usize;
+    let filter_clone = filter.clone();
+
+    if let Some(target_id) = target_workspace_id {
+        let si_arc = handler.get_search_index_for_workspace(&target_id).await?;
+
+        return tokio::task::spawn_blocking(
+            move || -> Result<(Vec<crate::search::index::UnifiedHit>, usize)> {
+                let si_arc = match si_arc {
+                    Some(si) => si,
+                    None => return Ok((Vec::new(), 0)),
+                };
+                let index = si_arc
+                    .lock()
+                    .map_err(|e| anyhow::anyhow!("Search index lock error: {}", e))?;
+                let hits = index.search_unified(&query_clone, &filter_clone, limit_usize)?;
+                let count = hits.len();
+                Ok((hits, count))
+            },
+        )
+        .await?;
+    }
+
+    // Primary workspace path.
+    let (_, search_index_clone) = handler.primary_pooled_database_and_search_index().await?;
+
+    tokio::task::spawn_blocking(
+        move || -> Result<(Vec<crate::search::index::UnifiedHit>, usize)> {
+            let index = search_index_clone
+                .lock()
+                .map_err(|e| anyhow::anyhow!("Search index lock error: {}", e))?;
+            let hits = index.search_unified(&query_clone, &filter_clone, limit_usize)?;
+            let count = hits.len();
+            Ok((hits, count))
+        },
+    )
+    .await?
 }

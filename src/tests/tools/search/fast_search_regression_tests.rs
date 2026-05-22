@@ -190,7 +190,6 @@ async fn content_nl_default_excludes_tests_but_explicit_false_includes_them() ->
 
     let default_run = FastSearchTool {
         query: "refresh token".to_string(),
-        search_target: "content".to_string(),
         limit: 10,
         workspace: Some("primary".to_string()),
         context_lines: Some(0),
@@ -226,7 +225,6 @@ async fn content_nl_default_excludes_tests_but_explicit_false_includes_them() ->
 
     let explicit_include = FastSearchTool {
         query: "refresh token".to_string(),
-        search_target: "content".to_string(),
         limit: 10,
         workspace: Some("primary".to_string()),
         context_lines: Some(0),
@@ -269,7 +267,6 @@ async fn content_auto_exclude_tests_respects_explicit_test_file_pattern() -> Res
 
     let scoped_to_tests = FastSearchTool {
         query: query.to_string(),
-        search_target: "content".to_string(),
         language: Some("rust".to_string()),
         file_pattern: Some("src/tests/**".to_string()),
         limit: 10,
@@ -300,7 +297,6 @@ async fn content_auto_exclude_tests_respects_explicit_test_file_pattern() -> Res
 
     let unscoped = FastSearchTool {
         query: query.to_string(),
-        search_target: "content".to_string(),
         language: Some("rust".to_string()),
         limit: 10,
         workspace: Some("primary".to_string()),
@@ -347,7 +343,6 @@ async fn content_test_intent_keeps_and_ranks_test_files() -> Result<()> {
     let handler = index_workspace(workspace_path).await?;
     let execution = FastSearchTool {
         query: "test refresh token".to_string(),
-        search_target: "content".to_string(),
         limit: 10,
         workspace: Some("primary".to_string()),
         context_lines: Some(0),
@@ -465,7 +460,6 @@ async fn content_locations_format_omits_matching_line_text() -> Result<()> {
     let handler = index_workspace(workspace_path).await?;
     let result = FastSearchTool {
         query: "compact_location_marker".to_string(),
-        search_target: "content".to_string(),
         return_format: "locations".to_string(),
         limit: 10,
         workspace: Some("primary".to_string()),
@@ -505,7 +499,6 @@ async fn definition_search_with_zero_limit_still_returns_one_result() -> Result<
     let handler = index_workspace(workspace_path).await?;
     let result = FastSearchTool {
         query: "zero_limit_should_still_find_one".to_string(),
-        search_target: "definitions".to_string(),
         return_format: "locations".to_string(),
         limit: 0,
         workspace: Some("primary".to_string()),
@@ -546,7 +539,6 @@ async fn file_search_missing_index_names_file_mode() -> Result<()> {
 
     let result = FastSearchTool {
         query: "main.rs".to_string(),
-        search_target: "files".to_string(),
         context_lines: None,
         limit: 10,
         workspace: Some("primary".to_string()),
@@ -590,7 +582,6 @@ async fn file_search_preserves_hidden_directory_ranking_in_tool_output() -> Resu
     let handler = index_workspace(workspace_path).await?;
     let execution = FastSearchTool {
         query: ".cargo".to_string(),
-        search_target: "files".to_string(),
         limit: 10,
         workspace: Some("primary".to_string()),
         context_lines: None,

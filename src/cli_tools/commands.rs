@@ -124,7 +124,6 @@ impl CliToolCommand for SearchArgs {
     fn to_tool_args(&self) -> Result<Value> {
         let mut args = serde_json::json!({
             "query": self.query,
-            "search_target": self.target,
             "limit": self.limit,
         });
 
@@ -149,7 +148,6 @@ impl CliToolCommand for SearchArgs {
 
         let tool = FastSearchTool {
             query: self.query.clone(),
-            search_target: self.target.clone(),
             limit: self.limit,
             language: self.language.clone(),
             file_pattern: self.file_pattern.clone(),

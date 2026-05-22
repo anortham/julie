@@ -71,7 +71,6 @@ async fn test_fast_search_recognizes_indexed_primary_workspace() -> Result<()> {
     let search_tool = FastSearchTool {
         query: "TestStruct".to_string(),
         limit: 10,
-        search_target: "definitions".to_string(),
         file_pattern: None,
         language: None,
         context_lines: None,
@@ -155,7 +154,6 @@ async fn test_fast_search_with_explicit_workspace_id() -> Result<()> {
     let search_tool = FastSearchTool {
         query: "another_function".to_string(),
         limit: 10,
-        search_target: "definitions".to_string(),
         file_pattern: None,
         language: None,
         context_lines: None,

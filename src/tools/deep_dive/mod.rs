@@ -153,7 +153,7 @@ pub(crate) fn deep_dive_query(
 
     if symbols.is_empty() {
         return Ok(format!(
-            "No symbol found: '{}'\nTry fast_search(query=\"{}\", search_target=\"definitions\") for fuzzy matching.",
+            "No symbol found: '{}'\nTry fast_search(query=\"{}\") for fuzzy matching.",
             symbol_name, symbol_name
         ));
     }

@@ -123,7 +123,6 @@ mod target_workspace_tests {
             file_pattern: None,
             limit: 10,
             workspace: Some(primary_id.clone()),
-            search_target: "content".to_string(),
             context_lines: None,
             exclude_tests: None,
             ..Default::default()
@@ -148,7 +147,6 @@ mod target_workspace_tests {
             file_pattern: None,
             limit: 10,
             workspace: Some(target_id.clone()),
-            search_target: "content".to_string(),
             context_lines: None,
             exclude_tests: None,
             ..Default::default()
@@ -174,7 +172,6 @@ mod target_workspace_tests {
             file_pattern: None,
             limit: 10,
             workspace: Some("primary".to_string()),
-            search_target: "content".to_string(),
             context_lines: None,
             exclude_tests: None,
             ..Default::default()
@@ -226,7 +223,6 @@ mod target_workspace_tests {
             file_pattern: None,
             limit: 10,
             workspace: Some("nonexistent_workspace_12345".to_string()),
-            search_target: "content".to_string(),
             context_lines: None,
             exclude_tests: None,
             ..Default::default()
@@ -307,7 +303,6 @@ mod target_workspace_tests {
             file_pattern: None,
             limit: 10,
             workspace: Some(reference_id.clone()),
-            search_target: "definitions".to_string(), // Use symbols scope (doesn't need FTS5)
             context_lines: None,
             exclude_tests: None,
             ..Default::default()
@@ -366,7 +361,6 @@ mod target_workspace_tests {
             file_pattern: None,
             limit: 10,
             workspace: Some(reference_id.clone()),
-            search_target: "content".to_string(),
             context_lines: None,
             exclude_tests: None,
             ..Default::default()
@@ -424,7 +418,6 @@ mod target_workspace_tests {
             file_pattern: None,
             limit: 10,
             workspace: Some(reference_id.clone()),
-            search_target: "content".to_string(),
             context_lines: None,
             exclude_tests: None,
             ..Default::default()

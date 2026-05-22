@@ -178,7 +178,6 @@ fn processPayment() {
             file_pattern: None,
             limit: 10,
             workspace: Some("primary".to_string()),
-            search_target: "content".to_string(),
             context_lines: None,
             exclude_tests: None,
             ..Default::default()
@@ -261,7 +260,6 @@ fn processPayment() {
             file_pattern: None,
             limit: 10,
             workspace: Some("primary".to_string()),
-            search_target: "content".to_string(),
             context_lines: None,
             exclude_tests: None,
             ..Default::default()
@@ -288,7 +286,6 @@ fn processPayment() {
             file_pattern: None,
             limit: 10,
             workspace: Some("nonexistent_workspace_id".to_string()),
-            search_target: "content".to_string(),
             context_lines: None,
             exclude_tests: None,
             ..Default::default()
@@ -398,7 +395,6 @@ fn processPayment() {
             file_pattern: None,
             limit: 10,
             workspace: Some("primary".to_string()),
-            search_target: "content".to_string(),
             context_lines: None,
             exclude_tests: None,
             ..Default::default()
@@ -504,7 +500,6 @@ fn processPayment() {
             file_pattern: None,
             limit: 10,
             workspace: Some(reference_id.clone()),
-            search_target: "content".to_string(),
             context_lines: None,
             exclude_tests: None,
             ..Default::default()
@@ -870,7 +865,6 @@ fn processPayment() {
             file_pattern: None,
             limit: 10,
             workspace: Some(reference_id.clone()),
-            search_target: "definitions".to_string(),
             context_lines: None,
             exclude_tests: None,
             ..Default::default()
@@ -901,7 +895,6 @@ fn processPayment() {
             file_pattern: None,
             limit: 10,
             workspace: Some("primary".to_string()),
-            search_target: "content".to_string(),
             context_lines: None,
             exclude_tests: None,
             ..Default::default()
@@ -929,7 +922,6 @@ fn processPayment() {
             file_pattern: None,
             limit: 10,
             workspace: Some("primary".to_string()),
-            search_target: "definitions".to_string(),
             context_lines: None,
             exclude_tests: None,
             ..Default::default()
@@ -989,7 +981,6 @@ fn processPayment() {
             file_pattern: None,
             limit: 10,
             workspace: Some("primary".to_string()),
-            search_target: "content".to_string(),
             context_lines: None,
             exclude_tests: None,
             ..Default::default()
@@ -1020,7 +1011,6 @@ fn processPayment() {
             file_pattern: None,
             limit: 10,
             workspace: Some("primary".to_string()),
-            search_target: "content".to_string(),
             context_lines: None,
             exclude_tests: None,
             ..Default::default()
@@ -1091,7 +1081,6 @@ fn processPayment() {
             file_pattern: None,
             limit: 10,
             workspace: Some("primary".to_string()),
-            search_target: "content".to_string(),
             context_lines: None,
             exclude_tests: None,
             ..Default::default()
@@ -1158,7 +1147,6 @@ fn processPayment() {
             file_pattern: None,
             limit: 10,
             workspace: Some("primary".to_string()),
-            search_target: "content".to_string(),
             context_lines: None,
             exclude_tests: None,
             ..Default::default()
@@ -1237,7 +1225,6 @@ fn processPayment() {
             file_pattern: None,
             limit: 10,
             workspace: Some("primary".to_string()),
-            search_target: "content".to_string(),
             context_lines: None,
             exclude_tests: None,
             ..Default::default()
@@ -1325,7 +1312,6 @@ def python_function():
             file_pattern: None,
             limit: 10,
             workspace: Some("primary".to_string()),
-            search_target: "content".to_string(),
             context_lines: None,
             exclude_tests: None,
             ..Default::default()
@@ -1354,7 +1340,6 @@ def python_function():
             file_pattern: None,
             limit: 10,
             workspace: Some("primary".to_string()),
-            search_target: "content".to_string(),
             context_lines: None,
             exclude_tests: None,
             ..Default::default()
@@ -1424,7 +1409,6 @@ def python_function():
             file_pattern: Some("src/**".to_string()),
             limit: 10,
             workspace: Some("primary".to_string()),
-            search_target: "content".to_string(),
             context_lines: None,
             exclude_tests: None,
             ..Default::default()
@@ -1450,7 +1434,6 @@ def python_function():
             file_pattern: Some("tests/**".to_string()),
             limit: 10,
             workspace: Some("primary".to_string()),
-            search_target: "content".to_string(),
             context_lines: None,
             exclude_tests: None,
             ..Default::default()
@@ -1537,7 +1520,6 @@ fn test_authenticate_user() {
             file_pattern: None,
             limit: 20,
             workspace: Some("primary".to_string()),
-            search_target: "content".to_string(),
             context_lines: None,
             exclude_tests: None,
             ..Default::default()
@@ -1564,7 +1546,6 @@ fn test_authenticate_user() {
             file_pattern: None,
             limit: 20,
             workspace: Some("primary".to_string()),
-            search_target: "content".to_string(),
             context_lines: None,
             exclude_tests: Some(true),
             ..Default::default()
@@ -1633,7 +1614,6 @@ fn test_authenticate_user() {
             file_pattern: Some("src/**/*.rs".to_string()),
             limit: 10,
             workspace: Some("primary".to_string()),
-            search_target: "content".to_string(),
             context_lines: None,
             exclude_tests: None,
             ..Default::default()
@@ -1789,7 +1769,6 @@ fn test_authenticate_user() {
                 serde_json::json!({
                     "query": "rebound_search_symbol",
                     "workspace": "primary",
-                    "search_target": "content",
                     "limit": 10
                 })
                 .as_object()

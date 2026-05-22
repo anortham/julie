@@ -240,8 +240,9 @@ mod tests {
         assert!(hint.contains("file_pattern=src/**/*.rs"));
         assert!(hint.contains("Concept query → try: get_context(query=\"retry backoff jitter\")"));
         // Symbol-lookup suggestion picks the first tokenizer token.
+        // After T8, search_target is gone; the hint just suggests the token.
         assert!(
-            hint.contains("fast_search(query=\"retry\", search_target=\"definitions\")"),
+            hint.contains("fast_search(query=\"retry\")"),
             "symbol lookup suggestion missing: {}",
             hint
         );
@@ -418,13 +419,13 @@ mod tests {
             .expect("shape-based zero-hit should build a hint");
 
             assert_eq!(hint_kind, expected_kind, "unexpected hint kind for {query}");
-            let expected_call = format!(
-                "fast_search(query=\"{}\", search_target=\"{}\")",
-                query, target
-            );
+            // After T8, hints no longer include search_target= — the unified
+            // path handles both symbols and files. The hint just suggests the
+            // fast_search query.
+            let expected_call = format!("fast_search(query=\"{}\")", query);
             assert!(
                 hint_text.contains(&expected_call),
-                "expected {} hint text, got: {}",
+                "expected '{}' in hint text, got: {}",
                 expected_call,
                 hint_text
             );

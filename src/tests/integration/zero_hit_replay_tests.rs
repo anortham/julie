@@ -296,10 +296,6 @@ async fn acceptance_replay_against_captured_zero_hits() -> Result<()> {
 
         let tool = FastSearchTool {
             query: entry.query.clone(),
-            search_target: entry
-                .search_target
-                .clone()
-                .unwrap_or_else(|| "content".to_string()),
             language: entry.language.clone(),
             file_pattern: entry.file_pattern.clone(),
             limit,

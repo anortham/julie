@@ -319,9 +319,12 @@ async fn run_baseline_async(
         for case in eligible_cases_for_repo(cases, profile, repo_meta) {
             let started_at = Instant::now();
             let search_limit = 10usize;
+            // Note: case.search_target (YAML field) is preserved for report
+            // grouping/display but is NOT passed to FastSearchTool — T8 removed
+            // search_target from the public surface; all calls go through the
+            // unified path.
             let execution = FastSearchTool {
                 query: case.query.clone(),
-                search_target: case.search_target.clone(),
                 language: case.language.clone(),
                 file_pattern: case.file_pattern.clone(),
                 limit: search_limit as u32,

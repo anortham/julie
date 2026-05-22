@@ -180,13 +180,15 @@ async fn execute_shared_current(
     handler: &crate::handler::JulieServerHandler,
     case: &CompareCase,
 ) -> Result<SearchExecutionResult> {
+    // T8 cutover: search_target is no longer a routing parameter; all traffic
+    // goes through the unified path. The case.search_target field is retained
+    // for display/grouping purposes only.
     execution::execute_search(
         execution::SearchExecutionParams {
             query: &case.query,
             language: &None,
             file_pattern: &None,
             limit: 10,
-            search_target: &case.search_target,
             context_lines: None,
             exclude_tests: None,
         },

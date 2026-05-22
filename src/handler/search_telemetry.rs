@@ -1,7 +1,8 @@
+use std::collections::HashMap;
+
 use serde_json::{Value, json};
 
 use crate::tools::search::FastSearchTool;
-use crate::tools::search::target::SearchTarget;
 use crate::tools::search::trace::SearchExecutionResult;
 
 const TRACE_VERSION: &str = "fast_search_trace_v1";
@@ -10,11 +11,9 @@ pub(crate) fn fast_search_metadata(
     params: &FastSearchTool,
     execution: Option<&SearchExecutionResult>,
 ) -> Value {
-    let canonical_target = SearchTarget::parse(&params.search_target)
-        .map(SearchTarget::canonical_name)
-        .unwrap_or(params.search_target.as_str());
-    let intent = infer_intent(&params.query, canonical_target);
+    let intent = infer_intent(&params.query);
     let trace = execution.map(|result| {
+        let kind_distribution = compute_kind_distribution(result);
         json!({
             "strategy": result.trace.strategy_id,
             "returned_hit_count": result.hits.len(),
@@ -32,13 +31,13 @@ pub(crate) fn fast_search_metadata(
             "original_zero_hit_reason": result.trace.original_zero_hit_reason,
             "scope_rescue_count": result.trace.scope_rescue_count,
             "or_disjunction_detected": result.trace.or_disjunction_detected,
+            "kind_distribution": kind_distribution,
         })
     });
 
     json!({
         "query": params.query,
         "normalized_query": normalize_query(&params.query),
-        "search_target": canonical_target,
         "language": params.language,
         "file_pattern": params.file_pattern,
         "limit": params.effective_limit(),
@@ -48,6 +47,14 @@ pub(crate) fn fast_search_metadata(
         "trace_version": TRACE_VERSION,
         "trace": trace,
     })
+}
+
+fn compute_kind_distribution(result: &SearchExecutionResult) -> HashMap<String, u32> {
+    let mut dist: HashMap<String, u32> = HashMap::new();
+    for hit in &result.hits {
+        *dist.entry(hit.kind.clone()).or_insert(0) += 1;
+    }
+    dist
 }
 
 pub(crate) fn fast_search_source_paths(execution: Option<&SearchExecutionResult>) -> Vec<String> {
@@ -63,11 +70,7 @@ fn normalize_query(query: &str) -> String {
     query.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-fn infer_intent(query: &str, search_target: &str) -> &'static str {
-    if search_target == SearchTarget::Files.canonical_name() {
-        return "file_lookup";
-    }
-
+fn infer_intent(query: &str) -> &'static str {
     let normalized = query.to_lowercase();
     let token_count = query.split_whitespace().count();
     let has_symbol_shape = query.contains("::")
@@ -83,8 +86,7 @@ fn infer_intent(query: &str, search_target: &str) -> &'static str {
     ]
     .iter()
     .any(|phrase| normalized.contains(phrase));
-    let has_grep_shape = search_target == "content"
-        || normalized.contains("todo")
+    let has_grep_shape = normalized.contains("todo")
         || normalized.contains("fixme")
         || normalized.contains("grep");
 

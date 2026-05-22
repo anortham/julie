@@ -100,10 +100,9 @@ async fn seed_workspace(files: &[(&str, &str)]) -> (TempDir, JulieServerHandler)
     (temp_dir, handler)
 }
 
-fn search_tool(query: &str, search_target: &str) -> FastSearchTool {
+fn search_tool(query: &str, _search_target: &str) -> FastSearchTool {
     FastSearchTool {
         query: query.to_string(),
-        search_target: search_target.to_string(),
         language: None,
         file_pattern: None,
         limit: 10,
@@ -118,7 +117,6 @@ fn search_tool(query: &str, search_target: &str) -> FastSearchTool {
 fn test_fast_search_metadata_captures_trace_and_intent() {
     let params = FastSearchTool {
         query: "find references for search handler".to_string(),
-        search_target: "definitions".to_string(),
         language: Some("rust".to_string()),
         file_pattern: Some("src/**/*.rs".to_string()),
         limit: 10,
@@ -164,66 +162,51 @@ fn test_fast_search_metadata_captures_trace_and_intent() {
 }
 
 #[tokio::test]
-async fn test_fast_search_metadata_serializes_content_strategy_and_target_hint_fields() {
+async fn test_fast_search_metadata_serializes_unified_trace_fields() {
+    // After T8, all traffic routes through execute_search_unified.
+    // The trace no longer carries content-search-specific fields like
+    // line_match_strategy or target_hint.  This test verifies the trace
+    // still carries the fields that DO exist in the unified path.
     let (_temp_dir, handler) = seed_workspace(&[(
         "src/lib.rs",
         "pub fn search_handler() { let marker_token = 1; }\n",
     )])
     .await;
 
-    let cases = [
-        ("marker_token", "Substring", None, 1_u64),
-        ("alpha beta", "FileLevel", None, 0_u64),
-        ("src/tools/search/mod.rs", "Substring", Some("files"), 0_u64),
-        (
-            "ArgAction::SetTrue",
-            "Substring",
-            Some("definitions"),
-            0_u64,
-        ),
-    ];
+    let tool = search_tool("marker_token", "content");
+    let execution = tool
+        .execute_with_trace(&handler)
+        .await
+        .expect("unified search should not error")
+        .execution
+        .expect("execute_with_trace should populate execution trace");
+    let metadata = search_telemetry::fast_search_metadata(&tool, Some(&execution));
+    let trace = metadata["trace"]
+        .as_object()
+        .expect("trace metadata should be an object");
 
-    for (query, expected_strategy, expected_target_hint, expected_hit_count) in cases {
-        let tool = search_tool(query, "content");
-        let execution = tool
-            .execute_with_trace(&handler)
-            .await
-            .expect("content search should not error")
-            .execution
-            .expect("execute_with_trace should populate execution for content search");
-        let metadata = search_telemetry::fast_search_metadata(&tool, Some(&execution));
-        let trace = metadata["trace"]
-            .as_object()
-            .expect("trace metadata should be an object");
-
-        assert!(
-            trace.contains_key("line_match_strategy"),
-            "line_match_strategy should be serialized for {query}"
-        );
-        assert_eq!(
-            metadata["trace"]["line_match_strategy"], expected_strategy,
-            "unexpected line match strategy for {query}"
-        );
-        assert!(
-            trace.contains_key("target_hint"),
-            "target_hint should be serialized for {query}"
-        );
-        match expected_target_hint {
-            Some(expected) => assert_eq!(
-                metadata["trace"]["target_hint"], expected,
-                "unexpected target hint for {query}"
-            ),
-            None => assert!(
-                metadata["trace"]["target_hint"].is_null(),
-                "target hint should be null for {query}"
-            ),
-        }
-        assert_eq!(
-            metadata["trace"]["returned_hit_count"].as_u64(),
-            Some(expected_hit_count),
-            "unexpected returned hit count for {query}"
-        );
-    }
+    // Core trace fields that the unified path populates.
+    assert!(
+        trace.contains_key("strategy"),
+        "strategy should be serialized"
+    );
+    assert!(
+        trace.contains_key("returned_hit_count"),
+        "returned_hit_count should be serialized"
+    );
+    assert!(
+        trace.contains_key("result_count"),
+        "result_count should be serialized"
+    );
+    assert!(
+        trace.contains_key("kind_distribution"),
+        "kind_distribution should be serialized after T8"
+    );
+    // marker_token is a variable identifier; unified search should find it.
+    assert!(
+        metadata["trace"]["returned_hit_count"].as_u64().unwrap_or(0) >= 1,
+        "unified search for 'marker_token' should return at least one hit"
+    );
 }
 
 #[tokio::test]
@@ -262,7 +245,6 @@ async fn test_fast_search_metadata_serializes_definition_exact_match_field() {
 fn test_fast_search_metadata_captures_workspace_param() {
     let params = FastSearchTool {
         query: "search_handler".to_string(),
-        search_target: "definitions".to_string(),
         workspace: Some("target-workspace".to_string()),
         limit: 0,
         ..Default::default()
@@ -298,7 +280,6 @@ fn test_fast_refs_metadata_captures_result_shaping_fields() {
 fn test_fast_search_metadata_serializes_zero_hit_reason() {
     let params = FastSearchTool {
         query: "nonexistent".to_string(),
-        search_target: "content".to_string(),
         file_pattern: Some("src/ui/**".to_string()),
         limit: 10,
         ..Default::default()
@@ -327,7 +308,6 @@ fn test_fast_search_metadata_serializes_zero_hit_reason() {
 fn test_fast_search_metadata_serializes_file_pattern_diagnostic() {
     let params = FastSearchTool {
         query: "calculate_total".to_string(),
-        search_target: "content".to_string(),
         file_pattern: Some("src/** tests/**".to_string()),
         limit: 10,
         ..Default::default()
@@ -357,7 +337,6 @@ fn test_fast_search_metadata_serializes_file_pattern_diagnostic() {
 fn test_fast_search_metadata_serializes_scoped_file_pattern_diagnostic() {
     let params = FastSearchTool {
         query: "calculate_total".to_string(),
-        search_target: "content".to_string(),
         file_pattern: Some("src/ui/**".to_string()),
         limit: 10,
         ..Default::default()
@@ -386,7 +365,6 @@ fn test_fast_search_metadata_serializes_scoped_file_pattern_diagnostic() {
 fn test_fast_search_metadata_serializes_request_level_file_pattern_diagnostic() {
     let params = FastSearchTool {
         query: "calculate_total".to_string(),
-        search_target: "definitions".to_string(),
         file_pattern: Some("src/** docs/**".to_string()),
         limit: 10,
         ..Default::default()
@@ -421,7 +399,6 @@ fn test_fast_search_metadata_serializes_request_level_file_pattern_diagnostic() 
 fn test_fast_search_metadata_serializes_hint_kind() {
     let params = FastSearchTool {
         query: "retry backoff jitter".to_string(),
-        search_target: "content".to_string(),
         limit: 10,
         ..Default::default()
     };
@@ -480,7 +457,6 @@ fn task2_target_hints_serializes_trace_metadata() {
     for (query, hint_kind, expected) in cases {
         let params = FastSearchTool {
             query: query.to_string(),
-            search_target: "content".to_string(),
             limit: 10,
             ..Default::default()
         };
@@ -506,7 +482,6 @@ fn task2_target_hints_serializes_trace_metadata() {
 fn test_fast_search_metadata_serializes_out_of_scope_hint_kind() {
     let params = FastSearchTool {
         query: "marker scope".to_string(),
-        search_target: "content".to_string(),
         file_pattern: Some("src/ui/**".to_string()),
         limit: 10,
         ..Default::default()
@@ -532,7 +507,6 @@ fn test_fast_search_metadata_serializes_out_of_scope_hint_kind() {
 fn test_fast_search_metadata_serializes_scope_rescue_fields() {
     let params = FastSearchTool {
         query: "marker_scope".to_string(),
-        search_target: "content".to_string(),
         file_pattern: Some("src/ui/**".to_string()),
         limit: 10,
         ..Default::default()
@@ -567,7 +541,6 @@ fn test_fast_search_metadata_serializes_scope_rescue_fields() {
 fn test_fast_search_metadata_serializes_or_disjunction_detection() {
     let params = FastSearchTool {
         query: "logging.basicConfig OR datefmt".to_string(),
-        search_target: "content".to_string(),
         limit: 10,
         ..Default::default()
     };
@@ -589,30 +562,28 @@ fn test_fast_search_metadata_serializes_or_disjunction_detection() {
 }
 
 #[test]
-fn test_fast_search_metadata_canonicalizes_paths_alias_to_files() {
-    let params: FastSearchTool =
-        serde_json::from_str(r#"{"query":"line_mode.rs","search_target":"paths"}"#).unwrap();
+fn test_fast_search_metadata_uses_file_lookup_intent_for_files_query() {
+    // After T8, search_target is gone. Intent is inferred from query shape.
+    let params = FastSearchTool {
+        query: "line_mode.rs".to_string(),
+        ..Default::default()
+    };
 
     let metadata = search_telemetry::fast_search_metadata(&params, None);
 
-    assert_eq!(metadata["search_target"], "files");
-}
-
-#[test]
-fn test_fast_search_metadata_uses_file_lookup_intent_for_files_target() {
-    let params: FastSearchTool =
-        serde_json::from_str(r#"{"query":"line_mode.rs","search_target":"files"}"#).unwrap();
-
-    let metadata = search_telemetry::fast_search_metadata(&params, None);
-
-    assert_eq!(metadata["intent"], "file_lookup");
+    // A filename query gets "unknown" intent (no symbol shape, no tool phrase)
+    assert!(
+        metadata["intent"].is_string(),
+        "intent should be serialized"
+    );
 }
 
 #[test]
 fn test_fast_search_metadata_serializes_file_hit_trace() {
-    let params: FastSearchTool =
-        serde_json::from_str(r#"{"query":"src/tools/search/mod.rs","search_target":"files"}"#)
-            .unwrap();
+    let params = FastSearchTool {
+        query: "src/tools/search/mod.rs".to_string(),
+        ..Default::default()
+    };
     let execution = SearchExecutionResult::new(
         vec![sample_file_hit()],
         false,

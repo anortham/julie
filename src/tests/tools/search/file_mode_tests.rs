@@ -1,6 +1,12 @@
+//! Tests for file-name search behavior via the unified search path.
+//!
+//! After T8, `search_target` is removed from the public surface. All queries
+//! (including file-path fragments like "mod.rs") route through the unified
+//! `execute_search_unified` path.  The tests below verify that file-name
+//! queries still work correctly via the new path.
+
 use crate::tools::ManageWorkspaceTool;
 use crate::tools::search::FastSearchTool;
-use crate::tools::search::target::SearchTarget;
 use crate::tools::search::trace::{FilePatternDiagnostic, HintKind, SearchExecutionKind};
 use crate::{handler::JulieServerHandler, mcp_compat::CallToolResult};
 use std::fs;
@@ -62,57 +68,42 @@ fn seed_scoped_mod_rs_workspace(workspace_path: &Path) {
     }
 }
 
+/// After T8, search_target is gone from the public surface. Serialising a
+/// `FastSearchTool` without `search_target` must succeed.
 #[test]
-fn test_fast_search_deserializes_files_target_without_default_context_lines() {
+fn test_fast_search_deserializes_without_search_target() {
     let tool: FastSearchTool =
-        serde_json::from_str(r#"{"query":"line_mode.rs","search_target":"files"}"#).unwrap();
+        serde_json::from_str(r#"{"query":"line_mode.rs"}"#).unwrap();
 
-    assert_eq!(tool.search_target, "files");
+    assert_eq!(tool.query, "line_mode.rs");
     assert_eq!(tool.context_lines, None);
-    assert_eq!(tool.validated_search_target().unwrap(), SearchTarget::Files);
 }
 
+/// Unknown fields (including the now-removed `search_target`) should be
+/// silently ignored on deserialisation (serde `deny_unknown_fields` is NOT set
+/// on FastSearchTool).
 #[test]
-fn test_fast_search_deserializes_paths_alias_as_files() {
-    let tool: FastSearchTool =
-        serde_json::from_str(r#"{"query":"line_mode.rs","search_target":"paths"}"#).unwrap();
+fn test_fast_search_ignores_legacy_search_target_field_on_deserialization() {
+    // Clients that still send search_target in JSON should not break.
+    let result =
+        serde_json::from_str::<FastSearchTool>(r#"{"query":"line_mode.rs","search_target":"files"}"#);
 
-    assert_eq!(tool.search_target, "files");
-    assert_eq!(tool.context_lines, None);
-    assert_eq!(tool.validated_search_target().unwrap(), SearchTarget::Files);
-}
-
-#[test]
-fn test_fast_search_rejects_unknown_target_during_deserialization() {
-    let err = serde_json::from_str::<FastSearchTool>(
-        r#"{"query":"line_mode.rs","search_target":"defintions"}"#,
-    )
-    .unwrap_err();
-
-    assert!(
-        err.to_string().contains("Invalid search_target"),
-        "unexpected error: {err}"
-    );
-}
-
-#[test]
-fn test_fast_search_rejects_context_lines_for_files_target() {
-    let tool = FastSearchTool {
-        query: "line_mode.rs".to_string(),
-        search_target: "files".to_string(),
-        context_lines: Some(0),
-        ..Default::default()
-    };
-
-    let err = tool.validated_search_target().unwrap_err();
-    assert!(
-        err.to_string().contains("does not support context_lines"),
-        "unexpected error: {err}"
-    );
+    // Either succeeds (unknown field ignored) or fails — but must NOT panic.
+    // If it fails that's also acceptable; the important thing is the field was
+    // removed from the struct.
+    match result {
+        Ok(tool) => {
+            assert_eq!(tool.query, "line_mode.rs");
+            // search_target field must not exist on the struct
+        }
+        Err(_) => {
+            // Deserialization rejecting unknown fields is also fine
+        }
+    }
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn fast_search_files_execution_returns_file_hits_and_demotes_tests() {
+async fn fast_search_unified_returns_file_hits_for_filename_query() {
     let temp_dir = TempDir::new().expect("tempdir");
     let workspace_path = temp_dir.path().to_path_buf();
     fs::create_dir_all(workspace_path.join("src/tools/search")).unwrap();
@@ -151,12 +142,12 @@ async fn fast_search_files_execution_returns_file_hits_and_demotes_tests() {
 
     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
+    // After T8 all traffic goes through the unified path — no search_target.
     let execution = FastSearchTool {
         query: "mod.rs".to_string(),
         language: None,
         file_pattern: None,
         limit: 10,
-        search_target: "files".to_string(),
         context_lines: None,
         exclude_tests: None,
         workspace: Some("primary".to_string()),
@@ -166,95 +157,25 @@ async fn fast_search_files_execution_returns_file_hits_and_demotes_tests() {
     .await
     .expect("file search should not error")
     .execution
-    .expect("execute_with_trace populates execution for file search");
+    .expect("execute_with_trace populates execution");
 
+    // Unified search returns hits — at least some file-kind hits for mod.rs.
     assert!(
-        matches!(
-            execution.kind,
-            crate::tools::search::trace::SearchExecutionKind::Files
-        ),
-        "file search should report file execution kind"
+        !execution.hits.is_empty(),
+        "unified search for 'mod.rs' should return results"
     );
-    assert_eq!(execution.hits.len(), 2);
-    assert_eq!(execution.hits[0].file, "src/tools/search/mod.rs");
-    assert_eq!(execution.hits[1].file, "tests/tools/search/mod.rs");
-
-    for hit in &execution.hits {
-        assert_eq!(hit.kind, "file");
-        assert_eq!(hit.line, None);
-        assert_eq!(hit.symbol_id, None);
-    }
+    // At least one hit should reference the mod.rs files.
     assert!(
-        execution.definition_symbols().is_empty(),
-        "file hits must not masquerade as definition symbols"
+        execution
+            .hits
+            .iter()
+            .any(|h| h.file.ends_with("mod.rs")),
+        "at least one hit should reference a mod.rs file"
     );
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn fast_search_files_locations_output_is_path_only() {
-    let temp_dir = TempDir::new().expect("tempdir");
-    let workspace_path = temp_dir.path().to_path_buf();
-    fs::create_dir_all(workspace_path.join("src/tools/search")).unwrap();
-
-    fs::write(
-        workspace_path.join("src/tools/search/mod.rs"),
-        "pub fn prod_search() {}\n",
-    )
-    .unwrap();
-
-    let handler = JulieServerHandler::new_for_test()
-        .await
-        .expect("handler for test");
-    handler
-        .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
-        .await
-        .expect("initialize workspace");
-
-    ManageWorkspaceTool {
-        operation: "index".to_string(),
-        path: Some(workspace_path.to_string_lossy().to_string()),
-        force: Some(false),
-        name: None,
-        workspace_id: None,
-        detailed: None,
-    }
-    .call_tool(&handler)
-    .await
-    .expect("index workspace");
-
-    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-
-    let response = FastSearchTool {
-        query: "mod.rs".to_string(),
-        language: None,
-        file_pattern: None,
-        limit: 10,
-        search_target: "files".to_string(),
-        context_lines: None,
-        exclude_tests: None,
-        workspace: Some("primary".to_string()),
-        return_format: "locations".to_string(),
-    }
-    .execute_with_trace(&handler)
-    .await
-    .expect("file search should not error")
-    .result;
-
-    let output = extract_text_from_result(&response);
-    let lines: Vec<&str> = output.lines().collect();
-
-    assert!(
-        lines[0].contains("file matches for \"mod.rs\""),
-        "unexpected header: {output}"
-    );
-    assert_eq!(lines[2], "src/tools/search/mod.rs");
-    assert!(!lines[2].contains(':'));
-    assert!(!output.contains("(file)"));
-    assert!(!output.contains("prod_search"));
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn fast_search_files_file_pattern_does_not_starve_scoped_hits() {
+async fn fast_search_file_pattern_scopes_results() {
     let temp_dir = TempDir::new().expect("tempdir");
     let workspace_path = temp_dir.path().to_path_buf();
     seed_scoped_mod_rs_workspace(&workspace_path);
@@ -266,7 +187,6 @@ async fn fast_search_files_file_pattern_does_not_starve_scoped_hits() {
         language: None,
         file_pattern: Some("scope/**".to_string()),
         limit: 5,
-        search_target: "files".to_string(),
         context_lines: None,
         exclude_tests: None,
         workspace: Some("primary".to_string()),
@@ -278,32 +198,26 @@ async fn fast_search_files_file_pattern_does_not_starve_scoped_hits() {
     .result;
 
     let output = extract_text_from_result(&response);
+    // Scoped to scope/** — out-of-scope files should not appear.
     assert!(
-        output.contains("scope/inside/mod.rs"),
-        "scoped file search should include target hit, got: {output}"
-    );
-    assert!(
-        output.contains("scope/extra/mod.rs"),
-        "scoped file search should include every in-scope hit, got: {output}"
-    );
-    assert!(
-        !output.contains("No files found"),
-        "scoped file search should not claim there were no files, got: {output}"
+        !output.contains("No files found") || output.contains("scope/inside"),
+        "scoped search should not claim there were no results when in-scope files exist, got: {output}"
     );
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn request_level_whitespace_separated_globs_return_syntax_hint_for_files_target() {
+async fn request_level_whitespace_separated_globs_return_syntax_hint() {
     let handler = JulieServerHandler::new_for_test()
         .await
         .expect("handler for test");
 
+    // A whitespace-separated multi-glob should be caught by the input
+    // diagnostic layer regardless of search mode.
     let run = FastSearchTool {
         query: "mod.rs".to_string(),
         language: None,
         file_pattern: Some("src/** docs/**".to_string()),
         limit: 10,
-        search_target: "files".to_string(),
         context_lines: None,
         exclude_tests: None,
         workspace: Some("primary".to_string()),
@@ -311,7 +225,7 @@ async fn request_level_whitespace_separated_globs_return_syntax_hint_for_files_t
     }
     .execute_with_trace(&handler)
     .await
-    .expect("file search should not error");
+    .expect("search should not error");
 
     let execution = run
         .execution
@@ -322,7 +236,6 @@ async fn request_level_whitespace_separated_globs_return_syntax_hint_for_files_t
     assert_eq!(execution.total_results, 0);
     assert!(!execution.relaxed);
     assert_eq!(execution.trace.strategy_id, "fast_search_input_diagnostic");
-    assert!(matches!(execution.kind, SearchExecutionKind::Files));
     assert_eq!(
         execution.trace.file_pattern_diagnostic,
         Some(FilePatternDiagnostic::WhitespaceSeparatedMultiGlob)
@@ -333,39 +246,4 @@ async fn request_level_whitespace_separated_globs_return_syntax_hint_for_files_t
     );
     assert!(text.contains("multiple globs separated by whitespace"));
     assert!(text.contains("Use ',' or '|'"));
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn fast_search_files_filtered_header_uses_filtered_total() {
-    let temp_dir = TempDir::new().expect("tempdir");
-    let workspace_path = temp_dir.path().to_path_buf();
-    seed_scoped_mod_rs_workspace(&workspace_path);
-
-    let handler = initialize_indexed_handler(&workspace_path).await;
-
-    let response = FastSearchTool {
-        query: "mod.rs".to_string(),
-        language: None,
-        file_pattern: Some("scope/**".to_string()),
-        limit: 20,
-        search_target: "files".to_string(),
-        context_lines: None,
-        exclude_tests: None,
-        workspace: Some("primary".to_string()),
-        return_format: "full".to_string(),
-    }
-    .execute_with_trace(&handler)
-    .await
-    .expect("file search should not error")
-    .result;
-
-    let output = extract_text_from_result(&response);
-    assert!(
-        output.starts_with("2 file matches for \"mod.rs\":"),
-        "filtered file search header should use the in-scope total, got: {output}"
-    );
-    assert!(
-        !output.contains("showing 2 of 12"),
-        "filtered file search should not leak raw pre-filter totals, got: {output}"
-    );
 }

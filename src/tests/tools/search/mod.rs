@@ -45,6 +45,7 @@ mod projection_search_doc_test;
 mod relationship_text_test;
 mod title_exact_boost_tests;
 mod tokenizer_simple_test;
+mod fast_search_unified_cutover_test;
 mod unified_query_path_test;
 mod unified_reranker_test;
 mod zero_hit_reason_propagation_tests;

@@ -52,7 +52,6 @@ async fn fast_search_text(
 ) -> Result<String> {
     let tool = FastSearchTool {
         query: query.to_string(),
-        search_target: "definitions".to_string(),
         limit: 10,
         context_lines: Some(3),
         workspace: Some("primary".to_string()),

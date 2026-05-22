@@ -324,7 +324,6 @@ mod tests {
             set.spawn(async move {
                 let result = FastSearchTool {
                     query: "alpha_func".to_string(),
-                    search_target: "definitions".to_string(),
                     language: Some("rust".to_string()),
                     file_pattern: None,
                     limit: 5,
@@ -457,7 +456,6 @@ mod tests {
                     query: "alpha".to_string(),
                     limit: 10,
                     workspace: Some(ws),
-                    search_target: "definitions".to_string(),
                     ..Default::default()
                 }
                 .call_tool(&h)
