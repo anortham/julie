@@ -87,6 +87,33 @@ fn test_analyze_vendor_patterns_does_not_flag_libs_directory() {
 }
 
 #[test]
+fn test_analyze_vendor_patterns_does_not_flag_bin_directory() {
+    // bin/ overwhelmingly holds user CLI scripts in modern repos
+    // (npm package bin entries, install scripts, executable utilities).
+    // Compiled output is already caught by target/, dist/, build/, out/.
+    let tool = create_tool();
+    let (temp_dir, files) = create_workspace_with_files(vec![
+        "bin/install.js",
+        "bin/cli.js",
+        "bin/run.js",
+        "bin/deploy.js",
+        "bin/setup.js",
+        "bin/migrate.js",
+        "bin/lint.js", // >5 files, would trip the count threshold
+    ]);
+
+    let patterns = tool
+        .analyze_vendor_patterns(&files, temp_dir.path())
+        .expect("Failed to analyze patterns");
+
+    assert!(
+        !patterns.iter().any(|p| p == "bin" || p.starts_with("bin/")),
+        "bin/ must NOT be flagged as vendor — it overwhelmingly holds user CLI scripts. Got: {:?}",
+        patterns,
+    );
+}
+
+#[test]
 fn test_analyze_vendor_patterns_detects_plugin_directory() {
     let tool = create_tool();
     let (temp_dir, files) = create_workspace_with_files(vec![

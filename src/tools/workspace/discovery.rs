@@ -236,6 +236,9 @@ impl ManageWorkspaceTool {
                 // NOTE: "libs" is NOT vendor — it's the standard Nx/Angular monorepo
                 // source directory (apps/ + libs/). Same reasoning as packages/.
                 // NOTE: "lib" is NOT vendor — it's a source directory in Elixir/Ruby/Dart.
+                // NOTE: "bin" is NOT vendor — it commonly holds user CLI scripts
+                // (npm package bin entries, install scripts, etc.). Compiled output
+                // already covered by target/dist/build/out.
                 if matches!(
                     dir_name,
                     "plugin"
@@ -247,7 +250,6 @@ impl ManageWorkspaceTool {
                         | "build"
                         | "dist"
                         | "out"
-                        | "bin"
                         | "obj"
                         | "Debug"
                         | "Release"
@@ -276,7 +278,6 @@ impl ManageWorkspaceTool {
                             | "build"
                             | "dist"
                             | "out"
-                            | "bin"
                             | "obj"
                             | "Debug"
                             | "Release"
