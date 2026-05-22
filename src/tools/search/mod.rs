@@ -385,13 +385,21 @@ impl FastSearchTool {
         )
         .await?;
 
-        let symbols = execution.definition_symbols();
-        let optimized = OptimizedResponse::with_total(symbols, execution.total_results);
-        execution.trace.definition_exact_match = optimized.results.iter().any(|symbol| {
-            formatting::is_definition_name_match(&symbol.name, &self.query.to_lowercase())
+        // T12 fix: the unified search returns mixed file+symbol hits.  Pulling
+        // only `definition_symbols()` silently drops file rows, which is what
+        // caused the Phase 2 file/path-search regression (Eros bakeoff −46).
+        // Render the full `execution.hits` slice — `format_unified_search_results`
+        // handles both kinds and preserves rank order.
+        let query_lower = self.query.to_lowercase();
+        execution.trace.definition_exact_match = execution.hits.iter().any(|hit| {
+            if let Some(symbol) = hit.as_symbol() {
+                formatting::is_definition_name_match(&symbol.name, &query_lower)
+            } else {
+                false
+            }
         });
 
-        if optimized.results.is_empty() {
+        if execution.hits.is_empty() {
             // Prefer the targeted content zero-hit hint that
             // `execute_search_unified` already computed and stamped on the
             // trace (OutOfScopeContentHint, FilePatternSyntaxHint, etc.).
@@ -429,8 +437,12 @@ impl FastSearchTool {
             // the actual matching line rather than the enclosing symbol's
             // declaration line.  This restores the behaviour of the old
             // `execute_content_search` locations path.
-            let has_exact_name_match = optimized.results.iter().any(|symbol| {
-                formatting::is_definition_name_match(&symbol.name, &self.query.to_lowercase())
+            let has_exact_name_match = execution.hits.iter().any(|hit| {
+                if let Some(symbol) = hit.as_symbol() {
+                    formatting::is_definition_name_match(&symbol.name, &query_lower)
+                } else {
+                    false
+                }
             });
             if !has_exact_name_match {
                 if let Ok(line_locations_output) = self
@@ -454,7 +466,13 @@ impl FastSearchTool {
                 }
             }
 
-            let mut locations_output = formatting::format_locations_only(&self.query, &optimized);
+            // T12 fix: render mixed-kind hits via the unified locations formatter
+            // so file rows appear alongside symbol rows in rank order.
+            let mut locations_output = formatting::format_unified_locations(
+                &self.query,
+                &execution.hits,
+                execution.total_results,
+            );
             if execution.relaxed {
                 locations_output = format!(
                     "NOTE: Relaxed search (showing partial matches — no results matched all terms)\n\n{}",
@@ -467,8 +485,15 @@ impl FastSearchTool {
             });
         }
 
-        // Unified formatting: exact matches get "Definition found:" header
-        let lean_output = formatting::format_definition_search_results(&self.query, &optimized);
+        // T12 fix: render mixed-kind hits via the unified formatter so file rows
+        // (kind == "file") appear in the output alongside symbol rows.  Without
+        // this, path-shaped queries silently dropped their target file row at
+        // the formatter boundary, causing the Phase 2 file/path-search regression.
+        let lean_output = formatting::format_unified_search_results(
+            &self.query,
+            &execution.hits,
+            execution.total_results,
+        );
 
         // Prepend relaxed-match indicator when OR fallback was used
         let lean_output = if execution.relaxed {
@@ -487,11 +512,17 @@ impl FastSearchTool {
         let lean_output = if execution.trace.scope_relaxed
             && let Some(original_pattern) = execution.trace.original_file_pattern.as_deref()
         {
+            // Scope-rescue header reports user-visible result count.  The
+            // unified formatter groups by file path, so the user perceives one
+            // group per distinct file rather than one entry per raw hit (which
+            // double-counts file+symbol pairs from the same path).
+            let distinct_files: std::collections::HashSet<&str> =
+                execution.hits.iter().map(|hit| hit.file.as_str()).collect();
             format!(
                 "{}\n\n{}",
                 hint_formatter::build_scope_rescue_header(
                     original_pattern,
-                    optimized.results.len(),
+                    distinct_files.len(),
                 ),
                 lean_output,
             )
@@ -502,7 +533,7 @@ impl FastSearchTool {
         debug!(
             "✅ Returning unified search results ({} chars, {} results, relaxed: {})",
             lean_output.len(),
-            optimized.results.len(),
+            execution.hits.len(),
             execution.relaxed,
         );
         Ok(FastSearchExecution {

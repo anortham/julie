@@ -349,6 +349,15 @@ pub(crate) const FILE_KIND_EXACT_BONUS: f32 = 30.0;
 /// ".cargo").
 pub(crate) const FILE_PATH_SEGMENT_EXACT_BOOST: f32 = 160.0;
 
+/// Boost applied when the compact form of the entire file path (alphanumerics
+/// only, lower-cased) matches the compact form of the entire query.  Handles
+/// multi-token path queries like `"openclaw plugin index.ts"` matching the
+/// file `"openclaw-plugin/index.ts"` where the basename alone (`index.ts`)
+/// would not compact-match the multi-word query but the full path does.  Sized
+/// to beat the per-term path/title boost stack of competing file rows that
+/// only match a subset of segments.
+pub(crate) const FILE_PATH_FULL_COMPACT_BOOST: f32 = 180.0;
+
 /// Rerank a mixed slice of symbol and file-row candidates using the
 /// Eros-recipe field-score boosts.
 ///
@@ -426,6 +435,17 @@ pub fn rerank_unified(query: &ParsedQuery, candidates: &[Candidate]) -> Vec<Rank
                     // Title compact match (title field on file rows carries the
                     // file name stored by the indexer).
                     score += EXACT_TITLE_BOOST + FILE_KIND_EXACT_BONUS;
+                } else if !query_compact.is_empty()
+                    && compact_alnum_lc(&path_lc) == query_compact
+                {
+                    // Full-path compact match — for multi-token path queries
+                    // like "openclaw plugin index.ts" that match a file path
+                    // `openclaw-plugin/index.ts` end-to-end.  The basename
+                    // (`index.ts`) does not compact-equal the multi-word
+                    // query, but the full path does, and that is a strong
+                    // file-row signal we must surface above competing file
+                    // rows whose path only partially matches.
+                    score += FILE_PATH_FULL_COMPACT_BOOST + FILE_KIND_EXACT_BONUS;
                 }
             }
             // Symbol row: compact match on symbol name handles
