@@ -1,5 +1,6 @@
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
+use tracing::warn;
 
 use crate::database::{FileInfo, SymbolDatabase};
 use crate::extractors::{AnnotationMarker, Symbol};
@@ -142,9 +143,22 @@ pub(crate) fn apply_uncommitted_documents_from_symbols(
 ) -> Result<()> {
     let symbol_contexts = symbol_contexts_from_symbols(symbols);
     let symbol_ids: Vec<String> = symbols.iter().map(|s| s.id.clone()).collect();
-    let relationship_map =
-        collect_relationship_names_bounded(db, &symbol_ids, RELATIONSHIP_TEXT_MAX_BYTES)
-            .unwrap_or_default();
+    let relationship_map = match collect_relationship_names_bounded(
+        db,
+        &symbol_ids,
+        RELATIONSHIP_TEXT_MAX_BYTES,
+    ) {
+        Ok(map) => map,
+        Err(e) => {
+            let msg = e.to_string();
+            if msg.contains("no such table") {
+                warn!("relationship_text skipped: DB not yet migrated ({})", msg);
+                HashMap::new()
+            } else {
+                return Err(e);
+            }
+        }
+    };
 
     for file_path_to_clean in files_to_clean {
         index.remove_by_file_path(file_path_to_clean)?;
@@ -529,4 +543,111 @@ pub fn apply_documents(
         &HashMap::new(),
         true,
     )
+}
+
+/// Maximum number of partner symbols reprojected per watcher event.
+/// Caps the worst-case extra DB + Tantivy work to a bounded amount.
+const MAX_PARTNER_REPROJECT_SYMBOLS: usize = 100;
+
+/// Reproject Tantivy docs for symbols that are relationship partners of a
+/// recently updated file.
+///
+/// When a file is incrementally re-indexed (via the watcher), the SQLite
+/// relationship table is updated atomically, but only the *changed file's*
+/// symbols are re-emitted to Tantivy.  Any symbol in *another* file that has
+/// a relationship edge to/from the changed file now has stale
+/// `relationship_text` in Tantivy.  This function re-emits those partner
+/// symbols with fresh data from SQLite.
+///
+/// Implementation:
+/// 1. Fetch the Symbol objects for `partner_symbol_ids` from SQLite.
+/// 2. Group by `file_path` — at most `MAX_PARTNER_REPROJECT_SYMBOLS` IDs
+///    are processed (a warn is emitted if capped).
+/// 3. For each unique partner file, fetch **all** symbols in that file and
+///    the stored file content, then call `apply_documents_with_db` which
+///    removes stale Tantivy docs for the file and re-adds them with a freshly
+///    computed `relationship_text`.
+///
+/// Callers are responsible for calling `index.commit()` after all partner
+/// reprojections for a tick have been applied.
+pub(crate) fn reproject_partner_symbols(
+    index: &SearchIndex,
+    db: &SymbolDatabase,
+    partner_symbol_ids: &[String],
+) -> Result<()> {
+    if partner_symbol_ids.is_empty() {
+        return Ok(());
+    }
+
+    let ids_to_process = if partner_symbol_ids.len() > MAX_PARTNER_REPROJECT_SYMBOLS {
+        warn!(
+            "Watcher: {} relationship partner symbols; \
+             capping partner reproject at {}",
+            partner_symbol_ids.len(),
+            MAX_PARTNER_REPROJECT_SYMBOLS
+        );
+        &partner_symbol_ids[..MAX_PARTNER_REPROJECT_SYMBOLS]
+    } else {
+        partner_symbol_ids
+    };
+
+    // Resolve partner IDs → Symbol objects to get their file paths.
+    let partner_symbols = db.get_symbols_by_ids(&ids_to_process.to_vec())?;
+    if partner_symbols.is_empty() {
+        return Ok(());
+    }
+
+    // Collect the unique file paths that need reprojection.
+    let mut partner_files: HashSet<String> = HashSet::new();
+    for sym in &partner_symbols {
+        partner_files.insert(sym.file_path.clone());
+    }
+
+    // Fetch file contents for all partner files in one batch.
+    let file_paths_vec: Vec<String> = partner_files.into_iter().collect();
+    let file_contents = db.get_file_contents_by_paths(&file_paths_vec)?;
+
+    for file_path in &file_paths_vec {
+        // Fetch ALL symbols in the partner file (not just the relationship partners),
+        // because remove_by_file_path removes all docs for the file and we must
+        // re-add every symbol to avoid holes in the index.
+        let all_syms = db.get_symbols_for_file(file_path)?;
+        if all_syms.is_empty() {
+            continue;
+        }
+
+        let content = file_contents
+            .get(file_path)
+            .and_then(|c| c.as_deref())
+            .unwrap_or("");
+        let language = all_syms
+            .first()
+            .map(|s| s.language.as_str())
+            .unwrap_or("unknown");
+
+        let file_info = FileInfo {
+            path: file_path.clone(),
+            language: language.to_string(),
+            content: Some(content.to_string()),
+            hash: String::new(),
+            size: 0,
+            last_modified: 0,
+            last_indexed: 0,
+            symbol_count: all_syms.len() as i32,
+            line_count: 0,
+        };
+
+        // Remove stale Tantivy docs and re-add with fresh relationship_text.
+        // `commit: false` — callers batch the commit across all partner files.
+        apply_documents_with_db(
+            index,
+            &all_syms,
+            &[file_info],
+            &[file_path.clone()],
+            db,
+            false,
+        )?;
+    }
+
+    Ok(())
 }

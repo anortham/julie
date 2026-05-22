@@ -2,7 +2,7 @@ use anyhow::Result;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::database::{FileInfo, ProjectionState, ProjectionStatus, SymbolDatabase};
 use crate::extractors::Symbol;
@@ -14,6 +14,7 @@ pub use apply::apply_documents;
 pub(crate) use apply::apply_documents_with_db;
 pub(crate) use apply::apply_uncommitted_documents_from_symbols;
 pub(crate) use apply::collect_relationship_names_bounded;
+pub(crate) use apply::reproject_partner_symbols;
 use apply::{
     RELATIONSHIP_TEXT_MAX_BYTES, SymbolIndexContext, apply_documents_with_context,
     load_symbol_contexts_from_database, symbol_contexts_from_symbols,
@@ -158,9 +159,31 @@ impl SearchProjection {
             .collect();
         let symbol_contexts = symbol_contexts_from_symbols(&symbols);
         let symbol_ids: Vec<String> = symbols.iter().map(|s| s.id.clone()).collect();
-        let relationship_map =
-            collect_relationship_names_bounded(db, &symbol_ids, RELATIONSHIP_TEXT_MAX_BYTES)
-                .unwrap_or_default();
+        let relationship_map = match collect_relationship_names_bounded(
+            db,
+            &symbol_ids,
+            RELATIONSHIP_TEXT_MAX_BYTES,
+        ) {
+            Ok(map) => map,
+            Err(e) => {
+                let msg = e.to_string();
+                if msg.contains("no such table") {
+                    warn!("relationship_text skipped: DB not yet migrated ({})", msg);
+                    HashMap::new()
+                } else {
+                    let detail = format!("collect_relationship_names_bounded: {}", msg);
+                    let _ = db.upsert_projection_state(
+                        self.projection,
+                        &self.workspace_id,
+                        ProjectionStatus::Stale,
+                        Some(canonical.revision),
+                        current_projected_revision,
+                        Some(&detail),
+                    );
+                    return Err(e);
+                }
+            }
+        };
 
         if let Err(err) =
             self.rebuild(index, &symbols, &file_infos, &symbol_contexts, &relationship_map)
@@ -231,9 +254,31 @@ impl SearchProjection {
         let load_start = std::time::Instant::now();
         let symbol_contexts = load_symbol_contexts_from_database(db, symbols)?;
         let symbol_ids: Vec<String> = symbols.iter().map(|s| s.id.clone()).collect();
-        let relationship_map =
-            collect_relationship_names_bounded(db, &symbol_ids, RELATIONSHIP_TEXT_MAX_BYTES)
-                .unwrap_or_default();
+        let relationship_map = match collect_relationship_names_bounded(
+            db,
+            &symbol_ids,
+            RELATIONSHIP_TEXT_MAX_BYTES,
+        ) {
+            Ok(map) => map,
+            Err(e) => {
+                let msg = e.to_string();
+                if msg.contains("no such table") {
+                    warn!("relationship_text skipped: DB not yet migrated ({})", msg);
+                    HashMap::new()
+                } else {
+                    let detail = format!("collect_relationship_names_bounded: {}", msg);
+                    let _ = db.upsert_projection_state(
+                        self.projection,
+                        &self.workspace_id,
+                        ProjectionStatus::Stale,
+                        Some(target_revision),
+                        current_projected_revision,
+                        Some(&detail),
+                    );
+                    return Err(e);
+                }
+            }
+        };
         info!(
             "⏱️  projection.load_contexts: {:.2}s ({} symbols)",
             load_start.elapsed().as_secs_f64(),
@@ -321,9 +366,31 @@ impl SearchProjection {
             let load_start = std::time::Instant::now();
             let symbol_contexts = load_symbol_contexts_from_database(&db, symbols)?;
             let symbol_ids: Vec<String> = symbols.iter().map(|s| s.id.clone()).collect();
-            let relationship_map =
-                collect_relationship_names_bounded(&db, &symbol_ids, RELATIONSHIP_TEXT_MAX_BYTES)
-                    .unwrap_or_default();
+            let relationship_map = match collect_relationship_names_bounded(
+                &db,
+                &symbol_ids,
+                RELATIONSHIP_TEXT_MAX_BYTES,
+            ) {
+                Ok(map) => map,
+                Err(e) => {
+                    let msg = e.to_string();
+                    if msg.contains("no such table") {
+                        warn!("relationship_text skipped: DB not yet migrated ({})", msg);
+                        HashMap::new()
+                    } else {
+                        let detail = format!("collect_relationship_names_bounded: {}", msg);
+                        let _ = db.upsert_projection_state(
+                            self.projection,
+                            &self.workspace_id,
+                            ProjectionStatus::Stale,
+                            Some(target_revision),
+                            current_projected_revision,
+                            Some(&detail),
+                        );
+                        return Err(e);
+                    }
+                }
+            };
             info!(
                 "⏱️  projection.load_contexts: {:.2}s ({} symbols)",
                 load_start.elapsed().as_secs_f64(),

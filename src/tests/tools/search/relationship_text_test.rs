@@ -256,4 +256,164 @@ mod relationship_text_test {
             "file row must be findable via content search"
         );
     }
+
+    // -------------------------------------------------------------------------
+    // Test: test_projection_propagates_sql_errors  (codex review #5)
+    //   A real SQL error from collect_relationship_names_bounded (e.g. missing
+    //   column, not "no such table") must propagate: the projection returns Err
+    //   and the state is marked Stale, not silently swallowed as empty map.
+    // -------------------------------------------------------------------------
+    #[test]
+    fn test_projection_propagates_sql_errors() {
+        use crate::database::ProjectionStatus;
+        use crate::search::projection::SearchProjection;
+
+        let dir = TempDir::new().unwrap();
+        let mut db = make_db(&dir);
+        let index = make_index(&dir);
+
+        // Seed a symbol so there is data and ensure_canonical_revision creates
+        // a revision (it returns None when all tables are empty).
+        let sym = make_symbol("sym-sqlerr-001", "error_test_fn");
+        seed_symbols(&mut db, &[sym]);
+
+        // Create the canonical revision NOW while relationships table is intact
+        // (ensure_canonical_revision queries COUNT(*) FROM relationships).
+        db.ensure_canonical_revision("test-ws-sqlerr")
+            .expect("ensure_canonical_revision");
+
+        // Corrupt the relationships table: keep it existing but with a wrong schema.
+        // "no such column" is a real SQL error that is NOT "no such table" —
+        // the fix must propagate it, not swallow it as an empty map.
+        db.conn
+            .execute_batch(
+                "DROP TABLE IF EXISTS relationships; \
+                 CREATE TABLE relationships (id TEXT, bogus_col TEXT);",
+            )
+            .expect("corrupt relationships table");
+
+        // Call ensure_current_from_database — should return Err (not Ok).
+        let projection = SearchProjection::tantivy("test-ws-sqlerr");
+        let result = projection.ensure_current_from_database(&mut db, &index);
+
+        assert!(
+            result.is_err(),
+            "projection must propagate SQL errors from collect_relationship_names_bounded, got Ok"
+        );
+
+        // The projection state must be Stale (not Ready or Missing).
+        let state = db
+            .get_projection_state("tantivy", "test-ws-sqlerr")
+            .expect("get_projection_state");
+        assert_eq!(
+            state.map(|s| s.status),
+            Some(ProjectionStatus::Stale),
+            "projection state must be Stale after SQL error in collect_relationship_names_bounded"
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // Test: test_watcher_reprojects_relationship_partners  (codex review #4)
+    //   When file A changes and establishes a relationship with symbol Z in
+    //   file B, Z's Tantivy doc must be reprojected with fresh relationship_text.
+    //   Verified via reproject_partner_symbols() which is what the watcher calls.
+    // -------------------------------------------------------------------------
+    #[test]
+    fn test_watcher_reprojects_relationship_partners() {
+        use crate::search::projection::reproject_partner_symbols;
+
+        let dir = TempDir::new().unwrap();
+        let mut db = make_db(&dir);
+        let index = make_index(&dir);
+
+        // sym_a is in file_a.rs, sym_b is in file_b.rs
+        let mut sym_a = make_symbol("sym-rep-001", "caller_in_file_a");
+        sym_a.file_path = "src/file_a.rs".to_string();
+
+        let mut sym_b = make_symbol("sym-rep-002", "callee_in_file_b");
+        sym_b.file_path = "src/file_b.rs".to_string();
+
+        let file_a_info = FileInfo {
+            path: "src/file_a.rs".to_string(),
+            language: "rust".to_string(),
+            hash: "aaaa".to_string(),
+            size: 50,
+            last_modified: 0,
+            last_indexed: 0,
+            symbol_count: 1,
+            line_count: 5,
+            content: Some("fn caller_in_file_a() {}".to_string()),
+        };
+        let file_b_info = FileInfo {
+            path: "src/file_b.rs".to_string(),
+            language: "rust".to_string(),
+            hash: "bbbb".to_string(),
+            size: 50,
+            last_modified: 0,
+            last_indexed: 0,
+            symbol_count: 1,
+            line_count: 5,
+            content: Some("fn callee_in_file_b() {}".to_string()),
+        };
+
+        // Seed file_b and project sym_b WITHOUT the A→B relationship.
+        // This simulates sym_b being projected before file_a was indexed —
+        // sym_b's Tantivy doc therefore has empty relationship_text.
+        db.store_file_info(&file_b_info).unwrap();
+        db.store_symbols(&[sym_b.clone()]).unwrap();
+        apply_documents_with_db(
+            &index,
+            &[sym_b.clone()],
+            &[file_b_info.clone()],
+            &["src/file_b.rs".to_string()],
+            &db,
+            true,
+        )
+        .expect("initial projection of file_b (no relationship yet)");
+
+        // Now add file_a and the A→B relationship (simulating file_a being indexed).
+        // sym_b is now stale: its Tantivy doc has empty relationship_text,
+        // but the DB has a new relationship linking sym_a → sym_b.
+        db.store_file_info(&file_a_info).unwrap();
+        db.store_symbols(&[sym_a.clone()]).unwrap();
+        let rel = Relationship {
+            id: "rel-rep-001".to_string(),
+            from_symbol_id: "sym-rep-001".to_string(),
+            to_symbol_id: "sym-rep-002".to_string(),
+            kind: RelationshipKind::Calls,
+            file_path: "src/file_a.rs".to_string(),
+            line_number: 3,
+            confidence: 1.0,
+            metadata: None,
+        };
+        db.store_relationships(&[rel]).unwrap();
+
+        // Before reprojection: "caller_in_file_a" must NOT surface callee_in_file_b
+        // via relationship_text (it's stale/empty).
+        let hits_before: Vec<UnifiedHit> = index
+            .search_unified("caller_in_file_a", &SearchFilter::default(), 10)
+            .expect("search before reproject");
+        let names_before: Vec<&str> = hits_before.iter().map(|h| h.name.as_str()).collect();
+        assert!(
+            !names_before.contains(&"callee_in_file_b"),
+            "callee_in_file_b must NOT appear before partner reprojection; got: {names_before:?}"
+        );
+
+        // Reproject sym_b as a partner of sym_a (what the watcher does after
+        // incremental_update_atomic for file_a).
+        reproject_partner_symbols(&index, &db, &["sym-rep-002".to_string()])
+            .expect("reproject_partner_symbols");
+        index.commit().expect("commit after reproject");
+
+        // After reprojection: sym_b's relationship_text now contains "caller_in_file_a",
+        // so searching for that term must surface callee_in_file_b.
+        let hits_after: Vec<UnifiedHit> = index
+            .search_unified("caller_in_file_a", &SearchFilter::default(), 10)
+            .expect("search after reproject");
+        let names_after: Vec<&str> = hits_after.iter().map(|h| h.name.as_str()).collect();
+        assert!(
+            names_after.contains(&"callee_in_file_b"),
+            "callee_in_file_b must appear after partner reprojection via relationship_text; got: {names_after:?}"
+        );
+    }
 }
