@@ -433,6 +433,15 @@ pub(crate) const BASENAME_EXACT_TERM_BOOST: f32 = 40.0;
 /// SymbolKind to dispatch on).
 pub(crate) const FILE_KIND_EXACT_BONUS: f32 = 30.0;
 
+/// Boost applied when a query exactly matches a path-segment of a file row's
+/// path (between `/` separators).  This handles cases like query=".cargo"
+/// matching the path ".cargo/config.toml" where the dot-prefixed directory
+/// name is the load-bearing identifier and compact-normalisation would strip
+/// the dot.  Large enough to overcome basename-stem matches against shallower
+/// peers (e.g., ranking ".cargo/config.toml" above "Cargo.toml" for query
+/// ".cargo").
+pub(crate) const FILE_PATH_SEGMENT_EXACT_BOOST: f32 = 160.0;
+
 /// Rerank a mixed slice of symbol and file-row candidates using the
 /// Eros-recipe field-score boosts.
 ///
@@ -486,6 +495,20 @@ pub fn rerank_unified(query: &ParsedQuery, candidates: &[Candidate]) -> Vec<Rank
                     .unwrap_or(&basename_lc);
                 let basename_compact = compact_alnum_lc(&basename_lc);
                 let stem_compact = compact_alnum_lc(stem_lc);
+
+                // Path-segment-exact: query matches a `/`-separated path
+                // component verbatim.  Catches dot-prefixed directories like
+                // ".cargo" in ".cargo/config.toml" that compact_alnum_lc
+                // would otherwise strip into a sibling-collision with
+                // "Cargo.toml".
+                let query_raw_lc = query.raw.to_lowercase();
+                let path_segment_exact = !query_raw_lc.is_empty()
+                    && path_lc
+                        .split('/')
+                        .any(|segment| segment == query_raw_lc);
+                if path_segment_exact {
+                    score += FILE_PATH_SEGMENT_EXACT_BOOST;
+                }
 
                 if !query_compact.is_empty()
                     && (basename_compact == query_compact || stem_compact == query_compact)

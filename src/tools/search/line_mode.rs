@@ -96,7 +96,7 @@ pub(crate) fn query_uses_file_level_header(query: &str) -> bool {
     )
 }
 
-fn effective_content_exclude_tests(
+pub(crate) fn effective_content_exclude_tests(
     query: &str,
     file_pattern: &Option<String>,
     exclude_tests: Option<bool>,

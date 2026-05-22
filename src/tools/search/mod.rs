@@ -406,6 +406,37 @@ impl FastSearchTool {
 
         // Locations-only mode: skip code context entirely (70-90% token savings)
         if self.return_format == "locations" {
+            // T8 follow-up: when locations mode is requested AND the query is
+            // a content match (no exact-name symbol matches it), supplement
+            // the unified result with line-mode line numbers so callers see
+            // the actual matching line rather than the enclosing symbol's
+            // declaration line.  This restores the behaviour of the old
+            // `execute_content_search` locations path.
+            let has_exact_name_match = optimized.results.iter().any(|symbol| {
+                formatting::is_definition_name_match(&symbol.name, &self.query.to_lowercase())
+            });
+            if !has_exact_name_match {
+                if let Ok(line_locations_output) = self
+                    .try_line_mode_locations(handler, &workspace_target)
+                    .await
+                {
+                    if let Some(locations_text) = line_locations_output {
+                        let final_text = if execution.relaxed {
+                            format!(
+                                "NOTE: Relaxed search (showing partial matches — no results matched all terms)\n\n{}",
+                                locations_text
+                            )
+                        } else {
+                            locations_text
+                        };
+                        return Ok(FastSearchExecution {
+                            result: CallToolResult::text_content(vec![Content::text(final_text)]),
+                            execution: Some(execution),
+                        });
+                    }
+                }
+            }
+
             let mut locations_output = formatting::format_locations_only(&self.query, &optimized);
             if execution.relaxed {
                 locations_output = format!(
@@ -457,6 +488,71 @@ impl FastSearchTool {
             handler,
         )
         .await
+    }
+
+    /// Try to produce content-style locations output (file:line per match) by
+    /// running line-mode scanning.  Used by `return_format == "locations"` when
+    /// the unified search did not find an exact-name symbol match — in that
+    /// case the file:line of the actual content match is more useful than the
+    /// declaration line of an enclosing symbol.
+    ///
+    /// Returns `Ok(Some(text))` on success, `Ok(None)` if line-mode produced
+    /// zero matches (caller falls back to symbol-locations output).  Errors
+    /// bubble up so the caller can choose to fall back gracefully.
+    async fn try_line_mode_locations(
+        &self,
+        handler: &JulieServerHandler,
+        workspace_target: &WorkspaceTarget,
+    ) -> Result<Option<String>> {
+        let effective_limit = self.effective_limit();
+        let line_result = line_mode::line_mode_matches(
+            &self.query,
+            &self.language,
+            &self.file_pattern,
+            effective_limit,
+            self.exclude_tests,
+            workspace_target,
+            handler,
+        )
+        .await?;
+
+        if line_result.matches.is_empty() {
+            return Ok(None);
+        }
+
+        // Workspace label for SearchHit construction (used only for telemetry
+        // round-tripping; locations output does not render it).
+        let workspace_label = match workspace_target {
+            WorkspaceTarget::Primary => handler
+                .require_primary_workspace_identity()
+                .unwrap_or_else(|_| "primary".to_string()),
+            WorkspaceTarget::Target(id) => id.clone(),
+        };
+
+        let language_label = match &self.language {
+            Some(lang) => lang.clone(),
+            None => "rust".to_string(),
+        };
+
+        let hits: Vec<crate::tools::search::trace::SearchHit> = line_result
+            .matches
+            .into_iter()
+            .map(|line_match| {
+                crate::tools::search::trace::SearchHit::from_line_match(
+                    line_match,
+                    workspace_label.clone(),
+                    language_label.clone(),
+                    0.0_f32,
+                )
+            })
+            .collect();
+
+        let total_results = hits.len();
+        let optimized = OptimizedResponse::with_total(hits, total_results);
+        Ok(Some(formatting::format_content_locations_only(
+            &self.query,
+            &optimized,
+        )))
     }
 }
 

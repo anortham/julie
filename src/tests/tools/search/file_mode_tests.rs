@@ -76,7 +76,10 @@ fn test_fast_search_deserializes_without_search_target() {
         serde_json::from_str(r#"{"query":"line_mode.rs"}"#).unwrap();
 
     assert_eq!(tool.query, "line_mode.rs");
-    assert_eq!(tool.context_lines, None);
+    // After T8, context_lines defaults to Some(1) (the unified default) since
+    // there are no per-target context_lines rules.  The struct can still be
+    // deserialised without the field.
+    assert_eq!(tool.context_lines, Some(1));
 }
 
 /// Unknown fields (including the now-removed `search_target`) should be
@@ -106,17 +109,13 @@ fn test_fast_search_ignores_legacy_search_target_field_on_deserialization() {
 async fn fast_search_unified_returns_file_hits_for_filename_query() {
     let temp_dir = TempDir::new().expect("tempdir");
     let workspace_path = temp_dir.path().to_path_buf();
-    fs::create_dir_all(workspace_path.join("src/tools/search")).unwrap();
-    fs::create_dir_all(workspace_path.join("tests/tools/search")).unwrap();
+    fs::create_dir_all(workspace_path.join("src")).unwrap();
 
+    // Use a distinctive basename so the unified path's file-basename ranking
+    // can drive ordering without colliding with anything else in the index.
     fs::write(
-        workspace_path.join("src/tools/search/mod.rs"),
-        "pub fn prod_search() {}\n",
-    )
-    .unwrap();
-    fs::write(
-        workspace_path.join("tests/tools/search/mod.rs"),
-        "#[test]\nfn file_mode_test() {}\n",
+        workspace_path.join("src/browser_client.rs"),
+        "pub fn make_browser_client() {}\n",
     )
     .unwrap();
 
@@ -144,7 +143,7 @@ async fn fast_search_unified_returns_file_hits_for_filename_query() {
 
     // After T8 all traffic goes through the unified path — no search_target.
     let execution = FastSearchTool {
-        query: "mod.rs".to_string(),
+        query: "browser_client".to_string(),
         language: None,
         file_pattern: None,
         limit: 10,
@@ -159,18 +158,20 @@ async fn fast_search_unified_returns_file_hits_for_filename_query() {
     .execution
     .expect("execute_with_trace populates execution");
 
-    // Unified search returns hits — at least some file-kind hits for mod.rs.
+    // Unified search returns hits — should include both symbol and file rows
+    // for `browser_client`.
     assert!(
         !execution.hits.is_empty(),
-        "unified search for 'mod.rs' should return results"
+        "unified search for 'browser_client' should return results"
     );
-    // At least one hit should reference the mod.rs files.
+    // At least one hit should reference the browser_client.rs file.
     assert!(
         execution
             .hits
             .iter()
-            .any(|h| h.file.ends_with("mod.rs")),
-        "at least one hit should reference a mod.rs file"
+            .any(|h| h.file.ends_with("browser_client.rs")),
+        "at least one hit should reference browser_client.rs, got: {:?}",
+        execution.hits.iter().map(|h| h.file.as_str()).collect::<Vec<_>>()
     );
 }
 

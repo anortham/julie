@@ -449,15 +449,33 @@ pub async fn execute_search_unified(
 ) -> Result<SearchExecutionResult> {
     use crate::search::SearchFilter;
 
+    // T8 follow-up: apply the NL-default-exclude-tests rule that
+    // `execute_content_search` used to provide.  When the caller passes
+    // `exclude_tests: None`, default to excluding tests if the query looks
+    // natural-language-like AND the caller did not scope to a test
+    // file_pattern.  Explicit `exclude_tests: Some(_)` always wins.
+    let effective_exclude_tests = line_mode::effective_content_exclude_tests(
+        params.query,
+        params.file_pattern,
+        params.exclude_tests,
+    );
+
     let mut hits = Vec::new();
     let mut total_results = 0usize;
+    // Track pre-filter total separately from the final hit count so we can
+    // attribute zero-hit results to test filtering when applicable.
+    let mut pre_test_filter_total = 0usize;
 
     for workspace in workspaces {
+        // Run the unified search WITHOUT the exclude_tests filter so we can
+        // observe whether test files contributed candidates.  We then apply
+        // the NL-default-exclude-tests post-filter manually to attribute
+        // any resulting zero-hit run to `ZeroHitReason::TestFiltered`.
         let filter = SearchFilter {
             language: params.language.clone(),
             kind: None,
             file_pattern: params.file_pattern.clone(),
-            exclude_tests: params.exclude_tests.unwrap_or(false),
+            exclude_tests: false,
         };
 
         // Use `unified_search_hits` (returns raw UnifiedHit) rather than
@@ -473,21 +491,38 @@ pub async fn execute_search_unified(
         .await?;
 
         total_results += workspace_total;
-        hits.extend(
-            raw_hits
-                .into_iter()
-                .map(|hit| SearchHit::from_unified_hit(hit, workspace.workspace_id.clone())),
-        );
+        pre_test_filter_total += raw_hits.len();
+
+        for raw_hit in raw_hits {
+            if effective_exclude_tests
+                && crate::search::scoring::is_test_path(&raw_hit.file_path)
+            {
+                continue;
+            }
+            hits.push(SearchHit::from_unified_hit(
+                raw_hit,
+                workspace.workspace_id.clone(),
+            ));
+        }
     }
 
     sort_hits_by_score_desc(&mut hits);
     hits.truncate(params.limit.max(1) as usize);
 
-    Ok(SearchExecutionResult::new(
+    let mut execution = SearchExecutionResult::new(
         hits,
         false, // unified path does not propagate per-workspace relaxed flag to callers
         total_results,
         "search_unified",
         SearchExecutionKind::Definitions,
-    ))
+    );
+
+    // If filtering tests dropped every candidate, attribute the zero-hit
+    // result to the auto-exclude rule so callers (telemetry, dashboard,
+    // agent prompts) can distinguish this from a true "no matches found".
+    if execution.hits.is_empty() && effective_exclude_tests && pre_test_filter_total > 0 {
+        execution.trace.zero_hit_reason = Some(ZeroHitReason::TestFiltered);
+    }
+
+    Ok(execution)
 }

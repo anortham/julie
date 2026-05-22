@@ -548,13 +548,16 @@ async fn file_search_missing_index_names_file_mode() -> Result<()> {
     .await?;
 
     let text = extract_text(&result);
+    // After T8 cutover, the unified surface no longer emits per-mode missing-
+    // index messages.  The neutral "Search requires a Tantivy index..." message
+    // covers all search modes (definition / content / file) uniformly.
     assert!(
-        text.contains("File search requires a Tantivy index"),
-        "file mode should name file search in the missing-index message, got:\n{text}"
+        text.contains("Search requires a Tantivy index"),
+        "missing-index message should name the search index, got:\n{text}"
     );
     assert!(
         !text.contains("Definition search requires"),
-        "file mode should not report a definition-search error, got:\n{text}"
+        "unified path should not report a definition-specific error, got:\n{text}"
     );
 
     Ok(())

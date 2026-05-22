@@ -1,11 +1,15 @@
 //! Tests for content-search hit scoring.
 //!
-//! Covers Task 9: `SearchHit.score` for content (line-mode) hits must be a
-//! neutral `0.0_f32` rather than the old synthetic `workspace_total - idx`
-//! count-derived pseudo-score. Real per-line BM25 is deferred; the fake score
-//! was misleading downstream consumers that assumed scores were comparable
-//! across searches.
+//! Pre-T8: Task 9 required line-mode content hits to carry a neutral
+//! `0.0_f32` score (no synthetic count-derived ranking).
+//!
+//! After T8 atomic cutover: content queries route through the unified search
+//! path, which returns mixed-kind hits (symbol rows + file rows) with real
+//! BM25 + rerank scores.  The test below now verifies the unified path's
+//! invariants for content-style queries: at least one hit per seeded file,
+//! and every seeded file appears in the results.
 
+use std::collections::HashSet;
 use std::fs;
 use tempfile::TempDir;
 
@@ -20,8 +24,9 @@ async fn content_hits_have_neutral_zero_score() {
     let src_dir = workspace_path.join("src");
     fs::create_dir_all(&src_dir).unwrap();
 
-    // Five files each containing one match for "marker_token". Line-mode
-    // search should return 5 hits, one per file.
+    // Five files each containing one match for "marker_token".  Each file
+    // has both a symbol whose body mentions the token and a file row whose
+    // content carries it.  After T8 the unified path can return both.
     for i in 0..5 {
         let body = format!(
             "pub fn sample_{i}() -> &'static str {{\n    // marker_token stays here\n    \"ok\"\n}}\n"
@@ -56,7 +61,7 @@ async fn content_hits_have_neutral_zero_score() {
         query: "marker_token".to_string(),
         language: None,
         file_pattern: None,
-        limit: 10,
+        limit: 50,
         context_lines: Some(0),
         exclude_tests: None,
         workspace: Some("primary".to_string()),
@@ -68,32 +73,23 @@ async fn content_hits_have_neutral_zero_score() {
         .await
         .expect("search should not error")
         .execution
-        .expect("execute_with_trace populates execution for content search");
+        .expect("execute_with_trace populates execution for unified search");
 
-    assert_eq!(
-        execution.hits.len(),
-        5,
-        "expected 5 content hits, one per seeded file; got {}: {:?}",
-        execution.hits.len(),
-        execution.hits.iter().map(|h| &h.file).collect::<Vec<_>>(),
+    assert!(
+        !execution.hits.is_empty(),
+        "unified search for 'marker_token' should return hits"
     );
 
-    for hit in &execution.hits {
-        assert_eq!(
-            hit.score, 0.0_f32,
-            "content hit score must be 0.0 (Task 9); got {} for {}:{:?}",
-            hit.score, hit.file, hit.line,
+    // Every seeded file should appear among the hits (either as a symbol row
+    // or a file row).  Unified search is allowed to return either or both.
+    let seen_files: HashSet<&str> =
+        execution.hits.iter().map(|hit| hit.file.as_str()).collect();
+    for i in 0..5 {
+        let expected = format!("src/file_{i}.rs");
+        assert!(
+            seen_files.contains(expected.as_str()),
+            "expected hit for {expected}, got files: {:?}",
+            seen_files
         );
     }
-
-    // All scores equal ⇒ set of unique scores has exactly one element.
-    let unique_scores: std::collections::BTreeSet<u32> =
-        execution.hits.iter().map(|h| h.score.to_bits()).collect();
-    assert_eq!(
-        unique_scores.len(),
-        1,
-        "content hit scores must all be equal (no synthetic ranking); \
-         unique bit patterns: {:?}",
-        unique_scores,
-    );
 }
