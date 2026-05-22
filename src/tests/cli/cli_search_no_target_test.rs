@@ -1,14 +1,15 @@
-//! T8 CLI cutover tests: `--target` flag removed from the `search` subcommand.
+//! `--target` regression tests for the `search` subcommand.
 //!
-//! Tests verify clap behaviour directly (no subprocess) so they run in the
-//! unit tier and are deterministic.
+//! After T8 unified-search cutover the flag became a no-op; the eros bakeoff
+//! comparator and other external harnesses still pass `--target definitions`
+//! et al., so we keep the flag parseable but ignore its value (every query
+//! routes through the unified path now). These tests pin both shapes — with
+//! and without `--target` — to make sure that contract does not regress.
 
 use clap::Parser;
 
 use crate::cli::Cli;
 
-/// `julie-server search "main" --workspace /tmp` should parse successfully
-/// without a `--target` flag.
 #[test]
 fn no_target_flag() {
     let result = Cli::try_parse_from([
@@ -28,26 +29,23 @@ fn no_target_flag() {
     );
 }
 
-/// `julie-server search "main" --target definitions` should be rejected by
-/// clap because `--target` no longer exists on the search subcommand.
 #[test]
-fn target_flag_rejected() {
-    let result = Cli::try_parse_from([
-        "julie-server",
-        "search",
-        "main",
-        "--target",
-        "definitions",
-    ]);
-    assert!(
-        result.is_err(),
-        "search --target should be rejected after T8 cutover, but parsing succeeded"
-    );
-    let err_kind = result.err().map(|e| e.kind());
-    assert_eq!(
-        err_kind,
-        Some(clap::error::ErrorKind::UnknownArgument),
-        "expected UnknownArgument error, got: {:?}",
-        err_kind
-    );
+fn target_flag_accepted_as_no_op() {
+    for target_value in ["definitions", "files", "content"] {
+        let result = Cli::try_parse_from([
+            "julie-server",
+            "search",
+            "main",
+            "--target",
+            target_value,
+        ]);
+        assert!(
+            result.is_ok(),
+            "search --target {target_value} should parse cleanly (deprecated no-op), got error: {}",
+            result
+                .err()
+                .map(|e| e.to_string())
+                .unwrap_or_default()
+        );
+    }
 }

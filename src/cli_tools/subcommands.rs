@@ -95,6 +95,15 @@ pub struct SearchArgs {
     /// Exclude test symbols from results
     #[arg(short = 'T', long)]
     pub exclude_tests: bool,
+
+    /// Deprecated and accepted as a no-op since T8 unified-search cutover.
+    /// Older harnesses (e.g. the eros bakeoff comparator) still pass
+    /// `--target definitions|files|content`; we keep the flag so they can run
+    /// against the current unified path without a clap parse error. The value
+    /// is read but otherwise ignored — every query routes through the same
+    /// unified path regardless.
+    #[arg(short = 't', long, hide = true)]
+    pub target: Option<String>,
 }
 
 // ---------------------------------------------------------------------------

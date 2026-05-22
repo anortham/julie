@@ -89,6 +89,7 @@ fn test_search_args_tool_name() {
         file_pattern: None,
         context_lines: None,
         exclude_tests: false,
+        target: None,
     };
     assert_eq!(args.tool_name(), "fast_search");
 }
@@ -186,6 +187,7 @@ fn test_search_to_tool_args_minimal() {
         file_pattern: None,
         context_lines: None,
         exclude_tests: false,
+        target: None,
     };
     let json = args.to_tool_args().unwrap();
     assert_eq!(json["query"], "hello");
@@ -207,6 +209,7 @@ fn test_search_to_tool_args_full() {
         file_pattern: Some("src/**/*.rs".into()),
         context_lines: Some(3),
         exclude_tests: true,
+        target: None,
     };
     let json = args.to_tool_args().unwrap();
     assert_eq!(json["query"], "parse");
@@ -526,6 +529,7 @@ async fn test_run_cli_tool_standalone_definition_search_uses_bootstrapped_index(
         file_pattern: None,
         context_lines: None,
         exclude_tests: false,
+        target: None,
     };
 
     let output = run_cli_tool(&args, Some(temp.path().to_path_buf()), true)
@@ -646,6 +650,7 @@ async fn test_run_cli_tool_standalone_missing_workspace() {
         file_pattern: None,
         context_lines: None,
         exclude_tests: false,
+        target: None,
     };
 
     let result = run_cli_tool(
@@ -707,6 +712,7 @@ async fn test_run_cli_tool_daemon_fallback_missing_workspace() {
         file_pattern: None,
         context_lines: None,
         exclude_tests: false,
+        target: None,
     };
 
     let result = run_cli_tool(
