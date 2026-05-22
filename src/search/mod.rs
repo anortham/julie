@@ -27,4 +27,4 @@ pub use index::{
 pub use language_config::LanguageConfigs;
 pub use projection::SearchProjection;
 pub use schema::{SchemaFields, create_schema};
-pub use tokenizer::CodeTokenizer;
+pub use tokenizer::{CodeTokenizer, SimpleCodeTokenizer, pretokenize_code};
