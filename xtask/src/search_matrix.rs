@@ -227,12 +227,18 @@ async fn run_baseline_async(
     // CodeTokenizer reads these at construction via `new()`, which is called
     // during workspace open. Setting them after pool creation would be too late.
     // The guard restores the prior env state on drop (including on `?` propagation).
-    let _env_guard = ablation.apply_env();
+    let env_guard = ablation.apply_env();
 
     let pool = Arc::new(WorkspacePool::new(daemon_paths.indexes_dir(), None));
 
     let mut executions = Vec::new();
     let mut skipped_repos = Vec::new();
+    // (workspace_id, repo_root) of every workspace that received an ablation
+    // reindex.  Used for eager baseline restoration at the end of the run so
+    // the maintainer's `~/.julie` indexes are returned to a baseline-tokenizer
+    // projection rather than being left in an ablated state that the next
+    // daemon session would have to silently reindex.
+    let mut touched_for_restore: Vec<(String, std::path::PathBuf)> = Vec::new();
 
     for repo_name in &profile_entry.repos {
         let Some(repo_meta) = corpus.repos.iter().find(|repo| &repo.name == repo_name) else {
@@ -306,6 +312,8 @@ async fn run_baseline_async(
                 detailed: None,
             };
             reindex_tool.call_tool_with_options(&handler, true).await?;
+            touched_for_restore
+                .push((workspace_row.workspace_id.clone(), repo_root.clone()));
         }
 
         for case in eligible_cases_for_repo(cases, profile, repo_meta) {
@@ -370,6 +378,50 @@ async fn run_baseline_async(
         }
     }
 
+    // Eager baseline restoration.  After a non-baseline ablation run, every
+    // touched workspace has its on-disk Tantivy index built with the ablated
+    // tokenizer.  Without restoration, the next daemon session that opens any
+    // of those workspaces would detect a compat-marker mismatch and silently
+    // reindex from scratch — an expensive surprise.  We pay that cost here in
+    // the matrix command instead, so the daemon-side experience is uniform.
+    //
+    // We drop the env guard first so the freshly constructed CodeTokenizer
+    // inside the restore pool reads BASELINE flags.  We also drop the
+    // original pool so any cached workspaces from the ablation phase are
+    // released — a fresh pool with fresh handlers ensures the SearchIndex is
+    // re-opened with the baseline tokenizer.
+    //
+    // Best-effort: restore failures log to stderr but do not fail the report.
+    // The compat-marker auto-recovery on next daemon open is the safety net
+    // for the rare failure-path scenario.
+    if !ablation.is_baseline() && !touched_for_restore.is_empty() {
+        drop(env_guard);
+        drop(pool);
+
+        let restore_pool = Arc::new(WorkspacePool::new(daemon_paths.indexes_dir(), None));
+        for (workspace_id, repo_root) in &touched_for_restore {
+            match restore_workspace_to_baseline(
+                &restore_pool,
+                &daemon_paths,
+                workspace_id,
+                repo_root,
+            )
+            .await
+            {
+                Ok(()) => {}
+                Err(err) => {
+                    eprintln!(
+                        "warning: ablation eager restore failed for workspace {workspace_id} \
+                         at {}: {err}.  Next daemon open will auto-recover via compat-marker.",
+                        repo_root.display()
+                    );
+                }
+            }
+        }
+    } else {
+        drop(env_guard);
+    }
+
     let summary_flags = compute_summary_flags(&executions, cases);
     Ok(SearchMatrixBaselineReport {
         profile: profile.to_string(),
@@ -377,6 +429,39 @@ async fn run_baseline_async(
         skipped_repos,
         summary_flags,
     })
+}
+
+/// Force-reindex a single workspace with the current (baseline) tokenizer env.
+/// Used by `run_baseline_async` to undo an ablation reindex.
+async fn restore_workspace_to_baseline(
+    pool: &Arc<WorkspacePool>,
+    _daemon_paths: &DaemonPaths,
+    workspace_id: &str,
+    repo_root: &std::path::Path,
+) -> Result<()> {
+    let workspace = pool.get_or_init(workspace_id, repo_root.to_path_buf()).await?;
+    let handler = JulieServerHandler::new_with_shared_workspace(
+        workspace,
+        repo_root.to_path_buf(),
+        None,
+        Some(workspace_id.to_string()),
+        None,
+        None,
+        None,
+        None,
+        Some(Arc::clone(pool)),
+    )
+    .await?;
+    let restore_tool = julie::tools::workspace::ManageWorkspaceTool {
+        operation: "index".to_string(),
+        path: Some(repo_root.to_string_lossy().to_string()),
+        force: Some(true),
+        name: None,
+        workspace_id: Some(workspace_id.to_string()),
+        detailed: None,
+    };
+    restore_tool.call_tool_with_options(&handler, true).await?;
+    Ok(())
 }
 
 fn eligible_cases_for_repo<'a>(

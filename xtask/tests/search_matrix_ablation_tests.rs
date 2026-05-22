@@ -518,3 +518,96 @@ fn search_matrix_ablation_tests_different_labels_produce_distinct_execution_stam
     assert_eq!(baseline_label, "", "baseline label must be empty");
     assert_eq!(no_stem_label, "no-stemming", "no-stemming label must be 'no-stemming'");
 }
+
+// ---------------------------------------------------------------------------
+// (e) Eager restore: a non-baseline ablation run must leave the on-disk
+//     Tantivy compat marker reflecting BASELINE flags, not the ablated ones.
+//
+// Regression for codex pre-merge finding "Ablation runs rewrite the real
+// daemon indexes": the harness forced an ablated reindex but never restored
+// the baseline projection.  Recovery used to rely on the next
+// `open_or_create_with_tokenizer` call detecting the compat-marker mismatch
+// and recreating-then-reindexing the empty index — an expensive surprise
+// for the maintainer who didn't know they had to pay it.  After this fix,
+// the harness eagerly re-indexes each touched workspace with baseline env
+// vars before returning, so the on-disk marker is back to baseline and the
+// next daemon open is a fast `Compatible` path.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn search_matrix_ablation_tests_eager_restore_returns_index_to_baseline() {
+    use std::path::PathBuf;
+
+    // Ensure the env vars are not set before we begin.
+    // SAFETY: single-threaded test; no parallel tokenizer construction here.
+    unsafe {
+        std::env::remove_var("JULIE_ABLATE_STEMMING");
+        std::env::remove_var("JULIE_ABLATE_CAMEL_EMIT");
+    }
+
+    let temp_dir = TempDir::new().expect("temp dir");
+    let julie_home = temp_dir.path().join("julie-home");
+    let source_root = temp_dir.path().join("source");
+    fs::create_dir_all(&julie_home).expect("julie home");
+    fs::create_dir_all(&source_root).expect("source root");
+
+    let repo_root = source_root.join("ablation-fixture-repo");
+    let daemon_db = Arc::new(
+        DaemonDatabase::open(&julie_home.join("daemon.db")).expect("open daemon db"),
+    );
+    setup_indexed_workspace(&julie_home, repo_root, Arc::clone(&daemon_db));
+
+    // Locate the (single) workspace's tantivy directory by glob.  The
+    // workspace_id is generated at index time; we don't need it here, the
+    // indexes/ dir has exactly one entry in the fixture.
+    let indexes_dir = julie_home.join("indexes");
+    let workspace_dirs: Vec<PathBuf> = fs::read_dir(&indexes_dir)
+        .expect("read indexes dir")
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| p.is_dir())
+        .collect();
+    assert_eq!(
+        workspace_dirs.len(),
+        1,
+        "fixture must have exactly one workspace directory, got: {workspace_dirs:?}"
+    );
+    let tantivy_dir = workspace_dirs[0].join("tantivy");
+    let marker_path = tantivy_dir.join("julie-search-compat.json");
+
+    let cases_path = temp_dir.path().join("cases.toml");
+    let corpus_path = temp_dir.path().join("corpus.toml");
+    write_cases_toml(&cases_path);
+    write_corpus_toml(&corpus_path, &source_root);
+
+    let out_path = temp_dir.path().join("ablation-both-report.json");
+    run_search_matrix_baseline_with_home(
+        &julie_home,
+        &cases_path,
+        &corpus_path,
+        "ablation-smoke",
+        &out_path,
+        &Ablation::Both,
+    )
+    .expect("ablation=both run completes");
+
+    // The compat marker must exist and reflect BASELINE tokenizer flags,
+    // proving the eager restore ran successfully at end of ablation.
+    let marker_text =
+        fs::read_to_string(&marker_path).expect("compat marker must exist on disk");
+    let marker: serde_json::Value =
+        serde_json::from_str(&marker_text).expect("compat marker is JSON");
+    let tok = &marker["tokenizer_signature"];
+
+    assert_eq!(
+        tok["ablate_stemming"].as_bool(),
+        Some(false),
+        "After ablation=both with eager restore, on-disk compat marker \
+         must report ablate_stemming=false (baseline). Marker: {marker}"
+    );
+    assert_eq!(
+        tok["ablate_camel_emit"].as_bool(),
+        Some(false),
+        "After ablation=both with eager restore, on-disk compat marker \
+         must report ablate_camel_emit=false (baseline). Marker: {marker}"
+    );
+}
