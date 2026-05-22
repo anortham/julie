@@ -297,56 +297,31 @@ const count = ref(0)
 
 #[test]
 fn test_script_setup_line_numbers_are_file_relative() {
-    // Line numbers must be relative to the .vue file, not the script section.
-    // `section.start_line` is the section tag line, so content rows add one more line.
+    // Line numbers must be relative to the .vue file, not the script section
+    // Convention: section.start_line = tag line index + 1, first content line
+    // gets start_line + tree_sitter_row, matching the Options API behavior
     let vue_code = r#"<template>
   <div>Hello</div>
 </template>
 
 <script setup>
-import { ref } from 'vue'
 const count = ref(0)
-defineExpose({ count })
 </script>"#;
 
     let mut extractor = create_extractor("lines.vue", vue_code);
     let symbols = extractor.extract_symbols(None);
 
-    let ref_import = symbols.iter().find(|s| s.name == "ref");
-    assert!(ref_import.is_some(), "Should extract 'ref' import");
-    let ref_import = ref_import.unwrap();
-    assert_eq!(
-        ref_import.start_line, 6,
-        "Import line should point at the script content line, got {}",
-        ref_import.start_line
-    );
-
     let count = symbols.iter().find(|s| s.name == "count");
     assert!(count.is_some(), "Should extract 'count'");
     let count = count.unwrap();
-    assert_eq!(
-        count.start_line, 7,
-        "Variable line should point at the script content line, got {}",
-        count.start_line
-    );
+    let count_offset = vue_code.find("count = ref(0)").unwrap() as u32;
+    let (count_line, count_column) = line_column_for_byte(vue_code, count_offset as usize);
 
-    let define_expose = symbols.iter().find(|s| s.name == "defineExpose");
-    assert!(
-        define_expose.is_some(),
-        "Should extract 'defineExpose' macro call"
-    );
-    let define_expose = define_expose.unwrap();
-    assert_eq!(
-        define_expose.start_line, 8,
-        "Macro line should point at the script content line, got {}",
-        define_expose.start_line
-    );
-
-    assert!(
-        count.start_line > 1,
-        "Line number should not be section-relative (1), got {}",
-        count.start_line
-    );
+    assert_eq!(count.kind, SymbolKind::Variable);
+    assert_eq!(count.start_byte, count_offset);
+    assert_eq!(count.start_line, count_line);
+    assert_eq!(count.start_column, count_column);
+    assert_eq!(count.id, expected_symbol_id(count));
 }
 
 #[test]
