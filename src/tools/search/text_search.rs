@@ -998,3 +998,124 @@ pub(crate) fn content_result_to_symbol(
         annotations: Vec::new(),
     }
 }
+
+// ---------------------------------------------------------------------------
+// Phase 2 — unified search path
+// ---------------------------------------------------------------------------
+
+/// Convert a [`crate::search::index::UnifiedHit`] into an extractors
+/// [`Symbol`] for use with the shared `SearchHit` / formatter plumbing.
+fn unified_hit_to_symbol(hit: crate::search::index::UnifiedHit) -> Symbol {
+    let kind = SymbolKind::try_from_string(&hit.kind).unwrap_or(SymbolKind::Variable);
+    Symbol {
+        id: hit.id,
+        name: hit.name,
+        kind,
+        language: hit.language,
+        file_path: hit.file_path,
+        start_line: hit.start_line,
+        signature: if hit.signature.is_empty() {
+            None
+        } else {
+            Some(hit.signature)
+        },
+        doc_comment: if hit.doc_comment.is_empty() {
+            None
+        } else {
+            Some(hit.doc_comment)
+        },
+        start_column: 0,
+        end_line: 0,
+        end_column: 0,
+        start_byte: 0,
+        end_byte: 0,
+        visibility: None,
+        parent_id: None,
+        metadata: None,
+        semantic_group: None,
+        confidence: Some(hit.tantivy_score),
+        code_context: None,
+        content_type: None,
+        body_span: None,
+        body_hash: None,
+        annotations: Vec::new(),
+    }
+}
+
+/// Workspace-routing layer for the unified BM25 search path.
+///
+/// Mirrors the structure of `text_search_impl` but calls
+/// `SearchIndex::search_unified` instead of the per-target search methods.
+/// Returns `(hits_as_symbols, total_count)`.
+pub async fn unified_search_impl(
+    query: &str,
+    filter: &crate::search::SearchFilter,
+    limit: u32,
+    workspace_ids: Option<Vec<String>>,
+    handler: &JulieServerHandler,
+) -> Result<(Vec<Symbol>, usize)> {
+    let current_primary_id = handler.current_workspace_id();
+    let loaded_workspace_id = handler.loaded_workspace_id();
+
+    // Determine if we're targeting an explicit non-primary workspace.
+    let target_workspace_id = if let Some(ref ids) = workspace_ids {
+        if let Some(id) = ids.first() {
+            let loaded_startup_without_primary =
+                current_primary_id.is_none() && loaded_workspace_id.as_ref() == Some(id);
+            if loaded_startup_without_primary || current_primary_id.as_ref() != Some(id) {
+                Some(id.clone())
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    let query_clone = query.to_string();
+    let limit_usize = limit as usize;
+    let filter_clone = filter.clone();
+
+    if let Some(target_id) = target_workspace_id {
+        let si_arc = handler.get_search_index_for_workspace(&target_id).await?;
+
+        let results = tokio::task::spawn_blocking(move || -> Result<(Vec<Symbol>, usize)> {
+            let si_arc = match si_arc {
+                Some(si) => si,
+                None => {
+                    return Ok((Vec::new(), 0));
+                }
+            };
+            let index = si_arc
+                .lock()
+                .map_err(|e| anyhow::anyhow!("Search index lock error: {}", e))?;
+
+            let hits = index.search_unified(&query_clone, &filter_clone, limit_usize)?;
+            let count = hits.len();
+            let symbols = hits.into_iter().map(unified_hit_to_symbol).collect();
+            Ok((symbols, count))
+        })
+        .await??;
+
+        return Ok(results);
+    }
+
+    // Primary workspace path.
+    let (_, search_index_clone) = handler.primary_pooled_database_and_search_index().await?;
+
+    let results = tokio::task::spawn_blocking(move || -> Result<(Vec<Symbol>, usize)> {
+        let index = search_index_clone
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Search index lock error: {}", e))?;
+
+        let hits = index.search_unified(&query_clone, &filter_clone, limit_usize)?;
+        let count = hits.len();
+        let symbols = hits.into_iter().map(unified_hit_to_symbol).collect();
+        Ok((symbols, count))
+    })
+    .await??;
+
+    Ok(results)
+}

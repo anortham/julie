@@ -438,3 +438,61 @@ async fn execute_file_search(
         SearchExecutionKind::Files,
     ))
 }
+
+// ---------------------------------------------------------------------------
+// Phase 2 — unified execution path
+// ---------------------------------------------------------------------------
+
+/// Execute a unified BM25 search across all FTS fields, returning mixed-kind
+/// [`SearchHit`]s.  No `doc_type` filter — symbol rows and file rows both
+/// contribute to the result set.
+///
+/// `params.search_target` is ignored: this function always runs the unified
+/// path.  T8 will wire a `"unified"` target string through `execute_search`;
+/// until then callers invoke this directly.
+pub async fn execute_search_unified(
+    params: SearchExecutionParams<'_>,
+    workspaces: &[SearchExecutionWorkspace],
+    handler: &JulieServerHandler,
+) -> Result<SearchExecutionResult> {
+    use crate::search::SearchFilter;
+
+    let mut hits = Vec::new();
+    let mut total_results = 0usize;
+
+    for workspace in workspaces {
+        let filter = SearchFilter {
+            language: params.language.clone(),
+            kind: None,
+            file_pattern: params.file_pattern.clone(),
+            exclude_tests: params.exclude_tests.unwrap_or(false),
+        };
+
+        let (symbols, workspace_total) = text_search::unified_search_impl(
+            params.query,
+            &filter,
+            params.limit,
+            Some(vec![workspace.workspace_id.clone()]),
+            handler,
+        )
+        .await?;
+
+        total_results += workspace_total;
+        hits.extend(
+            symbols
+                .into_iter()
+                .map(|symbol| SearchHit::from_symbol(symbol, workspace.workspace_id.clone())),
+        );
+    }
+
+    sort_hits_by_score_desc(&mut hits);
+    hits.truncate(params.limit.max(1) as usize);
+
+    Ok(SearchExecutionResult::new(
+        hits,
+        false, // unified path does not propagate per-workspace relaxed flag to callers
+        total_results,
+        "search_unified",
+        SearchExecutionKind::Definitions,
+    ))
+}

@@ -24,7 +24,7 @@ use crate::search::expansion::expand_query_terms;
 use crate::search::language_config::LanguageConfigs;
 use crate::search::query::{
     build_content_query_weighted, build_file_query, build_symbol_query,
-    build_symbol_query_weighted, parse_annotation_query,
+    build_symbol_query_weighted, build_unified_query, parse_annotation_query,
 };
 use crate::search::schema::{
     SchemaCompatibilitySignature, SchemaFields, compatibility_signature, create_schema,
@@ -381,6 +381,32 @@ pub struct ContentSearchResults {
     /// `0` when the OR fallback was not invoked (AND produced results, or the
     /// query was a single word so the fallback gate never fired).
     pub or_candidate_count: usize,
+}
+
+// ---------------------------------------------------------------------------
+// Phase 2 — unified hit type
+// ---------------------------------------------------------------------------
+
+/// A single hit from a unified BM25 sweep across all seven FTS fields.
+/// Carries `kind` so callers can distinguish symbol rows from file rows.
+#[derive(Debug, Clone)]
+pub struct UnifiedHit {
+    pub id: String,
+    pub kind: String,
+    pub name: String,
+    pub path_text: String,
+    pub file_path: String,
+    pub basename: String,
+    pub signature: String,
+    pub doc_comment: String,
+    pub code_body: String,
+    pub pretokenized_code: String,
+    pub relationship_text: String,
+    pub language: String,
+    pub start_line: u32,
+    pub role: String,
+    pub test_role: String,
+    pub tantivy_score: f32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1118,6 +1144,183 @@ impl SearchIndex {
         }
 
         Ok(FileSearchResults { results, relaxed })
+    }
+
+    // --- Phase 2 — unified search ---
+
+    /// Single BM25 sweep across all seven core FTS fields, returning mixed-kind
+    /// [`UnifiedHit`]s.  No `doc_type` filter — symbol rows, file rows, and any
+    /// other document type are all eligible.
+    ///
+    /// Over-fetches by `NL_RERANK_OVERFETCH_FACTOR` before applying post-filters
+    /// and reranking (via `rerank_symbol_score` placeholder; T6 replaces this).
+    /// Falls back to OR mode when AND returns zero results on a multi-term query.
+    pub fn search_unified(
+        &self,
+        query_str: &str,
+        filter: &SearchFilter,
+        limit: usize,
+    ) -> Result<Vec<UnifiedHit>> {
+        use crate::search::query_parse::parse_query;
+        use crate::search::reranker::{Candidate, rerank_symbol_score};
+        use crate::extractors::SymbolKind;
+        use crate::search::scoring::{classify_role, test_subrole, DOC_LANGUAGES};
+
+        let f = &self.schema_fields;
+
+        let expanded = expand_query_terms(query_str);
+        let original_terms =
+            Self::filter_compound_tokens(self.tokenize_terms(&expanded.original_terms));
+        let alias_terms =
+            Self::filter_compound_tokens(self.tokenize_terms(&expanded.alias_terms));
+        let normalized_terms =
+            Self::filter_compound_tokens(self.tokenize_terms(&expanded.normalized_terms));
+
+        if original_terms.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let candidate_limit = limit * NL_RERANK_OVERFETCH_FACTOR;
+
+        let and_query = build_unified_query(
+            &original_terms,
+            &alias_terms,
+            &normalized_terms,
+            f.name,
+            f.path_text,
+            f.signature,
+            f.doc_comment,
+            f.relationship_text,
+            f.code_body,
+            f.pretokenized_code,
+            true, // require_all_terms — AND mode
+        );
+
+        let searcher = self.reader.searcher();
+        let top_docs = searcher.search(
+            &and_query,
+            &TopDocs::with_limit(candidate_limit).order_by_score(),
+        )?;
+
+        // Auto-fallback to OR when AND returns nothing and query has >1 word.
+        let user_word_count = query_str.split_whitespace().count();
+        let top_docs = if top_docs.is_empty() && user_word_count > 1 {
+            let or_query = build_unified_query(
+                &original_terms,
+                &alias_terms,
+                &normalized_terms,
+                f.name,
+                f.path_text,
+                f.signature,
+                f.doc_comment,
+                f.relationship_text,
+                f.code_body,
+                f.pretokenized_code,
+                false, // OR mode
+            );
+            searcher.search(
+                &or_query,
+                &TopDocs::with_limit(candidate_limit).order_by_score(),
+            )?
+        } else {
+            top_docs
+        };
+
+        // Materialize hits.
+        let mut hits = Vec::with_capacity(top_docs.len());
+        for (score, doc_address) in top_docs {
+            let doc: TantivyDocument = searcher.doc(doc_address)?;
+            hits.push(UnifiedHit {
+                id: Self::get_text_field(&doc, f.id),
+                kind: Self::get_text_field(&doc, f.kind),
+                name: Self::get_text_field(&doc, f.name),
+                path_text: Self::get_text_field(&doc, f.path_text),
+                file_path: Self::get_text_field(&doc, f.file_path),
+                basename: Self::get_text_field(&doc, f.basename),
+                signature: Self::get_text_field(&doc, f.signature),
+                doc_comment: Self::get_text_field(&doc, f.doc_comment),
+                code_body: Self::get_text_field(&doc, f.code_body),
+                pretokenized_code: Self::get_text_field(&doc, f.pretokenized_code),
+                relationship_text: Self::get_text_field(&doc, f.relationship_text),
+                language: Self::get_text_field(&doc, f.language),
+                start_line: Self::get_u64_field(&doc, f.start_line) as u32,
+                role: Self::get_text_field(&doc, f.role),
+                test_role: Self::get_text_field(&doc, f.test_role),
+                tantivy_score: score,
+            });
+        }
+
+        // Post-fetch filters (language / kind / file_pattern / exclude_tests).
+        if let Some(ref lang) = filter.language {
+            hits.retain(|h| &h.language == lang);
+        }
+        if let Some(ref kind) = filter.kind {
+            hits.retain(|h| &h.kind == kind);
+        }
+        if let Some(ref pattern) = filter.file_pattern {
+            hits.retain(|h| {
+                crate::tools::search::matches_glob_pattern(&h.file_path, pattern)
+            });
+        }
+        if filter.exclude_tests {
+            hits.retain(|h| !is_test_path(&h.file_path));
+        }
+
+        // T5 placeholder reranking — re-scores using `rerank_symbol_score`.
+        // T6 will replace this with a unified-aware reranker.
+        if !hits.is_empty() {
+            let parsed = parse_query(query_str);
+            for hit in hits.iter_mut() {
+                let kind = SymbolKind::try_from_string(&hit.kind).unwrap_or(SymbolKind::Variable);
+                let role = if hit.role.is_empty() {
+                    classify_role(&hit.file_path, &hit.language).to_string()
+                } else {
+                    hit.role.clone()
+                };
+                let test_role = if hit.test_role.is_empty() {
+                    test_subrole(&hit.file_path).to_string()
+                } else {
+                    hit.test_role.clone()
+                };
+                let is_test = role == "test";
+                let is_file_doc = role == "docs";
+                let is_source_language = !DOC_LANGUAGES.contains(&hit.language.as_str());
+
+                let mut body =
+                    String::with_capacity(hit.signature.len() + hit.doc_comment.len() + 1);
+                body.push_str(&hit.signature);
+                if !hit.signature.is_empty() && !hit.doc_comment.is_empty() {
+                    body.push(' ');
+                }
+                body.push_str(&hit.doc_comment);
+
+                let candidate = Candidate::builder()
+                    .title(hit.name.clone())
+                    .path(hit.file_path.clone())
+                    .body(body)
+                    .kind(kind)
+                    .role(role)
+                    .test_role(test_role)
+                    .is_test(is_test)
+                    .is_file_doc(is_file_doc)
+                    .is_source_language(is_source_language)
+                    .tantivy_score(hit.tantivy_score)
+                    .build();
+
+                hit.tantivy_score = rerank_symbol_score(&parsed, &candidate);
+            }
+
+            hits.sort_by(|a, b| {
+                b.tantivy_score
+                    .partial_cmp(&a.tantivy_score)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+                    .then_with(|| a.name.cmp(&b.name))
+                    .then_with(|| a.file_path.cmp(&b.file_path))
+            });
+        }
+
+        hits.truncate(limit);
+        Ok(hits)
     }
 
     // --- Private helpers ---

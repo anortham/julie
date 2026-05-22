@@ -457,3 +457,117 @@ pub fn build_file_query(
 
     BooleanQuery::new(subqueries)
 }
+
+// ---------------------------------------------------------------------------
+// Phase 2 — unified query
+// ---------------------------------------------------------------------------
+
+/// Per-field boost weights for the unified BM25 sweep.
+/// Derived from Eros's `_field_score` defaults.
+const UNIFIED_NAME_BOOST: f32 = 4.0;
+const UNIFIED_PATH_TEXT_BOOST: f32 = 1.5;
+const UNIFIED_SIGNATURE_BOOST: f32 = 2.0;
+const UNIFIED_DOC_COMMENT_BOOST: f32 = 1.5;
+const UNIFIED_RELATIONSHIP_TEXT_BOOST: f32 = 1.5;
+const UNIFIED_CODE_BODY_BOOST: f32 = 1.0;
+const UNIFIED_PRETOKENIZED_CODE_BOOST: f32 = 1.5;
+
+/// Build a single BM25 sweep across all seven core FTS fields with no
+/// `doc_type` filter, returning mixed-kind hits.
+///
+/// Unlike the per-target builders this function does NOT add a `doc_type`
+/// Must clause — it intentionally matches symbol rows, file rows, and any
+/// other document type stored in the index.
+///
+/// Per-field weights:
+/// - `name`: 4.0  (heaviest — primary symbol/file identifier)
+/// - `signature`: 2.0
+/// - `path_text`: 1.5
+/// - `doc_comment`: 1.5
+/// - `relationship_text`: 1.5
+/// - `pretokenized_code`: 1.5
+/// - `code_body`: 1.0  (baseline)
+///
+/// Term construction: same OR-of-AND-of-OR pattern as
+/// `build_symbol_query_weighted`.  Each term group (original / alias /
+/// normalized) contributes boosted Should clauses across all seven fields.
+/// Term groups are ANDed together when `require_all_terms` is true, otherwise
+/// OR'd (relaxation path).
+pub fn build_unified_query(
+    original_terms: &[String],
+    alias_terms: &[String],
+    normalized_terms: &[String],
+    name_field: Field,
+    path_text_field: Field,
+    signature_field: Field,
+    doc_comment_field: Field,
+    relationship_text_field: Field,
+    code_body_field: Field,
+    pretokenized_code_field: Field,
+    require_all_terms: bool,
+) -> BooleanQuery {
+    // No doc_type filter — mixed kinds is the whole point.
+    let mut term_clauses: Vec<(Occur, Box<dyn tantivy::query::Query>)> = Vec::new();
+
+    let grouped_terms = [
+        (original_terms, ORIGINAL_GROUP_WEIGHT, true),
+        (alias_terms, ALIAS_GROUP_WEIGHT, false),
+        (normalized_terms, NORMALIZED_GROUP_WEIGHT, false),
+    ];
+
+    for (terms, group_weight, _is_original_group) in grouped_terms {
+        let group_factor = group_weight / ORIGINAL_GROUP_WEIGHT;
+
+        for term in terms {
+            let term_lower = term.to_lowercase();
+
+            // One Should per field for this term, boosted by field weight * group factor.
+            let field_boosts = [
+                (name_field, UNIFIED_NAME_BOOST),
+                (path_text_field, UNIFIED_PATH_TEXT_BOOST),
+                (signature_field, UNIFIED_SIGNATURE_BOOST),
+                (doc_comment_field, UNIFIED_DOC_COMMENT_BOOST),
+                (relationship_text_field, UNIFIED_RELATIONSHIP_TEXT_BOOST),
+                (code_body_field, UNIFIED_CODE_BODY_BOOST),
+                (pretokenized_code_field, UNIFIED_PRETOKENIZED_CODE_BOOST),
+            ];
+
+            let mut per_term_clauses: Vec<(Occur, Box<dyn tantivy::query::Query>)> = Vec::new();
+            for (field, field_boost) in field_boosts {
+                let t = Term::from_field_text(field, &term_lower);
+                let tq = TermQuery::new(t, IndexRecordOption::Basic);
+                per_term_clauses.push((
+                    Occur::Should,
+                    Box::new(BoostQuery::new(
+                        Box::new(tq),
+                        field_boost * group_factor,
+                    )),
+                ));
+            }
+
+            // Wrap all field Should clauses for this term into a sub-query.
+            // The sub-query is added as Should overall — each term then
+            // participates as an independent scoring unit.
+            term_clauses.push((Occur::Should, Box::new(BooleanQuery::new(per_term_clauses))));
+        }
+    }
+
+    if term_clauses.is_empty() {
+        return BooleanQuery::new(vec![]);
+    }
+
+    if require_all_terms {
+        // AND mode: each term clause must match (Occur::Must).
+        let must_clauses: Vec<(Occur, Box<dyn tantivy::query::Query>)> = term_clauses
+            .into_iter()
+            .map(|(_, q)| (Occur::Must, q))
+            .collect();
+        BooleanQuery::new(must_clauses)
+    } else {
+        // OR mode: at least one term must match but we wrap in Must so that
+        // Tantivy's "only Must clauses are required" semantics gives us
+        // genuine OR-of-terms.
+        let or_wrapper = BooleanQuery::new(term_clauses);
+        BooleanQuery::new(vec![(Occur::Must, Box::new(or_wrapper))])
+    }
+}
