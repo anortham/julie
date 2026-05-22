@@ -7,7 +7,7 @@
 //! - Same-file calls → Relationship (directly resolved)
 //! - Cross-file calls → PendingRelationship (resolved after workspace indexing)
 
-use crate::base::{PendingRelationship, RelationshipKind};
+use crate::base::RelationshipKind;
 use crate::c::CExtractor;
 use crate::{ExtractionResults, Relationship, Symbol};
 use std::collections::HashMap;

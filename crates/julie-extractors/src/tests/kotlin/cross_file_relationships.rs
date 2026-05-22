@@ -3,7 +3,7 @@
 //! Tests that pending relationships are created when methods/functions are called
 //! but not defined in the local file (indicating cross-file resolution needed).
 
-use crate::base::{RelationshipKind, SymbolKind};
+use crate::base::RelationshipKind;
 use crate::kotlin::KotlinExtractor;
 use std::path::PathBuf;
 use tree_sitter::Parser;

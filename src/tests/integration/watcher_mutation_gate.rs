@@ -31,7 +31,7 @@
 //! `watcher_handlers.rs` and `watcher.rs` — those paths now require a
 //! `MutationGuard<'_>` parameter and so cannot compile if the gate is bypassed.
 
-use crate::workspace::mutation_gate::{MutationGuard, acquire_gate, clear_cache_for_test};
+use crate::workspace::mutation_gate::{MutationGuard, Registry};
 use crate::workspace::registry::generate_workspace_id;
 use std::fs;
 use std::sync::Arc;
@@ -64,14 +64,16 @@ async fn test_workspace_id_collapses_path_spellings() {
 /// pause never guaranteed and the gate now does.
 #[tokio::test]
 async fn test_concurrent_acquisitions_serialize_via_execution_trace() {
-    clear_cache_for_test();
+    let reg = Arc::new(Registry::new());
 
     let trace: Arc<TokioMutex<Vec<&'static str>>> = Arc::new(TokioMutex::new(Vec::new()));
     let trace_a = trace.clone();
     let trace_b = trace.clone();
+    let reg_a = reg.clone();
+    let reg_b = reg.clone();
 
     let task_a = tokio::spawn(async move {
-        let _guard = acquire_gate("ws_serialize").await;
+        let _guard = reg_a.acquire("ws_serialize").await;
         trace_a.lock().await.push("a_enter");
         sleep(Duration::from_millis(80)).await;
         trace_a.lock().await.push("a_exit");
@@ -80,7 +82,7 @@ async fn test_concurrent_acquisitions_serialize_via_execution_trace() {
     sleep(Duration::from_millis(10)).await;
 
     let task_b = tokio::spawn(async move {
-        let _guard = acquire_gate("ws_serialize").await;
+        let _guard = reg_b.acquire("ws_serialize").await;
         trace_b.lock().await.push("b_enter");
         sleep(Duration::from_millis(80)).await;
         trace_b.lock().await.push("b_exit");
@@ -106,15 +108,17 @@ async fn test_concurrent_acquisitions_serialize_via_execution_trace() {
 /// because the two 200ms holds would serialize and exceed the 350ms ceiling.
 #[tokio::test]
 async fn test_different_workspaces_run_in_parallel() {
-    clear_cache_for_test();
+    let reg = Arc::new(Registry::new());
+    let reg_a = reg.clone();
+    let reg_b = reg.clone();
 
-    let task_a = tokio::spawn(async {
-        let _guard = acquire_gate("ws_alpha").await;
+    let task_a = tokio::spawn(async move {
+        let _guard = reg_a.acquire("ws_alpha").await;
         sleep(Duration::from_millis(200)).await;
     });
 
-    let task_b = tokio::spawn(async {
-        let _guard = acquire_gate("ws_beta").await;
+    let task_b = tokio::spawn(async move {
+        let _guard = reg_b.acquire("ws_beta").await;
         sleep(Duration::from_millis(200)).await;
     });
 
@@ -137,12 +141,13 @@ async fn test_different_workspaces_run_in_parallel() {
 /// releases.
 #[tokio::test]
 async fn test_external_acquire_blocks_while_guard_held() {
-    clear_cache_for_test();
+    let reg = Arc::new(Registry::new());
 
-    let _guard = acquire_gate("ws_block_held").await;
+    let _guard = reg.acquire("ws_block_held").await;
 
-    let external = tokio::spawn(async {
-        let _g = acquire_gate("ws_block_held").await;
+    let reg_external = reg.clone();
+    let external = tokio::spawn(async move {
+        let _g = reg_external.acquire("ws_block_held").await;
     });
 
     sleep(Duration::from_millis(150)).await;
@@ -166,14 +171,14 @@ async fn test_external_acquire_blocks_while_guard_held() {
 /// section.
 #[tokio::test]
 async fn test_external_acquire_proceeds_after_drop() {
-    clear_cache_for_test();
+    let reg = Registry::new();
 
     {
-        let _guard = acquire_gate("ws_drop_release").await;
+        let _guard = reg.acquire("ws_drop_release").await;
         // _guard dropped at end of this scope.
     }
 
-    timeout(Duration::from_millis(200), acquire_gate("ws_drop_release"))
+    timeout(Duration::from_millis(200), reg.acquire("ws_drop_release"))
         .await
         .expect("Acquire after drop must succeed without deadlock");
 }
@@ -189,8 +194,8 @@ async fn test_proof_token_signature_compiles_with_real_guard() {
         "ran with proof"
     }
 
-    clear_cache_for_test();
-    let guard = acquire_gate("ws_proof_token").await;
+    let reg = Registry::new();
+    let guard = reg.acquire("ws_proof_token").await;
     assert_eq!(gated_mutation(&guard), "ran with proof");
 }
 
@@ -202,9 +207,9 @@ async fn test_proof_token_signature_compiles_with_real_guard() {
 /// calls within a tight timeout that any actual deadlock would blow through.
 #[tokio::test]
 async fn test_guard_passing_prevents_reentrant_deadlock() {
-    clear_cache_for_test();
+    let reg = Registry::new();
 
-    let outer_guard = acquire_gate("ws_reentrancy").await;
+    let outer_guard = reg.acquire("ws_reentrancy").await;
 
     // A function that takes a guard reference can be called freely with the
     // existing one — no re-acquisition, no deadlock.
@@ -235,7 +240,7 @@ async fn test_guard_passing_prevents_reentrant_deadlock() {
 /// time.
 #[tokio::test]
 async fn test_simulated_catchup_blocks_simulated_watcher_event() {
-    clear_cache_for_test();
+    let reg = Arc::new(Registry::new());
     let temp = tempfile::tempdir().unwrap();
     let workspace_path = temp.path();
 
@@ -243,12 +248,13 @@ async fn test_simulated_catchup_blocks_simulated_watcher_event() {
         generate_workspace_id(&workspace_path.to_string_lossy()).expect("workspace_id");
 
     // Simulate catch-up holding the gate.
-    let catchup_guard = acquire_gate(&workspace_id).await;
+    let catchup_guard = reg.acquire(&workspace_id).await;
 
     // Simulate a watcher-side mutation pass trying to acquire the same gate.
     let workspace_id_clone = workspace_id.clone();
+    let reg_watcher = reg.clone();
     let watcher_pass = tokio::spawn(async move {
-        let _guard = acquire_gate(&workspace_id_clone).await;
+        let _guard = reg_watcher.acquire(&workspace_id_clone).await;
     });
 
     // Meanwhile, a "user" creates a file. The watcher would normally see this,

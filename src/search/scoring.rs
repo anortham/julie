@@ -446,19 +446,6 @@ pub(crate) fn is_source_language(language: &str) -> bool {
     !DOC_LANGUAGES.contains(&language)
 }
 
-pub(crate) fn file_path_priority_bucket(path: &str) -> u8 {
-    if is_test_path(path) {
-        return 1;
-    }
-    if is_docs_path(path) {
-        return 2;
-    }
-    if is_fixture_path(path) {
-        return 3;
-    }
-    0
-}
-
 pub(crate) fn is_nl_like_query(query: &str) -> bool {
     let terms: Vec<&str> = query.split_whitespace().collect();
     if terms.len() < 2 {
@@ -512,78 +499,6 @@ pub(crate) const DEFINITION_KINDS: &[&str] = &[
 /// When a markdown heading and a Go struct both match "Command" as definitions,
 /// the Go struct is almost certainly what the user wants.
 pub(crate) const DOC_LANGUAGES: &[&str] = &["markdown", "json", "toml", "yaml"];
-
-/// Promote exact name matches to the top of results using a three-tier stable partition.
-///
-/// When `search_target="definitions"`, the actual definition of a symbol may rank
-/// low in Tantivy (mentioned once in its definition vs. many times in references).
-/// This function applies a three-tier stable partition:
-///
-/// 1. **Tier 1**: Exact name match + definition kind (class, struct, function, etc.)
-/// 2. **Tier 2**: Exact name match + non-definition kind (import, variable, etc.)
-/// 3. **Tier 3**: Everything else (non-exact matches)
-///
-/// Name matching handles qualified names: searching "Router" matches "Phoenix.Router"
-/// because the last component matches. Full-name matches are preferred over component matches.
-///
-/// Within each tier, original relative order is preserved (stable partition).
-pub(crate) fn promote_exact_name_matches(results: &mut Vec<SymbolSearchResult>, query: &str) {
-    if results.is_empty() {
-        return;
-    }
-
-    let query_lower = query.trim().to_lowercase();
-
-    // Three-tier stable partition: collect into three groups and recombine.
-    let mut definitions = Vec::new();
-    let mut other_exact = Vec::new();
-    let mut rest = Vec::new();
-
-    for result in results.drain(..) {
-        if is_name_match(&result.name, &query_lower) {
-            if DEFINITION_KINDS.contains(&result.kind.as_str()) {
-                definitions.push(result);
-            } else {
-                other_exact.push(result);
-            }
-        } else {
-            rest.push(result);
-        }
-    }
-
-    // Within definitions tier, sort by composite key:
-    //   1. Full-name match > component match (preserves qualified name priority)
-    //   2. Source code > test code > doc language (demotes test doubles and markdown)
-    //   3. Score descending (tie-breaker)
-    definitions.sort_by(|a, b| {
-        let is_full_match =
-            |r: &SymbolSearchResult| -> bool { r.name.to_lowercase() == query_lower };
-        let file_tier = |r: &SymbolSearchResult| -> u8 {
-            if DOC_LANGUAGES.contains(&r.language.as_str()) {
-                2 // doc language — lowest priority
-            } else if is_test_path(&r.file_path) {
-                1 // test file — middle priority
-            } else {
-                0 // source code — highest priority
-            }
-        };
-        // Full matches first (false < true, so negate: !true=false < !false=true)
-        let a_full = !is_full_match(a);
-        let b_full = !is_full_match(b);
-        a_full
-            .cmp(&b_full)
-            .then_with(|| file_tier(a).cmp(&file_tier(b)))
-            .then_with(|| {
-                b.score
-                    .partial_cmp(&a.score)
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            })
-    });
-
-    results.extend(definitions);
-    results.extend(other_exact);
-    results.extend(rest);
-}
 
 /// Check if a symbol name matches a query, supporting qualified names.
 /// Matches if the full name matches OR the last component of a dot-qualified name matches.

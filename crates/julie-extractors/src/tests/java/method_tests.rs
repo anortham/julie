@@ -6,7 +6,7 @@
 // - Method parameters and return types
 // - Overloaded methods
 
-use crate::base::{SymbolKind, Visibility};
+use crate::base::SymbolKind;
 use crate::java::JavaExtractor;
 use crate::tests::helpers::init_parser;
 use std::path::PathBuf;

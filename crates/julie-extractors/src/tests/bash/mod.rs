@@ -32,23 +32,6 @@ mod bash_extractor_tests {
         extractor.extract_symbols(&tree)
     }
 
-    fn extract_symbols_and_relationships(
-        code: &str,
-    ) -> (Vec<Symbol>, Vec<crate::base::Relationship>) {
-        let workspace_root = PathBuf::from("/tmp/test");
-        let mut parser = init_parser();
-        let tree = parser.parse(code, None).expect("Failed to parse code");
-        let mut extractor = BashExtractor::new(
-            "bash".to_string(),
-            "test.sh".to_string(),
-            code.to_string(),
-            &workspace_root,
-        );
-        let symbols = extractor.extract_symbols(&tree);
-        let relationships = extractor.extract_relationships(&tree, &symbols);
-        (symbols, relationships)
-    }
-
     fn extract_full(
         code: &str,
     ) -> (

@@ -6,7 +6,7 @@
 // - Default methods (Java 8+)
 // - Static methods (Java 8+)
 
-use crate::base::{SymbolKind, Visibility};
+use crate::base::SymbolKind;
 use crate::java::JavaExtractor;
 use crate::tests::helpers::init_parser;
 use std::path::PathBuf;

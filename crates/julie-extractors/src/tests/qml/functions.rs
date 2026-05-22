@@ -109,7 +109,7 @@ Item {
 }
 "#;
 
-        let symbols = extract_symbols(qml_code);
+        let _symbols = extract_symbols(qml_code);
 
         // Arrow functions might be extracted as properties or not extracted separately
         // Document expected behavior

@@ -40,51 +40,7 @@ mod workspace_isolation_smoke_tests {
             .join("\n")
     }
 
-    fn response_contains_content_match(response: &str, marker: &str) -> bool {
-        // The line-level search output groups hits under per-file headers:
-        //     src/main.rs (2 lines)
-        //       9: /// Primary workspace marker function
-        //       11:     println!("PRIMARY_WORKSPACE_MARKER");
-        // We accept either that grouped form or a flat `path:line:content`
-        // form; both must end with real file content (not response chatter
-        // like the echoed query header).
-        let mut in_file_block = false;
-        for line in response.lines() {
-            let trimmed = line.trim_end();
-            // Detect a file header line like `path/file.ext (N lines)`.
-            if trimmed.ends_with(" lines)") && trimmed.contains(" (") {
-                in_file_block = true;
-                continue;
-            }
-            // Blank line ends the current file block.
-            if trimmed.is_empty() {
-                in_file_block = false;
-                continue;
-            }
-            if in_file_block {
-                // Indented `  N: content` entry beneath a file header.
-                let stripped = trimmed.trim_start();
-                if let Some((line_no, rest)) = stripped.split_once(':') {
-                    if line_no.trim().parse::<usize>().is_ok() && rest.contains(marker) {
-                        return true;
-                    }
-                }
-            }
-            // Flat `path:line:content` form (legacy fallback).
-            let mut parts = line.splitn(3, ':');
-            if let (Some(path), Some(line_no), Some(content)) =
-                (parts.next(), parts.next(), parts.next())
-            {
-                if !path.is_empty() && line_no.parse::<usize>().is_ok() && content.contains(marker)
-                {
-                    return true;
-                }
-            }
-        }
-        false
-    }
-
-    /// Test 1: Verify search NEVER crosses workspace boundaries
+/// Test 1: Verify search NEVER crosses workspace boundaries
     ///
     /// This is the most critical isolation test - searching primary workspace
     /// should NEVER return results from reference workspace and vice versa.
@@ -140,9 +96,13 @@ mod workspace_isolation_smoke_tests {
         };
         let primary_control =
             extract_text_from_result(&search_primary_for_primary.call_tool(&handler).await?);
+        // Unified search returns symbol matches whose tokens match the query.
+        // `primary_marker_function` is unique to the primary fixture and tokens
+        // overlap "PRIMARY_WORKSPACE_MARKER" (shared `primary`/`marker` tokens).
         assert!(
-            response_contains_content_match(&primary_control, "PRIMARY_WORKSPACE_MARKER"),
-            "Primary workspace control search should find its own marker: {}",
+            primary_control.contains("primary_marker_function"),
+            "Primary workspace control search should find its own unique symbol \
+             `primary_marker_function`: {}",
             primary_control
         );
 
@@ -159,8 +119,9 @@ mod workspace_isolation_smoke_tests {
         let reference_control =
             extract_text_from_result(&search_ref_for_ref.call_tool(&handler).await?);
         assert!(
-            response_contains_content_match(&reference_control, "REFERENCE_WORKSPACE_MARKER"),
-            "Reference workspace control search should find its own marker: {}",
+            reference_control.contains("reference_marker_function"),
+            "Reference workspace control search should find its own unique symbol \
+             `reference_marker_function`: {}",
             reference_control
         );
 
@@ -179,11 +140,13 @@ mod workspace_isolation_smoke_tests {
         let result = search_primary_for_ref.call_tool(&handler).await?;
         let response = extract_text_from_result(&result);
 
-        // Should find NOTHING - reference content must not leak into primary search
+        // Should find NOTHING - reference-unique symbol must not leak into primary search.
+        // `reference_marker_function` exists only in the reference fixture; if it appears
+        // here the workspace boundary is broken at the index level.
         assert!(
-            !response_contains_content_match(&response, "REFERENCE_WORKSPACE_MARKER"),
-            "PRIMARY workspace search MUST NOT find reference workspace content!\n\
-             Isolation boundary violated: {}",
+            !response.contains("reference_marker_function"),
+            "PRIMARY workspace search MUST NOT find reference workspace symbol \
+             `reference_marker_function`!\nIsolation boundary violated: {}",
             response
         );
 
@@ -202,11 +165,11 @@ mod workspace_isolation_smoke_tests {
         let result2 = search_ref_for_primary.call_tool(&handler).await?;
         let response2 = extract_text_from_result(&result2);
 
-        // Should find NOTHING - primary content must not leak into reference search
+        // Should find NOTHING - primary-unique symbol must not leak into reference search.
         assert!(
-            !response_contains_content_match(&response2, "PRIMARY_WORKSPACE_MARKER"),
-            "REFERENCE workspace search MUST NOT find primary workspace content!\n\
-             Isolation boundary violated: {}",
+            !response2.contains("primary_marker_function"),
+            "REFERENCE workspace search MUST NOT find primary workspace symbol \
+             `primary_marker_function`!\nIsolation boundary violated: {}",
             response2
         );
 

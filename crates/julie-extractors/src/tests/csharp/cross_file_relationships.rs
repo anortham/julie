@@ -7,9 +7,9 @@
 //! - Same-file calls → Relationship (directly resolved)
 //! - Cross-file calls → PendingRelationship (resolved after workspace indexing)
 
-use crate::base::{PendingRelationship, RelationshipKind};
+use crate::base::RelationshipKind;
 use crate::factory::extract_symbols_and_relationships;
-use crate::{ExtractionResults, Relationship, Symbol};
+use crate::ExtractionResults;
 use std::path::PathBuf;
 use tree_sitter::Parser;
 
@@ -33,12 +33,6 @@ mod tests {
 
         extract_symbols_and_relationships(&tree, filename, code, "csharp", &workspace_root)
             .expect("Failed to extract")
-    }
-
-    /// Helper to extract just symbols and relationships (for backward compat)
-    fn extract_from_file(filename: &str, code: &str) -> (Vec<Symbol>, Vec<Relationship>) {
-        let results = extract_full(filename, code);
-        (results.symbols, results.relationships)
     }
 
     // ========================================================================

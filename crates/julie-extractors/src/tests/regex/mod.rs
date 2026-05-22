@@ -824,7 +824,7 @@ mod doc_comment_tests {
         let symbols = extract_symbols(regex_code);
 
         // Quantifiers should NOT be extracted individually (noise reduction)
-        let quantifiers = symbols
+        let _quantifiers = symbols
             .iter()
             .filter(|s| s.kind == SymbolKind::Function)
             .collect::<Vec<_>>();

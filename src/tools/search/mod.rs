@@ -281,17 +281,29 @@ impl FastSearchTool {
                 if let Some(ref target_workspace_id) = target_workspace_id {
                     // Probe-only: see note above; legacy method does file-level
                     // probing without requiring workspace_pool membership.
+                    //
+                    // Stdio-mode contract: an unknown workspace_id is treated as
+                    // an isolated target workspace that hasn't been indexed
+                    // yet, not as an error. DB missing → "not indexed yet, run
+                    // index". DB present but Tantivy missing → "refresh".
                     if handler
                         .get_database_for_workspace(target_workspace_id)
                         .await
-                        .is_ok()
-                        && handler
-                            .get_search_index_for_workspace(target_workspace_id)
-                            .await?
-                            .is_none()
+                        .is_err()
                     {
                         let message =
-                            missing_index_message(Some(target_workspace_id.as_str()));
+                            unknown_target_workspace_message(target_workspace_id.as_str());
+                        return Ok(FastSearchExecution {
+                            result: CallToolResult::text_content(vec![Content::text(message)]),
+                            execution: None,
+                        });
+                    }
+                    if handler
+                        .get_search_index_for_workspace(target_workspace_id)
+                        .await?
+                        .is_none()
+                    {
+                        let message = missing_index_message(Some(target_workspace_id.as_str()));
                         return Ok(FastSearchExecution {
                             result: CallToolResult::text_content(vec![Content::text(message)]),
                             execution: None,
@@ -341,7 +353,18 @@ impl FastSearchTool {
             }
             WorkspaceTarget::Target(id) => {
                 // Probe-only: legacy method intentionally used here.
-                handler.get_database_for_workspace(id).await?;
+                //
+                // Stdio-mode contract: an unknown workspace_id is treated as
+                // an isolated target workspace that hasn't been indexed yet,
+                // not as an error. DB missing → "not indexed yet, run index".
+                // DB present but Tantivy missing → "refresh".
+                if handler.get_database_for_workspace(id).await.is_err() {
+                    let message = unknown_target_workspace_message(id);
+                    return Ok(FastSearchExecution {
+                        result: CallToolResult::text_content(vec![Content::text(message)]),
+                        execution: None,
+                    });
+                }
                 if handler.get_search_index_for_workspace(id).await?.is_none() {
                     let message = missing_index_message(Some(id));
                     return Ok(FastSearchExecution {
@@ -630,4 +653,14 @@ fn missing_index_message(workspace_id: Option<&str>) -> String {
         ),
         None => "Search requires a Tantivy index for the current primary workspace. Run manage_workspace(operation=\"refresh\") first.".to_string(),
     }
+}
+
+/// Message returned when the caller targets a workspace_id that has no
+/// indexed state yet. Distinct from `missing_index_message`: that one means
+/// "known workspace, lost Tantivy artifacts" (use `refresh`); this one means
+/// "unknown workspace, start from scratch" (use `index`).
+fn unknown_target_workspace_message(workspace_id: &str) -> String {
+    format!(
+        "Workspace not indexed yet (id='{workspace_id}'). Run manage_workspace(operation=\"index\") first with the workspace path."
+    )
 }

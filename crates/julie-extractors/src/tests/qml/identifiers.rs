@@ -2,7 +2,7 @@
 // Tests for identifier extraction: function calls, member access, variable references
 
 use super::*;
-use crate::base::{IdentifierKind, SymbolKind};
+use crate::base::IdentifierKind;
 
 #[cfg(test)]
 mod tests {

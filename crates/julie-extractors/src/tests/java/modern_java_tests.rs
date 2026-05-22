@@ -7,7 +7,7 @@
 // - Records (Java 14+)
 // - Text blocks (Java 13+)
 
-use crate::base::{SymbolKind, Visibility};
+use crate::base::SymbolKind;
 use crate::java::JavaExtractor;
 use crate::tests::helpers::init_parser;
 use std::path::PathBuf;

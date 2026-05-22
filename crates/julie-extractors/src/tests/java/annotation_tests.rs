@@ -6,7 +6,7 @@
 // - Built-in annotations (@Override, @Deprecated)
 // - Custom annotations with parameters
 
-use crate::base::{SymbolKind, Visibility};
+use crate::base::SymbolKind;
 use crate::java::JavaExtractor;
 use crate::tests::helpers::init_parser;
 use std::path::PathBuf;

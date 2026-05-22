@@ -23,17 +23,13 @@ fn test_fast_search_content_full_groups_same_file_hits() {
                 line_content: "workspace_is_primary: true,".to_string(),
             },
         ],
-        relaxed: false,
         strategy: LineMatchStrategy::FileLevel {
             terms: vec!["workspace_is_primary".to_string(), "edit_file".to_string()],
         },
         workspace_label: "julie_528d4264".to_string(),
         stage_counts: LineModeStageCounts::default(),
-        zero_hit_reason: None,
-        file_pattern_diagnostic: None,
         scope_relaxed: false,
         original_file_pattern: None,
-        original_zero_hit_reason: None,
     };
 
     let output = format_line_mode_output("workspace_is_primary edit_file", &result);

@@ -67,6 +67,7 @@ struct ZeroHitEntry {
     language: Option<String>,
     exclude_tests: Option<bool>,
     limit_param: Option<u32>,
+    #[allow(dead_code)]
     search_target: Option<String>,
 }
 

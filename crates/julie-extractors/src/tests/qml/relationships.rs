@@ -192,7 +192,7 @@ Item {
 }
 "#;
 
-        let (symbols, relationships) = extract_symbols_and_relationships(qml_code);
+        let (symbols, _relationships) = extract_symbols_and_relationships(qml_code);
 
         // Only the root component (Item) is extracted as a Class symbol.
         // Nested components (Rectangle, Text) are no longer extracted,
@@ -283,7 +283,7 @@ Rectangle {
 }
 "#;
 
-        let (symbols, relationships) = extract_symbols_and_relationships(qml_code);
+        let (_symbols, relationships) = extract_symbols_and_relationships(qml_code);
 
         // Property bindings create "Uses" relationships
         let uses_relationships: Vec<&Relationship> = relationships

@@ -524,31 +524,30 @@ impl ManageWorkspaceTool {
 
 #[cfg(test)]
 mod tests {
-    use crate::workspace::mutation_gate::{acquire_gate, clear_cache_for_test};
+    use crate::workspace::mutation_gate::Registry;
     use std::time::Duration;
     use tokio::time::timeout;
 
-    /// Two `acquire_gate` calls with the same workspace_id serialize through
+    /// Two `acquire` calls with the same workspace_id serialize through
     /// the same underlying mutex.  After the first guard is dropped, a second
-    /// `acquire_gate` must succeed promptly, proving the lock was released.
+    /// `acquire` must succeed promptly, proving the lock was released.
     ///
     /// This replaces the old path-keyed `test_shared_index_lock_reuses_lock_for_same_path`
     /// test, which tested a local per-path cache that no longer exists.
     #[tokio::test]
     async fn test_shared_gate_serializes_same_workspace_id() {
-        clear_cache_for_test();
-
+        let reg = Registry::new();
         let workspace_id = "ws_index_test_aabb1122";
 
         {
-            let _guard = acquire_gate(workspace_id).await;
+            let _guard = reg.acquire(workspace_id).await;
             // Guard is held here; a concurrent acquire would block.
         }
         // Guard dropped — a second acquire must complete without deadlock.
-        let result = timeout(Duration::from_millis(200), acquire_gate(workspace_id)).await;
+        let result = timeout(Duration::from_millis(200), reg.acquire(workspace_id)).await;
         assert!(
             result.is_ok(),
-            "second acquire_gate for same workspace_id must succeed after first guard is dropped"
+            "second acquire for same workspace_id must succeed after first guard is dropped"
         );
     }
 
@@ -556,12 +555,12 @@ mod tests {
     /// not block the other.
     #[tokio::test]
     async fn test_different_workspace_ids_do_not_block_each_other() {
-        clear_cache_for_test();
+        let reg = Registry::new();
 
-        let _guard_a = acquire_gate("ws_index_alpha").await;
+        let _guard_a = reg.acquire("ws_index_alpha").await;
 
         // Acquiring a completely different workspace_id must not block.
-        let result = timeout(Duration::from_millis(200), acquire_gate("ws_index_beta")).await;
+        let result = timeout(Duration::from_millis(200), reg.acquire("ws_index_beta")).await;
         assert!(
             result.is_ok(),
             "different workspace IDs must acquire their gates independently"

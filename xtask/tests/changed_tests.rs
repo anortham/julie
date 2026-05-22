@@ -778,7 +778,7 @@ commands = ["cargo test --lib tests::tools::search::primary_workspace_bug"]
 [buckets.tools-search-promotion]
 expected_seconds = 10
 timeout_seconds = 40
-commands = ["cargo test --lib tests::tools::search::definition_"]
+commands = ["cargo test --lib tests::tools::search::promotion_tests"]
 
 [buckets.tools-search-format-quality]
 expected_seconds = 10

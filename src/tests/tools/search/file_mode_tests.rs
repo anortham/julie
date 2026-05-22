@@ -7,7 +7,7 @@
 
 use crate::tools::ManageWorkspaceTool;
 use crate::tools::search::FastSearchTool;
-use crate::tools::search::trace::{FilePatternDiagnostic, HintKind, SearchExecutionKind};
+use crate::tools::search::trace::{FilePatternDiagnostic, HintKind};
 use crate::{handler::JulieServerHandler, mcp_compat::CallToolResult};
 use std::fs;
 use std::path::Path;

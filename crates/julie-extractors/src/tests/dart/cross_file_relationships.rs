@@ -7,7 +7,7 @@
 //! - Same-file calls → Relationship (directly resolved)
 //! - Cross-file calls → PendingRelationship (resolved after workspace indexing)
 
-use crate::base::{PendingRelationship, RelationshipKind};
+use crate::base::RelationshipKind;
 use crate::dart::DartExtractor;
 use crate::factory::extract_symbols_and_relationships;
 use crate::{ExtractionResults, Relationship, Symbol};

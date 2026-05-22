@@ -219,7 +219,7 @@ value <- switch(2,
     }
 
     #[test]
-    fn test_tryCatch_error_handling() {
+    fn test_try_catch_error_handling() {
         let r_code = r#"
 # tryCatch for error handling
 safe_divide <- function(a, b) {

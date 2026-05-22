@@ -142,13 +142,13 @@ commands = [
 ]
 
 [buckets.tools-search-promotion]
-# Definition overfetch, definition promotion, and promotion regression tests.
+# Promotion regression tests (definition-specific tests were folded into the
+# unified path; their dedicated buckets were retired after Phase 2 cutover).
 expected_seconds = 15
 timeout_seconds = 60
 scope_label = "tooling"
-notes = "definition and promotion ranking coverage"
+notes = "promotion ranking coverage for the unified search path"
 commands = [
-  "cargo nextest run --lib tests::tools::search::definition_ -- --skip search_quality",
   "cargo nextest run --lib tests::tools::search::promotion_tests -- --skip search_quality",
 ]
 

@@ -7,7 +7,7 @@
 //! - Same-file calls → Relationship (directly resolved)
 //! - Cross-file calls → PendingRelationship (resolved after workspace indexing)
 
-use crate::base::{PendingRelationship, RelationshipKind};
+use crate::base::RelationshipKind;
 use crate::factory::extract_symbols_and_relationships;
 use crate::gdscript::GDScriptExtractor;
 use crate::{ExtractionResults, Relationship, Symbol};
@@ -404,7 +404,7 @@ func caller():
     external_func()
 "#;
 
-        let results_a = extract_full("a.gd", file_a_code);
+        let _results_a = extract_full("a.gd", file_a_code);
         let results_b = extract_full("b.gd", file_b_code);
 
         // Get pending relationships

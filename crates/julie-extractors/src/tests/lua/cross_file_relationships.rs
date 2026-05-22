@@ -7,7 +7,7 @@
 //! - Same-file calls → Relationship (directly resolved)
 //! - Cross-file calls → PendingRelationship (resolved after workspace indexing)
 
-use crate::base::{PendingRelationship, RelationshipKind};
+use crate::base::RelationshipKind;
 use crate::factory::extract_symbols_and_relationships;
 use crate::{ExtractionResults, Relationship, Symbol};
 use std::path::PathBuf;
@@ -232,7 +232,7 @@ function process()
 end
 "#;
 
-        let results_a = extract_full("lib/calculator.lua", file_a_code);
+        let _results_a = extract_full("lib/calculator.lua", file_a_code);
         let results_b = extract_full("lib/processor.lua", file_b_code);
 
         // Verify process function was extracted

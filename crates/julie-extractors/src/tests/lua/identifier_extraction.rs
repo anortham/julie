@@ -10,7 +10,6 @@
 use crate::base::IdentifierKind;
 use crate::lua::LuaExtractor;
 use crate::tests::lua::init_parser;
-use std::path::PathBuf;
 
 #[cfg(test)]
 mod identifier_extraction_tests {

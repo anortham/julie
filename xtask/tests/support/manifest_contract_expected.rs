@@ -420,7 +420,6 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
                 expected_seconds: 15,
                 timeout_seconds: 60,
                 commands: &[
-                    "cargo nextest run --lib tests::tools::search::definition_ -- --skip search_quality",
                     "cargo nextest run --lib tests::tools::search::promotion_tests -- --skip search_quality",
                 ],
             },
@@ -844,7 +843,7 @@ pub(crate) fn expected_bucket_metadata() -> BTreeMap<&'static str, ExpectedBucke
                 scope_label: "tooling",
                 owner: "lead",
                 expensive: false,
-                notes: Some("definition and promotion ranking coverage"),
+                notes: Some("promotion ranking coverage for the unified search path"),
             },
         ),
         (

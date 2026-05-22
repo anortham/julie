@@ -11,7 +11,6 @@ use std::path::Path;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use globset::{Glob, GlobMatcher};
 use serde::{Deserialize, Serialize};
 use tantivy::collector::TopDocs;
 use tantivy::query::{BooleanQuery, BoostQuery, Occur, TermQuery};
@@ -22,15 +21,11 @@ use tantivy::{Index, IndexReader, IndexWriter, Term};
 use crate::search::error::{Result, SearchError};
 use crate::search::expansion::expand_query_terms;
 use crate::search::language_config::LanguageConfigs;
-use crate::search::query::{
-    build_content_query_weighted, build_file_query, build_symbol_query,
-    build_symbol_query_weighted, build_unified_query, parse_annotation_query,
-    UnifiedQueryFieldSet,
-};
+use crate::search::query::{build_unified_query, parse_annotation_query, UnifiedQueryFieldSet};
 use crate::search::schema::{
     SchemaCompatibilitySignature, SchemaFields, compatibility_signature, create_schema,
 };
-use crate::search::scoring::{apply_important_patterns_boost, is_nl_like_query, is_test_path};
+use crate::search::scoring::{apply_important_patterns_boost, is_test_path};
 use crate::search::tokenizer::{
     CodeTokenizer, SimpleCodeTokenizer, TokenizerCompatibilitySignature, split_camel_case,
 };
@@ -371,10 +366,6 @@ impl SearchFilter {
 
         true
     }
-}
-
-fn symbol_result_matches_filter(result: &SymbolSearchResult, filter: &SearchFilter) -> bool {
-    filter.matches_symbol_result(result)
 }
 
 /// A symbol search result with relevance score.
@@ -1812,37 +1803,6 @@ impl SearchIndex {
         )
     }
 
-    fn rerank_candidate_limit(query_str: &str, limit: usize) -> usize {
-        if limit == 0 || !is_nl_like_query(query_str) {
-            return limit;
-        }
-
-        limit.saturating_mul(NL_RERANK_OVERFETCH_FACTOR)
-    }
-
-    fn symbol_candidate_limit(query_str: &str, filter: &SearchFilter, limit: usize) -> usize {
-        let rerank_limit = Self::rerank_candidate_limit(query_str, limit);
-        if limit == 0 || (filter.file_pattern.is_none() && !filter.exclude_tests) {
-            return rerank_limit;
-        }
-
-        let filtered_limit = limit.saturating_mul(20).clamp(50, 1000);
-        rerank_limit.max(filtered_limit)
-    }
-
-    fn file_candidate_limit(query_str: &str, limit: usize) -> usize {
-        if limit == 0 {
-            return 0;
-        }
-
-        let factor = if query_contains_glob_syntax(query_str) {
-            50
-        } else {
-            20
-        };
-        limit.saturating_mul(factor).clamp(50, 1000)
-    }
-
     /// Remove compound tokens whose snake_case sub-parts are all present in the list.
     ///
     /// The CodeTokenizer emits the full form plus atomic sub-parts, but never
@@ -2032,25 +1992,6 @@ fn query_contains_glob_syntax(query: &str) -> bool {
         .any(|ch| matches!(ch, '*' | '?' | '[' | ']' | '{' | '}'))
 }
 
-fn compile_query_glob(query: &str) -> Result<Option<GlobMatcher>> {
-    if !query_contains_glob_syntax(query) {
-        return Ok(None);
-    }
-
-    let glob = Glob::new(query)
-        .map_err(|err| SearchError::QueryError(format!("Invalid file glob {query:?}: {err}")))?;
-    Ok(Some(glob.compile_matcher()))
-}
-
-fn extract_glob_literals(query: &str) -> Vec<String> {
-    query
-        .split(|ch: char| matches!(ch, '*' | '?' | '[' | ']' | '{' | '}' | ',' | '!'))
-        .map(str::trim)
-        .filter(|segment| !segment.is_empty())
-        .map(ToOwned::to_owned)
-        .collect()
-}
-
 pub(crate) fn classify_file_match(
     query: &str,
     normalized_query: &str,
@@ -2085,62 +2026,6 @@ pub(crate) fn classify_file_match(
     }
 
     FileMatchKind::PathFragment
-}
-
-fn file_match_rank(kind: FileMatchKind) -> u8 {
-    match kind {
-        FileMatchKind::ExactPath => 0,
-        FileMatchKind::ExactBasename => 1,
-        FileMatchKind::PathFragment => 2,
-        FileMatchKind::Glob => 3,
-    }
-}
-
-pub(crate) fn rank_file_search_result(query: &str, result: &FileSearchResult) -> u8 {
-    let normalized_query = normalize_file_path(query.trim());
-    file_search_rank(&normalized_query, result)
-}
-
-fn file_search_rank(normalized_query: &str, result: &FileSearchResult) -> u8 {
-    if result.match_kind != FileMatchKind::ExactPath
-        && hidden_directory_path_matches(normalized_query, &result.file_path)
-    {
-        return 1;
-    }
-
-    match result.match_kind {
-        FileMatchKind::ExactPath => 0,
-        _ => file_match_rank(result.match_kind) + 1,
-    }
-}
-
-fn hidden_directory_path_matches(normalized_query: &str, file_path: &str) -> bool {
-    let query_path = normalized_query.trim_matches('/');
-    if query_path.is_empty() {
-        return false;
-    }
-
-    let query_basename = basename_for_path(query_path);
-    if !is_hidden_path_component(query_basename) {
-        return false;
-    }
-
-    if query_path.contains('/') {
-        return file_path == query_path
-            || file_path
-                .strip_prefix(query_path)
-                .is_some_and(|suffix| suffix.starts_with('/'));
-    }
-
-    file_path
-        .split('/')
-        .any(|component| component == query_basename)
-}
-
-fn is_hidden_path_component(component: &str) -> bool {
-    component
-        .strip_prefix('.')
-        .is_some_and(|suffix| !suffix.is_empty())
 }
 
 /// Normalise a name or query to its lowercase, alphanumeric-only compact form.

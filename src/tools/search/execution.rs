@@ -3,7 +3,6 @@ use std::cmp::Ordering;
 use anyhow::Result;
 
 use crate::handler::JulieServerHandler;
-use crate::tools::navigation::resolution::WorkspaceTarget;
 
 use super::hint_formatter;
 use super::line_mode;
@@ -25,22 +24,15 @@ pub struct SearchExecutionParams<'a> {
 #[derive(Debug, Clone)]
 pub struct SearchExecutionWorkspace {
     pub workspace_id: String,
-    pub target: WorkspaceTarget,
 }
 
 impl SearchExecutionWorkspace {
     pub fn primary(workspace_id: String) -> Self {
-        Self {
-            workspace_id,
-            target: WorkspaceTarget::Primary,
-        }
+        Self { workspace_id }
     }
 
     pub fn target(workspace_id: String) -> Self {
-        Self {
-            workspace_id: workspace_id.clone(),
-            target: WorkspaceTarget::Target(workspace_id),
-        }
+        Self { workspace_id }
     }
 }
 

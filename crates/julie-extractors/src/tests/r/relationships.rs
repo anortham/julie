@@ -173,7 +173,7 @@ transform_item <- function(item) { item * 2 }
 summarize_item <- function(item) { mean(item) }
 "#;
 
-        let (symbols, relationships) = extract_symbols_and_relationships(r_code);
+        let (_symbols, relationships) = extract_symbols_and_relationships(r_code);
 
         // lapply, sapply, mean, return are builtins (silently dropped)
         // Only resolved relationships should be for locally-defined functions:

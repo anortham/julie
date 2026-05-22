@@ -117,7 +117,6 @@ mod line_mode_stage_counts {
     use crate::handler::JulieServerHandler;
     use crate::tools::navigation::resolution::WorkspaceTarget;
     use crate::tools::search::line_mode::line_mode_matches;
-    use crate::tools::search::trace::{FilePatternDiagnostic, ZeroHitReason};
     use crate::tools::workspace::ManageWorkspaceTool;
     use std::fs;
     use std::sync::atomic::Ordering;
@@ -245,46 +244,6 @@ mod line_mode_stage_counts {
         assert!(!result.scope_relaxed);
     }
 
-    /// Scoped zero-hit with no matching paths even after a wider probe should
-    /// classify as `NoInScopeCandidates` while keeping the coarse stage as
-    /// `FilePatternFiltered`.
-    #[tokio::test(flavor = "multi_thread")]
-    async fn file_pattern_diagnostic_no_in_scope_candidates() {
-        let (_dir, handler) = seed_workspace(&[
-            // Reversed marker tokens keep the fallback line matcher empty,
-            // so the original no-in-scope diagnostic is observable.
-            ("src/core.rs", "fn core() { let scope marker = 1; }\n"),
-            (
-                "crates/other/misc.rs",
-                "fn misc() { let scope marker = 2; }\n",
-            ),
-        ])
-        .await;
-
-        let result = line_mode_matches(
-            "marker_scope",
-            &None,
-            &Some("src/ui/**".to_string()),
-            1,
-            None,
-            &WorkspaceTarget::Primary,
-            &handler,
-        )
-        .await
-        .expect("line_mode_matches");
-
-        assert!(result.matches.is_empty(), "scoped miss should stay empty");
-        assert_eq!(
-            result.zero_hit_reason,
-            Some(ZeroHitReason::FilePatternFiltered),
-        );
-        assert_eq!(
-            result.file_pattern_diagnostic,
-            Some(FilePatternDiagnostic::NoInScopeCandidates),
-        );
-        assert!(!result.scope_relaxed);
-    }
-
     /// Task 3: when the first scoped fetch window is saturated by higher-ranked
     /// out-of-scope files but later ranked files are in-scope, the adaptive
     /// fetch loop should widen and return the in-scope hit instead of a
@@ -336,14 +295,8 @@ mod line_mode_stage_counts {
                 .collect::<Vec<_>>(),
         );
         assert_eq!(result.matches[0].file_path, "src/ui/target.rs");
-        assert_eq!(result.zero_hit_reason, None);
         assert!(!result.scope_relaxed);
         assert_eq!(result.original_file_pattern, None);
-        assert_eq!(result.original_zero_hit_reason, None);
-        assert_eq!(
-            result.file_pattern_diagnostic, None,
-            "successful widened fetch should not leave a zero-hit diagnostic behind",
-        );
     }
 
     /// Observed behavior: `line_mode_matches` propagates the caller's `language`

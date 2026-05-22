@@ -1693,7 +1693,7 @@ mod razor_extractor_tests {
 }"#;
 
         let symbols = extract_symbols(razor_code);
-        let relationships = extract_relationships(razor_code, &symbols);
+        let _relationships = extract_relationships(razor_code, &symbols);
 
         // Component usages (AppHeader, Navigation, AppFooter, NotificationContainer) are no longer
         // extracted as symbols, so component-usage "uses" relationships shouldn't exist

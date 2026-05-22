@@ -375,7 +375,7 @@ Rectangle {
         );
 
         // Should find some functions
-        let functions: Vec<&Symbol> = symbols
+        let _functions: Vec<&Symbol> = symbols
             .iter()
             .filter(|s| s.kind == SymbolKind::Function)
             .collect();

@@ -180,13 +180,19 @@ mod target_workspace_tests {
         let cross_result = cross_search.call_tool(&handler).await?;
         let cross_response = extract_text_from_result(&cross_result);
 
-        // Check for actual file content match (not just the marker in the error message)
-        // The error message will say "No lines found matching: 'REFERENCE_WORKSPACE_MARKER'"
-        // but there should be no actual line content with the marker
+        // Isolation check: the primary workspace response must not surface
+        // any artifact unique to the reference workspace fixture.  The
+        // unified search tokenizes both query and document, so partial-token
+        // matches against *primary* content (e.g. "PRIMARY_WORKSPACE_MARKER"
+        // shares the `workspace`/`marker` tokens with the query) can surface
+        // primary files — that's not a leak, just imprecise ranking.  Real
+        // cross-workspace contamination would surface `reference_marker_function`
+        // (the only symbol in the reference fixture whose body contains the
+        // exact marker string).
         assert!(
-            cross_response.contains("No lines found") || !cross_response.contains(".rs:"),
-            "Primary workspace should NOT contain target-workspace content (isolation verification): {}",
-            cross_response
+            !cross_response.contains("reference_marker_function"),
+            "Primary workspace search leaked reference-workspace symbol \
+             `reference_marker_function` (isolation verification): \n{cross_response}"
         );
 
         // NOTE: No cleanup needed at end - next test cleans up at beginning
@@ -228,18 +234,33 @@ mod target_workspace_tests {
             ..Default::default()
         };
 
-        let result = search_tool.call_tool(&handler).await;
+        // Stdio-mode contract: unknown workspace_id is treated as an isolated
+        // reference workspace that hasn't been indexed yet — not an error,
+        // and never a fallback to primary. See workspace_isolation_smoke::
+        // test_invalid_workspace_id_returns_error for the canonical contract.
+        let result = search_tool.call_tool(&handler).await?;
+        let response = result
+            .content
+            .iter()
+            .filter_map(|content_block| {
+                serde_json::to_value(content_block).ok().and_then(|json| {
+                    json.get("text")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string())
+                })
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
 
         assert!(
-            result.is_err(),
-            "Searching with invalid workspace ID should return error"
+            response.contains("Workspace not indexed yet"),
+            "Unknown workspace ID should return the unindexed-workspace message: {}",
+            response
         );
-
-        let error_message = result.unwrap_err().to_string();
         assert!(
-            error_message.contains("not found"),
-            "Error message should indicate workspace not found: {}",
-            error_message
+            response.contains("manage_workspace(operation=\"index\")"),
+            "Response should preserve the indexing guidance: {}",
+            response
         );
 
         // NOTE: No cleanup needed at end - next test cleans up at beginning

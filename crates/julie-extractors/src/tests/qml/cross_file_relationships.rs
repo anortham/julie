@@ -7,7 +7,7 @@
 //! - Same-file calls → Relationship (directly resolved)
 //! - Cross-file calls → PendingRelationship (resolved after workspace indexing)
 
-use crate::base::{PendingRelationship, RelationshipKind};
+use crate::base::RelationshipKind;
 use crate::factory::extract_symbols_and_relationships;
 use crate::{ExtractionResults, Relationship, Symbol};
 use std::path::PathBuf;
@@ -110,7 +110,7 @@ Item {
 
         // KEY TEST: Cross-file call should NOT create a resolved Relationship
         // (because the called function is not in the local symbol_map)
-        let call_relationships: Vec<_> = results_b
+        let _call_relationships: Vec<_> = results_b
             .relationships
             .iter()
             .filter(|r| r.kind == RelationshipKind::Calls)

@@ -218,7 +218,7 @@ Item {
         let symbols = extract_symbols(qml_code);
 
         // JavaScript imports
-        let imports: Vec<&Symbol> = symbols
+        let _imports: Vec<&Symbol> = symbols
             .iter()
             .filter(|s| s.kind == SymbolKind::Import)
             .collect();

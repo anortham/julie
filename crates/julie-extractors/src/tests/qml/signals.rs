@@ -141,7 +141,7 @@ Item {
 }
 "#;
 
-        let symbols = extract_symbols(qml_code);
+        let _symbols = extract_symbols(qml_code);
 
         // Note: Component.onCompleted might be extracted as a function or not extracted
         // This documents expected behavior
@@ -164,7 +164,7 @@ Rectangle {
 }
 "#;
 
-        let symbols = extract_symbols(qml_code);
+        let _symbols = extract_symbols(qml_code);
 
         // Property change signals might be implicit
         // Document expected extraction behavior
@@ -188,7 +188,7 @@ Item {
 }
 "#;
 
-        let symbols = extract_symbols(qml_code);
+        let _symbols = extract_symbols(qml_code);
 
         // Attached signal handlers (Keys.onPressed)
         // Document extraction behavior

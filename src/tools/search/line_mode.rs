@@ -27,28 +27,16 @@ use super::types::{LineMatch, LineMatchStrategy};
 
 pub(crate) struct LineModeSearchResult {
     pub matches: Vec<LineMatch>,
-    pub relaxed: bool,
     pub strategy: LineMatchStrategy,
     pub workspace_label: String,
     #[cfg_attr(not(test), allow(dead_code))]
     pub stage_counts: LineModeStageCounts,
-    /// Post-hoc attribution of a zero-result path to a specific pipeline
-    /// stage. `Some(_)` only when `matches.is_empty()`; the chosen variant
-    /// is the top-most stage (Tantivy → file_pattern → language → test →
-    /// content-available → line-match) whose counter drained the surviving
-    /// candidate set to zero. Computed by
-    /// [`attribute_zero_hit_reason`] from the raw counters in
-    /// [`stage_counts`].
-    pub zero_hit_reason: Option<ZeroHitReason>,
-    pub file_pattern_diagnostic: Option<FilePatternDiagnostic>,
     pub scope_relaxed: bool,
     pub original_file_pattern: Option<String>,
-    pub original_zero_hit_reason: Option<ZeroHitReason>,
 }
 
 struct LineModeFetchOutcome {
     matches: Vec<LineMatch>,
-    relaxed: bool,
     stage_counts: LineModeStageCounts,
     file_pattern_diagnostic: Option<FilePatternDiagnostic>,
 }
@@ -57,7 +45,6 @@ struct LineModeScopedOutcome {
     fetch: LineModeFetchOutcome,
     scope_relaxed: bool,
     original_file_pattern: Option<String>,
-    original_zero_hit_reason: Option<ZeroHitReason>,
 }
 
 /// Per-stage drop counters for the `line_mode_matches` pipeline.
@@ -86,13 +73,6 @@ pub(crate) struct LineModeStageCounts {
     pub file_content_unavailable_dropped: usize,
     /// Files that passed every filter but produced zero line-level matches.
     pub line_match_miss_dropped: usize,
-}
-
-pub(crate) fn query_uses_file_level_header(query: &str) -> bool {
-    matches!(
-        line_match_strategy(query),
-        LineMatchStrategy::FileLevel { .. }
-    )
 }
 
 pub(crate) fn effective_content_exclude_tests(
@@ -316,7 +296,6 @@ fn run_line_mode_fetch_loop<S, C>(
     has_file_filter: bool,
 ) -> Result<(
     Vec<LineMatch>,
-    bool,
     LineModeStageCounts,
     Option<FilePatternDiagnostic>,
 )>
@@ -330,7 +309,6 @@ where
 
     loop {
         let file_results = search_once(fetch_limit)?;
-        let relaxed = false; // OR fallback is internal to search_unified
         let mut counts = LineModeStageCounts {
             and_candidates: 0,
             or_candidates: 0,
@@ -377,7 +355,7 @@ where
                 None
             };
 
-        return Ok((matches, relaxed, counts, file_pattern_diagnostic));
+        return Ok((matches, counts, file_pattern_diagnostic));
     }
 }
 
@@ -405,7 +383,7 @@ fn run_line_mode_workspace_fetch(
         exclude_tests: false,
     };
 
-    let (matches, relaxed, stage_counts, file_pattern_diagnostic) = run_line_mode_fetch_loop(
+    let (matches, stage_counts, file_pattern_diagnostic) = run_line_mode_fetch_loop(
         |fetch_limit| {
             let index = match search_index.lock() {
                 Ok(guard) => guard,
@@ -441,7 +419,6 @@ fn run_line_mode_workspace_fetch(
 
     Ok(LineModeFetchOutcome {
         matches,
-        relaxed,
         stage_counts,
         file_pattern_diagnostic,
     })
@@ -496,7 +473,6 @@ fn run_line_mode_with_scope_rescue(
                 fetch: fallback,
                 scope_relaxed: true,
                 original_file_pattern: file_pattern,
-                original_zero_hit_reason: zero_hit_reason,
             });
         }
     }
@@ -505,7 +481,6 @@ fn run_line_mode_with_scope_rescue(
         fetch: first,
         scope_relaxed: false,
         original_file_pattern: None,
-        original_zero_hit_reason: None,
     })
 }
 
@@ -717,9 +692,7 @@ pub(crate) async fn line_mode_matches(
         }
     };
     let all_line_matches = scoped_outcome.fetch.matches;
-    let relaxed = scoped_outcome.fetch.relaxed;
     let stage_counts = scoped_outcome.fetch.stage_counts;
-    let scoped_file_pattern_diagnostic = scoped_outcome.fetch.file_pattern_diagnostic;
 
     // Task 5: the second-pass filter that used to live here re-ran the
     // caller's `file_pattern`, `language`, and `exclude_tests` checks on
@@ -731,30 +704,14 @@ pub(crate) async fn line_mode_matches(
     // `tests::tools::search::line_mode_second_pass_tests` for the
     // invariant; reintroduce a second pass only if the per-file loop
     // ever starts producing matches from files it didn't fully validate.
-    let zero_hit_reason = if all_line_matches.is_empty() {
-        attribute_zero_hit_reason(&stage_counts)
-    } else {
-        None
-    };
-    let file_pattern_diagnostic = if all_line_matches.is_empty()
-        && zero_hit_reason == Some(ZeroHitReason::FilePatternFiltered)
-    {
-        scoped_file_pattern_diagnostic
-    } else {
-        None
-    };
 
     Ok(LineModeSearchResult {
         matches: all_line_matches,
-        relaxed,
         strategy: match_strategy,
         workspace_label,
         stage_counts,
-        zero_hit_reason,
-        file_pattern_diagnostic,
         scope_relaxed: scoped_outcome.scope_relaxed,
         original_file_pattern: scoped_outcome.original_file_pattern,
-        original_zero_hit_reason: scoped_outcome.original_zero_hit_reason,
     })
 }
 

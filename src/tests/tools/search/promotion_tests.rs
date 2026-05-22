@@ -373,41 +373,31 @@ mod tests {
                 "fixtures/real-world/php/index.php",
                 None,
                 HintKind::FileTargetHint,
-                "files",
             ),
-            (
-                "src/tools/search/mod.rs",
-                None,
-                HintKind::FileTargetHint,
-                "files",
-            ),
+            ("src/tools/search/mod.rs", None, HintKind::FileTargetHint),
             (
                 "ArgAction::SetTrue",
                 Some(ZeroHitReason::LineMatchMiss),
                 HintKind::DefinitionsTargetHint,
-                "definitions",
             ),
             (
                 "OS.has_feature",
                 Some(ZeroHitReason::TantivyNoCandidates),
                 HintKind::DefinitionsTargetHint,
-                "definitions",
             ),
             (
                 "format_line_mode_output",
                 Some(ZeroHitReason::LineMatchMiss),
                 HintKind::DefinitionsTargetHint,
-                "definitions",
             ),
             (
                 "fast_refs_metadata(",
                 Some(ZeroHitReason::TantivyNoCandidates),
                 HintKind::DefinitionsTargetHint,
-                "definitions",
             ),
         ];
 
-        for (query, zero_hit_reason, expected_kind, target) in cases {
+        for (query, zero_hit_reason, expected_kind) in cases {
             let (hint_kind, hint_text) = build_content_zero_hit_hint(
                 query,
                 None,

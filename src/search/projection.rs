@@ -11,6 +11,7 @@ use crate::search::SearchIndex;
 mod apply;
 
 pub use apply::apply_documents;
+#[cfg(test)]
 pub(crate) use apply::apply_documents_with_db;
 pub(crate) use apply::apply_uncommitted_documents_from_symbols;
 pub(crate) use apply::collect_relationship_names_bounded;

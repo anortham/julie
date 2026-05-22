@@ -1,5 +1,4 @@
 use super::*;
-use std::path::PathBuf;
 
 #[cfg(test)]
 mod tests {
