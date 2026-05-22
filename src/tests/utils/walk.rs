@@ -257,6 +257,53 @@ fn test_walk_ignores_ancestor_gitignore() {
     );
 }
 
+/// Regression test: a nested workspace should inherit `.gitignore` rules from
+/// ancestor directories up to the git root.
+///
+/// Reproduces: `/repo/.gitignore` has a pattern, and we index `/repo/packages/foo`.
+/// With `parents(false)`, the git-root `.gitignore` was not inherited for non-git
+/// mechanisms. The `ignore` crate's `git_ignore(true)` correctly reads `.gitignore`
+/// up to the git root even with `parents(false)`.
+///
+/// Uses `private_data/` — a name NOT in BLACKLISTED_DIRECTORIES — to test that
+/// exclusion comes from git root `.gitignore`, not the hardcoded blacklist.
+#[test]
+fn test_walk_inherits_git_root_gitignore_in_nested_workspace() {
+    let outer = TempDir::new().unwrap();
+    let outer_root = outer.path();
+
+    // Structure:
+    //   outer_root/repo/               ← git root (has .git/ and .gitignore)
+    //   outer_root/repo/packages/foo/  ← nested workspace being indexed
+    let repo = outer_root.join("repo");
+    let workspace = repo.join("packages").join("foo");
+    fs::create_dir_all(workspace.join("private_data")).unwrap();
+    fs::create_dir_all(repo.join(".git")).unwrap();
+
+    // .gitignore at git root: unanchored `private_data/` excludes any dir of that name.
+    // NOTE: private_data is intentionally NOT in BLACKLISTED_DIRECTORIES so the
+    // exclusion can only come from gitignore inheritance.
+    fs::write(repo.join(".gitignore"), "private_data/\n").unwrap();
+
+    fs::write(workspace.join("source.rs"), "fn main() {}").unwrap();
+    fs::write(
+        workspace.join("private_data").join("secret.rs"),
+        "// should be excluded",
+    )
+    .unwrap();
+
+    let files = collect_walked_files(&workspace, &WalkConfig::full_index());
+
+    assert!(
+        files.iter().any(|f| f.contains("source.rs")),
+        "source.rs must be included in nested workspace walk; got: {files:?}"
+    );
+    assert!(
+        !files.iter().any(|f| f.contains("secret.rs")),
+        "private_data/secret.rs must be excluded by git-root .gitignore; got: {files:?}"
+    );
+}
+
 #[test]
 fn test_single_path_walk_respects_parent_gitignore() {
     let dir = TempDir::new().unwrap();
