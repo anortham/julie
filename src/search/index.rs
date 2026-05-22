@@ -30,7 +30,9 @@ use crate::search::schema::{
     SchemaCompatibilitySignature, SchemaFields, compatibility_signature, create_schema,
 };
 use crate::search::scoring::{apply_important_patterns_boost, is_nl_like_query, is_test_path};
-use crate::search::tokenizer::{CodeTokenizer, TokenizerCompatibilitySignature, split_camel_case};
+use crate::search::tokenizer::{
+    CodeTokenizer, SimpleCodeTokenizer, TokenizerCompatibilitySignature, split_camel_case,
+};
 use crate::tools::search::matches_glob_pattern;
 
 // 256MB total budget. Tantivy 0.26's `Index::writer(budget)` auto-clamps thread
@@ -103,6 +105,169 @@ impl FileDocument {
             content: file_info.content.clone().unwrap_or_default(),
             language: file_info.language.clone(),
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Phase 2 unified document type
+// ---------------------------------------------------------------------------
+
+/// Union-shape document that covers both symbol and file rows.
+///
+/// Replaces `SymbolDocument` + `FileDocument` as the sole write path once
+/// T4 cuts the projection over. Until T9, all three types co-exist in the
+/// codebase.
+///
+/// `doc_type` discriminates rows: `"symbol"` or `"file"`.
+///
+/// Fields that are only meaningful for one row type should be set to
+/// empty strings / zero / empty Vec for the other type:
+/// - Symbol rows: populate `id`, `name`, `signature`, `doc_comment`,
+///   `code_body`, `kind`, `start_line`, annotation fields; leave `content`
+///   and `path_text` empty.
+/// - File rows: populate `file_path`, `basename`, `path_text`, `content`,
+///   `language`, `name` (basename without extension); leave symbol fields
+///   empty.
+///
+/// `pretokenized_code` and `relationship_text` are written as empty strings
+/// in T2; T4 and T7 wire them up via the projection layer.
+pub struct SearchDocument {
+    // ---- discriminator ----
+    pub doc_type: String,           // "symbol" | "file"
+
+    // ---- shared fields ----
+    pub id: String,
+    pub name: String,
+    pub language: String,
+    pub file_path: String,
+    pub basename: String,
+    pub kind: String,               // symbol kind string, or "file"
+    pub role: String,               // classify_role result
+    pub test_role: String,          // test_subrole result
+
+    // ---- symbol fields ----
+    pub signature: String,
+    pub doc_comment: String,
+    /// Body text, already truncated to ≤ 2000 bytes on a UTF-8 boundary.
+    pub code_body: String,
+    /// Exact annotation keys (lowercased). Written as multi-value field.
+    pub annotation_keys: Vec<String>,
+    pub annotations_text: String,
+    pub owner_names_text: String,
+    pub start_line: u32,
+
+    // ---- file fields ----
+    /// Full file content for line-level search.
+    pub content: String,
+    /// Normalised path for path-fragment search.
+    pub path_text: String,
+
+    // ---- Phase 2 fields (wired by T4 / T7, empty in T2) ----
+    pub pretokenized_code: String,
+    pub relationship_text: String,
+}
+
+impl SearchDocument {
+    /// Build a symbol-row document from a `Symbol`.
+    ///
+    /// Callers must supply `annotation_keys`, `annotations_text`, and
+    /// `owner_names_text` from `SymbolIndexContext` (projection layer).
+    /// `code_body` is truncated here to ≤ 2000 bytes.
+    pub fn for_symbol(
+        symbol: &crate::extractors::Symbol,
+        annotation_keys: Vec<String>,
+        annotations_text: String,
+        owner_names_text: String,
+    ) -> Self {
+        let raw_body = symbol.code_context.as_deref().unwrap_or("");
+        let code_body = truncate_utf8_bytes(raw_body, 2000).to_string();
+        let normalized_path = normalize_file_path(&symbol.file_path);
+        let basename = basename_for_path(&normalized_path).to_string();
+        let role = crate::search::scoring::classify_role(&normalized_path, &symbol.language);
+        let test_role = crate::search::scoring::test_subrole(&normalized_path);
+        Self {
+            doc_type: "symbol".to_string(),
+            id: symbol.id.clone(),
+            name: symbol.name.clone(),
+            language: symbol.language.clone(),
+            file_path: normalized_path,
+            basename,
+            kind: symbol.kind.to_string(),
+            role: role.to_string(),
+            test_role: test_role.to_string(),
+            signature: symbol.signature.clone().unwrap_or_default(),
+            doc_comment: symbol.doc_comment.clone().unwrap_or_default(),
+            code_body,
+            annotation_keys,
+            annotations_text,
+            owner_names_text,
+            start_line: symbol.start_line,
+            content: String::new(),
+            path_text: String::new(),
+            pretokenized_code: String::new(),
+            relationship_text: String::new(),
+        }
+    }
+
+    /// Build a file-row document from a `FileInfo`.
+    ///
+    /// `name` is set to the basename without its extension (e.g. `"parser"`
+    /// for `src/parser.rs`).
+    pub fn for_file(file_info: &crate::database::FileInfo) -> Self {
+        let normalized_path = normalize_file_path(&file_info.path);
+        let basename = basename_for_path(&normalized_path).to_string();
+        let name = stem_of_basename(&basename).to_string();
+        let language = file_info.language.clone();
+        let role = crate::search::scoring::classify_role(&normalized_path, &language);
+        let test_role = crate::search::scoring::test_subrole(&normalized_path);
+        let content = file_info.content.clone().unwrap_or_default();
+        Self {
+            doc_type: "file".to_string(),
+            id: String::new(),
+            name,
+            language,
+            file_path: normalized_path.clone(),
+            basename,
+            kind: "file".to_string(),
+            role: role.to_string(),
+            test_role: test_role.to_string(),
+            signature: String::new(),
+            doc_comment: String::new(),
+            code_body: String::new(),
+            annotation_keys: vec![],
+            annotations_text: String::new(),
+            owner_names_text: String::new(),
+            start_line: 0,
+            content,
+            path_text: normalized_path,
+            pretokenized_code: String::new(),
+            relationship_text: String::new(),
+        }
+    }
+}
+
+/// Truncate `s` to at most `max_bytes` bytes on a UTF-8 character boundary.
+///
+/// Returns a `&str` slice of `s`. When `s.len() <= max_bytes` the original
+/// slice is returned unchanged.
+pub fn truncate_utf8_bytes(s: &str, max_bytes: usize) -> &str {
+    if s.len() <= max_bytes {
+        return s;
+    }
+    let mut end = max_bytes;
+    while !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    &s[..end]
+}
+
+/// Return the portion of a basename before the first `.`.
+///
+/// `"parser.rs"` → `"parser"`, `"mod.rs"` → `"mod"`, `"noext"` → `"noext"`.
+fn stem_of_basename(basename: &str) -> &str {
+    match basename.find('.') {
+        Some(pos) => &basename[..pos],
+        None => basename,
     }
 }
 
@@ -405,6 +570,58 @@ impl SearchIndex {
         tantivy_doc.add_text(f.path_text, &normalized_path);
         tantivy_doc.add_text(f.language, &doc.language);
         tantivy_doc.add_text(f.content, &doc.content);
+
+        let guard = self.get_or_create_writer()?;
+        let writer = guard.as_ref().unwrap();
+        writer.add_document(tantivy_doc)?;
+        Ok(())
+    }
+
+    /// Add a unified `SearchDocument` to the index.
+    ///
+    /// Writes the **union** of all fields covered by `add_symbol_with_context`
+    /// and `add_file_content` so that existing search paths continue to find
+    /// documents written via this method after T4 cuts projection over.
+    ///
+    /// Does NOT call `commit`; callers are responsible for batching.
+    pub fn add_search_doc(&self, doc: &SearchDocument) -> Result<()> {
+        let f = &self.schema_fields;
+        let mut tantivy_doc = TantivyDocument::new();
+
+        // ---- discriminator ----
+        tantivy_doc.add_text(f.doc_type, &doc.doc_type);
+
+        // ---- shared fields ----
+        tantivy_doc.add_text(f.id, &doc.id);
+        tantivy_doc.add_text(f.file_path, &doc.file_path);
+        tantivy_doc.add_text(f.basename, &doc.basename);
+        tantivy_doc.add_text(f.language, &doc.language);
+        tantivy_doc.add_text(f.kind, &doc.kind);
+        tantivy_doc.add_text(f.role, &doc.role);
+        tantivy_doc.add_text(f.test_role, &doc.test_role);
+
+        // ---- symbol fields ----
+        tantivy_doc.add_text(f.name, &doc.name);
+        tantivy_doc.add_text(f.signature, &doc.signature);
+        tantivy_doc.add_text(f.doc_comment, &doc.doc_comment);
+        tantivy_doc.add_text(f.code_body, &doc.code_body);
+        for key in &doc.annotation_keys {
+            let key = key.trim().to_ascii_lowercase();
+            if !key.is_empty() {
+                tantivy_doc.add_text(f.annotations_exact, &key);
+            }
+        }
+        tantivy_doc.add_text(f.annotations_text, &doc.annotations_text);
+        tantivy_doc.add_text(f.owner_names_text, &doc.owner_names_text);
+        tantivy_doc.add_u64(f.start_line, doc.start_line as u64);
+
+        // ---- file fields ----
+        tantivy_doc.add_text(f.path_text, &doc.path_text);
+        tantivy_doc.add_text(f.content, &doc.content);
+
+        // ---- Phase 2 fields (empty in T2; wired by T4 / T7) ----
+        tantivy_doc.add_text(f.pretokenized_code, &doc.pretokenized_code);
+        tantivy_doc.add_text(f.relationship_text, &doc.relationship_text);
 
         let guard = self.get_or_create_writer()?;
         let writer = guard.as_ref().unwrap();
@@ -1032,6 +1249,11 @@ impl SearchIndex {
         index
             .tokenizers()
             .register("code", TextAnalyzer::builder(tokenizer).build());
+        // Register the simple tokenizer for the pretokenized_code field (T3 wiring;
+        // schema fields are retargeted to "simple_code" at T4/T5).
+        index
+            .tokenizers()
+            .register("simple_code", TextAnalyzer::builder(SimpleCodeTokenizer::new()).build());
     }
 
     fn build_search_index(
