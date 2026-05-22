@@ -186,6 +186,15 @@ impl SymbolDatabase {
     /// batched SQL query.  Only `name` and `file_path` columns are read — much
     /// cheaper than full or lightweight symbol rows.
     ///
+    /// Only **definition-kind** symbols are returned (class, struct, function,
+    /// etc.).  Import, reference, and other use-site rows are excluded so that
+    /// a file importing `Foo` cannot receive the title-exact boost that belongs
+    /// only to the file that *defines* `Foo`.
+    ///
+    /// The kind set here must stay in sync with `DEFINITION_KINDS` in
+    /// `src/search/scoring.rs` (kept private there; mirrored here as a SQL
+    /// literal to avoid a cross-crate dependency inversion).
+    ///
     /// Results are keyed by the **exact** `file_path` string passed in (after
     /// deduplication).  Files that have no indexed symbols simply have no entry
     /// in the returned map.  The query is chunked at 500 paths per statement to
@@ -208,6 +217,11 @@ impl SymbolDatabase {
 
         let mut result: HashMap<String, Vec<String>> = HashMap::new();
 
+        // Definition kinds — must mirror DEFINITION_KINDS in src/search/scoring.rs.
+        const DEFINITION_KIND_FILTER: &str =
+            "'class','struct','interface','trait','enum','function','method',\
+             'constructor','module','namespace','type','constant','delegate'";
+
         const CHUNK_SIZE: usize = 500;
         for chunk in unique_paths.chunks(CHUNK_SIZE) {
             let placeholders: String = (1..=chunk.len())
@@ -216,7 +230,9 @@ impl SymbolDatabase {
                 .join(",");
 
             let query = format!(
-                "SELECT file_path, name FROM symbols WHERE file_path IN ({placeholders})"
+                "SELECT file_path, name FROM symbols \
+                 WHERE file_path IN ({placeholders}) \
+                 AND kind IN ({DEFINITION_KIND_FILTER})"
             );
 
             let mut stmt = self.conn.prepare(&query)?;

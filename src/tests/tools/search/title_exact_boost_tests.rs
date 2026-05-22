@@ -307,6 +307,87 @@ fn definitions_path_exact_name_still_ranks_first() -> Result<()> {
 // titles_for_files unit test
 // ---------------------------------------------------------------------------
 
+/// A file that *imports* `SymbolDatabase` (kind=import) but does NOT *define*
+/// it must NOT receive the title-exact boost.
+///
+/// Regression for: `tracing.rs` importing `SymbolDatabase` via
+/// `use crate::database::SymbolDatabase` caused it to rank above the actual
+/// definition file when searching the content target.  The root cause was
+/// `titles_for_files` returning ALL symbol rows including `kind='import'`.
+#[test]
+fn titles_for_files_excludes_import_kind_symbols() -> Result<()> {
+    let (_db_dir, mut db) = create_test_db();
+
+    // File A: the actual definition (kind=Function, the only definition kind
+    // used by store_symbol_in_file).
+    store_symbol_in_file(&mut db, "src/database/symbols/mod.rs", "SymbolDatabase", "rust");
+
+    // File B: imports SymbolDatabase (kind=Import) but does NOT define it.
+    db.store_file_info(&crate::database::FileInfo {
+        path: "src/tests/core/tracing.rs".to_string(),
+        language: "rust".to_string(),
+        hash: "hash-tracing".to_string(),
+        size: 200,
+        last_modified: 1,
+        last_indexed: 1,
+        symbol_count: 1,
+        line_count: 30,
+        content: Some("use crate::database::SymbolDatabase;".to_string()),
+    })
+    .unwrap();
+    db.store_symbols(&[Symbol {
+        id: "src/tests/core/tracing.rs/SymbolDatabase".to_string(),
+        name: "SymbolDatabase".to_string(),
+        kind: SymbolKind::Import,
+        language: "rust".to_string(),
+        file_path: "src/tests/core/tracing.rs".to_string(),
+        start_line: 1,
+        start_column: 0,
+        end_line: 1,
+        end_column: 0,
+        start_byte: 0,
+        end_byte: 36,
+        signature: None,
+        doc_comment: None,
+        visibility: None,
+        parent_id: None,
+        metadata: None,
+        semantic_group: None,
+        confidence: None,
+        code_context: Some("use crate::database::SymbolDatabase;".to_string()),
+        content_type: None,
+        body_span: None,
+        body_hash: None,
+        annotations: Vec::new(),
+    }])?;
+
+    let paths = vec![
+        "src/database/symbols/mod.rs",
+        "src/tests/core/tracing.rs",
+    ];
+    let titles = db.titles_for_files(&paths)?;
+
+    // The definition file must have "symboldatabase" in its titles.
+    let def_titles = titles
+        .get("src/database/symbols/mod.rs")
+        .expect("definition file must have an entry");
+    assert!(
+        def_titles.contains(&"symboldatabase".to_string()),
+        "Definition file must include 'symboldatabase'. Got: {def_titles:?}"
+    );
+
+    // The import-only file must NOT appear in the title map at all (no
+    // definition-kind symbols), so the boost will never fire for it.
+    assert!(
+        !titles.contains_key("src/tests/core/tracing.rs"),
+        "Import-only file must not appear in titles_for_files output. \
+         Got keys: {:?}",
+        titles.keys().collect::<Vec<_>>()
+    );
+
+    Ok(())
+}
+
 /// The batched DB method returns correct lowercase symbol names per file.
 #[test]
 fn titles_for_files_returns_lowercase_names_per_file() -> Result<()> {
