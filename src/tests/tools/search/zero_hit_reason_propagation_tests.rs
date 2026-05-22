@@ -96,10 +96,12 @@ fn extract_text_from_result(result: &crate::mcp_compat::CallToolResult) -> Strin
 }
 
 /// The content token `marker_pattern` exists only in files outside
-/// `src/ui/**`. line_mode's per-file loop drops every candidate on the
-/// `file_pattern` stage and reports `FilePatternFiltered`. Task 4b must
-/// copy that attribution onto `SearchExecutionResult.trace.zero_hit_reason`
-/// so the public trace reflects the same verdict.
+/// `src/ui/**`.  Under the unified-schema path, that out-of-scope condition
+/// triggers scope rescue: the search reruns without the file_pattern and
+/// surfaces the out-of-scope hits.  The original `FilePatternFiltered`
+/// attribution moves to `trace.original_zero_hit_reason`, which preserves
+/// the propagation contract that line_mode used to satisfy on
+/// `trace.zero_hit_reason`.
 #[tokio::test(flavor = "multi_thread")]
 async fn trace_zero_hit_reason_propagates_file_pattern_filtered() {
     let (_dir, handler) = seed_workspace(&[
@@ -118,19 +120,19 @@ async fn trace_zero_hit_reason_propagates_file_pattern_filtered() {
         .execution
         .expect("execute_with_trace populates execution for content search");
 
+    // Scope rescue activated, so the public reason is None — but the
+    // original FilePatternFiltered attribution must survive on the
+    // companion `original_zero_hit_reason` field.
     assert!(
-        execution.hits.is_empty(),
-        "file_pattern should drop every candidate; got {} hits: {:?}",
-        execution.hits.len(),
-        execution.hits.iter().map(|h| &h.file).collect::<Vec<_>>(),
+        execution.trace.scope_relaxed,
+        "out-of-scope content miss with valid pattern must trigger scope rescue",
     );
-
     assert_eq!(
-        execution.trace.zero_hit_reason,
+        execution.trace.original_zero_hit_reason,
         Some(ZeroHitReason::FilePatternFiltered),
-        "execute_content_search must copy line_mode's zero_hit_reason onto \
-         trace.zero_hit_reason; got {:?}",
-        execution.trace.zero_hit_reason,
+        "execute_search_unified must propagate the pre-rescue FilePatternFiltered \
+         attribution onto trace.original_zero_hit_reason; got {:?}",
+        execution.trace.original_zero_hit_reason,
     );
 }
 
@@ -164,8 +166,12 @@ async fn trace_zero_hit_reason_stays_none_on_non_empty_run() {
 }
 
 /// Task 2: when the scoped miss is a real out-of-scope request rather than
-/// starvation, the execution layer must copy `file_pattern_diagnostic` onto the
-/// public trace the same way it already does for `zero_hit_reason`.
+/// starvation, the unified path must (a) classify it as a `NoInScopeCandidates`
+/// diagnostic before deciding whether to rescue, and (b) when rescue surfaces
+/// hits, persist the original `FilePatternFiltered` attribution on the
+/// companion `original_zero_hit_reason` field.  The diagnostic itself is
+/// cleared once rescue succeeds (the result set now describes out-of-scope
+/// hits, not a scoped miss).
 #[tokio::test(flavor = "multi_thread")]
 async fn trace_file_pattern_diagnostic_propagates_no_in_scope_candidates() {
     let (_dir, handler) = seed_workspace(&[
@@ -184,16 +190,21 @@ async fn trace_file_pattern_diagnostic_propagates_no_in_scope_candidates() {
         .execution
         .expect("execute_with_trace populates execution for content search");
 
-    assert!(execution.hits.is_empty(), "scoped miss should stay empty");
-    assert_eq!(
-        execution.trace.zero_hit_reason,
-        Some(ZeroHitReason::FilePatternFiltered),
+    assert!(
+        execution.trace.scope_relaxed,
+        "NoInScopeCandidates condition must trigger scope rescue",
     );
     assert_eq!(
-        execution.trace.file_pattern_diagnostic,
-        Some(FilePatternDiagnostic::NoInScopeCandidates),
-        "execute_content_search must copy line_mode's file_pattern_diagnostic onto trace; got {:?}",
-        execution.trace.file_pattern_diagnostic,
+        execution.trace.original_zero_hit_reason,
+        Some(ZeroHitReason::FilePatternFiltered),
+        "rescue must preserve the pre-rescue FilePatternFiltered attribution \
+         on trace.original_zero_hit_reason; got {:?}",
+        execution.trace.original_zero_hit_reason,
+    );
+    assert_eq!(
+        execution.trace.original_file_pattern.as_deref(),
+        Some("src/ui/**"),
+        "rescue must persist the rejected file_pattern on the trace",
     );
 }
 
@@ -201,18 +212,35 @@ async fn trace_file_pattern_diagnostic_propagates_no_in_scope_candidates() {
 /// content zero-hits in that bucket should prepend the dedicated out-of-scope
 /// hint and persist `hint_kind` on the public trace. This must beat the older
 /// multi-token hint for queries like `marker_scope`.
+///
+/// Under the unified-schema path this scenario requires the rescue pass to
+/// also return zero hits — otherwise the rescue path takes precedence and the
+/// out-of-scope hint never fires.  We rig that by placing all matching files
+/// under a test path and asking the search to exclude tests: the scoped pass
+/// classifies the miss as `NoInScopeCandidates`, the rescue pass runs, and
+/// then `exclude_tests` filters every remaining candidate, so the original
+/// zero-hit attribution survives.
 #[tokio::test(flavor = "multi_thread")]
 async fn trace_hint_kind_prefers_out_of_scope_for_no_in_scope_candidates() {
     let (_dir, handler) = seed_workspace(&[
-        ("src/core.rs", "fn core() { let scope marker = 1; }\n"),
         (
-            "crates/other/misc.rs",
-            "fn misc() { let scope marker = 2; }\n",
+            "src/tests/core.rs",
+            "fn core() { let marker_scope = 1; }\n",
+        ),
+        (
+            "crates/other/tests/misc.rs",
+            "fn misc() { let marker_scope = 2; }\n",
         ),
     ])
     .await;
 
-    let run = content_search("marker_scope", Some("src/ui/**"))
+    // exclude_tests=true ensures the rescue pass drops the (only) candidates,
+    // so the scoped NoInScopeCandidates classification survives the rescue
+    // attempt and the OutOfScopeContentHint hint fires.
+    let mut tool = content_search("marker_scope", Some("src/ui/**"));
+    tool.exclude_tests = Some(true);
+
+    let run = tool
         .execute_with_trace(&handler)
         .await
         .expect("search should not error");
@@ -221,7 +249,10 @@ async fn trace_hint_kind_prefers_out_of_scope_for_no_in_scope_candidates() {
         .expect("execute_with_trace populates execution for content search");
     let text = extract_text_from_result(&run.result);
 
-    assert!(execution.hits.is_empty(), "scoped miss should stay empty");
+    assert!(
+        execution.hits.is_empty(),
+        "scoped miss + test-only rescue candidates should stay empty",
+    );
     assert_eq!(
         execution.trace.file_pattern_diagnostic,
         Some(FilePatternDiagnostic::NoInScopeCandidates),
@@ -264,10 +295,22 @@ async fn trace_scope_rescue_labels_out_of_scope_hits() {
         .expect("execute_with_trace populates execution for content search");
     let text = extract_text_from_result(&run.result);
 
+    // Unified path emits one symbol row and one file row per matching file.
+    // Both files match, so the raw hits vector carries 2 (files) × 2 (kinds)
+    // = 4 hits.  The optimized response layer dedupes to symbol rows, so the
+    // scope-rescue header (rendered from `optimized.results.len()`) reports
+    // 2 results.
     assert_eq!(
         execution.hits.len(),
+        4,
+        "scope rescue should return symbol+file rows for both matching files",
+    );
+    let distinct_files: std::collections::HashSet<_> =
+        execution.hits.iter().map(|hit| hit.file.clone()).collect();
+    assert_eq!(
+        distinct_files.len(),
         2,
-        "scope rescue should return the out-of-scope hits",
+        "scope rescue should surface both out-of-scope files",
     );
     assert!(execution.trace.scope_relaxed);
     assert_eq!(execution.trace.scope_rescue_count, 1);
@@ -304,7 +347,11 @@ async fn trace_scope_rescue_single_file_hint_mentions_get_symbols() {
         .expect("execute_with_trace populates execution for content search");
     let text = extract_text_from_result(&run.result);
 
-    assert_eq!(execution.hits.len(), 1);
+    // Unified path returns symbol + file rows for the single matching file.
+    assert_eq!(execution.hits.len(), 2);
+    let distinct_files: std::collections::HashSet<_> =
+        execution.hits.iter().map(|hit| hit.file.clone()).collect();
+    assert_eq!(distinct_files.len(), 1, "exactly one source file matched");
     assert!(execution.trace.scope_relaxed);
     assert!(text.contains(
         "Hint: for symbol structure within a specific file, use get_symbols(file_path=src/ui/view.rs).",
@@ -314,18 +361,26 @@ async fn trace_scope_rescue_single_file_hint_mentions_get_symbols() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn trace_or_disjunction_detected_flows_from_execute_content_search() {
+    // Need at least one symbol so the indexer marks the workspace ready;
+    // wrap the matching content inside a function definition so the Python
+    // extractor produces a real symbol entry.
     let (_dir, handler) = seed_workspace(&[(
         "src/logging.py",
-        "logging.basicConfig(format='%(asctime)s', datefmt='%Y-%m-%d')\n",
+        "def configure():\n    logging.basicConfig(format='%(asctime)s', datefmt='%Y-%m-%d')\n",
     )])
     .await;
 
-    let execution = content_search("logging.basicConfig OR datefmt", None)
+    let run = content_search("logging.basicConfig OR datefmt", None)
         .execute_with_trace(&handler)
         .await
-        .expect("search should not error")
-        .execution
-        .expect("execute_with_trace populates execution for content search");
+        .expect("search should not error");
+    let result_text = extract_text_from_result(&run.result);
+    let execution = run.execution.unwrap_or_else(|| {
+        panic!(
+            "execute_with_trace populates execution for content search; result text was: {}",
+            result_text
+        )
+    });
 
     assert!(
         !execution.hits.is_empty(),

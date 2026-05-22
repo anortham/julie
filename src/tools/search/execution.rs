@@ -447,7 +447,18 @@ pub async fn execute_search_unified(
     workspaces: &[SearchExecutionWorkspace],
     handler: &JulieServerHandler,
 ) -> Result<SearchExecutionResult> {
-    use crate::search::SearchFilter;
+    use super::hint_formatter;
+
+    // Normalize empty/whitespace-only file_pattern to None so callers that
+    // bypass `execute_search` (e.g., `FastSearchTool::execute_with_trace`)
+    // get the same "no filter" behaviour as the rest of the pipeline.
+    let normalized_file_pattern: Option<String> = params.file_pattern.as_ref().and_then(|s| {
+        if s.trim().is_empty() {
+            None
+        } else {
+            Some(s.clone())
+        }
+    });
 
     // T8 follow-up: apply the NL-default-exclude-tests rule that
     // `execute_content_search` used to provide.  When the caller passes
@@ -456,25 +467,160 @@ pub async fn execute_search_unified(
     // file_pattern.  Explicit `exclude_tests: Some(_)` always wins.
     let effective_exclude_tests = line_mode::effective_content_exclude_tests(
         params.query,
-        params.file_pattern,
+        &normalized_file_pattern,
         params.exclude_tests,
     );
 
+    // First pass: run the unified search with the caller's file_pattern.
+    let first = run_unified_pass(
+        params.query,
+        params.language,
+        normalized_file_pattern.as_deref(),
+        params.limit,
+        effective_exclude_tests,
+        workspaces,
+        handler,
+    )
+    .await?;
+
+    let mut execution = SearchExecutionResult::new(
+        first.hits,
+        false, // unified path does not propagate per-workspace relaxed flag to callers
+        first.total_results,
+        "search_unified",
+        SearchExecutionKind::Definitions,
+    );
+
+    // Stamp OR-disjunction detection on every run (matches the legacy
+    // execute_content_search behaviour so callers and telemetry see the same
+    // signal regardless of hit count).
+    execution.trace.or_disjunction_detected =
+        query::clean_or_disjunction_terms(params.query).is_some();
+
+    // Zero-hit attribution (first filter wins): file_pattern drops candidates
+    // before test-exclude does, so attribute to FilePatternFiltered when the
+    // pattern dropped every candidate that the index produced.  Otherwise
+    // attribute to TestFiltered when the exclude-tests filter ate the rest.
+    let mut zero_hit_reason: Option<ZeroHitReason> = None;
+    let mut file_pattern_diagnostic: Option<FilePatternDiagnostic> = None;
+    if execution.hits.is_empty() {
+        if normalized_file_pattern.is_some()
+            && first.pre_file_pattern_filter_total > 0
+            && first.pre_test_filter_total == 0
+        {
+            zero_hit_reason = Some(ZeroHitReason::FilePatternFiltered);
+            file_pattern_diagnostic = Some(FilePatternDiagnostic::NoInScopeCandidates);
+        } else if effective_exclude_tests && first.pre_test_filter_total > 0 {
+            zero_hit_reason = Some(ZeroHitReason::TestFiltered);
+        }
+    }
+
+    // Scope rescue: when the scoped miss is a real out-of-scope request
+    // (NoInScopeCandidates) and the pattern is not a whitespace-separated
+    // multi-glob mistake, re-run the unified search without the file_pattern.
+    // If the unscoped run yields hits, surface them with the scope-relaxed
+    // markers so callers see "0 in scope; here is what exists outside scope".
+    let should_rescue = zero_hit_reason == Some(ZeroHitReason::FilePatternFiltered)
+        && file_pattern_diagnostic == Some(FilePatternDiagnostic::NoInScopeCandidates)
+        && normalized_file_pattern
+            .as_deref()
+            .is_some_and(|pattern| !query::looks_like_whitespace_separated_globs(pattern));
+
+    if should_rescue {
+        let rescue = run_unified_pass(
+            params.query,
+            params.language,
+            None,
+            params.limit,
+            effective_exclude_tests,
+            workspaces,
+            handler,
+        )
+        .await?;
+
+        if !rescue.hits.is_empty() {
+            execution.hits = rescue.hits;
+            execution.total_results = rescue.total_results;
+            execution.trace.scope_relaxed = true;
+            execution.trace.scope_rescue_count = 1;
+            execution.trace.original_file_pattern = normalized_file_pattern.clone();
+            execution.trace.original_zero_hit_reason = zero_hit_reason.take();
+            // Clear in-scope diagnostics — the public trace now describes the
+            // rescued (out-of-scope) result set rather than the scoped miss.
+            file_pattern_diagnostic = None;
+        }
+    }
+
+    // Persist surviving zero-hit attribution on the trace.
+    execution.trace.zero_hit_reason = zero_hit_reason;
+    execution.trace.file_pattern_diagnostic = file_pattern_diagnostic.clone();
+
+    // When the run still ends with zero hits, run the content zero-hit hint
+    // formatter so MCP callers receive a targeted recovery hint instead of
+    // the generic "no results" message.  The hint_kind on the trace lets the
+    // rendering layer pick the right text block.
+    if execution.hits.is_empty()
+        && let Some((hint_kind, _hint_text)) = hint_formatter::build_content_zero_hit_hint(
+            params.query,
+            normalized_file_pattern.as_deref(),
+            params.language.as_deref(),
+            params.exclude_tests,
+            execution.trace.zero_hit_reason.as_ref(),
+            file_pattern_diagnostic.as_ref(),
+        )
+    {
+        execution.trace.target_hint =
+            super::trace::target_hint_label(&hint_kind).map(str::to_string);
+        execution.trace.hint_kind = Some(hint_kind);
+    }
+
+    Ok(execution)
+}
+
+/// Inner helper: run the unified Tantivy/SQLite search across all workspaces
+/// with a single `file_pattern` value, apply test-exclude filtering, and
+/// return both the hits and the pre-filter counts the caller needs to
+/// attribute zero-hit runs.  Splitting this out lets `execute_search_unified`
+/// call the same pipeline twice (scoped + unscoped) for scope rescue.
+struct UnifiedPassResult {
+    hits: Vec<SearchHit>,
+    total_results: usize,
+    /// Total raw-hit count across all workspaces *before* the file_pattern
+    /// filter.  Used to attribute FilePatternFiltered when this is non-zero
+    /// but `pre_test_filter_total` is zero.
+    pre_file_pattern_filter_total: usize,
+    /// Total candidates that *survived* the file_pattern filter and entered
+    /// the test-exclude stage.  Used to attribute TestFiltered when this is
+    /// non-zero but the final hits vector is empty.
+    pre_test_filter_total: usize,
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn run_unified_pass(
+    query: &str,
+    language: &Option<String>,
+    file_pattern: Option<&str>,
+    limit: u32,
+    effective_exclude_tests: bool,
+    workspaces: &[SearchExecutionWorkspace],
+    handler: &JulieServerHandler,
+) -> Result<UnifiedPassResult> {
+    use crate::search::SearchFilter;
+
     let mut hits = Vec::new();
     let mut total_results = 0usize;
-    // Track pre-filter total separately from the final hit count so we can
-    // attribute zero-hit results to test filtering when applicable.
     let mut pre_test_filter_total = 0usize;
+    let mut pre_file_pattern_filter_total = 0usize;
 
     for workspace in workspaces {
-        // Run the unified search WITHOUT the exclude_tests filter so we can
-        // observe whether test files contributed candidates.  We then apply
-        // the NL-default-exclude-tests post-filter manually to attribute
-        // any resulting zero-hit run to `ZeroHitReason::TestFiltered`.
+        // Run the unified search WITHOUT post-filters so we can observe which
+        // filter (if any) drops every candidate and attribute the zero-hit
+        // run accordingly.  Tantivy's internal scoring still uses the query
+        // to rank.
         let filter = SearchFilter {
-            language: params.language.clone(),
+            language: language.clone(),
             kind: None,
-            file_pattern: params.file_pattern.clone(),
+            file_pattern: None,
             exclude_tests: false,
         };
 
@@ -482,18 +628,27 @@ pub async fn execute_search_unified(
         // `unified_search_impl` (converts to Symbol) so the "file" kind is
         // preserved end-to-end in the SearchHit.
         let (raw_hits, workspace_total) = text_search::unified_search_hits(
-            params.query,
+            query,
             &filter,
-            params.limit,
+            limit,
             Some(vec![workspace.workspace_id.clone()]),
             handler,
         )
         .await?;
 
         total_results += workspace_total;
-        pre_test_filter_total += raw_hits.len();
+        pre_file_pattern_filter_total += raw_hits.len();
 
         for raw_hit in raw_hits {
+            // Stage 1: file_pattern filter.
+            if let Some(pattern) = file_pattern
+                && !crate::tools::search::matches_glob_pattern(&raw_hit.file_path, pattern)
+            {
+                continue;
+            }
+            pre_test_filter_total += 1;
+
+            // Stage 2: NL-default-exclude-tests filter.
             if effective_exclude_tests
                 && crate::search::scoring::is_test_path(&raw_hit.file_path)
             {
@@ -507,22 +662,12 @@ pub async fn execute_search_unified(
     }
 
     sort_hits_by_score_desc(&mut hits);
-    hits.truncate(params.limit.max(1) as usize);
+    hits.truncate(limit.max(1) as usize);
 
-    let mut execution = SearchExecutionResult::new(
+    Ok(UnifiedPassResult {
         hits,
-        false, // unified path does not propagate per-workspace relaxed flag to callers
         total_results,
-        "search_unified",
-        SearchExecutionKind::Definitions,
-    );
-
-    // If filtering tests dropped every candidate, attribute the zero-hit
-    // result to the auto-exclude rule so callers (telemetry, dashboard,
-    // agent prompts) can distinguish this from a true "no matches found".
-    if execution.hits.is_empty() && effective_exclude_tests && pre_test_filter_total > 0 {
-        execution.trace.zero_hit_reason = Some(ZeroHitReason::TestFiltered);
-    }
-
-    Ok(execution)
+        pre_file_pattern_filter_total,
+        pre_test_filter_total,
+    })
 }

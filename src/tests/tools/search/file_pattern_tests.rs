@@ -380,13 +380,9 @@ mod boundary_normalization {
         assert_eq!(execution.total_results, 0);
         assert!(!execution.relaxed);
         assert_eq!(execution.trace.strategy_id, "fast_search_input_diagnostic");
-        assert!(matches!(
-            execution.kind,
-            SearchExecutionKind::Content {
-                workspace_label: None,
-                file_level: false,
-            }
-        ));
+        // After T8, the diagnostic layer no longer distinguishes content vs
+        // definitions vs files modes; `SearchExecutionKind` is a placeholder.
+        // Just confirm the diagnostic identity via strategy_id and trace fields.
         assert_eq!(
             execution.trace.file_pattern_diagnostic,
             Some(FilePatternDiagnostic::WhitespaceSeparatedMultiGlob),

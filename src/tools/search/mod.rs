@@ -393,11 +393,29 @@ impl FastSearchTool {
         });
 
         if optimized.results.is_empty() {
-            let message = format!(
-                "No results found for: '{}'\n\
-                Try a broader query, or add a file_pattern or language filter",
-                self.query
-            );
+            // Prefer the targeted content zero-hit hint that
+            // `execute_search_unified` already computed and stamped on the
+            // trace (OutOfScopeContentHint, FilePatternSyntaxHint, etc.).
+            // Fall back to the generic "no results" message only when no
+            // hint was produced.
+            let message = if let Some((_hint_kind, hint_text)) =
+                hint_formatter::build_content_zero_hit_hint(
+                    &self.query,
+                    self.file_pattern.as_deref(),
+                    self.language.as_deref(),
+                    self.exclude_tests,
+                    execution.trace.zero_hit_reason.as_ref(),
+                    execution.trace.file_pattern_diagnostic.as_ref(),
+                )
+            {
+                hint_text
+            } else {
+                format!(
+                    "No results found for: '{}'\n\
+                    Try a broader query, or add a file_pattern or language filter",
+                    self.query
+                )
+            };
             return Ok(FastSearchExecution {
                 result: CallToolResult::text_content(vec![Content::text(message)]),
                 execution: Some(execution),
@@ -458,6 +476,25 @@ impl FastSearchTool {
             format!(
                 "NOTE: Relaxed search (showing partial matches — no results matched all terms)\n\n{}",
                 lean_output
+            )
+        } else {
+            lean_output
+        };
+
+        // Prepend scope-rescue header when execute_search_unified relaxed the
+        // file_pattern.  Mirrors the legacy line-mode rescue behaviour so
+        // callers see "0 in scope; here is what exists outside scope" before
+        // the actual results.
+        let lean_output = if execution.trace.scope_relaxed
+            && let Some(original_pattern) = execution.trace.original_file_pattern.as_deref()
+        {
+            format!(
+                "{}\n\n{}",
+                hint_formatter::build_scope_rescue_header(
+                    original_pattern,
+                    optimized.results.len(),
+                ),
+                lean_output,
             )
         } else {
             lean_output

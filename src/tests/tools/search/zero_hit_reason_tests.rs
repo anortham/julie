@@ -384,46 +384,15 @@ mod integration_tests {
         );
     }
 
-    /// File-level verification should follow Tantivy tokenization closely
-    /// enough to keep tokenized/stemmed hits alive. Before Task 5 this
-    /// query zero-hit with `LineMatchMiss` because the verifier looked for
-    /// raw substrings "tokens" / "estimation" on the line instead of the
-    /// tokenized forms that matched in Tantivy.
-    #[tokio::test(flavor = "multi_thread")]
-    async fn live_tokenized_file_level_match_avoids_line_match_miss() {
-        let (_dir, handler) =
-            seed_workspace(&[("src/token_estimator.rs", "pub struct TokenEstimator;\n")]).await;
-
-        let result = line_mode_matches(
-            "tokens estimation",
-            &None,
-            &None,
-            10,
-            None,
-            &WorkspaceTarget::Primary,
-            &handler,
-        )
-        .await
-        .expect("line_mode_matches");
-
-        assert!(
-            !result.matches.is_empty(),
-            "tokenized file-level hit should survive line verification"
-        );
-        assert_eq!(result.zero_hit_reason, None);
-        assert!(
-            result
-                .matches
-                .iter()
-                .any(|m| m.file_path == "src/token_estimator.rs"),
-            "expected src/token_estimator.rs in {:?}",
-            result
-                .matches
-                .iter()
-                .map(|m| (&m.file_path, m.line_number, &m.line_content))
-                .collect::<Vec<_>>()
-        );
-    }
+    // Removed (T8 follow-up): the legacy assertion required Tantivy's
+    // English stemmer to map `tokens`->`Token` and `estimation`->`Estimator`
+    // before line_mode verified the per-line match.  T3 removed stemming
+    // from the tokenizer pipeline; without it, neither term tokenises into
+    // a form that matches `TokenEstimator` on the line.  This is the same
+    // semantic loss covered by the deletion of `tantivy_stemming_tests.rs`
+    // and the rewrite of three line_match_strategy stemming assertions —
+    // there is no longer a positive case for this exact query, so removing
+    // the test is the honest reflection of the new contract.
 
     #[tokio::test(flavor = "multi_thread")]
     async fn live_quoted_phrase_match_avoids_line_match_miss() {
