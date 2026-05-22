@@ -3,7 +3,10 @@ use std::collections::{HashMap, HashSet};
 
 use crate::database::SymbolDatabase;
 use crate::extractors::{AnnotationMarker, Symbol};
+use crate::search::index::{SearchDocument, truncate_utf8_bytes};
+use crate::search::tokenizer::pretokenize_code;
 use crate::search::{FileDocument, SearchIndex, SymbolDocument};
+use crate::search::scoring::{classify_role, test_subrole};
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct SymbolIndexContext {
@@ -54,22 +57,104 @@ pub(crate) fn apply_documents_with_context(
 
     for doc in symbol_docs {
         let context = symbol_contexts.get(&doc.id).cloned().unwrap_or_default();
-        index.add_symbol_with_context(
-            doc,
-            &context.annotation_keys,
-            &context.annotations_text,
-            &context.owner_names_text,
-        )?;
+        let search_doc = symbol_doc_to_search_document(doc, &context);
+        index.add_search_doc(&search_doc)?;
     }
 
     for doc in file_docs {
-        index.add_file_content(doc)?;
+        let search_doc = file_doc_to_search_document(doc);
+        index.add_search_doc(&search_doc)?;
     }
 
     if commit {
         index.commit()?;
     }
     Ok(())
+}
+
+/// Build a `SearchDocument` (union shape) from a `SymbolDocument` and its
+/// projection context.  Populates `pretokenized_code` from the symbol's
+/// name + signature + code_body (T4).  `relationship_text` is left empty
+/// until T7.
+fn symbol_doc_to_search_document(
+    doc: &SymbolDocument,
+    context: &SymbolIndexContext,
+) -> SearchDocument {
+    let normalized_path = doc.file_path.replace('\\', "/");
+    let basename = normalized_path.rsplit('/').next().unwrap_or(&normalized_path).to_string();
+    let role = classify_role(&normalized_path, &doc.language);
+    let test_role_str = test_subrole(&normalized_path);
+    let code_body = truncate_utf8_bytes(&doc.code_body, 2000).to_string();
+
+    // pretokenized_code: CamelCase/snake_case-split of name + signature + body excerpt.
+    let pretok_input = format!("{} {} {}", doc.name, doc.signature, code_body);
+    let pretokenized_code = pretokenize_code(&pretok_input);
+
+    SearchDocument {
+        doc_type: "symbol".to_string(),
+        id: doc.id.clone(),
+        name: doc.name.clone(),
+        language: doc.language.clone(),
+        file_path: normalized_path,
+        basename,
+        kind: doc.kind.clone(),
+        role: role.to_string(),
+        test_role: test_role_str.to_string(),
+        signature: doc.signature.clone(),
+        doc_comment: doc.doc_comment.clone(),
+        code_body,
+        annotation_keys: context.annotation_keys.clone(),
+        annotations_text: context.annotations_text.clone(),
+        owner_names_text: context.owner_names_text.clone(),
+        start_line: doc.start_line,
+        content: String::new(),
+        path_text: String::new(),
+        pretokenized_code,
+        relationship_text: String::new(),
+    }
+}
+
+/// Build a `SearchDocument` (union shape) for a file row from a `FileDocument`.
+/// `code_body` is empty for file rows; `pretokenized_code` is built from the
+/// first ≤ 2000 bytes of content (T4).  `relationship_text` is left empty
+/// until T7.
+fn file_doc_to_search_document(doc: &FileDocument) -> SearchDocument {
+    let normalized_path = doc.file_path.replace('\\', "/");
+    let basename = normalized_path.rsplit('/').next().unwrap_or(&normalized_path).to_string();
+    let name = if basename.contains('.') {
+        basename[..basename.rfind('.').unwrap()].to_string()
+    } else {
+        basename.clone()
+    };
+    let role = classify_role(&normalized_path, &doc.language);
+    let test_role_str = test_subrole(&normalized_path);
+
+    // pretokenized_code: CamelCase/snake_case-split of the first ≤ 2000 bytes of content.
+    let content_truncated = truncate_utf8_bytes(&doc.content, 2000);
+    let pretokenized_code = pretokenize_code(content_truncated);
+
+    SearchDocument {
+        doc_type: "file".to_string(),
+        id: String::new(),
+        name,
+        language: doc.language.clone(),
+        file_path: normalized_path.clone(),
+        basename,
+        kind: "file".to_string(),
+        role: role.to_string(),
+        test_role: test_role_str.to_string(),
+        signature: String::new(),
+        doc_comment: String::new(),
+        code_body: String::new(),
+        annotation_keys: vec![],
+        annotations_text: String::new(),
+        owner_names_text: String::new(),
+        start_line: 0,
+        content: doc.content.clone(),
+        path_text: normalized_path,
+        pretokenized_code,
+        relationship_text: String::new(),
+    }
 }
 
 pub(crate) fn symbol_contexts_from_symbols(
