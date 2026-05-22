@@ -7,7 +7,7 @@
 
 ## TL;DR
 
-Phase 1 landed the latency fix, the cross-target title-exact / basename-exact short-circuit, and the tokenizer ablation harness. All five plan tasks shipped, all 30 new tests pass, and the branch-gate (`cargo xtask test dev` + `cargo xtask test dogfood`) is green after a regression catch and fix.
+Phase 1 landed the latency fix, the cross-target title-exact / basename-exact short-circuit, and the tokenizer ablation harness. All five plan tasks shipped, then a codex pre-merge review caught and we fixed three additional defects (compound-query boost matching, eager ablation restore, files-target coverage scope). All 35 new tests pass, and the branch-gate (`cargo xtask test dev` + `cargo xtask test dogfood`) is green.
 
 The hard gates are met:
 - **Latency:** the 9.5s standalone-cold-start outlier is closed. T1's narrow test asserts the warm-index NL definitions path completes in <500ms in debug mode (well under the <1s daemon target).
@@ -55,14 +55,15 @@ Fix: `JulieServerHandler::mark_standalone_embedding_skipped()` sets the runtime 
 
 **Tests added:** 4. All pass.
 
-### T2 — Cross-target exact-match boost (commits `04c42753`, `f089043b`, `9d039bda`)
+### T2 — Cross-target exact-match boost (commits `04c42753`, `f089043b`, `9d039bda`, + codex-fix)
 
 Julie's reranker already had `EXACT_TITLE_BOOST = 100.0`, `PARTIAL_TITLE_BOOST = 50.0`, `PATH_BOOST = 40.0` (matching Eros's `_field_score`). They only fired on the `definitions` path. T2 extended coverage:
 
-- **Files path:** new `apply_symbol_title_boost_to_file_results` wires the same boost into `execute_file_search` via batched DB lookup.
+- **Files path:** new `apply_symbol_title_boost_to_file_results` wires the same boost into `execute_file_search` via batched DB lookup. **Coverage caveat:** the boost is applied to the candidate set returned by Tantivy file search; files that match purely on symbol name with no path-token overlap are not in that candidate set and therefore receive no boost in Phase 1. Closing this gap requires merging symbol-name files into the candidate set before truncation, which is structurally part of Phase 2's unified-target refactor.
 - **Content path:** `apply_reranker_to_content_results` gained an optional `db` parameter; a single batched `titles_for_files(paths)` call covers up to 200 candidates per invocation.
 - **Definitions path:** already correct via `promote_exact_name_matches`. Verified, no change.
 - **New SQL method:** `SymbolDatabase::titles_for_files(paths)` returns lowercase symbol names per file, chunked at 500 to stay inside SQLite's parameter limit.
+- **Compound-query matching (codex-fix):** the initial T2 implementation compared each lowercase symbol name against each lowercase query term, which meant a compound query like `display template` would boost a file whose only matching symbol was the generic one-word `display`. Replaced with compact-form equality (`compact_alnum_lc`): both query and symbol name are stripped of non-alphanumerics and lowercased, so `displayTemplate`, `display_template`, `display-template`, and `display template` all normalise to the same key. New regression tests cover the compound-query, snake-case, and single-CamelCase-token cases.
 
 **Regression caught and fixed during branch-gate:** the initial `titles_for_files` SQL returned all symbol rows including `kind='import'`. A file that imports `SymbolDatabase` (e.g., `src/tests/core/tracing.rs`) was getting +100 boost as if it defined the symbol, demoting the actual definition file. Fix at commit `f089043b`: SQL filter restricted to definition kinds (class, struct, interface, trait, enum, function, method, constructor, module, namespace, type, constant, delegate), mirroring the existing `DEFINITION_KINDS` constant. Whitelist approach so new symbol kinds default to boost-ineligible.
 
@@ -78,11 +79,13 @@ Julie's reranker already had `EXACT_TITLE_BOOST = 100.0`, `PARTIAL_TITLE_BOOST =
 
 **Tests added:** 9 (all 4 combinations + signature uniqueness + "0" treatment). All pass.
 
-### T4 — Bakeoff harness ablation support (commit `aec993d3`)
+### T4 — Bakeoff harness ablation support (commit `aec993d3`, + codex-fix)
 
 `Ablation::{None, NoStemming, NoCamel, Both}` enum + `--ablation <variant>` CLI flag on `cargo xtask search-matrix run`. `EnvGuard` RAII restores prior env on `Drop` so the calling shell isn't polluted. Force reindex per non-`None` ablation so the tokenizer signature change is realized in the index. `ablation_label: String` added to `SearchMatrixBaselineExecution` with serde default. `diff_baseline_reports()` helper renders side-by-side markdown tables.
 
-**Tests added:** 10. All pass. Plus existing 15 contract tests still pass.
+**Eager baseline restore (codex-fix):** the initial T4 implementation forced an ablated reindex against the registered daemon workspace's Tantivy projection but never restored the baseline projection afterward. Recovery silently happened on the next daemon open via the compat-marker auto-rebuild — an expensive surprise the maintainer didn't know they had to pay. Added `restore_workspace_to_baseline` which drops the env guard and the ablation pool, then constructs a fresh `WorkspacePool` and force-reindexes each touched workspace with baseline env. The eager restore approximately doubles ablation matrix wall-clock (one ablation reindex + one restore reindex per repo) but eliminates the next-session surprise reindex. Best-effort: restore failures log to stderr but do not fail the report, since the compat-marker auto-recovery remains as a safety net for the rare failure-path scenario. Regression test asserts the on-disk compat marker reflects baseline tokenizer flags after a non-baseline run.
+
+**Tests added:** 11 (10 original + 1 eager-restore regression). All pass. Plus existing 15 contract tests still pass.
 
 ### T5 — Bakeoff run (this doc + the 4 JSON reports)
 
@@ -101,7 +104,7 @@ Julie's reranker already had `EXACT_TITLE_BOOST = 100.0`, `PARTIAL_TITLE_BOOST =
 
 Based on Phase 1's data, Phase 2 must commit to the following:
 
-1. **Unified target dispatch (Recommended Fix #1 in the investigation doc).** Phase 1 closed Pattern A (duplicate-file scenarios) on definitions and files paths via the cross-target boost, but Patterns B and C (test-intent lookups, documentation-phrase queries) remain blocked by the schema fragmentation (`SymbolDocument` vs `FileDocument` disjoint field sets). The unified-target refactor is the structural fix.
+1. **Unified target dispatch (Recommended Fix #1 in the investigation doc).** Phase 1 closed Pattern A (duplicate-file scenarios) on the definitions and content paths and *partially* on the files path (only where the matching file also has path-token overlap with the query). Patterns B and C (test-intent lookups, documentation-phrase queries) plus the symbol-name-only-match case on the files target remain blocked by the schema fragmentation (`SymbolDocument` vs `FileDocument` disjoint field sets). The unified-target refactor — collapsing both doc types into one schema with a `kind` discriminator — is the structural fix that lets a single Tantivy query rank symbols and files together by the same scorer.
 
 2. **Run Eros's 406-query bakeoff against this branch (Phase 1 HEAD) BEFORE starting Phase 2's refactor.** That snapshot is the true regression baseline for Phase 2. Without it, Phase 2's "did the unification help?" question has no anchor. Owner: lead. Estimated effort: small (re-running Eros's existing tooling against `~/source/julie@fts-ranking-fixes-phase1`).
 
@@ -118,4 +121,9 @@ Phase 1 acceptance gates met. Branch ready for codex pre-merge review per the re
 Operational caveats to flag in the PR description:
 - One-time index rebuild for all existing workspaces (T3 tokenizer signature change).
 - Standalone CLI now degrades to keyword-only retrieval; daemon mode is the supported path for NL queries that benefit from semantic search (T1).
-- Bakeoff timing: forced reindex per ablation means `breadth` profile (12 repos) takes ~30-40 min for the full 4-variant run. Schedule accordingly.
+- Bakeoff timing: now ~2× the previous estimate because non-baseline ablations include an eager baseline restore pass. The `breadth` profile (12 repos) takes ~60-80 min for the full 4-variant run. Schedule accordingly.
+
+External review summary (codex pre-merge):
+- Finding "ablation rewrites real daemon indexes" (high) — **fixed.** Eager restore added at end of every non-baseline ablation run; regression test asserts on-disk marker reflects baseline.
+- Finding "files-target boost cannot rescue missing symbol-name candidates" (high) — **acknowledged + scoped to Phase 2.** Updated this doc to flag the partial coverage; the structural fix (unified target schema) is the explicit anchor for Phase 2.
+- Finding "compound title queries boost generic one-word symbols" (medium) — **fixed.** Per-term matching replaced with compact-form equality across both file-target and content-target boosts; new regression tests cover compound, snake-case, and single-CamelCase queries.
