@@ -448,3 +448,162 @@ fn titles_for_files_returns_lowercase_names_per_file() -> Result<()> {
 
     Ok(())
 }
+
+// ---------------------------------------------------------------------------
+// (d) Compound-query precision — query with multiple tokens
+// ---------------------------------------------------------------------------
+
+/// Compound NL query `display template` must NOT boost a file whose only
+/// matching symbol is the generic one-word `display`.  It must boost the file
+/// that defines the compound concept `displayTemplate` (or `display_template`).
+///
+/// Regression for codex pre-merge finding: per-term `t == q` matching let
+/// `display` match `display` from the query, +100 to a file that had nothing
+/// to do with the compound concept the user asked about.
+#[test]
+fn content_path_compound_query_only_boosts_compact_match_not_per_term() -> Result<()> {
+    let (_db_dir, mut db) = create_test_db();
+
+    // File A — defines the compound concept.
+    store_symbol_in_file(&mut db, "src/widgets/render.js", "displayTemplate", "javascript");
+    // File B — defines a generic, one-word `display`.
+    store_symbol_in_file(&mut db, "src/screen/output.js", "display", "javascript");
+
+    let mut results = vec![
+        ContentSearchResult {
+            file_path: "src/screen/output.js".to_string(),
+            language: "javascript".to_string(),
+            score: 10.0, // higher BM25
+        },
+        ContentSearchResult {
+            file_path: "src/widgets/render.js".to_string(),
+            language: "javascript".to_string(),
+            score: 8.0, // lower BM25
+        },
+    ];
+
+    // SAFETY: single-threaded test; no other thread reads this var concurrently.
+    unsafe { std::env::remove_var("JULIE_RERANKER_ENABLED") };
+    apply_reranker_to_content_results("display template", &mut results, Some(&db));
+
+    assert_eq!(
+        results[0].file_path,
+        "src/widgets/render.js",
+        "File with compound symbol `displayTemplate` must outrank file with \
+         generic `display` symbol for query `display template`. Got: {:?}",
+        results.iter().map(|r| (&r.file_path, r.score)).collect::<Vec<_>>()
+    );
+
+    Ok(())
+}
+
+/// Snake-case variant: query `display template`, symbol `display_template` —
+/// compact-form match is `displaytemplate == displaytemplate` so the boost
+/// fires correctly across naming conventions.
+#[test]
+fn content_path_compound_query_matches_snake_case_symbol() -> Result<()> {
+    let (_db_dir, mut db) = create_test_db();
+
+    store_symbol_in_file(&mut db, "src/widgets/render.py", "display_template", "python");
+    store_symbol_in_file(&mut db, "src/screen/output.py", "display", "python");
+
+    let mut results = vec![
+        ContentSearchResult {
+            file_path: "src/screen/output.py".to_string(),
+            language: "python".to_string(),
+            score: 10.0,
+        },
+        ContentSearchResult {
+            file_path: "src/widgets/render.py".to_string(),
+            language: "python".to_string(),
+            score: 8.0,
+        },
+    ];
+
+    unsafe { std::env::remove_var("JULIE_RERANKER_ENABLED") };
+    apply_reranker_to_content_results("display template", &mut results, Some(&db));
+
+    assert_eq!(
+        results[0].file_path,
+        "src/widgets/render.py",
+        "Snake-case symbol `display_template` must match compound query \
+         `display template`. Got: {:?}",
+        results.iter().map(|r| (&r.file_path, r.score)).collect::<Vec<_>>()
+    );
+
+    Ok(())
+}
+
+/// Files target — same invariant as the content test above.  Pure unit test of
+/// `apply_symbol_title_boost_to_file_results` to exercise the compound-query
+/// matching rule in isolation.
+#[test]
+fn files_path_compound_query_only_boosts_compact_match_not_per_term() -> Result<()> {
+    let (_db_dir, mut db) = create_test_db();
+
+    store_symbol_in_file(&mut db, "src/widgets/render.js", "displayTemplate", "javascript");
+    store_symbol_in_file(&mut db, "src/screen/output.js", "display", "javascript");
+
+    let mut results = vec![
+        FileSearchResult {
+            file_path: "src/screen/output.js".to_string(),
+            language: "javascript".to_string(),
+            score: 10.0,
+            match_kind: FileMatchKind::PathFragment,
+        },
+        FileSearchResult {
+            file_path: "src/widgets/render.js".to_string(),
+            language: "javascript".to_string(),
+            score: 8.0,
+            match_kind: FileMatchKind::PathFragment,
+        },
+    ];
+
+    apply_symbol_title_boost_to_file_results("display template", &mut results, &db);
+
+    assert_eq!(
+        results[0].file_path,
+        "src/widgets/render.js",
+        "Files-target boost must use compact-form match for compound queries. \
+         Got: {:?}",
+        results.iter().map(|r| (&r.file_path, r.score)).collect::<Vec<_>>()
+    );
+
+    Ok(())
+}
+
+/// Single-token CamelCase query like `WorkspacePool` must still match symbol
+/// `WorkspacePool` (regression guard: the new compact-form logic must not
+/// break the existing single-token case path).
+#[test]
+fn content_path_single_token_camelcase_query_still_matches() -> Result<()> {
+    let (_db_dir, mut db) = create_test_db();
+
+    store_symbol_in_file(&mut db, "src/workspace/pool.rs", "WorkspacePool", "rust");
+    store_symbol_in_file(&mut db, "src/workspace/other.rs", "OtherType", "rust");
+
+    let mut results = vec![
+        ContentSearchResult {
+            file_path: "src/workspace/other.rs".to_string(),
+            language: "rust".to_string(),
+            score: 10.0,
+        },
+        ContentSearchResult {
+            file_path: "src/workspace/pool.rs".to_string(),
+            language: "rust".to_string(),
+            score: 8.0,
+        },
+    ];
+
+    unsafe { std::env::remove_var("JULIE_RERANKER_ENABLED") };
+    apply_reranker_to_content_results("WorkspacePool", &mut results, Some(&db));
+
+    assert_eq!(
+        results[0].file_path,
+        "src/workspace/pool.rs",
+        "Single-token CamelCase query must still match. Got: {:?}",
+        results.iter().map(|r| (&r.file_path, r.score)).collect::<Vec<_>>()
+    );
+
+    Ok(())
+}

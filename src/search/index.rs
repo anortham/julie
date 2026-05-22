@@ -1658,6 +1658,21 @@ fn is_hidden_path_component(component: &str) -> bool {
         .is_some_and(|suffix| !suffix.is_empty())
 }
 
+/// Normalise a name or query to its lowercase, alphanumeric-only compact form.
+///
+/// Strips separators (`_`, `-`, ` `, ...) and case so that `displayTemplate`,
+/// `display_template`, `display-template`, and `display template` all map to
+/// `displaytemplate`.  Used by the title-exact reranker for both the files
+/// and content search paths to avoid the per-term matching footgun where a
+/// multi-word query would boost a file whose only matching symbol is a
+/// generic one-word name.
+pub(crate) fn compact_alnum_lc(s: &str) -> String {
+    s.chars()
+        .filter(|c| c.is_alphanumeric())
+        .flat_map(|c| c.to_lowercase())
+        .collect()
+}
+
 /// Apply a symbol-title exact-match score boost to file search results.
 ///
 /// For each result whose file contains a symbol whose lowercase name exactly
@@ -1681,13 +1696,18 @@ pub(crate) fn apply_symbol_title_boost_to_file_results(
         return;
     }
 
-    // Tokenise query into lowercase terms for exact matching.
-    let query_terms_lc: Vec<String> = query
-        .split(|c: char| !c.is_alphanumeric())
-        .filter(|w| !w.is_empty())
-        .map(|w| w.to_lowercase())
-        .collect();
-    if query_terms_lc.is_empty() {
+    // Compact-form normalisation: strip non-alphanumerics and lowercase, so
+    // that `displayTemplate`, `display_template`, and the multi-token query
+    // `display template` all normalise to `displaytemplate` and compare equal.
+    //
+    // Why not per-term `t == q`?  For a compound query like `display template`,
+    // per-term matching boosts any file whose only matching symbol is the
+    // generic one-word `display` — completely unrelated to the compound
+    // concept the user asked about.  Compact-form equality is stricter: it
+    // boosts files whose symbol *spells the same concept*, regardless of
+    // CamelCase / snake_case / separator differences.
+    let query_compact = compact_alnum_lc(query);
+    if query_compact.is_empty() {
         return;
     }
 
@@ -1709,7 +1729,7 @@ pub(crate) fn apply_symbol_title_boost_to_file_results(
         if let Some(titles) = symbol_titles.get(&result.file_path) {
             let has_exact = titles
                 .iter()
-                .any(|t| query_terms_lc.iter().any(|q| t == q));
+                .any(|t| compact_alnum_lc(t) == query_compact);
             if has_exact {
                 result.score += EXACT_TITLE_BOOST;
                 any_boosted = true;

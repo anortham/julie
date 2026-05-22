@@ -425,19 +425,20 @@ pub(crate) fn apply_reranker_to_content_results(
     }
     let parsed = parse_query(query);
 
-    // Build a lowercase set of query target terms for O(1) membership tests.
-    let target_terms_lc: Vec<String> = parsed
-        .target_terms
-        .iter()
-        .map(|t| t.to_lowercase())
-        .collect();
+    // Compact-form normalisation: see the rationale on
+    // `apply_symbol_title_boost_to_file_results` in `src/search/index.rs`.
+    // For a compound query like `display template`, per-term matching would
+    // boost any file whose only matching symbol is the generic one-word
+    // `display`.  We require compact-form equality instead.
+    use crate::search::index::compact_alnum_lc;
+    let query_compact = compact_alnum_lc(query);
 
     // Batched symbol-title lookup: one DB call covers the top N candidates.
     // Capped so that a huge relaxed-fallback result set doesn't cause a
     // pathologically large IN-clause.
     const SYMBOL_TITLE_LOOKUP_CAP: usize = 200;
     let symbol_titles: HashMap<String, Vec<String>> = if let Some(db) = db {
-        if !target_terms_lc.is_empty() {
+        if !query_compact.is_empty() {
             let paths: Vec<&str> = results
                 .iter()
                 .take(SYMBOL_TITLE_LOOKUP_CAP)
@@ -482,14 +483,14 @@ pub(crate) fn apply_reranker_to_content_results(
         r.score = rerank_content_score(&parsed, &candidate);
 
         // Symbol-title exact-match boost: if the file contains a symbol whose
-        // name matches any query term exactly, this file likely *defines* the
-        // queried concept and should rank above files that merely mention it in
-        // body text or share a filename token.
-        if !target_terms_lc.is_empty() {
+        // compact-form name equals the compact-form query, this file likely
+        // *defines* the queried concept and should rank above files that
+        // merely mention it in body text or share a filename token.
+        if !query_compact.is_empty() {
             if let Some(titles) = symbol_titles.get(&r.file_path) {
                 let has_exact = titles
                     .iter()
-                    .any(|t| target_terms_lc.iter().any(|q| t == q));
+                    .any(|t| compact_alnum_lc(t) == query_compact);
                 if has_exact {
                     use crate::search::reranker::EXACT_TITLE_BOOST;
                     r.score += EXACT_TITLE_BOOST;
