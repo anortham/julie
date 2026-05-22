@@ -39,7 +39,7 @@ use crate::tools::search::matches_glob_pattern;
 // indexing throughput ceiling on multi-core boxes.
 const WRITER_HEAP_SIZE: usize = 256_000_000;
 const NL_RERANK_OVERFETCH_FACTOR: usize = 4;
-const SEARCH_COMPAT_MARKER_VERSION: u32 = 3;
+const SEARCH_COMPAT_MARKER_VERSION: u32 = 4;
 const ANNOTATION_ORIGINAL_GROUP_WEIGHT: f32 = 5.0;
 const ANNOTATION_ALIAS_GROUP_WEIGHT: f32 = 3.5;
 const ANNOTATION_NORMALIZED_GROUP_WEIGHT: f32 = 2.5;
