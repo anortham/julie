@@ -190,7 +190,9 @@ pub(crate) async fn handle_file_created_or_modified_static(
     let parse_diagnostics = results.parse_diagnostics.clone();
 
     // Populated inside the DB lock block; moved into the Tantivy spawn_blocking closure.
-    let mut partner_symbol_ids: Vec<String> = Vec::new();
+    // Default to empty so error paths inside the block can `?` early without
+    // leaving this binding uninitialized.
+    let partner_symbol_ids: Vec<String>;
 
     {
         let mut db_lock = match db.lock() {

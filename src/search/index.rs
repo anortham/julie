@@ -1555,26 +1555,12 @@ impl SearchIndex {
         }
     }
 
-    fn recreate_index(
-        path: &Path,
-        schema: &tantivy::schema::Schema,
-        marker: &SearchCompatMarker,
-    ) -> Result<Index> {
-        if path.exists() {
-            std::fs::remove_dir_all(path)?;
-        }
-        std::fs::create_dir_all(path)?;
-        let index = Index::create_in_dir(path, schema.clone())?;
-        Self::write_compat_marker(path, marker)?;
-        Ok(index)
-    }
-
     /// Rebuild the Tantivy index at `path` under a cross-process advisory lock.
     ///
     /// # Why the lock lives in the PARENT directory
     ///
-    /// The previous implementation placed the sentinel file inside `path` itself.
-    /// `recreate_index` calls `remove_dir_all(path)`, which deletes the sentinel,
+    /// The previous unlocked recreate path placed the sentinel file inside `path` itself.
+    /// Rebuilding starts with `remove_dir_all(path)`, which would delete the sentinel,
     /// so a concurrent opener that had already seen `AlreadyExists` on the sentinel
     /// would then race against the directory teardown — opening a half-deleted tree
     /// or missing the lock entirely.

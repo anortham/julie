@@ -284,11 +284,12 @@ mod tests {
     #[test]
     fn test_parse_query_test_three_test_tokens() {
         // Pathological but well-defined: "test test test" → Test intent,
-        // target_terms = ["test", "test"]. The reranker treats the
-        // remaining literal "test" tokens as search terms.
+        // and the two remaining literal "test" target terms collapse to one
+        // under `dedup_preserve_order` (same path as repeated tokens in any
+        // other intent — see `test_parse_query_repeats_collapsed`).
         let q = parse_query("test test test");
         assert_eq!(q.intent, QueryIntent::Test);
-        assert_eq!(q.target_terms, vec!["test", "test"]);
+        assert_eq!(q.target_terms, vec!["test"]);
     }
 
     #[test]
