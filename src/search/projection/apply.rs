@@ -8,6 +8,9 @@ use crate::search::tokenizer::pretokenize_code;
 use crate::search::{FileDocument, SearchIndex, SymbolDocument};
 use crate::search::scoring::{classify_role, test_subrole};
 
+/// Maximum byte length for `relationship_text` per symbol.
+pub(super) const RELATIONSHIP_TEXT_MAX_BYTES: usize = 512;
+
 #[derive(Debug, Clone, Default)]
 pub(crate) struct SymbolIndexContext {
     annotation_keys: Vec<String>,
@@ -22,23 +25,135 @@ struct SymbolContextSource {
     annotations: Vec<AnnotationMarker>,
 }
 
+/// Collect related-symbol names for a batch of symbol IDs.
+///
+/// For each symbol in `symbol_ids`, fetches all edges where
+/// `from_symbol_id IN ids OR to_symbol_id IN ids` (one query each direction),
+/// resolves the partner symbol's name, deduplicates, joins with spaces, and
+/// truncates at `max_bytes_per` on the last whitespace boundary.
+///
+/// Returns a `HashMap<symbol_id, relationship_text_blob>`.
+/// Symbols with no relationships are omitted from the map (callers treat
+/// missing keys as empty string).
+pub(crate) fn collect_relationship_names_bounded(
+    db: &SymbolDatabase,
+    symbol_ids: &[String],
+    max_bytes_per: usize,
+) -> Result<HashMap<String, String>> {
+    if symbol_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    // --- ONE batch call each direction ----------------------------------
+    let outgoing = db.get_outgoing_relationships_for_symbols(symbol_ids)?;
+    let incoming = db.get_relationships_to_symbols(symbol_ids)?;
+
+    // Collect all partner IDs we need to resolve to names.
+    // For a given focal symbol_id, the partner is the OTHER end of the edge.
+    // outgoing: from_symbol_id == focal → partner is to_symbol_id
+    // incoming: to_symbol_id == focal → partner is from_symbol_id
+    let focal_set: HashSet<&str> = symbol_ids.iter().map(String::as_str).collect();
+
+    // Build a map: focal_id → set of partner_ids (deduped)
+    let mut focal_to_partners: HashMap<String, HashSet<String>> = HashMap::new();
+
+    for rel in &outgoing {
+        if focal_set.contains(rel.from_symbol_id.as_str()) {
+            focal_to_partners
+                .entry(rel.from_symbol_id.clone())
+                .or_default()
+                .insert(rel.to_symbol_id.clone());
+        }
+    }
+    for rel in &incoming {
+        if focal_set.contains(rel.to_symbol_id.as_str()) {
+            focal_to_partners
+                .entry(rel.to_symbol_id.clone())
+                .or_default()
+                .insert(rel.from_symbol_id.clone());
+        }
+    }
+
+    if focal_to_partners.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    // Gather all unique partner IDs for a single name-lookup batch.
+    let all_partner_ids: Vec<String> = focal_to_partners
+        .values()
+        .flat_map(|s| s.iter().cloned())
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect();
+
+    let partner_symbols = db.get_symbols_by_ids(&all_partner_ids)?;
+    let id_to_name: HashMap<&str, &str> = partner_symbols
+        .iter()
+        .map(|s| (s.id.as_str(), s.name.as_str()))
+        .collect();
+
+    // Build the relationship_text blobs, one per focal symbol.
+    let mut result = HashMap::with_capacity(focal_to_partners.len());
+    for (focal_id, partner_ids) in focal_to_partners {
+        let mut names: Vec<&str> = partner_ids
+            .iter()
+            .filter_map(|pid| id_to_name.get(pid.as_str()).copied())
+            .collect();
+        if names.is_empty() {
+            continue;
+        }
+        names.sort_unstable();
+        let joined = names.join(" ");
+        let blob = truncate_to_whitespace_boundary(&joined, max_bytes_per).to_string();
+        if !blob.is_empty() {
+            result.insert(focal_id, blob);
+        }
+    }
+
+    Ok(result)
+}
+
+/// Truncate `s` to at most `max_bytes` bytes on a whitespace boundary.
+///
+/// If `s` fits within `max_bytes`, returns `s` unchanged. Otherwise truncates
+/// to `max_bytes` bytes (respecting UTF-8 char boundaries via
+/// [`truncate_utf8_bytes`]) then backtracks to the last whitespace so partial
+/// identifiers are never left in the index.
+fn truncate_to_whitespace_boundary(s: &str, max_bytes: usize) -> &str {
+    if s.len() <= max_bytes {
+        return s;
+    }
+    let truncated = truncate_utf8_bytes(s, max_bytes);
+    if let Some(idx) = truncated.rfind(char::is_whitespace) {
+        &truncated[..idx]
+    } else {
+        truncated
+    }
+}
+
 pub(crate) fn apply_uncommitted_documents_from_symbols(
     index: &SearchIndex,
     symbols: &[Symbol],
     file_docs: &[FileDocument],
     files_to_clean: &[String],
+    db: &SymbolDatabase,
 ) -> Result<()> {
     let symbol_docs = symbols
         .iter()
         .map(SymbolDocument::from_symbol)
         .collect::<Vec<_>>();
     let symbol_contexts = symbol_contexts_from_symbols(symbols);
+    let symbol_ids: Vec<String> = symbol_docs.iter().map(|d| d.id.clone()).collect();
+    let relationship_map =
+        collect_relationship_names_bounded(db, &symbol_ids, RELATIONSHIP_TEXT_MAX_BYTES)
+            .unwrap_or_default();
     apply_documents_with_context(
         index,
         &symbol_docs,
         file_docs,
         files_to_clean,
         &symbol_contexts,
+        &relationship_map,
         false,
     )
 }
@@ -49,6 +164,7 @@ pub(crate) fn apply_documents_with_context(
     file_docs: &[FileDocument],
     files_to_clean: &[String],
     symbol_contexts: &HashMap<String, SymbolIndexContext>,
+    relationship_map: &HashMap<String, String>,
     commit: bool,
 ) -> Result<()> {
     for file_path in files_to_clean {
@@ -57,7 +173,8 @@ pub(crate) fn apply_documents_with_context(
 
     for doc in symbol_docs {
         let context = symbol_contexts.get(&doc.id).cloned().unwrap_or_default();
-        let search_doc = symbol_doc_to_search_document(doc, &context);
+        let rel_text = relationship_map.get(&doc.id).cloned().unwrap_or_default();
+        let search_doc = symbol_doc_to_search_document(doc, &context, rel_text);
         index.add_search_doc(&search_doc)?;
     }
 
@@ -72,13 +189,46 @@ pub(crate) fn apply_documents_with_context(
     Ok(())
 }
 
+/// Apply documents with full DB-backed relationship enrichment.
+/// Used by the watcher paths that don't go through `project_documents`.
+///
+/// This is the canonical production entry point for relationship_text: it
+/// precomputes the map once per batch then delegates to
+/// `apply_documents_with_context`.
+// Used in tests and will be wired into additional production paths in T8+.
+#[allow(dead_code)]
+pub(crate) fn apply_documents_with_db(
+    index: &SearchIndex,
+    symbol_docs: &[SymbolDocument],
+    file_docs: &[FileDocument],
+    files_to_clean: &[String],
+    db: &SymbolDatabase,
+    commit: bool,
+) -> Result<()> {
+    let symbol_ids: Vec<String> = symbol_docs.iter().map(|d| d.id.clone()).collect();
+    let relationship_map =
+        collect_relationship_names_bounded(db, &symbol_ids, RELATIONSHIP_TEXT_MAX_BYTES)
+            .unwrap_or_default();
+    let symbol_contexts: HashMap<String, SymbolIndexContext> = HashMap::new();
+    apply_documents_with_context(
+        index,
+        symbol_docs,
+        file_docs,
+        files_to_clean,
+        &symbol_contexts,
+        &relationship_map,
+        commit,
+    )
+}
+
 /// Build a `SearchDocument` (union shape) from a `SymbolDocument` and its
 /// projection context.  Populates `pretokenized_code` from the symbol's
-/// name + signature + code_body (T4).  `relationship_text` is left empty
-/// until T7.
+/// name + signature + code_body (T4).  `relationship_text` is provided by
+/// the caller (T7).
 fn symbol_doc_to_search_document(
     doc: &SymbolDocument,
     context: &SymbolIndexContext,
+    relationship_text: String,
 ) -> SearchDocument {
     let normalized_path = doc.file_path.replace('\\', "/");
     let basename = normalized_path.rsplit('/').next().unwrap_or(&normalized_path).to_string();
@@ -110,14 +260,14 @@ fn symbol_doc_to_search_document(
         content: String::new(),
         path_text: String::new(),
         pretokenized_code,
-        relationship_text: String::new(),
+        relationship_text,
     }
 }
 
 /// Build a `SearchDocument` (union shape) for a file row from a `FileDocument`.
 /// `code_body` is empty for file rows; `pretokenized_code` is built from the
-/// first ≤ 2000 bytes of content (T4).  `relationship_text` is left empty
-/// until T7.
+/// first ≤ 2000 bytes of content (T4).  `relationship_text` is always empty
+/// for file rows.
 fn file_doc_to_search_document(doc: &FileDocument) -> SearchDocument {
     let normalized_path = doc.file_path.replace('\\', "/");
     let basename = normalized_path.rsplit('/').next().unwrap_or(&normalized_path).to_string();
@@ -306,6 +456,7 @@ pub fn apply_documents(
         symbol_docs,
         file_docs,
         files_to_clean,
+        &HashMap::new(),
         &HashMap::new(),
         true,
     )

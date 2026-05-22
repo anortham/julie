@@ -10,10 +10,12 @@ use crate::search::{FileDocument, SearchIndex, SymbolDocument};
 mod apply;
 
 pub use apply::apply_documents;
+pub(crate) use apply::apply_documents_with_db;
 pub(crate) use apply::apply_uncommitted_documents_from_symbols;
+pub(crate) use apply::collect_relationship_names_bounded;
 use apply::{
-    SymbolIndexContext, apply_documents_with_context, load_symbol_contexts_from_database,
-    symbol_contexts_from_symbols,
+    RELATIONSHIP_TEXT_MAX_BYTES, SymbolIndexContext, apply_documents_with_context,
+    load_symbol_contexts_from_database, symbol_contexts_from_symbols,
 };
 
 pub const TANTIVY_PROJECTION_NAME: &str = "tantivy";
@@ -141,6 +143,10 @@ impl SearchProjection {
         let file_contents = db.get_all_files_for_search_projection()?;
         let symbol_docs: Vec<_> = symbols.iter().map(SymbolDocument::from_symbol).collect();
         let symbol_contexts = symbol_contexts_from_symbols(&symbols);
+        let symbol_ids: Vec<String> = symbol_docs.iter().map(|d| d.id.clone()).collect();
+        let relationship_map =
+            collect_relationship_names_bounded(db, &symbol_ids, RELATIONSHIP_TEXT_MAX_BYTES)
+                .unwrap_or_default();
         let file_docs: Vec<_> = file_contents
             .iter()
             .map(|(path, language, content)| FileDocument {
@@ -150,7 +156,9 @@ impl SearchProjection {
             })
             .collect();
 
-        if let Err(err) = self.rebuild(index, &symbol_docs, &file_docs, &symbol_contexts) {
+        if let Err(err) =
+            self.rebuild(index, &symbol_docs, &file_docs, &symbol_contexts, &relationship_map)
+        {
             let detail = err.to_string();
             let _ = db.upsert_projection_state(
                 self.projection,
@@ -216,6 +224,10 @@ impl SearchProjection {
 
         let load_start = std::time::Instant::now();
         let symbol_contexts = load_symbol_contexts_from_database(db, symbol_docs)?;
+        let symbol_ids: Vec<String> = symbol_docs.iter().map(|d| d.id.clone()).collect();
+        let relationship_map =
+            collect_relationship_names_bounded(db, &symbol_ids, RELATIONSHIP_TEXT_MAX_BYTES)
+                .unwrap_or_default();
         info!(
             "⏱️  projection.load_contexts: {:.2}s ({} symbols)",
             load_start.elapsed().as_secs_f64(),
@@ -229,6 +241,7 @@ impl SearchProjection {
             file_docs,
             files_to_clean,
             &symbol_contexts,
+            &relationship_map,
             true,
         );
         info!(
@@ -285,7 +298,7 @@ impl SearchProjection {
                 )?));
         };
 
-        let (current_projected_revision, symbol_contexts) = {
+        let (current_projected_revision, symbol_contexts, relationship_map) = {
             let db = db.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
             let current_projected_revision = db
                 .get_projection_state(self.projection, &self.workspace_id)?
@@ -301,12 +314,16 @@ impl SearchProjection {
             )?;
             let load_start = std::time::Instant::now();
             let symbol_contexts = load_symbol_contexts_from_database(&db, symbol_docs)?;
+            let symbol_ids: Vec<String> = symbol_docs.iter().map(|d| d.id.clone()).collect();
+            let relationship_map =
+                collect_relationship_names_bounded(&db, &symbol_ids, RELATIONSHIP_TEXT_MAX_BYTES)
+                    .unwrap_or_default();
             info!(
                 "⏱️  projection.load_contexts: {:.2}s ({} symbols)",
                 load_start.elapsed().as_secs_f64(),
                 symbol_docs.len()
             );
-            (current_projected_revision, symbol_contexts)
+            (current_projected_revision, symbol_contexts, relationship_map)
         };
 
         let apply_start = std::time::Instant::now();
@@ -320,6 +337,7 @@ impl SearchProjection {
                 file_docs,
                 files_to_clean,
                 &symbol_contexts,
+                &relationship_map,
                 true,
             )
         };
@@ -368,9 +386,18 @@ impl SearchProjection {
         symbol_docs: &[SymbolDocument],
         file_docs: &[FileDocument],
         symbol_contexts: &HashMap<String, SymbolIndexContext>,
+        relationship_map: &HashMap<String, String>,
     ) -> Result<()> {
         index.clear_all()?;
-        apply_documents_with_context(index, symbol_docs, file_docs, &[], symbol_contexts, true)
+        apply_documents_with_context(
+            index,
+            symbol_docs,
+            file_docs,
+            &[],
+            symbol_contexts,
+            relationship_map,
+            true,
+        )
     }
 }
 

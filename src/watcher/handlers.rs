@@ -295,11 +295,19 @@ pub(crate) async fn handle_file_created_or_modified_static(
         let file_to_clean = relative_path.clone();
 
         let search_index = Arc::clone(search_index);
+        let db_for_tantivy = Arc::clone(db);
         let tantivy_result = tokio::task::spawn_blocking(move || {
             let idx = match search_index.lock() {
                 Ok(guard) => guard,
                 Err(poisoned) => {
                     warn!("Search index mutex poisoned, recovering");
+                    poisoned.into_inner()
+                }
+            };
+            let db_guard = match db_for_tantivy.lock() {
+                Ok(guard) => guard,
+                Err(poisoned) => {
+                    warn!("Database mutex poisoned during Tantivy projection, recovering");
                     poisoned.into_inner()
                 }
             };
@@ -309,6 +317,7 @@ pub(crate) async fn handle_file_created_or_modified_static(
                 &symbols,
                 std::slice::from_ref(&file_content_doc),
                 std::slice::from_ref(&file_to_clean),
+                &db_guard,
             ) {
                 Ok(()) => true,
                 Err(e) => {

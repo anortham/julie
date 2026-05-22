@@ -457,9 +457,13 @@ impl QueueRuntime {
             };
 
             let search_index = Arc::clone(search_index);
+            let db_for_retry = Arc::clone(&self.db);
             let rel_clone = rel_path.clone();
             let retry_result = tokio::task::spawn_blocking(move || {
                 let idx = search_index
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                let db_guard = db_for_retry
                     .lock()
                     .unwrap_or_else(|poisoned| poisoned.into_inner());
                 crate::search::projection::apply_uncommitted_documents_from_symbols(
@@ -467,6 +471,7 @@ impl QueueRuntime {
                     &symbols,
                     std::slice::from_ref(&file_doc),
                     std::slice::from_ref(&rel_clone),
+                    &db_guard,
                 )?;
                 Ok::<(), anyhow::Error>(())
             })
