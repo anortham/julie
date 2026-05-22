@@ -17,7 +17,7 @@ Analyze the impact of changing a symbol by finding all references and assessing 
 If the user gives you a symbol name, resolve the definition first so you know which file or symbol they mean:
 
 ```
-fast_search(query="<symbol_name>", search_target="definitions")
+fast_search(query="<symbol_name>")
 deep_dive(symbol="<symbol_name>", context_file="<partial_file_path>", depth="overview")
 ```
 

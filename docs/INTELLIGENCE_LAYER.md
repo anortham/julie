@@ -184,7 +184,7 @@ $ grep -r "getUserData"
 
 **Julie with Intelligence Layer**:
 ```rust
-// fast_search("getUserData", search_target="definitions")
+// fast_search("getUserData")  -- returns mixed-kind results; each hit carries `kind`
 
 Strategy 1 (Exact): Found in api.ts ✅
 

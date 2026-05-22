@@ -1096,7 +1096,7 @@ git commit -m "test(extractors): activate negative-case gate now that all Phase 
 **Decision (resolves Codex finding #5):** `capabilities.json` stays at `fixtures/extraction/capabilities.json`. It is NOT moved into the crate. The design lists it as the single source of truth, 44 in-repo refs already point there, and the crate consumes it via `include_str!("../../../fixtures/extraction/capabilities.json")` from `src/capability_snapshot.rs`. Phase 5.2 sets up the include_str; this task only verifies and inventories.
 
 **Files (this task makes no path-modifying edits):**
-- Read-only inventory: every consumer of the path. Use `mcp__plugin_julie_julie__fast_search(query="capabilities.json", search_target="files")` to enumerate.
+- Read-only inventory: every consumer of the path. Use `mcp__plugin_julie_julie__fast_search(query="capabilities.json")` to enumerate.
 
 **Step 1: Confirm the file lives at the canonical path**
 
@@ -1105,7 +1105,7 @@ Expected: `OK`.
 
 **Step 2: Enumerate all consumers**
 
-Use `mcp__plugin_julie_julie__fast_search(query="capabilities.json", search_target="files")`. Record the count and a short list in a Step-3 note. The expectation is roughly 44 references across xtask, tests, docs, and the new `src/capability_snapshot.rs` (which is created in Phase 5.2).
+Use `mcp__plugin_julie_julie__fast_search(query="capabilities.json")`. Record the count and a short list in a Step-3 note. The expectation is roughly 44 references across xtask, tests, docs, and the new `src/capability_snapshot.rs` (which is created in Phase 5.2).
 
 **Step 3: Add a path-stability regression test**
 
@@ -1783,7 +1783,7 @@ line_min = 1
 
 Author analogous specs for: Alamofire, Newtonsoft.Json, Slim, cats, cobra, gson, jq, lite, moshi, nlohmann-json, riverpod, sinatra, julie (rust), pandora (gdscript), zls (zig), zod (typescript), flask (python), express (javascript), kirigami (qml), blazor-samples (razor), and the VB.NET reference repo.
 
-For repos the lead doesn't have direct domain knowledge of, query the repo's README and top-level structure with `mcp__plugin_julie_julie__fast_search(query="...", search_target="definitions")` to identify representative core symbols.
+For repos the lead doesn't have direct domain knowledge of, query the repo's README and top-level structure with `mcp__plugin_julie_julie__fast_search(query="...")` to identify representative core symbols.
 
 **Step 3: Commit**
 

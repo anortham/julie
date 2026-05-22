@@ -59,17 +59,14 @@ text_search_impl()                       [src/tools/search/text_search.rs]
   |
   +-- spawn_blocking (Tantivy uses std::sync::Mutex)
   |     |
-  |     +-- route on search_target:
-  |     |     "definitions" --> search_symbols()
-  |     |     "files"       --> search_files()
-  |     |     "content"     --> search_content()
+  |     +-- unified BM25 sweep across all FTS fields
+  |     |     SearchIndex::search_unified()       [src/search/index.rs]
   |     |
-  |     +-- SearchIndex methods:          [src/search/index.rs]
+  |     +-- SearchIndex methods:                  [src/search/index.rs]
   |           |
   |           +-- tokenize_query()        CodeTokenizer splits query (with stemming)
   |           +-- filter_compound_tokens() remove redundant compounds
-  |           +-- build_symbol_query()    [src/search/query.rs]
-  |           |   or build_content_query()
+  |           +-- build_unified_query()    [src/search/query.rs]
   |           +-- searcher.search()       Tantivy BooleanQuery execution (AND mode)
   |           +-- IF zero results AND multiple terms:
   |           |     retry with OR mode (Occur::Should)  ← OR-fallback
@@ -77,35 +74,26 @@ text_search_impl()                       [src/tools/search/text_search.rs]
   |           +-- apply_important_patterns_boost()  [src/search/scoring.rs]
   |
   +-- post-processing:
-  |     "definitions":
-  |       +-- apply file_pattern glob filter
-  |       +-- apply_centrality_boost()    [src/search/scoring.rs]
-  |       +-- enrich code_context from SQLite
-  |     "content":
-  |       +-- post-verify candidates against SQLite file content
-  |       +-- apply file_pattern glob filter
+  |     +-- rerank_unified()              [src/search/scoring.rs]
+  |           Eros-recipe field-score boosts (name > signature > doc_comment > body)
+  |           centrality boost for well-connected symbols
+  |     +-- apply file_pattern glob filter
+  |     +-- enrich code_context from SQLite
   |
   v
-Results (Vec<Symbol>, relaxed: bool)
+Results (Vec<SearchHit>, relaxed: bool)   -- each hit carries `kind`
 ```
 
-### Three Search Targets
+### Unified Search
 
-**"definitions"** -- searches symbol documents by name, signature, and doc
-text. Use it for symbol names and call-shaped identifiers. Tantivy returns
-ranked matches. Each result is enriched with `code_context` from SQLite
-(Tantivy indexes `code_body` for search but does not store it).
+`fast_search` performs a single BM25 sweep across all FTS fields (name,
+signature, doc_comment, code_body, file_path, content, relationship_text)
+and returns mixed-kind results. Each hit carries a `kind` field so callers
+can filter by type if needed.
 
-**"content"** -- searches file content documents (grep-like). Tantivy acts as a
-candidate retrieval stage (fetches 5x the limit). Each candidate is
-post-verified against actual file content from SQLite to eliminate false
-positives from `CodeTokenizer` over-splitting. For example, `"Blake3 hash"`
-tokenizes to `["blake", "3", "hash"]`, which could match files containing
-unrelated "3" and "hash" -- post-verification catches this.
-
-**"files"** -- searches file-path and basename documents. Use it for path
-fragments, basenames, and file extensions. It is the right target when the
-query is about where a file lives, not what text is inside it.
+The single `rerank_unified` pass applies Eros-recipe field-score boosts
+(name matches outweigh body matches) and a logarithmic centrality boost for
+well-connected symbols. There is no separate routing step.
 
 ---
 

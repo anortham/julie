@@ -17,23 +17,17 @@ Diagnose why a Julie search returns unexpected results. Use this when a search m
 Run the exact search the user reported:
 
 ```
-fast_search(query="<original_query>", search_target="definitions", limit=20)
+fast_search(query="<original_query>", limit=20)
 ```
 
-Note what comes back, the top results, their scores, and what's missing.
-
-Also try with `search_target="content"` to see if the symbol appears in line-mode search:
-
-```
-fast_search(query="<original_query>", search_target="content", limit=10)
-```
+`fast_search` returns mixed-kind results; each hit carries `kind`. Note what comes back, the top results, their scores, and what's missing.
 
 ### Step 2: Verify the Expected Symbol Exists
 
 Search for the expected symbol directly:
 
 ```
-fast_search(query="<expected_symbol_name>", search_target="definitions")
+fast_search(query="<expected_symbol_name>")
 ```
 
 If it doesn't appear at all, the symbol may not be indexed.

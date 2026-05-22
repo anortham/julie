@@ -20,7 +20,6 @@ Observed live result:
 julie.fast_search({
   "workspace":"julie_528d4264",
   "query":"workspace_is_primary edit_file",
-  "search_target":"content",
   "file_pattern":"src/tests/core/handler_telemetry.rs",
   "limit":100,
   "return_format":"full"
