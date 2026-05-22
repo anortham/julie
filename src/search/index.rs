@@ -1162,7 +1162,7 @@ impl SearchIndex {
         limit: usize,
     ) -> Result<Vec<UnifiedHit>> {
         use crate::search::query_parse::parse_query;
-        use crate::search::reranker::{Candidate, rerank_symbol_score};
+        use crate::search::reranker::{Candidate, rerank_unified};
         use crate::extractors::SymbolKind;
         use crate::search::scoring::{classify_role, test_subrole, DOC_LANGUAGES};
 
@@ -1266,48 +1266,82 @@ impl SearchIndex {
             hits.retain(|h| !is_test_path(&h.file_path));
         }
 
-        // T5 placeholder reranking — re-scores using `rerank_symbol_score`.
-        // T6 will replace this with a unified-aware reranker.
+        // T6 unified reranking — builds Candidate structs for every hit and
+        // delegates to `rerank_unified` which handles both symbol rows
+        // (`is_file_doc == false`) and file rows (`is_file_doc == true`) in a
+        // single pass with Eros-recipe field-score boosts.
         if !hits.is_empty() {
             let parsed = parse_query(query_str);
+            let candidates: Vec<Candidate> = hits
+                .iter()
+                .map(|hit| {
+                    let kind =
+                        SymbolKind::try_from_string(&hit.kind).unwrap_or(SymbolKind::Variable);
+                    let role = if hit.role.is_empty() {
+                        classify_role(&hit.file_path, &hit.language).to_string()
+                    } else {
+                        hit.role.clone()
+                    };
+                    let test_role = if hit.test_role.is_empty() {
+                        test_subrole(&hit.file_path).to_string()
+                    } else {
+                        hit.test_role.clone()
+                    };
+                    let is_test = role == "test";
+                    // is_file_doc == true for file rows (kind field == "file"),
+                    // not just for doc-role rows. The kind field is the
+                    // authoritative discriminator.
+                    let is_file_doc = hit.kind == "file";
+                    let is_source_language =
+                        !DOC_LANGUAGES.contains(&hit.language.as_str());
+
+                    let mut body = String::with_capacity(
+                        hit.signature.len() + hit.doc_comment.len() + 1,
+                    );
+                    body.push_str(&hit.signature);
+                    if !hit.signature.is_empty() && !hit.doc_comment.is_empty() {
+                        body.push(' ');
+                    }
+                    body.push_str(&hit.doc_comment);
+
+                    Candidate::builder()
+                        .title(hit.name.clone())
+                        .path(hit.file_path.clone())
+                        .body(body)
+                        .kind(kind)
+                        .role(role)
+                        .test_role(test_role)
+                        .is_test(is_test)
+                        .is_file_doc(is_file_doc)
+                        .is_source_language(is_source_language)
+                        .tantivy_score(hit.tantivy_score)
+                        .build()
+                })
+                .collect();
+
+            // rerank_unified returns sorted output; we need to write scores
+            // back in original `hits` order (hits[i] ↔ candidates[i]).
+            // Build an index: position in candidates → final_score.
+            // Since `rerank_unified` clones candidates into Ranked, we match
+            // by enumerating the original candidates and finding the
+            // corresponding Ranked entry by (path, title) key.
+            let ranked = rerank_unified(&parsed, &candidates);
+
+            // Build a score lookup: (file_path, name) → final_score.
+            // Duplicates are resolved by taking the highest score (the
+            // reranker returns them sorted, so the first entry wins).
+            let mut score_map: std::collections::HashMap<(&str, &str), f32> =
+                std::collections::HashMap::with_capacity(ranked.len());
+            for r in &ranked {
+                let key = (r.candidate.path.as_str(), r.candidate.title.as_str());
+                score_map.entry(key).or_insert(r.final_score);
+            }
+
             for hit in hits.iter_mut() {
-                let kind = SymbolKind::try_from_string(&hit.kind).unwrap_or(SymbolKind::Variable);
-                let role = if hit.role.is_empty() {
-                    classify_role(&hit.file_path, &hit.language).to_string()
-                } else {
-                    hit.role.clone()
-                };
-                let test_role = if hit.test_role.is_empty() {
-                    test_subrole(&hit.file_path).to_string()
-                } else {
-                    hit.test_role.clone()
-                };
-                let is_test = role == "test";
-                let is_file_doc = role == "docs";
-                let is_source_language = !DOC_LANGUAGES.contains(&hit.language.as_str());
-
-                let mut body =
-                    String::with_capacity(hit.signature.len() + hit.doc_comment.len() + 1);
-                body.push_str(&hit.signature);
-                if !hit.signature.is_empty() && !hit.doc_comment.is_empty() {
-                    body.push(' ');
+                let key = (hit.file_path.as_str(), hit.name.as_str());
+                if let Some(&s) = score_map.get(&key) {
+                    hit.tantivy_score = s;
                 }
-                body.push_str(&hit.doc_comment);
-
-                let candidate = Candidate::builder()
-                    .title(hit.name.clone())
-                    .path(hit.file_path.clone())
-                    .body(body)
-                    .kind(kind)
-                    .role(role)
-                    .test_role(test_role)
-                    .is_test(is_test)
-                    .is_file_doc(is_file_doc)
-                    .is_source_language(is_source_language)
-                    .tantivy_score(hit.tantivy_score)
-                    .build();
-
-                hit.tantivy_score = rerank_symbol_score(&parsed, &candidate);
             }
 
             hits.sort_by(|a, b| {

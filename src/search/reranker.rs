@@ -406,3 +406,173 @@ fn role_demotion(c: &Candidate) -> f32 {
         _ => 0.0,
     }
 }
+
+// ---------------------------------------------------------------------------
+// rerank_unified — T6 Eros-recipe field-score boosts on mixed-kind candidates
+// ---------------------------------------------------------------------------
+
+/// Boost applied to a file row whose basename (or stem) exactly matches the
+/// compact-normalised query.  Chosen to be larger than the symbol exact-title
+/// path so a file named `browser_client.py` dominates a symbol at some
+/// unrelated path that merely mentions `browser_client` in a path fragment.
+pub(crate) const FILE_BASENAME_EXACT_BOOST: f32 = 120.0;
+
+/// Boost applied to a file row per term when the term exactly matches the
+/// file's basename (no extension).
+pub(crate) const FILE_BASENAME_TERM_BOOST: f32 = 30.0;
+
+/// Per-term path-fragment boost for symbol rows (smaller than PATH_BOOST to
+/// avoid over-rewarding coincidental path fragments).
+pub(crate) const PATH_FRAGMENT_BOOST: f32 = 25.0;
+
+/// Per-term basename exact-match boost (file rows and symbol rows).
+pub(crate) const BASENAME_EXACT_TERM_BOOST: f32 = 40.0;
+
+/// Fixed kind bonus for file rows when the full-string compact match fires
+/// (analogous to `kind_boost` for symbol rows, but file rows have no
+/// SymbolKind to dispatch on).
+pub(crate) const FILE_KIND_EXACT_BONUS: f32 = 30.0;
+
+/// Rerank a mixed slice of symbol and file-row candidates using the
+/// Eros-recipe field-score boosts.
+///
+/// This is the T6 entry point for `execute_search_unified` (and
+/// `search_unified` in `index.rs`).  It handles both symbol rows
+/// (`is_file_doc == false`) and file rows (`is_file_doc == true`) in a single
+/// pass, absorbing the logic that the Phase-1 cross-target helpers
+/// (`apply_symbol_title_boost_to_file_results`,
+/// `apply_reranker_to_content_results` title-exact block) performed on
+/// separate result sets.
+///
+/// Old `rerank_symbol_score` / `rerank_content_score` and the standalone
+/// Phase-1 helpers remain alive until T9 cleanup.
+///
+/// Scoring formula per candidate:
+/// ```
+/// final = tantivy_score
+///       + full_string_boost(c)     // compact whole-query match on title/basename
+///       + per_term_boosts(c)       // title, path, basename per query term
+///       + role_demotion(c)         // vendor / generated penalty (negative)
+/// ```
+pub fn rerank_unified(query: &ParsedQuery, candidates: &[Candidate]) -> Vec<Ranked> {
+    use crate::search::index::compact_alnum_lc;
+
+    let query_compact = compact_alnum_lc(&query.raw);
+
+    let mut ranked: Vec<Ranked> = candidates
+        .iter()
+        .map(|c| {
+            let mut score = c.tantivy_score;
+
+            let title_lc = c.title.to_lowercase();
+            let path_lc = c.path.to_lowercase();
+
+            // ── Full-string compact match ─────────────────────────────────
+            // Compact-form normalisation strips non-alphanumerics and
+            // lowercases so that `BrowserClient`, `browser_client`, and
+            // `browser client` all normalise to `browserclient`.
+            let title_compact = compact_alnum_lc(&c.title);
+
+            if c.is_file_doc {
+                // File row: check basename (with and without extension).
+                let basename_lc = path_lc
+                    .rsplit('/')
+                    .next()
+                    .unwrap_or(path_lc.as_str())
+                    .to_string();
+                let stem_lc: &str = basename_lc
+                    .rsplit_once('.')
+                    .map(|(s, _)| s)
+                    .unwrap_or(&basename_lc);
+                let basename_compact = compact_alnum_lc(&basename_lc);
+                let stem_compact = compact_alnum_lc(stem_lc);
+
+                if !query_compact.is_empty()
+                    && (basename_compact == query_compact || stem_compact == query_compact)
+                {
+                    // Exact basename/stem match — strongest file-row signal.
+                    score += FILE_BASENAME_EXACT_BOOST + FILE_KIND_EXACT_BONUS;
+                } else if !query_compact.is_empty() && title_compact == query_compact {
+                    // Title compact match (title field on file rows carries the
+                    // file name stored by the indexer).
+                    score += EXACT_TITLE_BOOST + FILE_KIND_EXACT_BONUS;
+                }
+            } else {
+                // Symbol row: compact match on symbol name.
+                if !query_compact.is_empty() && title_compact == query_compact {
+                    score += EXACT_TITLE_BOOST + kind_boost(&c.kind);
+                }
+            }
+
+            // ── Per-term boosts ───────────────────────────────────────────
+            for term in &query.target_terms {
+                let term_s = term.as_str();
+                let term_compact = compact_alnum_lc(term_s);
+
+                if c.is_file_doc {
+                    // File rows: boost title (basename field) and path.
+                    if title_lc == term_s {
+                        score += EXACT_TITLE_BOOST;
+                    } else if title_lc.contains(term_s) {
+                        score += PARTIAL_TITLE_BOOST;
+                    }
+                    if path_lc.contains(term_s) {
+                        score += PATH_FRAGMENT_BOOST;
+                    }
+                    // Basename exact: term matches the basename stem.
+                    let basename_lc_for_term = path_lc
+                        .rsplit('/')
+                        .next()
+                        .unwrap_or(path_lc.as_str())
+                        .to_string();
+                    let stem_for_term: &str = basename_lc_for_term
+                        .rsplit_once('.')
+                        .map(|(s, _)| s)
+                        .unwrap_or(&basename_lc_for_term);
+                    if !term_compact.is_empty()
+                        && compact_alnum_lc(stem_for_term) == term_compact
+                    {
+                        score += FILE_BASENAME_TERM_BOOST;
+                    }
+                    // Basename exact (full, with extension).
+                    if !term_compact.is_empty()
+                        && compact_alnum_lc(&basename_lc_for_term) == term_compact
+                    {
+                        score += BASENAME_EXACT_TERM_BOOST;
+                    }
+                } else {
+                    // Symbol rows: same per-term logic as score_symbol but
+                    // using PATH_FRAGMENT_BOOST instead of PATH_BOOST so
+                    // mixed-candidate sets don't over-reward path fragments
+                    // at the expense of real title matches.
+                    if title_lc == term_s {
+                        score += EXACT_TITLE_BOOST;
+                    } else if title_lc.contains(term_s) {
+                        score += PARTIAL_TITLE_BOOST;
+                    }
+                    if path_lc.contains(term_s) {
+                        score += PATH_FRAGMENT_BOOST;
+                    }
+                }
+            }
+
+            // ── Role demotion ─────────────────────────────────────────────
+            score += role_demotion(c);
+
+            Ranked {
+                candidate: c.clone(),
+                final_score: score,
+            }
+        })
+        .collect();
+
+    // Sort descending by final_score, then by title for stability.
+    ranked.sort_by(|a, b| {
+        b.final_score
+            .partial_cmp(&a.final_score)
+            .unwrap_or(Ordering::Equal)
+            .then_with(|| a.candidate.title.cmp(&b.candidate.title))
+    });
+
+    ranked
+}
