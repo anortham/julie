@@ -7,7 +7,7 @@ use crate::database::{FileInfo, SymbolDatabase};
 use crate::extractors::{Symbol, SymbolKind};
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::CallToolResult;
-use crate::search::index::{SearchFilter, SearchIndex};
+use crate::search::index::{SearchDocument, SearchFilter, SearchIndex};
 use crate::tools::search::FastSearchTool;
 use crate::tools::search::text_search::definition_search_with_index_for_test;
 use crate::tools::search::trace::ZeroHitReason;
@@ -134,8 +134,16 @@ fn fast_search_deserializes_limit_with_public_bounds() {
     assert_eq!(high.limit, 500);
 }
 
+/// Regression: a qualified-name Elixir symbol (`Phoenix.Router`) must be
+/// returned when querying "Router" (dot-separated names are token-split so
+/// "router" appears as a term).
+///
+/// Previously this tested a SQLite rescue path (symbols stored only in SQLite
+/// but not in Tantivy).  The T9 unified-schema cutover removed that fallback;
+/// symbols must be in both stores.  The invariant under test is now: symbols
+/// indexed in Tantivy via the unified schema are findable by a partial token.
 #[test]
-fn sqlite_rescue_counts_rescued_hits_in_pre_trunc_total() -> Result<()> {
+fn tantivy_indexed_qualified_name_found_by_partial_token() -> Result<()> {
     let db_dir = TempDir::new()?;
     let db_path = db_dir.path().join("symbols.db");
     let mut db = SymbolDatabase::new(&db_path)?;
@@ -154,6 +162,19 @@ fn sqlite_rescue_counts_rescued_hits_in_pre_trunc_total() -> Result<()> {
 
     let index_dir = TempDir::new()?;
     let index = SearchIndex::create(index_dir.path())?;
+    // Index the symbol in Tantivy (the unified path requires it).
+    let sym = rescued_symbol();
+    index.add_search_doc(&SearchDocument::symbol_from_parts(
+        &sym.id,
+        &sym.name,
+        sym.signature.as_deref().unwrap_or(""),
+        sym.doc_comment.as_deref().unwrap_or(""),
+        sym.code_context.as_deref().unwrap_or(""),
+        &sym.file_path,
+        "module",
+        &sym.language,
+        sym.start_line,
+    ))?;
     index.commit()?;
 
     let filter = SearchFilter {
@@ -165,7 +186,7 @@ fn sqlite_rescue_counts_rescued_hits_in_pre_trunc_total() -> Result<()> {
     let (symbols, _relaxed, total) =
         definition_search_with_index_for_test("Router", &filter, 5, &index, Some(&db))?;
 
-    assert_eq!(symbols.len(), 1);
+    assert_eq!(symbols.len(), 1, "Expected one result for 'Router'. Got: {:?}", symbols.iter().map(|s| &s.name).collect::<Vec<_>>());
     assert_eq!(symbols[0].name, "Phoenix.Router");
     assert_eq!(total, 1);
 
@@ -411,7 +432,7 @@ fn definition_test_intent_uses_metadata_for_inline_test_helpers_before_centralit
     let index_dir = TempDir::new()?;
     let index = SearchIndex::create(index_dir.path())?;
     for symbol in [&source, &test_helper] {
-        index.add_symbol(&crate::search::SymbolDocument::from_symbol(symbol))?;
+        index.add_search_doc(&crate::search::index::SearchDocument::for_symbol(symbol, vec![], String::new(), String::new()))?;
     }
     index.commit()?;
 

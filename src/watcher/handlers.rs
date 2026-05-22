@@ -287,12 +287,9 @@ pub(crate) async fn handle_file_created_or_modified_static(
 
     let tantivy_ok = if let Some(search_index) = search_index {
         let symbols = results.symbols.clone();
-        let file_content_doc = crate::search::FileDocument {
-            file_path: relative_path.clone(),
-            content: content_str.clone(),
-            language: language.clone(),
-        };
         let file_to_clean = relative_path.clone();
+        let file_content = content_str.clone();
+        let file_language = language.clone();
 
         let search_index = Arc::clone(search_index);
         let db_for_tantivy = Arc::clone(db);
@@ -315,7 +312,9 @@ pub(crate) async fn handle_file_created_or_modified_static(
             let ok = match crate::search::projection::apply_uncommitted_documents_from_symbols(
                 &idx,
                 &symbols,
-                std::slice::from_ref(&file_content_doc),
+                &file_to_clean,
+                &file_content,
+                &file_language,
                 std::slice::from_ref(&file_to_clean),
                 &db_guard,
             ) {

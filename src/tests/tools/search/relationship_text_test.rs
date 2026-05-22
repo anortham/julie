@@ -17,7 +17,7 @@ mod relationship_text_test {
     use crate::search::projection::collect_relationship_names_bounded;
     use crate::search::projection::apply_documents_with_db;
     use crate::search::projection::apply_documents;
-    use crate::search::{FileDocument, SearchFilter, SearchIndex, SymbolDocument};
+    use crate::search::{SearchFilter, SearchIndex};
     use crate::search::index::UnifiedHit; // for search_unified return type
 
     fn make_db(dir: &TempDir) -> SymbolDatabase {
@@ -122,9 +122,7 @@ mod relationship_text_test {
         );
 
         // Project both symbols with DB-backed relationship enrichment.
-        let sym_a_doc = SymbolDocument::from_symbol(&sym_a);
-        let sym_b_doc = SymbolDocument::from_symbol(&sym_b);
-        apply_documents_with_db(&index, &[sym_a_doc, sym_b_doc], &[], &[], &db, true)
+        apply_documents_with_db(&index, &[sym_a.clone(), sym_b.clone()], &[], &[], &db, true)
             .expect("apply_documents_with_db");
 
         // The unified query path searches relationship_text. A query for 'callee_target' should
@@ -222,12 +220,18 @@ mod relationship_text_test {
 
         // (b) Project file doc via apply_documents — file rows must NOT surface
         //     in search_symbols (they live in the "file" doc_type bucket).
-        let file_doc = FileDocument {
-            file_path: "src/lib.rs".to_string(),
-            content: "fn hello() {}".to_string(),
+        let file_info = FileInfo {
+            path: "src/lib.rs".to_string(),
+            content: Some("fn hello() {}".to_string()),
             language: "rust".to_string(),
+            hash: String::new(),
+            size: 13,
+            last_modified: 0,
+            last_indexed: 0,
+            symbol_count: 0,
+            line_count: 1,
         };
-        apply_documents(&index, &[], &[file_doc], &[]).expect("apply_documents");
+        apply_documents(&index, &[], std::slice::from_ref(&file_info), &[]).expect("apply_documents");
 
         // File rows are indexed but do NOT appear in symbol search results.
         let sym_results = index

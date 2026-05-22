@@ -56,13 +56,29 @@ const SYMBOL_KIND_KEYWORDS: &[&str] = &[
 /// keyword is unambiguously a modifier and not a search term in its own
 /// right (e.g. searching for a symbol literally named `function` should
 /// still work as a free-text query).
+/// Deterministically deduplicate `target_terms` while preserving the
+/// first-seen order.  Non-adjacent duplicates would otherwise cause the
+/// reranker to double-count per-term boosts (e.g. `"workspace missing
+/// workspace"` would apply the "workspace" body/title boost twice).
+fn dedup_preserve_order(terms: Vec<String>) -> Vec<String> {
+    use std::collections::HashSet;
+    let mut seen: HashSet<String> = HashSet::with_capacity(terms.len());
+    let mut out: Vec<String> = Vec::with_capacity(terms.len());
+    for t in terms {
+        if seen.insert(t.clone()) {
+            out.push(t);
+        }
+    }
+    out
+}
+
 pub fn parse_query(raw: &str) -> ParsedQuery {
     let terms: Vec<String> = raw.split_whitespace().map(|s| s.to_lowercase()).collect();
 
     if terms.len() >= 3 {
         let first = terms[0].as_str();
         if first == "test" {
-            let target_terms = terms[1..].to_vec();
+            let target_terms = dedup_preserve_order(terms[1..].to_vec());
             return ParsedQuery {
                 raw: raw.to_string(),
                 terms,
@@ -72,7 +88,7 @@ pub fn parse_query(raw: &str) -> ParsedQuery {
         }
         if SYMBOL_KIND_KEYWORDS.contains(&first) {
             if let Some(kind) = SymbolKind::try_from_string(first) {
-                let target_terms = terms[1..].to_vec();
+                let target_terms = dedup_preserve_order(terms[1..].to_vec());
                 return ParsedQuery {
                     raw: raw.to_string(),
                     terms,
@@ -83,7 +99,7 @@ pub fn parse_query(raw: &str) -> ParsedQuery {
         }
     }
 
-    let target_terms = terms.clone();
+    let target_terms = dedup_preserve_order(terms.clone());
     ParsedQuery {
         raw: raw.to_string(),
         terms,

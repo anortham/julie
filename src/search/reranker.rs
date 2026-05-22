@@ -203,99 +203,6 @@ pub(crate) fn kind_boost(kind: &SymbolKind) -> f32 {
 // rerank()
 // ---------------------------------------------------------------------------
 
-/// Score every candidate per the C.3 algorithm and return them sorted by
-/// `final_score` descending. Ties break on title-asc then path-asc for
-/// determinism.
-///
-/// I4 two-pass behavior: when the query intent is [`QueryIntent::Symbol`] but
-/// no candidate satisfies BOTH `kind == requested_kind` AND any-target-term
-/// title match, the intent is downgraded to [`QueryIntent::Free`] for the
-/// whole batch. This avoids the failure mode where a partial-name same-kind
-/// candidate (e.g. `fn user_helper` for query `"function User"`) gets
-/// `+INTENT_TITLE_MATCH_BOOST + INTENT_ROLE_MATCH_BOOST` and outranks an
-/// exact-name candidate of a different kind (e.g. `class User`).
-pub fn rerank(query: &ParsedQuery, candidates: &[Candidate]) -> Vec<Ranked> {
-    let effective_query = downgrade_intent_if_unrealized(query, candidates);
-
-    let mut out: Vec<Ranked> = candidates
-        .iter()
-        .map(|c| Ranked {
-            candidate: c.clone(),
-            final_score: rerank_symbol_score(&effective_query, c),
-        })
-        .collect();
-
-    out.sort_by(|a, b| {
-        b.final_score
-            .partial_cmp(&a.final_score)
-            .unwrap_or(Ordering::Equal)
-            .then_with(|| a.candidate.title.cmp(&b.candidate.title))
-            .then_with(|| a.candidate.path.cmp(&b.candidate.path))
-    });
-
-    out
-}
-
-/// Score a single symbol candidate without sorting.
-///
-/// Useful when the caller already has a result list with stable IDs and
-/// wants to update each item's score in place, then sort itself.
-///
-/// **Single-candidate scoring does NOT perform the I4 two-pass intent
-/// downgrade** — that decision is a property of the whole candidate batch,
-/// and per-candidate callers (the in-place rescorers in `text_search.rs`)
-/// apply it themselves via [`rerank_symbol_score_with_effective_intent`].
-pub fn rerank_score(query: &ParsedQuery, candidate: &Candidate) -> f32 {
-    rerank_symbol_score(query, candidate)
-}
-
-/// Score a single symbol candidate. Honors all reranker boosts (title,
-/// path, body, phrase, intent, kind, vendor/generated demotion).
-pub fn rerank_symbol_score(query: &ParsedQuery, c: &Candidate) -> f32 {
-    let title_lc = c.title.to_lowercase();
-    let path_lc = c.path.to_lowercase();
-    let body_lc = c.body.to_lowercase();
-    score_symbol(query, c, &title_lc, &path_lc, &body_lc)
-}
-
-/// Score a single content-search candidate. Content results have an empty
-/// `body`, a `Module` sentinel `kind`, and no DB-derived `test_role`, so
-/// the body/phrase/intent/kind boosts cannot fire usefully. This function
-/// applies only the boosts that DO apply to content hits (title and path
-/// term boosts, role-based demotion) and explicitly skips the rest. Use
-/// this from the content-search reranker entry point so the asymmetry is
-/// visible at the type-level rather than hidden in caller construction.
-pub fn rerank_content_score(query: &ParsedQuery, c: &Candidate) -> f32 {
-    let title_lc = c.title.to_lowercase();
-    let path_lc = c.path.to_lowercase();
-
-    let mut score = c.tantivy_score;
-    for term in &query.target_terms {
-        if title_lc == *term {
-            score += EXACT_TITLE_BOOST;
-        } else if title_lc.contains(term) {
-            score += PARTIAL_TITLE_BOOST;
-        }
-        if path_lc.contains(term) {
-            score += PATH_BOOST;
-        }
-    }
-
-    // Test-intent role boost still applies: content paths can be classified
-    // as test/non-test from `is_test` (path-derived), and a test-intent
-    // search that lands on a test file should outrank the same name in
-    // production code.
-    if matches!(query.intent, QueryIntent::Test)
-        && c.is_test
-        && Candidate::title_matches_any_term(&title_lc, &query.target_terms)
-    {
-        score += INTENT_ROLE_MATCH_BOOST;
-    }
-
-    score += role_demotion(c);
-    score
-}
-
 /// Two-pass intent check: if intent is `Symbol(K)` but no candidate has
 /// `kind == K` AND a title term match, downgrade to `Free` so the rest of
 /// the batch isn't penalized via missing intent boost.
@@ -453,8 +360,8 @@ pub(crate) const FILE_PATH_SEGMENT_EXACT_BOOST: f32 = 160.0;
 /// `apply_reranker_to_content_results` title-exact block) performed on
 /// separate result sets.
 ///
-/// Old `rerank_symbol_score` / `rerank_content_score` and the standalone
-/// Phase-1 helpers remain alive until T9 cleanup.
+/// This replaces the per-target per-result scalar functions and the standalone
+/// Phase-1 helpers deleted in T9 cleanup.
 ///
 /// Scoring formula per candidate:
 /// ```
@@ -520,28 +427,58 @@ pub fn rerank_unified(query: &ParsedQuery, candidates: &[Candidate]) -> Vec<Rank
                     // file name stored by the indexer).
                     score += EXACT_TITLE_BOOST + FILE_KIND_EXACT_BONUS;
                 }
-            } else {
-                // Symbol row: compact match on symbol name.
-                if !query_compact.is_empty() && title_compact == query_compact {
+            }
+            // Symbol row: compact match on symbol name handles
+            // CamelCase↔snake_case cross-style matches like query
+            // "BrowserClient" → symbol `browser_client` that the
+            // per-term branch can't catch.  Only fires when per-term
+            // can't ALREADY add the same boosts (i.e. when the first
+            // target term doesn't equal title_lc); otherwise the
+            // per-term branch already contributes EXACT_TITLE_BOOST and
+            // first-term-kind_boost would double-count below.
+            let mut symbol_compact_fired = false;
+            if !c.is_file_doc
+                && !query_compact.is_empty()
+                && title_compact == query_compact
+            {
+                let per_term_will_match_title = query
+                    .target_terms
+                    .iter()
+                    .any(|t| title_lc == t.as_str());
+                if !per_term_will_match_title {
                     score += EXACT_TITLE_BOOST + kind_boost(&c.kind);
+                    symbol_compact_fired = true;
                 }
             }
 
             // ── Per-term boosts ───────────────────────────────────────────
+            // Title / path / body matching is applied to both symbol and file
+            // rows.  File rows additionally get basename-exact boosts.
+            // Symbol rows use PATH_BOOST (40); file rows use the smaller
+            // PATH_FRAGMENT_BOOST (25) because their path is already covered
+            // by the dedicated basename boosts above.
+            let body_lc = c.body.to_lowercase();
             for term in &query.target_terms {
                 let term_s = term.as_str();
                 let term_compact = compact_alnum_lc(term_s);
 
-                if c.is_file_doc {
-                    // File rows: boost title (basename field) and path.
-                    if title_lc == term_s {
-                        score += EXACT_TITLE_BOOST;
-                    } else if title_lc.contains(term_s) {
-                        score += PARTIAL_TITLE_BOOST;
-                    }
-                    if path_lc.contains(term_s) {
+                if title_lc == term_s {
+                    score += EXACT_TITLE_BOOST;
+                } else if title_lc.contains(term_s) {
+                    score += PARTIAL_TITLE_BOOST;
+                }
+                if path_lc.contains(term_s) {
+                    if c.is_file_doc {
                         score += PATH_FRAGMENT_BOOST;
+                    } else {
+                        score += PATH_BOOST;
                     }
+                }
+                if !body_lc.is_empty() && body_lc.contains(term_s) {
+                    score += BODY_TERM_BOOST;
+                }
+
+                if c.is_file_doc {
                     // Basename exact: term matches the basename stem.
                     let basename_lc_for_term = path_lc
                         .rsplit('/')
@@ -563,18 +500,66 @@ pub fn rerank_unified(query: &ParsedQuery, candidates: &[Candidate]) -> Vec<Rank
                     {
                         score += BASENAME_EXACT_TERM_BOOST;
                     }
-                } else {
-                    // Symbol rows: same per-term logic as score_symbol but
-                    // using PATH_FRAGMENT_BOOST instead of PATH_BOOST so
-                    // mixed-candidate sets don't over-reward path fragments
-                    // at the expense of real title matches.
-                    if title_lc == term_s {
-                        score += EXACT_TITLE_BOOST;
-                    } else if title_lc.contains(term_s) {
-                        score += PARTIAL_TITLE_BOOST;
+                }
+            }
+
+            // ── Phrase boost (4+ target terms; body contains contiguous phrase)
+            // Mirrors the per-target `score_symbol` phrase rule.  Applies to
+            // both symbol and file rows so a query like "alpha beta gamma
+            // delta" appearing verbatim in a body or content boosts that
+            // candidate above ones that only have the individual terms.
+            if query.target_terms.len() >= PHRASE_MIN_TERMS {
+                let phrase = query.target_terms.join(" ");
+                let phrase_in_body = !body_lc.is_empty() && body_lc.contains(&phrase);
+                if phrase_in_body {
+                    score += PHRASE_BOOST;
+                    if c.is_file_doc {
+                        score += PHRASE_FILE_DOC_BOOST;
                     }
-                    if path_lc.contains(term_s) {
-                        score += PATH_FRAGMENT_BOOST;
+                    if c.is_source_language {
+                        score += PHRASE_SOURCE_LANG_BOOST;
+                    }
+                }
+            }
+
+            // ── Intent boosts (symbol rows only) ─────────────────────────
+            // Mirrors the per-target `score_symbol` intent-routing so that
+            // test-intent queries promote test symbols and kind-intent queries
+            // promote kind-matched symbols in the unified path.
+            if !c.is_file_doc {
+                match &query.intent {
+                    QueryIntent::Test => {
+                        if Candidate::title_matches_any_term(&title_lc, &query.target_terms) {
+                            score += INTENT_TITLE_MATCH_BOOST;
+                            if c.is_test {
+                                score += INTENT_ROLE_MATCH_BOOST;
+                            }
+                        }
+                    }
+                    QueryIntent::Symbol(kind) => {
+                        if c.kind_matches(kind)
+                            && Candidate::title_matches_any_term(&title_lc, &query.target_terms)
+                        {
+                            score += INTENT_TITLE_MATCH_BOOST;
+                            if !c.is_test {
+                                score += INTENT_ROLE_MATCH_BOOST;
+                            }
+                        }
+                    }
+                    QueryIntent::Free => {}
+                }
+
+                // First-term kind boost — mirrors the per-target
+                // `score_symbol` rule: when the candidate's title exactly
+                // matches the first target term, add a kind-specific bonus.
+                // Skip if the full-string compact branch already added
+                // `kind_boost` (avoids double-counting for queries where the
+                // compact form equals the first term and the title).
+                if !symbol_compact_fired {
+                    if let Some(first) = query.target_terms.first() {
+                        if title_lc == first.as_str() {
+                            score += kind_boost(&c.kind);
+                        }
                     }
                 }
             }

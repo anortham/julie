@@ -40,7 +40,7 @@ use tempfile::TempDir;
 use crate::database::{FileInfo, SymbolDatabase};
 use crate::extractors::{Symbol, SymbolKind};
 use crate::search::expansion::{MAX_ADDED_TERMS, expand_query_terms};
-use crate::search::index::{SearchFilter, SearchIndex, SymbolDocument};
+use crate::search::index::{SearchDocument, SearchFilter, SearchIndex};
 use crate::search::scoring::is_nl_like_query;
 use crate::tools::search::text_search::definition_search_with_index_for_test;
 
@@ -127,8 +127,7 @@ fn build_fixture() -> Result<(TempDir, TempDir, SearchIndex, SymbolDatabase)> {
             content: sym.code_context.clone(),
         })?;
 
-        let doc = SymbolDocument::from_symbol(sym);
-        index.add_symbol(&doc)?;
+        index.add_search_doc(&SearchDocument::for_symbol(sym, vec![], String::new(), String::new()))?;
     }
     db.store_symbols(&symbols)?;
     index.commit()?;
@@ -337,8 +336,7 @@ fn and_or_fallback_does_not_blow_up_latency() -> Result<()> {
             line_count: 5,
             content: sym.code_context.clone(),
         })?;
-        let doc = SymbolDocument::from_symbol(sym);
-        index.add_symbol(&doc)?;
+        index.add_search_doc(&SearchDocument::for_symbol(sym, vec![], String::new(), String::new()))?;
     }
     db.store_symbols(&[sym_a, sym_b])?;
     index.commit()?;

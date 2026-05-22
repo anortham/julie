@@ -4,8 +4,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use tracing::info;
 
-use crate::database::{ProjectionState, ProjectionStatus, SymbolDatabase};
-use crate::search::{FileDocument, SearchIndex, SymbolDocument};
+use crate::database::{FileInfo, ProjectionState, ProjectionStatus, SymbolDatabase};
+use crate::extractors::Symbol;
+use crate::search::SearchIndex;
 
 mod apply;
 
@@ -140,24 +141,29 @@ impl SearchProjection {
         )?;
 
         let symbols = db.get_all_symbols()?;
-        let file_contents = db.get_all_files_for_search_projection()?;
-        let symbol_docs: Vec<_> = symbols.iter().map(SymbolDocument::from_symbol).collect();
+        let raw_file_tuples = db.get_all_files_for_search_projection()?;
+        let file_infos: Vec<FileInfo> = raw_file_tuples
+            .into_iter()
+            .map(|(path, language, content)| FileInfo {
+                path,
+                language,
+                content: Some(content),
+                hash: String::new(),
+                size: 0,
+                last_modified: 0,
+                last_indexed: 0,
+                symbol_count: 0,
+                line_count: 0,
+            })
+            .collect();
         let symbol_contexts = symbol_contexts_from_symbols(&symbols);
-        let symbol_ids: Vec<String> = symbol_docs.iter().map(|d| d.id.clone()).collect();
+        let symbol_ids: Vec<String> = symbols.iter().map(|s| s.id.clone()).collect();
         let relationship_map =
             collect_relationship_names_bounded(db, &symbol_ids, RELATIONSHIP_TEXT_MAX_BYTES)
                 .unwrap_or_default();
-        let file_docs: Vec<_> = file_contents
-            .iter()
-            .map(|(path, language, content)| FileDocument {
-                file_path: path.clone(),
-                content: content.clone(),
-                language: language.clone(),
-            })
-            .collect();
 
         if let Err(err) =
-            self.rebuild(index, &symbol_docs, &file_docs, &symbol_contexts, &relationship_map)
+            self.rebuild(index, &symbols, &file_infos, &symbol_contexts, &relationship_map)
         {
             let detail = err.to_string();
             let _ = db.upsert_projection_state(
@@ -190,8 +196,8 @@ impl SearchProjection {
         &self,
         db: &mut SymbolDatabase,
         index: &SearchIndex,
-        symbol_docs: &[SymbolDocument],
-        file_docs: &[FileDocument],
+        symbols: &[Symbol],
+        file_infos: &[FileInfo],
         files_to_clean: &[String],
         target_revision: Option<i64>,
     ) -> Result<ProjectionState> {
@@ -223,22 +229,22 @@ impl SearchProjection {
         )?;
 
         let load_start = std::time::Instant::now();
-        let symbol_contexts = load_symbol_contexts_from_database(db, symbol_docs)?;
-        let symbol_ids: Vec<String> = symbol_docs.iter().map(|d| d.id.clone()).collect();
+        let symbol_contexts = load_symbol_contexts_from_database(db, symbols)?;
+        let symbol_ids: Vec<String> = symbols.iter().map(|s| s.id.clone()).collect();
         let relationship_map =
             collect_relationship_names_bounded(db, &symbol_ids, RELATIONSHIP_TEXT_MAX_BYTES)
                 .unwrap_or_default();
         info!(
             "⏱️  projection.load_contexts: {:.2}s ({} symbols)",
             load_start.elapsed().as_secs_f64(),
-            symbol_docs.len()
+            symbols.len()
         );
 
         let apply_start = std::time::Instant::now();
         let apply_result = apply_documents_with_context(
             index,
-            symbol_docs,
-            file_docs,
+            symbols,
+            file_infos,
             files_to_clean,
             &symbol_contexts,
             &relationship_map,
@@ -247,8 +253,8 @@ impl SearchProjection {
         info!(
             "⏱️  projection.apply_documents: {:.2}s ({} symbols, {} files, {} cleaned)",
             apply_start.elapsed().as_secs_f64(),
-            symbol_docs.len(),
-            file_docs.len(),
+            symbols.len(),
+            file_infos.len(),
             files_to_clean.len()
         );
         if let Err(err) = apply_result {
@@ -279,8 +285,8 @@ impl SearchProjection {
         &self,
         db: &Arc<Mutex<SymbolDatabase>>,
         index: &Arc<Mutex<SearchIndex>>,
-        symbol_docs: &[SymbolDocument],
-        file_docs: &[FileDocument],
+        symbols: &[Symbol],
+        file_infos: &[FileInfo],
         files_to_clean: &[String],
         target_revision: Option<i64>,
     ) -> Result<ProjectionState> {
@@ -313,15 +319,15 @@ impl SearchProjection {
                 None,
             )?;
             let load_start = std::time::Instant::now();
-            let symbol_contexts = load_symbol_contexts_from_database(&db, symbol_docs)?;
-            let symbol_ids: Vec<String> = symbol_docs.iter().map(|d| d.id.clone()).collect();
+            let symbol_contexts = load_symbol_contexts_from_database(&db, symbols)?;
+            let symbol_ids: Vec<String> = symbols.iter().map(|s| s.id.clone()).collect();
             let relationship_map =
                 collect_relationship_names_bounded(&db, &symbol_ids, RELATIONSHIP_TEXT_MAX_BYTES)
                     .unwrap_or_default();
             info!(
                 "⏱️  projection.load_contexts: {:.2}s ({} symbols)",
                 load_start.elapsed().as_secs_f64(),
-                symbol_docs.len()
+                symbols.len()
             );
             (current_projected_revision, symbol_contexts, relationship_map)
         };
@@ -333,8 +339,8 @@ impl SearchProjection {
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
             apply_documents_with_context(
                 &index,
-                symbol_docs,
-                file_docs,
+                symbols,
+                file_infos,
                 files_to_clean,
                 &symbol_contexts,
                 &relationship_map,
@@ -344,8 +350,8 @@ impl SearchProjection {
         info!(
             "⏱️  projection.apply_documents: {:.2}s ({} symbols, {} files, {} cleaned)",
             apply_start.elapsed().as_secs_f64(),
-            symbol_docs.len(),
-            file_docs.len(),
+            symbols.len(),
+            file_infos.len(),
             files_to_clean.len()
         );
 
@@ -383,16 +389,16 @@ impl SearchProjection {
     fn rebuild(
         &self,
         index: &SearchIndex,
-        symbol_docs: &[SymbolDocument],
-        file_docs: &[FileDocument],
+        symbols: &[Symbol],
+        file_infos: &[FileInfo],
         symbol_contexts: &HashMap<String, SymbolIndexContext>,
         relationship_map: &HashMap<String, String>,
     ) -> Result<()> {
         index.clear_all()?;
         apply_documents_with_context(
             index,
-            symbol_docs,
-            file_docs,
+            symbols,
+            file_infos,
             &[],
             symbol_contexts,
             relationship_map,

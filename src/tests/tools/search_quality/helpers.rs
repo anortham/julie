@@ -382,8 +382,8 @@ incremental_updates = true
         .get_all_symbols()
         .expect("Failed to get symbols for Tantivy backfill");
     for symbol in &symbols {
-        let doc = crate::search::SymbolDocument::from_symbol(symbol);
-        if let Err(e) = search_index.add_symbol(&doc) {
+        let doc = crate::search::index::SearchDocument::for_symbol(symbol, vec![], String::new(), String::new());
+        if let Err(e) = search_index.add_search_doc(&doc) {
             eprintln!("Tantivy backfill warning: failed to add symbol: {}", e);
         }
     }
@@ -393,12 +393,8 @@ incremental_updates = true
         .get_all_file_contents_with_language()
         .unwrap_or_default();
     for (path, language, content) in &file_contents {
-        let doc = crate::search::FileDocument {
-            file_path: path.clone(),
-            content: content.clone(),
-            language: language.clone(),
-        };
-        if let Err(e) = search_index.add_file_content(&doc) {
+        let doc = crate::search::index::SearchDocument::file_from_parts(path, content, language);
+        if let Err(e) = search_index.add_search_doc(&doc) {
             eprintln!("Tantivy backfill warning: failed to add file: {}", e);
         }
     }

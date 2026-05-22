@@ -1,11 +1,11 @@
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 
-use crate::database::SymbolDatabase;
+use crate::database::{FileInfo, SymbolDatabase};
 use crate::extractors::{AnnotationMarker, Symbol};
 use crate::search::index::{SearchDocument, truncate_utf8_bytes};
 use crate::search::tokenizer::pretokenize_code;
-use crate::search::{FileDocument, SearchIndex, SymbolDocument};
+use crate::search::SearchIndex;
 use crate::search::scoring::{classify_role, test_subrole};
 
 /// Maximum byte length for `relationship_text` per symbol.
@@ -134,34 +134,40 @@ fn truncate_to_whitespace_boundary(s: &str, max_bytes: usize) -> &str {
 pub(crate) fn apply_uncommitted_documents_from_symbols(
     index: &SearchIndex,
     symbols: &[Symbol],
-    file_docs: &[FileDocument],
+    file_path: &str,
+    file_content: &str,
+    file_language: &str,
     files_to_clean: &[String],
     db: &SymbolDatabase,
 ) -> Result<()> {
-    let symbol_docs = symbols
-        .iter()
-        .map(SymbolDocument::from_symbol)
-        .collect::<Vec<_>>();
     let symbol_contexts = symbol_contexts_from_symbols(symbols);
-    let symbol_ids: Vec<String> = symbol_docs.iter().map(|d| d.id.clone()).collect();
+    let symbol_ids: Vec<String> = symbols.iter().map(|s| s.id.clone()).collect();
     let relationship_map =
         collect_relationship_names_bounded(db, &symbol_ids, RELATIONSHIP_TEXT_MAX_BYTES)
             .unwrap_or_default();
-    apply_documents_with_context(
-        index,
-        &symbol_docs,
-        file_docs,
-        files_to_clean,
-        &symbol_contexts,
-        &relationship_map,
-        false,
-    )
+
+    for file_path_to_clean in files_to_clean {
+        index.remove_by_file_path(file_path_to_clean)?;
+    }
+
+    for symbol in symbols {
+        let context = symbol_contexts.get(&symbol.id).cloned().unwrap_or_default();
+        let rel_text = relationship_map.get(&symbol.id).cloned().unwrap_or_default();
+        let search_doc = symbol_to_search_document(symbol, &context, rel_text);
+        index.add_search_doc(&search_doc)?;
+    }
+
+    // Index the file row so line-mode search can find content matches.
+    let file_search_doc = raw_file_to_search_document(file_path, file_content, file_language);
+    index.add_search_doc(&file_search_doc)?;
+
+    Ok(())
 }
 
 pub(crate) fn apply_documents_with_context(
     index: &SearchIndex,
-    symbol_docs: &[SymbolDocument],
-    file_docs: &[FileDocument],
+    symbols: &[Symbol],
+    file_infos: &[FileInfo],
     files_to_clean: &[String],
     symbol_contexts: &HashMap<String, SymbolIndexContext>,
     relationship_map: &HashMap<String, String>,
@@ -171,15 +177,15 @@ pub(crate) fn apply_documents_with_context(
         index.remove_by_file_path(file_path)?;
     }
 
-    for doc in symbol_docs {
-        let context = symbol_contexts.get(&doc.id).cloned().unwrap_or_default();
-        let rel_text = relationship_map.get(&doc.id).cloned().unwrap_or_default();
-        let search_doc = symbol_doc_to_search_document(doc, &context, rel_text);
+    for symbol in symbols {
+        let context = symbol_contexts.get(&symbol.id).cloned().unwrap_or_default();
+        let rel_text = relationship_map.get(&symbol.id).cloned().unwrap_or_default();
+        let search_doc = symbol_to_search_document(symbol, &context, rel_text);
         index.add_search_doc(&search_doc)?;
     }
 
-    for doc in file_docs {
-        let search_doc = file_doc_to_search_document(doc);
+    for file_info in file_infos {
+        let search_doc = file_info_to_search_document(file_info);
         index.add_search_doc(&search_doc)?;
     }
 
@@ -195,25 +201,23 @@ pub(crate) fn apply_documents_with_context(
 /// This is the canonical production entry point for relationship_text: it
 /// precomputes the map once per batch then delegates to
 /// `apply_documents_with_context`.
-// Used in tests and will be wired into additional production paths in T8+.
-#[allow(dead_code)]
 pub(crate) fn apply_documents_with_db(
     index: &SearchIndex,
-    symbol_docs: &[SymbolDocument],
-    file_docs: &[FileDocument],
+    symbols: &[Symbol],
+    file_infos: &[FileInfo],
     files_to_clean: &[String],
     db: &SymbolDatabase,
     commit: bool,
 ) -> Result<()> {
-    let symbol_ids: Vec<String> = symbol_docs.iter().map(|d| d.id.clone()).collect();
+    let symbol_ids: Vec<String> = symbols.iter().map(|s| s.id.clone()).collect();
     let relationship_map =
         collect_relationship_names_bounded(db, &symbol_ids, RELATIONSHIP_TEXT_MAX_BYTES)
             .unwrap_or_default();
-    let symbol_contexts: HashMap<String, SymbolIndexContext> = HashMap::new();
+    let symbol_contexts = symbol_contexts_from_symbols(symbols);
     apply_documents_with_context(
         index,
-        symbol_docs,
-        file_docs,
+        symbols,
+        file_infos,
         files_to_clean,
         &symbol_contexts,
         &relationship_map,
@@ -221,73 +225,32 @@ pub(crate) fn apply_documents_with_db(
     )
 }
 
-/// Build a `SearchDocument` (union shape) from a `SymbolDocument` and its
-/// projection context.  Populates `pretokenized_code` from the symbol's
-/// name + signature + code_body (T4).  `relationship_text` is provided by
-/// the caller (T7).
-fn symbol_doc_to_search_document(
-    doc: &SymbolDocument,
-    context: &SymbolIndexContext,
-    relationship_text: String,
-) -> SearchDocument {
-    let normalized_path = doc.file_path.replace('\\', "/");
-    let basename = normalized_path.rsplit('/').next().unwrap_or(&normalized_path).to_string();
-    let role = classify_role(&normalized_path, &doc.language);
-    let test_role_str = test_subrole(&normalized_path);
-    let code_body = truncate_utf8_bytes(&doc.code_body, 2000).to_string();
-
-    // pretokenized_code: CamelCase/snake_case-split of name + signature + body excerpt.
-    let pretok_input = format!("{} {} {}", doc.name, doc.signature, code_body);
-    let pretokenized_code = pretokenize_code(&pretok_input);
-
-    SearchDocument {
-        doc_type: "symbol".to_string(),
-        id: doc.id.clone(),
-        name: doc.name.clone(),
-        language: doc.language.clone(),
-        file_path: normalized_path,
-        basename,
-        kind: doc.kind.clone(),
-        role: role.to_string(),
-        test_role: test_role_str.to_string(),
-        signature: doc.signature.clone(),
-        doc_comment: doc.doc_comment.clone(),
-        code_body,
-        annotation_keys: context.annotation_keys.clone(),
-        annotations_text: context.annotations_text.clone(),
-        owner_names_text: context.owner_names_text.clone(),
-        start_line: doc.start_line,
-        content: String::new(),
-        path_text: String::new(),
-        pretokenized_code,
-        relationship_text,
-    }
-}
-
-/// Build a `SearchDocument` (union shape) for a file row from a `FileDocument`.
+/// Build a `SearchDocument` (union shape) for a file row from a `FileInfo`.
 /// `code_body` is empty for file rows; `pretokenized_code` is built from the
 /// first ≤ 2000 bytes of content (T4).  `relationship_text` is always empty
 /// for file rows.
-fn file_doc_to_search_document(doc: &FileDocument) -> SearchDocument {
-    let normalized_path = doc.file_path.replace('\\', "/");
+fn file_info_to_search_document(file_info: &FileInfo) -> SearchDocument {
+    let normalized_path = file_info.path.replace('\\', "/");
     let basename = normalized_path.rsplit('/').next().unwrap_or(&normalized_path).to_string();
     let name = if basename.contains('.') {
         basename[..basename.rfind('.').unwrap()].to_string()
     } else {
         basename.clone()
     };
-    let role = classify_role(&normalized_path, &doc.language);
+    let content = file_info.content.as_deref().unwrap_or("");
+    let language = &file_info.language;
+    let role = classify_role(&normalized_path, language);
     let test_role_str = test_subrole(&normalized_path);
 
     // pretokenized_code: CamelCase/snake_case-split of the first ≤ 2000 bytes of content.
-    let content_truncated = truncate_utf8_bytes(&doc.content, 2000);
+    let content_truncated = truncate_utf8_bytes(content, 2000);
     let pretokenized_code = pretokenize_code(content_truncated);
 
     SearchDocument {
         doc_type: "file".to_string(),
         id: String::new(),
         name,
-        language: doc.language.clone(),
+        language: language.clone(),
         file_path: normalized_path.clone(),
         basename,
         kind: "file".to_string(),
@@ -300,7 +263,113 @@ fn file_doc_to_search_document(doc: &FileDocument) -> SearchDocument {
         annotations_text: String::new(),
         owner_names_text: String::new(),
         start_line: 0,
-        content: doc.content.clone(),
+        content: content.to_string(),
+        path_text: normalized_path,
+        pretokenized_code,
+        relationship_text: String::new(),
+    }
+}
+
+/// Build a `SearchDocument` from a `Symbol` and its indexing context.
+fn symbol_to_search_document(
+    symbol: &Symbol,
+    context: &SymbolIndexContext,
+    relationship_text: String,
+) -> SearchDocument {
+    let normalized_path = symbol.file_path.replace('\\', "/");
+    let basename = normalized_path.rsplit('/').next().unwrap_or(&normalized_path).to_string();
+    let path_role = classify_role(&normalized_path, &symbol.language);
+    let path_test_role_str = test_subrole(&normalized_path);
+
+    // Inline test helpers live in non-test files (e.g. `#[cfg(test)]` blocks
+    // inside `src/lib.rs`).  Path heuristics can't detect them; check the
+    // extractor's metadata override so the role and test_role fields carry
+    // the correct classification for the unified reranker and the
+    // `exclude_tests` filter.
+    let meta = symbol.metadata.as_ref();
+    let metadata_is_test = meta
+        .and_then(|m| m.get("is_test"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let metadata_test_role = meta
+        .and_then(|m| m.get("test_role"))
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
+
+    let (role, test_role) = if metadata_is_test && path_role != "test" {
+        let tr = metadata_test_role
+            .unwrap_or_else(|| path_test_role_str.to_string());
+        ("test".to_string(), tr)
+    } else {
+        (
+            path_role.to_string(),
+            metadata_test_role.unwrap_or_else(|| path_test_role_str.to_string()),
+        )
+    };
+
+    let raw_body = symbol.code_context.as_deref().unwrap_or("");
+    let code_body = truncate_utf8_bytes(raw_body, 2000).to_string();
+    let signature = symbol.signature.clone().unwrap_or_default();
+    let pretok_input = format!("{} {} {}", symbol.name, signature, code_body);
+    let pretokenized_code = pretokenize_code(&pretok_input);
+
+    SearchDocument {
+        doc_type: "symbol".to_string(),
+        id: symbol.id.clone(),
+        name: symbol.name.clone(),
+        language: symbol.language.clone(),
+        file_path: normalized_path,
+        basename,
+        kind: symbol.kind.to_string(),
+        role,
+        test_role,
+        signature,
+        doc_comment: symbol.doc_comment.clone().unwrap_or_default(),
+        code_body,
+        annotation_keys: context.annotation_keys.clone(),
+        annotations_text: context.annotations_text.clone(),
+        owner_names_text: context.owner_names_text.clone(),
+        start_line: symbol.start_line,
+        content: String::new(),
+        path_text: String::new(),
+        pretokenized_code,
+        relationship_text,
+    }
+}
+
+/// Build a `SearchDocument` for a file row from raw path/content/language.
+fn raw_file_to_search_document(file_path: &str, content: &str, language: &str) -> SearchDocument {
+    let normalized_path = file_path.replace('\\', "/");
+    let basename = normalized_path.rsplit('/').next().unwrap_or(&normalized_path).to_string();
+    let name = if let Some(dot) = basename.rfind('.') {
+        basename[..dot].to_string()
+    } else {
+        basename.clone()
+    };
+    let role = classify_role(&normalized_path, language);
+    let test_role_str = test_subrole(&normalized_path);
+    let content_truncated = truncate_utf8_bytes(content, 2000);
+    let pretokenized_code = pretokenize_code(content_truncated);
+
+    SearchDocument {
+        doc_type: "file".to_string(),
+        id: String::new(),
+        name,
+        language: language.to_string(),
+        file_path: normalized_path.clone(),
+        basename,
+        kind: "file".to_string(),
+        role: role.to_string(),
+        test_role: test_role_str.to_string(),
+        signature: String::new(),
+        doc_comment: String::new(),
+        code_body: String::new(),
+        annotation_keys: vec![],
+        annotations_text: String::new(),
+        owner_names_text: String::new(),
+        start_line: 0,
+        content: content.to_string(),
         path_text: normalized_path,
         pretokenized_code,
         relationship_text: String::new(),
@@ -328,11 +397,11 @@ pub(crate) fn symbol_contexts_from_symbols(
 
 pub(crate) fn load_symbol_contexts_from_database(
     db: &SymbolDatabase,
-    symbol_docs: &[SymbolDocument],
+    symbols: &[Symbol],
 ) -> Result<HashMap<String, SymbolIndexContext>> {
-    let target_ids = symbol_docs
+    let target_ids = symbols
         .iter()
-        .map(|doc| doc.id.clone())
+        .map(|s| s.id.clone())
         .collect::<Vec<_>>();
     if target_ids.is_empty() {
         return Ok(HashMap::new());
@@ -447,14 +516,14 @@ impl From<&Symbol> for SymbolContextSource {
 
 pub fn apply_documents(
     index: &SearchIndex,
-    symbol_docs: &[SymbolDocument],
-    file_docs: &[FileDocument],
+    symbols: &[Symbol],
+    file_infos: &[FileInfo],
     files_to_clean: &[String],
 ) -> Result<()> {
     apply_documents_with_context(
         index,
-        symbol_docs,
-        file_docs,
+        symbols,
+        file_infos,
         files_to_clean,
         &HashMap::new(),
         &HashMap::new(),

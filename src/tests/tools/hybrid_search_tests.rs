@@ -189,7 +189,7 @@ mod orchestrator_tests {
     use crate::database::SymbolDatabase;
     use crate::embeddings::{DeviceInfo, EmbeddingProvider};
     use crate::search::hybrid::hybrid_search;
-    use crate::search::index::{SearchFilter, SearchIndex, SymbolDocument, SymbolSearchResults};
+    use crate::search::index::{SearchDocument, SearchFilter, SearchIndex, SymbolSearchResults};
     use tempfile::TempDir;
 
     #[derive(Clone)]
@@ -366,17 +366,17 @@ mod orchestrator_tests {
 
         // Add symbol to Tantivy index
         index
-            .add_symbol(&SymbolDocument {
-                id: "sym1".into(),
-                name: "process_data".into(),
-                signature: "fn process_data(input: &str) -> Result<()>".into(),
-                doc_comment: "Processes input data.".into(),
-                code_body: "fn process_data(input: &str) -> Result<()> { Ok(()) }".into(),
-                file_path: "src/lib.rs".into(),
-                kind: "function".into(),
-                language: "rust".into(),
-                start_line: 10,
-            })
+            .add_search_doc(&SearchDocument::symbol_from_parts(
+                "sym1",
+                "process_data",
+                "fn process_data(input: &str) -> Result<()>",
+                "Processes input data.",
+                "fn process_data(input: &str) -> Result<()> { Ok(()) }",
+                "src/lib.rs",
+                "function",
+                "rust",
+                10,
+            ))
             .unwrap();
         index.commit().unwrap();
 
@@ -774,7 +774,7 @@ mod weight_profile_wiring_tests {
     use crate::database::SymbolDatabase;
     use crate::embeddings::{DeviceInfo, EmbeddingProvider};
     use crate::search::hybrid::hybrid_search;
-    use crate::search::index::{SearchFilter, SearchIndex, SymbolDocument};
+    use crate::search::index::{SearchDocument, SearchFilter, SearchIndex};
     use crate::search::weights::SearchWeightProfile;
     use tempfile::TempDir;
 
@@ -837,17 +837,17 @@ mod weight_profile_wiring_tests {
 
         // Add symbol to Tantivy index
         index
-            .add_symbol(&SymbolDocument {
-                id: "sym1".into(),
-                name: "process_data".into(),
-                signature: "fn process_data(input: &str) -> Result<()>".into(),
-                doc_comment: "Processes input data.".into(),
-                code_body: "fn process_data(input: &str) -> Result<()> { Ok(()) }".into(),
-                file_path: "src/lib.rs".into(),
-                kind: "function".into(),
-                language: "rust".into(),
-                start_line: 10,
-            })
+            .add_search_doc(&SearchDocument::symbol_from_parts(
+                "sym1",
+                "process_data",
+                "fn process_data(input: &str) -> Result<()>",
+                "Processes input data.",
+                "fn process_data(input: &str) -> Result<()> { Ok(()) }",
+                "src/lib.rs",
+                "function",
+                "rust",
+                10,
+            ))
             .unwrap();
         index.commit().unwrap();
 
@@ -936,17 +936,17 @@ mod weight_profile_wiring_tests {
             .unwrap();
 
         index
-            .add_symbol(&SymbolDocument {
-                id: "sym1".into(),
-                name: "process_data".into(),
-                signature: "fn process_data(input: &str) -> Result<()>".into(),
-                doc_comment: "Processes input data.".into(),
-                code_body: "fn process_data(input: &str) -> Result<()> { Ok(()) }".into(),
-                file_path: "src/lib.rs".into(),
-                kind: "function".into(),
-                language: "rust".into(),
-                start_line: 10,
-            })
+            .add_search_doc(&SearchDocument::symbol_from_parts(
+                "sym1",
+                "process_data",
+                "fn process_data(input: &str) -> Result<()>",
+                "Processes input data.",
+                "fn process_data(input: &str) -> Result<()> { Ok(()) }",
+                "src/lib.rs",
+                "function",
+                "rust",
+                10,
+            ))
             .unwrap();
         index.commit().unwrap();
 
@@ -1029,7 +1029,7 @@ mod nl_query_detection_tests {
         assert!(!is_nl_like_query("extract_identifiers rrf_merge"));
         assert!(!is_nl_like_query("UserService AuthHandler"));
         assert!(!is_nl_like_query("foo_bar baz_qux"));
-        assert!(!is_nl_like_query("parse_query rerank_symbol_score"));
+        assert!(!is_nl_like_query("parse_query score_candidate"));
     }
 }
 

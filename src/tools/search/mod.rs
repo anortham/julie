@@ -27,7 +27,6 @@ pub(crate) mod line_output;
 mod nl_embeddings;
 pub(crate) mod query;
 pub mod query_preprocessor; // Public for testing
-pub(crate) mod target;
 pub mod text_search;
 pub(crate) mod trace;
 mod types;

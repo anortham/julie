@@ -466,7 +466,7 @@ pub(crate) fn is_nl_like_query(query: &str) -> bool {
     }
 
     // Veto only when EVERY term looks like an identifier — that's a pure
-    // multi-symbol lookup (e.g. "parse_query rerank_symbol_score") which
+    // multi-symbol lookup (e.g. "parse_query score_candidate") which
     // should stay on the keyword-only path. Mixed queries that pair an
     // identifier with prose context (e.g. "how does fast_refs find callers",
     // "parse_query reranker intent classification") are NL-shaped and must
@@ -492,7 +492,7 @@ fn looks_like_identifier_token(term: &str) -> bool {
 }
 
 /// Kinds that represent actual definitions (not references/imports).
-const DEFINITION_KINDS: &[&str] = &[
+pub(crate) const DEFINITION_KINDS: &[&str] = &[
     "class",
     "struct",
     "interface",
@@ -592,7 +592,7 @@ pub(crate) fn promote_exact_name_matches(results: &mut Vec<SymbolSearchResult>, 
 ///   - "Router" matches "Phoenix.Router" (last component)
 ///   - "Phoenix.Router" matches "Phoenix.Router" (exact)
 ///   - "Router" does NOT match "RouterHelper" (not a component match)
-fn is_name_match(symbol_name: &str, query_lower: &str) -> bool {
+pub(crate) fn is_name_match(symbol_name: &str, query_lower: &str) -> bool {
     let name_lower = symbol_name.to_lowercase();
     if name_lower == query_lower {
         return true;

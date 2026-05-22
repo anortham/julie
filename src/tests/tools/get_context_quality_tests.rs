@@ -8,7 +8,7 @@ mod quality_tests {
 
     use crate::database::{FileInfo, SymbolDatabase};
     use crate::extractors::base::{Symbol, SymbolKind, Visibility};
-    use crate::search::index::{SearchIndex, SymbolDocument};
+    use crate::search::index::{SearchDocument, SearchIndex};
     use crate::tools::get_context::pipeline::run_pipeline;
 
     fn setup_quality_fixture() -> (TempDir, TempDir, SymbolDatabase, SearchIndex) {
@@ -164,7 +164,7 @@ mod quality_tests {
 
         db.store_symbols(&symbols).unwrap();
         for sym in &symbols {
-            index.add_symbol(&SymbolDocument::from_symbol(sym)).unwrap();
+            index.add_search_doc(&SearchDocument::for_symbol(sym, vec![], String::new(), String::new())).unwrap();
         }
         index.commit().unwrap();
 

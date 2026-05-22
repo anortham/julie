@@ -5,13 +5,13 @@ use crate::search::query_parse::parse_query;
 use crate::search::reranker::{
     BODY_TERM_BOOST, Candidate, EXACT_TITLE_BOOST, INTENT_ROLE_MATCH_BOOST,
     INTENT_TITLE_MATCH_BOOST, PARTIAL_TITLE_BOOST, PATH_BOOST, PHRASE_BOOST, PHRASE_FILE_DOC_BOOST,
-    PHRASE_SOURCE_LANG_BOOST, kind_boost, rerank,
+    PHRASE_SOURCE_LANG_BOOST, kind_boost, rerank_unified,
 };
 
 /// Helper: a single-candidate rerank that returns the final score.
 fn score_query(raw: &str, c: Candidate) -> f32 {
     let q = parse_query(raw);
-    rerank(&q, &[c])[0].final_score
+    rerank_unified(&q, &[c])[0].final_score
 }
 
 // ----- Per-term boosts -----
@@ -281,7 +281,7 @@ fn test_reranker_sort_stability_equal_scores_break_on_title_then_path() {
         .build();
 
     let q = parse_query("nothing matches");
-    let ranked = rerank(&q, &[c_b_z, c_a_x, c_a_y]);
+    let ranked = rerank_unified(&q, &[c_b_z, c_a_x, c_a_y]);
     let titles_paths: Vec<(String, String)> = ranked
         .iter()
         .map(|r| (r.candidate.title.clone(), r.candidate.path.clone()))

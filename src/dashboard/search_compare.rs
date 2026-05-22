@@ -220,58 +220,39 @@ async fn execute_legacy_direct(state: &AppState, case: &CompareCase) -> Result<V
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         let filter = SearchFilter::default();
-        if target == "content" {
-            Ok(index
-                .search_content(&query, &filter, 10)?
-                .results
-                .into_iter()
-                .map(|result| SearchHit {
-                    name: result
-                        .file_path
-                        .rsplit('/')
-                        .next()
-                        .unwrap_or(&result.file_path)
-                        .to_string(),
-                    file: result.file_path,
-                    line: None,
-                    kind: "file".to_string(),
-                    language: result.language,
-                    score: result.score,
-                    snippet: None,
-                    workspace: workspace_id.clone(),
-                    symbol_id: None,
-                    backing: crate::tools::search::trace::SearchHitBacking::LineMatch(
-                        crate::tools::search::LineMatch {
-                            file_path: String::new(),
-                            line_number: 0,
-                            line_content: String::new(),
-                        },
-                    ),
-                })
-                .collect())
-        } else {
-            Ok(index
-                .search_symbols(&query, &filter, 10)?
-                .results
-                .into_iter()
-                .map(|result| SearchHit {
-                    name: result.name,
-                    file: result.file_path,
-                    line: Some(result.start_line),
-                    kind: result.kind,
-                    language: result.language,
-                    score: result.score,
-                    snippet: if result.signature.is_empty() {
-                        if result.doc_comment.is_empty() {
+        let all_hits = index.search_unified(&query, &filter, 10)?;
+        let want_file = target == "content";
+        Ok(all_hits
+            .into_iter()
+            .filter(|h| if want_file { h.kind == "file" } else { h.kind != "file" })
+            .map(|h| {
+                let is_file = h.kind == "file";
+                SearchHit {
+                    name: if is_file {
+                        h.file_path
+                            .rsplit('/')
+                            .next()
+                            .unwrap_or(&h.file_path)
+                            .to_string()
+                    } else {
+                        h.name
+                    },
+                    file: h.file_path,
+                    line: if is_file { None } else { Some(h.start_line) },
+                    kind: h.kind,
+                    language: h.language,
+                    score: h.tantivy_score,
+                    snippet: if h.signature.is_empty() {
+                        if h.doc_comment.is_empty() {
                             None
                         } else {
-                            Some(result.doc_comment)
+                            Some(h.doc_comment)
                         }
                     } else {
-                        Some(result.signature)
+                        Some(h.signature)
                     },
                     workspace: workspace_id.clone(),
-                    symbol_id: Some(result.id),
+                    symbol_id: if is_file { None } else { Some(h.id) },
                     backing: crate::tools::search::trace::SearchHitBacking::LineMatch(
                         crate::tools::search::LineMatch {
                             file_path: String::new(),
@@ -279,9 +260,9 @@ async fn execute_legacy_direct(state: &AppState, case: &CompareCase) -> Result<V
                             line_content: String::new(),
                         },
                     ),
-                })
-                .collect())
-        }
+                }
+            })
+            .collect())
     })
     .await?
 }

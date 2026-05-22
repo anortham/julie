@@ -10,7 +10,6 @@ mod content_scoring_tests;
 mod definition_overfetch_tests;
 mod definition_promotion_tests;
 mod fast_search_regression_tests;
-mod file_hits_test_intent_tests;
 mod file_mode_index_tests;
 mod file_mode_tests;
 mod file_pattern_tests;

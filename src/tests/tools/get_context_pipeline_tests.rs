@@ -6,7 +6,7 @@ mod pipeline_integration_tests {
 
     use crate::database::{FileInfo, SymbolDatabase};
     use crate::extractors::base::{Relationship, RelationshipKind, Symbol, SymbolKind, Visibility};
-    use crate::search::index::{SearchIndex, SymbolDocument};
+    use crate::search::index::{SearchDocument, SearchIndex};
     use crate::tools::get_context::pipeline::run_pipeline;
 
     fn setup_test_env() -> (TempDir, TempDir, SymbolDatabase, SearchIndex) {
@@ -179,7 +179,7 @@ mod pipeline_integration_tests {
         db.store_symbols(&symbols).unwrap();
 
         for sym in &symbols {
-            index.add_symbol(&SymbolDocument::from_symbol(sym)).unwrap();
+            index.add_search_doc(&SearchDocument::for_symbol(sym, vec![], String::new(), String::new())).unwrap();
         }
         index.commit().unwrap();
 

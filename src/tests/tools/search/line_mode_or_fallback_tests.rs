@@ -6,7 +6,7 @@
 
 #[cfg(test)]
 mod search_content_candidate_counts {
-    use crate::search::index::{FileDocument, SearchFilter, SearchIndex};
+    use crate::search::index::{SearchDocument, SearchFilter, SearchIndex};
     use crate::search::language_config::LanguageConfigs;
     use tempfile::TempDir;
 
@@ -18,11 +18,7 @@ mod search_content_candidate_counts {
             .expect("create search index");
         for (path, content) in docs {
             index
-                .add_file_content(&FileDocument {
-                    file_path: (*path).to_string(),
-                    content: (*content).to_string(),
-                    language: "rust".to_string(),
-                })
+                .add_search_doc(&SearchDocument::file_from_parts(*path, *content, "rust"))
                 .expect("add file content");
         }
         index.commit().expect("commit");

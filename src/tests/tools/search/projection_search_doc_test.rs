@@ -11,7 +11,7 @@ use tempfile::TempDir;
 use crate::database::types::FileInfo;
 use crate::extractors::{Symbol, SymbolKind};
 use crate::search::projection::apply_documents;
-use crate::search::{FileDocument, SearchFilter, SearchIndex, SymbolDocument};
+use crate::search::{SearchFilter, SearchIndex};
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -45,11 +45,17 @@ fn make_test_symbol(id: &str, name: &str, file_path: &str) -> Symbol {
     }
 }
 
-fn make_test_file_doc(file_path: &str, content: &str) -> FileDocument {
-    FileDocument {
-        file_path: file_path.to_string(),
-        content: content.to_string(),
+fn make_test_file_info(file_path: &str, content: &str) -> FileInfo {
+    FileInfo {
+        path: file_path.to_string(),
+        content: Some(content.to_string()),
         language: "rust".to_string(),
+        hash: String::new(),
+        size: content.len() as i64,
+        last_modified: 0,
+        last_indexed: 0,
+        symbol_count: 0,
+        line_count: content.lines().count() as i32,
     }
 }
 
@@ -69,9 +75,8 @@ fn symbol_indexable() {
     let (_dir, index) = make_index();
 
     let sym = make_test_symbol("sym-t4-001", "compute_checksum", "src/hash.rs");
-    let sym_doc = SymbolDocument::from_symbol(&sym);
 
-    apply_documents(&index, &[sym_doc], &[], &[]).unwrap();
+    apply_documents(&index, std::slice::from_ref(&sym), &[], &[]).unwrap();
 
     // `apply_documents` commits internally; directly search
     let results = index
@@ -98,9 +103,9 @@ fn symbol_indexable() {
 fn file_row_indexable() {
     let (_dir, index) = make_index();
 
-    let file_doc = make_test_file_doc("src/parser.rs", "fn parse() {}");
+    let file_info = make_test_file_info("src/parser.rs", "fn parse() {}");
 
-    apply_documents(&index, &[], &[file_doc], &[]).unwrap();
+    apply_documents(&index, &[], std::slice::from_ref(&file_info), &[]).unwrap();
 
     // File rows appear in content search, not symbol search.
     let content_results = index
@@ -126,9 +131,8 @@ fn old_path_still_works() {
     let (_dir, index) = make_index();
 
     let sym = make_test_symbol("sym-t4-002", "encode_buffer", "src/codec.rs");
-    let sym_doc = SymbolDocument::from_symbol(&sym);
 
-    apply_documents(&index, &[sym_doc], &[], &[]).unwrap();
+    apply_documents(&index, std::slice::from_ref(&sym), &[], &[]).unwrap();
 
     let results = index
         .search_symbols("encode_buffer", &SearchFilter::default(), 5)

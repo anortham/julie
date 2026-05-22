@@ -6,7 +6,7 @@ use crate::database::types::FileInfo;
 use crate::database::{ProjectionStatus, SymbolDatabase};
 use crate::extractors::{Symbol, SymbolKind};
 use crate::search::projection::apply_documents;
-use crate::search::{FileDocument, SearchIndex, SearchProjection, SymbolDocument};
+use crate::search::{SearchIndex, SearchProjection};
 
 fn make_file(path: &str, content: &str) -> FileInfo {
     FileInfo {
@@ -187,8 +187,8 @@ fn test_search_projection_rebuilds_when_missing_state_has_same_doc_count_stale_i
     let stale_file = make_file("src/stale.rs", "fn stale_symbol() {}\n");
     apply_documents(
         &index,
-        &[SymbolDocument::from_symbol(&stale_symbol)],
-        &[FileDocument::from_file_info(&stale_file)],
+        std::slice::from_ref(&stale_symbol),
+        std::slice::from_ref(&stale_file),
         &[],
     )?;
     assert_eq!(
@@ -453,8 +453,8 @@ fn test_search_projection_does_not_rebuild_when_current_revision_is_already_proj
     projection.project_documents(
         &mut db,
         &index,
-        &[SymbolDocument::from_symbol(&updated_symbol)],
-        &[FileDocument::from_file_info(&updated_file)],
+        std::slice::from_ref(&updated_symbol),
+        std::slice::from_ref(&updated_file),
         &["src/lib.rs".to_string()],
         Some(target_revision),
     )?;

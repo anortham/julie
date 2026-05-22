@@ -22,7 +22,6 @@ use super::query::{
     line_match_strategy, line_matches, looks_like_whitespace_separated_globs, matches_glob_pattern,
     term_matches_line, tokenize_text_for_line_match,
 };
-use super::text_search;
 use super::trace::{FilePatternDiagnostic, ZeroHitReason};
 use super::types::{LineMatch, LineMatchStrategy};
 
@@ -136,12 +135,12 @@ fn widened_probe_limit(initial_fetch_limit: usize) -> usize {
 fn diagnose_scoped_file_pattern_miss<S>(
     search_once: &mut S,
     file_pattern: Option<&str>,
-    file_results: &[crate::search::index::ContentSearchResult],
+    file_results: &[crate::search::index::UnifiedHit],
     fetch_limit: usize,
     hard_cap: usize,
 ) -> Result<Option<FilePatternDiagnostic>>
 where
-    S: FnMut(usize) -> Result<crate::search::index::ContentSearchResults>,
+    S: FnMut(usize) -> Result<Vec<crate::search::index::UnifiedHit>>,
 {
     let Some(pattern) = file_pattern else {
         return Ok(None);
@@ -166,7 +165,6 @@ where
 
     let wider_results = search_once(probe_limit)?;
     if wider_results
-        .results
         .iter()
         .any(|result| matches_glob_pattern(&result.file_path, pattern))
     {
@@ -178,7 +176,7 @@ where
 
 fn collect_matches_from_file_results(
     db: &crate::database::SymbolDatabase,
-    file_results: &[crate::search::index::ContentSearchResult],
+    file_results: &[crate::search::index::UnifiedHit],
     file_pattern: Option<&str>,
     language: Option<&str>,
     exclude_test_files: bool,
@@ -253,20 +251,19 @@ fn run_line_mode_fetch_loop<S, C>(
     Option<FilePatternDiagnostic>,
 )>
 where
-    S: FnMut(usize) -> Result<crate::search::index::ContentSearchResults>,
+    S: FnMut(usize) -> Result<Vec<crate::search::index::UnifiedHit>>,
     C: FnMut(
-        &[crate::search::index::ContentSearchResult],
+        &[crate::search::index::UnifiedHit],
     ) -> Result<(Vec<LineMatch>, LineModeStageCounts, bool)>,
 {
     let (mut fetch_limit, hard_cap) = scoped_fetch_limits(base_limit, has_file_filter);
 
     loop {
-        let content_results = search_once(fetch_limit)?;
-        let relaxed = content_results.relaxed;
-        let file_results = content_results.results;
+        let file_results = search_once(fetch_limit)?;
+        let relaxed = false; // OR fallback is internal to search_unified
         let mut counts = LineModeStageCounts {
-            and_candidates: content_results.and_candidate_count,
-            or_candidates: content_results.or_candidate_count,
+            and_candidates: 0,
+            or_candidates: 0,
             tantivy_file_candidates: file_results.len(),
             ..Default::default()
         };
@@ -325,10 +322,16 @@ fn run_line_mode_workspace_fetch(
     base_limit: usize,
 ) -> Result<LineModeFetchOutcome> {
     let has_file_filter = file_pattern.is_some();
+    // The file_pattern filter is applied externally below in
+    // `collect_matches_from_file_results` so `file_pattern_dropped` stage
+    // counters reflect candidates that Tantivy returned but the line-mode
+    // filter rejected.  Passing it through `SearchFilter` would have
+    // `search_unified` drop those candidates before the counter ever saw
+    // them, breaking the stage-count contract.
     let filter = SearchFilter {
         language: language.clone(),
         kind: None,
-        file_pattern: file_pattern.clone(),
+        file_pattern: None,
         exclude_tests: false,
     };
 
@@ -341,9 +344,14 @@ fn run_line_mode_workspace_fetch(
                     poisoned.into_inner()
                 }
             };
-            let mut results = index.search_content(&query, &filter, fetch_limit)?;
-            text_search::apply_reranker_to_content_results(&query, &mut results.results, Some(db));
-            Ok(results)
+            // Unified search returns both symbol and file hits; line mode only
+            // needs file hits. Reranking is already applied inside search_unified.
+            let all_hits = index.search_unified(&query, &filter, fetch_limit)?;
+            let file_hits: Vec<_> = all_hits
+                .into_iter()
+                .filter(|h| h.kind == "file")
+                .collect();
+            Ok(file_hits)
         },
         |file_results| {
             collect_matches_from_file_results(

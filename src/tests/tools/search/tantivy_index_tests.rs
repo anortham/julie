@@ -4,7 +4,7 @@ use tempfile::TempDir;
 
 use crate::search::SearchError;
 use crate::search::index::{
-    FileDocument, SearchFilter, SearchIndex, SearchIndexOpenDisposition, SymbolDocument,
+    SearchDocument, SearchFilter, SearchIndex, SearchIndexOpenDisposition,
     SymbolSearchResults,
 };
 use crate::search::language_config::LanguageConfigs;
@@ -40,17 +40,17 @@ fn test_add_symbol_and_search() {
     let index = SearchIndex::create(temp_dir.path()).unwrap();
 
     index
-        .add_symbol(&SymbolDocument {
-            id: "1".into(),
-            name: "UserService".into(),
-            signature: "pub struct UserService".into(),
-            doc_comment: "Manages users".into(),
-            code_body: "pub struct UserService { db: Database }".into(),
-            file_path: "src/user.rs".into(),
-            kind: "class".into(),
-            language: "rust".into(),
-            start_line: 10,
-        })
+        .add_search_doc(&SearchDocument::symbol_from_parts(
+            "1",
+            "UserService",
+            "pub struct UserService",
+            "Manages users",
+            "pub struct UserService { db: Database }",
+            "src/user.rs",
+            "class",
+            "rust",
+            10,
+        ))
         .unwrap();
     index.commit().unwrap();
 
@@ -71,11 +71,11 @@ fn test_add_file_content_and_search() {
     let index = SearchIndex::create(temp_dir.path()).unwrap();
 
     index
-        .add_file_content(&FileDocument {
-            file_path: "src/main.rs".into(),
-            content: "fn main() { println!(\"hello world\"); }".into(),
-            language: "rust".into(),
-        })
+        .add_search_doc(&SearchDocument::file_from_parts(
+            "src/main.rs",
+            "fn main() { println!(\"hello world\"); }",
+            "rust",
+        ))
         .unwrap();
     index.commit().unwrap();
 
@@ -93,31 +93,31 @@ fn test_name_match_ranks_higher_than_body() {
     let index = SearchIndex::create(temp_dir.path()).unwrap();
 
     index
-        .add_symbol(&SymbolDocument {
-            id: "1".into(),
-            name: "process_data".into(),
-            signature: "fn process_data()".into(),
-            doc_comment: "".into(),
-            code_body: "fn process_data() {}".into(),
-            file_path: "src/a.rs".into(),
-            kind: "function".into(),
-            language: "rust".into(),
-            start_line: 1,
-        })
+        .add_search_doc(&SearchDocument::symbol_from_parts(
+            "1",
+            "process_data",
+            "fn process_data()",
+            "",
+            "fn process_data() {}",
+            "src/a.rs",
+            "function",
+            "rust",
+            1,
+        ))
         .unwrap();
 
     index
-        .add_symbol(&SymbolDocument {
-            id: "2".into(),
-            name: "handle_request".into(),
-            signature: "fn handle_request()".into(),
-            doc_comment: "This will process the data".into(),
-            code_body: "fn handle_request() {}".into(),
-            file_path: "src/b.rs".into(),
-            kind: "function".into(),
-            language: "rust".into(),
-            start_line: 1,
-        })
+        .add_search_doc(&SearchDocument::symbol_from_parts(
+            "2",
+            "handle_request",
+            "fn handle_request()",
+            "This will process the data",
+            "fn handle_request() {}",
+            "src/b.rs",
+            "function",
+            "rust",
+            1,
+        ))
         .unwrap();
     index.commit().unwrap();
 
@@ -138,35 +138,35 @@ fn test_language_filter() {
     let index = SearchIndex::create(temp_dir.path()).unwrap();
 
     index
-        .add_symbol(&SymbolDocument {
-            id: "1".into(),
-            name: "process".into(),
-            signature: "fn process()".into(),
-            doc_comment: "".into(),
-            code_body: "".into(),
-            file_path: "src/lib.rs".into(),
-            kind: "function".into(),
-            language: "rust".into(),
-            start_line: 1,
-        })
+        .add_search_doc(&SearchDocument::symbol_from_parts(
+            "1",
+            "process",
+            "fn process()",
+            "",
+            "",
+            "src/lib.rs",
+            "function",
+            "rust",
+            1,
+        ))
         .unwrap();
     index
-        .add_symbol(&SymbolDocument {
-            id: "2".into(),
-            name: "process".into(),
-            signature: "function process()".into(),
-            doc_comment: "".into(),
-            code_body: "".into(),
-            file_path: "src/lib.ts".into(),
-            kind: "function".into(),
-            language: "typescript".into(),
-            start_line: 1,
-        })
+        .add_search_doc(&SearchDocument::symbol_from_parts(
+            "2",
+            "process",
+            "function process()",
+            "",
+            "",
+            "src/lib.ts",
+            "function",
+            "typescript",
+            1,
+        ))
         .unwrap();
     index.commit().unwrap();
 
     let filter = SearchFilter {
-        language: Some("rust".into()),
+        language: Some("rust".to_string()),
         ..Default::default()
     };
     let results = index
@@ -183,30 +183,30 @@ fn test_delete_by_file_path() {
     let index = SearchIndex::create(temp_dir.path()).unwrap();
 
     index
-        .add_symbol(&SymbolDocument {
-            id: "1".into(),
-            name: "foo".into(),
-            signature: "fn foo()".into(),
-            doc_comment: "".into(),
-            code_body: "".into(),
-            file_path: "src/a.rs".into(),
-            kind: "function".into(),
-            language: "rust".into(),
-            start_line: 1,
-        })
+        .add_search_doc(&SearchDocument::symbol_from_parts(
+            "1",
+            "foo",
+            "fn foo()",
+            "",
+            "",
+            "src/a.rs",
+            "function",
+            "rust",
+            1,
+        ))
         .unwrap();
     index
-        .add_symbol(&SymbolDocument {
-            id: "2".into(),
-            name: "bar".into(),
-            signature: "fn bar()".into(),
-            doc_comment: "".into(),
-            code_body: "".into(),
-            file_path: "src/b.rs".into(),
-            kind: "function".into(),
-            language: "rust".into(),
-            start_line: 1,
-        })
+        .add_search_doc(&SearchDocument::symbol_from_parts(
+            "2",
+            "bar",
+            "fn bar()",
+            "",
+            "",
+            "src/b.rs",
+            "function",
+            "rust",
+            1,
+        ))
         .unwrap();
     index.commit().unwrap();
     assert_eq!(index.num_docs(), 2);
@@ -222,30 +222,30 @@ fn test_camel_case_cross_convention_search() {
     let index = SearchIndex::create(temp_dir.path()).unwrap();
 
     index
-        .add_symbol(&SymbolDocument {
-            id: "1".into(),
-            name: "getUserData".into(),
-            signature: "fn getUserData()".into(),
-            doc_comment: "".into(),
-            code_body: "".into(),
-            file_path: "src/api.ts".into(),
-            kind: "function".into(),
-            language: "typescript".into(),
-            start_line: 1,
-        })
+        .add_search_doc(&SearchDocument::symbol_from_parts(
+            "1",
+            "getUserData",
+            "fn getUserData()",
+            "",
+            "",
+            "src/api.ts",
+            "function",
+            "typescript",
+            1,
+        ))
         .unwrap();
     index
-        .add_symbol(&SymbolDocument {
-            id: "2".into(),
-            name: "get_user_data".into(),
-            signature: "fn get_user_data()".into(),
-            doc_comment: "".into(),
-            code_body: "".into(),
-            file_path: "src/api.rs".into(),
-            kind: "function".into(),
-            language: "rust".into(),
-            start_line: 1,
-        })
+        .add_search_doc(&SearchDocument::symbol_from_parts(
+            "2",
+            "get_user_data",
+            "fn get_user_data()",
+            "",
+            "",
+            "src/api.rs",
+            "function",
+            "rust",
+            1,
+        ))
         .unwrap();
     index.commit().unwrap();
 
@@ -277,23 +277,21 @@ fn test_content_search_over_tokenization_produces_false_positives() {
 
     // File that DOES contain "Blake3 hash"
     index
-        .add_file_content(&FileDocument {
-            file_path: "src/watcher.rs".into(),
-            content:
-                "// Check if file changed using Blake3 hash\nlet hash = blake3::hash(&content);"
-                    .into(),
-            language: "rust".into(),
-        })
+        .add_search_doc(&SearchDocument::file_from_parts(
+            "src/watcher.rs",
+            "// Check if file changed using Blake3 hash\nlet hash = blake3::hash(&content);",
+            "rust",
+        ))
         .unwrap();
 
     // File that does NOT contain "Blake3" but DOES contain "3" and "hash"
     // This SHOULD NOT match, but CodeTokenizer splits "Blake3" → ["blake", "3"]
     index
-        .add_file_content(&FileDocument {
-            file_path: "src/utils.rs".into(),
-            content: "use std::collections::HashMap;\nlet x = 3;\nfn get_hash() {}".into(),
-            language: "rust".into(),
-        })
+        .add_search_doc(&SearchDocument::file_from_parts(
+            "src/utils.rs",
+            "use std::collections::HashMap;\nlet x = 3;\nfn get_hash() {}",
+            "rust",
+        ))
         .unwrap();
     index.commit().unwrap();
 
@@ -333,47 +331,47 @@ fn test_multi_token_search_requires_all_tokens() {
 
     // Add the target symbol
     index
-        .add_symbol(&SymbolDocument {
-            id: "1".into(),
-            name: "select_best_candidate".into(),
-            signature: "fn select_best_candidate(candidates: &[Symbol]) -> Option<&Symbol>".into(),
-            doc_comment: "Picks the best matching candidate symbol".into(),
-            code_body: "fn select_best_candidate() { /* impl */ }".into(),
-            file_path: "src/resolver.rs".into(),
-            kind: "function".into(),
-            language: "rust".into(),
-            start_line: 89,
-        })
+        .add_search_doc(&SearchDocument::symbol_from_parts(
+            "1",
+            "select_best_candidate",
+            "fn select_best_candidate(candidates: &[Symbol]) -> Option<&Symbol>",
+            "Picks the best matching candidate symbol",
+            "fn select_best_candidate() { /* impl */ }",
+            "src/resolver.rs",
+            "function",
+            "rust",
+            89,
+        ))
         .unwrap();
 
     // Add a FALSE POSITIVE — contains "select" but NOT "best" or "candidate"
     index
-        .add_symbol(&SymbolDocument {
-            id: "2".into(),
-            name: "select_query".into(),
-            signature: "fn select_query(table: &str) -> String".into(),
-            doc_comment: "Build a SQL SELECT query".into(),
-            code_body: "fn select_query() { /* impl */ }".into(),
-            file_path: "src/database.rs".into(),
-            kind: "function".into(),
-            language: "rust".into(),
-            start_line: 42,
-        })
+        .add_search_doc(&SearchDocument::symbol_from_parts(
+            "2",
+            "select_query",
+            "fn select_query(table: &str) -> String",
+            "Build a SQL SELECT query",
+            "fn select_query() { /* impl */ }",
+            "src/database.rs",
+            "function",
+            "rust",
+            42,
+        ))
         .unwrap();
 
     // Add another FALSE POSITIVE — contains "best" but NOT "select" or "candidate"
     index
-        .add_symbol(&SymbolDocument {
-            id: "3".into(),
-            name: "find_best_match".into(),
-            signature: "fn find_best_match(items: &[Item]) -> Option<&Item>".into(),
-            doc_comment: "Find the best matching item".into(),
-            code_body: "fn find_best_match() { /* impl */ }".into(),
-            file_path: "src/matcher.rs".into(),
-            kind: "function".into(),
-            language: "rust".into(),
-            start_line: 15,
-        })
+        .add_search_doc(&SearchDocument::symbol_from_parts(
+            "3",
+            "find_best_match",
+            "fn find_best_match(items: &[Item]) -> Option<&Item>",
+            "Find the best matching item",
+            "fn find_best_match() { /* impl */ }",
+            "src/matcher.rs",
+            "function",
+            "rust",
+            15,
+        ))
         .unwrap();
 
     index.commit().unwrap();
@@ -416,21 +414,20 @@ fn test_compound_token_finds_exact_identifier() {
 
     // File that contains the exact identifier
     index
-        .add_file_content(&FileDocument {
-            file_path: "src/processor.rs".into(),
-            content: "let mut files_by_language: HashMap<String, Vec<PathBuf>> = HashMap::new();"
-                .into(),
-            language: "rust".into(),
-        })
+        .add_search_doc(&SearchDocument::file_from_parts(
+            "src/processor.rs",
+            "let mut files_by_language: HashMap<String, Vec<PathBuf>> = HashMap::new();",
+            "rust",
+        ))
         .unwrap();
 
     // File that contains the sub-parts scattered (should also match but rank lower)
     index
-        .add_file_content(&FileDocument {
-            file_path: "src/utils.rs".into(),
-            content: "// process files for each language detected by the scanner".into(),
-            language: "rust".into(),
-        })
+        .add_search_doc(&SearchDocument::file_from_parts(
+            "src/utils.rs",
+            "// process files for each language detected by the scanner",
+            "rust",
+        ))
         .unwrap();
 
     index.commit().unwrap();
@@ -471,11 +468,11 @@ fn test_shutdown_prevents_writer_creation() {
 
     // Write something first to prove it works
     index
-        .add_file_content(&FileDocument {
-            file_path: "src/lib.rs".to_string(),
-            content: "fn hello() {}".to_string(),
-            language: "rust".to_string(),
-        })
+        .add_search_doc(&SearchDocument::file_from_parts(
+            "src/lib.rs",
+            "fn hello() {}",
+            "rust",
+        ))
         .unwrap();
     index.commit().unwrap();
 
@@ -484,11 +481,11 @@ fn test_shutdown_prevents_writer_creation() {
     assert!(index.is_shutdown());
 
     // All write operations should now return Err(Shutdown)
-    let result = index.add_file_content(&FileDocument {
-        file_path: "src/other.rs".to_string(),
-        content: "fn other() {}".to_string(),
-        language: "rust".to_string(),
-    });
+    let result = index.add_search_doc(&SearchDocument::file_from_parts(
+            "src/other.rs",
+            "fn other() {}",
+            "rust",
+        ));
     assert!(result.is_err());
     assert!(
         matches!(result.unwrap_err(), SearchError::Shutdown),
@@ -503,11 +500,11 @@ fn test_shutdown_releases_lock_for_new_index() {
     // Create index A, write to it (acquires the Tantivy file lock)
     let index_a = SearchIndex::create(temp.path()).unwrap();
     index_a
-        .add_file_content(&FileDocument {
-            file_path: "src/old.rs".to_string(),
-            content: "fn old() {}".to_string(),
-            language: "rust".to_string(),
-        })
+        .add_search_doc(&SearchDocument::file_from_parts(
+            "src/old.rs",
+            "fn old() {}",
+            "rust",
+        ))
         .unwrap();
     index_a.commit().unwrap();
 
@@ -516,11 +513,11 @@ fn test_shutdown_releases_lock_for_new_index() {
 
     // Open index B at the SAME path — this would get LockBusy without shutdown
     let index_b = SearchIndex::open(temp.path()).unwrap();
-    let write_result = index_b.add_file_content(&FileDocument {
-        file_path: "src/new.rs".to_string(),
-        content: "fn new_stuff() {}".to_string(),
-        language: "rust".to_string(),
-    });
+    let write_result = index_b.add_search_doc(&SearchDocument::file_from_parts(
+            "src/new.rs",
+            "fn new_stuff() {}",
+            "rust",
+        ));
     assert!(
         write_result.is_ok(),
         "Index B should be able to write after A was shut down: {:?}",
@@ -535,11 +532,11 @@ fn test_release_writer_releases_lock_without_shutting_down_search() {
 
     let index_a = SearchIndex::create(temp.path()).unwrap();
     index_a
-        .add_file_content(&FileDocument {
-            file_path: "src/old.rs".to_string(),
-            content: "fn old_symbol() {}".to_string(),
-            language: "rust".to_string(),
-        })
+        .add_search_doc(&SearchDocument::file_from_parts(
+            "src/old.rs",
+            "fn old_symbol() {}",
+            "rust",
+        ))
         .unwrap();
     index_a.release_writer().unwrap();
     assert!(
@@ -548,7 +545,7 @@ fn test_release_writer_releases_lock_without_shutting_down_search() {
     );
 
     let old_results = index_a
-        .search_files("old_symbol", &Default::default(), 10)
+        .search_content("old_symbol", &Default::default(), 10)
         .unwrap();
     assert_eq!(
         old_results.results.len(),
@@ -558,20 +555,20 @@ fn test_release_writer_releases_lock_without_shutting_down_search() {
 
     let index_b = SearchIndex::open(temp.path()).unwrap();
     index_b
-        .add_file_content(&FileDocument {
-            file_path: "src/new.rs".to_string(),
-            content: "fn new_symbol() {}".to_string(),
-            language: "rust".to_string(),
-        })
+        .add_search_doc(&SearchDocument::file_from_parts(
+            "src/new.rs",
+            "fn new_symbol() {}",
+            "rust",
+        ))
         .unwrap();
     index_b.release_writer().unwrap();
 
     index_a
-        .add_file_content(&FileDocument {
-            file_path: "src/again.rs".to_string(),
-            content: "fn again_symbol() {}".to_string(),
-            language: "rust".to_string(),
-        })
+        .add_search_doc(&SearchDocument::file_from_parts(
+            "src/again.rs",
+            "fn again_symbol() {}",
+            "rust",
+        ))
         .unwrap();
     index_a.commit().unwrap();
 }
@@ -585,49 +582,47 @@ fn test_or_fallback_returns_partial_matches() {
 
     // Symbol that matches "ranking" and "score" (2 of 4 terms)
     index
-        .add_symbol(&SymbolDocument {
-            id: "1".into(),
-            name: "apply_ranking_score".into(),
-            signature: "pub fn apply_ranking_score(results: &mut Vec<SearchResult>)".into(),
-            doc_comment: "Apply ranking scores to search results".into(),
-            code_body: "fn apply_ranking_score(results: &mut Vec<SearchResult>) { /* impl */ }"
-                .into(),
-            file_path: "src/search/scoring.rs".into(),
-            kind: "function".into(),
-            language: "rust".into(),
-            start_line: 10,
-        })
+        .add_search_doc(&SearchDocument::symbol_from_parts(
+            "1",
+            "apply_ranking_score",
+            "pub fn apply_ranking_score(results: &mut Vec<SearchResult>)",
+            "Apply ranking scores to search results",
+            "fn apply_ranking_score(results: &mut Vec<SearchResult>) { /* impl */ }",
+            "src/search/scoring.rs",
+            "function",
+            "rust",
+            10,
+        ))
         .unwrap();
 
     // Symbol that matches "centrality" and "boost" (2 of 4 terms)
     index
-        .add_symbol(&SymbolDocument {
-            id: "2".into(),
-            name: "apply_centrality_boost".into(),
-            signature: "pub fn apply_centrality_boost(results: &mut Vec<SearchResult>)".into(),
-            doc_comment: "Boost results by graph centrality".into(),
-            code_body: "fn apply_centrality_boost(results: &mut Vec<SearchResult>) { /* impl */ }"
-                .into(),
-            file_path: "src/search/scoring.rs".into(),
-            kind: "function".into(),
-            language: "rust".into(),
-            start_line: 30,
-        })
+        .add_search_doc(&SearchDocument::symbol_from_parts(
+            "2",
+            "apply_centrality_boost",
+            "pub fn apply_centrality_boost(results: &mut Vec<SearchResult>)",
+            "Boost results by graph centrality",
+            "fn apply_centrality_boost(results: &mut Vec<SearchResult>) { /* impl */ }",
+            "src/search/scoring.rs",
+            "function",
+            "rust",
+            30,
+        ))
         .unwrap();
 
     // Symbol that matches only "score" (1 of 4 terms)
     index
-        .add_symbol(&SymbolDocument {
-            id: "3".into(),
-            name: "calculate_score".into(),
-            signature: "pub fn calculate_score(input: &str) -> f32".into(),
-            doc_comment: "Calculate a score".into(),
-            code_body: "fn calculate_score(input: &str) -> f32 { 0.0 }".into(),
-            file_path: "src/scoring.rs".into(),
-            kind: "function".into(),
-            language: "rust".into(),
-            start_line: 50,
-        })
+        .add_search_doc(&SearchDocument::symbol_from_parts(
+            "3",
+            "calculate_score",
+            "pub fn calculate_score(input: &str) -> f32",
+            "Calculate a score",
+            "fn calculate_score(input: &str) -> f32 { 0.0 }",
+            "src/scoring.rs",
+            "function",
+            "rust",
+            50,
+        ))
         .unwrap();
 
     index.commit().unwrap();
@@ -687,11 +682,11 @@ fn test_search_works_after_shutdown() {
 
     // Write and commit data
     index
-        .add_file_content(&FileDocument {
-            file_path: "src/searchable.rs".to_string(),
-            content: "fn uniqueSearchableFunction() { let x = 42; }".to_string(),
-            language: "rust".to_string(),
-        })
+        .add_search_doc(&SearchDocument::file_from_parts(
+            "src/searchable.rs",
+            "fn uniqueSearchableFunction() { let x = 42; }",
+            "rust",
+        ))
         .unwrap();
     index.commit().unwrap();
 
@@ -716,17 +711,17 @@ fn test_search_symbols_auto_fallback_to_or() {
     let index = SearchIndex::create(temp_dir.path()).unwrap();
 
     index
-        .add_symbol(&SymbolDocument {
-            id: "1".into(),
-            name: "apply_ranking_score".into(),
-            signature: "pub fn apply_ranking_score()".into(),
-            doc_comment: "Ranking scores".into(),
-            code_body: "fn apply_ranking_score() {}".into(),
-            file_path: "src/scoring.rs".into(),
-            kind: "function".into(),
-            language: "rust".into(),
-            start_line: 10,
-        })
+        .add_search_doc(&SearchDocument::symbol_from_parts(
+            "1",
+            "apply_ranking_score",
+            "pub fn apply_ranking_score()",
+            "Ranking scores",
+            "fn apply_ranking_score() {}",
+            "src/scoring.rs",
+            "function",
+            "rust",
+            10,
+        ))
         .unwrap();
 
     index.commit().unwrap();
@@ -754,17 +749,17 @@ fn test_search_symbols_prefers_and_when_available() {
     let index = SearchIndex::create(temp_dir.path()).unwrap();
 
     index
-        .add_symbol(&SymbolDocument {
-            id: "1".into(),
-            name: "UserService".into(),
-            signature: "pub struct UserService".into(),
-            doc_comment: "".into(),
-            code_body: "pub struct UserService {}".into(),
-            file_path: "src/user.rs".into(),
-            kind: "class".into(),
-            language: "rust".into(),
-            start_line: 1,
-        })
+        .add_search_doc(&SearchDocument::symbol_from_parts(
+            "1",
+            "UserService",
+            "pub struct UserService",
+            "",
+            "pub struct UserService {}",
+            "src/user.rs",
+            "class",
+            "rust",
+            1,
+        ))
         .unwrap();
 
     index.commit().unwrap();
@@ -783,17 +778,17 @@ fn test_search_symbols_relaxed_flag_false_when_and_matches() {
     let index = SearchIndex::create(temp_dir.path()).unwrap();
 
     index
-        .add_symbol(&SymbolDocument {
-            id: "1".into(),
-            name: "UserService".into(),
-            signature: "pub struct UserService".into(),
-            doc_comment: "".into(),
-            code_body: "pub struct UserService {}".into(),
-            file_path: "src/user.rs".into(),
-            kind: "class".into(),
-            language: "rust".into(),
-            start_line: 1,
-        })
+        .add_search_doc(&SearchDocument::symbol_from_parts(
+            "1",
+            "UserService",
+            "pub struct UserService",
+            "",
+            "pub struct UserService {}",
+            "src/user.rs",
+            "class",
+            "rust",
+            1,
+        ))
         .unwrap();
     index.commit().unwrap();
 
@@ -815,17 +810,17 @@ fn test_search_symbols_relaxed_flag_true_on_or_fallback() {
     let index = SearchIndex::create(temp_dir.path()).unwrap();
 
     index
-        .add_symbol(&SymbolDocument {
-            id: "1".into(),
-            name: "apply_ranking_score".into(),
-            signature: "pub fn apply_ranking_score()".into(),
-            doc_comment: "Ranking scores".into(),
-            code_body: "fn apply_ranking_score() {}".into(),
-            file_path: "src/scoring.rs".into(),
-            kind: "function".into(),
-            language: "rust".into(),
-            start_line: 10,
-        })
+        .add_search_doc(&SearchDocument::symbol_from_parts(
+            "1",
+            "apply_ranking_score",
+            "pub fn apply_ranking_score()",
+            "Ranking scores",
+            "fn apply_ranking_score() {}",
+            "src/scoring.rs",
+            "function",
+            "rust",
+            10,
+        ))
         .unwrap();
     index.commit().unwrap();
 
@@ -852,17 +847,17 @@ fn test_search_symbols_relaxed_always_true() {
     let index = SearchIndex::create(temp_dir.path()).unwrap();
 
     index
-        .add_symbol(&SymbolDocument {
-            id: "1".into(),
-            name: "UserService".into(),
-            signature: "pub struct UserService".into(),
-            doc_comment: "".into(),
-            code_body: "pub struct UserService {}".into(),
-            file_path: "src/user.rs".into(),
-            kind: "class".into(),
-            language: "rust".into(),
-            start_line: 1,
-        })
+        .add_search_doc(&SearchDocument::symbol_from_parts(
+            "1",
+            "UserService",
+            "pub struct UserService",
+            "",
+            "pub struct UserService {}",
+            "src/user.rs",
+            "class",
+            "rust",
+            1,
+        ))
         .unwrap();
     index.commit().unwrap();
 
@@ -886,21 +881,20 @@ fn test_content_search_or_fallback_when_and_returns_nothing() {
 
     // File containing "tantivy" but NOT "postgresql"
     index
-        .add_file_content(&FileDocument {
-            file_path: "src/search/engine.rs".into(),
-            content: "use tantivy::collector::TopDocs;\nlet searcher = index.reader();".into(),
-            language: "rust".into(),
-        })
+        .add_search_doc(&SearchDocument::file_from_parts(
+            "src/search/engine.rs",
+            "use tantivy::collector::TopDocs;\nlet searcher = index.reader();",
+            "rust",
+        ))
         .unwrap();
 
     // File containing "postgresql" but NOT "tantivy"
     index
-        .add_file_content(&FileDocument {
-            file_path: "src/database/pg.rs".into(),
-            content: "let conn = postgresql::connect(\"localhost\");\nlet rows = conn.query();"
-                .into(),
-            language: "rust".into(),
-        })
+        .add_search_doc(&SearchDocument::file_from_parts(
+            "src/database/pg.rs",
+            "let conn = postgresql::connect(\"localhost\");\nlet rows = conn.query();",
+            "rust",
+        ))
         .unwrap();
 
     index.commit().unwrap();
@@ -934,11 +928,11 @@ fn test_content_search_relaxed_false_when_and_matches() {
 
     // File containing BOTH "tantivy" and "search"
     index
-        .add_file_content(&FileDocument {
-            file_path: "src/search/engine.rs".into(),
-            content: "use tantivy::collector::TopDocs;\nfn search() { /* impl */ }".into(),
-            language: "rust".into(),
-        })
+        .add_search_doc(&SearchDocument::file_from_parts(
+            "src/search/engine.rs",
+            "use tantivy::collector::TopDocs;\nfn search() { /* impl */ }",
+            "rust",
+        ))
         .unwrap();
 
     index.commit().unwrap();
@@ -965,11 +959,11 @@ fn test_content_search_single_term_no_fallback() {
     let index = SearchIndex::create(temp_dir.path()).unwrap();
 
     index
-        .add_file_content(&FileDocument {
-            file_path: "src/main.rs".into(),
-            content: "fn main() { println!(\"hello\"); }".into(),
-            language: "rust".into(),
-        })
+        .add_search_doc(&SearchDocument::file_from_parts(
+            "src/main.rs",
+            "fn main() { println!(\"hello\"); }",
+            "rust",
+        ))
         .unwrap();
 
     index.commit().unwrap();
@@ -1003,17 +997,17 @@ fn test_tokenizer_mismatch_reproduces_ref_workspace_bug() {
         let index = SearchIndex::create_with_language_configs(temp_dir.path(), &configs).unwrap();
 
         index
-            .add_symbol(&SymbolDocument {
-                id: "1".into(),
-                name: "SmartQueryPreprocessor".into(),
-                signature: "public class SmartQueryPreprocessor".into(),
-                doc_comment: "Preprocesses search queries".into(),
-                code_body: "public class SmartQueryPreprocessor { }".into(),
-                file_path: "Services/SmartQueryPreprocessor.cs".into(),
-                kind: "class".into(),
-                language: "csharp".into(),
-                start_line: 31,
-            })
+            .add_search_doc(&SearchDocument::symbol_from_parts(
+            "1",
+            "SmartQueryPreprocessor",
+            "public class SmartQueryPreprocessor",
+            "Preprocesses search queries",
+            "public class SmartQueryPreprocessor { }",
+            "Services/SmartQueryPreprocessor.cs",
+            "class",
+            "csharp",
+            31,
+        ))
             .unwrap();
         index.commit().unwrap();
     }
@@ -1043,31 +1037,31 @@ fn test_ref_workspace_search_with_matching_tokenizer() {
         let index = SearchIndex::create_with_language_configs(temp_dir.path(), &configs).unwrap();
 
         index
-            .add_symbol(&SymbolDocument {
-                id: "1".into(),
-                name: "SmartQueryPreprocessor".into(),
-                signature: "public class SmartQueryPreprocessor".into(),
-                doc_comment: "Preprocesses search queries".into(),
-                code_body: "public class SmartQueryPreprocessor { }".into(),
-                file_path: "Services/SmartQueryPreprocessor.cs".into(),
-                kind: "class".into(),
-                language: "csharp".into(),
-                start_line: 31,
-            })
+            .add_search_doc(&SearchDocument::symbol_from_parts(
+            "1",
+            "SmartQueryPreprocessor",
+            "public class SmartQueryPreprocessor",
+            "Preprocesses search queries",
+            "public class SmartQueryPreprocessor { }",
+            "Services/SmartQueryPreprocessor.cs",
+            "class",
+            "csharp",
+            31,
+        ))
             .unwrap();
 
         index
-            .add_symbol(&SymbolDocument {
-                id: "2".into(),
-                name: "SearchMode".into(),
-                signature: "public SearchMode SearchMode { get; set; }".into(),
-                doc_comment: "".into(),
-                code_body: "".into(),
-                file_path: "Services/SmartQueryPreprocessor.cs".into(),
-                kind: "property".into(),
-                language: "csharp".into(),
-                start_line: 395,
-            })
+            .add_search_doc(&SearchDocument::symbol_from_parts(
+            "2",
+            "SearchMode",
+            "public SearchMode SearchMode { get; set; }",
+            "",
+            "",
+            "Services/SmartQueryPreprocessor.cs",
+            "property",
+            "csharp",
+            395,
+        ))
             .unwrap();
 
         index.commit().unwrap();
@@ -1120,17 +1114,17 @@ fn test_same_tokenizer_search_works() {
         let index = SearchIndex::create_with_language_configs(temp_dir.path(), &configs).unwrap();
 
         index
-            .add_symbol(&SymbolDocument {
-                id: "1".into(),
-                name: "SmartQueryPreprocessor".into(),
-                signature: "public class SmartQueryPreprocessor".into(),
-                doc_comment: "".into(),
-                code_body: "".into(),
-                file_path: "Services/SmartQueryPreprocessor.cs".into(),
-                kind: "class".into(),
-                language: "csharp".into(),
-                start_line: 31,
-            })
+            .add_search_doc(&SearchDocument::symbol_from_parts(
+            "1",
+            "SmartQueryPreprocessor",
+            "public class SmartQueryPreprocessor",
+            "",
+            "",
+            "Services/SmartQueryPreprocessor.cs",
+            "class",
+            "csharp",
+            31,
+        ))
             .unwrap();
         index.commit().unwrap();
     }
@@ -1214,17 +1208,17 @@ fn test_schema_migration_recreates_stale_index() {
 
     // Verify we can write and search with the new schema
     index
-        .add_symbol(&SymbolDocument {
-            id: "test_sym".into(),
-            name: "MyTestClass".into(),
-            signature: "class MyTestClass".into(),
-            doc_comment: "".into(),
-            code_body: "".into(),
-            file_path: "src/test.rs".into(),
-            kind: "class".into(),
-            language: "rust".into(),
-            start_line: 1,
-        })
+        .add_search_doc(&SearchDocument::symbol_from_parts(
+            "test_sym",
+            "MyTestClass",
+            "class MyTestClass",
+            "",
+            "",
+            "src/test.rs",
+            "class",
+            "rust",
+            1,
+        ))
         .unwrap();
     index.commit().unwrap();
 
@@ -1285,17 +1279,17 @@ fn test_schema_migration_via_open_path() {
 
     // Verify writes work
     index
-        .add_symbol(&SymbolDocument {
-            id: "sym1".into(),
-            name: "ProcessPayment".into(),
-            signature: "fn process_payment()".into(),
-            doc_comment: "".into(),
-            code_body: "".into(),
-            file_path: "src/payments.rs".into(),
-            kind: "function".into(),
-            language: "rust".into(),
-            start_line: 10,
-        })
+        .add_search_doc(&SearchDocument::symbol_from_parts(
+            "sym1",
+            "ProcessPayment",
+            "fn process_payment()",
+            "",
+            "",
+            "src/payments.rs",
+            "function",
+            "rust",
+            10,
+        ))
         .unwrap();
     index.commit().unwrap();
 
@@ -1315,17 +1309,17 @@ fn test_open_or_create_recreates_when_compat_marker_missing() {
 
     let index = SearchIndex::create_with_language_configs(&index_path, &configs).unwrap();
     index
-        .add_symbol(&SymbolDocument {
-            id: "sym1".into(),
-            name: "NeedsRepair".into(),
-            signature: "fn needs_repair()".into(),
-            doc_comment: "".into(),
-            code_body: "".into(),
-            file_path: "src/repair.rs".into(),
-            kind: "function".into(),
-            language: "rust".into(),
-            start_line: 1,
-        })
+        .add_search_doc(&SearchDocument::symbol_from_parts(
+            "sym1",
+            "NeedsRepair",
+            "fn needs_repair()",
+            "",
+            "",
+            "src/repair.rs",
+            "function",
+            "rust",
+            1,
+        ))
         .unwrap();
     index.commit().unwrap();
     drop(index);

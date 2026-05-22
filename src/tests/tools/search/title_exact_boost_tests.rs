@@ -19,11 +19,12 @@ use tempfile::TempDir;
 
 use crate::database::{FileInfo, SymbolDatabase};
 use crate::extractors::{Symbol, SymbolKind};
-use crate::search::index::{ContentSearchResult, FileSearchResult, FileMatchKind, SearchFilter, SearchIndex, SymbolDocument, apply_symbol_title_boost_to_file_results};
-use crate::search::language_config::LanguageConfigs;
-use crate::tools::search::text_search::{
-    apply_reranker_to_content_results, definition_search_with_index_for_test,
+use crate::search::index::{
+    ContentSearchResult, FileSearchResult, FileMatchKind, SearchDocument, SearchFilter,
+    SearchIndex, apply_reranker_to_content_results, apply_symbol_title_boost_to_file_results,
 };
+use crate::search::language_config::LanguageConfigs;
+use crate::tools::search::text_search::definition_search_with_index_for_test;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -256,32 +257,32 @@ fn definitions_path_exact_name_still_ranks_first() -> Result<()> {
 
     // Insert the helper first with richer body text to bias BM25 in its favor.
     index
-        .add_symbol(&SymbolDocument {
-            id: "2".into(),
-            name: "renderWidgetHelper".into(),
-            signature: "fn renderWidgetHelper()".into(),
-            doc_comment: "renderWidget renderWidget renderWidget helper utility for renderWidget".into(),
-            code_body: "renderWidget renderWidget renderWidget renderWidget".into(),
-            file_path: "src/ui/widget_helper.rs".into(),
-            kind: "function".into(),
-            language: "rust".into(),
-            start_line: 1,
-        })
+        .add_search_doc(&SearchDocument::symbol_from_parts(
+            "2",
+            "renderWidgetHelper",
+            "fn renderWidgetHelper()",
+            "renderWidget renderWidget renderWidget helper utility for renderWidget",
+            "renderWidget renderWidget renderWidget renderWidget",
+            "src/ui/widget_helper.rs",
+            "function",
+            "rust",
+            1,
+        ))
         .unwrap();
 
     // The exact-match symbol with thinner body.
     index
-        .add_symbol(&SymbolDocument {
-            id: "1".into(),
-            name: "renderWidget".into(),
-            signature: "fn renderWidget()".into(),
-            doc_comment: "Renders a widget.".into(),
-            code_body: "draw_frame(widget);".into(),
-            file_path: "src/ui/widget.rs".into(),
-            kind: "function".into(),
-            language: "rust".into(),
-            start_line: 10,
-        })
+        .add_search_doc(&SearchDocument::symbol_from_parts(
+            "1",
+            "renderWidget",
+            "fn renderWidget()",
+            "Renders a widget.",
+            "draw_frame(widget);",
+            "src/ui/widget.rs",
+            "function",
+            "rust",
+            10,
+        ))
         .unwrap();
 
     index.commit().unwrap();

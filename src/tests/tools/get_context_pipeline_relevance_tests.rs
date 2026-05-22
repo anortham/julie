@@ -6,7 +6,7 @@ mod tests {
 
     use crate::database::{FileInfo, SymbolDatabase};
     use crate::extractors::base::{Symbol, SymbolKind, Visibility};
-    use crate::search::index::{SearchIndex, SymbolDocument};
+    use crate::search::index::{SearchDocument, SearchIndex};
     use crate::tools::get_context::pipeline::run_pipeline;
 
     fn setup_env() -> (TempDir, TempDir, SymbolDatabase, SearchIndex) {
@@ -155,7 +155,7 @@ mod tests {
 
         for symbol in &symbols {
             index
-                .add_symbol(&SymbolDocument::from_symbol(symbol))
+                .add_search_doc(&SearchDocument::for_symbol(symbol, vec![], String::new(), String::new()))
                 .unwrap();
         }
         index.commit().unwrap();

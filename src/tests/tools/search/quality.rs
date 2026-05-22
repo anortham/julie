@@ -546,7 +546,7 @@ mod search_integration_tests {
 
 #[cfg(test)]
 mod identifier_stability_regression_tests {
-    use crate::search::index::{SearchFilter, SearchIndex, SymbolDocument};
+    use crate::search::index::{SearchDocument, SearchFilter, SearchIndex};
     use crate::search::language_config::LanguageConfigs;
     use tempfile::TempDir;
 
@@ -562,45 +562,27 @@ mod identifier_stability_regression_tests {
         let (_dir, index) = create_test_index();
 
         index
-            .add_symbol(&SymbolDocument {
-                id: "1".into(),
-                name: "get_reference_scores".into(),
-                signature: "pub fn get_reference_scores() -> Vec<f32>".into(),
-                doc_comment: "Compute centrality-derived reference scores".into(),
-                code_body: "let scores = get_reference_scores();".into(),
-                file_path: "src/search/scoring.rs".into(),
-                kind: "function".into(),
-                language: "rust".into(),
-                start_line: 120,
-            })
+            .add_search_doc(&SearchDocument::symbol_from_parts("1", "get_reference_scores",
+                "pub fn get_reference_scores() -> Vec<f32>",
+                "Compute centrality-derived reference scores",
+                "let scores = get_reference_scores();",
+                "src/search/scoring.rs", "function", "rust", 120))
             .unwrap();
 
         index
-            .add_symbol(&SymbolDocument {
-                id: "2".into(),
-                name: "reference_scores_overview".into(),
-                signature: "fn reference_scores_overview()".into(),
-                doc_comment: "Guide for get_reference_scores usage and concepts".into(),
-                code_body: "This document explains reference scores.".into(),
-                file_path: "docs/search/reference_scores.md".into(),
-                kind: "function".into(),
-                language: "markdown".into(),
-                start_line: 1,
-            })
+            .add_search_doc(&SearchDocument::symbol_from_parts("2", "reference_scores_overview",
+                "fn reference_scores_overview()",
+                "Guide for get_reference_scores usage and concepts",
+                "This document explains reference scores.",
+                "docs/search/reference_scores.md", "function", "markdown", 1))
             .unwrap();
 
         index
-            .add_symbol(&SymbolDocument {
-                id: "3".into(),
-                name: "get_reference_score".into(),
-                signature: "pub fn get_reference_score() -> f32".into(),
-                doc_comment: "Singular helper for reference score".into(),
-                code_body: "get_reference_score()".into(),
-                file_path: "src/search/helpers.rs".into(),
-                kind: "function".into(),
-                language: "rust".into(),
-                start_line: 40,
-            })
+            .add_search_doc(&SearchDocument::symbol_from_parts("3", "get_reference_score",
+                "pub fn get_reference_score() -> f32",
+                "Singular helper for reference score",
+                "get_reference_score()",
+                "src/search/helpers.rs", "function", "rust", 40))
             .unwrap();
 
         index.commit().unwrap();

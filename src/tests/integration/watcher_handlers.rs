@@ -1027,7 +1027,7 @@ async fn test_delete_handler_always_cleans_up() {
 /// Compare with populate_tantivy_index() in processor.rs which correctly adds both.
 #[tokio::test]
 async fn test_incremental_indexing_preserves_tantivy_file_content() {
-    use crate::search::index::{FileDocument, SearchFilter, SearchIndex};
+    use crate::search::index::{SearchDocument, SearchFilter, SearchIndex};
 
     let temp_dir = crate::tests::helpers::unique_temp_dir("watcher_tantivy_content");
     let workspace_root = temp_dir.path().canonicalize().unwrap();
@@ -1060,11 +1060,11 @@ fn render_rich_text_field() {
     // Seed Tantivy with initial file content (simulating what initial indexing does)
     {
         let idx = search_index.lock().unwrap();
-        idx.add_file_content(&FileDocument {
-            file_path: "rich_component.rs".into(),
-            content: initial_content.into(),
-            language: "rust".into(),
-        })
+        idx.add_search_doc(&SearchDocument::file_from_parts(
+            "rich_component.rs",
+            initial_content,
+            "rust",
+        ))
         .unwrap();
         idx.commit().unwrap();
     }
