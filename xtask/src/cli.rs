@@ -29,6 +29,123 @@ pub enum TestCommand {
     },
 }
 
+/// Tokenizer ablation variant for an A/B bakeoff run.
+///
+/// Matches the two env-var gates introduced in T3:
+/// - `JULIE_ABLATE_STEMMING=1`   — disables the English stemmer step.
+/// - `JULIE_ABLATE_CAMEL_EMIT=1` — disables CamelCase split emission.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum Ablation {
+    /// Baseline — no ablation; env vars are unset (default).
+    #[default]
+    None,
+    /// Disable stemming only (`JULIE_ABLATE_STEMMING=1`).
+    NoStemming,
+    /// Disable CamelCase emit only (`JULIE_ABLATE_CAMEL_EMIT=1`).
+    NoCamel,
+    /// Disable both stemming and CamelCase emit.
+    Both,
+}
+
+impl Ablation {
+    /// Parse from a CLI string. Accepts `none`, `no-stemming`, `no-camel`, `both`.
+    pub fn parse(s: &str) -> Result<Self> {
+        match s {
+            "none" => Ok(Self::None),
+            "no-stemming" => Ok(Self::NoStemming),
+            "no-camel" => Ok(Self::NoCamel),
+            "both" => Ok(Self::Both),
+            other => bail!(
+                "invalid ablation variant `{other}`; \
+                 expected one of: none, no-stemming, no-camel, both"
+            ),
+        }
+    }
+
+    /// Short label used in report filenames and JSON fields. Empty for baseline.
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::None => "",
+            Self::NoStemming => "no-stemming",
+            Self::NoCamel => "no-camel",
+            Self::Both => "both",
+        }
+    }
+
+    /// Returns true when no ablation is active (i.e. this is a plain baseline run).
+    pub fn is_baseline(&self) -> bool {
+        matches!(self, Self::None)
+    }
+
+    /// Set the relevant env vars and return a guard that restores prior state on drop.
+    ///
+    /// The `EnvGuard` must be kept alive for the duration of the workspace pool
+    /// lifetime so the tokenizer reads the correct flags at construction time.
+    ///
+    /// # Safety rationale
+    ///
+    /// The xtask binary is single-threaded by design (no Rayon, no parallel
+    /// workspace init). `set_var` / `remove_var` are safe within this constraint.
+    pub fn apply_env(&self) -> EnvGuard {
+        let guard = EnvGuard::capture(&["JULIE_ABLATE_STEMMING", "JULIE_ABLATE_CAMEL_EMIT"]);
+        // SAFETY: single-threaded xtask context; guard restores state on drop.
+        unsafe {
+            match self {
+                Self::None => {
+                    std::env::remove_var("JULIE_ABLATE_STEMMING");
+                    std::env::remove_var("JULIE_ABLATE_CAMEL_EMIT");
+                }
+                Self::NoStemming => {
+                    std::env::set_var("JULIE_ABLATE_STEMMING", "1");
+                    std::env::remove_var("JULIE_ABLATE_CAMEL_EMIT");
+                }
+                Self::NoCamel => {
+                    std::env::remove_var("JULIE_ABLATE_STEMMING");
+                    std::env::set_var("JULIE_ABLATE_CAMEL_EMIT", "1");
+                }
+                Self::Both => {
+                    std::env::set_var("JULIE_ABLATE_STEMMING", "1");
+                    std::env::set_var("JULIE_ABLATE_CAMEL_EMIT", "1");
+                }
+            }
+        }
+        guard
+    }
+}
+
+/// RAII guard that restores env vars to their saved state on drop.
+///
+/// Used to scope ablation env-var mutations so they don't leak into the
+/// calling shell environment or subsequent baseline runs in the same process.
+pub struct EnvGuard {
+    saved: Vec<(String, Option<String>)>,
+}
+
+impl EnvGuard {
+    /// Capture the current values of `keys`. Call before mutating.
+    pub fn capture(keys: &[&str]) -> Self {
+        let saved = keys
+            .iter()
+            .map(|k| ((*k).to_string(), std::env::var(k).ok()))
+            .collect();
+        Self { saved }
+    }
+}
+
+impl Drop for EnvGuard {
+    fn drop(&mut self) {
+        for (key, value) in self.saved.drain(..) {
+            // SAFETY: single-threaded xtask context; restores pre-capture state.
+            unsafe {
+                match value {
+                    Some(v) => std::env::set_var(&key, v),
+                    None => std::env::remove_var(&key),
+                }
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SearchMatrixCommand {
     Mine {
@@ -38,6 +155,7 @@ pub enum SearchMatrixCommand {
     Baseline {
         profile: String,
         out: Option<PathBuf>,
+        ablation: Ablation,
     },
 }
 
@@ -366,6 +484,9 @@ fn parse_search_matrix_command(args: Vec<String>) -> Result<SearchMatrixCommand>
             if options.profile.is_some() {
                 bail!("`--profile` is not valid for `cargo xtask search-matrix mine`");
             }
+            if options.ablation.is_some() {
+                bail!("`--ablation` is not valid for `cargo xtask search-matrix mine`");
+            }
             let days = options
                 .days
                 .ok_or_else(|| anyhow!("missing required `--days <n>`"))?;
@@ -385,6 +506,7 @@ fn parse_search_matrix_command(args: Vec<String>) -> Result<SearchMatrixCommand>
             Ok(SearchMatrixCommand::Baseline {
                 profile,
                 out: options.out,
+                ablation: options.ablation.unwrap_or_default(),
             })
         }
         other => bail!("unsupported `cargo xtask search-matrix` subcommand `{other}`"),
@@ -479,6 +601,7 @@ struct ParsedSearchMatrixOptions {
     days: Option<u32>,
     profile: Option<String>,
     out: Option<PathBuf>,
+    ablation: Option<Ablation>,
 }
 
 fn parse_options(args: Vec<String>) -> Result<ParsedOptions> {
@@ -522,6 +645,7 @@ fn parse_search_matrix_options(args: Vec<String>) -> Result<ParsedSearchMatrixOp
     let mut days = None;
     let mut profile = None;
     let mut out = None;
+    let mut ablation = None;
     let mut iter = args.into_iter();
 
     while let Some(arg) = iter.next() {
@@ -550,11 +674,22 @@ fn parse_search_matrix_options(args: Vec<String>) -> Result<ParsedSearchMatrixOp
                     .ok_or_else(|| anyhow!("missing value for --out"))?;
                 out = Some(PathBuf::from(raw_value));
             }
+            "--ablation" => {
+                let raw_value = iter
+                    .next()
+                    .ok_or_else(|| anyhow!("missing value for --ablation"))?;
+                ablation = Some(Ablation::parse(&raw_value)?);
+            }
             other => bail!("unexpected argument: {other}"),
         }
     }
 
-    Ok(ParsedSearchMatrixOptions { days, profile, out })
+    Ok(ParsedSearchMatrixOptions {
+        days,
+        profile,
+        out,
+        ablation,
+    })
 }
 
 fn parse_certify_options(args: Vec<String>) -> Result<ParsedCertifyOptions> {
@@ -703,8 +838,11 @@ commands = ["cargo test --lib tests::cli_tests"]
 
         assert!(matches!(
             parsed,
-            CliCommand::SearchMatrix(SearchMatrixCommand::Baseline { profile, out: None })
-                if profile == "smoke"
+            CliCommand::SearchMatrix(SearchMatrixCommand::Baseline {
+                profile,
+                out: None,
+                ablation: Ablation::None,
+            }) if profile == "smoke"
         ));
     }
 

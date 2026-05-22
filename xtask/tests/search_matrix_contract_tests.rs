@@ -8,7 +8,7 @@ use julie::handler::JulieServerHandler;
 use serde_json::json;
 use tempfile::TempDir;
 use tokio::runtime::Builder;
-use xtask::cli::{CliCommand, SearchMatrixCommand, parse_cli_command};
+use xtask::cli::{Ablation, CliCommand, SearchMatrixCommand, parse_cli_command};
 use xtask::search_matrix::{
     SearchMatrixCaseSet, SearchMatrixCorpus, run_search_matrix_baseline_with_home,
 };
@@ -60,6 +60,7 @@ fn search_matrix_contract_tests_parse_baseline_command() {
         CliCommand::SearchMatrix(SearchMatrixCommand::Baseline {
             profile: "smoke".to_string(),
             out: Some(PathBuf::from("artifacts/search-matrix/baseline.json")),
+            ablation: xtask::cli::Ablation::None,
         })
     );
 }
@@ -527,6 +528,7 @@ profile_tags = ["smoke"]
         &corpus_path,
         "smoke",
         &out_path,
+        &Ablation::None,
     )
     .expect("baseline report");
 
@@ -625,6 +627,7 @@ profile_tags = ["smoke"]
         &corpus_path,
         "smoke",
         &out_path,
+        &Ablation::None,
     )
     .expect("baseline report");
 
@@ -703,6 +706,7 @@ profile_tags = ["smoke"]
         &corpus_path,
         "smoke",
         &out_path,
+        &Ablation::None,
     )
     .expect("baseline report");
 
@@ -782,6 +786,7 @@ profile_tags = ["smoke"]
         &corpus_path,
         "smoke",
         &out_path,
+        &Ablation::None,
     )
     .expect("baseline report");
 

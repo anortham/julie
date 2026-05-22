@@ -13,7 +13,7 @@ use julie::paths::DaemonPaths;
 use julie::tools::search::FastSearchTool;
 use serde::{Deserialize, Serialize};
 
-use crate::cli::SearchMatrixCommand;
+use crate::cli::{Ablation, SearchMatrixCommand};
 use crate::search_matrix_mine::mine_search_matrix_seed_report;
 use crate::search_matrix_report::write_baseline_report;
 use crate::workspace_root;
@@ -87,6 +87,10 @@ pub struct SearchMatrixBaselineExecution {
     pub hint_kind: Option<String>,
     pub latency_ms: u128,
     pub top_hits: Vec<SearchMatrixTopHit>,
+    /// Ablation label for this execution. Empty string means no ablation (baseline).
+    /// Serde default keeps existing reports parseable when this field is absent.
+    #[serde(default)]
+    pub ablation_label: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -134,17 +138,27 @@ pub fn run_search_matrix_command(
                 out.display()
             )?;
         }
-        SearchMatrixCommand::Baseline { profile, out } => {
+        SearchMatrixCommand::Baseline {
+            profile,
+            out,
+            ablation,
+        } => {
             let daemon_paths = DaemonPaths::new();
             let cases_path =
                 workspace_root().join("fixtures/search-quality/search-matrix-cases.toml");
             let corpus_path =
                 workspace_root().join("fixtures/search-quality/search-matrix-corpus.toml");
+            let ablation_label = ablation.label();
             let out_path = out.clone().unwrap_or_else(|| {
+                let filename = if ablation_label.is_empty() {
+                    format!("{profile}-baseline.json")
+                } else {
+                    format!("{profile}-baseline-{ablation_label}.json")
+                };
                 workspace_root()
                     .join("artifacts")
                     .join("search-matrix")
-                    .join(format!("{profile}-baseline.json"))
+                    .join(filename)
             });
             let report = run_search_matrix_baseline_with_home(
                 &daemon_paths.julie_home(),
@@ -152,6 +166,7 @@ pub fn run_search_matrix_command(
                 &corpus_path,
                 profile,
                 &out_path,
+                ablation,
             )?;
             writeln!(
                 stdout,
@@ -172,6 +187,7 @@ pub fn run_search_matrix_baseline_with_home(
     corpus_path: &Path,
     profile: &str,
     out_path: &Path,
+    ablation: &Ablation,
 ) -> Result<SearchMatrixBaselineReport> {
     let cases = SearchMatrixCaseSet::load(cases_path)?;
     let corpus = SearchMatrixCorpus::load(corpus_path)?;
@@ -188,6 +204,7 @@ pub fn run_search_matrix_baseline_with_home(
         &corpus,
         profile,
         &workspaces,
+        ablation,
     ))?;
     write_baseline_report(&report, out_path)?;
     Ok(report)
@@ -199,11 +216,19 @@ async fn run_baseline_async(
     corpus: &SearchMatrixCorpus,
     profile: &str,
     workspaces: &[WorkspaceRow],
+    ablation: &Ablation,
 ) -> Result<SearchMatrixBaselineReport> {
     let profile_entry = corpus
         .profiles
         .get(profile)
         .ok_or_else(|| anyhow!("unknown search-matrix profile `{profile}`"))?;
+
+    // Set ablation env vars BEFORE constructing the workspace pool.
+    // CodeTokenizer reads these at construction via `new()`, which is called
+    // during workspace open. Setting them after pool creation would be too late.
+    // The guard restores the prior env state on drop (including on `?` propagation).
+    let _env_guard = ablation.apply_env();
+
     let pool = Arc::new(WorkspacePool::new(daemon_paths.indexes_dir(), None));
 
     let mut executions = Vec::new();
@@ -255,7 +280,7 @@ async fn run_baseline_async(
             .await?;
         let handler = JulieServerHandler::new_with_shared_workspace(
             workspace,
-            repo_root,
+            repo_root.clone(),
             None,
             Some(workspace_row.workspace_id.clone()),
             None,
@@ -265,6 +290,23 @@ async fn run_baseline_async(
             Some(Arc::clone(&pool)),
         )
         .await?;
+
+        // When running an ablation variant, force a full reindex so the Tantivy
+        // index reflects the ablated tokenizer. The `TokenizerCompatibilitySignature`
+        // includes both ablation booleans (T3), so a changed flag *should* trigger
+        // an automatic rebuild on workspace open — but we force it explicitly here
+        // to guarantee correctness regardless of any cached state.
+        if !ablation.is_baseline() {
+            let reindex_tool = julie::tools::workspace::ManageWorkspaceTool {
+                operation: "index".to_string(),
+                path: Some(repo_root.to_string_lossy().to_string()),
+                force: Some(true),
+                name: None,
+                workspace_id: Some(workspace_row.workspace_id.clone()),
+                detailed: None,
+            };
+            reindex_tool.call_tool_with_options(&handler, true).await?;
+        }
 
         for case in eligible_cases_for_repo(cases, profile, repo_meta) {
             let started_at = Instant::now();
@@ -323,6 +365,7 @@ async fn run_baseline_async(
                         score: hit.score,
                     })
                     .collect(),
+                ablation_label: ablation.label().to_string(),
             });
         }
     }
