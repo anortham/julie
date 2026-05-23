@@ -1,0 +1,1866 @@
+{
+  "generated_at": "2026-05-23T17:43:29.140226+00:00",
+  "scorecard": "/Users/murphy/source/julie/docs/eval/semantic-value/scorecard.toml",
+  "backends": [
+    "lexical",
+    "semantic",
+    "hybrid"
+  ],
+  "warnings": [],
+  "summary": {
+    "scored_cases": 28,
+    "backend_metrics": {
+      "lexical": {
+        "cases": 28,
+        "top1": 0.25,
+        "top3": 0.2857142857142857,
+        "top5": 0.35714285714285715,
+        "top8": 0.35714285714285715,
+        "mrr": 0.2839285714285714,
+        "p95_latency_ms": 385
+      },
+      "semantic": {
+        "cases": 28,
+        "top1": 0.7142857142857143,
+        "top3": 0.8571428571428571,
+        "top5": 0.8928571428571429,
+        "top8": 0.8928571428571429,
+        "mrr": 0.7886904761904762,
+        "p95_latency_ms": 3027
+      },
+      "hybrid": {
+        "cases": 28,
+        "top1": 0.5357142857142857,
+        "top3": 0.6428571428571429,
+        "top5": 0.7142857142857143,
+        "top8": 0.7857142857142857,
+        "mrr": 0.609608843537415,
+        "p95_latency_ms": 1032
+      }
+    },
+    "outcomes": {
+      "tie": 11,
+      "semantic_win": 17
+    },
+    "fallback_cases": [
+      {
+        "id": "julie-mutation-gate",
+        "repo": "julie",
+        "fallback_backends": [
+          "semantic",
+          "hybrid"
+        ]
+      },
+      {
+        "id": "julie-embedding-pipeline",
+        "repo": "julie",
+        "fallback_backends": [
+          "semantic"
+        ]
+      },
+      {
+        "id": "newtonsoft-fallback-serializer",
+        "repo": "newtonsoft-json",
+        "fallback_backends": []
+      },
+      {
+        "id": "jq-fallback-compile",
+        "repo": "jq",
+        "fallback_backends": []
+      }
+    ]
+  },
+  "cases": [
+    {
+      "id": "julie-mutation-gate",
+      "repo": "julie",
+      "language": "Rust",
+      "category": "concept",
+      "query": "what stops two writers from mutating a workspace at the same time",
+      "intent": "Find the mutation gate implementation, not a planning doc.",
+      "expected_any": [
+        "src/workspace/mutation_gate.rs"
+      ],
+      "score": true,
+      "results": {
+        "lexical": {
+          "ok": true,
+          "rank": null,
+          "hits": [
+            "docs/plans/2026-05-15-daemon-split-and-search-reranker-design.md"
+          ],
+          "latency_ms": 1473,
+          "fallback": false,
+          "error": null
+        },
+        "semantic": {
+          "ok": true,
+          "rank": null,
+          "hits": [
+            "docs/plans/2026-05-15-daemon-split-and-search-reranker-design.md"
+          ],
+          "latency_ms": 3037,
+          "fallback": true,
+          "error": null
+        },
+        "hybrid": {
+          "ok": true,
+          "rank": null,
+          "hits": [
+            "docs/plans/2026-05-15-daemon-split-and-search-reranker-design.md"
+          ],
+          "latency_ms": 3033,
+          "fallback": true,
+          "error": null
+        }
+      },
+      "outcome": "tie"
+    },
+    {
+      "id": "julie-embedding-pipeline",
+      "repo": "julie",
+      "language": "Rust",
+      "category": "implementation",
+      "query": "what code embeds symbols after workspace indexing",
+      "intent": "Find the symbol embedding pipeline.",
+      "expected_any": [
+        "src/embeddings/pipeline.rs"
+      ],
+      "score": true,
+      "results": {
+        "lexical": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "src/embeddings/pipeline.rs"
+          ],
+          "latency_ms": 27,
+          "fallback": false,
+          "error": null
+        },
+        "semantic": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "src/embeddings/pipeline.rs"
+          ],
+          "latency_ms": 3027,
+          "fallback": true,
+          "error": null
+        },
+        "hybrid": {
+          "ok": true,
+          "rank": null,
+          "hits": [
+            "docs/eval/semantic-value/results/2026-05-23T17-35-16Z.json",
+            "docs/eval/semantic-value/results/2026-05-23T17-35-16Z.json",
+            "docs/eval/semantic-value/results/2026-05-23T17-35-16Z.json",
+            "docs/eval/semantic-value/results/2026-05-23T17-35-16Z.json",
+            "docs/eval/semantic-value/results/2026-05-23T17-35-16Z.json",
+            "docs/eval/semantic-value/results/2026-05-23T17-35-16Z.json",
+            "benchmarks/embedding_quality.py",
+            "src/tools/workspace/indexing/mod.rs"
+          ],
+          "latency_ms": 411,
+          "fallback": false,
+          "error": null
+        }
+      },
+      "outcome": "tie"
+    },
+    {
+      "id": "julie-backend-dispatch",
+      "repo": "julie",
+      "language": "Rust",
+      "category": "implementation",
+      "query": "where does fast search dispatch between lexical semantic and hybrid backends",
+      "intent": "Find backend dispatch/execution code.",
+      "expected_any": [
+        "src/tools/search/execution.rs",
+        "src/tools/search/backend.rs",
+        "src/search/hybrid.rs"
+      ],
+      "score": true,
+      "results": {
+        "lexical": {
+          "ok": true,
+          "rank": null,
+          "hits": [
+            "docs/eval/semantic-value/results/2026-05-23T17-35-16Z.json"
+          ],
+          "latency_ms": 44,
+          "fallback": false,
+          "error": null
+        },
+        "semantic": {
+          "ok": true,
+          "rank": 4,
+          "hits": [
+            "src/handler/tools/mod.rs",
+            "src/tools/search/mod.rs",
+            "src/search/weights.rs",
+            "src/tools/search/backend.rs",
+            "src/search/hybrid.rs",
+            "src/handler/search_telemetry.rs",
+            "src/search/mod.rs",
+            "src/search/hybrid.rs"
+          ],
+          "latency_ms": 130,
+          "fallback": false,
+          "error": null
+        },
+        "hybrid": {
+          "ok": true,
+          "rank": null,
+          "hits": [
+            "docs/eval/semantic-value/results/2026-05-23T17-35-16Z.json",
+            "docs/eval/semantic-value/results/2026-05-23T17-35-16Z.json",
+            "docs/eval/semantic-value/results/2026-05-23T17-35-16Z.json",
+            "docs/eval/semantic-value/results/2026-05-23T17-35-16Z.json",
+            "docs/eval/semantic-value/results/2026-05-23T17-35-16Z.json",
+            "docs/eval/semantic-value/results/2026-05-23T17-35-16Z.json",
+            "src/handler/tools/mod.rs",
+            "src/tools/search/mod.rs"
+          ],
+          "latency_ms": 118,
+          "fallback": false,
+          "error": null
+        }
+      },
+      "outcome": "semantic_win"
+    },
+    {
+      "id": "julie-relaxed-or-fallback",
+      "repo": "julie",
+      "language": "Rust",
+      "category": "concept",
+      "query": "how does search relax an all terms query into any term matching",
+      "intent": "Find Tantivy relaxed OR fallback logic.",
+      "expected_any": [
+        "src/search/index.rs"
+      ],
+      "score": true,
+      "results": {
+        "lexical": {
+          "ok": true,
+          "rank": null,
+          "hits": [
+            "docs/eval/semantic-value/results/2026-05-23T17-35-16Z.json"
+          ],
+          "latency_ms": 45,
+          "fallback": false,
+          "error": null
+        },
+        "semantic": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "src/search/index.rs",
+            "src/search/index.rs",
+            "src/search/reranker.rs",
+            "src/search/expansion.rs",
+            "src/tools/search/query.rs",
+            "src/search/index.rs",
+            "src/search/index.rs",
+            "src/search/expansion.rs"
+          ],
+          "latency_ms": 132,
+          "fallback": false,
+          "error": null
+        },
+        "hybrid": {
+          "ok": true,
+          "rank": 7,
+          "hits": [
+            "docs/eval/semantic-value/results/2026-05-23T17-35-16Z.json",
+            "docs/eval/semantic-value/results/2026-05-23T17-35-16Z.json",
+            "docs/eval/semantic-value/results/2026-05-23T17-35-16Z.json",
+            "docs/eval/semantic-value/results/2026-05-23T17-35-16Z.json",
+            "docs/eval/semantic-value/results/2026-05-23T17-35-16Z.json",
+            "docs/eval/semantic-value/results/2026-05-23T17-35-16Z.json",
+            "src/search/index.rs",
+            "src/search/index.rs"
+          ],
+          "latency_ms": 124,
+          "fallback": false,
+          "error": null
+        }
+      },
+      "outcome": "semantic_win"
+    },
+    {
+      "id": "eros-retrieval-routing",
+      "repo": "eros",
+      "language": "Python",
+      "category": "concept",
+      "query": "where does retrieval choose between lancedb and sqlite search backends",
+      "intent": "Find retrieval backend routing.",
+      "expected_any": [
+        "python/eros/retrieval/router.py",
+        "python/eros/retrieval/backends.py"
+      ],
+      "score": true,
+      "results": {
+        "lexical": {
+          "ok": true,
+          "rank": null,
+          "hits": [
+            "docs/product/eros-commercial-roadmap.md"
+          ],
+          "latency_ms": 46,
+          "fallback": false,
+          "error": null
+        },
+        "semantic": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "python/eros/retrieval/backends.py",
+            "python/eros/retrieval/lancedb_index.py",
+            "python/eros/retrieval/lancedb_index.py",
+            "python/eros/retrieval/backends.py",
+            "python/eros/operations/readiness.py",
+            "python/eros/eval/compare.py",
+            "python/eros/retrieval/sqlite_fallback.py",
+            "python/eros/retrieval/lancedb_index.py"
+          ],
+          "latency_ms": 92,
+          "fallback": false,
+          "error": null
+        },
+        "hybrid": {
+          "ok": true,
+          "rank": 2,
+          "hits": [
+            "python/eros/retrieval/lancedb_index.py",
+            "python/eros/retrieval/backends.py",
+            "python/eros/retrieval/lancedb_index.py",
+            "python/eros/retrieval/sqlite_trigram.py",
+            "python/eros/retrieval/sqlite_fallback.py",
+            "python/eros/retrieval/sqlite_trigram.py",
+            "python/eros/retrieval/sqlite_trigram_hybrid.py",
+            "python/eros/retrieval/backends.py"
+          ],
+          "latency_ms": 103,
+          "fallback": false,
+          "error": null
+        }
+      },
+      "outcome": "semantic_win"
+    },
+    {
+      "id": "eros-search-doc-projections",
+      "repo": "eros",
+      "language": "Python",
+      "category": "implementation",
+      "query": "how are search documents projected into retrieval records",
+      "intent": "Find search-doc projection code.",
+      "expected_any": [
+        "python/eros/retrieval/projections.py",
+        "python/eros/retrieval/search_docs.py",
+        "python/eros/retrieval/projection_policy.py"
+      ],
+      "score": true,
+      "results": {
+        "lexical": {
+          "ok": true,
+          "rank": 5,
+          "hits": [
+            "python/eros/retrieval/lancedb_index.py",
+            "docs/plans/2026-05-10-eros-v1-implementation-plan.md",
+            "python/eros/retrieval/zoekt_index.py",
+            "python/eros/retrieval/base.py",
+            "python/eros/retrieval/search_docs.py",
+            "python/eros/retrieval/projections.py",
+            "python/eros/retrieval/zoekt_index.py",
+            "python/eros/retrieval/codenav_mcp.py"
+          ],
+          "latency_ms": 30,
+          "fallback": false,
+          "error": null
+        },
+        "semantic": {
+          "ok": true,
+          "rank": 3,
+          "hits": [
+            "python/eros/context/planner.py",
+            "docs/eval/performance/search-comparison/20260517T230632Z-7a6b29367507-zoekt-search-docs.json",
+            "python/eros/retrieval/search_docs.py",
+            "python/eros/retrieval/projections.py",
+            "python/eros/dashboard/search.py",
+            "python/eros/retrieval/projections.py",
+            "python/eros/retrieval/search_docs.py",
+            "python/eros/retrieval/search_docs.py"
+          ],
+          "latency_ms": 106,
+          "fallback": false,
+          "error": null
+        },
+        "hybrid": {
+          "ok": true,
+          "rank": 2,
+          "hits": [
+            "python/eros/dashboard/search.py",
+            "python/eros/retrieval/search_docs.py",
+            "python/eros/retrieval/sqlite_fallback.py",
+            "python/eros/retrieval/zoekt_index.py",
+            "python/eros/retrieval/search_docs.py",
+            "python/eros/retrieval/search_docs.py",
+            "python/eros/retrieval/sqlite_trigram.py",
+            "python/eros/retrieval/codenav_mcp.py"
+          ],
+          "latency_ms": 104,
+          "fallback": false,
+          "error": null
+        }
+      },
+      "outcome": "semantic_win"
+    },
+    {
+      "id": "eros-semantic-eval",
+      "repo": "eros",
+      "language": "Python",
+      "category": "concept",
+      "query": "where is semantic retrieval quality evaluated",
+      "intent": "Find semantic eval harness.",
+      "expected_any": [
+        "python/eros/eval/semantic.py",
+        "tests/integration/test_semantic_eval.py"
+      ],
+      "score": true,
+      "results": {
+        "lexical": {
+          "ok": true,
+          "rank": 2,
+          "hits": [
+            "tests/benchmark/test_lancedb_retrieval_quality.py",
+            "python/eros/eval/semantic.py"
+          ],
+          "latency_ms": 34,
+          "fallback": false,
+          "error": null
+        },
+        "semantic": {
+          "ok": true,
+          "rank": 2,
+          "hits": [
+            "python/eros/eval/retrieval_decision.py",
+            "python/eros/eval/semantic.py",
+            "python/eros/dashboard/extractors.py",
+            "python/eros/eval/semantic.py",
+            "python/eros/operations/readiness.py",
+            "python/eros/eval/semantic.py",
+            "python/eros/eval/semantic.py",
+            "python/eros/eval/compare.py"
+          ],
+          "latency_ms": 104,
+          "fallback": false,
+          "error": null
+        },
+        "hybrid": {
+          "ok": true,
+          "rank": 5,
+          "hits": [
+            "python/eros/eval/retrieval_decision.py",
+            "python/eros/eval/retrieval_decision.py",
+            "tests/integration/test_lancedb_retrieval.py",
+            "tests/unit/test_retrieval_decision.py",
+            "tests/integration/test_semantic_eval.py",
+            "tests/integration/test_comparison_harness.py",
+            "tests/benchmark/test_lancedb_retrieval_quality.py",
+            "python/eros/eval/retrieval_decision.py"
+          ],
+          "latency_ms": 104,
+          "fallback": false,
+          "error": null
+        }
+      },
+      "outcome": "tie"
+    },
+    {
+      "id": "express-lazy-router",
+      "repo": "express",
+      "language": "JavaScript",
+      "category": "concept",
+      "query": "where does the app lazily create the router for middleware",
+      "intent": "Find application router setup.",
+      "expected_any": [
+        "lib/application.js"
+      ],
+      "score": true,
+      "results": {
+        "lexical": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "lib/application.js",
+            "lib/application.js",
+            "lib/application.js",
+            "lib/application.js",
+            "lib/application.js",
+            "lib/application.js",
+            "lib/express.js",
+            "examples/downloads/index.js"
+          ],
+          "latency_ms": 31,
+          "fallback": false,
+          "error": null
+        },
+        "semantic": {
+          "ok": true,
+          "rank": 2,
+          "hits": [
+            "lib/express.js",
+            "lib/application.js",
+            "lib/application.js",
+            "lib/application.js",
+            "lib/application.js",
+            "package.json",
+            "examples/route-separation/index.js",
+            "lib/express.js"
+          ],
+          "latency_ms": 97,
+          "fallback": false,
+          "error": null
+        },
+        "hybrid": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "lib/application.js",
+            "lib/application.js",
+            "lib/application.js",
+            "lib/express.js",
+            "examples/params/index.js",
+            "lib/application.js",
+            "package.json",
+            "lib/application.js"
+          ],
+          "latency_ms": 87,
+          "fallback": false,
+          "error": null
+        }
+      },
+      "outcome": "tie"
+    },
+    {
+      "id": "express-mount-middleware",
+      "repo": "express",
+      "language": "JavaScript",
+      "category": "concept",
+      "query": "how does a mounted express app restore request and response prototypes",
+      "intent": "Find mounted app middleware wrapper.",
+      "expected_any": [
+        "lib/application.js"
+      ],
+      "score": true,
+      "results": {
+        "lexical": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "lib/application.js",
+            "lib/application.js",
+            "lib/application.js",
+            "lib/application.js",
+            "examples/mvc/index.js",
+            "examples/resource/index.js",
+            "examples/README.md",
+            "examples/mvc/lib/boot.js"
+          ],
+          "latency_ms": 22,
+          "fallback": false,
+          "error": null
+        },
+        "semantic": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "lib/application.js",
+            "lib/express.js",
+            "examples/resource/index.js",
+            "lib/response.js",
+            "lib/response.js",
+            "lib/express.js",
+            "examples/route-separation/index.js",
+            "lib/application.js"
+          ],
+          "latency_ms": 77,
+          "fallback": false,
+          "error": null
+        },
+        "hybrid": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "lib/application.js",
+            "examples/resource/index.js",
+            "lib/application.js",
+            "examples/mvc/index.js",
+            "lib/application.js",
+            "lib/application.js",
+            "lib/application.js",
+            "examples/README.md"
+          ],
+          "latency_ms": 83,
+          "fallback": false,
+          "error": null
+        }
+      },
+      "outcome": "tie"
+    },
+    {
+      "id": "flask-view-dispatch",
+      "repo": "flask",
+      "language": "Python",
+      "category": "implementation",
+      "query": "where do class based views dispatch a request to methods",
+      "intent": "Find MethodView/View dispatch.",
+      "expected_any": [
+        "src/flask/views.py"
+      ],
+      "score": true,
+      "results": {
+        "lexical": {
+          "ok": true,
+          "rank": null,
+          "hits": [
+            "docs/views.rst"
+          ],
+          "latency_ms": 27,
+          "fallback": false,
+          "error": null
+        },
+        "semantic": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "src/flask/views.py",
+            "src/flask/views.py",
+            "src/flask/views.py",
+            "src/flask/views.py",
+            "src/flask/views.py",
+            "src/flask/views.py",
+            "src/flask/app.py",
+            "src/flask/views.py"
+          ],
+          "latency_ms": 98,
+          "fallback": false,
+          "error": null
+        },
+        "hybrid": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "src/flask/views.py",
+            "src/flask/views.py",
+            "src/flask/app.py",
+            "src/flask/views.py",
+            "src/flask/app.py",
+            "src/flask/views.py",
+            "src/flask/views.py",
+            "src/flask/wrappers.py"
+          ],
+          "latency_ms": 87,
+          "fallback": false,
+          "error": null
+        }
+      },
+      "outcome": "semantic_win"
+    },
+    {
+      "id": "flask-blueprint-registration",
+      "repo": "flask",
+      "language": "Python",
+      "category": "concept",
+      "query": "how are nested blueprints registered on an application",
+      "intent": "Find blueprint registration logic.",
+      "expected_any": [
+        "src/flask/sansio/blueprints.py"
+      ],
+      "score": true,
+      "results": {
+        "lexical": {
+          "ok": true,
+          "rank": null,
+          "hits": [
+            "CHANGES.rst"
+          ],
+          "latency_ms": 42,
+          "fallback": false,
+          "error": null
+        },
+        "semantic": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "src/flask/sansio/blueprints.py",
+            "src/flask/sansio/app.py",
+            "src/flask/sansio/blueprints.py",
+            "src/flask/sansio/app.py",
+            "src/flask/app.py",
+            "src/flask/sansio/blueprints.py",
+            "src/flask/sansio/blueprints.py",
+            "src/flask/sansio/blueprints.py"
+          ],
+          "latency_ms": 76,
+          "fallback": false,
+          "error": null
+        },
+        "hybrid": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "src/flask/sansio/blueprints.py",
+            "src/flask/sansio/app.py",
+            "src/flask/sansio/blueprints.py",
+            "src/flask/sansio/blueprints.py",
+            "src/flask/sansio/blueprints.py",
+            "src/flask/sansio/blueprints.py",
+            "src/flask/sansio/blueprints.py",
+            "src/flask/wrappers.py"
+          ],
+          "latency_ms": 80,
+          "fallback": false,
+          "error": null
+        }
+      },
+      "outcome": "semantic_win"
+    },
+    {
+      "id": "flask-request-context-session",
+      "repo": "flask",
+      "language": "Python",
+      "category": "concept",
+      "query": "where does request context open the session",
+      "intent": "Find request context session setup.",
+      "expected_any": [
+        "src/flask/ctx.py"
+      ],
+      "score": true,
+      "results": {
+        "lexical": {
+          "ok": true,
+          "rank": null,
+          "hits": [
+            "CHANGES.rst"
+          ],
+          "latency_ms": 38,
+          "fallback": false,
+          "error": null
+        },
+        "semantic": {
+          "ok": true,
+          "rank": 2,
+          "hits": [
+            "src/flask/sessions.py",
+            "src/flask/ctx.py",
+            "src/flask/sessions.py",
+            "src/flask/testing.py",
+            "src/flask/ctx.py",
+            "src/flask/app.py",
+            "src/flask/app.py",
+            "src/flask/ctx.py"
+          ],
+          "latency_ms": 86,
+          "fallback": false,
+          "error": null
+        },
+        "hybrid": {
+          "ok": true,
+          "rank": 4,
+          "hits": [
+            "src/flask/sessions.py",
+            "src/flask/sessions.py",
+            "src/flask/app.py",
+            "src/flask/ctx.py",
+            "src/flask/ctx.py",
+            "src/flask/app.py",
+            "src/flask/sessions.py",
+            "src/flask/sessions.py"
+          ],
+          "latency_ms": 83,
+          "fallback": false,
+          "error": null
+        }
+      },
+      "outcome": "semantic_win"
+    },
+    {
+      "id": "gson-strictness",
+      "repo": "gson",
+      "language": "Java",
+      "category": "concept",
+      "query": "where is JSON parser strictness and lenient behavior configured",
+      "intent": "Find strictness or reader code.",
+      "expected_any": [
+        "gson/src/main/java/com/google/gson/Strictness.java",
+        "gson/src/main/java/com/google/gson/stream/JsonReader.java",
+        "gson/src/main/java/com/google/gson/GsonBuilder.java"
+      ],
+      "score": true,
+      "results": {
+        "lexical": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "gson/src/main/java/com/google/gson/Strictness.java"
+          ],
+          "latency_ms": 34,
+          "fallback": false,
+          "error": null
+        },
+        "semantic": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "gson/src/main/java/com/google/gson/Strictness.java",
+            "gson/src/main/java/com/google/gson/stream/JsonReader.java",
+            "gson/src/main/java/com/google/gson/stream/JsonReader.java",
+            "gson/src/main/java/com/google/gson/stream/JsonWriter.java",
+            "gson/src/main/java/com/google/gson/stream/JsonReader.java",
+            "gson/src/main/java/com/google/gson/Strictness.java",
+            "gson/src/main/java/com/google/gson/JsonParser.java",
+            "gson/src/main/java/com/google/gson/stream/JsonReader.java"
+          ],
+          "latency_ms": 83,
+          "fallback": false,
+          "error": null
+        },
+        "hybrid": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "gson/src/main/java/com/google/gson/Strictness.java",
+            "gson/src/main/java/com/google/gson/stream/JsonReader.java",
+            "gson/src/main/java/com/google/gson/JsonParser.java",
+            "gson/src/main/java/com/google/gson/stream/JsonWriter.java",
+            "gson/src/main/java/com/google/gson/JsonStreamParser.java",
+            "gson/src/main/java/com/google/gson/stream/JsonReader.java",
+            "gson/src/main/java/com/google/gson/JsonParser.java",
+            "gson/src/main/java/com/google/gson/JsonParser.java"
+          ],
+          "latency_ms": 90,
+          "fallback": false,
+          "error": null
+        }
+      },
+      "outcome": "tie"
+    },
+    {
+      "id": "gson-reflective-fields",
+      "repo": "gson",
+      "language": "Java",
+      "category": "implementation",
+      "query": "where are object fields reflected into type adapters",
+      "intent": "Find reflective adapter factory.",
+      "expected_any": [
+        "gson/src/main/java/com/google/gson/internal/bind/ReflectiveTypeAdapterFactory.java"
+      ],
+      "score": true,
+      "results": {
+        "lexical": {
+          "ok": true,
+          "rank": null,
+          "hits": [
+            "Troubleshooting.md"
+          ],
+          "latency_ms": 23,
+          "fallback": false,
+          "error": null
+        },
+        "semantic": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "gson/src/main/java/com/google/gson/internal/bind/ReflectiveTypeAdapterFactory.java",
+            "gson/src/main/java/com/google/gson/internal/bind/ReflectiveTypeAdapterFactory.java",
+            "gson/src/main/java/com/google/gson/internal/bind/ReflectiveTypeAdapterFactory.java",
+            "gson/src/main/java/com/google/gson/internal/bind/ReflectiveTypeAdapterFactory.java",
+            "gson/src/main/java/com/google/gson/internal/bind/ReflectiveTypeAdapterFactory.java",
+            "gson/src/main/java/com/google/gson/internal/bind/ReflectiveTypeAdapterFactory.java",
+            "gson/src/main/java/com/google/gson/internal/bind/ReflectiveTypeAdapterFactory.java",
+            "gson/src/main/java/com/google/gson/internal/bind/ReflectiveTypeAdapterFactory.java"
+          ],
+          "latency_ms": 96,
+          "fallback": false,
+          "error": null
+        },
+        "hybrid": {
+          "ok": true,
+          "rank": 7,
+          "hits": [
+            "gson/src/main/java/com/google/gson/internal/bind/TypeAdapters.java",
+            "gson/src/main/java/com/google/gson/internal/bind/TypeAdapters.java",
+            "gson/src/main/java/com/google/gson/internal/bind/TypeAdapters.java",
+            "gson/src/main/java/com/google/gson/internal/bind/ObjectTypeAdapter.java",
+            "gson/src/main/java/com/google/gson/internal/bind/TypeAdapters.java",
+            "extras/src/main/java/com/google/gson/typeadapters/RuntimeTypeAdapterFactory.java",
+            "gson/src/main/java/com/google/gson/internal/bind/ReflectiveTypeAdapterFactory.java",
+            "gson/src/main/java/com/google/gson/internal/bind/TypeAdapters.java"
+          ],
+          "latency_ms": 88,
+          "fallback": false,
+          "error": null
+        }
+      },
+      "outcome": "semantic_win"
+    },
+    {
+      "id": "gson-type-adapter",
+      "repo": "gson",
+      "language": "Java",
+      "category": "concept",
+      "query": "where does a custom type adapter read and write json values",
+      "intent": "Find TypeAdapter abstraction.",
+      "expected_any": [
+        "gson/src/main/java/com/google/gson/TypeAdapter.java"
+      ],
+      "score": true,
+      "results": {
+        "lexical": {
+          "ok": true,
+          "rank": null,
+          "hits": [
+            "gson/src/main/java/com/google/gson/Gson.java"
+          ],
+          "latency_ms": 39,
+          "fallback": false,
+          "error": null
+        },
+        "semantic": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "gson/src/main/java/com/google/gson/TypeAdapter.java",
+            "test-shrinker/src/main/java/com/example/ClassWithJsonAdapterAnnotation.java",
+            "gson/src/main/java/com/google/gson/internal/bind/JsonElementTypeAdapter.java",
+            "extras/src/main/java/com/google/gson/typeadapters/RuntimeTypeAdapterFactory.java",
+            "gson/src/main/java/com/google/gson/internal/bind/MapTypeAdapterFactory.java",
+            "gson/src/main/java/com/google/gson/internal/bind/ArrayTypeAdapter.java",
+            "gson/src/main/java/com/google/gson/TypeAdapter.java",
+            "gson/src/main/java/com/google/gson/LongSerializationPolicy.java"
+          ],
+          "latency_ms": 76,
+          "fallback": false,
+          "error": null
+        },
+        "hybrid": {
+          "ok": true,
+          "rank": null,
+          "hits": [
+            "gson/src/main/java/com/google/gson/internal/bind/JsonElementTypeAdapter.java",
+            "extras/src/main/java/com/google/gson/typeadapters/RuntimeTypeAdapterFactory.java",
+            "gson/src/main/java/com/google/gson/internal/bind/JsonAdapterAnnotationTypeAdapterFactory.java",
+            "gson/src/main/java/com/google/gson/internal/bind/TypeAdapters.java",
+            "gson/src/main/java/com/google/gson/internal/bind/ReflectiveTypeAdapterFactory.java",
+            "gson/src/main/java/com/google/gson/internal/bind/JsonElementTypeAdapter.java",
+            "gson/src/main/java/com/google/gson/internal/bind/TypeAdapters.java",
+            "gson/src/main/java/com/google/gson/internal/bind/JsonElementTypeAdapter.java"
+          ],
+          "latency_ms": 93,
+          "fallback": false,
+          "error": null
+        }
+      },
+      "outcome": "semantic_win"
+    },
+    {
+      "id": "moshi-polymorphic-labels",
+      "repo": "moshi",
+      "language": "Kotlin/Java",
+      "category": "concept",
+      "query": "where does polymorphic json choose subtype by label",
+      "intent": "Find polymorphic adapter factory.",
+      "expected_any": [
+        "moshi-adapters/src/main/java/com/squareup/moshi/adapters/PolymorphicJsonAdapterFactory.kt"
+      ],
+      "score": true,
+      "results": {
+        "lexical": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "moshi-adapters/src/main/java/com/squareup/moshi/adapters/PolymorphicJsonAdapterFactory.kt"
+          ],
+          "latency_ms": 37,
+          "fallback": false,
+          "error": null
+        },
+        "semantic": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "moshi-adapters/src/main/java/com/squareup/moshi/adapters/PolymorphicJsonAdapterFactory.kt",
+            "moshi-adapters/src/main/java/com/squareup/moshi/adapters/PolymorphicJsonAdapterFactory.kt",
+            "moshi-adapters/src/main/java/com/squareup/moshi/adapters/PolymorphicJsonAdapterFactory.kt",
+            "moshi-adapters/src/main/java/com/squareup/moshi/adapters/PolymorphicJsonAdapterFactory.kt",
+            "moshi-adapters/src/main/java/com/squareup/moshi/adapters/PolymorphicJsonAdapterFactory.kt",
+            "moshi-adapters/src/main/java/com/squareup/moshi/adapters/PolymorphicJsonAdapterFactory.kt",
+            "moshi/src/main/java/com/squareup/moshi/-MoshiKotlinTypesExtensions.kt",
+            "moshi/src/main/java/com/squareup/moshi/Types.kt"
+          ],
+          "latency_ms": 84,
+          "fallback": false,
+          "error": null
+        },
+        "hybrid": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "moshi-adapters/src/main/java/com/squareup/moshi/adapters/PolymorphicJsonAdapterFactory.kt",
+            "moshi-adapters/src/main/java/com/squareup/moshi/adapters/PolymorphicJsonAdapterFactory.kt",
+            "moshi-adapters/src/main/java/com/squareup/moshi/adapters/PolymorphicJsonAdapterFactory.kt",
+            "moshi-adapters/src/main/java/com/squareup/moshi/adapters/PolymorphicJsonAdapterFactory.kt",
+            "moshi-adapters/src/main/java/com/squareup/moshi/adapters/PolymorphicJsonAdapterFactory.kt",
+            "moshi-adapters/src/main/java/com/squareup/moshi/adapters/PolymorphicJsonAdapterFactory.kt",
+            "moshi-adapters/src/main/java/com/squareup/moshi/adapters/PolymorphicJsonAdapterFactory.kt",
+            "moshi-adapters/src/main/java/com/squareup/moshi/adapters/PolymorphicJsonAdapterFactory.kt"
+          ],
+          "latency_ms": 94,
+          "fallback": false,
+          "error": null
+        }
+      },
+      "outcome": "tie"
+    },
+    {
+      "id": "moshi-record-adapter",
+      "repo": "moshi",
+      "language": "Kotlin/Java",
+      "category": "implementation",
+      "query": "where are java records converted into json adapters",
+      "intent": "Find record adapter.",
+      "expected_any": [
+        "moshi/src/main/java16/com/squareup/moshi/internal/RecordJsonAdapter.kt"
+      ],
+      "score": true,
+      "results": {
+        "lexical": {
+          "ok": true,
+          "rank": null,
+          "hits": [
+            "moshi/src/main/java/com/squareup/moshi/Json.kt",
+            "moshi/src/main/java/com/squareup/moshi/internal/StandardJsonAdapters.kt"
+          ],
+          "latency_ms": 30,
+          "fallback": false,
+          "error": null
+        },
+        "semantic": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "moshi/src/main/java16/com/squareup/moshi/internal/RecordJsonAdapter.kt",
+            "moshi/src/main/java16/com/squareup/moshi/internal/RecordJsonAdapter.kt",
+            "moshi/src/main/java/com/squareup/moshi/internal/RecordJsonAdapter.kt",
+            "moshi/src/main/java16/com/squareup/moshi/internal/RecordJsonAdapter.kt",
+            "moshi/src/main/java/com/squareup/moshi/internal/RecordJsonAdapter.kt",
+            "moshi/src/main/java16/com/squareup/moshi/internal/RecordJsonAdapter.kt",
+            "moshi/src/main/java16/com/squareup/moshi/internal/RecordJsonAdapter.kt",
+            "moshi/src/main/java16/com/squareup/moshi/internal/RecordJsonAdapter.kt"
+          ],
+          "latency_ms": 84,
+          "fallback": false,
+          "error": null
+        },
+        "hybrid": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "moshi/src/main/java16/com/squareup/moshi/internal/RecordJsonAdapter.kt",
+            "moshi/src/main/java/com/squareup/moshi/internal/RecordJsonAdapter.kt",
+            "moshi/src/main/java/com/squareup/moshi/internal/StandardJsonAdapters.kt",
+            "moshi-adapters/src/main/java/com/squareup/moshi/adapters/PolymorphicJsonAdapterFactory.kt",
+            "moshi/src/main/java/com/squareup/moshi/internal/StandardJsonAdapters.kt",
+            "moshi/src/main/java/com/squareup/moshi/internal/AdapterMethodsFactory.kt",
+            "moshi/src/main/java/com/squareup/moshi/Json.kt",
+            "moshi-adapters/src/main/java/com/squareup/moshi/Rfc3339DateJsonAdapter.kt"
+          ],
+          "latency_ms": 93,
+          "fallback": false,
+          "error": null
+        }
+      },
+      "outcome": "semantic_win"
+    },
+    {
+      "id": "moshi-json-adapter-null-wrapper",
+      "repo": "moshi",
+      "language": "Kotlin/Java",
+      "category": "concept",
+      "query": "where does a json adapter wrap null serialization behavior",
+      "intent": "Find JsonAdapter null wrappers.",
+      "expected_any": [
+        "moshi/src/main/java/com/squareup/moshi/JsonAdapter.kt"
+      ],
+      "score": true,
+      "results": {
+        "lexical": {
+          "ok": true,
+          "rank": null,
+          "hits": [
+            "moshi/src/main/java/com/squareup/moshi/internal/NullSafeJsonAdapter.kt"
+          ],
+          "latency_ms": 24,
+          "fallback": false,
+          "error": null
+        },
+        "semantic": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "moshi/src/main/java/com/squareup/moshi/JsonAdapter.kt",
+            "moshi/src/main/java/com/squareup/moshi/JsonAdapter.kt",
+            "moshi/src/main/java/com/squareup/moshi/internal/NullSafeJsonAdapter.kt",
+            "moshi/src/main/java/com/squareup/moshi/JsonAdapter.kt",
+            "moshi/src/main/java/com/squareup/moshi/JsonAdapter.kt",
+            "moshi/src/main/java/com/squareup/moshi/internal/NullSafeJsonAdapter.kt",
+            "moshi/src/main/java/com/squareup/moshi/JsonWriter.kt",
+            "moshi-kotlin-codegen/src/main/java/com/squareup/moshi/kotlin/codegen/api/AdapterGenerator.kt"
+          ],
+          "latency_ms": 87,
+          "fallback": false,
+          "error": null
+        },
+        "hybrid": {
+          "ok": true,
+          "rank": 3,
+          "hits": [
+            "moshi/src/main/java/com/squareup/moshi/internal/NullSafeJsonAdapter.kt",
+            "moshi/src/main/java/com/squareup/moshi/internal/NonNullJsonAdapter.kt",
+            "moshi/src/main/java/com/squareup/moshi/JsonAdapter.kt",
+            "moshi/src/main/java/com/squareup/moshi/JsonAdapter.kt",
+            "moshi-kotlin/src/main/java/com/squareup/moshi/KotlinJsonAdapterFactory.kt",
+            "moshi-adapters/src/main/java/com/squareup/moshi/adapters/PolymorphicJsonAdapterFactory.kt",
+            "moshi-adapters/src/main/java/com/squareup/moshi/adapters/Rfc3339DateJsonAdapter.kt",
+            "moshi/src/main/java/com/squareup/moshi/internal/MapJsonAdapter.kt"
+          ],
+          "latency_ms": 93,
+          "fallback": false,
+          "error": null
+        }
+      },
+      "outcome": "semantic_win"
+    },
+    {
+      "id": "alamofire-interceptor-selection",
+      "repo": "alamofire",
+      "language": "Swift",
+      "category": "concept",
+      "query": "where does a request combine session and request interceptors for retry and adaptation",
+      "intent": "Find Session adapter/retrier selection.",
+      "expected_any": [
+        "Source/Core/Session.swift"
+      ],
+      "score": true,
+      "results": {
+        "lexical": {
+          "ok": true,
+          "rank": null,
+          "hits": [
+            "Documentation/AdvancedUsage.md"
+          ],
+          "latency_ms": 62,
+          "fallback": false,
+          "error": null
+        },
+        "semantic": {
+          "ok": true,
+          "rank": null,
+          "hits": [
+            "Source/Core/Request.swift",
+            "Source/Features/RequestInterceptor.swift",
+            "Source/Features/RequestInterceptor.swift",
+            "Source/Features/RequestInterceptor.swift",
+            "Source/Features/RequestInterceptor.swift",
+            "Source/Features/RetryPolicy.swift",
+            "Source/Core/Request.swift",
+            "Source/Features/RequestInterceptor.swift"
+          ],
+          "latency_ms": 105,
+          "fallback": false,
+          "error": null
+        },
+        "hybrid": {
+          "ok": true,
+          "rank": null,
+          "hits": [
+            "Source/Features/RequestInterceptor.swift",
+            "Source/Features/RequestInterceptor.swift",
+            "Source/Features/RequestInterceptor.swift",
+            "Source/Features/RequestInterceptor.swift",
+            "Source/Core/Request.swift",
+            "Source/Features/RetryPolicy.swift",
+            "Source/Features/RetryPolicy.swift",
+            "Source/Core/SessionDelegate.swift"
+          ],
+          "latency_ms": 103,
+          "fallback": false,
+          "error": null
+        }
+      },
+      "outcome": "tie"
+    },
+    {
+      "id": "alamofire-multipart-boundary",
+      "repo": "alamofire",
+      "language": "Swift",
+      "category": "implementation",
+      "query": "where is multipart form data boundary and content type generated",
+      "intent": "Find MultipartFormData boundary generator.",
+      "expected_any": [
+        "Source/Features/MultipartFormData.swift"
+      ],
+      "score": true,
+      "results": {
+        "lexical": {
+          "ok": true,
+          "rank": null,
+          "hits": [
+            "docs/docsets/Alamofire.docset/Contents/Resources/Documents/search.json",
+            "docs/docsets/Alamofire.docset/Contents/Resources/Documents/Classes.html"
+          ],
+          "latency_ms": 107,
+          "fallback": false,
+          "error": null
+        },
+        "semantic": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "Source/Features/MultipartFormData.swift",
+            "Source/Features/MultipartFormData.swift",
+            "Source/Features/MultipartFormData.swift",
+            "Source/Features/MultipartFormData.swift",
+            "Source/Features/MultipartFormData.swift",
+            "Source/Features/MultipartFormData.swift",
+            "Source/Features/MultipartFormData.swift",
+            "Source/Features/MultipartFormData.swift"
+          ],
+          "latency_ms": 88,
+          "fallback": false,
+          "error": null
+        },
+        "hybrid": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "Source/Features/MultipartFormData.swift",
+            "Source/Features/MultipartFormData.swift",
+            "Source/Features/MultipartFormData.swift",
+            "Source/Features/MultipartFormData.swift",
+            "Source/Features/MultipartFormData.swift",
+            "Source/Features/MultipartFormData.swift",
+            "Source/Features/MultipartFormData.swift",
+            "Source/Features/MultipartFormData.swift"
+          ],
+          "latency_ms": 97,
+          "fallback": false,
+          "error": null
+        }
+      },
+      "outcome": "semantic_win"
+    },
+    {
+      "id": "alamofire-auth-refresh-window",
+      "repo": "alamofire",
+      "language": "Swift",
+      "category": "concept",
+      "query": "where does authentication interceptor prevent excessive credential refresh attempts",
+      "intent": "Find AuthenticationInterceptor refresh window.",
+      "expected_any": [
+        "Source/Features/AuthenticationInterceptor.swift"
+      ],
+      "score": true,
+      "results": {
+        "lexical": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "Source/Features/AuthenticationInterceptor.swift"
+          ],
+          "latency_ms": 40,
+          "fallback": false,
+          "error": null
+        },
+        "semantic": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "Source/Features/AuthenticationInterceptor.swift",
+            "Source/Features/AuthenticationInterceptor.swift",
+            "Source/Features/AuthenticationInterceptor.swift",
+            "Source/Features/AuthenticationInterceptor.swift",
+            "Source/Features/AuthenticationInterceptor.swift",
+            "Source/Features/AuthenticationInterceptor.swift",
+            "Source/Features/AuthenticationInterceptor.swift",
+            "Source/Features/AuthenticationInterceptor.swift"
+          ],
+          "latency_ms": 83,
+          "fallback": false,
+          "error": null
+        },
+        "hybrid": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "Source/Features/AuthenticationInterceptor.swift",
+            "Source/Features/AuthenticationInterceptor.swift",
+            "Source/Features/AuthenticationInterceptor.swift",
+            "Source/Features/AuthenticationInterceptor.swift",
+            "Source/Features/AuthenticationInterceptor.swift",
+            "Source/Features/AuthenticationInterceptor.swift",
+            "Source/Features/AuthenticationInterceptor.swift",
+            "Source/Features/AuthenticationInterceptor.swift"
+          ],
+          "latency_ms": 99,
+          "fallback": false,
+          "error": null
+        }
+      },
+      "outcome": "tie"
+    },
+    {
+      "id": "cobra-command-execute",
+      "repo": "cobra",
+      "language": "Go",
+      "category": "implementation",
+      "query": "where does a command execute with context and traverse subcommands",
+      "intent": "Find command execution entry points.",
+      "expected_any": [
+        "command.go"
+      ],
+      "score": true,
+      "results": {
+        "lexical": {
+          "ok": true,
+          "rank": null,
+          "hits": [],
+          "latency_ms": 21,
+          "fallback": false,
+          "error": null
+        },
+        "semantic": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "command.go",
+            "command.go",
+            "command.go",
+            "command.go",
+            "command.go",
+            "command.go",
+            "command.go",
+            "command.go"
+          ],
+          "latency_ms": 622,
+          "fallback": false,
+          "error": null
+        },
+        "hybrid": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "command.go",
+            "command.go",
+            "command.go",
+            "command.go",
+            "command.go",
+            "command.go",
+            "command.go",
+            "command.go"
+          ],
+          "latency_ms": 90,
+          "fallback": false,
+          "error": null
+        }
+      },
+      "outcome": "semantic_win"
+    },
+    {
+      "id": "cobra-flag-completion",
+      "repo": "cobra",
+      "language": "Go",
+      "category": "implementation",
+      "query": "where are custom flag completion functions registered",
+      "intent": "Find flag completion registration.",
+      "expected_any": [
+        "completions.go"
+      ],
+      "score": true,
+      "results": {
+        "lexical": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "completions.go"
+          ],
+          "latency_ms": 339,
+          "fallback": false,
+          "error": null
+        },
+        "semantic": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "completions.go",
+            "completions.go",
+            "completions.go",
+            "completions.go",
+            "completions.go",
+            "completions.go",
+            "completions.go",
+            "completions.go"
+          ],
+          "latency_ms": 84,
+          "fallback": false,
+          "error": null
+        },
+        "hybrid": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "completions.go",
+            "bash_completions.go",
+            "completions.go",
+            "completions.go",
+            "shell_completions.go",
+            "shell_completions.go",
+            "completions.go",
+            "completions.go"
+          ],
+          "latency_ms": 1032,
+          "fallback": false,
+          "error": null
+        }
+      },
+      "outcome": "tie"
+    },
+    {
+      "id": "sinatra-route-dispatch",
+      "repo": "sinatra",
+      "language": "Ruby",
+      "category": "concept",
+      "query": "where are matching routes processed and dispatched with filters",
+      "intent": "Find Sinatra route dispatch.",
+      "expected_any": [
+        "lib/sinatra/base.rb"
+      ],
+      "score": true,
+      "results": {
+        "lexical": {
+          "ok": true,
+          "rank": 4,
+          "hits": [
+            "README.md",
+            "README.md",
+            "README.md",
+            "lib/sinatra/base.rb",
+            "lib/sinatra/base.rb",
+            "lib/sinatra/base.rb",
+            "README.md",
+            "sinatra-contrib/lib/sinatra/multi_route.rb"
+          ],
+          "latency_ms": 27,
+          "fallback": false,
+          "error": null
+        },
+        "semantic": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "lib/sinatra/base.rb",
+            "lib/sinatra/base.rb",
+            "lib/sinatra/base.rb",
+            "lib/sinatra/base.rb",
+            "lib/sinatra/base.rb",
+            "lib/sinatra/base.rb",
+            "lib/sinatra/base.rb",
+            "lib/sinatra/base.rb"
+          ],
+          "latency_ms": 82,
+          "fallback": false,
+          "error": null
+        },
+        "hybrid": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "lib/sinatra/base.rb",
+            "lib/sinatra/base.rb",
+            "lib/sinatra/base.rb",
+            "lib/sinatra/base.rb",
+            "sinatra-contrib/lib/sinatra/respond_with.rb",
+            "rack-protection/lib/rack/protection/authenticity_token.rb",
+            "rack-protection/lib/rack/protection/authenticity_token.rb",
+            "README.md"
+          ],
+          "latency_ms": 90,
+          "fallback": false,
+          "error": null
+        }
+      },
+      "outcome": "semantic_win"
+    },
+    {
+      "id": "sinatra-route-compile",
+      "repo": "sinatra",
+      "language": "Ruby",
+      "category": "implementation",
+      "query": "where are route patterns compiled into regular expressions",
+      "intent": "Find route compile logic.",
+      "expected_any": [
+        "lib/sinatra/base.rb"
+      ],
+      "score": true,
+      "results": {
+        "lexical": {
+          "ok": true,
+          "rank": null,
+          "hits": [
+            "CHANGELOG.md"
+          ],
+          "latency_ms": 45,
+          "fallback": false,
+          "error": null
+        },
+        "semantic": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "lib/sinatra/base.rb",
+            "lib/sinatra/base.rb",
+            "sinatra-contrib/lib/sinatra/namespace.rb",
+            "sinatra-contrib/lib/sinatra/namespace.rb",
+            "lib/sinatra/base.rb",
+            "sinatra-contrib/lib/sinatra/multi_route.rb",
+            "sinatra-contrib/lib/sinatra/reloader.rb",
+            "sinatra-contrib/lib/sinatra/namespace.rb"
+          ],
+          "latency_ms": 85,
+          "fallback": false,
+          "error": null
+        },
+        "hybrid": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "lib/sinatra/base.rb",
+            "lib/sinatra/base.rb",
+            "lib/sinatra/base.rb",
+            "lib/sinatra/base.rb",
+            "sinatra-contrib/lib/sinatra/multi_route.rb",
+            "lib/sinatra/base.rb",
+            "lib/sinatra/base.rb",
+            "sinatra-contrib/lib/sinatra/multi_route.rb"
+          ],
+          "latency_ms": 85,
+          "fallback": false,
+          "error": null
+        }
+      },
+      "outcome": "semantic_win"
+    },
+    {
+      "id": "nlohmann-json-pointer",
+      "repo": "nlohmann-json",
+      "language": "C++",
+      "category": "concept",
+      "query": "where are json pointer tokens parsed and resolved",
+      "intent": "Find json_pointer implementation.",
+      "expected_any": [
+        "include/nlohmann/detail/json_pointer.hpp"
+      ],
+      "score": true,
+      "results": {
+        "lexical": {
+          "ok": true,
+          "rank": null,
+          "hits": [
+            "single_include/nlohmann/json.hpp"
+          ],
+          "latency_ms": 385,
+          "fallback": false,
+          "error": null
+        },
+        "semantic": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "include/nlohmann/detail/json_pointer.hpp",
+            "docs/mkdocs/docs/examples/parse__pointers.cpp",
+            "docs/mkdocs/docs/examples/json_pointer__parent_pointer.cpp",
+            "docs/mkdocs/docs/examples/json_pointer__parent_pointer.cpp",
+            "docs/mkdocs/docs/examples/json_pointer.cpp",
+            "docs/mkdocs/docs/examples/json_pointer.cpp",
+            "include/nlohmann/detail/json_pointer.hpp",
+            "docs/mkdocs/docs/examples/json_pointer__parent_pointer.cpp"
+          ],
+          "latency_ms": 90,
+          "fallback": false,
+          "error": null
+        },
+        "hybrid": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "include/nlohmann/detail/json_pointer.hpp",
+            "include/nlohmann/detail/json_pointer.hpp",
+            "single_include/nlohmann/json.hpp",
+            "docs/mkdocs/docs/api/json_pointer/parent_pointer.md",
+            "include/nlohmann/detail/json_pointer.hpp",
+            "docs/mkdocs/docs/api/operator_literal_json_pointer.md",
+            "include/nlohmann/detail/json_pointer.hpp",
+            "include/nlohmann/detail/json_pointer.hpp"
+          ],
+          "latency_ms": 97,
+          "fallback": false,
+          "error": null
+        }
+      },
+      "outcome": "semantic_win"
+    },
+    {
+      "id": "nlohmann-binary-reader",
+      "repo": "nlohmann-json",
+      "language": "C++",
+      "category": "implementation",
+      "query": "where are cbor msgpack and ubjson binary formats read",
+      "intent": "Find binary reader.",
+      "expected_any": [
+        "include/nlohmann/detail/input/binary_reader.hpp"
+      ],
+      "score": true,
+      "results": {
+        "lexical": {
+          "ok": true,
+          "rank": null,
+          "hits": [
+            "README.md"
+          ],
+          "latency_ms": 53,
+          "fallback": false,
+          "error": null
+        },
+        "semantic": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "include/nlohmann/detail/input/binary_reader.hpp",
+            "single_include/nlohmann/json.hpp",
+            "include/nlohmann/json.hpp",
+            "single_include/nlohmann/json.hpp",
+            "include/nlohmann/detail/input/binary_reader.hpp",
+            "single_include/nlohmann/json.hpp",
+            "include/nlohmann/detail/input/binary_reader.hpp",
+            "include/nlohmann/json.hpp"
+          ],
+          "latency_ms": 86,
+          "fallback": false,
+          "error": null
+        },
+        "hybrid": {
+          "ok": true,
+          "rank": 1,
+          "hits": [
+            "include/nlohmann/detail/input/binary_reader.hpp",
+            "include/nlohmann/detail/input/binary_reader.hpp",
+            "include/nlohmann/detail/input/binary_reader.hpp",
+            "include/nlohmann/detail/input/binary_reader.hpp",
+            "include/nlohmann/detail/input/binary_reader.hpp",
+            "README.md",
+            "README.md",
+            "docs/mkdocs/docs/features/binary_formats/index.md"
+          ],
+          "latency_ms": 96,
+          "fallback": false,
+          "error": null
+        }
+      },
+      "outcome": "semantic_win"
+    },
+    {
+      "id": "nlohmann-sax-parser",
+      "repo": "nlohmann-json",
+      "language": "C++",
+      "category": "concept",
+      "query": "where does the parser emit sax events while reading json",
+      "intent": "Find parser/SAX implementation.",
+      "expected_any": [
+        "include/nlohmann/detail/input/parser.hpp"
+      ],
+      "score": true,
+      "results": {
+        "lexical": {
+          "ok": true,
+          "rank": null,
+          "hits": [
+            "src/modules/json.cppm"
+          ],
+          "latency_ms": 29,
+          "fallback": false,
+          "error": null
+        },
+        "semantic": {
+          "ok": true,
+          "rank": null,
+          "hits": [
+            "docs/mkdocs/docs/examples/sax_parse.cpp",
+            "docs/mkdocs/docs/examples/sax_parse__binary.cpp",
+            "include/nlohmann/json.hpp",
+            "include/nlohmann/json.hpp",
+            "single_include/nlohmann/json.hpp",
+            "single_include/nlohmann/json.hpp",
+            "include/nlohmann/json.hpp",
+            "include/nlohmann/json.hpp"
+          ],
+          "latency_ms": 86,
+          "fallback": false,
+          "error": null
+        },
+        "hybrid": {
+          "ok": true,
+          "rank": null,
+          "hits": [
+            "include/nlohmann/detail/input/json_sax.hpp",
+            "include/nlohmann/detail/input/json_sax.hpp",
+            "include/nlohmann/detail/input/json_sax.hpp",
+            "include/nlohmann/detail/input/json_sax.hpp",
+            "include/nlohmann/detail/input/json_sax.hpp",
+            "single_include/nlohmann/json.hpp",
+            "include/nlohmann/detail/input/json_sax.hpp",
+            "single_include/nlohmann/json.hpp"
+          ],
+          "latency_ms": 93,
+          "fallback": false,
+          "error": null
+        }
+      },
+      "outcome": "tie"
+    },
+    {
+      "id": "newtonsoft-fallback-serializer",
+      "repo": "newtonsoft-json",
+      "language": "C#",
+      "category": "fallback",
+      "query": "where does json serializer deserialize through an internal reader",
+      "intent": "Audit semantic fallback on a zero-vector C# workspace.",
+      "expected_any": [
+        "Src/Newtonsoft.Json/JsonSerializer.cs",
+        "Src/Newtonsoft.Json/Serialization/JsonSerializerInternalReader.cs"
+      ],
+      "score": false,
+      "results": {
+        "lexical": {
+          "ok": true,
+          "rank": null,
+          "hits": [],
+          "latency_ms": 26,
+          "fallback": false,
+          "error": null
+        },
+        "semantic": {
+          "ok": true,
+          "rank": null,
+          "hits": [
+            "azure-pipelines.yml",
+            "azure-pipelines.yml",
+            "azure-pipelines.yml",
+            "azure-pipelines.yml",
+            "azure-pipelines.yml",
+            "azure-pipelines.yml",
+            "azure-pipelines.yml",
+            "azure-pipelines.yml"
+          ],
+          "latency_ms": 79,
+          "fallback": false,
+          "error": null
+        },
+        "hybrid": {
+          "ok": true,
+          "rank": null,
+          "hits": [
+            "azure-pipelines.yml",
+            "azure-pipelines.yml",
+            "azure-pipelines.yml",
+            "azure-pipelines.yml",
+            "azure-pipelines.yml",
+            "azure-pipelines.yml",
+            "azure-pipelines.yml",
+            "azure-pipelines.yml"
+          ],
+          "latency_ms": 76,
+          "fallback": false,
+          "error": null
+        }
+      }
+    },
+    {
+      "id": "jq-fallback-compile",
+      "repo": "jq",
+      "language": "C",
+      "category": "fallback",
+      "query": "where does jq compile a program string into bytecode",
+      "intent": "Audit semantic fallback on a zero-vector C workspace.",
+      "expected_any": [
+        "src/execute.c",
+        "src/compile.c"
+      ],
+      "score": false,
+      "results": {
+        "lexical": {
+          "ok": true,
+          "rank": 2,
+          "hits": [
+            "src/jq.h",
+            "src/execute.c",
+            "docs/content/manual/dev/manual.yml",
+            "docs/content/manual/v1.3/manual.yml",
+            "docs/content/manual/v1.4/manual.yml",
+            "docs/content/manual/v1.5/manual.yml",
+            "docs/content/manual/v1.6/manual.yml",
+            "docs/content/manual/v1.7/manual.yml"
+          ],
+          "latency_ms": 37,
+          "fallback": false,
+          "error": null
+        },
+        "semantic": {
+          "ok": true,
+          "rank": 2,
+          "hits": [
+            "src/jq.h",
+            "src/execute.c",
+            "src/jq.h",
+            "src/execute.c",
+            "src/main.c",
+            "src/main.c",
+            "src/execute.c",
+            "src/execute.c"
+          ],
+          "latency_ms": 97,
+          "fallback": false,
+          "error": null
+        },
+        "hybrid": {
+          "ok": true,
+          "rank": 2,
+          "hits": [
+            "src/jq.h",
+            "src/execute.c",
+            "docs/content/manual/dev/manual.yml",
+            "docs/content/manual/v1.3/manual.yml",
+            "docs/content/manual/v1.4/manual.yml",
+            "docs/content/manual/v1.5/manual.yml",
+            "docs/content/manual/v1.6/manual.yml",
+            "docs/content/manual/v1.7/manual.yml"
+          ],
+          "latency_ms": 89,
+          "fallback": false,
+          "error": null
+        }
+      }
+    }
+  ]
+}

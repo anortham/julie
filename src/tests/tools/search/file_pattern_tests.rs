@@ -238,6 +238,7 @@ mod boundary_normalization {
             limit: 20,
             context_lines: Some(0),
             exclude_tests: None,
+            backend: None,
             workspace: Some("primary".to_string()),
             return_format: "full".to_string(),
         };
@@ -360,6 +361,7 @@ mod boundary_normalization {
             limit: 20,
             context_lines: Some(0),
             exclude_tests: None,
+            backend: None,
             workspace: Some("primary".to_string()),
             return_format: "full".to_string(),
         };
@@ -419,6 +421,7 @@ mod boundary_normalization {
             limit: 20,
             context_lines: None,
             exclude_tests: None,
+            backend: None,
             workspace: Some("primary".to_string()),
             return_format: "full".to_string(),
         };

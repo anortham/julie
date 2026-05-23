@@ -21,7 +21,7 @@ fast_search(query="<symbol_name>")
 deep_dive(symbol="<symbol_name>", context_file="<partial_file_path>", depth="overview")
 ```
 
-Use `context_file` when the name is ambiguous. `blast_radius(symbol_ids=[...])` is the tightest seed mode, but only use it when another Julie result already gave you concrete symbol IDs. If all you have is a definition file, use `file_paths=[...]`.
+Use `context_file` when the name is ambiguous. If the target is described conceptually rather than named exactly, try `fast_search(query="<concept>", backend="semantic")` or `backend="hybrid"` to find candidate symbols. Semantic/hybrid `fast_search` results are symbol-only; use explicit lexical for file paths and pure lexical comparison. Default `fast_search` may show labeled semantic fallback candidates only after an identifier-like unscoped lexical zero-hit. `blast_radius(symbol_ids=[...])` is the tightest seed mode, but only use it when another Julie result already gave you concrete symbol IDs. If all you have is a definition file, use `file_paths=[...]`.
 
 ### Step 2: One-shot impact via blast_radius
 

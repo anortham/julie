@@ -426,7 +426,7 @@ pub fn rerank_unified(query: &ParsedQuery, candidates: &[Candidate]) -> Vec<Rank
                     if c.is_file_doc {
                         score += PHRASE_FILE_DOC_BOOST;
                     }
-                    if c.is_source_language {
+                    if c.is_source_language && role_allows_source_phrase_bonus(c.role.as_str()) {
                         score += PHRASE_SOURCE_LANG_BOOST;
                     }
                 }
@@ -494,4 +494,8 @@ pub fn rerank_unified(query: &ParsedQuery, candidates: &[Candidate]) -> Vec<Rank
     });
 
     ranked
+}
+
+fn role_allows_source_phrase_bonus(role: &str) -> bool {
+    !matches!(role, "docs" | "test" | "vendor" | "generated")
 }

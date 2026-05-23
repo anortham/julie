@@ -20,7 +20,9 @@ Run the exact search the user reported:
 fast_search(query="<original_query>", limit=20)
 ```
 
-`fast_search` returns mixed-kind results; each hit carries `kind`. Note what comes back, the top results, their scores, and what's missing.
+`fast_search` returns mixed-kind results; each hit carries `kind`. Note what comes back, the top results, their scores, and what's missing. If the default response says "No lexical results. Showing semantic fallback candidates.", treat that as a semantic rescue, not a lexical hit.
+
+If the report involves backend behavior, run the exact requested backend and compare `backend="lexical"`, `backend="semantic"`, and `backend="hybrid"`. Explicit lexical stays pure lexical for bakeoffs; semantic and hybrid are symbol-only concept search.
 
 ### Step 2: Verify the Expected Symbol Exists
 

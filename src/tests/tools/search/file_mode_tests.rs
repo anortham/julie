@@ -141,6 +141,7 @@ async fn fast_search_unified_returns_file_hits_for_filename_query() {
         limit: 10,
         context_lines: None,
         exclude_tests: None,
+        backend: None,
         workspace: Some("primary".to_string()),
         return_format: "full".to_string(),
     }
@@ -186,6 +187,7 @@ async fn fast_search_file_pattern_scopes_results() {
         limit: 5,
         context_lines: None,
         exclude_tests: None,
+        backend: None,
         workspace: Some("primary".to_string()),
         return_format: "locations".to_string(),
     }
@@ -211,6 +213,105 @@ async fn fast_search_file_pattern_scopes_results() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn filename_locations_preserve_exact_file_rank_instead_of_line_mode_mentions() {
+    let temp_dir = TempDir::new().expect("tempdir");
+    let workspace_path = temp_dir.path().to_path_buf();
+    fs::create_dir_all(workspace_path.join("lib")).unwrap();
+
+    fs::write(
+        workspace_path.join("lib/application.js"),
+        "function createApplication() {\n  return {};\n}\n",
+    )
+    .unwrap();
+    fs::write(
+        workspace_path.join("lib/response.js"),
+        "// application.js application.js application.js\nfunction sendResponse() {}\n",
+    )
+    .unwrap();
+
+    let handler = initialize_indexed_handler(&workspace_path).await;
+
+    let response = FastSearchTool {
+        query: "application.js".to_string(),
+        language: None,
+        file_pattern: None,
+        limit: 5,
+        context_lines: None,
+        exclude_tests: None,
+        backend: None,
+        workspace: Some("primary".to_string()),
+        return_format: "locations".to_string(),
+    }
+    .execute_with_trace(&handler)
+    .await
+    .expect("file search should not error")
+    .result;
+
+    let output = extract_text_from_result(&response);
+    let application_pos = output
+        .find("lib/application.js")
+        .expect("exact filename hit should be rendered");
+    if let Some(response_pos) = output.find("lib/response.js") {
+        assert!(
+            application_pos < response_pos,
+            "locations mode should preserve unified exact-file ranking; got:\n{output}"
+        );
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn locations_scope_rescue_labels_out_of_scope_results() {
+    let temp_dir = TempDir::new().expect("tempdir");
+    let workspace_path = temp_dir.path().to_path_buf();
+    fs::create_dir_all(workspace_path.join("src/ui")).unwrap();
+    fs::create_dir_all(workspace_path.join("docs")).unwrap();
+
+    fs::write(workspace_path.join("src/ui/view.rs"), "pub fn view() {}\n").unwrap();
+    fs::write(
+        workspace_path.join("docs/search.md"),
+        "scope rescue marker lives only outside the requested source tree\n",
+    )
+    .unwrap();
+
+    let handler = initialize_indexed_handler(&workspace_path).await;
+
+    let run = FastSearchTool {
+        query: "scope rescue marker".to_string(),
+        language: None,
+        file_pattern: Some("src/ui/**".to_string()),
+        limit: 5,
+        context_lines: None,
+        exclude_tests: None,
+        backend: None,
+        workspace: Some("primary".to_string()),
+        return_format: "locations".to_string(),
+    }
+    .execute_with_trace(&handler)
+    .await
+    .expect("search should not error");
+
+    let execution = run
+        .execution
+        .expect("execute_with_trace should populate execution");
+    let output = extract_text_from_result(&run.result);
+
+    assert!(
+        execution.trace.scope_relaxed,
+        "out-of-scope miss should trigger scope rescue"
+    );
+    assert!(
+        output.starts_with(
+            "NOTE: 0 matches within file_pattern=src/ui/**. Showing 1 results from the full codebase (outside requested scope).",
+        ),
+        "locations scope rescue should lead with scope label, got:\n{output}"
+    );
+    assert!(
+        output.contains("docs/search.md"),
+        "rescued output should still show out-of-scope result, got:\n{output}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn request_level_whitespace_separated_globs_return_syntax_hint() {
     let handler = JulieServerHandler::new_for_test()
         .await
@@ -225,6 +326,7 @@ async fn request_level_whitespace_separated_globs_return_syntax_hint() {
         limit: 10,
         context_lines: None,
         exclude_tests: None,
+        backend: None,
         workspace: Some("primary".to_string()),
         return_format: "full".to_string(),
     }

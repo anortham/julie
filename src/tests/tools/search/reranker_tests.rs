@@ -129,6 +129,24 @@ fn test_reranker_score_phrase_boost_source_language_bonus() {
     assert!((s - expected).abs() < 1e-3, "got {s}");
 }
 
+#[test]
+fn test_reranker_source_language_phrase_bonus_requires_non_docs_role() {
+    let c = Candidate::builder()
+        .title("zzz")
+        .path("docs/Classes/Foo.html")
+        .body("alpha beta gamma delta")
+        .role("docs")
+        .is_file_doc(true)
+        .is_source_language(true)
+        .build();
+    let s = score_query("alpha beta gamma delta", c);
+    let expected = 4.0 * BODY_TERM_BOOST + PHRASE_BOOST + PHRASE_FILE_DOC_BOOST;
+    assert!(
+        (s - expected).abs() < 1e-3,
+        "docs-role candidates must not receive source-language phrase boost; got {s}, expected {expected}"
+    );
+}
+
 // ----- Intent boosts -----
 
 #[test]

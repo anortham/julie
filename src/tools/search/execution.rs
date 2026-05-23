@@ -1,11 +1,18 @@
 use std::cmp::Ordering;
+use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::Result;
 
+use crate::embeddings::EmbeddingProvider;
+use crate::extractors::{Symbol, SymbolKind};
 use crate::handler::JulieServerHandler;
+use crate::search::{SearchFilter, SymbolSearchResult};
 
+use super::backend::{ResolvedSearchBackend, SearchBackend};
 use super::hint_formatter;
 use super::line_mode;
+use super::nl_embeddings;
 use super::query;
 use super::text_search;
 use super::trace::{
@@ -19,6 +26,7 @@ pub struct SearchExecutionParams<'a> {
     pub limit: u32,
     pub context_lines: Option<u32>,
     pub exclude_tests: Option<bool>,
+    pub backend: ResolvedSearchBackend,
 }
 
 #[derive(Debug, Clone)]
@@ -61,6 +69,7 @@ pub async fn execute_search(
         limit: params.limit,
         context_lines: params.context_lines,
         exclude_tests: params.exclude_tests,
+        backend: params.backend,
     };
 
     // T8 cutover: all traffic routes through the unified path.
@@ -107,6 +116,33 @@ pub async fn execute_search_unified(
         &normalized_file_pattern,
         params.exclude_tests,
     );
+    let backend_fallback = if params.backend.value != SearchBackend::Lexical {
+        if let Some(provider) =
+            nl_embeddings::wait_for_embedding_provider_settled(handler, Duration::from_secs(3))
+                .await
+        {
+            if workspaces_have_embeddings(workspaces, handler).await? {
+                let mut execution = run_symbol_backend_pass(
+                    params.backend.value,
+                    params.query,
+                    params.language,
+                    normalized_file_pattern.as_deref(),
+                    params.limit,
+                    effective_exclude_tests,
+                    workspaces,
+                    handler,
+                    provider,
+                )
+                .await?;
+                execution.trace.or_disjunction_detected =
+                    query::clean_or_disjunction_terms(params.query).is_some();
+                return Ok(execution);
+            }
+        }
+        params.backend.explicit
+    } else {
+        false
+    };
 
     // First pass: run the unified search with the caller's file_pattern.
     let first = run_unified_pass(
@@ -133,6 +169,7 @@ pub async fn execute_search_unified(
     // signal regardless of hit count).
     execution.trace.or_disjunction_detected =
         query::clean_or_disjunction_terms(params.query).is_some();
+    execution.trace.backend_fallback = backend_fallback;
 
     // Zero-hit attribution (first filter wins): file_pattern drops candidates
     // before test-exclude does, so attribute to FilePatternFiltered when the
@@ -190,6 +227,34 @@ pub async fn execute_search_unified(
         }
     }
 
+    if execution.hits.is_empty()
+        && should_try_semantic_zero_hit_fallback(&params, normalized_file_pattern.as_deref())
+        && let Some(provider) = handler.embedding_provider().await
+        && workspaces_have_embeddings(workspaces, handler).await?
+    {
+        let mut semantic_execution = run_symbol_backend_pass(
+            SearchBackend::Semantic,
+            params.query,
+            params.language,
+            None,
+            params.limit,
+            effective_exclude_tests,
+            workspaces,
+            handler,
+            provider,
+        )
+        .await?;
+        if !semantic_execution.hits.is_empty() {
+            semantic_execution.trace.strategy_id = "fast_search_semantic_fallback".to_string();
+            semantic_execution.trace.or_disjunction_detected =
+                execution.trace.or_disjunction_detected;
+            semantic_execution
+                .trace
+                .refresh_hits(&semantic_execution.hits);
+            return Ok(semantic_execution);
+        }
+    }
+
     // Persist surviving zero-hit attribution on the trace.
     execution.trace.zero_hit_reason = zero_hit_reason;
     execution.trace.file_pattern_diagnostic = file_pattern_diagnostic.clone();
@@ -216,6 +281,18 @@ pub async fn execute_search_unified(
     Ok(execution)
 }
 
+fn should_try_semantic_zero_hit_fallback(
+    params: &SearchExecutionParams<'_>,
+    normalized_file_pattern: Option<&str>,
+) -> bool {
+    params.backend.value == SearchBackend::Lexical
+        && !params.backend.explicit
+        && normalized_file_pattern.is_none()
+        && !params.query.trim().is_empty()
+        && !query::looks_like_file_or_path_query(params.query)
+        && query::looks_like_identifier_probe_query(params.query)
+}
+
 /// Inner helper: run the unified Tantivy/SQLite search across all workspaces
 /// with a single `file_pattern` value, apply test-exclude filtering, and
 /// return both the hits and the pre-filter counts the caller needs to
@@ -233,6 +310,187 @@ struct UnifiedPassResult {
     /// the test-exclude stage.  Used to attribute TestFiltered when this is
     /// non-zero but the final hits vector is empty.
     pre_test_filter_total: usize,
+}
+
+async fn workspaces_have_embeddings(
+    workspaces: &[SearchExecutionWorkspace],
+    handler: &JulieServerHandler,
+) -> Result<bool> {
+    for workspace in workspaces {
+        let db = handler
+            .get_pooled_database_for_workspace(&workspace.workspace_id)
+            .await?;
+        let count = tokio::task::spawn_blocking(move || db.embedding_count()).await??;
+        if count > 0 {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn run_symbol_backend_pass(
+    backend: SearchBackend,
+    query: &str,
+    language: &Option<String>,
+    file_pattern: Option<&str>,
+    limit: u32,
+    effective_exclude_tests: bool,
+    workspaces: &[SearchExecutionWorkspace],
+    handler: &JulieServerHandler,
+    provider: Arc<dyn EmbeddingProvider>,
+) -> Result<SearchExecutionResult> {
+    let mut hits = Vec::new();
+    let mut relaxed = false;
+    let mut total_results = 0usize;
+    let limit_usize = limit.max(1) as usize;
+
+    for workspace in workspaces {
+        let filter = SearchFilter {
+            language: language.clone(),
+            kind: None,
+            file_pattern: file_pattern.map(str::to_string),
+            exclude_tests: effective_exclude_tests,
+        };
+        let db = handler
+            .get_pooled_database_for_workspace(&workspace.workspace_id)
+            .await?;
+        let search_index = if backend == SearchBackend::Hybrid {
+            handler
+                .get_search_index_for_workspace(&workspace.workspace_id)
+                .await?
+        } else {
+            None
+        };
+        let workspace_id = workspace.workspace_id.clone();
+        let query = query.to_string();
+        let provider = Arc::clone(&provider);
+
+        let (mut workspace_hits, workspace_relaxed, workspace_total) =
+            tokio::task::spawn_blocking(move || -> Result<(Vec<SearchHit>, bool, usize)> {
+                let symbol_results = match backend {
+                    SearchBackend::Semantic => run_semantic_symbol_search(
+                        &query,
+                        &filter,
+                        limit_usize,
+                        &db,
+                        provider.as_ref(),
+                    )?,
+                    SearchBackend::Hybrid => {
+                        let si_arc = search_index.ok_or_else(|| {
+                            anyhow::anyhow!(
+                                "Search index not initialized for workspace '{}'",
+                                workspace_id
+                            )
+                        })?;
+                        let index = si_arc
+                            .lock()
+                            .map_err(|e| anyhow::anyhow!("Search index lock error: {}", e))?;
+                        crate::search::hybrid::hybrid_search(
+                            &query,
+                            &filter,
+                            limit_usize,
+                            &index,
+                            &db,
+                            Some(provider.as_ref()),
+                            Some(crate::search::weights::SearchWeightProfile::fast_search()),
+                        )?
+                    }
+                    SearchBackend::Lexical => {
+                        unreachable!("lexical backend is handled by run_unified_pass")
+                    }
+                };
+                let total = symbol_results.results.len();
+                let hits = symbol_results
+                    .results
+                    .into_iter()
+                    .map(|result| symbol_result_to_hit(result, workspace_id.clone()))
+                    .collect();
+                Ok((hits, symbol_results.relaxed, total))
+            })
+            .await??;
+
+        hits.append(&mut workspace_hits);
+        relaxed |= workspace_relaxed;
+        total_results += workspace_total;
+    }
+
+    sort_hits_by_score_desc(&mut hits);
+    hits.truncate(limit_usize);
+
+    let strategy_id = match backend {
+        SearchBackend::Semantic => "fast_search_semantic",
+        SearchBackend::Hybrid => "fast_search_hybrid",
+        SearchBackend::Lexical => "search_unified",
+    };
+    Ok(SearchExecutionResult::new(
+        hits,
+        relaxed,
+        total_results,
+        strategy_id,
+        SearchExecutionKind::Definitions,
+    ))
+}
+
+fn run_semantic_symbol_search(
+    query: &str,
+    filter: &SearchFilter,
+    limit: usize,
+    db: &crate::database::SymbolDatabase,
+    provider: &dyn EmbeddingProvider,
+) -> Result<crate::search::SymbolSearchResults> {
+    let query_vector = provider.embed_query(query)?;
+    let knn_hits = db.knn_search(&query_vector, limit.saturating_mul(4).max(limit))?;
+    let mut results: Vec<_> = crate::search::hybrid::knn_to_search_results(&knn_hits, db)?
+        .into_iter()
+        .filter(|result| filter.matches_symbol_result(result))
+        .collect();
+    results.truncate(limit);
+
+    Ok(crate::search::SymbolSearchResults {
+        results,
+        relaxed: false,
+    })
+}
+
+fn symbol_result_to_hit(result: SymbolSearchResult, workspace: String) -> SearchHit {
+    let kind = SymbolKind::try_from_string(&result.kind).unwrap_or(SymbolKind::Variable);
+    SearchHit::from_symbol(
+        Symbol {
+            id: result.id,
+            name: result.name,
+            kind,
+            language: result.language,
+            file_path: result.file_path,
+            start_line: result.start_line,
+            start_column: 0,
+            end_line: 0,
+            end_column: 0,
+            start_byte: 0,
+            end_byte: 0,
+            signature: if result.signature.is_empty() {
+                None
+            } else {
+                Some(result.signature)
+            },
+            doc_comment: if result.doc_comment.is_empty() {
+                None
+            } else {
+                Some(result.doc_comment)
+            },
+            visibility: None,
+            parent_id: None,
+            metadata: None,
+            semantic_group: None,
+            confidence: Some(result.score),
+            code_context: None,
+            content_type: None,
+            body_span: None,
+            body_hash: None,
+            annotations: Vec::new(),
+        },
+        workspace,
+    )
 }
 
 #[allow(clippy::too_many_arguments)]

@@ -329,6 +329,7 @@ async fn run_baseline_async(
                 limit: search_limit as u32,
                 context_lines: None,
                 exclude_tests: case.exclude_tests,
+                backend: None,
                 workspace: Some(workspace_row.workspace_id.clone()),
                 return_format: "locations".to_string(),
             }

@@ -273,6 +273,32 @@ fn test_install_tracing_is_idempotent() {
         .expect("install_tracing on a second runtime context must not panic");
 }
 
+#[cfg(unix)]
+#[test]
+fn test_daemon_nofile_limit_raises_low_soft_limit_to_target() {
+    let infinity = libc::RLIM_INFINITY as u64;
+
+    assert_eq!(
+        crate::daemon::fd_limit::desired_nofile_soft_limit(256, infinity, 4096, infinity),
+        Some(4096)
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn test_daemon_nofile_limit_respects_finite_hard_limit() {
+    let infinity = libc::RLIM_INFINITY as u64;
+
+    assert_eq!(
+        crate::daemon::fd_limit::desired_nofile_soft_limit(256, 1024, 4096, infinity),
+        Some(1024)
+    );
+    assert_eq!(
+        crate::daemon::fd_limit::desired_nofile_soft_limit(8192, 8192, 4096, infinity),
+        None
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Singleton gate (`acquire_or_yield_to_existing_daemon`) — startup thundering
 // herd fix. The helper is the first gate in `run_daemon`: it acquires the

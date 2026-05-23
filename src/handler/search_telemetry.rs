@@ -31,6 +31,7 @@ pub(crate) fn fast_search_metadata(
             "original_zero_hit_reason": result.trace.original_zero_hit_reason,
             "scope_rescue_count": result.trace.scope_rescue_count,
             "or_disjunction_detected": result.trace.or_disjunction_detected,
+            "backend_fallback": result.trace.backend_fallback,
             "kind_distribution": kind_distribution,
         })
     });

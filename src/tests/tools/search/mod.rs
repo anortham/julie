@@ -2,6 +2,7 @@
 // These were previously inline tests that have been moved to follow project standards
 
 mod annotation_search_tests;
+mod backend_param_tests;
 mod c3_enriched_schema_tests;
 mod compat_marker_v4_test;
 mod content_scoring_tests;

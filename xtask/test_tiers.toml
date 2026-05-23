@@ -183,11 +183,14 @@ notes = "text search coverage"
 commands = ["cargo nextest run --lib tests::tools::text_search_tantivy -- --skip search_quality"]
 
 [buckets.tools-search-hybrid]
-expected_seconds = 25
-timeout_seconds = 90
+expected_seconds = 40
+timeout_seconds = 120
 scope_label = "tooling"
 notes = "hybrid search coverage"
-commands = ["cargo nextest run --lib tests::tools::hybrid_search_tests -- --skip search_quality"]
+commands = [
+  "cargo nextest run --lib tests::tools::hybrid_search_tests -- --skip search_quality",
+  "cargo nextest run --lib tests::tools::search::backend_param_tests -- --skip search_quality",
+]
 
 [buckets.tools-search-query]
 expected_seconds = 8

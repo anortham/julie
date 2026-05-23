@@ -363,7 +363,7 @@ mod tests {
 
         let tool: FastSearchTool = deserialize_params("fast_search", params).unwrap();
         assert_eq!(tool.query, "hello");
-        assert_eq!(tool.limit, 10); // default
+        assert_eq!(tool.limit, 6); // default
         assert_eq!(tool.language, None);
         assert_eq!(tool.file_pattern, None);
         assert_eq!(tool.exclude_tests, None);

@@ -374,10 +374,11 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
         (
             "tools-search-hybrid",
             ExpectedBucket {
-                expected_seconds: 25,
-                timeout_seconds: 90,
+                expected_seconds: 40,
+                timeout_seconds: 120,
                 commands: &[
                     "cargo nextest run --lib tests::tools::hybrid_search_tests -- --skip search_quality",
+                    "cargo nextest run --lib tests::tools::search::backend_param_tests -- --skip search_quality",
                 ],
             },
         ),

@@ -10,7 +10,7 @@
 
 ## Tools
 
-- `fast_search`: Find code by text. Returns mixed-kind results; each hit carries `kind`. `file_pattern` scopes searches to matching paths, such as `src/**/*.rs`, `tests/**`, or a specific file. For symbol structure within a specific file, prefer `get_symbols(file_path=...)` over `file_pattern`.
+- `fast_search`: Find code by text. Returns mixed-kind results; each hit carries `kind`. `file_pattern` scopes searches to matching paths, such as `src/**/*.rs`, `tests/**`, or a specific file. Optional `backend`: omit for normal search; if lexical returns zero hits on an identifier-like unscoped query and embeddings are ready, Julie may show labeled semantic fallback candidates. Use explicit `backend="lexical"` for pure lexical/file/path searches and bakeoffs. Use `backend="semantic"` or `backend="hybrid"` for concept-to-symbol discovery. Semantic/hybrid backends return symbol-backed hits only and fall back to lexical with a note if embeddings are unavailable. For symbol structure within a specific file, prefer `get_symbols(file_path=...)` over `file_pattern`.
 - `get_symbols`: File structure without reading full content. Use `target` + `mode="minimal"` to extract one symbol.
 - `deep_dive`: Investigate a symbol: definition, callers, callees, children, types. Always use before modifying.
 - `fast_refs`: All references to a symbol. Required before any change. Use `reference_kind` to filter.
@@ -74,7 +74,7 @@ Subagents (Agent tool) do NOT receive Julie's session guidance. When dispatching
 
     ## Code Intelligence Tools (use instead of Grep/Glob/Read)
     You have Julie MCP tools. Use them instead of basic Glob/Grep/Read chains:
-    - fast_search(query) returns mixed-kind results; each hit carries `kind`. file_pattern scopes searches; for symbol structure in one file, use get_symbols(file_path=...)
+    - fast_search(query, backend?) returns mixed-kind results by default. Omit backend for normal search with labeled semantic fallback on identifier-like zero-hit queries when embeddings are ready. Use explicit backend="lexical" for pure lexical/file/path search and bakeoffs; backend="semantic" or "hybrid" for concept-to-symbol discovery (symbol-backed hits only). file_pattern scopes searches; for symbol structure in one file, use get_symbols(file_path=...)
     - get_symbols(file_path) to see file structure before reading
     - deep_dive(symbol) to understand a symbol before modifying it
     - fast_refs(symbol) to find all references (REQUIRED before any change)

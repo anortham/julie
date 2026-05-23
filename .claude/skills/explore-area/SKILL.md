@@ -3,7 +3,7 @@ name: explore-area
 description: Orient on a new codebase area using get_context for token-budgeted exploration. Use when the user asks "what does this module do", "explain this part", or wants to understand an unfamiliar area before making changes.
 user-invocable: true
 arguments: "<query or concept>"
-allowed-tools: mcp__julie__get_context, mcp__julie__deep_dive, mcp__julie__get_symbols, mcp__julie__call_path, mcp__julie__spillover_get, mcp__julie__manage_workspace
+allowed-tools: mcp__julie__get_context, mcp__julie__fast_search, mcp__julie__deep_dive, mcp__julie__get_symbols, mcp__julie__call_path, mcp__julie__spillover_get, mcp__julie__manage_workspace
 ---
 
 # Explore Area
@@ -19,6 +19,8 @@ get_context(query="<area, concept, or module name>")
 ```
 
 Conceptual queries work well here, not just symbol names. For example, `get_context(query="error handling and retries")` will find relevant symbols by meaning via semantic search.
+
+For a quick concept-to-symbol probe before expanding context, use `fast_search(query="...", backend="semantic")` or `backend="hybrid"`. Those backends return symbol-backed hits only; use explicit `backend="lexical"` for file names, path fragments, or pure lexical comparison. Omitting `backend` is normal search and may show a labeled semantic fallback only when an identifier-like unscoped lexical query returns zero hits and embeddings are ready.
 
 This returns:
 - **Pivots**: The most relevant symbols with full code bodies

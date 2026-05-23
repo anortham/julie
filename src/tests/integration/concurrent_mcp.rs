@@ -329,6 +329,7 @@ mod tests {
                     limit: 5,
                     context_lines: Some(0),
                     exclude_tests: None,
+                    backend: None,
                     workspace: None,
                     return_format: "locations".to_string(),
                 }

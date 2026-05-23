@@ -108,6 +108,7 @@ fn search_tool(query: &str, _search_target: &str) -> FastSearchTool {
         limit: 10,
         context_lines: Some(0),
         exclude_tests: None,
+        backend: None,
         workspace: Some("primary".to_string()),
         return_format: "full".to_string(),
     }
@@ -562,6 +563,28 @@ fn test_fast_search_metadata_serializes_or_disjunction_detection() {
     let metadata = search_telemetry::fast_search_metadata(&params, Some(&execution));
 
     assert_eq!(metadata["trace"]["or_disjunction_detected"], true);
+}
+
+#[test]
+fn test_fast_search_metadata_serializes_backend_fallback() {
+    let params = FastSearchTool {
+        query: "lexical_backend_marker".to_string(),
+        limit: 10,
+        backend: Some(crate::tools::search::SearchBackend::Semantic),
+        ..Default::default()
+    };
+    let mut execution = SearchExecutionResult::new(
+        Vec::new(),
+        false,
+        0,
+        "fast_search_unified",
+        SearchExecutionKind::Definitions,
+    );
+    execution.trace.backend_fallback = true;
+
+    let metadata = search_telemetry::fast_search_metadata(&params, Some(&execution));
+
+    assert_eq!(metadata["trace"]["backend_fallback"], true);
 }
 
 #[tokio::test]

@@ -352,6 +352,7 @@ pub struct SearchTrace {
     pub original_zero_hit_reason: Option<ZeroHitReason>,
     pub scope_rescue_count: usize,
     pub or_disjunction_detected: bool,
+    pub backend_fallback: bool,
 }
 
 impl SearchTrace {
@@ -374,6 +375,7 @@ impl SearchTrace {
             original_zero_hit_reason: None,
             scope_rescue_count: 0,
             or_disjunction_detected: false,
+            backend_fallback: false,
         }
     }
 

@@ -1,0 +1,341 @@
+[settings]
+binary = "./target/release/julie-server"
+limit = 8
+return_format = "locations"
+exclude_tests = true
+backends = ["lexical", "semantic", "hybrid"]
+
+[[repos]]
+name = "julie"
+path = "/Users/murphy/source/julie"
+language = "Rust"
+notes = "Julie itself. Vector-ready and central to the product decision."
+
+[[repos]]
+name = "eros"
+path = "/Users/murphy/source/eros"
+language = "Python"
+notes = "Commercial successor/superset. Useful to compare where heavier intelligence belongs."
+
+[[repos]]
+name = "express"
+path = "/Users/murphy/source/express"
+language = "JavaScript"
+
+[[repos]]
+name = "flask"
+path = "/Users/murphy/source/flask"
+language = "Python"
+
+[[repos]]
+name = "gson"
+path = "/Users/murphy/source/gson"
+language = "Java"
+
+[[repos]]
+name = "moshi"
+path = "/Users/murphy/source/moshi"
+language = "Kotlin/Java"
+
+[[repos]]
+name = "alamofire"
+path = "/Users/murphy/source/Alamofire"
+language = "Swift"
+
+[[repos]]
+name = "cobra"
+path = "/Users/murphy/source/cobra"
+language = "Go"
+
+[[repos]]
+name = "sinatra"
+path = "/Users/murphy/source/sinatra"
+language = "Ruby"
+
+[[repos]]
+name = "nlohmann-json"
+path = "/Users/murphy/source/nlohmann-json"
+language = "C++"
+
+[[repos]]
+name = "newtonsoft-json"
+path = "/Users/murphy/source/Newtonsoft.Json"
+language = "C#"
+notes = "C# coverage. Local daemon backfilled vectors during scorecard dogfood."
+
+[[repos]]
+name = "jq"
+path = "/Users/murphy/source/jq"
+language = "C"
+notes = "C coverage. Local daemon backfilled vectors during scorecard dogfood."
+
+[[cases]]
+id = "julie-mutation-gate"
+repo = "julie"
+category = "concept"
+query = "what stops two writers from mutating a workspace at the same time"
+intent = "Find the mutation gate implementation, not a planning doc."
+expected_any = ["src/workspace/mutation_gate.rs"]
+file_pattern = "src/**"
+
+[[cases]]
+id = "julie-embedding-pipeline"
+repo = "julie"
+category = "implementation"
+query = "what code embeds symbols after workspace indexing"
+intent = "Find the symbol embedding pipeline."
+expected_any = ["src/embeddings/pipeline.rs"]
+file_pattern = "src/**"
+
+[[cases]]
+id = "julie-backend-dispatch"
+repo = "julie"
+category = "implementation"
+query = "where does fast search dispatch between lexical semantic and hybrid backends"
+intent = "Find backend dispatch/execution code."
+expected_any = ["src/tools/search/execution.rs", "src/tools/search/backend.rs", "src/search/hybrid.rs"]
+file_pattern = "src/**"
+
+[[cases]]
+id = "julie-relaxed-or-fallback"
+repo = "julie"
+category = "concept"
+query = "how does search relax an all terms query into any term matching"
+intent = "Find Tantivy relaxed OR fallback logic."
+expected_any = ["src/search/index.rs"]
+file_pattern = "src/**"
+
+[[cases]]
+id = "eros-retrieval-routing"
+repo = "eros"
+category = "concept"
+query = "where does retrieval choose between lancedb and sqlite search backends"
+intent = "Find retrieval backend routing."
+expected_any = ["python/eros/retrieval/router.py", "python/eros/retrieval/backends.py"]
+file_pattern = "python/**"
+
+[[cases]]
+id = "eros-search-doc-projections"
+repo = "eros"
+category = "implementation"
+query = "how are search documents projected into retrieval records"
+intent = "Find search-doc projection code."
+expected_any = ["python/eros/retrieval/projections.py", "python/eros/retrieval/search_docs.py", "python/eros/retrieval/projection_policy.py"]
+file_pattern = "python/**"
+
+[[cases]]
+id = "eros-semantic-eval"
+repo = "eros"
+category = "concept"
+query = "where is semantic retrieval quality evaluated"
+intent = "Find semantic eval harness."
+expected_any = ["python/eros/eval/semantic.py", "tests/integration/test_semantic_eval.py"]
+exclude_tests = false
+file_pattern = "python/**,tests/**"
+
+[[cases]]
+id = "express-lazy-router"
+repo = "express"
+category = "concept"
+query = "where does the app lazily create the router for middleware"
+intent = "Find application router setup."
+expected_any = ["lib/application.js"]
+file_pattern = "lib/**"
+
+[[cases]]
+id = "express-mount-middleware"
+repo = "express"
+category = "concept"
+query = "how does a mounted express app restore request and response prototypes"
+intent = "Find mounted app middleware wrapper."
+expected_any = ["lib/application.js"]
+file_pattern = "lib/**"
+
+[[cases]]
+id = "flask-view-dispatch"
+repo = "flask"
+category = "implementation"
+query = "where do class based views dispatch a request to methods"
+intent = "Find MethodView/View dispatch."
+expected_any = ["src/flask/views.py"]
+file_pattern = "src/**"
+
+[[cases]]
+id = "flask-blueprint-registration"
+repo = "flask"
+category = "concept"
+query = "how are nested blueprints registered on an application"
+intent = "Find blueprint registration logic."
+expected_any = ["src/flask/sansio/blueprints.py"]
+file_pattern = "src/**"
+
+[[cases]]
+id = "flask-request-context-session"
+repo = "flask"
+category = "concept"
+query = "where does request context open the session"
+intent = "Find request context session setup."
+expected_any = ["src/flask/ctx.py"]
+file_pattern = "src/**"
+
+[[cases]]
+id = "gson-strictness"
+repo = "gson"
+category = "concept"
+query = "where is JSON parser strictness and lenient behavior configured"
+intent = "Find strictness or reader code."
+expected_any = ["gson/src/main/java/com/google/gson/Strictness.java", "gson/src/main/java/com/google/gson/stream/JsonReader.java", "gson/src/main/java/com/google/gson/GsonBuilder.java"]
+file_pattern = "gson/src/**"
+
+[[cases]]
+id = "gson-reflective-fields"
+repo = "gson"
+category = "implementation"
+query = "where are object fields reflected into type adapters"
+intent = "Find reflective adapter factory."
+expected_any = ["gson/src/main/java/com/google/gson/internal/bind/ReflectiveTypeAdapterFactory.java"]
+file_pattern = "gson/src/**"
+
+[[cases]]
+id = "gson-type-adapter"
+repo = "gson"
+category = "concept"
+query = "where does a custom type adapter read and write json values"
+intent = "Find TypeAdapter abstraction."
+expected_any = ["gson/src/main/java/com/google/gson/TypeAdapter.java"]
+file_pattern = "gson/src/**"
+
+[[cases]]
+id = "moshi-polymorphic-labels"
+repo = "moshi"
+category = "concept"
+query = "where does polymorphic json choose subtype by label"
+intent = "Find polymorphic adapter factory."
+expected_any = ["moshi-adapters/src/main/java/com/squareup/moshi/adapters/PolymorphicJsonAdapterFactory.kt"]
+file_pattern = "moshi*/src/**"
+
+[[cases]]
+id = "moshi-record-adapter"
+repo = "moshi"
+category = "implementation"
+query = "where are java records converted into json adapters"
+intent = "Find record adapter."
+expected_any = ["moshi/src/main/java16/com/squareup/moshi/internal/RecordJsonAdapter.kt"]
+file_pattern = "moshi*/src/**"
+
+[[cases]]
+id = "moshi-json-adapter-null-wrapper"
+repo = "moshi"
+category = "concept"
+query = "where does a json adapter wrap null serialization behavior"
+intent = "Find JsonAdapter null wrappers."
+expected_any = ["moshi/src/main/java/com/squareup/moshi/JsonAdapter.kt"]
+file_pattern = "moshi*/src/**"
+
+[[cases]]
+id = "alamofire-interceptor-selection"
+repo = "alamofire"
+category = "concept"
+query = "where does a request combine session and request interceptors for retry and adaptation"
+intent = "Find Session adapter/retrier selection."
+expected_any = ["Source/Core/Session.swift"]
+file_pattern = "Source/**"
+
+[[cases]]
+id = "alamofire-multipart-boundary"
+repo = "alamofire"
+category = "implementation"
+query = "where is multipart form data boundary and content type generated"
+intent = "Find MultipartFormData boundary generator."
+expected_any = ["Source/Features/MultipartFormData.swift"]
+file_pattern = "Source/**"
+
+[[cases]]
+id = "alamofire-auth-refresh-window"
+repo = "alamofire"
+category = "concept"
+query = "where does authentication interceptor prevent excessive credential refresh attempts"
+intent = "Find AuthenticationInterceptor refresh window."
+expected_any = ["Source/Features/AuthenticationInterceptor.swift"]
+file_pattern = "Source/**"
+
+[[cases]]
+id = "cobra-command-execute"
+repo = "cobra"
+category = "implementation"
+query = "where does a command execute with context and traverse subcommands"
+intent = "Find command execution entry points."
+expected_any = ["command.go"]
+file_pattern = "*.go,**/*.go"
+
+[[cases]]
+id = "cobra-flag-completion"
+repo = "cobra"
+category = "implementation"
+query = "where are custom flag completion functions registered"
+intent = "Find flag completion registration."
+expected_any = ["completions.go"]
+file_pattern = "*.go,**/*.go"
+
+[[cases]]
+id = "sinatra-route-dispatch"
+repo = "sinatra"
+category = "concept"
+query = "where are matching routes processed and dispatched with filters"
+intent = "Find Sinatra route dispatch."
+expected_any = ["lib/sinatra/base.rb"]
+file_pattern = "lib/**"
+
+[[cases]]
+id = "sinatra-route-compile"
+repo = "sinatra"
+category = "implementation"
+query = "where are route patterns compiled into regular expressions"
+intent = "Find route compile logic."
+expected_any = ["lib/sinatra/base.rb"]
+file_pattern = "lib/**"
+
+[[cases]]
+id = "nlohmann-json-pointer"
+repo = "nlohmann-json"
+category = "concept"
+query = "where are json pointer tokens parsed and resolved"
+intent = "Find json_pointer implementation."
+expected_any = ["include/nlohmann/detail/json_pointer.hpp"]
+file_pattern = "include/**"
+
+[[cases]]
+id = "nlohmann-binary-reader"
+repo = "nlohmann-json"
+category = "implementation"
+query = "where are cbor msgpack and ubjson binary formats read"
+intent = "Find binary reader."
+expected_any = ["include/nlohmann/detail/input/binary_reader.hpp"]
+file_pattern = "include/**"
+
+[[cases]]
+id = "nlohmann-sax-parser"
+repo = "nlohmann-json"
+category = "concept"
+query = "where does the parser emit sax events while reading json"
+intent = "Find parser/SAX implementation."
+expected_any = ["include/nlohmann/detail/input/parser.hpp"]
+file_pattern = "include/**"
+
+[[cases]]
+id = "newtonsoft-serializer-internal-reader"
+repo = "newtonsoft-json"
+category = "implementation"
+query = "where does json serializer deserialize through an internal reader"
+intent = "Find Json.NET serializer deserialization internals."
+expected_any = ["Src/Newtonsoft.Json/JsonSerializer.cs", "Src/Newtonsoft.Json/Serialization/JsonSerializerInternalReader.cs"]
+file_pattern = "Src/**"
+
+[[cases]]
+id = "jq-compile-bytecode"
+repo = "jq"
+category = "implementation"
+query = "where does jq compile a program string into bytecode"
+intent = "Find jq program compilation path."
+expected_any = ["src/execute.c", "src/compile.c"]
+file_pattern = "src/**"

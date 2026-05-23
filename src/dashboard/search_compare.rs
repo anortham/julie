@@ -191,6 +191,7 @@ async fn execute_shared_current(
             limit: 10,
             context_lines: None,
             exclude_tests: None,
+            backend: crate::tools::search::SearchBackend::resolve(None),
         },
         &[SearchExecutionWorkspace::target(case.workspace_id.clone())],
         handler,

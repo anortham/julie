@@ -75,6 +75,7 @@ fn content_search(query: &str, file_pattern: Option<&str>) -> FastSearchTool {
         limit: 10,
         context_lines: Some(0),
         exclude_tests: None,
+        backend: None,
         workspace: Some("primary".to_string()),
         return_format: "full".to_string(),
     }

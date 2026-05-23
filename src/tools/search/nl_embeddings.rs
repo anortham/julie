@@ -4,9 +4,11 @@
 //! no embedding provider has been initialized yet, this module attempts a one-shot
 //! deferred init so the first NL query can use hybrid (keyword + semantic) search.
 
-use std::sync::LazyLock;
+use std::sync::{Arc, LazyLock};
+use std::time::Duration;
 use tracing::{debug, warn};
 
+use crate::embeddings::EmbeddingProvider;
 use crate::handler::JulieServerHandler;
 
 /// Single-flight guard: only one task may attempt deferred init at a time.
@@ -51,48 +53,46 @@ pub(super) async fn maybe_initialize_embeddings_for_nl_definitions(
         return;
     }
 
+    let _ = wait_for_embedding_provider_settled(handler, Duration::from_secs(3)).await;
+}
+
+pub(super) async fn wait_for_embedding_provider_settled(
+    handler: &JulieServerHandler,
+    daemon_timeout: Duration,
+) -> Option<Arc<dyn EmbeddingProvider>> {
     // If a provider is already available (daemon shared service or workspace),
-    // skip the lazy-init entirely.
-    if handler.embedding_provider().await.is_some() {
-        return;
+    // return it immediately.
+    if let Some(provider) = handler.embedding_provider().await {
+        return Some(provider);
     }
 
     // Daemon mode: the shared service may still be in `Initializing` (cold
-    // start). Wait briefly for it to settle. NL queries are interactive, so
-    // we use a much shorter timeout (3s) than the workspace embedding path
-    // (120s). If the service doesn't reach Ready in time, degrade to
-    // keyword-only by returning. CRITICALLY: we must NOT fall through to
-    // the per-workspace stdio init path below — that would spawn a SECOND
-    // Python sidecar alongside the daemon's shared one, wasting resources
-    // and masking the real provider.
+    // start). Wait briefly for it to settle. CRITICALLY: we must NOT fall
+    // through to the per-workspace stdio init path below — that would spawn a
+    // SECOND Python sidecar alongside the daemon's shared one, wasting
+    // resources and masking the real provider.
     if let Some(svc) = handler.embedding_service.as_ref() {
         use crate::daemon::embedding_service::EmbeddingServiceSettled;
-        match svc
-            .wait_until_settled(std::time::Duration::from_secs(3))
-            .await
-        {
-            EmbeddingServiceSettled::Ready { .. } => {
-                // Provider is now published; the caller's next
-                // handler.embedding_provider() will see it. Return without
-                // running the stdio lazy-init path.
+        match svc.wait_until_settled(daemon_timeout).await {
+            EmbeddingServiceSettled::Ready { provider, .. } => {
                 debug!(
                     "Daemon embedding service became Ready while waiting for NL definition query"
                 );
-                return;
+                return Some(provider);
             }
             EmbeddingServiceSettled::Unavailable { reason, .. } => {
                 debug!(
                     %reason,
                     "Daemon embedding service Unavailable; NL query falls back to keyword-only"
                 );
-                return;
+                return None;
             }
             EmbeddingServiceSettled::Timeout => {
                 debug!(
                     "Daemon embedding service did not settle within 3s for NL query; \
                      falling back to keyword-only (provider may become ready later)"
                 );
-                return;
+                return None;
             }
         }
     }
@@ -109,26 +109,26 @@ pub(super) async fn maybe_initialize_embeddings_for_nl_definitions(
     };
 
     if !should_attempt_init {
-        return;
+        return None;
     }
 
     let _single_flight_guard = NL_DEFINITION_EMBEDDING_INIT_SINGLE_FLIGHT.lock().await;
 
     // Double-check after acquiring the single-flight mutex: another caller may
     // have completed init while we waited.
-    if handler.embedding_provider().await.is_some() {
-        return;
+    if let Some(provider) = handler.embedding_provider().await {
+        return Some(provider);
     }
     let (workspace_identity_root, workspace_for_init) = {
         let workspace_guard = handler.workspace.read().await;
         match workspace_guard.as_ref() {
             Some(workspace) => {
                 if workspace.embedding_runtime_status.is_some() {
-                    return;
+                    return None;
                 }
                 (workspace.root.clone(), workspace.clone())
             }
-            None => return,
+            None => return None,
         }
     };
 
@@ -153,14 +153,15 @@ pub(super) async fn maybe_initialize_embeddings_for_nl_definitions(
         Ok(result) => result,
         Err(e) => {
             warn!("Deferred embedding init task panicked during text search: {e}");
-            return;
+            return None;
         }
     };
+    let provider_for_return = initialized_provider.clone();
 
     let mut workspace_guard = handler.workspace.write().await;
     let workspace = match workspace_guard.as_mut() {
         Some(workspace) => workspace,
-        None => return,
+        None => return None,
     };
 
     if workspace.root != workspace_identity_root {
@@ -169,7 +170,7 @@ pub(super) async fn maybe_initialize_embeddings_for_nl_definitions(
             active_workspace_root = %workspace.root.display(),
             "Discarding stale deferred embedding init result after workspace switch"
         );
-        return;
+        return None;
     }
 
     if workspace.embedding_provider.is_none() {
@@ -182,6 +183,8 @@ pub(super) async fn maybe_initialize_embeddings_for_nl_definitions(
     if workspace.embedding_runtime_status.is_none() {
         workspace.embedding_runtime_status = initialized_runtime_status;
     }
+
+    provider_for_return
 }
 
 #[cfg(test)]

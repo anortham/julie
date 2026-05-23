@@ -15,7 +15,7 @@ use std::fs;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::paths::DaemonPaths;
 
@@ -117,11 +117,26 @@ pub async fn start_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> 
         }
     }
 
+    let fd_limit_change = crate::daemon::fd_limit::raise_nofile_limit_for_daemon();
+
     // Logging setup: file-only, no ANSI, daily rotation.
     // Idempotent via DaemonRuntimeContext::install_tracing — a second call in
     // the same process (e.g. from the InProcessDaemon test fixture in B.3)
     // is a no-op instead of a panic.
     crate::daemon::app::DaemonRuntimeContext::default().install_tracing(&paths)?;
+
+    match fd_limit_change {
+        Ok(Some((old_soft, new_soft))) => {
+            info!(
+                old_soft,
+                new_soft, "Raised daemon file descriptor soft limit"
+            );
+        }
+        Ok(None) => {}
+        Err(error) => {
+            warn!(?error, "Failed to raise daemon file descriptor soft limit");
+        }
+    }
 
     info!("Starting Julie daemon v{}", env!("CARGO_PKG_VERSION"));
     crate::daemon::run_daemon(paths, port, no_dashboard).await

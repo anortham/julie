@@ -7,6 +7,7 @@
 //! - Per-workspace isolation
 
 // Public API re-exports
+pub use self::backend::SearchBackend;
 pub use self::query::matches_glob_pattern;
 pub use self::query_preprocessor::{
     PreprocessedQuery, QueryType, detect_query_type, preprocess_query, sanitize_query,
@@ -18,6 +19,7 @@ pub use self::trace::{
 pub use self::types::{LineMatch, LineMatchStrategy};
 
 // Internal modules
+mod backend;
 pub(crate) mod execution;
 pub(crate) mod formatting; // Exposed for testing
 pub(crate) mod hint_formatter;
@@ -51,9 +53,9 @@ const MAX_LIMIT: u32 = 500;
 //******************//
 
 #[derive(Debug, Serialize, JsonSchema)]
-/// Search code and symbols using unified code-aware full-text search. Supports multi-word queries with AND/OR logic, exact symbol name matches, file-path fragments, and conceptual semantic search — all in one call.
+/// Search code and symbols using unified code-aware full-text search. Supports multi-word queries with AND/OR logic, exact symbol name matches, file-path fragments, and conceptual semantic search. Optional backend: omitted/default lexical returns mixed file+symbol hits and may show labeled semantic fallback candidates on identifier-like zero-hit queries when embeddings are ready; explicit "lexical" stays pure lexical; "semantic" and "hybrid" are symbol-only concept search. Use lexical for file/path queries.
 pub struct FastSearchTool {
-    /// Search query. Exact symbol names, file path fragments, and natural-language descriptions all work. Too many results? Add file_pattern or language filter. Zero results? Run manage_workspace(operation="index")
+    /// Search query. Exact symbol names, file path fragments, and natural-language descriptions all work. Too many results? Add file_pattern or language filter. Zero lexical results may show labeled semantic fallback candidates for identifier-like queries when backend is omitted and embeddings are ready. Still zero? Run manage_workspace(operation="index")
     pub query: String,
     /// Language filter: "rust", "typescript", "javascript", "python", "java", "csharp", "vbnet", "php", "ruby", "swift", "kotlin", "scala", "go", "c", "cpp", "lua", "qml", "r", "sql", "html", "css", "vue", "bash", "gdscript", "dart", "zig"
     #[serde(default)]
@@ -61,7 +63,7 @@ pub struct FastSearchTool {
     /// File pattern filter (glob syntax)
     #[serde(default)]
     pub file_pattern: Option<String>,
-    /// Maximum results (default: 10, range: 1-500)
+    /// Maximum results (default: 6, range: 1-500)
     #[serde(
         default = "default_limit",
         deserialize_with = "deserialize_limit_lenient_clamped"
@@ -81,6 +83,9 @@ pub struct FastSearchTool {
         deserialize_with = "crate::utils::serde_lenient::deserialize_option_bool_lenient"
     )]
     pub exclude_tests: Option<bool>,
+    /// Search backend: omitted/default lexical uses BM25/full-text mixed file+symbol hits and may show labeled semantic fallback candidates on identifier-like zero-hit queries when embeddings are ready; explicit "lexical" stays pure lexical; "semantic" uses KNN symbol search; "hybrid" uses BM25+KNN symbol search. Semantic and hybrid are symbol-only; use lexical for file/path queries.
+    #[serde(default)]
+    pub backend: Option<SearchBackend>,
     /// Workspace filter: "primary" (default) or a workspace ID
     #[serde(default = "default_workspace")]
     pub workspace: Option<String>,
@@ -108,6 +113,8 @@ struct FastSearchToolSerde {
         deserialize_with = "crate::utils::serde_lenient::deserialize_option_bool_lenient"
     )]
     exclude_tests: Option<bool>,
+    #[serde(default)]
+    backend: Option<SearchBackend>,
     #[serde(default = "default_workspace")]
     workspace: Option<String>,
     #[serde(default = "default_return_format")]
@@ -132,6 +139,7 @@ impl<'de> Deserialize<'de> for FastSearchTool {
             limit: raw.limit,
             context_lines,
             exclude_tests: raw.exclude_tests,
+            backend: raw.backend,
             workspace: raw.workspace,
             return_format: raw.return_format,
         })
@@ -139,7 +147,7 @@ impl<'de> Deserialize<'de> for FastSearchTool {
 }
 
 fn default_limit() -> u32 {
-    10 // Reduced from 15 with enhanced scoring (better quality = fewer results needed)
+    6 // Higher search quality makes a smaller MCP default enough for normal agent use.
 }
 
 fn clamp_limit(limit: u32) -> u32 {
@@ -192,6 +200,7 @@ impl Default for FastSearchTool {
             limit: default_limit(),
             context_lines: default_context_lines(),
             exclude_tests: None,
+            backend: None,
             workspace: default_workspace(),
             return_format: default_return_format(),
         }
@@ -206,6 +215,25 @@ pub struct FastSearchExecution {
 impl FastSearchTool {
     pub(crate) fn effective_limit(&self) -> u32 {
         clamp_limit(self.limit)
+    }
+
+    fn with_backend_fallback_note(
+        &self,
+        text: String,
+        execution: &SearchExecutionResult,
+    ) -> String {
+        if execution.trace.strategy_id == "fast_search_semantic_fallback" {
+            return format!(
+                "NOTE: No lexical results. Showing semantic fallback candidates.\n\n{text}"
+            );
+        }
+
+        if !execution.trace.backend_fallback {
+            return text;
+        }
+
+        let backend = self.backend.unwrap_or(SearchBackend::Semantic).as_str();
+        format!("NOTE: backend={backend} unavailable; fell back to lexical search\n\n{text}")
     }
 
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
@@ -416,6 +444,7 @@ impl FastSearchTool {
                 limit: effective_limit,
                 context_lines: self.context_lines,
                 exclude_tests: self.exclude_tests,
+                backend: SearchBackend::resolve(self.backend),
             },
             &execution_workspaces,
             handler,
@@ -436,6 +465,10 @@ impl FastSearchTool {
             }
         });
         execution.trace.definition_exact_match = has_exact_name_match;
+        let symbol_backend_active = matches!(
+            execution.trace.strategy_id.as_str(),
+            "fast_search_semantic" | "fast_search_hybrid" | "fast_search_semantic_fallback"
+        );
 
         if execution.hits.is_empty() {
             // Prefer the targeted content zero-hit hint that
@@ -460,13 +493,14 @@ impl FastSearchTool {
                     self.query
                 )
             };
+            let message = self.with_backend_fallback_note(message, &execution);
             return Ok(FastSearchExecution {
                 result: CallToolResult::text_content(vec![Content::text(message)]),
                 execution: Some(execution),
             });
         }
 
-        if self.return_format != "locations" && !has_exact_name_match {
+        if self.return_format != "locations" && !has_exact_name_match && !symbol_backend_active {
             let _ = self
                 .try_enrich_with_line_mode_snippets(handler, &workspace_target, &mut execution.hits)
                 .await;
@@ -480,7 +514,11 @@ impl FastSearchTool {
             // the actual matching line rather than the enclosing symbol's
             // declaration line.  This restores the behaviour of the old
             // `execute_content_search` locations path.
-            if !has_exact_name_match {
+            if self.should_try_line_mode_locations(
+                &execution,
+                has_exact_name_match,
+                symbol_backend_active,
+            ) {
                 if let Ok(line_locations_output) = self
                     .try_line_mode_locations(handler, &workspace_target)
                     .await
@@ -494,6 +532,7 @@ impl FastSearchTool {
                         } else {
                             locations_text
                         };
+                        let final_text = self.with_backend_fallback_note(final_text, &execution);
                         return Ok(FastSearchExecution {
                             result: CallToolResult::text_content(vec![Content::text(final_text)]),
                             execution: Some(execution),
@@ -515,6 +554,8 @@ impl FastSearchTool {
                     locations_output
                 );
             }
+            locations_output = with_scope_rescue_header(locations_output, &execution);
+            locations_output = self.with_backend_fallback_note(locations_output, &execution);
             return Ok(FastSearchExecution {
                 result: CallToolResult::text_content(vec![Content::text(locations_output)]),
                 execution: Some(execution),
@@ -562,6 +603,7 @@ impl FastSearchTool {
         } else {
             lean_output
         };
+        let lean_output = self.with_backend_fallback_note(lean_output, &execution);
 
         debug!(
             "✅ Returning unified search results ({} chars, {} results, relaxed: {})",
@@ -670,6 +712,21 @@ impl FastSearchTool {
             None => "rust".to_string(),
         };
 
+        let scope_rescue_header = line_result
+            .scope_relaxed
+            .then(|| {
+                line_result.original_file_pattern.as_deref().map(|pattern| {
+                    let distinct_files = line_result
+                        .matches
+                        .iter()
+                        .map(|line_match| line_match.file_path.as_str())
+                        .collect::<std::collections::HashSet<_>>()
+                        .len();
+                    hint_formatter::build_scope_rescue_header(pattern, distinct_files)
+                })
+            })
+            .flatten();
+
         let hits: Vec<crate::tools::search::trace::SearchHit> = line_result
             .matches
             .into_iter()
@@ -685,10 +742,28 @@ impl FastSearchTool {
 
         let total_results = hits.len();
         let optimized = OptimizedResponse::with_total(hits, total_results);
-        Ok(Some(formatting::format_content_locations_only(
-            &self.query,
-            &optimized,
-        )))
+        let output = formatting::format_content_locations_only(&self.query, &optimized);
+        Ok(Some(match scope_rescue_header {
+            Some(header) => format!("{header}\n\n{output}"),
+            None => output,
+        }))
+    }
+
+    fn should_try_line_mode_locations(
+        &self,
+        execution: &SearchExecutionResult,
+        has_exact_name_match: bool,
+        symbol_backend_active: bool,
+    ) -> bool {
+        if has_exact_name_match || symbol_backend_active || execution.trace.scope_relaxed {
+            return false;
+        }
+        if query::looks_like_file_or_path_query(&self.query)
+            || looks_like_structured_lookup(&self.query)
+        {
+            return false;
+        }
+        true
     }
 
     async fn try_enrich_with_line_mode_snippets(
@@ -748,6 +823,56 @@ impl FastSearchTool {
         }
 
         Ok(())
+    }
+}
+
+fn with_scope_rescue_header(text: String, execution: &SearchExecutionResult) -> String {
+    if execution.trace.scope_relaxed
+        && let Some(original_pattern) = execution.trace.original_file_pattern.as_deref()
+    {
+        let distinct_files = execution
+            .hits
+            .iter()
+            .map(|hit| hit.file.as_str())
+            .collect::<std::collections::HashSet<_>>();
+        format!(
+            "{}\n\n{}",
+            hint_formatter::build_scope_rescue_header(original_pattern, distinct_files.len(),),
+            text,
+        )
+    } else {
+        text
+    }
+}
+
+fn looks_like_structured_lookup(query: &str) -> bool {
+    let mut token_count = 0;
+    let mut saw_strict_structured_shape = false;
+    let mut saw_loose_structured_shape = false;
+    for token in query.split_whitespace() {
+        let token = token.trim_matches(|ch: char| matches!(ch, ',' | ';' | ':' | '(' | ')'));
+        if token.is_empty() {
+            continue;
+        }
+        token_count += 1;
+        if !token
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '.' | ':'))
+        {
+            return false;
+        }
+        let strict_shape = token.contains("::")
+            || token.contains('.')
+            || (token.chars().any(|ch| ch.is_ascii_uppercase())
+                && token.chars().any(|ch| ch.is_ascii_lowercase()));
+        saw_strict_structured_shape |= strict_shape;
+        saw_loose_structured_shape |= strict_shape || token.contains('_');
+    }
+
+    match token_count {
+        0 => false,
+        1 => saw_strict_structured_shape,
+        _ => saw_loose_structured_shape,
     }
 }
 

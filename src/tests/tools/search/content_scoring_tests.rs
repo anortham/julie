@@ -60,6 +60,7 @@ async fn content_hits_have_nonzero_scores_sorted_by_score() {
         limit: 50,
         context_lines: Some(0),
         exclude_tests: None,
+        backend: None,
         workspace: Some("primary".to_string()),
         return_format: "full".to_string(),
     };

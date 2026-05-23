@@ -46,6 +46,89 @@ pub fn looks_like_whitespace_separated_globs(pattern: &str) -> bool {
         .all(|token| token.starts_with('!') || token.contains('*') || token.contains('/'))
 }
 
+pub(crate) fn looks_like_file_or_path_query(query: &str) -> bool {
+    query
+        .split_whitespace()
+        .any(|token| token.contains('/') || token.contains('\\') || has_known_file_extension(token))
+}
+
+pub(crate) fn looks_like_identifier_probe_query(query: &str) -> bool {
+    let mut tokens = query.split_whitespace();
+    let Some(token) = tokens.next() else {
+        return false;
+    };
+    if tokens.next().is_some() {
+        return false;
+    }
+
+    let token = token.trim_matches(|ch: char| matches!(ch, ',' | ';' | ':' | '(' | ')'));
+    if token.is_empty()
+        || !token
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '.' | ':'))
+    {
+        return false;
+    }
+
+    token.contains("::")
+        || token.contains('.')
+        || token.contains('_')
+        || (token.chars().any(|ch| ch.is_ascii_uppercase())
+            && token.chars().any(|ch| ch.is_ascii_lowercase()))
+}
+
+fn has_known_file_extension(token: &str) -> bool {
+    let token =
+        token.trim_matches(|ch: char| matches!(ch, ',' | ';' | ':' | '(' | ')' | '[' | ']'));
+    let Some((_, ext)) = token.rsplit_once('.') else {
+        return false;
+    };
+    matches!(
+        ext.to_ascii_lowercase().as_str(),
+        "rs" | "ts"
+            | "tsx"
+            | "js"
+            | "jsx"
+            | "py"
+            | "java"
+            | "cs"
+            | "vb"
+            | "php"
+            | "rb"
+            | "swift"
+            | "kt"
+            | "kts"
+            | "scala"
+            | "go"
+            | "c"
+            | "h"
+            | "cpp"
+            | "hpp"
+            | "cc"
+            | "cxx"
+            | "lua"
+            | "qml"
+            | "r"
+            | "sql"
+            | "html"
+            | "htm"
+            | "css"
+            | "vue"
+            | "gd"
+            | "dart"
+            | "zig"
+            | "sh"
+            | "bash"
+            | "ps1"
+            | "md"
+            | "json"
+            | "toml"
+            | "yaml"
+            | "yml"
+            | "xml"
+    )
+}
+
 /// A compiled single-segment matcher.
 ///
 /// Three variants, each with a distinct reason:
