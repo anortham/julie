@@ -503,19 +503,9 @@ fn is_import_update_supported(path: &str) -> bool {
 }
 
 fn normalize_scope_file_path(file_path: &str, workspace_root: &std::path::Path) -> Result<String> {
-    let input = std::path::Path::new(file_path);
-    let absolute = if input.is_absolute() {
-        input
-            .canonicalize()
-            .unwrap_or_else(|_| std::path::PathBuf::from(file_path))
-    } else {
-        workspace_root
-            .join(input)
-            .canonicalize()
-            .unwrap_or_else(|_| workspace_root.join(input))
-    };
-
-    crate::utils::paths::to_relative_unix_style(&absolute, workspace_root)
+    let resolution = crate::utils::paths::resolve_workspace_file_input(file_path, workspace_root);
+    resolution
+        .relative_query_path
         .or_else(|_| Ok(file_path.replace('\\', "/")))
 }
 

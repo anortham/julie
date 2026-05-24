@@ -27,56 +27,53 @@ pub async fn get_symbols_from_target_workspace(
     );
 
     // Pooled DB: read-only access, no mutation gate required. Workspace root
-    // lookup is only needed when we must normalize relative paths against the
-    // target workspace.
+    // lookup supplies target-root normalization when available; absolute inputs
+    // keep their existing fallback if the root lookup fails.
     let pooled_db = handler
         .get_pooled_database_for_workspace(&target_workspace_id)
         .await?
         .into_read_snapshot()?;
 
-    let (query_path, absolute_path) = if std::path::Path::new(file_path).is_absolute() {
-        // Absolute path input
-        let canonical = std::path::Path::new(file_path)
-            .canonicalize()
-            .unwrap_or_else(|_| std::path::PathBuf::from(file_path));
+    let input_is_absolute = std::path::Path::new(file_path).is_absolute();
+    let (query_path, absolute_path) = match handler
+        .get_workspace_root_for_target(&target_workspace_id)
+        .await
+    {
+        Ok(target_workspace_root) => {
+            debug!(
+                "🗄️ Target workspace DB via handler helper, root: {}",
+                target_workspace_root.display()
+            );
 
-        let query_path = match handler
-            .get_workspace_root_for_target(&target_workspace_id)
-            .await
-        {
-            Ok(target_workspace_root) => {
-                crate::utils::paths::to_relative_unix_style(&canonical, &target_workspace_root)
-                    .unwrap_or_else(|_| file_path.to_string())
-            }
-            Err(_) => file_path.to_string(),
-        };
-
-        (query_path, canonical.to_string_lossy().to_string())
-    } else {
-        let target_workspace_root = handler
-            .get_workspace_root_for_target(&target_workspace_id)
-            .await?;
-
-        debug!(
-            "🗄️ Target workspace DB via handler helper, root: {}",
-            target_workspace_root.display()
-        );
-
-        // Relative path input - normalize (handle ./ and ../) against the target root,
-        // then convert back to relative Unix-style for the SQLite query.
-        let absolute = target_workspace_root
-            .join(file_path)
-            .canonicalize()
-            .unwrap_or_else(|_| target_workspace_root.join(file_path));
-
-        let relative_unix =
-            crate::utils::paths::to_relative_unix_style(&absolute, &target_workspace_root)
-                .unwrap_or_else(|_| {
+            let resolution = crate::utils::paths::resolve_workspace_file_input(
+                file_path,
+                &target_workspace_root,
+            );
+            let relative_unix = resolution.relative_query_path.unwrap_or_else(|_| {
+                if input_is_absolute {
+                    file_path.to_string()
+                } else {
                     warn!("Failed to convert path to relative: {}", file_path);
                     file_path.replace('\\', "/")
-                });
+                }
+            });
 
-        (relative_unix, absolute.to_string_lossy().to_string())
+            (
+                relative_unix,
+                resolution.absolute_path.to_string_lossy().to_string(),
+            )
+        }
+        Err(_) if input_is_absolute => {
+            let canonical = std::path::Path::new(file_path)
+                .canonicalize()
+                .unwrap_or_else(|_| std::path::PathBuf::from(file_path));
+
+            (
+                file_path.to_string(),
+                canonical.to_string_lossy().to_string(),
+            )
+        }
+        Err(err) => return Err(err),
     };
 
     debug!(

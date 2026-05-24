@@ -37,38 +37,19 @@ pub async fn get_symbols_from_primary(
     // 1. query_path: Relative Unix-style for database queries
     // 2. absolute_path: Absolute path for file I/O (extract_code_bodies)
 
-    let (query_path, absolute_path) = if std::path::Path::new(file_path).is_absolute() {
-        // Absolute path input
-        let canonical = std::path::Path::new(file_path)
-            .canonicalize()
-            .unwrap_or_else(|_| std::path::PathBuf::from(file_path));
-
-        let relative =
-            crate::utils::paths::to_relative_unix_style(&canonical, &current_workspace_root)
-                .unwrap_or_else(|_| {
-                    warn!("Failed to convert absolute path to relative: {}", file_path);
-                    file_path.to_string()
-                });
-
-        (relative, canonical.to_string_lossy().to_string())
-    } else {
-        // Relative path input - need to normalize (handle ./ and ../)
-        // Join with workspace root, canonicalize, then convert back to relative
-        let absolute = current_workspace_root
-            .join(file_path)
-            .canonicalize()
-            .unwrap_or_else(|_| current_workspace_root.join(file_path));
-
-        // Convert canonicalized path back to relative Unix-style for database query
-        let relative_unix =
-            crate::utils::paths::to_relative_unix_style(&absolute, &current_workspace_root)
-                .unwrap_or_else(|_| {
-                    warn!("Failed to convert path to relative: {}", file_path);
-                    file_path.replace('\\', "/")
-                });
-
-        (relative_unix, absolute.to_string_lossy().to_string())
-    };
+    let input_is_absolute = std::path::Path::new(file_path).is_absolute();
+    let resolution =
+        crate::utils::paths::resolve_workspace_file_input(file_path, &current_workspace_root);
+    let query_path = resolution.relative_query_path.unwrap_or_else(|_| {
+        if input_is_absolute {
+            warn!("Failed to convert absolute path to relative: {}", file_path);
+            file_path.to_string()
+        } else {
+            warn!("Failed to convert path to relative: {}", file_path);
+            file_path.replace('\\', "/")
+        }
+    });
+    let absolute_path = resolution.absolute_path.to_string_lossy().to_string();
 
     debug!(
         "🔍 Path normalization: '{}' -> query='{}', absolute='{}'",

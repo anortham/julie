@@ -25,6 +25,45 @@ pub fn display_path(path: &Path) -> String {
     }
 }
 
+#[derive(Debug)]
+pub struct WorkspaceFileInputResolution {
+    pub absolute_path: PathBuf,
+    pub relative_query_path: Result<String>,
+    pub canonicalized: bool,
+}
+
+/// Resolve a tool file input into the two path forms tool handlers need.
+///
+/// Tool inputs may be absolute, relative, contain `.` / `..`, or point at a
+/// file that does not exist yet. This preserves the existing handler contract:
+/// canonicalize the input path when possible, otherwise keep the absolute
+/// candidate path, then expose relative Unix conversion as a `Result` so callers
+/// can apply their existing fallback behavior.
+pub fn resolve_workspace_file_input(
+    input: &str,
+    workspace_root: &Path,
+) -> WorkspaceFileInputResolution {
+    let input_path = Path::new(input);
+    let absolute_candidate = if input_path.is_absolute() {
+        input_path.to_path_buf()
+    } else {
+        workspace_root.join(input_path)
+    };
+
+    let (absolute_path, canonicalized) = match absolute_candidate.canonicalize() {
+        Ok(canonical) => (canonical, true),
+        Err(_) => (absolute_candidate, false),
+    };
+
+    let relative_query_path = to_relative_unix_style(&absolute_path, workspace_root);
+
+    WorkspaceFileInputResolution {
+        absolute_path,
+        relative_query_path,
+        canonicalized,
+    }
+}
+
 /// Convert an absolute path to a relative Unix-style path (with `/` separators)
 ///
 /// This function strips the workspace root prefix and converts all path separators
