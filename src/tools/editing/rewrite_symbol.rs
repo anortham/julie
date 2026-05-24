@@ -291,7 +291,7 @@ fn insert_after_line(source: &str, byte_index: usize, new_content: &str) -> Resu
 }
 
 fn parse_live_tree(file_path: &str, content: &str) -> Result<Tree> {
-    let language = crate::utils::language::detect_language(Path::new(file_path))
+    let language = julie_extractors::language::detect_language_for_source(file_path, content)
         .ok_or_else(|| anyhow!("Could not detect language for '{}'", file_path))?;
     let ts_language = crate::language::get_tree_sitter_language(&language)?;
     let mut parser = Parser::new();

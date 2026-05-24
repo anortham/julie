@@ -334,3 +334,40 @@ void widget_init(widget_t *widget);
         results.symbols
     );
 }
+
+#[test]
+fn test_detect_language_for_source_routes_cpp_h_header_and_preserves_c_header() {
+    let cpp_header = r#"
+#pragma once
+
+namespace app {
+class Widget {
+public:
+    void run() const;
+};
+}
+"#;
+    let c_header = r#"
+#ifndef WIDGET_H
+#define WIDGET_H
+
+typedef struct widget {
+    int id;
+} widget_t;
+
+void widget_init(widget_t *widget);
+
+#endif
+"#;
+
+    assert_eq!(
+        crate::language::detect_language_for_source("include/widget.h", cpp_header),
+        Some("cpp"),
+        "public source-aware language detection should route C++ .h headers to cpp"
+    );
+    assert_eq!(
+        crate::language::detect_language_for_source("include/widget.h", c_header),
+        Some("c"),
+        "public source-aware language detection should preserve path-only C default for C .h headers"
+    );
+}

@@ -1,6 +1,7 @@
 use crate::database::SymbolDatabase;
 use crate::extractors::ExtractionResults;
 use crate::extractors::base::{ParseDiagnostic, ParseDiagnosticKind};
+use crate::indexing_core::extraction::extract_files_for_indexing_with_records;
 use crate::tools::workspace::ManageWorkspaceTool;
 use crate::tools::workspace::indexing::state::{
     IndexedFileDisposition, IndexingBatchState, IndexingStage,
@@ -322,5 +323,63 @@ async fn test_process_file_with_parser_keeps_file_info_for_degraded_parse_result
     assert_eq!(
         db.get_file_parse_diagnostics(&stored_path).unwrap(),
         vec![expected_diagnostic]
+    );
+}
+
+#[tokio::test]
+async fn test_extract_files_for_indexing_records_cpp_language_for_cpp_h_header_grouped_as_c() {
+    let temp_dir = TempDir::new().unwrap();
+    let workspace_root = temp_dir.path().canonicalize().unwrap();
+    let include_dir = workspace_root.join("include");
+    fs::create_dir_all(&include_dir).unwrap();
+    let file_path = include_dir.join("widget.h");
+    fs::write(
+        &file_path,
+        r#"
+#pragma once
+namespace app {
+class Widget {
+public:
+    int value() const { return 42; }
+};
+}
+"#,
+    )
+    .unwrap();
+
+    let mut files_by_language = HashMap::new();
+    files_by_language.insert("c".to_string(), vec![file_path]);
+
+    let (batch, records) =
+        extract_files_for_indexing_with_records(files_by_language, &workspace_root)
+            .await
+            .expect("C++ .h extraction should succeed when initially grouped as C");
+
+    assert_eq!(records.len(), 1);
+    assert_eq!(
+        records[0].language, "cpp",
+        "file extraction record should report source-aware parser language"
+    );
+
+    let file_info = batch
+        .all_file_infos
+        .iter()
+        .find(|file| file.path == "include/widget.h")
+        .expect("extracted batch should include file metadata for widget.h");
+    assert_eq!(
+        file_info.language, "cpp",
+        "FileInfo.language should match source-aware parser language"
+    );
+    assert!(
+        batch
+            .all_symbols
+            .iter()
+            .any(|symbol| symbol.name == "Widget" && symbol.language == "cpp"),
+        "C++ .h extraction should emit cpp symbols: {:?}",
+        batch
+            .all_symbols
+            .iter()
+            .map(|symbol| (&symbol.name, &symbol.language))
+            .collect::<Vec<_>>()
     );
 }

@@ -7,7 +7,7 @@ use crate::database::SymbolDatabase;
 use crate::extractors::ExtractorManager;
 use crate::search::SearchIndex;
 use crate::tools::workspace::indexing::file_policy::{
-    ExtractionMode, detect_language_for_indexing, determine_extraction_mode,
+    ExtractionMode, detect_language_for_indexing_with_content, determine_extraction_mode,
 };
 use crate::tools::workspace::indexing::finalize::resolve_pending_relationships;
 use crate::tools::workspace::indexing::state::IndexingRepairReason;
@@ -117,8 +117,9 @@ pub(crate) async fn handle_file_created_or_modified_static(
         }
     }
 
-    let language = detect_language_for_indexing(Path::new(&relative_path));
     let content_str = String::from_utf8_lossy(&content).into_owned();
+    let language =
+        detect_language_for_indexing_with_content(Path::new(&relative_path), &content_str);
     let extraction_mode = determine_extraction_mode(&language, &content_str);
 
     let results = match extraction_mode {

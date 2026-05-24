@@ -39,6 +39,13 @@ pub(crate) fn detect_language_for_indexing(path: &Path) -> String {
     }
 }
 
+pub(crate) fn detect_language_for_indexing_with_content(path: &Path, content: &str) -> String {
+    let path_str = path.to_string_lossy();
+    julie_extractors::language::detect_language_for_source(&path_str, content)
+        .map(str::to_string)
+        .unwrap_or_else(|| detect_language_for_indexing(path))
+}
+
 pub(crate) fn supported_extensions_for_indexing() -> &'static HashSet<String> {
     static SUPPORTED_EXTENSIONS: OnceLock<HashSet<String>> = OnceLock::new();
     SUPPORTED_EXTENSIONS.get_or_init(|| {

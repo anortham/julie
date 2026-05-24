@@ -149,6 +149,49 @@ async fn test_java_replace_body_brace_delimited() -> Result<()> {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_cpp_h_header_replace_body_uses_source_aware_live_parser() -> Result<()> {
+    let source = r#"#pragma once
+namespace app {
+class Widget {
+public:
+    int value() const {
+        return 1;
+    }
+};
+}
+"#;
+    let (temp_dir, handler) = setup_workspace(&[("Widget.h", source)]).await?;
+
+    let tool = crate::tools::editing::rewrite_symbol::RewriteSymbolTool {
+        symbol: "value".to_string(),
+        operation: "replace_body".to_string(),
+        content: "{\n        return 42;\n    }".to_string(),
+        file_path: Some("Widget.h".to_string()),
+        workspace: Some("primary".to_string()),
+        dry_run: false,
+    };
+
+    let result = tool.call_tool(&handler).await?;
+    let text = extract_text(&result);
+    assert!(
+        !text.contains("Error:"),
+        "C++ .h replace_body should succeed with source-aware live parser, got: {text}"
+    );
+
+    let on_disk = fs::read_to_string(temp_dir.path().join("Widget.h"))?;
+    assert!(
+        on_disk.contains("return 42;"),
+        "C++ .h method body should be updated, got: {on_disk}"
+    );
+    assert!(
+        on_disk.contains("int value() const"),
+        "C++ .h method signature should be preserved, got: {on_disk}"
+    );
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_java_replace_body_dry_run_shows_braces_in_old_content() -> Result<()> {
     // Verifies Task 3 integration: dry-run preview shows brace-inclusive old content.
     let source = "public class Greeter {\n    public String greet(String name) {\n        return \"Hello, \" + name;\n    }\n}\n";

@@ -104,6 +104,74 @@ fn caller() -> i32 {
 }
 
 #[tokio::test]
+async fn test_incremental_indexing_stores_cpp_language_for_cpp_h_header() {
+    let temp_dir = crate::tests::helpers::unique_temp_dir("watcher_cpp_header_language");
+    let workspace_root = temp_dir.path().canonicalize().unwrap();
+
+    let include_dir = workspace_root.join("include");
+    fs::create_dir_all(&include_dir).unwrap();
+    let test_file = include_dir.join("widget.h");
+    fs::write(
+        &test_file,
+        r#"
+#pragma once
+namespace app {
+class Widget {
+public:
+    int value() const { return 42; }
+};
+}
+"#,
+    )
+    .unwrap();
+    let absolute_path = test_file.canonicalize().unwrap();
+
+    let db_path = workspace_root.join("test.db");
+    let db = Arc::new(Mutex::new(
+        SymbolDatabase::new(&db_path).expect("Failed to create test database"),
+    ));
+    let extractor_manager = Arc::new(ExtractorManager::new());
+    let guard = acquire_gate("test_watcher_cpp_header_language").await;
+
+    handle_file_created_or_modified_static(
+        absolute_path,
+        &db,
+        &extractor_manager,
+        &workspace_root,
+        None,
+        &guard,
+    )
+    .await
+    .expect("watcher indexing should succeed");
+
+    let db_lock = db.lock().unwrap();
+    let stored_language: String = db_lock
+        .conn
+        .query_row(
+            "SELECT language FROM files WHERE path = ?1",
+            rusqlite::params!["include/widget.h"],
+            |row| row.get(0),
+        )
+        .expect("watcher should store widget.h file metadata");
+    assert_eq!(
+        stored_language, "cpp",
+        "watcher should store source-aware language for C++ .h headers"
+    );
+
+    let symbols = db_lock.get_symbols_for_file("include/widget.h").unwrap();
+    assert!(
+        symbols
+            .iter()
+            .any(|symbol| symbol.name == "Widget" && symbol.language == "cpp"),
+        "watcher should store C++ symbols for .h header: {:?}",
+        symbols
+            .iter()
+            .map(|symbol| (&symbol.name, &symbol.language))
+            .collect::<Vec<_>>()
+    );
+}
+
+#[tokio::test]
 async fn test_incremental_indexing_resolves_cross_file_pending_relationships() {
     let temp_dir = crate::tests::helpers::unique_temp_dir("watcher_pending_resolution");
     let workspace_root = temp_dir.path().canonicalize().unwrap();

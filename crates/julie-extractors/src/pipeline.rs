@@ -26,7 +26,8 @@ pub(crate) fn extract_canonical_with_parse<F>(
 where
     F: FnOnce(&str, &str, &str) -> Result<Option<Tree>, anyhow::Error>,
 {
-    let language = detect_language_for_source(file_path, content)?;
+    let language = crate::language::detect_language_for_source(file_path, content)
+        .ok_or_else(|| anyhow::anyhow!("Unsupported file extension for path: {}", file_path))?;
     let Some(tree) = parse(language, file_path, content)? else {
         return Ok(degraded_parse_failure_result(content));
     };
@@ -211,6 +212,7 @@ fn parse_diagnostic_for_node(node: Node<'_>, kind: ParseDiagnosticKind) -> Parse
     }
 }
 
+#[cfg(test)]
 pub(crate) fn detect_language_for_path(file_path: &str) -> Result<&'static str, anyhow::Error> {
     let extension = Path::new(file_path)
         .extension()
@@ -219,134 +221,4 @@ pub(crate) fn detect_language_for_path(file_path: &str) -> Result<&'static str, 
 
     crate::language::detect_language_from_extension(extension)
         .ok_or_else(|| anyhow::anyhow!("Unsupported file extension: {}", extension))
-}
-
-pub(crate) fn detect_language_for_source(
-    file_path: &str,
-    content: &str,
-) -> Result<&'static str, anyhow::Error> {
-    let extension = Path::new(file_path)
-        .extension()
-        .and_then(|ext| ext.to_str())
-        .unwrap_or("");
-
-    if extension.eq_ignore_ascii_case("h") && header_contains_cpp_syntax(content) {
-        return Ok("cpp");
-    }
-
-    detect_language_for_path(file_path)
-}
-
-fn header_contains_cpp_syntax(content: &str) -> bool {
-    let code = c_family_code_without_comments_and_strings(content);
-    code.contains("::")
-        || code.contains("public:")
-        || code.contains("private:")
-        || code.contains("protected:")
-        || [
-            "class",
-            "concept",
-            "consteval",
-            "constexpr",
-            "constinit",
-            "final",
-            "friend",
-            "namespace",
-            "noexcept",
-            "override",
-            "requires",
-            "template",
-            "typename",
-        ]
-        .into_iter()
-        .any(|keyword| contains_identifier_token(&code, keyword))
-}
-
-fn c_family_code_without_comments_and_strings(content: &str) -> String {
-    let mut code = String::with_capacity(content.len());
-    let mut chars = content.chars().peekable();
-
-    while let Some(ch) = chars.next() {
-        match ch {
-            '/' if chars.peek() == Some(&'/') => {
-                chars.next();
-                for comment_ch in chars.by_ref() {
-                    if comment_ch == '\n' {
-                        code.push('\n');
-                        break;
-                    }
-                }
-            }
-            '/' if chars.peek() == Some(&'*') => {
-                chars.next();
-                let mut previous = '\0';
-                for comment_ch in chars.by_ref() {
-                    if comment_ch == '\n' {
-                        code.push('\n');
-                    } else {
-                        code.push(' ');
-                    }
-                    if previous == '*' && comment_ch == '/' {
-                        break;
-                    }
-                    previous = comment_ch;
-                }
-            }
-            '"' | '\'' => {
-                scrub_quoted_literal(ch, &mut chars, &mut code);
-            }
-            _ => code.push(ch),
-        }
-    }
-
-    code
-}
-
-fn scrub_quoted_literal(
-    quote: char,
-    chars: &mut std::iter::Peekable<std::str::Chars<'_>>,
-    code: &mut String,
-) {
-    code.push(' ');
-    let mut escaped = false;
-
-    for literal_ch in chars.by_ref() {
-        if literal_ch == '\n' {
-            code.push('\n');
-        } else {
-            code.push(' ');
-        }
-
-        if escaped {
-            escaped = false;
-            continue;
-        }
-        if literal_ch == '\\' {
-            escaped = true;
-            continue;
-        }
-        if literal_ch == quote {
-            break;
-        }
-    }
-}
-
-fn contains_identifier_token(code: &str, token: &str) -> bool {
-    code.match_indices(token).any(|(start, _)| {
-        let end = start + token.len();
-        let before_is_identifier = start
-            .checked_sub(1)
-            .and_then(|index| code.as_bytes().get(index).copied())
-            .is_some_and(is_identifier_byte);
-        let after_is_identifier = code
-            .as_bytes()
-            .get(end)
-            .copied()
-            .is_some_and(is_identifier_byte);
-        !before_is_identifier && !after_is_identifier
-    })
-}
-
-fn is_identifier_byte(byte: u8) -> bool {
-    byte.is_ascii_alphanumeric() || byte == b'_'
 }

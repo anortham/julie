@@ -8,7 +8,9 @@ use tracing::{debug, info, trace, warn};
 
 use crate::extractors::{ExtractionResults, Identifier, PendingRelationship, Relationship, Symbol};
 use crate::indexing_core::batch::ExtractedBatch;
-use crate::tools::workspace::indexing::file_policy::{ExtractionMode, determine_extraction_mode};
+use crate::tools::workspace::indexing::file_policy::{
+    ExtractionMode, detect_language_for_indexing_with_content, determine_extraction_mode,
+};
 
 pub enum ExtractedFileDisposition {
     Parsed,
@@ -136,7 +138,7 @@ pub async fn extract_files_for_indexing_with_records(
             ))) => {
                 records.push(ExtractedFileRecord {
                     relative_path: relative_path.clone(),
-                    language,
+                    language: file_info.language.clone(),
                     disposition: ExtractedFileDisposition::Parsed,
                 });
                 batch.files_processed += 1;
@@ -294,7 +296,7 @@ where
 
 async fn process_file_with_parser_using<F>(
     file_path: &Path,
-    language: &str,
+    _language: &str,
     workspace_root: &Path,
     extract: F,
 ) -> Result<ParserFileProcessResult>
@@ -302,7 +304,6 @@ where
     F: FnOnce(String, String, PathBuf) -> Result<ExtractionResults> + Send + 'static,
 {
     let file_path_clone = file_path.to_path_buf();
-    let language_clone = language.to_string();
     let workspace_root_clone = workspace_root.to_path_buf();
 
     let (_canonical_file_path, content, mut file_info) = tokio::task::spawn_blocking(move || {
@@ -311,9 +312,11 @@ where
             .unwrap_or_else(|_| file_path_clone.clone());
         let file_content = std::fs::read_to_string(&canonical)
             .map_err(|e| anyhow::anyhow!("Failed to read file {:?}: {}", canonical, e))?;
+        let detected_language =
+            detect_language_for_indexing_with_content(&file_path_clone, &file_content);
         let info = crate::database::create_file_info(
             &file_path_clone,
-            &language_clone,
+            &detected_language,
             &workspace_root_clone,
         )?;
         Ok::<_, anyhow::Error>((canonical, file_content, info))
@@ -323,6 +326,7 @@ where
 
     tracing::trace!("✅ spawn_blocking completed for: {:?}", file_path);
 
+    let language = file_info.language.as_str();
     if determine_extraction_mode(language, &content) == ExtractionMode::TextOnly {
         debug!(
             "⏭️  Switching to text-only indexing for {} ({})",
@@ -413,7 +417,6 @@ pub(crate) async fn process_file_without_parser(
     );
 
     let file_path_clone = file_path.to_path_buf();
-    let language_clone = language.to_string();
     let workspace_root_clone = workspace_root.to_path_buf();
 
     let (_canonical_file_path, content, file_info) = tokio::task::spawn_blocking(move || {
@@ -426,9 +429,11 @@ pub(crate) async fn process_file_without_parser(
             .unwrap_or_else(|_| file_path_clone.clone());
         let file_content = std::fs::read_to_string(&canonical)
             .map_err(|e| anyhow::anyhow!("Failed to read file {:?}: {}", canonical, e))?;
+        let detected_language =
+            detect_language_for_indexing_with_content(&file_path_clone, &file_content);
         let info = crate::database::create_file_info(
             &file_path_clone,
-            &language_clone,
+            &detected_language,
             &workspace_root_clone,
         )?;
         Ok::<_, anyhow::Error>((canonical, file_content, info))

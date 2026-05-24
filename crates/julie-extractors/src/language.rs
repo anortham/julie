@@ -5,8 +5,8 @@
 pub use crate::language_spec::{
     DATA_ONLY_CAPABILITIES, DocCommentStyle, FULL_CAPABILITIES, LanguageCapabilities, LanguageSpec,
     NO_PENDING_CAPABILITIES, NO_RELATIONSHIP_CAPABILITIES, PENDING_NO_TYPES_CAPABILITIES,
-    detect_language_from_extension, get_tree_sitter_language, language_spec, language_specs,
-    supported_extensions, supported_languages,
+    detect_language_for_source, detect_language_from_extension, get_tree_sitter_language,
+    language_spec, language_specs, supported_extensions, supported_languages,
 };
 
 /// Get AST node types that represent function definitions for a given language

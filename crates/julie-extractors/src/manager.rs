@@ -35,7 +35,7 @@ impl ExtractorManager {
         tracing::debug!(
             "Extracted {} symbols from {} file: {}",
             results.symbols.len(),
-            crate::pipeline::detect_language_for_source(file_path, content).unwrap_or("unknown"),
+            crate::language::detect_language_for_source(file_path, content).unwrap_or("unknown"),
             file_path
         );
         Ok(super::routing_symbols::project_symbols(results))
@@ -65,7 +65,7 @@ impl ExtractorManager {
         tracing::debug!(
             "Extracted {} identifiers from {} file: {}",
             results.identifiers.len(),
-            crate::pipeline::detect_language_for_source(file_path, content).unwrap_or("unknown"),
+            crate::language::detect_language_for_source(file_path, content).unwrap_or("unknown"),
             file_path
         );
         Ok(super::routing_identifiers::project_identifiers(results))
@@ -86,7 +86,7 @@ impl ExtractorManager {
         tracing::debug!(
             "Extracted {} relationships from {} file: {}",
             results.relationships.len(),
-            crate::pipeline::detect_language_for_source(file_path, content).unwrap_or("unknown"),
+            crate::language::detect_language_for_source(file_path, content).unwrap_or("unknown"),
             file_path
         );
         Ok(super::routing_relationships::project_relationships(results))

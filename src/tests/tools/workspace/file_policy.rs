@@ -1,5 +1,6 @@
 use crate::tools::workspace::indexing::file_policy::{
-    ExtractionMode, determine_extraction_mode, should_watch_path,
+    ExtractionMode, detect_language_for_indexing_with_content, determine_extraction_mode,
+    should_watch_path,
 };
 use crate::watcher::filtering::build_supported_extensions;
 use std::fs;
@@ -8,6 +9,28 @@ use std::fs;
 fn test_determine_extraction_mode_parser_backed_source_uses_parser() {
     let mode = determine_extraction_mode("rust", "fn main() { helper(); }\n");
     assert_eq!(mode, ExtractionMode::ParserBacked);
+}
+
+#[test]
+fn test_detect_language_for_indexing_with_content_prefers_cpp_h_header() {
+    let content = r#"
+#pragma once
+namespace app {
+class Widget {
+public:
+    void run() const;
+};
+}
+"#;
+
+    assert_eq!(
+        detect_language_for_indexing_with_content(
+            std::path::Path::new("include/widget.h"),
+            content,
+        ),
+        "cpp",
+        "indexing language detection should use source-aware parser language for C++ .h headers"
+    );
 }
 
 #[test]
