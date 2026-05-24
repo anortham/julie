@@ -20,6 +20,9 @@ use crate::extractors::{
 };
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::CallToolResult;
+use crate::tests::helpers::db::{
+    file_info_builder, identifier_builder, relationship_builder, symbol_builder,
+};
 use crate::tools::impact::BlastRadiusTool;
 use crate::tools::impact::ranking::rank_impacts;
 use crate::tools::impact::seed::resolve_seed_context;
@@ -28,17 +31,14 @@ use crate::tools::impact::walk::{
 };
 
 fn make_file(path: &str, hash: &str) -> FileInfo {
-    FileInfo {
-        path: path.to_string(),
-        language: "typescript".to_string(),
-        hash: hash.to_string(),
-        size: 256,
-        last_modified: 1_700_000_000,
-        last_indexed: 0,
-        symbol_count: 1,
-        line_count: 10,
-        content: None,
-    }
+    file_info_builder(path)
+        .language("typescript")
+        .hash(hash)
+        .size(256)
+        .last_modified(1_700_000_000)
+        .last_indexed(0)
+        .line_count(10)
+        .build()
 }
 
 fn make_symbol(
@@ -47,31 +47,17 @@ fn make_symbol(
     file_path: &str,
     metadata: Option<HashMap<String, serde_json::Value>>,
 ) -> Symbol {
-    Symbol {
-        id: id.to_string(),
-        name: name.to_string(),
-        kind: SymbolKind::Function,
-        language: "typescript".to_string(),
-        file_path: file_path.to_string(),
-        start_line: 1,
-        end_line: 3,
-        start_column: 0,
-        end_column: 0,
-        start_byte: 0,
-        end_byte: 42,
-        parent_id: None,
-        signature: Some(format!("fn {}()", name)),
-        doc_comment: None,
-        visibility: Some(Visibility::Public),
-        metadata,
-        semantic_group: None,
-        confidence: Some(1.0),
-        code_context: None,
-        content_type: None,
-        body_span: None,
-        body_hash: None,
-        annotations: Vec::new(),
+    let mut builder = symbol_builder(id, name, file_path)
+        .language("typescript")
+        .span(1, 0, 3, 0)
+        .bytes(0, 42)
+        .signature(format!("fn {name}()"))
+        .visibility(Visibility::Public)
+        .confidence(1.0);
+    if let Some(metadata) = metadata {
+        builder = builder.metadata(metadata);
     }
+    builder.build()
 }
 
 fn make_symbol_with_kind(id: &str, name: &str, file_path: &str, kind: SymbolKind) -> Symbol {
@@ -87,16 +73,10 @@ fn make_relationship(
     kind: RelationshipKind,
     file_path: &str,
 ) -> Relationship {
-    Relationship {
-        id: id.to_string(),
-        from_symbol_id: from_symbol_id.to_string(),
-        to_symbol_id: to_symbol_id.to_string(),
-        kind,
-        file_path: file_path.to_string(),
-        line_number: 1,
-        confidence: 1.0,
-        metadata: None,
-    }
+    relationship_builder(id, from_symbol_id, to_symbol_id)
+        .kind(kind)
+        .file_path(file_path)
+        .build()
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -110,23 +90,18 @@ fn make_identifier(
     line: u32,
     confidence: f32,
 ) -> Identifier {
-    Identifier {
-        id: id.to_string(),
-        name: name.to_string(),
-        kind,
-        language: "typescript".to_string(),
-        file_path: file_path.to_string(),
-        start_line: line,
-        start_column: 0,
-        end_line: line,
-        end_column: name.len() as u32,
-        start_byte: 0,
-        end_byte: name.len() as u32,
-        containing_symbol_id: containing_symbol_id.map(str::to_string),
-        target_symbol_id: target_symbol_id.map(str::to_string),
-        confidence,
-        code_context: None,
+    let mut builder = identifier_builder(id, name, file_path)
+        .kind(kind)
+        .language("typescript")
+        .line(line)
+        .confidence(confidence);
+    if let Some(containing_symbol_id) = containing_symbol_id {
+        builder = builder.containing_symbol_id(containing_symbol_id);
     }
+    if let Some(target_symbol_id) = target_symbol_id {
+        builder = builder.target_symbol_id(target_symbol_id);
+    }
+    builder.build()
 }
 
 fn extract_text(result: &CallToolResult) -> String {

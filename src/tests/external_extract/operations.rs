@@ -19,47 +19,24 @@ use crate::indexing_core::extraction::extract_files_for_indexing;
 use crate::indexing_core::persistence::{
     persist_force_rebuild, persist_incremental_scan, persist_single_file_delete,
 };
+use crate::tests::helpers::db::{file_info_builder, identifier_builder, symbol_builder};
 
 fn make_file(path: &str, hash: &str) -> FileInfo {
-    FileInfo {
-        path: path.to_string(),
-        language: "rust".to_string(),
-        hash: hash.to_string(),
-        size: 200,
-        last_modified: 1000,
-        last_indexed: 0,
-        symbol_count: 1,
-        line_count: 10,
-        content: Some(format!("// {path}")),
-    }
+    file_info_builder(path)
+        .hash(hash)
+        .size(200)
+        .last_modified(1000)
+        .last_indexed(0)
+        .line_count(10)
+        .content(format!("// {path}"))
+        .build()
 }
 
 fn make_symbol(id: &str, name: &str, file_path: &str) -> Symbol {
-    Symbol {
-        id: id.to_string(),
-        name: name.to_string(),
-        kind: SymbolKind::Function,
-        language: "rust".to_string(),
-        file_path: file_path.to_string(),
-        start_line: 1,
-        start_column: 0,
-        end_line: 3,
-        end_column: 0,
-        start_byte: 0,
-        end_byte: 30,
-        signature: None,
-        doc_comment: None,
-        visibility: None,
-        parent_id: None,
-        metadata: None,
-        semantic_group: None,
-        confidence: None,
-        code_context: None,
-        content_type: None,
-        body_span: None,
-        body_hash: None,
-        annotations: Vec::new(),
-    }
+    symbol_builder(id, name, file_path)
+        .span(1, 0, 3, 0)
+        .bytes(0, 30)
+        .build()
 }
 
 fn make_identifier_with_target(
@@ -68,23 +45,14 @@ fn make_identifier_with_target(
     containing_symbol_id: &str,
     target_symbol_id: &str,
 ) -> Identifier {
-    Identifier {
-        id: id.to_string(),
-        name: "target_call".to_string(),
-        kind: IdentifierKind::Call,
-        language: "rust".to_string(),
-        file_path: file_path.to_string(),
-        start_line: 2,
-        start_column: 4,
-        end_line: 2,
-        end_column: 16,
-        start_byte: 10,
-        end_byte: 22,
-        containing_symbol_id: Some(containing_symbol_id.to_string()),
-        target_symbol_id: Some(target_symbol_id.to_string()),
-        confidence: 1.0,
-        code_context: None,
-    }
+    identifier_builder(id, "target_call", file_path)
+        .kind(IdentifierKind::Call)
+        .line(2)
+        .column(4, 16)
+        .bytes(10, 22)
+        .containing_symbol_id(containing_symbol_id)
+        .target_symbol_id(target_symbol_id)
+        .build()
 }
 
 fn batch_for(files: Vec<FileInfo>, symbols: Vec<Symbol>) -> ExtractedBatch {
