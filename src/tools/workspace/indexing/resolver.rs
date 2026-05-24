@@ -133,7 +133,16 @@ pub fn select_best_candidate<'a>(
     pending: &PendingRelationship,
     parent_ctx: &ParentReferenceContext,
 ) -> Option<&'a Symbol> {
-    select_best_candidate_for_target(candidates, &[], pending, None, None, parent_ctx)
+    let caller_language = scoring::language_of(&pending.file_path);
+    select_best_candidate_for_target(
+        candidates,
+        &[],
+        pending,
+        None,
+        caller_language,
+        None,
+        parent_ctx,
+    )
 }
 
 fn select_best_candidate_for_target<'a>(
@@ -141,24 +150,48 @@ fn select_best_candidate_for_target<'a>(
     reexport_imports: &[Symbol],
     pending: &PendingRelationship,
     target: Option<&UnresolvedTarget>,
+    caller_language: Option<&str>,
     caller_scope_symbol_id: Option<&str>,
     parent_ctx: &ParentReferenceContext,
 ) -> Option<&'a Symbol> {
-    if let Some(symbol) =
-        rust_reexports::select_definition(candidates, reexport_imports, pending, target)
-    {
+    if let Some(symbol) = rust_reexports::select_definition(
+        candidates,
+        reexport_imports,
+        pending,
+        target,
+        caller_language,
+    ) {
         return Some(symbol);
     }
 
     candidates
         .iter()
         .filter_map(|c| {
-            let s =
-                scoring::score_candidate(c, pending, target, caller_scope_symbol_id, parent_ctx);
+            let s = scoring::score_candidate(
+                c,
+                pending,
+                target,
+                caller_language,
+                caller_scope_symbol_id,
+                parent_ctx,
+            );
             if s > 0 { Some((c, s)) } else { None }
         })
         .max_by_key(|(_, score)| *score)
         .map(|(symbol, _)| symbol)
+}
+
+fn caller_language_for_pending<'a>(
+    pending: &PendingRelationship,
+    caller_languages: &'a HashMap<String, String>,
+) -> Option<&'a str> {
+    // Indexing stores file rows before resolving relationships. If a caller
+    // row is absent, preserve the old extension-based behavior.
+    caller_languages
+        .get(&pending.file_path)
+        .map(String::as_str)
+        .filter(|language| !language.is_empty())
+        .or_else(|| scoring::language_of(&pending.file_path))
 }
 
 /// Build a resolved `Relationship` from a pending relationship and its resolved target.
@@ -260,13 +293,30 @@ pub fn resolve_structured_batch(
             return (Vec::new(), stats);
         }
     };
+    let caller_languages = {
+        let mut seen = HashSet::new();
+        let caller_paths: Vec<&str> = pendings
+            .iter()
+            .filter_map(|pending| {
+                let path = pending.pending.file_path.as_str();
+                seen.insert(path).then_some(path)
+            })
+            .collect();
+        match db.get_file_languages_by_paths(&caller_paths) {
+            Ok(languages) => languages,
+            Err(e) => {
+                warn!("Caller file language lookup failed: {}", e);
+                HashMap::new()
+            }
+        }
+    };
     let reexport_imports = if pendings.iter().any(|pending| {
         pending
             .target
             .namespace_path
             .first()
             .is_some_and(|root| root == "crate")
-            && scoring::language_of(&pending.pending.file_path) == Some("rust")
+            && caller_language_for_pending(&pending.pending, &caller_languages) == Some("rust")
     }) {
         match db.query_symbols_by_kind(&SymbolKind::Import) {
             Ok(imports) => imports,
@@ -292,6 +342,7 @@ pub fn resolve_structured_batch(
 
     let mut resolved = Vec::with_capacity(pendings.len());
     for structured in pendings {
+        let caller_language = caller_language_for_pending(&structured.pending, &caller_languages);
         match candidates_map.get(&structured.target.terminal_name) {
             Some(candidates) if !candidates.is_empty() => {
                 if let Some(target) = select_best_candidate_for_target(
@@ -299,6 +350,7 @@ pub fn resolve_structured_batch(
                     &reexport_imports,
                     &structured.pending,
                     Some(&structured.target),
+                    caller_language,
                     structured.caller_scope_symbol_id.as_deref(),
                     &parent_ctx,
                 ) {

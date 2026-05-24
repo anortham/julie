@@ -916,6 +916,47 @@ fn test_get_file_contents_by_paths_returns_requested_content_map() {
 }
 
 #[test]
+fn test_get_file_languages_by_paths_returns_requested_languages() {
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("test.db");
+    #[allow(unused_mut)]
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
+
+    db.store_file_with_content(
+        "include/widget.h",
+        "cpp",
+        "h",
+        10,
+        1,
+        "class Widget {};",
+        "test_workspace",
+    )
+    .unwrap();
+    db.store_file_with_content(
+        "src/legacy.c",
+        "c",
+        "c",
+        10,
+        1,
+        "void tick(void) {}",
+        "test_workspace",
+    )
+    .unwrap();
+
+    let languages = db
+        .get_file_languages_by_paths(&["include/widget.h", "missing.rs", "src/legacy.c"])
+        .unwrap();
+
+    assert_eq!(languages.len(), 2);
+    assert_eq!(
+        languages.get("include/widget.h").map(String::as_str),
+        Some("cpp")
+    );
+    assert_eq!(languages.get("src/legacy.c").map(String::as_str), Some("c"));
+    assert!(!languages.contains_key("missing.rs"));
+}
+
+#[test]
 fn test_get_identifiers_by_names_kinds_excluding_containers_filters_rows() {
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("test.db");

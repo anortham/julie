@@ -319,6 +319,32 @@ impl SymbolDatabase {
         Ok(results)
     }
 
+    /// Get stored languages for a bounded set of file paths.
+    pub fn get_file_languages_by_paths(&self, paths: &[&str]) -> Result<HashMap<String, String>> {
+        if paths.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let json_paths = serde_json::to_string(paths)
+            .map_err(|e| anyhow!("Failed to serialize file paths to JSON: {e}"))?;
+        let mut stmt = self.conn.prepare(
+            "SELECT path, language
+             FROM files
+             WHERE path IN (SELECT value FROM json_each(?1))",
+        )?;
+        let rows = stmt.query_map([json_paths], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
+
+        let mut languages = HashMap::new();
+        for row in rows {
+            let (path, language) = row?;
+            languages.insert(path, language);
+        }
+
+        Ok(languages)
+    }
+
     /// Get all file contents for Tantivy index population.
     /// Intentionally unbounded: Tantivy needs the full corpus to build a complete index.
     /// Do NOT add a LIMIT here — partial indexing produces incorrect BM25 scores.

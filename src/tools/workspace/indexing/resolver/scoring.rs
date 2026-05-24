@@ -37,6 +37,7 @@ pub(super) fn score_candidate(
     candidate: &Symbol,
     pending: &PendingRelationship,
     target: Option<&UnresolvedTarget>,
+    caller_language: Option<&str>,
     caller_scope_symbol_id: Option<&str>,
     parent_ctx: &ParentReferenceContext,
 ) -> u32 {
@@ -45,12 +46,14 @@ pub(super) fn score_candidate(
     }
 
     let mut score: u32 = 1;
-    let Some(namespace_bonus) = namespace::score(candidate, pending, target, parent_ctx) else {
+    let Some(namespace_bonus) =
+        namespace::score(candidate, pending, target, caller_language, parent_ctx)
+    else {
         return 0;
     };
     score += namespace_bonus;
 
-    if let Some(caller_lang) = language_of(&pending.file_path) {
+    if let Some(caller_lang) = caller_language {
         if candidate.language == caller_lang {
             score += 100;
         }

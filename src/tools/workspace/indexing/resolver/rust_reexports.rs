@@ -1,18 +1,16 @@
-use super::{
-    namespace,
-    scoring::{is_resolvable_target, language_of},
-};
+use super::{namespace, scoring::is_resolvable_target};
 use julie_extractors::base::{PendingRelationship, Symbol, SymbolKind, UnresolvedTarget};
 use std::collections::HashSet;
 
 pub(super) fn select_definition<'a>(
     candidates: &'a [Symbol],
     reexport_imports: &[Symbol],
-    pending: &PendingRelationship,
+    _pending: &PendingRelationship,
     target: Option<&UnresolvedTarget>,
+    caller_language: Option<&str>,
 ) -> Option<&'a Symbol> {
     let target = target?;
-    if language_of(&pending.file_path) != Some("rust") {
+    if caller_language != Some("rust") {
         return None;
     }
     if target.namespace_path.first().map(String::as_str) != Some("crate") {

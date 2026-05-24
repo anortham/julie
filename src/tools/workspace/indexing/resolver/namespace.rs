@@ -1,10 +1,11 @@
-use super::{ParentReferenceContext, scoring::language_of};
+use super::ParentReferenceContext;
 use julie_extractors::base::{PendingRelationship, Symbol, UnresolvedTarget};
 
 pub(super) fn score(
     candidate: &Symbol,
-    pending: &PendingRelationship,
+    _pending: &PendingRelationship,
     target: Option<&UnresolvedTarget>,
+    caller_language: Option<&str>,
     parent_ctx: &ParentReferenceContext,
 ) -> Option<u32> {
     let Some(target) = target else {
@@ -16,7 +17,7 @@ pub(super) fn score(
 
     let root = target.namespace_path.first().map(String::as_str);
     if matches!(root, Some("std" | "core" | "alloc")) {
-        if language_of(&pending.file_path) != Some("rust") || candidate.language != "rust" {
+        if caller_language != Some("rust") || candidate.language != "rust" {
             return Some(0);
         }
 
@@ -25,7 +26,7 @@ pub(super) fn score(
             .then_some(500);
     }
 
-    if root == Some("crate") && language_of(&pending.file_path) == Some("rust") {
+    if root == Some("crate") && caller_language == Some("rust") {
         let namespace_without_root = &target.namespace_path[1..];
         if namespace_without_root.is_empty() {
             return Some(0);

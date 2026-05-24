@@ -226,6 +226,114 @@ fn test_resolve_batch_resolves_multiple_pendings_with_shared_callee() {
 }
 
 #[test]
+fn test_resolve_batch_prefers_content_aware_cpp_h_caller_language() {
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("test.db");
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
+
+    for (path, language) in [
+        ("include/widget.h", "cpp"),
+        ("include/tick.c", "c"),
+        ("src/cpp_impl.cpp", "cpp"),
+    ] {
+        db.store_file_info(&FileInfo {
+            path: path.to_string(),
+            language: language.to_string(),
+            hash: "h".to_string(),
+            size: 100,
+            last_modified: 1000,
+            last_indexed: 0,
+            symbol_count: 1,
+            line_count: 0,
+            content: None,
+        })
+        .unwrap();
+    }
+
+    let symbols = vec![
+        sym(
+            "c_tick",
+            "tick",
+            SymbolKind::Function,
+            "c",
+            "include/tick.c",
+        ),
+        sym(
+            "cpp_tick",
+            "tick",
+            SymbolKind::Function,
+            "cpp",
+            "src/cpp_impl.cpp",
+        ),
+    ];
+    db.store_symbols_transactional(&symbols).unwrap();
+
+    let (resolved, stats) =
+        resolver::resolve_batch(&[pending("caller", "tick", "include/widget.h")], &db);
+
+    assert_eq!(stats.total, 1);
+    assert_eq!(stats.resolved, 1);
+    assert_eq!(resolved.len(), 1);
+    assert_eq!(
+        resolved[0].to_symbol_id, "cpp_tick",
+        "resolver should use stored source-aware caller language for .h files instead of extension-only C fallback"
+    );
+}
+
+#[test]
+fn test_resolve_batch_falls_back_to_extension_language_when_caller_file_missing() {
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("test.db");
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
+
+    for (path, language) in [("include/tick.c", "c"), ("src/cpp_impl.cpp", "cpp")] {
+        db.store_file_info(&FileInfo {
+            path: path.to_string(),
+            language: language.to_string(),
+            hash: "h".to_string(),
+            size: 100,
+            last_modified: 1000,
+            last_indexed: 0,
+            symbol_count: 1,
+            line_count: 0,
+            content: None,
+        })
+        .unwrap();
+    }
+
+    let symbols = vec![
+        sym(
+            "c_tick",
+            "tick",
+            SymbolKind::Function,
+            "c",
+            "include/tick.c",
+        ),
+        sym(
+            "cpp_tick",
+            "tick",
+            SymbolKind::Function,
+            "cpp",
+            "src/cpp_impl.cpp",
+        ),
+    ];
+    db.store_symbols_transactional(&symbols).unwrap();
+
+    let (resolved, stats) = resolver::resolve_batch(
+        &[pending("caller", "tick", "include/missing_widget.h")],
+        &db,
+    );
+
+    assert_eq!(stats.total, 1);
+    assert_eq!(stats.resolved, 1);
+    assert_eq!(resolved.len(), 1);
+    assert_eq!(
+        resolved[0].to_symbol_id, "c_tick",
+        "missing caller file metadata should preserve extension-based .h fallback"
+    );
+}
+
+#[test]
 fn test_resolve_batch_keeps_same_caller_target_calls_distinct_by_line() {
     let (_tmp, db) = setup_test_db();
 
