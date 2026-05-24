@@ -109,27 +109,8 @@ async fn test_manage_workspace_health_triggers_roots_resolution_when_primary_mis
     let (read_half, mut write_half) = tokio::io::split(client_transport);
     let mut lines = BufReader::new(read_half).lines();
 
-    let roots_reply = async {
-        match read_server_message(&mut lines).await {
-            ServerJsonRpcMessage::Request(request) => match request.request {
-                ServerRequest::ListRootsRequest(_) => {
-                    send_json_line(
-                        &mut write_half,
-                        &serde_json::json!({
-                            "jsonrpc": "2.0",
-                            "id": request.id,
-                            "result": {
-                                "roots": [{ "uri": format!("file://{}", roots_path.to_string_lossy()) }]
-                            }
-                        }),
-                    )
-                    .await;
-                }
-                other => panic!("unexpected server request: {other:?}"),
-            },
-            other => panic!("unexpected server message: {other:?}"),
-        }
-    };
+    let roots = [roots_path.as_path()];
+    let roots_reply = answer_next_list_roots_request(&mut lines, &mut write_half, &roots);
 
     let health = <JulieServerHandler as ServerHandler>::call_tool(
         &handler,

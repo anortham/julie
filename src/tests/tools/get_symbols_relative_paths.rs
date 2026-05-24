@@ -4,54 +4,19 @@
 //! after Phase 2 implementation (relative Unix-style path storage).
 
 use crate::handler::JulieServerHandler;
-use crate::mcp_compat::CallToolResult;
+use crate::tests::helpers::mcp::{answer_next_list_roots_request, call_tool_result_text};
 use crate::tools::symbols::GetSymbolsTool;
 use crate::tools::workspace::ManageWorkspaceTool;
 use anyhow::Result;
 use rmcp::{
     ServerHandler,
-    model::{CallToolRequestParams, NumberOrString, ServerJsonRpcMessage, ServerRequest},
+    model::{CallToolRequestParams, NumberOrString},
     service::{RequestContext, serve_directly},
 };
 use std::fs;
 use std::sync::Arc;
 use tempfile::TempDir;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-
-fn extract_text_from_result(result: &CallToolResult) -> String {
-    result
-        .content
-        .iter()
-        .filter_map(|content_block| {
-            serde_json::to_value(content_block).ok().and_then(|json| {
-                json.get("text")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string())
-            })
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
-async fn send_json_line(writer: &mut (impl AsyncWriteExt + Unpin), value: &serde_json::Value) {
-    writer
-        .write_all(serde_json::to_string(value).unwrap().as_bytes())
-        .await
-        .unwrap();
-    writer.write_all(b"\n").await.unwrap();
-    writer.flush().await.unwrap();
-}
-
-async fn read_server_message(
-    lines: &mut tokio::io::Lines<BufReader<tokio::io::ReadHalf<tokio::io::DuplexStream>>>,
-) -> ServerJsonRpcMessage {
-    let line = lines
-        .next_line()
-        .await
-        .unwrap()
-        .expect("server should emit a JSON-RPC message line");
-    serde_json::from_str(&line).unwrap()
-}
+use tokio::io::{AsyncBufReadExt, BufReader};
 
 /// Test that get_symbols can find symbols when given a relative path
 ///
@@ -528,27 +493,8 @@ async fn test_get_symbols_primary_wrapper_resolves_roots_before_reading() -> Res
     let (read_half, mut write_half) = tokio::io::split(client_transport);
     let mut lines = BufReader::new(read_half).lines();
 
-    let roots_reply = async {
-        match read_server_message(&mut lines).await {
-            ServerJsonRpcMessage::Request(request) => match request.request {
-                ServerRequest::ListRootsRequest(_) => {
-                    send_json_line(
-                        &mut write_half,
-                        &serde_json::json!({
-                            "jsonrpc": "2.0",
-                            "id": request.id,
-                            "result": {
-                                "roots": [{ "uri": format!("file://{}", roots_path.to_string_lossy()) }]
-                            }
-                        }),
-                    )
-                    .await;
-                }
-                other => panic!("unexpected server request: {other:?}"),
-            },
-            other => panic!("unexpected server message: {other:?}"),
-        }
-    };
+    let roots = [roots_path.as_path()];
+    let roots_reply = answer_next_list_roots_request(&mut lines, &mut write_half, &roots);
 
     let get_symbols = <JulieServerHandler as ServerHandler>::call_tool(
         &handler,
@@ -567,7 +513,7 @@ async fn test_get_symbols_primary_wrapper_resolves_roots_before_reading() -> Res
         RequestContext::new(NumberOrString::Number(21), service.peer().clone()),
     );
     let (_, result) = tokio::join!(roots_reply, get_symbols);
-    let text = extract_text_from_result(&result?);
+    let text = call_tool_result_text(&result?);
 
     assert!(
         text.contains("rebound_primary_symbol"),

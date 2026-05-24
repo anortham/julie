@@ -6,6 +6,7 @@ use crate::embeddings::{DeviceInfo, EmbeddingBackend, EmbeddingProvider, Embeddi
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::CallToolResult;
 use crate::startup::run_primary_workspace_repair;
+use crate::tests::helpers::mcp::answer_next_list_roots_request;
 use crate::tools::workspace::ManageWorkspaceTool;
 #[cfg(feature = "embeddings-sidecar")]
 use crate::tools::workspace::indexing::embeddings::spawn_workspace_embedding;
@@ -15,7 +16,7 @@ use crate::tools::workspace::indexing::engine_version::{
 use crate::workspace::JulieWorkspace;
 use rmcp::{
     ServerHandler,
-    model::{CallToolRequestParams, NumberOrString, ServerJsonRpcMessage, ServerRequest},
+    model::{CallToolRequestParams, NumberOrString},
     service::{RequestContext, serve_directly},
 };
 #[cfg(feature = "embeddings-sidecar")]
@@ -30,7 +31,7 @@ use std::sync::{Arc, atomic::AtomicUsize};
 #[cfg(feature = "embeddings-sidecar")]
 use std::time::{Duration, Instant};
 use tempfile::TempDir;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufReadExt, BufReader};
 
 struct NoopEmbeddingProvider;
 
@@ -157,26 +158,6 @@ async fn first_embedding_value_for_symbol(handler: &JulieServerHandler, name: &s
         .first()
         .copied()
         .expect("embedding should not be empty")
-}
-
-async fn send_json_line(writer: &mut (impl AsyncWriteExt + Unpin), value: &serde_json::Value) {
-    writer
-        .write_all(serde_json::to_string(value).unwrap().as_bytes())
-        .await
-        .unwrap();
-    writer.write_all(b"\n").await.unwrap();
-    writer.flush().await.unwrap();
-}
-
-async fn read_server_message(
-    lines: &mut tokio::io::Lines<BufReader<tokio::io::ReadHalf<tokio::io::DuplexStream>>>,
-) -> ServerJsonRpcMessage {
-    let line = lines
-        .next_line()
-        .await
-        .unwrap()
-        .expect("server should emit a JSON-RPC message line");
-    serde_json::from_str(&line).unwrap()
 }
 
 #[cfg(feature = "embeddings-sidecar")]

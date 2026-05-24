@@ -4,18 +4,18 @@ use std::sync::atomic::Ordering;
 
 use rmcp::{
     ServerHandler,
-    model::{
-        CallToolRequestParams, ErrorCode, NumberOrString, ServerJsonRpcMessage, ServerRequest,
-    },
+    model::{CallToolRequestParams, ErrorCode, NumberOrString},
     service::{RequestContext, serve_directly},
 };
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufReadExt, BufReader};
 
 use crate::daemon::database::DaemonDatabase;
 use crate::daemon::workspace_pool::WorkspacePool;
 use crate::handler::JulieServerHandler;
-use crate::mcp_compat::CallToolResult;
 use crate::paths::DaemonPaths;
+use crate::tests::helpers::mcp::{
+    answer_next_list_roots_request, call_tool_result_text as extract_text_from_result,
+};
 use crate::tools::FastSearchTool;
 use crate::tools::navigation::resolution::{
     WorkspaceResolutionFailureKind, resolve_workspace_filter, workspace_resolution_failure_kind,
@@ -23,21 +23,6 @@ use crate::tools::navigation::resolution::{
 use crate::tools::workspace::ManageWorkspaceTool;
 use crate::workspace::registry::generate_workspace_id;
 use serial_test::serial;
-
-fn extract_text_from_result(result: &CallToolResult) -> String {
-    result
-        .content
-        .iter()
-        .filter_map(|content_block| {
-            serde_json::to_value(content_block).ok().and_then(|json| {
-                json.get("text")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string())
-            })
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
-}
 
 fn assert_workspace_resolution_failure(
     error: &anyhow::Error,
@@ -54,26 +39,6 @@ fn assert_workspace_resolution_failure(
         expected_message,
         "typed metadata must not change displayed error text"
     );
-}
-
-async fn send_json_line(writer: &mut (impl AsyncWriteExt + Unpin), value: &serde_json::Value) {
-    writer
-        .write_all(serde_json::to_string(value).unwrap().as_bytes())
-        .await
-        .unwrap();
-    writer.write_all(b"\n").await.unwrap();
-    writer.flush().await.unwrap();
-}
-
-async fn read_server_message(
-    lines: &mut tokio::io::Lines<BufReader<tokio::io::ReadHalf<tokio::io::DuplexStream>>>,
-) -> ServerJsonRpcMessage {
-    let line = lines
-        .next_line()
-        .await
-        .unwrap()
-        .expect("server should emit a JSON-RPC message line");
-    serde_json::from_str(&line).unwrap()
 }
 
 async fn mark_index_ready(handler: &JulieServerHandler) {
@@ -571,27 +536,8 @@ async fn test_manage_workspace_list_triggers_roots_resolution_when_primary_missi
     let (read_half, mut write_half) = tokio::io::split(client_transport);
     let mut lines = BufReader::new(read_half).lines();
 
-    let roots_reply = async {
-        match read_server_message(&mut lines).await {
-            ServerJsonRpcMessage::Request(request) => match request.request {
-                ServerRequest::ListRootsRequest(_) => {
-                    send_json_line(
-                        &mut write_half,
-                        &serde_json::json!({
-                            "jsonrpc": "2.0",
-                            "id": request.id,
-                            "result": {
-                                "roots": [{ "uri": format!("file://{}", roots_path.to_string_lossy()) }]
-                            }
-                        }),
-                    )
-                    .await;
-                }
-                other => panic!("unexpected server request: {other:?}"),
-            },
-            other => panic!("unexpected server message: {other:?}"),
-        }
-    };
+    let roots = [roots_path.as_path()];
+    let roots_reply = answer_next_list_roots_request(&mut lines, &mut write_half, &roots);
 
     let list = <JulieServerHandler as ServerHandler>::call_tool(
         &handler,
