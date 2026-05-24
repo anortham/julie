@@ -27,6 +27,8 @@ type CommitHook = Arc<dyn Fn(&Path) + Send + Sync + 'static>;
 
 #[cfg(test)]
 static COMMIT_AFTER_EXPECTED_CHECK_HOOK: OnceLock<Mutex<Option<CommitHook>>> = OnceLock::new();
+#[cfg(test)]
+static MULTI_FILE_BEFORE_RENAME_HOOK: OnceLock<Mutex<Option<CommitHook>>> = OnceLock::new();
 
 #[cfg(test)]
 pub(crate) fn set_commit_after_expected_check_hook(hook: Option<CommitHook>) {
@@ -46,8 +48,29 @@ fn run_commit_after_expected_check_hook(file_path: &Path) {
     }
 }
 
+#[cfg(test)]
+pub(crate) fn set_multi_file_before_rename_hook(hook: Option<CommitHook>) {
+    let hook_cell = MULTI_FILE_BEFORE_RENAME_HOOK.get_or_init(|| Mutex::new(None));
+    *hook_cell.lock().expect("multi-file hook lock poisoned") = hook;
+}
+
+#[cfg(test)]
+fn run_multi_file_before_rename_hook(file_path: &Path) {
+    let hook = MULTI_FILE_BEFORE_RENAME_HOOK
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+        .expect("multi-file hook lock poisoned")
+        .clone();
+    if let Some(hook) = hook {
+        hook(file_path);
+    }
+}
+
 #[cfg(not(test))]
 fn run_commit_after_expected_check_hook(_file_path: &Path) {}
+
+#[cfg(not(test))]
+fn run_multi_file_before_rename_hook(_file_path: &Path) {}
 
 static EDIT_LOCKS: OnceLock<Mutex<HashMap<PathBuf, Arc<Mutex<()>>>>> = OnceLock::new();
 
@@ -299,6 +322,19 @@ impl MultiFileTransaction {
         let file_list: Vec<(PathBuf, String)> = std::mem::take(&mut self.pending_content)
             .into_iter()
             .collect();
+        let mut edit_locks: Vec<(PathBuf, Arc<Mutex<()>>)> = file_list
+            .iter()
+            .map(|(path, _)| (normalized_edit_lock_path(path), edit_lock_for(path)))
+            .collect();
+        edit_locks.sort_by(|(left, _), (right, _)| left.cmp(right));
+        edit_locks.dedup_by(|(left, _), (right, _)| left == right);
+        let mut _edit_guards = Vec::with_capacity(edit_locks.len());
+        for (path, lock) in &edit_locks {
+            _edit_guards.push(
+                lock.lock()
+                    .map_err(|_| anyhow::anyhow!("Edit lock poisoned for {}", path.display()))?,
+            );
+        }
 
         // Phase 0: Pre-flight validation - check if we can write to all target files
         for (file_path, _) in &file_list {
@@ -327,6 +363,7 @@ impl MultiFileTransaction {
         // Phase 2: Atomic rename all temp files (commit point)
         for (i, (file_path, _)) in file_list.iter().enumerate() {
             let temp_path = &self.temp_files[i];
+            run_multi_file_before_rename_hook(file_path);
 
             if let Err(e) = fs::rename(temp_path, file_path) {
                 // Roll back already-committed renames using the same stable order

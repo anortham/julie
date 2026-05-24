@@ -201,6 +201,103 @@ mod transactional_editing_tests {
         Ok(())
     }
 
+    #[test]
+    fn test_multi_file_transaction_serializes_with_single_file_checked_writer() -> Result<()> {
+        use crate::tools::editing::{
+            set_commit_after_expected_check_hook, set_multi_file_before_rename_hook,
+        };
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::mpsc;
+        use std::sync::{Arc, Mutex};
+        use std::thread;
+        use std::time::Duration;
+
+        let fixture = TransactionalTestFixture::new()?;
+        let file_path = fixture.create_test_file("test.txt", "original content")?;
+
+        let mut multi = MultiFileTransaction::new("multi-race")?;
+        multi.add_file(file_path.to_str().unwrap())?;
+        multi.set_content(file_path.to_str().unwrap(), "from multi-file transaction")?;
+
+        let single = EditingTransaction::begin(file_path.to_str().unwrap())?;
+
+        let (multi_entered_tx, multi_entered_rx) = mpsc::channel();
+        let (multi_release_tx, multi_release_rx) = mpsc::channel();
+        let multi_release_rx = Arc::new(Mutex::new(multi_release_rx));
+        let multi_hook_path = file_path.clone();
+        let first_multi_hook = Arc::new(AtomicBool::new(true));
+        set_multi_file_before_rename_hook(Some(Arc::new(move |path| {
+            if path != multi_hook_path || !first_multi_hook.swap(false, Ordering::SeqCst) {
+                return;
+            }
+            multi_entered_tx.send(()).expect("notify multi hook entry");
+            multi_release_rx
+                .lock()
+                .expect("multi release receiver lock")
+                .recv_timeout(Duration::from_secs(5))
+                .expect("release multi-file transaction");
+        })));
+
+        let (single_entered_tx, single_entered_rx) = mpsc::channel();
+        let (single_release_tx, single_release_rx) = mpsc::channel();
+        let single_release_rx = Arc::new(Mutex::new(single_release_rx));
+        let single_hook_path = file_path.clone();
+        let first_single_hook = Arc::new(AtomicBool::new(true));
+        set_commit_after_expected_check_hook(Some(Arc::new(move |path| {
+            if path != single_hook_path || !first_single_hook.swap(false, Ordering::SeqCst) {
+                return;
+            }
+            single_entered_tx
+                .send(())
+                .expect("notify single hook entry");
+            single_release_rx
+                .lock()
+                .expect("single release receiver lock")
+                .recv_timeout(Duration::from_secs(5))
+                .expect("release single-file transaction");
+        })));
+
+        let multi_writer = thread::spawn(move || multi.commit_all());
+        multi_entered_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("multi writer should reach commit point");
+
+        let single_writer = thread::spawn(move || {
+            single.commit_if_unchanged("from single-file transaction", "original content")
+        });
+
+        if single_entered_rx
+            .recv_timeout(Duration::from_millis(200))
+            .is_ok()
+        {
+            single_release_tx
+                .send(())
+                .expect("release single-file transaction");
+            thread::sleep(Duration::from_millis(50));
+        }
+        multi_release_tx
+            .send(())
+            .expect("release multi-file transaction");
+
+        let multi_result = multi_writer.join().expect("multi writer panicked");
+        let single_result = single_writer.join().expect("single writer panicked");
+        set_multi_file_before_rename_hook(None);
+        set_commit_after_expected_check_hook(None);
+
+        assert!(multi_result.is_ok(), "multi-file commit should succeed");
+        assert!(
+            single_result.is_err(),
+            "checked single-file writer should reject stale content after multi-file commit; got {single_result:?}"
+        );
+        assert_eq!(
+            fs::read_to_string(&file_path)?,
+            "from multi-file transaction"
+        );
+        fixture.verify_no_backup_files()?;
+
+        Ok(())
+    }
+
     #[tokio::test]
     async fn test_single_file_transaction_rollback() -> Result<()> {
         println!("🧪 Testing single file transaction rollback...");

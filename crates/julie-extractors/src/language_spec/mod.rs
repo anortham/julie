@@ -292,8 +292,11 @@ pub fn detect_language_for_source(file_path: &str, content: &str) -> Option<&'st
 }
 
 fn header_contains_cpp_syntax(content: &str) -> bool {
-    if let Some(prefers_cpp) = header_parse_prefers_cpp(content) {
-        return prefers_cpp;
+    match header_parse_prefers_cpp(content) {
+        Some(prefers_cpp) => return prefers_cpp,
+        None => tracing::warn!(
+            "Unable to compare C/C++ parser diagnostics for .h language detection; falling back to token heuristic"
+        ),
     }
 
     let code = c_family_code_without_comments_and_strings(content);

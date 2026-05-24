@@ -826,6 +826,7 @@ async fn test_edit_file_empty_old_text_validation_precedes_file_io() -> Result<(
     let (success_flag, metadata) = latest_tool_metric(&handler, "edit_file").await?;
     assert_eq!(success_flag, 0);
     assert_eq!(metadata["failure_kind"], "validation");
+    assert_eq!(metadata["applied"], false);
     assert_eq!(metadata["file"], "missing.md");
 
     Ok(())
@@ -1050,6 +1051,7 @@ async fn test_rewrite_symbol_metrics_include_symbol_span_and_failure_kind() -> R
     assert_eq!(metadata["operation"], "replace_full");
     assert_eq!(metadata["symbol"], "collide");
     assert_eq!(metadata["failure_kind"], "ambiguous_symbol");
+    assert_eq!(metadata["applied"], false);
     assert!(metadata["content_bytes"].as_u64().unwrap() > 0);
 
     Ok(())
