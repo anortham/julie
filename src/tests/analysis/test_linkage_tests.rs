@@ -4,6 +4,10 @@
 mod tests {
     use crate::analysis::test_linkage::tier_rank;
     use crate::database::SymbolDatabase;
+    use crate::extractors::{RelationshipKind, Visibility};
+    use crate::tests::helpers::db::{
+        file_info_builder, identifier_builder, relationship_builder, symbol_builder,
+    };
     use tempfile::TempDir;
 
     #[test]
@@ -32,34 +36,58 @@ mod tests {
         ).unwrap();
     }
 
+    fn store_file(db: &SymbolDatabase, path: &str) {
+        db.store_file_info(
+            &file_info_builder(path)
+                .hash("h")
+                .size(100)
+                .last_modified(0)
+                .build(),
+        )
+        .unwrap();
+    }
+
     /// Create a minimal database with test and production symbols + relationships.
     fn setup_test_db() -> (TempDir, SymbolDatabase) {
         let temp_dir = TempDir::new().unwrap();
         let db_path = temp_dir.path().join("test.db");
-        let db = SymbolDatabase::new(&db_path).unwrap();
+        let mut db = SymbolDatabase::new(&db_path).unwrap();
 
         // Insert file records (FK constraint)
-        insert_file(&db, "src/payments.rs");
-        insert_file(&db, "src/tests/payments.rs");
+        store_file(&db, "src/payments.rs");
+        store_file(&db, "src/tests/payments.rs");
 
-        db.conn.execute_batch(r#"
-            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata, reference_score, visibility)
-            VALUES ('prod_1', 'process_payment', 'function', 'rust', 'src/payments.rs', 10, 0, 30, 0, 0, 0, NULL, 5.0, 'public');
+        db.store_symbols(&[
+            symbol_builder("prod_1", "process_payment", "src/payments.rs")
+                .span(10, 0, 30, 0)
+                .visibility(Visibility::Public)
+                .build(),
+            symbol_builder("test_1", "test_process_payment", "src/tests/payments.rs")
+                .span(5, 0, 20, 0)
+                .metadata(serde_json::from_str(r#"{"is_test":true,"test_quality":{"quality_tier":"thorough","assertion_count":3}}"#).unwrap())
+                .visibility(Visibility::Private)
+                .build(),
+            symbol_builder("test_2", "test_payment_edge_case", "src/tests/payments.rs")
+                .span(25, 0, 40, 0)
+                .metadata(serde_json::from_str(r#"{"is_test":true,"test_quality":{"quality_tier":"thin","assertion_count":1}}"#).unwrap())
+                .visibility(Visibility::Private)
+                .build(),
+        ])
+        .unwrap();
 
-            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata, reference_score, visibility)
-            VALUES ('test_1', 'test_process_payment', 'function', 'rust', 'src/tests/payments.rs', 5, 0, 20, 0, 0, 0,
-                    '{"is_test": true, "test_quality": {"quality_tier": "thorough", "assertion_count": 3}}', 0.0, 'private');
-
-            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata, reference_score, visibility)
-            VALUES ('test_2', 'test_payment_edge_case', 'function', 'rust', 'src/tests/payments.rs', 25, 0, 40, 0, 0, 0,
-                    '{"is_test": true, "test_quality": {"quality_tier": "thin", "assertion_count": 1}}', 0.0, 'private');
-
-            INSERT INTO relationships (id, from_symbol_id, to_symbol_id, kind, file_path, line_number)
-            VALUES ('rel_1', 'test_1', 'prod_1', 'calls', 'src/tests/payments.rs', 10);
-
-            INSERT INTO relationships (id, from_symbol_id, to_symbol_id, kind, file_path, line_number)
-            VALUES ('rel_2', 'test_2', 'prod_1', 'calls', 'src/tests/payments.rs', 30);
-        "#).unwrap();
+        db.store_relationships(&[
+            relationship_builder("rel_1", "test_1", "prod_1")
+                .kind(RelationshipKind::Calls)
+                .file_path("src/tests/payments.rs")
+                .line_number(10)
+                .build(),
+            relationship_builder("rel_2", "test_2", "prod_1")
+                .kind(RelationshipKind::Calls)
+                .file_path("src/tests/payments.rs")
+                .line_number(30)
+                .build(),
+        ])
+        .unwrap();
 
         (temp_dir, db)
     }
@@ -93,23 +121,40 @@ mod tests {
     fn test_identifier_only_linkage() {
         let temp_dir = TempDir::new().unwrap();
         let db_path = temp_dir.path().join("test.db");
-        let db = SymbolDatabase::new(&db_path).unwrap();
+        let mut db = SymbolDatabase::new(&db_path).unwrap();
 
-        insert_file(&db, "src/utils.rs");
-        insert_file(&db, "tests/utils_test.rs");
+        store_file(&db, "src/utils.rs");
+        store_file(&db, "tests/utils_test.rs");
 
         // Production symbol — no relationship edges to it
-        db.conn.execute_batch(r#"
-            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata, reference_score)
-            VALUES ('prod_u', 'validate_input', 'function', 'rust', 'src/utils.rs', 1, 0, 10, 0, 0, 0, NULL, 2.0);
+        db.store_symbols(&[
+            symbol_builder("prod_u", "validate_input", "src/utils.rs")
+                .span(1, 0, 10, 0)
+                .build(),
+            symbol_builder("test_u", "test_validate", "tests/utils_test.rs")
+                .span(1, 0, 5, 0)
+                .metadata(
+                    serde_json::from_str(
+                        r#"{"is_test":true,"test_quality":{"quality_tier":"adequate"}}"#,
+                    )
+                    .unwrap(),
+                )
+                .build(),
+        ])
+        .unwrap();
 
-            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata, reference_score)
-            VALUES ('test_u', 'test_validate', 'function', 'rust', 'tests/utils_test.rs', 1, 0, 5, 0, 0, 0,
-                    '{"is_test": true, "test_quality": {"quality_tier": "adequate"}}', 0.0);
-
-            INSERT INTO identifiers (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, containing_symbol_id, target_symbol_id)
-            VALUES ('id_u', 'validate_input', 'call', 'rust', 'tests/utils_test.rs', 3, 0, 3, 20, 'test_u', 'prod_u');
-        "#).unwrap();
+        db.bulk_store_identifiers(
+            &[
+                identifier_builder("id_u", "validate_input", "tests/utils_test.rs")
+                    .line(3)
+                    .column(0, 20)
+                    .containing_symbol_id("test_u")
+                    .target_symbol_id("prod_u")
+                    .build(),
+            ],
+            "",
+        )
+        .unwrap();
 
         let stats = crate::analysis::test_linkage::compute_test_linkage(&db).unwrap();
         assert_eq!(
