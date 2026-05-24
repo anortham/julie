@@ -288,6 +288,26 @@ Follow-up verification disproved the original broader claim:
 4. **Harness cleanup:** Candidate 12. Add harness helpers early, then migrate large tests in behavior slices.
 5. **Wide module splits:** Candidate 11. Split handler/workspace/search/watcher/daemon DB only after contracts and harnesses reduce the blast radius.
 
+## Execution Progress
+
+Completed on branch `cleanup/codebase-cleanup-2026-05-24`:
+
+- **Candidate 1:** deleted prototype `CrossLanguageTracer` production module and its tests.
+- **Candidate 2:** deleted stale/decorative test modules and removed their xtask routes.
+- **Candidate 3:** removed only verified-unused `clear_cache_for_test`; retained the two helpers that still have real test callers.
+- **Candidate 4:** replaced dead `WorkspaceCommand` with typed internal `ManageWorkspaceOperation` / `ManageWorkspaceRequest`, keeping public MCP JSON flat.
+- **Candidate 5:** completed the safe first slice: shared tool file-input resolver for `get_symbols` primary/target and rename scope normalization. Workspace command root resolution remains intentionally separate.
+- **Candidate 6:** completed the safe first slice: typed resolver-created workspace failures and `deep_dive` type-based invalid-params classification. Broad wrapper normalization and metrics attribution remain separate.
+- **Candidate 7:** unified symbol-result test exclusion for semantic/hybrid KNN by honoring path OR metadata role `test`; line-mode behavior remains intentionally unchanged.
+
+Remaining candidates:
+
+- **Candidate 8:** line-match integration into search execution.
+- **Candidate 9:** prepare edit/rewrite work once.
+- **Candidate 10:** shared language detection policy.
+- **Candidate 11:** wide module splits after contracts and harnesses are stronger.
+- **Candidate 12:** test harness helpers and fixture cleanup.
+
 ## Verification Strategy
 
 **Project source of truth:** `AGENTS.md`, `RAZORBACK.md`, and `docs/TESTING_GUIDE.md`.
