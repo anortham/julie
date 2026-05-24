@@ -19,8 +19,6 @@ pub mod mcp_compat;
 pub mod search;
 pub mod startup;
 pub mod tools;
-#[cfg(test)]
-pub(crate) mod tracing;
 pub mod utils;
 pub mod watcher;
 pub mod workspace;

@@ -62,7 +62,6 @@ pub mod core {
     pub mod serde_lenient_tests; // Lenient MCP param deserializers (u32, bool, Vec<String>)
     pub mod sidecar_embedding_tests; // Embedded sidecar extraction + root path fallback tests
     pub mod sidecar_supervisor_tests; // Sidecar supervisor config, launch, and utility tests
-    pub mod tracing; // Tracing and logging tests
     pub mod vector_storage; // sqlite-vec vector storage CRUD tests
     pub mod workspace_init; // Workspace root detection and initialization tests // Batch pending relationship resolution tests // bulk_store_types integration tests (TDD)
 }
@@ -193,7 +192,6 @@ pub mod integration {
     pub mod stale_index_detection; // Stale index detection tests
     pub mod system_health;
     pub mod target_workspace; // Target-workspace tests
-    pub mod tracing;
     pub mod watcher; // File watcher tests
     pub mod watcher_handlers; // File watcher handler tests (incremental indexing)
     pub mod watcher_mutation_gate; // Per-workspace mutation gate concurrency contract (LEAD-OWNED)
