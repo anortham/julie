@@ -136,6 +136,71 @@ mod transactional_editing_tests {
         Ok(())
     }
 
+    #[test]
+    fn test_single_file_commit_if_unchanged_serializes_julie_writers() -> Result<()> {
+        use crate::tools::editing::set_commit_after_expected_check_hook;
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::mpsc;
+        use std::sync::{Arc, Mutex};
+        use std::thread;
+        use std::time::Duration;
+
+        let fixture = TransactionalTestFixture::new()?;
+        let file_path = fixture.create_test_file("test.txt", "original content")?;
+        let transaction1 = EditingTransaction::begin(file_path.to_str().unwrap())?;
+        let transaction2 = EditingTransaction::begin(file_path.to_str().unwrap())?;
+        let (entered_tx, entered_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        let release_rx = Arc::new(Mutex::new(release_rx));
+        let first_hook = Arc::new(AtomicBool::new(true));
+        let hook_path = file_path.clone();
+
+        set_commit_after_expected_check_hook(Some(Arc::new(move |path| {
+            if path != hook_path || !first_hook.swap(false, Ordering::SeqCst) {
+                return;
+            }
+            entered_tx.send(()).expect("notify commit hook entry");
+            release_rx
+                .lock()
+                .expect("release receiver lock")
+                .recv_timeout(Duration::from_secs(5))
+                .expect("release commit hook");
+        })));
+
+        let writer1 = thread::spawn(move || {
+            transaction1.commit_if_unchanged("from transaction 1", "original content")
+        });
+        entered_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("first writer should reach the checked commit window");
+
+        let writer2 = thread::spawn(move || {
+            transaction2.commit_if_unchanged("from transaction 2", "original content")
+        });
+        thread::sleep(Duration::from_millis(100));
+        release_tx.send(()).expect("release first writer");
+
+        let result1 = writer1.join().expect("writer 1 panicked");
+        let result2 = writer2.join().expect("writer 2 panicked");
+        set_commit_after_expected_check_hook(None);
+
+        let successes = usize::from(result1.is_ok()) + usize::from(result2.is_ok());
+        assert_eq!(
+            successes, 1,
+            "only one same-process checked commit may succeed; got result1={result1:?}, result2={result2:?}"
+        );
+
+        let final_content = fs::read_to_string(&file_path)?;
+        if result1.is_ok() {
+            assert_eq!(final_content, "from transaction 1");
+        } else {
+            assert_eq!(final_content, "from transaction 2");
+        }
+        fixture.verify_no_backup_files()?;
+
+        Ok(())
+    }
+
     #[tokio::test]
     async fn test_single_file_transaction_rollback() -> Result<()> {
         println!("🧪 Testing single file transaction rollback...");

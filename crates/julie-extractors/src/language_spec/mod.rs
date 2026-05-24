@@ -292,28 +292,38 @@ pub fn detect_language_for_source(file_path: &str, content: &str) -> Option<&'st
 }
 
 fn header_contains_cpp_syntax(content: &str) -> bool {
+    if let Some(prefers_cpp) = header_parse_prefers_cpp(content) {
+        return prefers_cpp;
+    }
+
     let code = c_family_code_without_comments_and_strings(content);
     code.contains("::")
-        || code.contains("public:")
-        || code.contains("private:")
-        || code.contains("protected:")
-        || [
-            "class",
-            "concept",
-            "consteval",
-            "constexpr",
-            "constinit",
-            "final",
-            "friend",
-            "namespace",
-            "noexcept",
-            "override",
-            "requires",
-            "template",
-            "typename",
-        ]
-        .into_iter()
-        .any(|keyword| contains_identifier_token(&code, keyword))
+}
+
+fn header_parse_prefers_cpp(content: &str) -> Option<bool> {
+    let c_errors = parse_error_count(parser_c(), content)?;
+    let cpp_errors = parse_error_count(parser_cpp(), content)?;
+    Some(cpp_errors < c_errors)
+}
+
+fn parse_error_count(language: tree_sitter::Language, content: &str) -> Option<usize> {
+    let mut parser = tree_sitter::Parser::new();
+    parser.set_language(&language).ok()?;
+    let tree = parser.parse(content, None)?;
+    Some(count_parse_errors(tree.root_node()))
+}
+
+fn count_parse_errors(node: tree_sitter::Node<'_>) -> usize {
+    let mut count = usize::from(node.is_error()) + usize::from(node.is_missing());
+    if !node.has_error() {
+        return count;
+    }
+
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        count += count_parse_errors(child);
+    }
+    count
 }
 
 fn c_family_code_without_comments_and_strings(content: &str) -> String {
@@ -383,26 +393,6 @@ fn scrub_quoted_literal(
             break;
         }
     }
-}
-
-fn contains_identifier_token(code: &str, token: &str) -> bool {
-    code.match_indices(token).any(|(start, _)| {
-        let end = start + token.len();
-        let before_is_identifier = start
-            .checked_sub(1)
-            .and_then(|index| code.as_bytes().get(index).copied())
-            .is_some_and(is_identifier_byte);
-        let after_is_identifier = code
-            .as_bytes()
-            .get(end)
-            .copied()
-            .is_some_and(is_identifier_byte);
-        !before_is_identifier && !after_is_identifier
-    })
-}
-
-fn is_identifier_byte(byte: u8) -> bool {
-    byte.is_ascii_alphanumeric() || byte == b'_'
 }
 
 pub fn supported_extensions() -> &'static [&'static str] {

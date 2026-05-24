@@ -158,6 +158,7 @@ impl SearchDocument {
     ///
     /// Convenience constructor for direct test use. Computes `role`,
     /// `test_role`, and `basename` from the supplied path and language.
+    #[cfg(test)]
     pub fn symbol_from_parts(
         id: impl Into<String>,
         name: impl Into<String>,
@@ -203,6 +204,7 @@ impl SearchDocument {
     ///
     /// Convenience constructor for direct test use. Computes `basename`,
     /// `name` (stem), `role`, and `test_role` from the path and language.
+    #[cfg(test)]
     pub fn file_from_parts(
         file_path: impl Into<String>,
         content: impl Into<String>,
@@ -407,6 +409,7 @@ pub struct SymbolSearchResults {
 }
 
 /// A file content search result with relevance score.
+#[cfg(test)]
 #[derive(Clone)]
 pub struct ContentSearchResult {
     pub file_path: String,
@@ -428,6 +431,7 @@ pub struct FileSearchResults {
 }
 
 /// Result from search_content, includes metadata about the search.
+#[cfg(test)]
 pub struct ContentSearchResults {
     pub results: Vec<ContentSearchResult>,
     /// True if AND-per-term returned zero results and OR fallback was used
@@ -858,10 +862,11 @@ impl SearchIndex {
         Ok(out)
     }
 
-    /// `search_content` adapter — routes through [`search_unified`], returns file hits.
+    /// `search_content` test adapter — routes through [`search_unified`], returns file hits.
     ///
-    /// The old `search_content` method was deleted in T9; this wrapper keeps
-    /// existing callers (tests) compiling.
+    /// The old `search_content` production method was deleted in T9; this wrapper
+    /// keeps existing tests compiling while they migrate to unified search.
+    #[cfg(test)]
     pub fn search_content(
         &self,
         query_str: &str,
@@ -886,11 +891,12 @@ impl SearchIndex {
         })
     }
 
-    /// `search_files` adapter — routes through [`search_unified`], returns file hits.
+    /// `search_files` test adapter — routes through [`search_unified`], returns file hits.
     ///
-    /// The old `search_files` method was deleted in T9; this wrapper keeps
-    /// existing callers (tests) compiling.  The `match_kind` field is derived
+    /// The old `search_files` production method was deleted in T9; this wrapper keeps
+    /// existing tests compiling.  The `match_kind` field is derived
     /// from the query and file_path via [`classify_file_match`].
+    #[cfg(test)]
     pub fn search_files(
         &self,
         query_str: &str,
@@ -2029,12 +2035,14 @@ fn basename_for_path(path: &str) -> &str {
     path.rsplit('/').next().unwrap_or(path)
 }
 
+#[cfg(test)]
 fn query_contains_glob_syntax(query: &str) -> bool {
     query
         .chars()
         .any(|ch| matches!(ch, '*' | '?' | '[' | ']' | '{' | '}'))
 }
 
+#[cfg(test)]
 pub(crate) fn classify_file_match(
     query: &str,
     normalized_query: &str,

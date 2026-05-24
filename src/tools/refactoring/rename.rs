@@ -485,7 +485,7 @@ impl SmartRefactorTool {
         if changes > 0 && !self.dry_run {
             use crate::tools::editing::EditingTransaction;
             let tx = EditingTransaction::begin(&absolute_path)?;
-            tx.commit(&modified_content)?;
+            tx.commit_if_unchanged(&modified_content, &content)?;
         }
 
         Ok(changes)

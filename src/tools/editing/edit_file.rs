@@ -486,6 +486,13 @@ impl EditFileTool {
     }
 
     pub(crate) async fn prepare_edit(&self, handler: &JulieServerHandler) -> Result<PreparedEdit> {
+        if self.old_text.is_empty() {
+            return Err(edit_file_error(
+                "validation",
+                "old_text is required and cannot be empty",
+            ));
+        }
+
         let workspace_root = self.resolve_workspace_root(handler).await?;
         let resolved_path = secure_path_resolution(&self.file_path, &workspace_root)?;
         let resolved_str = resolved_path.to_string_lossy().to_string();
@@ -578,13 +585,6 @@ impl EditFileTool {
     }
 
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
-        if self.old_text.is_empty() {
-            return Err(edit_file_error(
-                "validation",
-                "old_text is required and cannot be empty",
-            ));
-        }
-
         let prepared = self.prepare_edit(handler).await?;
         self.call_prepared(prepared)
     }

@@ -41,7 +41,7 @@ use std::process::Command;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result, bail};
-use julie::database::SymbolDatabase;
+use julie::database::{FileInfo, SymbolDatabase};
 use julie::search::{LanguageConfigs, SearchDocument, SearchFilter, SearchIndex};
 use serde::{Deserialize, Serialize};
 
@@ -214,7 +214,18 @@ pub fn run_eval_ablation_command(command: &EvalCommand, stdout: &mut dyn Write) 
     }
     if let Ok(file_contents) = db.get_all_file_contents_with_language() {
         for (path, language, content) in &file_contents {
-            let doc = SearchDocument::file_from_parts(path, content, language);
+            let file_info = FileInfo {
+                path: path.clone(),
+                language: language.clone(),
+                hash: String::new(),
+                size: content.len() as i64,
+                last_modified: 0,
+                last_indexed: 0,
+                symbol_count: 0,
+                line_count: content.lines().count() as i32,
+                content: Some(content.clone()),
+            };
+            let doc = SearchDocument::for_file(&file_info);
             let _ = index.add_search_doc(&doc);
         }
     }

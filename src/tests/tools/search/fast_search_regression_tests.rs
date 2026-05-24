@@ -574,6 +574,59 @@ async fn content_locations_trace_uses_line_hits_without_matching_line_text() -> 
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn content_locations_cpp_h_language_filter_keeps_line_hits() -> Result<()> {
+    unsafe {
+        std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "0");
+    }
+
+    let temp_dir = TempDir::new()?;
+    let workspace_path = temp_dir.path();
+    let include_dir = workspace_path.join("include");
+    fs::create_dir_all(&include_dir)?;
+    fs::write(
+        include_dir.join("Widget.h"),
+        r#"#pragma once
+namespace app {
+class Widget {
+public:
+    int value() const {
+        return 42;
+    }
+};
+}
+"#,
+    )?;
+
+    let handler = index_workspace(workspace_path).await?;
+    let run = FastSearchTool {
+        query: "return 42".to_string(),
+        return_format: "locations".to_string(),
+        language: Some("cpp".to_string()),
+        limit: 10,
+        workspace: Some("primary".to_string()),
+        ..Default::default()
+    }
+    .execute_with_trace(&handler)
+    .await?;
+
+    let text = extract_text(&run.result);
+    assert!(
+        text.contains("include/Widget.h:6"),
+        "C++ .h locations output should include the matching line, got:\n{text}"
+    );
+
+    let execution = run.execution.expect("search should return execution trace");
+    let line_hit = execution
+        .hits
+        .iter()
+        .find(|hit| hit.kind == "line" && hit.file == "include/Widget.h" && hit.line == Some(6))
+        .expect("execution trace should contain a C++ .h line hit");
+    assert_eq!(line_hit.language, "cpp");
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn content_full_format_includes_matching_line_text() -> Result<()> {
     unsafe {
         std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "0");

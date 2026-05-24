@@ -371,3 +371,26 @@ void widget_init(widget_t *widget);
         "public source-aware language detection should preserve path-only C default for C .h headers"
     );
 }
+
+#[test]
+fn test_detect_language_for_source_preserves_c_headers_with_cpp_keyword_identifiers() {
+    let c_header = r#"
+#ifndef KEYWORDS_H
+#define KEYWORDS_H
+
+typedef struct namespace {
+    int template;
+    int requires;
+} namespace_t;
+
+void namespace_init(namespace_t *namespace);
+
+#endif
+"#;
+
+    assert_eq!(
+        crate::language::detect_language_for_source("include/keywords.h", c_header),
+        Some("c"),
+        "C identifiers named like C++ keywords must not force .h detection to cpp"
+    );
+}

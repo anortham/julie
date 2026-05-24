@@ -92,6 +92,70 @@ async fn test_rename_symbol_basic() -> Result<()> {
 }
 
 #[tokio::test]
+async fn test_rename_symbol_cpp_h_header_uses_source_aware_parser() -> Result<()> {
+    unsafe {
+        std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+    }
+
+    let temp_dir = TempDir::new()?;
+    let test_file = temp_dir.path().join("Widget.h");
+    fs::write(
+        &test_file,
+        r#"#pragma once
+namespace app {
+class Widget {
+public:
+    int value() const { return 42; }
+};
+}
+"#,
+    )?;
+
+    let handler = JulieServerHandler::new_for_test().await?;
+    handler
+        .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
+        .await?;
+
+    ManageWorkspaceTool {
+        operation: "index".to_string(),
+        path: Some(temp_dir.path().to_string_lossy().to_string()),
+        force: Some(true),
+        name: None,
+        workspace_id: None,
+        detailed: None,
+    }
+    .call_tool(&handler)
+    .await?;
+
+    let tool = RenameSymbolTool {
+        old_name: "Widget".to_string(),
+        new_name: "RenamedWidget".to_string(),
+        scope: None,
+        dry_run: false,
+        workspace: None,
+    };
+
+    let result = tool.call_tool(&handler).await?;
+    let result_text = extract_text(&result);
+    assert!(
+        !result_text.contains("parse error"),
+        "source-aware C++ .h rename should not parse as C: {result_text}"
+    );
+
+    let content = fs::read_to_string(&test_file)?;
+    assert!(
+        content.contains("class RenamedWidget"),
+        "C++ .h class should be renamed, got: {content}"
+    );
+    assert!(
+        !content.contains("class Widget"),
+        "old C++ class name should be gone, got: {content}"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn test_rename_symbol_reports_parse_error_without_modifying_file() -> Result<()> {
     unsafe {
         std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");

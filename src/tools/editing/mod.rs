@@ -14,12 +14,66 @@ use anyhow::Result;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, OnceLock};
 use tracing::{debug, warn};
 use uuid::Uuid;
 
 //******************************************//
 //     Transactional Editing System        //
 //******************************************//
+
+#[cfg(test)]
+type CommitHook = Arc<dyn Fn(&Path) + Send + Sync + 'static>;
+
+#[cfg(test)]
+static COMMIT_AFTER_EXPECTED_CHECK_HOOK: OnceLock<Mutex<Option<CommitHook>>> = OnceLock::new();
+
+#[cfg(test)]
+pub(crate) fn set_commit_after_expected_check_hook(hook: Option<CommitHook>) {
+    let hook_cell = COMMIT_AFTER_EXPECTED_CHECK_HOOK.get_or_init(|| Mutex::new(None));
+    *hook_cell.lock().expect("commit hook lock poisoned") = hook;
+}
+
+#[cfg(test)]
+fn run_commit_after_expected_check_hook(file_path: &Path) {
+    let hook = COMMIT_AFTER_EXPECTED_CHECK_HOOK
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+        .expect("commit hook lock poisoned")
+        .clone();
+    if let Some(hook) = hook {
+        hook(file_path);
+    }
+}
+
+#[cfg(not(test))]
+fn run_commit_after_expected_check_hook(_file_path: &Path) {}
+
+static EDIT_LOCKS: OnceLock<Mutex<HashMap<PathBuf, Arc<Mutex<()>>>>> = OnceLock::new();
+
+fn edit_lock_for(file_path: &Path) -> Arc<Mutex<()>> {
+    let lock_path = normalized_edit_lock_path(file_path);
+    let mut locks = EDIT_LOCKS
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+        .expect("edit lock registry poisoned");
+    locks
+        .entry(lock_path)
+        .or_insert_with(|| Arc::new(Mutex::new(())))
+        .clone()
+}
+
+fn normalized_edit_lock_path(file_path: &Path) -> PathBuf {
+    if let Ok(path) = file_path.canonicalize() {
+        return path;
+    }
+    if file_path.is_absolute() {
+        return file_path.to_path_buf();
+    }
+    std::env::current_dir()
+        .map(|cwd| cwd.join(file_path))
+        .unwrap_or_else(|_| file_path.to_path_buf())
+}
 
 /// Memory-based single-file transaction system
 ///
@@ -63,6 +117,11 @@ impl EditingTransaction {
     }
 
     fn commit_inner(&mut self, content: &str, expected_current: Option<&str>) -> Result<()> {
+        let edit_lock = edit_lock_for(&self.file_path);
+        let _edit_guard = edit_lock
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Edit lock poisoned for {}", self.file_path.display()))?;
+
         let existing_permissions = if self.file_path.exists() {
             let permissions = fs::metadata(&self.file_path)?.permissions();
             if permissions.readonly() {
@@ -100,6 +159,7 @@ impl EditingTransaction {
                     self.file_path.display()
                 ));
             }
+            run_commit_after_expected_check_hook(&self.file_path);
         }
 
         // Atomic rename (this is the commit point)

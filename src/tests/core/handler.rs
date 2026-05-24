@@ -88,6 +88,13 @@ async fn call_public_tool(
     Ok(result.is_ok())
 }
 
+fn set_readonly(path: &std::path::Path, readonly: bool) -> Result<()> {
+    let mut permissions = std::fs::metadata(path)?.permissions();
+    permissions.set_readonly(readonly);
+    std::fs::set_permissions(path, permissions)?;
+    Ok(())
+}
+
 fn collect_schema_enum_strings(root: &Value, schema: &Value, values: &mut Vec<String>) {
     if let Some(enum_values) = schema.get("enum").and_then(Value::as_array) {
         values.extend(
@@ -784,6 +791,47 @@ async fn test_edit_file_validation_errors_are_recorded_as_failures() -> Result<(
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_edit_file_empty_old_text_validation_precedes_file_io() -> Result<()> {
+    use crate::tools::workspace::ManageWorkspaceTool;
+
+    let temp_dir = TempDir::new()?;
+    std::fs::write(temp_dir.path().join("README.md"), "hello\n")?;
+
+    let handler = JulieServerHandler::new(temp_dir.path().to_path_buf()).await?;
+    ManageWorkspaceTool {
+        operation: "index".to_string(),
+        workspace_id: None,
+        path: Some(temp_dir.path().to_string_lossy().to_string()),
+        name: None,
+        force: Some(false),
+        detailed: None,
+    }
+    .call_tool(&handler)
+    .await?;
+
+    let succeeded = call_public_tool(
+        &handler,
+        "edit_file",
+        serde_json::json!({
+            "file_path": "missing.md",
+            "old_text": "",
+            "new_text": "bye",
+            "dry_run": true
+        }),
+        2003,
+    )
+    .await?;
+    assert!(!succeeded, "empty old_text should fail validation");
+
+    let (success_flag, metadata) = latest_tool_metric(&handler, "edit_file").await?;
+    assert_eq!(success_flag, 0);
+    assert_eq!(metadata["failure_kind"], "validation");
+    assert_eq!(metadata["file"], "missing.md");
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_edit_file_metrics_include_input_and_edit_outcome() -> Result<()> {
     use crate::tools::workspace::ManageWorkspaceTool;
 
@@ -877,6 +925,52 @@ async fn test_edit_file_apply_metrics_record_conversion_outcome() -> Result<()> 
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_edit_file_failed_apply_metrics_record_applied_false() -> Result<()> {
+    use crate::tools::workspace::ManageWorkspaceTool;
+
+    let temp_dir = TempDir::new()?;
+    let file_path = temp_dir.path().join("README.md");
+    std::fs::write(&file_path, "hello\n")?;
+    let handler = JulieServerHandler::new(temp_dir.path().to_path_buf()).await?;
+    ManageWorkspaceTool {
+        operation: "index".to_string(),
+        workspace_id: None,
+        path: Some(temp_dir.path().to_string_lossy().to_string()),
+        name: None,
+        force: Some(false),
+        detailed: None,
+    }
+    .call_tool(&handler)
+    .await?;
+
+    set_readonly(&file_path, true)?;
+    let succeeded = call_public_tool(
+        &handler,
+        "edit_file",
+        serde_json::json!({
+            "file_path": "README.md",
+            "old_text": "hello",
+            "new_text": "goodbye",
+            "dry_run": false
+        }),
+        2106,
+    )
+    .await?;
+    set_readonly(&file_path, false)?;
+
+    assert!(!succeeded, "readonly edit_file apply should fail");
+    assert_eq!(std::fs::read_to_string(&file_path)?, "hello\n");
+
+    let (success, metadata) = latest_tool_metric(&handler, "edit_file").await?;
+    assert_eq!(success, 0);
+    assert_eq!(metadata["dry_run"], false);
+    assert_eq!(metadata["applied"], false);
+    assert_eq!(metadata["failure_kind"], "execution_error");
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_rewrite_symbol_metrics_include_symbol_span_and_failure_kind() -> Result<()> {
     use crate::tools::workspace::ManageWorkspaceTool;
 
@@ -957,6 +1051,56 @@ async fn test_rewrite_symbol_metrics_include_symbol_span_and_failure_kind() -> R
     assert_eq!(metadata["symbol"], "collide");
     assert_eq!(metadata["failure_kind"], "ambiguous_symbol");
     assert!(metadata["content_bytes"].as_u64().unwrap() > 0);
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_rewrite_symbol_failed_apply_metrics_record_applied_false() -> Result<()> {
+    use crate::tools::workspace::ManageWorkspaceTool;
+
+    let temp_dir = TempDir::new()?;
+    std::fs::create_dir_all(temp_dir.path().join("src"))?;
+    let file_path = temp_dir.path().join("src/lib.rs");
+    std::fs::write(&file_path, "pub fn target() { println!(\"old\"); }\n")?;
+    let handler = JulieServerHandler::new(temp_dir.path().to_path_buf()).await?;
+    ManageWorkspaceTool {
+        operation: "index".to_string(),
+        workspace_id: None,
+        path: Some(temp_dir.path().to_string_lossy().to_string()),
+        name: None,
+        force: Some(false),
+        detailed: None,
+    }
+    .call_tool(&handler)
+    .await?;
+
+    set_readonly(&file_path, true)?;
+    let succeeded = call_public_tool(
+        &handler,
+        "rewrite_symbol",
+        serde_json::json!({
+            "symbol": "target",
+            "operation": "replace_full",
+            "content": "pub fn target() { println!(\"new\"); }",
+            "dry_run": false
+        }),
+        2107,
+    )
+    .await?;
+    set_readonly(&file_path, false)?;
+
+    assert!(!succeeded, "readonly rewrite_symbol apply should fail");
+    assert_eq!(
+        std::fs::read_to_string(&file_path)?,
+        "pub fn target() { println!(\"old\"); }\n"
+    );
+
+    let (success, metadata) = latest_tool_metric(&handler, "rewrite_symbol").await?;
+    assert_eq!(success, 0);
+    assert_eq!(metadata["dry_run"], false);
+    assert_eq!(metadata["applied"], false);
+    assert_eq!(metadata["failure_kind"], "execution_error");
 
     Ok(())
 }

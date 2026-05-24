@@ -227,6 +227,54 @@ pub fn external_entry() -> ExternalType {
     );
 }
 
+#[tokio::test]
+async fn extract_scan_routes_cpp_h_header_through_source_aware_detection() {
+    let temp_dir = TempDir::new().expect("temp dir");
+    let workspace_root = temp_dir.path().canonicalize().expect("canonical root");
+    let include_dir = workspace_root.join("include");
+    fs::create_dir_all(&include_dir).expect("create include dir");
+    let file_path = include_dir.join("widget.h");
+    fs::write(
+        &file_path,
+        r#"
+#pragma once
+namespace app {
+class Widget {
+public:
+    int value() const { return 42; }
+};
+}
+"#,
+    )
+    .expect("write cpp header");
+
+    let mut files_by_language = HashMap::new();
+    files_by_language.insert("c".to_string(), vec![file_path]);
+
+    let batch = extract_files_for_indexing(files_by_language, &workspace_root)
+        .await
+        .expect("external extraction should parse source-aware C++ header");
+
+    assert_eq!(batch.files_processed, 1);
+    assert_eq!(batch.all_file_infos.len(), 1);
+    assert_eq!(batch.all_file_infos[0].path, "include/widget.h");
+    assert_eq!(batch.all_file_infos[0].language, "cpp");
+    assert!(
+        batch.all_symbols.iter().any(|symbol| {
+            symbol.name == "Widget"
+                && symbol.kind == SymbolKind::Class
+                && symbol.language == "cpp"
+                && symbol.file_path == "include/widget.h"
+        }),
+        "external extraction should store C++ symbols for .h header: {:?}",
+        batch
+            .all_symbols
+            .iter()
+            .map(|symbol| (&symbol.name, &symbol.kind, &symbol.language))
+            .collect::<Vec<_>>()
+    );
+}
+
 #[test]
 fn extract_force_rebuild_is_atomic_after_extraction_success() {
     let tmp = TempDir::new().expect("temp dir");

@@ -304,7 +304,7 @@ impl SmartRefactorTool {
         // Write back using atomic operations (skip if dry-run)
         if !self.dry_run {
             let tx = EditingTransaction::begin(&absolute_path)?;
-            tx.commit(&updated_content)?;
+            tx.commit_if_unchanged(&updated_content, &content)?;
         }
 
         Ok(compute_line_changes(&content, &updated_content))
@@ -354,7 +354,9 @@ impl SmartRefactorTool {
             return Ok(content.to_string());
         }
 
-        let language = self.detect_language(file_path);
+        let language = julie_extractors::language::detect_language_for_source(file_path, content)
+            .map(str::to_string)
+            .unwrap_or_else(|| self.detect_language(file_path));
         let ts_language = match self.get_tree_sitter_language(&language) {
             Ok(lang) => lang,
             Err(_) => {

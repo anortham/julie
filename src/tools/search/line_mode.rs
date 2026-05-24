@@ -57,7 +57,7 @@ struct LineModeScopedOutcome {
 /// to a specific stage.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct LineModeStageCounts {
-    /// AND-stage candidate count surfaced by `SearchIndex::search_content`.
+    /// AND-stage file candidate count surfaced by the unified-search fetch.
     pub and_candidates: usize,
     /// OR-stage candidate count (0 if OR fallback was not invoked).
     pub or_candidates: usize,
@@ -251,7 +251,7 @@ fn collect_matches_from_file_results(
         }
 
         if let Some(lang) = language
-            && !file_matches_language(&file_result.file_path, lang)
+            && !indexed_language_matches(&file_result.language, lang)
         {
             counts.language_dropped += 1;
             continue;
@@ -486,7 +486,7 @@ fn run_line_mode_with_scope_rescue(
 /// `count_before > 0 && count_after == 0` wins. Returns `None` if the
 /// pipeline never had any candidates at all AND no single filter stage
 /// drained it (which happens only when the query tokenises to zero
-/// terms: `search_content` early-returns, `tantivy_file_candidates == 0`
+/// terms: unified search early-returns, `tantivy_file_candidates == 0`
 /// and none of the drop counters fired).
 ///
 /// The returned variant is also `None` when `matches` is non-empty —
@@ -759,23 +759,12 @@ pub(crate) fn format_line_mode_output(query: &str, result: &LineModeSearchResult
     lines.join("\n")
 }
 
-/// Check if a file path matches the given language filter by extension.
-fn file_matches_language(file_path: &str, lang: &str) -> bool {
-    let path = std::path::Path::new(file_path);
-    let Some(ext) = path.extension() else {
-        return false;
-    };
-    let ext_str = ext.to_string_lossy().to_lowercase();
-    match lang.to_lowercase().as_str() {
-        "rust" => ext_str == "rs",
-        "typescript" => ext_str == "ts" || ext_str == "tsx",
-        "javascript" => ext_str == "js" || ext_str == "jsx" || ext_str == "mjs",
-        "python" => ext_str == "py",
-        "java" => ext_str == "java",
-        "csharp" | "c#" => ext_str == "cs",
-        "cpp" | "c++" => ext_str == "cpp" || ext_str == "cc" || ext_str == "cxx",
-        "c" => ext_str == "c" || ext_str == "h",
-        _ => ext_str == lang.to_lowercase(),
+fn indexed_language_matches(indexed: &str, requested: &str) -> bool {
+    let indexed = indexed.to_ascii_lowercase();
+    match requested.to_ascii_lowercase().as_str() {
+        "c++" => indexed == "cpp",
+        "c#" => indexed == "csharp",
+        requested => indexed == requested,
     }
 }
 

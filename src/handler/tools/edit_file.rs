@@ -75,6 +75,8 @@ impl JulieServerHandler {
                     metadata,
                     crate::tools::editing::edit_file::failure_kind(&e),
                 );
+                let metadata =
+                    tool_targets::merge_object(metadata, serde_json::json!({ "applied": false }));
                 let message = format!("edit_file failed: {}", e);
                 self.record_tool_failure(
                     "edit_file",

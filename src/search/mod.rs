@@ -20,9 +20,10 @@ pub mod tokenizer;
 pub mod weights;
 
 pub use error::{Result, SearchError};
+#[cfg(test)]
+pub use index::{ContentSearchResult, ContentSearchResults};
 pub use index::{
-    ContentSearchResult, ContentSearchResults, SearchDocument, SearchFilter, SearchIndex,
-    SymbolSearchResult, SymbolSearchResults,
+    SearchDocument, SearchFilter, SearchIndex, SymbolSearchResult, SymbolSearchResults,
 };
 pub use language_config::LanguageConfigs;
 pub use projection::SearchProjection;

@@ -73,6 +73,8 @@ impl JulieServerHandler {
                     metadata.clone(),
                     crate::tools::editing::rewrite_symbol::failure_kind(&e),
                 );
+                let metadata =
+                    tool_targets::merge_object(metadata, serde_json::json!({ "applied": false }));
                 let message = format!("rewrite_symbol failed: {}", e);
                 self.record_tool_failure(
                     "rewrite_symbol",

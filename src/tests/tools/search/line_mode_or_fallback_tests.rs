@@ -301,8 +301,8 @@ mod line_mode_stage_counts {
 
     /// Observed behavior: `line_mode_matches` propagates the caller's `language`
     /// into the Tantivy `SearchFilter`, so a language mismatch dies at the
-    /// Tantivy stage, not the per-file `file_matches_language` check. The
-    /// per-file language filter is therefore unreachable in the current
+    /// Tantivy stage, not the per-file indexed-language safety check. The
+    /// safety check is therefore unreachable in the current
     /// pipeline; this test pins that fact for Task 5's investigation and the
     /// diagnosis report.
     #[tokio::test(flavor = "multi_thread")]
