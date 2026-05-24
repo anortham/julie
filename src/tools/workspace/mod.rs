@@ -5,5 +5,5 @@ mod language;
 mod paths;
 mod utils;
 
-pub use commands::{ManageWorkspaceTool, WorkspaceCommand};
+pub use commands::ManageWorkspaceTool;
 pub use utils::calculate_dir_size;

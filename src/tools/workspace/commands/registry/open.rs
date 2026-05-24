@@ -33,6 +33,9 @@ impl ManageWorkspaceTool {
     pub(crate) async fn handle_open_command(
         &self,
         handler: &JulieServerHandler,
+        path: Option<String>,
+        workspace_id: Option<String>,
+        force: bool,
     ) -> Result<CallToolResult> {
         let Some(registry_store) = registry_store_for_handler(handler)? else {
             let message =
@@ -52,8 +55,8 @@ impl ManageWorkspaceTool {
 
         let current_primary_id = handler.current_workspace_id();
 
-        let target = if let Some(path) = self.path.as_ref() {
-            if self.workspace_id.is_some() {
+        let target = if let Some(path) = path.as_ref() {
+            if workspace_id.is_some() {
                 return Err(anyhow!(
                     "Provide either 'path' or 'workspace_id' for 'open', not both"
                 ));
@@ -88,7 +91,7 @@ impl ManageWorkspaceTool {
                     status: "pending".to_string(),
                 }
             }
-        } else if let Some(workspace_id) = self.workspace_id.as_ref() {
+        } else if let Some(workspace_id) = workspace_id.as_ref() {
             let row = registry_store
                 .get_workspace(workspace_id)?
                 .ok_or_else(|| anyhow!("Workspace not found: {workspace_id}"))?;
@@ -163,7 +166,6 @@ impl ManageWorkspaceTool {
             "Opening workspace for current session"
         );
 
-        let force = self.force.unwrap_or(false);
         let already_active = handler.is_workspace_active(&target.workspace_id).await;
         let attached_matches_target = handler
             .was_workspace_attached_in_session(&target.workspace_id)
@@ -187,7 +189,7 @@ impl ManageWorkspaceTool {
             }
         } else if !target.is_primary {
             match self
-                .refresh_workspace_internal(handler, &target.workspace_id)
+                .refresh_workspace_internal(handler, &target.workspace_id, force)
                 .await?
             {
                 RefreshWorkspaceOutcome::Success(_) => {}

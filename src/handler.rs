@@ -40,6 +40,7 @@ use tokio::sync::RwLock;
 
 use self::tool_metrics::{MetricsTask, run_metrics_writer};
 use crate::tools::metrics::session::{SessionMetrics, extract_source_paths};
+use crate::tools::workspace::commands::ManageWorkspaceOperation;
 
 pub(crate) struct PrimaryWorkspaceSnapshot {
     pub binding: PrimaryWorkspaceBinding,
@@ -608,41 +609,13 @@ impl JulieServerHandler {
     fn manage_workspace_primary_index_request(
         arguments: Option<&serde_json::Map<String, serde_json::Value>>,
     ) -> bool {
-        let Some(arguments) = arguments else {
-            return false;
-        };
-
-        let operation = arguments
-            .get("operation")
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or_default();
-        operation == "index" && arguments.get("path").is_none_or(serde_json::Value::is_null)
+        ManageWorkspaceOperation::primary_index_request(arguments)
     }
 
     fn manage_workspace_request_targets_primary(
         arguments: Option<&serde_json::Map<String, serde_json::Value>>,
     ) -> bool {
-        let Some(arguments) = arguments else {
-            return false;
-        };
-
-        let operation = arguments
-            .get("operation")
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or_default();
-        match operation {
-            // `register` is intentionally excluded: it must not silently bind
-            // the startup-hint/CWD as primary on the user's behalf. The tool
-            // body resolves the target path without treating the request as a
-            // primary-targeting operation.
-            "list" | "remove" | "health" => true,
-            "stats" => arguments
-                .get("workspace_id")
-                .and_then(serde_json::Value::as_str)
-                .is_none_or(|workspace_id| workspace_id == "primary"),
-            "index" => arguments.get("path").is_none_or(serde_json::Value::is_null),
-            _ => false,
-        }
+        ManageWorkspaceOperation::request_targets_primary(arguments)
     }
 
     fn tool_request_targets_primary(

@@ -27,6 +27,7 @@ impl ManageWorkspaceTool {
         &self,
         handler: &JulieServerHandler,
         workspace_id: &str,
+        force: bool,
     ) -> Result<RefreshWorkspaceOutcome> {
         let Some(ref db) = handler.daemon_db else {
             let message = format!(
@@ -45,7 +46,6 @@ impl ManageWorkspaceTool {
                 let mutation_guard = handler.acquire_mutation_gate(workspace_id).await;
                 info!("Starting re-indexing of workspace: {}", workspace_id);
 
-                let force = self.force.unwrap_or(false);
                 let semantic_engine_refresh_needed = self
                     .semantic_index_engine_refresh_needed_for_path(handler, &workspace_path)
                     .await?;
@@ -189,6 +189,7 @@ impl ManageWorkspaceTool {
         &self,
         handler: &JulieServerHandler,
         workspace_id: &str,
+        force: bool,
     ) -> Result<CallToolResult> {
         info!("Refreshing workspace: {}", workspace_id);
 
@@ -205,16 +206,12 @@ impl ManageWorkspaceTool {
             ));
         }
 
-        if self.force.unwrap_or(false)
-            && handler.current_workspace_id().as_deref() == Some(workspace_id)
-        {
-            return self
-                .handle_index_command(handler, None, self.force.unwrap_or(false), false)
-                .await;
+        if force && handler.current_workspace_id().as_deref() == Some(workspace_id) {
+            return self.handle_index_command(handler, None, force, false).await;
         }
 
         match self
-            .refresh_workspace_internal(handler, workspace_id)
+            .refresh_workspace_internal(handler, workspace_id, force)
             .await?
         {
             RefreshWorkspaceOutcome::Success(success) => {

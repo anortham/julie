@@ -96,6 +96,7 @@ pub mod tools {
         pub mod global_targeting; // Explicit workspace open/activation tests
         pub mod index_embedding_tests; // Embedding pipeline fixes: embedding_count reflects DB total
         pub mod isolation; // Workspace isolation tests
+        pub mod manage_workspace_request; // Typed internal manage_workspace request parsing tests
         pub mod management_token; // ManageWorkspaceTool token optimization tests
         pub mod mod_tests; // Workspace module functionality tests
         pub mod processor; // Indexing processor parser-failure handling tests

@@ -17,6 +17,7 @@ impl ManageWorkspaceTool {
         handler: &JulieServerHandler,
         path: &str,
         name: Option<String>,
+        force: bool,
     ) -> Result<CallToolResult> {
         let Some(registry_store) = registry_store_for_handler(handler)? else {
             let message = "Workspace registration requires daemon mode. Start the daemon with `julie daemon`.";
@@ -51,7 +52,6 @@ impl ManageWorkspaceTool {
             .and_then(|n| n.to_str())
             .unwrap_or(&workspace_id);
         let display_name = name.unwrap_or_else(|| dir_name.to_string());
-        let force = self.force.unwrap_or(false);
 
         if let Some(existing) = existing.as_ref() {
             if existing.status == "ready" && !force {

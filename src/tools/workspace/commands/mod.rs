@@ -1,5 +1,5 @@
 use crate::mcp_compat::CallToolResult;
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tracing::info;
@@ -14,54 +14,175 @@ pub(crate) mod registry;
 // Workspace Management Commands //
 //******************//
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum WorkspaceCommand {
-    /// Index primary workspace or current directory
+const VALID_MANAGE_WORKSPACE_OPERATIONS: &str =
+    "index, list, register, remove, stats, clean, refresh, open, health";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ManageWorkspaceOperation {
+    Index,
+    Register,
+    Remove,
+    List,
+    Clean,
+    Refresh,
+    Open,
+    Stats,
+    Health,
+}
+
+impl ManageWorkspaceOperation {
+    pub(crate) fn parse(operation: &str) -> Result<Self> {
+        match operation {
+            "index" => Ok(Self::Index),
+            "register" => Ok(Self::Register),
+            "remove" => Ok(Self::Remove),
+            "list" => Ok(Self::List),
+            "clean" => Ok(Self::Clean),
+            "refresh" => Ok(Self::Refresh),
+            "open" => Ok(Self::Open),
+            "stats" => Ok(Self::Stats),
+            "health" => Ok(Self::Health),
+            _ => Err(Self::unknown_operation_error(operation)),
+        }
+    }
+
+    fn from_arguments(
+        arguments: Option<&serde_json::Map<String, serde_json::Value>>,
+    ) -> Option<Self> {
+        let operation = arguments?
+            .get("operation")
+            .and_then(serde_json::Value::as_str)?;
+        Self::parse(operation).ok()
+    }
+
+    pub(crate) fn primary_index_request(
+        arguments: Option<&serde_json::Map<String, serde_json::Value>>,
+    ) -> bool {
+        let Some(arguments) = arguments else {
+            return false;
+        };
+
+        matches!(Self::from_arguments(Some(arguments)), Some(Self::Index))
+            && arguments.get("path").is_none_or(serde_json::Value::is_null)
+    }
+
+    pub(crate) fn request_targets_primary(
+        arguments: Option<&serde_json::Map<String, serde_json::Value>>,
+    ) -> bool {
+        let Some(arguments) = arguments else {
+            return false;
+        };
+
+        match Self::from_arguments(Some(arguments)) {
+            // `register` is intentionally excluded: it must not silently bind
+            // the startup-hint/CWD as primary on the user's behalf. The tool
+            // body resolves the target path without treating the request as a
+            // primary-targeting operation.
+            Some(Self::List | Self::Remove | Self::Health) => true,
+            Some(Self::Stats) => arguments
+                .get("workspace_id")
+                .and_then(serde_json::Value::as_str)
+                .is_none_or(|workspace_id| workspace_id == "primary"),
+            Some(Self::Index) => arguments.get("path").is_none_or(serde_json::Value::is_null),
+            _ => false,
+        }
+    }
+
+    fn unknown_operation_error(operation: &str) -> anyhow::Error {
+        anyhow!(
+            "Unknown operation: '{}'. Valid operations: {}",
+            operation,
+            VALID_MANAGE_WORKSPACE_OPERATIONS
+        )
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ManageWorkspaceRequest {
     Index {
-        /// Path to workspace (defaults to current directory)
         path: Option<String>,
-        /// Force complete re-indexing even if cache exists
         force: bool,
     },
-    /// Register a known workspace and build its index without activating it
     Register {
-        /// Path to the workspace to register
         path: String,
-        /// Optional display name for the workspace
         name: Option<String>,
+        force: bool,
     },
-    /// Remove specific workspace by ID
     Remove {
-        /// Workspace ID to remove
         workspace_id: String,
     },
-    /// List all registered workspaces with status
     List,
-    /// Clean up expired and orphaned workspaces (comprehensive cleanup)
     Clean,
-    /// Re-index specific workspace
     Refresh {
-        /// Workspace ID to refresh
         workspace_id: String,
+        force: bool,
     },
-    /// Open a workspace and make it the current primary for the daemon session
     Open {
-        /// Optional path to the workspace to open
         path: Option<String>,
-        /// Optional workspace ID to open
         workspace_id: Option<String>,
+        force: bool,
     },
-    /// Show workspace statistics
     Stats {
-        /// Optional specific workspace ID (defaults to all)
         workspace_id: Option<String>,
     },
-    /// Show comprehensive system health status
     Health {
-        /// Include detailed diagnostic information
-        detailed: Option<bool>,
+        detailed: bool,
     },
+}
+
+impl TryFrom<&ManageWorkspaceTool> for ManageWorkspaceRequest {
+    type Error = anyhow::Error;
+
+    fn try_from(tool: &ManageWorkspaceTool) -> Result<Self> {
+        let force = tool.force.unwrap_or(false);
+        let operation = ManageWorkspaceOperation::parse(tool.operation.as_str())?;
+
+        match operation {
+            ManageWorkspaceOperation::Index => Ok(Self::Index {
+                path: tool.path.clone(),
+                force,
+            }),
+            ManageWorkspaceOperation::Register => {
+                let path = tool
+                    .path
+                    .clone()
+                    .ok_or_else(|| anyhow!("'path' parameter required for 'register' operation"))?;
+                Ok(Self::Register {
+                    path,
+                    name: tool.name.clone(),
+                    force,
+                })
+            }
+            ManageWorkspaceOperation::Remove => {
+                let workspace_id = tool.workspace_id.clone().ok_or_else(|| {
+                    anyhow!("'workspace_id' parameter required for 'remove' operation")
+                })?;
+                Ok(Self::Remove { workspace_id })
+            }
+            ManageWorkspaceOperation::List => Ok(Self::List),
+            ManageWorkspaceOperation::Clean => Ok(Self::Clean),
+            ManageWorkspaceOperation::Refresh => {
+                let workspace_id = tool.workspace_id.clone().ok_or_else(|| {
+                    anyhow!("'workspace_id' parameter required for 'refresh' operation")
+                })?;
+                Ok(Self::Refresh {
+                    workspace_id,
+                    force,
+                })
+            }
+            ManageWorkspaceOperation::Open => Ok(Self::Open {
+                path: tool.path.clone(),
+                workspace_id: tool.workspace_id.clone(),
+                force,
+            }),
+            ManageWorkspaceOperation::Stats => Ok(Self::Stats {
+                workspace_id: tool.workspace_id.clone(),
+            }),
+            ManageWorkspaceOperation::Health => Ok(Self::Health {
+                detailed: tool.detailed.unwrap_or(false),
+            }),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
@@ -119,67 +240,57 @@ impl ManageWorkspaceTool {
         handler: &JulieServerHandler,
         skip_embeddings: bool,
     ) -> Result<CallToolResult> {
-        match self.operation.as_str() {
-            "index" => {
-                self.handle_index_command(
-                    handler,
-                    self.path.clone(),
-                    self.force.unwrap_or(false),
-                    skip_embeddings,
-                )
-                .await
-            }
-            _ => self.call_tool(handler).await,
-        }
+        info!("🏗️ Managing workspace with operation: {}", self.operation);
+        let request = ManageWorkspaceRequest::try_from(self)?;
+        self.dispatch_request(handler, request, skip_embeddings)
+            .await
     }
 
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
-        info!("🏗️ Managing workspace with operation: {}", self.operation);
+        self.call_tool_with_options(handler, false).await
+    }
 
-        match self.operation.as_str() {
-            "index" => {
-                self.handle_index_command(
-                    handler,
-                    self.path.clone(),
-                    self.force.unwrap_or(false),
-                    false,
-                )
-                .await
-            }
-            "register" => {
-                let path = self.path.as_ref().ok_or_else(|| {
-                    anyhow::anyhow!("'path' parameter required for 'register' operation")
-                })?;
-                self.handle_register_command(handler, path, self.name.clone())
+    async fn dispatch_request(
+        &self,
+        handler: &JulieServerHandler,
+        request: ManageWorkspaceRequest,
+        skip_embeddings: bool,
+    ) -> Result<CallToolResult> {
+        match request {
+            ManageWorkspaceRequest::Index { path, force } => {
+                self.handle_index_command(handler, path, force, skip_embeddings)
                     .await
             }
-            "remove" => {
-                let workspace_id = self.workspace_id.as_ref().ok_or_else(|| {
-                    anyhow::anyhow!("'workspace_id' parameter required for 'remove' operation")
-                })?;
-                self.handle_remove_command(handler, workspace_id).await
-            }
-            "list" => self.handle_list_command(handler).await,
-            "clean" => self.handle_clean_command(handler).await,
-            "refresh" => {
-                let workspace_id = self.workspace_id.as_ref().ok_or_else(|| {
-                    anyhow::anyhow!("'workspace_id' parameter required for 'refresh' operation")
-                })?;
-                self.handle_refresh_command(handler, workspace_id).await
-            }
-            "open" => self.handle_open_command(handler).await,
-            "stats" => {
-                self.handle_stats_command(handler, self.workspace_id.clone())
+            ManageWorkspaceRequest::Register { path, name, force } => {
+                self.handle_register_command(handler, &path, name, force)
                     .await
             }
-            "health" => {
-                self.handle_health_command(handler, self.detailed.unwrap_or(false))
+            ManageWorkspaceRequest::Remove { workspace_id } => {
+                self.handle_remove_command(handler, &workspace_id).await
+            }
+            ManageWorkspaceRequest::List => self.handle_list_command(handler).await,
+            ManageWorkspaceRequest::Clean => self.handle_clean_command(handler).await,
+            ManageWorkspaceRequest::Refresh {
+                workspace_id,
+                force,
+            } => {
+                self.handle_refresh_command(handler, &workspace_id, force)
                     .await
             }
-            _ => Err(anyhow::anyhow!(
-                "Unknown operation: '{}'. Valid operations: index, list, register, remove, stats, clean, refresh, open, health",
-                self.operation
-            )),
+            ManageWorkspaceRequest::Open {
+                path,
+                workspace_id,
+                force,
+            } => {
+                self.handle_open_command(handler, path, workspace_id, force)
+                    .await
+            }
+            ManageWorkspaceRequest::Stats { workspace_id } => {
+                self.handle_stats_command(handler, workspace_id).await
+            }
+            ManageWorkspaceRequest::Health { detailed } => {
+                self.handle_health_command(handler, detailed).await
+            }
         }
     }
 }
