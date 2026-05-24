@@ -279,6 +279,19 @@ pub enum FilePatternDiagnostic {
     CandidateStarvation,
 }
 
+/// Outcome of the line-mode enrichment pass that adds exact line snippets or
+/// line locations after unified search has selected candidate files/symbols.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum LineEnrichmentStatus {
+    /// Line-mode found matches and enriched the returned execution trace.
+    Applied,
+    /// Line-mode was attempted but found no line-level matches.
+    NoMatches,
+    /// Line-mode failed and the caller fell back to unified search output.
+    Failed,
+}
+
 /// Categorizes the kind of hint prepended to an agent-facing search response.
 /// Persisted through `SearchTrace.hint_kind` so the "without-recourse" rate is
 /// measurable from `tool_calls.metadata`.
@@ -326,6 +339,11 @@ pub(crate) fn target_hint_label(hint_kind: &HintKind) -> Option<&'static str> {
 ///   responses that carry no prepended hint.
 /// - `line_match_strategy` records the content line-match strategy label used
 ///   by line-mode searches.
+/// - `line_enrichment_status` records whether post-unified line enrichment was
+///   applied, found no line matches, or failed before caller-facing fallback.
+///   `line_enrichment_match_count` is the raw number of line-mode matches, not
+///   the number of unified hits decorated with snippets. Companion fields
+///   carry any no-match/failure detail.
 /// - `definition_exact_match` is true when the definitions result set would
 ///   render the promoted exact-match formatter path.
 /// - `target_hint` records the search target hinted by a zero-hit content
@@ -345,6 +363,11 @@ pub struct SearchTrace {
     pub file_pattern_diagnostic: Option<FilePatternDiagnostic>,
     pub hint_kind: Option<HintKind>,
     pub line_match_strategy: Option<String>,
+    pub line_enrichment_status: Option<LineEnrichmentStatus>,
+    pub line_enrichment_match_count: Option<usize>,
+    pub line_enrichment_zero_hit_reason: Option<ZeroHitReason>,
+    pub line_enrichment_file_pattern_diagnostic: Option<FilePatternDiagnostic>,
+    pub line_enrichment_error: Option<String>,
     pub definition_exact_match: bool,
     pub target_hint: Option<String>,
     pub scope_relaxed: bool,
@@ -368,6 +391,11 @@ impl SearchTrace {
             file_pattern_diagnostic: None,
             hint_kind: None,
             line_match_strategy: None,
+            line_enrichment_status: None,
+            line_enrichment_match_count: None,
+            line_enrichment_zero_hit_reason: None,
+            line_enrichment_file_pattern_diagnostic: None,
+            line_enrichment_error: None,
             definition_exact_match: false,
             target_hint: None,
             scope_relaxed: false,
@@ -382,6 +410,42 @@ impl SearchTrace {
     pub(crate) fn refresh_hits(&mut self, hits: &[SearchHit]) {
         self.result_count = hits.len();
         self.top_hits = summarize_top_hits(hits);
+    }
+
+    pub(crate) fn record_line_enrichment_applied(
+        &mut self,
+        strategy: impl Into<String>,
+        match_count: usize,
+    ) {
+        self.line_match_strategy = Some(strategy.into());
+        self.line_enrichment_status = Some(LineEnrichmentStatus::Applied);
+        self.line_enrichment_match_count = Some(match_count);
+        self.line_enrichment_zero_hit_reason = None;
+        self.line_enrichment_file_pattern_diagnostic = None;
+        self.line_enrichment_error = None;
+    }
+
+    pub(crate) fn record_line_enrichment_no_matches(
+        &mut self,
+        strategy: impl Into<String>,
+        zero_hit_reason: Option<ZeroHitReason>,
+        file_pattern_diagnostic: Option<FilePatternDiagnostic>,
+    ) {
+        self.line_match_strategy = Some(strategy.into());
+        self.line_enrichment_status = Some(LineEnrichmentStatus::NoMatches);
+        self.line_enrichment_match_count = Some(0);
+        self.line_enrichment_zero_hit_reason = zero_hit_reason;
+        self.line_enrichment_file_pattern_diagnostic = file_pattern_diagnostic;
+        self.line_enrichment_error = None;
+    }
+
+    pub(crate) fn record_line_enrichment_failed(&mut self, error: impl Into<String>) {
+        self.line_match_strategy = None;
+        self.line_enrichment_status = Some(LineEnrichmentStatus::Failed);
+        self.line_enrichment_match_count = Some(0);
+        self.line_enrichment_zero_hit_reason = None;
+        self.line_enrichment_file_pattern_diagnostic = None;
+        self.line_enrichment_error = Some(error.into());
     }
 }
 

@@ -14,7 +14,8 @@ pub use self::query_preprocessor::{
     validate_query,
 };
 pub use self::trace::{
-    FilePatternDiagnostic, HintKind, SearchExecutionResult, SearchHit, SearchTrace, ZeroHitReason,
+    FilePatternDiagnostic, HintKind, LineEnrichmentStatus, SearchExecutionResult, SearchHit,
+    SearchTrace, ZeroHitReason,
 };
 pub use self::types::{LineMatch, LineMatchStrategy};
 
@@ -501,9 +502,14 @@ impl FastSearchTool {
         }
 
         if self.return_format != "locations" && !has_exact_name_match && !symbol_backend_active {
-            let _ = self
-                .try_enrich_with_line_mode_snippets(handler, &workspace_target, &mut execution.hits)
-                .await;
+            if let Err(err) = self
+                .try_enrich_with_line_mode_snippets(handler, &workspace_target, &mut execution)
+                .await
+            {
+                execution
+                    .trace
+                    .record_line_enrichment_failed(err.to_string());
+            }
         }
 
         // Locations-only mode: skip code context entirely (70-90% token savings)
@@ -519,11 +525,11 @@ impl FastSearchTool {
                 has_exact_name_match,
                 symbol_backend_active,
             ) {
-                if let Ok(line_locations_output) = self
+                match self
                     .try_line_mode_locations(handler, &workspace_target, &mut execution)
                     .await
                 {
-                    if let Some(locations_text) = line_locations_output {
+                    Ok(Some(locations_text)) => {
                         let final_text = if execution.relaxed {
                             format!(
                                 "NOTE: Relaxed search (showing partial matches — no results matched all terms)\n\n{}",
@@ -538,6 +544,10 @@ impl FastSearchTool {
                             execution: Some(execution),
                         });
                     }
+                    Ok(None) => {}
+                    Err(err) => execution
+                        .trace
+                        .record_line_enrichment_failed(err.to_string()),
                 }
             }
 
@@ -695,7 +705,13 @@ impl FastSearchTool {
         )
         .await?;
 
+        let line_match_strategy = line_match_strategy_label(&line_result.strategy).to_string();
         if line_result.matches.is_empty() {
+            execution.trace.record_line_enrichment_no_matches(
+                line_match_strategy,
+                line_result.zero_hit_reason,
+                line_result.file_pattern_diagnostic,
+            );
             return Ok(None);
         }
 
@@ -720,7 +736,6 @@ impl FastSearchTool {
                 })
             })
             .flatten();
-        let line_match_strategy = line_match_strategy_label(&line_result.strategy).to_string();
         let language_by_file = execution
             .hits
             .iter()
@@ -754,7 +769,16 @@ impl FastSearchTool {
         execution.hits = hits;
         execution.total_results = total_results;
         execution.trace.refresh_hits(&execution.hits);
-        execution.trace.line_match_strategy = Some(line_match_strategy);
+        execution
+            .trace
+            .record_line_enrichment_applied(line_match_strategy, total_results);
+        if line_result.scope_relaxed {
+            execution.trace.scope_relaxed = true;
+            execution.trace.original_file_pattern = line_result.original_file_pattern.clone();
+            execution.trace.original_zero_hit_reason = Some(ZeroHitReason::FilePatternFiltered);
+            execution.trace.scope_rescue_count =
+                execution.trace.scope_rescue_count.saturating_add(1);
+        }
 
         Ok(Some(match scope_rescue_header {
             Some(header) => format!("{header}\n\n{output}"),
@@ -783,7 +807,7 @@ impl FastSearchTool {
         &self,
         handler: &JulieServerHandler,
         workspace_target: &WorkspaceTarget,
-        hits: &mut [SearchHit],
+        execution: &mut SearchExecutionResult,
     ) -> Result<()> {
         let line_result = line_mode::line_mode_matches(
             &self.query,
@@ -796,10 +820,17 @@ impl FastSearchTool {
         )
         .await?;
 
+        let line_match_strategy = line_match_strategy_label(&line_result.strategy).to_string();
         if line_result.matches.is_empty() {
+            execution.trace.record_line_enrichment_no_matches(
+                line_match_strategy,
+                line_result.zero_hit_reason,
+                line_result.file_pattern_diagnostic,
+            );
             return Ok(());
         }
 
+        let match_count = line_result.matches.len();
         let mut snippets_by_file: std::collections::HashMap<String, Vec<String>> =
             std::collections::HashMap::new();
         for line_match in line_result.matches {
@@ -813,7 +844,9 @@ impl FastSearchTool {
                 ));
         }
 
-        for hit in hits {
+        // Line-mode scope rescue is intentionally not propagated here: snippet
+        // enrichment cannot widen the already-ranked unified hit set.
+        for hit in &mut execution.hits {
             let Some(lines) = snippets_by_file.get(&hit.file) else {
                 continue;
             };
@@ -835,6 +868,9 @@ impl FastSearchTool {
             }
         }
 
+        execution
+            .trace
+            .record_line_enrichment_applied(line_match_strategy, match_count);
         Ok(())
     }
 }

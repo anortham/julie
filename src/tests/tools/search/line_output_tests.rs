@@ -28,6 +28,8 @@ fn test_fast_search_content_full_groups_same_file_hits() {
         },
         workspace_label: "julie_528d4264".to_string(),
         stage_counts: LineModeStageCounts::default(),
+        zero_hit_reason: None,
+        file_pattern_diagnostic: None,
         scope_relaxed: false,
         original_file_pattern: None,
     };

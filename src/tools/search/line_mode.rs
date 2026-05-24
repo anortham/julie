@@ -31,6 +31,8 @@ pub(crate) struct LineModeSearchResult {
     pub workspace_label: String,
     #[cfg_attr(not(test), allow(dead_code))]
     pub stage_counts: LineModeStageCounts,
+    pub zero_hit_reason: Option<ZeroHitReason>,
+    pub file_pattern_diagnostic: Option<FilePatternDiagnostic>,
     pub scope_relaxed: bool,
     pub original_file_pattern: Option<String>,
 }
@@ -685,8 +687,16 @@ pub(crate) async fn line_mode_matches(
             .map_err(|e| anyhow::anyhow!("Failed to spawn target workspace search: {}", e))??
         }
     };
-    let all_line_matches = scoped_outcome.fetch.matches;
-    let stage_counts = scoped_outcome.fetch.stage_counts;
+    let LineModeFetchOutcome {
+        matches: all_line_matches,
+        stage_counts,
+        file_pattern_diagnostic,
+    } = scoped_outcome.fetch;
+    let zero_hit_reason = if all_line_matches.is_empty() {
+        attribute_zero_hit_reason(&stage_counts)
+    } else {
+        None
+    };
 
     // Task 5: the second-pass filter that used to live here re-ran the
     // caller's `file_pattern`, `language`, and `exclude_tests` checks on
@@ -704,6 +714,8 @@ pub(crate) async fn line_mode_matches(
         strategy: match_strategy,
         workspace_label,
         stage_counts,
+        zero_hit_reason,
+        file_pattern_diagnostic,
         scope_relaxed: scoped_outcome.scope_relaxed,
         original_file_pattern: scoped_outcome.original_file_pattern,
     })

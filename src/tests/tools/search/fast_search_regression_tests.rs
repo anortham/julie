@@ -10,7 +10,7 @@ use crate::mcp_compat::CallToolResult;
 use crate::search::index::{SearchDocument, SearchFilter, SearchIndex};
 use crate::tools::search::FastSearchTool;
 use crate::tools::search::text_search::definition_search_with_index_for_test;
-use crate::tools::search::trace::ZeroHitReason;
+use crate::tools::search::trace::{LineEnrichmentStatus, ZeroHitReason};
 use crate::tools::workspace::ManageWorkspaceTool;
 
 fn extract_text(result: &CallToolResult) -> String {
@@ -560,6 +560,11 @@ async fn content_locations_trace_uses_line_hits_without_matching_line_text() -> 
         "locations output should include the Python file and line, got:\n{text}"
     );
     assert_eq!(execution.trace.result_count, execution.hits.len());
+    assert_eq!(
+        execution.trace.line_enrichment_status,
+        Some(LineEnrichmentStatus::Applied)
+    );
+    assert_eq!(execution.trace.line_enrichment_match_count, Some(1));
     assert!(
         execution
             .trace
@@ -657,6 +662,85 @@ async fn content_full_format_includes_matching_line_text() -> Result<()> {
         text.contains("let full_format_context_marker = 1;"),
         "full output should include the actual matching line, got:\n{text}"
     );
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn content_full_output_trace_records_line_enrichment_success() -> Result<()> {
+    unsafe {
+        std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "0");
+    }
+
+    let temp_dir = TempDir::new()?;
+    let workspace_path = temp_dir.path();
+    let src_dir = workspace_path.join("src");
+    fs::create_dir_all(&src_dir)?;
+    fs::write(
+        src_dir.join("app.rs"),
+        "fn main() {\n    let trace_enrichment_marker = 1;\n}\n",
+    )?;
+
+    let handler = index_workspace(workspace_path).await?;
+    let run = FastSearchTool {
+        query: "trace_enrichment_marker".to_string(),
+        return_format: "full".to_string(),
+        limit: 10,
+        workspace: Some("primary".to_string()),
+        ..Default::default()
+    }
+    .execute_with_trace(&handler)
+    .await?;
+
+    let execution = run.execution.expect("search should return execution trace");
+    assert_eq!(
+        execution.trace.line_enrichment_status,
+        Some(LineEnrichmentStatus::Applied)
+    );
+    assert_eq!(execution.trace.line_enrichment_match_count, Some(1));
+    assert!(
+        execution.trace.line_match_strategy.is_some(),
+        "successful enrichment should record the line-match strategy"
+    );
+    assert!(execution.trace.line_enrichment_error.is_none());
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn content_full_output_trace_records_line_enrichment_no_matches() -> Result<()> {
+    unsafe {
+        std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "0");
+    }
+
+    let temp_dir = TempDir::new()?;
+    let workspace_path = temp_dir.path();
+    let src_dir = workspace_path.join("src");
+    fs::create_dir_all(&src_dir)?;
+    fs::write(src_dir.join("only_path_marker.rs"), "fn main() {}\n")?;
+
+    let handler = index_workspace(workspace_path).await?;
+    let run = FastSearchTool {
+        query: "only_path_marker".to_string(),
+        return_format: "full".to_string(),
+        limit: 10,
+        workspace: Some("primary".to_string()),
+        ..Default::default()
+    }
+    .execute_with_trace(&handler)
+    .await?;
+
+    let execution = run.execution.expect("search should return execution trace");
+    assert!(
+        !execution.hits.is_empty(),
+        "path-shaped query should still return unified hits"
+    );
+    assert_eq!(
+        execution.trace.line_enrichment_status,
+        Some(LineEnrichmentStatus::NoMatches)
+    );
+    assert_eq!(execution.trace.line_enrichment_match_count, Some(0));
+    assert!(execution.trace.line_enrichment_error.is_none());
 
     Ok(())
 }

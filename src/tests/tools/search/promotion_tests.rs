@@ -8,8 +8,8 @@ mod tests {
         is_multi_token_query, tokenize_query_for_hint,
     };
     use crate::tools::search::trace::{
-        FilePatternDiagnostic, HintKind, SearchExecutionKind, SearchExecutionResult, SearchTrace,
-        ZeroHitReason,
+        FilePatternDiagnostic, HintKind, LineEnrichmentStatus, SearchExecutionKind,
+        SearchExecutionResult, SearchTrace, ZeroHitReason,
     };
 
     #[test]
@@ -84,12 +84,35 @@ mod tests {
     }
 
     #[test]
+    fn line_enrichment_status_serializes_snake_case() {
+        for (variant, expected) in [
+            (LineEnrichmentStatus::Applied, "applied"),
+            (LineEnrichmentStatus::NoMatches, "no_matches"),
+            (LineEnrichmentStatus::Failed, "failed"),
+        ] {
+            let json = serde_json::to_value(&variant).expect("serialize line enrichment status");
+            assert_eq!(
+                json,
+                serde_json::Value::String(expected.to_string()),
+                "LineEnrichmentStatus::{:?} should serialize as {:?}",
+                variant,
+                expected
+            );
+        }
+    }
+
+    #[test]
     fn trace_from_hits_defaults_new_fields_to_none() {
         let trace = SearchTrace::from_hits("fast_search_content", &[]);
         assert!(trace.zero_hit_reason.is_none());
         assert!(trace.file_pattern_diagnostic.is_none());
         assert!(trace.hint_kind.is_none());
         assert!(trace.line_match_strategy.is_none());
+        assert!(trace.line_enrichment_status.is_none());
+        assert!(trace.line_enrichment_match_count.is_none());
+        assert!(trace.line_enrichment_zero_hit_reason.is_none());
+        assert!(trace.line_enrichment_file_pattern_diagnostic.is_none());
+        assert!(trace.line_enrichment_error.is_none());
         assert!(!trace.definition_exact_match);
         assert!(trace.target_hint.is_none());
         assert!(!trace.scope_relaxed);
@@ -99,6 +122,31 @@ mod tests {
         assert!(!trace.or_disjunction_detected);
         assert_eq!(trace.result_count, 0);
         assert_eq!(trace.strategy_id, "fast_search_content");
+    }
+
+    #[test]
+    fn record_line_enrichment_failed_clears_stale_companion_fields() {
+        let mut trace = SearchTrace::from_hits("fast_search_content", &[]);
+        trace.record_line_enrichment_no_matches(
+            "tokens",
+            Some(ZeroHitReason::LineMatchMiss),
+            Some(FilePatternDiagnostic::NoInScopeCandidates),
+        );
+
+        trace.record_line_enrichment_failed("line index unavailable");
+
+        assert_eq!(
+            trace.line_enrichment_status,
+            Some(LineEnrichmentStatus::Failed)
+        );
+        assert_eq!(trace.line_enrichment_match_count, Some(0));
+        assert!(trace.line_match_strategy.is_none());
+        assert!(trace.line_enrichment_zero_hit_reason.is_none());
+        assert!(trace.line_enrichment_file_pattern_diagnostic.is_none());
+        assert_eq!(
+            trace.line_enrichment_error.as_deref(),
+            Some("line index unavailable")
+        );
     }
 
     #[test]

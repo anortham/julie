@@ -12,8 +12,8 @@ use crate::tools::navigation::CallPathTool;
 use crate::tools::navigation::FastRefsTool;
 use crate::tools::search::FastSearchTool;
 use crate::tools::search::trace::{
-    FilePatternDiagnostic, HintKind, SearchExecutionKind, SearchExecutionResult, SearchHit,
-    ZeroHitReason,
+    FilePatternDiagnostic, HintKind, LineEnrichmentStatus, SearchExecutionKind,
+    SearchExecutionResult, SearchHit, ZeroHitReason,
 };
 use crate::tools::spillover::SpilloverGetTool;
 use crate::tools::{BlastRadiusTool, DeepDiveDepth, DeepDiveTool, GetContextTool, GetSymbolsTool};
@@ -165,9 +165,8 @@ fn test_fast_search_metadata_captures_trace_and_intent() {
 #[tokio::test]
 async fn test_fast_search_metadata_serializes_unified_trace_fields() {
     // After T8, all traffic routes through execute_search_unified.
-    // The trace no longer carries content-search-specific fields like
-    // line_match_strategy or target_hint.  This test verifies the trace
-    // still carries the fields that DO exist in the unified path.
+    // This verifies unified execution metadata keeps the stable trace fields
+    // callers rely on, independent of content-specific enrichment status.
     let (_temp_dir, handler) = seed_workspace(&[(
         "src/lib.rs",
         "pub fn search_handler() { let marker_token = 1; }\n",
@@ -585,6 +584,50 @@ fn test_fast_search_metadata_serializes_backend_fallback() {
     let metadata = search_telemetry::fast_search_metadata(&params, Some(&execution));
 
     assert_eq!(metadata["trace"]["backend_fallback"], true);
+}
+
+#[test]
+fn test_fast_search_metadata_serializes_line_enrichment_fields() {
+    let params = FastSearchTool {
+        query: "line enrichment marker".to_string(),
+        limit: 10,
+        ..Default::default()
+    };
+    let mut execution = SearchExecutionResult::new(
+        Vec::new(),
+        false,
+        0,
+        "fast_search_unified",
+        SearchExecutionKind::Content {
+            workspace_label: Some("primary".to_string()),
+            file_level: false,
+        },
+    );
+    execution.trace.line_match_strategy = Some("tokens".to_string());
+    execution.trace.line_enrichment_status = Some(LineEnrichmentStatus::Failed);
+    execution.trace.line_enrichment_match_count = Some(0);
+    execution.trace.line_enrichment_zero_hit_reason = Some(ZeroHitReason::LineMatchMiss);
+    execution.trace.line_enrichment_file_pattern_diagnostic =
+        Some(FilePatternDiagnostic::NoInScopeCandidates);
+    execution.trace.line_enrichment_error = Some("line index unavailable".to_string());
+
+    let metadata = search_telemetry::fast_search_metadata(&params, Some(&execution));
+
+    assert_eq!(metadata["trace"]["line_match_strategy"], "tokens");
+    assert_eq!(metadata["trace"]["line_enrichment_status"], "failed");
+    assert_eq!(metadata["trace"]["line_enrichment_match_count"], 0);
+    assert_eq!(
+        metadata["trace"]["line_enrichment_zero_hit_reason"],
+        "line_match_miss"
+    );
+    assert_eq!(
+        metadata["trace"]["line_enrichment_file_pattern_diagnostic"],
+        "no_in_scope_candidates"
+    );
+    assert_eq!(
+        metadata["trace"]["line_enrichment_error"],
+        "line index unavailable"
+    );
 }
 
 #[tokio::test]
