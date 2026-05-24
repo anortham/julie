@@ -2,21 +2,19 @@ use crate::analysis::early_warnings::{EarlyWarningReportOptions, generate_early_
 use crate::database::{FileInfo, SymbolDatabase};
 use crate::extractors::{AnnotationMarker, Symbol, SymbolKind};
 use crate::search::language_config::LanguageConfigs;
+use crate::tests::helpers::db::{file_info_builder, symbol_builder};
 use std::collections::HashMap;
 use tempfile::TempDir;
 
 fn file_info(path: &str, language: &str) -> FileInfo {
-    FileInfo {
-        path: path.to_string(),
-        language: language.to_string(),
-        hash: format!("hash-{path}"),
-        size: 128,
-        last_modified: 1_700_000_000,
-        last_indexed: 0,
-        symbol_count: 1,
-        line_count: 16,
-        content: Some(format!("// {path}")),
-    }
+    file_info_builder(path)
+        .language(language)
+        .size(128)
+        .last_modified(1_700_000_000)
+        .last_indexed(0)
+        .line_count(16)
+        .content(format!("// {path}"))
+        .build()
 }
 
 fn marker(annotation: &str, annotation_key: &str, raw_text: Option<&str>) -> AnnotationMarker {
@@ -38,31 +36,19 @@ fn symbol(
     parent_id: Option<&str>,
     annotations: Vec<AnnotationMarker>,
 ) -> Symbol {
-    Symbol {
-        id: id.to_string(),
-        name: name.to_string(),
-        kind,
-        language: language.to_string(),
-        file_path: file_path.to_string(),
-        start_line,
-        start_column: 4,
-        end_line: start_line + 3,
-        end_column: 1,
-        start_byte: 20,
-        end_byte: 80,
-        signature: Some(format!("{name}()")),
-        doc_comment: None,
-        visibility: None,
-        parent_id: parent_id.map(str::to_string),
-        metadata: None,
-        semantic_group: None,
-        confidence: Some(1.0),
-        code_context: Some(format!("{name}() {{}}")),
-        content_type: None,
-        body_span: None,
-        body_hash: None,
-        annotations,
+    let mut builder = symbol_builder(id, name, file_path)
+        .kind(kind)
+        .language(language)
+        .span(start_line, 4, start_line + 3, 1)
+        .bytes(20, 80)
+        .signature(format!("{name}()"))
+        .confidence(1.0)
+        .code_context(format!("{name}() {{}}"))
+        .annotations(annotations);
+    if let Some(parent_id) = parent_id {
+        builder = builder.parent_id(parent_id);
     }
+    builder.build()
 }
 
 fn open_db() -> (TempDir, SymbolDatabase) {
@@ -356,31 +342,22 @@ fn symbol_with_metadata(
     annotations: Vec<AnnotationMarker>,
     metadata: Option<HashMap<String, serde_json::Value>>,
 ) -> Symbol {
-    Symbol {
-        id: id.to_string(),
-        name: name.to_string(),
-        kind,
-        language: language.to_string(),
-        file_path: file_path.to_string(),
-        start_line,
-        start_column: 4,
-        end_line: start_line + 3,
-        end_column: 1,
-        start_byte: 20,
-        end_byte: 80,
-        signature: Some(format!("{name}()")),
-        doc_comment: None,
-        visibility: None,
-        parent_id: parent_id.map(str::to_string),
-        metadata,
-        semantic_group: None,
-        confidence: Some(1.0),
-        code_context: Some(format!("{name}() {{}}")),
-        content_type: None,
-        body_span: None,
-        body_hash: None,
-        annotations,
+    let mut builder = symbol_builder(id, name, file_path)
+        .kind(kind)
+        .language(language)
+        .span(start_line, 4, start_line + 3, 1)
+        .bytes(20, 80)
+        .signature(format!("{name}()"))
+        .confidence(1.0)
+        .code_context(format!("{name}() {{}}"))
+        .annotations(annotations);
+    if let Some(parent_id) = parent_id {
+        builder = builder.parent_id(parent_id);
     }
+    if let Some(metadata) = metadata {
+        builder = builder.metadata(metadata);
+    }
+    builder.build()
 }
 
 #[test]

@@ -2,7 +2,8 @@ use std::collections::HashMap;
 
 use crate::database::types::FileInfo;
 use crate::extractors::{
-    Identifier, IdentifierKind, Relationship, RelationshipKind, Symbol, SymbolKind, Visibility,
+    AnnotationMarker, Identifier, IdentifierKind, Relationship, RelationshipKind, Symbol,
+    SymbolKind, Visibility,
 };
 
 pub fn file_info_builder(path: impl Into<String>) -> FileInfoBuilder {
@@ -121,6 +122,7 @@ pub struct SymbolBuilder {
     confidence: Option<f32>,
     code_context: Option<String>,
     content_type: Option<String>,
+    annotations: Vec<AnnotationMarker>,
 }
 
 impl SymbolBuilder {
@@ -150,6 +152,7 @@ impl SymbolBuilder {
             confidence: None,
             code_context: None,
             content_type: None,
+            annotations: Vec::new(),
         }
     }
 
@@ -193,6 +196,11 @@ impl SymbolBuilder {
         self
     }
 
+    pub fn parent_id(mut self, parent_id: impl Into<String>) -> Self {
+        self.parent_id = Some(parent_id.into());
+        self
+    }
+
     pub fn metadata(mut self, metadata: HashMap<String, serde_json::Value>) -> Self {
         self.metadata = Some(metadata);
         self
@@ -200,6 +208,16 @@ impl SymbolBuilder {
 
     pub fn confidence(mut self, confidence: f32) -> Self {
         self.confidence = Some(confidence);
+        self
+    }
+
+    pub fn code_context(mut self, code_context: impl Into<String>) -> Self {
+        self.code_context = Some(code_context.into());
+        self
+    }
+
+    pub fn annotations(mut self, annotations: Vec<AnnotationMarker>) -> Self {
+        self.annotations = annotations;
         self
     }
 
@@ -227,7 +245,7 @@ impl SymbolBuilder {
             content_type: self.content_type,
             body_span: None,
             body_hash: None,
-            annotations: Vec::new(),
+            annotations: self.annotations,
         }
     }
 }

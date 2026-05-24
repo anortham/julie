@@ -1,4 +1,6 @@
-use crate::extractors::{IdentifierKind, RelationshipKind, SymbolKind, Visibility};
+use crate::extractors::{
+    AnnotationMarker, IdentifierKind, RelationshipKind, SymbolKind, Visibility,
+};
 
 use super::{file_info_builder, identifier_builder, relationship_builder, symbol_builder};
 
@@ -50,6 +52,25 @@ fn test_symbol_builder_overrides_metadata_and_span() {
     assert_eq!(symbol.signature.as_deref(), Some("run(): void"));
     assert_eq!(symbol.visibility, Some(Visibility::Public));
     assert_eq!(symbol.confidence, Some(0.8));
+}
+
+#[test]
+fn test_symbol_builder_overrides_parent_context_and_annotations() {
+    let symbol = symbol_builder("child", "health", "src/controller.rs")
+        .parent_id("controller")
+        .code_context("health() {}")
+        .annotations(vec![AnnotationMarker {
+            annotation: "HttpGet".to_string(),
+            annotation_key: "httpget".to_string(),
+            raw_text: Some("[HttpGet]".to_string()),
+            carrier: None,
+        }])
+        .build();
+
+    assert_eq!(symbol.parent_id.as_deref(), Some("controller"));
+    assert_eq!(symbol.code_context.as_deref(), Some("health() {}"));
+    assert_eq!(symbol.annotations.len(), 1);
+    assert_eq!(symbol.annotations[0].annotation_key, "httpget");
 }
 
 #[test]
