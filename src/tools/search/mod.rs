@@ -520,7 +520,7 @@ impl FastSearchTool {
                 symbol_backend_active,
             ) {
                 if let Ok(line_locations_output) = self
-                    .try_line_mode_locations(handler, &workspace_target)
+                    .try_line_mode_locations(handler, &workspace_target, &mut execution)
                     .await
                 {
                     if let Some(locations_text) = line_locations_output {
@@ -681,6 +681,7 @@ impl FastSearchTool {
         &self,
         handler: &JulieServerHandler,
         workspace_target: &WorkspaceTarget,
+        execution: &mut SearchExecutionResult,
     ) -> Result<Option<String>> {
         let effective_limit = self.effective_limit();
         let line_result = line_mode::line_mode_matches(
@@ -698,18 +699,11 @@ impl FastSearchTool {
             return Ok(None);
         }
 
-        // Workspace label for SearchHit construction (used only for telemetry
-        // round-tripping; locations output does not render it).
         let workspace_label = match workspace_target {
             WorkspaceTarget::Primary => handler
                 .require_primary_workspace_identity()
                 .unwrap_or_else(|_| "primary".to_string()),
             WorkspaceTarget::Target(id) => id.clone(),
-        };
-
-        let language_label = match &self.language {
-            Some(lang) => lang.clone(),
-            None => "rust".to_string(),
         };
 
         let scope_rescue_header = line_result
@@ -726,23 +720,42 @@ impl FastSearchTool {
                 })
             })
             .flatten();
+        let line_match_strategy = line_match_strategy_label(&line_result.strategy).to_string();
+        let language_by_file = execution
+            .hits
+            .iter()
+            .map(|hit| (hit.file.clone(), hit.language.clone()))
+            .collect::<std::collections::HashMap<_, _>>();
+        let requested_language = self.language.clone();
 
-        let hits: Vec<crate::tools::search::trace::SearchHit> = line_result
+        let hits: Vec<SearchHit> = line_result
             .matches
             .into_iter()
             .map(|line_match| {
-                crate::tools::search::trace::SearchHit::from_line_match(
-                    line_match,
-                    workspace_label.clone(),
-                    language_label.clone(),
-                    0.0_f32,
-                )
+                let language = language_by_file
+                    .get(&line_match.file_path)
+                    .cloned()
+                    .or_else(|| requested_language.clone())
+                    .or_else(|| {
+                        crate::utils::language::detect_language(std::path::Path::new(
+                            &line_match.file_path,
+                        ))
+                        .map(str::to_string)
+                    })
+                    .unwrap_or_else(|| "text".to_string());
+                SearchHit::from_line_match(line_match, workspace_label.clone(), language, 0.0_f32)
             })
             .collect();
 
         let total_results = hits.len();
-        let optimized = OptimizedResponse::with_total(hits, total_results);
+        let optimized = OptimizedResponse::with_total(hits.clone(), total_results);
         let output = formatting::format_content_locations_only(&self.query, &optimized);
+
+        execution.hits = hits;
+        execution.total_results = total_results;
+        execution.trace.refresh_hits(&execution.hits);
+        execution.trace.line_match_strategy = Some(line_match_strategy);
+
         Ok(Some(match scope_rescue_header {
             Some(header) => format!("{header}\n\n{output}"),
             None => output,
@@ -823,6 +836,14 @@ impl FastSearchTool {
         }
 
         Ok(())
+    }
+}
+
+fn line_match_strategy_label(strategy: &LineMatchStrategy) -> &'static str {
+    match strategy {
+        LineMatchStrategy::Substring(_) => "substring",
+        LineMatchStrategy::Tokens { .. } => "tokens",
+        LineMatchStrategy::FileLevel { .. } => "file_level",
     }
 }
 

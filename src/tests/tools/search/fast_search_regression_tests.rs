@@ -513,6 +513,67 @@ async fn content_locations_format_omits_matching_line_text() -> Result<()> {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn content_locations_trace_uses_line_hits_without_matching_line_text() -> Result<()> {
+    unsafe {
+        std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "0");
+    }
+
+    let temp_dir = TempDir::new()?;
+    let workspace_path = temp_dir.path();
+    let src_dir = workspace_path.join("src");
+    fs::create_dir_all(&src_dir)?;
+    fs::write(
+        src_dir.join("app.py"),
+        "def main():\n    print(\"trace marker phrase\")\n",
+    )?;
+
+    let handler = index_workspace(workspace_path).await?;
+    let run = FastSearchTool {
+        query: "trace marker phrase".to_string(),
+        return_format: "locations".to_string(),
+        limit: 10,
+        workspace: Some("primary".to_string()),
+        ..Default::default()
+    }
+    .execute_with_trace(&handler)
+    .await?;
+
+    let text = extract_text(&run.result);
+    assert!(
+        !text.contains("print(\"trace marker phrase\")"),
+        "locations output should omit matching line text, got:\n{text}"
+    );
+
+    let execution = run.execution.expect("search should return execution trace");
+    let line_hit = execution
+        .hits
+        .iter()
+        .find(|hit| hit.kind == "line" && hit.line == Some(2))
+        .expect("execution hits should include line hit for src/app.py:2");
+    assert_eq!(line_hit.file, "src/app.py");
+    assert_eq!(
+        line_hit.language, "python",
+        "line hits should preserve the indexed file language instead of defaulting to Rust"
+    );
+    assert!(
+        text.contains("src/app.py:2"),
+        "locations output should include the Python file and line, got:\n{text}"
+    );
+    assert_eq!(execution.trace.result_count, execution.hits.len());
+    assert!(
+        execution
+            .trace
+            .top_hits
+            .iter()
+            .any(|hit| hit.kind == "line" && hit.line == Some(2)),
+        "trace top hits should include line hit for src/app.py:2, got: {:#?}",
+        execution.trace.top_hits
+    );
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn content_full_format_includes_matching_line_text() -> Result<()> {
     unsafe {
         std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "0");
