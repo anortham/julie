@@ -36,22 +36,37 @@ impl JulieServerHandler {
         } else {
             None
         };
-        let metadata = params
-            .success_metrics_metadata(self)
-            .await
-            .map(|success_metadata| {
-                tool_targets::merge_object(
+        let prepared = match params.prepare_rewrite(self).await {
+            Ok(prepared) => prepared,
+            Err(e) => {
+                let metadata = tool_targets::with_failure_kind(
                     tool_targets::rewrite_symbol_metadata(&params),
-                    success_metadata,
-                )
-            })
-            .unwrap_or_else(|_| tool_targets::rewrite_symbol_metadata(&params));
+                    crate::tools::editing::rewrite_symbol::failure_kind(&e),
+                );
+                let source_file_paths = params.file_path.clone().into_iter().collect::<Vec<_>>();
+                let message = format!("rewrite_symbol failed: {}", e);
+                self.record_tool_failure(
+                    "rewrite_symbol",
+                    start.elapsed(),
+                    workspace_snapshot.as_ref(),
+                    metadata.clone(),
+                    source_file_paths,
+                    Self::input_bytes_from_metadata(&metadata),
+                    &message,
+                );
+                return Err(McpError::internal_error(message, None));
+            }
+        };
+        let metadata = tool_targets::merge_object(
+            tool_targets::rewrite_symbol_metadata(&params),
+            params.success_metrics_metadata_from_prepared(&prepared),
+        );
         let source_file_paths = metadata
             .get("file_path")
             .and_then(serde_json::Value::as_str)
             .map(|path| vec![path.to_string()])
             .unwrap_or_else(|| params.file_path.clone().into_iter().collect::<Vec<_>>());
-        let result = match params.call_tool(self).await {
+        let result = match params.call_prepared(prepared) {
             Ok(result) => result,
             Err(e) => {
                 let metadata = tool_targets::with_failure_kind(

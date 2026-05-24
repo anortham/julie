@@ -55,6 +55,16 @@ struct EditApplication {
 }
 
 #[derive(Debug)]
+pub(crate) struct PreparedEdit {
+    resolved_str: String,
+    original_content: String,
+    application: EditApplication,
+    diff: String,
+    changed_bytes: usize,
+    balance_warning: Option<String>,
+}
+
+#[derive(Debug)]
 pub(crate) struct EditFileFailure {
     pub kind: &'static str,
     pub message: String,
@@ -475,12 +485,10 @@ impl EditFileTool {
         }
     }
 
-    pub(crate) async fn success_metrics_metadata(
-        &self,
-        handler: &JulieServerHandler,
-    ) -> Result<Value> {
+    pub(crate) async fn prepare_edit(&self, handler: &JulieServerHandler) -> Result<PreparedEdit> {
         let workspace_root = self.resolve_workspace_root(handler).await?;
         let resolved_path = secure_path_resolution(&self.file_path, &workspace_root)?;
+        let resolved_str = resolved_path.to_string_lossy().to_string();
         let original_content = std::fs::read_to_string(&resolved_path)
             .map_err(|error| anyhow!("Cannot read file '{}': {}", self.file_path, error))?;
         let application = apply_edit_with_metrics(
@@ -489,77 +497,61 @@ impl EditFileTool {
             &self.new_text,
             self.occurrence.as_str(),
         )?;
+        let balance_warning = if should_check_balance(&self.file_path) {
+            check_bracket_balance(&original_content, &application.modified_content)
+        } else {
+            None
+        };
         let diff = format_unified_diff(
             &original_content,
             &application.modified_content,
             &self.file_path,
         );
         let changed_bytes = changed_region_bytes(&original_content, &application.modified_content);
+
+        Ok(PreparedEdit {
+            resolved_str,
+            original_content,
+            application,
+            diff,
+            changed_bytes,
+            balance_warning,
+        })
+    }
+
+    pub(crate) fn success_metrics_metadata_from_prepared(&self, prepared: &PreparedEdit) -> Value {
         let mut metadata = self.base_metrics_metadata();
         if let Some(object) = metadata.as_object_mut() {
-            object.insert("file_size_bytes".to_string(), json!(original_content.len()));
-            object.insert("diff_bytes".to_string(), json!(diff.len()));
-            object.insert("changed_bytes".to_string(), json!(changed_bytes));
+            object.insert(
+                "file_size_bytes".to_string(),
+                json!(prepared.original_content.len()),
+            );
+            object.insert("diff_bytes".to_string(), json!(prepared.diff.len()));
+            object.insert("changed_bytes".to_string(), json!(prepared.changed_bytes));
             object.insert(
                 "match_mode".to_string(),
-                json!(application.match_mode.as_str()),
+                json!(prepared.application.match_mode.as_str()),
             );
             object.insert(
                 "applied".to_string(),
-                json!(!self.dry_run && application.modified_content != original_content),
+                json!(
+                    !self.dry_run
+                        && prepared.application.modified_content != prepared.original_content
+                ),
             );
         }
-        Ok(metadata)
+        metadata
     }
 
-    pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
-        if self.old_text.is_empty() {
-            return Err(edit_file_error(
-                "validation",
-                "old_text is required and cannot be empty",
-            ));
-        }
-
-        // Resolve and validate file path (security check)
-        let workspace_root = self.resolve_workspace_root(handler).await?;
-        let resolved_path = secure_path_resolution(&self.file_path, &workspace_root)?;
-        let resolved_str = resolved_path.to_string_lossy().to_string();
-
-        // Read file content internally (not costing agent context tokens)
-        let original_content = std::fs::read_to_string(&resolved_path)
-            .map_err(|e| anyhow!("Cannot read file '{}': {}", self.file_path, e))?;
-
-        // Apply the edit
-        let modified_content = match apply_edit(
-            &original_content,
-            &self.old_text,
-            &self.new_text,
-            self.occurrence.as_str(),
-        ) {
-            Ok(content) => content,
-            Err(e) => {
-                return Err(anyhow!("{e}"));
-            }
-        };
-
-        // Balance check: advisory warning only (cannot distinguish code from strings/comments)
-        let balance_warning = if should_check_balance(&self.file_path) {
-            check_bracket_balance(&original_content, &modified_content)
-        } else {
-            None
-        };
-
-        // Generate diff preview
-        let diff = format_unified_diff(&original_content, &modified_content, &self.file_path);
-
+    pub(crate) fn call_prepared(&self, prepared: PreparedEdit) -> Result<CallToolResult> {
         if self.dry_run {
             debug!("edit_file dry_run for {}", self.file_path);
-            let preview_diff = format_dry_run_diff(&diff);
+            let preview_diff = format_dry_run_diff(&prepared.diff);
             let mut msg = format!(
                 "Dry run preview (set dry_run=false to apply):\n\n{}",
                 preview_diff
             );
-            if let Some(ref warning) = balance_warning {
+            if let Some(ref warning) = prepared.balance_warning {
                 msg.push_str(&format!("\n\n{}", warning));
             }
             return Ok(CallToolResult::text_content(vec![Content::text(msg)]));
@@ -570,16 +562,31 @@ impl EditFileTool {
         // hash mismatch to trigger symbol re-extraction. Updating the hash here would
         // poison watcher change-detection and leave the index permanently stale.
         #[cfg(test)]
-        run_before_commit_hook_for_test(&resolved_path);
-        let txn = EditingTransaction::begin(&resolved_str)?;
-        txn.commit_if_unchanged(&modified_content, &original_content)?;
+        run_before_commit_hook_for_test(std::path::Path::new(&prepared.resolved_str));
+        let txn = EditingTransaction::begin(&prepared.resolved_str)?;
+        txn.commit_if_unchanged(
+            &prepared.application.modified_content,
+            &prepared.original_content,
+        )?;
 
         debug!("edit_file applied to {}", self.file_path);
-        let mut msg = format!("Applied edit to {}:\n\n{}", self.file_path, diff);
-        if let Some(warning) = balance_warning {
+        let mut msg = format!("Applied edit to {}:\n\n{}", self.file_path, prepared.diff);
+        if let Some(warning) = prepared.balance_warning {
             msg.push_str(&format!("\n\n{}", warning));
         }
         Ok(CallToolResult::text_content(vec![Content::text(msg)]))
+    }
+
+    pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
+        if self.old_text.is_empty() {
+            return Err(edit_file_error(
+                "validation",
+                "old_text is required and cannot be empty",
+            ));
+        }
+
+        let prepared = self.prepare_edit(handler).await?;
+        self.call_prepared(prepared)
     }
 }
 

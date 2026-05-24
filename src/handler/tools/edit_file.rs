@@ -36,18 +36,8 @@ impl JulieServerHandler {
         } else {
             None
         };
-        let metadata = match params.success_metrics_metadata(self).await {
-            Ok(metadata) => tool_targets::merge_object(
-                metadata,
-                serde_json::json!({
-                    "file": params.file_path.clone(),
-                    "target": {
-                        "target_symbol_name": serde_json::Value::Null,
-                        "target_file_path": params.file_path.clone(),
-                        "target_line": serde_json::Value::Null,
-                    }
-                }),
-            ),
+        let prepared = match params.prepare_edit(self).await {
+            Ok(prepared) => prepared,
             Err(e) => {
                 let metadata = tool_targets::with_failure_kind(
                     tool_targets::edit_file_metadata(&params),
@@ -66,8 +56,19 @@ impl JulieServerHandler {
                 return Err(McpError::internal_error(message, None));
             }
         };
+        let metadata = tool_targets::merge_object(
+            params.success_metrics_metadata_from_prepared(&prepared),
+            serde_json::json!({
+                "file": params.file_path.clone(),
+                "target": {
+                    "target_symbol_name": serde_json::Value::Null,
+                    "target_file_path": params.file_path.clone(),
+                    "target_line": serde_json::Value::Null,
+                }
+            }),
+        );
         let input_bytes = Self::input_bytes_from_metadata(&metadata);
-        let result = match params.call_tool(self).await {
+        let result = match params.call_prepared(prepared) {
             Ok(result) => result,
             Err(e) => {
                 let metadata = tool_targets::with_failure_kind(

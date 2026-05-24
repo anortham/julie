@@ -1117,3 +1117,70 @@ async fn test_rewrite_symbol_file_path_bogus_filter_returns_not_found() -> Resul
 
     Ok(())
 }
+
+#[tokio::test]
+async fn test_prepared_rewrite_drives_metrics_and_dry_run_output() -> Result<()> {
+    let source = "pub fn greet() {\n    println!(\"hello\");\n}\n";
+    let (_temp_dir, handler, _) = setup_indexed_workspace(source).await?;
+    let tool = crate::tools::editing::rewrite_symbol::RewriteSymbolTool {
+        symbol: "greet".to_string(),
+        operation: "replace_body".to_string(),
+        content: "{\n    println!(\"hi there\");\n}".to_string(),
+        file_path: Some("src/test.rs".to_string()),
+        workspace: Some("primary".to_string()),
+        dry_run: true,
+    };
+
+    let prepared = tool.prepare_rewrite(&handler).await?;
+    let metadata = tool.success_metrics_metadata_from_prepared(&prepared);
+    assert_eq!(metadata["file_path"], "src/test.rs");
+    assert_eq!(metadata["file_size_bytes"], source.len());
+    assert_eq!(metadata["match_count"], 1);
+    assert_eq!(metadata["applied"], false);
+    assert!(metadata["symbol_span_bytes"].as_u64().unwrap() > 0);
+    assert!(metadata["diff_bytes"].as_u64().unwrap() > 0);
+    assert!(metadata["changed_bytes"].as_u64().unwrap() > 0);
+
+    let prepared_result = tool.call_prepared(prepared)?;
+    let direct_result = tool.call_tool(&handler).await?;
+
+    assert_eq!(extract_text(&prepared_result), extract_text(&direct_result));
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_prepared_rewrite_rejects_changed_target_before_commit() -> Result<()> {
+    let source = "pub fn greet() {\n    println!(\"hello\");\n}\n";
+    let intervening =
+        "pub fn greet() {\n    println!(\"hello\");\n    println!(\"external\");\n}\n";
+    let (temp_dir, handler, _) = setup_indexed_workspace(source).await?;
+    let file_path = temp_dir.path().join("src").join("test.rs");
+    let tool = crate::tools::editing::rewrite_symbol::RewriteSymbolTool {
+        symbol: "greet".to_string(),
+        operation: "replace_body".to_string(),
+        content: "{\n    println!(\"hi there\");\n}".to_string(),
+        file_path: Some("src/test.rs".to_string()),
+        workspace: Some("primary".to_string()),
+        dry_run: false,
+    };
+
+    let prepared = tool.prepare_rewrite(&handler).await?;
+    fs::write(&file_path, intervening)?;
+    let err = tool
+        .call_prepared(prepared)
+        .expect_err("prepared apply must reject a file changed after preparation")
+        .to_string();
+
+    assert!(
+        err.contains("File changed during edit"),
+        "error should explain the stale target, got: {err}"
+    );
+    assert_eq!(
+        fs::read_to_string(&file_path)?,
+        intervening,
+        "intervening content must be preserved"
+    );
+
+    Ok(())
+}

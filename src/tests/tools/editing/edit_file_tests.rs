@@ -512,3 +512,100 @@ async fn test_edit_file_dry_run_truncates_large_diff_preview() -> Result<()> {
 
     Ok(())
 }
+
+#[tokio::test]
+async fn test_prepared_edit_drives_metrics_and_rejects_changed_target() -> Result<()> {
+    let temp_dir = TempDir::new()?;
+    let src_dir = temp_dir.path().join("src");
+    fs::create_dir_all(&src_dir)?;
+    let file_path = src_dir.join("main.rs");
+    let original = "fn main() {\n    before();\n}\n";
+    let intervening = "fn main() {\n    before();\n    external_change();\n}\n";
+    fs::write(&file_path, original)?;
+
+    let handler = JulieServerHandler::new(temp_dir.path().to_path_buf()).await?;
+    ManageWorkspaceTool {
+        operation: "index".to_string(),
+        workspace_id: None,
+        path: Some(temp_dir.path().to_string_lossy().to_string()),
+        name: None,
+        force: Some(false),
+        detailed: None,
+    }
+    .call_tool(&handler)
+    .await?;
+
+    let tool = EditFileTool {
+        file_path: "src/main.rs".to_string(),
+        old_text: "before();".to_string(),
+        new_text: "after();".to_string(),
+        workspace: Some("primary".to_string()),
+        dry_run: false,
+        occurrence: EditOccurrence::First,
+    };
+
+    let prepared = tool.prepare_edit(&handler).await?;
+    let metadata = tool.success_metrics_metadata_from_prepared(&prepared);
+    assert_eq!(metadata["file_size_bytes"], original.len());
+    assert_eq!(metadata["match_mode"], "exact");
+    assert_eq!(metadata["applied"], true);
+    assert!(metadata["diff_bytes"].as_u64().unwrap() > 0);
+    assert!(metadata["changed_bytes"].as_u64().unwrap() > 0);
+
+    fs::write(&file_path, intervening)?;
+    let err = tool
+        .call_prepared(prepared)
+        .expect_err("prepared apply must reject a file changed after preparation")
+        .to_string();
+
+    assert!(
+        err.contains("File changed during edit"),
+        "error should explain the stale target, got: {err}"
+    );
+    assert_eq!(
+        fs::read_to_string(&file_path)?,
+        intervening,
+        "intervening content must be preserved"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_prepared_edit_dry_run_matches_direct_output() -> Result<()> {
+    let temp_dir = TempDir::new()?;
+    fs::write(temp_dir.path().join("README.md"), "hello\n")?;
+
+    let handler = JulieServerHandler::new(temp_dir.path().to_path_buf()).await?;
+    ManageWorkspaceTool {
+        operation: "index".to_string(),
+        workspace_id: None,
+        path: Some(temp_dir.path().to_string_lossy().to_string()),
+        name: None,
+        force: Some(false),
+        detailed: None,
+    }
+    .call_tool(&handler)
+    .await?;
+
+    let tool = EditFileTool {
+        file_path: "README.md".to_string(),
+        old_text: "hello".to_string(),
+        new_text: "goodbye".to_string(),
+        workspace: Some("primary".to_string()),
+        dry_run: true,
+        occurrence: EditOccurrence::First,
+    };
+
+    let prepared_result = tool.call_prepared(tool.prepare_edit(&handler).await?)?;
+    let direct_result = tool.call_tool(&handler).await?;
+
+    assert_eq!(extract_text(&prepared_result), extract_text(&direct_result));
+    assert_eq!(
+        fs::read_to_string(temp_dir.path().join("README.md"))?,
+        "hello\n",
+        "dry-run must not modify the file"
+    );
+
+    Ok(())
+}

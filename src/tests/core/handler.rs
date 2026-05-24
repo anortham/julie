@@ -730,7 +730,6 @@ async fn test_tool_failure_metrics_records_failed_handler_call() -> Result<()> {
 #[tokio::test(flavor = "multi_thread")]
 async fn test_edit_file_validation_errors_are_recorded_as_failures() -> Result<()> {
     use crate::tools::workspace::ManageWorkspaceTool;
-    use std::time::Duration;
 
     let temp_dir = TempDir::new()?;
     std::fs::write(temp_dir.path().join("README.md"), "hello\n")?;
@@ -769,39 +768,16 @@ async fn test_edit_file_validation_errors_are_recorded_as_failures() -> Result<(
         "edit_file validation failure should be returned as an MCP error"
     );
 
-    let db_arc = {
-        let workspace = handler.workspace.read().await;
-        workspace
-            .as_ref()
-            .and_then(|workspace| workspace.db.as_ref())
-            .expect("indexed workspace should have a database")
-            .clone()
-    };
-
-    let success_flag = tokio::time::timeout(Duration::from_secs(1), async {
-        loop {
-            let value = {
-                let db = db_arc.lock().expect("workspace db should lock");
-                db.conn
-                    .query_row(
-                        "SELECT success FROM tool_calls WHERE tool_name = 'edit_file' ORDER BY id DESC LIMIT 1",
-                        [],
-                        |row| row.get::<_, i64>(0),
-                    )
-                    .ok()
-            };
-            if let Some(success) = value {
-                break Ok::<i64, anyhow::Error>(success);
-            }
-            tokio::task::yield_now().await;
-        }
-    })
-    .await??;
-
+    let (success_flag, metadata) = latest_tool_metric(&handler, "edit_file").await?;
     assert_eq!(
         success_flag, 0,
         "validation error should record a failed metrics row"
     );
+    assert_eq!(metadata["kind"], "edit_file");
+    assert_eq!(metadata["failure_kind"], "validation");
+    assert_eq!(metadata["file"], "README.md");
+    assert_eq!(metadata["target"]["target_file_path"], "README.md");
+    assert!(metadata["input_bytes"].as_u64().unwrap() > 0);
 
     let _ = service.cancel().await;
     Ok(())

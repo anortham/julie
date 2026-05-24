@@ -138,7 +138,7 @@ struct LiveSymbolContext {
     tree: Tree,
 }
 
-struct RewriteApplication {
+pub(crate) struct PreparedRewrite {
     indexed_symbol: Symbol,
     resolved_path: String,
     original_content: String,
@@ -591,7 +591,10 @@ impl RewriteSymbolTool {
         }
     }
 
-    async fn prepare_rewrite(&self, handler: &JulieServerHandler) -> Result<RewriteApplication> {
+    pub(crate) async fn prepare_rewrite(
+        &self,
+        handler: &JulieServerHandler,
+    ) -> Result<PreparedRewrite> {
         let requested_symbol = self.symbol.clone();
         let (parsed_symbol_name, line_hint) = parse_symbol_line_hint(&requested_symbol);
 
@@ -810,7 +813,7 @@ impl RewriteSymbolTool {
 
         let symbol_span_bytes = (live.live_symbol.end_byte as usize)
             .saturating_sub(live.live_symbol.start_byte as usize);
-        Ok(RewriteApplication {
+        Ok(PreparedRewrite {
             indexed_symbol,
             resolved_path: resolved_str,
             original_content,
@@ -823,11 +826,10 @@ impl RewriteSymbolTool {
         })
     }
 
-    pub(crate) async fn success_metrics_metadata(
+    pub(crate) fn success_metrics_metadata_from_prepared(
         &self,
-        handler: &JulieServerHandler,
-    ) -> Result<Value> {
-        let application = self.prepare_rewrite(handler).await?;
+        application: &PreparedRewrite,
+    ) -> Value {
         let diff = format_unified_diff(
             &application.original_content,
             &application.modified_content,
@@ -861,12 +863,10 @@ impl RewriteSymbolTool {
                 ),
             );
         }
-        Ok(metadata)
+        metadata
     }
 
-    pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
-        let application = self.prepare_rewrite(handler).await?;
-
+    pub(crate) fn call_prepared(&self, application: PreparedRewrite) -> Result<CallToolResult> {
         if application.modified_content == application.original_content {
             let message = format!(
                 "No changes: {} with supplied content would not modify the file. Symbol '{}' at {}:{}-{} is already in the requested state.",
@@ -927,5 +927,10 @@ impl RewriteSymbolTool {
             message.push_str(&format!("\n\n{}", warning));
         }
         Ok(CallToolResult::text_content(vec![Content::text(message)]))
+    }
+
+    pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
+        let application = self.prepare_rewrite(handler).await?;
+        self.call_prepared(application)
     }
 }
