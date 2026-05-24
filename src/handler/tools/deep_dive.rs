@@ -45,7 +45,7 @@ impl JulieServerHandler {
                     Self::input_bytes_from_metadata(&metadata),
                     &full_message,
                 );
-                return if Self::is_workspace_parameter_error(&message) {
+                return if Self::is_workspace_parameter_error(&e) {
                     Err(McpError::invalid_params(full_message, None))
                 } else {
                     Err(McpError::internal_error(full_message, None))

@@ -4,7 +4,9 @@ use std::sync::atomic::Ordering;
 
 use rmcp::{
     ServerHandler,
-    model::{CallToolRequestParams, NumberOrString, ServerJsonRpcMessage, ServerRequest},
+    model::{
+        CallToolRequestParams, ErrorCode, NumberOrString, ServerJsonRpcMessage, ServerRequest,
+    },
     service::{RequestContext, serve_directly},
 };
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -15,6 +17,9 @@ use crate::handler::JulieServerHandler;
 use crate::mcp_compat::CallToolResult;
 use crate::paths::DaemonPaths;
 use crate::tools::FastSearchTool;
+use crate::tools::navigation::resolution::{
+    WorkspaceResolutionFailureKind, resolve_workspace_filter, workspace_resolution_failure_kind,
+};
 use crate::tools::workspace::ManageWorkspaceTool;
 use crate::workspace::registry::generate_workspace_id;
 use serial_test::serial;
@@ -32,6 +37,23 @@ fn extract_text_from_result(result: &CallToolResult) -> String {
         })
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+fn assert_workspace_resolution_failure(
+    error: &anyhow::Error,
+    expected_kind: WorkspaceResolutionFailureKind,
+    expected_message: &str,
+) {
+    assert_eq!(
+        workspace_resolution_failure_kind(error),
+        Some(expected_kind),
+        "resolver-created workspace failures should expose typed metadata"
+    );
+    assert_eq!(
+        error.to_string(),
+        expected_message,
+        "typed metadata must not change displayed error text"
+    );
 }
 
 async fn send_json_line(writer: &mut (impl AsyncWriteExt + Unpin), value: &serde_json::Value) {
@@ -1161,6 +1183,153 @@ async fn test_unknown_workspace_suggests_closest_match() {
         message.contains(&format!("Did you mean '{}'", target_id)),
         "error should suggest the closest known workspace id: {message}"
     );
+}
+
+#[tokio::test]
+async fn test_workspace_resolution_failure_unknown_without_suggestion_is_typed() {
+    let (_temp_dir, handler, _target_id) = setup_known_reference_search_workspace().await;
+    let missing_workspace_id = "definitely_missing_workspace";
+
+    let error = resolve_workspace_filter(Some(missing_workspace_id), &handler)
+        .await
+        .expect_err("unknown workspace should be rejected");
+
+    assert_workspace_resolution_failure(
+        &error,
+        WorkspaceResolutionFailureKind::UnknownWorkspace,
+        "Workspace 'definitely_missing_workspace' not found. Use 'primary' or a valid workspace ID",
+    );
+}
+
+#[tokio::test]
+async fn test_workspace_resolution_failure_unknown_with_suggestion_is_typed() {
+    let (_temp_dir, handler, target_id) = setup_known_reference_search_workspace().await;
+    let typo_workspace_id = format!("{}x", target_id);
+
+    let error = resolve_workspace_filter(Some(&typo_workspace_id), &handler)
+        .await
+        .expect_err("unknown workspace typo should be rejected");
+
+    assert_workspace_resolution_failure(
+        &error,
+        WorkspaceResolutionFailureKind::UnknownWorkspace,
+        &format!(
+            "Workspace '{}' not found. Did you mean '{}'?",
+            typo_workspace_id, target_id
+        ),
+    );
+}
+
+#[tokio::test]
+async fn test_workspace_resolution_failure_known_not_ready_is_typed() {
+    let (_temp_dir, handler, target_id) = setup_known_reference_search_workspace().await;
+    handler
+        .daemon_db
+        .as_ref()
+        .expect("test handler should expose daemon db")
+        .update_workspace_status(&target_id, "pending")
+        .expect("workspace status should update for test");
+
+    let error = resolve_workspace_filter(Some(&target_id), &handler)
+        .await
+        .expect_err("pending workspace should not auto-activate");
+
+    assert_workspace_resolution_failure(
+        &error,
+        WorkspaceResolutionFailureKind::WorkspaceNotReady,
+        &format!(
+            "Workspace '{}' is known but has status 'pending' (not ready). Run manage_workspace(operation=\"open\", workspace_id=\"{}\") first.",
+            target_id, target_id
+        ),
+    );
+}
+
+#[tokio::test]
+async fn test_workspace_resolution_failure_primary_swap_in_progress_is_typed() {
+    let (_temp_dir, handler, _primary_id, target_id) =
+        build_primary_bound_handler_for_swap_guard_test().await;
+    handler
+        .session_workspace
+        .write()
+        .unwrap()
+        .begin_primary_swap();
+
+    let error = resolve_workspace_filter(Some(&target_id), &handler)
+        .await
+        .expect_err("workspace-scoped query should wait for primary swap");
+
+    assert_workspace_resolution_failure(
+        &error,
+        WorkspaceResolutionFailureKind::PrimarySwapInProgress,
+        "Primary workspace swap in progress; retry workspace-scoped query after the swap completes.",
+    );
+}
+
+#[tokio::test]
+async fn test_workspace_resolution_failure_auto_activation_failed_is_typed() {
+    let (temp_dir, handler, _target_id) = setup_known_reference_search_workspace().await;
+    let missing_root = temp_dir.path().join("missing-auto-activation");
+    let missing_path = missing_root.to_string_lossy().to_string();
+    let missing_workspace_id = generate_workspace_id(&missing_path).unwrap();
+    handler
+        .daemon_db
+        .as_ref()
+        .expect("test handler should expose daemon db")
+        .upsert_workspace(&missing_workspace_id, &missing_path, "ready")
+        .expect("missing workspace row should be registered for test");
+
+    let error = resolve_workspace_filter(Some(&missing_workspace_id), &handler)
+        .await
+        .expect_err("missing workspace root should fail auto-activation");
+
+    assert_workspace_resolution_failure(
+        &error,
+        WorkspaceResolutionFailureKind::AutoActivationFailed,
+        &format!(
+            "Workspace '{}' is known but auto-activation failed: Workspace path does not exist: {}. Run manage_workspace(operation=\"open\", workspace_id=\"{}\") first.",
+            missing_workspace_id,
+            missing_root.display(),
+            missing_workspace_id
+        ),
+    );
+}
+
+#[tokio::test]
+async fn test_deep_dive_invalid_workspace_uses_invalid_params_from_typed_resolution_failure() {
+    let (_temp_dir, handler, target_id) = setup_known_reference_search_workspace().await;
+    let typo_workspace_id = format!("{}x", target_id);
+
+    let (server_transport, client_transport) = tokio::io::duplex(64);
+    drop(client_transport);
+    let service =
+        serve_directly::<rmcp::RoleServer, _, _, _, _>(handler.clone(), server_transport, None);
+
+    let result = <JulieServerHandler as ServerHandler>::call_tool(
+        &handler,
+        CallToolRequestParams::new("deep_dive").with_arguments(
+            serde_json::json!({
+                "symbol": "target_search_marker",
+                "workspace": typo_workspace_id,
+            })
+            .as_object()
+            .expect("deep_dive args")
+            .clone(),
+        ),
+        RequestContext::new(NumberOrString::Number(12), service.peer().clone()),
+    )
+    .await;
+
+    let error = result.expect_err("deep_dive should reject invalid workspace target");
+    assert_eq!(error.code, ErrorCode::INVALID_PARAMS);
+    assert_eq!(
+        error.message.as_ref(),
+        format!(
+            "deep_dive failed: Workspace '{}x' not found. Did you mean '{}'?",
+            target_id, target_id
+        )
+    );
+
+    let _ = service.cancel().await;
 }
 
 #[tokio::test]

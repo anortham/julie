@@ -6,6 +6,7 @@
 use crate::extractors::Symbol;
 use crate::handler::JulieServerHandler;
 use anyhow::Result;
+use std::fmt;
 use std::path::PathBuf;
 
 /// Parse a qualified symbol name like "MyClass::method" or "MyClass.method"
@@ -43,6 +44,56 @@ pub enum WorkspaceTarget {
     Target(String),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WorkspaceResolutionFailureKind {
+    UnknownWorkspace,
+    WorkspaceNotReady,
+    PrimarySwapInProgress,
+    AutoActivationFailed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkspaceResolutionFailure {
+    kind: WorkspaceResolutionFailureKind,
+    message: String,
+}
+
+impl WorkspaceResolutionFailure {
+    fn new(kind: WorkspaceResolutionFailureKind, message: impl Into<String>) -> Self {
+        Self {
+            kind,
+            message: message.into(),
+        }
+    }
+
+    pub fn kind(&self) -> WorkspaceResolutionFailureKind {
+        self.kind
+    }
+}
+
+impl fmt::Display for WorkspaceResolutionFailure {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for WorkspaceResolutionFailure {}
+
+pub fn workspace_resolution_failure_kind(
+    error: &anyhow::Error,
+) -> Option<WorkspaceResolutionFailureKind> {
+    error
+        .downcast_ref::<WorkspaceResolutionFailure>()
+        .map(WorkspaceResolutionFailure::kind)
+}
+
+fn workspace_resolution_failure(
+    kind: WorkspaceResolutionFailureKind,
+    message: impl Into<String>,
+) -> anyhow::Error {
+    WorkspaceResolutionFailure::new(kind, message).into()
+}
+
 /// Given an invalid workspace ID and a list of known workspace IDs,
 /// return an error with a fuzzy match suggestion (if one is close enough)
 /// or a generic "not found" error.
@@ -52,18 +103,23 @@ fn suggest_closest_workspace(workspace_id: &str, known_ids: &[&str]) -> Result<W
     {
         // Only suggest if the distance is reasonable (< 50% of query length)
         if distance < workspace_id.len() / 2 {
-            return Err(anyhow::anyhow!(
-                "Workspace '{}' not found. Did you mean '{}'?",
-                workspace_id,
-                best_match
+            return Err(workspace_resolution_failure(
+                WorkspaceResolutionFailureKind::UnknownWorkspace,
+                format!(
+                    "Workspace '{}' not found. Did you mean '{}'?",
+                    workspace_id, best_match
+                ),
             ));
         }
     }
 
     // No close match found
-    Err(anyhow::anyhow!(
-        "Workspace '{}' not found. Use 'primary' or a valid workspace ID",
-        workspace_id
+    Err(workspace_resolution_failure(
+        WorkspaceResolutionFailureKind::UnknownWorkspace,
+        format!(
+            "Workspace '{}' not found. Use 'primary' or a valid workspace ID",
+            workspace_id
+        ),
     ))
 }
 
@@ -98,15 +154,17 @@ pub async fn resolve_workspace_filter(
                         {
                             Ok(WorkspaceTarget::Target(workspace_id.to_string()))
                         } else if workspace_row.status != "ready" {
-                            Err(anyhow::anyhow!(
-                                "Workspace '{}' is known but has status '{}' (not ready). Run manage_workspace(operation=\"open\", workspace_id=\"{}\") first.",
-                                workspace_id,
-                                workspace_row.status,
-                                workspace_id
+                            Err(workspace_resolution_failure(
+                                WorkspaceResolutionFailureKind::WorkspaceNotReady,
+                                format!(
+                                    "Workspace '{}' is known but has status '{}' (not ready). Run manage_workspace(operation=\"open\", workspace_id=\"{}\") first.",
+                                    workspace_id, workspace_row.status, workspace_id
+                                ),
                             ))
                         } else if handler.is_primary_workspace_swap_in_progress() {
-                            Err(anyhow::anyhow!(
-                                "Primary workspace swap in progress; retry workspace-scoped query after the swap completes."
+                            Err(workspace_resolution_failure(
+                                WorkspaceResolutionFailureKind::PrimarySwapInProgress,
+                                "Primary workspace swap in progress; retry workspace-scoped query after the swap completes.",
                             ))
                         } else {
                             let workspace_root = PathBuf::from(&workspace_row.path);
@@ -115,11 +173,12 @@ pub async fn resolve_workspace_filter(
                                 .await
                             {
                                 Ok(_) => Ok(WorkspaceTarget::Target(workspace_id.to_string())),
-                                Err(error) => Err(anyhow::anyhow!(
-                                    "Workspace '{}' is known but auto-activation failed: {}. Run manage_workspace(operation=\"open\", workspace_id=\"{}\") first.",
-                                    workspace_id,
-                                    error,
-                                    workspace_id
+                                Err(error) => Err(workspace_resolution_failure(
+                                    WorkspaceResolutionFailureKind::AutoActivationFailed,
+                                    format!(
+                                        "Workspace '{}' is known but auto-activation failed: {}. Run manage_workspace(operation=\"open\", workspace_id=\"{}\") first.",
+                                        workspace_id, error, workspace_id
+                                    ),
                                 )),
                             }
                         }

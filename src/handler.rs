@@ -1658,12 +1658,8 @@ impl JulieServerHandler {
         extract_source_paths(&text)
     }
 
-    pub(crate) fn is_workspace_parameter_error(message: &str) -> bool {
-        message.contains("Unknown workspace")
-            || message.contains("Invalid workspace")
-            || message.contains("Workspace '")
-            || message.contains("Primary workspace swap in progress")
-            || message.contains("workspace-scoped query")
+    pub(crate) fn is_workspace_parameter_error(error: &anyhow::Error) -> bool {
+        crate::tools::navigation::resolution::workspace_resolution_failure_kind(error).is_some()
     }
 
     /// Run auto-indexing in background (called after MCP handshake)
