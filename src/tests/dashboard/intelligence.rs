@@ -4,6 +4,7 @@ use crate::dashboard::routes::intelligence::{
 use crate::database::SymbolDatabase;
 use crate::database::analytics::{AggregateStats, CentralitySymbol, FileHotspot};
 use crate::database::types::FileInfo;
+use crate::tests::helpers::db::file_info_builder;
 use std::collections::HashMap;
 use tempfile::TempDir;
 
@@ -15,17 +16,15 @@ fn test_db() -> (TempDir, SymbolDatabase) {
 }
 
 fn make_file(path: &str, language: &str, line_count: i64, size: i64) -> FileInfo {
-    FileInfo {
-        path: path.to_string(),
-        language: language.to_string(),
-        hash: format!("hash_{}", path),
-        size,
-        last_modified: 1000000,
-        last_indexed: 0,
-        symbol_count: 0,
-        line_count: line_count as i32,
-        content: None,
-    }
+    file_info_builder(path)
+        .language(language)
+        .hash(format!("hash_{path}"))
+        .size(size)
+        .last_modified(1000000)
+        .last_indexed(0)
+        .symbol_count(0)
+        .line_count(line_count as i32)
+        .build()
 }
 
 // --- get_top_symbols_by_centrality ---

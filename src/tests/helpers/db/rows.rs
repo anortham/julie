@@ -62,6 +62,11 @@ impl FileInfoBuilder {
         self
     }
 
+    pub fn symbol_count(mut self, symbol_count: i32) -> Self {
+        self.symbol_count = symbol_count;
+        self
+    }
+
     pub fn line_count(mut self, line_count: i32) -> Self {
         self.line_count = line_count;
         self

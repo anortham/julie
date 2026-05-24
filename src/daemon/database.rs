@@ -7,9 +7,11 @@
 use anyhow::{Context, Result};
 use rusqlite::{Connection, params};
 use std::path::Path;
-use tracing::{info, warn};
+use tracing::warn;
 
 use crate::database::{HistorySummary, ToolCallSummary};
+
+mod migrations;
 
 /// Thread-safe daemon database. Shared across sessions as `Arc<DaemonDatabase>`.
 ///
@@ -50,246 +52,10 @@ impl DaemonDatabase {
 
         {
             let mut conn = db.conn.lock().unwrap_or_else(|p| p.into_inner());
-            Self::run_migrations(&mut conn)?;
+            migrations::run_migrations(&mut conn)?;
         }
 
         Ok(db)
-    }
-
-    fn run_migrations(conn: &mut Connection) -> Result<()> {
-        conn.execute_batch(
-            "CREATE TABLE IF NOT EXISTS schema_version (
-                version    INTEGER PRIMARY KEY,
-                applied_at INTEGER NOT NULL
-            );",
-        )?;
-
-        let current: i32 = conn.query_row(
-            "SELECT COALESCE(MAX(version), 0) FROM schema_version",
-            [],
-            |row| row.get(0),
-        )?;
-
-        if current < 1 {
-            Self::migration_001_initial_schema(conn)?;
-        }
-        if current < 2 {
-            Self::migration_002_add_index_duration(conn)?;
-        }
-        if current < 3 {
-            Self::migration_003_cleanup_events_and_drop_workspace_references(conn)?;
-        }
-        if current < 4 {
-            Self::migration_004_add_search_compare_tables(conn)?;
-        }
-        if current < 5 {
-            Self::migration_005_add_tool_call_input_bytes(conn)?;
-        }
-
-        Ok(())
-    }
-
-    fn migration_001_initial_schema(conn: &mut Connection) -> Result<()> {
-        info!("daemon.db migration 001: initial schema");
-        let tx = conn.transaction()?;
-
-        tx.execute_batch(
-            "CREATE TABLE workspaces (
-                workspace_id    TEXT PRIMARY KEY,
-                path            TEXT NOT NULL UNIQUE,
-                status          TEXT NOT NULL DEFAULT 'pending',
-                session_count   INTEGER NOT NULL DEFAULT 0,
-                last_indexed    INTEGER,
-                symbol_count    INTEGER,
-                file_count      INTEGER,
-                embedding_model TEXT,
-                vector_count    INTEGER,
-                created_at      INTEGER NOT NULL,
-                updated_at      INTEGER NOT NULL
-            );
-
-            CREATE TABLE codehealth_snapshots (
-                id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                workspace_id    TEXT NOT NULL REFERENCES workspaces(workspace_id) ON DELETE CASCADE,
-                timestamp       INTEGER NOT NULL,
-                total_symbols   INTEGER NOT NULL,
-                total_files     INTEGER NOT NULL,
-                security_high   INTEGER NOT NULL DEFAULT 0,
-                security_medium INTEGER NOT NULL DEFAULT 0,
-                security_low    INTEGER NOT NULL DEFAULT 0,
-                change_high     INTEGER NOT NULL DEFAULT 0,
-                change_medium   INTEGER NOT NULL DEFAULT 0,
-                change_low      INTEGER NOT NULL DEFAULT 0,
-                symbols_tested    INTEGER NOT NULL DEFAULT 0,
-                symbols_untested  INTEGER NOT NULL DEFAULT 0,
-                avg_centrality  REAL,
-                max_centrality  REAL
-            );
-            CREATE INDEX idx_snapshots_workspace_time
-                ON codehealth_snapshots(workspace_id, timestamp);
-
-            CREATE TABLE tool_calls (
-                id            INTEGER PRIMARY KEY AUTOINCREMENT,
-                workspace_id  TEXT NOT NULL,
-                session_id    TEXT NOT NULL,
-                timestamp     INTEGER NOT NULL,
-                tool_name     TEXT NOT NULL,
-                duration_ms   REAL NOT NULL,
-                result_count  INTEGER,
-                source_bytes  INTEGER,
-                input_bytes   INTEGER,
-                output_bytes  INTEGER,
-                success       INTEGER NOT NULL DEFAULT 1,
-                metadata      TEXT
-            );
-            CREATE INDEX idx_tool_calls_timestamp ON tool_calls(timestamp);
-            CREATE INDEX idx_tool_calls_tool_name  ON tool_calls(tool_name);
-            CREATE INDEX idx_tool_calls_session    ON tool_calls(session_id);
-            CREATE INDEX idx_tool_calls_workspace  ON tool_calls(workspace_id);
-
-            INSERT INTO schema_version (version, applied_at)
-            VALUES (1, unixepoch());",
-        )?;
-
-        tx.commit()?;
-        info!("daemon.db migration 001 complete");
-        Ok(())
-    }
-
-    fn migration_002_add_index_duration(conn: &mut Connection) -> Result<()> {
-        info!("daemon.db migration 002: add index duration column");
-        let tx = conn.transaction()?;
-        tx.execute_batch(
-            "ALTER TABLE workspaces ADD COLUMN last_index_duration_ms INTEGER;
-             INSERT OR REPLACE INTO schema_version (version, applied_at)
-             VALUES (2, unixepoch());",
-        )?;
-        tx.commit()?;
-        info!("daemon.db migration 002 complete");
-        Ok(())
-    }
-
-    fn migration_003_cleanup_events_and_drop_workspace_references(
-        conn: &mut Connection,
-    ) -> Result<()> {
-        info!("daemon.db migration 003: add cleanup-event log and drop workspace pairings");
-        let tx = conn.transaction()?;
-        tx.execute_batch(
-            "CREATE TABLE IF NOT EXISTS workspace_cleanup_events (
-                id            INTEGER PRIMARY KEY AUTOINCREMENT,
-                workspace_id  TEXT NOT NULL,
-                path          TEXT NOT NULL,
-                action        TEXT NOT NULL,
-                reason        TEXT NOT NULL,
-                timestamp     INTEGER NOT NULL
-            );
-            CREATE INDEX IF NOT EXISTS idx_workspace_cleanup_events_timestamp
-                ON workspace_cleanup_events(timestamp DESC, id DESC);
-            DROP TABLE IF EXISTS workspace_references;
-            INSERT OR REPLACE INTO schema_version (version, applied_at)
-            VALUES (3, unixepoch());",
-        )?;
-        tx.commit()?;
-        info!("daemon.db migration 003 complete");
-        Ok(())
-    }
-
-    fn migration_004_add_search_compare_tables(conn: &mut Connection) -> Result<()> {
-        info!("daemon.db migration 004: add search compare tables");
-        let tx = conn.transaction()?;
-        tx.execute_batch(
-            "CREATE TABLE IF NOT EXISTS search_compare_runs (
-                id                       INTEGER PRIMARY KEY AUTOINCREMENT,
-                created_at               INTEGER NOT NULL,
-                baseline_strategy        TEXT NOT NULL,
-                candidate_strategy       TEXT NOT NULL,
-                case_count               INTEGER NOT NULL,
-                baseline_top1_hits       INTEGER NOT NULL,
-                candidate_top1_hits      INTEGER NOT NULL,
-                baseline_top3_hits       INTEGER NOT NULL,
-                candidate_top3_hits      INTEGER NOT NULL,
-                baseline_source_wins     INTEGER NOT NULL,
-                candidate_source_wins    INTEGER NOT NULL,
-                convergence_rate         REAL,
-                stall_rate               REAL
-            );
-            CREATE TABLE IF NOT EXISTS search_compare_cases (
-                id                    INTEGER PRIMARY KEY AUTOINCREMENT,
-                run_id                INTEGER NOT NULL REFERENCES search_compare_runs(id) ON DELETE CASCADE,
-                session_id            TEXT NOT NULL,
-                workspace_id          TEXT NOT NULL,
-                query                 TEXT NOT NULL,
-                search_target         TEXT NOT NULL,
-                expected_symbol_name  TEXT,
-                expected_file_path    TEXT,
-                baseline_rank         INTEGER,
-                candidate_rank        INTEGER,
-                baseline_top_hit      TEXT,
-                candidate_top_hit     TEXT
-            );
-            CREATE INDEX IF NOT EXISTS idx_search_compare_runs_created_at
-                ON search_compare_runs(created_at DESC, id DESC);
-            CREATE INDEX IF NOT EXISTS idx_search_compare_cases_run
-                ON search_compare_cases(run_id, id);
-            INSERT OR REPLACE INTO schema_version (version, applied_at)
-            VALUES (4, unixepoch());",
-        )?;
-        tx.commit()?;
-        info!("daemon.db migration 004 complete");
-        Ok(())
-    }
-
-    fn migration_005_add_tool_call_input_bytes(conn: &mut Connection) -> Result<()> {
-        info!("daemon.db migration 005: add input_bytes to tool_calls");
-        let has_tool_calls = table_exists_in(conn, "tool_calls")?;
-        let has_input_bytes: bool = {
-            let mut stmt = conn.prepare("PRAGMA table_info(tool_calls)")?;
-            let mut rows = stmt.query([])?;
-            let mut found = false;
-            while let Some(row) = rows.next()? {
-                let name: String = row.get(1)?;
-                if name == "input_bytes" {
-                    found = true;
-                    break;
-                }
-            }
-            found
-        };
-        let tx = conn.transaction()?;
-        if !has_tool_calls {
-            tx.execute_batch(
-                "CREATE TABLE tool_calls (
-                    id            INTEGER PRIMARY KEY AUTOINCREMENT,
-                    workspace_id  TEXT NOT NULL,
-                    session_id    TEXT NOT NULL,
-                    timestamp     INTEGER NOT NULL,
-                    tool_name     TEXT NOT NULL,
-                    duration_ms   REAL NOT NULL,
-                    result_count  INTEGER,
-                    source_bytes  INTEGER,
-                    input_bytes   INTEGER,
-                    output_bytes  INTEGER,
-                    success       INTEGER NOT NULL DEFAULT 1,
-                    metadata      TEXT
-                );",
-            )?;
-        } else if !has_input_bytes {
-            tx.execute("ALTER TABLE tool_calls ADD COLUMN input_bytes INTEGER", [])?;
-        }
-        tx.execute_batch(
-            "CREATE INDEX IF NOT EXISTS idx_tool_calls_timestamp ON tool_calls(timestamp);
-             CREATE INDEX IF NOT EXISTS idx_tool_calls_tool_name  ON tool_calls(tool_name);
-             CREATE INDEX IF NOT EXISTS idx_tool_calls_session    ON tool_calls(session_id);
-             CREATE INDEX IF NOT EXISTS idx_tool_calls_workspace  ON tool_calls(workspace_id);",
-        )?;
-        tx.execute(
-            "INSERT OR REPLACE INTO schema_version (version, applied_at)
-             VALUES (5, unixepoch())",
-            [],
-        )?;
-        tx.commit()?;
-        info!("daemon.db migration 005 complete");
-        Ok(())
     }
 
     /// Returns true if a table with the given name exists in the database.
@@ -1123,15 +889,6 @@ impl DaemonDatabase {
 
         result
     }
-}
-
-fn table_exists_in(conn: &Connection, table_name: &str) -> Result<bool> {
-    let count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?1",
-        params![table_name],
-        |row| row.get(0),
-    )?;
-    Ok(count > 0)
 }
 
 // -----------------------------------------------------------------------------

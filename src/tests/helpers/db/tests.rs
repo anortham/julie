@@ -18,6 +18,13 @@ fn test_file_info_builder_sets_stable_defaults() {
 }
 
 #[test]
+fn test_file_info_builder_overrides_symbol_count() {
+    let file = file_info_builder("src/lib.rs").symbol_count(0).build();
+
+    assert_eq!(file.symbol_count, 0);
+}
+
+#[test]
 fn test_symbol_builder_overrides_metadata_and_span() {
     let symbol = symbol_builder("sym-1", "run", "src/lib.rs")
         .kind(SymbolKind::Method)
