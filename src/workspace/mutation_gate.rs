@@ -150,21 +150,6 @@ pub async fn acquire_gate(workspace_id: &str) -> MutationGuard<'static> {
     Registry::global().acquire(workspace_id).await
 }
 
-/// Clear the process-wide gate cache.
-///
-/// Only for use in tests.  Resets all per-workspace mutexes so that each test
-/// starts from a clean state.
-///
-/// Prefer [`Registry::new`] for new tests — it provides true isolation without
-/// touching the global registry.
-#[cfg(test)]
-#[deprecated(note = "Use Registry::new() for test isolation. Will be removed in v8.0.")]
-pub fn clear_cache_for_test() {
-    if let Ok(mut map) = Registry::global().cache.lock() {
-        map.clear();
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
