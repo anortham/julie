@@ -127,36 +127,8 @@ impl SearchDocument {
         let code_body = truncate_utf8_bytes(raw_body, 2000).to_string();
         let normalized_path = normalize_file_path(&symbol.file_path);
         let basename = basename_for_path(&normalized_path).to_string();
-        let path_role = crate::search::scoring::classify_role(&normalized_path, &symbol.language);
-        let path_test_role = crate::search::scoring::test_subrole(&normalized_path);
-
-        // Inline test helpers live in non-test files (e.g. `#[cfg(test)]` blocks
-        // inside `src/lib.rs`).  Path heuristics can't detect them; check the
-        // symbol's metadata for an explicit `is_test`/`test_role` override so
-        // the unified reranker sees the correct classification.
-        let meta = symbol.metadata.as_ref();
-        let metadata_is_test = meta
-            .and_then(|m| m.get("is_test"))
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-        let metadata_test_role = meta
-            .and_then(|m| m.get("test_role"))
-            .and_then(|v| v.as_str())
-            .filter(|s| !s.is_empty())
-            .map(str::to_string);
-
-        let (role, test_role) = if metadata_is_test && path_role.to_string() != "test" {
-            // Symbol metadata says it's a test but the path doesn't confirm it —
-            // inline test helper case.  Override the role and use the metadata
-            // test_role when present, otherwise fall back to path test_role.
-            let tr = metadata_test_role.unwrap_or_else(|| path_test_role.to_string());
-            ("test".to_string(), tr)
-        } else {
-            (
-                path_role.to_string(),
-                metadata_test_role.unwrap_or_else(|| path_test_role.to_string()),
-            )
-        };
+        let (role, test_role) =
+            symbol_role_and_test_role(&normalized_path, &symbol.language, symbol.metadata.as_ref());
 
         Self {
             doc_type: "symbol".to_string(),
@@ -359,11 +331,46 @@ impl SearchFilter {
             }
         }
 
-        if self.exclude_tests && is_test_path(&result.file_path) {
+        if self.exclude_tests && is_test_symbol_result(&result.file_path, &result.role) {
             return false;
         }
 
         true
+    }
+}
+
+pub(crate) fn is_test_symbol_result(file_path: &str, role: &str) -> bool {
+    is_test_path(file_path) || role == "test"
+}
+
+/// Project search role fields from path classification plus extractor test metadata.
+pub(crate) fn symbol_role_and_test_role(
+    file_path: &str,
+    language: &str,
+    metadata: Option<&std::collections::HashMap<String, serde_json::Value>>,
+) -> (String, String) {
+    let normalized_path = normalize_file_path(file_path);
+    let path_role = crate::search::scoring::classify_role(&normalized_path, language);
+    let path_test_role = crate::search::scoring::test_subrole(&normalized_path);
+
+    let metadata_is_test = metadata
+        .and_then(|m| m.get("is_test"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let metadata_test_role = metadata
+        .and_then(|m| m.get("test_role"))
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
+
+    if metadata_is_test && path_role != "test" {
+        let test_role = metadata_test_role.unwrap_or_else(|| path_test_role.to_string());
+        ("test".to_string(), test_role)
+    } else {
+        (
+            path_role.to_string(),
+            metadata_test_role.unwrap_or_else(|| path_test_role.to_string()),
+        )
     }
 }
 
@@ -1233,12 +1240,7 @@ impl SearchIndex {
             hits.retain(|h| crate::tools::search::matches_glob_pattern(&h.file_path, pattern));
         }
         if filter.exclude_tests {
-            // Combine path-based and metadata-based detection so that inline
-            // `#[cfg(test)] mod tests { ... }` functions (whose file path
-            // looks like production code) also get filtered.  The `role`
-            // field carries the extractor/metadata override set in
-            // `SearchDocument::for_symbol`.
-            hits.retain(|h| !is_test_path(&h.file_path) && h.role != "test");
+            hits.retain(|h| !is_test_symbol_result(&h.file_path, &h.role));
         }
         // Note: doc_type filtering for symbol-vs-file partition is applied
         // at the Tantivy query level above via `wrap_with_doc_type`.

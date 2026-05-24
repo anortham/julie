@@ -635,6 +635,89 @@ mod orchestrator_tests {
             );
         }
     }
+
+    #[test]
+    fn test_hybrid_search_exclude_tests_filters_metadata_test_semantic_results() {
+        let (index, mut db, _idx_dir, _db_dir) = setup_index_and_db();
+
+        db.conn
+            .execute(
+                "INSERT INTO symbols (id, name, kind, file_path, language,
+                 start_line, start_col, end_line, end_col, start_byte, end_byte,
+                 reference_score, signature, doc_comment, metadata)
+                 VALUES ('inline_test_fn', 'inline_process_data_test', 'function', 'src/lib.rs', 'rust',
+                 30, 0, 40, 0, 0, 100, 0.0,
+                 'fn inline_process_data_test()',
+                 '',
+                 '{\"is_test\":true,\"test_role\":\"impl_test\"}')",
+                [],
+            )
+            .unwrap();
+
+        let prod_vec: Vec<f32> = (0..384).map(|i| if i == 0 { 0.8 } else { 0.0 }).collect();
+        let test_vec: Vec<f32> = (0..384).map(|i| if i == 0 { 0.9 } else { 0.0 }).collect();
+        db.store_embeddings(&[
+            ("inline_test_fn".to_string(), test_vec),
+            ("sym1".to_string(), prod_vec),
+        ])
+        .unwrap();
+
+        struct TestProvider;
+        impl EmbeddingProvider for TestProvider {
+            fn embed_query(&self, _text: &str) -> Result<Vec<f32>> {
+                Ok((0..384).map(|i| if i == 0 { 0.85 } else { 0.0 }).collect())
+            }
+
+            fn embed_batch(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
+                Ok(texts
+                    .iter()
+                    .map(|_| (0..384).map(|i| if i == 0 { 0.85 } else { 0.0 }).collect())
+                    .collect())
+            }
+
+            fn dimensions(&self) -> usize {
+                384
+            }
+
+            fn device_info(&self) -> DeviceInfo {
+                DeviceInfo {
+                    runtime: "test".into(),
+                    device: "cpu".into(),
+                    model_name: "test-provider".into(),
+                    dimensions: 384,
+                }
+            }
+        }
+
+        let filter = SearchFilter {
+            exclude_tests: true,
+            ..Default::default()
+        };
+
+        let results = hybrid_search(
+            "process data",
+            &filter,
+            10,
+            &index,
+            &db,
+            Some(&TestProvider),
+            None,
+        )
+        .unwrap();
+
+        assert!(
+            results
+                .results
+                .iter()
+                .all(|result| result.id != "inline_test_fn"),
+            "metadata-only inline test symbol leaked through semantic results: {:?}",
+            results
+                .results
+                .iter()
+                .map(|result| (&result.id, &result.name, &result.file_path, &result.role))
+                .collect::<Vec<_>>()
+        );
+    }
 }
 
 /// Weighted RRF merge tests (Phase 5, Task 2).
@@ -1064,6 +1147,32 @@ mod conversion_tests {
         signature: Option<&str>,
         doc_comment: Option<&str>,
     ) {
+        insert_test_symbol_with_metadata(
+            db,
+            id,
+            name,
+            kind,
+            language,
+            file_path,
+            start_line,
+            signature,
+            doc_comment,
+            None,
+        );
+    }
+
+    fn insert_test_symbol_with_metadata(
+        db: &mut SymbolDatabase,
+        id: &str,
+        name: &str,
+        kind: &str,
+        language: &str,
+        file_path: &str,
+        start_line: u32,
+        signature: Option<&str>,
+        doc_comment: Option<&str>,
+        metadata: Option<&str>,
+    ) {
         // File record must exist first (foreign key constraint)
         db.conn
             .execute(
@@ -1077,8 +1186,8 @@ mod conversion_tests {
             .execute(
                 "INSERT INTO symbols (id, name, kind, file_path, language,
                  start_line, start_col, end_line, end_col, start_byte, end_byte,
-                 reference_score, signature, doc_comment)
-                 VALUES (?, ?, ?, ?, ?, ?, 0, ?, 0, 0, 100, 0.0, ?, ?)",
+                 reference_score, signature, doc_comment, metadata)
+                 VALUES (?, ?, ?, ?, ?, ?, 0, ?, 0, 0, 100, 0.0, ?, ?, ?)",
                 rusqlite::params![
                     id,
                     name,
@@ -1088,7 +1197,8 @@ mod conversion_tests {
                     start_line,
                     start_line + 10,
                     signature,
-                    doc_comment
+                    doc_comment,
+                    metadata
                 ],
             )
             .expect("Failed to insert test symbol");
@@ -1157,6 +1267,30 @@ mod conversion_tests {
             "score should be 1.0 - 0.3 = 0.7, got {}",
             results[1].score
         );
+    }
+
+    #[test]
+    fn test_knn_to_search_results_uses_metadata_role_for_inline_tests() {
+        let (mut db, _dir) = create_test_db();
+        insert_test_symbol_with_metadata(
+            &mut db,
+            "inline_test_sym",
+            "inline_test_in_production_path",
+            "function",
+            "rust",
+            "src/lib.rs",
+            30,
+            Some("fn inline_test_in_production_path()"),
+            None,
+            Some(r#"{"is_test":true,"test_role":"impl_test"}"#),
+        );
+
+        let knn_results = vec![("inline_test_sym".to_string(), 0.05_f64)];
+        let results = knn_to_search_results(&knn_results, &db).unwrap();
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].role, "test");
+        assert_eq!(results[0].test_role, "impl_test");
     }
 
     #[test]

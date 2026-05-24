@@ -17,6 +17,7 @@ use std::sync::atomic::Ordering;
 use tempfile::TempDir;
 
 use crate::handler::JulieServerHandler;
+use crate::search::index::{SearchFilter, SymbolSearchResult};
 use crate::tools::search::FastSearchTool;
 use crate::tools::workspace::ManageWorkspaceTool;
 
@@ -26,6 +27,32 @@ async fn mark_search_ready(handler: &JulieServerHandler) {
         .search_ready
         .store(true, Ordering::Relaxed);
     *handler.is_indexed.write().await = true;
+}
+
+#[test]
+fn search_filter_exclude_tests_rejects_role_test_in_production_path() {
+    let filter = SearchFilter {
+        exclude_tests: true,
+        ..Default::default()
+    };
+    let result = SymbolSearchResult {
+        id: "inline_test".to_string(),
+        name: "inline_test".to_string(),
+        signature: "fn inline_test()".to_string(),
+        doc_comment: String::new(),
+        file_path: "src/main_logic.rs".to_string(),
+        kind: "function".to_string(),
+        language: "rust".to_string(),
+        start_line: 42,
+        score: 1.0,
+        role: "test".to_string(),
+        test_role: "impl_test".to_string(),
+    };
+
+    assert!(
+        !filter.matches_symbol_result(&result),
+        "exclude_tests=true must reject metadata-classified test symbols even when the path is production"
+    );
 }
 
 async fn index_workspace(workspace_path: &std::path::Path) -> Result<JulieServerHandler> {
