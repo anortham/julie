@@ -8,25 +8,9 @@ use tempfile::TempDir;
 
 use crate::extractors::{Symbol, SymbolKind};
 use crate::handler::JulieServerHandler;
-use crate::mcp_compat::CallToolResult;
+use crate::tests::helpers::mcp::call_tool_result_text;
 use crate::tools::symbols::formatting::format_symbol_response;
 use crate::tools::{GetSymbolsTool, ManageWorkspaceTool};
-
-/// Extract text from CallToolResult content blocks
-fn extract_text_from_result(result: &CallToolResult) -> String {
-    result
-        .content
-        .iter()
-        .filter_map(|content_block| {
-            serde_json::to_value(content_block).ok().and_then(|json| {
-                json.get("text")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string())
-            })
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
-}
 
 #[tokio::test]
 async fn test_get_symbols_with_relative_path() -> Result<()> {
@@ -81,7 +65,7 @@ pub const MAX_USERS: usize = 100;
     let index_result = index_tool.call_tool(&handler).await?;
     println!(
         "DEBUG: Indexing result: {:?}",
-        extract_text_from_result(&index_result)
+        call_tool_result_text(&index_result)
     );
 
     // Wait a moment for indexing to complete
@@ -117,7 +101,7 @@ pub const MAX_USERS: usize = 100;
     };
 
     let result = tool.call_tool(&handler).await?;
-    let text_content = extract_text_from_result(&result);
+    let text_content = call_tool_result_text(&result);
 
     // Should find symbols, not return "No symbols found" error
     assert!(
@@ -191,7 +175,7 @@ pub fn process_data(input: &str) -> String {
     };
 
     let result = tool.call_tool(&handler).await?;
-    let text_content = extract_text_from_result(&result);
+    let text_content = call_tool_result_text(&result);
 
     assert!(
         !text_content.contains("No symbols found"),
@@ -254,7 +238,7 @@ async fn test_get_symbols_normalizes_various_path_formats() -> Result<()> {
         };
 
         let result = tool.call_tool(&handler).await?;
-        let text_content = extract_text_from_result(&result);
+        let text_content = call_tool_result_text(&result);
 
         assert!(
             !text_content.contains("No symbols found"),
@@ -319,7 +303,7 @@ async fn test_get_symbols_with_limit_parameter() -> Result<()> {
     };
 
     let result_no_limit = tool_no_limit.call_tool(&handler).await?;
-    let text_no_limit = extract_text_from_result(&result_no_limit);
+    let text_no_limit = call_tool_result_text(&result_no_limit);
 
     // Lean format header: "src/many_symbols.rs — 20 symbols"
     assert!(
@@ -346,7 +330,7 @@ async fn test_get_symbols_with_limit_parameter() -> Result<()> {
     };
 
     let result_with_limit = tool_with_limit.call_tool(&handler).await?;
-    let text_with_limit = extract_text_from_result(&result_with_limit);
+    let text_with_limit = call_tool_result_text(&result_with_limit);
 
     // With limit=5, should only show 5 symbols
     let limited_symbol_lines = text_with_limit
@@ -438,7 +422,7 @@ async fn test_get_symbols_file_not_found_error() -> Result<()> {
     };
 
     let result_exists = tool_exists.call_tool(&handler).await?;
-    let text_exists = extract_text_from_result(&result_exists);
+    let text_exists = call_tool_result_text(&result_exists);
 
     assert!(
         !text_exists.contains("File not found"),
@@ -471,7 +455,7 @@ async fn test_get_symbols_file_not_found_error() -> Result<()> {
     };
 
     let result_empty = tool_empty.call_tool(&handler).await?;
-    let text_empty = extract_text_from_result(&result_empty);
+    let text_empty = call_tool_result_text(&result_empty);
 
     // Empty file EXISTS, so should NOT say "File not found"
     assert!(
@@ -547,7 +531,7 @@ pub fn get_user(id: &str) -> User {
     };
 
     let result = tool.call_tool(&handler).await?;
-    let text_content = extract_text_from_result(&result);
+    let text_content = call_tool_result_text(&result);
 
     println!("DEBUG: minimal mode code result:\n{}", text_content);
 
@@ -674,7 +658,7 @@ fn test_lean_format_skips_redundant_kind_prefix() {
     let result = format_symbol_response("src/foo.rs", vec![struct_sym, fn_sym], None)
         .expect("format_symbol_response should not fail");
 
-    let text = extract_text_from_result(&result);
+    let text = call_tool_result_text(&result);
 
     // Must NOT contain redundant "struct pub struct" or "function pub fn"
     assert!(

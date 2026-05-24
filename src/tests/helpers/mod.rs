@@ -1,4 +1,5 @@
 pub mod cleanup;
+pub mod mcp;
 pub mod tempdir;
 pub mod workspace;
 

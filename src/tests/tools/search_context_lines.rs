@@ -8,24 +8,8 @@ use std::fs;
 use tempfile::TempDir;
 
 use crate::handler::JulieServerHandler;
-use crate::mcp_compat::CallToolResult;
+use crate::tests::helpers::mcp::call_tool_result_text;
 use crate::tools::{FastSearchTool, ManageWorkspaceTool};
-
-/// Extract text from CallToolResult content blocks
-fn extract_text_from_result(result: &CallToolResult) -> String {
-    result
-        .content
-        .iter()
-        .filter_map(|content_block| {
-            serde_json::to_value(content_block).ok().and_then(|json| {
-                json.get("text")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string())
-            })
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
-}
 
 /// Count the context lines shown for a match in lean format output.
 /// Lean format looks like:
@@ -117,7 +101,7 @@ pub fn process_user_data(input: &str) -> String {
     };
 
     let result = tool.call_tool(&handler).await?;
-    let text = extract_text_from_result(&result);
+    let text = call_tool_result_text(&result);
 
     assert!(
         text.contains("process_user_data"),
@@ -192,7 +176,7 @@ pub fn calculate_sum(a: i32, b: i32) -> i32 {
     };
 
     let result = tool.call_tool(&handler).await?;
-    let text = extract_text_from_result(&result);
+    let text = call_tool_result_text(&result);
 
     assert!(
         text.contains("calculate_sum"),
@@ -272,7 +256,7 @@ pub fn validate_input(data: &str) -> bool {
     };
 
     let result = tool.call_tool(&handler).await?;
-    let text = extract_text_from_result(&result);
+    let text = call_tool_result_text(&result);
 
     assert!(
         text.contains("validate_input"),
@@ -341,7 +325,7 @@ pub fn short_func() -> i32 { 42 }
     };
 
     let result = tool.call_tool(&handler).await?;
-    let text = extract_text_from_result(&result);
+    let text = call_tool_result_text(&result);
 
     assert!(
         text.contains("short_func"),

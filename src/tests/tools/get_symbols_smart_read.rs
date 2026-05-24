@@ -8,24 +8,8 @@ use std::fs;
 use tempfile::TempDir;
 
 use crate::handler::JulieServerHandler;
-use crate::mcp_compat::CallToolResult;
+use crate::tests::helpers::mcp::call_tool_result_text;
 use crate::tools::{GetSymbolsTool, ManageWorkspaceTool};
-
-/// Extract text from CallToolResult content blocks
-fn extract_text_from_result(result: &CallToolResult) -> String {
-    result
-        .content
-        .iter()
-        .filter_map(|content_block| {
-            serde_json::to_value(content_block).ok().and_then(|json| {
-                json.get("text")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string())
-            })
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
-}
 
 /// Create a temporary Rust file with known structure for testing
 fn create_test_rust_file() -> Result<(TempDir, String)> {
@@ -99,7 +83,7 @@ async fn test_default_behavior_strips_context() -> Result<()> {
     };
 
     let result = tool.call_tool(&handler).await?;
-    let text = extract_text_from_result(&result);
+    let text = call_tool_result_text(&result);
 
     // In structure mode (default), output is a lean symbol list without code bodies
     // It should contain symbol names but NOT function body code
@@ -193,7 +177,7 @@ async fn test_structure_mode_strips_context() -> Result<()> {
     };
 
     let result = tool.call_tool(&handler).await?;
-    let text = extract_text_from_result(&result);
+    let text = call_tool_result_text(&result);
 
     // Structure mode produces lean symbol list — no code bodies
     assert!(!text.is_empty(), "Should find at least one symbol");
@@ -240,7 +224,7 @@ async fn test_mode_structure_always_strips() -> Result<()> {
     };
 
     let result = tool.call_tool(&handler).await?;
-    let text = extract_text_from_result(&result);
+    let text = call_tool_result_text(&result);
 
     // Structure mode always strips code bodies
     assert!(!text.is_empty(), "Should find at least one symbol");
@@ -286,7 +270,7 @@ async fn test_mode_minimal_top_level_only() -> Result<()> {
     };
 
     let result = tool.call_tool(&handler).await?;
-    let text = extract_text_from_result(&result);
+    let text = call_tool_result_text(&result);
 
     // Minimal mode extracts code bodies for top-level symbols
     // The "code" format outputs raw source code
@@ -338,7 +322,7 @@ async fn test_mode_full_all_symbols() -> Result<()> {
     };
 
     let result = tool.call_tool(&handler).await?;
-    let text = extract_text_from_result(&result);
+    let text = call_tool_result_text(&result);
 
     // Full mode extracts code bodies for ALL symbols including nested
     assert!(!text.is_empty(), "Should find at least one symbol");
@@ -396,7 +380,7 @@ async fn test_target_with_minimal_mode() -> Result<()> {
     };
 
     let result = tool.call_tool(&handler).await?;
-    let text = extract_text_from_result(&result);
+    let text = call_tool_result_text(&result);
 
     // Should find User struct when filtering by target
     assert!(
@@ -453,7 +437,7 @@ async fn test_file_read_error_handling() -> Result<()> {
     // Should either return error or "File not found" message - not panic
     match result {
         Ok(call_result) => {
-            let text = extract_text_from_result(&call_result);
+            let text = call_tool_result_text(&call_result);
             assert!(
                 text.contains("File not found")
                     || text.contains("No symbols found")
@@ -504,7 +488,7 @@ async fn test_utf8_decode_error_handling() -> Result<()> {
     };
 
     let result = tool.call_tool(&handler).await?;
-    let text = extract_text_from_result(&result);
+    let text = call_tool_result_text(&result);
 
     // Should succeed and have symbols
     assert!(
@@ -595,7 +579,7 @@ async fn test_vue_target_minimal_extracts_code_body() -> Result<()> {
     };
 
     let result = tool.call_tool(&handler).await?;
-    let text = extract_text_from_result(&result);
+    let text = call_tool_result_text(&result);
 
     // Should contain the actual function body, not just a file header
     assert!(
@@ -620,7 +604,7 @@ async fn test_vue_target_minimal_extracts_code_body() -> Result<()> {
     };
 
     let structure_result = structure_tool.call_tool(&handler).await?;
-    let structure_text = extract_text_from_result(&structure_result);
+    let structure_text = call_tool_result_text(&structure_result);
 
     assert!(
         structure_text.contains("increment"),
