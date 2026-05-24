@@ -299,13 +299,15 @@ Completed on branch `cleanup/codebase-cleanup-2026-05-24`:
 - **Candidate 5:** completed the safe first slice: shared tool file-input resolver for `get_symbols` primary/target and rename scope normalization. Workspace command root resolution remains intentionally separate.
 - **Candidate 6:** completed the safe first slice: typed resolver-created workspace failures and `deep_dive` type-based invalid-params classification. Broad wrapper normalization and metrics attribution remain separate.
 - **Candidate 7:** unified symbol-result test exclusion for semantic/hybrid KNN by honoring path OR metadata role `test`; line-mode behavior remains intentionally unchanged.
+- **Candidate 8:** completed the first trace slice: locations-only content queries now replace unified symbol/file execution hits with line hits, refresh trace top hits/result counts, and preserve current locations text/fallback behavior. Lead review fixed exposed line-hit language metadata for non-Rust files.
 - **Candidate 9:** prepared edit/rewrite work once per handler invocation via `PreparedEdit` / `PreparedRewrite`, with metrics and apply/render consuming the same prepared object. Lead review removed obsolete dead wrapper methods.
+- **Candidate 10:** completed the first language slice: public source-aware extractor language detection, app-level content-aware indexing wrapper, and content-aware detection in rewrite, indexing-core, and watcher paths. Resolver same-language scoring remains path-only and is still a separate slice.
 - **Candidate 12:** completed the first safe helper slice: shared MCP `CallToolResult` text extraction helper, migrated `get_symbols.rs`, `get_symbols_smart_read.rs`, and `search_context_lines.rs`.
 
 Remaining candidates:
 
-- **Candidate 8:** split after re-triage. First slice should integrate line hits into `execute_with_trace` for locations-only content queries, preserving current text output and fallback behavior. Full-output enrichment, dashboard preview enrichment, and surfaced degradation metadata stay separate.
-- **Candidate 10:** split after re-triage. First slice should expose source-aware parser language detection from `julie-extractors`, add an app indexing wrapper for pseudo-language fallback, and use content-aware detection in rewrite/indexing/watcher paths. Resolver scoring is a later slice.
+- **Candidate 8:** remaining slices are full-output line enrichment trace/degradation metadata, dashboard preview enrichment, and explicit line-mode failure surfacing. Do not mix these with ranking changes.
+- **Candidate 10:** remaining slice is resolver same-language scoring/content-aware language metadata for relationship candidates, if re-review confirms enough value and test leverage.
 - **Candidate 11:** wide module splits after contracts and harnesses are stronger.
 - **Candidate 12:** remaining slices are direct MCP session helpers and DB fixture builders. Do not consolidate daemon roots, adapter duplex tests, or schema/migration raw SQL without per-cluster review.
 
@@ -376,3 +378,7 @@ Remaining candidates:
 | Candidate 12 helper extraction compiles and preserves formatting | `cargo check`; `cargo fmt --check` | affected-change | 2e81be351214 | pass | 2026-05-24T18:25:00Z | no |
 | Candidate 12 migrated get_symbols helpers preserve behavior | `cargo xtask test bucket tools-get-symbols` | affected-change | 2e81be351214 | pass: tools-get-symbols bucket | 2026-05-24T18:23:00Z | no |
 | Candidate 12 migrated search-context helper preserves behavior | `cargo xtask test bucket tools-search-context` | affected-change | 2e81be351214 | pass: tools-search-context bucket | 2026-05-24T18:24:00Z | no |
+| Candidate 8 locations line-hit trace preserves line-mode locations and search formatting | `cargo xtask test bucket tools-search-line`; `cargo xtask test bucket tools-search-format-quality` | affected-change | 7287ce35ef31 | pass: tools-search-line and tools-search-format-quality buckets | 2026-05-24T18:43:00Z | no |
+| Candidate 8 file/path and semantic locations stay unified-only | `cargo xtask test bucket tools-search-file-mode`; `cargo xtask test bucket tools-search-hybrid` | affected-change | 7287ce35ef31 | pass: tools-search-file-mode and tools-search-hybrid buckets | 2026-05-24T18:44:00Z | no |
+| Candidate 10 source-aware extractor language detection preserves extractor contract | `cargo xtask test bucket extractors` | expensive-specialist | 071bc8ccfebb | pass: extractors bucket | 2026-05-24T18:52:00Z | no |
+| Candidate 10 content-aware indexing/watcher changes preserve system behavior | `cargo xtask test system` | expensive-specialist | 071bc8ccfebb | pass: system tier | 2026-05-24T18:55:00Z | no |
