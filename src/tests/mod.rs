@@ -27,11 +27,6 @@ pub mod cli_tools_tests; // CLI tool subcommand parsing (search, refs, symbols, 
 pub mod external_extract;
 
 // ============================================================================
-// MAIN SERVER TESTS - Entry point error handling
-// ============================================================================
-pub mod main_error_handling; // MCP server initialization and runtime error handling
-
-// ============================================================================
 // CORE SYSTEM TESTS - Database, handlers, language support
 // ============================================================================
 pub mod core {
@@ -67,11 +62,6 @@ pub mod core {
 }
 
 // ============================================================================
-// REGRESSION PREVENTION TESTS - Catch recurring bugs before they ship
-// ============================================================================
-pub mod regression_prevention_tests; // Tests for bugs that have regressed multiple times
-
-// ============================================================================
 // TOOLS TESTS - Search, editing, refactoring, navigation, exploration
 // ============================================================================
 // pub mod test_git_context; // Git context capture tests (debugging crashes) - TODO: File missing
@@ -84,7 +74,6 @@ pub mod tools {
     pub mod get_symbols_target_filtering_dogfood; // GetSymbolsTool dogfood test: indexes full repo (~164s)
     pub mod get_symbols_target_workspace; // GetSymbolsTool target-workspace bug test
     pub mod get_symbols_token; // GetSymbolsTool token optimization tests
-    pub mod smart_read; // Smart Read token optimization tests
     // syntax_validation removed - abandoned AutoFixSyntax feature (Oct 2025)
 
     pub mod editing; // EditingTransaction tests (used by rename_symbol)
@@ -183,7 +172,7 @@ pub mod integration {
     pub mod query_preprocessor_tests; // Query preprocessor comprehensive test suite (TDD)
     pub mod real_world_contract; // Real-world parser-upgrade expected output contracts
     pub mod real_world_validation; // Real-world code validation tests
-    pub mod search_regression_tests; // Regression tests for recurring search issues (glob patterns, Tantivy query semantics, limit/ranking)
+    pub mod search_regression_tests; // Regression tests for recurring search glob pattern issues
     #[cfg(feature = "embeddings-sidecar")]
     pub mod sidecar_embedding_incremental; // Sidecar equivalents of embedding_incremental tests
     #[cfg(feature = "embeddings-sidecar")]

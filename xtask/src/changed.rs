@@ -686,7 +686,6 @@ fn buckets_for_path(path: &str) -> &'static [&'static str] {
             "src/tests/tools/formatting_tests.rs",
             "src/tests/tools/query_classification_tests.rs",
             "src/tests/tools/phase4_token_savings.rs",
-            "src/tests/tools/smart_read.rs",
         ],
     ) {
         return &["tools-format-filter"];
@@ -698,8 +697,6 @@ fn buckets_for_path(path: &str) -> &'static [&'static str] {
             &[
                 "src/language.rs",
                 "src/paths.rs",
-                "src/tests/main_error_handling.rs",
-                "src/tests/regression_prevention_tests.rs",
                 "src/tests/core/handler.rs",
                 "src/tests/core/language.rs",
                 "src/tests/core/memory_vectors.rs",

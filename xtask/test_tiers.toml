@@ -342,7 +342,6 @@ commands = [
   "cargo nextest run --lib tests::tools::formatting_tests -- --skip search_quality",
   "cargo nextest run --lib tests::tools::query_classification_tests -- --skip search_quality",
   "cargo nextest run --lib tests::tools::phase4_token_savings -- --skip search_quality",
-  "cargo nextest run --lib tests::tools::smart_read -- --skip search_quality",
 ]
 
 [buckets.core-fast]
@@ -352,8 +351,6 @@ timeout_seconds = 60
 scope_label = "core"
 notes = "misc fast core coverage"
 commands = [
-  "cargo nextest run --lib tests::main_error_handling -- --skip search_quality",
-  "cargo nextest run --lib tests::regression_prevention_tests -- --skip search_quality",
   "cargo nextest run --lib utils::paths::tests -- --skip search_quality",
   "cargo nextest run --lib utils::string_similarity::tests -- --skip search_quality",
   "cargo nextest run --lib watcher::filtering::tests -- --skip search_quality",

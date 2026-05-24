@@ -270,23 +270,3 @@ mod glob_pattern_regression {
         }
     }
 }
-// ============================================================================
-// ISSUE 3: Limit/Ranking Interaction - Relevant Results Hidden by Test Files
-// ============================================================================
-//
-// Root Cause: Low limit (5) + test files have more matches = test results dominate,
-// hiding actual implementation files.
-//
-// Example: Searching for "DirectusCmsService" with limit=5 returns only test files,
-// hiding the actual Program.cs:63 where it's used.
-//
-// Solution: Either increase default limit, improve ranking to prioritize non-test files,
-// or document that low limits may hide relevant results.
-//
-// TODO: These tests require complex database setup with bulk inserts.
-// Implement after fixing glob pattern and query syntax issues.
-//
-// #[cfg(test)]
-// mod limit_ranking_regression {
-//     // Tests commented out - require database bulk insert API
-// }
