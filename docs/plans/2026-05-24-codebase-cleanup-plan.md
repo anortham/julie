@@ -299,14 +299,14 @@ Completed on branch `cleanup/codebase-cleanup-2026-05-24`:
 - **Candidate 5:** completed the safe first slice: shared tool file-input resolver for `get_symbols` primary/target and rename scope normalization. Workspace command root resolution remains intentionally separate.
 - **Candidate 6:** completed the safe first slice: typed resolver-created workspace failures and `deep_dive` type-based invalid-params classification. Broad wrapper normalization and metrics attribution remain separate.
 - **Candidate 7:** unified symbol-result test exclusion for semantic/hybrid KNN by honoring path OR metadata role `test`; line-mode behavior remains intentionally unchanged.
+- **Candidate 9:** prepared edit/rewrite work once per handler invocation via `PreparedEdit` / `PreparedRewrite`, with metrics and apply/render consuming the same prepared object. Lead review removed obsolete dead wrapper methods.
 
 Remaining candidates:
 
-- **Candidate 8:** line-match integration into search execution.
-- **Candidate 9:** prepare edit/rewrite work once.
-- **Candidate 10:** shared language detection policy.
+- **Candidate 8:** split after re-triage. First slice should integrate line hits into `execute_with_trace` for locations-only content queries, preserving current text output and fallback behavior. Full-output enrichment, dashboard preview enrichment, and surfaced degradation metadata stay separate.
+- **Candidate 10:** split after re-triage. First slice should expose source-aware parser language detection from `julie-extractors`, add an app indexing wrapper for pseudo-language fallback, and use content-aware detection in rewrite/indexing/watcher paths. Resolver scoring is a later slice.
 - **Candidate 11:** wide module splits after contracts and harnesses are stronger.
-- **Candidate 12:** test harness helpers and fixture cleanup.
+- **Candidate 12:** split after re-triage. First slice should add a shared test helper for MCP `CallToolResult` text extraction and migrate only three clean files: `get_symbols.rs`, `get_symbols_smart_read.rs`, and `search_context_lines.rs`. Direct MCP session helpers and DB fixture builders need separate review.
 
 ## Verification Strategy
 
@@ -368,3 +368,7 @@ Remaining candidates:
 |---|---|---|---|---|---|---|
 | Current branch type-checks before planning cleanup | `cargo check --all-targets` | planning-baseline | f92bead5 | pass | 2026-05-24T15:44:19Z | no |
 | Clippy signal collected for cleanup inventory; warnings are report evidence, not an acceptance gate | `cargo clippy --all-targets --message-format short` | planning-inventory | f92bead5 | report-only: 454 julie-extractors lib warnings; 229 julie lib warnings; 386 julie lib-test warnings including duplicates | 2026-05-24T15:44:19Z | no |
+| Candidate 9 formatting preserved | `cargo fmt --check` | affected-change | 97ab2ea98608 | pass | 2026-05-24T18:18:00Z | no |
+| Candidate 9 type-checks after prepare-once editing changes | `cargo check --all-targets` | affected-change | 97ab2ea98608 | pass | 2026-05-24T18:18:00Z | no |
+| Candidate 9 edit-file prepared flow preserves editing behavior and stale-target protection | `cargo xtask test bucket tools-editing` | affected-change | 97ab2ea98608 | pass: tools-editing bucket | 2026-05-24T18:16:00Z | no |
+| Candidate 9 handler metadata still records editing/telemetry contracts | `cargo xtask test bucket core-handler-telemetry` | affected-change | 97ab2ea98608 | pass: core-handler-telemetry bucket | 2026-05-24T18:17:00Z | no |
