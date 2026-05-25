@@ -14,9 +14,6 @@ pub(crate) mod registry;
 // Workspace Management Commands //
 //******************//
 
-const VALID_MANAGE_WORKSPACE_OPERATIONS: &str =
-    "index, list, register, remove, stats, clean, refresh, open, health";
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ManageWorkspaceOperation {
     Index,
@@ -31,19 +28,35 @@ pub(crate) enum ManageWorkspaceOperation {
 }
 
 impl ManageWorkspaceOperation {
+    /// Single source of truth for operation names. Ordered the way the help
+    /// string is presented to users — `valid_operations_help()` and `parse()`
+    /// both derive from this table so they cannot drift apart.
+    const OPERATIONS: &'static [(&'static str, Self)] = &[
+        ("index", Self::Index),
+        ("list", Self::List),
+        ("register", Self::Register),
+        ("remove", Self::Remove),
+        ("stats", Self::Stats),
+        ("clean", Self::Clean),
+        ("refresh", Self::Refresh),
+        ("open", Self::Open),
+        ("health", Self::Health),
+    ];
+
     pub(crate) fn parse(operation: &str) -> Result<Self> {
-        match operation {
-            "index" => Ok(Self::Index),
-            "register" => Ok(Self::Register),
-            "remove" => Ok(Self::Remove),
-            "list" => Ok(Self::List),
-            "clean" => Ok(Self::Clean),
-            "refresh" => Ok(Self::Refresh),
-            "open" => Ok(Self::Open),
-            "stats" => Ok(Self::Stats),
-            "health" => Ok(Self::Health),
-            _ => Err(Self::unknown_operation_error(operation)),
-        }
+        Self::OPERATIONS
+            .iter()
+            .find(|(name, _)| *name == operation)
+            .map(|(_, op)| *op)
+            .ok_or_else(|| Self::unknown_operation_error(operation))
+    }
+
+    fn valid_operations_help() -> String {
+        Self::OPERATIONS
+            .iter()
+            .map(|(name, _)| *name)
+            .collect::<Vec<_>>()
+            .join(", ")
     }
 
     fn from_arguments(
@@ -92,7 +105,7 @@ impl ManageWorkspaceOperation {
         anyhow!(
             "Unknown operation: '{}'. Valid operations: {}",
             operation,
-            VALID_MANAGE_WORKSPACE_OPERATIONS
+            Self::valid_operations_help()
         )
     }
 }

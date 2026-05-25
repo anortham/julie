@@ -13,7 +13,7 @@ impl DaemonDatabase {
         workspace_id: &str,
         snapshot: &CodehealthSnapshot,
     ) -> Result<()> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock: {e}"))?;
+        let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
         conn.execute(
             "INSERT INTO codehealth_snapshots (workspace_id, timestamp, total_symbols, total_files)
              VALUES (?1, ?2, ?3, ?4)",

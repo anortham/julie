@@ -127,12 +127,24 @@ fn add_symbol_parent_mentions(
 
 /// Select the best candidate from a list of symbols matching a callee name.
 /// Returns None if no valid candidate exists.
+///
+/// **Test-only path.** Production resolution goes through `resolve_structured_batch`,
+/// which looks up caller languages from the stored file metadata via
+/// `caller_language_for_pending`. This helper instead derives the caller
+/// language from the file path extension alone (`scoring::language_of`),
+/// because unit-test fixtures don't populate the `files` table.
+///
+/// The `#[cfg(test)]` attribute is the compile-time guard that keeps this path
+/// out of release builds; the divergence in language resolution is acceptable
+/// only because no production caller ever reaches this branch.
 #[cfg(test)]
 pub fn select_best_candidate<'a>(
     candidates: &'a [Symbol],
     pending: &PendingRelationship,
     parent_ctx: &ParentReferenceContext,
 ) -> Option<&'a Symbol> {
+    // Extension-only language derivation. See doc comment above for the
+    // intentional divergence from the production path.
     let caller_language = scoring::language_of(&pending.file_path);
     select_best_candidate_for_target(
         candidates,

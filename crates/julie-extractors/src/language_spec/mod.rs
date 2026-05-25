@@ -292,6 +292,12 @@ pub fn detect_language_for_source(file_path: &str, content: &str) -> Option<&'st
 }
 
 fn header_contains_cpp_syntax(content: &str) -> bool {
+    // Empty/whitespace-only headers carry no signal either way; skip the parser
+    // comparison so we don't log a spurious diagnostic on every empty .h file.
+    if content.trim().is_empty() {
+        return false;
+    }
+
     match header_parse_prefers_cpp(content) {
         Some(prefers_cpp) => return prefers_cpp,
         None => tracing::warn!(
