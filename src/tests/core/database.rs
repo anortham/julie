@@ -2,8 +2,10 @@
 // These were previously inline tests that have been moved to follow project standards
 
 use crate::database::*;
-use crate::extractors::{IdentifierKind, Symbol, SymbolKind};
-use crate::tests::helpers::db::{identifier_builder, set_symbol_reference_scores, symbol_builder};
+use crate::extractors::{IdentifierKind, RelationshipKind, Symbol, SymbolKind};
+use crate::tests::helpers::db::{
+    identifier_builder, relationship_builder, set_symbol_reference_scores, symbol_builder,
+};
 use crate::tests::test_helpers::open_test_connection;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -1926,7 +1928,7 @@ fn test_reference_score_defaults_to_zero() {
 fn test_compute_reference_scores_weighted() {
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("test.db");
-    let db = SymbolDatabase::new(&db_path).unwrap();
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
 
     // Insert a file
     db.store_file_info(&FileInfo {
@@ -1943,38 +1945,43 @@ fn test_compute_reference_scores_weighted() {
     .unwrap();
 
     // Insert symbols: target + 3 sources
-    for (id, name) in [
+    let symbols: Vec<_> = [
         ("target", "TargetFn"),
         ("caller1", "Caller1"),
         ("caller2", "Caller2"),
         ("caller3", "Caller3"),
-    ] {
-        db.conn
-            .execute(
-                "INSERT INTO symbols (id, name, kind, language, file_path, start_line, end_line, start_col, end_col, start_byte, end_byte)
-                 VALUES (?1, ?2, 'function', 'rust', 'test.rs', 1, 10, 0, 1, 0, 100)",
-                rusqlite::params![id, name],
-            )
-            .unwrap();
-    }
+    ]
+    .iter()
+    .map(|(id, name)| {
+        symbol_builder(*id, *name, "test.rs")
+            .kind(SymbolKind::Function)
+            .language("rust")
+            .span(1, 0, 10, 1)
+            .bytes(0, 100)
+            .confidence(1.0)
+            .build()
+    })
+    .collect();
+    db.store_symbols(&symbols).unwrap();
 
     // Insert relationships TO target with different kinds:
     // caller1 --calls--> target (weight 3)
     // caller2 --imports--> target (weight 2)
     // caller3 --uses--> target (weight 1)
-    for (rel_id, from_id, kind) in [
-        ("r1", "caller1", "calls"),
-        ("r2", "caller2", "imports"),
-        ("r3", "caller3", "uses"),
-    ] {
-        db.conn
-            .execute(
-                "INSERT INTO relationships (id, from_symbol_id, to_symbol_id, kind)
-                 VALUES (?1, ?2, 'target', ?3)",
-                rusqlite::params![rel_id, from_id, kind],
-            )
-            .unwrap();
-    }
+    let relationships: Vec<_> = [
+        ("r1", "caller1", RelationshipKind::Calls),
+        ("r2", "caller2", RelationshipKind::Imports),
+        ("r3", "caller3", RelationshipKind::Uses),
+    ]
+    .iter()
+    .map(|(rel_id, from_id, kind)| {
+        relationship_builder(*rel_id, *from_id, "target")
+            .kind(kind.clone())
+            .line_number(0)
+            .build()
+    })
+    .collect();
+    db.store_relationships(&relationships).unwrap();
 
     // Compute scores
     db.compute_reference_scores().unwrap();
@@ -2018,7 +2025,7 @@ fn test_compute_reference_scores_weighted() {
 fn test_compute_reference_scores_excludes_self_refs() {
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("test.db");
-    let db = SymbolDatabase::new(&db_path).unwrap();
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
 
     // Insert a file
     db.store_file_info(&FileInfo {
@@ -2035,22 +2042,23 @@ fn test_compute_reference_scores_excludes_self_refs() {
     .unwrap();
 
     // Insert a single symbol
-    db.conn
-        .execute(
-            "INSERT INTO symbols (id, name, kind, language, file_path, start_line, end_line, start_col, end_col, start_byte, end_byte)
-             VALUES ('recursive_fn', 'factorial', 'function', 'rust', 'test.rs', 1, 10, 0, 1, 0, 100)",
-            [],
-        )
+    db.store_symbols(&[symbol_builder("recursive_fn", "factorial", "test.rs")
+        .kind(SymbolKind::Function)
+        .language("rust")
+        .span(1, 0, 10, 1)
+        .bytes(0, 100)
+        .confidence(1.0)
+        .build()])
         .unwrap();
 
     // Insert self-referencing relationship (recursion)
-    db.conn
-        .execute(
-            "INSERT INTO relationships (id, from_symbol_id, to_symbol_id, kind)
-             VALUES ('r_self', 'recursive_fn', 'recursive_fn', 'calls')",
-            [],
-        )
-        .unwrap();
+    db.store_relationships(&[
+        relationship_builder("r_self", "recursive_fn", "recursive_fn")
+            .kind(RelationshipKind::Calls)
+            .line_number(0)
+            .build(),
+    ])
+    .unwrap();
 
     // Compute scores
     db.compute_reference_scores().unwrap();
