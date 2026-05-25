@@ -555,14 +555,21 @@ mod tests {
 
     #[test]
     fn test_deduplication_across_strategies() {
-        let (_temp, db) = setup_test_db();
+        let (_temp, mut db) = setup_test_db();
 
         // Add an identifier that links test_1 → prod_1 (same linkage as the relationship)
-        db.conn.execute(
-            "INSERT INTO identifiers (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, containing_symbol_id, target_symbol_id)
-             VALUES ('ident_1', 'process_payment', 'call', 'rust', 'src/tests/payments.rs', 12, 0, 12, 20, 'test_1', 'prod_1')",
-            [],
-        ).unwrap();
+        db.bulk_store_identifiers(
+            &[
+                identifier_builder("ident_1", "process_payment", "src/tests/payments.rs")
+                    .line(12)
+                    .column(0, 20)
+                    .containing_symbol_id("test_1")
+                    .target_symbol_id("prod_1")
+                    .build(),
+            ],
+            "",
+        )
+        .unwrap();
 
         let _stats = crate::analysis::test_linkage::compute_test_linkage(&db).unwrap();
         let prod = db.get_symbol_by_id("prod_1").unwrap().unwrap();
