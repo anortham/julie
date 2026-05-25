@@ -2153,7 +2153,7 @@ fn test_get_reference_scores_batch() {
 fn test_compute_reference_scores_zero_for_no_incoming() {
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("test.db");
-    let db = SymbolDatabase::new(&db_path).unwrap();
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
 
     // Insert a file
     db.store_file_info(&FileInfo {
@@ -2170,23 +2170,25 @@ fn test_compute_reference_scores_zero_for_no_incoming() {
     .unwrap();
 
     // Insert two symbols
-    for (id, name) in [("sender", "send_data"), ("receiver", "receive_data")] {
-        db.conn
-            .execute(
-                "INSERT INTO symbols (id, name, kind, language, file_path, start_line, end_line, start_col, end_col, start_byte, end_byte)
-                 VALUES (?1, ?2, 'function', 'rust', 'test.rs', 1, 10, 0, 1, 0, 100)",
-                rusqlite::params![id, name],
-            )
-            .unwrap();
-    }
+    let symbols: Vec<_> = [("sender", "send_data"), ("receiver", "receive_data")]
+        .iter()
+        .map(|(id, name)| {
+            symbol_builder(*id, *name, "test.rs")
+                .kind(SymbolKind::Function)
+                .language("rust")
+                .span(1, 0, 10, 1)
+                .bytes(0, 100)
+                .confidence(1.0)
+                .build()
+        })
+        .collect();
+    db.store_symbols(&symbols).unwrap();
 
     // sender --calls--> receiver (sender has outgoing, no incoming)
-    db.conn
-        .execute(
-            "INSERT INTO relationships (id, from_symbol_id, to_symbol_id, kind)
-             VALUES ('r1', 'sender', 'receiver', 'calls')",
-            [],
-        )
+    db.store_relationships(&[relationship_builder("r1", "sender", "receiver")
+        .kind(RelationshipKind::Calls)
+        .line_number(0)
+        .build()])
         .unwrap();
 
     // Compute scores
