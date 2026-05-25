@@ -649,8 +649,13 @@ fn changed_tests_routes_transport_paths_to_transport_bucket() {
 fn changed_tests_routes_http_transport_paths_to_transport_bucket() {
     let manifest = sample_manifest();
 
-    let selection =
-        select_changed_buckets(&manifest, &["src/daemon/http_transport.rs".to_string()]);
+    let selection = select_changed_buckets(
+        &manifest,
+        &[
+            "src/daemon/http_transport.rs".to_string(),
+            "src/tests/daemon/http_transport/tests/restart_pending.rs".to_string(),
+        ],
+    );
 
     assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
     assert_eq!(selection.bucket_names, vec!["transport"]);

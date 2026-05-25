@@ -501,18 +501,23 @@ fn buckets_for_path(path: &str) -> &'static [&'static str] {
         return &["projection"];
     }
 
-    if matches_prefix(path, &["src/adapter/", "src/tests/adapter/"])
-        || matches_exact(
-            path,
-            &[
-                "src/daemon/http_transport.rs",
-                "src/daemon/transport.rs",
-                "src/tests/daemon/http_transport.rs",
-                "src/tests/daemon/mcp_session.rs",
-                "src/tests/daemon/transport.rs",
-            ],
-        )
-    {
+    if matches_prefix(
+        path,
+        &[
+            "src/adapter/",
+            "src/tests/adapter/",
+            "src/tests/daemon/http_transport/",
+        ],
+    ) || matches_exact(
+        path,
+        &[
+            "src/daemon/http_transport.rs",
+            "src/daemon/transport.rs",
+            "src/tests/daemon/http_transport.rs",
+            "src/tests/daemon/mcp_session.rs",
+            "src/tests/daemon/transport.rs",
+        ],
+    ) {
         return &["transport"];
     }
 
