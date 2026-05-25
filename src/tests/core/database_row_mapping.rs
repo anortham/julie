@@ -1,4 +1,5 @@
 use crate::database::SymbolDatabase;
+use crate::tests::helpers::db::{file_info_builder, store_file_info_if_missing, symbol_builder};
 use tempfile::TempDir;
 
 #[test]
@@ -47,10 +48,10 @@ fn test_db_row_to_symbol_unknown_visibility_does_not_silently_drop() {
 
 #[test]
 fn test_db_row_to_relationship_unknown_kind_does_not_silently_coerce() {
-    let (_temp_dir, db) = test_db();
+    let (_temp_dir, mut db) = test_db();
     insert_file(&db);
-    insert_symbol(&db, "source", "Source");
-    insert_symbol(&db, "target", "Target");
+    insert_symbol(&mut db, "source", "Source");
+    insert_symbol(&mut db, "target", "Target");
     db.conn
         .execute(
             "INSERT INTO relationships (id, from_symbol_id, to_symbol_id, kind, file_path, line_number)
@@ -77,21 +78,24 @@ fn test_db() -> (TempDir, SymbolDatabase) {
 }
 
 fn insert_file(db: &SymbolDatabase) {
-    db.conn
-        .execute(
-            "INSERT INTO files (path, language, hash, size, last_modified)
-             VALUES ('src/lib.rs', 'rust', 'hash', 0, 0)",
-            [],
-        )
-        .unwrap();
+    store_file_info_if_missing(
+        db,
+        &file_info_builder("src/lib.rs")
+            .hash("hash")
+            .size(0)
+            .last_modified(0)
+            .symbol_count(0)
+            .line_count(0)
+            .build(),
+    )
+    .unwrap();
 }
 
-fn insert_symbol(db: &SymbolDatabase, id: &str, name: &str) {
-    db.conn
-        .execute(
-            "INSERT INTO symbols (id, name, kind, language, file_path, start_line, end_line, start_col, end_col, start_byte, end_byte)
-             VALUES (?1, ?2, 'function', 'rust', 'src/lib.rs', 1, 1, 0, 5, 0, 5)",
-            (id, name),
-        )
+fn insert_symbol(db: &mut SymbolDatabase, id: &str, name: &str) {
+    db.store_symbols(&[symbol_builder(id, name, "src/lib.rs")
+        .span(1, 0, 1, 5)
+        .bytes(0, 5)
+        .confidence(1.0)
+        .build()])
         .unwrap();
 }

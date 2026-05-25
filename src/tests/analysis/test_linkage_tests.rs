@@ -6,7 +6,8 @@ mod tests {
     use crate::database::SymbolDatabase;
     use crate::extractors::{RelationshipKind, SymbolKind, Visibility};
     use crate::tests::helpers::db::{
-        file_info_builder, identifier_builder, relationship_builder, symbol_builder,
+        file_info_builder, identifier_builder, relationship_builder, store_file_info_if_missing,
+        symbol_builder,
     };
     use tempfile::TempDir;
 
@@ -28,20 +29,15 @@ mod tests {
         assert_eq!(*worst, "stub");
     }
 
-    /// Insert a file record (required by foreign key constraint on symbols.file_path).
-    fn insert_file(db: &SymbolDatabase, path: &str) {
-        db.conn.execute(
-            "INSERT OR IGNORE INTO files (path, language, hash, size, last_modified) VALUES (?1, 'rust', 'h', 100, 0)",
-            rusqlite::params![path],
-        ).unwrap();
-    }
-
     fn store_file(db: &SymbolDatabase, path: &str) {
-        db.store_file_info(
+        store_file_info_if_missing(
+            db,
             &file_info_builder(path)
                 .hash("h")
                 .size(100)
                 .last_modified(0)
+                .symbol_count(0)
+                .line_count(0)
                 .build(),
         )
         .unwrap();
@@ -247,7 +243,7 @@ mod tests {
     fn test_linked_tests_capped_at_five() {
         let (_temp, mut db) = setup_test_db();
 
-        insert_file(&db, "tests/extra.rs");
+        store_file(&db, "tests/extra.rs");
 
         // Add 5 more test symbols → 7 total tests for prod_1
         let symbols = (3..=7)
@@ -389,10 +385,10 @@ mod tests {
         let db_path = temp_dir.path().join("test.db");
         let mut db = SymbolDatabase::new(&db_path).unwrap();
 
-        insert_file(&db, "src/widgets.rs");
-        insert_file(&db, "tests/widgets_test.rs");
+        store_file(&db, "src/widgets.rs");
+        store_file(&db, "tests/widgets_test.rs");
         for index in 0..11 {
-            insert_file(&db, &format!("python/widget_{index}.py"));
+            store_file(&db, &format!("python/widget_{index}.py"));
         }
 
         let mut symbols = vec![
@@ -490,8 +486,8 @@ mod tests {
         let db_path = temp_dir.path().join("test.db");
         let mut db = SymbolDatabase::new(&db_path).unwrap();
 
-        insert_file(&db, "src/services.rs");
-        insert_file(&db, "tests/services_test.rs");
+        store_file(&db, "src/services.rs");
+        store_file(&db, "tests/services_test.rs");
 
         db.store_symbols(&[
             symbol_builder("class_1", "PaymentService", "src/services.rs")

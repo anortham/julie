@@ -4,15 +4,25 @@
 mod tests {
     use crate::database::SymbolDatabase;
     use crate::extractors::{SymbolKind, Visibility};
-    use crate::tests::helpers::db::{identifier_builder, relationship_builder, symbol_builder};
+    use crate::tests::helpers::db::{
+        file_info_builder, identifier_builder, relationship_builder, store_file_info_if_missing,
+        symbol_builder,
+    };
     use tempfile::TempDir;
 
     /// Insert a file record (required by foreign key constraint on symbols.file_path).
     fn insert_file(db: &SymbolDatabase, path: &str) {
-        db.conn.execute(
-            "INSERT OR IGNORE INTO files (path, language, hash, size, last_modified) VALUES (?1, 'rust', 'h', 100, 0)",
-            rusqlite::params![path],
-        ).unwrap();
+        store_file_info_if_missing(
+            db,
+            &file_info_builder(path)
+                .hash("h")
+                .size(100)
+                .last_modified(0)
+                .symbol_count(0)
+                .line_count(0)
+                .build(),
+        )
+        .unwrap();
     }
 
     #[test]

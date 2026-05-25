@@ -6,7 +6,9 @@ mod tests {
 
     use crate::analysis::change_risk::*;
     use crate::extractors::{SymbolKind, Visibility};
-    use crate::tests::helpers::db::{set_symbol_reference_scores, symbol_builder};
+    use crate::tests::helpers::db::{
+        file_info_builder, set_symbol_reference_scores, store_file_info_if_missing, symbol_builder,
+    };
 
     #[test]
     fn test_visibility_scores() {
@@ -128,12 +130,17 @@ mod tests {
     use tempfile::TempDir;
 
     fn insert_file(db: &SymbolDatabase, path: &str) {
-        db.conn
-            .execute(
-                "INSERT OR IGNORE INTO files (path, language, hash, size, last_modified) VALUES (?1, 'rust', 'h', 100, 0)",
-                rusqlite::params![path],
-            )
-            .unwrap();
+        store_file_info_if_missing(
+            db,
+            &file_info_builder(path)
+                .hash("h")
+                .size(100)
+                .last_modified(0)
+                .symbol_count(0)
+                .line_count(0)
+                .build(),
+        )
+        .unwrap();
     }
 
     #[test]
