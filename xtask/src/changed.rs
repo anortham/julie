@@ -565,7 +565,8 @@ fn buckets_for_path(path: &str) -> &'static [&'static str] {
             "src/tests/tools/workspace/global_targeting.rs",
             "src/tests/tools/workspace/refresh_routing.rs",
         ],
-    ) {
+    ) || matches_prefix(path, &["src/tests/tools/workspace/global_targeting/"])
+    {
         return &["tools-workspace-targeting"];
     }
 
@@ -1104,6 +1105,23 @@ mod tests {
         assert!(
             selection.fallback_paths.is_empty(),
             "split hybrid test modules should not force dev fallback; rationale={:?}",
+            selection.rationale
+        );
+    }
+
+    #[test]
+    fn changed_tests_route_global_targeting_split_modules_to_targeting_bucket() {
+        let manifest = manifest();
+        let selection = select_changed_buckets(
+            &manifest,
+            &["src/tests/tools/workspace/global_targeting/target_activation.rs".to_string()],
+        );
+
+        assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
+        assert_eq!(selection.bucket_names, vec!["tools-workspace-targeting"]);
+        assert!(
+            selection.fallback_paths.is_empty(),
+            "split global targeting modules should not route through the broad workspace bucket; rationale={:?}",
             selection.rationale
         );
     }
