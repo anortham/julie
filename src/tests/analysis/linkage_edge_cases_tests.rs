@@ -4,7 +4,7 @@
 mod tests {
     use crate::database::SymbolDatabase;
     use crate::extractors::{SymbolKind, Visibility};
-    use crate::tests::helpers::db::{identifier_builder, symbol_builder};
+    use crate::tests::helpers::db::{identifier_builder, relationship_builder, symbol_builder};
     use tempfile::TempDir;
 
     /// Insert a file record (required by foreign key constraint on symbols.file_path).
@@ -155,25 +155,47 @@ mod tests {
     fn test_compute_linkage_clears_stale_symbol_and_parent_linkage() {
         let temp_dir = TempDir::new().unwrap();
         let db_path = temp_dir.path().join("test.db");
-        let db = SymbolDatabase::new(&db_path).unwrap();
+        let mut db = SymbolDatabase::new(&db_path).unwrap();
 
         insert_file(&db, "src/payment_service.rs");
         insert_file(&db, "tests/payment_service_tests.rs");
 
-        db.conn.execute_batch(r#"
-            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata)
-            VALUES ('parent', 'PaymentService', 'class', 'rust', 'src/payment_service.rs', 1, 0, 40, 0, 0, 0, NULL);
+        let test_metadata: std::collections::HashMap<String, serde_json::Value> =
+            serde_json::from_value(serde_json::json!({
+                "is_test": true,
+                "test_quality": { "quality_tier": "thorough" }
+            }))
+            .unwrap();
 
-            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata, parent_id)
-            VALUES ('child', 'process_payment', 'function', 'rust', 'src/payment_service.rs', 5, 0, 20, 0, 0, 0, NULL, 'parent');
-
-            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata)
-            VALUES ('test_1', 'test_process_payment', 'function', 'rust', 'tests/payment_service_tests.rs', 1, 0, 10, 0, 0, 0,
-                    '{"is_test": true, "test_quality": {"quality_tier": "thorough"}}');
-
-            INSERT INTO relationships (id, from_symbol_id, to_symbol_id, kind, file_path, line_number)
-            VALUES ('rel_1', 'test_1', 'child', 'calls', 'tests/payment_service_tests.rs', 3);
-        "#).unwrap();
+        db.store_symbols(&[
+            symbol_builder("parent", "PaymentService", "src/payment_service.rs")
+                .kind(SymbolKind::Class)
+                .span(1, 0, 40, 0)
+                .confidence(1.0)
+                .build(),
+            symbol_builder("child", "process_payment", "src/payment_service.rs")
+                .kind(SymbolKind::Function)
+                .span(5, 0, 20, 0)
+                .parent_id("parent")
+                .confidence(1.0)
+                .build(),
+            symbol_builder(
+                "test_1",
+                "test_process_payment",
+                "tests/payment_service_tests.rs",
+            )
+            .kind(SymbolKind::Function)
+            .span(1, 0, 10, 0)
+            .metadata(test_metadata)
+            .confidence(1.0)
+            .build(),
+        ])
+        .unwrap();
+        db.store_relationships(&[relationship_builder("rel_1", "test_1", "child")
+            .file_path("tests/payment_service_tests.rs")
+            .line_number(3)
+            .build()])
+            .unwrap();
 
         crate::analysis::test_linkage::compute_test_linkage(&db).unwrap();
 
