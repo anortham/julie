@@ -1,5 +1,8 @@
 use crate::database::SymbolDatabase;
-use rusqlite::params;
+use crate::extractors::SymbolKind;
+use crate::tests::helpers::db::{file_info_builder, set_symbol_reference_scores, symbol_builder};
+
+use std::collections::HashMap;
 use tempfile::TempDir;
 
 #[path = "../../../tools/metrics/query.rs"]
@@ -12,45 +15,53 @@ fn test_db_with_metric_symbols() -> (TempDir, SymbolDatabase) {
     let db_path = tmp.path().join("metrics.db");
     let db = SymbolDatabase::new(&db_path).unwrap();
 
-    db.conn
-        .execute_batch(
-            "
-            INSERT INTO files (path, language, hash, size, last_modified)
-            VALUES
-                ('src/high.rs', 'rust', 'h1', 100, 0),
-                ('src/low.rs', 'rust', 'h2', 100, 0);
-            ",
+    for (path, hash) in [("src/high.rs", "h1"), ("src/low.rs", "h2")] {
+        db.store_file_info(
+            &file_info_builder(path)
+                .language("rust")
+                .hash(hash)
+                .size(100)
+                .last_modified(0)
+                .symbol_count(0)
+                .line_count(0)
+                .build(),
         )
         .unwrap();
+    }
 
     (tmp, db)
 }
 
+fn metadata_object(value: serde_json::Value) -> HashMap<String, serde_json::Value> {
+    match value {
+        serde_json::Value::Object(map) => map.into_iter().collect(),
+        other => panic!("expected object metadata, got {other:?}"),
+    }
+}
+
 fn insert_metric_symbol(
-    db: &SymbolDatabase,
+    db: &mut SymbolDatabase,
     id: &str,
     name: &str,
     file_path: &str,
     reference_score: f64,
-    metadata: &str,
+    metadata: HashMap<String, serde_json::Value>,
 ) {
-    db.conn
-        .execute(
-            "
-            INSERT INTO symbols (
-                id, name, kind, language, file_path, start_line, start_col,
-                end_line, end_col, start_byte, end_byte, reference_score, metadata
-            )
-            VALUES (?1, ?2, 'function', 'rust', ?3, 10, 1, 12, 1, 0, 20, ?4, ?5)
-            ",
-            params![id, name, file_path, reference_score, metadata],
-        )
+    db.store_symbols(&[symbol_builder(id, name, file_path)
+        .kind(SymbolKind::Function)
+        .language("rust")
+        .span(10, 1, 12, 1)
+        .bytes(0, 20)
+        .metadata(metadata)
+        .confidence(1.0)
+        .build()])
         .unwrap();
+    set_symbol_reference_scores(db, &[(id, reference_score)]).unwrap();
 }
 
 #[test]
 fn query_metrics_uses_centrality_for_legacy_or_unknown_sorts() {
-    let (_tmp, db) = test_db_with_metric_symbols();
+    let (_tmp, mut db) = test_db_with_metric_symbols();
     let legacy_key = ["security", "risk"].join("_");
     let mut legacy_meta = serde_json::Map::new();
     legacy_meta.insert(
@@ -60,23 +71,25 @@ fn query_metrics_uses_centrality_for_legacy_or_unknown_sorts() {
             "score": 0.99
         }),
     );
-    let legacy_metadata = serde_json::Value::Object(legacy_meta).to_string();
 
     insert_metric_symbol(
-        &db,
+        &mut db,
         "high",
         "high_centrality",
         "src/high.rs",
         42.0,
-        r#"{"change_risk":{"label":"LOW","score":0.2},"test_linkage":{"best_tier":"direct","test_count":2}}"#,
+        metadata_object(serde_json::json!({
+            "change_risk": {"label": "LOW", "score": 0.2},
+            "test_linkage": {"best_tier": "direct", "test_count": 2}
+        })),
     );
     insert_metric_symbol(
-        &db,
+        &mut db,
         "legacy",
         "legacy_label",
         "src/low.rs",
         1.0,
-        &legacy_metadata,
+        legacy_meta.into_iter().collect(),
     );
 
     for sort_by in [&legacy_key, "unknown_metric"] {
