@@ -50,6 +50,8 @@ pub enum WorkspaceResolutionFailureKind {
     WorkspaceNotReady,
     PrimarySwapInProgress,
     AutoActivationFailed,
+    /// The caller supplied a file path that resolves outside the workspace root.
+    FileOutsideWorkspace,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -59,7 +61,7 @@ pub struct WorkspaceResolutionFailure {
 }
 
 impl WorkspaceResolutionFailure {
-    fn new(kind: WorkspaceResolutionFailureKind, message: impl Into<String>) -> Self {
+    pub fn new(kind: WorkspaceResolutionFailureKind, message: impl Into<String>) -> Self {
         Self {
             kind,
             message: message.into(),

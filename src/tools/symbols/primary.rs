@@ -4,7 +4,7 @@
 
 use crate::mcp_compat::{CallToolResult, CallToolResultExt, Content};
 use anyhow::{Result, bail};
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 use super::body_extraction::extract_code_bodies;
 use super::filtering::apply_all_filters;
@@ -36,19 +36,14 @@ pub async fn get_symbols_from_primary(
     // We need TWO paths:
     // 1. query_path: Relative Unix-style for database queries
     // 2. absolute_path: Absolute path for file I/O (extract_code_bodies)
-
-    let input_is_absolute = std::path::Path::new(file_path).is_absolute();
+    //
+    // Strict contract: `resolve_workspace_file_input` rejects outside-workspace
+    // paths with a typed `WorkspaceResolutionFailure`. We propagate via `?` so
+    // the MCP boundary can surface `invalid_params` instead of silently feeding
+    // a raw path string to the database.
     let resolution =
-        crate::utils::paths::resolve_workspace_file_input(file_path, &current_workspace_root);
-    let query_path = resolution.relative_query_path.unwrap_or_else(|_| {
-        if input_is_absolute {
-            warn!("Failed to convert absolute path to relative: {}", file_path);
-            file_path.to_string()
-        } else {
-            warn!("Failed to convert path to relative: {}", file_path);
-            file_path.replace('\\', "/")
-        }
-    });
+        crate::utils::paths::resolve_workspace_file_input(file_path, &current_workspace_root)?;
+    let query_path = resolution.relative_query_path;
     let absolute_path = resolution.absolute_path.to_string_lossy().to_string();
 
     debug!(

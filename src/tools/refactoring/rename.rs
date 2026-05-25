@@ -502,11 +502,16 @@ fn is_import_update_supported(path: &str) -> bool {
     )
 }
 
+/// Normalize a `file:` scope argument to a workspace-relative Unix-style path.
+///
+/// Strict contract: rejects paths outside the workspace root with a typed
+/// `WorkspaceResolutionFailure`. The MCP boundary surfaces this as
+/// `invalid_params`. No raw-input fallback — silently rewriting `\` → `/` on an
+/// outside-workspace path would let it match a coincidentally-named file inside
+/// the workspace and rename code the user never intended to touch.
 fn normalize_scope_file_path(file_path: &str, workspace_root: &std::path::Path) -> Result<String> {
-    let resolution = crate::utils::paths::resolve_workspace_file_input(file_path, workspace_root);
-    resolution
-        .relative_query_path
-        .or_else(|_| Ok(file_path.replace('\\', "/")))
+    let resolution = crate::utils::paths::resolve_workspace_file_input(file_path, workspace_root)?;
+    Ok(resolution.relative_query_path)
 }
 
 /// Used by rename to find all locations that need to be updated.

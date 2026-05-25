@@ -5,6 +5,9 @@ use std::path::Path;
 
 use tempfile::TempDir;
 
+use crate::tools::navigation::resolution::{
+    WorkspaceResolutionFailureKind, workspace_resolution_failure_kind,
+};
 use crate::utils::paths::{display_path, resolve_workspace_file_input};
 
 // ============================================================================
@@ -81,50 +84,65 @@ fn test_resolve_workspace_file_input_handles_tool_file_paths() {
         .expect("literal tilde file should canonicalize");
 
     let absolute_inside =
-        resolve_workspace_file_input(canonical_inside.to_str().unwrap(), &workspace_root);
+        resolve_workspace_file_input(canonical_inside.to_str().unwrap(), &workspace_root)
+            .expect("inside path should resolve");
     assert_eq!(absolute_inside.absolute_path, canonical_inside);
-    assert_eq!(absolute_inside.relative_query_path.unwrap(), "src/lib.rs");
+    assert_eq!(absolute_inside.relative_query_path, "src/lib.rs");
     assert!(absolute_inside.canonicalized);
 
-    let relative_inside = resolve_workspace_file_input("src/lib.rs", &workspace_root);
+    let relative_inside = resolve_workspace_file_input("src/lib.rs", &workspace_root)
+        .expect("relative inside path should resolve");
     assert_eq!(relative_inside.absolute_path, canonical_inside);
-    assert_eq!(relative_inside.relative_query_path.unwrap(), "src/lib.rs");
+    assert_eq!(relative_inside.relative_query_path, "src/lib.rs");
     assert!(relative_inside.canonicalized);
 
-    let dot_relative = resolve_workspace_file_input("./src/lib.rs", &workspace_root);
+    let dot_relative = resolve_workspace_file_input("./src/lib.rs", &workspace_root)
+        .expect("./prefixed inside path should resolve");
     assert_eq!(dot_relative.absolute_path, canonical_inside);
-    assert_eq!(dot_relative.relative_query_path.unwrap(), "src/lib.rs");
+    assert_eq!(dot_relative.relative_query_path, "src/lib.rs");
     assert!(dot_relative.canonicalized);
 
-    let parent_relative = resolve_workspace_file_input("src/../src/lib.rs", &workspace_root);
+    let parent_relative = resolve_workspace_file_input("src/../src/lib.rs", &workspace_root)
+        .expect("path with .. inside workspace should resolve");
     assert_eq!(parent_relative.absolute_path, canonical_inside);
-    assert_eq!(parent_relative.relative_query_path.unwrap(), "src/lib.rs");
+    assert_eq!(parent_relative.relative_query_path, "src/lib.rs");
     assert!(parent_relative.canonicalized);
 
-    let missing_inside = resolve_workspace_file_input("src/missing.rs", &workspace_root);
+    let missing_inside = resolve_workspace_file_input("src/missing.rs", &workspace_root)
+        .expect("missing-but-inside path should still resolve");
     assert_eq!(
         missing_inside.absolute_path,
         workspace_root.join("src/missing.rs")
     );
-    assert_eq!(
-        missing_inside.relative_query_path.unwrap(),
-        "src/missing.rs"
-    );
+    assert_eq!(missing_inside.relative_query_path, "src/missing.rs");
     assert!(!missing_inside.canonicalized);
 
-    let absolute_outside =
-        resolve_workspace_file_input(canonical_outside.to_str().unwrap(), &workspace_root);
-    assert_eq!(absolute_outside.absolute_path, canonical_outside);
-    assert!(absolute_outside.relative_query_path.is_err());
-    assert!(absolute_outside.canonicalized);
+    let absolute_outside_err =
+        resolve_workspace_file_input(canonical_outside.to_str().unwrap(), &workspace_root)
+            .expect_err("absolute path outside workspace should be rejected");
+    assert_eq!(
+        workspace_resolution_failure_kind(&absolute_outside_err),
+        Some(WorkspaceResolutionFailureKind::FileOutsideWorkspace),
+        "outside-workspace error should carry FileOutsideWorkspace kind"
+    );
+    assert!(
+        absolute_outside_err
+            .to_string()
+            .contains("file path is outside the workspace"),
+        "error message should mention workspace boundary"
+    );
 
-    let traversal_outside = resolve_workspace_file_input("../outside.rs", &workspace_root);
-    assert_eq!(traversal_outside.absolute_path, canonical_outside);
-    assert!(traversal_outside.relative_query_path.is_err());
-    assert!(traversal_outside.canonicalized);
+    let traversal_outside_err = resolve_workspace_file_input("../outside.rs", &workspace_root)
+        .expect_err("../ traversal outside workspace should be rejected");
+    assert_eq!(
+        workspace_resolution_failure_kind(&traversal_outside_err),
+        Some(WorkspaceResolutionFailureKind::FileOutsideWorkspace),
+        "../ traversal error should carry FileOutsideWorkspace kind"
+    );
 
-    let tilde_literal = resolve_workspace_file_input("~/literal.rs", &workspace_root);
+    let tilde_literal = resolve_workspace_file_input("~/literal.rs", &workspace_root)
+        .expect("literal tilde path inside workspace should resolve");
     assert_eq!(tilde_literal.absolute_path, canonical_tilde);
-    assert_eq!(tilde_literal.relative_query_path.unwrap(), "~/literal.rs");
+    assert_eq!(tilde_literal.relative_query_path, "~/literal.rs");
     assert!(tilde_literal.canonicalized);
 }

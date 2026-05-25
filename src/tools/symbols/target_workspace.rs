@@ -4,7 +4,7 @@
 
 use crate::mcp_compat::{CallToolResult, CallToolResultExt, Content};
 use anyhow::{Result, bail};
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 use super::body_extraction::extract_code_bodies;
 use super::filtering::apply_all_filters;
@@ -34,6 +34,10 @@ pub async fn get_symbols_from_target_workspace(
         .await?
         .into_read_snapshot()?;
 
+    // Strict contract: `resolve_workspace_file_input` rejects outside-workspace
+    // paths with a typed `WorkspaceResolutionFailure`. We propagate via `?` so
+    // the MCP boundary can surface `invalid_params` instead of silently feeding
+    // a raw path string to the database.
     let input_is_absolute = std::path::Path::new(file_path).is_absolute();
     let (query_path, absolute_path) = match handler
         .get_workspace_root_for_target(&target_workspace_id)
@@ -48,22 +52,17 @@ pub async fn get_symbols_from_target_workspace(
             let resolution = crate::utils::paths::resolve_workspace_file_input(
                 file_path,
                 &target_workspace_root,
-            );
-            let relative_unix = resolution.relative_query_path.unwrap_or_else(|_| {
-                if input_is_absolute {
-                    file_path.to_string()
-                } else {
-                    warn!("Failed to convert path to relative: {}", file_path);
-                    file_path.replace('\\', "/")
-                }
-            });
+            )?;
 
             (
-                relative_unix,
+                resolution.relative_query_path,
                 resolution.absolute_path.to_string_lossy().to_string(),
             )
         }
         Err(_) if input_is_absolute => {
+            // Workspace root lookup failed (target not currently active) — we
+            // can't enforce the workspace boundary, so we accept the absolute
+            // path as-is. This is the only documented fallback path.
             let canonical = std::path::Path::new(file_path)
                 .canonicalize()
                 .unwrap_or_else(|_| std::path::PathBuf::from(file_path));
