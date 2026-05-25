@@ -6,6 +6,7 @@ use rmcp::{
 };
 use tracing::debug;
 
+use crate::handler::tools::error::classify_tool_failure;
 use crate::handler::{JulieServerHandler, tool_targets};
 use crate::tools::metrics::session::ToolCallReport;
 
@@ -53,7 +54,7 @@ impl JulieServerHandler {
                     Some(params.request_input_bytes()),
                     &message,
                 );
-                return Err(McpError::internal_error(message, None));
+                return Err(classify_tool_failure("edit_file", &e));
             }
         };
         let metadata = tool_targets::merge_object(
@@ -87,7 +88,7 @@ impl JulieServerHandler {
                     input_bytes,
                     &message,
                 );
-                return Err(McpError::internal_error(message, None));
+                return Err(classify_tool_failure("edit_file", &e));
             }
         };
         let output_bytes = Self::output_bytes_from_result(&result);

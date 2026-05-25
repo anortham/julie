@@ -7,6 +7,7 @@ use rmcp::{
 use tracing::info;
 
 use crate::handler::JulieServerHandler;
+use crate::handler::tools::error::classify_tool_failure;
 use crate::tools::ManageWorkspaceTool;
 use crate::tools::metrics::session::ToolCallReport;
 
@@ -44,7 +45,7 @@ impl JulieServerHandler {
                     Self::input_bytes_from_metadata(&metadata),
                     &message,
                 );
-                return Err(McpError::internal_error(message, None));
+                return Err(classify_tool_failure("manage_workspace", &e));
             }
         };
         let report = ToolCallReport {
