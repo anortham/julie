@@ -176,14 +176,15 @@ mod tests {
     fn test_uncovered_symbol_has_no_test_linkage_key() {
         let temp_dir = TempDir::new().unwrap();
         let db_path = temp_dir.path().join("test.db");
-        let db = SymbolDatabase::new(&db_path).unwrap();
+        let mut db = SymbolDatabase::new(&db_path).unwrap();
 
-        insert_file(&db, "src/lib.rs");
+        store_file(&db, "src/lib.rs");
 
-        db.conn.execute_batch(r#"
-            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata, reference_score)
-            VALUES ('lonely', 'lonely_function', 'function', 'rust', 'src/lib.rs', 1, 0, 5, 0, 0, 0, NULL, 0.0);
-        "#).unwrap();
+        let symbols = [symbol_builder("lonely", "lonely_function", "src/lib.rs")
+            .span(1, 0, 5, 0)
+            .confidence(1.0)
+            .build()];
+        db.store_symbols(&symbols).unwrap();
 
         let _stats = crate::analysis::test_linkage::compute_test_linkage(&db).unwrap();
 
@@ -200,19 +201,40 @@ mod tests {
     fn test_test_to_test_relationships_excluded() {
         let temp_dir = TempDir::new().unwrap();
         let db_path = temp_dir.path().join("test.db");
-        let db = SymbolDatabase::new(&db_path).unwrap();
+        let mut db = SymbolDatabase::new(&db_path).unwrap();
 
-        insert_file(&db, "tests/a.rs");
-        insert_file(&db, "tests/b.rs");
+        store_file(&db, "tests/a.rs");
+        store_file(&db, "tests/b.rs");
 
-        db.conn.execute_batch(r#"
-            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata)
-            VALUES ('t1', 'test_a', 'function', 'rust', 'tests/a.rs', 1, 0, 5, 0, 0, 0, '{"is_test": true, "test_quality": {"quality_tier": "thin"}}');
-            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata)
-            VALUES ('t2', 'test_b', 'function', 'rust', 'tests/b.rs', 1, 0, 5, 0, 0, 0, '{"is_test": true, "test_quality": {"quality_tier": "thin"}}');
-            INSERT INTO relationships (id, from_symbol_id, to_symbol_id, kind, file_path, line_number)
-            VALUES ('r1', 't1', 't2', 'calls', 'tests/a.rs', 3);
-        "#).unwrap();
+        db.store_symbols(&[
+            symbol_builder("t1", "test_a", "tests/a.rs")
+                .span(1, 0, 5, 0)
+                .metadata(
+                    serde_json::from_str(
+                        r#"{"is_test": true, "test_quality": {"quality_tier": "thin"}}"#,
+                    )
+                    .unwrap(),
+                )
+                .confidence(1.0)
+                .build(),
+            symbol_builder("t2", "test_b", "tests/b.rs")
+                .span(1, 0, 5, 0)
+                .metadata(
+                    serde_json::from_str(
+                        r#"{"is_test": true, "test_quality": {"quality_tier": "thin"}}"#,
+                    )
+                    .unwrap(),
+                )
+                .confidence(1.0)
+                .build(),
+        ])
+        .unwrap();
+
+        let relationships = [relationship_builder("r1", "t1", "t2")
+            .file_path("tests/a.rs")
+            .line_number(3)
+            .build()];
+        db.store_relationships(&relationships).unwrap();
 
         let stats = crate::analysis::test_linkage::compute_test_linkage(&db).unwrap();
         assert_eq!(
