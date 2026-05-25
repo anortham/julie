@@ -3,6 +3,8 @@
 #[cfg(test)]
 mod tests {
     use crate::database::SymbolDatabase;
+    use crate::extractors::{SymbolKind, Visibility};
+    use crate::tests::helpers::db::{identifier_builder, symbol_builder};
     use tempfile::TempDir;
 
     /// Insert a file record (required by foreign key constraint on symbols.file_path).
@@ -22,7 +24,7 @@ mod tests {
         // row order does not leak into the result across runs.
         let temp_dir = TempDir::new().unwrap();
         let db_path = temp_dir.path().join("test.db");
-        let db = SymbolDatabase::new(&db_path).unwrap();
+        let mut db = SymbolDatabase::new(&db_path).unwrap();
 
         // Both prods live in the same directory so common_directory_depth
         // to the test path is identical. Neither file stem is a substring
@@ -35,20 +37,51 @@ mod tests {
         // SQLite returns rows in rowid order -> [prod_aaa, prod_zzz]. max_by_key
         // returns the LAST equal element (per std docs), so the unfixed code
         // picks prod_zzz - the wrong winner per spec.
-        db.conn.execute_batch(r#"
-            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata, reference_score, visibility)
-            VALUES ('prod_aaa', 'Helper', 'method', 'csharp', 'src/services/Helper.cs', 10, 0, 30, 0, 0, 0, NULL, 1.0, 'public');
+        let test_metadata: std::collections::HashMap<String, serde_json::Value> =
+            serde_json::from_value(serde_json::json!({
+                "is_test": true,
+                "test_quality": { "quality_tier": "adequate" }
+            }))
+            .unwrap();
 
-            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata, reference_score, visibility)
-            VALUES ('prod_zzz', 'Helper', 'method', 'csharp', 'src/services/Helper2.cs', 10, 0, 30, 0, 0, 0, NULL, 1.0, 'public');
+        db.store_symbols(&[
+            symbol_builder("prod_aaa", "Helper", "src/services/Helper.cs")
+                .kind(SymbolKind::Method)
+                .language("csharp")
+                .span(10, 0, 30, 0)
+                .visibility(Visibility::Public)
+                .confidence(1.0)
+                .build(),
+            symbol_builder("prod_zzz", "Helper", "src/services/Helper2.cs")
+                .kind(SymbolKind::Method)
+                .language("csharp")
+                .span(10, 0, 30, 0)
+                .visibility(Visibility::Public)
+                .confidence(1.0)
+                .build(),
+            symbol_builder("test_some", "SomeTest", "tests/services/SomeTest.cs")
+                .kind(SymbolKind::Method)
+                .language("csharp")
+                .span(5, 0, 15, 0)
+                .metadata(test_metadata)
+                .visibility(Visibility::Private)
+                .confidence(1.0)
+                .build(),
+        ])
+        .unwrap();
 
-            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata, reference_score, visibility)
-            VALUES ('test_some', 'SomeTest', 'method', 'csharp', 'tests/services/SomeTest.cs', 5, 0, 15, 0, 0, 0,
-                    '{"is_test": true, "test_quality": {"quality_tier": "adequate"}}', 0.0, 'private');
-
-            INSERT INTO identifiers (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, containing_symbol_id, target_symbol_id)
-            VALUES ('ident_1', 'Helper', 'call', 'csharp', 'tests/services/SomeTest.cs', 10, 0, 10, 20, 'test_some', NULL);
-        "#).unwrap();
+        db.bulk_store_identifiers(
+            &[
+                identifier_builder("ident_1", "Helper", "tests/services/SomeTest.cs")
+                    .language("csharp")
+                    .line(10)
+                    .column(0, 20)
+                    .containing_symbol_id("test_some")
+                    .build(),
+            ],
+            "",
+        )
+        .unwrap();
 
         // Run #1: populate metadata.
         crate::analysis::test_linkage::compute_test_linkage(&db).unwrap();
