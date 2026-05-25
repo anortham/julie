@@ -647,6 +647,9 @@ fn buckets_for_path(path: &str) -> &'static [&'static str] {
             "src/tests/tools/fast_refs_primary_rebind_tests.rs",
             "src/tests/tools/target_workspace_fast_refs_tests.rs",
         ],
+    ) || matches_prefix(
+        path,
+        &["src/tests/tools/target_workspace_fast_refs_tests/tests/"],
     ) {
         return &["tools-fast-refs"];
     }
@@ -1122,6 +1125,23 @@ mod tests {
         assert!(
             selection.fallback_paths.is_empty(),
             "split global targeting modules should not route through the broad workspace bucket; rationale={:?}",
+            selection.rationale
+        );
+    }
+
+    #[test]
+    fn changed_tests_route_target_workspace_fast_refs_split_modules_to_fast_refs_bucket() {
+        let manifest = manifest();
+        let selection = select_changed_buckets(
+            &manifest,
+            &["src/tests/tools/target_workspace_fast_refs_tests/tests/limits.rs".to_string()],
+        );
+
+        assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
+        assert_eq!(selection.bucket_names, vec!["tools-fast-refs"]);
+        assert!(
+            selection.fallback_paths.is_empty(),
+            "split target-workspace fast_refs modules should route through tools-fast-refs; rationale={:?}",
             selection.rationale
         );
     }
