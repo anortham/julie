@@ -488,25 +488,48 @@ mod tests {
     fn test_class_inherits_method_linkage() {
         let temp_dir = TempDir::new().unwrap();
         let db_path = temp_dir.path().join("test.db");
-        let db = SymbolDatabase::new(&db_path).unwrap();
+        let mut db = SymbolDatabase::new(&db_path).unwrap();
 
         insert_file(&db, "src/services.rs");
         insert_file(&db, "tests/services_test.rs");
 
-        db.conn.execute_batch(r#"
-            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata, reference_score, visibility)
-            VALUES ('class_1', 'PaymentService', 'class', 'csharp', 'src/services.rs', 1, 0, 50, 0, 0, 0, NULL, 5.0, 'public');
+        db.store_symbols(&[
+            symbol_builder("class_1", "PaymentService", "src/services.rs")
+                .kind(SymbolKind::Class)
+                .language("csharp")
+                .span(1, 0, 50, 0)
+                .visibility(Visibility::Public)
+                .confidence(1.0)
+                .build(),
+            symbol_builder("method_1", "ProcessPayment", "src/services.rs")
+                .kind(SymbolKind::Method)
+                .language("csharp")
+                .span(10, 0, 30, 0)
+                .visibility(Visibility::Public)
+                .parent_id("class_1")
+                .confidence(1.0)
+                .build(),
+            symbol_builder("test_1", "test_process_payment", "tests/services_test.rs")
+                .kind(SymbolKind::Method)
+                .language("csharp")
+                .span(5, 0, 20, 0)
+                .metadata(
+                    serde_json::from_str(
+                        r#"{"is_test": true, "test_quality": {"quality_tier": "thorough"}}"#,
+                    )
+                    .unwrap(),
+                )
+                .visibility(Visibility::Private)
+                .confidence(1.0)
+                .build(),
+        ])
+        .unwrap();
 
-            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata, reference_score, visibility, parent_id)
-            VALUES ('method_1', 'ProcessPayment', 'method', 'csharp', 'src/services.rs', 10, 0, 30, 0, 0, 0, NULL, 3.0, 'public', 'class_1');
-
-            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata, reference_score, visibility)
-            VALUES ('test_1', 'test_process_payment', 'method', 'csharp', 'tests/services_test.rs', 5, 0, 20, 0, 0, 0,
-                    '{"is_test": true, "test_quality": {"quality_tier": "thorough"}}', 0.0, 'private');
-
-            INSERT INTO relationships (id, from_symbol_id, to_symbol_id, kind, file_path, line_number)
-            VALUES ('rel_1', 'test_1', 'method_1', 'calls', 'tests/services_test.rs', 10);
-        "#).unwrap();
+        db.store_relationships(&[relationship_builder("rel_1", "test_1", "method_1")
+            .file_path("tests/services_test.rs")
+            .line_number(10)
+            .build()])
+            .unwrap();
 
         let _stats = crate::analysis::test_linkage::compute_test_linkage(&db).unwrap();
 
