@@ -3,7 +3,7 @@
 
 use crate::database::*;
 use crate::extractors::{IdentifierKind, Symbol, SymbolKind};
-use crate::tests::helpers::db::{identifier_builder, symbol_builder};
+use crate::tests::helpers::db::{identifier_builder, set_symbol_reference_scores, symbol_builder};
 use crate::tests::test_helpers::open_test_connection;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -2076,7 +2076,7 @@ fn test_compute_reference_scores_excludes_self_refs() {
 fn test_get_reference_scores_batch() {
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("test.db");
-    let db = SymbolDatabase::new(&db_path).unwrap();
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
 
     // Insert a file (foreign key requirement)
     db.store_file_info(&FileInfo {
@@ -2092,21 +2092,30 @@ fn test_get_reference_scores_batch() {
     })
     .unwrap();
 
-    // Insert symbols with known reference_scores via raw SQL
-    for (id, name, score) in [
+    let score_rows = [
         ("s1", "fn_a", 5.0),
         ("s2", "fn_b", 0.0),
         ("s3", "fn_c", 12.5),
         ("s4", "fn_d", 3.0),
-    ] {
-        db.conn
-            .execute(
-                "INSERT INTO symbols (id, name, kind, language, file_path, start_line, end_line, start_col, end_col, start_byte, end_byte, reference_score)
-                 VALUES (?1, ?2, 'function', 'rust', 'test.rs', 1, 10, 0, 1, 0, 100, ?3)",
-                rusqlite::params![id, name, score],
-            )
-            .unwrap();
-    }
+    ];
+    let symbols: Vec<_> = score_rows
+        .iter()
+        .map(|(id, name, _score)| {
+            symbol_builder(*id, *name, "test.rs")
+                .kind(SymbolKind::Function)
+                .language("rust")
+                .span(1, 0, 10, 1)
+                .bytes(0, 100)
+                .confidence(1.0)
+                .build()
+        })
+        .collect();
+    db.store_symbols(&symbols).unwrap();
+    let score_updates: Vec<_> = score_rows
+        .iter()
+        .map(|(id, _name, score)| (*id, *score))
+        .collect();
+    set_symbol_reference_scores(&db, &score_updates).unwrap();
 
     // Case 1: All IDs found — correct scores returned
     let ids = vec!["s1", "s2", "s3", "s4"];
@@ -2474,7 +2483,7 @@ fn test_delete_embeddings_for_symbol_ids_batches_large_inputs() {
 fn test_get_reference_scores_large_batch() {
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("test.db");
-    let db = SymbolDatabase::new(&db_path).unwrap();
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
 
     // Insert a file (foreign key requirement)
     db.store_file_info(&FileInfo {
@@ -2492,19 +2501,28 @@ fn test_get_reference_scores_large_batch() {
 
     // Insert 1500 symbols — enough to require two batches (900 + 600).
     let count = 1500usize;
-    for i in 0..count {
-        let id = format!("sym_{i}");
-        let score = (i % 50) as f64;
-        db.conn
-            .execute(
-                "INSERT INTO symbols (id, name, kind, language, file_path, \
-                 start_line, end_line, start_col, end_col, start_byte, end_byte, \
-                 reference_score) \
-                 VALUES (?1, ?2, 'function', 'rust', 'test.rs', 1, 10, 0, 1, 0, 100, ?3)",
-                rusqlite::params![id, format!("fn_{i}"), score],
-            )
-            .unwrap();
-    }
+    let score_updates: Vec<(String, f64)> = (0..count)
+        .map(|i| (format!("sym_{i}"), (i % 50) as f64))
+        .collect();
+    let symbols: Vec<_> = score_updates
+        .iter()
+        .enumerate()
+        .map(|(i, (id, _score))| {
+            symbol_builder(id.as_str(), format!("fn_{i}"), "test.rs")
+                .kind(SymbolKind::Function)
+                .language("rust")
+                .span(1, 0, 10, 1)
+                .bytes(0, 100)
+                .confidence(1.0)
+                .build()
+        })
+        .collect();
+    db.store_symbols(&symbols).unwrap();
+    let score_refs: Vec<_> = score_updates
+        .iter()
+        .map(|(id, score)| (id.as_str(), *score))
+        .collect();
+    set_symbol_reference_scores(&db, &score_refs).unwrap();
 
     // Query all 1500 IDs — this would fail pre-batching with SQLite bind limit.
     let ids: Vec<String> = (0..count).map(|i| format!("sym_{i}")).collect();
