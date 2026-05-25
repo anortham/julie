@@ -3192,129 +3192,126 @@ fn test_compute_reference_scores_escapes_like_wildcards() {
 fn test_centrality_deweights_test_file_symbols() {
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("test.db");
-    let db = SymbolDatabase::new(&db_path).unwrap();
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
 
-    // Real source file
-    db.store_file_info(&FileInfo {
-        path: "src/flask/app.py".to_string(),
-        language: "python".to_string(),
-        hash: "real".to_string(),
-        size: 5000,
-        last_modified: 1,
-        last_indexed: 0,
-        symbol_count: 1,
-        line_count: 0,
-        content: None,
-    })
+    db.store_file_info(
+        &file_info_builder("src/flask/app.py")
+            .language("python")
+            .hash("real")
+            .size(5000)
+            .last_modified(1)
+            .last_indexed(0)
+            .symbol_count(1)
+            .line_count(0)
+            .build(),
+    )
     .unwrap();
 
-    // Test file that defines a Flask subclass
-    db.store_file_info(&FileInfo {
-        path: "tests/test_config.py".to_string(),
-        language: "python".to_string(),
-        hash: "test".to_string(),
-        size: 1000,
-        last_modified: 1,
-        last_indexed: 0,
-        symbol_count: 1,
-        line_count: 0,
-        content: None,
-    })
+    db.store_file_info(
+        &file_info_builder("tests/test_config.py")
+            .language("python")
+            .hash("test")
+            .size(1000)
+            .last_modified(1)
+            .last_indexed(0)
+            .symbol_count(1)
+            .line_count(0)
+            .build(),
+    )
     .unwrap();
 
-    // Additional test files that reference Flask
     for i in 0..5 {
-        db.store_file_info(&FileInfo {
-            path: format!("tests/test_app_{}.py", i),
-            language: "python".to_string(),
-            hash: format!("testhash{}", i),
-            size: 500,
-            last_modified: 1,
-            last_indexed: 0,
-            symbol_count: 1,
-            line_count: 0,
-            content: None,
+        db.store_file_info(
+            &file_info_builder(format!("tests/test_app_{}.py", i))
+                .language("python")
+                .hash(format!("testhash{}", i))
+                .size(500)
+                .last_modified(1)
+                .last_indexed(0)
+                .symbol_count(1)
+                .line_count(0)
+                .build(),
+        )
+        .unwrap();
+    }
+
+    db.store_file_info(
+        &file_info_builder("src/flask/views.py")
+            .language("python")
+            .hash("views")
+            .size(2000)
+            .last_modified(1)
+            .last_indexed(0)
+            .symbol_count(1)
+            .line_count(0)
+            .build(),
+    )
+    .unwrap();
+
+    let mut symbols = vec![
+        symbol_builder("real_flask", "Flask", "src/flask/app.py")
+            .kind(SymbolKind::Class)
+            .language("python")
+            .span(1, 0, 500, 1)
+            .bytes(0, 10000)
+            .confidence(1.0)
+            .build(),
+        symbol_builder("test_flask", "Flask", "tests/test_config.py")
+            .kind(SymbolKind::Class)
+            .language("python")
+            .span(1, 0, 50, 1)
+            .bytes(0, 1000)
+            .confidence(1.0)
+            .build(),
+    ];
+
+    for i in 0..5 {
+        symbols.push(
+            symbol_builder(
+                format!("test_caller_{}", i),
+                format!("test_func_{}", i),
+                format!("tests/test_app_{}.py", i),
+            )
+            .kind(SymbolKind::Function)
+            .language("python")
+            .span(1, 0, 10, 1)
+            .bytes(0, 100)
+            .confidence(1.0)
+            .build(),
+        );
+    }
+
+    symbols.push(
+        symbol_builder("real_caller", "create_app", "src/flask/views.py")
+            .kind(SymbolKind::Function)
+            .language("python")
+            .span(1, 0, 10, 1)
+            .bytes(0, 200)
+            .confidence(1.0)
+            .build(),
+    );
+
+    db.store_symbols(&symbols).unwrap();
+
+    let mut relationships: Vec<_> = (0..5)
+        .map(|i| {
+            relationship_builder(
+                format!("r_test_{}", i),
+                format!("test_caller_{}", i),
+                "test_flask",
+            )
+            .kind(RelationshipKind::Instantiates)
+            .line_number(0)
+            .build()
         })
-        .unwrap();
-    }
-
-    // A real source file that references Flask
-    db.store_file_info(&FileInfo {
-        path: "src/flask/views.py".to_string(),
-        language: "python".to_string(),
-        hash: "views".to_string(),
-        size: 2000,
-        last_modified: 1,
-        last_indexed: 0,
-        symbol_count: 1,
-        line_count: 0,
-        content: None,
-    })
-    .unwrap();
-
-    // Real Flask class in source
-    db.conn
-        .execute(
-            "INSERT INTO symbols (id, name, kind, language, file_path, start_line, end_line, start_col, end_col, start_byte, end_byte)
-             VALUES ('real_flask', 'Flask', 'class', 'python', 'src/flask/app.py', 1, 500, 0, 1, 0, 10000)",
-            [],
-        )
-        .unwrap();
-
-    // Test Flask subclass in test file
-    db.conn
-        .execute(
-            "INSERT INTO symbols (id, name, kind, language, file_path, start_line, end_line, start_col, end_col, start_byte, end_byte)
-             VALUES ('test_flask', 'Flask', 'class', 'python', 'tests/test_config.py', 1, 50, 0, 1, 0, 1000)",
-            [],
-        )
-        .unwrap();
-
-    // Caller symbols in test files
-    for i in 0..5 {
-        db.conn
-            .execute(
-                &format!(
-                    "INSERT INTO symbols (id, name, kind, language, file_path, start_line, end_line, start_col, end_col, start_byte, end_byte)
-                     VALUES ('test_caller_{}', 'test_func_{}', 'function', 'python', 'tests/test_app_{}.py', 1, 10, 0, 1, 0, 100)",
-                    i, i, i
-                ),
-                [],
-            )
-            .unwrap();
-    }
-
-    // Caller in real source file
-    db.conn
-        .execute(
-            "INSERT INTO symbols (id, name, kind, language, file_path, start_line, end_line, start_col, end_col, start_byte, end_byte)
-             VALUES ('real_caller', 'create_app', 'function', 'python', 'src/flask/views.py', 1, 10, 0, 1, 0, 200)",
-            [],
-        )
-        .unwrap();
-
-    // 5 test files reference the test Flask (instantiates, weight=2 each => 10 total)
-    for i in 0..5 {
-        db.conn
-            .execute(
-                &format!(
-                    "INSERT INTO relationships (id, from_symbol_id, to_symbol_id, kind)
-                     VALUES ('r_test_{}', 'test_caller_{}', 'test_flask', 'instantiates')",
-                    i, i
-                ),
-                [],
-            )
-            .unwrap();
-    }
-
-    // 1 real source file references real Flask (instantiates, weight=2)
-    db.conn
-        .execute(
-            "INSERT INTO relationships (id, from_symbol_id, to_symbol_id, kind)
-             VALUES ('r_real', 'real_caller', 'real_flask', 'instantiates')",
-            [],
-        )
-        .unwrap();
+        .collect();
+    relationships.push(
+        relationship_builder("r_real", "real_caller", "real_flask")
+            .kind(RelationshipKind::Instantiates)
+            .line_number(0)
+            .build(),
+    );
+    db.store_relationships(&relationships).unwrap();
 
     db.compute_reference_scores().unwrap();
 
@@ -3359,7 +3356,7 @@ fn test_centrality_deweights_test_file_symbols() {
 fn test_compute_reference_scores_propagates_header_to_implementation() {
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("test.db");
-    let db = SymbolDatabase::new(&db_path).unwrap();
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
 
     for (path, lang) in [
         ("jq.h", "c"),
@@ -3367,67 +3364,69 @@ fn test_compute_reference_scores_propagates_header_to_implementation() {
         ("main.c", "c"),
         ("parser.c", "c"),
     ] {
-        db.store_file_info(&FileInfo {
-            path: path.to_string(),
-            language: lang.to_string(),
-            hash: "abc123".to_string(),
-            size: 1000,
-            last_modified: 1234567890,
-            last_indexed: 0,
-            symbol_count: 5,
-            line_count: 0,
-            content: None,
-        })
+        db.store_file_info(
+            &file_info_builder(path)
+                .language(lang)
+                .hash("abc123")
+                .size(1000)
+                .last_modified(1234567890)
+                .last_indexed(0)
+                .symbol_count(5)
+                .line_count(0)
+                .build(),
+        )
         .unwrap();
     }
 
-    // Header declaration: jq_next in jq.h
-    db.conn
-        .execute(
-            "INSERT INTO symbols (id, name, kind, language, file_path, start_line, end_line, start_col, end_col, start_byte, end_byte)
-             VALUES ('jq_next_h', 'jq_next', 'function', 'c', 'jq.h', 10, 10, 0, 30, 100, 130)",
-            [],
-        )
-        .unwrap();
+    let mut symbols = vec![
+        symbol_builder("jq_next_h", "jq_next", "jq.h")
+            .kind(SymbolKind::Function)
+            .language("c")
+            .span(10, 0, 10, 30)
+            .bytes(100, 130)
+            .confidence(1.0)
+            .build(),
+        symbol_builder("jq_next_c", "jq_next", "execute.c")
+            .kind(SymbolKind::Function)
+            .language("c")
+            .span(50, 0, 120, 1)
+            .bytes(500, 2500)
+            .confidence(1.0)
+            .build(),
+    ];
 
-    // Implementation: jq_next in execute.c
-    db.conn
-        .execute(
-            "INSERT INTO symbols (id, name, kind, language, file_path, start_line, end_line, start_col, end_col, start_byte, end_byte)
-             VALUES ('jq_next_c', 'jq_next', 'function', 'c', 'execute.c', 50, 120, 0, 1, 500, 2500)",
-            [],
-        )
-        .unwrap();
-
-    // Callers that reference the header declaration
     for (id, name, file) in [
         ("caller_main", "main", "main.c"),
         ("caller_parse", "parse_input", "parser.c"),
         ("caller_run", "run_program", "main.c"),
     ] {
-        db.conn
-            .execute(
-                "INSERT INTO symbols (id, name, kind, language, file_path, start_line, end_line, start_col, end_col, start_byte, end_byte)
-                 VALUES (?1, ?2, 'function', 'c', ?3, 1, 20, 0, 1, 0, 300)",
-                rusqlite::params![id, name, file],
-            )
-            .unwrap();
+        symbols.push(
+            symbol_builder(id, name, file)
+                .kind(SymbolKind::Function)
+                .language("c")
+                .span(1, 0, 20, 1)
+                .bytes(0, 300)
+                .confidence(1.0)
+                .build(),
+        );
     }
 
-    // Relationships: callers -> header declaration
-    for (rel_id, from_id, kind) in [
-        ("rel_1", "caller_main", "calls"),
-        ("rel_2", "caller_parse", "calls"),
-        ("rel_3", "caller_run", "uses"),
-    ] {
-        db.conn
-            .execute(
-                "INSERT INTO relationships (id, from_symbol_id, to_symbol_id, kind)
-                 VALUES (?1, ?2, 'jq_next_h', ?3)",
-                rusqlite::params![rel_id, from_id, kind],
-            )
-            .unwrap();
-    }
+    db.store_symbols(&symbols).unwrap();
+
+    let relationships: Vec<_> = [
+        ("rel_1", "caller_main", RelationshipKind::Calls),
+        ("rel_2", "caller_parse", RelationshipKind::Calls),
+        ("rel_3", "caller_run", RelationshipKind::Uses),
+    ]
+    .into_iter()
+    .map(|(rel_id, from_id, kind)| {
+        relationship_builder(rel_id, from_id, "jq_next_h")
+            .kind(kind)
+            .line_number(0)
+            .build()
+    })
+    .collect();
+    db.store_relationships(&relationships).unwrap();
 
     db.compute_reference_scores().unwrap();
 
