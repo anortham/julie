@@ -24,4 +24,4 @@ mod reference_scores_basic;
 mod reference_scores_propagation;
 mod relationships;
 mod symbol_lookup;
-mod test_deweighting;
+mod deweighting;
