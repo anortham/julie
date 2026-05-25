@@ -464,6 +464,7 @@ fn buckets_for_path(path: &str) -> &'static [&'static str] {
                 "src/tests/core/database_lightweight_query.rs",
             ],
         )
+        || matches_prefix(path, &["src/tests/core/database/"])
     {
         return &["core-database"];
     }
@@ -745,7 +746,9 @@ fn buckets_for_path(path: &str) -> &'static [&'static str] {
         return &["system-health"];
     }
 
-    if matches_exact(path, &["src/tests/core/workspace_init.rs"]) {
+    if matches_exact(path, &["src/tests/core/workspace_init.rs"])
+        || matches_prefix(path, &["src/tests/core/workspace_init/"])
+    {
         return &["workspace-init"];
     }
 
