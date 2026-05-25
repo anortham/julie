@@ -4,7 +4,10 @@ use crate::dashboard::routes::intelligence::{
 use crate::database::SymbolDatabase;
 use crate::database::analytics::{AggregateStats, CentralitySymbol, FileHotspot};
 use crate::database::types::FileInfo;
-use crate::tests::helpers::db::file_info_builder;
+use crate::extractors::{RelationshipKind, SymbolKind};
+use crate::tests::helpers::db::{
+    file_info_builder, relationship_builder, set_symbol_reference_scores, symbol_builder,
+};
 use std::collections::HashMap;
 use tempfile::TempDir;
 
@@ -27,6 +30,45 @@ fn make_file(path: &str, language: &str, line_count: i64, size: i64) -> FileInfo
         .build()
 }
 
+fn store_function_symbol(
+    db: &mut SymbolDatabase,
+    id: &str,
+    name: &str,
+    language: &str,
+    file_path: &str,
+    signature: Option<&str>,
+    reference_score: f64,
+) {
+    let mut symbol = symbol_builder(id, name, file_path)
+        .kind(SymbolKind::Function)
+        .language(language)
+        // Dashboard analytics in this module do not read source ranges.
+        .span(1, 0, 10, 0)
+        .bytes(0, 100);
+    if let Some(signature) = signature {
+        symbol = symbol.signature(signature);
+    }
+
+    db.store_symbols(&[symbol.build()]).unwrap();
+    set_symbol_reference_scores(db, &[(id, reference_score)]).unwrap();
+}
+
+fn store_call_relationship(
+    db: &mut SymbolDatabase,
+    id: &str,
+    from_symbol_id: &str,
+    to_symbol_id: &str,
+    file_path: &str,
+    line_number: u32,
+) {
+    db.store_relationships(&[relationship_builder(id, from_symbol_id, to_symbol_id)
+        .kind(RelationshipKind::Calls)
+        .file_path(file_path)
+        .line_number(line_number)
+        .build()])
+        .unwrap();
+}
+
 // --- get_top_symbols_by_centrality ---
 
 #[test]
@@ -38,15 +80,19 @@ fn test_get_top_symbols_by_centrality_returns_empty_for_empty_db() {
 
 #[test]
 fn test_get_top_symbols_by_centrality_excludes_zero_scores() {
-    let (_tmp, db) = test_db();
+    let (_tmp, mut db) = test_db();
 
     db.store_file_info(&make_file("src/main.rs", "rust", 100, 1000))
         .unwrap();
-    db.conn.execute(
-        "INSERT INTO symbols (id, name, kind, language, file_path, reference_score, start_line, end_line, start_col, end_col, start_byte, end_byte, last_indexed)
-         VALUES ('sym1', 'zero_score_fn', 'function', 'rust', 'src/main.rs', 0.0, 1, 10, 0, 0, 0, 100, 0)",
-        [],
-    ).unwrap();
+    store_function_symbol(
+        &mut db,
+        "sym1",
+        "zero_score_fn",
+        "rust",
+        "src/main.rs",
+        None,
+        0.0,
+    );
 
     let result = db.get_top_symbols_by_centrality(10).unwrap();
     assert!(
@@ -57,27 +103,38 @@ fn test_get_top_symbols_by_centrality_excludes_zero_scores() {
 
 #[test]
 fn test_get_top_symbols_by_centrality_returns_ordered_by_score() {
-    let (_tmp, db) = test_db();
+    let (_tmp, mut db) = test_db();
 
     db.store_file_info(&make_file("src/lib.rs", "rust", 200, 2000))
         .unwrap();
 
-    // Insert symbols directly with known reference_score values
-    db.conn.execute(
-        "INSERT INTO symbols (id, name, kind, language, file_path, signature, reference_score, start_line, end_line, start_col, end_col, start_byte, end_byte, last_indexed)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, 10, 0, 0, 0, 100, 0)",
-        rusqlite::params!["s1", "low_fn", "function", "rust", "src/lib.rs", "fn low_fn()", 1.5_f64],
-    ).unwrap();
-    db.conn.execute(
-        "INSERT INTO symbols (id, name, kind, language, file_path, signature, reference_score, start_line, end_line, start_col, end_col, start_byte, end_byte, last_indexed)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, 10, 0, 0, 0, 100, 0)",
-        rusqlite::params!["s2", "high_fn", "function", "rust", "src/lib.rs", "fn high_fn()", 9.0_f64],
-    ).unwrap();
-    db.conn.execute(
-        "INSERT INTO symbols (id, name, kind, language, file_path, signature, reference_score, start_line, end_line, start_col, end_col, start_byte, end_byte, last_indexed)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, 10, 0, 0, 0, 100, 0)",
-        rusqlite::params!["s3", "mid_fn", "function", "rust", "src/lib.rs", "fn mid_fn()", 4.0_f64],
-    ).unwrap();
+    store_function_symbol(
+        &mut db,
+        "s1",
+        "low_fn",
+        "rust",
+        "src/lib.rs",
+        Some("fn low_fn()"),
+        1.5,
+    );
+    store_function_symbol(
+        &mut db,
+        "s2",
+        "high_fn",
+        "rust",
+        "src/lib.rs",
+        Some("fn high_fn()"),
+        9.0,
+    );
+    store_function_symbol(
+        &mut db,
+        "s3",
+        "mid_fn",
+        "rust",
+        "src/lib.rs",
+        Some("fn mid_fn()"),
+        4.0,
+    );
 
     let result = db.get_top_symbols_by_centrality(10).unwrap();
     assert_eq!(result.len(), 3);
@@ -91,25 +148,21 @@ fn test_get_top_symbols_by_centrality_returns_ordered_by_score() {
 
 #[test]
 fn test_get_top_symbols_by_centrality_respects_limit() {
-    let (_tmp, db) = test_db();
+    let (_tmp, mut db) = test_db();
 
     db.store_file_info(&make_file("src/lib.rs", "rust", 100, 1000))
         .unwrap();
 
     for i in 1..=5u32 {
-        db.conn.execute(
-            "INSERT INTO symbols (id, name, kind, language, file_path, signature, reference_score, start_line, end_line, start_col, end_col, start_byte, end_byte, last_indexed)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, 10, 0, 0, 0, 100, 0)",
-            rusqlite::params![
-                format!("s{}", i),
-                format!("fn_{}", i),
-                "function",
-                "rust",
-                "src/lib.rs",
-                format!("fn fn_{}()", i),
-                i as f64,
-            ],
-        ).unwrap();
+        store_function_symbol(
+            &mut db,
+            &format!("s{}", i),
+            &format!("fn_{}", i),
+            "rust",
+            "src/lib.rs",
+            Some(&format!("fn fn_{}()", i)),
+            i as f64,
+        );
     }
 
     let result = db.get_top_symbols_by_centrality(3).unwrap();
@@ -118,15 +171,19 @@ fn test_get_top_symbols_by_centrality_respects_limit() {
 
 #[test]
 fn test_get_top_symbols_by_centrality_fields_populated() {
-    let (_tmp, db) = test_db();
+    let (_tmp, mut db) = test_db();
 
     db.store_file_info(&make_file("src/core.rs", "rust", 100, 1000))
         .unwrap();
-    db.conn.execute(
-        "INSERT INTO symbols (id, name, kind, language, file_path, signature, reference_score, start_line, end_line, start_col, end_col, start_byte, end_byte, last_indexed)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, 10, 0, 0, 0, 100, 0)",
-        rusqlite::params!["s1", "core_fn", "function", "rust", "src/core.rs", "fn core_fn()", 5.0_f64],
-    ).unwrap();
+    store_function_symbol(
+        &mut db,
+        "s1",
+        "core_fn",
+        "rust",
+        "src/core.rs",
+        Some("fn core_fn()"),
+        5.0,
+    );
 
     let result = db.get_top_symbols_by_centrality(1).unwrap();
     assert_eq!(result.len(), 1);
@@ -153,7 +210,7 @@ fn test_get_file_hotspots_empty_db() {
 
 #[test]
 fn test_get_file_hotspots_returns_ordered_by_composite_score() {
-    let (_tmp, db) = test_db();
+    let (_tmp, mut db) = test_db();
 
     // Composite = line_count + symbol_count * 10
     // Files with 0 symbols are excluded (data files, not code)
@@ -168,28 +225,32 @@ fn test_get_file_hotspots_returns_ordered_by_composite_score() {
         .unwrap();
 
     // Add 1 symbol to a.rs (score: 50 + 10 = 60)
-    db.conn.execute(
-        "INSERT INTO symbols (id, name, kind, language, file_path, reference_score, start_line, end_line, start_col, end_col, start_byte, end_byte, last_indexed)
-         VALUES (?1, ?2, ?3, ?4, ?5, 0.0, 1, 10, 0, 0, 0, 100, 0)",
-        rusqlite::params!["s1", "fn_a", "function", "rust", "src/a.rs"],
-    ).unwrap();
+    store_function_symbol(&mut db, "s1", "fn_a", "rust", "src/a.rs", None, 0.0);
 
     // Add 5 symbols to b.rs (score: 20 + 50 = 70)
     for i in 1..=5u32 {
-        db.conn.execute(
-            "INSERT INTO symbols (id, name, kind, language, file_path, reference_score, start_line, end_line, start_col, end_col, start_byte, end_byte, last_indexed)
-             VALUES (?1, ?2, ?3, ?4, ?5, 0.0, 1, 10, 0, 0, 0, 100, 0)",
-            rusqlite::params![format!("sb{}", i), format!("fn_b{}", i), "function", "rust", "src/b.rs"],
-        ).unwrap();
+        store_function_symbol(
+            &mut db,
+            &format!("sb{}", i),
+            &format!("fn_b{}", i),
+            "rust",
+            "src/b.rs",
+            None,
+            0.0,
+        );
     }
 
     // Add 2 symbols to c.rs (score: 100 + 20 = 120)
     for i in 1..=2u32 {
-        db.conn.execute(
-            "INSERT INTO symbols (id, name, kind, language, file_path, reference_score, start_line, end_line, start_col, end_col, start_byte, end_byte, last_indexed)
-             VALUES (?1, ?2, ?3, ?4, ?5, 0.0, 1, 10, 0, 0, 0, 100, 0)",
-            rusqlite::params![format!("sc{}", i), format!("fn_c{}", i), "function", "rust", "src/c.rs"],
-        ).unwrap();
+        store_function_symbol(
+            &mut db,
+            &format!("sc{}", i),
+            &format!("fn_c{}", i),
+            "rust",
+            "src/c.rs",
+            None,
+            0.0,
+        );
     }
 
     let result = db.get_file_hotspots(10).unwrap();
@@ -211,7 +272,7 @@ fn test_get_file_hotspots_returns_ordered_by_composite_score() {
 
 #[test]
 fn test_get_file_hotspots_respects_limit() {
-    let (_tmp, db) = test_db();
+    let (_tmp, mut db) = test_db();
 
     for i in 1..=5u32 {
         db.store_file_info(&make_file(
@@ -222,11 +283,15 @@ fn test_get_file_hotspots_respects_limit() {
         ))
         .unwrap();
         // Each file needs at least one symbol to not be filtered out
-        db.conn.execute(
-            "INSERT INTO symbols (id, name, kind, language, file_path, reference_score, start_line, end_line, start_col, end_col, start_byte, end_byte, last_indexed)
-             VALUES (?1, ?2, 'function', 'rust', ?3, 0.0, 1, 10, 0, 0, 0, 100, 0)",
-            rusqlite::params![format!("sl{}", i), format!("fn_{}", i), format!("src/file{}.rs", i)],
-        ).unwrap();
+        store_function_symbol(
+            &mut db,
+            &format!("sl{}", i),
+            &format!("fn_{}", i),
+            "rust",
+            &format!("src/file{}.rs", i),
+            None,
+            0.0,
+        );
     }
 
     let result = db.get_file_hotspots(2).unwrap();
@@ -235,15 +300,11 @@ fn test_get_file_hotspots_respects_limit() {
 
 #[test]
 fn test_get_file_hotspots_fields_populated() {
-    let (_tmp, db) = test_db();
+    let (_tmp, mut db) = test_db();
 
     db.store_file_info(&make_file("src/hot.rs", "rust", 200, 4096))
         .unwrap();
-    db.conn.execute(
-        "INSERT INTO symbols (id, name, kind, language, file_path, reference_score, start_line, end_line, start_col, end_col, start_byte, end_byte, last_indexed)
-         VALUES ('sym1', 'hot_fn', 'function', 'rust', 'src/hot.rs', 0.0, 1, 10, 0, 0, 0, 100, 0)",
-        [],
-    ).unwrap();
+    store_function_symbol(&mut db, "sym1", "hot_fn", "rust", "src/hot.rs", None, 0.0);
 
     let result = db.get_file_hotspots(1).unwrap();
     assert_eq!(result.len(), 1);
@@ -257,7 +318,7 @@ fn test_get_file_hotspots_fields_populated() {
 
 #[test]
 fn test_get_file_hotspots_null_line_count_treated_as_zero() {
-    let (_tmp, db) = test_db();
+    let (_tmp, mut db) = test_db();
 
     // Insert a file with NULL line_count directly (shouldn't happen via FileInfo but
     // verify robustness of the query's COALESCE/IFNULL handling)
@@ -267,11 +328,15 @@ fn test_get_file_hotspots_null_line_count_treated_as_zero() {
         [],
     ).unwrap();
     // File needs at least one symbol to appear in hotspots
-    db.conn.execute(
-        "INSERT INTO symbols (id, name, kind, language, file_path, reference_score, start_line, end_line, start_col, end_col, start_byte, end_byte, last_indexed)
-         VALUES ('snl1', 'fn_no_lines', 'function', 'rust', 'src/no_lines.rs', 0.0, 1, 10, 0, 0, 0, 100, 0)",
-        [],
-    ).unwrap();
+    store_function_symbol(
+        &mut db,
+        "snl1",
+        "fn_no_lines",
+        "rust",
+        "src/no_lines.rs",
+        None,
+        0.0,
+    );
 
     let result = db.get_file_hotspots(10).unwrap();
     assert_eq!(result.len(), 1);
@@ -296,7 +361,7 @@ fn test_get_aggregate_stats_empty_db() {
 
 #[test]
 fn test_get_aggregate_stats_counts_files_and_symbols() {
-    let (_tmp, db) = test_db();
+    let (_tmp, mut db) = test_db();
 
     db.store_file_info(&make_file("src/a.rs", "rust", 100, 1000))
         .unwrap();
@@ -305,16 +370,8 @@ fn test_get_aggregate_stats_counts_files_and_symbols() {
     db.store_file_info(&make_file("lib/main.py", "python", 200, 2000))
         .unwrap();
 
-    db.conn.execute(
-        "INSERT INTO symbols (id, name, kind, language, file_path, reference_score, start_line, end_line, start_col, end_col, start_byte, end_byte, last_indexed)
-         VALUES ('s1', 'fn_a', 'function', 'rust', 'src/a.rs', 0.0, 1, 10, 0, 0, 0, 100, 0)",
-        [],
-    ).unwrap();
-    db.conn.execute(
-        "INSERT INTO symbols (id, name, kind, language, file_path, reference_score, start_line, end_line, start_col, end_col, start_byte, end_byte, last_indexed)
-         VALUES ('s2', 'fn_b', 'function', 'rust', 'src/b.rs', 0.0, 1, 10, 0, 0, 0, 100, 0)",
-        [],
-    ).unwrap();
+    store_function_symbol(&mut db, "s1", "fn_a", "rust", "src/a.rs", None, 0.0);
+    store_function_symbol(&mut db, "s2", "fn_b", "rust", "src/b.rs", None, 0.0);
 
     let stats = db.get_aggregate_stats().unwrap();
     assert_eq!(stats.total_files, 3);
@@ -364,32 +421,15 @@ fn test_get_aggregate_stats_language_count_ignores_empty_language() {
 
 #[test]
 fn test_get_aggregate_stats_counts_relationships() {
-    let (_tmp, db) = test_db();
+    let (_tmp, mut db) = test_db();
 
     db.store_file_info(&make_file("src/a.rs", "rust", 10, 100))
         .unwrap();
 
-    db.conn.execute(
-        "INSERT INTO symbols (id, name, kind, language, file_path, reference_score, start_line, end_line, start_col, end_col, start_byte, end_byte, last_indexed)
-         VALUES ('s1', 'fn_a', 'function', 'rust', 'src/a.rs', 0.0, 1, 10, 0, 0, 0, 100, 0)",
-        [],
-    ).unwrap();
-    db.conn.execute(
-        "INSERT INTO symbols (id, name, kind, language, file_path, reference_score, start_line, end_line, start_col, end_col, start_byte, end_byte, last_indexed)
-         VALUES ('s2', 'fn_b', 'function', 'rust', 'src/a.rs', 0.0, 2, 20, 0, 0, 0, 100, 0)",
-        [],
-    ).unwrap();
-
-    db.conn.execute(
-        "INSERT INTO relationships (id, from_symbol_id, to_symbol_id, kind, file_path, line_number)
-         VALUES ('r1', 's1', 's2', 'calls', 'src/a.rs', 5)",
-        [],
-    ).unwrap();
-    db.conn.execute(
-        "INSERT INTO relationships (id, from_symbol_id, to_symbol_id, kind, file_path, line_number)
-         VALUES ('r2', 's2', 's1', 'calls', 'src/a.rs', 15)",
-        [],
-    ).unwrap();
+    store_function_symbol(&mut db, "s1", "fn_a", "rust", "src/a.rs", None, 0.0);
+    store_function_symbol(&mut db, "s2", "fn_b", "rust", "src/a.rs", None, 0.0);
+    store_call_relationship(&mut db, "r1", "s1", "s2", "src/a.rs", 5);
+    store_call_relationship(&mut db, "r2", "s2", "s1", "src/a.rs", 15);
 
     let stats = db.get_aggregate_stats().unwrap();
     assert_eq!(stats.total_relationships, 2);
