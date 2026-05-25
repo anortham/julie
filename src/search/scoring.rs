@@ -441,7 +441,6 @@ pub(crate) fn test_subrole(path: &str) -> &'static str {
 }
 
 /// True when `language` denotes source code (not docs/data formats).
-#[allow(dead_code)] // C.4 wiring will consume this.
 pub(crate) fn is_source_language(language: &str) -> bool {
     !DOC_LANGUAGES.contains(&language)
 }

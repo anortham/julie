@@ -3,7 +3,6 @@
 //! Provides grep-style line-by-line searching with file paths and line numbers.
 //! Used when output format is set to "lines".
 
-use crate::mcp_compat::{CallToolResult, CallToolResultExt, Content};
 use anyhow::Result;
 use std::sync::{Arc, Mutex};
 use tracing::{debug, warn};
@@ -16,8 +15,6 @@ use crate::search::query_parse::{QueryIntent, parse_query};
 use crate::search::scoring::{is_nl_like_query, is_test_path};
 use crate::tools::navigation::resolution::WorkspaceTarget;
 
-use super::hint_formatter::build_scope_rescue_header;
-use super::line_output::format_grouped_line_matches;
 use super::query::{
     line_match_strategy, line_matches, looks_like_whitespace_separated_globs, matches_glob_pattern,
     term_matches_line, tokenize_text_for_line_match,
@@ -28,7 +25,6 @@ use super::types::{LineMatch, LineMatchStrategy};
 pub(crate) struct LineModeSearchResult {
     pub matches: Vec<LineMatch>,
     pub strategy: LineMatchStrategy,
-    pub workspace_label: String,
     #[cfg_attr(not(test), allow(dead_code))]
     pub stage_counts: LineModeStageCounts,
     pub zero_hit_reason: Option<ZeroHitReason>,
@@ -555,48 +551,6 @@ pub(crate) fn attribute_zero_hit_reason(counts: &LineModeStageCounts) -> Option<
     }
 }
 
-/// Line-level search mode (grep-style output with line numbers)
-///
-/// Returns every line matching the query with file:line_number:line_content format.
-/// Supports language and file pattern filtering for targeted searches.
-///
-/// Accepts a pre-resolved `WorkspaceTarget` to avoid redundant workspace resolution.
-/// The caller (`FastSearchTool::call_tool`) resolves the workspace once and passes it here.
-#[allow(dead_code)]
-pub async fn line_mode_search(
-    query: &str,
-    language: &Option<String>,
-    file_pattern: &Option<String>,
-    limit: u32,
-    exclude_tests: Option<bool>,
-    workspace_target: &WorkspaceTarget,
-    handler: &JulieServerHandler,
-) -> Result<CallToolResult> {
-    let result = line_mode_matches(
-        query,
-        language,
-        file_pattern,
-        limit,
-        exclude_tests,
-        workspace_target,
-        handler,
-    )
-    .await?;
-
-    if result.matches.is_empty() {
-        let message = format!(
-            "🔍 No lines found matching: '{}'\n\
-            💡 Broaden file_pattern/language filters, or search for a symbol name with fast_search(query=\"{}\")",
-            query, query
-        );
-        return Ok(CallToolResult::text_content(vec![Content::text(message)]));
-    }
-
-    Ok(CallToolResult::text_content(vec![Content::text(
-        format_line_mode_output(query, &result),
-    )]))
-}
-
 pub(crate) async fn line_mode_matches(
     query: &str,
     language: &Option<String>,
@@ -609,10 +563,6 @@ pub(crate) async fn line_mode_matches(
     debug!("📄 Line-level search for: '{}'", query);
 
     let exclude_test_files = effective_content_exclude_tests(query, file_pattern, exclude_tests);
-    let workspace_label = match workspace_target {
-        WorkspaceTarget::Primary => "primary".to_string(),
-        WorkspaceTarget::Target(id) => id.clone(),
-    };
     let match_strategy = line_match_strategy(query);
     let base_limit = limit.max(1) as usize;
 
@@ -712,63 +662,12 @@ pub(crate) async fn line_mode_matches(
     Ok(LineModeSearchResult {
         matches: all_line_matches,
         strategy: match_strategy,
-        workspace_label,
         stage_counts,
         zero_hit_reason,
         file_pattern_diagnostic,
         scope_relaxed: scoped_outcome.scope_relaxed,
         original_file_pattern: scoped_outcome.original_file_pattern,
     })
-}
-
-pub(crate) fn format_line_mode_output(query: &str, result: &LineModeSearchResult) -> String {
-    let header = match &result.strategy {
-        LineMatchStrategy::FileLevel { .. } => {
-            let file_count = result
-                .matches
-                .iter()
-                .map(|m| &m.file_path)
-                .collect::<std::collections::HashSet<_>>()
-                .len();
-            format!(
-                "📄 File-level search in [{}]: '{}' (found {} lines across {} files)",
-                result.workspace_label,
-                query,
-                result.matches.len(),
-                file_count
-            )
-        }
-        _ => format!(
-            "📄 Line-level search in [{}]: '{}' (found {} lines)",
-            result.workspace_label,
-            query,
-            result.matches.len()
-        ),
-    };
-    let mut lines = Vec::new();
-    if result.scope_relaxed
-        && let Some(original_file_pattern) = result.original_file_pattern.as_deref()
-    {
-        if result.workspace_label == "multiple" {
-            lines.push(format!(
-                "NOTE: At least one workspace had 0 matches within file_pattern={}. Showing {} aggregated results. Scope-rescued results may be outside requested scope.",
-                original_file_pattern,
-                result.matches.len(),
-            ));
-        } else {
-            lines.push(build_scope_rescue_header(
-                original_file_pattern,
-                result.matches.len(),
-            ));
-        }
-        lines.push(String::new());
-    }
-    lines.push(header);
-    lines.push(String::new());
-
-    lines.extend(format_grouped_line_matches(&result.matches));
-
-    lines.join("\n")
 }
 
 fn indexed_language_matches(indexed: &str, requested: &str) -> bool {

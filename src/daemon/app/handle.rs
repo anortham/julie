@@ -45,7 +45,6 @@ pub struct DaemonHandle {
     pub(super) dashboard_task: Option<JoinHandle<()>>,
     pub(super) embedding_init_handle: Option<JoinHandle<()>>,
     // Shared with the Windows shutdown-event waker task.
-    #[allow(dead_code)]
     pub(super) stop_notify: Arc<Notify>,
 }
 

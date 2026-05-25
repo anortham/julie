@@ -647,7 +647,6 @@ impl Service<RoleServer> for HttpJulieService {
     }
 }
 
-#[allow(dead_code)]
 fn workspace_startup_hint_from_context(
     context: &RequestContext<RoleServer>,
 ) -> Result<WorkspaceStartupHint, McpError> {
@@ -657,7 +656,6 @@ fn workspace_startup_hint_from_context(
     workspace_startup_hint_from_parts(parts)
 }
 
-#[allow(dead_code)]
 fn workspace_startup_hint_from_parts(parts: &Parts) -> Result<WorkspaceStartupHint, McpError> {
     let workspace = header_value(parts, HEADER_JULIE_WORKSPACE).ok_or_else(|| {
         McpError::invalid_params(
@@ -689,7 +687,6 @@ fn workspace_startup_hint_from_parts(parts: &Parts) -> Result<WorkspaceStartupHi
     })
 }
 
-#[allow(dead_code)]
 fn header_value<'a>(parts: &'a Parts, name: &str) -> Option<&'a str> {
     parts.headers.get(name)?.to_str().ok()
 }

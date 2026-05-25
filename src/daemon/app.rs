@@ -98,7 +98,6 @@ pub struct DaemonApp {
     /// that a previous daemon shutdown timed out with in-flight requests.
     /// Cloned into the handle so it survives `serve`'s consumption of self.
     recovery_markers: Arc<Vec<RecoveryMarker>>,
-    #[allow(dead_code)] // Consumed by A.2.2 (handler runtime-context wiring).
     runtime: DaemonRuntimeContext,
 }
 

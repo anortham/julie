@@ -1006,7 +1006,7 @@ impl SearchIndex {
         use crate::extractors::SymbolKind;
         use crate::search::query_parse::parse_query;
         use crate::search::reranker::{Candidate, rerank_unified};
-        use crate::search::scoring::{DOC_LANGUAGES, classify_role, test_subrole};
+        use crate::search::scoring::{classify_role, is_source_language, test_subrole};
 
         let f = &self.schema_fields;
 
@@ -1286,7 +1286,7 @@ impl SearchIndex {
                     // not just for doc-role rows. The kind field is the
                     // authoritative discriminator.
                     let is_file_doc = hit.kind == "file";
-                    let is_source_language = !DOC_LANGUAGES.contains(&hit.language.as_str());
+                    let source_language = is_source_language(&hit.language);
 
                     let mut body = String::with_capacity(
                         hit.signature.len() + hit.doc_comment.len() + hit.code_body.len() + 2,
@@ -1310,7 +1310,7 @@ impl SearchIndex {
                         .test_role(test_role)
                         .is_test(is_test)
                         .is_file_doc(is_file_doc)
-                        .is_source_language(is_source_language)
+                        .is_source_language(source_language)
                         .tantivy_score(hit.tantivy_score)
                         .build()
                 })
