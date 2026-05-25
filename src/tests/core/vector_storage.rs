@@ -3,6 +3,8 @@
 #[cfg(test)]
 mod tests {
     use crate::database::{LATEST_SCHEMA_VERSION, SymbolDatabase};
+    use crate::extractors::SymbolKind;
+    use crate::tests::helpers::db::{file_info_builder, symbol_builder};
     use tempfile::TempDir;
 
     /// Helper: create a fresh SymbolDatabase in a temp directory.
@@ -27,19 +29,23 @@ mod tests {
         language: &str,
     ) {
         // File record must exist first (foreign key constraint)
-        db.conn
-            .execute(
-                "INSERT OR IGNORE INTO files (path, language, hash, size, last_modified, last_indexed)
-                 VALUES (?, ?, 'deadbeef', 100, 0, 0)",
-                rusqlite::params![file_path, language],
+        if db.get_file_hash(file_path).unwrap().is_none() {
+            db.store_file_info(
+                &file_info_builder(file_path)
+                    .language(language)
+                    .hash("deadbeef")
+                    .size(100)
+                    .last_modified(0)
+                    .last_indexed(0)
+                    .build(),
             )
             .expect("Failed to insert test file");
-        db.conn
-            .execute(
-                "INSERT INTO symbols (id, name, kind, file_path, language, start_line, end_line, reference_score)
-                 VALUES (?, ?, 'function', ?, ?, 1, 10, 0.0)",
-                rusqlite::params![id, name, file_path, language],
-            )
+        }
+        db.store_symbols(&[symbol_builder(id, name, file_path)
+            .kind(SymbolKind::Function)
+            .language(language)
+            .span(1, 0, 10, 0)
+            .build()])
             .expect("Failed to insert test symbol");
     }
 
