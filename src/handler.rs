@@ -1876,28 +1876,6 @@ impl JulieServerHandler {
         self.get_pooled_database_for_workspace(&workspace_id).await
     }
 
-    /// Legacy accessor returning the workspace's `Arc<Mutex<SymbolDatabase>>` paired
-    /// with its `Arc<Mutex<SearchIndex>>`. Production callers have migrated to
-    /// [`Self::primary_pooled_database_and_search_index`]; this is retained only for
-    /// upgrade-path tests that need to manipulate the legacy mutex directly (e.g.
-    /// `stale_index_detection`).
-    #[allow(dead_code)]
-    pub(crate) async fn primary_database_and_search_index(
-        &self,
-    ) -> Result<(
-        Arc<std::sync::Mutex<SymbolDatabase>>,
-        Arc<std::sync::Mutex<SearchIndex>>,
-    )> {
-        let snapshot = self.primary_workspace_snapshot().await?;
-        let search_index = snapshot.search_index.ok_or_else(|| {
-            anyhow::anyhow!(
-                "Search index not initialized. Run manage_workspace(operation=\"index\") first."
-            )
-        })?;
-
-        Ok((snapshot.database, search_index))
-    }
-
     pub(crate) async fn primary_pooled_database_and_search_index(
         &self,
     ) -> Result<(SymbolDatabase, Arc<std::sync::Mutex<SearchIndex>>)> {

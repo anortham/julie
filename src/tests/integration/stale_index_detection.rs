@@ -95,15 +95,12 @@ async fn test_primary_workspace_repair_plan_reports_semantic_version_changed() -
         .set_modified(backdated)?;
 
     let workspace_id = handler.require_primary_workspace_identity()?;
-    let (db, _) = handler.primary_database_and_search_index().await?;
-    {
-        let db = db.lock().unwrap();
-        db.set_index_engine_version(
-            &workspace_id,
-            SEMANTIC_INDEX_ENGINE_COMPONENT,
-            "stale-test-version",
-        )?;
-    }
+    let db = handler.primary_pooled_database().await?;
+    db.set_index_engine_version(
+        &workspace_id,
+        SEMANTIC_INDEX_ENGINE_COMPONENT,
+        "stale-test-version",
+    )?;
 
     let repair_plan = crate::startup::plan_primary_workspace_repair(&handler)
         .await?
@@ -209,7 +206,7 @@ async fn test_v690_upgrade_preserves_existing_tantivy_docs_on_first_edit() -> Re
     let workspace_id = handler.require_primary_workspace_identity()?;
     let db_path = handler.workspace_db_file_path_for(&workspace_id).await?;
 
-    let (_, search_index) = handler.primary_database_and_search_index().await?;
+    let (_, search_index) = handler.primary_pooled_database_and_search_index().await?;
     let initial_doc_count = {
         let index = search_index.lock().unwrap();
         let alpha_results =
@@ -261,7 +258,7 @@ async fn test_v690_upgrade_preserves_existing_tantivy_docs_on_first_edit() -> Re
     );
 
     {
-        let (_, search_index) = upgraded.primary_database_and_search_index().await?;
+        let (_, search_index) = upgraded.primary_pooled_database_and_search_index().await?;
         let index = search_index.lock().unwrap();
         let beta_results =
             index.search_symbols("beta", &crate::search::SearchFilter::default(), 10)?;
@@ -287,18 +284,17 @@ async fn test_v690_upgrade_preserves_existing_tantivy_docs_on_first_edit() -> Re
     };
     non_force_index.call_tool(&upgraded).await?;
 
-    let (upgraded_db_arc, upgraded_search_index) =
-        upgraded.primary_database_and_search_index().await?;
+    let (upgraded_db, upgraded_search_index) =
+        upgraded.primary_pooled_database_and_search_index().await?;
     {
-        let db = upgraded_db_arc.lock().unwrap();
-        let canonical = db
+        let canonical = upgraded_db
             .get_latest_canonical_revision(&workspace_id)?
             .expect("first post-upgrade edit should bootstrap canonical metadata");
         assert!(
             canonical.revision >= 1,
             "canonical revision should exist after the first post-upgrade edit"
         );
-        let alpha_new_count: i64 = db.conn.query_row(
+        let alpha_new_count: i64 = upgraded_db.conn.query_row(
             "SELECT COUNT(*) FROM symbols WHERE name = 'alpha_new'",
             [],
             |row| row.get(0),
