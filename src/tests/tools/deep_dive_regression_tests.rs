@@ -1,5 +1,9 @@
 use crate::database::{FileInfo, SymbolDatabase};
-use crate::extractors::base::{Relationship, RelationshipKind, Symbol, SymbolKind, Visibility};
+use crate::extractors::{
+    IdentifierKind,
+    base::{Relationship, RelationshipKind, Symbol, SymbolKind, Visibility},
+};
+use crate::tests::helpers::db::identifier_builder;
 use crate::tools::deep_dive::data::{RefEntry, SymbolContext, build_symbol_context, find_symbol};
 use crate::tools::deep_dive::formatting::format_symbol_context;
 use crate::tools::deep_dive::{DeepDiveTool, deep_dive_query};
@@ -121,25 +125,23 @@ fn empty_context(symbol: Symbol) -> SymbolContext {
 }
 
 fn insert_identifier(
-    db: &SymbolDatabase,
+    db: &mut SymbolDatabase,
     name: &str,
-    kind: &str,
+    kind: IdentifierKind,
     file: &str,
     line: u32,
     containing_symbol_id: Option<&str>,
 ) {
-    db.conn.execute(
-        "INSERT INTO identifiers (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, containing_symbol_id, confidence)
-         VALUES (?1, ?2, ?3, 'rust', ?4, ?5, 0, ?5, 10, 0, 100, ?6, 0.9)",
-        rusqlite::params![
-            format!("ident_{}_{}", name, line),
-            name,
-            kind,
-            file,
-            line,
-            containing_symbol_id,
-        ],
-    ).unwrap();
+    let mut builder = identifier_builder(format!("ident_{name}_{line}"), name, file)
+        .kind(kind)
+        .line(line)
+        .column(0, 10)
+        .bytes(0, 100)
+        .confidence(0.9);
+    if let Some(containing_symbol_id) = containing_symbol_id {
+        builder = builder.containing_symbol_id(containing_symbol_id);
+    }
+    db.bulk_store_identifiers(&[builder.build()], "").unwrap();
 }
 
 #[test]
@@ -426,17 +428,17 @@ fn test_deep_dive_regression_qualified_method_identifier_fallback_avoids_bare_na
     db.store_symbols(&symbols).unwrap();
 
     insert_identifier(
-        &db,
+        &mut db,
         "CodeTokenizer::new",
-        "call",
+        IdentifierKind::Call,
         "src/main.rs",
         12,
         Some("sym-qualified-caller"),
     );
     insert_identifier(
-        &db,
+        &mut db,
         "new",
-        "call",
+        IdentifierKind::Call,
         "src/handler.rs",
         35,
         Some("sym-noisy-caller"),
