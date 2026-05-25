@@ -825,7 +825,7 @@ impl SearchIndex {
             results.retain(|result| matches_glob_pattern(&result.file_path, pattern));
         }
         if filter.exclude_tests {
-            results.retain(|result| !is_test_path(&result.file_path) && result.role != "test");
+            results.retain(|result| !is_test_symbol_result(&result.file_path, &result.role));
         }
         results.truncate(limit);
         Ok(SymbolSearchResults { results, relaxed })

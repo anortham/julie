@@ -148,6 +148,8 @@ pub(crate) struct PreparedRewrite {
     live_start_line: u32,
     live_end_line: u32,
     match_count: usize,
+    diff: String,
+    changed_bytes: usize,
 }
 
 #[derive(Debug)]
@@ -813,6 +815,13 @@ impl RewriteSymbolTool {
 
         let symbol_span_bytes = (live.live_symbol.end_byte as usize)
             .saturating_sub(live.live_symbol.start_byte as usize);
+        let diff = format_unified_diff(
+            &original_content,
+            &modified_content,
+            &indexed_symbol.file_path,
+        );
+        let changed_bytes =
+            super::edit_file::changed_region_bytes(&original_content, &modified_content);
         Ok(PreparedRewrite {
             indexed_symbol,
             resolved_path: resolved_str,
@@ -823,6 +832,8 @@ impl RewriteSymbolTool {
             live_start_line: live.live_symbol.start_line,
             live_end_line: live.live_symbol.end_line,
             match_count: 1,
+            diff,
+            changed_bytes,
         })
     }
 
@@ -830,15 +841,6 @@ impl RewriteSymbolTool {
         &self,
         application: &PreparedRewrite,
     ) -> Value {
-        let diff = format_unified_diff(
-            &application.original_content,
-            &application.modified_content,
-            &application.indexed_symbol.file_path,
-        );
-        let changed_bytes = super::edit_file::changed_region_bytes(
-            &application.original_content,
-            &application.modified_content,
-        );
         let mut metadata = self.base_metrics_metadata();
         if let Some(object) = metadata.as_object_mut() {
             object.insert(
@@ -853,8 +855,11 @@ impl RewriteSymbolTool {
                 "symbol_span_bytes".to_string(),
                 json!(application.symbol_span_bytes),
             );
-            object.insert("diff_bytes".to_string(), json!(diff.len()));
-            object.insert("changed_bytes".to_string(), json!(changed_bytes));
+            object.insert("diff_bytes".to_string(), json!(application.diff.len()));
+            object.insert(
+                "changed_bytes".to_string(),
+                json!(application.changed_bytes),
+            );
             object.insert("match_count".to_string(), json!(application.match_count));
             object.insert(
                 "applied".to_string(),
@@ -885,12 +890,6 @@ impl RewriteSymbolTool {
             None
         };
 
-        let diff = format_unified_diff(
-            &application.original_content,
-            &application.modified_content,
-            &application.indexed_symbol.file_path,
-        );
-
         if self.dry_run {
             debug!(
                 "rewrite_symbol dry_run for {} in {}",
@@ -900,7 +899,7 @@ impl RewriteSymbolTool {
                 &application.span_context,
                 &application.indexed_symbol.file_path,
             );
-            let preview_diff = format_dry_run_diff(&diff);
+            let preview_diff = format_dry_run_diff(&application.diff);
             let mut message = format!(
                 "Dry run preview (set dry_run=false to apply):\n\n{}{}",
                 span_header, preview_diff
@@ -921,7 +920,7 @@ impl RewriteSymbolTool {
         );
         let mut message = format!(
             "Applied {} on '{}' in {}:\n\n{}",
-            self.operation, self.symbol, application.indexed_symbol.file_path, diff
+            self.operation, self.symbol, application.indexed_symbol.file_path, application.diff
         );
         if let Some(warning) = balance_warning {
             message.push_str(&format!("\n\n{}", warning));

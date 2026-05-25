@@ -551,6 +551,13 @@ impl EditFileTool {
     }
 
     pub(crate) fn call_prepared(&self, prepared: PreparedEdit) -> Result<CallToolResult> {
+        if prepared.application.modified_content == prepared.original_content {
+            let message = format!(
+                "No changes: edit to '{}' would not modify the file (old_text and new_text resolve to identical content).",
+                self.file_path
+            );
+            return Ok(CallToolResult::text_content(vec![Content::text(message)]));
+        }
         if self.dry_run {
             debug!("edit_file dry_run for {}", self.file_path);
             let preview_diff = format_dry_run_diff(&prepared.diff);
