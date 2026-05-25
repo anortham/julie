@@ -139,12 +139,23 @@ impl FastRefsTool {
     }
 
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
-        debug!("Finding references for: {}", self.symbol);
-
         // Resolve workspace target (primary or explicit workspace). The helpers
         // below each acquire their own pooled DB internally — there's no longer
         // a shared Arc<Mutex<>> passed around (see A2.2c follow-up).
         let workspace_target = resolve_workspace_filter(self.workspace.as_deref(), handler).await?;
+        self.call_tool_with_target(handler, &workspace_target).await
+    }
+
+    /// Same as `call_tool`, but uses a workspace target that the caller has
+    /// already resolved. Tool wrappers in `src/handler/tools/` call this so the
+    /// workspace is resolved exactly once per request (used for both metrics
+    /// attribution and the actual tool call).
+    pub async fn call_tool_with_target(
+        &self,
+        handler: &JulieServerHandler,
+        workspace_target: &WorkspaceTarget,
+    ) -> Result<CallToolResult> {
+        debug!("Finding references for: {}", self.symbol);
 
         // Find references (workspace resolution is handled by workspace_target)
         let (definitions, references) = self
@@ -153,7 +164,7 @@ impl FastRefsTool {
 
         if definitions.is_empty() && references.is_empty() {
             // Attempt semantic fallback (works for both primary and explicit workspaces)
-            let semantic_section = self.try_semantic_fallback(handler, &workspace_target).await;
+            let semantic_section = self.try_semantic_fallback(handler, workspace_target).await;
 
             let empty_names = HashMap::new();
             let mut result_text = format_lean_refs_results(&self.symbol, &[], &[], &empty_names);
@@ -166,7 +177,7 @@ impl FastRefsTool {
         // Resolve from_symbol_id → name for each reference so the formatter
         // can show the calling symbol's name (e.g., "format_definition_search_results (Calls)")
         let source_names = self
-            .resolve_source_names(handler, &references, &workspace_target)
+            .resolve_source_names(handler, &references, workspace_target)
             .await;
 
         // Respect include_definition parameter

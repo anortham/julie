@@ -1608,23 +1608,33 @@ impl JulieServerHandler {
         }
     }
 
-    pub(crate) async fn metrics_workspace_binding_for_workspace_param(
+    /// Build a metrics binding from a pre-resolved `WorkspaceTarget`.
+    ///
+    /// Tool wrappers call `resolve_workspace_filter` once and pass the typed
+    /// result here, replacing the older string-compared
+    /// `metrics_workspace_binding_for_workspace_param` (which both duplicated
+    /// resolution and silently fell back to the current workspace root on lookup
+    /// failure). Now the caller owns resolution; this helper only translates an
+    /// already-resolved target into a `PrimaryWorkspaceBinding` snapshot for
+    /// attribution.
+    pub(crate) async fn metrics_workspace_binding_for_target(
         &self,
-        workspace_param: Option<&str>,
+        target: &crate::tools::navigation::resolution::WorkspaceTarget,
     ) -> Option<PrimaryWorkspaceBinding> {
-        let workspace_id = workspace_param.unwrap_or("primary");
-        if workspace_id == "primary" {
-            return self.require_primary_workspace_binding().ok();
+        use crate::tools::navigation::resolution::WorkspaceTarget;
+        match target {
+            WorkspaceTarget::Primary => self.require_primary_workspace_binding().ok(),
+            WorkspaceTarget::Target(workspace_id) => {
+                let workspace_root = self
+                    .get_workspace_root_for_target(workspace_id)
+                    .await
+                    .unwrap_or_else(|_| self.current_workspace_root());
+                Some(PrimaryWorkspaceBinding {
+                    workspace_id: workspace_id.clone(),
+                    workspace_root,
+                })
+            }
         }
-
-        let workspace_root = self
-            .get_workspace_root_for_target(workspace_id)
-            .await
-            .unwrap_or_else(|_| self.current_workspace_root());
-        Some(PrimaryWorkspaceBinding {
-            workspace_id: workspace_id.to_string(),
-            workspace_root,
-        })
     }
 
     /// Extract output byte count from a CallToolResult.
@@ -1647,10 +1657,6 @@ impl JulieServerHandler {
             .collect::<Vec<_>>()
             .join("\n");
         extract_source_paths(&text)
-    }
-
-    pub(crate) fn is_workspace_parameter_error(error: &anyhow::Error) -> bool {
-        crate::tools::navigation::resolution::workspace_resolution_failure_kind(error).is_some()
     }
 
     /// Run auto-indexing in background (called after MCP handshake)

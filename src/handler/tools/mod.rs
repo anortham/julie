@@ -11,6 +11,7 @@ pub(crate) mod blast_radius;
 pub(crate) mod call_path;
 pub(crate) mod deep_dive;
 pub(crate) mod edit_file;
+pub(crate) mod error;
 pub(crate) mod fast_refs;
 pub(crate) mod fast_search;
 pub(crate) mod get_context;

@@ -6,6 +6,7 @@ use rmcp::{
 };
 use tracing::debug;
 
+use crate::handler::tools::error::classify_tool_failure;
 use crate::handler::{JulieServerHandler, tool_targets};
 use crate::tools::RenameSymbolTool;
 use crate::tools::metrics::session::ToolCallReport;
@@ -52,7 +53,7 @@ impl JulieServerHandler {
                     Self::input_bytes_from_metadata(&metadata),
                     &message,
                 );
-                return Err(McpError::internal_error(message, None));
+                return Err(classify_tool_failure("rename_symbol", &e));
             }
         };
         let output_bytes = Self::output_bytes_from_result(&result);

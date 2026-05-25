@@ -6,9 +6,11 @@ use rmcp::{
 };
 use tracing::debug;
 
+use crate::handler::tools::error::classify_tool_failure;
 use crate::handler::{JulieServerHandler, search_telemetry};
 use crate::tools::FastSearchTool;
 use crate::tools::metrics::session::ToolCallReport;
+use crate::tools::navigation::resolution::resolve_workspace_filter;
 
 #[tool_router(router = tool_router_fast_search, vis = "pub(crate)")]
 impl JulieServerHandler {
@@ -29,10 +31,37 @@ impl JulieServerHandler {
     ) -> Result<CallToolResult, McpError> {
         debug!("⚡ Fast search: {:?}", params);
         let start = std::time::Instant::now();
+
+        // Resolve workspace ONCE per request. Used for both metrics attribution
+        // and the actual tool call below, so bad workspace_id surfaces as
+        // invalid_params before any other work happens.
+        let workspace_target = match resolve_workspace_filter(params.workspace.as_deref(), self)
+            .await
+        {
+            Ok(target) => target,
+            Err(e) => {
+                let metadata = search_telemetry::fast_search_metadata(&params, None);
+                let message = format!("fast_search failed: {}", e);
+                self.record_tool_failure(
+                    "fast_search",
+                    start.elapsed(),
+                    None,
+                    metadata.clone(),
+                    Vec::new(),
+                    Self::input_bytes_from_metadata(&metadata),
+                    &message,
+                );
+                return Err(classify_tool_failure("fast_search", &e));
+            }
+        };
+
         let workspace_snapshot = self
-            .metrics_workspace_binding_for_workspace_param(params.workspace.as_deref())
+            .metrics_workspace_binding_for_target(&workspace_target)
             .await;
-        let executed = match params.execute_with_trace(self).await {
+        let executed = match params
+            .execute_with_trace_with_target(self, workspace_target)
+            .await
+        {
             Ok(executed) => executed,
             Err(e) => {
                 let metadata = search_telemetry::fast_search_metadata(&params, None);
@@ -46,7 +75,7 @@ impl JulieServerHandler {
                     Self::input_bytes_from_metadata(&metadata),
                     &message,
                 );
-                return Err(McpError::internal_error(message, None));
+                return Err(classify_tool_failure("fast_search", &e));
             }
         };
         let metadata = search_telemetry::fast_search_metadata(&params, executed.execution.as_ref());

@@ -6,6 +6,7 @@ use rmcp::{
 };
 use tracing::debug;
 
+use crate::handler::tools::error::classify_tool_failure;
 use crate::handler::{JulieServerHandler, tool_targets};
 use crate::tools::DeepDiveTool;
 use crate::tools::metrics::session::ToolCallReport;
@@ -34,8 +35,7 @@ impl JulieServerHandler {
         let result = match params.call_tool(self).await {
             Ok(result) => result,
             Err(e) => {
-                let message = e.to_string();
-                let full_message = format!("deep_dive failed: {}", message);
+                let full_message = format!("deep_dive failed: {}", e);
                 self.record_tool_failure(
                     "deep_dive",
                     start.elapsed(),
@@ -45,11 +45,7 @@ impl JulieServerHandler {
                     Self::input_bytes_from_metadata(&metadata),
                     &full_message,
                 );
-                return if Self::is_workspace_parameter_error(&e) {
-                    Err(McpError::invalid_params(full_message, None))
-                } else {
-                    Err(McpError::internal_error(full_message, None))
-                };
+                return Err(classify_tool_failure("deep_dive", &e));
             }
         };
         let output_bytes = Self::output_bytes_from_result(&result);

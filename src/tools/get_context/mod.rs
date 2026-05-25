@@ -98,4 +98,16 @@ impl GetContextTool {
         let result = pipeline::run(self, handler).await?;
         Ok(CallToolResult::success(vec![Content::text(result)]))
     }
+
+    /// Same as `call_tool`, but uses a workspace target the caller has already
+    /// resolved. Tool wrappers in `src/handler/tools/` call this so the
+    /// workspace is resolved exactly once per request.
+    pub async fn call_tool_with_target(
+        &self,
+        handler: &JulieServerHandler,
+        workspace_target: crate::tools::navigation::resolution::WorkspaceTarget,
+    ) -> Result<CallToolResult> {
+        let result = pipeline::run_with_target(self, handler, workspace_target).await?;
+        Ok(CallToolResult::success(vec![Content::text(result)]))
+    }
 }

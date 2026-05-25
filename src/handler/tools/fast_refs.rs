@@ -6,9 +6,11 @@ use rmcp::{
 };
 use tracing::debug;
 
+use crate::handler::tools::error::classify_tool_failure;
 use crate::handler::{JulieServerHandler, tool_targets};
 use crate::tools::FastRefsTool;
 use crate::tools::metrics::session::ToolCallReport;
+use crate::tools::navigation::resolution::resolve_workspace_filter;
 
 #[tool_router(router = tool_router_fast_refs, vis = "pub(crate)")]
 impl JulieServerHandler {
@@ -29,11 +31,34 @@ impl JulieServerHandler {
     ) -> Result<CallToolResult, McpError> {
         debug!("⚡ Fast find references: {:?}", params);
         let start = std::time::Instant::now();
-        let workspace_snapshot = self
-            .metrics_workspace_binding_for_workspace_param(params.workspace.as_deref())
-            .await;
         let metadata = tool_targets::fast_refs_metadata(&params);
-        let result = match params.call_tool(self).await {
+
+        // Resolve workspace ONCE per request. Used for both metrics attribution
+        // and the actual tool call below, so bad workspace_id surfaces as
+        // invalid_params before any other work happens.
+        let workspace_target = match resolve_workspace_filter(params.workspace.as_deref(), self)
+            .await
+        {
+            Ok(target) => target,
+            Err(e) => {
+                let message = format!("fast_refs failed: {}", e);
+                self.record_tool_failure(
+                    "fast_refs",
+                    start.elapsed(),
+                    None,
+                    metadata.clone(),
+                    Vec::new(),
+                    Self::input_bytes_from_metadata(&metadata),
+                    &message,
+                );
+                return Err(classify_tool_failure("fast_refs", &e));
+            }
+        };
+
+        let workspace_snapshot = self
+            .metrics_workspace_binding_for_target(&workspace_target)
+            .await;
+        let result = match params.call_tool_with_target(self, &workspace_target).await {
             Ok(result) => result,
             Err(e) => {
                 let message = format!("fast_refs failed: {}", e);
@@ -46,7 +71,7 @@ impl JulieServerHandler {
                     Self::input_bytes_from_metadata(&metadata),
                     &message,
                 );
-                return Err(McpError::internal_error(message, None));
+                return Err(classify_tool_failure("fast_refs", &e));
             }
         };
         let output_bytes = Self::output_bytes_from_result(&result);

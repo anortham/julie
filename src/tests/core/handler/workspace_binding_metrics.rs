@@ -168,6 +168,7 @@ async fn test_record_tool_call_uses_binding_snapshot_for_metrics_attribution() -
 async fn test_metrics_workspace_binding_uses_target_workspace_param() -> Result<()> {
     use crate::daemon::database::DaemonDatabase;
     use crate::daemon::workspace_pool::WorkspacePool;
+    use crate::tools::navigation::resolution::WorkspaceTarget;
     use crate::workspace::registry::generate_workspace_id;
 
     let temp_dir = TempDir::new()?;
@@ -210,7 +211,7 @@ async fn test_metrics_workspace_binding_uses_target_workspace_param() -> Result<
     .await?;
 
     let binding = handler
-        .metrics_workspace_binding_for_workspace_param(Some(&target_id))
+        .metrics_workspace_binding_for_target(&WorkspaceTarget::Target(target_id.clone()))
         .await
         .expect("target workspace binding should resolve");
 

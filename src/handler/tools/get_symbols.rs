@@ -6,6 +6,7 @@ use rmcp::{
 };
 use tracing::debug;
 
+use crate::handler::tools::error::classify_tool_failure;
 use crate::handler::{JulieServerHandler, tool_targets};
 use crate::tools::GetSymbolsTool;
 use crate::tools::metrics::session::ToolCallReport;
@@ -46,7 +47,7 @@ impl JulieServerHandler {
                     input_bytes,
                     &message,
                 );
-                return Err(McpError::internal_error(message, None));
+                return Err(classify_tool_failure("get_symbols", &e));
             }
         };
         let report = ToolCallReport {

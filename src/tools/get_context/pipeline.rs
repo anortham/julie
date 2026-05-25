@@ -190,7 +190,18 @@ pub fn run_pipeline_with_options(
 /// Handler entry point: extracts DB and SearchIndex from handler, delegates to run_pipeline.
 pub async fn run(tool: &GetContextTool, handler: &JulieServerHandler) -> Result<String> {
     let workspace_target = resolve_workspace_filter(tool.workspace.as_deref(), handler).await?;
+    run_with_target(tool, handler, workspace_target).await
+}
 
+/// Same as `run`, but uses a workspace target the caller has already resolved.
+/// Tool wrappers in `src/handler/tools/` call this so the workspace is resolved
+/// exactly once per request (used for both metrics attribution and the actual
+/// tool call).
+pub async fn run_with_target(
+    tool: &GetContextTool,
+    handler: &JulieServerHandler,
+    workspace_target: WorkspaceTarget,
+) -> Result<String> {
     let query = tool.query.clone();
     let max_tokens = tool.max_tokens;
     let language = tool.language.clone();

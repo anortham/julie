@@ -244,10 +244,9 @@ impl FastSearchTool {
         &self,
         handler: &JulieServerHandler,
     ) -> Result<FastSearchExecution> {
-        debug!("🔍 Fast search (unified): {}", self.query);
-
         // Validate file_pattern syntax and emit early diagnostic if it looks like
-        // whitespace-separated globs.
+        // whitespace-separated globs. Run before resolution so a bad
+        // file_pattern surfaces a diagnostic even when the workspace is fine.
         if let Some(diagnostic) = input_diagnostics::build_request_level_file_pattern_diagnostic(
             &self.query,
             self.file_pattern.as_deref(),
@@ -257,6 +256,29 @@ impl FastSearchTool {
 
         // Resolve workspace target once (used for health check and search routing)
         let workspace_target = self.resolve_workspace_filter(handler).await?;
+        self.execute_with_trace_with_target(handler, workspace_target)
+            .await
+    }
+
+    /// Same as `execute_with_trace`, but uses a workspace target that the
+    /// caller has already resolved. Tool wrappers in `src/handler/tools/` call
+    /// this so the workspace is resolved exactly once per request.
+    pub async fn execute_with_trace_with_target(
+        &self,
+        handler: &JulieServerHandler,
+        workspace_target: WorkspaceTarget,
+    ) -> Result<FastSearchExecution> {
+        debug!("🔍 Fast search (unified): {}", self.query);
+
+        // file_pattern diagnostic also runs here so callers that bypass
+        // `execute_with_trace` still get the early-exit hint.
+        if let Some(diagnostic) = input_diagnostics::build_request_level_file_pattern_diagnostic(
+            &self.query,
+            self.file_pattern.as_deref(),
+        ) {
+            return Ok(diagnostic);
+        }
+
         let effective_limit = self.effective_limit();
 
         if let WorkspaceTarget::Target(target_workspace_id) = &workspace_target {
