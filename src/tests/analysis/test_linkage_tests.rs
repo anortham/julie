@@ -245,24 +245,40 @@ mod tests {
 
     #[test]
     fn test_linked_tests_capped_at_five() {
-        let (_temp, db) = setup_test_db();
+        let (_temp, mut db) = setup_test_db();
 
         insert_file(&db, "tests/extra.rs");
 
         // Add 5 more test symbols → 7 total tests for prod_1
-        for i in 3..=7 {
-            db.conn.execute(&format!(
-                "INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata)
-                 VALUES ('test_{}', 'test_extra_{}', 'function', 'rust', 'tests/extra.rs', {}, 0, {}, 0, 0, 0,
-                         '{{\"is_test\": true, \"test_quality\": {{\"quality_tier\": \"adequate\"}}}}')",
-                i, i, i * 10, i * 10 + 5
-            ), []).unwrap();
-            db.conn.execute(&format!(
-                "INSERT INTO relationships (id, from_symbol_id, to_symbol_id, kind, file_path, line_number)
-                 VALUES ('rel_{}', 'test_{}', 'prod_1', 'calls', 'tests/extra.rs', {})",
-                i, i, i * 10
-            ), []).unwrap();
-        }
+        let symbols = (3..=7)
+            .map(|i| {
+                symbol_builder(
+                    format!("test_{i}"),
+                    format!("test_extra_{i}"),
+                    "tests/extra.rs",
+                )
+                .span(i * 10, 0, i * 10 + 5, 0)
+                .metadata(
+                    serde_json::from_str(
+                        r#"{"is_test": true, "test_quality": {"quality_tier": "adequate"}}"#,
+                    )
+                    .unwrap(),
+                )
+                .confidence(1.0)
+                .build()
+            })
+            .collect::<Vec<_>>();
+        db.store_symbols(&symbols).unwrap();
+
+        let relationships = (3..=7)
+            .map(|i| {
+                relationship_builder(format!("rel_{i}"), format!("test_{i}"), "prod_1")
+                    .file_path("tests/extra.rs")
+                    .line_number(i * 10)
+                    .build()
+            })
+            .collect::<Vec<_>>();
+        db.store_relationships(&relationships).unwrap();
 
         let _stats = crate::analysis::test_linkage::compute_test_linkage(&db).unwrap();
         let prod = db.get_symbol_by_id("prod_1").unwrap().unwrap();
