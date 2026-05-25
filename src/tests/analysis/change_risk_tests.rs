@@ -2,8 +2,11 @@
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use crate::analysis::change_risk::*;
-    use crate::extractors::SymbolKind;
+    use crate::extractors::{SymbolKind, Visibility};
+    use crate::tests::helpers::db::{set_symbol_reference_scores, symbol_builder};
 
     #[test]
     fn test_visibility_scores() {
@@ -137,52 +140,59 @@ mod tests {
     fn test_compute_change_risk_scores() {
         let temp_dir = TempDir::new().unwrap();
         let db_path = temp_dir.path().join("test.db");
-        let db = SymbolDatabase::new(&db_path).unwrap();
+        let mut db = SymbolDatabase::new(&db_path).unwrap();
 
         insert_file(&db, "src/core.rs");
         insert_file(&db, "src/config.rs");
         insert_file(&db, "tests/test.rs");
         insert_file(&db, "src/lib.rs");
 
-        // High-risk: public function, high centrality, untested
-        db.conn
-            .execute_batch(
-                r#"
-            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, reference_score, visibility, metadata)
-            VALUES ('s1', 'important_func', 'function', 'rust', 'src/core.rs', 1, 0, 10, 0, 0, 0, 20.0, 'public', NULL);
-        "#,
-            )
-            .unwrap();
+        let test_linkage_metadata = HashMap::from([(
+            "test_linkage".to_string(),
+            serde_json::json!({
+                "test_count": 2,
+                "best_tier": "thorough",
+                "worst_tier": "adequate",
+                "best_confidence": 0.9,
+                "linked_tests": ["test_a", "test_b"],
+                "evidence_sources": ["relationship"],
+            }),
+        )]);
+        let test_symbol_metadata =
+            HashMap::from([("is_test".to_string(), serde_json::json!(true))]);
 
-        // Low-risk: private constant, no centrality, thoroughly tested
-        db.conn
-            .execute_batch(
-                r#"
-            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, reference_score, visibility, metadata)
-            VALUES ('s2', 'MY_CONST', 'constant', 'rust', 'src/config.rs', 1, 0, 1, 0, 0, 0, 0.0, 'private',
-                    '{"test_linkage": {"test_count": 2, "best_tier": "thorough", "worst_tier": "adequate", "best_confidence": 0.9, "linked_tests": ["test_a", "test_b"], "evidence_sources": ["relationship"]}}');
-        "#,
-            )
-            .unwrap();
-
-        // Test symbol — should be excluded from risk scoring
-        db.conn
-            .execute_batch(
-                r#"
-            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, reference_score, metadata)
-            VALUES ('t1', 'test_thing', 'function', 'rust', 'tests/test.rs', 1, 0, 5, 0, 0, 0, 0.0, '{"is_test": true}');
-        "#,
-            )
-            .unwrap();
-
-        // Import — should be excluded (kind_weight returns None)
-        db.conn
-            .execute_batch(
-                r#"
-            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, reference_score, metadata)
-            VALUES ('imp', 'use_thing', 'import', 'rust', 'src/lib.rs', 1, 0, 1, 0, 0, 0, 0.0, NULL);
-        "#,
-            )
+        db.store_symbols(&[
+            // High-risk: public function, high centrality, untested
+            symbol_builder("s1", "important_func", "src/core.rs")
+                .kind(SymbolKind::Function)
+                .span(1, 0, 10, 0)
+                .visibility(Visibility::Public)
+                .confidence(1.0)
+                .build(),
+            // Low-risk: private constant, no centrality, thoroughly tested
+            symbol_builder("s2", "MY_CONST", "src/config.rs")
+                .kind(SymbolKind::Constant)
+                .span(1, 0, 1, 0)
+                .visibility(Visibility::Private)
+                .metadata(test_linkage_metadata)
+                .confidence(1.0)
+                .build(),
+            // Test symbol — should be excluded from risk scoring
+            symbol_builder("t1", "test_thing", "tests/test.rs")
+                .kind(SymbolKind::Function)
+                .span(1, 0, 5, 0)
+                .metadata(test_symbol_metadata)
+                .confidence(1.0)
+                .build(),
+            // Import — should be excluded (kind_weight returns None)
+            symbol_builder("imp", "use_thing", "src/lib.rs")
+                .kind(SymbolKind::Import)
+                .span(1, 0, 1, 0)
+                .confidence(1.0)
+                .build(),
+        ])
+        .unwrap();
+        set_symbol_reference_scores(&db, &[("s1", 20.0), ("s2", 0.0), ("t1", 0.0), ("imp", 0.0)])
             .unwrap();
 
         let stats = crate::analysis::change_risk::compute_change_risk_scores(&db).unwrap();

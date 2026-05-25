@@ -1,8 +1,12 @@
+use crate::database::SymbolDatabase;
 use crate::extractors::{
     AnnotationMarker, IdentifierKind, RelationshipKind, SymbolKind, Visibility,
 };
 
-use super::{file_info_builder, identifier_builder, relationship_builder, symbol_builder};
+use super::{
+    file_info_builder, identifier_builder, relationship_builder, set_symbol_reference_scores,
+    symbol_builder,
+};
 
 #[test]
 fn test_file_info_builder_sets_stable_defaults() {
@@ -24,6 +28,41 @@ fn test_file_info_builder_overrides_symbol_count() {
     let file = file_info_builder("src/lib.rs").symbol_count(0).build();
 
     assert_eq!(file.symbol_count, 0);
+}
+
+#[test]
+fn test_set_symbol_reference_scores_updates_scores() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let db_path = temp_dir.path().join("test.db");
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
+
+    db.store_file_info(&file_info_builder("src/lib.rs").build())
+        .unwrap();
+    db.store_symbols(&[
+        symbol_builder("sym-1", "run", "src/lib.rs").build(),
+        symbol_builder("sym-2", "helper", "src/lib.rs").build(),
+    ])
+    .unwrap();
+
+    set_symbol_reference_scores(&db, &[("sym-1", 12.5), ("sym-2", 3.25)]).unwrap();
+
+    let scores = db.get_reference_scores(&["sym-1", "sym-2"]).unwrap();
+    assert_eq!(scores.get("sym-1"), Some(&12.5));
+    assert_eq!(scores.get("sym-2"), Some(&3.25));
+}
+
+#[test]
+fn test_set_symbol_reference_scores_rejects_missing_symbol() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let db_path = temp_dir.path().join("test.db");
+    let db = SymbolDatabase::new(&db_path).unwrap();
+
+    let error = set_symbol_reference_scores(&db, &[("missing", 1.0)]).unwrap_err();
+
+    assert!(
+        error.to_string().contains("missing symbol id `missing`"),
+        "unexpected error: {error}"
+    );
 }
 
 #[test]

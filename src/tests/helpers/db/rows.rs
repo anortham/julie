@@ -1,5 +1,8 @@
 use std::collections::HashMap;
 
+use anyhow::bail;
+
+use crate::database::SymbolDatabase;
 use crate::database::types::FileInfo;
 use crate::extractors::{
     AnnotationMarker, Identifier, IdentifierKind, Relationship, RelationshipKind, Symbol,
@@ -99,6 +102,22 @@ pub fn symbol_builder(
     file_path: impl Into<String>,
 ) -> SymbolBuilder {
     SymbolBuilder::new(id, name, file_path)
+}
+
+pub fn set_symbol_reference_scores(
+    db: &SymbolDatabase,
+    scores: &[(&str, f64)],
+) -> anyhow::Result<()> {
+    for (id, score) in scores {
+        let updated = db.conn.execute(
+            "UPDATE symbols SET reference_score = ?1 WHERE id = ?2",
+            rusqlite::params![score, id],
+        )?;
+        if updated == 0 {
+            bail!("failed to set reference_score for missing symbol id `{id}`");
+        }
+    }
+    Ok(())
 }
 
 pub struct SymbolBuilder {
