@@ -5,8 +5,12 @@ mod graph_expansion_tests {
     use tempfile::TempDir;
 
     use crate::database::{FileInfo, SymbolDatabase};
-    use crate::extractors::base::{Relationship, RelationshipKind, Symbol, SymbolKind, Visibility};
+    use crate::extractors::{
+        IdentifierKind,
+        base::{Relationship, RelationshipKind, Symbol, SymbolKind, Visibility},
+    };
     use crate::search::index::SymbolSearchResult;
+    use crate::tests::helpers::db::identifier_builder;
     use crate::tools::get_context::pipeline::{NeighborDirection, Pivot, expand_graph};
 
     fn setup_db() -> (TempDir, SymbolDatabase) {
@@ -541,19 +545,24 @@ mod graph_expansion_tests {
         db.store_symbols(&[pivot_sym, caller_a, caller_b]).unwrap();
 
         // Insert type_usage identifiers (no relationships)
-        for (sym_id, file, line) in &[
+        let identifiers = [
             ("sym_validator", "src/handler.rs", 6u32),
             ("sym_processor", "src/utils.rs", 11),
-        ] {
-            db.conn.execute(
-                "INSERT INTO identifiers (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, containing_symbol_id, confidence)
-                 VALUES (?1, 'ZodInterface', 'type_usage', 'typescript', ?2, ?3, 0, ?3, 10, 0, 100, ?4, 0.9)",
-                rusqlite::params![
-                    format!("ident_{}_{}", sym_id, line),
-                    file, line, sym_id
-                ],
-            ).unwrap();
-        }
+        ]
+        .into_iter()
+        .map(|(sym_id, file, line)| {
+            identifier_builder(format!("ident_{sym_id}_{line}"), "ZodInterface", file)
+                .kind(IdentifierKind::TypeUsage)
+                .language("typescript")
+                .line(line)
+                .column(0, 10)
+                .bytes(0, 100)
+                .containing_symbol_id(sym_id)
+                .confidence(0.9)
+                .build()
+        })
+        .collect::<Vec<_>>();
+        db.bulk_store_identifiers(&identifiers, "").unwrap();
 
         let pivots = vec![make_pivot("sym_iface", "ZodInterface", 9.0)];
         let expansion = expand_graph(&pivots, &db).unwrap();
@@ -603,13 +612,21 @@ mod graph_expansion_tests {
         );
         db.store_symbols(&[pivot_sym, caller]).unwrap();
 
-        db.conn
-            .execute(
-                "INSERT INTO identifiers (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, containing_symbol_id, target_symbol_id, confidence)
-                 VALUES ('ident_call', 'BuildPipeline', 'call', 'typescript', 'src/handler.rs', 6, 0, 6, 13, 0, 100, 'sym_caller', 'sym_iface', 0.95)",
-                [],
-            )
-            .unwrap();
+        db.bulk_store_identifiers(
+            &[
+                identifier_builder("ident_call", "BuildPipeline", "src/handler.rs")
+                    .language("typescript")
+                    .line(6)
+                    .column(0, 13)
+                    .bytes(0, 100)
+                    .containing_symbol_id("sym_caller")
+                    .target_symbol_id("sym_iface")
+                    .confidence(0.95)
+                    .build(),
+            ],
+            "",
+        )
+        .unwrap();
 
         let pivots = vec![make_pivot("sym_iface", "BuildPipeline", 9.0)];
         let expansion = expand_graph(&pivots, &db).unwrap();
@@ -659,19 +676,25 @@ mod graph_expansion_tests {
         db.store_symbols(&[pivot_sym.clone(), included, excluded])
             .unwrap();
 
-        for (id, kind, container_id) in [
-            ("ident_call", "call", "sym_included"),
-            ("ident_member", "member_access", "sym_included"),
-            ("ident_excluded", "call", "sym_excluded"),
-        ] {
-            db.conn
-                .execute(
-                    "INSERT INTO identifiers (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, containing_symbol_id, target_symbol_id, confidence)
-                     VALUES (?1, 'BuildPipeline', ?2, 'rust', 'src/handler.rs', 6, 0, 6, 13, 0, 100, ?3, 'sym_target', 0.95)",
-                    rusqlite::params![id, kind, container_id],
-                )
-                .unwrap();
-        }
+        let identifiers = [
+            ("ident_call", IdentifierKind::Call, "sym_included"),
+            ("ident_member", IdentifierKind::MemberAccess, "sym_included"),
+            ("ident_excluded", IdentifierKind::Call, "sym_excluded"),
+        ]
+        .into_iter()
+        .map(|(id, kind, container_id)| {
+            identifier_builder(id, "BuildPipeline", "src/handler.rs")
+                .kind(kind)
+                .line(6)
+                .column(0, 13)
+                .bytes(0, 100)
+                .containing_symbol_id(container_id)
+                .target_symbol_id("sym_target")
+                .confidence(0.95)
+                .build()
+        })
+        .collect::<Vec<_>>();
+        db.bulk_store_identifiers(&identifiers, "").unwrap();
 
         let excluded_container_ids = std::collections::HashSet::from(["sym_excluded".to_string()]);
         let edges = crate::database::impact_graph::identifier_incoming_edges(
@@ -719,19 +742,36 @@ mod graph_expansion_tests {
         ];
         db.store_symbols(&symbols).unwrap();
 
-        // "Foo_Bar::method" — qualified ref, should match pivot "Foo_Bar" via LIKE prefix
-        db.conn.execute(
-            "INSERT INTO identifiers (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, containing_symbol_id, confidence)
-             VALUES ('ident_good', 'Foo_Bar::method', 'call', 'rust', 'src/handler.rs', 6, 0, 6, 10, 0, 100, 'sym_caller_good', 0.9)",
-            [],
-        ).unwrap();
-
-        // "FooXBar::method" — should NOT match pivot "Foo_Bar" (the _ in Foo_Bar must not wildcard-match X)
-        db.conn.execute(
-            "INSERT INTO identifiers (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, containing_symbol_id, confidence)
-             VALUES ('ident_bad', 'FooXBar::method', 'call', 'rust', 'src/utils.rs', 11, 0, 11, 10, 0, 100, 'sym_caller_bad', 0.9)",
-            [],
-        ).unwrap();
+        let identifiers = [
+            // "Foo_Bar::method" — qualified ref, should match pivot "Foo_Bar" via LIKE prefix
+            (
+                "ident_good",
+                "Foo_Bar::method",
+                "src/handler.rs",
+                6u32,
+                "sym_caller_good",
+            ),
+            // "FooXBar::method" — should NOT match pivot "Foo_Bar" (the _ in Foo_Bar must not wildcard-match X)
+            (
+                "ident_bad",
+                "FooXBar::method",
+                "src/utils.rs",
+                11,
+                "sym_caller_bad",
+            ),
+        ]
+        .into_iter()
+        .map(|(id, name, file, line, containing_symbol_id)| {
+            identifier_builder(id, name, file)
+                .line(line)
+                .column(0, 10)
+                .bytes(0, 100)
+                .containing_symbol_id(containing_symbol_id)
+                .confidence(0.9)
+                .build()
+        })
+        .collect::<Vec<_>>();
+        db.bulk_store_identifiers(&identifiers, "").unwrap();
 
         let pivots = vec![make_pivot("sym_foo_bar", "Foo_Bar", 9.0)];
         let expansion = expand_graph(&pivots, &db).unwrap();
