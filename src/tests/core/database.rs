@@ -4,7 +4,8 @@
 use crate::database::*;
 use crate::extractors::{IdentifierKind, RelationshipKind, Symbol, SymbolKind, Visibility};
 use crate::tests::helpers::db::{
-    identifier_builder, relationship_builder, set_symbol_reference_scores, symbol_builder,
+    file_info_builder, identifier_builder, relationship_builder, set_symbol_reference_scores,
+    symbol_builder,
 };
 use crate::tests::test_helpers::open_test_connection;
 use std::collections::HashMap;
@@ -2743,56 +2744,60 @@ fn test_compute_reference_scores_propagates_constructor_centrality() {
 fn test_compute_reference_scores_includes_type_usage_identifiers() {
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("test.db");
-    let db = SymbolDatabase::new(&db_path).unwrap();
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
 
     // Insert two files
     for (path, lang) in [
         ("model/entity.gd", "gdscript"),
         ("backend/api.gd", "gdscript"),
     ] {
-        db.store_file_info(&FileInfo {
-            path: path.to_string(),
-            language: lang.to_string(),
-            hash: "abc123".to_string(),
-            size: 100,
-            last_modified: 1234567890,
-            last_indexed: 0,
-            symbol_count: 2,
-            line_count: 0,
-            content: None,
-        })
+        db.store_file_info(
+            &file_info_builder(path)
+                .language(lang)
+                .hash("abc123")
+                .size(100)
+                .last_modified(1234567890)
+                .last_indexed(0)
+                .symbol_count(2)
+                .line_count(0)
+                .build(),
+        )
         .unwrap();
     }
 
-    // Insert class symbol: PandoraEntity in entity.gd
-    db.conn
-        .execute(
-            "INSERT INTO symbols (id, name, kind, language, file_path, start_line, end_line, start_col, end_col, start_byte, end_byte)
-             VALUES ('entity_class', 'PandoraEntity', 'class', 'gdscript', 'model/entity.gd', 1, 100, 0, 1, 0, 500)",
-            [],
-        )
-        .unwrap();
-
-    // Insert a function that references PandoraEntity via type annotation
-    db.conn
-        .execute(
-            "INSERT INTO symbols (id, name, kind, language, file_path, start_line, end_line, start_col, end_col, start_byte, end_byte)
-             VALUES ('api_func', 'create_entity', 'function', 'gdscript', 'backend/api.gd', 10, 20, 0, 1, 0, 200)",
-            [],
-        )
-        .unwrap();
+    let symbols = [
+        symbol_builder("entity_class", "PandoraEntity", "model/entity.gd")
+            .kind(SymbolKind::Class)
+            .language("gdscript")
+            .span(1, 0, 100, 1)
+            .bytes(0, 500)
+            .confidence(1.0)
+            .build(),
+        symbol_builder("api_func", "create_entity", "backend/api.gd")
+            .kind(SymbolKind::Function)
+            .language("gdscript")
+            .span(10, 0, 20, 1)
+            .bytes(0, 200)
+            .confidence(1.0)
+            .build(),
+    ];
+    db.store_symbols(&symbols).unwrap();
 
     // NO relationships — this is the key. Only identifiers.
     // Insert TypeUsage identifiers pointing to PandoraEntity by name from api.gd
-    for (id, line) in [("id1", 10), ("id2", 15), ("id3", 18)] {
-        db.conn
-            .execute(
-                "INSERT INTO identifiers (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, containing_symbol_id)
-                 VALUES (?1, 'PandoraEntity', 'type_usage', 'gdscript', 'backend/api.gd', ?2, 0, ?2, 15, 'api_func')",
-                rusqlite::params![id, line],
-            )
-            .unwrap();
-    }
+    let identifiers: Vec<_> = [("id1", 10), ("id2", 15), ("id3", 18)]
+        .iter()
+        .map(|(id, line)| {
+            identifier_builder(*id, "PandoraEntity", "backend/api.gd")
+                .kind(IdentifierKind::TypeUsage)
+                .language("gdscript")
+                .line(*line)
+                .column(0, 15)
+                .containing_symbol_id("api_func")
+                .build()
+        })
+        .collect();
+    db.bulk_store_identifiers(&identifiers, "").unwrap();
 
     // Compute scores
     db.compute_reference_scores().unwrap();
@@ -2834,51 +2839,56 @@ fn test_compute_reference_scores_includes_type_usage_identifiers() {
 fn test_compute_reference_scores_includes_constants_with_type_usage() {
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("test.db");
-    let db = SymbolDatabase::new(&db_path).unwrap();
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
 
     for (path, lang) in [("src/Server.zig", "zig"), ("src/main.zig", "zig")] {
-        db.store_file_info(&FileInfo {
-            path: path.to_string(),
-            language: lang.to_string(),
-            hash: "abc123".to_string(),
-            size: 100,
-            last_modified: 1234567890,
-            last_indexed: 0,
-            symbol_count: 2,
-            line_count: 0,
-            content: None,
-        })
+        db.store_file_info(
+            &file_info_builder(path)
+                .language(lang)
+                .hash("abc123")
+                .size(100)
+                .last_modified(1234567890)
+                .last_indexed(0)
+                .symbol_count(2)
+                .line_count(0)
+                .build(),
+        )
         .unwrap();
     }
 
-    // Zig type constant: const Server = @This()
-    db.conn
-        .execute(
-            "INSERT INTO symbols (id, name, kind, language, file_path, start_line, end_line, start_col, end_col, start_byte, end_byte)
-             VALUES ('server_const', 'Server', 'constant', 'zig', 'src/Server.zig', 1, 1, 0, 1, 0, 30)",
-            [],
-        )
-        .unwrap();
-
-    // A plain constant that's NOT used as a type (should NOT get boosted)
-    db.conn
-        .execute(
-            "INSERT INTO symbols (id, name, kind, language, file_path, start_line, end_line, start_col, end_col, start_byte, end_byte)
-             VALUES ('max_const', 'max_retries', 'constant', 'zig', 'src/Server.zig', 5, 5, 0, 1, 0, 30)",
-            [],
-        )
-        .unwrap();
+    let symbols = [
+        // Zig type constant: const Server = @This()
+        symbol_builder("server_const", "Server", "src/Server.zig")
+            .kind(SymbolKind::Constant)
+            .language("zig")
+            .span(1, 0, 1, 1)
+            .bytes(0, 30)
+            .confidence(1.0)
+            .build(),
+        // A plain constant that's NOT used as a type (should NOT get boosted)
+        symbol_builder("max_const", "max_retries", "src/Server.zig")
+            .kind(SymbolKind::Constant)
+            .language("zig")
+            .span(5, 0, 5, 1)
+            .bytes(0, 30)
+            .confidence(1.0)
+            .build(),
+    ];
+    db.store_symbols(&symbols).unwrap();
 
     // TypeUsage identifiers referencing Server from main.zig
-    for (id, line) in [("id1", 10), ("id2", 20), ("id3", 30)] {
-        db.conn
-            .execute(
-                "INSERT INTO identifiers (id, name, kind, language, file_path, start_line, start_col, end_line, end_col)
-                 VALUES (?1, 'Server', 'type_usage', 'zig', 'src/main.zig', ?2, 0, ?2, 10)",
-                rusqlite::params![id, line],
-            )
-            .unwrap();
-    }
+    let identifiers: Vec<_> = [("id1", 10), ("id2", 20), ("id3", 30)]
+        .iter()
+        .map(|(id, line)| {
+            identifier_builder(*id, "Server", "src/main.zig")
+                .kind(IdentifierKind::TypeUsage)
+                .language("zig")
+                .line(*line)
+                .column(0, 10)
+                .build()
+        })
+        .collect();
+    db.bulk_store_identifiers(&identifiers, "").unwrap();
 
     db.compute_reference_scores().unwrap();
 
@@ -2989,56 +2999,65 @@ fn test_compute_reference_scores_includes_import_identifiers() {
 fn test_compute_reference_scores_qualified_name_identifiers() {
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("test.db");
-    let db = SymbolDatabase::new(&db_path).unwrap();
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
 
     for (path, lang) in [
         ("src/controls/ScrollablePage.qml", "qml"),
         ("src/controls/AboutPage.qml", "qml"),
         ("examples/SimplePage.qml", "qml"),
     ] {
-        db.store_file_info(&FileInfo {
-            path: path.to_string(),
-            language: lang.to_string(),
-            hash: "abc123".to_string(),
-            size: 100,
-            last_modified: 1234567890,
-            last_indexed: 0,
-            symbol_count: 2,
-            line_count: 0,
-            content: None,
-        })
+        db.store_file_info(
+            &file_info_builder(path)
+                .language(lang)
+                .hash("abc123")
+                .size(100)
+                .last_modified(1234567890)
+                .last_indexed(0)
+                .symbol_count(2)
+                .line_count(0)
+                .build(),
+        )
         .unwrap();
     }
 
-    // QML component: file-derived name "ScrollablePage"
-    db.conn
-        .execute(
-            "INSERT INTO symbols (id, name, kind, language, file_path, start_line, end_line, start_col, end_col, start_byte, end_byte)
-             VALUES ('scrollable_page', 'ScrollablePage', 'class', 'qml', 'src/controls/ScrollablePage.qml', 1, 100, 0, 1, 0, 2000)",
-            [],
+    let symbols = [
+        // QML component: file-derived name "ScrollablePage"
+        symbol_builder(
+            "scrollable_page",
+            "ScrollablePage",
+            "src/controls/ScrollablePage.qml",
         )
-        .unwrap();
-
-    // Another component that should NOT be matched
-    db.conn
-        .execute(
-            "INSERT INTO symbols (id, name, kind, language, file_path, start_line, end_line, start_col, end_col, start_byte, end_byte)
-             VALUES ('about_page', 'AboutPage', 'class', 'qml', 'src/controls/AboutPage.qml', 1, 50, 0, 1, 0, 1000)",
-            [],
-        )
-        .unwrap();
+        .kind(SymbolKind::Class)
+        .language("qml")
+        .span(1, 0, 100, 1)
+        .bytes(0, 2000)
+        .confidence(1.0)
+        .build(),
+        // Another component that should NOT be matched
+        symbol_builder("about_page", "AboutPage", "src/controls/AboutPage.qml")
+            .kind(SymbolKind::Class)
+            .language("qml")
+            .span(1, 0, 50, 1)
+            .bytes(0, 1000)
+            .confidence(1.0)
+            .build(),
+    ];
+    db.store_symbols(&symbols).unwrap();
 
     // TypeUsage identifiers using QUALIFIED name: "Kirigami.ScrollablePage"
     // These reference ScrollablePage but through a namespace prefix
-    for (id, line) in [("id1", 10), ("id2", 20), ("id3", 30)] {
-        db.conn
-            .execute(
-                "INSERT INTO identifiers (id, name, kind, language, file_path, start_line, start_col, end_line, end_col)
-                 VALUES (?1, 'Kirigami.ScrollablePage', 'type_usage', 'qml', 'examples/SimplePage.qml', ?2, 0, ?2, 30)",
-                rusqlite::params![id, line],
-            )
-            .unwrap();
-    }
+    let identifiers: Vec<_> = [("id1", 10), ("id2", 20), ("id3", 30)]
+        .iter()
+        .map(|(id, line)| {
+            identifier_builder(*id, "Kirigami.ScrollablePage", "examples/SimplePage.qml")
+                .kind(IdentifierKind::TypeUsage)
+                .language("qml")
+                .line(*line)
+                .column(0, 30)
+                .build()
+        })
+        .collect();
+    db.bulk_store_identifiers(&identifiers, "").unwrap();
 
     db.compute_reference_scores().unwrap();
 
@@ -3082,51 +3101,53 @@ fn test_compute_reference_scores_escapes_like_wildcards() {
     // `userXid` without escaping. This test verifies proper escaping.
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("test.db");
-    let db = SymbolDatabase::new(&db_path).unwrap();
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
 
     for path in ["src/models.py", "src/views.py"] {
-        db.store_file_info(&FileInfo {
-            path: path.to_string(),
-            language: "python".to_string(),
-            hash: "abc123".to_string(),
-            size: 100,
-            last_modified: 1234567890,
-            last_indexed: 0,
-            symbol_count: 2,
-            line_count: 0,
-            content: None,
-        })
+        db.store_file_info(
+            &file_info_builder(path)
+                .language("python")
+                .hash("abc123")
+                .size(100)
+                .last_modified(1234567890)
+                .last_indexed(0)
+                .symbol_count(2)
+                .line_count(0)
+                .build(),
+        )
         .unwrap();
     }
 
-    // Symbol with underscore: user_id
-    db.conn
-        .execute(
-            "INSERT INTO symbols (id, name, kind, language, file_path, start_line, end_line, start_col, end_col, start_byte, end_byte)
-             VALUES ('sym_user_id', 'user_id', 'class', 'python', 'src/models.py', 1, 10, 0, 1, 0, 200)",
-            [],
-        )
-        .unwrap();
-
-    // Symbol WITHOUT underscore that would match if _ is a wildcard: userXid
-    db.conn
-        .execute(
-            "INSERT INTO symbols (id, name, kind, language, file_path, start_line, end_line, start_col, end_col, start_byte, end_byte)
-             VALUES ('sym_userXid', 'userXid', 'class', 'python', 'src/models.py', 20, 30, 0, 1, 0, 200)",
-            [],
-        )
-        .unwrap();
+    let symbols = [
+        // Symbol with underscore: user_id
+        symbol_builder("sym_user_id", "user_id", "src/models.py")
+            .kind(SymbolKind::Class)
+            .language("python")
+            .span(1, 0, 10, 1)
+            .bytes(0, 200)
+            .confidence(1.0)
+            .build(),
+        // Symbol WITHOUT underscore that would match if _ is a wildcard: userXid
+        symbol_builder("sym_userXid", "userXid", "src/models.py")
+            .kind(SymbolKind::Class)
+            .language("python")
+            .span(20, 0, 30, 1)
+            .bytes(0, 200)
+            .confidence(1.0)
+            .build(),
+    ];
+    db.store_symbols(&symbols).unwrap();
 
     // Qualified identifier referencing "models.userXid"
     // This should match userXid (exact suffix) but NOT user_id (would only
     // match if underscore acts as wildcard)
-    db.conn
-        .execute(
-            "INSERT INTO identifiers (id, name, kind, language, file_path, start_line, start_col, end_line, end_col)
-             VALUES ('ref1', 'models.userXid', 'type_usage', 'python', 'src/views.py', 5, 0, 5, 20)",
-            [],
-        )
-        .unwrap();
+    let identifiers = [identifier_builder("ref1", "models.userXid", "src/views.py")
+        .kind(IdentifierKind::TypeUsage)
+        .language("python")
+        .line(5)
+        .column(0, 20)
+        .build()];
+    db.bulk_store_identifiers(&identifiers, "").unwrap();
 
     db.compute_reference_scores().unwrap();
 
@@ -3455,7 +3476,7 @@ fn test_compute_reference_scores_propagates_header_to_implementation() {
 fn test_step1b_identifier_boost_excludes_test_file_symbols() {
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("test.db");
-    let db = SymbolDatabase::new(&db_path).unwrap();
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
 
     for (path, lang) in [
         ("src/app.py", "python"),
@@ -3471,37 +3492,39 @@ fn test_step1b_identifier_boost_excludes_test_file_symbols() {
         ("src/api.py", "python"),
         ("src/middleware.py", "python"),
     ] {
-        db.store_file_info(&FileInfo {
-            path: path.to_string(),
-            language: lang.to_string(),
-            hash: "abc".to_string(),
-            size: 100,
-            last_modified: 0,
-            last_indexed: 0,
-            symbol_count: 1,
-            line_count: 0,
-            content: None,
-        })
+        db.store_file_info(
+            &file_info_builder(path)
+                .language(lang)
+                .hash("abc")
+                .size(100)
+                .last_modified(0)
+                .last_indexed(0)
+                .symbol_count(1)
+                .line_count(0)
+                .build(),
+        )
         .unwrap();
     }
 
-    // Production Flask class
-    db.conn
-        .execute(
-            "INSERT INTO symbols (id, name, kind, language, file_path, start_line, end_line, start_col, end_col, start_byte, end_byte)
-             VALUES ('flask_prod', 'Flask', 'class', 'python', 'src/app.py', 109, 500, 0, 1, 0, 10000)",
-            [],
-        )
-        .unwrap();
-
-    // Test Flask class
-    db.conn
-        .execute(
-            "INSERT INTO symbols (id, name, kind, language, file_path, start_line, end_line, start_col, end_col, start_byte, end_byte)
-             VALUES ('flask_test', 'Flask', 'class', 'python', 'tests/test_config.py', 202, 250, 0, 1, 0, 5000)",
-            [],
-        )
-        .unwrap();
+    let symbols = [
+        // Production Flask class
+        symbol_builder("flask_prod", "Flask", "src/app.py")
+            .kind(SymbolKind::Class)
+            .language("python")
+            .span(109, 0, 500, 1)
+            .bytes(0, 10000)
+            .confidence(1.0)
+            .build(),
+        // Test Flask class
+        symbol_builder("flask_test", "Flask", "tests/test_config.py")
+            .kind(SymbolKind::Class)
+            .language("python")
+            .span(202, 0, 250, 1)
+            .bytes(0, 5000)
+            .confidence(1.0)
+            .build(),
+    ];
+    db.store_symbols(&symbols).unwrap();
 
     // Add type_usage identifiers named "Flask" from 10 non-test files
     let source_files = [
@@ -3516,15 +3539,19 @@ fn test_step1b_identifier_boost_excludes_test_file_symbols() {
         "src/api.py",
         "src/middleware.py",
     ];
-    for (i, file) in source_files.iter().enumerate() {
-        db.conn
-            .execute(
-                "INSERT INTO identifiers (id, name, kind, language, file_path, start_line, start_col, end_line, end_col)
-                 VALUES (?1, 'Flask', 'type_usage', 'python', ?2, 1, 0, 1, 10)",
-                rusqlite::params![format!("id_type_{}", i), file],
-            )
-            .unwrap();
-    }
+    let identifiers: Vec<_> = source_files
+        .iter()
+        .enumerate()
+        .map(|(i, file)| {
+            identifier_builder(format!("id_type_{}", i), "Flask", *file)
+                .kind(IdentifierKind::TypeUsage)
+                .language("python")
+                .line(1)
+                .column(0, 10)
+                .build()
+        })
+        .collect();
+    db.bulk_store_identifiers(&identifiers, "").unwrap();
 
     db.compute_reference_scores().unwrap();
 
