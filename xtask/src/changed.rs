@@ -701,22 +701,28 @@ fn buckets_for_path(path: &str) -> &'static [&'static str] {
         return &["tools-format-filter"];
     }
 
-    if matches_prefix(path, &["src/watcher/", "src/utils/", "src/tracing/"])
-        || matches_exact(
-            path,
-            &[
-                "src/language.rs",
-                "src/paths.rs",
-                "src/tests/core/handler.rs",
-                "src/tests/core/language.rs",
-                "src/tests/core/memory_vectors.rs",
-                "src/tests/core/paths.rs",
-                "src/tests/core/tracing.rs",
-                "src/tests/core/vector_storage.rs",
-                "src/tests/integration/watcher_filtering.rs",
-            ],
-        )
-        || matches_prefix(path, &["src/tests/utils/"])
+    if matches_prefix(
+        path,
+        &[
+            "src/watcher/",
+            "src/utils/",
+            "src/tracing/",
+            "src/tests/core/handler/",
+        ],
+    ) || matches_exact(
+        path,
+        &[
+            "src/language.rs",
+            "src/paths.rs",
+            "src/tests/core/handler.rs",
+            "src/tests/core/language.rs",
+            "src/tests/core/memory_vectors.rs",
+            "src/tests/core/paths.rs",
+            "src/tests/core/tracing.rs",
+            "src/tests/core/vector_storage.rs",
+            "src/tests/integration/watcher_filtering.rs",
+        ],
+    ) || matches_prefix(path, &["src/tests/utils/"])
     {
         return &["core-fast"];
     }

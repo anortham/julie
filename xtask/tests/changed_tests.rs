@@ -483,6 +483,22 @@ fn changed_tests_handler_tool_files_select_specific_buckets() {
 }
 
 #[test]
+fn changed_tests_route_handler_split_modules_to_core_fast_bucket() {
+    let manifest = sample_manifest();
+
+    for path in [
+        "src/tests/core/handler/public_surface.rs",
+        "src/tests/core/handler/editing_metrics.rs",
+        "src/tests/core/handler/workspace_binding_metrics.rs",
+    ] {
+        let selection = select_changed_buckets(&manifest, &[path.to_string()]);
+        assert_eq!(selection.mode, ChangedSelectionMode::Buckets, "{path}");
+        assert_eq!(selection.bucket_names, vec!["core-fast"], "{path}");
+        assert!(selection.fallback_paths.is_empty(), "{path}");
+    }
+}
+
+#[test]
 fn changed_tests_handler_search_telemetry_selects_search_buckets() {
     let manifest = sample_manifest();
 
@@ -742,6 +758,7 @@ dev = [
   "tools-refactoring",
   "tools-metrics",
   "tools-format-filter",
+  "core-fast",
   "search-quality",
 ]
 dogfood = ["tools-dogfood-repo-index", "search-quality"]
@@ -760,6 +777,11 @@ commands = ["cargo nextest run -p xtask"]
 expected_seconds = 5
 timeout_seconds = 30
 commands = ["cargo nextest run --lib tests::core::database -- --skip search_quality"]
+
+[buckets.core-fast]
+expected_seconds = 10
+timeout_seconds = 40
+commands = ["cargo nextest run --lib tests::core::handler -- --skip search_quality"]
 
 [buckets.tools-workspace]
 expected_seconds = 10
