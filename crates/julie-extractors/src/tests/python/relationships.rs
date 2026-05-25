@@ -370,9 +370,3 @@ class MyClass:
         );
     }
 }
-
-#[test]
-fn test_placeholder() {
-    // This test is placeholder - actual testing requires tree-sitter
-    // Real tests are in the integration tests
-}

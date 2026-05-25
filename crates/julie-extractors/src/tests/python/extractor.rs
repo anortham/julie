@@ -29,36 +29,6 @@ fn test_python_extractor_initialization() {
 }
 
 // ============================================================================
-// Tests from extractors/python/imports.rs
-// ============================================================================
-
-#[test]
-fn test_extract_imports_placeholder() {
-    // This test is placeholder - actual testing requires tree-sitter
-    // Real tests are in the integration tests
-}
-
-// ============================================================================
-// Tests from extractors/python/types.rs
-// ============================================================================
-
-#[test]
-fn test_is_inside_enum_class() {
-    // This test is placeholder - actual testing requires tree-sitter
-    // Real tests are in the integration tests
-}
-
-// ============================================================================
-// Tests from extractors/python/identifiers.rs
-// ============================================================================
-
-#[test]
-fn test_extract_identifiers_placeholder() {
-    // This test is placeholder - actual testing requires tree-sitter
-    // Real tests are in the integration tests
-}
-
-// ============================================================================
 // Tests from extractors/python/helpers.rs
 // ============================================================================
 
@@ -98,16 +68,6 @@ fn test_strip_string_delimiters_no_delimiters() {
 }
 
 // ============================================================================
-// Tests from extractors/python/decorators.rs
-// ============================================================================
-
-#[test]
-fn test_decorator_extraction() {
-    // This test is placeholder - actual testing requires tree-sitter
-    // Real tests are in the integration tests
-}
-
-// ============================================================================
 // Tests from extractors/python/signatures.rs
 // ============================================================================
 
@@ -130,14 +90,4 @@ fn test_infer_visibility_public() {
     use crate::python::signatures;
     let vis = signatures::infer_visibility("public_method");
     assert_eq!(vis, Visibility::Public);
-}
-
-// ============================================================================
-// Tests from extractors/python/assignments.rs
-// ============================================================================
-
-#[test]
-fn test_extract_assignment_placeholder() {
-    // This test is placeholder - actual testing requires tree-sitter
-    // Real tests are in the integration tests
 }
