@@ -2231,7 +2231,7 @@ fn test_compute_reference_scores_zero_for_no_incoming() {
 fn test_compute_reference_scores_propagates_interface_centrality_to_implementations() {
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("test.db");
-    let db = SymbolDatabase::new(&db_path).unwrap();
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
 
     db.store_file_info(&FileInfo {
         path: "test.cs".to_string(),
@@ -2247,45 +2247,47 @@ fn test_compute_reference_scores_propagates_interface_centrality_to_implementati
     .unwrap();
 
     // IService (interface), ServiceImpl (class), 3 consumers
-    for (id, name, kind) in [
-        ("iservice", "IService", "interface"),
-        ("service_impl", "ServiceImpl", "class"),
-        ("consumer1", "Consumer1", "class"),
-        ("consumer2", "Consumer2", "class"),
-        ("consumer3", "Consumer3", "class"),
-    ] {
-        db.conn
-            .execute(
-                "INSERT INTO symbols (id, name, kind, language, file_path, start_line, end_line, start_col, end_col, start_byte, end_byte)
-                 VALUES (?1, ?2, ?3, 'csharp', 'test.cs', 1, 10, 0, 1, 0, 100)",
-                rusqlite::params![id, name, kind],
-            )
-            .unwrap();
-    }
+    let symbols: Vec<_> = [
+        ("iservice", "IService", SymbolKind::Interface),
+        ("service_impl", "ServiceImpl", SymbolKind::Class),
+        ("consumer1", "Consumer1", SymbolKind::Class),
+        ("consumer2", "Consumer2", SymbolKind::Class),
+        ("consumer3", "Consumer3", SymbolKind::Class),
+    ]
+    .iter()
+    .map(|(id, name, kind)| {
+        symbol_builder(*id, *name, "test.cs")
+            .kind(kind.clone())
+            .language("csharp")
+            .span(1, 0, 10, 1)
+            .bytes(0, 100)
+            .confidence(1.0)
+            .build()
+    })
+    .collect();
+    db.store_symbols(&symbols).unwrap();
 
-    // ServiceImpl implements IService
-    db.conn
-        .execute(
-            "INSERT INTO relationships (id, from_symbol_id, to_symbol_id, kind)
-             VALUES ('r_impl', 'service_impl', 'iservice', 'implements')",
-            [],
-        )
-        .unwrap();
-
-    // 3 consumers reference IService (constructor params / field types)
-    for (rel_id, from_id) in [
-        ("r1", "consumer1"),
-        ("r2", "consumer2"),
-        ("r3", "consumer3"),
-    ] {
-        db.conn
-            .execute(
-                "INSERT INTO relationships (id, from_symbol_id, to_symbol_id, kind)
-                 VALUES (?1, ?2, 'iservice', 'uses')",
-                rusqlite::params![rel_id, from_id],
-            )
-            .unwrap();
-    }
+    // ServiceImpl implements IService; consumers reference IService.
+    let relationships: Vec<_> = [
+        (
+            "r_impl",
+            "service_impl",
+            "iservice",
+            RelationshipKind::Implements,
+        ),
+        ("r1", "consumer1", "iservice", RelationshipKind::Uses),
+        ("r2", "consumer2", "iservice", RelationshipKind::Uses),
+        ("r3", "consumer3", "iservice", RelationshipKind::Uses),
+    ]
+    .iter()
+    .map(|(rel_id, from_id, to_id, kind)| {
+        relationship_builder(*rel_id, *from_id, *to_id)
+            .kind(kind.clone())
+            .line_number(0)
+            .build()
+    })
+    .collect();
+    db.store_relationships(&relationships).unwrap();
 
     db.compute_reference_scores().unwrap();
 
@@ -2332,7 +2334,7 @@ fn test_compute_reference_scores_propagates_interface_centrality_to_implementati
 fn test_compute_reference_scores_propagates_base_class_centrality() {
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("test.db");
-    let db = SymbolDatabase::new(&db_path).unwrap();
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
 
     db.store_file_info(&FileInfo {
         path: "test.cs".to_string(),
@@ -2347,40 +2349,39 @@ fn test_compute_reference_scores_propagates_base_class_centrality() {
     })
     .unwrap();
 
-    for (id, name, kind) in [
-        ("base_class", "BaseService", "class"),
-        ("derived", "DerivedService", "class"),
-        ("caller1", "Caller1", "class"),
-        ("caller2", "Caller2", "class"),
-    ] {
-        db.conn
-            .execute(
-                "INSERT INTO symbols (id, name, kind, language, file_path, start_line, end_line, start_col, end_col, start_byte, end_byte)
-                 VALUES (?1, ?2, ?3, 'csharp', 'test.cs', 1, 10, 0, 1, 0, 100)",
-                rusqlite::params![id, name, kind],
-            )
-            .unwrap();
-    }
+    let symbols: Vec<_> = [
+        ("base_class", "BaseService"),
+        ("derived", "DerivedService"),
+        ("caller1", "Caller1"),
+        ("caller2", "Caller2"),
+    ]
+    .iter()
+    .map(|(id, name)| {
+        symbol_builder(*id, *name, "test.cs")
+            .kind(SymbolKind::Class)
+            .language("csharp")
+            .span(1, 0, 10, 1)
+            .bytes(0, 100)
+            .confidence(1.0)
+            .build()
+    })
+    .collect();
+    db.store_symbols(&symbols).unwrap();
 
-    // DerivedService extends BaseService
-    db.conn
-        .execute(
-            "INSERT INTO relationships (id, from_symbol_id, to_symbol_id, kind)
-             VALUES ('r_ext', 'derived', 'base_class', 'extends')",
-            [],
-        )
-        .unwrap();
-
-    // 2 callers reference BaseService
-    for (rel_id, from_id) in [("r1", "caller1"), ("r2", "caller2")] {
-        db.conn
-            .execute(
-                "INSERT INTO relationships (id, from_symbol_id, to_symbol_id, kind)
-                 VALUES (?1, ?2, 'base_class', 'calls')",
-                rusqlite::params![rel_id, from_id],
-            )
-            .unwrap();
-    }
+    let relationships: Vec<_> = [
+        ("r_ext", "derived", "base_class", RelationshipKind::Extends),
+        ("r1", "caller1", "base_class", RelationshipKind::Calls),
+        ("r2", "caller2", "base_class", RelationshipKind::Calls),
+    ]
+    .iter()
+    .map(|(rel_id, from_id, to_id, kind)| {
+        relationship_builder(*rel_id, *from_id, *to_id)
+            .kind(kind.clone())
+            .line_number(0)
+            .build()
+    })
+    .collect();
+    db.store_relationships(&relationships).unwrap();
 
     db.compute_reference_scores().unwrap();
 
