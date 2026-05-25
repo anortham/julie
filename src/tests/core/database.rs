@@ -2424,23 +2424,32 @@ fn test_delete_embeddings_for_symbol_ids_only_removes_requested_rows() {
     let mut db = SymbolDatabase::new(&db_path).unwrap();
 
     // Insert one file and three symbols for embedding rows.
-    db.conn
-        .execute(
-            "INSERT INTO files (path, language, hash, size, last_modified, last_indexed)
-             VALUES ('src/lib.rs', 'rust', 'hash123', 100, 0, 0)",
-            [],
-        )
-        .unwrap();
+    db.store_file_info(
+        &file_info_builder("src/lib.rs")
+            .language("rust")
+            .hash("hash123")
+            .size(100)
+            .last_modified(0)
+            .last_indexed(0)
+            .symbol_count(0)
+            .line_count(0)
+            .build(),
+    )
+    .unwrap();
 
-    for (id, name) in [("sym_a", "a"), ("sym_b", "b"), ("sym_c", "c")] {
-        db.conn
-            .execute(
-                "INSERT INTO symbols (id, name, kind, language, file_path, start_line, end_line, start_col, end_col, start_byte, end_byte)
-                 VALUES (?1, ?2, 'function', 'rust', 'src/lib.rs', 1, 1, 0, 1, 0, 1)",
-                rusqlite::params![id, name],
-            )
-            .unwrap();
-    }
+    let symbols: Vec<_> = [("sym_a", "a"), ("sym_b", "b"), ("sym_c", "c")]
+        .iter()
+        .map(|(id, name)| {
+            symbol_builder(*id, *name, "src/lib.rs")
+                .kind(SymbolKind::Function)
+                .language("rust")
+                .span(1, 0, 1, 1)
+                .bytes(0, 1)
+                .confidence(1.0)
+                .build()
+        })
+        .collect();
+    db.store_symbols(&symbols).unwrap();
 
     db.store_embeddings(&[
         ("sym_a".to_string(), vec![0.1_f32; 384]),
