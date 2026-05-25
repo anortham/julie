@@ -711,7 +711,6 @@ mod tests {
     fn test_pipeline_integration_updates_metadata() {
         use crate::analysis::test_quality::compute_test_quality_metrics;
         use crate::database::SymbolDatabase;
-        use crate::extractors::SymbolKind;
         use crate::search::LanguageConfigs;
         use crate::tests::helpers::db::{file_info_builder, symbol_builder};
 
@@ -743,14 +742,10 @@ mod tests {
         // Insert a non-test symbol (should NOT be analyzed)
         db.store_symbols(&[
             symbol_builder("sym-test-1", "test_something", "test_file.rs")
-                .kind(SymbolKind::Function)
-                .language("rust")
                 .code_context(code_body)
                 .metadata(metadata)
                 .build(),
             symbol_builder("sym-regular-1", "compute", "test_file.rs")
-                .kind(SymbolKind::Function)
-                .language("rust")
                 .code_context("fn compute(x: i32) -> i32 { x * 2 }")
                 .metadata(serde_json::from_str("{}").unwrap())
                 .build(),
@@ -821,34 +816,31 @@ mod tests {
         use crate::analysis::test_quality::compute_test_quality_metrics;
         use crate::database::SymbolDatabase;
         use crate::search::LanguageConfigs;
+        use crate::tests::helpers::db::{file_info_builder, symbol_builder};
 
         let tmp = tempfile::TempDir::new().unwrap();
         let db_path = tmp.path().join("test.db");
-        let db = SymbolDatabase::new(&db_path).unwrap();
+        let mut db = SymbolDatabase::new(&db_path).unwrap();
         let configs = LanguageConfigs::load_embedded();
 
-        db.conn
-            .execute(
-                "INSERT INTO files (path, language, hash, size, last_modified) VALUES (?1, ?2, ?3, ?4, ?5)",
-                rusqlite::params!["test_file.rs", "rust", "abc123", 100, 0],
-            )
-            .unwrap();
+        db.store_file_info(
+            &file_info_builder("test_file.rs")
+                .language("rust")
+                .hash("abc123")
+                .size(100)
+                .last_modified(0)
+                .build(),
+        )
+        .unwrap();
 
         // Test symbol with no code_context (NULL)
-        db.conn
-            .execute(
-                "INSERT INTO symbols (id, name, kind, language, file_path, code_context, metadata, reference_score) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, NULL, ?6, 0.0)",
-                rusqlite::params![
-                    "sym-test-no-body",
-                    "test_empty",
-                    "function",
-                    "rust",
-                    "test_file.rs",
-                    r#"{"is_test":true}"#,
-                ],
-            )
-            .unwrap();
+        let metadata = serde_json::from_str(r#"{"is_test":true}"#).unwrap();
+        db.store_symbols(&[
+            symbol_builder("sym-test-no-body", "test_empty", "test_file.rs")
+                .metadata(metadata)
+                .build(),
+        ])
+        .unwrap();
 
         let stats = compute_test_quality_metrics(&db, &configs).unwrap();
         assert_eq!(stats.total_tests, 1);
@@ -864,36 +856,32 @@ mod tests {
         use crate::analysis::test_quality::compute_test_quality_metrics;
         use crate::database::SymbolDatabase;
         use crate::search::LanguageConfigs;
+        use crate::tests::helpers::db::{file_info_builder, symbol_builder};
 
         let tmp = tempfile::TempDir::new().unwrap();
         let db_path = tmp.path().join("test.db");
-        let db = SymbolDatabase::new(&db_path).unwrap();
+        let mut db = SymbolDatabase::new(&db_path).unwrap();
         let configs = LanguageConfigs::load_embedded();
 
-        db.conn
-            .execute(
-                "INSERT INTO files (path, language, hash, size, last_modified) VALUES (?1, ?2, ?3, ?4, ?5)",
-                rusqlite::params!["test_file.rs", "rust", "abc123", 100, 0],
-            )
-            .unwrap();
+        db.store_file_info(
+            &file_info_builder("test_file.rs")
+                .language("rust")
+                .hash("abc123")
+                .size(100)
+                .last_modified(0)
+                .build(),
+        )
+        .unwrap();
 
         // Test symbol with extra metadata that should be preserved
-        let metadata = r#"{"is_test":true,"custom_flag":"keep_me"}"#;
-        db.conn
-            .execute(
-                "INSERT INTO symbols (id, name, kind, language, file_path, code_context, metadata, reference_score) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0.0)",
-                rusqlite::params![
-                    "sym-test-preserve",
-                    "test_preserve",
-                    "function",
-                    "rust",
-                    "test_file.rs",
-                    "assert_eq!(1, 1);",
-                    metadata,
-                ],
-            )
-            .unwrap();
+        let metadata = serde_json::from_str(r#"{"is_test":true,"custom_flag":"keep_me"}"#).unwrap();
+        db.store_symbols(&[
+            symbol_builder("sym-test-preserve", "test_preserve", "test_file.rs")
+                .code_context("assert_eq!(1, 1);")
+                .metadata(metadata)
+                .build(),
+        ])
+        .unwrap();
 
         compute_test_quality_metrics(&db, &configs).unwrap();
 
@@ -922,7 +910,6 @@ mod tests {
     fn test_pipeline_integration_with_identifier_evidence() {
         use crate::analysis::test_quality::compute_test_quality_metrics;
         use crate::database::SymbolDatabase;
-        use crate::extractors::{IdentifierKind, SymbolKind};
         use crate::search::LanguageConfigs;
         use crate::tests::helpers::db::{file_info_builder, identifier_builder, symbol_builder};
 
@@ -950,8 +937,6 @@ mod tests {
             "test_with_identifiers",
             "test_file.rs",
         )
-        .kind(SymbolKind::Function)
-        .language("rust")
         .code_context(code_body)
         .metadata(metadata)
         .build()])
@@ -962,22 +947,16 @@ mod tests {
         db.bulk_store_identifiers(
             &[
                 identifier_builder("id-1", "assert_eq", "test_file.rs")
-                    .kind(IdentifierKind::Call)
-                    .language("rust")
                     .line(3)
                     .column(4, 20)
                     .containing_symbol_id("sym-test-ids")
                     .build(),
                 identifier_builder("id-2", "assert", "test_file.rs")
-                    .kind(IdentifierKind::Call)
-                    .language("rust")
                     .line(4)
                     .column(4, 15)
                     .containing_symbol_id("sym-test-ids")
                     .build(),
                 identifier_builder("id-3", "assert_ne", "test_file.rs")
-                    .kind(IdentifierKind::Call)
-                    .language("rust")
                     .line(5)
                     .column(4, 15)
                     .containing_symbol_id("sym-test-ids")
@@ -1020,35 +999,31 @@ mod tests {
         use crate::analysis::test_quality::compute_test_quality_metrics;
         use crate::database::SymbolDatabase;
         use crate::search::LanguageConfigs;
+        use crate::tests::helpers::db::{file_info_builder, symbol_builder};
 
         let tmp = tempfile::TempDir::new().unwrap();
         let db_path = tmp.path().join("test.db");
-        let db = SymbolDatabase::new(&db_path).unwrap();
+        let mut db = SymbolDatabase::new(&db_path).unwrap();
         let configs = LanguageConfigs::load_embedded();
 
-        db.conn
-            .execute(
-                "INSERT INTO files (path, language, hash, size, last_modified) VALUES (?1, ?2, ?3, ?4, ?5)",
-                rusqlite::params!["test_file.py", "python", "abc123", 100, 0],
-            )
-            .unwrap();
+        db.store_file_info(
+            &file_info_builder("test_file.py")
+                .language("python")
+                .hash("abc123")
+                .size(100)
+                .last_modified(0)
+                .build(),
+        )
+        .unwrap();
 
         // Insert a fixture_setup test symbol
-        let metadata = r#"{"is_test":true,"test_role":"fixture_setup"}"#;
-        db.conn
-            .execute(
-                "INSERT INTO symbols (id, name, kind, language, file_path, code_context, metadata, reference_score) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0.0)",
-                rusqlite::params![
-                    "sym-fixture",
-                    "setUp",
-                    "function",
-                    "python",
-                    "test_file.py",
-                    "self.db = create_test_db()",
-                    metadata,
-                ],
-            )
+        let metadata =
+            serde_json::from_str(r#"{"is_test":true,"test_role":"fixture_setup"}"#).unwrap();
+        db.store_symbols(&[symbol_builder("sym-fixture", "setUp", "test_file.py")
+            .language("python")
+            .code_context("self.db = create_test_db()")
+            .metadata(metadata)
+            .build()])
             .unwrap();
 
         let stats = compute_test_quality_metrics(&db, &configs).unwrap();
