@@ -2,7 +2,8 @@
 // These were previously inline tests that have been moved to follow project standards
 
 use crate::database::*;
-use crate::extractors::{Symbol, SymbolKind};
+use crate::extractors::{IdentifierKind, Symbol, SymbolKind};
+use crate::tests::helpers::db::{identifier_builder, symbol_builder};
 use crate::tests::test_helpers::open_test_connection;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -972,34 +973,41 @@ fn test_get_identifiers_by_names_kinds_excluding_containers_filters_rows() {
             .unwrap();
     }
 
-    for (id, name, path) in [
+    let symbols = [
         ("sym_target", "target", "src/main.rs"),
         ("sym_included", "included", "src/included.rs"),
         ("sym_excluded", "excluded", "tests/excluded.rs"),
-    ] {
-        db.conn
-            .execute(
-                "INSERT INTO symbols (id, name, kind, language, file_path, start_line, end_line, start_col, end_col, start_byte, end_byte)
-                 VALUES (?1, ?2, 'function', 'rust', ?3, 1, 1, 0, 1, 0, 10)",
-                rusqlite::params![id, name, path],
-            )
-            .unwrap();
-    }
+    ]
+    .into_iter()
+    .map(|(id, name, path)| {
+        symbol_builder(id, name, path)
+            .kind(SymbolKind::Function)
+            .span(1, 0, 1, 1)
+            .bytes(0, 10)
+            .build()
+    })
+    .collect::<Vec<_>>();
+    db.store_symbols(&symbols).unwrap();
 
-    for (id, kind, container_id) in [
-        ("ident_call", "call", "sym_included"),
-        ("ident_type", "type_usage", "sym_included"),
-        ("ident_member", "member_access", "sym_included"),
-        ("ident_excluded", "call", "sym_excluded"),
-    ] {
-        db.conn
-            .execute(
-                "INSERT INTO identifiers (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, containing_symbol_id, target_symbol_id, confidence)
-                 VALUES (?1, 'target', ?2, 'rust', 'src/included.rs', 1, 0, 1, 6, 0, 6, ?3, 'sym_target', 1.0)",
-                rusqlite::params![id, kind, container_id],
-            )
-            .unwrap();
-    }
+    let identifiers = [
+        ("ident_call", IdentifierKind::Call, "sym_included"),
+        ("ident_type", IdentifierKind::TypeUsage, "sym_included"),
+        ("ident_member", IdentifierKind::MemberAccess, "sym_included"),
+        ("ident_excluded", IdentifierKind::Call, "sym_excluded"),
+    ]
+    .into_iter()
+    .map(|(id, kind, container_id)| {
+        identifier_builder(id, "target", "src/included.rs")
+            .kind(kind)
+            .line(1)
+            .column(0, 6)
+            .bytes(0, 6)
+            .containing_symbol_id(container_id)
+            .target_symbol_id("sym_target")
+            .build()
+    })
+    .collect::<Vec<_>>();
+    db.bulk_store_identifiers(&identifiers, "").unwrap();
 
     let excluded = std::collections::HashSet::from(["sym_excluded".to_string()]);
     let identifiers = db
