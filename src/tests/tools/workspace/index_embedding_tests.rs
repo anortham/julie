@@ -1,6 +1,8 @@
 //! Tests for indexing and embedding pipeline fixes.
 
 use crate::database::SymbolDatabase;
+use crate::extractors::SymbolKind;
+use crate::tests::helpers::db::{file_info_builder, set_symbol_reference_scores, symbol_builder};
 use tempfile::TempDir;
 
 /// Helper: create a fresh test DB.
@@ -17,22 +19,26 @@ fn create_test_db() -> (SymbolDatabase, TempDir) {
 /// `end_byte`) so that `get_all_symbols()` (which SELECTs them as integers) doesn't
 /// fail with "Invalid column type Null".
 fn insert_test_symbol(db: &mut SymbolDatabase, id: &str, name: &str, file_path: &str) {
-    db.conn
-        .execute(
-            "INSERT OR IGNORE INTO files (path, language, hash, size, last_modified, last_indexed)
-             VALUES (?, 'rust', 'deadbeef', 100, 0, 0)",
-            rusqlite::params![file_path],
+    if db.get_file_hash(file_path).unwrap().is_none() {
+        db.store_file_info(
+            &file_info_builder(file_path)
+                .language("rust")
+                .hash("deadbeef")
+                .size(100)
+                .last_modified(0)
+                .last_indexed(0)
+                .build(),
         )
         .expect("Failed to insert test file");
-    db.conn
-        .execute(
-            "INSERT INTO symbols (id, name, kind, file_path, language,
-                                  start_line, start_col, end_line, end_col,
-                                  start_byte, end_byte, reference_score)
-             VALUES (?, ?, 'function', ?, 'rust', 1, 0, 10, 0, 0, 0, 1.0)",
-            rusqlite::params![id, name, file_path],
-        )
+    }
+    db.store_symbols(&[symbol_builder(id, name, file_path)
+        .kind(SymbolKind::Function)
+        .language("rust")
+        .span(1, 0, 10, 0)
+        .bytes(0, 0)
+        .build()])
         .expect("Failed to insert test symbol");
+    set_symbol_reference_scores(db, &[(id, 1.0)]).expect("Failed to set reference score");
 }
 
 /// Verify that clearing embeddings on a separate DB does not affect another DB.
@@ -310,31 +316,31 @@ fn test_pipeline_cancel_after_batch_stops_before_next_batch() {
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Arc, Mutex};
 
-    let (db, _dir) = create_test_db();
+    let (mut db, _dir) = create_test_db();
 
     // Insert more than one batch worth of symbols (BATCH_SIZE=250).
     // Use individual file records to avoid FK constraints.
     for i in 0..300_usize {
-        db.conn
-            .execute(
-                "INSERT OR IGNORE INTO files (path, language, hash, size, last_modified, last_indexed)
-                 VALUES (?, 'rust', 'deadbeef', 100, 0, 0)",
-                rusqlite::params![format!("src/file_{i}.rs")],
-            )
+        let file_path = format!("src/file_{i}.rs");
+        let symbol_id = format!("sym_{i}");
+        db.store_file_info(
+            &file_info_builder(&file_path)
+                .language("rust")
+                .hash("deadbeef")
+                .size(100)
+                .last_modified(0)
+                .last_indexed(0)
+                .build(),
+        )
+        .unwrap();
+        db.store_symbols(&[symbol_builder(&symbol_id, format!("fn_{i}"), &file_path)
+            .kind(SymbolKind::Function)
+            .language("rust")
+            .span(1, 0, 10, 0)
+            .bytes(0, 0)
+            .build()])
             .unwrap();
-        db.conn
-            .execute(
-                "INSERT INTO symbols (id, name, kind, file_path, language,
-                                      start_line, start_col, end_line, end_col,
-                                      start_byte, end_byte, reference_score)
-                 VALUES (?, ?, 'function', ?, 'rust', 1, 0, 10, 0, 0, 0, 1.0)",
-                rusqlite::params![
-                    format!("sym_{i}"),
-                    format!("fn_{i}"),
-                    format!("src/file_{i}.rs"),
-                ],
-            )
-            .unwrap();
+        set_symbol_reference_scores(&db, &[(&symbol_id, 1.0)]).unwrap();
     }
 
     let cancel = Arc::new(AtomicBool::new(false));
