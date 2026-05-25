@@ -433,6 +433,22 @@ fn changed_tests_handler_tool_navigation_files_route_per_tool() {
 }
 
 #[test]
+fn changed_tests_deep_dive_split_modules_route_to_deep_dive_bucket() {
+    let manifest = sample_manifest();
+
+    for path in [
+        "src/tests/tools/deep_dive_tests/deserialization_tests.rs",
+        "src/tests/tools/deep_dive_tests/formatting_tests/callable_core.rs",
+        "src/tests/tools/deep_dive_tests/data_tests/identifiers_query_similarity.rs",
+    ] {
+        let selection = select_changed_buckets(&manifest, &[path.to_string()]);
+        assert_eq!(selection.mode, ChangedSelectionMode::Buckets, "{path}");
+        assert_eq!(selection.bucket_names, vec!["tools-deep-dive"], "{path}");
+        assert!(selection.fallback_paths.is_empty(), "{path}");
+    }
+}
+
+#[test]
 fn changed_tests_handler_tool_files_select_specific_buckets() {
     let manifest = sample_manifest();
 

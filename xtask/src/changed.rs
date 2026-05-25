@@ -609,16 +609,17 @@ fn buckets_for_path(path: &str) -> &'static [&'static str] {
     }
 
     // src/tools/deep_dive/ and deep_dive test files
-    if matches_prefix(path, &["src/tools/deep_dive/"])
-        || matches_exact(
-            path,
-            &[
-                "src/tests/tools/deep_dive_tests.rs",
-                "src/tests/tools/deep_dive_primary_rebind_tests.rs",
-                "src/tests/tools/deep_dive_regression_tests.rs",
-            ],
-        )
-    {
+    if matches_prefix(
+        path,
+        &["src/tools/deep_dive/", "src/tests/tools/deep_dive_tests/"],
+    ) || matches_exact(
+        path,
+        &[
+            "src/tests/tools/deep_dive_tests.rs",
+            "src/tests/tools/deep_dive_primary_rebind_tests.rs",
+            "src/tests/tools/deep_dive_regression_tests.rs",
+        ],
+    ) {
         return &["tools-deep-dive"];
     }
 
