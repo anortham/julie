@@ -1673,7 +1673,11 @@ mod data_tests {
     use std::collections::HashMap;
 
     use crate::database::{FileInfo, SymbolDatabase};
-    use crate::extractors::base::{Relationship, RelationshipKind, Symbol, SymbolKind, Visibility};
+    use crate::extractors::{
+        IdentifierKind,
+        base::{Relationship, RelationshipKind, Symbol, SymbolKind, Visibility},
+    };
+    use crate::tests::helpers::db::identifier_builder;
     use crate::tools::deep_dive::data::{build_symbol_context, find_symbol};
     use crate::tools::deep_dive::deep_dive_query;
     use tempfile::TempDir;
@@ -2220,27 +2224,25 @@ mod data_tests {
 
     // === Identifier fallback ===
 
-    /// Helper to insert a raw identifier into the test database
+    /// Helper to insert an identifier into the test database
     fn insert_identifier(
-        db: &SymbolDatabase,
+        db: &mut SymbolDatabase,
         name: &str,
-        kind: &str,
+        kind: IdentifierKind,
         file: &str,
         line: u32,
         containing_symbol_id: Option<&str>,
     ) {
-        db.conn.execute(
-            "INSERT INTO identifiers (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, containing_symbol_id, confidence)
-             VALUES (?1, ?2, ?3, 'rust', ?4, ?5, 0, ?5, 10, 0, 100, ?6, 0.9)",
-            rusqlite::params![
-                format!("ident_{}_{}", name, line),
-                name,
-                kind,
-                file,
-                line,
-                containing_symbol_id,
-            ],
-        ).unwrap();
+        let mut builder = identifier_builder(format!("ident_{name}_{line}"), name, file)
+            .kind(kind)
+            .line(line)
+            .column(0, 10)
+            .bytes(0, 100)
+            .confidence(0.9);
+        if let Some(containing_symbol_id) = containing_symbol_id {
+            builder = builder.containing_symbol_id(containing_symbol_id);
+        }
+        db.bulk_store_identifiers(&[builder.build()], "").unwrap();
     }
 
     #[test]
@@ -2261,7 +2263,14 @@ mod data_tests {
         db.store_symbols(&symbols).unwrap();
 
         // No relationships — only an identifier ref (no containing symbol)
-        insert_identifier(&db, "process", "call", "src/main.rs", 25, None);
+        insert_identifier(
+            &mut db,
+            "process",
+            IdentifierKind::Call,
+            "src/main.rs",
+            25,
+            None,
+        );
 
         let ctx = build_symbol_context(&db, &symbols[0], "overview", 10, 10).unwrap();
 
@@ -2313,10 +2322,24 @@ mod data_tests {
         db.store_relationships(&rels).unwrap();
 
         // Identifier at the SAME location — should be deduped
-        insert_identifier(&db, "process", "call", "src/main.rs", 8, Some("sym-caller"));
+        insert_identifier(
+            &mut db,
+            "process",
+            IdentifierKind::Call,
+            "src/main.rs",
+            8,
+            Some("sym-caller"),
+        );
 
         // Plus one at a DIFFERENT location — should be added
-        insert_identifier(&db, "process", "call", "src/handler.rs", 42, None);
+        insert_identifier(
+            &mut db,
+            "process",
+            IdentifierKind::Call,
+            "src/handler.rs",
+            42,
+            None,
+        );
 
         let ctx = build_symbol_context(&db, &symbols[0], "overview", 10, 10).unwrap();
 
@@ -2348,9 +2371,23 @@ mod data_tests {
         db.store_symbols(&symbols).unwrap();
 
         // Identifier at the definition site itself — should be skipped
-        insert_identifier(&db, "process", "call", "src/engine.rs", 10, None);
+        insert_identifier(
+            &mut db,
+            "process",
+            IdentifierKind::Call,
+            "src/engine.rs",
+            10,
+            None,
+        );
         // Identifier at a different location — should be kept
-        insert_identifier(&db, "process", "call", "src/main.rs", 30, None);
+        insert_identifier(
+            &mut db,
+            "process",
+            IdentifierKind::Call,
+            "src/main.rs",
+            30,
+            None,
+        );
 
         let ctx = build_symbol_context(&db, &symbols[0], "overview", 10, 10).unwrap();
 
@@ -2383,15 +2420,22 @@ mod data_tests {
 
         // Identifier in a test file
         insert_identifier(
-            &db,
+            &mut db,
             "process",
-            "call",
+            IdentifierKind::Call,
             "src/tests/search_tests.rs",
             42,
             None,
         );
         // Identifier in a non-test file (should NOT be in test_refs)
-        insert_identifier(&db, "process", "call", "src/main.rs", 25, None);
+        insert_identifier(
+            &mut db,
+            "process",
+            IdentifierKind::Call,
+            "src/main.rs",
+            25,
+            None,
+        );
 
         let ctx = build_symbol_context(&db, &symbols[0], "full", 10, 10).unwrap();
 
@@ -2418,9 +2462,9 @@ mod data_tests {
 
         // Identifier in a test file
         insert_identifier(
-            &db,
+            &mut db,
             "process",
-            "call",
+            IdentifierKind::Call,
             "src/tests/search_tests.rs",
             42,
             None,
@@ -2789,9 +2833,9 @@ mod data_tests {
 
         // Identifier in a test file
         insert_identifier(
-            &db,
+            &mut db,
             "process",
-            "call",
+            IdentifierKind::Call,
             "src/tests/search_tests.rs",
             42,
             None,
@@ -2860,9 +2904,9 @@ mod data_tests {
         db.store_symbols(&[target.clone(), test_symbol]).unwrap();
 
         insert_identifier(
-            &db,
+            &mut db,
             "process",
-            "call",
+            IdentifierKind::Call,
             "integration/auth_flow.rs",
             42,
             Some("sym-test"),
