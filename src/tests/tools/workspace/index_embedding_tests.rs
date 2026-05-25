@@ -2,7 +2,9 @@
 
 use crate::database::SymbolDatabase;
 use crate::extractors::SymbolKind;
-use crate::tests::helpers::db::{file_info_builder, set_symbol_reference_scores, symbol_builder};
+use crate::tests::helpers::db::{
+    file_info_builder, set_symbol_reference_scores, store_file_info_if_missing, symbol_builder,
+};
 use tempfile::TempDir;
 
 /// Helper: create a fresh test DB.
@@ -19,18 +21,17 @@ fn create_test_db() -> (SymbolDatabase, TempDir) {
 /// `end_byte`) so that `get_all_symbols()` (which SELECTs them as integers) doesn't
 /// fail with "Invalid column type Null".
 fn insert_test_symbol(db: &mut SymbolDatabase, id: &str, name: &str, file_path: &str) {
-    if db.get_file_hash(file_path).unwrap().is_none() {
-        db.store_file_info(
-            &file_info_builder(file_path)
-                .language("rust")
-                .hash("deadbeef")
-                .size(100)
-                .last_modified(0)
-                .last_indexed(0)
-                .build(),
-        )
-        .expect("Failed to insert test file");
-    }
+    store_file_info_if_missing(
+        db,
+        &file_info_builder(file_path)
+            .language("rust")
+            .hash("deadbeef")
+            .size(100)
+            .last_modified(0)
+            .last_indexed(0)
+            .build(),
+    )
+    .expect("Failed to insert test file");
     db.store_symbols(&[symbol_builder(id, name, file_path)
         .kind(SymbolKind::Function)
         .language("rust")

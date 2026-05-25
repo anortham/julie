@@ -4,7 +4,9 @@
 mod tests {
     use crate::database::{LATEST_SCHEMA_VERSION, SymbolDatabase};
     use crate::extractors::SymbolKind;
-    use crate::tests::helpers::db::{file_info_builder, symbol_builder};
+    use crate::tests::helpers::db::{
+        file_info_builder, store_file_info_if_missing, symbol_builder,
+    };
     use tempfile::TempDir;
 
     /// Helper: create a fresh SymbolDatabase in a temp directory.
@@ -28,19 +30,17 @@ mod tests {
         file_path: &str,
         language: &str,
     ) {
-        // File record must exist first (foreign key constraint)
-        if db.get_file_hash(file_path).unwrap().is_none() {
-            db.store_file_info(
-                &file_info_builder(file_path)
-                    .language(language)
-                    .hash("deadbeef")
-                    .size(100)
-                    .last_modified(0)
-                    .last_indexed(0)
-                    .build(),
-            )
-            .expect("Failed to insert test file");
-        }
+        store_file_info_if_missing(
+            db,
+            &file_info_builder(file_path)
+                .language(language)
+                .hash("deadbeef")
+                .size(100)
+                .last_modified(0)
+                .last_indexed(0)
+                .build(),
+        )
+        .expect("Failed to insert test file");
         db.store_symbols(&[symbol_builder(id, name, file_path)
             .kind(SymbolKind::Function)
             .language(language)

@@ -13,6 +13,18 @@ pub fn file_info_builder(path: impl Into<String>) -> FileInfoBuilder {
     FileInfoBuilder::new(path)
 }
 
+pub fn store_file_info_if_missing(
+    db: &SymbolDatabase,
+    file_info: &FileInfo,
+) -> anyhow::Result<bool> {
+    if db.get_file_hash(&file_info.path)?.is_some() {
+        return Ok(false);
+    }
+
+    db.store_file_info(file_info)?;
+    Ok(true)
+}
+
 pub struct FileInfoBuilder {
     path: String,
     language: String,
@@ -207,6 +219,11 @@ impl SymbolBuilder {
 
     pub fn signature(mut self, signature: impl Into<String>) -> Self {
         self.signature = Some(signature.into());
+        self
+    }
+
+    pub fn doc_comment(mut self, doc_comment: impl Into<String>) -> Self {
+        self.doc_comment = Some(doc_comment.into());
         self
     }
 

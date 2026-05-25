@@ -5,7 +5,7 @@ use crate::extractors::{
 
 use super::{
     file_info_builder, identifier_builder, relationship_builder, set_symbol_reference_scores,
-    symbol_builder,
+    store_file_info_if_missing, symbol_builder,
 };
 
 #[test]
@@ -28,6 +28,29 @@ fn test_file_info_builder_overrides_symbol_count() {
     let file = file_info_builder("src/lib.rs").symbol_count(0).build();
 
     assert_eq!(file.symbol_count, 0);
+}
+
+#[test]
+fn test_store_file_info_if_missing_preserves_existing_file_row() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let db_path = temp_dir.path().join("test.db");
+    let db = SymbolDatabase::new(&db_path).unwrap();
+
+    let first = file_info_builder("src/lib.rs")
+        .hash("first-hash")
+        .size(100)
+        .build();
+    let second = file_info_builder("src/lib.rs")
+        .hash("second-hash")
+        .size(200)
+        .build();
+
+    assert!(store_file_info_if_missing(&db, &first).unwrap());
+    assert!(!store_file_info_if_missing(&db, &second).unwrap());
+    assert_eq!(
+        db.get_file_hash("src/lib.rs").unwrap().as_deref(),
+        Some("first-hash")
+    );
 }
 
 #[test]
@@ -91,6 +114,18 @@ fn test_symbol_builder_overrides_metadata_and_span() {
     assert_eq!(symbol.signature.as_deref(), Some("run(): void"));
     assert_eq!(symbol.visibility, Some(Visibility::Public));
     assert_eq!(symbol.confidence, Some(0.8));
+}
+
+#[test]
+fn test_symbol_builder_overrides_doc_comment() {
+    let symbol = symbol_builder("sym-doc", "render", "src/lib.rs")
+        .doc_comment("Render the selected view.")
+        .build();
+
+    assert_eq!(
+        symbol.doc_comment.as_deref(),
+        Some("Render the selected view.")
+    );
 }
 
 #[test]

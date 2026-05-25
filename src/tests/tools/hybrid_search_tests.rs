@@ -181,6 +181,7 @@ mod tests {
 #[cfg(test)]
 mod orchestrator_tests {
     use anyhow::Result;
+    use std::collections::HashMap;
     use std::io;
     use std::io::Write;
     use std::sync::{Arc, Mutex};
@@ -188,8 +189,12 @@ mod orchestrator_tests {
 
     use crate::database::SymbolDatabase;
     use crate::embeddings::{DeviceInfo, EmbeddingProvider};
+    use crate::extractors::SymbolKind;
     use crate::search::hybrid::hybrid_search;
     use crate::search::index::{SearchDocument, SearchFilter, SearchIndex, SymbolSearchResults};
+    use crate::tests::helpers::db::{
+        file_info_builder, store_file_info_if_missing, symbol_builder,
+    };
     use tempfile::TempDir;
 
     #[derive(Clone)]
@@ -339,29 +344,18 @@ mod orchestrator_tests {
         let db_dir = tempfile::tempdir().unwrap();
 
         let index = SearchIndex::create(idx_dir.path()).unwrap();
-        let db = SymbolDatabase::new(&db_dir.path().join("test.db")).unwrap();
+        let mut db = SymbolDatabase::new(&db_dir.path().join("test.db")).unwrap();
 
-        // Insert a file record for the foreign key constraint
-        db.conn
-            .execute(
-                "INSERT OR IGNORE INTO files (path, language, hash, size, last_modified, last_indexed)
-                 VALUES ('src/lib.rs', 'rust', 'abc123', 100, 0, 0)",
-                [],
-            )
-            .unwrap();
-
-        // Insert symbol into DB
-        db.conn
-            .execute(
-                "INSERT INTO symbols (id, name, kind, file_path, language,
-                 start_line, start_col, end_line, end_col, start_byte, end_byte,
-                 reference_score, signature, doc_comment)
-                 VALUES ('sym1', 'process_data', 'function', 'src/lib.rs', 'rust',
-                 10, 0, 20, 0, 0, 200, 0.0,
-                 'fn process_data(input: &str) -> Result<()>',
-                 'Processes input data.')",
-                [],
-            )
+        store_file_info(&db, "src/lib.rs", "rust", "abc123", 100);
+        db.store_symbols(&[symbol_builder("sym1", "process_data", "src/lib.rs")
+            .kind(SymbolKind::Function)
+            .language("rust")
+            .span(10, 0, 20, 0)
+            .bytes(0, 200)
+            .signature("fn process_data(input: &str) -> Result<()>")
+            .doc_comment("Processes input data.")
+            .confidence(1.0)
+            .build()])
             .unwrap();
 
         // Add symbol to Tantivy index
@@ -381,6 +375,28 @@ mod orchestrator_tests {
         index.commit().unwrap();
 
         (index, db, idx_dir, db_dir)
+    }
+
+    fn store_file_info(
+        db: &SymbolDatabase,
+        file_path: &str,
+        language: &str,
+        hash: &str,
+        size: i64,
+    ) {
+        store_file_info_if_missing(
+            db,
+            &file_info_builder(file_path)
+                .language(language)
+                .hash(hash)
+                .size(size)
+                .last_modified(0)
+                .last_indexed(0)
+                .symbol_count(0)
+                .line_count(0)
+                .build(),
+        )
+        .unwrap();
     }
 
     #[test]
@@ -452,25 +468,16 @@ mod orchestrator_tests {
         let (index, mut db, _idx_dir, _db_dir) = setup_index_and_db();
 
         // Add a symbol that should be excluded by both language + file_pattern filters.
-        db.conn
-            .execute(
-                "INSERT OR IGNORE INTO files (path, language, hash, size, last_modified, last_indexed)
-                 VALUES ('scripts/tool.py', 'python', 'def456', 120, 0, 0)",
-                [],
-            )
-            .unwrap();
-
-        db.conn
-            .execute(
-                "INSERT INTO symbols (id, name, kind, file_path, language,
-                 start_line, start_col, end_line, end_col, start_byte, end_byte,
-                 reference_score, signature, doc_comment)
-                 VALUES ('sym2', 'python_helper', 'function', 'scripts/tool.py', 'python',
-                 5, 0, 15, 0, 0, 120, 0.0,
-                 'def python_helper(data):',
-                 'Python helper function.')",
-                [],
-            )
+        store_file_info(&mut db, "scripts/tool.py", "python", "def456", 120);
+        db.store_symbols(&[symbol_builder("sym2", "python_helper", "scripts/tool.py")
+            .kind(SymbolKind::Function)
+            .language("python")
+            .span(5, 0, 15, 0)
+            .bytes(0, 120)
+            .signature("def python_helper(data):")
+            .doc_comment("Python helper function.")
+            .confidence(1.0)
+            .build()])
             .unwrap();
 
         // Seed embeddings so KNN returns both symbols.
@@ -546,27 +553,27 @@ mod orchestrator_tests {
     fn test_hybrid_search_exclude_tests_filters_semantic_results() {
         let (index, mut db, _idx_dir, _db_dir) = setup_index_and_db();
 
-        // Insert file record for the test-file symbol
-        db.conn
-            .execute(
-                "INSERT OR IGNORE INTO files (path, language, hash, size, last_modified, last_indexed)
-                 VALUES ('src/tests/pipeline_tests.rs', 'rust', 'testfile123', 80, 0, 0)",
-                [],
-            )
-            .unwrap();
-
         // Insert a test-file symbol into DB
-        db.conn
-            .execute(
-                "INSERT INTO symbols (id, name, kind, file_path, language,
-                 start_line, start_col, end_line, end_col, start_byte, end_byte,
-                 reference_score, signature, doc_comment)
-                 VALUES ('test_fn', 'test_process_data', 'function', 'src/tests/pipeline_tests.rs', 'rust',
-                 5, 0, 15, 0, 0, 100, 0.0,
-                 'fn test_process_data()',
-                 '')",
-                [],
-            )
+        store_file_info(
+            &mut db,
+            "src/tests/pipeline_tests.rs",
+            "rust",
+            "testfile123",
+            80,
+        );
+        db.store_symbols(&[symbol_builder(
+            "test_fn",
+            "test_process_data",
+            "src/tests/pipeline_tests.rs",
+        )
+        .kind(SymbolKind::Function)
+        .language("rust")
+        .span(5, 0, 15, 0)
+        .bytes(0, 100)
+        .signature("fn test_process_data()")
+        .doc_comment("")
+        .confidence(1.0)
+        .build()])
             .unwrap();
 
         // Do NOT add the test symbol to Tantivy — it should only be reachable
@@ -640,18 +647,22 @@ mod orchestrator_tests {
     fn test_hybrid_search_exclude_tests_filters_metadata_test_semantic_results() {
         let (index, mut db, _idx_dir, _db_dir) = setup_index_and_db();
 
-        db.conn
-            .execute(
-                "INSERT INTO symbols (id, name, kind, file_path, language,
-                 start_line, start_col, end_line, end_col, start_byte, end_byte,
-                 reference_score, signature, doc_comment, metadata)
-                 VALUES ('inline_test_fn', 'inline_process_data_test', 'function', 'src/lib.rs', 'rust',
-                 30, 0, 40, 0, 0, 100, 0.0,
-                 'fn inline_process_data_test()',
-                 '',
-                 '{\"is_test\":true,\"test_role\":\"impl_test\"}')",
-                [],
-            )
+        let metadata: HashMap<String, serde_json::Value> =
+            serde_json::from_str(r#"{"is_test":true,"test_role":"impl_test"}"#).unwrap();
+        db.store_symbols(&[symbol_builder(
+            "inline_test_fn",
+            "inline_process_data_test",
+            "src/lib.rs",
+        )
+        .kind(SymbolKind::Function)
+        .language("rust")
+        .span(30, 0, 40, 0)
+        .bytes(0, 100)
+        .signature("fn inline_process_data_test()")
+        .doc_comment("")
+        .metadata(metadata)
+        .confidence(1.0)
+        .build()])
             .unwrap();
 
         let prod_vec: Vec<f32> = (0..384).map(|i| if i == 0 { 0.8 } else { 0.0 }).collect();
@@ -856,9 +867,13 @@ mod weight_profile_wiring_tests {
 
     use crate::database::SymbolDatabase;
     use crate::embeddings::{DeviceInfo, EmbeddingProvider};
+    use crate::extractors::SymbolKind;
     use crate::search::hybrid::hybrid_search;
     use crate::search::index::{SearchDocument, SearchFilter, SearchIndex};
     use crate::search::weights::SearchWeightProfile;
+    use crate::tests::helpers::db::{
+        file_info_builder, store_file_info_if_missing, symbol_builder,
+    };
     use tempfile::TempDir;
 
     /// Mock embedding provider that returns a deterministic vector.
@@ -895,28 +910,8 @@ mod weight_profile_wiring_tests {
         let index = SearchIndex::create(idx_dir.path()).unwrap();
         let mut db = SymbolDatabase::new(&db_dir.path().join("test.db")).unwrap();
 
-        // Insert a file record for the foreign key constraint
-        db.conn
-            .execute(
-                "INSERT OR IGNORE INTO files (path, language, hash, size, last_modified, last_indexed)
-                 VALUES ('src/lib.rs', 'rust', 'abc123', 100, 0, 0)",
-                [],
-            )
-            .unwrap();
-
-        // Insert symbol into DB
-        db.conn
-            .execute(
-                "INSERT INTO symbols (id, name, kind, file_path, language,
-                 start_line, start_col, end_line, end_col, start_byte, end_byte,
-                 reference_score, signature, doc_comment)
-                 VALUES ('sym1', 'process_data', 'function', 'src/lib.rs', 'rust',
-                 10, 0, 20, 0, 0, 200, 0.0,
-                 'fn process_data(input: &str) -> Result<()>',
-                 'Processes input data.')",
-                [],
-            )
-            .unwrap();
+        store_process_data_file(&db);
+        db.store_symbols(&[process_data_symbol()]).unwrap();
 
         // Add symbol to Tantivy index
         index
@@ -939,6 +934,34 @@ mod weight_profile_wiring_tests {
             .unwrap();
 
         (index, db, idx_dir, db_dir)
+    }
+
+    fn store_process_data_file(db: &SymbolDatabase) {
+        store_file_info_if_missing(
+            db,
+            &file_info_builder("src/lib.rs")
+                .language("rust")
+                .hash("abc123")
+                .size(100)
+                .last_modified(0)
+                .last_indexed(0)
+                .symbol_count(0)
+                .line_count(0)
+                .build(),
+        )
+        .unwrap();
+    }
+
+    fn process_data_symbol() -> crate::extractors::Symbol {
+        symbol_builder("sym1", "process_data", "src/lib.rs")
+            .kind(SymbolKind::Function)
+            .language("rust")
+            .span(10, 0, 20, 0)
+            .bytes(0, 200)
+            .signature("fn process_data(input: &str) -> Result<()>")
+            .doc_comment("Processes input data.")
+            .confidence(1.0)
+            .build()
     }
 
     #[test]
@@ -995,28 +1018,10 @@ mod weight_profile_wiring_tests {
         let db_dir = tempfile::tempdir().unwrap();
 
         let index = SearchIndex::create(idx_dir.path()).unwrap();
-        let db = SymbolDatabase::new(&db_dir.path().join("test.db")).unwrap();
+        let mut db = SymbolDatabase::new(&db_dir.path().join("test.db")).unwrap();
 
-        db.conn
-            .execute(
-                "INSERT OR IGNORE INTO files (path, language, hash, size, last_modified, last_indexed)
-                 VALUES ('src/lib.rs', 'rust', 'abc123', 100, 0, 0)",
-                [],
-            )
-            .unwrap();
-
-        db.conn
-            .execute(
-                "INSERT INTO symbols (id, name, kind, file_path, language,
-                 start_line, start_col, end_line, end_col, start_byte, end_byte,
-                 reference_score, signature, doc_comment)
-                 VALUES ('sym1', 'process_data', 'function', 'src/lib.rs', 'rust',
-                 10, 0, 20, 0, 0, 200, 0.0,
-                 'fn process_data(input: &str) -> Result<()>',
-                 'Processes input data.')",
-                [],
-            )
-            .unwrap();
+        store_process_data_file(&db);
+        db.store_symbols(&[process_data_symbol()]).unwrap();
 
         index
             .add_search_doc(&SearchDocument::symbol_from_parts(
@@ -1123,8 +1128,14 @@ mod nl_query_detection_tests {
 /// from the database.
 #[cfg(test)]
 mod conversion_tests {
+    use std::collections::HashMap;
+
     use crate::database::SymbolDatabase;
+    use crate::extractors::SymbolKind;
     use crate::search::hybrid::knn_to_search_results;
+    use crate::tests::helpers::db::{
+        file_info_builder, store_file_info_if_missing, symbol_builder,
+    };
     use tempfile::TempDir;
 
     /// Helper: create a fresh SymbolDatabase in a temp directory.
@@ -1173,34 +1184,40 @@ mod conversion_tests {
         doc_comment: Option<&str>,
         metadata: Option<&str>,
     ) {
-        // File record must exist first (foreign key constraint)
-        db.conn
-            .execute(
-                "INSERT OR IGNORE INTO files (path, language, hash, size, last_modified, last_indexed)
-                 VALUES (?, ?, 'deadbeef', 100, 0, 0)",
-                rusqlite::params![file_path, language],
-            )
-            .expect("Failed to insert test file");
+        store_file_info_if_missing(
+            db,
+            &file_info_builder(file_path)
+                .language(language)
+                .hash("deadbeef")
+                .size(100)
+                .last_modified(0)
+                .last_indexed(0)
+                .symbol_count(0)
+                .line_count(0)
+                .build(),
+        )
+        .expect("Failed to insert test file");
 
-        db.conn
-            .execute(
-                "INSERT INTO symbols (id, name, kind, file_path, language,
-                 start_line, start_col, end_line, end_col, start_byte, end_byte,
-                 reference_score, signature, doc_comment, metadata)
-                 VALUES (?, ?, ?, ?, ?, ?, 0, ?, 0, 0, 100, 0.0, ?, ?, ?)",
-                rusqlite::params![
-                    id,
-                    name,
-                    kind,
-                    file_path,
-                    language,
-                    start_line,
-                    start_line + 10,
-                    signature,
-                    doc_comment,
-                    metadata
-                ],
-            )
+        let mut symbol = symbol_builder(id, name, file_path)
+            .kind(SymbolKind::from_string(kind))
+            .language(language)
+            .span(start_line, 0, start_line + 10, 0)
+            .bytes(0, 100)
+            .confidence(1.0);
+
+        if let Some(signature) = signature {
+            symbol = symbol.signature(signature);
+        }
+        if let Some(doc_comment) = doc_comment {
+            symbol = symbol.doc_comment(doc_comment);
+        }
+        if let Some(metadata) = metadata {
+            let metadata: HashMap<String, serde_json::Value> =
+                serde_json::from_str(metadata).expect("Failed to parse test metadata");
+            symbol = symbol.metadata(metadata);
+        }
+
+        db.store_symbols(&[symbol.build()])
             .expect("Failed to insert test symbol");
     }
 
