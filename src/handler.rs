@@ -189,12 +189,6 @@ impl Default for IndexingStatus {
 /// - Cross-language relationship detection
 #[derive(Clone)]
 pub struct JulieServerHandler {
-    /// Original workspace root captured at handler construction. Production
-    /// code should read `current_workspace_root()` instead, which reflects
-    /// rebind state. This field is retained for tests that need to compare
-    /// against the pre-rebind root.
-    #[allow(dead_code)]
-    pub(crate) workspace_root: PathBuf,
     /// Session-owned workspace state. This is the mutable source of truth for
     /// startup hint, root tracking, primary binding, and secondary activations.
     pub(crate) session_workspace: Arc<StdRwLock<SessionWorkspaceState>>,
@@ -698,7 +692,6 @@ impl JulieServerHandler {
         let session_workspace = SessionWorkspaceState::new(workspace_startup_hint);
 
         Ok(Self {
-            workspace_root,
             session_workspace: Arc::new(StdRwLock::new(session_workspace)),
             workspace: Arc::new(RwLock::new(None)),
             is_indexed: Arc::new(RwLock::new(false)),
@@ -816,7 +809,6 @@ impl JulieServerHandler {
         tokio::spawn(run_metrics_writer(metrics_rx));
 
         let handler = Self {
-            workspace_root: workspace_root.clone(),
             session_workspace: Arc::new(StdRwLock::new(session_workspace)),
             workspace: Arc::new(RwLock::new(Some(ws_clone))),
             is_indexed: Arc::new(RwLock::new(already_indexed)),
@@ -918,7 +910,6 @@ impl JulieServerHandler {
         tokio::spawn(run_metrics_writer(metrics_rx));
 
         Ok(Self {
-            workspace_root: workspace_root.clone(),
             session_workspace: Arc::new(StdRwLock::new(SessionWorkspaceState::new(
                 workspace_startup_hint,
             ))),

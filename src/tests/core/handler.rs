@@ -145,7 +145,6 @@ async fn handler_construction_sets_workspace_root() -> Result<()> {
         handler_root, cwd,
         "new_for_test should not anchor handlers in the repo cwd"
     );
-    assert_eq!(handler.current_workspace_root(), handler.workspace_root);
     assert_eq!(handler.current_workspace_id(), None);
     // workspace should start as None (lazy init)
     let ws = handler.workspace.read().await;

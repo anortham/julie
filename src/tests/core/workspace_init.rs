@@ -564,8 +564,8 @@ fn test_resolve_workspace_path_respects_env_var() {
 /// Test: Handler uses provided workspace_root, not current_dir
 ///
 /// Verifies the P1 fix: JulieServerHandler::new(workspace_root) stores the
-/// provided path and uses it as the fallback in initialize_workspace_with_force,
-/// instead of calling current_dir().
+/// provided path in session startup state and uses it as the fallback in
+/// initialize_workspace_with_force, instead of calling current_dir().
 ///
 /// This prevents the bug where `julie-server --workspace /repo` launched from
 /// a different directory would index the wrong path.
@@ -592,13 +592,13 @@ async fn test_handler_uses_provided_workspace_root() {
         .await
         .expect("Failed to create handler");
 
-    // Verify the handler stored the correct workspace root
+    // Verify the session startup root is the explicit workspace root.
     // Use canonicalize() on both sides to handle Windows 8.3 short path names
     // (e.g., tempfile may return CHS300~1 instead of CHS300372)
     assert_eq!(
-        handler.workspace_root.canonicalize().unwrap(),
+        handler.current_workspace_root().canonicalize().unwrap(),
         intended_workspace.path().canonicalize().unwrap(),
-        "Handler should store the workspace root passed to new(), not current_dir"
+        "Handler should seed the session root from new(), not current_dir"
     );
 
     // Verify current_dir is different (precondition check)
@@ -714,7 +714,11 @@ async fn test_loaded_workspace_swap_intent_invalidates_loaded_and_current_state_
     );
     assert_eq!(
         handler.current_workspace_root().canonicalize().unwrap(),
-        handler.workspace_root.canonicalize().unwrap(),
+        handler
+            .workspace_startup_hint()
+            .path
+            .canonicalize()
+            .unwrap(),
         "current workspace root should fall back to startup hint during the async swap gap"
     );
 }
