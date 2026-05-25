@@ -6,6 +6,7 @@ mod tests {
 
     use crate::database::{FileInfo, SymbolDatabase};
     use crate::search::index::{SearchDocument, SearchIndex, SymbolSearchResult};
+    use crate::tests::helpers::db::identifier_builder;
     use crate::tools::get_context::pipeline::run_pipeline_with_options;
     use crate::tools::get_context::scoring::select_pivots_with_task_signals_for_query;
     use crate::tools::get_context::task_signals::{TaskSignals, hydrate_failing_test_links};
@@ -360,14 +361,21 @@ mod tests {
                 "fn setup_handler() {\n    BuildPipeline();\n}",
             ),
         ];
-        let (_db_dir, _index_dir, db, index) = setup_env(&symbols, &[]);
-        db.conn
-            .execute(
-                "INSERT INTO identifiers (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, containing_symbol_id, target_symbol_id, confidence)
-                 VALUES ('ident_call', 'BuildPipeline', 'call', 'rust', 'src/handler.rs', 2, 4, 2, 17, 0, 100, 'caller', 'target', 0.95)",
-                [],
-            )
-            .unwrap();
+        let (_db_dir, _index_dir, mut db, index) = setup_env(&symbols, &[]);
+        db.bulk_store_identifiers(
+            &[
+                identifier_builder("ident_call", "BuildPipeline", "src/handler.rs")
+                    .line(2)
+                    .column(4, 17)
+                    .bytes(0, 100)
+                    .containing_symbol_id("caller")
+                    .target_symbol_id("target")
+                    .confidence(0.95)
+                    .build(),
+            ],
+            "",
+        )
+        .unwrap();
 
         let signals = TaskSignals {
             entry_symbols: vec!["BuildPipeline".to_string()],
