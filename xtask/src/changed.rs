@@ -895,7 +895,9 @@ fn search_test_buckets_for_path(path: &str) -> Option<&'static [&'static str]> {
         return Some(&["tools-search-text"]);
     }
 
-    if matches_exact(path, &["src/tests/tools/hybrid_search_tests.rs"]) {
+    if matches_exact(path, &["src/tests/tools/hybrid_search_tests.rs"])
+        || matches_prefix(path, &["src/tests/tools/hybrid_search_tests/"])
+    {
         return Some(&["tools-search-hybrid"]);
     }
 
@@ -1081,6 +1083,26 @@ mod tests {
                 .iter()
                 .any(|path| path == "unmapped/tooling-note.txt"),
             "fallback path should still be reported"
+        );
+    }
+
+    #[test]
+    fn changed_tests_route_hybrid_search_split_modules_to_hybrid_bucket() {
+        let manifest = manifest();
+        let selection = select_changed_buckets(
+            &manifest,
+            &[
+                "src/tests/tools/hybrid_search_tests/orchestrator.rs".to_string(),
+                "src/tests/tools/hybrid_search_tests/knn_conversion.rs".to_string(),
+            ],
+        );
+
+        assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
+        assert_eq!(selection.bucket_names, vec!["tools-search-hybrid"]);
+        assert!(
+            selection.fallback_paths.is_empty(),
+            "split hybrid test modules should not force dev fallback; rationale={:?}",
+            selection.rationale
         );
     }
 
