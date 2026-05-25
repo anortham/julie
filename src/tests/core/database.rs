@@ -2,7 +2,7 @@
 // These were previously inline tests that have been moved to follow project standards
 
 use crate::database::*;
-use crate::extractors::{IdentifierKind, RelationshipKind, Symbol, SymbolKind};
+use crate::extractors::{IdentifierKind, RelationshipKind, Symbol, SymbolKind, Visibility};
 use crate::tests::helpers::db::{
     identifier_builder, relationship_builder, set_symbol_reference_scores, symbol_builder,
 };
@@ -2618,7 +2618,7 @@ fn test_migration_011_is_idempotent() {
 fn test_compute_reference_scores_propagates_constructor_centrality() {
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("test.db");
-    let db = SymbolDatabase::new(&db_path).unwrap();
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
 
     db.store_file_info(&FileInfo {
         path: "src/services.cs".to_string(),
@@ -2646,50 +2646,55 @@ fn test_compute_reference_scores_propagates_constructor_centrality() {
     })
     .unwrap();
 
-    // Class with no direct references
-    db.conn
-        .execute(
-            "INSERT INTO symbols (id, name, kind, language, file_path, start_line, end_line, start_col, end_col, start_byte, end_byte, visibility)
-             VALUES ('class_1', 'LabTestService', 'class', 'csharp', 'src/services.cs', 1, 100, 0, 1, 0, 5000, 'public')",
-            [],
-        )
-        .unwrap();
-
-    // Constructor with parent_id pointing to the class
-    db.conn
-        .execute(
-            "INSERT INTO symbols (id, name, kind, language, file_path, start_line, end_line, start_col, end_col, start_byte, end_byte, visibility, parent_id)
-             VALUES ('ctor_1', 'LabTestService', 'constructor', 'csharp', 'src/services.cs', 10, 15, 0, 1, 200, 400, 'public', 'class_1')",
-            [],
-        )
-        .unwrap();
-
-    // Two callers that reference the constructor (DI registrations)
-    for (id, name) in [("caller_1", "ConfigureServices"), ("caller_2", "TestSetup")] {
-        db.conn
-            .execute(
-                "INSERT INTO symbols (id, name, kind, language, file_path, start_line, end_line, start_col, end_col, start_byte, end_byte, visibility)
-                 VALUES (?1, ?2, 'method', 'csharp', 'src/program.cs', 50, 80, 0, 1, 0, 500, 'public')",
-                rusqlite::params![id, name],
-            )
-            .unwrap();
-    }
+    let symbols = vec![
+        symbol_builder("class_1", "LabTestService", "src/services.cs")
+            .kind(SymbolKind::Class)
+            .language("csharp")
+            .span(1, 0, 100, 1)
+            .bytes(0, 5000)
+            .visibility(Visibility::Public)
+            .confidence(1.0)
+            .build(),
+        symbol_builder("ctor_1", "LabTestService", "src/services.cs")
+            .kind(SymbolKind::Constructor)
+            .language("csharp")
+            .span(10, 0, 15, 1)
+            .bytes(200, 400)
+            .visibility(Visibility::Public)
+            .parent_id("class_1")
+            .confidence(1.0)
+            .build(),
+        symbol_builder("caller_1", "ConfigureServices", "src/program.cs")
+            .kind(SymbolKind::Method)
+            .language("csharp")
+            .span(50, 0, 80, 1)
+            .bytes(0, 500)
+            .visibility(Visibility::Public)
+            .confidence(1.0)
+            .build(),
+        symbol_builder("caller_2", "TestSetup", "src/program.cs")
+            .kind(SymbolKind::Method)
+            .language("csharp")
+            .span(50, 0, 80, 1)
+            .bytes(0, 500)
+            .visibility(Visibility::Public)
+            .confidence(1.0)
+            .build(),
+    ];
+    db.store_symbols(&symbols).unwrap();
 
     // Relationships: callers -> constructor (DI pattern)
-    db.conn
-        .execute(
-            "INSERT INTO relationships (id, from_symbol_id, to_symbol_id, kind)
-             VALUES ('rel_1', 'caller_1', 'ctor_1', 'instantiates')",
-            [],
-        )
-        .unwrap();
-    db.conn
-        .execute(
-            "INSERT INTO relationships (id, from_symbol_id, to_symbol_id, kind)
-             VALUES ('rel_2', 'caller_2', 'ctor_1', 'uses')",
-            [],
-        )
-        .unwrap();
+    let relationships = vec![
+        relationship_builder("rel_1", "caller_1", "ctor_1")
+            .kind(RelationshipKind::Instantiates)
+            .line_number(0)
+            .build(),
+        relationship_builder("rel_2", "caller_2", "ctor_1")
+            .kind(RelationshipKind::Uses)
+            .line_number(0)
+            .build(),
+    ];
+    db.store_relationships(&relationships).unwrap();
 
     db.compute_reference_scores().unwrap();
 
