@@ -252,38 +252,82 @@ mod tests {
         // - is_test = true with no test_role => included (backward compat)
         let temp_dir = TempDir::new().unwrap();
         let db_path = temp_dir.path().join("test.db");
-        let db = SymbolDatabase::new(&db_path).unwrap();
+        let mut db = SymbolDatabase::new(&db_path).unwrap();
 
         insert_file(&db, "src/core.rs");
         insert_file(&db, "tests/core_test.rs");
 
-        db.conn.execute_batch(r#"
-            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata, reference_score, visibility)
-            VALUES ('prod_core', 'do_work', 'function', 'rust', 'src/core.rs', 1, 0, 20, 0, 0, 0, NULL, 5.0, 'public');
+        let test_case_metadata: std::collections::HashMap<String, serde_json::Value> =
+            serde_json::from_value(serde_json::json!({
+                "is_test": true,
+                "test_role": "test_case",
+                "test_quality": {
+                    "quality_tier": "thorough",
+                    "confidence": 0.85
+                }
+            }))
+            .unwrap();
+        let fixture_metadata: std::collections::HashMap<String, serde_json::Value> =
+            serde_json::from_value(serde_json::json!({
+                "is_test": true,
+                "test_role": "fixture_setup"
+            }))
+            .unwrap();
+        let legacy_metadata: std::collections::HashMap<String, serde_json::Value> =
+            serde_json::from_value(serde_json::json!({
+                "is_test": true,
+                "test_quality": {
+                    "quality_tier": "adequate"
+                }
+            }))
+            .unwrap();
 
-            -- Scorable test case (test_role = "test_case")
-            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata, reference_score, visibility)
-            VALUES ('test_case_1', 'test_do_work', 'function', 'rust', 'tests/core_test.rs', 5, 0, 15, 0, 0, 0,
-                    '{"is_test": true, "test_role": "test_case", "test_quality": {"quality_tier": "thorough", "confidence": 0.85}}', 0.0, 'private');
+        db.store_symbols(&[
+            symbol_builder("prod_core", "do_work", "src/core.rs")
+                .kind(SymbolKind::Function)
+                .span(1, 0, 20, 0)
+                .visibility(Visibility::Public)
+                .confidence(1.0)
+                .build(),
+            symbol_builder("test_case_1", "test_do_work", "tests/core_test.rs")
+                .kind(SymbolKind::Function)
+                .span(5, 0, 15, 0)
+                .visibility(Visibility::Private)
+                .metadata(test_case_metadata)
+                .confidence(1.0)
+                .build(),
+            symbol_builder("fixture_1", "setup_db", "tests/core_test.rs")
+                .kind(SymbolKind::Function)
+                .span(20, 0, 30, 0)
+                .visibility(Visibility::Private)
+                .metadata(fixture_metadata)
+                .confidence(1.0)
+                .build(),
+            symbol_builder("legacy_test", "test_do_work_legacy", "tests/core_test.rs")
+                .kind(SymbolKind::Function)
+                .span(35, 0, 45, 0)
+                .visibility(Visibility::Private)
+                .metadata(legacy_metadata)
+                .confidence(1.0)
+                .build(),
+        ])
+        .unwrap();
 
-            -- Fixture setup (test_role = "fixture_setup", is_test = true) => should be EXCLUDED
-            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata, reference_score, visibility)
-            VALUES ('fixture_1', 'setup_db', 'function', 'rust', 'tests/core_test.rs', 20, 0, 30, 0, 0, 0,
-                    '{"is_test": true, "test_role": "fixture_setup"}', 0.0, 'private');
-
-            -- Legacy test (is_test = true, no test_role) => should be INCLUDED
-            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata, reference_score, visibility)
-            VALUES ('legacy_test', 'test_do_work_legacy', 'function', 'rust', 'tests/core_test.rs', 35, 0, 45, 0, 0, 0,
-                    '{"is_test": true, "test_quality": {"quality_tier": "adequate"}}', 0.0, 'private');
-
-            -- All three call the production symbol
-            INSERT INTO relationships (id, from_symbol_id, to_symbol_id, kind, file_path, line_number)
-            VALUES ('rel_tc', 'test_case_1', 'prod_core', 'calls', 'tests/core_test.rs', 10);
-            INSERT INTO relationships (id, from_symbol_id, to_symbol_id, kind, file_path, line_number)
-            VALUES ('rel_fix', 'fixture_1', 'prod_core', 'calls', 'tests/core_test.rs', 25);
-            INSERT INTO relationships (id, from_symbol_id, to_symbol_id, kind, file_path, line_number)
-            VALUES ('rel_leg', 'legacy_test', 'prod_core', 'calls', 'tests/core_test.rs', 40);
-        "#).unwrap();
+        db.store_relationships(&[
+            relationship_builder("rel_tc", "test_case_1", "prod_core")
+                .file_path("tests/core_test.rs")
+                .line_number(10)
+                .build(),
+            relationship_builder("rel_fix", "fixture_1", "prod_core")
+                .file_path("tests/core_test.rs")
+                .line_number(25)
+                .build(),
+            relationship_builder("rel_leg", "legacy_test", "prod_core")
+                .file_path("tests/core_test.rs")
+                .line_number(40)
+                .build(),
+        ])
+        .unwrap();
 
         let stats = crate::analysis::test_linkage::compute_test_linkage(&db).unwrap();
         assert_eq!(
