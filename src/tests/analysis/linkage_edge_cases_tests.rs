@@ -422,35 +422,84 @@ mod tests {
     fn test_parent_aggregation_includes_best_confidence() {
         let temp_dir = TempDir::new().unwrap();
         let db_path = temp_dir.path().join("test.db");
-        let db = SymbolDatabase::new(&db_path).unwrap();
+        let mut db = SymbolDatabase::new(&db_path).unwrap();
 
         insert_file(&db, "src/services.rs");
         insert_file(&db, "tests/services_test.rs");
 
-        db.conn.execute_batch(r#"
-            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata, reference_score, visibility)
-            VALUES ('class_agg', 'OrderService', 'class', 'csharp', 'src/services.rs', 1, 0, 60, 0, 0, 0, NULL, 5.0, 'public');
+        let thorough_metadata: std::collections::HashMap<String, serde_json::Value> =
+            serde_json::from_value(serde_json::json!({
+                "is_test": true,
+                "test_quality": {
+                    "quality_tier": "thorough",
+                    "confidence": 0.92
+                }
+            }))
+            .unwrap();
+        let adequate_metadata: std::collections::HashMap<String, serde_json::Value> =
+            serde_json::from_value(serde_json::json!({
+                "is_test": true,
+                "test_quality": {
+                    "quality_tier": "adequate",
+                    "confidence": 0.75
+                }
+            }))
+            .unwrap();
 
-            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata, reference_score, visibility, parent_id)
-            VALUES ('method_agg1', 'CreateOrder', 'method', 'csharp', 'src/services.rs', 5, 0, 20, 0, 0, 0, NULL, 3.0, 'public', 'class_agg');
+        db.store_symbols(&[
+            symbol_builder("class_agg", "OrderService", "src/services.rs")
+                .kind(SymbolKind::Class)
+                .language("csharp")
+                .span(1, 0, 60, 0)
+                .visibility(Visibility::Public)
+                .confidence(1.0)
+                .build(),
+            symbol_builder("method_agg1", "CreateOrder", "src/services.rs")
+                .kind(SymbolKind::Method)
+                .language("csharp")
+                .span(5, 0, 20, 0)
+                .visibility(Visibility::Public)
+                .parent_id("class_agg")
+                .confidence(1.0)
+                .build(),
+            symbol_builder("method_agg2", "CancelOrder", "src/services.rs")
+                .kind(SymbolKind::Method)
+                .language("csharp")
+                .span(25, 0, 40, 0)
+                .visibility(Visibility::Public)
+                .parent_id("class_agg")
+                .confidence(1.0)
+                .build(),
+            symbol_builder("test_agg1", "test_create_order", "tests/services_test.rs")
+                .kind(SymbolKind::Method)
+                .language("csharp")
+                .span(1, 0, 10, 0)
+                .visibility(Visibility::Private)
+                .metadata(thorough_metadata)
+                .confidence(1.0)
+                .build(),
+            symbol_builder("test_agg2", "test_cancel_order", "tests/services_test.rs")
+                .kind(SymbolKind::Method)
+                .language("csharp")
+                .span(15, 0, 25, 0)
+                .visibility(Visibility::Private)
+                .metadata(adequate_metadata)
+                .confidence(1.0)
+                .build(),
+        ])
+        .unwrap();
 
-            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata, reference_score, visibility, parent_id)
-            VALUES ('method_agg2', 'CancelOrder', 'method', 'csharp', 'src/services.rs', 25, 0, 40, 0, 0, 0, NULL, 2.0, 'public', 'class_agg');
-
-            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata, reference_score, visibility)
-            VALUES ('test_agg1', 'test_create_order', 'method', 'csharp', 'tests/services_test.rs', 1, 0, 10, 0, 0, 0,
-                    '{"is_test": true, "test_quality": {"quality_tier": "thorough", "confidence": 0.92}}', 0.0, 'private');
-
-            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata, reference_score, visibility)
-            VALUES ('test_agg2', 'test_cancel_order', 'method', 'csharp', 'tests/services_test.rs', 15, 0, 25, 0, 0, 0,
-                    '{"is_test": true, "test_quality": {"quality_tier": "adequate", "confidence": 0.75}}', 0.0, 'private');
-
-            INSERT INTO relationships (id, from_symbol_id, to_symbol_id, kind, file_path, line_number)
-            VALUES ('rel_agg1', 'test_agg1', 'method_agg1', 'calls', 'tests/services_test.rs', 5);
-
-            INSERT INTO relationships (id, from_symbol_id, to_symbol_id, kind, file_path, line_number)
-            VALUES ('rel_agg2', 'test_agg2', 'method_agg2', 'calls', 'tests/services_test.rs', 18);
-        "#).unwrap();
+        db.store_relationships(&[
+            relationship_builder("rel_agg1", "test_agg1", "method_agg1")
+                .file_path("tests/services_test.rs")
+                .line_number(5)
+                .build(),
+            relationship_builder("rel_agg2", "test_agg2", "method_agg2")
+                .file_path("tests/services_test.rs")
+                .line_number(18)
+                .build(),
+        ])
+        .unwrap();
 
         crate::analysis::test_linkage::compute_test_linkage(&db).unwrap();
 
