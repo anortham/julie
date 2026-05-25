@@ -387,7 +387,7 @@ mod tests {
     fn test_name_match_ambiguity_guard_is_language_scoped() {
         let temp_dir = TempDir::new().unwrap();
         let db_path = temp_dir.path().join("test.db");
-        let db = SymbolDatabase::new(&db_path).unwrap();
+        let mut db = SymbolDatabase::new(&db_path).unwrap();
 
         insert_file(&db, "src/widgets.rs");
         insert_file(&db, "tests/widgets_test.rs");
@@ -395,35 +395,59 @@ mod tests {
             insert_file(&db, &format!("python/widget_{index}.py"));
         }
 
-        db.conn
-            .execute(
-                "INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata, reference_score, visibility)
-                 VALUES ('prod_rust', 'render_widget', 'function', 'rust', 'src/widgets.rs', 1, 0, 10, 0, 0, 0, NULL, 2.0, 'public')",
-                [],
+        let mut symbols = vec![
+            symbol_builder("prod_rust", "render_widget", "src/widgets.rs")
+                .kind(SymbolKind::Function)
+                .language("rust")
+                .span(1, 0, 10, 0)
+                .visibility(Visibility::Public)
+                .confidence(1.0)
+                .build(),
+        ];
+
+        symbols.extend((0..11).map(|index| {
+            symbol_builder(
+                format!("prod_python_{index}"),
+                "render_widget",
+                format!("python/widget_{index}.py"),
             )
-            .unwrap();
+            .kind(SymbolKind::Function)
+            .language("python")
+            .span(1, 0, 10, 0)
+            .visibility(Visibility::Public)
+            .confidence(1.0)
+            .build()
+        }));
 
-        for index in 0..11 {
-            db.conn
-                .execute(
-                    "INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata, reference_score, visibility)
-                     VALUES (?1, 'render_widget', 'function', 'python', ?2, 1, 0, 10, 0, 0, 0, NULL, 1.0, 'public')",
-                    rusqlite::params![
-                        format!("prod_python_{index}"),
-                        format!("python/widget_{index}.py")
-                    ],
+        symbols.push(
+            symbol_builder("test_rust", "test_render_widget", "tests/widgets_test.rs")
+                .kind(SymbolKind::Function)
+                .language("rust")
+                .span(1, 0, 5, 0)
+                .metadata(
+                    serde_json::from_str(
+                        r#"{"is_test": true, "test_quality": {"quality_tier": "adequate"}}"#,
+                    )
+                    .unwrap(),
                 )
-                .unwrap();
-        }
+                .visibility(Visibility::Private)
+                .confidence(1.0)
+                .build(),
+        );
 
-        db.conn.execute_batch(r#"
-            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata, reference_score, visibility)
-            VALUES ('test_rust', 'test_render_widget', 'function', 'rust', 'tests/widgets_test.rs', 1, 0, 5, 0, 0, 0,
-                    '{"is_test": true, "test_quality": {"quality_tier": "adequate"}}', 0.0, 'private');
-
-            INSERT INTO identifiers (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, containing_symbol_id, target_symbol_id)
-            VALUES ('ident_rust', 'render_widget', 'call', 'rust', 'tests/widgets_test.rs', 3, 0, 3, 20, 'test_rust', NULL);
-        "#).unwrap();
+        db.store_symbols(&symbols).unwrap();
+        db.bulk_store_identifiers(
+            &[
+                identifier_builder("ident_rust", "render_widget", "tests/widgets_test.rs")
+                    .language("rust")
+                    .line(3)
+                    .column(0, 20)
+                    .containing_symbol_id("test_rust")
+                    .build(),
+            ],
+            "",
+        )
+        .unwrap();
 
         let stats = crate::analysis::test_linkage::compute_test_linkage(&db).unwrap();
         assert_eq!(
