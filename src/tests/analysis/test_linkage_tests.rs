@@ -4,7 +4,7 @@
 mod tests {
     use crate::analysis::test_linkage::tier_rank;
     use crate::database::SymbolDatabase;
-    use crate::extractors::{RelationshipKind, Visibility};
+    use crate::extractors::{RelationshipKind, SymbolKind, Visibility};
     use crate::tests::helpers::db::{
         file_info_builder, identifier_builder, relationship_builder, symbol_builder,
     };
@@ -301,26 +301,65 @@ mod tests {
     fn test_name_match_prefers_class_name_similarity() {
         let temp_dir = TempDir::new().unwrap();
         let db_path = temp_dir.path().join("test.db");
-        let db = SymbolDatabase::new(&db_path).unwrap();
+        let mut db = SymbolDatabase::new(&db_path).unwrap();
 
-        insert_file(&db, "src/Services/LabTestService.cs");
-        insert_file(&db, "src/Services/MediaService.cs");
-        insert_file(&db, "tests/Services/LabTestServiceTests.cs");
+        store_file(&db, "src/Services/LabTestService.cs");
+        store_file(&db, "src/Services/MediaService.cs");
+        store_file(&db, "tests/Services/LabTestServiceTests.cs");
 
-        db.conn.execute_batch(r#"
-            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata, reference_score, visibility)
-            VALUES ('prod_labtest', 'ListAsync', 'method', 'csharp', 'src/Services/LabTestService.cs', 20, 0, 50, 0, 0, 0, NULL, 3.0, 'public');
+        db.store_symbols(&[
+            symbol_builder(
+                "prod_labtest",
+                "ListAsync",
+                "src/Services/LabTestService.cs",
+            )
+            .kind(SymbolKind::Method)
+            .language("csharp")
+            .span(20, 0, 50, 0)
+            .confidence(1.0)
+            .visibility(Visibility::Public)
+            .build(),
+            symbol_builder("prod_media", "ListAsync", "src/Services/MediaService.cs")
+                .kind(SymbolKind::Method)
+                .language("csharp")
+                .span(20, 0, 50, 0)
+                .confidence(1.0)
+                .visibility(Visibility::Public)
+                .build(),
+            symbol_builder(
+                "test_1",
+                "ListAsync_ReturnsResults",
+                "tests/Services/LabTestServiceTests.cs",
+            )
+            .kind(SymbolKind::Method)
+            .language("csharp")
+            .span(30, 0, 45, 0)
+            .metadata(
+                serde_json::from_str(
+                    r#"{"is_test": true, "test_quality": {"quality_tier": "adequate"}}"#,
+                )
+                .unwrap(),
+            )
+            .confidence(1.0)
+            .visibility(Visibility::Private)
+            .build(),
+        ])
+        .unwrap();
 
-            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata, reference_score, visibility)
-            VALUES ('prod_media', 'ListAsync', 'method', 'csharp', 'src/Services/MediaService.cs', 20, 0, 50, 0, 0, 0, NULL, 3.0, 'public');
-
-            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata, reference_score, visibility)
-            VALUES ('test_1', 'ListAsync_ReturnsResults', 'method', 'csharp', 'tests/Services/LabTestServiceTests.cs', 30, 0, 45, 0, 0, 0,
-                    '{"is_test": true, "test_quality": {"quality_tier": "adequate"}}', 0.0, 'private');
-
-            INSERT INTO identifiers (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, containing_symbol_id, target_symbol_id)
-            VALUES ('ident_1', 'ListAsync', 'call', 'csharp', 'tests/Services/LabTestServiceTests.cs', 41, 0, 41, 20, 'test_1', NULL);
-        "#).unwrap();
+        db.bulk_store_identifiers(
+            &[identifier_builder(
+                "ident_1",
+                "ListAsync",
+                "tests/Services/LabTestServiceTests.cs",
+            )
+            .language("csharp")
+            .line(41)
+            .column(0, 20)
+            .containing_symbol_id("test_1")
+            .build()],
+            "",
+        )
+        .unwrap();
 
         let stats = crate::analysis::test_linkage::compute_test_linkage(&db).unwrap();
         assert_eq!(stats.symbols_covered, 1, "Should cover exactly one symbol");
