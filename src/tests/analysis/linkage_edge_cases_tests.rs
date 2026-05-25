@@ -366,22 +366,43 @@ mod tests {
     fn test_best_confidence_present_in_linkage_output() {
         let temp_dir = TempDir::new().unwrap();
         let db_path = temp_dir.path().join("test.db");
-        let db = SymbolDatabase::new(&db_path).unwrap();
+        let mut db = SymbolDatabase::new(&db_path).unwrap();
 
         insert_file(&db, "src/engine.rs");
         insert_file(&db, "tests/engine_test.rs");
 
-        db.conn.execute_batch(r#"
-            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata, reference_score, visibility)
-            VALUES ('prod_eng', 'run_engine', 'function', 'rust', 'src/engine.rs', 1, 0, 20, 0, 0, 0, NULL, 3.0, 'public');
+        let test_metadata: std::collections::HashMap<String, serde_json::Value> =
+            serde_json::from_value(serde_json::json!({
+                "is_test": true,
+                "test_quality": {
+                    "quality_tier": "thorough",
+                    "confidence": 0.92
+                }
+            }))
+            .unwrap();
 
-            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata, reference_score, visibility)
-            VALUES ('test_eng', 'test_run_engine', 'function', 'rust', 'tests/engine_test.rs', 1, 0, 10, 0, 0, 0,
-                    '{"is_test": true, "test_quality": {"quality_tier": "thorough", "confidence": 0.92}}', 0.0, 'private');
+        db.store_symbols(&[
+            symbol_builder("prod_eng", "run_engine", "src/engine.rs")
+                .kind(SymbolKind::Function)
+                .span(1, 0, 20, 0)
+                .visibility(Visibility::Public)
+                .confidence(1.0)
+                .build(),
+            symbol_builder("test_eng", "test_run_engine", "tests/engine_test.rs")
+                .kind(SymbolKind::Function)
+                .span(1, 0, 10, 0)
+                .visibility(Visibility::Private)
+                .metadata(test_metadata)
+                .confidence(1.0)
+                .build(),
+        ])
+        .unwrap();
 
-            INSERT INTO relationships (id, from_symbol_id, to_symbol_id, kind, file_path, line_number)
-            VALUES ('rel_eng', 'test_eng', 'prod_eng', 'calls', 'tests/engine_test.rs', 5);
-        "#).unwrap();
+        db.store_relationships(&[relationship_builder("rel_eng", "test_eng", "prod_eng")
+            .file_path("tests/engine_test.rs")
+            .line_number(5)
+            .build()])
+            .unwrap();
 
         crate::analysis::test_linkage::compute_test_linkage(&db).unwrap();
 
