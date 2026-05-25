@@ -703,6 +703,7 @@ fn buckets_for_path(path: &str) -> &'static [&'static str] {
                 "src/tests/core/paths.rs",
                 "src/tests/core/tracing.rs",
                 "src/tests/core/vector_storage.rs",
+                "src/tests/integration/watcher_filtering.rs",
             ],
         )
         || matches_prefix(path, &["src/tests/utils/"])
@@ -1102,6 +1103,23 @@ mod tests {
         assert!(
             selection.fallback_paths.is_empty(),
             "split hybrid test modules should not force dev fallback; rationale={:?}",
+            selection.rationale
+        );
+    }
+
+    #[test]
+    fn changed_tests_route_watcher_filtering_to_core_fast_bucket() {
+        let manifest = manifest();
+        let selection = select_changed_buckets(
+            &manifest,
+            &["src/tests/integration/watcher_filtering.rs".to_string()],
+        );
+
+        assert_eq!(selection.mode, ChangedSelectionMode::Buckets);
+        assert_eq!(selection.bucket_names, vec!["core-fast"]);
+        assert!(
+            selection.fallback_paths.is_empty(),
+            "watcher filtering tests should not force integration/dev fallback; rationale={:?}",
             selection.rationale
         );
     }

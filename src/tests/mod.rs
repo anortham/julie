@@ -64,8 +64,6 @@ pub mod core {
 // ============================================================================
 // TOOLS TESTS - Search, editing, refactoring, navigation, exploration
 // ============================================================================
-// pub mod test_git_context; // Git context capture tests (debugging crashes) - TODO: File missing
-
 pub mod tools {
     pub mod get_symbols; // GetSymbolsTool tests
     pub mod get_symbols_relative_paths; // GetSymbolsTool Phase 2 relative path tests (TDD)
@@ -183,6 +181,7 @@ pub mod integration {
     pub mod system_health;
     pub mod target_workspace; // Target-workspace tests
     pub mod watcher; // File watcher tests
+    pub mod watcher_filtering; // Watcher file filtering tests
     pub mod watcher_handlers; // File watcher handler tests (incremental indexing)
     pub mod watcher_mutation_gate; // Per-workspace mutation gate concurrency contract (LEAD-OWNED)
     pub mod watcher_observability; // INFO-level observability regression tests (rate limiter, gate timing)
