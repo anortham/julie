@@ -107,6 +107,24 @@ impl DaemonLauncher {
                     return DaemonReadiness::Stopping;
                 }
 
+                // `phase="starting"` is published by `run_daemon` immediately
+                // after lock acquisition and listener bind, before DB
+                // migrations and workspace backfill run inside
+                // `DaemonApp::new`. During that window the listener can
+                // already accept TCP connections at the kernel layer even
+                // though the HTTP server has not started routing requests
+                // — so probing the endpoint may falsely return Ready and
+                // let adapters open sessions against a daemon that has
+                // not finished initializing. Short-circuit here so a
+                // `starting` record is treated as Starting regardless of
+                // what the HTTP probe says. The `phase="running"` flip
+                // happens at the end of `DaemonApp::serve` (atomic
+                // overwrite via `DiscoveryFile::write_atomic`) and is
+                // what actually opens the daemon for sessions.
+                if matches!(record.phase.as_deref(), Some("starting")) {
+                    return DaemonReadiness::Starting;
+                }
+
                 return match discovery_endpoint(&record)
                     .map(|endpoint| endpoint.probe_readiness().is_ready())
                 {

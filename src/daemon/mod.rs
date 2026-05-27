@@ -325,7 +325,26 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
     // leftover socket in TIME_WAIT from a crashed daemon) and is logged
     // accordingly inside `bind_mcp_listener_with_fallback`.
     let listener = self::app::bind_mcp_listener_with_fallback(port).await?;
-    let actual_port = listener.local_addr()?.port();
+    let local_addr = listener.local_addr()?;
+    let actual_port = local_addr.port();
+
+    // Publish discovery.json with phase="starting" BEFORE `DaemonApp::new`
+    // runs slow DB migrations + workspace backfill. Closes the cold-start
+    // race where the kernel `daemon.lock` is held but no liveness file is
+    // visible — concurrent adapters would otherwise see `Dead` and spawn
+    // duplicates. The publish at the end of `DaemonApp::serve` later
+    // overwrites this record atomically with phase="running". See
+    // `publish_starting_discovery` in `app/helpers.rs` for the full
+    // rationale and Codex's 2026-05-27 review (QW1).
+    if let Err(e) =
+        self::app::publish_starting_discovery(&paths, &local_addr.ip().to_string(), actual_port)
+    {
+        warn!(
+            error = %e,
+            "Failed to publish early discovery.json (phase=starting); \
+             concurrent adapters may still spawn duplicate daemons during cold-start"
+        );
+    }
 
     let config = DaemonConfig {
         paths,

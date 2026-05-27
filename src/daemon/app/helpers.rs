@@ -13,13 +13,65 @@ use tokio::task::JoinHandle;
 use tracing::{info, warn};
 
 use crate::daemon::database::DaemonDatabase;
-use crate::daemon::discovery::{AcquireError, DaemonLockGuard};
+use crate::daemon::discovery::{AcquireError, DaemonLockGuard, DiscoveryFile, DiscoveryRecord};
 use crate::daemon::embedding_service::EmbeddingService;
 use crate::daemon::watcher_pool::WatcherPool;
 use crate::daemon::workspace_pool::WorkspacePool;
 use crate::daemon::workspace_registry_store::WorkspaceRegistryStore;
 use crate::daemon::{backfill_all_vector_counts, migrate_stale_workspace_ids};
 use crate::paths::DaemonPaths;
+
+/// Publish `discovery.json` with `phase="starting"` immediately after the
+/// daemon has bound its MCP listener but BEFORE running DB migrations,
+/// workspace-ID migration, path normalization, or vector-count backfill.
+///
+/// **Why this exists.** New daemons acquire the kernel singleton
+/// `daemon.lock` in `acquire_or_yield_to_existing_daemon` and no longer
+/// write `daemon.pid`. On a cold start with many workspaces, the slow
+/// migration path inside `open_and_migrate_daemon_db` can keep the daemon
+/// in a "lock held, no liveness file" state for many seconds — easily
+/// exceeding `wait_for_spawned_liveness` (5s). Concurrent adapters then
+/// see `daemon_readiness() == Dead` and spawn duplicate daemon processes
+/// that the kernel singleton immediately refuses, surfacing as phantom
+/// `julie-daemon` entries in `ps` / Task Manager. Publishing
+/// `phase="starting"` here closes the window: adapters then observe
+/// `DaemonReadiness::Starting` and stand down.
+///
+/// **Token path placeholder.** The bearer token file is written by the
+/// MCP transport during `DaemonApp::serve`, which has not run yet at
+/// this call site. We record `paths.token_file()` (the deterministic
+/// path) as a placeholder. The later publish at
+/// `src/daemon/app.rs::serve` atomically overwrites the record with the
+/// real token path and `phase="running"`. Adapters that observe
+/// `phase="starting"` wait instead of connecting, so the placeholder is
+/// never read by a real client.
+///
+/// **No-op on write failure.** Returns `Err` only for fatal I/O; callers
+/// (`run_daemon`) should log and continue startup rather than abort —
+/// the kernel lock still prevents duplicate daemons via the daemon-side
+/// gate, this publish is the *adapter-side* fix.
+pub(crate) fn publish_starting_discovery(
+    paths: &DaemonPaths,
+    host: &str,
+    port: u16,
+) -> std::io::Result<()> {
+    let log_path = paths.julie_home().join(format!(
+        "daemon.log.{}",
+        chrono::Local::now().format("%Y-%m-%d")
+    ));
+    let mut record =
+        DiscoveryRecord::for_current_process(host, port, paths.token_file(), log_path);
+    record.phase = Some("starting".to_string());
+
+    let discovery_path = paths.discovery_file();
+    DiscoveryFile::write_atomic(&discovery_path, &record).map(|_| {
+        info!(
+            path = %discovery_path.display(),
+            port,
+            "Published early discovery.json (phase=starting) — closes cold-start adapter race"
+        );
+    })
+}
 
 /// Acquire the daemon singleton lock, yielding to any existing daemon.
 ///

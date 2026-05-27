@@ -615,6 +615,83 @@ mod tests {
         );
     }
 
+    /// Regression for Codex 2026-05-27 adversarial review finding #2.
+    ///
+    /// The cold-start fix in `run_daemon` publishes `discovery.json` with
+    /// `phase="starting"` immediately after the listener binds, BEFORE
+    /// `DaemonApp::new` runs DB migrations and workspace backfill. During
+    /// that window the kernel TCP stack can already complete handshakes on
+    /// the bound listener even though the HTTP server is not yet routing
+    /// requests — so `endpoint.probe_readiness()` may falsely return
+    /// `Ready`. Previously `daemon_readiness()` only short-circuited on
+    /// `stopping`/`draining`, leaving `starting` records to fall through
+    /// to the endpoint probe; an adapter could open a session against a
+    /// daemon that hadn't finished initializing.
+    ///
+    /// Contract this test pins: a `phase="starting"` discovery record
+    /// must classify as `Starting`, even when the HTTP endpoint at the
+    /// recorded port is reachable. The flip to `Ready` happens only when
+    /// the late publish at the end of `DaemonApp::serve` atomically
+    /// overwrites the record with `phase="running"`.
+    ///
+    /// To prove the endpoint is genuinely reachable (and that the test
+    /// would have caught the old behavior of returning `Ready`), we then
+    /// flip the phase to `"running"` and assert the launcher transitions
+    /// to `Ready` against the same listener.
+    #[test]
+    fn test_readiness_starting_when_discovery_phase_is_starting_even_with_reachable_endpoint() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DaemonPaths::with_home(dir.path().to_path_buf());
+        fs::create_dir_all(dir.path()).unwrap();
+
+        // Bind a real TCP listener — between early publish and serve() the
+        // kernel can accept connections even without the HTTP layer
+        // routing requests. This is the precise condition that lets
+        // `probe_readiness` return success against a daemon that is not
+        // yet ready for sessions.
+        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = spawn_http_readiness_server(listener);
+
+        write_live_discovery(&paths, port, "starting");
+
+        let launcher = DaemonLauncher::new(paths.clone());
+        assert_eq!(
+            launcher.daemon_readiness(),
+            DaemonReadiness::Starting,
+            "phase=starting must short-circuit to Starting; otherwise adapters \
+             open sessions against a daemon that hasn't finished initializing"
+        );
+
+        // Flip phase to running and verify the launcher now returns Ready,
+        // consuming the spawned HTTP server's single accept. This proves
+        // the endpoint was genuinely reachable — without this leg the
+        // first assertion could pass for the wrong reason (e.g. probe
+        // returning Starting because the endpoint was unreachable).
+        write_live_discovery(&paths, port, "running");
+        assert_eq!(
+            launcher.daemon_readiness(),
+            DaemonReadiness::Ready,
+            "phase=running against a reachable endpoint must return Ready; \
+             this leg proves the Starting verdict above was driven by the \
+             phase check, not by a dead endpoint"
+        );
+        server.join().unwrap();
+    }
+
+    // NOTE: An earlier version of this test file asserted that the kernel
+    // `daemon.lock` alone (no discovery.json, no daemon.pid) was sufficient
+    // to make the launcher classify the daemon as Starting. That contract
+    // was withdrawn after Codex's 2026-05-27 adversarial review found that
+    // any lock-probe mechanism that briefly acquires `daemon.lock` would
+    // race the daemon's own `acquire_or_yield_to_existing_daemon` and
+    // cause it to silently exit. The current architecture relies on the
+    // early `phase="starting"` discovery publish in `run_daemon`
+    // (`publish_starting_discovery`) to close the cold-start race window
+    // instead. The starting-phase short-circuit in
+    // `test_readiness_starting_when_discovery_phase_is_starting_even_with_reachable_endpoint`
+    // is what protects adapters once that record exists.
+
     /// When a daemon transitions from "starting" to "draining" (e.g. stale
     /// binary detected during startup), readiness should classify it as a
     /// shutdown handoff instead of ready for fresh sessions.

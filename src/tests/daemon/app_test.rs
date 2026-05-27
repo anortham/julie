@@ -375,3 +375,108 @@ fn test_acquire_or_yield_returns_some_after_previous_guard_dropped() {
         );
     assert_eq!(second.path(), paths.daemon_lock());
 }
+
+// ---------------------------------------------------------------------------
+// Early discovery publish — closes the cold-start race window where the
+// kernel `daemon.lock` is held but no liveness signal is visible to concurrent
+// adapters. The contract is:
+//
+//   * After `acquire_or_yield_to_existing_daemon` returns `Some(guard)` and
+//     `bind_mcp_listener_with_fallback` returns a bound listener, but BEFORE
+//     `DaemonApp::new` runs DB migrations + workspace backfill, the daemon
+//     must publish `discovery.json` with `phase="starting"`.
+//   * The later publish inside `DaemonApp::serve` (currently in app.rs:386)
+//     atomically rewrites the same file with `phase="running"`.
+//
+// This test pins the helper-level behavior. The placement inside `run_daemon`
+// is verified by code review — see `src/daemon/mod.rs::run_daemon`.
+// ---------------------------------------------------------------------------
+
+/// Calling `publish_starting_discovery` writes a discovery record that
+/// adapters can read immediately, with `phase="starting"` so they wait
+/// instead of spawning duplicates. Reproduces Codex 2026-05-27 QW1.
+#[test]
+fn test_publish_starting_discovery_writes_phase_starting_record() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let paths = DaemonPaths::with_home(tmp.path().to_path_buf());
+    paths.ensure_dirs().expect("ensure_dirs");
+
+    crate::daemon::app::publish_starting_discovery(&paths, "127.0.0.1", 18765)
+        .expect("publish_starting_discovery must succeed when paths exist");
+
+    let discovery_path = paths.discovery_file();
+    assert!(
+        discovery_path.exists(),
+        "publish_starting_discovery must write discovery.json so concurrent \
+         adapters can observe the in-flight daemon before DB migrations finish"
+    );
+
+    match DiscoveryFile::read_and_validate(&discovery_path) {
+        DiscoveryState::Live(record) => {
+            assert_eq!(
+                record.phase.as_deref(),
+                Some("starting"),
+                "early publish must set phase=starting so adapters wait — \
+                 phase=running would falsely tell the launcher the daemon is \
+                 ready to accept connections before the listener is serving"
+            );
+            assert_eq!(
+                record.port, 18765,
+                "early publish must record the actual listener port so \
+                 adapters can identify which process to wait for"
+            );
+            assert_eq!(record.host, "127.0.0.1");
+            assert_eq!(
+                record.pid,
+                std::process::id(),
+                "early publish must record THIS process's PID so the launcher \
+                 can detect kernel-level liveness via discovery.json alone"
+            );
+        }
+        other => panic!(
+            "expected Live discovery record after publish_starting_discovery, got {other:?}"
+        ),
+    }
+}
+
+/// A second publish with `phase="running"` (the existing late publish in
+/// `DaemonApp::serve`) must atomically overwrite the early `phase="starting"`
+/// record. Confirms the two publishes compose correctly — without this, the
+/// early publish would either leak or block the runtime transition.
+#[test]
+fn test_publish_starting_discovery_is_overwritten_by_running_publish() {
+    use crate::daemon::discovery::DiscoveryRecord;
+    use std::path::PathBuf;
+
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let paths = DaemonPaths::with_home(tmp.path().to_path_buf());
+    paths.ensure_dirs().expect("ensure_dirs");
+
+    // First publish: phase=starting (the new early-publish path).
+    crate::daemon::app::publish_starting_discovery(&paths, "127.0.0.1", 18766)
+        .expect("first publish (starting) must succeed");
+
+    // Second publish: phase=running (mirrors the existing serve()-time path
+    // at src/daemon/app.rs:386, which uses for_current_process →
+    // phase=Some("running")).
+    let running = DiscoveryRecord::for_current_process(
+        "127.0.0.1",
+        18766,
+        PathBuf::from(paths.token_file()),
+        paths
+            .julie_home()
+            .join("daemon.log.test-overwrite"),
+    );
+    DiscoveryFile::write_atomic(&paths.discovery_file(), &running)
+        .expect("second publish (running) must succeed");
+
+    match DiscoveryFile::read_and_validate(&paths.discovery_file()) {
+        DiscoveryState::Live(record) => assert_eq!(
+            record.phase.as_deref(),
+            Some("running"),
+            "second publish must atomically overwrite phase=starting with \
+             phase=running so the launcher transitions to Ready"
+        ),
+        other => panic!("expected Live record after second publish, got {other:?}"),
+    }
+}
