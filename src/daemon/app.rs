@@ -236,6 +236,19 @@ impl DaemonApp {
             idle_threshold_secs = idle_threshold.as_secs(),
             "WorkspacePool idle sweeper started (interval=60s)"
         );
+        let session_idle_threshold = super::session::session_idle_timeout();
+        let session_reaper_tick = session_reaper_interval(session_idle_threshold);
+        let session_reaper_handle = spawn_session_idle_reaper(
+            Arc::clone(&self.sessions),
+            self.lifecycle.clone(),
+            session_reaper_tick,
+            session_idle_threshold,
+        );
+        info!(
+            idle_threshold_secs = session_idle_threshold.as_secs(),
+            interval_ms = session_reaper_tick.as_millis() as u64,
+            "Session idle-reaper started (reaps idle sessions only while a restart is pending)"
+        );
         let cleanup_sweep_handle = spawn_cleanup_sweep(
             self.daemon_db.as_ref(),
             self.paths.indexes_dir(),
@@ -460,6 +473,7 @@ impl DaemonApp {
             lifecycle: self.lifecycle.clone(),
             reaper_handle: Some(reaper_handle),
             idle_sweep_handle: Some(idle_sweep_handle),
+            session_reaper_handle: Some(session_reaper_handle),
             cleanup_sweep_handle,
             dashboard_task: Some(dashboard_task),
             embedding_init_handle: Some(embedding_init_handle),
@@ -484,6 +498,6 @@ pub(crate) use helpers::{
     publish_starting_discovery, shutdown_signal, spawn_restart_bridge,
 };
 use helpers::{
-    bind_dashboard_listener_and_publish, open_and_migrate_daemon_db, setup_stop_notify,
-    spawn_cleanup_sweep, spawn_embedding_init,
+    bind_dashboard_listener_and_publish, open_and_migrate_daemon_db, session_reaper_interval,
+    setup_stop_notify, spawn_cleanup_sweep, spawn_embedding_init, spawn_session_idle_reaper,
 };

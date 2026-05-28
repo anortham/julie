@@ -149,8 +149,11 @@ pub struct RestartPendingTransition {
 pub struct DaemonLifecycleController {
     phase: Arc<RwLock<LifecyclePhase>>,
     /// One-way bit; the only legitimate clear is process exit. The first call
-    /// to `mark_restart_pending` signals the restart channel, which the
-    /// listener in `DaemonApp::serve` bridges into the SIGTERM exit path.
+    /// to `mark_restart_pending` arms this latch, but the restart channel is
+    /// only signaled once `active_sessions == 0` (see `mark_restart_pending`):
+    /// arming while a session is live would force-abort it on the drain
+    /// timeout. The listener in `DaemonApp::serve` bridges the signal into the
+    /// SIGTERM exit path.
     restart_pending: Arc<AtomicBool>,
     restart_notify: Arc<Notify>,
     state_path: Arc<PathBuf>,
@@ -210,13 +213,24 @@ impl DaemonLifecycleController {
     ) -> RestartPendingTransition {
         let first_request = !self.restart_pending.swap(true, Ordering::Relaxed);
         let next_phase = self.request_shutdown(cause, active_sessions);
-        if first_request {
-            // First transition commits to shutdown. The listener wired in
-            // DaemonApp::serve bridges this signal into the SIGTERM exit path,
-            // which runs the 60s drain and full LIFO teardown. Gating on
-            // first_request matches the existing flag semantics and avoids
-            // spurious permits if the listener task is restarted by a future
-            // refactor. Notify::notify_one would coalesce anyway.
+        if active_sessions == 0 {
+            // Only signal the restart channel once NO live sessions remain.
+            // The listener in DaemonApp::serve bridges this into the SIGTERM
+            // exit path, which runs shutdown()'s bounded 60s drain. That drain
+            // waits for the session count to reach zero (clients to
+            // disconnect), NOT for in-flight requests to finish. Firing while a
+            // session is still active therefore guarantees a 60s drain timeout
+            // followed by a force-abort of the live session and a recovery
+            // marker — the exact storm this gate prevents.
+            //
+            // When sessions are still active we only arm `restart_pending`. The
+            // HTTP disconnect handler re-invokes this with active_sessions == 0
+            // as the last session leaves (`TriggerShutdown`), which is the
+            // documented "exit after the last session disconnects" moment and
+            // the point at which we actually fire. `Notify::notify_one`
+            // coalesces, so re-firing across repeated zero-session events is
+            // harmless and the one-shot restart bridge consumes exactly one
+            // permit.
             self.notify_restart();
         }
         RestartPendingTransition {

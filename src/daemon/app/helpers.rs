@@ -4,7 +4,7 @@
 
 use std::path::Path;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use tokio::net::TcpListener;
@@ -15,6 +15,8 @@ use tracing::{info, warn};
 use crate::daemon::database::DaemonDatabase;
 use crate::daemon::discovery::{AcquireError, DaemonLockGuard, DiscoveryFile, DiscoveryRecord};
 use crate::daemon::embedding_service::EmbeddingService;
+use crate::daemon::lifecycle::{DaemonLifecycleController, ShutdownCause};
+use crate::daemon::session::SessionTracker;
 use crate::daemon::watcher_pool::WatcherPool;
 use crate::daemon::workspace_pool::WorkspacePool;
 use crate::daemon::workspace_registry_store::WorkspaceRegistryStore;
@@ -301,6 +303,60 @@ pub(crate) fn spawn_restart_bridge(
         restart_notify.notified().await;
         info!("Restart channel signaled; triggering daemon shutdown via stop_notify");
         stop_notify.notify_one();
+    })
+}
+
+/// Derive the session idle-reaper sweep interval from the configured idle
+/// `threshold`. Sweeps at roughly a fifth of the threshold, clamped to
+/// `[200ms, 30s]`: a generous production threshold (300s) sweeps every 30s,
+/// while a tiny test threshold sweeps sub-second so reaper tests stay fast.
+pub(crate) fn session_reaper_interval(threshold: Duration) -> Duration {
+    (threshold / 5).clamp(Duration::from_millis(200), Duration::from_secs(30))
+}
+
+/// Spawn the session idle-reaper.
+///
+/// While a daemon restart is pending (a stale binary or version mismatch has
+/// armed `restart_pending`), this evicts sessions idle longer than
+/// `idle_threshold` so the restart can proceed WITHOUT force-aborting a still
+/// active session. When the last session is reaped (count reaches zero) it
+/// calls `mark_restart_pending(0, ...)`, which — per the `active_sessions == 0`
+/// gate — signals the restart channel so `shutdown()` drains a now-idle
+/// tracker cleanly (no force-abort, no recovery marker).
+///
+/// When no restart is pending the reaper is inert: ordinary idle sessions are
+/// never touched. This keeps normal multi-session operation unchanged and
+/// bounds how long a genuinely leaked (half-open) connection can defer a
+/// stale-binary restart.
+pub(crate) fn spawn_session_idle_reaper(
+    sessions: Arc<SessionTracker>,
+    lifecycle: DaemonLifecycleController,
+    interval: Duration,
+    idle_threshold: Duration,
+) -> JoinHandle<()> {
+    tokio::spawn(async move {
+        let mut tick = tokio::time::interval(interval);
+        // First tick fires immediately; skip it so the reaper waits one
+        // interval before its first sweep (matches WorkspacePool::spawn_idle_sweep).
+        tick.tick().await;
+        loop {
+            tick.tick().await;
+            if !lifecycle.restart_pending() {
+                continue;
+            }
+            let evicted = sessions.evict_idle(Instant::now(), idle_threshold);
+            if evicted.is_empty() {
+                continue;
+            }
+            warn!(
+                count = evicted.len(),
+                "Session reaper evicted {} idle session(s) blocking a pending daemon restart",
+                evicted.len()
+            );
+            if sessions.active_count() == 0 {
+                lifecycle.mark_restart_pending(0, ShutdownCause::RestartRequired);
+            }
+        }
     })
 }
 

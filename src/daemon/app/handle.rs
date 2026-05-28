@@ -41,6 +41,9 @@ pub struct DaemonHandle {
     // `WatcherPool::shutdown`.
     pub(super) reaper_handle: Option<JoinHandle<()>>,
     pub(super) idle_sweep_handle: Option<JoinHandle<()>>,
+    // Restart-scoped session idle-reaper; aborted alongside the other
+    // background tasks before pool teardown.
+    pub(super) session_reaper_handle: Option<JoinHandle<()>>,
     pub(super) cleanup_sweep_handle: Option<JoinHandle<()>>,
     pub(super) dashboard_task: Option<JoinHandle<()>>,
     pub(super) embedding_init_handle: Option<JoinHandle<()>>,
@@ -129,6 +132,7 @@ impl DaemonHandle {
         for handle in [
             self.reaper_handle.take(),
             self.idle_sweep_handle.take(),
+            self.session_reaper_handle.take(),
             self.cleanup_sweep_handle.take(),
             self.dashboard_task.take(),
             self.embedding_init_handle.take(),
@@ -188,6 +192,7 @@ impl Drop for DaemonHandle {
         for h in [
             self.reaper_handle.take(),
             self.idle_sweep_handle.take(),
+            self.session_reaper_handle.take(),
             self.cleanup_sweep_handle.take(),
             self.dashboard_task.take(),
             self.embedding_init_handle.take(),

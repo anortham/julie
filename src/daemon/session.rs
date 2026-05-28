@@ -6,9 +6,28 @@
 
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
+use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use tokio::sync::Notify;
+
+/// Env override for the session idle-reaper threshold (seconds).
+const SESSION_IDLE_TIMEOUT_ENV: &str = "JULIE_DAEMON_SESSION_IDLE_TIMEOUT_SECS";
+/// Default: a session with zero activity for this long while a daemon restart
+/// is pending is presumed abandoned and reaped so the restart can proceed.
+/// Generous enough that ordinary think/read time between requests never trips
+/// it; bounded so a genuinely leaked (half-open) connection can't defer a
+/// stale-binary restart forever.
+const DEFAULT_SESSION_IDLE_TIMEOUT_SECS: u64 = 300;
+
+/// Resolve the session idle-reaper threshold, honoring the env override.
+pub fn session_idle_timeout() -> Duration {
+    std::env::var(SESSION_IDLE_TIMEOUT_ENV)
+        .ok()
+        .and_then(|raw| raw.trim().parse::<u64>().ok())
+        .map(Duration::from_secs)
+        .unwrap_or_else(|| Duration::from_secs(DEFAULT_SESSION_IDLE_TIMEOUT_SECS))
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -59,6 +78,10 @@ impl SessionLifecycleHandle {
 struct SessionRecord {
     phase: SessionLifecyclePhase,
     current_workspace_id: Option<String>,
+    /// Last time this session handled a request. Drives the idle-reaper that
+    /// unblocks a pending stale-binary restart without force-aborting a
+    /// still-active session.
+    last_activity: Instant,
 }
 
 /// Tracks active MCP sessions connected to the daemon.
@@ -89,9 +112,55 @@ impl SessionTracker {
             SessionRecord {
                 phase: SessionLifecyclePhase::Connecting,
                 current_workspace_id: None,
+                last_activity: Instant::now(),
             },
         );
         id
+    }
+
+    /// Record activity for a session, resetting its idle clock. Returns false
+    /// if the session is not tracked (e.g. already removed). Called on every
+    /// request so the idle-reaper never evicts a session that is still in use.
+    pub fn touch_session(&self, id: &str) -> bool {
+        self.touch_session_at(id, Instant::now())
+    }
+
+    /// Like [`touch_session`] but records an explicit instant. Exposed for the
+    /// reaper's tests so idle timing can be driven deterministically without
+    /// sleeping.
+    pub(crate) fn touch_session_at(&self, id: &str, at: Instant) -> bool {
+        let mut sessions = self.sessions.write().unwrap_or_else(|p| p.into_inner());
+        match sessions.get_mut(id) {
+            Some(record) => {
+                record.last_activity = at;
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Evict every session whose idle age at `now` is at least `threshold`,
+    /// returning the evicted session IDs. Notifies any `drain_sessions` waiter
+    /// once if anything was removed so the count is re-observed promptly.
+    ///
+    /// Uses `saturating_duration_since` so a `last_activity` ahead of `now`
+    /// (only possible with injected test instants) reads as zero idle rather
+    /// than panicking.
+    pub(crate) fn evict_idle(&self, now: Instant, threshold: Duration) -> Vec<String> {
+        let mut sessions = self.sessions.write().unwrap_or_else(|p| p.into_inner());
+        let evicted: Vec<String> = sessions
+            .iter()
+            .filter(|(_, record)| now.saturating_duration_since(record.last_activity) >= threshold)
+            .map(|(id, _)| id.clone())
+            .collect();
+        for id in &evicted {
+            sessions.remove(id);
+        }
+        drop(sessions); // release lock before notifying
+        if !evicted.is_empty() {
+            self.notify.notify_one();
+        }
+        evicted
     }
 
     pub fn set_phase(&self, id: &str, phase: SessionLifecyclePhase) -> bool {

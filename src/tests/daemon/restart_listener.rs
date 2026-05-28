@@ -31,6 +31,7 @@ use crate::daemon::http_transport::MCP_PATH;
 use crate::daemon::mcp_session::{
     HEADER_JULIE_VERSION, HEADER_JULIE_WORKSPACE, HEADER_JULIE_WORKSPACE_SOURCE,
 };
+use crate::daemon::shutdown::read_recovery_markers;
 use crate::daemon::{DaemonApp, DaemonConfig, DaemonRuntimeContext};
 use crate::paths::DaemonPaths;
 use crate::workspace::startup_hint::WorkspaceStartupSource;
@@ -90,34 +91,43 @@ async fn restart_listener_handles_pre_spawn_notify() {
 }
 
 // ---------------------------------------------------------------------------
-// Task 3 — Integration test: active-session bounded recovery
+// Integration test: bounded recovery via the session idle-reaper (NO force-abort)
 //
-// The critical regression test Codex called out as the missing test scope
-// in the original design review. Asserts that the daemon recovers within
-// the drain timeout EVEN IF an active session never disconnects on its
-// own. Before T1+T2 landed, an `AcceptWithRestartPending` admission with
-// any active session would mark `restart_pending=true`, fire
-// `notify_restart()` into a void (no listener), and leave the daemon
-// hung indefinitely rejecting every new MCP init.
+// Load-bearing invariant: the daemon must restart within a bounded time even
+// if an active session never sends DELETE. ORIGINALLY this was guaranteed by
+// force-aborting the live session on a drain timeout — but that killed real
+// in-use sessions and produced the recovery-marker storm. The fix decouples
+// arming `restart_pending` from firing the restart (`mark_restart_pending`
+// only signals when `active_sessions == 0`) and adds a restart-scoped session
+// idle-reaper that evicts genuinely idle sessions so the count can reach zero.
+//
+// This test proves the NEW contract: a stale-binary `AcceptWithRestartPending`
+// arms the restart but does NOT force-abort. The idle session is reaped, the
+// count hits zero, the restart fires, and the daemon exits CLEANLY — no drain
+// timeout, no recovery marker.
 //
 // Test sequence:
-//  1. Set JULIE_DAEMON_DRAIN_TIMEOUT_SECS=2 so total wall-clock is ~3s
+//  1. Set JULIE_DAEMON_SESSION_IDLE_TIMEOUT_SECS=1 so the reaper acts within
+//     ~1s, and JULIE_DAEMON_DRAIN_TIMEOUT_SECS=2 as a guard — if the restart
+//     ever fired with a session still present the drain would time out and
+//     write a recovery marker, which the final assertion forbids.
 //  2. Build DaemonApp with an injected `current_binary_mtime` closure
 //     (production hardcodes `super::binary_mtime`; the testing seam in
-//     `DaemonConfig::current_binary_mtime` lets us drive the gate)
-//  3. Spawn DaemonApp::serve, capture handle's stop_notify + handle
+//     `DaemonConfig::current_binary_mtime` lets us drive the gate).
+//  3. Spawn DaemonApp::serve (which starts the session reaper), capture the
+//     handle's stop_notify.
 //  4. Spawn driver task: stop_notify.notified() → handle.shutdown()
-//     (mirrors production's `run_daemon` driver in src/daemon/mod.rs)
-//  5. POST initialize for session 1 → Accept (binary not stale yet)
-//  6. Flip stale flag
-//  7. POST initialize for session 2 → AcceptWithRestartPending arm
-//     → admission calls mark_restart_pending → fires notify_restart
-//     → bridge wakes stop_notify → driver wakes → handle.shutdown()
-//     → drain times out (2s) → force-abort → daemon exits
-//  8. Assert driver task completes within drain_timeout + slack
-//
-// Session 1 is never explicitly disconnected; the daemon must exit
-// anyway via the drain-timeout path. That's the load-bearing invariant.
+//     (mirrors production's `run_daemon` driver in src/daemon/mod.rs).
+//  5. POST initialize for session 1 → Accept (binary not stale yet).
+//  6. Flip stale flag.
+//  7. POST initialize for session 2 → AcceptWithRestartPending: arms
+//     restart_pending but does NOT fire (sessions still active).
+//  8. Both sessions are now idle. After ~1s the reaper evicts them; when the
+//     count hits zero it calls mark_restart_pending(0), which fires the
+//     restart channel → bridge → stop_notify → driver → handle.shutdown().
+//     Drain sees an idle tracker → Clean. Daemon exits.
+//  9. Assert: driver completes within a bounded budget AND no recovery marker
+//     was written (the shutdown was clean, not a force-abort).
 // ---------------------------------------------------------------------------
 
 /// Guard that restores a process-wide env var on drop. Mirrors the helper
@@ -182,16 +192,20 @@ fn post_initialize(addr: SocketAddr, workspace: &std::path::Path, bearer_token: 
     response
 }
 
-/// End-to-end regression: a stale-binary `AcceptWithRestartPending` event
-/// with an active session that never disconnects MUST trigger daemon exit
-/// within the configured drain timeout. Without T1 + T2 wired, the daemon
-/// would sit in `restart_pending=true` indefinitely (the production bug).
+/// End-to-end regression: a stale-binary `AcceptWithRestartPending` event with
+/// an active session that never disconnects MUST trigger a daemon restart in
+/// bounded time — but CLEANLY, by reaping the idle session rather than
+/// force-aborting it. The daemon must not hang in `restart_pending` forever,
+/// and must not write a recovery marker (which a force-abort would).
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[serial]
-async fn daemon_exits_within_drain_when_active_session_never_disconnects() {
-    // Bound the drain so the test runs in ~3s wall-clock instead of the
-    // 60s production default. Matches the pattern in drain_timeout.rs.
-    let _env = EnvGuard::set("JULIE_DAEMON_DRAIN_TIMEOUT_SECS", "2");
+async fn daemon_reaps_idle_session_to_restart_cleanly_when_it_never_disconnects() {
+    // Reaper acts within ~1s of idleness so the test is fast. The drain bound
+    // is a guard: if the restart ever fired while a session was still present,
+    // the drain would time out at 2s and write a recovery marker — which the
+    // final assertion forbids.
+    let _idle_env = EnvGuard::set("JULIE_DAEMON_SESSION_IDLE_TIMEOUT_SECS", "1");
+    let _drain_env = EnvGuard::set("JULIE_DAEMON_DRAIN_TIMEOUT_SECS", "2");
 
     // Fresh JULIE_HOME so DaemonApp's singleton lock is uncontended and
     // discovery files don't collide with other tests.
@@ -269,37 +283,41 @@ async fn daemon_exits_within_drain_when_active_session_never_disconnects() {
 
     // Session 2: stale=true, active=1, restart_pending=false
     //   → AcceptWithRestartPending. Admission calls
-    //   `mark_restart_pending(active=1, RestartRequired)`, which (T1)
-    //   fires `notify_restart()`. The bridge spawned in DaemonApp::serve
-    //   (T2) bridges that into `stop_notify.notify_one()`. The driver
-    //   task above wakes and calls `handle.shutdown()`. Session 1 is
-    //   still alive in the tracker, so drain hits its 2s timeout and
-    //   force-aborts. Daemon exits.
+    //   `mark_restart_pending(active=1, RestartRequired)`, which ARMS
+    //   restart_pending but does NOT fire (active_sessions > 0 gate). The
+    //   session is accepted; no force-abort. Both sessions are now idle.
     let r2 = post_initialize(local_addr, workspace_root.path(), &bearer_token);
     assert!(
         r2.starts_with("HTTP/1.1 200 OK"),
         "session 2 must be accepted with restart pending: {r2}"
     );
 
-    // The load-bearing assertion: the driver MUST complete within the
-    // drain timeout + reasonable slack. Pre-fix, this hangs forever
-    // because `notify_restart()` had no listener and `stop_notify` was
-    // never fired by the admission path.
+    // Now the session idle-reaper takes over. With restart_pending armed and
+    // a 1s idle threshold, it evicts both idle sessions within ~1s; when the
+    // count reaches zero it calls mark_restart_pending(0), which fires the
+    // restart channel → bridge → stop_notify → driver → handle.shutdown().
     //
-    // Budget: drain_timeout (2s) + serve teardown overhead. Existing
-    // `test_daemon_app_serve_and_shutdown` budgets 10s for a clean
-    // shutdown with NO active sessions; we use 8s here as a safe upper
-    // bound while staying well under any "infinite hang" regression
-    // window. Pre-fix RED is a hard timeout (no exit possible without
-    // the bridge), so any finite budget catches the bug.
+    // Load-bearing assertion 1: the driver completes within a bounded budget.
+    // A hang here means the reaper failed to unblock the pending restart.
     let shutdown_result = timeout(Duration::from_secs(8), driver)
         .await
         .expect(
-            "DaemonApp::serve driver task did not complete within \
-             drain_timeout + slack. Pre-T1+T2 regression: daemon hangs \
-             in restart_pending forever because notify_restart() has no \
-             consumer and the active session never disconnects.",
+            "daemon did not exit within the reaper budget; the session idle-reaper \
+             failed to evict the idle sessions and fire the pending restart, so the \
+             daemon hung in restart_pending",
         )
         .expect("driver task panicked");
     shutdown_result.expect("handle.shutdown() returned an error");
+
+    // Load-bearing assertion 2: the shutdown was CLEAN. The restart fired only
+    // after the tracker went idle (reaped), so the drain completed without a
+    // timeout and wrote NO recovery marker. The OLD force-abort behavior would
+    // have written one — this is the regression guard for the marker storm.
+    let markers = read_recovery_markers(&paths);
+    assert!(
+        markers.is_empty(),
+        "stale-binary restart force-aborted a live session instead of reaping it \
+         cleanly; {} recovery marker(s) were written",
+        markers.len()
+    );
 }

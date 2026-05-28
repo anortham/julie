@@ -407,9 +407,14 @@ impl HttpJulieService {
         }
 
         if remaining == 0 && admission.lifecycle.restart_pending() {
-            // Restart notify is handled by the earlier mark_restart_pending call;
-            // the first transition signals the restart channel internally.
-            info!("Last HTTP session disconnected; restart already armed via mark_restart_pending");
+            // The TriggerShutdown branch above re-invoked mark_restart_pending
+            // with remaining == 0, which is the point at which the restart
+            // channel is actually signaled (arming while sessions were live
+            // only set the latch). This is the documented "exit after the last
+            // session disconnects" moment.
+            info!(
+                "Last HTTP session disconnected; restart channel signaled via mark_restart_pending"
+            );
         }
     }
 
@@ -450,8 +455,9 @@ impl HttpJulieService {
                     gate,
                     "Rejecting HTTP session and triggering daemon restart"
                 );
-                // Restart notify is handled by the mark_restart_pending call above;
-                // the first transition signals the restart channel internally.
+                // ShutdownForRestart is only produced when active_sessions == 0,
+                // so the mark_restart_pending call above signals the restart
+                // channel immediately (no live session to force-abort).
                 Err(restart_required_error())
             }
             IncomingSessionAction::RejectForRestart(reason) => {
@@ -513,6 +519,12 @@ impl HttpJulieService {
     ) -> Result<JulieServerHandler, McpError> {
         let mut guard = self.session.lock().await;
         if let Some(session) = guard.as_ref() {
+            // Record activity so the idle-reaper never evicts a session that is
+            // actively serving requests (only genuinely idle sessions blocking
+            // a pending restart should be reaped).
+            if let Some(sessions) = &self.dependencies.sessions {
+                sessions.touch_session(&session.session_id);
+            }
             return Ok(session.handler());
         }
         if !matches!(request, ClientRequest::InitializeRequest(_)) {
@@ -628,7 +640,13 @@ impl Service<RoleServer> for HttpJulieService {
     ) -> Result<(), McpError> {
         let handler = {
             let guard = self.session.lock().await;
-            guard.as_ref().map(DaemonMcpSession::handler)
+            guard.as_ref().map(|session| {
+                // Notifications count as session activity for idle-reaper purposes.
+                if let Some(sessions) = &self.dependencies.sessions {
+                    sessions.touch_session(&session.session_id);
+                }
+                session.handler()
+            })
         };
         let Some(handler) = handler else {
             return Err(McpError::invalid_request(

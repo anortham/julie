@@ -313,7 +313,7 @@ fn test_controller_restart_pending_preserves_existing_shutdown_phase() {
 }
 
 #[tokio::test]
-async fn test_mark_restart_pending_signals_listener_on_first_transition() {
+async fn test_mark_restart_pending_signals_listener_when_no_active_sessions() {
     use std::time::Duration;
     use tokio::time::timeout;
 
@@ -331,8 +331,11 @@ async fn test_mark_restart_pending_signals_listener_on_first_transition() {
     // Give the waiter a tick to actually arm `.notified()`.
     tokio::task::yield_now().await;
 
-    // First mark_restart_pending call must wake the waiter via the restart channel.
-    let transition = controller.mark_restart_pending(2, ShutdownCause::RestartRequired);
+    // Arming with zero active sessions (e.g. a stale-binary connection arriving
+    // while the daemon is otherwise idle — ShutdownForRestart) must immediately
+    // wake the waiter via the restart channel: there is no live session to
+    // force-abort, so it is safe to shut down for restart now.
+    let transition = controller.mark_restart_pending(0, ShutdownCause::RestartRequired);
     assert!(transition.first_request);
 
     // Waiter must wake within 100ms; otherwise the restart channel has no signal.
@@ -343,7 +346,7 @@ async fn test_mark_restart_pending_signals_listener_on_first_transition() {
 }
 
 #[tokio::test]
-async fn test_mark_restart_pending_does_not_double_signal() {
+async fn test_mark_restart_pending_with_active_sessions_never_signals() {
     use std::time::Duration;
     use tokio::time::timeout;
 
@@ -352,40 +355,95 @@ async fn test_mark_restart_pending_does_not_double_signal() {
     let controller = DaemonLifecycleController::new(state_path);
     controller.startup_complete();
 
-    // Consume the first signal with a waiter so no permit is left behind.
-    let first_notify = controller.restart_notify();
-    let first_waiter = tokio::spawn(async move {
-        first_notify.notified().await;
-    });
-    tokio::task::yield_now().await;
-
+    // Arming restart_pending while a session is live must NOT signal the
+    // restart channel, no matter how many times it is invoked. A signal here
+    // would bridge into shutdown()'s 60s drain and force-abort the live
+    // session. The signal is deferred until the last session disconnects
+    // (active_sessions == 0), exercised by
+    // `test_restart_channel_fires_only_after_last_session_disconnects`.
     let first = controller.mark_restart_pending(2, ShutdownCause::RestartRequired);
     assert!(first.first_request);
-    timeout(Duration::from_millis(100), first_waiter)
-        .await
-        .expect("first restart_notify waiter did not wake within 100ms")
-        .expect("first restart_notify waiter task panicked");
 
-    // Register a fresh waiter, then call mark_restart_pending again.
-    // The second call must NOT signal the channel (first_request gate).
-    let second_notify = controller.restart_notify();
-    let second_waiter = tokio::spawn(async move {
-        second_notify.notified().await;
-    });
-    tokio::task::yield_now().await;
+    let signaled_after_first = timeout(
+        Duration::from_millis(50),
+        controller.restart_notify().notified(),
+    )
+    .await
+    .is_ok();
+    assert!(
+        !signaled_after_first,
+        "mark_restart_pending signaled the restart channel while a session was still active"
+    );
 
+    // A second arm with sessions still active is idempotent and likewise silent.
     let second = controller.mark_restart_pending(2, ShutdownCause::RestartRequired);
     assert!(!second.first_request);
 
-    // The fresh waiter must NOT wake within a short window — the first_request
-    // gate should suppress a second notify.
-    let did_wake = timeout(Duration::from_millis(50), second_waiter)
-        .await
-        .is_ok();
+    let signaled_after_second = timeout(
+        Duration::from_millis(50),
+        controller.restart_notify().notified(),
+    )
+    .await
+    .is_ok();
     assert!(
-        !did_wake,
-        "second mark_restart_pending unexpectedly signaled the restart channel; first_request gate is broken"
+        !signaled_after_second,
+        "a repeated active-session arm unexpectedly signaled the restart channel"
     );
+}
+
+#[tokio::test]
+async fn test_restart_channel_fires_only_after_last_session_disconnects() {
+    use std::time::Duration;
+    use tokio::time::timeout;
+
+    let dir = tempfile::tempdir().unwrap();
+    let state_path = dir.path().join("daemon.state");
+    let controller = DaemonLifecycleController::new(state_path);
+    controller.startup_complete();
+
+    // Arm restart_pending while a session is still active (the stale-binary
+    // auto-restart path with a live session). This MUST NOT signal the restart
+    // channel: firing now bridges into shutdown()'s bounded 60s drain, which
+    // waits for the live session to DISCONNECT — not merely for in-flight
+    // requests to finish. Long-lived MCP sessions never disconnect on their own
+    // during a daemon-initiated restart, so the drain times out and force-aborts
+    // the session, writing a recovery marker. That is the storm we are fixing.
+    let armed = controller.mark_restart_pending(1, ShutdownCause::RestartRequired);
+    assert!(armed.first_request);
+    assert!(controller.restart_pending());
+
+    let signaled_early = timeout(
+        Duration::from_millis(50),
+        controller.restart_notify().notified(),
+    )
+    .await
+    .is_ok();
+    assert!(
+        !signaled_early,
+        "mark_restart_pending signaled the restart channel while a session was still active; \
+         this triggers shutdown()'s 60s drain and force-aborts the live session"
+    );
+
+    // When the last session disconnects (active_sessions == 0) the channel MUST
+    // fire — even though restart_pending was already latched above
+    // (first_request == false). This is the documented "exit after the last
+    // session disconnects" trigger.
+    let final_notify = controller.restart_notify();
+    let final_waiter = tokio::spawn(async move {
+        final_notify.notified().await;
+    });
+    tokio::task::yield_now().await;
+
+    let last = controller.mark_restart_pending(0, ShutdownCause::RestartRequired);
+    assert!(
+        !last.first_request,
+        "restart_pending latch was already armed by the active-session call"
+    );
+
+    timeout(Duration::from_millis(100), final_waiter)
+        .await
+        .expect("restart channel must fire once the last active session disconnects")
+        .expect("restart_notify waiter task panicked");
 }
 
 #[test]
