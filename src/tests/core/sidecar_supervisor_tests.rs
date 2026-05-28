@@ -288,4 +288,79 @@ exit 1
         let url = crate::embeddings::sidecar_bootstrap::cuda_torch_index_url();
         assert!(url.starts_with("https://download.pytorch.org/whl/cu"));
     }
+
+    #[test]
+    fn test_rocm_torch_index_url() {
+        // AMD ROCm wheels live under a versioned rocm path on the PyTorch index.
+        let url = crate::embeddings::sidecar_bootstrap::rocm_torch_index_url();
+        assert!(
+            url.starts_with("https://download.pytorch.org/whl/rocm"),
+            "unexpected ROCm index URL: {url}"
+        );
+    }
+
+    #[test]
+    fn test_xpu_torch_index_url() {
+        // Intel GPU (XPU) support is upstreamed into stable torch; wheels live
+        // at the unversioned /whl/xpu path.
+        let url = crate::embeddings::sidecar_bootstrap::xpu_torch_index_url();
+        assert_eq!(url, "https://download.pytorch.org/whl/xpu");
+    }
+
+    #[test]
+    fn test_detect_amd_rocm_is_idempotent() {
+        // Result is hardware-dependent, but must be consistent across calls.
+        let first = crate::embeddings::sidecar_bootstrap::detect_amd_rocm();
+        let second = crate::embeddings::sidecar_bootstrap::detect_amd_rocm();
+        assert_eq!(first, second, "ROCm detection should be idempotent");
+    }
+
+    #[test]
+    fn test_detect_intel_xpu_is_idempotent() {
+        // Result is hardware-dependent, but must be consistent across calls.
+        let first = crate::embeddings::sidecar_bootstrap::detect_intel_xpu();
+        let second = crate::embeddings::sidecar_bootstrap::detect_intel_xpu();
+        assert_eq!(first, second, "Intel XPU detection should be idempotent");
+    }
+
+    #[test]
+    fn test_windows_python_candidates_use_versioned_launcher() {
+        use crate::embeddings::sidecar_bootstrap::python_interpreter_candidates_for;
+
+        let candidates = python_interpreter_candidates_for(/* windows */ true);
+
+        // Every supported minor must be probed via the `py -3.X` launcher syntax,
+        // not just bare binary names (which rarely exist on Windows).
+        for &minor in &SUPPORTED_PYTHON_MINORS {
+            let expected = OsString::from(format!("-3.{minor}"));
+            assert!(
+                candidates.iter().any(|c| {
+                    c.program() == OsStr::new("py") && c.prefix_args() == [expected.clone()]
+                }),
+                "expected `py -3.{minor}` among Windows candidates, got: {candidates:?}"
+            );
+        }
+
+        // The preferred interpreter (3.12) must be probed first.
+        assert_eq!(candidates[0].program(), OsStr::new("py"));
+        assert_eq!(candidates[0].prefix_args(), [OsString::from("-3.12")]);
+    }
+
+    #[test]
+    fn test_unix_python_candidates_have_no_prefix_args() {
+        use crate::embeddings::sidecar_bootstrap::python_interpreter_candidates_for;
+
+        let candidates = python_interpreter_candidates_for(/* windows */ false);
+
+        assert!(
+            candidates.iter().all(|c| c.prefix_args().is_empty()),
+            "unix candidates should be plain binary names with no prefix args"
+        );
+        assert!(
+            candidates
+                .iter()
+                .any(|c| c.program() == OsStr::new("python3.12")),
+            "expected python3.12 among unix candidates"
+        );
+    }
 }

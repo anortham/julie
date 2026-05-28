@@ -91,6 +91,58 @@ pub(crate) fn cuda_torch_index_url() -> &'static str {
     "https://download.pytorch.org/whl/cu124"
 }
 
+/// Detect whether an AMD ROCm stack is present by probing for `rocminfo`
+/// (which enumerates GPUs) and falling back to the conventional `/opt/rocm`
+/// install prefix. Build-time check (run during venv creation); the Python
+/// sidecar still makes the final runtime device decision. ROCm's HIP layer
+/// reports through `torch.cuda.is_available()`, so runtime selection is shared
+/// with the CUDA path.
+pub(crate) fn detect_amd_rocm() -> bool {
+    let mut cmd = Command::new("rocminfo");
+    cmd.stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    suppress_console_window(&mut cmd);
+    if cmd.status().is_ok_and(|s| s.success()) {
+        return true;
+    }
+    // rocminfo absent or no GPU enumerated — fall back to the install prefix.
+    Path::new("/opt/rocm").exists()
+}
+
+/// PyTorch ROCm wheel index URL. ROCm 6.4 pairs with the current stable torch
+/// line and supports RDNA/CDNA GPUs on Linux. Bump this alongside the torch
+/// version the same way [`cuda_torch_index_url`] tracks CUDA releases; a
+/// version mismatch degrades gracefully to CPU torch (see
+/// [`reinstall_torch_from_index`]).
+pub(crate) fn rocm_torch_index_url() -> &'static str {
+    "https://download.pytorch.org/whl/rocm6.4"
+}
+
+/// Detect whether an Intel GPU compute stack is present by probing for
+/// `xpu-smi` (Intel's GPU System Management Interface, analogous to
+/// `nvidia-smi`). We deliberately gate on `xpu-smi` rather than the mere
+/// presence of an Intel render node: ubiquitous older integrated GPUs are not
+/// XPU-capable, and a false positive would swap working CPU torch for an XPU
+/// build that can't initialize. Build-time check; the sidecar confirms via
+/// `torch.xpu.is_available()` at runtime.
+pub(crate) fn detect_intel_xpu() -> bool {
+    let mut cmd = Command::new("xpu-smi");
+    cmd.arg("discovery")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    suppress_console_window(&mut cmd);
+    cmd.status().is_ok_and(|s| s.success())
+}
+
+/// PyTorch Intel GPU (XPU) wheel index URL. Intel GPU support is upstreamed
+/// into stable torch (2.5+), so no `intel-extension-for-pytorch` is required;
+/// the wheels live at the unversioned `/whl/xpu` path.
+pub(crate) fn xpu_torch_index_url() -> &'static str {
+    "https://download.pytorch.org/whl/xpu"
+}
+
 /// Read the currently installed torch version from the venv so we can
 /// pin the same version when swapping for the CUDA variant.
 fn read_installed_torch_version(venv_python: &Path) -> Option<String> {
@@ -226,19 +278,18 @@ pub(super) fn ensure_venv_exists(venv_path: &Path) -> Result<()> {
 
     let bootstrap_python = detect_bootstrap_python_interpreter()?;
 
+    let mut create_cmd = bootstrap_python.command();
+    create_cmd.arg("-m").arg("venv").arg(venv_path);
     run_command(
-        Command::new(&bootstrap_python)
-            .arg("-m")
-            .arg("venv")
-            .arg(venv_path),
+        &mut create_cmd,
         "sidecar bootstrap failed to create managed venv",
     )
 }
 
-fn detect_bootstrap_python_interpreter() -> Result<OsString> {
+fn detect_bootstrap_python_interpreter() -> Result<PythonCommand> {
     if let Some(override_value) = std::env::var_os(SIDECAR_BOOTSTRAP_PYTHON_ENV) {
         if !override_value.is_empty() {
-            return Ok(override_value);
+            return Ok(PythonCommand::from_program(override_value));
         }
     }
 
@@ -248,7 +299,7 @@ fn detect_bootstrap_python_interpreter() -> Result<OsString> {
     // the latest installed Python (which may be too new for PyTorch).
     for minor in SUPPORTED_PYTHON_MINORS {
         if let Some(path) = uv_python_find(minor) {
-            return Ok(path);
+            return Ok(PythonCommand::from_program(path));
         }
     }
 
@@ -256,12 +307,10 @@ fn detect_bootstrap_python_interpreter() -> Result<OsString> {
     // supported. Without this check, `py` on Windows picks 3.14+ which
     // has no PyTorch wheels.
     for candidate in python_interpreter_candidates() {
-        if !command_exists(&candidate) {
+        if !candidate.exists() {
             continue;
         }
-        if let Some((_major, minor)) =
-            super::sidecar_supervisor::python_version_from_program(&candidate)
-        {
+        if let Some((_major, minor)) = candidate.version() {
             if SUPPORTED_PYTHON_MINORS.contains(&minor) {
                 return Ok(candidate);
             }
@@ -281,25 +330,109 @@ fn detect_bootstrap_python_interpreter() -> Result<OsString> {
     )
 }
 
-fn python_interpreter_candidates() -> Vec<OsString> {
+/// A candidate Python invocation: a program plus any leading arguments needed
+/// to select a specific interpreter. On Windows the launcher selects a version
+/// via `py -3.12`, which is an argument, not a distinct binary — so a bare
+/// program name is insufficient.
+#[derive(Clone, Debug)]
+pub(crate) struct PythonCommand {
+    program: OsString,
+    prefix_args: Vec<OsString>,
+}
+
+impl PythonCommand {
+    fn plain(program: &str) -> Self {
+        Self {
+            program: OsString::from(program),
+            prefix_args: Vec::new(),
+        }
+    }
+
+    fn versioned(program: &str, version_arg: &str) -> Self {
+        Self {
+            program: OsString::from(program),
+            prefix_args: vec![OsString::from(version_arg)],
+        }
+    }
+
+    fn from_program(program: OsString) -> Self {
+        Self {
+            program,
+            prefix_args: Vec::new(),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn program(&self) -> &OsStr {
+        &self.program
+    }
+
+    #[cfg(test)]
+    pub(crate) fn prefix_args(&self) -> &[OsString] {
+        &self.prefix_args
+    }
+
+    /// Build a [`Command`] seeded with the program and its version-selecting
+    /// prefix args, ready for the caller to append further arguments.
+    fn command(&self) -> Command {
+        let mut cmd = Command::new(&self.program);
+        cmd.args(&self.prefix_args);
+        cmd
+    }
+
+    /// Whether this interpreter responds successfully to `--version`.
+    fn exists(&self) -> bool {
+        let mut cmd = self.command();
+        cmd.arg("--version")
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null());
+        suppress_console_window(&mut cmd);
+        cmd.status().is_ok_and(|status| status.success())
+    }
+
+    /// Parse the interpreter's `(major, minor)` version.
+    fn version(&self) -> Option<(u32, u32)> {
+        super::sidecar_supervisor::python_version_from_command(&self.program, &self.prefix_args)
+    }
+}
+
+fn python_interpreter_candidates() -> Vec<PythonCommand> {
+    python_interpreter_candidates_for(cfg!(target_os = "windows"))
+}
+
+/// Build the ordered interpreter probe list for a target platform. Split out
+/// from [`python_interpreter_candidates`] so both branches are unit-testable
+/// regardless of the host OS.
+pub(crate) fn python_interpreter_candidates_for(target_windows: bool) -> Vec<PythonCommand> {
     // Prefer 3.12 for best cross-platform compatibility (macOS, Windows, Linux)
     // with PyTorch and sentence-transformers. Fall back to newer/older versions.
-    if cfg!(target_os = "windows") {
-        vec![
-            OsString::from("py"),
-            OsString::from("python3.12"),
-            OsString::from("python3.13"),
-            OsString::from("python3.11"),
-            OsString::from("python"),
-            OsString::from("python3"),
-        ]
+    if target_windows {
+        // The Windows launcher (`py`) is the canonical way to select a specific
+        // version. `py -3.12` requests exactly that interpreter; bare
+        // `python3.12` binaries usually don't exist on Windows. Probe each
+        // supported minor through the launcher first, then fall back to plain
+        // names for non-launcher setups.
+        let mut candidates: Vec<PythonCommand> = SUPPORTED_PYTHON_MINORS
+            .iter()
+            .map(|minor| PythonCommand::versioned("py", &format!("-3.{minor}")))
+            .collect();
+        candidates.extend([
+            PythonCommand::plain("py"),
+            PythonCommand::plain("python3.12"),
+            PythonCommand::plain("python3.13"),
+            PythonCommand::plain("python3.11"),
+            PythonCommand::plain("python"),
+            PythonCommand::plain("python3"),
+        ]);
+        candidates
     } else {
         vec![
-            OsString::from("python3.12"),
-            OsString::from("python3.13"),
-            OsString::from("python3.11"),
-            OsString::from("python3"),
-            OsString::from("python"),
+            PythonCommand::plain("python3.12"),
+            PythonCommand::plain("python3.13"),
+            PythonCommand::plain("python3.11"),
+            PythonCommand::plain("python3"),
+            PythonCommand::plain("python"),
         ]
     }
 }
@@ -395,37 +528,12 @@ pub(super) fn ensure_sidecar_package_installed(
         "sidecar bootstrap failed to install managed sidecar package",
     )?;
 
-    // After successful base install, swap torch for CUDA variant if available.
-    // The base install pulls torch+cpu from PyPI. If NVIDIA CUDA is detected,
-    // reinstall torch from the PyTorch CUDA index. This gives us CUDA support
-    // while keeping all other deps (sentence-transformers, etc.) from PyPI.
-    if cfg!(target_os = "windows") || cfg!(target_os = "linux") {
-        if detect_nvidia_cuda() {
-            tracing::info!("NVIDIA CUDA detected, installing CUDA-enabled torch");
-
-            let torch_version = read_installed_torch_version(venv_python);
-
-            let (mut cuda_cmd, is_uv) = pip_install_command(venv_python);
-            if is_uv {
-                cuda_cmd.arg("--reinstall-package").arg("torch");
-            } else {
-                cuda_cmd.arg("--force-reinstall");
-            }
-            if let Some(ref ver) = torch_version {
-                cuda_cmd.arg(format!("torch=={ver}"));
-            } else {
-                cuda_cmd.arg("torch");
-            }
-            cuda_cmd.arg("--index-url").arg(cuda_torch_index_url());
-
-            match run_command(&mut cuda_cmd, "CUDA torch install") {
-                Ok(()) => tracing::info!("CUDA-enabled torch installed successfully"),
-                Err(err) => {
-                    // Non-fatal: CPU torch still works, sidecar falls back gracefully
-                    tracing::warn!("CUDA torch install failed (CPU fallback available): {err:#}");
-                }
-            }
-        }
+    // After the base install (which pulls torch+cpu from PyPI), swap torch for
+    // an accelerated build when a supported GPU stack is detected. All other
+    // deps (sentence-transformers, etc.) stay on the PyPI versions resolved
+    // above; only torch is reinstalled from the vendor wheel index.
+    if let Some((index_url, label)) = detect_gpu_torch_index() {
+        reinstall_torch_from_index(venv_python, index_url, label);
     }
 
     std::fs::write(&marker_path, expected_marker).with_context(|| {
@@ -436,6 +544,72 @@ pub(super) fn ensure_sidecar_package_installed(
     })?;
 
     Ok(())
+}
+
+/// Select the accelerated torch wheel index for the detected GPU stack, or
+/// `None` to keep the CPU torch from the base install.
+///
+/// Returns `(index_url, human_label)`. Detection runs in priority order and
+/// stops at the first hit, so a machine is only ever matched to one backend.
+///
+/// Platform policy:
+/// - **Windows**: torch-directml (declared in pyproject.toml) already covers
+///   NVIDIA/AMD/Intel via DirectX 12, so only the CUDA index is worth swapping
+///   in for the dedicated-NVIDIA path. ROCm/XPU have no stable Windows wheels.
+/// - **Linux**: NVIDIA (CUDA) → AMD (ROCm) → Intel (XPU).
+/// - **macOS**: MPS is built into the PyPI torch wheel, so no swap is needed.
+fn detect_gpu_torch_index() -> Option<(&'static str, &'static str)> {
+    if cfg!(target_os = "windows") {
+        if detect_nvidia_cuda() {
+            return Some((cuda_torch_index_url(), "CUDA"));
+        }
+        return None;
+    }
+
+    if cfg!(target_os = "linux") {
+        if detect_nvidia_cuda() {
+            return Some((cuda_torch_index_url(), "CUDA"));
+        }
+        if detect_amd_rocm() {
+            return Some((rocm_torch_index_url(), "ROCm"));
+        }
+        if detect_intel_xpu() {
+            return Some((xpu_torch_index_url(), "Intel XPU"));
+        }
+    }
+
+    None
+}
+
+/// Reinstall torch from a vendor wheel index, pinning the version already
+/// resolved by the base install so the rest of the dependency tree stays
+/// consistent. Non-fatal: on failure the CPU torch from the base install
+/// remains and the sidecar falls back gracefully at runtime.
+fn reinstall_torch_from_index(venv_python: &Path, index_url: &str, label: &str) {
+    tracing::info!("{label} detected, installing {label}-enabled torch from {index_url}");
+
+    let torch_version = read_installed_torch_version(venv_python);
+
+    let (mut cmd, is_uv) = pip_install_command(venv_python);
+    if is_uv {
+        cmd.arg("--reinstall-package").arg("torch");
+    } else {
+        cmd.arg("--force-reinstall");
+    }
+    if let Some(ref ver) = torch_version {
+        cmd.arg(format!("torch=={ver}"));
+    } else {
+        cmd.arg("torch");
+    }
+    cmd.arg("--index-url").arg(index_url);
+
+    match run_command(&mut cmd, &format!("{label} torch install")) {
+        Ok(()) => tracing::info!("{label}-enabled torch installed successfully"),
+        Err(err) => {
+            // Non-fatal: CPU torch still works, sidecar falls back gracefully.
+            tracing::warn!("{label} torch install failed (CPU fallback available): {err:#}");
+        }
+    }
 }
 
 /// Build a `pip install` command, preferring `uv pip install` when available.

@@ -13,7 +13,7 @@ const SIDECAR_RAW_PROGRAM_ENV: &str = "JULIE_EMBEDDING_SIDECAR_RAW_PROGRAM";
 const SIDECAR_SCRIPT_ENV: &str = "JULIE_EMBEDDING_SIDECAR_SCRIPT";
 const SIDECAR_MODULE_ENV: &str = "JULIE_EMBEDDING_SIDECAR_MODULE";
 const EMBEDDING_CACHE_DIR_ENV: &str = "JULIE_EMBEDDING_CACHE_DIR";
-pub(crate) const INSTALL_MARKER_VERSION: &str = "v10-cuda-torch";
+pub(crate) const INSTALL_MARKER_VERSION: &str = "v11-gpu-torch";
 /// PyTorch publishes wheels for these minor versions (3.10 through 3.13).
 pub(crate) const SUPPORTED_PYTHON_MINORS: [u32; 4] = [12, 13, 11, 10];
 pub(crate) const RUNTIME_EDITABLE_REQUIREMENT: &str = ".[runtime]";
@@ -178,10 +178,21 @@ pub(crate) fn is_truthy_env_flag(value: &str) -> bool {
 }
 
 pub(crate) fn python_version_from_program(program: &std::ffi::OsStr) -> Option<(u32, u32)> {
+    python_version_from_command(program, &[])
+}
+
+/// Like [`python_version_from_program`], but allows leading arguments that
+/// select a specific interpreter — e.g. the Windows launcher's `py -3.12`,
+/// where the version selector must precede `--version`.
+pub(crate) fn python_version_from_command(
+    program: &std::ffi::OsStr,
+    prefix_args: &[OsString],
+) -> Option<(u32, u32)> {
     use std::process::Command;
 
     let mut cmd = Command::new(program);
-    cmd.arg("--version")
+    cmd.args(prefix_args)
+        .arg("--version")
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
