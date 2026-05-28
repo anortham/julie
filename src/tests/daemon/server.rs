@@ -49,6 +49,37 @@ async fn raw_http_readiness_response(endpoint: &TransportEndpoint) -> String {
         .unwrap_or_else(|error| format!("<readiness-task-error {error}>"))
 }
 
+#[tokio::test]
+async fn test_run_daemon_aborts_when_starting_discovery_publish_fails() {
+    let tmp = tempfile::tempdir().expect("Failed to create temp dir");
+    let paths = DaemonPaths::with_home(tmp.path().to_path_buf());
+    paths.ensure_dirs().expect("Failed to create dirs");
+    std::fs::create_dir(paths.discovery_file().with_extension("json.tmp"))
+        .expect("directory at discovery temp path forces starting publish failure");
+
+    let result = tokio::time::timeout(
+        Duration::from_secs(5),
+        daemon::run_daemon(paths.clone(), 0, true),
+    )
+    .await
+    .expect("run_daemon should return instead of serving without discovery");
+
+    let error = result.expect_err("run_daemon must fail when starting discovery cannot publish");
+    let message = format!("{error:#}");
+    assert!(
+        message.contains("Failed to publish early discovery.json"),
+        "error should identify the mandatory early discovery publish, got: {message}"
+    );
+    assert!(
+        !paths.discovery_file().exists(),
+        "failed early publish must not leave a discovery.json record"
+    );
+    assert!(
+        !paths.daemon_mcp_transport().exists(),
+        "daemon must not start HTTP transport after early discovery publish fails"
+    );
+}
+
 fn raw_http_readiness_response_sync(endpoint: &TransportEndpoint) -> String {
     let Some(url) = endpoint.mcp_url() else {
         return "<not-http>".to_string();

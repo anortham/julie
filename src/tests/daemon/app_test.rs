@@ -157,6 +157,74 @@ async fn test_daemon_app_serve_and_shutdown() {
     );
 }
 
+/// Regression: once early `phase="starting"` discovery exists, `serve()` must
+/// not continue as a live daemon if the later `phase="running"` overwrite
+/// fails. Otherwise adapters see `phase="starting"` forever and wait until
+/// readiness timeout even though the HTTP transport is up.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_daemon_app_serve_aborts_when_running_discovery_publish_fails() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let paths = DaemonPaths::with_home(tmp.path().to_path_buf());
+    paths.ensure_dirs().expect("ensure_dirs");
+
+    let listener = TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind mcp listener");
+    let local_addr = listener.local_addr().expect("listener local_addr");
+
+    crate::daemon::app::publish_starting_discovery(
+        &paths,
+        &local_addr.ip().to_string(),
+        local_addr.port(),
+    )
+    .expect("early discovery publish should succeed");
+
+    let discovery_tmp = paths.discovery_file().with_extension("json.tmp");
+    std::fs::create_dir(&discovery_tmp)
+        .expect("directory at discovery temp path forces running publish failure");
+
+    let config = DaemonConfig {
+        paths: paths.clone(),
+        port: local_addr.port(),
+        no_dashboard: true,
+        runtime: DaemonRuntimeContext::default(),
+        daemon_lock: None,
+        current_binary_mtime: None,
+    };
+
+    let app = DaemonApp::new(config).expect("DaemonApp::new");
+    match app.serve(listener).await {
+        Ok(handle) => {
+            let _ = handle.shutdown().await;
+            panic!("serve must fail when running discovery publish fails");
+        }
+        Err(error) => {
+            let message = format!("{error:#}");
+            assert!(
+                message.contains("Failed to publish initial discovery.json"),
+                "error should explain mandatory discovery publish failure, got: {message}"
+            );
+        }
+    }
+
+    assert!(
+        !paths.discovery_file().exists(),
+        "failed startup must remove stale phase=starting discovery.json"
+    );
+    assert!(
+        !paths.daemon_state().exists(),
+        "failed startup must remove daemon.state so adapters do not observe ready/stale state"
+    );
+    assert!(
+        !paths.token_file().exists(),
+        "failed startup must remove bearer token"
+    );
+    assert!(
+        !paths.daemon_mcp_transport().exists(),
+        "failed startup must remove legacy transport discovery"
+    );
+}
+
 /// Two `DaemonRuntimeContext::for_test()` instances must not share gate locks.
 ///
 /// Invariant proved: isolated runtime contexts use independent `Registry`
@@ -433,9 +501,9 @@ fn test_publish_starting_discovery_writes_phase_starting_record() {
                  can detect kernel-level liveness via discovery.json alone"
             );
         }
-        other => panic!(
-            "expected Live discovery record after publish_starting_discovery, got {other:?}"
-        ),
+        other => {
+            panic!("expected Live discovery record after publish_starting_discovery, got {other:?}")
+        }
     }
 }
 
@@ -463,9 +531,7 @@ fn test_publish_starting_discovery_is_overwritten_by_running_publish() {
         "127.0.0.1",
         18766,
         PathBuf::from(paths.token_file()),
-        paths
-            .julie_home()
-            .join("daemon.log.test-overwrite"),
+        paths.julie_home().join("daemon.log.test-overwrite"),
     );
     DiscoveryFile::write_atomic(&paths.discovery_file(), &running)
         .expect("second publish (running) must succeed");

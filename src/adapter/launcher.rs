@@ -1,8 +1,9 @@
 //! Daemon launcher: auto-starts the daemon process if not already running.
 //!
-//! The launcher checks for a running daemon via PID file, acquires an advisory
-//! lock to prevent races between multiple adapters, spawns the daemon as a
-//! detached background process, and waits for the HTTP endpoint to become ready.
+//! The launcher checks for a running daemon via `discovery.json`, acquires an
+//! advisory lock to prevent races between multiple adapters, spawns the daemon
+//! as a detached background process, and waits for the HTTP endpoint to become
+//! ready.
 
 use std::io;
 use std::time::{Duration, Instant};
@@ -12,7 +13,6 @@ use tracing::{debug, info, warn};
 
 use crate::daemon::discovery::{DiscoveryFile, DiscoveryRecord, DiscoveryState};
 use crate::daemon::http_transport::{MCP_PATH, READINESS_PATH};
-use crate::daemon::pid::{PidFile, PidFileStatus};
 use crate::daemon::transport::TransportEndpoint;
 use crate::paths::DaemonPaths;
 
@@ -20,15 +20,15 @@ use crate::paths::DaemonPaths;
 /// The daemon's current lifecycle phase, as seen by the adapter.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DaemonReadiness {
-    /// PID alive, state file says "ready". Safe to connect.
+    /// `discovery.json` says running and the readiness endpoint responds.
     Ready,
-    /// PID alive, state file says "starting" or is missing/unreadable.
+    /// `discovery.json` says starting, or running but the endpoint is not ready.
     /// Daemon is initializing; wait, don't spawn a second one.
     Starting,
-    /// PID alive, state file says "stopping".
+    /// `discovery.json` says stopping or draining.
     /// Daemon is shutting down; wait for exit, then spawn fresh.
     Stopping,
-    /// No PID file, or PID is dead. Safe to spawn a new daemon.
+    /// No live `discovery.json`. Safe to spawn a new daemon.
     Dead,
 }
 
@@ -49,21 +49,13 @@ impl DaemonLauncher {
 
     /// Check whether a daemon process is currently running.
     ///
-    /// Reads the PID file, validates the process is alive, and cleans up
-    /// stale PID files as a side effect. Treats `Indeterminate` (e.g.,
-    /// fresh empty PID file from a racing daemon mid-write) as "present"
-    /// so the poll loop does not declare BrokenPipe and spawn a duplicate.
+    /// For the split daemon, `discovery.json` is the adapter-facing lifecycle
+    /// source. Legacy PID/state files are handled only by the explicit legacy
+    /// attach path in `ensure_daemon_ready`.
     fn is_daemon_running(&self) -> bool {
-        if matches!(
+        matches!(
             DiscoveryFile::read_and_validate(&self.paths.discovery_file()),
             DiscoveryState::Live(_)
-        ) {
-            return true;
-        }
-
-        !matches!(
-            PidFile::check_status(&self.paths.daemon_pid()),
-            PidFileStatus::Dead
         )
     }
 
@@ -77,106 +69,55 @@ impl DaemonLauncher {
             return Ok(endpoint);
         }
 
-        TransportEndpoint::read_discovery(&self.paths.daemon_mcp_transport())
+        Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            "no live daemon discovery.json and no live legacy daemon transport",
+        ))
     }
 
-    /// Probe the daemon transport endpoint to check if it is accepting connections.
-    /// Used when the state file is missing or unreadable.
-    fn probe_transport_endpoint(&self) -> bool {
-        self.transport_endpoint()
-            .map(|endpoint| endpoint.probe_readiness().is_ready())
-            .unwrap_or(false)
-    }
-
-    /// Assess the daemon's lifecycle phase from PID + state file.
-    ///
-    /// Cleans up stale files as a side effect when the daemon is dead.
-    /// When PID is alive but the state file is missing or unreadable (old binary,
-    /// write failure, permissions), falls back to probing the daemon transport endpoint.
-    ///
-    /// `Indeterminate` PID-file status (e.g., racing daemon mid-write of
-    /// `create_exclusive`) maps to `Starting`: the caller should wait, not
-    /// declare the daemon dead and spawn a replacement. This is the
-    /// launcher half of the P2 fix for the 577-daemon cascade — pre-fix,
-    /// an empty PID file fed back as `None` from `check_running` and the
-    /// launcher unlinked the state file + spawned a new daemon.
+    /// Assess the daemon's lifecycle phase from validated `discovery.json`.
     pub fn daemon_readiness(&self) -> DaemonReadiness {
         match DiscoveryFile::read_and_validate(&self.paths.discovery_file()) {
             DiscoveryState::Live(record) => {
-                if matches!(record.phase.as_deref(), Some("stopping") | Some("draining")) {
-                    return DaemonReadiness::Stopping;
-                }
-
-                // `phase="starting"` is published by `run_daemon` immediately
-                // after lock acquisition and listener bind, before DB
-                // migrations and workspace backfill run inside
-                // `DaemonApp::new`. During that window the listener can
-                // already accept TCP connections at the kernel layer even
-                // though the HTTP server has not started routing requests
-                // — so probing the endpoint may falsely return Ready and
-                // let adapters open sessions against a daemon that has
-                // not finished initializing. Short-circuit here so a
-                // `starting` record is treated as Starting regardless of
-                // what the HTTP probe says. The `phase="running"` flip
-                // happens at the end of `DaemonApp::serve` (atomic
-                // overwrite via `DiscoveryFile::write_atomic`) and is
-                // what actually opens the daemon for sessions.
-                if matches!(record.phase.as_deref(), Some("starting")) {
-                    return DaemonReadiness::Starting;
-                }
-
-                return match discovery_endpoint(&record)
-                    .map(|endpoint| endpoint.probe_readiness().is_ready())
-                {
-                    Ok(true) => DaemonReadiness::Ready,
-                    Ok(false) | Err(_) => DaemonReadiness::Starting,
-                };
-            }
-            DiscoveryState::Missing | DiscoveryState::Stale | DiscoveryState::Corrupt(_) => {}
-        }
-
-        match PidFile::check_status(&self.paths.daemon_pid()) {
-            PidFileStatus::Dead => {
-                let _ = std::fs::remove_file(self.paths.daemon_state());
-                DaemonReadiness::Dead
-            }
-            PidFileStatus::Indeterminate => {
-                // Fresh empty / unparseable PID file — a daemon is likely
-                // mid-`create_exclusive`. Treat as starting; do NOT delete
-                // the state file (it may already say "starting" or even
-                // "ready" written by the in-flight daemon).
-                DaemonReadiness::Starting
-            }
-            PidFileStatus::Alive(_pid) => {
-                match std::fs::read_to_string(self.paths.daemon_state()) {
-                    Ok(s) if s.trim() == "ready" => DaemonReadiness::Ready,
-                    Ok(s) if s.trim() == "draining" => DaemonReadiness::Stopping,
-                    Ok(s) if s.trim() == "stopping" => DaemonReadiness::Stopping,
-                    _ => {
-                        // State file missing or unreadable.
-                        // Probe the HTTP transport: if the endpoint is
-                        // reachable, the daemon is ready regardless of state file.
-                        if self.probe_transport_endpoint() {
-                            DaemonReadiness::Ready
-                        } else {
-                            DaemonReadiness::Starting
-                        }
+                match record.phase.as_deref().unwrap_or("running") {
+                    "stopping" | "draining" => DaemonReadiness::Stopping,
+                    // `phase="starting"` is published immediately after lock
+                    // acquisition and listener bind, before DB migrations and
+                    // workspace backfill run inside `DaemonApp::new`. During
+                    // that window the listener can already accept TCP
+                    // connections even though HTTP routing is not ready.
+                    "starting" => DaemonReadiness::Starting,
+                    "running" => match discovery_endpoint(&record)
+                        .map(|endpoint| endpoint.probe_readiness().is_ready())
+                    {
+                        Ok(true) => DaemonReadiness::Ready,
+                        Ok(false) | Err(_) => DaemonReadiness::Starting,
+                    },
+                    phase => {
+                        warn!(
+                            phase,
+                            "Unrecognized discovery.json phase; treating daemon as starting"
+                        );
+                        DaemonReadiness::Starting
                     }
                 }
+            }
+            DiscoveryState::Missing | DiscoveryState::Stale | DiscoveryState::Corrupt(_) => {
+                DaemonReadiness::Dead
             }
         }
     }
 
     /// Ensure the daemon is running and ready to accept connections.
     ///
-    /// State-file aware: instead of just checking PID liveness, reads the
-    /// daemon.state file to distinguish starting/ready/stopping.
+    /// Discovery-aware: reads `discovery.json.phase` to distinguish
+    /// starting/running/stopping.
     ///
     /// **Locking strategy**: serialization across concurrent adapter spawns
     /// runs on `daemon-startup.lock` (launcher-only; the daemon never opens
     /// it). The launcher holds that lock across the "should I spawn?"
     /// decision, the spawn syscall, AND a short wait for the spawned
-    /// daemon to publish liveness (`discovery.json` or `daemon.pid`), then
+    /// daemon to publish liveness (`discovery.json`), then
     /// releases. Subsequent adapters waiting on the lock then see
     /// `Starting`/`Ready` on their re-check and skip the spawn instead of
     /// cascading. The daemon-side singleton lock (`daemon.lock`,
@@ -226,12 +167,12 @@ impl DaemonLauncher {
 
     /// Test-friendly variant: acquire `daemon-startup.lock`, re-check
     /// readiness, invoke `spawn_fn` if Dead, wait until the spawned daemon
-    /// publishes liveness (PID file or discovery.json appears) or
+    /// publishes liveness (`discovery.json` appears) or
     /// `liveness_timeout` elapses, then release the lock.
     ///
     /// The wait-for-liveness window is what prevents the concurrent-adapter
     /// spawn cascade: without it, adapter A spawns a daemon then releases
-    /// the lock before the child has written its PID file, so adapter B
+    /// the lock before the child has written `discovery.json`, so adapter B
     /// acquires the lock, re-checks readiness, still sees `Dead`, and
     /// spawns ANOTHER daemon. The daemon-side singleton lock
     /// (`daemon.lock`) kills the losers silently, but each loser still
@@ -252,7 +193,7 @@ impl DaemonLauncher {
     /// else's daemon is here, re-evaluate state from the top" — without
     /// it the caller blindly polls for "ready" against a dying daemon
     /// that will never get there, burning the full drain window before
-    /// `is_daemon_running()` finally reports BrokenPipe (the 83s cold-start
+    /// `discovery.json` disappears and reports BrokenPipe (the 83s cold-start
     /// hang observed in adapter.log at 2026-05-17T19:40-19:42).
     pub(crate) fn spawn_under_startup_lock_with<F>(
         &self,
@@ -305,8 +246,8 @@ impl DaemonLauncher {
         spawn_result.map(|_| spawn_ran)
     }
 
-    /// Poll readiness until the spawned daemon leaves `Dead` (PID file or
-    /// discovery.json appears) or the timeout expires. Best-effort: on
+    /// Poll readiness until the spawned daemon leaves `Dead` (`discovery.json`
+    /// appears) or the timeout expires. Best-effort: on
     /// timeout we release the lock anyway so the outer `wait_for_daemon_ready`
     /// loop can re-evaluate.
     fn wait_for_spawned_liveness(&self, timeout: Duration) {
@@ -355,10 +296,10 @@ impl DaemonLauncher {
                 }
                 DaemonReadiness::Starting => {
                     debug!("Daemon is starting, waiting for ready...");
-                    match self.poll_for_state_change("ready", deadline) {
+                    match self.poll_for_readiness_change(deadline) {
                         Ok(()) => {} // Will re-check in next loop iteration
                         Err(e) if e.kind() == io::ErrorKind::Interrupted => {
-                            // State became "stopping"; loop back to re-assess
+                            // Phase became "stopping"; loop back to re-assess
                             continue;
                         }
                         Err(e) => return Err(e),
@@ -366,8 +307,8 @@ impl DaemonLauncher {
                 }
                 DaemonReadiness::Stopping => {
                     info!("Daemon is stopping, waiting for exit...");
-                    self.wait_for_pid_exit(deadline)?;
-                    // PID gone; fall through to Dead on next iteration
+                    self.wait_for_discovery_exit(deadline)?;
+                    // Discovery gone; fall through to Dead on next iteration
                 }
                 DaemonReadiness::Dead => {
                     info!("Daemon not running, spawning...");
@@ -375,15 +316,15 @@ impl DaemonLauncher {
                     if !spawn_ran {
                         // Re-check inside the startup lock found a daemon
                         // that wasn't visible to our outer check — usually
-                        // one mid-drain whose discovery.json/PID file
+                        // one mid-drain whose discovery.json
                         // flickered as Stale during shutdown. Polling for
                         // "ready" here would wait the full drain window
-                        // because the dying daemon is heading to "stopped",
+                        // because the dying daemon is heading to shutdown,
                         // not "ready" (observed in adapter.log at
                         // 2026-05-17T19:40-19:42: 83s hang). Sleep briefly
                         // to avoid a tight loop while state stabilizes,
                         // then let the outer match re-dispatch on the
-                        // actual phase (Stopping → wait_for_pid_exit,
+                        // actual phase (Stopping → wait_for_discovery_exit,
                         // Starting/Ready → poll, Dead again → retry spawn).
                         info!(
                             "Spawn skipped under lock (another daemon is alive); \
@@ -392,7 +333,7 @@ impl DaemonLauncher {
                         std::thread::sleep(Duration::from_millis(50));
                         continue;
                     }
-                    match self.poll_for_state_change("ready", deadline) {
+                    match self.poll_for_readiness_change(deadline) {
                         Ok(()) => {} // Will re-check in next loop iteration
                         Err(e) if e.kind() == io::ErrorKind::Interrupted => {
                             continue;
@@ -409,9 +350,8 @@ impl DaemonLauncher {
         }
     }
 
-    /// Poll the state file until it contains `target_state`, the daemon dies,
-    /// or the state becomes "stopping" (when waiting for "ready").
-    fn poll_for_state_change(&self, target_state: &str, deadline: Instant) -> io::Result<()> {
+    /// Poll `discovery.json.phase` until the daemon is ready, exits, or starts stopping.
+    fn poll_for_readiness_change(&self, deadline: Instant) -> io::Result<()> {
         let mut delay = Duration::from_millis(50);
         let max_delay = Duration::from_millis(500);
 
@@ -419,56 +359,34 @@ impl DaemonLauncher {
             if Instant::now() >= deadline {
                 return Err(io::Error::new(
                     io::ErrorKind::TimedOut,
-                    format!("Timed out waiting for daemon state '{}'", target_state),
+                    "Timed out waiting for daemon readiness",
                 ));
             }
 
             std::thread::sleep(delay);
             delay = (delay * 2).min(max_delay);
 
-            // Check if daemon died while we were waiting
-            if !self.is_daemon_running() {
-                return Err(io::Error::new(
-                    io::ErrorKind::BrokenPipe,
-                    "Daemon exited while waiting for readiness",
-                ));
-            }
-
             match self.daemon_readiness() {
                 DaemonReadiness::Ready => return Ok(()),
-                DaemonReadiness::Stopping if target_state == "ready" => {
+                DaemonReadiness::Stopping => {
                     return Err(io::Error::new(
                         io::ErrorKind::Interrupted,
                         "Daemon transitioned to stopping before reaching ready",
                     ));
                 }
-                DaemonReadiness::Starting | DaemonReadiness::Dead | DaemonReadiness::Stopping => {}
-            }
-
-            // Check current state
-            if let Ok(s) = std::fs::read_to_string(self.paths.daemon_state()) {
-                let state = s.trim();
-                if state == target_state {
-                    return Ok(());
-                }
-                if target_state == "ready" && state == "draining" {
+                DaemonReadiness::Dead => {
                     return Err(io::Error::new(
-                        io::ErrorKind::Interrupted,
-                        "Daemon transitioned to draining before reaching ready",
+                        io::ErrorKind::BrokenPipe,
+                        "Daemon exited while waiting for readiness",
                     ));
                 }
-                if target_state == "ready" && state == "stopping" {
-                    return Err(io::Error::new(
-                        io::ErrorKind::Interrupted,
-                        "Daemon transitioned to stopping before reaching ready",
-                    ));
-                }
+                DaemonReadiness::Starting => {}
             }
         }
     }
 
-    /// Poll until the daemon's PID file is gone (process exited).
-    fn wait_for_pid_exit(&self, deadline: Instant) -> io::Result<()> {
+    /// Poll until the daemon's discovery file is gone or no longer live.
+    fn wait_for_discovery_exit(&self, deadline: Instant) -> io::Result<()> {
         let mut delay = Duration::from_millis(50);
         let max_delay = Duration::from_millis(500);
 
@@ -481,7 +399,6 @@ impl DaemonLauncher {
             }
 
             if !self.is_daemon_running() {
-                let _ = std::fs::remove_file(self.paths.daemon_state());
                 return Ok(());
             }
 

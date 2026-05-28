@@ -46,10 +46,8 @@ use crate::paths::DaemonPaths;
 /// `phase="starting"` wait instead of connecting, so the placeholder is
 /// never read by a real client.
 ///
-/// **No-op on write failure.** Returns `Err` only for fatal I/O; callers
-/// (`run_daemon`) should log and continue startup rather than abort —
-/// the kernel lock still prevents duplicate daemons via the daemon-side
-/// gate, this publish is the *adapter-side* fix.
+/// This publish is mandatory. If it fails, `run_daemon` must abort instead
+/// of running a daemon that adapters will classify as dead.
 pub(crate) fn publish_starting_discovery(
     paths: &DaemonPaths,
     host: &str,
@@ -59,8 +57,7 @@ pub(crate) fn publish_starting_discovery(
         "daemon.log.{}",
         chrono::Local::now().format("%Y-%m-%d")
     ));
-    let mut record =
-        DiscoveryRecord::for_current_process(host, port, paths.token_file(), log_path);
+    let mut record = DiscoveryRecord::for_current_process(host, port, paths.token_file(), log_path);
     record.phase = Some("starting".to_string());
 
     let discovery_path = paths.discovery_file();

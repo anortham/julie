@@ -336,15 +336,13 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
     // overwrites this record atomically with phase="running". See
     // `publish_starting_discovery` in `app/helpers.rs` for the full
     // rationale and Codex's 2026-05-27 review (QW1).
-    if let Err(e) =
-        self::app::publish_starting_discovery(&paths, &local_addr.ip().to_string(), actual_port)
-    {
-        warn!(
-            error = %e,
-            "Failed to publish early discovery.json (phase=starting); \
-             concurrent adapters may still spawn duplicate daemons during cold-start"
-        );
-    }
+    self::app::publish_starting_discovery(&paths, &local_addr.ip().to_string(), actual_port)
+        .with_context(|| {
+            format!(
+                "Failed to publish early discovery.json at {}",
+                paths.discovery_file().display()
+            )
+        })?;
 
     let config = DaemonConfig {
         paths,

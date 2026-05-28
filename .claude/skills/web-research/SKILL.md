@@ -22,6 +22,16 @@ If missing, tell the user to download the latest binary release from [browser39 
 
 ## Workflow
 
+### Step 0 (Optional): Discover URLs from a Topic
+
+If the user gave a research topic rather than a specific URL, find candidate pages first:
+
+```bash
+browser39 search "your research topic" --output json > /tmp/b39-search.json
+```
+
+Parse the `links[]` array and pick the URLs worth fetching. Skip this step when the user already provided URLs.
+
 ### Step 1: Fetch and Save
 
 Determine the target file path from the URL. The directory structure mirrors the URL:

@@ -316,6 +316,71 @@ impl DaemonApp {
         let (dashboard_listener, dashboard_port) =
             bind_dashboard_listener_and_publish(&port_file).await?;
         let dashboard_url = format!("http://localhost:{}", dashboard_port);
+
+        // A1.8: publish the initial discovery.json now that the HTTP transport
+        // is bound. This is the file the adapter reads to find the daemon and
+        // the file A1.7's `publish_discovery_phase` rewrites at shutdown —
+        // without an initial publish here, those phase rewrites silently no-op
+        // and adapters cannot observe lifecycle transitions.
+        //
+        // The bearer token has already been written to disk by
+        // `HttpTransportServer::bind_with_listener`; we only record its path.
+        // If the transport was bound without a token (test harness), we fall
+        // back to `paths.token_file()` as a stable placeholder — the
+        // file will not exist, and adapters connecting against an unauthed
+        // transport will simply ignore the token.
+        let token_path = http_transport
+            .token_path()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| self.paths.token_file());
+        let log_path = self.paths.julie_home().join(format!(
+            "daemon.log.{}",
+            chrono::Local::now().format("%Y-%m-%d")
+        ));
+        let discovery_record = crate::daemon::discovery::DiscoveryRecord::for_current_process(
+            mcp_local_addr.ip().to_string(),
+            mcp_local_addr.port(),
+            token_path,
+            log_path,
+        );
+        let discovery_path = self.paths.discovery_file();
+
+        self.lifecycle.startup_complete();
+
+        if let Err(error) = crate::daemon::discovery::DiscoveryFile::write_atomic(
+            &discovery_path,
+            &discovery_record,
+        ) {
+            let port_path = self.paths.daemon_port();
+            let state_path = self.daemon_state_path.clone();
+            let _ = std::fs::remove_file(&discovery_path);
+            let _ = std::fs::remove_file(&state_path);
+            let _ = std::fs::remove_file(&port_path);
+            if let Some(handle) = &cleanup_sweep_handle {
+                handle.abort();
+            }
+            idle_sweep_handle.abort();
+            if let Err(shutdown_error) =
+                http_transport.shutdown_forced(Duration::from_secs(1)).await
+            {
+                warn!(
+                    error = %shutdown_error,
+                    "Failed to shut down HTTP transport after discovery publish failure"
+                );
+            }
+            return Err(error).with_context(|| {
+                format!(
+                    "Failed to publish initial discovery.json at {}",
+                    discovery_path.display()
+                )
+            });
+        }
+        info!(
+            path = %discovery_path.display(),
+            port = mcp_local_addr.port(),
+            "Published initial discovery.json (phase=running)"
+        );
+
         info!(
             port = dashboard_port,
             url = %dashboard_url,
@@ -340,8 +405,6 @@ impl DaemonApp {
             }
         });
 
-        self.lifecycle.startup_complete();
-
         // Bridge restart_notify → stop_notify. Before this fix,
         // `DaemonLifecycleController::restart_notify` had no consumer
         // anywhere in src/, so every `notify_restart()` call (from
@@ -361,51 +424,6 @@ impl DaemonApp {
         // explicitly aborted at shutdown (see app/handle.rs).
         let _restart_bridge_handle =
             spawn_restart_bridge(self.lifecycle.restart_notify(), Arc::clone(&stop_notify));
-
-        // A1.8: publish the initial discovery.json now that the HTTP transport
-        // is bound and the lifecycle state file says `ready`. This is the file
-        // the adapter reads to find the daemon and the file A1.7's
-        // `publish_discovery_phase` rewrites at shutdown — without an initial
-        // publish here, those phase rewrites silently no-op and adapters cannot
-        // observe lifecycle transitions.
-        //
-        // The bearer token has already been written to disk by
-        // `HttpTransportServer::bind_with_listener`; we only record its path.
-        // If the transport was bound without a token (test harness), we fall
-        // back to `paths.token_file()` as a stable placeholder — the
-        // file will not exist, and adapters connecting against an unauthed
-        // transport will simply ignore the token.
-        let token_path = http_transport
-            .token_path()
-            .map(|p| p.to_path_buf())
-            .unwrap_or_else(|| self.paths.token_file());
-        let log_path = self.paths.julie_home().join(format!(
-            "daemon.log.{}",
-            chrono::Local::now().format("%Y-%m-%d")
-        ));
-        let discovery_record = crate::daemon::discovery::DiscoveryRecord::for_current_process(
-            mcp_local_addr.ip().to_string(),
-            mcp_local_addr.port(),
-            token_path,
-            log_path,
-        );
-        let discovery_path = self.paths.discovery_file();
-        if let Err(error) = crate::daemon::discovery::DiscoveryFile::write_atomic(
-            &discovery_path,
-            &discovery_record,
-        ) {
-            warn!(
-                path = %discovery_path.display(),
-                %error,
-                "Failed to publish initial discovery.json; adapters and dashboard cannot observe daemon identity"
-            );
-        } else {
-            info!(
-                path = %discovery_path.display(),
-                port = mcp_local_addr.port(),
-                "Published initial discovery.json (phase=running)"
-            );
-        }
 
         // Background embedding init runs concurrently with HTTP session
         // handling; see helpers.rs for the panic/cancel handling rationale.

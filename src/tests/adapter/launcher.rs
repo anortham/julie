@@ -31,60 +31,74 @@ mod tests {
     }
 
     #[test]
-    fn test_daemon_detected_as_running_with_valid_pid() {
+    fn test_readiness_dead_ignores_legacy_pid_and_state_without_discovery() {
         let dir = tempfile::tempdir().unwrap();
         let paths = DaemonPaths::with_home(dir.path().to_path_buf());
         fs::create_dir_all(dir.path()).unwrap();
         let _pid_file = PidFile::create(&paths.daemon_pid()).unwrap();
-        // No state file = Starting (PID alive but state unknown)
-        let launcher = DaemonLauncher::new(paths);
-        assert_eq!(launcher.daemon_readiness(), DaemonReadiness::Starting);
+        fs::write(paths.daemon_state(), "ready").unwrap();
+
+        let launcher = DaemonLauncher::new(paths.clone());
+
+        assert_eq!(
+            launcher.daemon_readiness(),
+            DaemonReadiness::Dead,
+            "adapter readiness must use discovery.json as the new-daemon lifecycle source; \
+             legacy daemon.pid + daemon.state alone are not enough"
+        );
+        assert!(
+            paths.daemon_state().exists(),
+            "readiness must not mutate legacy state files when discovery.json is absent"
+        );
     }
 
     #[test]
-    fn test_stale_pid_detected_and_cleaned() {
+    fn test_readiness_dead_ignores_legacy_pid_without_discovery() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DaemonPaths::with_home(dir.path().to_path_buf());
+        fs::create_dir_all(dir.path()).unwrap();
+        let _pid_file = PidFile::create(&paths.daemon_pid()).unwrap();
+        let launcher = DaemonLauncher::new(paths);
+        assert_eq!(launcher.daemon_readiness(), DaemonReadiness::Dead);
+    }
+
+    #[test]
+    fn test_readiness_does_not_clean_legacy_pid_without_discovery() {
         let dir = tempfile::tempdir().unwrap();
         let paths = DaemonPaths::with_home(dir.path().to_path_buf());
         fs::create_dir_all(dir.path()).unwrap();
         fs::write(paths.daemon_pid(), "99999999\n").unwrap();
         let launcher = DaemonLauncher::new(paths.clone());
         assert_eq!(launcher.daemon_readiness(), DaemonReadiness::Dead);
-        assert!(!paths.daemon_pid().exists());
+        assert!(
+            paths.daemon_pid().exists(),
+            "new-daemon readiness must not mutate legacy PID files"
+        );
     }
 
-    /// Regression for P2 of the 577-daemon cascade fix: a freshly-created
-    /// empty PID file (from a racing daemon mid-`create_exclusive`) must
-    /// classify as `Starting`, not `Dead`. Pre-fix, the empty file fed
-    /// back as `None` from `check_running`, so `daemon_readiness` returned
-    /// `Dead` and unlinked the state file — the launcher then spawned a
-    /// replacement daemon every poll tick. The state file MUST also be
-    /// preserved (a daemon may have already written "ready" to it before
-    /// the empty PID-file window opened).
     #[test]
-    fn test_readiness_starting_when_pid_file_is_fresh_but_empty() {
+    fn test_readiness_dead_ignores_empty_legacy_pid_without_discovery() {
         let dir = tempfile::tempdir().unwrap();
         let paths = DaemonPaths::with_home(dir.path().to_path_buf());
         fs::create_dir_all(dir.path()).unwrap();
-        // Fresh empty PID file (mtime = now).
         fs::write(paths.daemon_pid(), b"").unwrap();
-        // State file pre-existing (could be written by the in-flight daemon).
         fs::write(paths.daemon_state(), "starting").unwrap();
 
         let launcher = DaemonLauncher::new(paths.clone());
 
         assert_eq!(
             launcher.daemon_readiness(),
-            DaemonReadiness::Starting,
-            "fresh empty PID file must classify the daemon as Starting, \
-             not Dead — otherwise the launcher respawns into a racing daemon"
+            DaemonReadiness::Dead,
+            "without discovery.json, even a fresh legacy PID file is not \
+             new-daemon liveness"
         );
         assert!(
             paths.daemon_pid().exists(),
-            "Indeterminate path must NOT unlink the PID file"
+            "readiness must not unlink legacy PID files"
         );
         assert!(
             paths.daemon_state().exists(),
-            "Indeterminate path must NOT unlink the state file"
+            "readiness must not unlink legacy state files"
         );
     }
 
@@ -106,68 +120,45 @@ mod tests {
     }
 
     #[test]
-    fn test_readiness_dead_cleans_stale_state_file() {
+    fn test_readiness_dead_preserves_legacy_state_without_discovery() {
         let dir = tempfile::tempdir().unwrap();
         let paths = DaemonPaths::with_home(dir.path().to_path_buf());
         fs::write(paths.daemon_state(), "ready").unwrap();
         let launcher = DaemonLauncher::new(paths.clone());
         assert_eq!(launcher.daemon_readiness(), DaemonReadiness::Dead);
         assert!(
-            !paths.daemon_state().exists(),
-            "stale state file should be cleaned up"
+            paths.daemon_state().exists(),
+            "new-daemon readiness must not mutate legacy state files"
         );
     }
 
-    #[test]
-    fn test_readiness_ready_with_live_pid_and_ready_state() {
-        let dir = tempfile::tempdir().unwrap();
-        let paths = DaemonPaths::with_home(dir.path().to_path_buf());
-        fs::create_dir_all(dir.path()).unwrap();
-        let _pid_file = PidFile::create(&paths.daemon_pid()).unwrap();
-        fs::write(paths.daemon_state(), "ready").unwrap();
-        let launcher = DaemonLauncher::new(paths);
-        assert_eq!(launcher.daemon_readiness(), DaemonReadiness::Ready);
-    }
-
-    #[test]
-    fn test_readiness_starting_with_live_pid_and_starting_state() {
-        let dir = tempfile::tempdir().unwrap();
-        let paths = DaemonPaths::with_home(dir.path().to_path_buf());
-        fs::create_dir_all(dir.path()).unwrap();
-        let _pid_file = PidFile::create(&paths.daemon_pid()).unwrap();
-        fs::write(paths.daemon_state(), "starting").unwrap();
-        let launcher = DaemonLauncher::new(paths);
-        assert_eq!(launcher.daemon_readiness(), DaemonReadiness::Starting);
-    }
-
-    #[test]
-    fn test_readiness_starting_with_live_pid_and_no_state_file() {
-        let dir = tempfile::tempdir().unwrap();
-        let paths = DaemonPaths::with_home(dir.path().to_path_buf());
-        fs::create_dir_all(dir.path()).unwrap();
-        let _pid_file = PidFile::create(&paths.daemon_pid()).unwrap();
-        let launcher = DaemonLauncher::new(paths);
-        assert_eq!(launcher.daemon_readiness(), DaemonReadiness::Starting);
-    }
-
     fn spawn_http_readiness_server(listener: TcpListener) -> JoinHandle<()> {
+        spawn_http_readiness_server_requests(listener, 1)
+    }
+
+    fn spawn_http_readiness_server_requests(
+        listener: TcpListener,
+        requests: usize,
+    ) -> JoinHandle<()> {
         thread::spawn(move || {
-            let (mut stream, _) = listener.accept().unwrap();
-            let mut request = Vec::new();
-            loop {
-                let mut chunk = [0u8; 256];
-                let n = stream.read(&mut chunk).unwrap();
-                assert_ne!(n, 0, "client closed before sending full HTTP request");
-                request.extend_from_slice(&chunk[..n]);
-                if request.windows(4).any(|window| window == b"\r\n\r\n") {
-                    break;
+            for _ in 0..requests {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut request = Vec::new();
+                loop {
+                    let mut chunk = [0u8; 256];
+                    let n = stream.read(&mut chunk).unwrap();
+                    assert_ne!(n, 0, "client closed before sending full HTTP request");
+                    request.extend_from_slice(&chunk[..n]);
+                    if request.windows(4).any(|window| window == b"\r\n\r\n") {
+                        break;
+                    }
                 }
+                let request = String::from_utf8_lossy(&request);
+                assert!(request.starts_with("GET /mcp/ready HTTP/1.1"));
+                stream
+                    .write_all(b"HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n")
+                    .unwrap();
             }
-            let request = String::from_utf8_lossy(&request);
-            assert!(request.starts_with("GET /mcp/ready HTTP/1.1"));
-            stream
-                .write_all(b"HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n")
-                .unwrap();
         })
     }
 
@@ -204,6 +195,17 @@ mod tests {
         let paths = DaemonPaths::with_home(dir.path().to_path_buf());
         fs::create_dir_all(dir.path()).unwrap();
         write_live_discovery(&paths, 4242, "stopping");
+
+        let launcher = DaemonLauncher::new(paths);
+        assert_eq!(launcher.daemon_readiness(), DaemonReadiness::Stopping);
+    }
+
+    #[test]
+    fn test_discovery_json_draining_is_stopping_without_pid_or_state() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DaemonPaths::with_home(dir.path().to_path_buf());
+        fs::create_dir_all(dir.path()).unwrap();
+        write_live_discovery(&paths, 4242, "draining");
 
         let launcher = DaemonLauncher::new(paths);
         assert_eq!(launcher.daemon_readiness(), DaemonReadiness::Stopping);
@@ -249,131 +251,58 @@ mod tests {
     }
 
     #[test]
-    fn test_readiness_ready_via_http_discovery_when_no_state_file() {
+    fn test_ensure_daemon_ready_attaches_to_legacy_transport_without_discovery_json() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DaemonPaths::with_home(dir.path().to_path_buf());
+        fs::create_dir_all(dir.path()).unwrap();
+        let _pid_file = PidFile::create(&paths.daemon_pid()).unwrap();
+        TransportEndpoint::streamable_http("127.0.0.1", 4242, "/mcp", "/mcp/ready", None)
+            .unwrap()
+            .publish_discovery(&paths.daemon_mcp_transport())
+            .unwrap();
+
+        let launcher = DaemonLauncher::new(paths);
+
+        assert!(
+            launcher.ensure_daemon_ready().is_ok(),
+            "legacy attach remains explicit even though new-daemon readiness ignores PID/state"
+        );
+    }
+
+    #[test]
+    fn test_transport_endpoint_refuses_stale_transport_discovery_without_live_legacy_pid() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DaemonPaths::with_home(dir.path().to_path_buf());
+        fs::create_dir_all(dir.path()).unwrap();
+        TransportEndpoint::streamable_http("127.0.0.1", 4242, "/mcp", "/mcp/ready", None)
+            .unwrap()
+            .publish_discovery(&paths.daemon_mcp_transport())
+            .unwrap();
+
+        let launcher = DaemonLauncher::new(paths);
+        let error = launcher
+            .transport_endpoint()
+            .expect_err("stale daemon-mcp-transport.json must not be used without live legacy PID");
+
+        assert_eq!(error.kind(), std::io::ErrorKind::NotFound);
+    }
+
+    #[test]
+    fn test_readiness_dead_ignores_legacy_transport_discovery_without_discovery_json() {
         let dir = tempfile::tempdir().unwrap();
         let paths = DaemonPaths::with_home(dir.path().to_path_buf());
         fs::create_dir_all(dir.path()).unwrap();
         let _pid_file = PidFile::create(&paths.daemon_pid()).unwrap();
 
-        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
-        let port = listener.local_addr().unwrap().port();
-        let server = spawn_http_readiness_server(listener);
         let endpoint =
-            TransportEndpoint::streamable_http("127.0.0.1", port, "/mcp", "/mcp/ready", None)
+            TransportEndpoint::streamable_http("127.0.0.1", 4242, "/mcp", "/mcp/ready", None)
                 .unwrap();
         endpoint
             .publish_discovery(&paths.daemon_mcp_transport())
             .unwrap();
 
         let launcher = DaemonLauncher::new(paths);
-        assert_eq!(launcher.daemon_readiness(), DaemonReadiness::Ready);
-        server.join().unwrap();
-    }
-
-    #[test]
-    fn test_readiness_starting_when_http_discovery_is_stale() {
-        let dir = tempfile::tempdir().unwrap();
-        let paths = DaemonPaths::with_home(dir.path().to_path_buf());
-        fs::create_dir_all(dir.path()).unwrap();
-        let _pid_file = PidFile::create(&paths.daemon_pid()).unwrap();
-
-        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
-        let port = listener.local_addr().unwrap().port();
-        drop(listener);
-        let endpoint =
-            TransportEndpoint::streamable_http("127.0.0.1", port, "/mcp", "/mcp/ready", None)
-                .unwrap();
-        endpoint
-            .publish_discovery(&paths.daemon_mcp_transport())
-            .unwrap();
-
-        let launcher = DaemonLauncher::new(paths);
-        assert_eq!(launcher.daemon_readiness(), DaemonReadiness::Starting);
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn test_readiness_starting_when_http_discovery_is_stale_even_if_legacy_socket_exists() {
-        let dir = tempfile::tempdir().unwrap();
-        let paths = DaemonPaths::with_home(dir.path().to_path_buf());
-        fs::create_dir_all(dir.path()).unwrap();
-        let _pid_file = PidFile::create(&paths.daemon_pid()).unwrap();
-
-        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
-        let port = listener.local_addr().unwrap().port();
-        drop(listener);
-        let endpoint =
-            TransportEndpoint::streamable_http("127.0.0.1", port, "/mcp", "/mcp/ready", None)
-                .unwrap();
-        endpoint
-            .publish_discovery(&paths.daemon_mcp_transport())
-            .unwrap();
-
-        let socket_path = dir.path().join("legacy-daemon.sock");
-        let _listener = std::os::unix::net::UnixListener::bind(&socket_path).unwrap();
-
-        let launcher = DaemonLauncher::new(paths);
-        assert_eq!(launcher.daemon_readiness(), DaemonReadiness::Starting);
-    }
-
-    /// HTTP-only readiness: live PID + no state file + legacy listening socket
-    /// stays Starting. Version-skew must not silently fall back to legacy transport.
-    #[cfg(unix)]
-    #[test]
-    fn test_readiness_starting_when_no_state_file_even_if_legacy_socket_exists() {
-        let dir = tempfile::tempdir().unwrap();
-        let paths = DaemonPaths::with_home(dir.path().to_path_buf());
-        fs::create_dir_all(dir.path()).unwrap();
-
-        // Simulate a live daemon PID
-        let _pid_file = PidFile::create(&paths.daemon_pid()).unwrap();
-
-        // Create a real Unix listener at the old daemon socket path shape.
-        let socket_path = dir.path().join("legacy-daemon.sock");
-        let _listener = std::os::unix::net::UnixListener::bind(&socket_path).unwrap();
-
-        // No state file at all, and the legacy socket is reachable.
-        // HTTP discovery remains the readiness contract.
-        let launcher = DaemonLauncher::new(paths);
-        assert_eq!(launcher.daemon_readiness(), DaemonReadiness::Starting);
-    }
-
-    #[test]
-    fn test_readiness_stopping_with_live_pid() {
-        let dir = tempfile::tempdir().unwrap();
-        let paths = DaemonPaths::with_home(dir.path().to_path_buf());
-        fs::create_dir_all(dir.path()).unwrap();
-        let _pid_file = PidFile::create(&paths.daemon_pid()).unwrap();
-        fs::write(paths.daemon_state(), "stopping").unwrap();
-        let launcher = DaemonLauncher::new(paths);
-        assert_eq!(launcher.daemon_readiness(), DaemonReadiness::Stopping);
-    }
-
-    /// Draining means the daemon is finishing existing sessions before a
-    /// restart. New adapters must wait for that daemon to exit instead of
-    /// attaching new sessions to the draining process.
-    #[test]
-    fn test_readiness_stopping_when_draining_with_live_pid() {
-        let dir = tempfile::tempdir().unwrap();
-        let paths = DaemonPaths::with_home(dir.path().to_path_buf());
-        fs::create_dir_all(dir.path()).unwrap();
-        let _pid_file = PidFile::create(&paths.daemon_pid()).unwrap();
-        fs::write(paths.daemon_state(), "draining").unwrap();
-        let launcher = DaemonLauncher::new(paths);
-        assert_eq!(launcher.daemon_readiness(), DaemonReadiness::Stopping);
-    }
-
-    #[test]
-    fn test_readiness_dead_with_stale_pid() {
-        let dir = tempfile::tempdir().unwrap();
-        let paths = DaemonPaths::with_home(dir.path().to_path_buf());
-        fs::create_dir_all(dir.path()).unwrap();
-        fs::write(paths.daemon_pid(), "99999999").unwrap();
-        fs::write(paths.daemon_state(), "ready").unwrap();
-        let launcher = DaemonLauncher::new(paths.clone());
         assert_eq!(launcher.daemon_readiness(), DaemonReadiness::Dead);
-        assert!(!paths.daemon_state().exists());
-        assert!(!paths.daemon_pid().exists());
     }
 
     #[test]
@@ -382,13 +311,14 @@ mod tests {
         let paths = DaemonPaths::with_home(dir.path().to_path_buf());
         fs::create_dir_all(dir.path()).unwrap();
 
-        // Simulate a ready daemon: live PID + "ready" state
-        let _pid_file = PidFile::create(&paths.daemon_pid()).unwrap();
-        fs::write(paths.daemon_state(), "ready").unwrap();
+        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = spawn_http_readiness_server(listener);
+        write_live_discovery(&paths, port, "running");
 
         let launcher = DaemonLauncher::new(paths);
-        // Fast path: should return immediately
         let result = launcher.ensure_daemon_ready();
+        server.join().unwrap();
         assert!(result.is_ok());
     }
 
@@ -398,20 +328,21 @@ mod tests {
         let paths = DaemonPaths::with_home(dir.path().to_path_buf());
         fs::create_dir_all(dir.path()).unwrap();
 
-        let _pid_file = PidFile::create(&paths.daemon_pid()).unwrap();
-        let state_path = paths.daemon_state();
-        fs::write(&state_path, "starting").unwrap();
+        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = spawn_http_readiness_server_requests(listener, 2);
+        write_live_discovery(&paths, port, "starting");
 
-        // Spawn a thread that transitions to "ready" after 200ms
-        let state_path_clone = state_path.clone();
+        let paths_clone = paths.clone();
         let handle = std::thread::spawn(move || {
             std::thread::sleep(Duration::from_millis(200));
-            fs::write(&state_path_clone, "ready").unwrap();
+            write_live_discovery(&paths_clone, port, "running");
         });
 
         let launcher = DaemonLauncher::new(paths);
         let result = launcher.ensure_daemon_ready();
         handle.join().unwrap();
+        server.join().unwrap();
         assert!(result.is_ok());
     }
 
@@ -495,21 +426,10 @@ mod tests {
     /// adapters then see `Starting` on their re-check and skip the spawn
     /// entirely.
     ///
-    /// This variant exercises the legacy `daemon.pid` signal path
-    /// (`PidFile::check_status` → `Alive`).
-    #[test]
-    fn test_spawn_under_startup_lock_serializes_concurrent_spawns_via_pid_file() {
-        run_cascade_test_with(6, Duration::from_millis(100), |paths| {
-            // Legacy signal: write a PID file pointing at the current
-            // process so PidFile::check_status returns Alive.
-            fs::write(paths.daemon_pid(), format!("{}\n", std::process::id())).unwrap();
-        });
-    }
-
-    /// Same regression, but exercises the production new-daemon signal:
-    /// `discovery.json` written with phase=running. This is the path
-    /// modern daemons take — `app_test.rs::test_daemon_app_does_not_write_legacy_artifacts`
-    /// asserts new daemons do NOT write `daemon.pid`.
+    /// This exercises the production new-daemon signal: `discovery.json`
+    /// written with phase=running. This is the path modern daemons take —
+    /// `app_test.rs::test_daemon_app_does_not_write_legacy_artifacts` asserts
+    /// new daemons do NOT write `daemon.pid`.
     #[test]
     fn test_spawn_under_startup_lock_serializes_concurrent_spawns_via_discovery_json() {
         run_cascade_test_with(6, Duration::from_millis(100), |paths| {
@@ -535,7 +455,7 @@ mod tests {
     /// Multiple "Daemon not running" logs with NO matching "Spawning daemon:"
     /// = `spawn_under_startup_lock_with` skipped `spawn_fn` (re-check inside
     /// the lock saw non-Dead) without telling the caller. The caller then
-    /// blindly called `poll_for_state_change("ready")`, which polled the
+    /// blindly called `poll_for_readiness_change`, which polled the
     /// dying daemon for a "ready" state it would never reach — burning the
     /// full drain window before the loop could recover.
     ///
@@ -551,10 +471,9 @@ mod tests {
         let paths = DaemonPaths::with_home(dir.path().to_path_buf());
         fs::create_dir_all(dir.path()).unwrap();
 
-        // Pre-populate: existing daemon mid-drain. PID alive + state=stopping
+        // Pre-populate: existing daemon mid-drain. Discovery phase=stopping
         // is what the re-check inside the lock will observe.
-        let _pid_file = PidFile::create(&paths.daemon_pid()).unwrap();
-        fs::write(paths.daemon_state(), "stopping").unwrap();
+        write_live_discovery(&paths, 1, "stopping");
 
         let launcher = DaemonLauncher::new(paths);
         let spawn_called = Arc::new(AtomicBool::new(false));
@@ -701,14 +620,12 @@ mod tests {
         let paths = DaemonPaths::with_home(dir.path().to_path_buf());
         fs::create_dir_all(dir.path()).unwrap();
 
-        let _pid_file = PidFile::create(&paths.daemon_pid()).unwrap();
-        let state_path = paths.daemon_state();
-        fs::write(&state_path, "starting").unwrap();
+        write_live_discovery(&paths, 4242, "starting");
 
-        let launcher = DaemonLauncher::new(paths);
+        let launcher = DaemonLauncher::new(paths.clone());
         assert_eq!(launcher.daemon_readiness(), DaemonReadiness::Starting);
 
-        fs::write(&state_path, "draining").unwrap();
+        write_live_discovery(&paths, 4242, "draining");
         assert_eq!(launcher.daemon_readiness(), DaemonReadiness::Stopping);
     }
 }
