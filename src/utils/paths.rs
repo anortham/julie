@@ -116,6 +116,77 @@ pub fn resolve_workspace_file_input(
 /// - Windows UNC: `\\?\C:\Users\murphy\source\julie\src\tools\search.rs` (70 chars)
 /// - Relative Unix: `src/tools/search.rs` (21 chars)
 /// - **Savings: ~70% characters, ~60% tokens, no JSON escaping needed**
+/// Strip the Windows `\\?\` extended-length (UNC) prefix for path comparison.
+///
+/// `std::fs::canonicalize()` returns paths with this prefix on Windows, but
+/// non-canonical paths do not have it. Leaving it in place makes `strip_prefix`
+/// fail even when one path is genuinely nested under the other. On non-Windows
+/// targets this is a no-op clone.
+fn strip_unc_prefix(path: &Path) -> PathBuf {
+    #[cfg(windows)]
+    {
+        let path_str = path.to_string_lossy();
+        if let Some(stripped) = path_str.strip_prefix(r"\\?\") {
+            return PathBuf::from(stripped);
+        }
+        path.to_path_buf()
+    }
+    #[cfg(not(windows))]
+    {
+        path.to_path_buf()
+    }
+}
+
+/// Strip `workspace_root` from `path`, tolerating symlinked workspace roots
+/// (e.g. macOS `/tmp` → `/private/tmp`, `/var` → `/private/var`) and deleted
+/// leaf paths.
+///
+/// The file watcher receives event paths from `notify`, which on macOS reports
+/// canonical (symlink-resolved) paths via FSEvents even when the workspace was
+/// registered under a symlinked root. A naive `path.strip_prefix(workspace_root)`
+/// then fails, and callers that fall back to inspecting the *absolute* path hit
+/// false positives from ancestor directory names — e.g. `/private/tmp/proj/…`
+/// contains the blacklisted component `tmp`, so delete/modify events for gone
+/// files get silently dropped and leave orphaned symbols in the index.
+///
+/// Resolution order:
+/// 1. Direct strip — both paths already share a symlink form (the common case:
+///    canonical project root + canonical event paths, or raw root + raw paths).
+/// 2. Canonicalize the root (which always exists, even when the leaf was
+///    deleted) and retry against the candidate as-is. This recovers the relative
+///    path whenever the candidate is already canonical, which is what `notify`
+///    emits on macOS — and crucially does not require the leaf to exist.
+/// 3. Canonicalize the candidate's current form (existing files only) and retry,
+///    covering the reverse case where the candidate is raw but the root is
+///    canonical (Windows junctions / symlinked candidates).
+///
+/// Returns the workspace-relative path, or `None` when `path` is genuinely not
+/// inside `workspace_root`.
+pub fn relative_within_workspace(path: &Path, workspace_root: &Path) -> Option<PathBuf> {
+    if let Ok(rel) = path.strip_prefix(workspace_root) {
+        return Some(rel.to_path_buf());
+    }
+
+    let canonical_root = match workspace_root.canonicalize() {
+        Ok(root) => strip_unc_prefix(&root),
+        Err(_) => return None,
+    };
+
+    let candidate = strip_unc_prefix(path);
+    if let Ok(rel) = candidate.strip_prefix(&canonical_root) {
+        return Some(rel.to_path_buf());
+    }
+
+    if let Ok(canonical_candidate) = path.canonicalize() {
+        let canonical_candidate = strip_unc_prefix(&canonical_candidate);
+        if let Ok(rel) = canonical_candidate.strip_prefix(&canonical_root) {
+            return Some(rel.to_path_buf());
+        }
+    }
+
+    None
+}
+
 pub fn to_relative_unix_style(absolute: &Path, workspace_root: &Path) -> Result<String> {
     // 🔥 CRITICAL: Try to canonicalize both paths to handle symlinks (e.g., /var -> /private/var on macOS)
     // If canonicalization fails (path doesn't exist), fall back to original paths
@@ -130,24 +201,6 @@ pub fn to_relative_unix_style(absolute: &Path, workspace_root: &Path) -> Result<
             (absolute.to_path_buf(), workspace_root.to_path_buf())
         }
     };
-
-    // 🔥 Windows UNC prefix handling: Strip \\?\ prefix for comparison
-    // Canonicalized Windows paths get \\?\ prefix, but non-canonical paths don't
-    // This causes strip_prefix to fail even when paths are actually nested
-    #[cfg(windows)]
-    fn strip_unc_prefix(path: &Path) -> std::path::PathBuf {
-        let path_str = path.to_string_lossy();
-        if path_str.starts_with(r"\\?\") {
-            std::path::PathBuf::from(&path_str[4..])
-        } else {
-            path.to_path_buf()
-        }
-    }
-
-    #[cfg(not(windows))]
-    fn strip_unc_prefix(path: &Path) -> std::path::PathBuf {
-        path.to_path_buf()
-    }
 
     let normalized_path = strip_unc_prefix(&path_to_use);
     let normalized_root = strip_unc_prefix(&root_to_use);

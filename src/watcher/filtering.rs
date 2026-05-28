@@ -131,9 +131,16 @@ pub fn contains_blacklisted_directory(path: &Path) -> bool {
 /// Like [`contains_blacklisted_directory`] but with an explicit workspace root
 /// to relativize the path before checking.
 pub fn contains_blacklisted_directory_relative(path: &Path, workspace_root: Option<&Path>) -> bool {
-    let check_path = workspace_root
-        .and_then(|root| path.strip_prefix(root).ok())
-        .unwrap_or(path);
+    // Relativize against the workspace root so only directory names *inside* the
+    // workspace are blacklist-checked. The symlink-tolerant helper recovers the
+    // relative path even when the event path is canonical and the root is
+    // symlinked (macOS `/tmp` → `/private/tmp`); without it, the absolute path
+    // would be checked and ancestor names like `tmp` would falsely match,
+    // silently dropping legitimate delete/modify events. When no root is given
+    // (or relativization genuinely fails), fall back to the full path.
+    let relative =
+        workspace_root.and_then(|root| crate::utils::paths::relative_within_workspace(path, root));
+    let check_path = relative.as_deref().unwrap_or(path);
     check_path.components().any(|c| {
         if let std::path::Component::Normal(name) = c {
             if let Some(s) = name.to_str() {
@@ -149,12 +156,14 @@ pub fn contains_blacklisted_directory_relative(path: &Path, workspace_root: Opti
 /// Strips the workspace root prefix and checks the relative path against
 /// the gitignore rules (including parent directory matching).
 pub fn is_gitignored(path: &Path, gitignore: &Gitignore, workspace_root: &Path) -> bool {
-    let rel_path = match path.strip_prefix(workspace_root) {
-        Ok(p) => p,
-        Err(_) => return false,
+    // Symlink-tolerant relativization so gitignore patterns anchor correctly
+    // even when the event path is canonical but the workspace root is symlinked.
+    let rel_path = match crate::utils::paths::relative_within_workspace(path, workspace_root) {
+        Some(p) => p,
+        None => return false,
     };
     gitignore
-        .matched_path_or_any_parents(rel_path, path.is_dir())
+        .matched_path_or_any_parents(&rel_path, path.is_dir())
         .is_ignore()
 }
 
@@ -226,12 +235,16 @@ pub fn should_process_deletion(
     if contains_blacklisted_directory_relative(path, Some(workspace_root)) {
         return false;
     }
-    let rel_path = match path.strip_prefix(workspace_root) {
-        Ok(p) => p,
-        Err(_) => return true,
+    // Symlink-tolerant relativization (see `relative_within_workspace`): a
+    // deleted leaf cannot be canonicalized, so the helper strips via the
+    // canonical root instead. If the path is genuinely outside the workspace we
+    // still process the deletion (matches the prior strip-failure behavior).
+    let rel_path = match crate::utils::paths::relative_within_workspace(path, workspace_root) {
+        Some(p) => p,
+        None => return true,
     };
     if gitignore
-        .matched_path_or_any_parents(rel_path, false)
+        .matched_path_or_any_parents(&rel_path, false)
         .is_ignore()
     {
         return false;

@@ -8,7 +8,7 @@ use tempfile::TempDir;
 use crate::tools::navigation::resolution::{
     WorkspaceResolutionFailureKind, workspace_resolution_failure_kind,
 };
-use crate::utils::paths::{display_path, resolve_workspace_file_input};
+use crate::utils::paths::{display_path, relative_within_workspace, resolve_workspace_file_input};
 
 // ============================================================================
 // display_path() TESTS
@@ -145,4 +145,98 @@ fn test_resolve_workspace_file_input_handles_tool_file_paths() {
     assert_eq!(tilde_literal.absolute_path, canonical_tilde);
     assert_eq!(tilde_literal.relative_query_path, "~/literal.rs");
     assert!(tilde_literal.canonicalized);
+}
+
+// ============================================================================
+// relative_within_workspace() TESTS
+// ============================================================================
+
+#[test]
+fn test_relative_within_workspace_direct_nesting() {
+    let temp_dir = TempDir::new().expect("temp dir should be created");
+    let root = temp_dir.path();
+    let candidate = root.join("src").join("main.rs");
+
+    assert_eq!(
+        relative_within_workspace(&candidate, root),
+        Some(Path::new("src").join("main.rs")),
+        "directly nested paths should strip without canonicalization"
+    );
+}
+
+#[test]
+fn test_relative_within_workspace_rejects_path_outside_root() {
+    let temp_dir = TempDir::new().expect("temp dir should be created");
+    let root = temp_dir.path().join("workspace");
+    fs::create_dir_all(&root).expect("workspace dir should be created");
+    let outside = temp_dir.path().join("elsewhere").join("file.rs");
+
+    assert_eq!(
+        relative_within_workspace(&outside, &root),
+        None,
+        "a path that is genuinely outside the workspace must not relativize"
+    );
+}
+
+/// Reproduces the macOS `/tmp -> /private/tmp` (and any symlinked workspace
+/// root) class of mismatch: the workspace is registered under the *symlink*
+/// path, but `notify` reports the *canonical* event path. A naive
+/// `strip_prefix` fails and callers fall back to inspecting the absolute path,
+/// dropping events whose canonical ancestor names collide with the directory
+/// blacklist. The helper must canonicalize the root and recover the relative
+/// path for an existing file.
+#[cfg(unix)]
+#[test]
+fn test_relative_within_workspace_handles_symlinked_root_existing_file() {
+    use std::os::unix::fs::symlink;
+
+    let temp_dir = TempDir::new().expect("temp dir should be created");
+    let real_root = temp_dir.path().join("real");
+    fs::create_dir_all(real_root.join("src")).expect("real workspace tree should be created");
+    let link_root = temp_dir.path().join("link");
+    symlink(&real_root, &link_root).expect("symlink should be created");
+
+    let canonical_file = real_root
+        .canonicalize()
+        .expect("real root should canonicalize")
+        .join("src")
+        .join("main.rs");
+    fs::write(&canonical_file, "fn main() {}").expect("file should be written");
+
+    assert_eq!(
+        relative_within_workspace(&canonical_file, &link_root),
+        Some(Path::new("src").join("main.rs")),
+        "canonical event path under a symlinked workspace root should relativize"
+    );
+}
+
+/// The same symlinked-root mismatch but for a DELETED leaf — the exact watcher
+/// scenario. `canonicalize()` on the leaf would fail (it is gone), so the helper
+/// must rely on canonicalizing the still-present root.
+#[cfg(unix)]
+#[test]
+fn test_relative_within_workspace_handles_symlinked_root_deleted_file() {
+    use std::os::unix::fs::symlink;
+
+    let temp_dir = TempDir::new().expect("temp dir should be created");
+    let real_root = temp_dir.path().join("real");
+    fs::create_dir_all(&real_root).expect("real workspace dir should be created");
+    let link_root = temp_dir.path().join("link");
+    symlink(&real_root, &link_root).expect("symlink should be created");
+
+    // Canonical path to a leaf that does NOT exist (deleted).
+    let canonical_gone = real_root
+        .canonicalize()
+        .expect("real root should canonicalize")
+        .join("gone.rs");
+    assert!(
+        !canonical_gone.exists(),
+        "leaf must be absent for this test"
+    );
+
+    assert_eq!(
+        relative_within_workspace(&canonical_gone, &link_root),
+        Some(Path::new("gone.rs").to_path_buf()),
+        "deleted canonical leaf under a symlinked root should still relativize via the root"
+    );
 }
