@@ -212,6 +212,7 @@ fn test_rekey_normalized_locations_rekeys_type_map_keys() {
                 metadata: None,
             },
         )]),
+        type_argument_usages: Vec::new(),
         parse_diagnostics: Vec::new(),
     };
 
@@ -303,6 +304,7 @@ fn test_rekey_normalized_locations_refreshes_relationship_ids() {
         structured_pending_relationships: Vec::new(),
         identifiers: Vec::new(),
         types: HashMap::new(),
+        type_argument_usages: Vec::new(),
         parse_diagnostics: Vec::new(),
     };
 
@@ -365,6 +367,7 @@ fn test_rekey_normalized_locations_keeps_same_line_relationship_ids_distinct() {
         structured_pending_relationships: Vec::new(),
         identifiers: Vec::new(),
         types: HashMap::new(),
+        type_argument_usages: Vec::new(),
         parse_diagnostics: Vec::new(),
     };
 
@@ -426,6 +429,7 @@ fn test_rekey_normalized_locations_preserves_distinct_same_start_symbols_and_typ
             ),
             (long_old_id.to_string(), test_type_info(long_old_id, "Long")),
         ]),
+        type_argument_usages: Vec::new(),
         parse_diagnostics: Vec::new(),
     };
 
@@ -576,6 +580,7 @@ fn test_rekey_normalized_locations_preserves_structured_target_identity() {
         structured_pending_relationships: vec![service_render, template_render],
         identifiers: Vec::new(),
         types: HashMap::new(),
+        type_argument_usages: Vec::new(),
         parse_diagnostics: Vec::new(),
     };
 

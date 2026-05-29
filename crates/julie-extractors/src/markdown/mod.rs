@@ -353,6 +353,10 @@ impl MarkdownExtractor {
         text.chars().take_while(|&c| c == '#').count().max(1).min(6)
     }
 
+    pub fn get_type_argument_usages(&self) -> Vec<crate::base::TypeArgumentUsage> {
+        self.base.get_type_argument_usages()
+    }
+
     pub fn extract_identifiers(&mut self, _tree: &Tree, _symbols: &[Symbol]) -> Vec<Identifier> {
         // Markdown is documentation - no code identifiers
         Vec::new()

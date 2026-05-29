@@ -428,6 +428,10 @@ impl QmlExtractor {
         self.base.get_pending_relationships()
     }
 
+    pub fn get_type_argument_usages(&self) -> Vec<crate::base::TypeArgumentUsage> {
+        self.base.get_type_argument_usages()
+    }
+
     /// Add a pending relationship (used during extraction)
     pub fn add_pending_relationship(&mut self, pending: PendingRelationship) {
         self.base.add_pending_relationship(pending);

@@ -38,6 +38,10 @@ impl RazorExtractor {
     }
 
     /// Extract symbols from the Razor file
+    pub fn get_type_argument_usages(&self) -> Vec<crate::base::TypeArgumentUsage> {
+        self.base.get_type_argument_usages()
+    }
+
     pub fn extract_symbols(&mut self, tree: &Tree) -> Vec<Symbol> {
         let mut symbols = Vec::new();
         self.visit_node(tree.root_node(), &mut symbols, None);

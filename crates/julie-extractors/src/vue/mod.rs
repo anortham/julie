@@ -188,6 +188,10 @@ impl VueExtractor {
 
     /// Extract all identifier usages (function calls, member access, etc.)
     /// Vue-specific: Parses `<script>` section with JavaScript tree-sitter
+    pub fn get_type_argument_usages(&self) -> Vec<crate::base::TypeArgumentUsage> {
+        self.base.get_type_argument_usages()
+    }
+
     pub fn extract_identifiers(&mut self, symbols: &[Symbol]) -> Vec<Identifier> {
         identifiers::extract_identifiers(&mut self.base, symbols)
     }

@@ -173,6 +173,7 @@ pub(crate) async fn handle_file_created_or_modified_static(
             structured_pending_relationships: Vec::new(),
             types: HashMap::new(),
             identifiers: Vec::new(),
+            type_argument_usages: Vec::new(),
             parse_diagnostics: Vec::new(),
         },
     };
@@ -275,6 +276,10 @@ pub(crate) async fn handle_file_created_or_modified_static(
         };
 
         let types_vec: Vec<_> = results.types.into_values().collect();
+        let type_argument_rows =
+            crate::database::bulk::type_arguments::flatten_type_argument_usages(
+                &results.type_argument_usages,
+            );
 
         let workspace_key = workspace_root.to_string_lossy();
         let workspace_id = crate::workspace::registry::generate_workspace_id(&workspace_key)
@@ -292,6 +297,7 @@ pub(crate) async fn handle_file_created_or_modified_static(
             relationships: &results.relationships,
             identifiers: &results.identifiers,
             types: &types_vec,
+            type_arguments: &type_argument_rows,
         };
         db_lock.incremental_update_atomic_with_metadata(
             &files_to_clean,

@@ -377,6 +377,10 @@ impl DartExtractor {
         self.base.get_pending_relationships()
     }
 
+    pub fn get_type_argument_usages(&self) -> Vec<crate::base::TypeArgumentUsage> {
+        self.base.get_type_argument_usages()
+    }
+
     pub fn add_pending_relationship(&mut self, pending: PendingRelationship) {
         self.base.add_pending_relationship(pending);
     }

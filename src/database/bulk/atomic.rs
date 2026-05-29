@@ -20,6 +20,7 @@ use super::cleanup::{
 };
 use super::identifiers::insert_identifiers_tx;
 use super::relationships::insert_relationships_tx;
+use super::type_arguments::{TypeArgumentRow, insert_type_arguments_tx};
 use super::types::insert_types_tx;
 use super::{collect_referenced_symbol_ids, load_existing_symbol_ids_tx};
 
@@ -52,6 +53,10 @@ pub(crate) struct CanonicalWriteSet<'a> {
     pub(crate) relationships: &'a [Relationship],
     pub(crate) identifiers: &'a [crate::extractors::Identifier],
     pub(crate) types: &'a [crate::extractors::base::TypeInfo],
+    /// Flattened ordered/nested generic type-argument rows (Miller bridge
+    /// Phase 2). Derived from the batch's `TypeArgumentUsage` trees before the
+    /// write; persisted into the `type_arguments` table.
+    pub(crate) type_arguments: &'a [TypeArgumentRow],
 }
 
 #[derive(Default)]
@@ -61,6 +66,7 @@ struct InsertCounts {
     relationships: i64,
     identifiers: i64,
     types: i64,
+    type_arguments: i64,
 }
 
 impl InsertCounts {
@@ -71,6 +77,7 @@ impl InsertCounts {
             || self.relationships > 0
             || self.identifiers > 0
             || self.types > 0
+            || self.type_arguments > 0
     }
 }
 
@@ -91,6 +98,10 @@ impl SymbolDatabase {
             relationships: new_relationships,
             identifiers: new_identifiers,
             types: new_types,
+            // Positional convenience wrapper (tests / non-extraction callers):
+            // no type-argument rows. Production paths build the full write-set
+            // from ExtractedBatch / the watcher, which populate this.
+            type_arguments: &[],
         };
         self.incremental_update_atomic_with_metadata(
             files_to_clean,
@@ -175,6 +186,7 @@ impl SymbolDatabase {
             relationships,
             identifiers,
             types,
+            type_arguments: &[],
         };
         self.bulk_store_fresh_atomic_with_metadata(
             &write_set,
@@ -334,6 +346,10 @@ fn insert_batch_tx(
     counts.identifiers =
         insert_identifiers_tx(tx, write_set.identifiers, Some(&valid_symbol_ids))?;
     counts.types = insert_types_tx(tx, write_set.types, Some(&valid_symbol_ids), now)?;
+    // type_arguments after identifiers: each row's identifier_id FKs an
+    // identifier row (FK checks are off in the bulk window, but the ordering
+    // keeps the dependency intent clear). target_symbol_id is write-once-NULL.
+    counts.type_arguments = insert_type_arguments_tx(tx, write_set.type_arguments, now)?;
     Ok(counts)
 }
 

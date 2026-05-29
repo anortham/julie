@@ -26,6 +26,7 @@ type ParserFileProcessResult = (
     Vec<julie_extractors::base::StructuredPendingRelationship>,
     Vec<crate::extractors::Identifier>,
     std::collections::HashMap<String, crate::extractors::base::TypeInfo>,
+    Vec<crate::extractors::base::TypeArgumentUsage>,
     Vec<crate::extractors::base::ParseDiagnostic>,
     crate::database::FileInfo,
 );
@@ -77,6 +78,7 @@ impl ManageWorkspaceTool {
         Vec<julie_extractors::base::StructuredPendingRelationship>,
         Vec<crate::extractors::Identifier>,
         std::collections::HashMap<String, crate::extractors::base::TypeInfo>,
+        Vec<crate::extractors::base::TypeArgumentUsage>,
         Vec<crate::extractors::base::ParseDiagnostic>,
         crate::database::FileInfo,
     )>

@@ -60,6 +60,10 @@ impl SqlExtractor {
         self.base.get_pending_relationships()
     }
 
+    pub fn get_type_argument_usages(&self) -> Vec<crate::base::TypeArgumentUsage> {
+        self.base.get_type_argument_usages()
+    }
+
     /// Structured pending relationships with full `UnresolvedTarget` shape
     /// (terminal_name, namespace_path, etc.) for cross-file FK references.
     pub fn get_structured_pending_relationships(&self) -> Vec<StructuredPendingRelationship> {

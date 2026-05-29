@@ -31,6 +31,7 @@ type ParserFileProcessResult = (
     Vec<StructuredPendingRelationship>,
     Vec<Identifier>,
     HashMap<String, crate::extractors::base::TypeInfo>,
+    Vec<crate::extractors::base::TypeArgumentUsage>,
     Vec<ParseDiagnostic>,
     crate::database::FileInfo,
 );
@@ -133,6 +134,7 @@ pub async fn extract_files_for_indexing_with_records(
                 structured_pending_rels,
                 identifiers,
                 types,
+                type_argument_usages,
                 parse_diagnostics,
                 file_info,
             ))) => {
@@ -157,6 +159,11 @@ pub async fn extract_files_for_indexing_with_records(
                     .extend(structured_pending_rels);
                 batch.all_identifiers.extend(identifiers);
                 batch.all_types.extend(types.into_values());
+                batch.all_type_argument_rows.extend(
+                    crate::database::bulk::type_arguments::flatten_type_argument_usages(
+                        &type_argument_usages,
+                    ),
+                );
                 batch
                     .parse_diagnostics_by_file
                     .push((relative_path, parse_diagnostics));
@@ -340,6 +347,7 @@ where
             Vec::new(),
             Vec::new(),
             HashMap::new(),
+            Vec::new(), // type_argument_usages
             Vec::new(),
             file_info,
         ));
@@ -375,6 +383,7 @@ where
     let structured_pending_relationships = results.structured_pending_relationships;
     let identifiers = results.identifiers;
     let types = results.types;
+    let type_argument_usages = results.type_argument_usages;
     let parse_diagnostics = results.parse_diagnostics;
 
     if symbols.len() > 10 {
@@ -400,6 +409,7 @@ where
         structured_pending_relationships,
         identifiers,
         types,
+        type_argument_usages,
         parse_diagnostics,
         file_info,
     ))

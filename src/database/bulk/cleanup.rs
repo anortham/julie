@@ -28,6 +28,24 @@ pub(super) fn delete_file_rows_tx(tx: &Transaction<'_>, file_path: &str) -> Resu
          WHERE target_symbol_id IN (SELECT id FROM symbols WHERE file_path = ?1)",
         params![file_path],
     )?;
+    // Forward-safe guard: type_arguments.target_symbol_id is currently always
+    // NULL (Phase 2 emits use-site rows; symbol resolution is downstream), but
+    // once it is populated, a cross-file row pointing at a symbol in THIS file
+    // would dangle after the symbol delete below. FK enforcement is off during
+    // bulk writes (Rule 1), so the schema's ON DELETE SET NULL never fires —
+    // null it out explicitly, mirroring the identifiers guard above.
+    tx.execute(
+        "UPDATE type_arguments SET target_symbol_id = NULL
+         WHERE target_symbol_id IN (SELECT id FROM symbols WHERE file_path = ?1)",
+        params![file_path],
+    )?;
+    // Delete this file's type_arguments dependent-first (before identifiers):
+    // each row carries its own file_path, so a direct delete is exact and does
+    // not rely on the identifiers/parent_arg_id CASCADE (off during bulk writes).
+    tx.execute(
+        "DELETE FROM type_arguments WHERE file_path = ?1",
+        params![file_path],
+    )?;
     tx.execute(
         "DELETE FROM identifiers
          WHERE file_path = ?1
@@ -54,6 +72,7 @@ pub(super) fn delete_file_rows_tx(tx: &Transaction<'_>, file_path: &str) -> Resu
 pub(super) fn delete_all_indexed_rows_tx(tx: &Transaction<'_>) -> Result<()> {
     for sql in [
         "DELETE FROM symbol_vectors",
+        "DELETE FROM type_arguments",
         "DELETE FROM identifiers",
         "DELETE FROM types",
         "DELETE FROM relationships",

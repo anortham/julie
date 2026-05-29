@@ -308,6 +308,7 @@ pub fn run_external_info(args: &ExternalExtractArgs) -> Result<ExternalExtractRe
         relationships_total: info.counts.relationships,
         identifiers_total: info.counts.identifiers,
         types_total: info.counts.types,
+        type_arguments_total: info.counts.type_arguments,
         errors: Vec::new(),
     })
 }
@@ -410,6 +411,7 @@ fn success_report(
         relationships_total: context.relationships_total,
         identifiers_total: context.identifiers_total,
         types_total: context.types_total,
+        type_arguments_total: context.type_arguments_total,
         errors: Vec::new(),
     })
 }
@@ -429,6 +431,7 @@ struct ReportDbContext {
     relationships_total: u64,
     identifiers_total: u64,
     types_total: u64,
+    type_arguments_total: u64,
 }
 
 fn report_context(
@@ -446,6 +449,9 @@ fn report_context(
     let types_total: i64 = db
         .conn
         .query_row("SELECT COUNT(*) FROM types", [], |row| row.get(0))?;
+    let type_arguments_total: i64 =
+        db.conn
+            .query_row("SELECT COUNT(*) FROM type_arguments", [], |row| row.get(0))?;
     let metadata = load_external_extract_metadata(db)?;
     Ok(ReportDbContext {
         julie_version: metadata
@@ -473,5 +479,6 @@ fn report_context(
         relationships_total: stats.total_relationships.try_into()?,
         identifiers_total: identifiers_total.try_into()?,
         types_total: types_total.try_into()?,
+        type_arguments_total: type_arguments_total.try_into()?,
     })
 }

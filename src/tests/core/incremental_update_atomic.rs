@@ -4,8 +4,10 @@
 // corruption if a crash occurs between delete and insert phases.
 
 use crate::database::SymbolDatabase;
+use crate::database::bulk::atomic::{AtomicPersistenceMetadata, CanonicalWriteSet};
+use crate::database::bulk::type_arguments::{TypeArgumentRow, flatten_type_argument_usages};
 use crate::database::types::FileInfo;
-use crate::extractors::base::TypeInfo;
+use crate::extractors::base::{TypeArgument, TypeArgumentUsage, TypeInfo};
 use crate::extractors::{
     Identifier, IdentifierKind, Relationship, RelationshipKind, Symbol, SymbolKind,
 };
@@ -124,6 +126,41 @@ fn count_rows(db: &SymbolDatabase, table: &str) -> i64 {
             row.get(0)
         })
         .unwrap()
+}
+
+/// Helper: count rows in a table matching a WHERE clause.
+fn count_rows_where(db: &SymbolDatabase, table: &str, where_clause: &str) -> i64 {
+    db.conn
+        .query_row(
+            &format!("SELECT COUNT(*) FROM {} WHERE {}", table, where_clause),
+            [],
+            |row| row.get(0),
+        )
+        .unwrap()
+}
+
+/// Helper: a leaf type argument with no nested generics.
+fn leaf_arg(ordinal: u32, type_name: &str) -> TypeArgument {
+    TypeArgument {
+        ordinal,
+        type_name: type_name.to_string(),
+        children: Vec::new(),
+    }
+}
+
+/// Helper: flatten one use-site's type-argument tree into rows using the
+/// production flatten, so row ids and parent links match the real write path.
+fn type_argument_rows(
+    identifier_id: &str,
+    file_path: &str,
+    arguments: Vec<TypeArgument>,
+) -> Vec<TypeArgumentRow> {
+    flatten_type_argument_usages(&[TypeArgumentUsage {
+        identifier_id: identifier_id.to_string(),
+        file_path: file_path.to_string(),
+        language: "csharp".to_string(),
+        arguments,
+    }])
 }
 
 // ---------------------------------------------------------------------------
@@ -684,6 +721,202 @@ fn test_delete_workspace_data_clears_canonical_revisions() {
 // not just symbols/files/revisions. Orphan rows in symbol_vectors, identifiers,
 // types, and indexing_repairs were previously left behind.
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Type arguments (Miller bridge Phase 2): re-index must clean stale rows
+// ---------------------------------------------------------------------------
+#[test]
+fn test_incremental_update_atomic_cleans_and_replaces_type_arguments() {
+    let tmp = TempDir::new().unwrap();
+    let db_path = tmp.path().join("test.db");
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
+
+    // --- Round 1: file_a.rs has a nested generic use site
+    //     Dictionary<string, List<int>> on identifier `id_dict`.
+    //     Flattens to 3 rows: string (0), List (1), int (1.0, child of List).
+    let files_v1 = vec![make_file("file_a.rs")];
+    let idents_v1 = vec![make_identifier("id_dict", "Dictionary", "file_a.rs")];
+    let rows_v1 = type_argument_rows(
+        "id_dict",
+        "file_a.rs",
+        vec![
+            leaf_arg(0, "string"),
+            TypeArgument {
+                ordinal: 1,
+                type_name: "List".to_string(),
+                children: vec![leaf_arg(0, "int")],
+            },
+        ],
+    );
+    let write_set_v1 = CanonicalWriteSet {
+        files: &files_v1,
+        symbols: &[],
+        relationships: &[],
+        identifiers: &idents_v1,
+        types: &[],
+        type_arguments: &rows_v1,
+    };
+    db.incremental_update_atomic_with_metadata(
+        &[],
+        &write_set_v1,
+        "ws_test",
+        AtomicPersistenceMetadata::default(),
+    )
+    .expect("round 1 type-argument write should succeed");
+
+    assert_eq!(
+        count_rows(&db, "type_arguments"),
+        3,
+        "Dictionary<string, List<int>> flattens to 3 type-argument rows"
+    );
+
+    // The nested `int` row links to the `List` row via parent_arg_id.
+    let list_id: String = db
+        .conn
+        .query_row(
+            "SELECT id FROM type_arguments WHERE type_name = 'List'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let int_parent: Option<String> = db
+        .conn
+        .query_row(
+            "SELECT parent_arg_id FROM type_arguments WHERE type_name = 'int'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        int_parent.as_deref(),
+        Some(list_id.as_str()),
+        "nested int row must point at its List parent"
+    );
+    assert_eq!(
+        count_rows_where(&db, "type_arguments", "identifier_id = 'id_dict'"),
+        3,
+        "every round-1 row belongs to the id_dict use site"
+    );
+
+    // --- Round 2: file_a.rs re-indexed with a simpler use site List<int> on
+    //     identifier `id_list` (1 row). Cleaning file_a.rs must drop all 3
+    //     stale rows before the new row is inserted — no orphans by file_path
+    //     or by the dead identifier_id.
+    let files_v2 = vec![make_file("file_a.rs")];
+    let idents_v2 = vec![make_identifier("id_list", "List", "file_a.rs")];
+    let rows_v2 = type_argument_rows("id_list", "file_a.rs", vec![leaf_arg(0, "int")]);
+    let write_set_v2 = CanonicalWriteSet {
+        files: &files_v2,
+        symbols: &[],
+        relationships: &[],
+        identifiers: &idents_v2,
+        types: &[],
+        type_arguments: &rows_v2,
+    };
+    db.incremental_update_atomic_with_metadata(
+        &["file_a.rs".to_string()],
+        &write_set_v2,
+        "ws_test",
+        AtomicPersistenceMetadata::default(),
+    )
+    .expect("round 2 type-argument write should succeed");
+
+    assert_eq!(
+        count_rows(&db, "type_arguments"),
+        1,
+        "re-index must clean the 3 old rows and leave only the 1 new row"
+    );
+    assert_eq!(
+        count_rows_where(&db, "type_arguments", "identifier_id = 'id_dict'"),
+        0,
+        "stale rows from the previous extraction must be gone (no orphans)"
+    );
+    let surviving: String = db
+        .conn
+        .query_row("SELECT identifier_id FROM type_arguments", [], |row| {
+            row.get(0)
+        })
+        .unwrap();
+    assert_eq!(
+        surviving, "id_list",
+        "the only surviving row must belong to the new use site"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Type arguments: a full-replace rebuild (replace_workspace_data_atomic) wipes
+// every prior row, not just the rewritten file's.
+// ---------------------------------------------------------------------------
+#[test]
+fn test_replace_workspace_data_atomic_clears_stale_type_arguments() {
+    let tmp = TempDir::new().unwrap();
+    let db_path = tmp.path().join("test.db");
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
+
+    // Seed two files' type-argument rows via an incremental write.
+    let files_v1 = vec![make_file("a.rs"), make_file("b.rs")];
+    let idents_v1 = vec![
+        make_identifier("id_a", "List", "a.rs"),
+        make_identifier("id_b", "List", "b.rs"),
+    ];
+    let mut rows_v1 = type_argument_rows("id_a", "a.rs", vec![leaf_arg(0, "int")]);
+    rows_v1.extend(type_argument_rows("id_b", "b.rs", vec![leaf_arg(0, "string")]));
+    let write_set_v1 = CanonicalWriteSet {
+        files: &files_v1,
+        symbols: &[],
+        relationships: &[],
+        identifiers: &idents_v1,
+        types: &[],
+        type_arguments: &rows_v1,
+    };
+    db.incremental_update_atomic_with_metadata(
+        &[],
+        &write_set_v1,
+        "ws_test",
+        AtomicPersistenceMetadata::default(),
+    )
+    .expect("seed write should succeed");
+    assert_eq!(
+        count_rows(&db, "type_arguments"),
+        2,
+        "precondition: two seeded type-argument rows across two files"
+    );
+
+    // Full-replace rebuild with only one file's row. replace_workspace_data_atomic
+    // wipes ALL indexed rows first (delete_all_indexed_rows_tx), so b.rs's row
+    // must vanish even though b.rs is absent from the rebuild batch.
+    let files_v2 = vec![make_file("a.rs")];
+    let idents_v2 = vec![make_identifier("id_a2", "Span", "a.rs")];
+    let rows_v2 = type_argument_rows("id_a2", "a.rs", vec![leaf_arg(0, "byte")]);
+    let write_set_v2 = CanonicalWriteSet {
+        files: &files_v2,
+        symbols: &[],
+        relationships: &[],
+        identifiers: &idents_v2,
+        types: &[],
+        type_arguments: &rows_v2,
+    };
+    db.replace_workspace_data_atomic(
+        &write_set_v2,
+        "ws_test",
+        AtomicPersistenceMetadata::default(),
+    )
+    .expect("full-replace rebuild should succeed");
+
+    assert_eq!(
+        count_rows(&db, "type_arguments"),
+        1,
+        "full-replace rebuild must clear every prior type-argument row, not just the rewritten file's"
+    );
+    let surviving: String = db
+        .conn
+        .query_row("SELECT type_name FROM type_arguments", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(
+        surviving, "byte",
+        "only the rebuilt batch's row may survive a full-replace rebuild"
+    );
+}
+
 #[test]
 fn test_delete_workspace_data_clears_all_owned_tables() {
     let tmp = TempDir::new().unwrap();
@@ -716,6 +949,25 @@ fn test_delete_workspace_data_clears_all_owned_tables() {
     db.record_indexing_repair("src/lib.rs", "tantivy_dirty", Some("test"))
         .expect("record_indexing_repair should succeed");
 
+    // Seed a type-argument row so workspace cleanup is verified to clear it too.
+    let ta_idents = vec![make_identifier("id_ta", "List", "src/lib.rs")];
+    let ta_rows = type_argument_rows("id_ta", "src/lib.rs", vec![leaf_arg(0, "int")]);
+    let ta_write_set = CanonicalWriteSet {
+        files: &[],
+        symbols: &[],
+        relationships: &[],
+        identifiers: &ta_idents,
+        types: &[],
+        type_arguments: &ta_rows,
+    };
+    db.incremental_update_atomic_with_metadata(
+        &[],
+        &ta_write_set,
+        "ws_test",
+        AtomicPersistenceMetadata::default(),
+    )
+    .expect("seeding type_arguments should succeed");
+
     assert!(count_rows(&db, "symbols") > 0, "precondition: symbols");
     assert!(count_rows(&db, "files") > 0, "precondition: files");
     assert!(
@@ -734,6 +986,10 @@ fn test_delete_workspace_data_clears_all_owned_tables() {
     assert!(
         count_rows(&db, "canonical_revisions") > 0,
         "precondition: canonical_revisions"
+    );
+    assert!(
+        count_rows(&db, "type_arguments") > 0,
+        "precondition: type_arguments"
     );
 
     db.delete_workspace_data()
@@ -771,5 +1027,10 @@ fn test_delete_workspace_data_clears_all_owned_tables() {
         count_rows(&db, "projection_states"),
         0,
         "projection_states must be cleared"
+    );
+    assert_eq!(
+        count_rows(&db, "type_arguments"),
+        0,
+        "type_arguments must be cleared"
     );
 }

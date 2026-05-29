@@ -654,5 +654,10 @@ pub struct ExtractionResults {
     pub structured_pending_relationships: Vec<StructuredPendingRelationship>,
     pub types: HashMap<String, TypeInfo>,
     pub identifiers: Vec<Identifier>, // Include identifiers for LSP-quality tools
+    /// Ordered/nested generic type arguments captured at use sites (Miller
+    /// bridge Phase 2). Carried out of the extractor's `BaseExtractor` so the
+    /// indexing layer can flatten and persist them. Keyed to a use-site
+    /// identifier by `identifier_id`.
+    pub type_argument_usages: Vec<TypeArgumentUsage>,
     pub parse_diagnostics: Vec<ParseDiagnostic>,
 }

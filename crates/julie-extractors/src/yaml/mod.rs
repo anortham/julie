@@ -199,6 +199,10 @@ impl YamlExtractor {
         None
     }
 
+    pub fn get_type_argument_usages(&self) -> Vec<crate::base::TypeArgumentUsage> {
+        self.base.get_type_argument_usages()
+    }
+
     pub fn extract_identifiers(
         &mut self,
         tree: &tree_sitter::Tree,

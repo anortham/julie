@@ -177,6 +177,10 @@ impl HTMLExtractor {
 
     /// Extract all identifier usages (event handlers, id/class references)
     /// Following the Rust extractor reference implementation pattern
+    pub fn get_type_argument_usages(&self) -> Vec<crate::base::TypeArgumentUsage> {
+        self.base.get_type_argument_usages()
+    }
+
     pub fn extract_identifiers(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Identifier> {
         // Create symbol map for fast lookup
         let symbol_map: HashMap<String, &Symbol> =

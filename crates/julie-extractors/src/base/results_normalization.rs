@@ -46,6 +46,7 @@ impl ExtractionResults {
             structured_pending_relationships: Vec::new(),
             types: HashMap::new(),
             identifiers: Vec::new(),
+            type_argument_usages: Vec::new(),
             parse_diagnostics: Vec::new(),
         }
     }
@@ -59,6 +60,8 @@ impl ExtractionResults {
             .append(&mut other.structured_pending_relationships);
         merge_type_info(&mut self.types, other.types);
         self.identifiers.append(&mut other.identifiers);
+        self.type_argument_usages
+            .append(&mut other.type_argument_usages);
         self.parse_diagnostics.append(&mut other.parse_diagnostics);
     }
 

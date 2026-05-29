@@ -198,6 +198,7 @@ fn external_extract_report_json_is_deterministic() {
         relationships_total: 13,
         identifiers_total: 17,
         types_total: 19,
+        type_arguments_total: 23,
         errors: vec![ExternalExtractError {
             code: "schema_mismatch".to_string(),
             message: "database schema is not compatible".to_string(),
@@ -232,6 +233,7 @@ fn external_extract_report_json_is_deterministic() {
             "relationships_total": 13,
             "identifiers_total": 17,
             "types_total": 19,
+            "type_arguments_total": 23,
             "errors": [
                 {
                     "code": "schema_mismatch",
@@ -268,6 +270,7 @@ fn external_extract_report_formats_text_json_and_markdown() {
         relationships_total: 14,
         identifiers_total: 16,
         types_total: 18,
+        type_arguments_total: 20,
         errors: Vec::new(),
     };
 
@@ -278,6 +281,7 @@ fn external_extract_report_formats_text_json_and_markdown() {
     assert!(text.contains("revision=42"));
     assert!(text.contains("extract_contract_version=1"));
     assert!(text.contains("files_updated=1"));
+    assert!(text.contains("type_arguments_total=20"));
 
     let json =
         format_external_extract_report(&report, OutputFormat::Json).expect("json report formats");
@@ -289,4 +293,5 @@ fn external_extract_report_formats_text_json_and_markdown() {
     assert!(markdown.starts_with("# External Extract\n"));
     assert!(markdown.contains("| Operation | update |"));
     assert!(markdown.contains("| Status | changed |"));
+    assert!(markdown.contains("| Type Arguments Total | 20 |"));
 }

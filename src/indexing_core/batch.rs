@@ -9,6 +9,10 @@ pub struct ExtractedBatch {
     pub all_structured_pending_relationships: Vec<StructuredPendingRelationship>,
     pub all_identifiers: Vec<Identifier>,
     pub all_types: Vec<crate::extractors::base::TypeInfo>,
+    /// Flattened ordered/nested generic type-argument rows (Miller bridge
+    /// Phase 2), accumulated per file from each result's `TypeArgumentUsage`
+    /// trees. Borrowed by `canonical_write_set()` for persistence.
+    pub(crate) all_type_argument_rows: Vec<crate::database::bulk::type_arguments::TypeArgumentRow>,
     pub all_file_infos: Vec<crate::database::FileInfo>,
     pub parse_diagnostics_by_file: Vec<(String, Vec<ParseDiagnostic>)>,
     pub files_to_clean: Vec<String>,
@@ -35,6 +39,7 @@ impl ExtractedBatch {
             relationships: &self.all_relationships,
             identifiers: &self.all_identifiers,
             types: &self.all_types,
+            type_arguments: &self.all_type_argument_rows,
         }
     }
 
@@ -46,6 +51,7 @@ impl ExtractedBatch {
             all_structured_pending_relationships: Vec::new(),
             all_identifiers: Vec::new(),
             all_types: Vec::new(),
+            all_type_argument_rows: Vec::new(),
             all_file_infos: Vec::new(),
             parse_diagnostics_by_file: Vec::new(),
             files_to_clean: Vec::new(),

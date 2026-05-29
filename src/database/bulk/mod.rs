@@ -9,6 +9,7 @@ pub(crate) mod atomic;
 pub(crate) mod cleanup;
 pub(crate) mod identifiers;
 pub(crate) mod relationships;
+pub(crate) mod type_arguments;
 pub(crate) mod types;
 
 pub(crate) fn collect_referenced_symbol_ids(

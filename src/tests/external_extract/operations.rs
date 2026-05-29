@@ -72,6 +72,16 @@ fn count_rows(db: &SymbolDatabase, table: &str) -> i64 {
         .expect("count rows")
 }
 
+fn count_rows_where(db: &SymbolDatabase, table: &str, where_clause: &str) -> i64 {
+    db.conn
+        .query_row(
+            &format!("SELECT COUNT(*) FROM {table} WHERE {where_clause}"),
+            [],
+            |row| row.get(0),
+        )
+        .expect("count rows where")
+}
+
 fn scan_args(db: std::path::PathBuf, root: std::path::PathBuf, force: bool) -> ExternalExtractArgs {
     ExternalExtractArgs {
         db,
@@ -406,6 +416,109 @@ async fn extract_scan_writes_caller_owned_sqlite_db() {
         info.metadata.expect("metadata").analysis_state,
         "stale",
         "scan should mark derived analysis stale after canonical writes"
+    );
+}
+
+/// End-to-end: a real polyglot scan must run each language's type-argument
+/// reader, flatten the trees, and land rows in the `type_arguments` table —
+/// proving the full extractor → ExtractedBatch → CanonicalWriteSet → insert
+/// path (Miller bridge Phase 2), not just the unit-level capture.
+#[tokio::test]
+async fn extract_scan_persists_polyglot_type_arguments() {
+    let tmp = TempDir::new().expect("temp dir");
+    let root = tmp.path().join("repo");
+    std::fs::create_dir(&root).expect("repo dir");
+
+    // C#: a generic field — IList<RootObject> is one outermost use site.
+    fs::write(
+        root.join("poly.cs"),
+        "public class Repo { public IList<RootObject> Items; }\n",
+    )
+    .expect("write c#");
+    // TypeScript: a heritage clause generic Base<Foo, Bar> (ordered pair).
+    fs::write(root.join("poly.ts"), "class A extends Base<Foo, Bar> {}\n").expect("write ts");
+    // Python: a nested annotation Dict[str, List[User]] — Dict outermost,
+    // List[User] nested under ordinal 1.
+    fs::write(
+        root.join("poly.py"),
+        "class User: pass\nx: Dict[str, List[User]] = {}\n",
+    )
+    .expect("write py");
+
+    let db_path = tmp.path().join("external.sqlite");
+    let report = run_external_scan(&scan_args(db_path.clone(), root.clone(), false))
+        .await
+        .expect("scan succeeds");
+    assert_eq!(report.files_scanned, 3, "three source files scanned");
+    assert!(
+        report.type_arguments_total >= 3,
+        "report must surface the persisted type-argument count, got {}",
+        report.type_arguments_total
+    );
+
+    let db = SymbolDatabase::new(&db_path).expect("open db");
+
+    // Each language's reader fired through the real pipeline.
+    assert!(
+        count_rows_where(&db, "type_arguments", "file_path = 'poly.cs'") >= 1,
+        "C# IList<RootObject> must persist a type-argument row"
+    );
+    assert!(
+        count_rows_where(&db, "type_arguments", "file_path = 'poly.ts'") >= 2,
+        "TS Base<Foo, Bar> must persist two ordered type-argument rows"
+    );
+    assert!(
+        count_rows_where(&db, "type_arguments", "file_path = 'poly.py'") >= 1,
+        "Python Dict[str, List[User]] must persist type-argument rows"
+    );
+
+    // C# content: the single ordered argument is RootObject.
+    assert_eq!(
+        count_rows_where(
+            &db,
+            "type_arguments",
+            "file_path = 'poly.cs' AND type_name = 'RootObject'"
+        ),
+        1,
+        "the C# row's type_name must be the applied type RootObject"
+    );
+
+    // Python nesting survives the full path: the `User` row sits under the
+    // `List` row via parent_arg_id (Dict's ordinal-1 nested argument).
+    let list_id: String = db
+        .conn
+        .query_row(
+            "SELECT id FROM type_arguments WHERE file_path = 'poly.py' AND type_name = 'List'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("nested List row exists");
+    let user_parent: Option<String> = db
+        .conn
+        .query_row(
+            "SELECT parent_arg_id FROM type_arguments WHERE file_path = 'poly.py' AND type_name = 'User'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("nested User row exists");
+    assert_eq!(
+        user_parent.as_deref(),
+        Some(list_id.as_str()),
+        "nested User must point at its List parent after the full persist path"
+    );
+
+    // The language column is distinctly labeled per language (three readers).
+    let distinct_langs: i64 = db
+        .conn
+        .query_row(
+            "SELECT COUNT(DISTINCT language) FROM type_arguments",
+            [],
+            |row| row.get(0),
+        )
+        .expect("count distinct languages");
+    assert_eq!(
+        distinct_langs, 3,
+        "C#, TypeScript, and Python rows must each carry their own language label"
     );
 }
 

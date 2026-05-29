@@ -178,6 +178,10 @@ impl RegexExtractor {
 
     /// Extract all identifier usages (backreferences and named groups)
     /// Following the Rust extractor reference implementation pattern
+    pub fn get_type_argument_usages(&self) -> Vec<crate::base::TypeArgumentUsage> {
+        self.base.get_type_argument_usages()
+    }
+
     pub fn extract_identifiers(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Identifier> {
         identifiers::extract_identifiers(&mut self.base, tree, symbols)
     }
