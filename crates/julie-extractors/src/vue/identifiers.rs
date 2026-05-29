@@ -6,7 +6,7 @@
 use super::parsing::{VueSection, parse_vue_sfc};
 use crate::base::{
     BaseExtractor, EmbeddedSpanOffset, Identifier, IdentifierKind, NormalizedSpan, Symbol,
-    SymbolKind,
+    SymbolKind, TypeArgument,
 };
 use std::collections::HashMap;
 use tree_sitter::{Node, Parser};
@@ -163,9 +163,148 @@ fn extract_identifier_from_node_with_content(
             }
         }
 
+        // Heritage clause: `class Comp extends Base<User>`  (lang="ts" only).
+        // TypeScript's grammar places the base-class name in an expression-context `value`
+        // field as an `identifier` (not `type_identifier`), so the `type_identifier` arm
+        // below does NOT fire for it.  A separate `type_arguments` field carries `<…>`.
+        "extends_clause" => {
+            let Some(value_node) = node.child_by_field_name("value") else {
+                return;
+            };
+            let Some((name_node, name)) =
+                terminal_identifier_from_content(value_node, script_content)
+            else {
+                return;
+            };
+            let identifier = create_identifier_with_offset(
+                base,
+                &name_node,
+                &node,
+                name,
+                IdentifierKind::TypeUsage,
+                symbol_map,
+                offset,
+            );
+            if let Some(arg_list) = node.child_by_field_name("type_arguments") {
+                let arguments = extract_vue_type_arguments(arg_list, script_content);
+                base.record_type_arguments(&identifier, arguments);
+            }
+        }
+
+        // Construction: `new Map<string, User>()`  (lang="ts" only).
+        // The constructor name is an `identifier` (expression context), not a `type_identifier`,
+        // so the arm below does NOT fire for it.  The `type_arguments` node sits as a named
+        // child of `new_expression` alongside the constructor and argument list.
+        "new_expression" => {
+            let constructor_node = {
+                let by_field = node.child_by_field_name("constructor");
+                if by_field.is_some() {
+                    by_field
+                } else {
+                    let mut cursor = node.walk();
+                    node.named_children(&mut cursor)
+                        .find(|c| !matches!(c.kind(), "arguments" | "type_arguments"))
+                }
+            };
+            let Some(constructor_node) = constructor_node else {
+                return;
+            };
+            let Some((name_node, name)) =
+                terminal_identifier_from_content(constructor_node, script_content)
+            else {
+                return;
+            };
+            let identifier = create_identifier_with_offset(
+                base,
+                &name_node,
+                &node,
+                name,
+                IdentifierKind::Call,
+                symbol_map,
+                offset,
+            );
+            let maybe_type_args = {
+                let mut cursor = node.walk();
+                node.named_children(&mut cursor)
+                    .find(|c| c.kind() == "type_arguments")
+            };
+            if let Some(arg_list) = maybe_type_args {
+                let arguments = extract_vue_type_arguments(arg_list, script_content);
+                base.record_type_arguments(&identifier, arguments);
+            }
+        }
+
+        // TypeScript type references in type positions: `const x: Foo`, `field: Foo<Bar>`.
+        // Only fires when the script section uses lang="ts" — the JS grammar does not emit
+        // `type_identifier` nodes. We filter declaration names and noise types as in the
+        // standalone TypeScript extractor, then hook outermost `generic_type` parents.
+        "type_identifier" => {
+            if is_ts_type_declaration_name(&node) {
+                return;
+            }
+            let name = get_node_text_from_content(&node, script_content);
+            if is_ts_noise_type(&name) {
+                return;
+            }
+            // Detect if this type_identifier is the `name` field of an outermost generic_type.
+            // "Outermost" = the generic_type's parent is NOT itself `type_arguments`.
+            let opt_arg_list = {
+                if let Some(parent) = node.parent() {
+                    if parent.kind() == "generic_type"
+                        && !parent
+                            .parent()
+                            .map(|p| p.kind() == "type_arguments")
+                            .unwrap_or(false)
+                    {
+                        let children: Vec<Node> =
+                            parent.children(&mut parent.walk()).collect();
+                        children.into_iter().find(|c| c.kind() == "type_arguments")
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            };
+            let identifier = create_identifier_with_offset(
+                base,
+                &node,
+                &node,
+                name,
+                IdentifierKind::TypeUsage,
+                symbol_map,
+                offset,
+            );
+            if let Some(arg_list) = opt_arg_list {
+                let arguments = extract_vue_type_arguments(arg_list, script_content);
+                base.record_type_arguments(&identifier, arguments);
+            }
+        }
+
         _ => {
             // Skip other node types for now
         }
+    }
+}
+
+/// Resolve the terminal `identifier` / `type_identifier` / `property_identifier` inside
+/// `node`, returning `(leaf_node, name_text)`.  Used by `extends_clause` and
+/// `new_expression` arms where the base type can be a plain identifier or a member
+/// expression (`Foo.Bar`).  Text is read from `script_content` (script-section bytes).
+fn terminal_identifier_from_content<'a>(
+    node: Node<'a>,
+    script_content: &str,
+) -> Option<(Node<'a>, String)> {
+    match node.kind() {
+        "identifier" | "property_identifier" | "type_identifier" => {
+            let name = get_node_text_from_content(&node, script_content);
+            Some((node, name))
+        }
+        "member_expression" => {
+            let property = node.child_by_field_name("property")?;
+            terminal_identifier_from_content(property, script_content)
+        }
+        _ => None,
     }
 }
 
@@ -177,6 +316,7 @@ fn get_node_text_from_content(node: &Node, content: &str) -> String {
 }
 
 /// Create an identifier from a script-section node and remap it to the host Vue file.
+/// Returns the created identifier so callers can attach type-argument usages to it.
 fn create_identifier_with_offset(
     base: &mut BaseExtractor,
     node: &Node,
@@ -185,7 +325,7 @@ fn create_identifier_with_offset(
     kind: IdentifierKind,
     symbol_map: &HashMap<String, &Symbol>,
     offset: EmbeddedSpanOffset,
-) {
+) -> Identifier {
     let span = offset.apply(NormalizedSpan::from_node(node));
     let containing_span = offset.apply(NormalizedSpan::from_node(containing_node));
     let containing_symbol_id =
@@ -213,7 +353,8 @@ fn create_identifier_with_offset(
         code_context,
     };
 
-    base.identifiers.push(identifier);
+    base.identifiers.push(identifier.clone());
+    identifier
 }
 
 fn section_byte_offset(content: &str, start_line: usize) -> u32 {
@@ -287,4 +428,114 @@ fn symbol_containment_priority(kind: &SymbolKind) -> u32 {
         SymbolKind::Variable | SymbolKind::Constant | SymbolKind::Property => 10,
         _ => 5,
     }
+}
+
+// ============================================================================
+// Type-argument capture helpers (Miller bridge Phase 2)
+// ============================================================================
+
+/// Recursively extract ordered, nested type arguments from a TypeScript `type_arguments`
+/// node, reading type names from `script_content` (the script section text, whose byte
+/// offsets the parse nodes use) rather than from the full Vue SFC content in `base`.
+fn extract_vue_type_arguments<'a>(arg_list_node: Node<'a>, script_content: &str) -> Vec<TypeArgument> {
+    let mut arguments = Vec::new();
+    let mut ordinal: u32 = 0;
+    let children: Vec<Node<'a>> = arg_list_node.children(&mut arg_list_node.walk()).collect();
+    for child in children {
+        if !child.is_named() {
+            continue; // skip < , >
+        }
+        match child.kind() {
+            "generic_type" => {
+                // Nested generic: e.g. `Array<User>` inside outer type_arguments.
+                let name = child
+                    .child_by_field_name("name")
+                    .map(|n| get_node_text_from_content(&n, script_content))
+                    .unwrap_or_else(|| get_node_text_from_content(&child, script_content));
+                // Find the nested type_arguments child of this generic_type
+                let nested_children: Vec<Node<'a>> =
+                    child.children(&mut child.walk()).collect();
+                let nested_arg_list =
+                    nested_children.iter().find(|c| c.kind() == "type_arguments").copied();
+                let sub_args = match nested_arg_list {
+                    Some(nested) => extract_vue_type_arguments(nested, script_content),
+                    None => Vec::new(),
+                };
+                arguments.push(TypeArgument {
+                    ordinal,
+                    type_name: name,
+                    children: sub_args,
+                });
+                ordinal += 1;
+            }
+            _ => {
+                // Leaf type: predefined_type ("string"), type_identifier ("User"), etc.
+                let name = get_node_text_from_content(&child, script_content);
+                arguments.push(TypeArgument {
+                    ordinal,
+                    type_name: name,
+                    children: Vec::new(),
+                });
+                ordinal += 1;
+            }
+        }
+    }
+    arguments
+}
+
+/// Check if a `type_identifier` node is a TypeScript declaration name (not a reference).
+///
+/// TypeScript `type_identifier` appears as the `name` field of:
+/// - `interface_declaration` → `interface Foo {}`
+/// - `type_alias_declaration` → `type Foo = ...`
+/// - `class_declaration` / `abstract_class_declaration` → `class Foo {}`
+/// - `type_parameter` → `<T extends Base>` (T is a declaration)
+/// - `mapped_type_clause` → `[K in keyof T]` (K is a declaration)
+fn is_ts_type_declaration_name(node: &Node) -> bool {
+    if let Some(parent) = node.parent() {
+        if let Some(name_node) = parent.child_by_field_name("name") {
+            if name_node.id() == node.id() {
+                return matches!(
+                    parent.kind(),
+                    "interface_declaration"
+                        | "type_alias_declaration"
+                        | "class_declaration"
+                        | "abstract_class_declaration"
+                        | "type_parameter"
+                        | "mapped_type_clause"
+                );
+            }
+        }
+    }
+    false
+}
+
+/// Returns true for TypeScript types too common to produce useful type-usage signals:
+/// single-letter generic type parameters (T, K, V…) and TS compiler utility types.
+fn is_ts_noise_type(name: &str) -> bool {
+    if name.len() == 1
+        && name
+            .chars()
+            .next()
+            .map_or(false, |c| c.is_ascii_uppercase())
+    {
+        return true;
+    }
+    matches!(
+        name,
+        "Readonly"
+            | "Partial"
+            | "Required"
+            | "Pick"
+            | "Omit"
+            | "Exclude"
+            | "Extract"
+            | "NonNullable"
+            | "ReturnType"
+            | "InstanceType"
+            | "Parameters"
+            | "ConstructorParameters"
+            | "Awaited"
+            | "Record"
+    )
 }

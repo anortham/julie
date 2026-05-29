@@ -55,6 +55,43 @@ fn extract_identifier_from_node(
                         base.create_identifier(&name_node, name, IdentifierKind::Call, containing);
                     }
                     return;
+                } else if child.kind() == "generic_function" {
+                    // Generic method call: foo[T](x) or obj.method[T](x)
+                    if let Some(func) = child.child_by_field_name("function") {
+                        let containing = find_containing_symbol_id(base, node, symbol_map);
+                        let opt_identifier = if func.kind() == "identifier" {
+                            let name = base.get_node_text(&func);
+                            Some(base.create_identifier(
+                                &func,
+                                name,
+                                IdentifierKind::Call,
+                                containing,
+                            ))
+                        } else if func.kind() == "field_expression" {
+                            extract_rightmost_identifier(base, &func).map(|(name_node, name)| {
+                                base.create_identifier(
+                                    &name_node,
+                                    name,
+                                    IdentifierKind::Call,
+                                    containing,
+                                )
+                            })
+                        } else {
+                            None
+                        };
+                        if let (Some(identifier), Some(args_node)) = (
+                            opt_identifier,
+                            child.child_by_field_name("type_arguments"),
+                        ) {
+                            let arguments = crate::base::extract_type_arguments(
+                                base,
+                                args_node,
+                                decompose_scala_type_arg,
+                            );
+                            base.record_type_arguments(&identifier, arguments);
+                        }
+                    }
+                    return;
                 }
             }
         }
@@ -75,7 +112,9 @@ fn extract_identifier_from_node(
             }
 
             let containing = find_containing_symbol_id(base, node, symbol_map);
-            base.create_identifier(&node, name, IdentifierKind::TypeUsage, containing);
+            let identifier =
+                base.create_identifier(&node, name, IdentifierKind::TypeUsage, containing);
+            record_outermost_scala_type_arguments(base, node, &identifier);
         }
 
         // Member access: obj.field
@@ -177,4 +216,78 @@ fn extract_rightmost_identifier<'a>(
         .collect();
 
     identifiers.last().map(|n| (*n, base.get_node_text(n)))
+}
+
+/// Record type arguments for the outermost generic use site.
+///
+/// Called from the `type_identifier` arm after creating the identifier.
+/// Records only when:
+/// - the `type_identifier`'s parent is `generic_type` (e.g. `List` in `List[Int]`)
+/// - AND that `generic_type` is not itself nested inside `type_arguments`
+///   (i.e. `List` in `Map[String, List[Int]]` is skipped — it rides as a nested child)
+fn record_outermost_scala_type_arguments(
+    base: &mut BaseExtractor,
+    name_node: Node,
+    identifier: &Identifier,
+) {
+    let Some(parent) = name_node.parent() else {
+        return;
+    };
+    if parent.kind() != "generic_type" {
+        return;
+    }
+    // Skip if this generic_type is itself nested inside type_arguments (it's not outermost)
+    if parent
+        .parent()
+        .map(|p| p.kind() == "type_arguments")
+        .unwrap_or(false)
+    {
+        return;
+    }
+    let Some(arg_list) = parent.child_by_field_name("type_arguments") else {
+        return;
+    };
+    let arguments =
+        crate::base::extract_type_arguments(base, arg_list, decompose_scala_type_arg);
+    base.record_type_arguments(identifier, arguments);
+}
+
+/// Decompose a child of `type_arguments` into `(type_name, nested_arg_list)`.
+///
+/// Returns `None` for punctuation and node kinds with no meaningful name.
+fn decompose_scala_type_arg<'a>(
+    base: &BaseExtractor,
+    node: Node<'a>,
+) -> Option<(String, Option<Node<'a>>)> {
+    if !node.is_named() {
+        return None; // skip [ , ]
+    }
+    match node.kind() {
+        "type_identifier" => Some((base.get_node_text(&node), None)),
+        "generic_type" => {
+            // Nested generic: e.g. `List[Int]` inside outer type_arguments.
+            let name = node
+                .child_by_field_name("type")
+                .map(|t| base.get_node_text(&t))
+                .unwrap_or_else(|| base.get_node_text(&node));
+            let nested = node.child_by_field_name("type_arguments");
+            Some((name, nested))
+        }
+        "stable_type_identifier" => {
+            // Qualified type: `scala.collection.mutable.Map` — use full source text as name.
+            Some((base.get_node_text(&node), None))
+        }
+        _ => {
+            // function_type (`Int => Boolean`), tuple_type, infix_type, wildcard, etc.
+            // Return the source text as a leaf so the ordinal slot is preserved.
+            // A None here would cause later args to receive wrong ordinals because
+            // extract_type_arguments only increments the ordinal counter on Some.
+            let text = base.get_node_text(&node);
+            if text.is_empty() {
+                None
+            } else {
+                Some((text, None))
+            }
+        }
+    }
 }

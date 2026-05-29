@@ -49,6 +49,43 @@ Item {
     }
 
     #[test]
+    fn test_builtin_property_types_are_not_recorded_as_type_usage() {
+        // QML property/signal annotations use builtin primitives (`string`, `int`,
+        // `real`, `bool`, `var`, ...). These are not resolvable type references and
+        // must be filtered out of identifier extraction, matching the C#/Python/Razor
+        // convention (`is_*_builtin_type`). A user-defined type (`UserModel`) in the
+        // same position MUST still be recorded so cross-file type refs keep working.
+        let qml_code = r#"
+import QtQuick 2.15
+
+Item {
+    property string title: "Worker"
+    property int count: 0
+    signal activated(string value)
+    property UserModel model
+}
+"#;
+
+        let identifiers = extract_identifiers(qml_code);
+        let type_usages: Vec<&str> = identifiers
+            .iter()
+            .filter(|id| id.kind == IdentifierKind::TypeUsage)
+            .map(|id| id.name.as_str())
+            .collect();
+
+        for builtin in ["string", "int", "real", "bool", "var"] {
+            assert!(
+                !type_usages.contains(&builtin),
+                "QML builtin `{builtin}` must not be recorded as a TypeUsage identifier, got {type_usages:?}"
+            );
+        }
+        assert!(
+            type_usages.contains(&"UserModel"),
+            "user-defined type `UserModel` must be recorded as a TypeUsage identifier, got {type_usages:?}"
+        );
+    }
+
+    #[test]
     fn test_extract_member_access_identifiers() {
         let qml_code = r#"
 import QtQuick 2.15

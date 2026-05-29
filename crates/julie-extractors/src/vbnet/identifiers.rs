@@ -1,4 +1,4 @@
-use crate::base::{BaseExtractor, Identifier, IdentifierKind, Symbol};
+use crate::base::{BaseExtractor, Identifier, IdentifierKind, Symbol, extract_type_arguments};
 use std::collections::HashMap;
 use tree_sitter::{Node, Tree};
 
@@ -85,7 +85,70 @@ fn extract_identifier_from_node(
                 );
             }
         }
+
+        // VB.NET generic type use site: `List(Of String)`, `Dictionary(Of String, Integer)`
+        // Grammar: generic_type → namespace_name (base name) + type_argument_list (args)
+        "generic_type" => {
+            // Outermost-only rule: skip if this generic_type is a nested arg of another generic.
+            if node
+                .parent()
+                .map(|p| p.kind() == "type_argument_list")
+                .unwrap_or(false)
+            {
+                return;
+            }
+            let children: Vec<_> = {
+                let mut cursor = node.walk();
+                node.children(&mut cursor).collect()
+            };
+            let Some(name_node) = children.iter().find(|c| c.kind() == "namespace_name") else {
+                return;
+            };
+            let name = base.get_node_text(name_node);
+            let containing_symbol_id = find_containing_symbol_id(base, node, symbol_map);
+            let identifier = base.create_identifier(
+                name_node,
+                name,
+                IdentifierKind::TypeUsage,
+                containing_symbol_id,
+            );
+            if let Some(arg_list) = children.iter().find(|c| c.kind() == "type_argument_list") {
+                let arguments = extract_type_arguments(base, *arg_list, decompose_vbnet_type_arg);
+                base.record_type_arguments(&identifier, arguments);
+            }
+        }
+
         _ => {}
+    }
+}
+
+/// `TypeArgDecomposer` for VB.NET: maps a named child of `type_argument_list` to its
+/// applied argument. Nested `generic_type` children recurse; everything else is a leaf.
+fn decompose_vbnet_type_arg<'a>(
+    base: &BaseExtractor,
+    node: Node<'a>,
+) -> Option<(String, Option<Node<'a>>)> {
+    if !node.is_named() {
+        return None; // skip punctuation (commas, "Of" keyword, parens)
+    }
+    match node.kind() {
+        "generic_type" => {
+            // Nested generic: e.g. `List(Of User)` inside `Dictionary(Of String, List(Of User))`.
+            let children: Vec<_> = {
+                let mut cursor = node.walk();
+                node.children(&mut cursor).collect()
+            };
+            let name_node = children.iter().find(|c| c.kind() == "namespace_name")?;
+            let name = base.get_node_text(name_node);
+            let nested = children
+                .into_iter()
+                .find(|c| c.kind() == "type_argument_list");
+            Some((name, nested))
+        }
+        _ => {
+            // Leaf: namespace_name ("String", "User"), primitive_type ("Integer"), etc.
+            Some((base.get_node_text(&node), None))
+        }
     }
 }
 

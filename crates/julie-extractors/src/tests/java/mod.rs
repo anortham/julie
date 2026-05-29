@@ -1,4 +1,6 @@
 mod annotation_tests;
+
+mod type_arguments;
 mod class_tests;
 mod cross_file_pending;
 mod cross_file_relationships;

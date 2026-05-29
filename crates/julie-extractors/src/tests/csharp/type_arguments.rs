@@ -132,3 +132,39 @@ public class Repo {
         "non-generic use must record no type arguments, got {usages:?}"
     );
 }
+
+#[test]
+fn construction_generic_records_argument() {
+    // `new List<User>()` — construction use site; should capture the type argument.
+    let code = r#"
+public class Repo {
+    public Repo() {
+        var items = new List<User>();
+    }
+}
+"#;
+    let usages = capture(code);
+    assert_eq!(
+        usages.len(),
+        1,
+        "exactly one generic use site (new List<User>()), got {usages:?}"
+    );
+    assert_eq!(top_level(&usages[0]), vec![(0, "User")]);
+    assert!(usages[0].arguments[0].children.is_empty());
+}
+
+#[test]
+fn heritage_generic_records_argument() {
+    // `class MyList : List<User>` — heritage use site; should capture the type argument.
+    let code = r#"
+public class MyList : List<User> { }
+"#;
+    let usages = capture(code);
+    assert_eq!(
+        usages.len(),
+        1,
+        "exactly one generic use site (: List<User>), got {usages:?}"
+    );
+    assert_eq!(top_level(&usages[0]), vec![(0, "User")]);
+    assert!(usages[0].arguments[0].children.is_empty());
+}

@@ -53,7 +53,7 @@ Historical matrix evidence is deprecated; current capability, fixture, and real-
 
 | symbols | relationships | pending | structured pending | identifiers | types | parse diagnostics |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 426 | 104 | 41 | 41 | 212 | 167 | 6 |
+| 426 | 104 | 41 | 41 | 215 | 167 | 6 |
 
 ## Kind Coverage Depth
 
@@ -107,7 +107,7 @@ Historical matrix evidence is deprecated; current capability, fixture, and real-
 | `bash` | `tree-sitter-bash` | `current` | 2 | 11 | 2 | 1 | 1 | 6 | 4 | 0 | 3 | 1 | 1 | 2 | 0 |
 | `powershell` | `tree-sitter-powershell` | `git_pinned` | 2 | 12 | 2 | 1 | 1 | 7 | 3 | 0 | 6 | 1 | 2 | 3 | 0 |
 | `gdscript` | `tree-sitter-gdscript` | `current` | 2 | 9 | 2 | 1 | 1 | 12 | 6 | 0 | 6 | 1 | 2 | 4 | 0 |
-| `razor` | `tree-sitter-razor` | `git_pinned` | 2 | 9 | 3 | 0 | 0 | 4 | 9 | 0 | 3 | 2 | 1 | 2 | 1 |
+| `razor` | `tree-sitter-razor` | `git_pinned` | 2 | 9 | 3 | 0 | 0 | 7 | 9 | 0 | 3 | 2 | 1 | 2 | 1 |
 | `sql` | `tree-sitter-sequel` | `current` | 2 | 15 | 4 | 1 | 1 | 3 | 13 | 1 | 4 | 1 | 1 | 4 | 0 |
 | `regex` | `tree-sitter-regex` | `current` | 2 | 8 | 4 | 0 | 0 | 6 | 8 | 0 | 3 | 1 | 2 | 2 | 1 |
 | `markdown` | `tree-sitter-md` | `current` | 2 | 11 | 2 | 0 | 0 | 0 | 0 | 0 | 3 | 1 | 0 | 1 | 3 |

@@ -1,4 +1,4 @@
-use crate::base::{BaseExtractor, Identifier, IdentifierKind, Symbol};
+use crate::base::{extract_type_arguments, BaseExtractor, Identifier, IdentifierKind, Symbol};
 use std::collections::HashMap;
 use tree_sitter::{Node, Tree};
 
@@ -43,18 +43,30 @@ fn extract_identifier_from_node(
 ) {
     match node.kind() {
         // Function calls: calculate(), obj.method()
+        // Also handles scoped Zig generic type applications: `var x: ArrayList(User)`.
+        // In Zig, generics are comptime functions and share `call_expression` with
+        // regular calls. Type-arg capture is gated by `is_zig_call_in_type_position`.
         "call_expression" => {
             // Try to get the function name from direct identifier child
             if let Some(name_node) = base.find_child_by_type(&node, "identifier") {
                 let name = base.get_node_text(&name_node);
                 let containing_symbol_id = find_containing_symbol_id(base, node, symbol_map);
 
-                base.create_identifier(
+                let identifier = base.create_identifier(
                     &name_node,
                     name,
                     IdentifierKind::Call,
                     containing_symbol_id,
                 );
+
+                // Scoped generic capture: only for calls in a type-annotation position.
+                // Zig has no `arguments` wrapper — args are direct named children of
+                // call_expression. Pass the call_expression itself as the arg_list;
+                // the decomposer skips the function identifier via the `function` field check.
+                if is_zig_call_in_type_position(node) {
+                    let arguments = extract_type_arguments(base, node, decompose_zig_type_arg);
+                    base.record_type_arguments(&identifier, arguments);
+                }
             }
             // Check for field_expression (method calls like obj.method())
             else if let Some(field_expr) = base.find_child_by_type(&node, "field_expression") {
@@ -182,6 +194,96 @@ fn is_after_colon(parent: Node, child: Node) -> bool {
         }
     }
     false
+}
+
+// ============================================================================
+// Type-argument capture helpers (Miller bridge Phase 2, scoped)
+// ============================================================================
+
+/// Returns `true` if this `call_expression` is in a type-annotation position.
+///
+/// Zig generics are comptime functions (`ArrayList(i32)`) and parse as
+/// `call_expression`, indistinguishable from regular calls at the grammar level.
+/// This heuristic gates type-arg capture to calls that serve as the type in:
+///   - `variable_declaration`: `var x: ArrayList(T) = ...`
+///   - `container_field`: `field: ArrayList(T),`
+///   - `parameter`: `fn f(x: ArrayList(T)) ...`
+///   - type-wrapper nodes (`pointer_type`, `optional_type`, `nullable_type`,
+///     `error_union_type`) that are themselves in a type position — recurse.
+fn is_zig_call_in_type_position(node: Node) -> bool {
+    let Some(parent) = node.parent() else {
+        return false;
+    };
+    match parent.kind() {
+        "variable_declaration" | "container_field" | "parameter" => {
+            is_after_colon(parent, node)
+        }
+        // Pointer/optional/nullable wrappers — recurse to check their parent context.
+        "pointer_type" | "optional_type" | "nullable_type" | "error_union_type"
+        | "slice_type" | "array_type" => is_zig_call_in_type_position(parent),
+        _ => false,
+    }
+}
+
+/// `TypeArgDecomposer` for Zig: maps a child of a `call_expression` arg-list to
+/// its applied argument.
+///
+/// **Important Zig grammar detail**: unlike TypeScript or C#, Zig's
+/// `call_expression` has NO `arguments` wrapper node — argument expressions are
+/// direct children alongside `(`, `,`, `)`. We therefore pass the
+/// `call_expression` itself as the `arg_list_node` to `extract_type_arguments`.
+///
+/// This means the decomposer receives the FUNCTION identifier as its first named
+/// child. We detect and skip it via the `function` field of the parent.
+///
+/// For nested generics (`ArrayList(User)` inside `Map(Key, ArrayList(User))`),
+/// the inner `call_expression` is itself passed as the `arg_list_node` for
+/// recursion — the same function-skip logic applies.
+fn decompose_zig_type_arg<'a>(
+    base: &BaseExtractor,
+    node: Node<'a>,
+) -> Option<(String, Option<Node<'a>>)> {
+    if !node.is_named() {
+        return None; // skip (, ), commas
+    }
+
+    // Skip the `function` field identifier of the parent call_expression.
+    // This fires for the outermost function name (e.g. `ArrayList` in `ArrayList(User)`)
+    // and for each nested generic's own function name.
+    if let Some(parent) = node.parent() {
+        if parent.kind() == "call_expression" {
+            if parent
+                .child_by_field_name("function")
+                .map(|f| f.id() == node.id())
+                .unwrap_or(false)
+            {
+                return None;
+            }
+        }
+    }
+
+    match node.kind() {
+        "identifier" => Some((base.get_node_text(&node), None)),
+        "call_expression" => {
+            // Nested generic: e.g. `ArrayList(User)` inside `Map(Key, ArrayList(User))`.
+            // Use the `function` field for the base name; pass the call_expression itself
+            // as the nested arg_list (the same decomposer skips its own function identifier).
+            let name = node
+                .child_by_field_name("function")
+                .map(|f| base.get_node_text(&f))
+                .unwrap_or_else(|| base.get_node_text(&node));
+            Some((name, Some(node)))
+        }
+        _ => {
+            // comptime_int, builtin_type, etc. — source text as a leaf.
+            let text = base.get_node_text(&node);
+            if text.is_empty() {
+                None
+            } else {
+                Some((text, None))
+            }
+        }
+    }
 }
 
 /// Skip Zig builtin primitive types that would create noise.

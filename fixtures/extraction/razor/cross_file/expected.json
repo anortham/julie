@@ -194,6 +194,22 @@
   "structured_pending_relationships": [],
   "identifiers": [
     {
+      "key": "fixtures/extraction/razor/cross_file/source.razor:ItemFromOther:type_usage:16:23",
+      "name": "ItemFromOther",
+      "kind": "type_usage",
+      "language": "razor",
+      "file_path": "fixtures/extraction/razor/cross_file/source.razor",
+      "start_line": 16,
+      "start_column": 23,
+      "end_line": 16,
+      "end_column": 36,
+      "start_byte": 464,
+      "end_byte": 477,
+      "containing_key": "fixtures/extraction/razor/cross_file/source.razor:Entry:15:4",
+      "target_key": null,
+      "confidence": "1.000"
+    },
+    {
       "key": "fixtures/extraction/razor/cross_file/source.razor:LocalHelper:call:10:4",
       "name": "LocalHelper",
       "kind": "call",
@@ -222,6 +238,38 @@
       "start_byte": 493,
       "end_byte": 504,
       "containing_key": "fixtures/extraction/razor/cross_file/source.razor:Entry:15:4",
+      "target_key": null,
+      "confidence": "1.000"
+    },
+    {
+      "key": "fixtures/extraction/razor/cross_file/source.razor:Models:type_usage:7:20",
+      "name": "Models",
+      "kind": "type_usage",
+      "language": "razor",
+      "file_path": "fixtures/extraction/razor/cross_file/source.razor",
+      "start_line": 7,
+      "start_column": 20,
+      "end_line": 7,
+      "end_column": 26,
+      "start_byte": 307,
+      "end_byte": 313,
+      "containing_key": "fixtures/extraction/razor/cross_file/source.razor:OtherProject.Models:7:0",
+      "target_key": null,
+      "confidence": "1.000"
+    },
+    {
+      "key": "fixtures/extraction/razor/cross_file/source.razor:OtherProject:type_usage:7:7",
+      "name": "OtherProject",
+      "kind": "type_usage",
+      "language": "razor",
+      "file_path": "fixtures/extraction/razor/cross_file/source.razor",
+      "start_line": 7,
+      "start_column": 7,
+      "end_line": 7,
+      "end_column": 19,
+      "start_byte": 294,
+      "end_byte": 306,
+      "containing_key": "fixtures/extraction/razor/cross_file/source.razor:OtherProject.Models:7:0",
       "target_key": null,
       "confidence": "1.000"
     }

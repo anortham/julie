@@ -1,4 +1,4 @@
-use crate::base::{Identifier, IdentifierKind, Symbol};
+use crate::base::{BaseExtractor, Identifier, IdentifierKind, Symbol};
 use std::collections::HashMap;
 use tree_sitter::Node;
 
@@ -102,13 +102,13 @@ impl SwiftExtractor {
                 let name = self.base.get_node_text(&node);
                 if is_swift_type_usage_identifier(node) && !is_swift_builtin_type(&name) {
                     let containing_symbol_id = self.find_containing_symbol_id(node, symbol_map);
-
-                    self.base.create_identifier(
+                    let identifier = self.base.create_identifier(
                         &node,
                         name,
                         IdentifierKind::TypeUsage,
                         containing_symbol_id,
                     );
+                    record_outermost_swift_type_arguments(&mut self.base, node, &identifier);
                 }
             }
 
@@ -160,6 +160,84 @@ impl SwiftExtractor {
         }
 
         None
+    }
+}
+
+/// If `name_node` is the `type_identifier` of an *outermost* `user_type` generic
+/// use (e.g. the `Array` of `Array<Int>`), records that generic's ordered/nested
+/// applied type arguments against `identifier`.
+///
+/// Fires from the `simple_identifier | type_identifier` arm so it uniformly
+/// covers property annotations, parameter types, and return types. Nested
+/// generics are skipped: their args ride along as `children` of the enclosing
+/// usage and are not double-counted as a separate TypeArgumentUsage row.
+fn record_outermost_swift_type_arguments(
+    base: &mut BaseExtractor,
+    name_node: Node,
+    identifier: &Identifier,
+) {
+    let Some(user_type) = name_node.parent() else {
+        return;
+    };
+    if user_type.kind() != "user_type" {
+        return;
+    }
+    // A user_type whose parent is type_arguments is itself a type argument
+    // inside another generic — its args ride along as children of the outer
+    // usage rather than producing a separate TypeArgumentUsage row.
+    if user_type
+        .parent()
+        .map(|p| p.kind() == "type_arguments")
+        .unwrap_or(false)
+    {
+        return;
+    }
+    // Find the type_arguments child that holds the angle-bracket arg list.
+    let mut cursor = user_type.walk();
+    let Some(arg_list) = user_type
+        .named_children(&mut cursor)
+        .find(|c| c.kind() == "type_arguments")
+    else {
+        return; // no type_arguments → not a generic application
+    };
+    let arguments =
+        crate::base::extract_type_arguments(base, arg_list, decompose_swift_type_arg);
+    base.record_type_arguments(identifier, arguments);
+}
+
+/// `TypeArgDecomposer` for Swift: maps a child of a `type_arguments` node to
+/// its applied argument. Swift's `type_arguments` children are accessed via the
+/// `name` field (multiple), each being a `user_type` or other type node.
+/// Unnamed punctuation (`<`, `,`, `>`) is skipped. For a nested `user_type`
+/// returns the base name plus its inner `type_arguments` to recurse into; for
+/// every other named type node returns its source text as a leaf.
+fn decompose_swift_type_arg<'a>(
+    base: &BaseExtractor,
+    node: Node<'a>,
+) -> Option<(String, Option<Node<'a>>)> {
+    if !node.is_named() {
+        return None; // skip punctuation: <, >, ,
+    }
+    match node.kind() {
+        "user_type" => {
+            // Find the type_identifier child for the type name.
+            let mut cursor1 = node.walk();
+            let type_id = node
+                .named_children(&mut cursor1)
+                .find(|c| c.kind() == "type_identifier")?;
+            let name = base.get_node_text(&type_id);
+            // Find optional type_arguments child to recurse into for nesting.
+            let mut cursor2 = node.walk();
+            let nested = node
+                .named_children(&mut cursor2)
+                .find(|c| c.kind() == "type_arguments");
+            Some((name, nested))
+        }
+        _ => {
+            // array_type, dictionary_type, optional_type, tuple_type, etc.
+            // Use the full source text as a leaf type name.
+            Some((base.get_node_text(&node), None))
+        }
     }
 }
 

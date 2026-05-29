@@ -5,6 +5,7 @@
 pub mod cross_file_pending;
 pub mod parsing;
 pub mod relationships;
+pub mod type_arguments;
 
 use crate::base::SymbolKind;
 use crate::vue::VueExtractor;

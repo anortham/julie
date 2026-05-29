@@ -1816,4 +1816,5 @@ function Simple-Function {
 }
 mod cross_file_pending;
 mod cross_file_relationships;
+mod type_arguments;
 mod types; // Phase 4: Type extraction verification tests // Cross-file relationship resolution tests

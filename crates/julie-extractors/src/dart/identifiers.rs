@@ -3,7 +3,7 @@
 // Methods for extracting identifier usages (function calls, member access, etc.)
 
 use super::helpers::{find_child_by_type, get_node_text};
-use crate::base::{BaseExtractor, IdentifierKind, Symbol};
+use crate::base::{BaseExtractor, Identifier, IdentifierKind, Symbol};
 use std::collections::HashMap;
 use tree_sitter::Node;
 
@@ -103,8 +103,9 @@ fn extract_identifier_from_node(
             }
 
             let containing_symbol_id = find_containing_symbol_id(base, node, symbol_map);
-
-            base.create_identifier(&node, name, IdentifierKind::TypeUsage, containing_symbol_id);
+            let identifier =
+                base.create_identifier(&node, name, IdentifierKind::TypeUsage, containing_symbol_id);
+            record_outermost_dart_type_arguments(base, node, &identifier);
         }
 
         "unconditional_assignable_selector" => {
@@ -123,6 +124,110 @@ fn extract_identifier_from_node(
 
         _ => {}
     }
+}
+
+/// If `name_node` is the `type_identifier` of an *outermost* generic use site,
+/// records that generic's ordered/nested applied type arguments against `identifier`.
+///
+/// ## Grammar details
+///
+/// Dart represents generic types in two structurally different ways depending on
+/// context:
+///
+/// **Annotation / nested-arg context** (`parent.kind() == "type"`):
+/// A `type` wrapper node contains `type_identifier` (the base name) and a
+/// `type_arguments` named child: `type { type_identifier, type_arguments { … } }`.
+/// The outermost check: if the `type` wrapper is itself inside a `type_arguments`
+/// node, it is a nested arg and must not produce a separate usage row.
+///
+/// **Construction / heritage context** (`grandparent.kind()` ∈
+/// `{new_expression, superclass, interfaces, mixins, mixin_application}`):
+/// The grammar splits the generic into TWO sibling `type` nodes:
+/// - First `type { type_identifier("Foo") }` — the base type name
+/// - Second `type { < type { … } , type { … } > }` — the angle-bracket arg list
+///
+/// There is NO `type_arguments` node here; instead the sibling `type` node IS
+/// the arg container and its named children are individual `type` arg-wrappers.
+/// `decompose_dart_type_arg` expects exactly that layout (it handles `type`
+/// wrapper children), so we can reuse it unchanged.
+fn record_outermost_dart_type_arguments(
+    base: &mut BaseExtractor,
+    name_node: Node,
+    identifier: &Identifier,
+) {
+    let Some(parent) = name_node.parent() else {
+        return;
+    };
+    if parent.kind() != "type" {
+        return; // type_identifier not in a type wrapper — unexpected context
+    }
+    let Some(grandparent) = parent.parent() else {
+        return;
+    };
+
+    match grandparent.kind() {
+        // ── Nested arg: rides as child of outer usage ────────────────────────
+        "type_arguments" => return,
+
+        // ── Construction / Heritage ─────────────────────────────────────────
+        // The arg list is the NEXT named sibling `type` node (the `<...>` part).
+        "new_expression" | "superclass" | "interfaces" | "mixins" | "mixin_application" => {
+            let Some(args_container) = parent.next_named_sibling() else {
+                return; // non-generic — no sibling
+            };
+            if args_container.kind() != "type" {
+                return; // sibling is arguments/class_body/etc. — not generic
+            }
+            // The args_container is the `type { < type{…} , type{…} > }` node.
+            // Its named children are the individual arg-wrapper `type` nodes.
+            let arguments =
+                crate::base::extract_type_arguments(base, args_container, decompose_dart_type_arg);
+            base.record_type_arguments(identifier, arguments);
+        }
+
+        // ── Standard annotation ──────────────────────────────────────────────
+        // The `type` wrapper contains `type_identifier` + `type_arguments` sibling.
+        _ => {
+            let mut cursor = parent.walk();
+            let Some(arg_list) = parent
+                .named_children(&mut cursor)
+                .find(|c| c.kind() == "type_arguments")
+            else {
+                return; // non-generic annotation
+            };
+            let arguments =
+                crate::base::extract_type_arguments(base, arg_list, decompose_dart_type_arg);
+            base.record_type_arguments(identifier, arguments);
+        }
+    }
+}
+
+/// `TypeArgDecomposer` for Dart: maps a child of a `type_arguments` node to its
+/// applied argument. Dart's `type_arguments` children are `type` wrapper nodes
+/// (each containing a `type_identifier` and optionally nested `type_arguments`).
+/// Unnamed punctuation (`<`, `,`, `>`) is skipped by the `!is_named()` guard.
+fn decompose_dart_type_arg<'a>(
+    base: &BaseExtractor,
+    node: Node<'a>,
+) -> Option<(String, Option<Node<'a>>)> {
+    if !node.is_named() {
+        return None; // skip punctuation: <, >, ,
+    }
+    if node.kind() != "type" {
+        return None; // defensive skip
+    }
+    // Find the type_identifier child for the type name.
+    let mut cursor1 = node.walk();
+    let type_id = node
+        .named_children(&mut cursor1)
+        .find(|c| c.kind() == "type_identifier")?;
+    let name = base.get_node_text(&type_id);
+    // Find optional type_arguments child to recurse into for nested generics.
+    let mut cursor2 = node.walk();
+    let nested = node
+        .named_children(&mut cursor2)
+        .find(|c| c.kind() == "type_arguments");
+    Some((name, nested))
 }
 
 /// Check if a `type_identifier` node is a declaration name rather than a type reference.

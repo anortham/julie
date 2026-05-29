@@ -8,6 +8,7 @@ mod error_handling;
 mod generics;
 mod identifiers;
 mod integration;
+mod type_arguments;
 mod type_assertions;
 
 #[cfg(test)]

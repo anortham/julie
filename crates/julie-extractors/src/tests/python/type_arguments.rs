@@ -5,11 +5,9 @@
 //! return type hints — all paths that pass through a `type` node, which is the
 //! boundary that `is_python_type_usage_node` checks for.
 //!
-//! **Scope note:** Class-base subscripts (`class C(Generic[K, V])`) are NOT
-//! reachable via the identifier path — the `argument_list` node is a stopping
-//! node in `is_python_type_usage_node`, so `Generic` never gets a TypeUsage
-//! identifier created. That gap is flagged to the lead; extending it would
-//! require modifying identifier extraction, which is a separate concern.
+//! Heritage/construction generics (`class Repo(Mapping[str, int])`) are
+//! captured by allowing `argument_list` nodes whose parent is `class_definition`
+//! to count as type-usage positions in `is_python_type_usage_node`.
 
 use crate::base::TypeArgumentUsage;
 use crate::python::PythonExtractor;
@@ -104,6 +102,43 @@ def process(items: List[Item]) -> None:
     );
     assert_eq!(top_level(&usages[0]), vec![(0, "Item")]);
     assert!(usages[0].arguments[0].children.is_empty());
+}
+
+#[test]
+fn class_heritage_generic_base_records_arguments() {
+    // `class Repo(Mapping[str, int])` — class inherits a generic base.
+    // Heritage subscript is in an `argument_list` whose parent is `class_definition`.
+    // Bug: `argument_list` was a stopping node in `is_python_type_usage_node`,
+    // so `Mapping` never got a TypeUsage identifier. Fix: allow class-heritage position.
+    let code = r#"
+class Repo(Mapping[str, int]):
+    pass
+"#;
+    let usages = capture(code);
+    assert_eq!(
+        usages.len(),
+        1,
+        "exactly one generic use site (Mapping[str,int] in class base), got {usages:?}"
+    );
+    assert_eq!(
+        top_level(&usages[0]),
+        vec![(0, "str"), (1, "int")],
+        "Mapping base ordinals must be (0,str) (1,int)"
+    );
+}
+
+#[test]
+fn call_arg_generic_does_not_record() {
+    // `foo(Bar[int])` — generic subscript passed as a call argument, not a heritage base.
+    // Must NOT produce any TypeArgumentUsage rows (regression guard for the heritage fix).
+    let code = r#"
+foo(Bar[int])
+"#;
+    let usages = capture(code);
+    assert!(
+        usages.is_empty(),
+        "call-argument generic must not record type args, got {usages:?}"
+    );
 }
 
 #[test]

@@ -3,7 +3,7 @@
 //! This module handles extraction of function calls, member access, and other
 //! identifier usages for LSP-quality find_references support.
 
-use crate::base::{BaseExtractor, Identifier, IdentifierKind, Symbol};
+use crate::base::{BaseExtractor, Identifier, IdentifierKind, Symbol, extract_type_arguments};
 use std::collections::HashMap;
 use tree_sitter::Node;
 
@@ -41,35 +41,49 @@ fn extract_identifier_from_node(
     symbol_map: &HashMap<String, &Symbol>,
 ) {
     match node.kind() {
-        // Function/method calls: foo(), bar.baz()
+        // Function/method calls: foo(), bar.baz(), mutableListOf<User>()
         "call_expression" => {
-            let mut cursor = node.walk();
-            for child in node.children(&mut cursor) {
-                if child.kind() == "identifier" || child.kind() == "simple_identifier" {
-                    let name = base.get_node_text(&child);
-                    let containing_symbol_id = find_containing_symbol_id(base, node, symbol_map);
+            // Collect children once so we can find both the callee and type_arguments
+            // without keeping the cursor borrow alive across mutable base calls.
+            let children: Vec<_> = {
+                let mut cursor = node.walk();
+                node.children(&mut cursor).collect()
+            };
 
-                    base.create_identifier(
-                        &child,
-                        name,
-                        IdentifierKind::Call,
-                        containing_symbol_id,
-                    );
-                    return;
-                } else if child.kind() == "navigation_expression" {
-                    // For member access calls, extract the rightmost identifier
-                    if let Some((name_node, name)) = extract_rightmost_identifier(base, &child) {
-                        let containing_symbol_id =
-                            find_containing_symbol_id(base, node, symbol_map);
+            let type_args_node = children.iter().find(|c| c.kind() == "type_arguments").copied();
 
-                        base.create_identifier(
-                            &name_node,
-                            name,
-                            IdentifierKind::Call,
-                            containing_symbol_id,
-                        );
+            // Simple call: identifier or simple_identifier is the first callee child.
+            if let Some(child) = children
+                .iter()
+                .find(|c| c.kind() == "identifier" || c.kind() == "simple_identifier")
+            {
+                let arguments = type_args_node
+                    .map(|ta| extract_type_arguments(base, ta, decompose_kotlin_type_arg));
+                let name = base.get_node_text(child);
+                let containing = find_containing_symbol_id(base, node, symbol_map);
+                let identifier =
+                    base.create_identifier(child, name, IdentifierKind::Call, containing);
+                if let Some(args) = arguments {
+                    if !args.is_empty() {
+                        base.record_type_arguments(&identifier, args);
                     }
-                    return;
+                }
+            } else if let Some(nav_expr) =
+                children.iter().find(|c| c.kind() == "navigation_expression")
+            {
+                // Member call: obj.foo<T>()
+                let nav_name = extract_rightmost_identifier(base, nav_expr);
+                let arguments = type_args_node
+                    .map(|ta| extract_type_arguments(base, ta, decompose_kotlin_type_arg));
+                let containing = find_containing_symbol_id(base, node, symbol_map);
+                if let Some((name_node, name)) = nav_name {
+                    let identifier =
+                        base.create_identifier(&name_node, name, IdentifierKind::Call, containing);
+                    if let Some(args) = arguments {
+                        if !args.is_empty() {
+                            base.record_type_arguments(&identifier, args);
+                        }
+                    }
                 }
             }
         }
@@ -97,7 +111,11 @@ fn extract_identifier_from_node(
                 }
 
                 let containing = find_containing_symbol_id(base, node, symbol_map);
-                base.create_identifier(&name_node, name, IdentifierKind::TypeUsage, containing);
+                let identifier =
+                    base.create_identifier(&name_node, name, IdentifierKind::TypeUsage, containing);
+                // If this user_type is the outermost generic use site (not nested
+                // inside another type_arguments list), record its ordered type args.
+                record_outermost_kotlin_type_arguments(base, node, &identifier);
             }
         }
 
@@ -126,6 +144,120 @@ fn extract_identifier_from_node(
         _ => {
             // Skip other node types
         }
+    }
+}
+
+/// Record outermost generic type arguments for a `user_type` node.
+///
+/// Fires when the `user_type` is an outermost generic use site (e.g. `List` in
+/// `List<User>`), but not when it is nested inside another generic's
+/// `type_arguments` (where it rides along as a `child`).
+fn record_outermost_kotlin_type_arguments(
+    base: &mut BaseExtractor,
+    user_type_node: Node,
+    identifier: &Identifier,
+) {
+    // Skip if this user_type is nested inside another type_arguments.
+    if is_kotlin_user_type_nested(user_type_node) {
+        return;
+    }
+    // Find the type_arguments child (e.g. `<User>` in `List<User>`).
+    let children: Vec<_> = {
+        let mut cursor = user_type_node.walk();
+        user_type_node.children(&mut cursor).collect()
+    };
+    let Some(arg_list) = children.into_iter().find(|c| c.kind() == "type_arguments") else {
+        return;
+    };
+    let arguments = extract_type_arguments(base, arg_list, decompose_kotlin_type_arg);
+    base.record_type_arguments(identifier, arguments);
+}
+
+/// Returns true if `user_type` is nested inside a `type_projection` (i.e., it
+/// is a type argument of some outer generic, not an outermost use site).
+///
+/// In Kotlin the nesting path is:
+/// `outer_user_type > type_arguments > type_projection > [nullable_type >]* user_type`
+fn is_kotlin_user_type_nested(user_type: Node) -> bool {
+    let mut current = user_type;
+    loop {
+        let Some(parent) = current.parent() else {
+            return false;
+        };
+        match parent.kind() {
+            "type_projection" => return true,
+            // Transparent type wrappers — keep climbing.
+            "nullable_type" | "parenthesized_type" | "non_nullable_type" => {
+                current = parent;
+            }
+            _ => return false,
+        }
+    }
+}
+
+/// Decompose a single child of a Kotlin `type_arguments` node.
+///
+/// Kotlin always wraps each argument in `type_projection`:
+/// `type_arguments { type_projection { [variance_modifier,] type } ... }`
+///
+/// Returns `(type_name, Option<nested_type_arguments_node>)`.
+fn decompose_kotlin_type_arg<'a>(
+    base: &BaseExtractor,
+    node: Node<'a>,
+) -> Option<(String, Option<Node<'a>>)> {
+    if !node.is_named() {
+        return None; // skip commas and angle brackets
+    }
+    if node.kind() != "type_projection" {
+        return None;
+    }
+    // Find the actual type node inside type_projection (skip variance_modifier).
+    let type_node = {
+        let children: Vec<Node<'a>> = {
+            let mut cursor = node.walk();
+            node.children(&mut cursor).collect()
+        };
+        children
+            .into_iter()
+            .find(|c| c.is_named() && c.kind() != "variance_modifier")
+    };
+    let Some(type_node) = type_node else {
+        return Some(("*".to_string(), None)); // star projection
+    };
+    extract_kotlin_type_node_info(base, type_node)
+}
+
+/// Recursively extract `(type_name, nested_type_arguments)` from a type node.
+fn extract_kotlin_type_node_info<'a>(
+    base: &BaseExtractor,
+    node: Node<'a>,
+) -> Option<(String, Option<Node<'a>>)> {
+    match node.kind() {
+        "user_type" => {
+            let children: Vec<Node<'a>> = {
+                let mut cursor = node.walk();
+                node.children(&mut cursor).collect()
+            };
+            let name = children
+                .iter()
+                .find(|c| c.kind() == "identifier" || c.kind() == "simple_identifier")
+                .map(|n| base.get_node_text(n))
+                .unwrap_or_else(|| base.get_node_text(&node));
+            let nested = children.into_iter().find(|c| c.kind() == "type_arguments");
+            Some((name, nested))
+        }
+        "nullable_type" => {
+            // `Foo?` — unwrap the inner type and append "?".
+            let mut cursor = node.walk();
+            let inner = node.named_children(&mut cursor).next();
+            if let Some(inner) = inner {
+                extract_kotlin_type_node_info(base, inner)
+                    .map(|(name, nested)| (format!("{}?", name), nested))
+            } else {
+                Some((base.get_node_text(&node), None))
+            }
+        }
+        _ => Some((base.get_node_text(&node), None)),
     }
 }
 

@@ -1,7 +1,7 @@
 //! PowerShell identifier extraction for LSP-quality find_references
 //! Extracts identifier usages (function calls, member access, etc.)
 
-use crate::base::{BaseExtractor, Identifier, IdentifierKind, Symbol, SymbolKind};
+use crate::base::{extract_type_arguments, BaseExtractor, Identifier, IdentifierKind, Symbol, SymbolKind};
 use std::collections::HashMap;
 use tree_sitter::Node;
 
@@ -138,9 +138,98 @@ fn extract_identifier_from_node(
             }
         }
 
+        // PowerShell .NET generic type: [List[User]], [Dictionary[string, int]]
+        // The grammar uses `generic_type_name` for the base name and
+        // `generic_type_arguments` (sibling in the parent `type_spec`) for the args.
+        "generic_type_name" => {
+            // Skip nested generics: a generic_type_name whose parent type_spec lives
+            // inside generic_type_arguments is itself a nested argument — its args
+            // ride along as children of the enclosing usage, not as a separate row.
+            let is_nested = node
+                .parent() // type_spec
+                .and_then(|p| p.parent()) // generic_type_arguments
+                .map(|gp| gp.kind() == "generic_type_arguments")
+                .unwrap_or(false);
+            if is_nested {
+                return;
+            }
+
+            // Extract the base type name from the `type_name` child.
+            let mut cursor = node.walk();
+            let Some(type_name_node) = node.named_children(&mut cursor).next() else {
+                return;
+            };
+            let name = base.get_node_text(&type_name_node);
+            let containing_symbol_id = find_containing_symbol_id(base, node, symbol_map);
+            let identifier = base.create_identifier(
+                &type_name_node,
+                name,
+                IdentifierKind::TypeUsage,
+                containing_symbol_id,
+            );
+
+            // Find the `generic_type_arguments` sibling in the parent `type_spec`.
+            let Some(type_spec) = node.parent() else {
+                return;
+            };
+            let mut spec_cursor = type_spec.walk();
+            let Some(arg_list) = type_spec
+                .named_children(&mut spec_cursor)
+                .find(|c| c.kind() == "generic_type_arguments")
+            else {
+                return;
+            };
+
+            let arguments = extract_type_arguments(base, arg_list, decompose_powershell_type_arg);
+            base.record_type_arguments(&identifier, arguments);
+        }
+
         _ => {
             // Skip other node types for now
         }
+    }
+}
+
+// ============================================================================
+// Type-argument capture helpers (Miller bridge Phase 2)
+// ============================================================================
+
+/// `TypeArgDecomposer` for PowerShell: maps a child of a `generic_type_arguments`
+/// node to its applied argument.
+///
+/// Each child of `generic_type_arguments` is a `type_spec`. A `type_spec` for a
+/// leaf argument contains a `type_name` child; one for a nested generic contains
+/// a `generic_type_name` + `generic_type_arguments`. Unnamed nodes (commas,
+/// brackets `[`, `]`) return `None` and are skipped.
+fn decompose_powershell_type_arg<'a>(
+    base: &BaseExtractor,
+    node: Node<'a>,
+) -> Option<(String, Option<Node<'a>>)> {
+    if !node.is_named() {
+        return None; // skip commas, brackets
+    }
+    if node.kind() != "type_spec" {
+        return None; // only type_spec children are arguments
+    }
+    let mut cursor1 = node.walk();
+    let children: Vec<_> = node.named_children(&mut cursor1).collect();
+
+    // Check for nested generic: generic_type_name + generic_type_arguments
+    if let Some(&gtn) = children.iter().find(|c| c.kind() == "generic_type_name") {
+        // Extract the type_name text from the generic_type_name child.
+        let mut gtn_cursor = gtn.walk();
+        let name = gtn
+            .named_children(&mut gtn_cursor)
+            .next()
+            .map(|n| base.get_node_text(&n))
+            .unwrap_or_else(|| base.get_node_text(&gtn));
+        // The nested arg list is the generic_type_arguments sibling.
+        let nested = children.iter().find(|c| c.kind() == "generic_type_arguments").copied();
+        Some((name, nested))
+    } else {
+        // Leaf argument: extract name from type_name child.
+        let type_name = children.iter().find(|c| c.kind() == "type_name")?;
+        Some((base.get_node_text(type_name), None))
     }
 }
 

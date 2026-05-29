@@ -185,7 +185,18 @@ fn is_python_type_usage_node(node: Node) -> bool {
     while let Some(parent) = current.parent() {
         match parent.kind() {
             "type" | "generic_type" | "union_type" => return true,
-            "call" | "argument_list" | "return_statement" | "block" | "module" => return false,
+            "call" | "return_statement" | "block" | "module" => return false,
+            // `argument_list` is a stopping node for regular call arguments.
+            // Exception: class superclasses sit in an `argument_list` whose parent
+            // is `class_definition`. Allow that context so heritage subscripts like
+            // `class Repo(Mapping[str, int])` are captured as type-usage positions.
+            "argument_list" => {
+                let parent_is_class = parent
+                    .parent()
+                    .map(|gp| gp.kind() == "class_definition")
+                    .unwrap_or(false);
+                return parent_is_class;
+            }
             _ => {}
         }
 

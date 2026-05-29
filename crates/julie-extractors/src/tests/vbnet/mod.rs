@@ -48,4 +48,5 @@ pub mod cross_file_pending;
 pub mod identifiers;
 pub mod members;
 pub mod relationships;
+pub mod type_arguments;
 pub mod types;

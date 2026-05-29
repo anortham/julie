@@ -2,7 +2,7 @@
 /// - Function calls
 /// - Variable references
 /// - Member access expressions
-use crate::base::{Identifier, IdentifierKind, Symbol, SymbolKind};
+use crate::base::{BaseExtractor, Identifier, IdentifierKind, Symbol, SymbolKind};
 use crate::rust::RustExtractor;
 use tree_sitter::Tree;
 
@@ -51,61 +51,80 @@ fn extract_identifier_from_node(
     containing_symbols: &ContainingSymbolIndex<'_>,
 ) {
     match node.kind() {
-        // Function calls: foo(), bar.baz()
+        // Function calls: foo(), bar.baz(), foo::<T>() (turbofish)
         "call_expression" => {
             if let Some(func_node) = node.child_by_field_name("function") {
-                // Handle method calls (e.g., self.method())
-                // Extract just the method name, not the whole "self.method" text
+                // Unwrap turbofish: generic_function { function: ..., type_arguments: ... }
+                // e.g. `foo::<String>()` or `self.collect::<Vec<u8>>()`
+                let (inner_func, turbofish_arg_list) = if func_node.kind() == "generic_function" {
+                    let inner = func_node.child_by_field_name("function").unwrap_or(func_node);
+                    let args = func_node.child_by_field_name("type_arguments");
+                    (inner, args)
+                } else {
+                    (func_node, None)
+                };
+
                 let name = {
                     let base = extractor.get_base_mut();
-                    if func_node.kind() == "field_expression" {
+                    if inner_func.kind() == "field_expression" {
                         // Method call: extract just the field name
-                        if let Some(field_node) = func_node.child_by_field_name("field") {
+                        if let Some(field_node) = inner_func.child_by_field_name("field") {
                             base.get_node_text(&field_node)
                         } else {
-                            base.get_node_text(&func_node)
+                            base.get_node_text(&inner_func)
                         }
-                    } else if func_node.kind() == "scoped_identifier" {
+                    } else if inner_func.kind() == "scoped_identifier" {
                         // Qualified call: crate::module::function() → extract "function"
-                        if let Some(name_node) = func_node.child_by_field_name("name") {
+                        if let Some(name_node) = inner_func.child_by_field_name("name") {
                             base.get_node_text(&name_node)
                         } else {
-                            base.get_node_text(&func_node)
+                            base.get_node_text(&inner_func)
                         }
                     } else {
                         // Regular function call (bare identifier)
-                        base.get_node_text(&func_node)
+                        base.get_node_text(&inner_func)
                     }
                 };
 
-                let identifier_node = if func_node.kind() == "field_expression" {
-                    if let Some(field_node) = func_node.child_by_field_name("field") {
+                let identifier_node = if inner_func.kind() == "field_expression" {
+                    if let Some(field_node) = inner_func.child_by_field_name("field") {
                         field_node
                     } else {
-                        func_node
+                        inner_func
                     }
-                } else if func_node.kind() == "scoped_identifier" {
-                    if let Some(name_node) = func_node.child_by_field_name("name") {
+                } else if inner_func.kind() == "scoped_identifier" {
+                    if let Some(name_node) = inner_func.child_by_field_name("name") {
                         name_node
                     } else {
-                        func_node
+                        inner_func
                     }
                 } else {
-                    func_node
+                    inner_func
                 };
 
                 // Find containing symbol (which function/method contains this call)
                 let containing_symbol_id = find_containing_symbol_id(node, containing_symbols);
 
                 // Create identifier for this function call
-                {
+                let identifier = {
                     let base = extractor.get_base_mut();
                     base.create_identifier(
                         &identifier_node,
                         name,
                         IdentifierKind::Call,
                         containing_symbol_id,
+                    )
+                };
+
+                // Record turbofish type arguments (e.g. `foo::<String>()` → (0, "String"))
+                if let Some(arg_list) = turbofish_arg_list {
+                    let base = extractor.get_base_mut();
+                    let arguments = crate::base::extract_type_arguments(
+                        base,
+                        arg_list,
+                        decompose_rust_type_arg,
                     );
+                    base.record_type_arguments(&identifier, arguments);
                 }
             }
         }
@@ -158,15 +177,18 @@ fn extract_identifier_from_node(
                 };
                 let containing_symbol_id = find_containing_symbol_id(node, containing_symbols);
 
-                {
+                let identifier = {
                     let base = extractor.get_base_mut();
                     base.create_identifier(
                         &name_node,
                         name,
                         IdentifierKind::TypeUsage,
                         containing_symbol_id,
-                    );
-                }
+                    )
+                };
+                // Record type args when the scoped type is the `type` field of a
+                // generic_type: e.g. `std::io::Error<T>` → node.parent() == generic_type
+                record_outermost_rust_type_arguments_for_scoped(extractor, node, &identifier);
             }
         }
 
@@ -178,15 +200,18 @@ fn extract_identifier_from_node(
                 };
                 let containing_symbol_id = find_containing_symbol_id(node, containing_symbols);
 
-                {
+                let identifier = {
                     let base = extractor.get_base_mut();
                     base.create_identifier(
                         &node,
                         name,
                         IdentifierKind::TypeUsage,
                         containing_symbol_id,
-                    );
-                }
+                    )
+                };
+                // Record type args when this identifier is the base of an outermost
+                // generic: e.g. `Vec` in `Vec<String>` → parent is generic_type
+                record_outermost_rust_type_arguments(extractor, node, &identifier);
             }
         }
 
@@ -229,6 +254,104 @@ fn is_inside_call_function(node: tree_sitter::Node) -> bool {
         current = parent;
     }
     false
+}
+
+/// If `name_node` (a `type_identifier`) is the direct `type` child of an
+/// *outermost* `generic_type` use site (e.g. the `Vec` of `Vec<String>`),
+/// record that generic's ordered/nested applied type arguments against
+/// `identifier`.
+///
+/// "Outermost" means the `generic_type` is NOT itself inside another
+/// `type_arguments` list — nested generics ride along as `children` of the
+/// enclosing usage and are never double-counted as separate rows.
+fn record_outermost_rust_type_arguments(
+    extractor: &mut RustExtractor,
+    name_node: tree_sitter::Node,
+    identifier: &Identifier,
+) {
+    let Some(parent) = name_node.parent() else {
+        return;
+    };
+    // Both `generic_type` (type-position) and `generic_type_with_turbofish` (struct-literal
+    // construction, e.g. `Repo::<String> { .. }`) carry a `type_arguments` field with the
+    // same shape — handle both uniformly.
+    if parent.kind() != "generic_type" && parent.kind() != "generic_type_with_turbofish" {
+        return;
+    }
+    // Skip if this generic is itself nested inside another type_arguments.
+    if parent
+        .parent()
+        .map(|p| p.kind() == "type_arguments")
+        .unwrap_or(false)
+    {
+        return;
+    }
+    let Some(arg_list) = parent.child_by_field_name("type_arguments") else {
+        return;
+    };
+    let base = extractor.get_base_mut();
+    let arguments = crate::base::extract_type_arguments(base, arg_list, decompose_rust_type_arg);
+    base.record_type_arguments(identifier, arguments);
+}
+
+/// Like `record_outermost_rust_type_arguments` but the anchor is a
+/// `scoped_identifier` or `scoped_type_identifier` node — the node itself
+/// (not a name child inside it) is the `type` field of the parent
+/// `generic_type`.
+fn record_outermost_rust_type_arguments_for_scoped(
+    extractor: &mut RustExtractor,
+    scoped_node: tree_sitter::Node,
+    identifier: &Identifier,
+) {
+    let Some(parent) = scoped_node.parent() else {
+        return;
+    };
+    // Mirror the type_identifier variant: accept both generic_type and
+    // generic_type_with_turbofish for the same reasons.
+    if parent.kind() != "generic_type" && parent.kind() != "generic_type_with_turbofish" {
+        return;
+    }
+    if parent
+        .parent()
+        .map(|p| p.kind() == "type_arguments")
+        .unwrap_or(false)
+    {
+        return;
+    }
+    let Some(arg_list) = parent.child_by_field_name("type_arguments") else {
+        return;
+    };
+    let base = extractor.get_base_mut();
+    let arguments = crate::base::extract_type_arguments(base, arg_list, decompose_rust_type_arg);
+    base.record_type_arguments(identifier, arguments);
+}
+
+/// `TypeArgDecomposer` for Rust: maps a named child of a `type_arguments`
+/// list to its applied argument.  Returns `None` to skip punctuation (`<`,
+/// `,`, `>`) and lifetime parameters (`'a`, `'static`).  For a nested
+/// `generic_type` returns the type name plus its inner `type_arguments` to
+/// recurse into; for every other named type node (primitive types, references,
+/// arrays, etc.) returns its source text as a leaf.
+fn decompose_rust_type_arg<'a>(
+    base: &BaseExtractor,
+    node: tree_sitter::Node<'a>,
+) -> Option<(String, Option<tree_sitter::Node<'a>>)> {
+    if !node.is_named() {
+        return None; // skip punctuation: < , >
+    }
+    match node.kind() {
+        "lifetime" => None, // skip 'a, 'static, etc.
+        "generic_type" => {
+            // Nested generic such as `Vec<u8>` inside `HashMap<String, Vec<u8>>`
+            let name = node
+                .child_by_field_name("type")
+                .map(|t| base.get_node_text(&t))
+                .unwrap_or_else(|| base.get_node_text(&node));
+            let nested = node.child_by_field_name("type_arguments");
+            Some((name, nested))
+        }
+        _ => Some((base.get_node_text(&node), None)),
+    }
 }
 
 /// Find the ID of the symbol that contains this node

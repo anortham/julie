@@ -8,6 +8,7 @@ pub mod cross_file_relationships;
 pub mod extractor;
 pub mod identifiers;
 mod task14;
+mod type_arguments;
 
 use crate::base::SymbolKind;
 use crate::dart::DartExtractor;

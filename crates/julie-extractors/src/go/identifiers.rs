@@ -1,4 +1,4 @@
-use crate::base::{BaseExtractor, IdentifierKind, Symbol};
+use crate::base::{BaseExtractor, Identifier, IdentifierKind, Symbol};
 use std::collections::HashMap;
 use tree_sitter::Node;
 
@@ -28,10 +28,11 @@ impl super::GoExtractor {
         symbol_map: &HashMap<String, &Symbol>,
     ) {
         match node.kind() {
-            // Function/method calls: foo(), bar.Baz()
+            // Function/method calls: foo(), bar.Baz(), fn[T](args)
             "call_expression" => {
                 // The function being called is typically the first child or in a selector
                 let mut cursor = node.walk();
+                let mut call_id: Option<Identifier> = None;
                 for child in node.children(&mut cursor) {
                     match child.kind() {
                         "identifier" => {
@@ -39,13 +40,13 @@ impl super::GoExtractor {
                             let name = self.base.get_node_text(&child);
                             let containing_symbol_id =
                                 self.find_containing_symbol_id(node, symbol_map);
-
-                            self.base.create_identifier(
+                            let identifier = self.base.create_identifier(
                                 &child,
                                 name,
                                 IdentifierKind::Call,
                                 containing_symbol_id,
                             );
+                            call_id = Some(identifier);
                             break;
                         }
                         "selector_expression" => {
@@ -55,17 +56,28 @@ impl super::GoExtractor {
                                 let name = self.base.get_node_text(&field_node);
                                 let containing_symbol_id =
                                     self.find_containing_symbol_id(node, symbol_map);
-
-                                self.base.create_identifier(
+                                let identifier = self.base.create_identifier(
                                     &field_node,
                                     name,
                                     IdentifierKind::Call,
                                     containing_symbol_id,
                                 );
+                                call_id = Some(identifier);
                             }
                             break;
                         }
                         _ => {}
+                    }
+                }
+                // Record type arguments for generic function calls: fn[T](args)
+                if let Some(ref identifier) = call_id {
+                    if let Some(type_args_node) = node.child_by_field_name("type_arguments") {
+                        let arguments = crate::base::extract_type_arguments(
+                            &self.base,
+                            type_args_node,
+                            decompose_go_type_arg,
+                        );
+                        self.base.record_type_arguments(identifier, arguments);
                     }
                 }
             }
@@ -98,13 +110,13 @@ impl super::GoExtractor {
                 let name = self.base.get_node_text(&node);
                 if is_go_type_usage_identifier(&self.base, node) && !is_go_builtin_type(&name) {
                     let containing_symbol_id = self.find_containing_symbol_id(node, symbol_map);
-
-                    self.base.create_identifier(
+                    let identifier = self.base.create_identifier(
                         &node,
                         name,
                         IdentifierKind::TypeUsage,
                         containing_symbol_id,
                     );
+                    record_outermost_go_type_arguments(&mut self.base, node, &identifier);
                 }
             }
 
@@ -122,6 +134,84 @@ impl super::GoExtractor {
         self.base
             .find_containing_symbol_from_map(&node, symbol_map)
             .map(|s| s.id.clone())
+    }
+}
+
+/// If `name_node` is the base `type_identifier` of an *outermost* `generic_type`
+/// use (e.g. the `Container` of `Container[int]`), records that generic's
+/// ordered/nested applied type arguments against `identifier`.
+///
+/// Fires from the `type_identifier` arm so it uniformly covers field types,
+/// variable declarations, and composite-literal types without an allowlist.
+/// Nested generics are skipped: their args ride along as `children` of the
+/// enclosing usage and are not double-counted as a separate row.
+fn record_outermost_go_type_arguments(
+    base: &mut BaseExtractor,
+    name_node: Node,
+    identifier: &Identifier,
+) {
+    let Some(generic_type) = name_node.parent() else {
+        return;
+    };
+    if generic_type.kind() != "generic_type" {
+        return;
+    }
+    // Confirm name_node is the `type` field (not a stray child).
+    let is_type_field = generic_type
+        .child_by_field_name("type")
+        .map(|t| t.id() == name_node.id())
+        .unwrap_or(false);
+    if !is_type_field {
+        return;
+    }
+    // A generic_type whose parent is type_elem is nested inside another
+    // generic's type_arguments — its args ride along as children of the outer
+    // usage rather than being recorded as a separate TypeArgumentUsage row.
+    if generic_type
+        .parent()
+        .map(|p| p.kind() == "type_elem")
+        .unwrap_or(false)
+    {
+        return;
+    }
+    let Some(arg_list) = generic_type.child_by_field_name("type_arguments") else {
+        return;
+    };
+    let arguments = crate::base::extract_type_arguments(base, arg_list, decompose_go_type_arg);
+    base.record_type_arguments(identifier, arguments);
+}
+
+/// `TypeArgDecomposer` for Go: maps a child of a `type_arguments` node to its
+/// applied argument. Go wraps each argument in a `type_elem` node; skips
+/// punctuation (`[`, `,`, `]`). For a nested `generic_type` inside `type_elem`
+/// returns the base name plus its inner `type_arguments` to recurse into; for
+/// every other type node returns its source text as a leaf.
+fn decompose_go_type_arg<'a>(
+    base: &BaseExtractor,
+    node: Node<'a>,
+) -> Option<(String, Option<Node<'a>>)> {
+    if !node.is_named() {
+        return None; // skip punctuation: [, ], ,
+    }
+    if node.kind() != "type_elem" {
+        return None; // unexpected — defensive skip
+    }
+    // type_elem wraps one type argument; get its single named inner node.
+    let mut cursor = node.walk();
+    let inner = node.named_children(&mut cursor).next()?;
+    match inner.kind() {
+        "generic_type" => {
+            // Nested generic: extract name from `type` field, recurse into
+            // its type_arguments for children.
+            let name_node = inner.child_by_field_name("type")?;
+            let name = base.get_node_text(&name_node);
+            let nested = inner.child_by_field_name("type_arguments");
+            Some((name, nested))
+        }
+        _ => {
+            // Leaf type: type_identifier, qualified_type, pointer_type, etc.
+            Some((base.get_node_text(&inner), None))
+        }
     }
 }
 

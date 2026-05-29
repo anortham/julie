@@ -3,6 +3,7 @@
 mod ast_debug;
 mod cross_file_pending;
 mod task14;
+mod type_arguments;
 
 use crate::base::{IdentifierKind, RelationshipKind, SymbolKind};
 use crate::scala::ScalaExtractor;

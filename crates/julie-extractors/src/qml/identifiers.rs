@@ -1,7 +1,7 @@
 // QML Identifier Extraction
 // Extracts identifier usages: function calls, member access, variable references
 
-use crate::base::{Identifier, IdentifierKind, Symbol};
+use crate::base::{extract_type_arguments, BaseExtractor, Identifier, IdentifierKind, Symbol};
 use crate::qml::QmlExtractor;
 use std::collections::HashMap;
 use tree_sitter::{Node, Tree};
@@ -175,6 +175,57 @@ fn extract_identifier_from_node(
             }
         }
 
+        // Construction with generic type args: `new Map<string, User>()`
+        // QML-JS (tree-sitter-qmljs) `new_expression` has `constructor` and
+        // `type_arguments` as direct fields (not wrapped in `generic_type`).
+        // Only fire when `type_arguments` is present; plain `new Foo()` is skipped.
+        "new_expression" => {
+            let Some(type_args) = node.child_by_field_name("type_arguments") else {
+                return;
+            };
+            let Some(constructor) = node.child_by_field_name("constructor") else {
+                return;
+            };
+            let name = extractor.base.get_node_text(&constructor);
+            let containing_symbol_id = find_containing_symbol_id(extractor, node, symbol_map);
+            let identifier = extractor.base.create_identifier(
+                &constructor,
+                name,
+                IdentifierKind::TypeUsage,
+                containing_symbol_id,
+            );
+            let arguments =
+                extract_type_arguments(&extractor.base, type_args, decompose_qml_type_arg);
+            extractor.base.record_type_arguments(&identifier, arguments);
+        }
+
+        // Type references in TypeScript-style annotations (QML-JS shares the TS grammar):
+        //   function f(x: Array<User>): Map<K, V> {}
+        // `type_identifier` is the name node of a `generic_type` or a plain type ref.
+        "type_identifier" => {
+            if is_qml_type_declaration_name(node) {
+                return;
+            }
+            let name = extractor.base.get_node_text(&node);
+            // QML builtin value types (`string`, `int`, `real`, `var`, ...) are not
+            // resolvable type references — skip them so they don't pollute the
+            // identifier table, matching the C#/Python/Razor `is_*_builtin_type`
+            // convention. Builtins never carry type arguments, so skipping here does
+            // not affect type-argument capture for user-defined generics.
+            if is_qml_builtin_type(&name) {
+                return;
+            }
+            let containing_symbol_id = find_containing_symbol_id(extractor, node, symbol_map);
+            let identifier = extractor.base.create_identifier(
+                &node,
+                name,
+                IdentifierKind::TypeUsage,
+                containing_symbol_id,
+            );
+            // Record ordered/nested type arguments for outermost generics.
+            record_outermost_generic_type_arguments_qml(extractor, node, &identifier);
+        }
+
         _ => {
             // Skip other node types
         }
@@ -203,4 +254,139 @@ fn find_containing_symbol_id(
     }
 
     None
+}
+
+// ============================================================================
+// Type-argument capture helpers (Miller bridge Phase 2)
+// ============================================================================
+
+/// If `name_node` is the `name` field of an *outermost* `generic_type` use site
+/// (e.g. `Array` in `Array<User>` or `Map` in `Map<K, V>`), records that
+/// generic's ordered/nested applied type arguments against `identifier`.
+///
+/// QML-JS shares the TypeScript grammar, so `generic_type` has:
+///   - `name` field: `type_identifier` (or `nested_type_identifier`)
+///   - `type_arguments` field: `type_arguments` node (children are concrete type nodes)
+///
+/// Outermost check: skip if `generic_type`'s parent is `type_arguments`
+/// (that means this generic is itself nested inside another).
+fn record_outermost_generic_type_arguments_qml(
+    extractor: &mut QmlExtractor,
+    name_node: Node,
+    identifier: &Identifier,
+) {
+    let Some(generic_type) = name_node.parent() else {
+        return;
+    };
+    if generic_type.kind() != "generic_type" {
+        return;
+    }
+    // A generic_type whose parent is type_arguments is nested — its args ride
+    // along as children of the enclosing usage, not as a separate row.
+    if generic_type
+        .parent()
+        .map(|p| p.kind() == "type_arguments")
+        .unwrap_or(false)
+    {
+        return;
+    }
+    let Some(arg_list) = generic_type.child_by_field_name("type_arguments") else {
+        return;
+    };
+    let arguments = extract_type_arguments(&extractor.base, arg_list, decompose_qml_type_arg);
+    extractor.base.record_type_arguments(identifier, arguments);
+}
+
+/// `TypeArgDecomposer` for QML: maps a child of a `type_arguments` list to its
+/// applied argument. Skips unnamed nodes (punctuation `<`, `,`, `>`). For a
+/// nested `generic_type` returns the base name (from the `name` field) plus the
+/// nested `type_arguments` to recurse into. Everything else is returned as a
+/// leaf via the source text.
+fn decompose_qml_type_arg<'a>(
+    base: &BaseExtractor,
+    node: Node<'a>,
+) -> Option<(String, Option<Node<'a>>)> {
+    if !node.is_named() {
+        return None; // skip punctuation: <, >, ,
+    }
+    match node.kind() {
+        "generic_type" => {
+            // Nested generic: `Array<User>` inside `Map<K, Array<User>>`
+            let name = node
+                .child_by_field_name("name")
+                .map(|n| base.get_node_text(&n))
+                .unwrap_or_else(|| base.get_node_text(&node));
+            let nested = node.child_by_field_name("type_arguments");
+            Some((name, nested))
+        }
+        _ => {
+            // type_identifier, predefined_type, array_type, etc. — leaf node.
+            Some((base.get_node_text(&node), None))
+        }
+    }
+}
+
+/// Check if a `type_identifier` node is a type parameter declaration name
+/// rather than a type reference.
+///
+/// In QML-JS (TypeScript grammar), `type_identifier` appears as the `name` field
+/// of `type_parameter` (`<T>` declarations), `type_alias_declaration`, and
+/// `interface_declaration`. All of these are declarations, not references.
+fn is_qml_type_declaration_name(node: Node) -> bool {
+    let Some(parent) = node.parent() else {
+        return false;
+    };
+    if let Some(name_node) = parent.child_by_field_name("name") {
+        if name_node.id() == node.id() {
+            return matches!(
+                parent.kind(),
+                "type_parameter" | "type_alias_declaration" | "interface_declaration"
+            );
+        }
+    }
+    false
+}
+
+/// Returns `true` for QML builtin value types, which are noise as type references
+/// (no resolvable definition). Mirrors the C#/Python `is_*_builtin_type` filters.
+/// Covers the documented QML basic/value types; user-defined component types and
+/// JS/TS object types fall through and are recorded as type usages.
+fn is_qml_builtin_type(name: &str) -> bool {
+    matches!(
+        name,
+        "bool"
+            | "int"
+            | "double"
+            | "real"
+            | "string"
+            | "url"
+            | "color"
+            | "date"
+            | "time"
+            | "var"
+            | "variant"
+            | "enumeration"
+            | "list"
+            | "point"
+            | "rect"
+            | "size"
+            | "font"
+            | "vector2d"
+            | "vector3d"
+            | "vector4d"
+            | "quaternion"
+            | "matrix4x4"
+            // JS/TS predefined primitives that can appear in QML-JS annotations
+            | "number"
+            | "boolean"
+            | "void"
+            | "any"
+            | "unknown"
+            | "never"
+            | "object"
+            | "undefined"
+            | "null"
+            | "symbol"
+            | "bigint"
+    )
 }

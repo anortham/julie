@@ -5,6 +5,7 @@ mod cross_file_pending;
 mod cross_file_relationships;
 mod identifiers;
 mod task14;
+mod type_arguments;
 
 use crate::base::{RelationshipKind, SymbolKind, Visibility};
 use crate::swift::SwiftExtractor;
