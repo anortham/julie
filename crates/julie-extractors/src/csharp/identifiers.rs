@@ -98,17 +98,84 @@ fn extract_identifier_from_node(
                 let name = base.get_node_text(&node);
                 if !is_csharp_builtin_type(&name) {
                     let containing_symbol_id = find_containing_symbol_id(base, node, symbol_map);
-                    base.create_identifier(
+                    let identifier = base.create_identifier(
                         &node,
                         name,
                         IdentifierKind::TypeUsage,
                         containing_symbol_id,
                     );
+                    record_outermost_generic_type_arguments(base, node, &identifier);
                 }
             }
         }
         _ => {}
     }
+}
+
+/// If `name_node` is the base identifier of an *outermost* generic type use
+/// (e.g. the `Dictionary` of `Dictionary<string, List<int>>`), record that
+/// generic's ordered/nested applied type arguments against `identifier`.
+///
+/// Fires from the universal `identifier` arm so it uniformly covers member
+/// types, `new T<...>()`, and generic invocations (`CreateMap<A,B>()`,
+/// `AddScoped<IFoo,Foo>()`) without a method-name allowlist. Nested generics
+/// are skipped here because they are captured as `children` of the enclosing
+/// usage — recording them again would double-count.
+fn record_outermost_generic_type_arguments(
+    base: &mut BaseExtractor,
+    name_node: Node,
+    identifier: &Identifier,
+) {
+    let Some(generic_name) = name_node.parent() else {
+        return;
+    };
+    if generic_name.kind() != "generic_name" {
+        return;
+    }
+    // A generic_name whose parent is a type_argument_list is itself nested
+    // inside another generic — its args ride along under the outer usage.
+    if generic_name
+        .parent()
+        .map(|p| p.kind() == "type_argument_list")
+        .unwrap_or(false)
+    {
+        return;
+    }
+    let Some(arg_list) = type_argument_list_child(generic_name) else {
+        return;
+    };
+    let arguments = crate::base::extract_type_arguments(base, arg_list, decompose_csharp_type_arg);
+    base.record_type_arguments(identifier, arguments);
+}
+
+/// `TypeArgDecomposer` for C#: maps a child of a `type_argument_list` to its
+/// applied argument. Skips punctuation (`<`, `,`, `>`); for a nested
+/// `generic_name` returns the base name plus its inner `type_argument_list` to
+/// recurse into; for every other type node returns its source text as a leaf.
+fn decompose_csharp_type_arg<'a>(
+    base: &BaseExtractor,
+    node: Node<'a>,
+) -> Option<(String, Option<Node<'a>>)> {
+    if !node.is_named() {
+        return None;
+    }
+    match node.kind() {
+        "generic_name" => {
+            let name = direct_identifier(base, node)
+                .map(|(_, name)| name)
+                .unwrap_or_else(|| base.get_node_text(&node));
+            Some((name, type_argument_list_child(node)))
+        }
+        _ => Some((base.get_node_text(&node), None)),
+    }
+}
+
+/// First `type_argument_list` child of a `generic_name` (its `<...>`), if any.
+fn type_argument_list_child(generic_name: Node<'_>) -> Option<Node<'_>> {
+    let mut cursor = generic_name.walk();
+    generic_name
+        .children(&mut cursor)
+        .find(|child| child.kind() == "type_argument_list")
 }
 
 fn terminal_type_identifier<'a>(

@@ -12,8 +12,8 @@ use tree_sitter::Node;
 use super::relationship_resolution::StructuredPendingRelationship;
 use super::span::{NormalizedSpan, normalize_file_path};
 use super::types::{
-    ContextConfig, Identifier, PendingRelationship, Relationship, Symbol, TypeInfo,
-    stable_location_id,
+    ContextConfig, Identifier, PendingRelationship, Relationship, Symbol, TypeArgument,
+    TypeArgumentUsage, TypeInfo, stable_location_id,
 };
 
 /// Base implementation for language extractors
@@ -30,6 +30,10 @@ pub struct BaseExtractor {
     pub structured_pending_relationships: Vec<StructuredPendingRelationship>,
     pub type_info: HashMap<String, TypeInfo>,
     pub identifiers: Vec<Identifier>, // NEW: Reference extraction for LSP-quality tools
+    /// Ordered/nested generic type arguments captured at use sites, keyed to the
+    /// use-site identifier by id. Populated by language readers via
+    /// `record_type_arguments`; flattened into the `type_arguments` table.
+    pub type_argument_usages: Vec<TypeArgumentUsage>,
     pub context_config: ContextConfig,
 }
 
@@ -64,8 +68,32 @@ impl BaseExtractor {
             structured_pending_relationships: Vec::new(),
             type_info: HashMap::new(),
             identifiers: Vec::new(), // NEW: Initialize empty identifier list
+            type_argument_usages: Vec::new(),
             context_config: ContextConfig::default(),
         }
+    }
+
+    /// Record ordered/nested generic type arguments for a use-site identifier.
+    ///
+    /// No-op when `arguments` is empty, so non-generic uses (`List` with no
+    /// `<...>`) produce zero `type_arguments` rows. `identifier` must be one
+    /// that was (or will be) persisted — the `type_arguments.identifier_id` FK
+    /// depends on it.
+    pub fn record_type_arguments(&mut self, identifier: &Identifier, arguments: Vec<TypeArgument>) {
+        if arguments.is_empty() {
+            return;
+        }
+        self.type_argument_usages.push(TypeArgumentUsage {
+            identifier_id: identifier.id.clone(),
+            file_path: identifier.file_path.clone(),
+            language: identifier.language.clone(),
+            arguments,
+        });
+    }
+
+    /// Clone the accumulated type-argument usages (mirrors `get_pending_relationships`).
+    pub fn get_type_argument_usages(&self) -> Vec<TypeArgumentUsage> {
+        self.type_argument_usages.clone()
     }
 
     pub fn add_pending_relationship(&mut self, pending: PendingRelationship) {

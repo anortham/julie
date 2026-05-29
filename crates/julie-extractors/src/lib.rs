@@ -97,7 +97,8 @@ pub mod zig;
 pub use base::{
     AnnotationMarker, ContextConfig, ExtractionResults, Identifier, IdentifierKind,
     ParseDiagnostic, ParseDiagnosticKind, PendingRelationship, Relationship, RelationshipKind,
-    Symbol, SymbolKind, SymbolOptions, TestRole, TypeInfo, Visibility, normalize_annotations,
+    Symbol, SymbolKind, SymbolOptions, TestRole, TypeArgument, TypeArgumentUsage, TypeInfo,
+    Visibility, extract_type_arguments, normalize_annotations,
 };
 
 // Re-export the public API - canonical extraction functions

@@ -72,6 +72,35 @@ pub struct AnnotationMarker {
     pub carrier: Option<String>,
 }
 
+/// A single applied generic type argument captured at a *use site*, preserving
+/// argument order (`ordinal`) and arbitrary nesting (`children`).
+///
+/// Example: `Dictionary<string, List<int>>` decomposes to
+/// `[ {0, "string", []}, {1, "List", [ {0, "int", []} ]} ]`.
+///
+/// `ordinal` is the 0-based position among siblings (the whole point — e.g.
+/// `CreateMap<A,B>` source-vs-dest direction). `children` is empty for a
+/// non-generic argument. Flattened into the `type_arguments` table at persist
+/// time; not resolved here (resolution is the consumer's job).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TypeArgument {
+    pub ordinal: u32,
+    pub type_name: String,
+    pub children: Vec<TypeArgument>,
+}
+
+/// Ordered, nested generic type arguments applied at one use site, linked to the
+/// use-site [`Identifier`] by id (`identifier_id`). One usage per generic use
+/// site; carries `file_path`/`language` from the identifier so the persistence
+/// layer can flatten it into `type_arguments` rows without re-deriving them.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TypeArgumentUsage {
+    pub identifier_id: String,
+    pub file_path: String,
+    pub language: String,
+    pub arguments: Vec<TypeArgument>,
+}
+
 /// Configuration for code context extraction
 #[derive(Debug, Clone)]
 pub struct ContextConfig {

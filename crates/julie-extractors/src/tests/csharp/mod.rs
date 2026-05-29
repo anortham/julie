@@ -60,4 +60,5 @@ pub mod identifier_extraction;
 pub mod language_features;
 pub mod metadata;
 pub mod runtime;
+mod type_arguments; // Phase 2: ordered/nested generic type-argument capture (Miller bridge)
 mod types; // Phase 4: Type extraction verification tests
