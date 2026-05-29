@@ -315,3 +315,207 @@ fn test_migration_011_is_idempotent() {
     assert_eq!(dims, 384);
     assert_eq!(fmt_ver, 1);
 }
+
+// ============================================================
+// MIGRATION 027 — type_arguments table (Miller bridge Phase 2)
+// ============================================================
+
+fn table_exists(conn: &rusqlite::Connection, table: &str) -> bool {
+    conn.query_row(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?1",
+        [table],
+        |row| row.get::<_, i64>(0),
+    )
+    .unwrap()
+        > 0
+}
+
+fn index_names(conn: &rusqlite::Connection, table: &str) -> Vec<String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT name FROM sqlite_master
+             WHERE type = 'index' AND tbl_name = ?1 AND name NOT LIKE 'sqlite_%'
+             ORDER BY name",
+        )
+        .unwrap();
+    stmt.query_map([table], |row| row.get::<_, String>(0))
+        .unwrap()
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .unwrap()
+}
+
+/// (cid-ordered) column shape: (name, declared_type, notnull, dflt_value, pk).
+fn table_columns(
+    conn: &rusqlite::Connection,
+    table: &str,
+) -> Vec<(String, String, i64, Option<String>, i64)> {
+    let mut stmt = conn
+        .prepare(&format!("PRAGMA table_info({table})"))
+        .unwrap();
+    stmt.query_map([], |row| {
+        Ok((
+            row.get::<_, String>(1)?,         // name
+            row.get::<_, String>(2)?,         // type
+            row.get::<_, i64>(3)?,            // notnull
+            row.get::<_, Option<String>>(4)?, // dflt_value
+            row.get::<_, i64>(5)?,            // pk
+        ))
+    })
+    .unwrap()
+    .collect::<rusqlite::Result<Vec<_>>>()
+    .unwrap()
+}
+
+const TYPE_ARG_INDEXES: [&str; 4] = [
+    "idx_type_args_file",
+    "idx_type_args_identifier",
+    "idx_type_args_name",
+    "idx_type_args_parent",
+];
+
+/// Build a realistic v26-shaped database with populated parent rows so the
+/// 26->27 migration can be exercised on a genuine upgrade (not a fresh DB).
+///
+/// Rather than hand-maintaining a brittle partial DDL copy (which omits columns
+/// `initialize_schema`'s index creation depends on, e.g. `symbols.semantic_group`),
+/// this builds a full current-schema DB via the real API, stores rows through
+/// the canonical write path, then *downgrades* the on-disk shape to v26 by
+/// dropping the migration-027 table and resetting the recorded version. The
+/// parent tables keep their real columns; only the 027 delta is removed.
+fn build_v26_database_with_rows(db_path: &std::path::Path) {
+    {
+        let mut db = SymbolDatabase::new(db_path).unwrap();
+        let file = file_info_builder("legacy.cs").build();
+        let symbol = symbol_builder("sym-legacy", "Legacy", "legacy.cs").build();
+        let identifier = identifier_builder("id-legacy", "List", "legacy.cs").build();
+        db.bulk_store_fresh_atomic(&[file], &[symbol], &[], &[identifier], &[], "primary")
+            .unwrap();
+    }
+
+    let conn = open_test_connection(db_path).unwrap();
+    conn.execute("DROP TABLE IF EXISTS type_arguments", [])
+        .unwrap();
+    conn.execute("DELETE FROM schema_version WHERE version >= 27", [])
+        .unwrap();
+}
+
+#[test]
+fn test_migration_fresh_database_has_type_arguments_table_and_indexes() {
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("fresh.db");
+    let db = SymbolDatabase::new(&db_path).unwrap();
+
+    assert!(
+        table_exists(&db.conn, "type_arguments"),
+        "fresh database at LATEST must have the type_arguments table"
+    );
+    let indexes = index_names(&db.conn, "type_arguments");
+    for expected in TYPE_ARG_INDEXES {
+        assert!(
+            indexes.iter().any(|name| name == expected),
+            "fresh database missing index {expected}; got {indexes:?}"
+        );
+    }
+}
+
+#[test]
+fn test_migration_027_upgrades_v26_database_preserving_data() {
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("v26.db");
+    build_v26_database_with_rows(&db_path);
+
+    // Reopen with current code — should run migration 027 only.
+    let db = SymbolDatabase::new(&db_path).unwrap();
+
+    assert_eq!(
+        db.get_schema_version().unwrap(),
+        LATEST_SCHEMA_VERSION,
+        "v26 database should migrate up to LATEST"
+    );
+    assert!(
+        table_exists(&db.conn, "type_arguments"),
+        "migration 027 must create the type_arguments table on upgrade"
+    );
+    let indexes = index_names(&db.conn, "type_arguments");
+    for expected in TYPE_ARG_INDEXES {
+        assert!(
+            indexes.iter().any(|name| name == expected),
+            "upgrade missing index {expected}; got {indexes:?}"
+        );
+    }
+
+    // Pre-existing parent rows must survive the migration untouched.
+    let file_count: i64 = db
+        .conn
+        .query_row(
+            "SELECT COUNT(*) FROM files WHERE path = 'legacy.cs'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let symbol_count: i64 = db
+        .conn
+        .query_row(
+            "SELECT COUNT(*) FROM symbols WHERE id = 'sym-legacy'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let identifier_count: i64 = db
+        .conn
+        .query_row(
+            "SELECT COUNT(*) FROM identifiers WHERE id = 'id-legacy'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(file_count, 1, "files row must survive migration");
+    assert_eq!(symbol_count, 1, "symbols row must survive migration");
+    assert_eq!(identifier_count, 1, "identifiers row must survive migration");
+}
+
+#[test]
+fn test_migration_027_is_idempotent() {
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("idempotent.db");
+
+    {
+        let _db = SymbolDatabase::new(&db_path).unwrap();
+    }
+    // Re-open must not error and must hold the version + table steady.
+    let db = SymbolDatabase::new(&db_path).unwrap();
+    assert_eq!(db.get_schema_version().unwrap(), LATEST_SCHEMA_VERSION);
+    assert!(table_exists(&db.conn, "type_arguments"));
+    assert_eq!(index_names(&db.conn, "type_arguments").len(), 4);
+}
+
+#[test]
+fn test_type_arguments_schema_fresh_matches_migrated() {
+    // Fresh-at-LATEST DB.
+    let fresh_dir = TempDir::new().unwrap();
+    let fresh_path = fresh_dir.path().join("fresh.db");
+    let fresh_db = SymbolDatabase::new(&fresh_path).unwrap();
+
+    // v26 DB migrated up to LATEST.
+    let migrated_dir = TempDir::new().unwrap();
+    let migrated_path = migrated_dir.path().join("migrated.db");
+    build_v26_database_with_rows(&migrated_path);
+    let migrated_db = SymbolDatabase::new(&migrated_path).unwrap();
+
+    let fresh_cols = table_columns(&fresh_db.conn, "type_arguments");
+    let migrated_cols = table_columns(&migrated_db.conn, "type_arguments");
+
+    assert!(
+        !fresh_cols.is_empty(),
+        "type_arguments must have columns (guards against trivially-equal empty schemas)"
+    );
+    assert_eq!(
+        fresh_cols, migrated_cols,
+        "type_arguments column shape must be identical fresh vs migrated"
+    );
+    assert_eq!(
+        index_names(&fresh_db.conn, "type_arguments"),
+        index_names(&migrated_db.conn, "type_arguments"),
+        "type_arguments index set must be identical fresh vs migrated"
+    );
+}

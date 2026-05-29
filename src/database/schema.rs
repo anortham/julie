@@ -28,6 +28,7 @@ impl SymbolDatabase {
         self.create_early_warning_reports_table()?;
         self.create_external_extract_metadata_table()?;
         self.create_identifiers_table()?; // Reference tracking
+        self.create_type_arguments_table()?; // Ordered/nested generic use-site args
         self.create_types_table()?; // Type intelligence
         self.create_relationships_table()?;
 
@@ -363,6 +364,58 @@ impl SymbolDatabase {
         )?;
 
         debug!("Created identifiers table and indexes");
+        Ok(())
+    }
+
+    /// Create the `type_arguments` table: ordered, nested generic type
+    /// arguments captured at *use sites* (e.g. `new List<Foo>()`,
+    /// `CreateMap<A,B>()`, `axios.get<User>(...)`).
+    ///
+    /// Self-referential (`parent_arg_id`) to preserve arbitrary nesting; keyed
+    /// to the use-site identifier (`identifier_id`); `ordinal` preserves
+    /// argument order (the whole point — e.g. `CreateMap` source-vs-dest).
+    /// `target_symbol_id` is resolved on demand by consumers (NULL at extract,
+    /// mirroring `identifiers`). Carries its own `file_path` so per-file cleanup
+    /// is a flat `DELETE ... WHERE file_path = ?1` with no dependency on
+    /// identifier delete-ordering (cross-cutting Rule 1).
+    ///
+    /// `pub(crate)` so `migration_027_add_type_arguments` can call it; the
+    /// `CREATE ... IF NOT EXISTS` DDL is the single source of truth for both
+    /// fresh DBs (via `initialize_schema`) and upgrades (via migration 027).
+    pub(crate) fn create_type_arguments_table(&self) -> Result<()> {
+        self.conn.execute(
+            "CREATE TABLE IF NOT EXISTS type_arguments (
+                id               TEXT PRIMARY KEY,
+                identifier_id    TEXT NOT NULL REFERENCES identifiers(id) ON DELETE CASCADE,
+                parent_arg_id    TEXT REFERENCES type_arguments(id) ON DELETE CASCADE,
+                ordinal          INTEGER NOT NULL,
+                type_name        TEXT NOT NULL,
+                target_symbol_id TEXT REFERENCES symbols(id) ON DELETE SET NULL,
+                file_path        TEXT NOT NULL,
+                language         TEXT NOT NULL,
+                last_indexed     INTEGER DEFAULT 0
+            )",
+            [],
+        )?;
+
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_type_args_identifier ON type_arguments(identifier_id)",
+            [],
+        )?;
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_type_args_parent ON type_arguments(parent_arg_id)",
+            [],
+        )?;
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_type_args_name ON type_arguments(type_name)",
+            [],
+        )?;
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_type_args_file ON type_arguments(file_path)",
+            [],
+        )?;
+
+        debug!("Created type_arguments table and indexes");
         Ok(())
     }
 
