@@ -198,7 +198,11 @@ impl QmlExtractor {
                             options,
                         );
                         self.symbols.push(symbol);
-                    } else {
+                    } else if !is_inside_object_definition_binding(node) {
+                        // Skip property bindings that are configuration properties of a
+                        // property-value-source block (`PropertyAnimation on value { from: 0 }`).
+                        // Those are internal to the animation type, not symbols of the
+                        // enclosing component.
                         let options = SymbolOptions {
                             parent_id: parent_id.clone(),
                             signature: Some(self.base.get_node_text(&node)),
@@ -481,4 +485,21 @@ impl QmlExtractor {
     pub fn extract_identifiers(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Identifier> {
         identifiers::extract_identifiers(self, tree, symbols)
     }
+}
+
+/// Returns `true` if `node` is inside a `ui_object_definition_binding` ancestor
+/// (i.e. inside a property-value-source block like `PropertyAnimation on value { ... }`).
+///
+/// Bindings inside such blocks are configuration properties of the animation type,
+/// not properties of the enclosing component — they must not be emitted as Property
+/// symbols of the outer scope.
+fn is_inside_object_definition_binding(node: tree_sitter::Node<'_>) -> bool {
+    let mut current = node;
+    while let Some(parent) = current.parent() {
+        if parent.kind() == "ui_object_definition_binding" {
+            return true;
+        }
+        current = parent;
+    }
+    false
 }
