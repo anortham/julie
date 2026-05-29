@@ -436,6 +436,11 @@ impl QmlExtractor {
         self.base.get_type_argument_usages()
     }
 
+    /// Clone captured call-argument literals (Miller bridge Phase 3).
+    pub fn get_literals(&self) -> Vec<crate::base::Literal> {
+        self.base.get_literals()
+    }
+
     /// Add a pending relationship (used during extraction)
     pub fn add_pending_relationship(&mut self, pending: PendingRelationship) {
         self.base.add_pending_relationship(pending);

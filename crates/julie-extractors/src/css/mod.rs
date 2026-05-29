@@ -153,6 +153,11 @@ impl CSSExtractor {
         self.base.get_type_argument_usages()
     }
 
+    /// Clone captured call-argument literals (Miller bridge Phase 3).
+    pub fn get_literals(&self) -> Vec<crate::base::Literal> {
+        self.base.get_literals()
+    }
+
     pub fn extract_identifiers(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Identifier> {
         IdentifierExtractor::extract_identifiers(&mut self.base, tree, symbols)
     }

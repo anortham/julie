@@ -64,6 +64,11 @@ impl SqlExtractor {
         self.base.get_type_argument_usages()
     }
 
+    /// Clone captured call-argument literals (Miller bridge Phase 3).
+    pub fn get_literals(&self) -> Vec<crate::base::Literal> {
+        self.base.get_literals()
+    }
+
     /// Structured pending relationships with full `UnresolvedTarget` shape
     /// (terminal_name, namespace_path, etc.) for cross-file FK references.
     pub fn get_structured_pending_relationships(&self) -> Vec<StructuredPendingRelationship> {

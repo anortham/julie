@@ -381,6 +381,11 @@ impl DartExtractor {
         self.base.get_type_argument_usages()
     }
 
+    /// Clone captured call-argument literals (Miller bridge Phase 3).
+    pub fn get_literals(&self) -> Vec<crate::base::Literal> {
+        self.base.get_literals()
+    }
+
     pub fn add_pending_relationship(&mut self, pending: PendingRelationship) {
         self.base.add_pending_relationship(pending);
     }

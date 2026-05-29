@@ -128,6 +128,11 @@ impl ElixirExtractor {
         self.base.get_type_argument_usages()
     }
 
+    /// Clone captured call-argument literals (Miller bridge Phase 3).
+    pub fn get_literals(&self) -> Vec<crate::base::Literal> {
+        self.base.get_literals()
+    }
+
     pub fn get_structured_pending_relationships(
         &self,
     ) -> Vec<crate::base::StructuredPendingRelationship> {

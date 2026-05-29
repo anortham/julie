@@ -45,6 +45,7 @@ macro_rules! define_structured_full_language_extractors {
                     structured_pending_relationships,
                     identifiers,
                     type_argument_usages: ext.get_type_argument_usages(),
+                    literals: ext.get_literals(),
                     types: convert_types_map(types, $language),
                     parse_diagnostics: Vec::new(),
                 })
@@ -80,6 +81,7 @@ macro_rules! define_structured_full_file_extractors {
                     structured_pending_relationships,
                     identifiers,
                     type_argument_usages: ext.get_type_argument_usages(),
+                    literals: ext.get_literals(),
                     types: convert_types_map(types, $language),
                     parse_diagnostics: Vec::new(),
                 })
@@ -114,6 +116,7 @@ macro_rules! define_no_pending_extractors {
                     structured_pending_relationships: Vec::new(),
                     identifiers,
                     type_argument_usages: ext.get_type_argument_usages(),
+                    literals: ext.get_literals(),
                     types: convert_types_map(types, $language),
                     parse_diagnostics: Vec::new(),
                 })
@@ -147,6 +150,7 @@ macro_rules! define_relationship_data_extractors {
                     structured_pending_relationships: Vec::new(),
                     identifiers,
                     type_argument_usages: ext.get_type_argument_usages(),
+                    literals: ext.get_literals(),
                     types: HashMap::new(),
                     parse_diagnostics: Vec::new(),
                 })
@@ -195,6 +199,7 @@ fn extract_java(
         structured_pending_relationships,
         identifiers,
         type_argument_usages: ext.get_type_argument_usages(),
+        literals: ext.get_literals(),
         types: convert_types_map(types, "java"),
         parse_diagnostics: Vec::new(),
     })
@@ -225,6 +230,7 @@ fn extract_csharp(
         structured_pending_relationships,
         identifiers,
         type_argument_usages: ext.get_type_argument_usages(),
+        literals: ext.get_literals(),
         types: convert_types_map(types, "csharp"),
         parse_diagnostics: Vec::new(),
     })
@@ -255,6 +261,7 @@ fn extract_kotlin(
         structured_pending_relationships,
         identifiers,
         type_argument_usages: ext.get_type_argument_usages(),
+        literals: ext.get_literals(),
         types: convert_types_map(types, "kotlin"),
         parse_diagnostics: Vec::new(),
     })
@@ -285,6 +292,7 @@ fn extract_swift(
         structured_pending_relationships,
         identifiers,
         type_argument_usages: ext.get_type_argument_usages(),
+        literals: ext.get_literals(),
         types: convert_types_map(types, "swift"),
         parse_diagnostics: Vec::new(),
     })
@@ -315,6 +323,7 @@ fn extract_php(
         structured_pending_relationships,
         identifiers,
         type_argument_usages: ext.get_type_argument_usages(),
+        literals: ext.get_literals(),
         types: convert_types_map(types, "php"),
         parse_diagnostics: Vec::new(),
     })
@@ -345,6 +354,7 @@ fn extract_scala(
         structured_pending_relationships,
         identifiers,
         type_argument_usages: ext.get_type_argument_usages(),
+        literals: ext.get_literals(),
         types: convert_types_map(types, "scala"),
         parse_diagnostics: Vec::new(),
     })
@@ -375,6 +385,7 @@ fn extract_typescript(
         structured_pending_relationships,
         identifiers,
         type_argument_usages: ext.get_type_argument_usages(),
+        literals: ext.get_literals(),
         types: convert_types_map(types, "typescript"),
         parse_diagnostics: Vec::new(),
     })
@@ -405,6 +416,7 @@ fn extract_tsx(
         structured_pending_relationships,
         identifiers,
         type_argument_usages: ext.get_type_argument_usages(),
+        literals: ext.get_literals(),
         types: convert_types_map(types, "tsx"),
         parse_diagnostics: Vec::new(),
     })
@@ -435,6 +447,7 @@ fn extract_javascript(
         structured_pending_relationships,
         identifiers,
         type_argument_usages: ext.get_type_argument_usages(),
+        literals: ext.get_literals(),
         types: convert_types_map(types, "javascript"),
         parse_diagnostics: Vec::new(),
     })
@@ -465,6 +478,7 @@ fn extract_jsx(
         structured_pending_relationships,
         identifiers,
         type_argument_usages: ext.get_type_argument_usages(),
+        literals: ext.get_literals(),
         types: convert_types_map(types, "jsx"),
         parse_diagnostics: Vec::new(),
     })
@@ -495,6 +509,7 @@ fn extract_bash(
         structured_pending_relationships,
         identifiers,
         type_argument_usages: ext.get_type_argument_usages(),
+        literals: ext.get_literals(),
         types: convert_types_map(types, "bash"),
         parse_diagnostics: Vec::new(),
     })
@@ -525,6 +540,7 @@ fn extract_powershell(
         structured_pending_relationships,
         identifiers,
         type_argument_usages: ext.get_type_argument_usages(),
+        literals: ext.get_literals(),
         types: convert_types_map(types, "powershell"),
         parse_diagnostics: Vec::new(),
     })
@@ -554,6 +570,7 @@ fn extract_lua(
         structured_pending_relationships,
         identifiers,
         type_argument_usages: ext.get_type_argument_usages(),
+        literals: ext.get_literals(),
         types: HashMap::new(),
         parse_diagnostics: Vec::new(),
     })
@@ -583,6 +600,7 @@ fn extract_qml(
         structured_pending_relationships,
         identifiers,
         type_argument_usages: ext.get_type_argument_usages(),
+        literals: ext.get_literals(),
         types: HashMap::new(),
         parse_diagnostics: Vec::new(),
     })
@@ -612,6 +630,7 @@ fn extract_r(
         structured_pending_relationships,
         identifiers,
         type_argument_usages: ext.get_type_argument_usages(),
+        literals: ext.get_literals(),
         types: HashMap::new(),
         parse_diagnostics: Vec::new(),
     })
@@ -664,6 +683,7 @@ fn extract_html(
         structured_pending_relationships,
         identifiers,
         type_argument_usages: ext.get_type_argument_usages(),
+        literals: ext.get_literals(),
         types: convert_types_map(types, "html"),
         parse_diagnostics: Vec::new(),
     })
@@ -699,6 +719,7 @@ fn extract_sql(
         structured_pending_relationships,
         identifiers,
         type_argument_usages: ext.get_type_argument_usages(),
+        literals: ext.get_literals(),
         types: convert_types_map(types, "sql"),
         parse_diagnostics: Vec::new(),
     })
@@ -741,6 +762,7 @@ fn extract_toml(
         structured_pending_relationships: Vec::new(),
         identifiers,
         type_argument_usages: ext.get_type_argument_usages(),
+        literals: ext.get_literals(),
         types: HashMap::new(),
         parse_diagnostics: Vec::new(),
     })
@@ -773,6 +795,7 @@ fn extract_json(
         structured_pending_relationships,
         identifiers,
         type_argument_usages: ext.get_type_argument_usages(),
+        literals: ext.get_literals(),
         types: HashMap::new(),
         parse_diagnostics: Vec::new(),
     })
@@ -807,6 +830,7 @@ fn extract_vue(
         structured_pending_relationships,
         identifiers,
         type_argument_usages: ext.get_type_argument_usages(),
+        literals: ext.get_literals(),
         types: convert_types_map(types, "vue"),
         parse_diagnostics: Vec::new(),
     })

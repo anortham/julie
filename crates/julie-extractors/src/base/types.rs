@@ -148,6 +148,34 @@ pub struct Literal {
     pub confidence: f32,
 }
 
+impl Literal {
+    pub fn apply_normalized_span(&mut self, span: NormalizedSpan) {
+        self.start_line = span.start_line;
+        self.start_column = span.start_column;
+        self.end_line = span.end_line;
+        self.end_column = span.end_column;
+        self.start_byte = span.start_byte;
+        self.end_byte = span.end_byte;
+    }
+
+    /// Recompute the span-stable id (used after embedded-span offset shifts the
+    /// span). Mirrors [`Identifier::refresh_id`], keyed on `literal_text`.
+    pub fn refresh_id(&mut self) {
+        self.id = stable_location_id(self.file_path.as_str(), self.literal_text.as_str(), self.span());
+    }
+
+    fn span(&self) -> NormalizedSpan {
+        NormalizedSpan {
+            start_line: self.start_line,
+            start_column: self.start_column,
+            end_line: self.end_line,
+            end_column: self.end_column,
+            start_byte: self.start_byte,
+            end_byte: self.end_byte,
+        }
+    }
+}
+
 /// Classification of a captured [`Literal`]. An extraction-time hint that the
 /// config-driven carrier pass refines; consumers may reclassify at read time
 /// using the persisted `carrier`/`literal_text`.
@@ -722,5 +750,9 @@ pub struct ExtractionResults {
     /// indexing layer can flatten and persist them. Keyed to a use-site
     /// identifier by `identifier_id`.
     pub type_argument_usages: Vec<TypeArgumentUsage>,
+    /// String literals captured at call-argument sites (Miller bridge Phase 3),
+    /// config-free (carrier set, kind = Other). The indexing layer classifies +
+    /// gates these by carrier before persistence.
+    pub literals: Vec<Literal>,
     pub parse_diagnostics: Vec<ParseDiagnostic>,
 }

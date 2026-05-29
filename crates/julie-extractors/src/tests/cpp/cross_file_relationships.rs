@@ -47,6 +47,7 @@ mod tests {
             types: HashMap::new(),
             identifiers,
             type_argument_usages: Vec::new(),
+            literals: Vec::new(),
             parse_diagnostics: Vec::new(),
         }
     }

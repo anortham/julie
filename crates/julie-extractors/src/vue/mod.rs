@@ -192,6 +192,11 @@ impl VueExtractor {
         self.base.get_type_argument_usages()
     }
 
+    /// Clone captured call-argument literals (Miller bridge Phase 3).
+    pub fn get_literals(&self) -> Vec<crate::base::Literal> {
+        self.base.get_literals()
+    }
+
     pub fn extract_identifiers(&mut self, symbols: &[Symbol]) -> Vec<Identifier> {
         identifiers::extract_identifiers(&mut self.base, symbols)
     }

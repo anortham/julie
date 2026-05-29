@@ -365,6 +365,7 @@ fn test_structured_pending_relationships_survive_extend_offset_and_rekey() {
         identifiers: Vec::new(),
         types: HashMap::new(),
         type_argument_usages: Vec::new(),
+        literals: Vec::new(),
         parse_diagnostics: Vec::new(),
     });
 
