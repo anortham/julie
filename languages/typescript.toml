@@ -72,5 +72,20 @@ url = [
     "axios.head",
     "request",
 ]
-sql = []
+# Bare method names match any receiver via the gate's last-segment rule, so
+# local-variable DB receivers (`pool.query`, `db.execute`, `conn.exec`) are
+# captured without enumerating every variable name. Covers node-postgres /
+# mysql2 / sequelize / typeorm (`query`), sqlite/knex (`exec`/`raw`/`prepare`),
+# and Prisma raw escapes (`$queryRawUnsafe`/`$executeRawUnsafe`).
+sql = [
+    "query",
+    "execute",
+    "exec",
+    "raw",
+    "prepare",
+    "$queryraw",
+    "$executeraw",
+    "$queryrawunsafe",
+    "$executerawunsafe",
+]
 route = []

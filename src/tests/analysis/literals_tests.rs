@@ -110,6 +110,87 @@ mod tests {
     }
 
     #[test]
+    fn bare_sql_carrier_matches_local_receiver_member_call() {
+        // The TS-SQL local-receiver case: `pool.query("SELECT ...")` emits the
+        // carrier "pool.query" (object.property), but the DB receiver is a local
+        // variable that can't be enumerated in config. A BARE config entry
+        // `query` must match it by last dot-segment so local-variable DB
+        // receivers are not silently missed.
+        let configs = HashMap::from([(
+            "typescript".to_string(),
+            LiteralCarrierConfig {
+                url: HashSet::new(),
+                sql: HashSet::from(["query".to_string()]),
+                route: HashSet::new(),
+            },
+        )]);
+        let mut literals = vec![make_literal(
+            "typescript",
+            Some("pool.query"),
+            "SELECT 1 FROM t",
+        )];
+        classify_literals_by_carrier(&mut literals, &configs);
+
+        assert_eq!(
+            literals.len(),
+            1,
+            "a bare config carrier must match a member-call carrier by last segment"
+        );
+        assert_eq!(literals[0].kind, LiteralKind::Sql);
+    }
+
+    #[test]
+    fn dotted_carrier_config_does_not_overmatch_other_receivers() {
+        // A DOTTED config entry `axios.get` must match ONLY `axios.get`, never a
+        // different receiver's `.get` (e.g. `cache.get`) — otherwise the generic
+        // `.get()` method on any object would flood URL literals.
+        let configs = HashMap::from([(
+            "typescript".to_string(),
+            LiteralCarrierConfig {
+                url: HashSet::from(["axios.get".to_string()]),
+                sql: HashSet::new(),
+                route: HashSet::new(),
+            },
+        )]);
+        let mut literals = vec![
+            make_literal("typescript", Some("axios.get"), "/api/a"),
+            make_literal("typescript", Some("cache.get"), "session-key"),
+        ];
+        classify_literals_by_carrier(&mut literals, &configs);
+
+        assert_eq!(
+            literals.len(),
+            1,
+            "a dotted config carrier must match exactly, not over-match a different receiver"
+        );
+        assert_eq!(literals[0].carrier.as_deref(), Some("axios.get"));
+        assert_eq!(literals[0].kind, LiteralKind::Url);
+    }
+
+    #[test]
+    fn bare_carrier_config_matches_any_receiver_method() {
+        // A BARE config entry is the opt-in "match this method on any receiver"
+        // form: `get` matches `HTTParty.get`, `client.get`, bare `get`, etc.
+        let configs = HashMap::from([(
+            "ruby".to_string(),
+            LiteralCarrierConfig {
+                url: HashSet::from(["get".to_string()]),
+                sql: HashSet::new(),
+                route: HashSet::new(),
+            },
+        )]);
+        let mut literals = vec![make_literal("ruby", Some("HTTParty.get"), "http://x")];
+        classify_literals_by_carrier(&mut literals, &configs);
+
+        assert_eq!(
+            literals.len(),
+            1,
+            "bare config matches any receiver's method"
+        );
+        assert_eq!(literals[0].kind, LiteralKind::Url);
+    }
+
+    #[test]
     fn language_without_config_drops_all_its_literals() {
         // 'go' has no entry in configs -> every go literal is dropped, while a
         // configured language's carrier-matched literal in the same batch stays.

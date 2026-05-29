@@ -28,13 +28,39 @@ pub struct LiteralCarrierConfig {
     pub route: HashSet<String>,
 }
 
+/// Does `carrier` match any entry in this lowercased config `set`?
+///
+/// Two match forms, so one shared rule covers every language's carrier
+/// emission strategy (bare method name, or `object.property` member path):
+/// - **Exact:** the set contains the full carrier verbatim. A *dotted* config
+///   entry (`axios.get`) therefore matches only that exact `object.method`,
+///   never a different receiver's `.get` — so the generic `.get()`/`.post()`
+///   methods don't flood literals.
+/// - **Last-segment:** the set contains the carrier's final dot-segment. A
+///   *bare* config entry (`query`, `execute`, `fetch`) thus matches any
+///   receiver — `pool.query`, `conn.Query`, `db.execute`, or a bare `fetch` —
+///   which is the only way to recognize local-variable DB/HTTP receivers whose
+///   names can't be enumerated in config (the TS-SQL local-receiver case).
+///
+/// `carrier` is already lowercased; the set is lowercased at build time.
+fn carrier_matches(set: &HashSet<String>, carrier: &str) -> bool {
+    if set.contains(carrier) {
+        return true;
+    }
+    match carrier.rsplit_once('.') {
+        Some((_, last)) => set.contains(last),
+        None => false,
+    }
+}
+
 /// Classify each captured literal by its `carrier` against that language's
 /// config, setting `kind` on a match and dropping every non-match in place.
 ///
 /// Runs on the mutable batch before persistence on every write path (the
 /// multi-path trap — see the extract chokepoint + watcher wiring). A literal is
 /// dropped when: its language has no carrier config, it has no `carrier`, or its
-/// carrier matches none of the url/sql/route sets.
+/// carrier matches none of the url/sql/route sets (see [`carrier_matches`] for
+/// the exact-vs-last-segment matching rule).
 pub fn classify_literals_by_carrier(
     literals: &mut Vec<Literal>,
     carrier_configs: &HashMap<String, LiteralCarrierConfig>,
@@ -50,13 +76,13 @@ pub fn classify_literals_by_carrier(
         };
         let carrier = carrier.to_lowercase();
         // url > sql > route on the rare overlap; deterministic.
-        if config.url.contains(&carrier) {
+        if carrier_matches(&config.url, &carrier) {
             literal.kind = LiteralKind::Url;
             true
-        } else if config.sql.contains(&carrier) {
+        } else if carrier_matches(&config.sql, &carrier) {
             literal.kind = LiteralKind::Sql;
             true
-        } else if config.route.contains(&carrier) {
+        } else if carrier_matches(&config.route, &carrier) {
             literal.kind = LiteralKind::Route;
             true
         } else {

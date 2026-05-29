@@ -373,10 +373,13 @@ mod tests {
             "TS url carriers must include fetch + axios.get; got {:?}",
             ts.url
         );
-        // TS SQL via local-receiver is a breadth-phase concern; reference leg is URL.
+        // TS SQL via local-receiver is now matched by the gate's last-segment
+        // rule against bare method names, so `pool.query`/`db.execute` are
+        // recognized without enumerating the variable receiver.
         assert!(
-            ts.sql.is_empty(),
-            "TS reference leg has no sql carriers yet"
+            ts.sql.contains("query") && ts.sql.contains("execute"),
+            "TS sql carriers must include bare query + execute for local-receiver matching; got {:?}",
+            ts.sql
         );
 
         let cs = carriers.get("csharp").expect("csharp carrier config");

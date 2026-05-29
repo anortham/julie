@@ -536,12 +536,15 @@ async fn extract_scan_persists_gated_url_and_sql_literals() {
     let root = tmp.path().join("repo");
     std::fs::create_dir(&root).expect("repo dir");
 
-    // TS: two URL carriers (fetch, axios.get) + one non-carrier (console.log).
+    // TS: two URL carriers (fetch, axios.get), one local-receiver SQL carrier
+    // (pool.query — matched by the gate's last-segment rule against bare
+    // `query`), and one non-carrier (console.log).
     fs::write(
         root.join("http.ts"),
-        "async function load() {\n\
+        "async function load(pool: any) {\n\
          \x20 await fetch(\"/api/users\");\n\
          \x20 await axios.get(\"/api/orders\");\n\
+         \x20 await pool.query(\"SELECT token FROM Sessions\");\n\
          \x20 console.log(\"ignored debug line\");\n\
          }\n",
     )
@@ -565,8 +568,8 @@ async fn extract_scan_persists_gated_url_and_sql_literals() {
         .expect("scan succeeds");
     assert_eq!(report.files_scanned, 2, "two source files scanned");
     assert_eq!(
-        report.literals_total, 3,
-        "report must surface exactly the 3 carrier-gated literals (2 url + 1 sql), got {}",
+        report.literals_total, 4,
+        "report must surface exactly the 4 carrier-gated literals (2 ts url + 1 ts sql + 1 c# sql), got {}",
         report.literals_total
     );
 
@@ -595,6 +598,19 @@ async fn extract_scan_persists_gated_url_and_sql_literals() {
         ),
         1,
         "the dotted axios.get carrier must be preserved verbatim"
+    );
+
+    // TS SQL leg (local-receiver): pool.query("SELECT ...") -> the gate's
+    // last-segment rule matches the bare `query` carrier config, so the local
+    // DB receiver is captured as sql without enumerating the variable name.
+    assert_eq!(
+        count_rows_where(
+            &db,
+            "literals",
+            "file_path = 'http.ts' AND kind = 'sql' AND carrier = 'pool.query' AND literal_text LIKE '%FROM Sessions%'"
+        ),
+        1,
+        "TS local-receiver pool.query must persist one sql literal via last-segment carrier matching"
     );
 
     // C# SQL leg: Dapper Query captured and classified sql.
