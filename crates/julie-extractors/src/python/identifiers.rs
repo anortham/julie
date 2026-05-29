@@ -86,6 +86,9 @@ fn extract_identifier_from_node(
                     }
                 }
             }
+            // Phase 3: capture string-literal call-arguments config-free; the
+            // carrier classification + bloat gate run later in the src/ pipeline.
+            record_python_call_arg_literals(extractor, node, symbol_map);
         }
 
         // Member access: object.property
@@ -252,6 +255,82 @@ fn find_containing_symbol_id(
     let base = extractor.base();
     base.find_containing_symbol_from_map(&node, symbol_map)
         .map(|s| s.id.clone())
+}
+
+// ============================================================================
+// String-literal call-argument capture (Miller bridge Phase 3)
+// ============================================================================
+
+/// Capture string-literal arguments of a Python `call` as `Literal` records.
+///
+/// Config-free: `carrier` is the verbatim callee text; the URL/SQL
+/// classification and the carrier gate run later in the `src/` pipeline.
+/// Records one literal per string-like argument, with `arg_position` counted
+/// over the full (named) argument list. Keyword arguments (`url="..."`) descend
+/// to their `value` so `requests.get(url="/api")` is captured too.
+fn record_python_call_arg_literals(
+    extractor: &mut PythonExtractor,
+    call_node: Node,
+    symbol_map: &HashMap<String, &Symbol>,
+) {
+    let Some(function_node) = call_node.child_by_field_name("function") else {
+        return;
+    };
+    let Some(args_node) = call_node.child_by_field_name("arguments") else {
+        return;
+    };
+    let carrier = python_carrier(extractor.base(), function_node);
+    let containing_symbol_id = find_containing_symbol_id(extractor, call_node, symbol_map);
+
+    let mut cursor = args_node.walk();
+    for (pos, arg) in args_node.named_children(&mut cursor).enumerate() {
+        // Keyword args (`name=value`) hold the literal in their `value` field.
+        let value = if arg.kind() == "keyword_argument" {
+            arg.child_by_field_name("value")
+        } else {
+            Some(arg)
+        };
+        if let Some(value) = value {
+            if let Some(text) = extractor.base().decode_string_literal(&value) {
+                extractor.base_mut().record_literal(
+                    &value,
+                    text,
+                    carrier.clone(),
+                    pos as u32,
+                    containing_symbol_id.clone(),
+                );
+            }
+        }
+    }
+}
+
+/// Derive a Python call's carrier from its callee.
+///
+/// Plain `identifier` → its text (`open`). `attribute` (`requests.get`,
+/// `cursor.execute`) → the `object.attribute` join so dotted client APIs match
+/// config (`requests.get`) and local-variable receivers still match a bare
+/// method config (`execute`) via the gate's last-segment rule.
+fn python_carrier(base: &BaseExtractor, function_node: Node) -> Option<String> {
+    match function_node.kind() {
+        "identifier" => Some(base.get_node_text(&function_node)),
+        "attribute" => {
+            let object = function_node
+                .child_by_field_name("object")
+                .map(|n| base.get_node_text(&n));
+            let attribute = function_node
+                .child_by_field_name("attribute")
+                .map(|n| base.get_node_text(&n));
+            match (object, attribute) {
+                (Some(o), Some(a)) => Some(format!("{o}.{a}")),
+                (None, Some(a)) => Some(a),
+                _ => None,
+            }
+        }
+        _ => {
+            let text = base.get_node_text(&function_node);
+            if text.is_empty() { None } else { Some(text) }
+        }
+    }
 }
 
 // ============================================================================

@@ -561,15 +561,26 @@ async fn extract_scan_persists_gated_url_and_sql_literals() {
          public class User {}\n",
     )
     .expect("write c#");
+    // Python: one URL carrier (requests.get), one local-receiver SQL carrier
+    // (cursor.execute), one non-carrier (print) — proves a third language flows
+    // through the same language-agnostic chokepoint end-to-end.
+    fs::write(
+        root.join("api.py"),
+        "def load(cursor):\n\
+         \x20   requests.get(\"https://svc/api/items\")\n\
+         \x20   cursor.execute(\"SELECT id FROM Items\")\n\
+         \x20   print(\"ignored py message\")\n",
+    )
+    .expect("write py");
 
     let db_path = tmp.path().join("external.sqlite");
     let report = run_external_scan(&scan_args(db_path.clone(), root.clone(), false))
         .await
         .expect("scan succeeds");
-    assert_eq!(report.files_scanned, 2, "two source files scanned");
+    assert_eq!(report.files_scanned, 3, "three source files scanned");
     assert_eq!(
-        report.literals_total, 4,
-        "report must surface exactly the 4 carrier-gated literals (2 ts url + 1 ts sql + 1 c# sql), got {}",
+        report.literals_total, 6,
+        "report must surface exactly the 6 carrier-gated literals (2 ts url + 1 ts sql + 1 c# sql + 1 py url + 1 py sql), got {}",
         report.literals_total
     );
 
@@ -633,12 +644,33 @@ async fn extract_scan_persists_gated_url_and_sql_literals() {
         "the C# sql literal must carry the decoded SQL body"
     );
 
-    // The gate dropped both non-carrier callees: no literal from console.log /
-    // Console.WriteLine survives.
+    // Python leg: requests.get (url, dotted carrier) + cursor.execute (sql,
+    // local-receiver matched by last segment).
+    assert_eq!(
+        count_rows_where(
+            &db,
+            "literals",
+            "file_path = 'api.py' AND kind = 'url' AND carrier = 'requests.get' AND literal_text = 'https://svc/api/items'"
+        ),
+        1,
+        "Python requests.get must persist one url literal with its dotted carrier"
+    );
+    assert_eq!(
+        count_rows_where(
+            &db,
+            "literals",
+            "file_path = 'api.py' AND kind = 'sql' AND carrier = 'cursor.execute' AND literal_text LIKE '%FROM Items%'"
+        ),
+        1,
+        "Python cursor.execute must persist one sql literal via last-segment carrier matching"
+    );
+
+    // The gate dropped every non-carrier callee: no literal from console.log /
+    // Console.WriteLine / print survives.
     assert_eq!(
         count_rows_where(&db, "literals", "literal_text LIKE '%ignored%'"),
         0,
-        "non-carrier (console.log / Console.WriteLine) literals must be dropped by the gate"
+        "non-carrier (console.log / Console.WriteLine / print) literals must be dropped by the gate"
     );
 
     // Name-leak negative: URLs/SQL must NOT enter the name-indexed identifiers

@@ -75,6 +75,41 @@ assertion_identifiers = ["assert", "assertequal", "asserttrue", "assertfalse", "
 error_assertion_identifiers = ["assertraises", "pytest.raises"]
 mock_identifiers = ["mock", "magicmock", "patch", "mock_open"]
 
+# Miller bridge Phase 3: callees whose string-literal arguments are HTTP URLs or
+# SQL. Matched case-insensitively against the call's carrier. Dotted entries
+# (`requests.get`) match that exact module.method; bare entries (`execute`)
+# match any receiver via the gate's last-segment rule, covering local DB
+# cursors (`cursor.execute`, `conn.execute`). Bare `get`/`post` are deliberately
+# omitted — `dict.get` would flood false positives.
+[literal_carriers]
+url = [
+    "requests.get",
+    "requests.post",
+    "requests.put",
+    "requests.delete",
+    "requests.patch",
+    "requests.head",
+    "requests.options",
+    "requests.request",
+    "httpx.get",
+    "httpx.post",
+    "httpx.put",
+    "httpx.delete",
+    "httpx.patch",
+    "httpx.head",
+    "httpx.request",
+    "urlopen",
+    "urlretrieve",
+]
+sql = [
+    "execute",
+    "executemany",
+    "executescript",
+    "text",
+    "raw",
+]
+route = []
+
 [early_warnings]
 review_markers = ["allow_anonymous"]
 schema_version = 1
