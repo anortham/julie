@@ -58,6 +58,7 @@ pub mod di_registration_relationships;
 pub mod field_property_relationships;
 pub mod identifier_extraction;
 pub mod language_features;
+pub mod literals;
 pub mod metadata;
 pub mod runtime;
 mod type_arguments; // Phase 2: ordered/nested generic type-argument capture (Miller bridge)

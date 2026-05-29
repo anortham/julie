@@ -178,30 +178,43 @@ impl BaseExtractor {
     /// static shape (`/api/users/{}`, `SELECT ... FROM Users`). Returns `None`
     /// for non-string nodes.
     ///
-    /// Language-agnostic by design: it recognizes string-bearing nodes by kind
-    /// substring (`string`/`char`), emits the text of inner fragment children
-    /// verbatim, and substitutes `{}` for any child whose kind names an
-    /// interpolation/substitution. When the node has no named children (the
-    /// delimiters and body are anonymous, e.g. a flat `"..."`), it strips one
-    /// matching outer delimiter pair from the raw text.
+    /// Language-agnostic by design. Recognizes string-bearing nodes by kind
+    /// substring (`string`/`char`), then classifies each *named* child precisely:
+    /// - an interpolation/substitution **hole** (`interpolation`,
+    ///   `template_substitution`, or a kind ending in `_substitution`) becomes `{}`;
+    /// - a content/fragment child (kind contains `content`/`fragment`/`text`, or is
+    ///   `escape_sequence`) is appended verbatim;
+    /// - every other named child is a **delimiter marker** (`raw_string_start`,
+    ///   `interpolation_start`, `interpolation_quote`, encoding suffixes, …) and is
+    ///   skipped — so triple-quote and interpolation delimiters never leak.
+    ///
+    /// When that yields nothing (a flat token whose body is anonymous, e.g. TS-less
+    /// `string` tokens or C# `verbatim_string_literal`), it falls back to stripping
+    /// one matching outer delimiter pair (plus any string prefix) from the raw text.
     pub fn decode_string_literal(&self, node: &Node) -> Option<String> {
         let kind = node.kind();
         if !(kind.contains("string") || kind.contains("char")) {
             return None;
         }
         let mut out = String::new();
-        let mut had_named_child = false;
         let mut cursor = node.walk();
         for child in node.named_children(&mut cursor) {
-            had_named_child = true;
             let ck = child.kind();
-            if ck.contains("substitution") || ck.contains("interpolation") {
+            if ck == "interpolation"
+                || ck == "template_substitution"
+                || ck.ends_with("_substitution")
+            {
                 out.push_str("{}");
-            } else {
+            } else if ck.contains("content")
+                || ck.contains("fragment")
+                || ck.contains("text")
+                || ck == "escape_sequence"
+            {
                 out.push_str(&self.get_node_text(&child));
             }
+            // else: delimiter marker (start/end/quote/brace/encoding) — skip.
         }
-        if !had_named_child {
+        if out.is_empty() {
             out = strip_string_delimiters(&self.get_node_text(node));
         }
         Some(out)
