@@ -17,6 +17,27 @@ pub struct ExtractedBatch {
 }
 
 impl ExtractedBatch {
+    /// Borrow this batch's canonical collections as a single
+    /// [`CanonicalWriteSet`](crate::database::bulk::atomic::CanonicalWriteSet).
+    ///
+    /// This is the single batch-to-write-set mapping point for every
+    /// production indexing path (live pipeline + external-extract CLI). When a
+    /// new canonical collection is added to both `ExtractedBatch` and
+    /// `CanonicalWriteSet`, this constructor fails to compile until the new
+    /// field is wired — which is the whole point of the parameter object (plan
+    /// cross-cutting Rule 3): no production path can silently drop the new data.
+    pub(crate) fn canonical_write_set(
+        &self,
+    ) -> crate::database::bulk::atomic::CanonicalWriteSet<'_> {
+        crate::database::bulk::atomic::CanonicalWriteSet {
+            files: &self.all_file_infos,
+            symbols: &self.all_symbols,
+            relationships: &self.all_relationships,
+            identifiers: &self.all_identifiers,
+            types: &self.all_types,
+        }
+    }
+
     pub fn new() -> Self {
         Self {
             all_symbols: Vec::new(),

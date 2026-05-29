@@ -31,6 +31,29 @@ pub(crate) struct AtomicPersistenceMetadata<'a> {
     pub(crate) mark_external_analysis_stale: bool,
 }
 
+/// Borrowed bundle of the canonical per-batch collections that every atomic
+/// write path persists together.
+///
+/// Introduced (plan `docs/plans/2026-05-29-extraction-enrichments-for-miller-bridge.md`,
+/// cross-cutting Rule 3) so adding a new collection — `type_arguments`,
+/// `literals`, … — is a single struct edit, and every construction site that
+/// fails to populate it becomes a compile error. That closes the trap where a
+/// 6th positional slice could be passed as `&[]` (or skipped) on one of the
+/// parallel write paths, silently dropping the new data on the live indexing
+/// path while extract-CLI tests pass green.
+///
+/// `Copy` because every field is a shared slice. Construct it once per batch —
+/// production paths build it via [`crate::indexing_core::batch::ExtractedBatch::canonical_write_set`]
+/// or an explicit literal so the compiler enforces full population.
+#[derive(Clone, Copy, Default)]
+pub(crate) struct CanonicalWriteSet<'a> {
+    pub(crate) files: &'a [FileInfo],
+    pub(crate) symbols: &'a [Symbol],
+    pub(crate) relationships: &'a [Relationship],
+    pub(crate) identifiers: &'a [crate::extractors::Identifier],
+    pub(crate) types: &'a [crate::extractors::base::TypeInfo],
+}
+
 #[derive(Default)]
 struct InsertCounts {
     files: i64,
@@ -62,13 +85,16 @@ impl SymbolDatabase {
         new_types: &[crate::extractors::base::TypeInfo],
         workspace_id: &str,
     ) -> Result<()> {
+        let write_set = CanonicalWriteSet {
+            files: new_files,
+            symbols: new_symbols,
+            relationships: new_relationships,
+            identifiers: new_identifiers,
+            types: new_types,
+        };
         self.incremental_update_atomic_with_metadata(
             files_to_clean,
-            new_files,
-            new_symbols,
-            new_relationships,
-            new_identifiers,
-            new_types,
+            &write_set,
             workspace_id,
             AtomicPersistenceMetadata::default(),
         )
@@ -78,11 +104,7 @@ impl SymbolDatabase {
     pub(crate) fn incremental_update_atomic_with_metadata(
         &mut self,
         files_to_clean: &[String],
-        new_files: &[FileInfo],
-        new_symbols: &[Symbol],
-        new_relationships: &[Relationship],
-        new_identifiers: &[crate::extractors::Identifier],
-        new_types: &[crate::extractors::base::TypeInfo],
+        write_set: &CanonicalWriteSet<'_>,
         workspace_id: &str,
         metadata: AtomicPersistenceMetadata<'_>,
     ) -> Result<Option<i64>> {
@@ -97,15 +119,7 @@ impl SymbolDatabase {
                 delete_file_rows_tx(&tx, file_path)?;
             }
 
-            let counts = insert_batch_tx(
-                &tx,
-                new_files,
-                new_symbols,
-                new_relationships,
-                new_identifiers,
-                new_types,
-                now,
-            )?;
+            let counts = insert_batch_tx(&tx, write_set, now)?;
             let revision = if counts.has_changes(files_to_clean.len()) {
                 let revision = record_canonical_revision_tx(
                     &tx,
@@ -123,7 +137,7 @@ impl SymbolDatabase {
                     revision,
                     workspace_id,
                     files_to_clean,
-                    new_files,
+                    write_set.files,
                     &existing_hashes,
                 )?;
                 Some(revision)
@@ -131,7 +145,7 @@ impl SymbolDatabase {
                 None
             };
 
-            persist_batch_metadata_tx(&tx, new_files, metadata)?;
+            persist_batch_metadata_tx(&tx, write_set.files, metadata)?;
             if revision.is_some() && metadata.mark_external_analysis_stale {
                 mark_external_analysis_stale_tx(&tx, now)?;
             }
@@ -155,12 +169,15 @@ impl SymbolDatabase {
         types: &[crate::extractors::base::TypeInfo],
         workspace_id: &str,
     ) -> Result<()> {
-        self.bulk_store_fresh_atomic_with_metadata(
+        let write_set = CanonicalWriteSet {
             files,
             symbols,
             relationships,
             identifiers,
             types,
+        };
+        self.bulk_store_fresh_atomic_with_metadata(
+            &write_set,
             workspace_id,
             AtomicPersistenceMetadata::default(),
         )
@@ -169,48 +186,20 @@ impl SymbolDatabase {
 
     pub(crate) fn bulk_store_fresh_atomic_with_metadata(
         &mut self,
-        files: &[FileInfo],
-        symbols: &[Symbol],
-        relationships: &[Relationship],
-        identifiers: &[crate::extractors::Identifier],
-        types: &[crate::extractors::base::TypeInfo],
+        write_set: &CanonicalWriteSet<'_>,
         workspace_id: &str,
         metadata: AtomicPersistenceMetadata<'_>,
     ) -> Result<Option<i64>> {
-        fresh_insert_atomic(
-            self,
-            files,
-            symbols,
-            relationships,
-            identifiers,
-            types,
-            workspace_id,
-            metadata,
-            false,
-        )
+        fresh_insert_atomic(self, write_set, workspace_id, metadata, false)
     }
 
     pub(crate) fn replace_workspace_data_atomic(
         &mut self,
-        files: &[FileInfo],
-        symbols: &[Symbol],
-        relationships: &[Relationship],
-        identifiers: &[crate::extractors::Identifier],
-        types: &[crate::extractors::base::TypeInfo],
+        write_set: &CanonicalWriteSet<'_>,
         workspace_id: &str,
         metadata: AtomicPersistenceMetadata<'_>,
     ) -> Result<Option<i64>> {
-        fresh_insert_atomic(
-            self,
-            files,
-            symbols,
-            relationships,
-            identifiers,
-            types,
-            workspace_id,
-            metadata,
-            true,
-        )
+        fresh_insert_atomic(self, write_set, workspace_id, metadata, true)
     }
 
     pub(crate) fn delete_single_file_atomic(
@@ -265,11 +254,7 @@ impl SymbolDatabase {
 
 fn fresh_insert_atomic(
     db: &mut SymbolDatabase,
-    files: &[FileInfo],
-    symbols: &[Symbol],
-    relationships: &[Relationship],
-    identifiers: &[crate::extractors::Identifier],
-    types: &[crate::extractors::base::TypeInfo],
+    write_set: &CanonicalWriteSet<'_>,
     workspace_id: &str,
     metadata: AtomicPersistenceMetadata<'_>,
     replace_existing: bool,
@@ -283,7 +268,7 @@ fn fresh_insert_atomic(
             delete_all_indexed_rows_tx(&tx)?;
         }
 
-        let counts = insert_batch_tx(&tx, files, symbols, relationships, identifiers, types, now)?;
+        let counts = insert_batch_tx(&tx, write_set, now)?;
         let revision = if counts.has_changes(0) {
             let revision = record_canonical_revision_tx(
                 &tx,
@@ -296,7 +281,8 @@ fn fresh_insert_atomic(
                 counts.identifiers,
                 counts.types,
             )?;
-            let changes: Vec<_> = files
+            let changes: Vec<_> = write_set
+                .files
                 .iter()
                 .map(|file| RevisionFileChange {
                     revision,
@@ -313,7 +299,7 @@ fn fresh_insert_atomic(
             None
         };
 
-        persist_batch_metadata_tx(&tx, files, metadata)?;
+        persist_batch_metadata_tx(&tx, write_set.files, metadata)?;
         if revision.is_some() && metadata.mark_external_analysis_stale {
             mark_external_analysis_stale_tx(&tx, now)?;
         }
@@ -329,23 +315,25 @@ fn fresh_insert_atomic(
 
 fn insert_batch_tx(
     tx: &Transaction<'_>,
-    files: &[FileInfo],
-    symbols: &[Symbol],
-    relationships: &[Relationship],
-    identifiers: &[crate::extractors::Identifier],
-    types: &[crate::extractors::base::TypeInfo],
+    write_set: &CanonicalWriteSet<'_>,
     now: i64,
 ) -> Result<InsertCounts> {
     let mut counts = InsertCounts::default();
-    counts.files = insert_files_tx(tx, files, now)?;
-    counts.symbols = insert_symbols_tx(tx, symbols)?;
+    counts.files = insert_files_tx(tx, write_set.files, now)?;
+    counts.symbols = insert_symbols_tx(tx, write_set.symbols)?;
     let valid_symbol_ids = load_existing_symbol_ids_tx(
         tx,
-        &collect_referenced_symbol_ids(relationships, identifiers, types),
+        &collect_referenced_symbol_ids(
+            write_set.relationships,
+            write_set.identifiers,
+            write_set.types,
+        ),
     )?;
-    counts.relationships = insert_relationships_tx(tx, relationships, Some(&valid_symbol_ids))?;
-    counts.identifiers = insert_identifiers_tx(tx, identifiers, Some(&valid_symbol_ids))?;
-    counts.types = insert_types_tx(tx, types, Some(&valid_symbol_ids), now)?;
+    counts.relationships =
+        insert_relationships_tx(tx, write_set.relationships, Some(&valid_symbol_ids))?;
+    counts.identifiers =
+        insert_identifiers_tx(tx, write_set.identifiers, Some(&valid_symbol_ids))?;
+    counts.types = insert_types_tx(tx, write_set.types, Some(&valid_symbol_ids), now)?;
     Ok(counts)
 }
 

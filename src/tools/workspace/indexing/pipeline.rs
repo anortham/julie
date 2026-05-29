@@ -246,14 +246,14 @@ fn persist_batch(
             batch.all_file_infos.len()
         );
 
-        db_lock.incremental_update_atomic(
+        // Live indexing path (Rule 2: this is the PRIMARY persistence entry
+        // point). Route through the write-set struct so any future canonical
+        // collection is compile-forced onto this path, not silently dropped.
+        db_lock.incremental_update_atomic_with_metadata(
             &batch.files_to_clean,
-            &batch.all_file_infos,
-            &batch.all_symbols,
-            &batch.all_relationships,
-            &batch.all_identifiers,
-            &batch.all_types,
+            &batch.canonical_write_set(),
             &route.workspace_id,
+            crate::database::bulk::atomic::AtomicPersistenceMetadata::default(),
         )?;
         let canonical_revision = db_lock.get_current_canonical_revision(&route.workspace_id)?;
         let successful_paths: Vec<String> = batch
@@ -298,13 +298,10 @@ fn persist_batch(
             batch.all_relationships.len(),
         );
 
-        db_lock.bulk_store_fresh_atomic(
-            &batch.all_file_infos,
-            &batch.all_symbols,
-            &batch.all_relationships,
-            &batch.all_identifiers,
-            &batch.all_types,
+        db_lock.bulk_store_fresh_atomic_with_metadata(
+            &batch.canonical_write_set(),
             &route.workspace_id,
+            crate::database::bulk::atomic::AtomicPersistenceMetadata::default(),
         )?;
         let canonical_revision = db_lock.get_current_canonical_revision(&route.workspace_id)?;
         let successful_paths: Vec<String> = batch

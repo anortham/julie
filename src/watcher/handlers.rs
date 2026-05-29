@@ -280,14 +280,24 @@ pub(crate) async fn handle_file_created_or_modified_static(
         let workspace_id = crate::workspace::registry::generate_workspace_id(&workspace_key)
             .unwrap_or_else(|_| workspace_key.into_owned());
 
-        db_lock.incremental_update_atomic(
-            &[relative_path.clone()],
-            &[file_info],
-            &results.symbols,
-            &results.relationships,
-            &results.identifiers,
-            &types_vec,
+        // Live single-file watcher path (Rule 2: a distinct persistence entry
+        // point from the pipeline and extract-CLI). Build the write-set struct
+        // explicitly so any future canonical collection is compile-forced here
+        // too — the watcher has no ExtractedBatch to map from.
+        let files_to_clean = [relative_path.clone()];
+        let watcher_files = [file_info];
+        let write_set = crate::database::bulk::atomic::CanonicalWriteSet {
+            files: &watcher_files,
+            symbols: &results.symbols,
+            relationships: &results.relationships,
+            identifiers: &results.identifiers,
+            types: &types_vec,
+        };
+        db_lock.incremental_update_atomic_with_metadata(
+            &files_to_clean,
+            &write_set,
             &workspace_id,
+            crate::database::bulk::atomic::AtomicPersistenceMetadata::default(),
         )?;
 
         new_symbol_ids = results.symbols.iter().map(|s| s.id.clone()).collect();

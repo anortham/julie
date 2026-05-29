@@ -11,11 +11,7 @@ pub fn persist_force_rebuild(
 ) -> Result<Option<i64>> {
     require_workspace_id(workspace_id)?;
     db.replace_workspace_data_atomic(
-        &batch.all_file_infos,
-        &batch.all_symbols,
-        &batch.all_relationships,
-        &batch.all_identifiers,
-        &batch.all_types,
+        &batch.canonical_write_set(),
         workspace_id,
         external_mutation_metadata(batch),
     )
@@ -37,11 +33,7 @@ pub fn persist_incremental_scan(
 
     db.incremental_update_atomic_with_metadata(
         &files_to_clean,
-        &batch.all_file_infos,
-        &batch.all_symbols,
-        &batch.all_relationships,
-        &batch.all_identifiers,
-        &batch.all_types,
+        &batch.canonical_write_set(),
         workspace_id,
         external_mutation_metadata(batch),
     )
@@ -55,11 +47,7 @@ pub fn persist_single_file_replace(
     require_workspace_id(workspace_id)?;
     db.incremental_update_atomic_with_metadata(
         &batch.files_to_clean,
-        &batch.all_file_infos,
-        &batch.all_symbols,
-        &batch.all_relationships,
-        &batch.all_identifiers,
-        &batch.all_types,
+        &batch.canonical_write_set(),
         workspace_id,
         external_mutation_metadata(batch),
     )

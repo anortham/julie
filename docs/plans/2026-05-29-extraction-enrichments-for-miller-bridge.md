@@ -77,15 +77,22 @@ Keep the `REFERENCES ... ON DELETE CASCADE` clauses in the DDL — they are corr
 
 ### Rule 2 — There are TWO persistence entry points
 
-The atomic write functions are called from two independent places with **positional** `&[...]` slices:
+The atomic write functions are called from **four** independent production places (the original plan named two; review + Step 0 implementation found two more — the watcher and orphan cleanup):
 
 | Path | Caller | Functions called |
 |---|---|---|
 | **Live MCP/daemon indexing (primary)** | `src/tools/workspace/indexing/pipeline.rs:249` and `:301` | `incremental_update_atomic(...)`, `bulk_store_fresh_atomic(...)`; cleanup via `delete_workspace_data()` at `:284` |
+| **Live single-file watcher** | `src/watcher/handlers.rs:283` | `incremental_update_atomic(...)` — builds its slices ad-hoc from a single-file `ExtractionResults`, **has no `ExtractedBatch`** |
 | **External-extract CLI** | `src/indexing_core/persistence.rs:13/38/56` | `replace_workspace_data_atomic(...)`, `incremental_update_atomic_with_metadata(...)` |
 | **Orphan cleanup** | `src/database/workspace.rs:17` | `incremental_update_atomic(...)` (with empty data slices) |
 
-Threading a new collection through only one path drops it silently on the other. Because the live path is the primary one, an extract-CLI-only test would pass while real workspace indexing loses every new row. **Both paths must carry the new data.** Rule 3 makes this enforceable.
+Threading a new collection through only one path drops it silently on the others. Because the live paths (pipeline + watcher) are primary, an extract-CLI-only test would pass while real workspace indexing loses every new row. **All paths must carry the new data.** Rule 3 makes this enforceable.
+
+**Step 0 is DONE (commit on `feat/miller-bridge-extraction-enrichments`).** `CanonicalWriteSet<'a>` now lives in `src/database/bulk/atomic.rs`; the internal atomic fns (`*_with_metadata`, `replace_workspace_data_atomic`, `fresh_insert_atomic`, `insert_batch_tx`) take `&CanonicalWriteSet`. The two **production struct-construction sites** are now the compile-forced choke points for any new field:
+- `ExtractedBatch::canonical_write_set()` (`src/indexing_core/batch.rs`) — used by pipeline ×2 and persistence ×3.
+- the explicit `CanonicalWriteSet { … }` literal in `src/watcher/handlers.rs` — the watcher path.
+
+The public positional wrappers `incremental_update_atomic`/`bulk_store_fresh_atomic` were **retained** (they build the struct internally and delegate) so the ~90 test call sites and the orphan-cleanup site stay untouched and keep defaulting absent collections to empty. **When Phases 2/3 add a field: edit the struct, edit `canonical_write_set()`, edit the watcher literal.** The compiler will flag those last two until wired. The positional wrappers will also need a one-line `field: &[]` (or a new positional param) — a deliberate choice for the test/orphan API, never a silent drop on a production path.
 
 ### Rule 3 — Replace positional slices with a parameter object (Phase 2, step 0)
 
@@ -187,9 +194,9 @@ and pass `annotations,` into `SymbolOptions` (replacing `annotations: Vec::new()
 
 **Verified current state:** `factory.rs:26` hardcodes `generic_params: None` for inferred types (0/10537 populated in newtonsoft, 0/540 in flask). The only structural `type_argument_list` reader is `csharp/di_relationships.rs:82`, gated to 10 hardcoded DI method names (`DI_REGISTRATION_METHODS`, lines 21-32, checked at 77) and emits **order-agnostic** `Instantiates` edges (collected into a `Vec<String>` with no ordinal tracking). `member_type_relationships.rs:318-324` collapses `IRepository<User>` → `IRepository` (drops the arg list). TypeScript **actively excludes** `type_arguments` (`relationships.rs:449,462`; `identifiers.rs:193` — the last is the `new_expression` callee-name finder specifically). Python pushes an opaque `"Generic[K, V]"` string (`helpers.rs:40-43`) — but see the Python caveat below.
 
-#### Step 0 — Parameter-object refactor (Rule 3). No new data; lands green first.
+#### Step 0 — Parameter-object refactor (Rule 3). No new data; lands green first. ✅ DONE
 
-Introduce `CanonicalWriteSet` per "Cross-cutting correctness rules / Rule 3" and thread it through `insert_batch_tx`, `incremental_update_atomic[_with_metadata]`, `bulk_store_fresh_atomic[_with_metadata]`, `replace_workspace_data_atomic`, `fresh_insert_atomic`, and all call sites (`pipeline.rs:249/:301`, `persistence.rs:13/38/56`, `workspace.rs:17`). Run `cargo xtask test changed` (lead) — this is the one place a broad regression check is warranted because it touches shared persistence infrastructure. Behavior is unchanged; all existing persistence tests must stay green before proceeding.
+Introduced `CanonicalWriteSet` per "Cross-cutting correctness rules / Rule 3", threaded through `insert_batch_tx`, `incremental_update_atomic_with_metadata`, `bulk_store_fresh_atomic_with_metadata`, `replace_workspace_data_atomic`, `fresh_insert_atomic`. Production paths route via `ExtractedBatch::canonical_write_set()` (pipeline ×2, persistence ×3) and an explicit literal (watcher ×1); the public positional `incremental_update_atomic`/`bulk_store_fresh_atomic` were retained as thin struct-building delegators so the ~90 test sites + orphan cleanup (`workspace.rs:17`) stay untouched. `cargo xtask test changed` ran green (35 buckets, 523.6s); 35 targeted persistence tests green. Behavior unchanged. **See the expanded Rule 2 section for where to add a field in Phases 2/3.**
 
 #### Step 1 — New storage: `type_arguments` table (migration 027)
 
