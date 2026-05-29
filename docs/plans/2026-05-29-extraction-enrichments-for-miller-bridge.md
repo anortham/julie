@@ -198,7 +198,7 @@ and pass `annotations,` into `SymbolOptions` (replacing `annotations: Vec::new()
 
 Introduced `CanonicalWriteSet` per "Cross-cutting correctness rules / Rule 3", threaded through `insert_batch_tx`, `incremental_update_atomic_with_metadata`, `bulk_store_fresh_atomic_with_metadata`, `replace_workspace_data_atomic`, `fresh_insert_atomic`. Production paths route via `ExtractedBatch::canonical_write_set()` (pipeline ×2, persistence ×3) and an explicit literal (watcher ×1); the public positional `incremental_update_atomic`/`bulk_store_fresh_atomic` were retained as thin struct-building delegators so the ~90 test sites + orphan cleanup (`workspace.rs:17`) stay untouched. `cargo xtask test changed` ran green (35 buckets, 523.6s); 35 targeted persistence tests green. Behavior unchanged. **See the expanded Rule 2 section for where to add a field in Phases 2/3.**
 
-#### Step 1 — New storage: `type_arguments` table (migration 027)
+#### Step 1 — New storage: `type_arguments` table (migration 027) ✅ DONE (57dba940)
 
 Self-referential to preserve nesting; keyed to the use-site identifier; **carries `file_path` for flat cleanup** (Rule 1):
 ```sql
@@ -222,7 +222,7 @@ CREATE INDEX IF NOT EXISTS idx_type_args_file       ON type_arguments(file_path)
 
 **Migration 027 must be a pure new-table migration** (copy `migration_026`, not `migration_025`): bump `LATEST_SCHEMA_VERSION` 26→**27**; add dispatch arm `27 => self.migration_027_add_type_arguments()?,` (`apply_migration`) and the description arm (`record_migration`); write `migration_027_add_type_arguments()` whose body is **only** `table_exists("type_arguments")` early-return + `self.create_type_arguments_table()?`. Put **all** `CREATE TABLE`/`CREATE INDEX` DDL solely in `create_type_arguments_table()` in `schema.rs`, called from `initialize_schema()` after `create_identifiers_table()` (dependency order). Do **not** write inline `CREATE` in the migration and do **not** use the `has_column` pattern (that is for column-add migrations only) — keeping the single source of truth in `schema.rs` is what guarantees the fresh-DB and upgraded-DB shapes are identical.
 
-#### Step 2 — Extractor model + capture
+#### Step 2 — Extractor model + capture ✅ DONE for C#/TS/Python (536816a6, 2d5f1d27); other languages → Step 4
 
 1. **Extractor model:** add a recursive `TypeArgument { ordinal, type_name, children: Vec<TypeArgument>, span }` to `crates/julie-extractors/src/base/types.rs`; attach to the use-site `Identifier` (a `Vec<TypeArgument>` field) or a parallel collection in `ExtractionResults` keyed by identifier id.
 2. **Core helper:** add `extract_type_arguments(base, node) -> Vec<TypeArgument>` that walks the argument-list children in document order assigning ordinals and recurses into nested generic nodes.
@@ -231,7 +231,7 @@ CREATE INDEX IF NOT EXISTS idx_type_args_file       ON type_arguments(file_path)
    - **TypeScript** (`type_arguments` → `type_identifier`/`generic_type`/nested `type_arguments`): stop returning `None` (`relationships.rs:449`) and stop `continue`-ing past `type_arguments` (`relationships.rs:462`) — descend with the helper and attach to the heritage/new-expression identifier. Keep skipping `type_arguments` for *callee-name* resolution (`identifiers.rs:193` is the `new_expression` constructor-name finder; `mod.rs:306`), but separately capture its contents onto the use-site identifier.
    - **Python (lowest value for this consumer; do not cut, but verify the path):** Python is not in Miller's bridge corpus; this leg serves future consumers. **Before writing code or tests, confirm the actual AST path** for the cases you intend to support. `helpers.rs:40-43` is `extract_argument_list`, which handles **class base-argument** subscripts (`class C(Generic[K, V])`), *not* general variable/parameter type annotations (`x: Dict[str, List[int]]`). Use `deep_dive`/AST inspection to find where annotated assignments / typed parameters are handled (if at all). Implement decomposition (value=outer type, subscript children=ordered args, recursing for nested subscripts) for the paths that are actually reachable. **If variable/parameter annotations are not extracted today, state that explicitly as the Python scope (class-base generics only) and flag the gap** — do not write a test asserting a case the targeted edit cannot reach, and do not silently narrow a class-base test to fake passing the annotation case.
 
-#### Step 3 — Write-path + cleanup (honor all four cross-cutting rules)
+#### Step 3 — Write-path + cleanup (honor all four cross-cutting rules) ✅ DONE (ae646995)
 
 1. **Bulk insert:** `insert_type_arguments_tx` in a new `src/database/bulk/type_arguments.rs` (mirror `bulk/identifiers.rs`: early-return on empty, `INSERT OR REPLACE`, run under the existing FK-disabled bulk window). Add `type_arguments: &'a [..]` to `CanonicalWriteSet` (one struct edit; call sites now fail to compile until populated — by design).
 2. **Cleanup in all THREE sites (Rule 1):**
@@ -256,7 +256,38 @@ CREATE INDEX IF NOT EXISTS idx_type_args_file       ON type_arguments(file_path)
 
 **Contract impact:** `schema_version`→27; **`EXTRACT_CONTRACT_VERSION` stays 1** (bumps in the final batch commit); `EXTRACTION_CONTRACT_VERSION` batch suffix via the drift-dial procedure.
 
-**Exit:** ordered, nested, use-site generic arguments are queryable per identifier across C#/TS (and the verified-reachable Python paths); cleanup verified on re-index and force-rebuild; counts surfaced in `extract info`.
+#### Step 4 — Language expansion: type-argument readers for EVERY generic-bearing language
+
+**Scope decision (2026-05-29, owner-directed):** Steps 1–3 scoped readers to C#/TS/Python because that is *Miller's* bridge corpus. That was optimizing for the consumer, not for Julie. **Julie's mission is broad code intelligence across all 34 languages — a feature is not "done" when only the convenient 3 languages have it.** The Step 1–3 infrastructure (`type_arguments` table, `flatten_type_argument_usages`, both atomic write paths, all 3 cleanup sites, counts/report, and the delegating `get_type_argument_usages()` on **all 34** extractors) is already fully language-agnostic, so each additional language is a drop-in: a per-grammar decomposer + a hook in that language's `identifiers.rs` calling `base.record_type_arguments(...)` + a `tests/<lang>/type_arguments.rs` test file mirroring the committed C#/TS/Python harnesses.
+
+**Critical:** adding languages is **same-shape** — same table, same columns, strictly more rows. It does **not** touch `EXTRACT_CONTRACT_VERSION` and needs **zero** Miller re-coordination. The single 1→2 bump still lands once, in the final batch commit, after Phase 3.
+
+**Implementation template (proven 3×):** copy the shape of `crates/julie-extractors/src/{csharp,typescript,python}/identifiers.rs` and `crates/julie-extractors/src/tests/{csharp,typescript,python}/type_arguments.rs`. Each reader: hook the universal type/identifier arm (and new-expression / call / heritage arms as the grammar requires), find the outermost generic node, call the shared `extract_type_arguments(base, arg_list, decompose_<lang>_type_arg)`, and `record_type_arguments(identifier, args)`. Apply the **outermost-only** recording rule (nested generics ride along as `children`, never double-counted as separate usages). Tests assert exact `(ordinal, type_name)` pairs + nesting + a zero-row non-generic case.
+
+**Verified inventory** (read-only 34-language sweep, 2026-05-29; each verdict cited grammar `node-types.json` or extractor `file:line`):
+
+| Tier | Language | Effort | tree-sitter node kinds | Notes |
+|------|----------|--------|------------------------|-------|
+| Standalone nominal generics | Dart | low | `type_arguments` | flat type children, simple decomposer |
+| | Kotlin | low | `type_arguments`, `type_projection`, `user_type`, `call_expression` | |
+| | Swift | low | `type_arguments`, `user_type` | |
+| | Rust | medium | `generic_type`, `generic_type_with_turbofish`, `type_arguments` | turbofish `::<T>` across calls/methods/paths; trait-bound `type_binding`. **Highest dogfood value — Julie is Rust.** |
+| | Java | medium | `generic_type`, `type_arguments` | near-identical to C#'s `generic_name`; also generic method-invocation `type_arguments` field |
+| | Go | medium | `generic_type`, `type_arguments`, `type_elem`, `type_instantiation_expression`, `call_expression` | Go 1.18+; clean grammar |
+| | Scala | medium | `generic_type`, `type_arguments`, `generic_function` | square-bracket `[T]` |
+| | VB.NET | medium | `generic_type`, `type_argument_list` | `Of` syntax: `List(Of String)` |
+| | GDScript | medium (partial) | `type`, `subscript`, `subscript_arguments` | `Array[T]`; extractor captures full type text today, must decompose |
+| | C++ | high (partial) | `template_type`, `template_argument_list` | heaviest: heterogeneous args (type + non-type), 3 syntactic contexts (type ref, template call, template base); nested `vector<map<string,int>>` |
+| Embedded — reuse host reader | Razor | low (partial) | `generic_name`, `type_argument_list` | embeds C#; **reuse C# helpers** (`record_outermost_generic_type_arguments` + `decompose_csharp_type_arg`); extractor currently skips type usages ("Future: type usage" at `razor/identifiers.rs:103-107`) |
+| | Vue | medium | `generic_type`, `new_expression`, `call_expression`, `instantiation_expression`, `extends_clause` | `<script lang="ts">` parses with tree-sitter-typescript; **reuse the TS reader** scoped to Vue identifier dispatch |
+| | QML | medium | `generic_type`, `type_arguments` | grammar is `tree-sitter-qmljs` (JS/TS superset — verified it really does carry these nodes); reuse TS-style decomposer. Rare in real QML but free once the pattern exists. |
+| Comptime oddball | Zig | low–medium (nuanced) | `call_expression`, `arguments` | generics are comptime fns: `ArrayList(i32)` is a `call_expression`, **indistinguishable from a normal call at the grammar level**. MUST scope capture to **type-position** calls (type annotations, `const X = Container(...)` aliases) or it records call-argument noise. Treat as nuanced, not mechanical. |
+
+**Verified no use-site generics — n/a (16, do not implement):** Bash, C, CSS, Elixir, HTML, JavaScript, JSON, Lua, Markdown, PHP, R, Regex, Ruby, SQL, TOML, YAML. (JS: generics are TS-only. Elixir: `list(integer)` typespecs parse as plain `call` nodes — no generic grammar nodes; would need typespec-aware capture, genuinely separate.)
+
+**Execution:** visible TeamCreate team (Opus lead + Sonnet teammates) per owner preference; one language per task, TDD each (test → red → reader → green), teammates run **only** narrow `cargo nextest run --lib <test>` (≤2 runs), lead reviews + integrates + runs regression per wave. Waves: (1) standalone nominal tier, (2) embedded reuse (Razor/Vue/QML), (3) Zig scoped-heuristic + C++. Do the **bloat measurement** (below) after the C#/TS readers exist and re-confirm it does not blow up as more languages land.
+
+**Exit:** ordered, nested, use-site generic arguments are captured, persisted, cleaned-up, and counted for **every generic-bearing language** (C#, TypeScript, Python, Rust, Java, Go, Kotlin, Swift, Scala, Dart, VB.NET, GDScript, C++, Razor, Vue, QML, and the scoped Zig path); the 16 non-generic languages are explicitly out of scope with verification; cleanup verified on re-index and force-rebuild; counts surfaced in `extract info`.
 
 ---
 

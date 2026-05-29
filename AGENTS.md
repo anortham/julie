@@ -409,6 +409,23 @@ The previous lossy `pause()` / `resume()` mechanism that silently dropped events
 
 **Julie supports 34 languages and indexes ANY codebase.** All scoring, ranking, filtering, path analysis, and heuristics MUST work across all project layouts — not just Rust or Julie's own directory structure.
 
+#### Feature parity: every feature, every language that supports the concept
+
+**The 34 languages are first-class peers. We do NOT pick a favorite language — or a convenient 3 — and make them better than the rest.** When you build any extraction or intelligence feature (a new symbol kind, an annotation class, type-argument capture, literal capture, a relationship edge, an enrichment), the target is **every language whose grammar expresses the underlying concept** — not "the language I'm testing with," not "the consumer who asked for it," not "the easy ones first and the rest never."
+
+**A feature is not "done" when only some languages have it.** "Done for C#/TS/Python" is not done — it is a partial rollout that must be tracked to completion across all applicable languages. Before declaring any cross-language feature complete, **enumerate all 34 languages and classify each: implemented, or verified-not-applicable.** There is no third "we'll get to it" bucket masquerading as done.
+
+**The only legitimate exclusion is genuine absence of the concept** (e.g. generic type arguments in Bash, inheritance in JSON). That exclusion is a **positive claim that must be verified** — check the grammar's `node-types.json` or the extractor source, cite the evidence, and record it. Never assume a language lacks a feature; that is exactly how breadth silently rots. (See the global rule "Negative claims need positive verification.")
+
+- ❌ "I implemented it for C#/TS/Python; the others can come later" — that is silently shrinking a 34-language feature to 3.
+- ❌ "Language X probably doesn't have this" — verify against the grammar before excluding.
+- ❌ Scoping a broad feature to one consumer's corpus and calling the feature finished.
+- ✅ Build the language-agnostic infrastructure once, then add every applicable language (a per-grammar reader + a test), driving the "implemented vs verified-n/a" ledger to 100%.
+- ✅ When effort forces phasing, phase **explicitly and visibly** (a tracked checklist of remaining languages), never by quietly stopping at the convenient subset.
+
+If the full set is genuinely too large for one change, say so out loud and keep a checklist of the remaining languages — do not let "the 3 that mattered to today's task" become the permanent state. Scope reduction across languages is the owner's call, surfaced explicitly, never a silent default.
+
+
 **The rule is simple: if you're writing code that checks a file path, symbol kind, project structure, or naming convention, it MUST work for ALL of these:**
 
 | Layout | Source Code | Tests | Docs |
