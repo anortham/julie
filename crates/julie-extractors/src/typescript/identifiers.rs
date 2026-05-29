@@ -3,7 +3,7 @@
 //! This module handles extraction of identifier usages for LSP-quality find_references functionality,
 //! including function calls, member access, and other identifier references.
 
-use crate::base::{Identifier, IdentifierKind, Symbol};
+use crate::base::{BaseExtractor, Identifier, IdentifierKind, Symbol, extract_type_arguments};
 use crate::typescript::TypeScriptExtractor;
 use std::collections::HashMap;
 use tree_sitter::{Node, Tree};
@@ -89,15 +89,61 @@ fn extract_identifier_from_node(
             }
         }
 
+        // Heritage clause: `class A extends Base<Foo, Bar>` or `class A extends Base`.
+        // The `extends_clause` grammar uses an expression-context `value` field for the
+        // base-class identifier (so it's `identifier`, not `type_identifier`) plus an
+        // optional separate `type_arguments` field. Unlike type annotations, this does NOT
+        // produce a `generic_type` node, so the `type_identifier` arm cannot hook here.
+        "extends_clause" => {
+            if let Some(value_node) = node.child_by_field_name("value") {
+                if let Some((name_node, name)) = terminal_identifier(extractor, value_node) {
+                    let containing_symbol_id =
+                        find_containing_symbol_id(extractor, node, symbol_map);
+                    let identifier = extractor.base_mut().create_identifier(
+                        &name_node,
+                        name,
+                        IdentifierKind::TypeUsage,
+                        containing_symbol_id,
+                    );
+                    // Capture type arguments if the base class is generic
+                    if let Some(arg_list) = node.child_by_field_name("type_arguments") {
+                        let arguments = extract_type_arguments(
+                            extractor.base(),
+                            arg_list,
+                            decompose_ts_type_arg,
+                        );
+                        extractor.base_mut().record_type_arguments(&identifier, arguments);
+                    }
+                }
+            }
+        }
+
         "new_expression" => {
             if let Some((name_node, name)) = constructor_identifier(extractor, &node) {
                 let containing_symbol_id = find_containing_symbol_id(extractor, node, symbol_map);
-                extractor.base_mut().create_identifier(
+                let identifier = extractor.base_mut().create_identifier(
                     &name_node,
                     name,
                     IdentifierKind::Call,
                     containing_symbol_id,
                 );
+                // Capture applied type arguments when the new_expression carries `<...>`
+                // (e.g. `new Map<string, User>()`). The type_arguments node sits as a
+                // direct named child of the new_expression alongside the constructor and
+                // arguments list.
+                let maybe_type_args = {
+                    let mut cursor = node.walk();
+                    node.named_children(&mut cursor)
+                        .find(|c| c.kind() == "type_arguments")
+                };
+                if let Some(arg_list) = maybe_type_args {
+                    let arguments = extract_type_arguments(
+                        extractor.base(),
+                        arg_list,
+                        decompose_ts_type_arg,
+                    );
+                    extractor.base_mut().record_type_arguments(&identifier, arguments);
+                }
             }
         }
 
@@ -168,12 +214,17 @@ fn extract_identifier_from_node(
 
             let containing_symbol_id = find_containing_symbol_id(extractor, node, symbol_map);
 
-            extractor.base_mut().create_identifier(
+            let identifier = extractor.base_mut().create_identifier(
                 &node,
                 name,
                 IdentifierKind::TypeUsage,
                 containing_symbol_id,
             );
+            // If this type_identifier is the name of an outermost generic_type (e.g. the
+            // `Base` in `extends Base<Foo,Bar>` or the `Map` in `field: Map<K,V>`),
+            // record the applied type arguments in order. Nested generics are skipped here
+            // because they ride along as `children` of the enclosing usage.
+            record_outermost_generic_type_arguments_ts(extractor, node, &identifier);
         }
 
         _ => {}
@@ -248,6 +299,78 @@ fn find_containing_symbol_id(
         .base()
         .find_containing_symbol_from_map(&node, symbol_map)
         .map(|s| s.id.clone())
+}
+
+// ============================================================================
+// Type-argument capture helpers (Miller bridge Phase 2)
+// ============================================================================
+
+/// First `type_arguments` child of a `generic_type` (its `<...>`), if any.
+fn type_arguments_child(generic_type: Node<'_>) -> Option<Node<'_>> {
+    let mut cursor = generic_type.walk();
+    generic_type
+        .children(&mut cursor)
+        .find(|child| child.kind() == "type_arguments")
+}
+
+/// `TypeArgDecomposer` for TypeScript: maps a child of a `type_arguments` list to its
+/// applied argument. Skips unnamed nodes (punctuation `<`, `,`, `>`); for a nested
+/// `generic_type` returns the base name plus its inner `type_arguments` to recurse into;
+/// for every other named type node returns its source text as a leaf.
+fn decompose_ts_type_arg<'a>(
+    base: &BaseExtractor,
+    node: Node<'a>,
+) -> Option<(String, Option<Node<'a>>)> {
+    if !node.is_named() {
+        return None;
+    }
+    match node.kind() {
+        "generic_type" => {
+            // The `name` field of a `generic_type` is its head identifier/type_identifier.
+            let name = node
+                .child_by_field_name("name")
+                .map(|n| base.get_node_text(&n))
+                .unwrap_or_else(|| base.get_node_text(&node));
+            let nested = type_arguments_child(node);
+            Some((name, nested))
+        }
+        _ => Some((base.get_node_text(&node), None)),
+    }
+}
+
+/// If `name_node` is the `name` field of an *outermost* `generic_type` use site
+/// (e.g. the `Base` in `extends Base<Foo,Bar>` or the `Map` in `field: Map<K,V>`),
+/// record that generic's ordered/nested applied type arguments against `identifier`.
+///
+/// "Outermost" means the `generic_type`'s parent is NOT `type_arguments`; nested
+/// generics such as `Array<User>` inside `Map<string, Array<User>>` are skipped here
+/// because they ride along as `children` of the enclosing usage and must not be
+/// double-counted as separate top-level usages.
+fn record_outermost_generic_type_arguments_ts(
+    extractor: &mut TypeScriptExtractor,
+    name_node: Node,
+    identifier: &Identifier,
+) {
+    let Some(generic_type) = name_node.parent() else {
+        return;
+    };
+    if generic_type.kind() != "generic_type" {
+        return;
+    }
+    // A generic_type whose parent is type_arguments is itself nested inside another
+    // generic — its args ride along under the outer usage.
+    if generic_type
+        .parent()
+        .map(|p| p.kind() == "type_arguments")
+        .unwrap_or(false)
+    {
+        return;
+    }
+    let Some(arg_list) = type_arguments_child(generic_type) else {
+        return;
+    };
+    let arguments = extract_type_arguments(extractor.base(), arg_list, decompose_ts_type_arg);
+    extractor.base_mut().record_type_arguments(identifier, arguments);
 }
 
 /// Check if a `type_identifier` node is a declaration name rather than a type reference.

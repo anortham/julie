@@ -12,6 +12,7 @@ pub mod identifiers;
 pub mod imports;
 pub mod relationships;
 pub mod signatures;
+pub mod type_arguments;
 pub mod types;
 
 use crate::base::{RelationshipKind, SymbolKind};

@@ -16,6 +16,7 @@ pub mod relative_paths; // NEW: Phase 2 - Relative Unix-style path storage tests
 pub mod symbols;
 pub mod test_call_extraction;
 pub mod tsx_cross_file_pending;
+pub mod type_arguments;
 pub mod types; // NEW: Phase 4 - Type extraction verification tests
 
 use crate::base::SymbolKind;
