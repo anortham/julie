@@ -210,7 +210,12 @@ fn store_symbols_persists_annotations_for_class_and_field_kinds() {
     db.store_file_info(&file).unwrap();
 
     let class_ann = vec![marker("Table", "table", Some(r#"Table("Accounts")"#), None)];
-    let field_ann = vec![marker("Column", "column", Some(r#"Column("acct_id")"#), None)];
+    let field_ann = vec![marker(
+        "Column",
+        "column",
+        Some(r#"Column("acct_id")"#),
+        None,
+    )];
 
     let mut account = symbol("csharp-class", "Account", &file.path, class_ann.clone());
     account.kind = SymbolKind::Class;

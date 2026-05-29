@@ -33,7 +33,6 @@ pub fn extract_symbols_and_relationships(code: &str) -> (Vec<Symbol>, Vec<Relati
 
 pub mod classes;
 pub mod concurrency;
-pub mod type_arguments;
 pub mod cross_file_pending;
 pub mod cross_file_relationships;
 pub mod declarations;
@@ -46,5 +45,6 @@ pub mod namespaces;
 pub mod robustness;
 pub mod templates;
 pub mod testing;
+pub mod type_arguments;
 pub mod type_usage;
 pub mod types;

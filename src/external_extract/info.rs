@@ -27,6 +27,7 @@ pub struct ExternalExtractCounts {
     pub identifiers: u64,
     pub types: u64,
     pub type_arguments: u64,
+    pub literals: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -77,6 +78,7 @@ pub fn read_external_extract_info(db_path: &Path) -> Result<ExternalExtractInfo>
             identifiers: count_table(&conn, "identifiers")?,
             types: count_table(&conn, "types")?,
             type_arguments: count_table(&conn, "type_arguments")?,
+            literals: count_table(&conn, "literals")?,
         },
     })
 }

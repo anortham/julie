@@ -180,4 +180,3 @@ class MyList extends List<User> {}
     assert_eq!(top_level(&usages[0]), vec![(0, "User")]);
     assert!(usages[0].arguments[0].children.is_empty());
 }
-

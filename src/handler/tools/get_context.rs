@@ -37,24 +37,23 @@ impl JulieServerHandler {
         // Resolve workspace ONCE per request. Used for both metrics attribution
         // and the actual tool call below, so bad workspace_id surfaces as
         // invalid_params before any other work happens.
-        let workspace_target = match resolve_workspace_filter(params.workspace.as_deref(), self)
-            .await
-        {
-            Ok(target) => target,
-            Err(e) => {
-                let message = format!("get_context failed: {}", e);
-                self.record_tool_failure(
-                    "get_context",
-                    start.elapsed(),
-                    None,
-                    metadata.clone(),
-                    source_file_paths.clone(),
-                    Self::input_bytes_from_metadata(&metadata),
-                    &message,
-                );
-                return Err(classify_tool_failure("get_context", &e));
-            }
-        };
+        let workspace_target =
+            match resolve_workspace_filter(params.workspace.as_deref(), self).await {
+                Ok(target) => target,
+                Err(e) => {
+                    let message = format!("get_context failed: {}", e);
+                    self.record_tool_failure(
+                        "get_context",
+                        start.elapsed(),
+                        None,
+                        metadata.clone(),
+                        source_file_paths.clone(),
+                        Self::input_bytes_from_metadata(&metadata),
+                        &message,
+                    );
+                    return Err(classify_tool_failure("get_context", &e));
+                }
+            };
 
         let workspace_snapshot = self
             .metrics_workspace_binding_for_target(&workspace_target)

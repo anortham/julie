@@ -227,13 +227,8 @@ fn is_csharp_type_usage_identifier(node: Node) -> bool {
             }
         }
         match parent.kind() {
-            "generic_name"
-            | "qualified_name"
-            | "array_type"
-            | "nullable_type"
-            | "pointer_type"
-            | "tuple_type"
-            | "type_argument_list" => return true,
+            "generic_name" | "qualified_name" | "array_type" | "nullable_type" | "pointer_type"
+            | "tuple_type" | "type_argument_list" => return true,
             "object_creation_expression" => {
                 if let Some(type_node) = parent.child_by_field_name("type") {
                     if contains_node(type_node, node) {

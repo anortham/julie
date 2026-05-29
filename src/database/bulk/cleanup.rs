@@ -46,6 +46,17 @@ pub(super) fn delete_file_rows_tx(tx: &Transaction<'_>, file_path: &str) -> Resu
         "DELETE FROM type_arguments WHERE file_path = ?1",
         params![file_path],
     )?;
+    // Delete this file's literals dependent-first (before symbols/files): each
+    // row carries its own file_path, and may also point at a containing symbol
+    // in this file. FK enforcement is off during bulk writes (Rule 1), so the
+    // schema's ON DELETE CASCADE never fires — delete explicitly, matching both
+    // the row's own file_path and any containing symbol owned by this file.
+    tx.execute(
+        "DELETE FROM literals
+         WHERE file_path = ?1
+            OR containing_symbol_id IN (SELECT id FROM symbols WHERE file_path = ?1)",
+        params![file_path],
+    )?;
     tx.execute(
         "DELETE FROM identifiers
          WHERE file_path = ?1
@@ -72,6 +83,7 @@ pub(super) fn delete_file_rows_tx(tx: &Transaction<'_>, file_path: &str) -> Resu
 pub(super) fn delete_all_indexed_rows_tx(tx: &Transaction<'_>) -> Result<()> {
     for sql in [
         "DELETE FROM symbol_vectors",
+        "DELETE FROM literals",
         "DELETE FROM type_arguments",
         "DELETE FROM identifiers",
         "DELETE FROM types",

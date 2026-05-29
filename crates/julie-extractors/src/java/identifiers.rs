@@ -60,9 +60,14 @@ fn extract_identifier_from_node(
                 // Generic method calls: `list.<String>stream()` carry a `type_arguments`
                 // field directly on the method_invocation node.
                 if let Some(type_args) = node.child_by_field_name("type_arguments") {
-                    let arguments =
-                        extract_type_arguments(extractor.base(), type_args, decompose_java_type_arg);
-                    extractor.base_mut().record_type_arguments(&identifier, arguments);
+                    let arguments = extract_type_arguments(
+                        extractor.base(),
+                        type_args,
+                        decompose_java_type_arg,
+                    );
+                    extractor
+                        .base_mut()
+                        .record_type_arguments(&identifier, arguments);
                 }
             } else {
                 // Fallback: look for identifier children
@@ -224,7 +229,9 @@ fn record_outermost_java_type_arguments(
         return;
     };
     let arguments = extract_type_arguments(extractor.base(), arg_list, decompose_java_type_arg);
-    extractor.base_mut().record_type_arguments(identifier, arguments);
+    extractor
+        .base_mut()
+        .record_type_arguments(identifier, arguments);
 }
 
 /// Decompose a single child of a Java `type_arguments` node into a

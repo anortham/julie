@@ -204,7 +204,7 @@ async fn test_markdown_with_long_lines_is_not_skipped_as_minified() {
     fs::write(&file_path, &content).unwrap();
 
     let tool = workspace_tool();
-    let (symbols, _, _, _, _, _, _, _, _) = tool
+    let (symbols, _, _, _, _, _, _, _, _, _) = tool
         .process_file_with_parser(&file_path, "markdown", &workspace_root)
         .await
         .expect("markdown processing should succeed");
@@ -232,7 +232,7 @@ fn caller() {
     .unwrap();
 
     let tool = workspace_tool();
-    let (_, _, _, structured_pending, _, _, _, _, _) = tool
+    let (_, _, _, structured_pending, _, _, _, _, _, _) = tool
         .process_file_with_parser(&file_path, "rust", &workspace_root)
         .await
         .expect("rust processing should preserve structured pending relationships");
@@ -279,6 +279,7 @@ async fn test_process_file_with_parser_keeps_file_info_for_degraded_parse_result
         identifiers,
         types,
         _type_argument_usages,
+        _literals,
         parse_diagnostics,
         file_info,
     ) = tool

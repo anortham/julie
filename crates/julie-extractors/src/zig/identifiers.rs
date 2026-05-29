@@ -1,4 +1,4 @@
-use crate::base::{extract_type_arguments, BaseExtractor, Identifier, IdentifierKind, Symbol};
+use crate::base::{BaseExtractor, Identifier, IdentifierKind, Symbol, extract_type_arguments};
 use std::collections::HashMap;
 use tree_sitter::{Node, Tree};
 
@@ -215,12 +215,10 @@ fn is_zig_call_in_type_position(node: Node) -> bool {
         return false;
     };
     match parent.kind() {
-        "variable_declaration" | "container_field" | "parameter" => {
-            is_after_colon(parent, node)
-        }
+        "variable_declaration" | "container_field" | "parameter" => is_after_colon(parent, node),
         // Pointer/optional/nullable wrappers — recurse to check their parent context.
-        "pointer_type" | "optional_type" | "nullable_type" | "error_union_type"
-        | "slice_type" | "array_type" => is_zig_call_in_type_position(parent),
+        "pointer_type" | "optional_type" | "nullable_type" | "error_union_type" | "slice_type"
+        | "array_type" => is_zig_call_in_type_position(parent),
         _ => false,
     }
 }

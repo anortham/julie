@@ -471,7 +471,10 @@ fn test_migration_027_upgrades_v26_database_preserving_data() {
         .unwrap();
     assert_eq!(file_count, 1, "files row must survive migration");
     assert_eq!(symbol_count, 1, "symbols row must survive migration");
-    assert_eq!(identifier_count, 1, "identifiers row must survive migration");
+    assert_eq!(
+        identifier_count, 1,
+        "identifiers row must survive migration"
+    );
 }
 
 #[test]
@@ -517,5 +520,153 @@ fn test_type_arguments_schema_fresh_matches_migrated() {
         index_names(&fresh_db.conn, "type_arguments"),
         index_names(&migrated_db.conn, "type_arguments"),
         "type_arguments index set must be identical fresh vs migrated"
+    );
+}
+
+// ============================================================
+// MIGRATION 028: literals table (Miller bridge Phase 3)
+// ============================================================
+
+const LITERAL_INDEXES: [&str; 3] = [
+    "idx_literals_containing",
+    "idx_literals_file",
+    "idx_literals_kind",
+];
+
+/// Build a realistic v27-shaped database (type_arguments present, literals
+/// absent) so the 27->28 migration can be exercised on a genuine upgrade.
+/// Same downgrade-from-current strategy as `build_v26_database_with_rows`:
+/// build a full current-schema DB via the real API, then drop only the
+/// migration-028 delta and reset the recorded version to 27.
+fn build_v27_database_with_rows(db_path: &std::path::Path) {
+    {
+        let mut db = SymbolDatabase::new(db_path).unwrap();
+        let file = file_info_builder("legacy.cs").build();
+        let symbol = symbol_builder("sym-legacy", "Legacy", "legacy.cs").build();
+        let identifier = identifier_builder("id-legacy", "List", "legacy.cs").build();
+        db.bulk_store_fresh_atomic(&[file], &[symbol], &[], &[identifier], &[], "primary")
+            .unwrap();
+    }
+
+    let conn = open_test_connection(db_path).unwrap();
+    conn.execute("DROP TABLE IF EXISTS literals", []).unwrap();
+    conn.execute("DELETE FROM schema_version WHERE version >= 28", [])
+        .unwrap();
+}
+
+#[test]
+fn test_migration_fresh_database_has_literals_table_and_indexes() {
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("fresh.db");
+    let db = SymbolDatabase::new(&db_path).unwrap();
+
+    assert!(
+        table_exists(&db.conn, "literals"),
+        "fresh database at LATEST must have the literals table"
+    );
+    let indexes = index_names(&db.conn, "literals");
+    for expected in LITERAL_INDEXES {
+        assert!(
+            indexes.iter().any(|name| name == expected),
+            "fresh database missing index {expected}; got {indexes:?}"
+        );
+    }
+}
+
+#[test]
+fn test_migration_028_upgrades_v27_database_preserving_data() {
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("v27.db");
+    build_v27_database_with_rows(&db_path);
+
+    // Reopen with current code — should run migration 028 only.
+    let db = SymbolDatabase::new(&db_path).unwrap();
+
+    assert_eq!(
+        db.get_schema_version().unwrap(),
+        LATEST_SCHEMA_VERSION,
+        "v27 database should migrate up to LATEST"
+    );
+    assert!(
+        table_exists(&db.conn, "literals"),
+        "migration 028 must create the literals table on upgrade"
+    );
+    let indexes = index_names(&db.conn, "literals");
+    for expected in LITERAL_INDEXES {
+        assert!(
+            indexes.iter().any(|name| name == expected),
+            "upgrade missing index {expected}; got {indexes:?}"
+        );
+    }
+
+    // Pre-existing parent rows must survive the migration untouched.
+    let file_count: i64 = db
+        .conn
+        .query_row(
+            "SELECT COUNT(*) FROM files WHERE path = 'legacy.cs'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let symbol_count: i64 = db
+        .conn
+        .query_row(
+            "SELECT COUNT(*) FROM symbols WHERE id = 'sym-legacy'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(file_count, 1, "files row must survive migration");
+    assert_eq!(symbol_count, 1, "symbols row must survive migration");
+    // type_arguments (the prior migration's table) must also survive.
+    assert!(
+        table_exists(&db.conn, "type_arguments"),
+        "type_arguments must still exist after 028"
+    );
+}
+
+#[test]
+fn test_migration_028_is_idempotent() {
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("idempotent.db");
+
+    {
+        let _db = SymbolDatabase::new(&db_path).unwrap();
+    }
+    // Re-open must not error and must hold the version + table steady.
+    let db = SymbolDatabase::new(&db_path).unwrap();
+    assert_eq!(db.get_schema_version().unwrap(), LATEST_SCHEMA_VERSION);
+    assert!(table_exists(&db.conn, "literals"));
+    assert_eq!(index_names(&db.conn, "literals").len(), 3);
+}
+
+#[test]
+fn test_literals_schema_fresh_matches_migrated() {
+    // Fresh-at-LATEST DB.
+    let fresh_dir = TempDir::new().unwrap();
+    let fresh_path = fresh_dir.path().join("fresh.db");
+    let fresh_db = SymbolDatabase::new(&fresh_path).unwrap();
+
+    // v27 DB migrated up to LATEST.
+    let migrated_dir = TempDir::new().unwrap();
+    let migrated_path = migrated_dir.path().join("migrated.db");
+    build_v27_database_with_rows(&migrated_path);
+    let migrated_db = SymbolDatabase::new(&migrated_path).unwrap();
+
+    let fresh_cols = table_columns(&fresh_db.conn, "literals");
+    let migrated_cols = table_columns(&migrated_db.conn, "literals");
+
+    assert!(
+        !fresh_cols.is_empty(),
+        "literals must have columns (guards against trivially-equal empty schemas)"
+    );
+    assert_eq!(
+        fresh_cols, migrated_cols,
+        "literals column shape must be identical fresh vs migrated"
+    );
+    assert_eq!(
+        index_names(&fresh_db.conn, "literals"),
+        index_names(&migrated_db.conn, "literals"),
+        "literals index set must be identical fresh vs migrated"
     );
 }

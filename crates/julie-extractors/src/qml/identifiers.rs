@@ -1,7 +1,7 @@
 // QML Identifier Extraction
 // Extracts identifier usages: function calls, member access, variable references
 
-use crate::base::{extract_type_arguments, BaseExtractor, Identifier, IdentifierKind, Symbol};
+use crate::base::{BaseExtractor, Identifier, IdentifierKind, Symbol, extract_type_arguments};
 use crate::qml::QmlExtractor;
 use std::collections::HashMap;
 use tree_sitter::{Node, Tree};

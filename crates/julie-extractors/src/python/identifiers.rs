@@ -334,7 +334,9 @@ fn record_outermost_python_type_arguments(
         _ => return,
     };
 
-    extractor.base_mut().record_type_arguments(identifier, arguments);
+    extractor
+        .base_mut()
+        .record_type_arguments(identifier, arguments);
 }
 
 /// Returns `true` if `generic_type_node` is itself a type argument inside
@@ -379,7 +381,10 @@ fn is_subscript_nested_in_args(subscript_node: Node<'_>) -> bool {
 ///     type { identifier("str") }       ← arg 0
 ///     type { generic_type { List … } } ← arg 1 (nested)
 /// ```
-fn collect_generic_type_args(base: &BaseExtractor, generic_type_node: Node<'_>) -> Vec<TypeArgument> {
+fn collect_generic_type_args(
+    base: &BaseExtractor,
+    generic_type_node: Node<'_>,
+) -> Vec<TypeArgument> {
     // Find the type_parameter child (the `[...]` arg list).
     let mut outer_cursor = generic_type_node.walk();
     let type_param = match generic_type_node
@@ -420,7 +425,10 @@ fn collect_generic_type_args(base: &BaseExtractor, generic_type_node: Node<'_>) 
 ///   subscript: identifier("str")        ← repeated field, arg 0
 ///   subscript: subscript { List, int }  ← repeated field, arg 1
 /// ```
-fn collect_subscript_type_args(base: &BaseExtractor, subscript_node: Node<'_>) -> Vec<TypeArgument> {
+fn collect_subscript_type_args(
+    base: &BaseExtractor,
+    subscript_node: Node<'_>,
+) -> Vec<TypeArgument> {
     let mut result = Vec::new();
     let mut ordinal = 0u32;
     let mut cursor = subscript_node.walk();

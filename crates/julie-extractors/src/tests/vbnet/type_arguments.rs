@@ -69,10 +69,7 @@ End Class
         1,
         "exactly one generic use site, got {usages:?}"
     );
-    assert_eq!(
-        top_level(&usages[0]),
-        vec![(0, "String"), (1, "User")],
-    );
+    assert_eq!(top_level(&usages[0]), vec![(0, "String"), (1, "User")],);
 }
 
 #[test]

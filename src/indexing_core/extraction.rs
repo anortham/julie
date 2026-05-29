@@ -6,7 +6,9 @@ use futures::stream::{self, StreamExt};
 use julie_extractors::base::{ParseDiagnostic, StructuredPendingRelationship};
 use tracing::{debug, info, trace, warn};
 
-use crate::extractors::{ExtractionResults, Identifier, PendingRelationship, Relationship, Symbol};
+use crate::extractors::{
+    ExtractionResults, Identifier, Literal, PendingRelationship, Relationship, Symbol,
+};
 use crate::indexing_core::batch::ExtractedBatch;
 use crate::tools::workspace::indexing::file_policy::{
     ExtractionMode, detect_language_for_indexing_with_content, determine_extraction_mode,
@@ -32,6 +34,7 @@ type ParserFileProcessResult = (
     Vec<Identifier>,
     HashMap<String, crate::extractors::base::TypeInfo>,
     Vec<crate::extractors::base::TypeArgumentUsage>,
+    Vec<Literal>,
     Vec<ParseDiagnostic>,
     crate::database::FileInfo,
 );
@@ -135,6 +138,7 @@ pub async fn extract_files_for_indexing_with_records(
                 identifiers,
                 types,
                 type_argument_usages,
+                literals,
                 parse_diagnostics,
                 file_info,
             ))) => {
@@ -164,6 +168,7 @@ pub async fn extract_files_for_indexing_with_records(
                         &type_argument_usages,
                     ),
                 );
+                batch.all_literals.extend(literals);
                 batch
                     .parse_diagnostics_by_file
                     .push((relative_path, parse_diagnostics));
@@ -233,6 +238,23 @@ pub async fn extract_files_for_indexing_with_records(
                 batch.repair_entries.push((relative_path, detail));
             }
         }
+    }
+
+    // Carrier classification + bloat gate (Miller bridge Phase 3). This is the
+    // shared chokepoint for BOTH the live indexing pipeline and the
+    // external-extract CLI (`operations.rs`) — both route through this function
+    // — so Miller's extract DB gets gated literals exactly like the live
+    // daemon. (The single-file watcher path runs the same gate separately.)
+    // Non-carrier literals are dropped here; only recognized url/sql/route
+    // literals survive into the batch. Skip the config load when nothing was
+    // captured (the common case for files without HTTP/DB calls).
+    if !batch.all_literals.is_empty() {
+        let configs = crate::search::LanguageConfigs::load_embedded();
+        let carrier_configs = configs.build_literal_carrier_configs();
+        crate::analysis::literals::classify_literals_by_carrier(
+            &mut batch.all_literals,
+            &carrier_configs,
+        );
     }
 
     Ok((batch, records))
@@ -348,6 +370,7 @@ where
             Vec::new(),
             HashMap::new(),
             Vec::new(), // type_argument_usages
+            Vec::new(), // literals
             Vec::new(),
             file_info,
         ));
@@ -384,6 +407,7 @@ where
     let identifiers = results.identifiers;
     let types = results.types;
     let type_argument_usages = results.type_argument_usages;
+    let literals = results.literals;
     let parse_diagnostics = results.parse_diagnostics;
 
     if symbols.len() > 10 {
@@ -410,6 +434,7 @@ where
         identifiers,
         types,
         type_argument_usages,
+        literals,
         parse_diagnostics,
         file_info,
     ))

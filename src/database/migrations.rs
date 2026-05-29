@@ -13,7 +13,7 @@ fn get_unix_timestamp() -> Result<i64> {
 }
 
 /// Current schema version - increment when adding migrations
-pub const LATEST_SCHEMA_VERSION: i32 = 27;
+pub const LATEST_SCHEMA_VERSION: i32 = 28;
 
 impl SymbolDatabase {
     // ============================================================
@@ -123,6 +123,7 @@ impl SymbolDatabase {
             25 => self.migration_025_add_symbol_body_fields()?,
             26 => self.migration_026_add_external_extract_metadata()?,
             27 => self.migration_027_add_type_arguments()?,
+            28 => self.migration_028_add_literals()?,
             _ => return Err(anyhow!("Unknown migration version: {}", version)),
         }
         Ok(())
@@ -158,6 +159,7 @@ impl SymbolDatabase {
             25 => "Add symbol body span and hash columns",
             26 => "Add external extract metadata table",
             27 => "Add type_arguments table",
+            28 => "Add literals table",
             _ => "Unknown migration",
         };
 
@@ -904,6 +906,13 @@ impl SymbolDatabase {
         info!("Running migration 027: Add type_arguments table");
         self.create_type_arguments_table()?;
         info!("Migration 027 complete: type_arguments table added");
+        Ok(())
+    }
+
+    fn migration_028_add_literals(&self) -> Result<()> {
+        info!("Running migration 028: Add literals table");
+        self.create_literals_table()?;
+        info!("Migration 028 complete: literals table added");
         Ok(())
     }
 

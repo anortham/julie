@@ -115,7 +115,9 @@ fn extract_identifier_from_node(
                             arg_list,
                             decompose_ts_type_arg,
                         );
-                        extractor.base_mut().record_type_arguments(&identifier, arguments);
+                        extractor
+                            .base_mut()
+                            .record_type_arguments(&identifier, arguments);
                     }
                 }
             }
@@ -140,12 +142,11 @@ fn extract_identifier_from_node(
                         .find(|c| c.kind() == "type_arguments")
                 };
                 if let Some(arg_list) = maybe_type_args {
-                    let arguments = extract_type_arguments(
-                        extractor.base(),
-                        arg_list,
-                        decompose_ts_type_arg,
-                    );
-                    extractor.base_mut().record_type_arguments(&identifier, arguments);
+                    let arguments =
+                        extract_type_arguments(extractor.base(), arg_list, decompose_ts_type_arg);
+                    extractor
+                        .base_mut()
+                        .record_type_arguments(&identifier, arguments);
                 }
             }
         }
@@ -438,7 +439,9 @@ fn record_outermost_generic_type_arguments_ts(
         return;
     };
     let arguments = extract_type_arguments(extractor.base(), arg_list, decompose_ts_type_arg);
-    extractor.base_mut().record_type_arguments(identifier, arguments);
+    extractor
+        .base_mut()
+        .record_type_arguments(identifier, arguments);
 }
 
 /// Check if a `type_identifier` node is a declaration name rather than a type reference.

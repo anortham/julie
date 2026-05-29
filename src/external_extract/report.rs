@@ -69,6 +69,7 @@ pub struct ExternalExtractReport {
     pub identifiers_total: u64,
     pub types_total: u64,
     pub type_arguments_total: u64,
+    pub literals_total: u64,
     pub errors: Vec<ExternalExtractError>,
 }
 
@@ -111,6 +112,7 @@ pub fn failed_external_extract_report(
         identifiers_total: 0,
         types_total: 0,
         type_arguments_total: 0,
+        literals_total: 0,
         errors: vec![ExternalExtractError {
             code: "external_extract_error".to_string(),
             message: error.to_string(),
@@ -132,6 +134,7 @@ fn format_external_extract_text(report: &ExternalExtractReport) -> String {
         format!("identifiers_total={}", report.identifiers_total),
         format!("types_total={}", report.types_total),
         format!("type_arguments_total={}", report.type_arguments_total),
+        format!("literals_total={}", report.literals_total),
     ];
     if let Some(root) = &report.root {
         fields.push(format!("root={}", root.display()));
@@ -280,6 +283,11 @@ fn format_external_extract_markdown(report: &ExternalExtractReport) -> String {
         &mut output,
         "Type Arguments Total",
         &report.type_arguments_total.to_string(),
+    );
+    push_markdown_row(
+        &mut output,
+        "Literals Total",
+        &report.literals_total.to_string(),
     );
 
     if !report.errors.is_empty() {

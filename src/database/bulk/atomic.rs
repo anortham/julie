@@ -19,6 +19,7 @@ use super::cleanup::{
     unix_timestamp,
 };
 use super::identifiers::insert_identifiers_tx;
+use super::literals::insert_literals_tx;
 use super::relationships::insert_relationships_tx;
 use super::type_arguments::{TypeArgumentRow, insert_type_arguments_tx};
 use super::types::insert_types_tx;
@@ -57,6 +58,10 @@ pub(crate) struct CanonicalWriteSet<'a> {
     /// Phase 2). Derived from the batch's `TypeArgumentUsage` trees before the
     /// write; persisted into the `type_arguments` table.
     pub(crate) type_arguments: &'a [TypeArgumentRow],
+    /// String-literal call-args at carrier sites (Miller bridge Phase 3),
+    /// already carrier-classified-and-gated upstream; persisted into the
+    /// `literals` table.
+    pub(crate) literals: &'a [crate::extractors::Literal],
 }
 
 #[derive(Default)]
@@ -67,6 +72,7 @@ struct InsertCounts {
     identifiers: i64,
     types: i64,
     type_arguments: i64,
+    literals: i64,
 }
 
 impl InsertCounts {
@@ -78,6 +84,7 @@ impl InsertCounts {
             || self.identifiers > 0
             || self.types > 0
             || self.type_arguments > 0
+            || self.literals > 0
     }
 }
 
@@ -102,6 +109,7 @@ impl SymbolDatabase {
             // no type-argument rows. Production paths build the full write-set
             // from ExtractedBatch / the watcher, which populate this.
             type_arguments: &[],
+            literals: &[],
         };
         self.incremental_update_atomic_with_metadata(
             files_to_clean,
@@ -187,6 +195,7 @@ impl SymbolDatabase {
             identifiers,
             types,
             type_arguments: &[],
+            literals: &[],
         };
         self.bulk_store_fresh_atomic_with_metadata(
             &write_set,
@@ -339,17 +348,21 @@ fn insert_batch_tx(
             write_set.relationships,
             write_set.identifiers,
             write_set.types,
+            write_set.literals,
         ),
     )?;
     counts.relationships =
         insert_relationships_tx(tx, write_set.relationships, Some(&valid_symbol_ids))?;
-    counts.identifiers =
-        insert_identifiers_tx(tx, write_set.identifiers, Some(&valid_symbol_ids))?;
+    counts.identifiers = insert_identifiers_tx(tx, write_set.identifiers, Some(&valid_symbol_ids))?;
     counts.types = insert_types_tx(tx, write_set.types, Some(&valid_symbol_ids), now)?;
     // type_arguments after identifiers: each row's identifier_id FKs an
     // identifier row (FK checks are off in the bulk window, but the ordering
     // keeps the dependency intent clear). target_symbol_id is write-once-NULL.
     counts.type_arguments = insert_type_arguments_tx(tx, write_set.type_arguments, now)?;
+    // literals after symbols: containing_symbol_id is validated against the
+    // batch's known symbols (normalized to NULL when the enclosing symbol was
+    // not persisted), mirroring identifiers.
+    counts.literals = insert_literals_tx(tx, write_set.literals, Some(&valid_symbol_ids))?;
     Ok(counts)
 }
 

@@ -99,8 +99,14 @@ const m: Map<string, number> = new Map()
         "exactly one generic use site (Map<string, number>), got {usages:?}"
     );
     assert_eq!(top_level(&usages[0]), vec![(0, "string"), (1, "number")]);
-    assert!(usages[0].arguments[0].children.is_empty(), "string has no children");
-    assert!(usages[0].arguments[1].children.is_empty(), "number has no children");
+    assert!(
+        usages[0].arguments[0].children.is_empty(),
+        "string has no children"
+    );
+    assert!(
+        usages[0].arguments[1].children.is_empty(),
+        "number has no children"
+    );
 }
 
 #[test]

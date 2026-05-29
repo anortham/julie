@@ -1,4 +1,4 @@
-use crate::extractors::{Identifier, PendingRelationship, Relationship, Symbol};
+use crate::extractors::{Identifier, Literal, PendingRelationship, Relationship, Symbol};
 use julie_extractors::base::{ParseDiagnostic, StructuredPendingRelationship};
 
 #[derive(Debug)]
@@ -13,6 +13,11 @@ pub struct ExtractedBatch {
     /// Phase 2), accumulated per file from each result's `TypeArgumentUsage`
     /// trees. Borrowed by `canonical_write_set()` for persistence.
     pub(crate) all_type_argument_rows: Vec<crate::database::bulk::type_arguments::TypeArgumentRow>,
+    /// String-literal call-args captured at carrier sites (Miller bridge Phase
+    /// 3). Already carrier-classified-and-gated by the time the batch leaves
+    /// `extract_files_for_indexing_with_records` (non-carrier literals dropped).
+    /// Borrowed by `canonical_write_set()` for persistence.
+    pub all_literals: Vec<Literal>,
     pub all_file_infos: Vec<crate::database::FileInfo>,
     pub parse_diagnostics_by_file: Vec<(String, Vec<ParseDiagnostic>)>,
     pub files_to_clean: Vec<String>,
@@ -40,6 +45,7 @@ impl ExtractedBatch {
             identifiers: &self.all_identifiers,
             types: &self.all_types,
             type_arguments: &self.all_type_argument_rows,
+            literals: &self.all_literals,
         }
     }
 
@@ -52,6 +58,7 @@ impl ExtractedBatch {
             all_identifiers: Vec::new(),
             all_types: Vec::new(),
             all_type_argument_rows: Vec::new(),
+            all_literals: Vec::new(),
             all_file_infos: Vec::new(),
             parse_diagnostics_by_file: Vec::new(),
             files_to_clean: Vec::new(),

@@ -100,7 +100,10 @@ function f() {
         vec![(0, "string"), (1, "Array")],
         "outer arguments: string at 0, Array at 1"
     );
-    assert!(usages[0].arguments[0].children.is_empty(), "string has no nested args");
+    assert!(
+        usages[0].arguments[0].children.is_empty(),
+        "string has no nested args"
+    );
     assert_eq!(
         usages[0].arguments[1]
             .children

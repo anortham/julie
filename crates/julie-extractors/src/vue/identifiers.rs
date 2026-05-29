@@ -256,8 +256,7 @@ fn extract_identifier_from_node_with_content(
                             .map(|p| p.kind() == "type_arguments")
                             .unwrap_or(false)
                     {
-                        let children: Vec<Node> =
-                            parent.children(&mut parent.walk()).collect();
+                        let children: Vec<Node> = parent.children(&mut parent.walk()).collect();
                         children.into_iter().find(|c| c.kind() == "type_arguments")
                     } else {
                         None
@@ -437,7 +436,10 @@ fn symbol_containment_priority(kind: &SymbolKind) -> u32 {
 /// Recursively extract ordered, nested type arguments from a TypeScript `type_arguments`
 /// node, reading type names from `script_content` (the script section text, whose byte
 /// offsets the parse nodes use) rather than from the full Vue SFC content in `base`.
-fn extract_vue_type_arguments<'a>(arg_list_node: Node<'a>, script_content: &str) -> Vec<TypeArgument> {
+fn extract_vue_type_arguments<'a>(
+    arg_list_node: Node<'a>,
+    script_content: &str,
+) -> Vec<TypeArgument> {
     let mut arguments = Vec::new();
     let mut ordinal: u32 = 0;
     let children: Vec<Node<'a>> = arg_list_node.children(&mut arg_list_node.walk()).collect();
@@ -453,10 +455,11 @@ fn extract_vue_type_arguments<'a>(arg_list_node: Node<'a>, script_content: &str)
                     .map(|n| get_node_text_from_content(&n, script_content))
                     .unwrap_or_else(|| get_node_text_from_content(&child, script_content));
                 // Find the nested type_arguments child of this generic_type
-                let nested_children: Vec<Node<'a>> =
-                    child.children(&mut child.walk()).collect();
-                let nested_arg_list =
-                    nested_children.iter().find(|c| c.kind() == "type_arguments").copied();
+                let nested_children: Vec<Node<'a>> = child.children(&mut child.walk()).collect();
+                let nested_arg_list = nested_children
+                    .iter()
+                    .find(|c| c.kind() == "type_arguments")
+                    .copied();
                 let sub_args = match nested_arg_list {
                     Some(nested) => extract_vue_type_arguments(nested, script_content),
                     None => Vec::new(),

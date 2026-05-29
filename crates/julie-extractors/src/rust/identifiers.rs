@@ -57,7 +57,9 @@ fn extract_identifier_from_node(
                 // Unwrap turbofish: generic_function { function: ..., type_arguments: ... }
                 // e.g. `foo::<String>()` or `self.collect::<Vec<u8>>()`
                 let (inner_func, turbofish_arg_list) = if func_node.kind() == "generic_function" {
-                    let inner = func_node.child_by_field_name("function").unwrap_or(func_node);
+                    let inner = func_node
+                        .child_by_field_name("function")
+                        .unwrap_or(func_node);
                     let args = func_node.child_by_field_name("type_arguments");
                     (inner, args)
                 } else {

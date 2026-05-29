@@ -130,7 +130,10 @@ object Test {
     );
     let args = top_level(&usages[0]);
     assert_eq!(args[0], (0, "String"), "first arg: String at ordinal 0");
-    assert_eq!(args[1].0, 1, "second arg must be at ordinal 1 (not dropped)");
+    assert_eq!(
+        args[1].0, 1,
+        "second arg must be at ordinal 1 (not dropped)"
+    );
     // The leaf text for Int => Boolean may include spaces; just check it's non-empty.
     assert!(
         !args[1].1.is_empty(),

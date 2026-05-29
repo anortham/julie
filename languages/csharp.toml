@@ -72,3 +72,47 @@ mock_identifiers = ["mock", "setup", "returns", "verifiable"]
 [early_warnings]
 review_markers = ["allowanonymous"]
 schema_version = 1
+
+# String-literal call-arg carriers (Miller bridge Phase 3). The carrier is the
+# invoked method name with generics stripped (receiver dropped), so Dapper
+# `conn.Query<T>(...)` matches `query` and HttpClient `client.GetAsync(...)`
+# matches `getasync`. Case-insensitive (lowercased at load).
+[literal_carriers]
+url = [
+    "getasync",
+    "getstringasync",
+    "getbytearrayasync",
+    "getstreamasync",
+    "postasync",
+    "putasync",
+    "deleteasync",
+    "patchasync",
+    "sendasync",
+]
+sql = [
+    "query",
+    "queryasync",
+    "queryfirst",
+    "queryfirstasync",
+    "queryfirstordefault",
+    "queryfirstordefaultasync",
+    "querysingle",
+    "querysingleasync",
+    "querysingleordefault",
+    "querysingleordefaultasync",
+    "querymultiple",
+    "querymultipleasync",
+    "execute",
+    "executeasync",
+    "executescalar",
+    "executescalarasync",
+    "executereader",
+    "executereaderasync",
+    "fromsqlraw",
+    "fromsqlinterpolated",
+    "executesqlraw",
+    "executesqlrawasync",
+    "executesqlinterpolated",
+    "executesqlinterpolatedasync",
+]
+route = []

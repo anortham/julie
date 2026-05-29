@@ -522,6 +522,123 @@ async fn extract_scan_persists_polyglot_type_arguments() {
     );
 }
 
+/// End-to-end on the path Miller reads: a real scan must capture string-literal
+/// call-args, classify them by the config carrier gate, DROP non-carrier
+/// literals, and land url/sql rows in the `literals` table — proving the full
+/// extractor → ExtractedBatch → classify_literals_by_carrier → CanonicalWriteSet
+/// → insert path (Miller bridge Phase 3). Also guards the two negatives the
+/// design hinges on: the gate drops non-carrier callees (`console.log`,
+/// `Console.WriteLine`), and literal text never leaks into the name-indexed
+/// `identifiers` table.
+#[tokio::test]
+async fn extract_scan_persists_gated_url_and_sql_literals() {
+    let tmp = TempDir::new().expect("temp dir");
+    let root = tmp.path().join("repo");
+    std::fs::create_dir(&root).expect("repo dir");
+
+    // TS: two URL carriers (fetch, axios.get) + one non-carrier (console.log).
+    fs::write(
+        root.join("http.ts"),
+        "async function load() {\n\
+         \x20 await fetch(\"/api/users\");\n\
+         \x20 await axios.get(\"/api/orders\");\n\
+         \x20 console.log(\"ignored debug line\");\n\
+         }\n",
+    )
+    .expect("write ts");
+    // C#: one SQL carrier (Dapper Query) + one non-carrier (Console.WriteLine).
+    fs::write(
+        root.join("repo.cs"),
+        "public class Repo {\n\
+         \x20 public void Load(System.Data.IDbConnection conn) {\n\
+         \x20   conn.Query<User>(\"SELECT Id, Name FROM Users\");\n\
+         \x20   System.Console.WriteLine(\"ignored log message\");\n\
+         \x20 }\n\
+         }\n\
+         public class User {}\n",
+    )
+    .expect("write c#");
+
+    let db_path = tmp.path().join("external.sqlite");
+    let report = run_external_scan(&scan_args(db_path.clone(), root.clone(), false))
+        .await
+        .expect("scan succeeds");
+    assert_eq!(report.files_scanned, 2, "two source files scanned");
+    assert_eq!(
+        report.literals_total, 3,
+        "report must surface exactly the 3 carrier-gated literals (2 url + 1 sql), got {}",
+        report.literals_total
+    );
+
+    let db = SymbolDatabase::new(&db_path).expect("open db");
+
+    // TS URL leg: fetch + axios.get both captured and classified url.
+    assert_eq!(
+        count_rows_where(&db, "literals", "file_path = 'http.ts' AND kind = 'url'"),
+        2,
+        "TS fetch + axios.get must persist two url literals"
+    );
+    assert_eq!(
+        count_rows_where(
+            &db,
+            "literals",
+            "file_path = 'http.ts' AND kind = 'url' AND carrier = 'fetch' AND literal_text = '/api/users'"
+        ),
+        1,
+        "the fetch literal must carry its decoded text and verbatim carrier"
+    );
+    assert_eq!(
+        count_rows_where(
+            &db,
+            "literals",
+            "file_path = 'http.ts' AND carrier = 'axios.get' AND literal_text = '/api/orders'"
+        ),
+        1,
+        "the dotted axios.get carrier must be preserved verbatim"
+    );
+
+    // C# SQL leg: Dapper Query captured and classified sql.
+    assert_eq!(
+        count_rows_where(
+            &db,
+            "literals",
+            "file_path = 'repo.cs' AND kind = 'sql' AND carrier = 'Query'"
+        ),
+        1,
+        "C# Dapper Query must persist one sql literal with method-name carrier"
+    );
+    assert_eq!(
+        count_rows_where(
+            &db,
+            "literals",
+            "file_path = 'repo.cs' AND literal_text LIKE '%FROM Users%'"
+        ),
+        1,
+        "the C# sql literal must carry the decoded SQL body"
+    );
+
+    // The gate dropped both non-carrier callees: no literal from console.log /
+    // Console.WriteLine survives.
+    assert_eq!(
+        count_rows_where(&db, "literals", "literal_text LIKE '%ignored%'"),
+        0,
+        "non-carrier (console.log / Console.WriteLine) literals must be dropped by the gate"
+    );
+
+    // Name-leak negative: URLs/SQL must NOT enter the name-indexed identifiers
+    // table (that would pollute fast-refs name matching and skew centrality).
+    assert_eq!(
+        count_rows_where(&db, "identifiers", "name = '/api/users'"),
+        0,
+        "URL text must not leak into the identifiers name index"
+    );
+    assert_eq!(
+        count_rows_where(&db, "identifiers", "name LIKE '%SELECT%'"),
+        0,
+        "SQL text must not leak into the identifiers name index"
+    );
+}
+
 #[tokio::test]
 async fn extract_scan_unchanged_produces_zero_revisions() {
     let tmp = TempDir::new().expect("temp dir");

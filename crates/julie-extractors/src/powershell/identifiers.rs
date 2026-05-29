@@ -1,7 +1,9 @@
 //! PowerShell identifier extraction for LSP-quality find_references
 //! Extracts identifier usages (function calls, member access, etc.)
 
-use crate::base::{extract_type_arguments, BaseExtractor, Identifier, IdentifierKind, Symbol, SymbolKind};
+use crate::base::{
+    BaseExtractor, Identifier, IdentifierKind, Symbol, SymbolKind, extract_type_arguments,
+};
 use std::collections::HashMap;
 use tree_sitter::Node;
 
@@ -224,7 +226,10 @@ fn decompose_powershell_type_arg<'a>(
             .map(|n| base.get_node_text(&n))
             .unwrap_or_else(|| base.get_node_text(&gtn));
         // The nested arg list is the generic_type_arguments sibling.
-        let nested = children.iter().find(|c| c.kind() == "generic_type_arguments").copied();
+        let nested = children
+            .iter()
+            .find(|c| c.kind() == "generic_type_arguments")
+            .copied();
         Some((name, nested))
     } else {
         // Leaf argument: extract name from type_name child.

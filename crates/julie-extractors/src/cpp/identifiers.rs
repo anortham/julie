@@ -184,8 +184,7 @@ fn record_outermost_cpp_type_arguments(
     let Some(arg_list) = parent.child_by_field_name("arguments") else {
         return;
     };
-    let arguments =
-        crate::base::extract_type_arguments(base, arg_list, decompose_cpp_type_arg);
+    let arguments = crate::base::extract_type_arguments(base, arg_list, decompose_cpp_type_arg);
     base.record_type_arguments(identifier, arguments);
 }
 

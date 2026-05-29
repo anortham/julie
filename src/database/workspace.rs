@@ -39,6 +39,7 @@ impl SymbolDatabase {
         // Explicit deletes for every workspace-owned table — don't trust FK cascade alone
         // because foreign_keys pragma state is per-connection. Order is dependent-first.
         tx.execute("DELETE FROM symbol_vectors", [])?;
+        tx.execute("DELETE FROM literals", [])?;
         tx.execute("DELETE FROM type_arguments", [])?;
         tx.execute("DELETE FROM identifiers", [])?;
         tx.execute("DELETE FROM types", [])?;

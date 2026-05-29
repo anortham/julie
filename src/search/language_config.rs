@@ -23,6 +23,8 @@ pub struct LanguageConfig {
     pub test_evidence: TestEvidenceConfig,
     #[serde(default)]
     pub early_warnings: EarlyWarningConfig,
+    #[serde(default)]
+    pub literal_carriers: LiteralCarriersConfig,
 }
 
 /// Tokenizer configuration for code-aware text processing.
@@ -104,6 +106,22 @@ pub struct AnnotationClassesConfig {
     pub scheduler: Vec<String>,
     #[serde(default)]
     pub test: TestAnnotationClasses,
+}
+
+/// Per-language carrier vocabulary for string-literal call-arg classification
+/// (Miller bridge Phase 3). Each list holds the idiomatic callee texts whose
+/// string-literal arguments are URLs / SQL / route templates in that language
+/// (e.g. TS `fetch`, `axios.get`; C# `Query`, `ExecuteAsync`). Matching is
+/// case-insensitive (lowercased when building the runtime config). Adding a
+/// client library is a one-line edit here, never a hardcoded extractor change.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct LiteralCarriersConfig {
+    #[serde(default)]
+    pub url: Vec<String>,
+    #[serde(default)]
+    pub sql: Vec<String>,
+    #[serde(default)]
+    pub route: Vec<String>,
 }
 
 /// Framework-specific test evidence identifiers.
@@ -297,6 +315,27 @@ impl LanguageConfigs {
             })
             .collect()
     }
+
+    /// Build per-language literal carrier configs from the `[literal_carriers]`
+    /// section in each language TOML. Carrier sets are lowercased here so
+    /// `classify_literals_by_carrier` can match case-insensitively. Used by the
+    /// literal classification + gate in the indexing pipeline / extract path.
+    pub fn build_literal_carrier_configs(
+        &self,
+    ) -> HashMap<String, crate::analysis::literals::LiteralCarrierConfig> {
+        self.configs
+            .iter()
+            .map(|(lang, config)| {
+                let lc = &config.literal_carriers;
+                let carrier_config = crate::analysis::literals::LiteralCarrierConfig {
+                    url: lc.url.iter().map(|s| s.to_lowercase()).collect(),
+                    sql: lc.sql.iter().map(|s| s.to_lowercase()).collect(),
+                    route: lc.route.iter().map(|s| s.to_lowercase()).collect(),
+                };
+                (lang.clone(), carrier_config)
+            })
+            .collect()
+    }
 }
 
 #[cfg(test)]
@@ -318,6 +357,40 @@ mod tests {
             "Expected exactly 33 embedded language configs, got {}. \
              A broken TOML or missing entry would cause this count to be wrong.",
             configs.len()
+        );
+    }
+
+    #[test]
+    fn test_literal_carrier_configs_loaded_and_lowercased_for_reference_legs() {
+        let configs = LanguageConfigs::load_embedded();
+        let carriers = configs.build_literal_carrier_configs();
+
+        let ts = carriers
+            .get("typescript")
+            .expect("typescript carrier config");
+        assert!(
+            ts.url.contains("fetch") && ts.url.contains("axios.get"),
+            "TS url carriers must include fetch + axios.get; got {:?}",
+            ts.url
+        );
+        // TS SQL via local-receiver is a breadth-phase concern; reference leg is URL.
+        assert!(
+            ts.sql.is_empty(),
+            "TS reference leg has no sql carriers yet"
+        );
+
+        let cs = carriers.get("csharp").expect("csharp carrier config");
+        // Stored lowercase for case-insensitive matching even though the TOML
+        // could be written either case.
+        assert!(
+            cs.sql.contains("query") && cs.sql.contains("executeasync"),
+            "C# sql carriers must include query + executeasync (lowercased); got {:?}",
+            cs.sql
+        );
+        assert!(
+            cs.url.contains("getasync"),
+            "C# url carriers must include getasync; got {:?}",
+            cs.url
         );
     }
 

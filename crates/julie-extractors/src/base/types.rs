@@ -161,7 +161,11 @@ impl Literal {
     /// Recompute the span-stable id (used after embedded-span offset shifts the
     /// span). Mirrors [`Identifier::refresh_id`], keyed on `literal_text`.
     pub fn refresh_id(&mut self) {
-        self.id = stable_location_id(self.file_path.as_str(), self.literal_text.as_str(), self.span());
+        self.id = stable_location_id(
+            self.file_path.as_str(),
+            self.literal_text.as_str(),
+            self.span(),
+        );
     }
 
     fn span(&self) -> NormalizedSpan {
@@ -190,6 +194,32 @@ pub enum LiteralKind {
     Route,
     /// Captured but not (yet) classified as a recognized carrier kind.
     Other,
+}
+
+impl LiteralKind {
+    /// Stable lowercase token used as the `literals.kind` DB column value and in
+    /// the `[literal_carriers]` config keys. Matches the `snake_case` serde
+    /// rename so DB text and JSON stay aligned.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            LiteralKind::Url => "url",
+            LiteralKind::Sql => "sql",
+            LiteralKind::Route => "route",
+            LiteralKind::Other => "other",
+        }
+    }
+
+    /// Parse the `literals.kind` DB column back into a `LiteralKind`. Unknown
+    /// values fall back to `Other` so a forward-written kind never panics a
+    /// reader.
+    pub fn from_db_str(value: &str) -> Self {
+        match value {
+            "url" => LiteralKind::Url,
+            "sql" => LiteralKind::Sql,
+            "route" => LiteralKind::Route,
+            _ => LiteralKind::Other,
+        }
+    }
 }
 
 /// Configuration for code context extraction

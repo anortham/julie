@@ -95,10 +95,10 @@ pub mod zig;
 
 // Re-export the public API - Core types
 pub use base::{
-    AnnotationMarker, ContextConfig, ExtractionResults, Identifier, IdentifierKind,
-    ParseDiagnostic, ParseDiagnosticKind, PendingRelationship, Relationship, RelationshipKind,
-    Symbol, SymbolKind, SymbolOptions, TestRole, TypeArgument, TypeArgumentUsage, TypeInfo,
-    Visibility, extract_type_arguments, normalize_annotations,
+    AnnotationMarker, ContextConfig, ExtractionResults, Identifier, IdentifierKind, Literal,
+    LiteralKind, ParseDiagnostic, ParseDiagnosticKind, PendingRelationship, Relationship,
+    RelationshipKind, Symbol, SymbolKind, SymbolOptions, TestRole, TypeArgument, TypeArgumentUsage,
+    TypeInfo, Visibility, extract_type_arguments, normalize_annotations,
 };
 
 // Re-export the public API - canonical extraction functions

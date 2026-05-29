@@ -282,6 +282,21 @@ pub(crate) async fn handle_file_created_or_modified_static(
                 &results.type_argument_usages,
             );
 
+        // Carrier classification + bloat gate (Miller bridge Phase 3). The
+        // single-file watcher is a distinct persistence path from the
+        // pipeline/extract-CLI (which gate inside extract_files_for_indexing),
+        // so the same gate must run here too — otherwise live saves would inject
+        // ungated literals. Non-carrier literals are dropped before the write.
+        let mut literals_vec = results.literals;
+        if !literals_vec.is_empty() {
+            let configs = crate::search::LanguageConfigs::load_embedded();
+            let carrier_configs = configs.build_literal_carrier_configs();
+            crate::analysis::literals::classify_literals_by_carrier(
+                &mut literals_vec,
+                &carrier_configs,
+            );
+        }
+
         let workspace_key = workspace_root.to_string_lossy();
         let workspace_id = crate::workspace::registry::generate_workspace_id(&workspace_key)
             .unwrap_or_else(|_| workspace_key.into_owned());
@@ -299,6 +314,7 @@ pub(crate) async fn handle_file_created_or_modified_static(
             identifiers: &results.identifiers,
             types: &types_vec,
             type_arguments: &type_argument_rows,
+            literals: &literals_vec,
         };
         db_lock.incremental_update_atomic_with_metadata(
             &files_to_clean,

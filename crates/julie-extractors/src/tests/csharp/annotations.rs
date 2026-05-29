@@ -97,7 +97,10 @@ mod tests {
             let symbol = find(&symbols, name);
             assert_eq!(symbol.kind, kind, "unexpected kind for `{name}`");
             let marker = annotation(symbol, key);
-            assert_eq!(marker.annotation, display, "annotation display for `{name}`");
+            assert_eq!(
+                marker.annotation, display,
+                "annotation display for `{name}`"
+            );
             assert_eq!(
                 marker.raw_text.as_deref(),
                 Some(raw),
@@ -181,7 +184,10 @@ mod tests {
         );
 
         let balance = find(&symbols, "Balance");
-        assert_eq!(annotation(balance, "jsonproperty").annotation, "JsonProperty");
+        assert_eq!(
+            annotation(balance, "jsonproperty").annotation,
+            "JsonProperty"
+        );
     }
 
     #[test]

@@ -35,25 +35,24 @@ impl JulieServerHandler {
         // Resolve workspace ONCE per request. Used for both metrics attribution
         // and the actual tool call below, so bad workspace_id surfaces as
         // invalid_params before any other work happens.
-        let workspace_target = match resolve_workspace_filter(params.workspace.as_deref(), self)
-            .await
-        {
-            Ok(target) => target,
-            Err(e) => {
-                let metadata = search_telemetry::fast_search_metadata(&params, None);
-                let message = format!("fast_search failed: {}", e);
-                self.record_tool_failure(
-                    "fast_search",
-                    start.elapsed(),
-                    None,
-                    metadata.clone(),
-                    Vec::new(),
-                    Self::input_bytes_from_metadata(&metadata),
-                    &message,
-                );
-                return Err(classify_tool_failure("fast_search", &e));
-            }
-        };
+        let workspace_target =
+            match resolve_workspace_filter(params.workspace.as_deref(), self).await {
+                Ok(target) => target,
+                Err(e) => {
+                    let metadata = search_telemetry::fast_search_metadata(&params, None);
+                    let message = format!("fast_search failed: {}", e);
+                    self.record_tool_failure(
+                        "fast_search",
+                        start.elapsed(),
+                        None,
+                        metadata.clone(),
+                        Vec::new(),
+                        Self::input_bytes_from_metadata(&metadata),
+                        &message,
+                    );
+                    return Err(classify_tool_failure("fast_search", &e));
+                }
+            };
 
         let workspace_snapshot = self
             .metrics_workspace_binding_for_target(&workspace_target)

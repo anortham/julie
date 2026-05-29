@@ -50,7 +50,10 @@ fn extract_identifier_from_node(
                 node.children(&mut cursor).collect()
             };
 
-            let type_args_node = children.iter().find(|c| c.kind() == "type_arguments").copied();
+            let type_args_node = children
+                .iter()
+                .find(|c| c.kind() == "type_arguments")
+                .copied();
 
             // Simple call: identifier or simple_identifier is the first callee child.
             if let Some(child) = children
@@ -68,8 +71,9 @@ fn extract_identifier_from_node(
                         base.record_type_arguments(&identifier, args);
                     }
                 }
-            } else if let Some(nav_expr) =
-                children.iter().find(|c| c.kind() == "navigation_expression")
+            } else if let Some(nav_expr) = children
+                .iter()
+                .find(|c| c.kind() == "navigation_expression")
             {
                 // Member call: obj.foo<T>()
                 let nav_name = extract_rightmost_identifier(base, nav_expr);

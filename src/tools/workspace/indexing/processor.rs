@@ -27,6 +27,7 @@ type ParserFileProcessResult = (
     Vec<crate::extractors::Identifier>,
     std::collections::HashMap<String, crate::extractors::base::TypeInfo>,
     Vec<crate::extractors::base::TypeArgumentUsage>,
+    Vec<crate::extractors::Literal>,
     Vec<crate::extractors::base::ParseDiagnostic>,
     crate::database::FileInfo,
 );
@@ -79,6 +80,7 @@ impl ManageWorkspaceTool {
         Vec<crate::extractors::Identifier>,
         std::collections::HashMap<String, crate::extractors::base::TypeInfo>,
         Vec<crate::extractors::base::TypeArgumentUsage>,
+        Vec<crate::extractors::Literal>,
         Vec<crate::extractors::base::ParseDiagnostic>,
         crate::database::FileInfo,
     )>

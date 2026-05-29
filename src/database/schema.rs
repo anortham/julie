@@ -29,6 +29,7 @@ impl SymbolDatabase {
         self.create_external_extract_metadata_table()?;
         self.create_identifiers_table()?; // Reference tracking
         self.create_type_arguments_table()?; // Ordered/nested generic use-site args
+        self.create_literals_table()?; // String-literal call-args at carrier sites
         self.create_types_table()?; // Type intelligence
         self.create_relationships_table()?;
 
@@ -416,6 +417,74 @@ impl SymbolDatabase {
         )?;
 
         debug!("Created type_arguments table and indexes");
+        Ok(())
+    }
+
+    /// Create the `literals` table: string-literal call-arguments captured at
+    /// recognized HTTP/DB carrier sites (Miller bridge Phase 3), e.g. the
+    /// `/api/users` of `fetch("/api/users")` or the SQL body of a Dapper
+    /// `conn.Query<T>("SELECT ... FROM Users")`.
+    ///
+    /// Mirrors `identifiers`' column shape (so it carries `file_path` and a
+    /// `containing_symbol_id`) but swaps `name`→`literal_text` and adds the
+    /// classified `kind`, the verbatim `carrier` callee, and the 0-based
+    /// `arg_position`. `literal_text` is the DECODED contents (delimiters
+    /// stripped; interpolation holes folded to `{}`); `kind` is a read-time
+    /// reclassifiable hint (`url`/`sql`/`route`/`other`) — the verbatim
+    /// `carrier` is persisted so consumers can reclassify unknown clients.
+    ///
+    /// Deliberately has **no** index on `literal_text` (the table is name-free,
+    /// unlike `identifiers`, so URLs/SQL never pollute the name index or skew
+    /// centrality). Carries its own `file_path` so per-file cleanup is a flat
+    /// `DELETE ... WHERE file_path = ?1` independent of identifier
+    /// delete-ordering (cross-cutting Rule 1).
+    ///
+    /// `pub(crate)` so `migration_028_add_literals` can call it; the
+    /// `CREATE ... IF NOT EXISTS` DDL is the single source of truth for both
+    /// fresh DBs (via `initialize_schema`) and upgrades (via migration 028).
+    pub(crate) fn create_literals_table(&self) -> Result<()> {
+        self.conn.execute(
+            "CREATE TABLE IF NOT EXISTS literals (
+                id                   TEXT PRIMARY KEY,
+                literal_text         TEXT NOT NULL,
+                kind                 TEXT NOT NULL,  -- url, sql, route, other
+                carrier              TEXT,           -- callee that introduced it (fetch, axios.get, Query)
+                arg_position         INTEGER NOT NULL,
+                language             TEXT NOT NULL,
+
+                -- Location
+                file_path            TEXT NOT NULL REFERENCES files(path) ON DELETE CASCADE,
+                start_line           INTEGER NOT NULL,
+                start_col            INTEGER NOT NULL,
+                end_line             INTEGER NOT NULL,
+                end_col              INTEGER NOT NULL,
+                start_byte           INTEGER,
+                end_byte             INTEGER,
+
+                -- Semantic link (NULL until/unless an enclosing symbol is found)
+                containing_symbol_id TEXT REFERENCES symbols(id) ON DELETE CASCADE,
+                confidence           REAL DEFAULT 1.0,
+
+                -- Infrastructure
+                last_indexed         INTEGER DEFAULT 0
+            )",
+            [],
+        )?;
+
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_literals_kind ON literals(kind)",
+            [],
+        )?;
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_literals_containing ON literals(containing_symbol_id)",
+            [],
+        )?;
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_literals_file ON literals(file_path)",
+            [],
+        )?;
+
+        debug!("Created literals table and indexes");
         Ok(())
     }
 

@@ -6,6 +6,7 @@
 
 pub mod change_risk;
 pub mod early_warnings;
+pub mod literals;
 pub mod test_linkage;
 pub mod test_quality;
 pub mod test_roles;

@@ -103,8 +103,12 @@ fn extract_identifier_from_node(
             }
 
             let containing_symbol_id = find_containing_symbol_id(base, node, symbol_map);
-            let identifier =
-                base.create_identifier(&node, name, IdentifierKind::TypeUsage, containing_symbol_id);
+            let identifier = base.create_identifier(
+                &node,
+                name,
+                IdentifierKind::TypeUsage,
+                containing_symbol_id,
+            );
             record_outermost_dart_type_arguments(base, node, &identifier);
         }
 

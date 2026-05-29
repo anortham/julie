@@ -1,6 +1,5 @@
 mod annotation_tests;
 
-mod type_arguments;
 mod class_tests;
 mod cross_file_pending;
 mod cross_file_relationships;
@@ -12,4 +11,5 @@ mod interface_tests;
 mod method_tests;
 mod modern_java_tests;
 mod package_import_tests;
+mod type_arguments;
 mod types; // Phase 4: Type extraction verification tests

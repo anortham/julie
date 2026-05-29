@@ -53,3 +53,24 @@ auth = ["useguards"]
 
 [early_warnings]
 schema_version = 1
+
+# String-literal call-arg carriers (Miller bridge Phase 3). The carrier is the
+# callee text: a bare name (`fetch`) or `object.property` for well-known globals
+# (`axios.get`). Local-receiver DB carriers (`pool.query`) need the breadth-phase
+# matching strategy and are intentionally not listed here yet (reference leg = URL).
+[literal_carriers]
+url = [
+    "fetch",
+    "$fetch",
+    "axios",
+    "axios.get",
+    "axios.post",
+    "axios.put",
+    "axios.delete",
+    "axios.patch",
+    "axios.request",
+    "axios.head",
+    "request",
+]
+sql = []
+route = []

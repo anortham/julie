@@ -150,8 +150,7 @@ fn extract_identifier_from_node(
                     IdentifierKind::TypeUsage,
                     containing_symbol_id,
                 );
-            } else if let Some(subscript_child) =
-                children.iter().find(|c| c.kind() == "subscript")
+            } else if let Some(subscript_child) = children.iter().find(|c| c.kind() == "subscript")
             {
                 // Generic type: `var x: Array[String]`, `Dictionary[String, int]`, etc.
                 record_gdscript_subscript_as_type(base, node, *subscript_child, symbol_map);

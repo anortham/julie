@@ -8,6 +8,7 @@ use crate::extractors::Relationship;
 pub(crate) mod atomic;
 pub(crate) mod cleanup;
 pub(crate) mod identifiers;
+pub(crate) mod literals;
 pub(crate) mod relationships;
 pub(crate) mod type_arguments;
 pub(crate) mod types;
@@ -16,6 +17,7 @@ pub(crate) fn collect_referenced_symbol_ids(
     relationships: &[Relationship],
     identifiers: &[crate::extractors::Identifier],
     types: &[crate::extractors::base::TypeInfo],
+    literals: &[crate::extractors::Literal],
 ) -> HashSet<String> {
     let mut ids = HashSet::new();
     for rel in relationships {
@@ -32,6 +34,11 @@ pub(crate) fn collect_referenced_symbol_ids(
     }
     for type_info in types {
         ids.insert(type_info.symbol_id.clone());
+    }
+    for literal in literals {
+        if let Some(symbol_id) = &literal.containing_symbol_id {
+            ids.insert(symbol_id.clone());
+        }
     }
     ids
 }

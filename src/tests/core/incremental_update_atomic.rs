@@ -9,9 +9,38 @@ use crate::database::bulk::type_arguments::{TypeArgumentRow, flatten_type_argume
 use crate::database::types::FileInfo;
 use crate::extractors::base::{TypeArgument, TypeArgumentUsage, TypeInfo};
 use crate::extractors::{
-    Identifier, IdentifierKind, Relationship, RelationshipKind, Symbol, SymbolKind,
+    Identifier, IdentifierKind, Literal, LiteralKind, Relationship, RelationshipKind, Symbol,
+    SymbolKind,
 };
 use tempfile::TempDir;
+
+/// Helper: build a minimal carrier-gated Literal row (post-classification
+/// state — a recognized `kind` and a `carrier`, as the write path stores it).
+fn make_literal(
+    id: &str,
+    text: &str,
+    kind: LiteralKind,
+    carrier: &str,
+    file_path: &str,
+) -> Literal {
+    Literal {
+        id: id.to_string(),
+        literal_text: text.to_string(),
+        kind,
+        carrier: Some(carrier.to_string()),
+        arg_position: 0,
+        language: "rust".to_string(),
+        file_path: file_path.to_string(),
+        start_line: 4,
+        start_column: 8,
+        end_line: 4,
+        end_column: 24,
+        start_byte: 40,
+        end_byte: 56,
+        containing_symbol_id: None,
+        confidence: 1.0,
+    }
+}
 
 /// Helper: build a minimal Symbol with the given id, name, and file_path.
 fn make_symbol(id: &str, name: &str, file_path: &str) -> Symbol {
@@ -754,6 +783,7 @@ fn test_incremental_update_atomic_cleans_and_replaces_type_arguments() {
         identifiers: &idents_v1,
         types: &[],
         type_arguments: &rows_v1,
+        literals: &[],
     };
     db.incremental_update_atomic_with_metadata(
         &[],
@@ -811,6 +841,7 @@ fn test_incremental_update_atomic_cleans_and_replaces_type_arguments() {
         identifiers: &idents_v2,
         types: &[],
         type_arguments: &rows_v2,
+        literals: &[],
     };
     db.incremental_update_atomic_with_metadata(
         &["file_a.rs".to_string()],
@@ -859,7 +890,11 @@ fn test_replace_workspace_data_atomic_clears_stale_type_arguments() {
         make_identifier("id_b", "List", "b.rs"),
     ];
     let mut rows_v1 = type_argument_rows("id_a", "a.rs", vec![leaf_arg(0, "int")]);
-    rows_v1.extend(type_argument_rows("id_b", "b.rs", vec![leaf_arg(0, "string")]));
+    rows_v1.extend(type_argument_rows(
+        "id_b",
+        "b.rs",
+        vec![leaf_arg(0, "string")],
+    ));
     let write_set_v1 = CanonicalWriteSet {
         files: &files_v1,
         symbols: &[],
@@ -867,6 +902,7 @@ fn test_replace_workspace_data_atomic_clears_stale_type_arguments() {
         identifiers: &idents_v1,
         types: &[],
         type_arguments: &rows_v1,
+        literals: &[],
     };
     db.incremental_update_atomic_with_metadata(
         &[],
@@ -894,6 +930,7 @@ fn test_replace_workspace_data_atomic_clears_stale_type_arguments() {
         identifiers: &idents_v2,
         types: &[],
         type_arguments: &rows_v2,
+        literals: &[],
     };
     db.replace_workspace_data_atomic(
         &write_set_v2,
@@ -959,6 +996,7 @@ fn test_delete_workspace_data_clears_all_owned_tables() {
         identifiers: &ta_idents,
         types: &[],
         type_arguments: &ta_rows,
+        literals: &[],
     };
     db.incremental_update_atomic_with_metadata(
         &[],
@@ -967,6 +1005,31 @@ fn test_delete_workspace_data_clears_all_owned_tables() {
         AtomicPersistenceMetadata::default(),
     )
     .expect("seeding type_arguments should succeed");
+
+    // Seed a literal row so workspace cleanup is verified to clear it too.
+    let lit_rows = vec![make_literal(
+        "lit_ws",
+        "/api/health",
+        LiteralKind::Url,
+        "fetch",
+        "src/lib.rs",
+    )];
+    let lit_write_set = CanonicalWriteSet {
+        files: &[],
+        symbols: &[],
+        relationships: &[],
+        identifiers: &[],
+        types: &[],
+        type_arguments: &[],
+        literals: &lit_rows,
+    };
+    db.incremental_update_atomic_with_metadata(
+        &[],
+        &lit_write_set,
+        "ws_test",
+        AtomicPersistenceMetadata::default(),
+    )
+    .expect("seeding literals should succeed");
 
     assert!(count_rows(&db, "symbols") > 0, "precondition: symbols");
     assert!(count_rows(&db, "files") > 0, "precondition: files");
@@ -991,6 +1054,7 @@ fn test_delete_workspace_data_clears_all_owned_tables() {
         count_rows(&db, "type_arguments") > 0,
         "precondition: type_arguments"
     );
+    assert!(count_rows(&db, "literals") > 0, "precondition: literals");
 
     db.delete_workspace_data()
         .expect("workspace cleanup should succeed");
@@ -1032,5 +1096,228 @@ fn test_delete_workspace_data_clears_all_owned_tables() {
         count_rows(&db, "type_arguments"),
         0,
         "type_arguments must be cleared"
+    );
+    assert_eq!(count_rows(&db, "literals"), 0, "literals must be cleared");
+}
+
+// ---------------------------------------------------------------------------
+// Literals (Miller bridge Phase 3): a stored roundtrip, per-file re-index
+// cleanup, and full-replace wipe — mirroring the type_arguments coverage above.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_literals_roundtrip_persists_all_columns() {
+    let tmp = TempDir::new().unwrap();
+    let db_path = tmp.path().join("test.db");
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
+
+    let files = vec![make_file("api.ts")];
+    let literals = vec![make_literal(
+        "lit_url",
+        "/api/users/{}",
+        LiteralKind::Url,
+        "fetch",
+        "api.ts",
+    )];
+    let write_set = CanonicalWriteSet {
+        files: &files,
+        symbols: &[],
+        relationships: &[],
+        identifiers: &[],
+        types: &[],
+        type_arguments: &[],
+        literals: &literals,
+    };
+    db.incremental_update_atomic_with_metadata(
+        &[],
+        &write_set,
+        "ws_test",
+        AtomicPersistenceMetadata::default(),
+    )
+    .expect("literal write should succeed");
+
+    // Read every persisted column back and assert the row roundtrips intact.
+    let (text, kind, carrier, arg_position, language, file_path): (
+        String,
+        String,
+        Option<String>,
+        i64,
+        String,
+        String,
+    ) = db
+        .conn
+        .query_row(
+            "SELECT literal_text, kind, carrier, arg_position, language, file_path \
+             FROM literals WHERE id = 'lit_url'",
+            [],
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                ))
+            },
+        )
+        .expect("the literal row must be readable");
+    assert_eq!(text, "/api/users/{}", "decoded text must roundtrip");
+    assert_eq!(kind, "url", "kind must persist as its db string");
+    assert_eq!(carrier.as_deref(), Some("fetch"), "carrier must persist");
+    assert_eq!(arg_position, 0);
+    assert_eq!(language, "rust");
+    assert_eq!(file_path, "api.ts");
+}
+
+#[test]
+fn test_incremental_update_atomic_cleans_and_replaces_literals() {
+    let tmp = TempDir::new().unwrap();
+    let db_path = tmp.path().join("test.db");
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
+
+    // --- Round 1: api.ts has two url literals.
+    let files_v1 = vec![make_file("api.ts")];
+    let literals_v1 = vec![
+        make_literal("lit_a", "/api/users", LiteralKind::Url, "fetch", "api.ts"),
+        make_literal(
+            "lit_b",
+            "/api/orders",
+            LiteralKind::Url,
+            "axios.get",
+            "api.ts",
+        ),
+    ];
+    let write_set_v1 = CanonicalWriteSet {
+        files: &files_v1,
+        symbols: &[],
+        relationships: &[],
+        identifiers: &[],
+        types: &[],
+        type_arguments: &[],
+        literals: &literals_v1,
+    };
+    db.incremental_update_atomic_with_metadata(
+        &[],
+        &write_set_v1,
+        "ws_test",
+        AtomicPersistenceMetadata::default(),
+    )
+    .expect("round 1 literal write should succeed");
+    assert_eq!(
+        count_rows(&db, "literals"),
+        2,
+        "two round-1 literals stored"
+    );
+
+    // --- Round 2: api.ts re-indexed with a single different literal. Cleaning
+    //     api.ts must drop BOTH stale rows before the new row is inserted — no
+    //     orphans by file_path (the gate is off during bulk writes, so the FK
+    //     CASCADE never fires; the explicit DELETE must handle it).
+    let files_v2 = vec![make_file("api.ts")];
+    let literals_v2 = vec![make_literal(
+        "lit_c",
+        "/api/products",
+        LiteralKind::Url,
+        "fetch",
+        "api.ts",
+    )];
+    let write_set_v2 = CanonicalWriteSet {
+        files: &files_v2,
+        symbols: &[],
+        relationships: &[],
+        identifiers: &[],
+        types: &[],
+        type_arguments: &[],
+        literals: &literals_v2,
+    };
+    db.incremental_update_atomic_with_metadata(
+        &["api.ts".to_string()],
+        &write_set_v2,
+        "ws_test",
+        AtomicPersistenceMetadata::default(),
+    )
+    .expect("round 2 literal write should succeed");
+
+    assert_eq!(
+        count_rows(&db, "literals"),
+        1,
+        "re-index must clean the 2 stale literals and leave only the 1 new row"
+    );
+    let surviving: String = db
+        .conn
+        .query_row("SELECT literal_text FROM literals", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(
+        surviving, "/api/products",
+        "only the re-indexed literal may survive"
+    );
+}
+
+#[test]
+fn test_replace_workspace_data_atomic_clears_stale_literals() {
+    let tmp = TempDir::new().unwrap();
+    let db_path = tmp.path().join("test.db");
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
+
+    let files_v1 = vec![make_file("a.ts"), make_file("b.ts")];
+    let literals_v1 = vec![
+        make_literal("la", "/a", LiteralKind::Url, "fetch", "a.ts"),
+        make_literal("lb", "/b", LiteralKind::Url, "fetch", "b.ts"),
+    ];
+    let write_set_v1 = CanonicalWriteSet {
+        files: &files_v1,
+        symbols: &[],
+        relationships: &[],
+        identifiers: &[],
+        types: &[],
+        type_arguments: &[],
+        literals: &literals_v1,
+    };
+    db.incremental_update_atomic_with_metadata(
+        &[],
+        &write_set_v1,
+        "ws_test",
+        AtomicPersistenceMetadata::default(),
+    )
+    .expect("seed write should succeed");
+    assert_eq!(count_rows(&db, "literals"), 2, "precondition: two literals");
+
+    let files_v2 = vec![make_file("a.ts")];
+    let literals_v2 = vec![make_literal(
+        "la2",
+        "/a2",
+        LiteralKind::Url,
+        "fetch",
+        "a.ts",
+    )];
+    let write_set_v2 = CanonicalWriteSet {
+        files: &files_v2,
+        symbols: &[],
+        relationships: &[],
+        identifiers: &[],
+        types: &[],
+        type_arguments: &[],
+        literals: &literals_v2,
+    };
+    db.replace_workspace_data_atomic(
+        &write_set_v2,
+        "ws_test",
+        AtomicPersistenceMetadata::default(),
+    )
+    .expect("full-replace rebuild should succeed");
+
+    assert_eq!(
+        count_rows(&db, "literals"),
+        1,
+        "full-replace rebuild must clear every prior literal, not just the rewritten file's"
+    );
+    let surviving: String = db
+        .conn
+        .query_row("SELECT literal_text FROM literals", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(
+        surviving, "/a2",
+        "only the rebuilt batch's literal may survive"
     );
 }

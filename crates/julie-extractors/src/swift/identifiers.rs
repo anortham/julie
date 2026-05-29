@@ -200,8 +200,7 @@ fn record_outermost_swift_type_arguments(
     else {
         return; // no type_arguments → not a generic application
     };
-    let arguments =
-        crate::base::extract_type_arguments(base, arg_list, decompose_swift_type_arg);
+    let arguments = crate::base::extract_type_arguments(base, arg_list, decompose_swift_type_arg);
     base.record_type_arguments(identifier, arguments);
 }
 

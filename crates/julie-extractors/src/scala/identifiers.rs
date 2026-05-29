@@ -79,10 +79,9 @@ fn extract_identifier_from_node(
                         } else {
                             None
                         };
-                        if let (Some(identifier), Some(args_node)) = (
-                            opt_identifier,
-                            child.child_by_field_name("type_arguments"),
-                        ) {
+                        if let (Some(identifier), Some(args_node)) =
+                            (opt_identifier, child.child_by_field_name("type_arguments"))
+                        {
                             let arguments = crate::base::extract_type_arguments(
                                 base,
                                 args_node,
@@ -247,8 +246,7 @@ fn record_outermost_scala_type_arguments(
     let Some(arg_list) = parent.child_by_field_name("type_arguments") else {
         return;
     };
-    let arguments =
-        crate::base::extract_type_arguments(base, arg_list, decompose_scala_type_arg);
+    let arguments = crate::base::extract_type_arguments(base, arg_list, decompose_scala_type_arg);
     base.record_type_arguments(identifier, arguments);
 }
 
