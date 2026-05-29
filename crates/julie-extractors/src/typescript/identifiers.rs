@@ -87,6 +87,9 @@ fn extract_identifier_from_node(
                     }
                 }
             }
+            // Phase 3: capture string-literal call-arguments (config-free; the
+            // carrier classification + gate happen in the src/ pipeline).
+            record_call_arg_literals(extractor, &node, symbol_map);
         }
 
         // Heritage clause: `class A extends Base<Foo, Bar>` or `class A extends Base`.
@@ -299,6 +302,71 @@ fn find_containing_symbol_id(
         .base()
         .find_containing_symbol_from_map(&node, symbol_map)
         .map(|s| s.id.clone())
+}
+
+// ============================================================================
+// String-literal call-argument capture helpers (Miller bridge Phase 3)
+// ============================================================================
+
+/// Capture string-literal arguments of a call as `Literal` records.
+///
+/// Config-free: `carrier` is the verbatim callee text; the URL/SQL
+/// classification and the carrier gate run later in the `src/` pipeline.
+/// Records one literal per string-like argument, with `arg_position` counted
+/// over the full (named) argument list so `foo(x, "sql")` reports position 1.
+fn record_call_arg_literals(
+    extractor: &mut TypeScriptExtractor,
+    call_node: &Node,
+    symbol_map: &HashMap<String, &Symbol>,
+) {
+    let Some(function_node) = call_node.child_by_field_name("function") else {
+        return;
+    };
+    let Some(args_node) = call_node.child_by_field_name("arguments") else {
+        return;
+    };
+    let carrier = callee_text(extractor, function_node);
+    let containing_symbol_id = find_containing_symbol_id(extractor, *call_node, symbol_map);
+
+    let mut cursor = args_node.walk();
+    for (pos, arg) in args_node.named_children(&mut cursor).enumerate() {
+        if let Some(text) = extractor.base().decode_string_literal(&arg) {
+            extractor.base_mut().record_literal(
+                &arg,
+                text,
+                carrier.clone(),
+                pos as u32,
+                containing_symbol_id.clone(),
+            );
+        }
+    }
+}
+
+/// Derive the verbatim callee text used as a literal's `carrier`.
+///
+/// Plain `identifier` → its text (`fetch`). `member_expression` → the
+/// `object.property` join (`axios.get`) so dotted client APIs match config.
+fn callee_text(extractor: &TypeScriptExtractor, function_node: Node) -> Option<String> {
+    match function_node.kind() {
+        "identifier" => Some(extractor.base().get_node_text(&function_node)),
+        "member_expression" => {
+            let object = function_node
+                .child_by_field_name("object")
+                .map(|n| extractor.base().get_node_text(&n));
+            let property = function_node
+                .child_by_field_name("property")
+                .map(|n| extractor.base().get_node_text(&n));
+            match (object, property) {
+                (Some(o), Some(p)) => Some(format!("{o}.{p}")),
+                (None, Some(p)) => Some(p),
+                _ => None,
+            }
+        }
+        _ => {
+            let text = extractor.base().get_node_text(&function_node);
+            if text.is_empty() { None } else { Some(text) }
+        }
+    }
 }
 
 // ============================================================================

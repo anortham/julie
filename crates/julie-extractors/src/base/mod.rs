@@ -35,10 +35,10 @@ pub use span::{NormalizedSpan, RecordOffset, normalize_file_path};
 pub use tree_methods::{find_child_by_type, find_child_by_types};
 pub use type_arguments::{TypeArgDecomposer, extract_type_arguments};
 pub use types::{
-    AnnotationMarker, ContextConfig, ExtractionResults, Identifier, IdentifierKind,
-    ParseDiagnostic, ParseDiagnosticKind, PendingRelationship, Relationship, RelationshipKind,
-    Symbol, SymbolKind, SymbolOptions, TestRole, TypeArgument, TypeArgumentUsage, TypeInfo,
-    Visibility,
+    AnnotationMarker, ContextConfig, ExtractionResults, Identifier, IdentifierKind, Literal,
+    LiteralKind, ParseDiagnostic, ParseDiagnosticKind, PendingRelationship, Relationship,
+    RelationshipKind, Symbol, SymbolKind, SymbolOptions, TestRole, TypeArgument, TypeArgumentUsage,
+    TypeInfo, Visibility,
 };
 
 pub(crate) fn containing_symbol_at_line(symbols: &[Symbol], line_number: u32) -> Option<&Symbol> {

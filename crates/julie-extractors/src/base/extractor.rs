@@ -12,9 +12,39 @@ use tree_sitter::Node;
 use super::relationship_resolution::StructuredPendingRelationship;
 use super::span::{NormalizedSpan, normalize_file_path};
 use super::types::{
-    ContextConfig, Identifier, PendingRelationship, Relationship, Symbol, TypeArgument,
-    TypeArgumentUsage, TypeInfo, stable_location_id,
+    ContextConfig, Identifier, Literal, LiteralKind, PendingRelationship, Relationship, Symbol,
+    TypeArgument, TypeArgumentUsage, TypeInfo, stable_location_id,
 };
+
+/// Strip one matching outer delimiter pair from a raw string-literal token,
+/// skipping any leading string prefix (`@`, `$`, `r`, `f`, `b`, `u`, …) before
+/// the opening quote. Handles triple-quoted (`"""`/`'''`) and single (`"`/`'`/
+/// `` ` ``) delimiters. Best-effort fallback used by
+/// [`BaseExtractor::decode_string_literal`] only when a string node exposes no
+/// inner fragment children.
+fn strip_string_delimiters(raw: &str) -> String {
+    let s = raw.trim();
+    let Some(qpos) = s.find(['"', '\'', '`']) else {
+        return s.to_string();
+    };
+    let s = &s[qpos..];
+    for q in ["\"\"\"", "'''"] {
+        if s.len() >= 2 * q.len() && s.starts_with(q) && s.ends_with(q) {
+            return s[q.len()..s.len() - q.len()].to_string();
+        }
+    }
+    let count = s.chars().count();
+    if count >= 2 {
+        let first = s.chars().next();
+        let last = s.chars().last();
+        if let (Some(f), Some(l)) = (first, last) {
+            if f == l && matches!(f, '"' | '\'' | '`') {
+                return s.chars().skip(1).take(count - 2).collect();
+            }
+        }
+    }
+    s.to_string()
+}
 
 /// Base implementation for language extractors
 ///
@@ -34,6 +64,10 @@ pub struct BaseExtractor {
     /// use-site identifier by id. Populated by language readers via
     /// `record_type_arguments`; flattened into the `type_arguments` table.
     pub type_argument_usages: Vec<TypeArgumentUsage>,
+    /// String literals captured at call-argument sites (Miller bridge Phase 3).
+    /// Populated config-free by language readers via `record_literal`; the `src/`
+    /// pipeline classifies + gates them by carrier before persistence.
+    pub literals: Vec<Literal>,
     pub context_config: ContextConfig,
 }
 
@@ -69,6 +103,7 @@ impl BaseExtractor {
             type_info: HashMap::new(),
             identifiers: Vec::new(), // NEW: Initialize empty identifier list
             type_argument_usages: Vec::new(),
+            literals: Vec::new(),
             context_config: ContextConfig::default(),
         }
     }
@@ -94,6 +129,82 @@ impl BaseExtractor {
     /// Clone the accumulated type-argument usages (mirrors `get_pending_relationships`).
     pub fn get_type_argument_usages(&self) -> Vec<TypeArgumentUsage> {
         self.type_argument_usages.clone()
+    }
+
+    /// Record a string literal captured at a call-argument site (Phase 3).
+    ///
+    /// Config-free: `kind` is always [`LiteralKind::Other`] here; the `src/`
+    /// pipeline reclassifies and gates by `carrier`. `node` is the string-literal
+    /// argument node (used for the span and stable id). Returns the created
+    /// `Literal` (also pushed to `self.literals`).
+    pub fn record_literal(
+        &mut self,
+        node: &Node,
+        literal_text: String,
+        carrier: Option<String>,
+        arg_position: u32,
+        containing_symbol_id: Option<String>,
+    ) -> Literal {
+        let span = NormalizedSpan::from_node(node);
+        let id = self.generate_id_for_span(&literal_text, &span);
+        let literal = Literal {
+            id,
+            literal_text,
+            kind: LiteralKind::Other,
+            carrier,
+            arg_position,
+            language: self.language.clone(),
+            file_path: self.file_path.clone(),
+            start_line: span.start_line,
+            start_column: span.start_column,
+            end_line: span.end_line,
+            end_column: span.end_column,
+            start_byte: span.start_byte,
+            end_byte: span.end_byte,
+            containing_symbol_id,
+            confidence: 1.0,
+        };
+        self.literals.push(literal.clone());
+        literal
+    }
+
+    /// Clone the accumulated call-argument literals.
+    pub fn get_literals(&self) -> Vec<Literal> {
+        self.literals.clone()
+    }
+
+    /// Decode a string-literal node's contents for capture: strip delimiters and
+    /// replace interpolation/substitution holes with `{}` so a resolver sees the
+    /// static shape (`/api/users/{}`, `SELECT ... FROM Users`). Returns `None`
+    /// for non-string nodes.
+    ///
+    /// Language-agnostic by design: it recognizes string-bearing nodes by kind
+    /// substring (`string`/`char`), emits the text of inner fragment children
+    /// verbatim, and substitutes `{}` for any child whose kind names an
+    /// interpolation/substitution. When the node has no named children (the
+    /// delimiters and body are anonymous, e.g. a flat `"..."`), it strips one
+    /// matching outer delimiter pair from the raw text.
+    pub fn decode_string_literal(&self, node: &Node) -> Option<String> {
+        let kind = node.kind();
+        if !(kind.contains("string") || kind.contains("char")) {
+            return None;
+        }
+        let mut out = String::new();
+        let mut had_named_child = false;
+        let mut cursor = node.walk();
+        for child in node.named_children(&mut cursor) {
+            had_named_child = true;
+            let ck = child.kind();
+            if ck.contains("substitution") || ck.contains("interpolation") {
+                out.push_str("{}");
+            } else {
+                out.push_str(&self.get_node_text(&child));
+            }
+        }
+        if !had_named_child {
+            out = strip_string_delimiters(&self.get_node_text(node));
+        }
+        Some(out)
     }
 
     pub fn add_pending_relationship(&mut self, pending: PendingRelationship) {

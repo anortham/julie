@@ -11,6 +11,7 @@ pub mod helpers;
 pub mod identifiers;
 pub mod imports_exports;
 pub mod inference;
+pub mod literals;
 pub mod relationships;
 pub mod relative_paths; // NEW: Phase 2 - Relative Unix-style path storage tests
 pub mod symbols;
