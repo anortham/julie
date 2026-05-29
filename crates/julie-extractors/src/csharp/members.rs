@@ -195,6 +195,7 @@ pub fn extract_destructor(
         metadata.insert("is_test".to_string(), serde_json::Value::Bool(true));
     }
 
+    let annotations = helpers::extract_annotations(base, &node);
     let options = SymbolOptions {
         signature: Some(signature),
         visibility: Some(Visibility::Protected),
@@ -205,6 +206,7 @@ pub fn extract_destructor(
         } else {
             Some(metadata)
         },
+        annotations,
         ..Default::default()
     };
 
@@ -281,11 +283,13 @@ pub fn extract_property(
     // Extract XML doc comment
     let doc_comment = base.find_doc_comment(&node);
 
+    let annotations = helpers::extract_annotations(base, &node);
     let options = SymbolOptions {
         signature: Some(signature),
         visibility: Some(visibility),
         parent_id,
         doc_comment,
+        annotations,
         ..Default::default()
     };
 
@@ -353,11 +357,13 @@ pub fn extract_delegate(
     // Extract XML doc comment
     let doc_comment = base.find_doc_comment(&node);
 
+    let annotations = helpers::extract_annotations(base, &node);
     let options = SymbolOptions {
         signature: Some(signature),
         visibility: Some(visibility),
         parent_id,
         doc_comment,
+        annotations,
         ..Default::default()
     };
 

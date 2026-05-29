@@ -201,6 +201,39 @@ fn store_symbols_hydrates_annotations_in_full_reads_and_keeps_lightweight_empty(
 }
 
 #[test]
+fn store_symbols_persists_annotations_for_class_and_field_kinds() {
+    // Phase 1 (Miller bridge) populates annotations on C# class/field/etc.
+    // The persistence layer is kind-agnostic — exactly why Phase 1 needed no
+    // schema change. This guards that assumption for the newly-populated kinds.
+    let (_temp_dir, mut db) = open_db();
+    let file = file_info("src/Account.cs", "csharp");
+    db.store_file_info(&file).unwrap();
+
+    let class_ann = vec![marker("Table", "table", Some(r#"Table("Accounts")"#), None)];
+    let field_ann = vec![marker("Column", "column", Some(r#"Column("acct_id")"#), None)];
+
+    let mut account = symbol("csharp-class", "Account", &file.path, class_ann.clone());
+    account.kind = SymbolKind::Class;
+    account.language = "csharp".to_string();
+
+    let mut id_field = symbol("csharp-field", "Id", &file.path, field_ann.clone());
+    id_field.kind = SymbolKind::Field;
+    id_field.language = "csharp".to_string();
+
+    db.store_symbols(&[account, id_field]).unwrap();
+
+    let class_back = db.get_symbol_by_id("csharp-class").unwrap().unwrap();
+    assert_eq!(class_back.kind, SymbolKind::Class);
+    assert_eq!(class_back.annotations, class_ann);
+    assert_eq!(annotation_row_count(&db, "csharp-class"), 1);
+
+    let field_back = db.get_symbol_by_id("csharp-field").unwrap().unwrap();
+    assert_eq!(field_back.kind, SymbolKind::Field);
+    assert_eq!(field_back.annotations, field_ann);
+    assert_eq!(annotation_row_count(&db, "csharp-field"), 1);
+}
+
+#[test]
 fn store_symbols_transactional_replaces_annotation_rows() {
     let (_temp_dir, mut db) = open_db();
     let file = file_info("src/replace.rs", "rust");

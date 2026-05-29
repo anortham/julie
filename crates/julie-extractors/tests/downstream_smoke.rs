@@ -87,7 +87,7 @@ fn main() -> anyhow::Result<()> {
     );
 
     let _version: &str = julie_extractors::EXTRACTION_CONTRACT_VERSION;
-    assert!(julie_extractors::EXTRACTION_CONTRACT_VERSION.contains("body-span-v1"));
+    assert!(julie_extractors::EXTRACTION_CONTRACT_VERSION.contains("bridge-anchors-v2"));
     Ok(())
 }
 "#,

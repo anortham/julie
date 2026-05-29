@@ -21,6 +21,7 @@ pub fn extract_fields(
     let modifiers = helpers::extract_modifiers(base, &node);
     let visibility = helpers::determine_visibility(&modifiers, None);
     let field_type = helpers::extract_field_type(base, &node).unwrap_or_else(|| "var".to_string());
+    let annotations = helpers::extract_annotations(base, &node);
 
     let mut cursor = node.walk();
     let var_declaration = node
@@ -73,6 +74,7 @@ pub fn extract_fields(
                 visibility: Some(visibility.clone()),
                 parent_id: parent_id.clone(),
                 doc_comment: doc_comment.clone(),
+                annotations: annotations.clone(),
                 ..Default::default()
             };
 
@@ -112,6 +114,7 @@ pub fn extract_events(
 
     let modifiers = helpers::extract_modifiers(base, &node);
     let visibility = helpers::determine_visibility(&modifiers, None);
+    let annotations = helpers::extract_annotations(base, &node);
 
     let mut type_cursor = var_declaration.walk();
     let type_node = var_declaration
@@ -143,6 +146,7 @@ pub fn extract_events(
                 visibility: Some(visibility.clone()),
                 parent_id: parent_id.clone(),
                 doc_comment: doc_comment.clone(),
+                annotations: annotations.clone(),
                 ..Default::default()
             };
 

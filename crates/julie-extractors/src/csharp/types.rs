@@ -146,13 +146,14 @@ pub fn extract_class(
     // Extract XML doc comment
     let doc_comment = base.find_doc_comment(&node);
 
+    let annotations = helpers::extract_annotations(base, &node);
     let options = SymbolOptions {
         signature: Some(signature),
         visibility: Some(visibility),
         parent_id,
         metadata: Some(metadata),
         doc_comment,
-        annotations: Vec::new(),
+        annotations,
     };
 
     Some(base.create_symbol(&node, name, SymbolKind::Class, options))
@@ -205,11 +206,13 @@ pub fn extract_interface(
     // Extract XML doc comment
     let doc_comment = base.find_doc_comment(&node);
 
+    let annotations = helpers::extract_annotations(base, &node);
     let options = SymbolOptions {
         signature: Some(signature),
         visibility: Some(visibility),
         parent_id,
         doc_comment,
+        annotations,
         ..Default::default()
     };
 
@@ -252,11 +255,13 @@ pub fn extract_struct(
     // Extract XML doc comment
     let doc_comment = base.find_doc_comment(&node);
 
+    let annotations = helpers::extract_annotations(base, &node);
     let options = SymbolOptions {
         signature: Some(signature),
         visibility: Some(visibility),
         parent_id,
         doc_comment,
+        annotations,
         ..Default::default()
     };
 
@@ -292,11 +297,13 @@ pub fn extract_enum(
     // Extract XML doc comment
     let doc_comment = base.find_doc_comment(&node);
 
+    let annotations = helpers::extract_annotations(base, &node);
     let options = SymbolOptions {
         signature: Some(signature),
         visibility: Some(visibility),
         parent_id,
         doc_comment,
+        annotations,
         ..Default::default()
     };
 
@@ -334,11 +341,13 @@ pub fn extract_enum_member(
     // Extract XML doc comment
     let doc_comment = base.find_doc_comment(&node);
 
+    let annotations = helpers::extract_annotations(base, &node);
     let options = SymbolOptions {
         signature: Some(signature),
         visibility: Some(Visibility::Public),
         parent_id,
         doc_comment,
+        annotations,
         ..Default::default()
     };
 
@@ -390,11 +399,13 @@ pub fn extract_record(
     // Extract XML doc comment
     let doc_comment = base.find_doc_comment(&node);
 
+    let annotations = helpers::extract_annotations(base, &node);
     let options = SymbolOptions {
         signature: Some(signature),
         visibility: Some(visibility),
         parent_id,
         doc_comment,
+        annotations,
         ..Default::default()
     };
 

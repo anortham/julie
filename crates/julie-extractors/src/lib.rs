@@ -117,7 +117,7 @@ pub use capability_snapshot::{
 ///
 /// **Stable.** Bump the suffix after `v` when the canonical extraction shape
 /// changes in a way downstream consumers must observe.
-pub const EXTRACTION_CONTRACT_VERSION: &str = "2026-05-11.body-span-v1";
+pub const EXTRACTION_CONTRACT_VERSION: &str = "2026-05-29.bridge-anchors-v2";
 
 // Re-export BaseExtractor for language implementors
 pub use base::BaseExtractor;
