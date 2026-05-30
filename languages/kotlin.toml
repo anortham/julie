@@ -77,3 +77,27 @@ mock_identifiers = ["mock", "every", "verify", "coevery"]
 [early_warnings]
 review_markers = ["permitall"]
 schema_version = 1
+
+# String-literal carrier vocabulary (Miller bridge Phase 3b). Keys are lowercased
+# at build time and matched case-insensitively; dotted entries match exactly,
+# bare entries match any receiver via the gate's last-segment rule.
+[literal_carriers]
+# Ktor client get/post and OkHttp Request.Builder.url take the URL string.
+# Dotted for generic verbs (`client.get`) so they don't flood on arbitrary
+# receivers; `url` is the OkHttp builder setter (distinctive enough as bare).
+url = [
+    "client.get",       # Ktor HttpClient.get
+    "client.post",
+    "client.put",
+    "client.delete",
+    "url",              # OkHttp Request.Builder().url(...)
+]
+# JDBC + Exposed SQL verbs are called on Statement/Connection/transaction
+# receivers whose names vary — bare entries match any receiver via last-segment.
+sql = [
+    "executequery",     # JDBC Statement.executeQuery
+    "executeupdate",    # JDBC Statement.executeUpdate
+    "preparestatement", # JDBC Connection.prepareStatement
+    "exec",             # Exposed Transaction.exec
+]
+route = []

@@ -43,6 +43,10 @@ fn extract_identifier_from_node(
     match node.kind() {
         // Function/method calls
         "call_expression" => {
+            // Phase 3b: capture string-literal call-arguments (config-free;
+            // carrier classification + gate run later in the src/ pipeline).
+            // Runs before the early-returning callee branches below.
+            record_scala_call_arg_literals(base, node, symbol_map);
             for child in node.children(&mut node.walk()) {
                 if child.kind() == "identifier" {
                     let name = base.get_node_text(&child);
@@ -143,6 +147,85 @@ fn find_containing_symbol_id(
 ) -> Option<String> {
     base.find_containing_symbol_from_map(&node, symbol_map)
         .map(|s| s.id.clone())
+}
+
+// ============================================================================
+// String-literal call-argument capture (Miller bridge Phase 3b)
+// ============================================================================
+
+/// Capture string-literal arguments of a Scala `call_expression` as `Literal`
+/// records.
+///
+/// Config-free: `carrier` is the verbatim callee text; the URL/SQL
+/// classification and the carrier gate run later in the `src/` pipeline. Scala's
+/// call has a `function` callee and an `arguments` node holding `expression`
+/// children; `arg_position` is counted over the full argument list. Plain Scala
+/// `string` nodes expose no content child, so they decode via the shared
+/// delimiter-strip fallback. (Prefixed interpolators like Doobie's `sql"..."`
+/// and sttp's `uri"..."` are NOT call-argument literals and are out of scope.)
+fn record_scala_call_arg_literals(
+    base: &mut BaseExtractor,
+    call_node: Node,
+    symbol_map: &HashMap<String, &Symbol>,
+) {
+    let Some(func) = call_node.child_by_field_name("function") else {
+        return;
+    };
+    let Some(args) = call_node.child_by_field_name("arguments") else {
+        return;
+    };
+    let carrier = scala_carrier(base, func);
+    let containing_symbol_id = find_containing_symbol_id(base, call_node, symbol_map);
+
+    let arg_nodes: Vec<Node> = {
+        let mut cursor = args.walk();
+        args.named_children(&mut cursor).collect()
+    };
+    for (pos, arg) in arg_nodes.into_iter().enumerate() {
+        if let Some(text) = base.decode_string_literal(&arg) {
+            base.record_literal(
+                &arg,
+                text,
+                carrier.clone(),
+                pos as u32,
+                containing_symbol_id.clone(),
+            );
+        }
+    }
+}
+
+/// Derive a Scala call's carrier from its (generic-unwrapped) callee.
+///
+/// Plain `identifier`/`operator_identifier` → its text (`SQL`, `greet`). A
+/// `field_expression` (`requests.get`, `stmt.executeQuery`) → the `value.field`
+/// join so dotted client APIs match config (`requests.get`) while bare DB verbs
+/// (`executeQuery`/`SQL`) match any receiver via the gate's last-segment rule.
+fn scala_carrier(base: &BaseExtractor, func: Node) -> Option<String> {
+    let func = if func.kind() == "generic_function" {
+        func.child_by_field_name("function").unwrap_or(func)
+    } else {
+        func
+    };
+    match func.kind() {
+        "identifier" | "operator_identifier" => Some(base.get_node_text(&func)),
+        "field_expression" => {
+            let value = func
+                .child_by_field_name("value")
+                .map(|n| base.get_node_text(&n));
+            let field = func
+                .child_by_field_name("field")
+                .map(|n| base.get_node_text(&n));
+            match (value, field) {
+                (Some(v), Some(f)) => Some(format!("{v}.{f}")),
+                (None, Some(f)) => Some(f),
+                _ => None,
+            }
+        }
+        _ => {
+            let text = base.get_node_text(&func);
+            if text.is_empty() { None } else { Some(text) }
+        }
+    }
 }
 
 /// Check if a `type_identifier` node is a declaration name rather than a type reference.

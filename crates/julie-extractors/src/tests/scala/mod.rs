@@ -2,6 +2,7 @@
 
 mod ast_debug;
 mod cross_file_pending;
+mod literals;
 mod task14;
 mod type_arguments;
 

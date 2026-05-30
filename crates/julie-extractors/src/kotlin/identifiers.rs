@@ -90,6 +90,9 @@ fn extract_identifier_from_node(
                     }
                 }
             }
+            // Phase 3b: capture string-literal call-arguments (config-free;
+            // carrier classification + gate run later in the src/ pipeline).
+            record_kotlin_call_arg_literals(base, node, symbol_map);
         }
 
         // Type references in type positions: val x: Foo, fun f(a: Foo): Bar,
@@ -273,6 +276,107 @@ fn find_containing_symbol_id(
 ) -> Option<String> {
     base.find_containing_symbol_from_map(&node, symbol_map)
         .map(|s| s.id.clone())
+}
+
+// ============================================================================
+// String-literal call-argument capture (Miller bridge Phase 3b)
+// ============================================================================
+
+/// Capture string-literal arguments of a Kotlin `call_expression` as `Literal`
+/// records.
+///
+/// Config-free: `carrier` is the verbatim callee text; the URL/SQL
+/// classification and the carrier gate run later in the `src/` pipeline.
+/// Kotlin call args live in a `value_arguments` child holding `value_argument`
+/// nodes; a named argument (`url = "..."`) carries an extra `identifier` name,
+/// so the value is the argument's last named child. `arg_position` is counted
+/// over the full argument list. Kotlin string templates (`"$x"` / `"${x}"`)
+/// decode to `{}` holes via the shared `interpolation`-aware decoder.
+fn record_kotlin_call_arg_literals(
+    base: &mut BaseExtractor,
+    call_node: Node,
+    symbol_map: &HashMap<String, &Symbol>,
+) {
+    let children: Vec<Node> = {
+        let mut cursor = call_node.walk();
+        call_node.children(&mut cursor).collect()
+    };
+    let Some(value_args) = children
+        .iter()
+        .find(|c| c.kind() == "value_arguments")
+        .copied()
+    else {
+        return;
+    };
+    let callee = children
+        .iter()
+        .find(|c| {
+            matches!(
+                c.kind(),
+                "identifier" | "simple_identifier" | "navigation_expression"
+            )
+        })
+        .copied();
+    let carrier = callee.and_then(|c| kotlin_carrier(base, c));
+    let containing_symbol_id = find_containing_symbol_id(base, call_node, symbol_map);
+
+    let args: Vec<Node> = {
+        let mut cursor = value_args.walk();
+        value_args.named_children(&mut cursor).collect()
+    };
+    for (pos, arg) in args.into_iter().enumerate() {
+        if let Some(value) = kotlin_argument_value(arg) {
+            if let Some(text) = base.decode_string_literal(&value) {
+                base.record_literal(
+                    &value,
+                    text,
+                    carrier.clone(),
+                    pos as u32,
+                    containing_symbol_id.clone(),
+                );
+            }
+        }
+    }
+}
+
+/// The value expression of a Kotlin `value_argument`. A named argument
+/// (`name = expr`) has the name as a leading `identifier`, so the value is the
+/// last named child; a positional argument's single named child is the value.
+fn kotlin_argument_value(arg: Node) -> Option<Node> {
+    if arg.kind() != "value_argument" {
+        return Some(arg);
+    }
+    let mut cursor = arg.walk();
+    arg.named_children(&mut cursor).last()
+}
+
+/// Derive a Kotlin call's carrier from its callee.
+///
+/// Plain `identifier`/`simple_identifier` → its text (`fetch`). A
+/// `navigation_expression` (`db.execute`, `client.get`) → the `receiver.member`
+/// join so dotted client APIs match config (`client.get`) while bare DB verbs
+/// (`execute`/`query`) match any receiver via the gate's last-segment rule.
+fn kotlin_carrier(base: &BaseExtractor, callee: Node) -> Option<String> {
+    match callee.kind() {
+        "identifier" | "simple_identifier" => Some(base.get_node_text(&callee)),
+        "navigation_expression" => {
+            let named: Vec<Node> = {
+                let mut cursor = callee.walk();
+                callee.named_children(&mut cursor).collect()
+            };
+            let receiver = named.first().map(|n| base.get_node_text(n));
+            let member = named.last().map(|n| base.get_node_text(n));
+            match (receiver, member) {
+                (Some(r), Some(m)) if named.len() >= 2 => Some(format!("{r}.{m}")),
+                (_, Some(m)) => Some(m),
+                _ => None,
+            }
+        }
+        _ => {
+            let text = base.get_node_text(&callee);
+            if text.is_empty() { None } else { Some(text) }
+        }
+    }
 }
 
 /// Returns true for Kotlin types that are too common to be meaningful

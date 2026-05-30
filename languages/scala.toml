@@ -42,3 +42,28 @@ important_patterns = [
 
 [embeddings]
 extra_kinds = ["constructor"]  # companion object apply methods
+
+# String-literal carrier vocabulary (Miller bridge Phase 3b). Keys are lowercased
+# at build time and matched case-insensitively; dotted entries match exactly,
+# bare entries match any receiver via the gate's last-segment rule.
+# NOTE: Doobie (`sql"..."`) and sttp (`uri"..."`) pass SQL/URLs via *prefixed
+# string interpolators*, which are not call-argument literals — they are not
+# captured by this call-arg arm and have no carrier here.
+[literal_carriers]
+# requests-scala takes the URL string directly on the `requests` object (dotted).
+url = [
+    "requests.get",     # requests-scala
+    "requests.post",
+    "requests.put",
+    "requests.delete",
+]
+# Anorm's SQL(...) and JDBC Statement verbs take the SQL string literal. `SQL`
+# is distinctive enough as a bare apply; JDBC verbs match any receiver via
+# last-segment.
+sql = [
+    "sql",              # Anorm SQL(...)
+    "executequery",     # JDBC Statement.executeQuery
+    "executeupdate",    # JDBC Statement.executeUpdate
+    "preparestatement", # JDBC Connection.prepareStatement
+]
+route = []
