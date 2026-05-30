@@ -58,3 +58,33 @@ mock_identifiers = []
 
 [early_warnings]
 schema_version = 1
+
+# String-literal carrier vocabulary (Miller bridge Phase 3b). Keys are lowercased
+# at build time and matched case-insensitively; dotted entries match exactly,
+# bare entries match any receiver via the gate's last-segment rule.
+[literal_carriers]
+# reqwest/ureq convenience free-fns take the URL string literal directly. Dotted
+# (qualifier.name) so generic `.get`/`.post` methods on arbitrary receivers don't
+# flood. The builder/method form (`client.get(url)`) is intentionally not bare.
+url = [
+    "reqwest.get",   # reqwest::get / ::post / ::head convenience fns
+    "reqwest.post",
+    "reqwest.head",
+    "ureq.get",      # ureq
+    "ureq.post",
+]
+# rusqlite/sqlx SQL verbs are called on connection/transaction receivers whose
+# names vary (conn, tx, db) — bare entries match any receiver via last-segment.
+# sqlx::query (scoped) yields carrier `sqlx.query`, last-segment `query`, so the
+# bare `query` entry covers it too. Verbs are distinctive enough not to flood.
+sql = [
+    "query",          # sqlx::query, conn.query
+    "query_as",       # sqlx::query_as
+    "query_scalar",   # sqlx::query_scalar
+    "execute",        # rusqlite conn.execute, sqlx
+    "prepare",        # rusqlite conn.prepare
+    "query_row",      # rusqlite
+    "query_map",      # rusqlite
+    "batch_execute",  # diesel/rusqlite
+]
+route = []

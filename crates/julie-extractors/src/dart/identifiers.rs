@@ -40,6 +40,9 @@ fn extract_identifier_from_node(
                     containing_symbol_id,
                 );
             }
+            // Phase 3b: capture string-literal call-arguments (config-free;
+            // carrier classification + gate run later in the src/ pipeline).
+            record_dart_call_arg_literals(base, node, symbol_map);
         }
 
         "member_expression" | "null_aware_member_expression" => {
@@ -296,4 +299,105 @@ fn find_containing_symbol_id(
 ) -> Option<String> {
     base.find_containing_symbol_from_map(&node, symbol_map)
         .map(|s| s.id.clone())
+}
+
+// ============================================================================
+// String-literal call-argument capture (Miller bridge Phase 3b)
+// ============================================================================
+
+/// Capture string-literal arguments of a Dart `call_expression` as `Literal`
+/// records.
+///
+/// Config-free: `carrier` is the verbatim callee text; the URL/SQL
+/// classification and the carrier gate run later in the `src/` pipeline. The
+/// call has a `function` callee and an `arguments` node; a `named_argument`
+/// (`body: "..."`) carries a leading `label`, so the value is its last non-label
+/// child. `arg_position` is counted over the full argument list.
+///
+/// NOTE: Dart string interpolation (`$x` / `${x}`) nests its text as
+/// `template_chars_*` content, which the shared `decode_string_literal` does not
+/// recognize, so interpolated literals decode via the delimiter-strip fallback
+/// (text preserved verbatim, no `{}` normalization). Plain string literals — the
+/// common URL/SQL case — decode correctly. Flagged to the lead.
+fn record_dart_call_arg_literals(
+    base: &mut BaseExtractor,
+    call_node: Node,
+    symbol_map: &HashMap<String, &Symbol>,
+) {
+    let Some(function_node) = call_node.child_by_field_name("function") else {
+        return;
+    };
+    let Some(args_node) = call_node.child_by_field_name("arguments") else {
+        return;
+    };
+    let carrier = dart_carrier(function_node);
+    let containing_symbol_id = find_containing_symbol_id(base, call_node, symbol_map);
+
+    let arg_nodes: Vec<Node> = {
+        let mut cursor = args_node.walk();
+        args_node.named_children(&mut cursor).collect()
+    };
+    for (pos, arg) in arg_nodes.into_iter().enumerate() {
+        // Named args (`name: value`) carry a leading `label`; the value is the
+        // last non-label child.
+        let value = if arg.kind() == "named_argument" {
+            dart_named_arg_value(arg)
+        } else {
+            Some(arg)
+        };
+        if let Some(value) = value {
+            if let Some(text) = base.decode_string_literal(&value) {
+                base.record_literal(
+                    &value,
+                    text,
+                    carrier.clone(),
+                    pos as u32,
+                    containing_symbol_id.clone(),
+                );
+            }
+        }
+    }
+}
+
+/// The value expression of a Dart `named_argument` (`label: value`): the last
+/// named child that is not the `label`.
+fn dart_named_arg_value(arg: Node) -> Option<Node> {
+    let mut cursor = arg.walk();
+    arg.named_children(&mut cursor)
+        .filter(|c| c.kind() != "label")
+        .last()
+}
+
+/// Derive a Dart call's carrier from its callee.
+///
+/// Plain `identifier` → its text (`fetch`). A `member_expression` /
+/// `null_aware_member_expression` (`dio.get`, `db.rawQuery`) → the
+/// `object.property` join so dotted client APIs match config (`dio.get`) while
+/// bare DB verbs (`rawQuery`/`execute`) match any receiver via the gate's
+/// last-segment rule. `instantiation_expression` (`foo<T>(...)`) unwraps to its
+/// inner callee.
+fn dart_carrier(function_node: Node) -> Option<String> {
+    match function_node.kind() {
+        "identifier" => Some(get_node_text(&function_node)),
+        "member_expression" | "null_aware_member_expression" => {
+            let object = function_node
+                .child_by_field_name("object")
+                .map(|n| get_node_text(&n));
+            let property = function_node
+                .child_by_field_name("property")
+                .map(|n| get_node_text(&n));
+            match (object, property) {
+                (Some(o), Some(p)) => Some(format!("{o}.{p}")),
+                (None, Some(p)) => Some(p),
+                _ => None,
+            }
+        }
+        "instantiation_expression" => function_node
+            .child_by_field_name("function")
+            .and_then(dart_carrier),
+        _ => {
+            let text = get_node_text(&function_node);
+            if text.is_empty() { None } else { Some(text) }
+        }
+    }
 }

@@ -39,3 +39,33 @@ important_patterns = [
 
 [embeddings]
 extra_kinds = ["constructor"]  # 473 in Riverpod; named constructors are important
+
+# String-literal carrier vocabulary (Miller bridge Phase 3b). Keys are lowercased
+# at build time and matched case-insensitively; dotted entries match exactly,
+# bare entries match any receiver via the gate's last-segment rule.
+[literal_carriers]
+# package:http and Dio take the URL string. Dotted for generic verbs
+# (`http.get`/`dio.get`) so a bare `.get`/`.post` on arbitrary receivers does
+# not flood.
+url = [
+    "http.get",     # package:http
+    "http.post",
+    "http.put",
+    "http.delete",
+    "http.head",
+    "dio.get",      # Dio
+    "dio.post",
+    "dio.put",
+    "dio.delete",
+]
+# sqflite query/exec verbs are called on a Database receiver whose variable name
+# varies (db) — bare entries match any receiver via last-segment. `rawQuery`,
+# `rawInsert`, `rawUpdate`, `rawDelete`, `execute` are distinctive enough.
+sql = [
+    "rawquery",     # sqflite
+    "rawinsert",
+    "rawupdate",
+    "rawdelete",
+    "execute",
+]
+route = []

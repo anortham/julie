@@ -7,6 +7,7 @@ pub mod cross_file_pending;
 pub mod cross_file_relationships;
 pub mod extractor;
 pub mod identifiers;
+mod literals;
 mod task14;
 mod type_arguments;
 
