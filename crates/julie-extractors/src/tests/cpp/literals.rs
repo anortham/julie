@@ -34,11 +34,14 @@ fn capture(code: &str) -> Vec<Literal> {
 #[test]
 fn bare_function_call_arg_captured_with_carrier() {
     // `greet("hello")` — one string-literal arg with a plain-identifier callee.
-    // (`void` return keeps the function_declarator un-nested so the C++ symbol
-    // extractor reliably records the enclosing symbol; a pointer-return free
-    // function is wrapped in a `pointer_declarator` the extractor doesn't unwrap.)
+    // The enclosing function returns `const char *`, so its `function_declarator`
+    // is nested under a `pointer_declarator`. This guards the literal-anchoring
+    // consequence of the pointer-return fix (commit 61aec5e5): the symbol now
+    // spans the full definition (incl. body), so a body literal resolves a
+    // `containing_symbol_id`. Before that fix the symbol span was declarator-only
+    // and this anchor was lost.
     let code = r#"
-void load() {
+const char *load() {
     greet("hello");
 }
 "#;
