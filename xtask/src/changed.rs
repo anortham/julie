@@ -386,13 +386,13 @@ fn buckets_for_path(path: &str) -> &'static [&'static str] {
     }
 
     if is_extractor_path(path) {
-        return &["extractors"];
+        return &["extractors", "extractor-units"];
     }
 
     // src/extractors/ is a thin re-export wrapper for the julie-extractors crate;
-    // changes there only need the extractor bucket to gate.
+    // changes there only need the extractor buckets to gate.
     if matches_prefix(path, &["src/extractors/"]) {
-        return &["extractors"];
+        return &["extractors", "extractor-units"];
     }
 
     // Handler cross-cutting subfiles map to specific buckets so an edit doesn't drag the
@@ -947,6 +947,7 @@ fn sort_bucket_names(bucket_names: Vec<String>) -> Vec<String> {
         "core-database",
         "core-embeddings",
         "extractors",
+        "extractor-units",
         "parser-upgrade",
         "projection",
         "tools-get-context-pipeline",

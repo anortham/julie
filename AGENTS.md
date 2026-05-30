@@ -138,9 +138,11 @@ For the tight edit-test loop during implementation:
 
 ### Known Pre-Existing Failures
 
-**All tiers are currently green.** If a test fails, it's a real regression, not a known issue. Investigate it.
+**One known pre-existing failure set remains:** the `tools-workspace-targeting` bucket (dev/full tiers) has 4 failing tests in `tests::tools::workspace::global_targeting::rebind_index` (the `test_manage_workspace_index_*` rebind cases). They assert that an explicit-path `index` rebinds the session primary, but `current_workspace_id()` resolves to the startup-cwd `tmp_*` workspace instead of the indexed `target_*` one. This is the pre-existing #33 primary-resolution bug: the rebind code path (`src/tools/workspace/commands/index.rs`, `src/handler.rs`, `src/daemon/session.rs`) is byte-identical to the v7.12.2 release, so it is NOT a regression from the test-role/literal work. **Every other dev/full bucket is green.** If a test OUTSIDE this set fails, it's a real regression — investigate it.
 
 (Previous known failures in `core-embeddings` and `workspace_init` were resolved as of 2026-03-19.)
+
+(As of 2026-05-30, the per-language `julie-extractors` unit suite — 2291 tests across all 34 extractors — is gated by the new `extractor-units` bucket in the **dev** and **full** tiers. Previously these ran in no bucket, so 24 pre-existing extractor failures were invisible to the tiers; all 24 are now fixed and the suite is green.)
 
 ### Why Dogfood Is Slow
 

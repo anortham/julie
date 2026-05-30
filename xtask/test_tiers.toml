@@ -5,12 +5,12 @@
 nano = ["core-database", "core-fast"]
 # Smoke: keep this tiny for frequent local runs.
 smoke = ["cli", "core-database", "core-embeddings", "tools-get-context-pipeline"]
-dev = ["cli", "xtask-runner", "core-database", "core-embeddings", "tools-get-context-pipeline", "tools-get-context-format", "tools-get-context-graph", "tools-search-tantivy", "tools-search-line", "tools-search-file-mode", "tools-search-zero-hit", "tools-search-promotion", "tools-search-format-quality", "tools-search-context", "tools-search-text", "tools-search-hybrid", "tools-search-query", "tools-search-unified", "tools-workspace", "tools-workspace-targeting", "tools-get-symbols", "tools-editing", "tools-deep-dive", "tools-call-path", "tools-fast-refs", "tools-blast-spillover", "tools-refactoring", "tools-metrics", "tools-format-filter", "analysis", "core-fast", "core-handler-telemetry", "daemon", "dashboard"]
+dev = ["cli", "xtask-runner", "core-database", "core-embeddings", "tools-get-context-pipeline", "tools-get-context-format", "tools-get-context-graph", "tools-search-tantivy", "tools-search-line", "tools-search-file-mode", "tools-search-zero-hit", "tools-search-promotion", "tools-search-format-quality", "tools-search-context", "tools-search-text", "tools-search-hybrid", "tools-search-query", "tools-search-unified", "tools-workspace", "tools-workspace-targeting", "tools-get-symbols", "tools-editing", "tools-deep-dive", "tools-call-path", "tools-fast-refs", "tools-blast-spillover", "tools-refactoring", "tools-metrics", "tools-format-filter", "analysis", "core-fast", "core-handler-telemetry", "daemon", "dashboard", "extractor-units"]
 # System coverage kept separate from fast local buckets.
 system = ["projection", "transport", "lifecycle", "workspace-runtime", "workspace-init", "documentation-indexing", "integration"]
 # Dogfood stays isolated because it is the long pole.
 dogfood = ["tools-dogfood-repo-index", "search-quality"]
-full = ["cli", "xtask-runner", "core-database", "core-embeddings", "tools-get-context-pipeline", "tools-get-context-format", "tools-get-context-graph", "tools-search-tantivy", "tools-search-line", "tools-search-file-mode", "tools-search-zero-hit", "tools-search-promotion", "tools-search-format-quality", "tools-search-context", "tools-search-text", "tools-search-hybrid", "tools-search-query", "tools-search-unified", "tools-workspace", "tools-workspace-targeting", "tools-get-symbols", "tools-editing", "tools-deep-dive", "tools-call-path", "tools-fast-refs", "tools-blast-spillover", "tools-refactoring", "tools-metrics", "tools-format-filter", "analysis", "core-fast", "core-handler-telemetry", "daemon", "dashboard", "projection", "transport", "lifecycle", "workspace-runtime", "workspace-init", "documentation-indexing", "integration", "tools-dogfood-repo-index", "search-quality"]
+full = ["cli", "xtask-runner", "core-database", "core-embeddings", "tools-get-context-pipeline", "tools-get-context-format", "tools-get-context-graph", "tools-search-tantivy", "tools-search-line", "tools-search-file-mode", "tools-search-zero-hit", "tools-search-promotion", "tools-search-format-quality", "tools-search-context", "tools-search-text", "tools-search-hybrid", "tools-search-query", "tools-search-unified", "tools-workspace", "tools-workspace-targeting", "tools-get-symbols", "tools-editing", "tools-deep-dive", "tools-call-path", "tools-fast-refs", "tools-blast-spillover", "tools-refactoring", "tools-metrics", "tools-format-filter", "analysis", "core-fast", "core-handler-telemetry", "daemon", "dashboard", "projection", "transport", "lifecycle", "workspace-runtime", "workspace-init", "documentation-indexing", "integration", "tools-dogfood-repo-index", "search-quality", "extractor-units"]
 
 [blocked_tiers]
 
@@ -415,6 +415,21 @@ commands = [
   "cargo nextest run -p julie-extractors capability_matrix",
   "cargo xtask certify tree-sitter --check",
   "cargo nextest run -p julie-extractors --test downstream_smoke julie_extractors_works_as_path_dependency_in_downstream_crate",
+]
+
+[buckets.extractor-units]
+# Per-language extractor unit suites (tests::<lang>::...). Previously ORPHANED:
+# the `extractors` bucket only ran golden/capability/cert/downstream, so the
+# 2000+ per-language #[test] functions were not gated by any tier. That blind
+# spot let real extraction bugs (doc-comment/annotation/structure across
+# zig/vue/html/php/powershell/gdscript/dart + a base harness bug) ship on main
+# undetected. This bucket runs the whole crate lib suite so they can't rot again.
+expected_seconds = 30
+timeout_seconds = 120
+scope_label = "extractors"
+notes = "per-language extractor unit suites (tests::<lang>::...), previously ungated"
+commands = [
+  "cargo nextest run -p julie-extractors --lib",
 ]
 
 [buckets.parser-upgrade]

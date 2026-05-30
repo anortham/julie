@@ -116,6 +116,14 @@ pub(crate) fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
             },
         ),
         (
+            "extractor-units",
+            ExpectedBucket {
+                expected_seconds: 30,
+                timeout_seconds: 120,
+                commands: &["cargo nextest run -p julie-extractors --lib"],
+            },
+        ),
+        (
             "daemon",
             ExpectedBucket {
                 // Bumped to 60s/180s after the 2026-05 daemon-split bucket additions
@@ -618,6 +626,17 @@ pub(crate) fn expected_bucket_metadata() -> BTreeMap<&'static str, ExpectedBucke
                 expensive: false,
                 notes: Some(
                     "extractor golden, capability matrix, and Pillar-3 downstream-consumer gate",
+                ),
+            },
+        ),
+        (
+            "extractor-units",
+            ExpectedBucketMetadata {
+                scope_label: "extractors",
+                owner: "lead",
+                expensive: false,
+                notes: Some(
+                    "per-language extractor unit suites (tests::<lang>::...), previously ungated",
                 ),
             },
         ),
