@@ -112,9 +112,12 @@ fn symbol_base_types(symbol: &Symbol) -> Vec<String> {
 /// 2. Base-type containers: a container-kind symbol whose recorded base type
 ///    (last segment) is in `test_base_types` is a `TestContainer` even without an
 ///    annotation (Python `unittest.TestCase`, Swift `XCTestCase`, QML `TestCase`).
-/// 3. Fall back to the extractor's `is_test` metadata flag (convention-based
+/// 3. Call-style container metadata: a symbol carrying `test_container=true` (set
+///    by the call-style extractor for `describe`/`group`) is a `TestContainer`
+///    regardless of kind.
+/// 4. Fall back to the extractor's `is_test` metadata flag (convention-based
 ///    languages like Rust, Go, Python). If `is_test` was set, return `TestCase`.
-/// 4. Return `None` for non-test symbols.
+/// 5. Return `None` for non-test symbols.
 pub fn classify_test_role(
     symbol: &Symbol,
     role_config: Option<&TestRoleConfig>,
@@ -160,7 +163,22 @@ pub fn classify_test_role(
         }
     }
 
-    // Step 3: convention-based fallback from extractor's is_test flag
+    // Step 3: call-style container metadata. Frameworks like Jest/Vitest
+    // (`describe`) and Dart (`group`) are captured by the call-style extractor as
+    // Function symbols carrying `test_container=true` — not a container KIND, so the
+    // kind-gated annotation/base-type rules above miss them. This flag is set only
+    // by that extractor, so treat it as a high-confidence TestContainer signal.
+    if symbol
+        .metadata
+        .as_ref()
+        .and_then(|m| m.get("test_container"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+    {
+        return Some(TestRole::TestContainer);
+    }
+
+    // Step 4: convention-based fallback from extractor's is_test flag
     let is_test = symbol
         .metadata
         .as_ref()
@@ -172,7 +190,7 @@ pub fn classify_test_role(
         return Some(TestRole::TestCase);
     }
 
-    // Step 3: not a test symbol
+    // Step 5: not a test symbol
     None
 }
 

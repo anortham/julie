@@ -70,6 +70,42 @@ pub(super) fn extract_base_classes(base: &BaseExtractor, base_clause: Node) -> V
     bases
 }
 
+/// Extract clean base-type names from a `base_class_clause` for the canonical
+/// `base_types` metadata array (Miller bridge test-roles).
+///
+/// Unlike [`extract_base_classes`] (which keeps the access specifier for the
+/// human-readable signature, e.g. `"public ::testing::Test"`), this returns just
+/// the type name and strips template arguments so a templated base like
+/// `::testing::TestWithParam<int>` is recorded as `"::testing::TestWithParam"`.
+/// The test-role classifier matches by last `.`/`:` segment, so the qualified
+/// `::testing::Test` still matches a `["testing::Test"]` config entry.
+pub(super) fn extract_base_type_names(base: &BaseExtractor, base_clause: Node) -> Vec<String> {
+    let mut names = Vec::new();
+    let mut cursor = base_clause.walk();
+    for child in base_clause.children(&mut cursor) {
+        // `:`, `,`, and `access_specifier` carry no type name; only the base type
+        // node kinds do. A templated base parses either as a bare `template_type`
+        // (`Foo<T>`) or as a `qualified_identifier` wrapping a nested `template_type`
+        // (`::testing::TestWithParam<int>`), so we strip everything from the first
+        // `<` to record the generic head rather than one instantiation. The
+        // test-role classifier matches by last `.`/`:` segment, so the qualified
+        // `::testing::TestWithParam` still matches a `["testing::TestWithParam"]`
+        // config entry.
+        if matches!(
+            child.kind(),
+            "type_identifier" | "qualified_identifier" | "template_type"
+        ) {
+            let text = base.get_node_text(&child);
+            let clean = match text.find('<') {
+                Some(i) => text[..i].to_string(),
+                None => text,
+            };
+            names.push(clean);
+        }
+    }
+    names
+}
+
 /// Find the parent enum node for an enum member
 pub(super) fn find_parent_enum(node: Node) -> Option<Node> {
     let mut current = node.parent();

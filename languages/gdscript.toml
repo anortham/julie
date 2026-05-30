@@ -54,3 +54,17 @@ sql = [
     "query_with_bindings",  # godot-sqlite plugin (SQLite.query_with_bindings)
 ]
 route = []
+
+# Test-role classification (Miller bridge test detection).
+# GUT (Godot Unit Test) scripts are a top-level `extends GutTest` with `func test_*`
+# methods. The gdscript extractor synthesizes an implicit file-class and emits
+# `base_types = ["GutTest"]` on it; this `test_base_types` entry flags that class as
+# a test container (matched by last segment, so subclasses like `GutTest` qualify).
+# The `func test_*` methods are flagged name-based in test_detection.rs (detect_gdscript).
+[annotation_classes.test]
+test_case = []
+parameterized_test = []
+fixture_setup = []
+fixture_teardown = []
+test_container = []
+test_base_types = ["GutTest"]

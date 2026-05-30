@@ -197,7 +197,10 @@
       "visibility": "Public",
       "parent_key": null,
       "metadata": {
-        "baseClass": "Node"
+        "baseClass": "Node",
+        "base_types": [
+          "Node"
+        ]
       },
       "annotations": [],
       "semantic_group": null,

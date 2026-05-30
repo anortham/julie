@@ -69,3 +69,13 @@ sql = [
     "execute",
 ]
 route = []
+
+# Test-role annotation vocabulary (Miller bridge test-roles). Keys are the
+# normalized annotation_key form (lowercased, `@` stripped). Dart's primary test
+# style is call-based (`test()`/`group()` from package:test — materialized as
+# symbols by the extractor's call_expression arm). Annotations are secondary:
+# `@isTest` (package:meta) marks a function as a test; `@test` is used by some
+# frameworks. Both classify the annotated function as a test case regardless of
+# name or path.
+[annotation_classes.test]
+test_case = ["test", "istest"]

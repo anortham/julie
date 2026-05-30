@@ -734,6 +734,166 @@ fn dart_test_prefix_in_production_code_returns_false() {
 }
 
 // ===========================================================================
+// Explicit framework arms beyond the generic fallback
+// (gdscript GUT, lua luaunit, r RUnit, java JUnit3)
+// ===========================================================================
+
+#[test]
+fn gdscript_gut_camelcase_method_in_test_path() {
+    // GUT runs any `test`-prefixed method, including camelCase `testFoo` (no
+    // underscore) — which the generic fallback (test_/Test only) misses.
+    assert!(check(
+        "gdscript",
+        "testPlayerHealth",
+        "test/player_test.gd",
+        &SymbolKind::Method,
+        &[],
+        None,
+    ));
+}
+
+#[test]
+fn gdscript_non_test_method_in_test_path_returns_false() {
+    assert!(!check(
+        "gdscript",
+        "helperFunction",
+        "test/player_test.gd",
+        &SymbolKind::Method,
+        &[],
+        None,
+    ));
+}
+
+#[test]
+fn gdscript_test_prefix_in_production_path_returns_false() {
+    // Path guard: a `test`-prefixed method outside a test path is not a test.
+    assert!(!check(
+        "gdscript",
+        "testConnection",
+        "src/network.gd",
+        &SymbolKind::Method,
+        &[],
+        None,
+    ));
+}
+
+#[test]
+fn lua_luaunit_camelcase_function_in_test_path() {
+    // luaunit runs `testXxx` (camelCase) functions; generic fallback misses these.
+    assert!(check(
+        "lua",
+        "testAddition",
+        "tests/math_spec.lua",
+        &SymbolKind::Function,
+        &[],
+        None,
+    ));
+}
+
+#[test]
+fn lua_test_underscore_prefix_still_detected() {
+    assert!(check(
+        "lua",
+        "test_subtraction",
+        "tests/math_spec.lua",
+        &SymbolKind::Function,
+        &[],
+        None,
+    ));
+}
+
+#[test]
+fn lua_non_test_function_in_test_path_returns_false() {
+    assert!(!check(
+        "lua",
+        "make_fixture",
+        "tests/math_spec.lua",
+        &SymbolKind::Function,
+        &[],
+        None,
+    ));
+}
+
+#[test]
+fn r_runit_dot_prefix_in_test_path() {
+    // RUnit names tests `test.foo` (dot) — the generic fallback only checks
+    // `test_`/`Test`, so detect_r adds the dot convention.
+    assert!(check(
+        "r",
+        "test.addition",
+        "tests/runit_math.R",
+        &SymbolKind::Function,
+        &[],
+        None,
+    ));
+}
+
+#[test]
+fn r_test_underscore_prefix_in_test_path() {
+    assert!(check(
+        "r",
+        "test_addition",
+        "tests/test_math.R",
+        &SymbolKind::Function,
+        &[],
+        None,
+    ));
+}
+
+#[test]
+fn r_non_test_function_in_test_path_returns_false() {
+    assert!(!check(
+        "r",
+        "build_data",
+        "tests/runit_math.R",
+        &SymbolKind::Function,
+        &[],
+        None,
+    ));
+}
+
+#[test]
+fn java_junit3_testxxx_method_without_annotation_in_test_path() {
+    // JUnit3: `public void testLegacy()` in a TestCase subclass, no @Test
+    // annotation. The annotation-only detector misses it; the path-guarded name
+    // fallback catches it.
+    assert!(check(
+        "java",
+        "testLegacyBehavior",
+        "src/test/java/LegacyTest.java",
+        &SymbolKind::Method,
+        &[],
+        None,
+    ));
+}
+
+#[test]
+fn java_junit3_non_test_method_in_test_path_returns_false() {
+    assert!(!check(
+        "java",
+        "helperMethod",
+        "src/test/java/LegacyTest.java",
+        &SymbolKind::Method,
+        &[],
+        None,
+    ));
+}
+
+#[test]
+fn java_test_prefix_in_production_path_returns_false() {
+    // Path guard: a `test`-prefixed method in production code with no annotation
+    // is not a test (mirrors the swift/php convention).
+    assert!(!check(
+        "java",
+        "testConnection",
+        "src/main/java/Database.java",
+        &SymbolKind::Method,
+        &[],
+        None,
+    ));
+}
+
+// ===========================================================================
 // Generic fallback (covers remaining ~20 languages)
 // ===========================================================================
 

@@ -216,6 +216,32 @@ mod tests {
         assert_eq!(role, Some(TestRole::FixtureSetup));
     }
 
+    #[test]
+    fn test_classify_test_role_call_style_container_metadata() {
+        // Call-style frameworks (Jest/Vitest `describe`, Dart `group`) materialize
+        // container calls as Function symbols carrying metadata test_container=true —
+        // they are NOT a container KIND, so the kind-gated annotation/base-type rules
+        // miss them. The flag is high-confidence (only the call-style extractor sets
+        // it), so the classifier flags them TestContainer directly.
+        let mut metadata = HashMap::new();
+        metadata.insert("test_container".to_string(), serde_json::Value::Bool(true));
+        let symbol = make_symbol(SymbolKind::Function, "javascript", vec![], Some(metadata));
+
+        let role = classify_test_role(&symbol, None);
+        assert_eq!(role, Some(TestRole::TestContainer));
+    }
+
+    #[test]
+    fn test_classify_test_role_no_container_flag_is_not_container() {
+        // Control: a function with test_container=false (or absent) is not a container.
+        let mut metadata = HashMap::new();
+        metadata.insert("test_container".to_string(), serde_json::Value::Bool(false));
+        let symbol = make_symbol(SymbolKind::Function, "javascript", vec![], Some(metadata));
+
+        let role = classify_test_role(&symbol, None);
+        assert_eq!(role, None);
+    }
+
     // ---------------------------------------------------------------
     // is_scorable_test tests
     // ---------------------------------------------------------------

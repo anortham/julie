@@ -71,6 +71,10 @@ parameterized_test = ["parameterizedtest"]
 fixture_setup = ["beforeeach", "beforeall", "before", "beforeclass", "beforemethod", "beforesuite"]
 fixture_teardown = ["aftereach", "afterall", "after", "afterclass", "aftermethod", "aftersuite"]
 test_container = ["nested"]
+# JUnit 3 / TestNG legacy: a class extending TestCase is a test container with no
+# annotation. Matched by last path segment in classify_test_role against the
+# extractor's `base_types` metadata. Covers `junit.framework.TestCase` too.
+test_base_types = ["TestCase"]
 
 [test_evidence]
 assertion_identifiers = ["assertequals", "asserttrue", "assertfalse", "assertnull", "assertnotnull", "assertthrows", "assertthat"]

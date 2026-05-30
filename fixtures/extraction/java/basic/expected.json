@@ -87,7 +87,11 @@
       "doc_comment": null,
       "visibility": "Private",
       "parent_key": null,
-      "metadata": {},
+      "metadata": {
+        "base_types": [
+          "Job"
+        ]
+      },
       "annotations": [],
       "semantic_group": null,
       "confidence": null,

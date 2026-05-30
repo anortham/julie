@@ -871,12 +871,62 @@ async fn extract_scan_persists_test_role_metadata_across_languages() {
          \x20   return 0\n",
     )
     .expect("write python");
+    // C++ GoogleTest: `TEST(...)` (test_case) and `TEST_P(...)` (parameterized_test)
+    // come from the macro-synthesized annotation keys (`test`/`test_p`) classified
+    // against cpp.toml — NOT a structural is_test, which would collapse both to
+    // test_case. The fixture class `: public ::testing::TestWithParam<int>` is a
+    // test_container via the base-type rule (last segment `TestWithParam`). A plain
+    // class + method must stay unclassified. Path-independent (annotation/base-type
+    // driven), so the file can live at the repo root.
+    fs::write(
+        root.join("calc_test.cpp"),
+        "#include <gtest/gtest.h>\n\
+         \n\
+         TEST(CalculatorTest, AddsNumbers) {\n\
+         \x20   EXPECT_EQ(2 + 2, 4);\n\
+         }\n\
+         \n\
+         class CalculatorFixture : public ::testing::TestWithParam<int> {\n\
+         };\n\
+         \n\
+         TEST_P(CalculatorFixture, HandlesValues) {\n\
+         \x20   EXPECT_GE(GetParam(), 0);\n\
+         }\n\
+         \n\
+         class RealCalculator {\n\
+         public:\n\
+         \x20   int Compute() { return 0; }\n\
+         };\n",
+    )
+    .expect("write cpp");
+    // Swift XCTest: a class extending `XCTestCase` is a test_container via the
+    // base-type rule (no annotation; matched on recorded `base_types`). The
+    // `test`-prefixed method is a test_case via the is_test fallback (needs a test
+    // path, hence the `Tests/` directory). A non-test free function stays
+    // unclassified even inside the test path.
+    let swift_dir = root.join("Tests");
+    std::fs::create_dir(&swift_dir).expect("swift Tests dir");
+    fs::write(
+        swift_dir.join("MathTests.swift"),
+        "import XCTest\n\
+         \n\
+         class MathTests: XCTestCase {\n\
+         \x20   func testAdds() {\n\
+         \x20       XCTAssertEqual(2 + 2, 4)\n\
+         \x20   }\n\
+         }\n\
+         \n\
+         func mathHelper() -> Int {\n\
+         \x20   return 0\n\
+         }\n",
+    )
+    .expect("write swift");
 
     let db_path = tmp.path().join("external.sqlite");
     let report = run_external_scan(&scan_args(db_path.clone(), root.clone(), false))
         .await
         .expect("scan succeeds");
-    assert_eq!(report.files_scanned, 2, "two source files scanned");
+    assert_eq!(report.files_scanned, 4, "four source files scanned");
 
     let db = SymbolDatabase::new(&db_path).expect("open db");
 
@@ -949,6 +999,67 @@ async fn extract_scan_persists_test_role_metadata_across_languages() {
         1,
         "unittest.TestCase subclass must persist test_role=test_container via base-type rule"
     );
+    // C++ GoogleTest TEST(...) -> test_case (synthesized `test` annotation).
+    assert_eq!(
+        count_rows_where(
+            &db,
+            "symbols",
+            "name = 'CalculatorTest.AddsNumbers' AND file_path = 'calc_test.cpp' \
+             AND json_extract(metadata,'$.test_role') = 'test_case'"
+        ),
+        1,
+        "GoogleTest TEST(...) must persist test_role=test_case"
+    );
+    // C++ GoogleTest TEST_P(...) -> parameterized_test. This is the Option-C payoff:
+    // the synthesized `test_p` annotation promotes it ABOVE the structural is_test
+    // (which would otherwise collapse it to test_case).
+    assert_eq!(
+        count_rows_where(
+            &db,
+            "symbols",
+            "name = 'CalculatorFixture.HandlesValues' AND file_path = 'calc_test.cpp' \
+             AND json_extract(metadata,'$.test_role') = 'parameterized_test'"
+        ),
+        1,
+        "GoogleTest TEST_P(...) must persist test_role=parameterized_test (not test_case)"
+    );
+    // C++ fixture class extending ::testing::TestWithParam -> test_container via the
+    // base-type rule (last segment `TestWithParam`, qualified base stripped of template).
+    assert_eq!(
+        count_rows_where(
+            &db,
+            "symbols",
+            "name = 'CalculatorFixture' AND file_path = 'calc_test.cpp' \
+             AND json_extract(metadata,'$.test_role') = 'test_container' \
+             AND json_extract(metadata,'$.is_test') = 1"
+        ),
+        1,
+        "GoogleTest fixture (: ::testing::TestWithParam) must persist test_role=test_container"
+    );
+    // Swift XCTest class -> test_container via the base-type rule (recorded base_types
+    // = ["XCTestCase"]). Second language proving the cross-language base-type rule.
+    assert_eq!(
+        count_rows_where(
+            &db,
+            "symbols",
+            "name = 'MathTests' AND file_path = 'Tests/MathTests.swift' \
+             AND json_extract(metadata,'$.test_role') = 'test_container' \
+             AND json_extract(metadata,'$.is_test') = 1"
+        ),
+        1,
+        "Swift XCTestCase subclass must persist test_role=test_container via base-type rule"
+    );
+    // Swift test-prefixed method -> test_case via the is_test fallback (test path).
+    assert_eq!(
+        count_rows_where(
+            &db,
+            "symbols",
+            "name = 'testAdds' AND file_path = 'Tests/MathTests.swift' \
+             AND json_extract(metadata,'$.test_role') = 'test_case'"
+        ),
+        1,
+        "Swift test-prefixed XCTest method must persist test_role=test_case"
+    );
 
     // Negatives: production symbols get NO test_role and NO is_test.
     assert_eq!(
@@ -970,6 +1081,28 @@ async fn extract_scan_persists_test_role_metadata_across_languages() {
         ),
         0,
         "a plain helper in a test file must not be classified"
+    );
+    // C++ production class/method (no test base type, no test macro) stays unclassified.
+    assert_eq!(
+        count_rows_where(
+            &db,
+            "symbols",
+            "file_path = 'calc_test.cpp' AND name IN ('RealCalculator','Compute') \
+             AND json_extract(metadata,'$.test_role') IS NOT NULL"
+        ),
+        0,
+        "C++ production class/method must not be classified as tests"
+    );
+    // Swift non-test free function inside a test path stays unclassified.
+    assert_eq!(
+        count_rows_where(
+            &db,
+            "symbols",
+            "name = 'mathHelper' AND file_path = 'Tests/MathTests.swift' \
+             AND json_extract(metadata,'$.test_role') IS NOT NULL"
+        ),
+        0,
+        "a non-test Swift free function must not be classified"
     );
 }
 

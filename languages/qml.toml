@@ -53,3 +53,18 @@ sql = [
     "executesql",
 ]
 route = []
+
+# Test-role classification (Miller bridge test detection).
+# Qt Quick Test files declare tests as a `TestCase { ... }` root component with
+# `function test_*()` methods. There are no annotations, so the container is
+# recognized by its base type: the qml extractor emits `base_types = ["TestCase"]`
+# on the root component and this `test_base_types` entry flags it as a test
+# container (matched by last segment). The `function test_*` methods themselves are
+# flagged name-based in test_detection.rs (detect_qml).
+[annotation_classes.test]
+test_case = []
+parameterized_test = []
+fixture_setup = []
+fixture_teardown = []
+test_container = []
+test_base_types = ["TestCase"]

@@ -13,6 +13,7 @@ mod members;
 mod pending_calls;
 mod relationships;
 mod signatures;
+mod test_calls;
 mod types;
 
 use crate::base::{
@@ -107,6 +108,17 @@ impl DartExtractor {
             "method_signature" | "method_declaration" => {
                 symbol =
                     functions::extract_method(&mut self.base, &node, current_parent_id.as_deref());
+            }
+            "call_expression" => {
+                // package:test call-style (Miller bridge test-roles): test()/group()/
+                // setUp() etc. become test symbols. Non-test calls return None and
+                // fall through to normal child recursion. A returned container/test
+                // symbol is set as the parent for nested test calls below.
+                symbol = test_calls::extract_dart_test_call(
+                    &mut self.base,
+                    &node,
+                    current_parent_id.as_deref(),
+                );
             }
             "enum_declaration" => {
                 symbol = types::extract_enum(&mut self.base, &node, current_parent_id.as_deref());

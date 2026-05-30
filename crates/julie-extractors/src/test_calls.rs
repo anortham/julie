@@ -1,13 +1,110 @@
-//! Shared test call expression extraction for JS/TS test frameworks.
+//! Shared call-style test extraction for test frameworks whose tests are call
+//! expressions (`it("name", () => {})`, `test('adds', () {})`, `describe(...)`)
+//! rather than named function declarations.
 //!
-//! Handles Jest, Vitest, Mocha, Bun, and similar test DSLs where tests are
-//! call expressions (`it("name", () => {...})`) rather than named function
-//! declarations. This module provides constants and extraction logic that can
-//! be reused by both the TypeScript and JavaScript extractors.
+//! The core — [`TestCallCategory`], [`TestCallVocab`], [`classify_call`], and
+//! [`build_test_call_symbol`] — is grammar-agnostic: each language's extractor walks
+//! its own grammar (call-node kind, callee field, string-literal kind) and supplies
+//! its own vocabulary, then delegates symbol construction here so the captured
+//! `is_test` / `test_container` / `test_lifecycle` metadata is identical across
+//! languages. The JS/TS path ([`extract_test_call`] + [`is_test_runner_call`]) is
+//! built on that core; Dart, Lua, R, and C/C++ adapters reuse the same builder.
 
 use crate::base::{BaseExtractor, Symbol, SymbolKind, SymbolOptions};
 use std::collections::HashMap;
 use tree_sitter::Node;
+
+/// Category of a captured test-DSL call.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TestCallCategory {
+    /// An actual test case — `is_test = true`.
+    Test,
+    /// A grouping container (`describe`/`group`/`context`) — `test_container = true`.
+    Container,
+    /// A lifecycle hook (`beforeEach`/`setUp`/…) — `is_test = true` + `test_lifecycle = true`.
+    Lifecycle,
+}
+
+/// Per-language test-DSL vocabulary: the callee base-names (the segment before any
+/// `.skip`/`.only`/`.todo` modifier) that map to each category for one framework
+/// family.
+#[derive(Debug, Clone, Copy)]
+pub struct TestCallVocab<'a> {
+    pub test: &'a [&'a str],
+    pub container: &'a [&'a str],
+    pub lifecycle: &'a [&'a str],
+}
+
+/// Classify a callee name against a vocabulary, returning its category if it is a
+/// recognized test-DSL call. Handles modifier chains (`it.skip`, `describe.only`,
+/// `test.todo`) by matching the segment before the first `.`.
+pub fn classify_call(callee: &str, vocab: &TestCallVocab) -> Option<TestCallCategory> {
+    let base = callee.split('.').next().unwrap_or(callee);
+    if vocab.test.contains(&base) {
+        Some(TestCallCategory::Test)
+    } else if vocab.container.contains(&base) {
+        Some(TestCallCategory::Container)
+    } else if vocab.lifecycle.contains(&base) {
+        Some(TestCallCategory::Lifecycle)
+    } else {
+        None
+    }
+}
+
+/// Build a `Function` symbol for a captured test-DSL call. Grammar-agnostic: the
+/// caller (a per-language adapter) walks the grammar to resolve `full_callee`, the
+/// display `name`, and the `category`; this attaches the canonical metadata and
+/// creates the symbol.
+///
+/// Metadata mirrors the historical JS behavior:
+/// - `Test` / `Lifecycle` → `is_test = true`
+/// - `Container` → `test_container = true`
+/// - `Lifecycle` → additionally `test_lifecycle = true`
+pub fn build_test_call_symbol(
+    base: &mut BaseExtractor,
+    node: &Node,
+    full_callee: &str,
+    name: String,
+    category: TestCallCategory,
+    parent_id: Option<&str>,
+) -> Symbol {
+    let signature = match category {
+        TestCallCategory::Lifecycle => format!("{}()", full_callee),
+        _ => format!("{}(\"{}\")", full_callee, name),
+    };
+
+    let mut metadata = HashMap::new();
+    match category {
+        TestCallCategory::Test => {
+            metadata.insert("is_test".to_string(), serde_json::json!(true));
+        }
+        TestCallCategory::Container => {
+            metadata.insert("test_container".to_string(), serde_json::json!(true));
+        }
+        TestCallCategory::Lifecycle => {
+            metadata.insert("is_test".to_string(), serde_json::json!(true));
+            metadata.insert("test_lifecycle".to_string(), serde_json::json!(true));
+        }
+    }
+
+    base.create_symbol(
+        node,
+        name,
+        SymbolKind::Function,
+        SymbolOptions {
+            signature: Some(signature),
+            visibility: None,
+            parent_id: parent_id.map(|s| s.to_string()),
+            metadata: Some(metadata),
+            doc_comment: None,
+            annotations: Vec::new(),
+        },
+    )
+}
+
+// ---------------------------------------------------------------------------
+// JavaScript / TypeScript (Jest, Vitest, Mocha, Bun)
+// ---------------------------------------------------------------------------
 
 /// Test block function names — `is_test = true`
 pub const TEST_BLOCKS: &[&str] = &["it", "test"];
@@ -25,33 +122,24 @@ pub const LIFECYCLE_BLOCKS: &[&str] = &[
     "after",
 ];
 
-/// Check if a function name (or its base before `.`) is a test runner call.
-///
-/// Handles `.skip`, `.only`, `.todo` variants:
-/// - `it` -> true
-/// - `it.skip` -> true (base "it" matches)
-/// - `describe.only` -> true (base "describe" matches)
-/// - `randomFn` -> false
+/// JS/TS test-DSL vocabulary (Jest/Vitest/Mocha/Bun).
+const JS_VOCAB: TestCallVocab = TestCallVocab {
+    test: TEST_BLOCKS,
+    container: CONTAINER_BLOCKS,
+    lifecycle: LIFECYCLE_BLOCKS,
+};
+
+/// Check whether a JS/TS function name (or its base before `.`) is a test runner
+/// call. Handles `.skip`/`.only`/`.todo` variants (`it.skip` -> true via base `it`).
 pub fn is_test_runner_call(name: &str) -> bool {
-    // Split on '.' to handle it.skip, describe.only, test.todo, etc.
-    let base = name.split('.').next().unwrap_or(name);
-    TEST_BLOCKS.contains(&base)
-        || CONTAINER_BLOCKS.contains(&base)
-        || LIFECYCLE_BLOCKS.contains(&base)
+    classify_call(name, &JS_VOCAB).is_some()
 }
 
-/// Extract a test call expression node into a Symbol.
+/// Extract a JS/TS test `call_expression` node into a Symbol.
 ///
-/// The caller must verify that the node is a `call_expression` and the callee
-/// name matches `is_test_runner_call` before calling this function.
-///
-/// # Parameters
-/// - `base`: The base extractor for the current file
-/// - `node`: A tree-sitter `call_expression` node
-/// - `parent_id`: Optional parent symbol ID (e.g., enclosing `describe` block)
-///
-/// # Returns
-/// `Some(Symbol)` if extraction succeeds, `None` if the node structure is unexpected.
+/// Returns `None` if the node is not a `call_expression`, the callee is not a
+/// recognized test runner call, or the structure is unexpected (e.g. a test/
+/// container block with no string-literal name argument).
 pub fn extract_test_call(
     base: &mut BaseExtractor,
     node: Node,
@@ -62,72 +150,35 @@ pub fn extract_test_call(
     }
 
     let function_node = node.child_by_field_name("function")?;
-
-    // Get the full callee name (e.g., "it", "describe", "it.skip")
     let full_callee = base.get_node_text(&function_node);
+    let category = classify_call(&full_callee, &JS_VOCAB)?;
 
-    // Get the base name for category classification
-    let base_name = full_callee.split('.').next().unwrap_or(&full_callee);
-
-    let is_test = TEST_BLOCKS.contains(&base_name);
-    let is_container = CONTAINER_BLOCKS.contains(&base_name);
-    let is_lifecycle = LIFECYCLE_BLOCKS.contains(&base_name);
-
-    if !is_test && !is_container && !is_lifecycle {
-        return None;
-    }
-
-    let args_node = node.child_by_field_name("arguments")?;
-
-    // For test/container blocks: extract name from first string argument
-    // For lifecycle blocks: use the callee name itself
-    let (symbol_name, signature) = if is_lifecycle {
-        (base_name.to_string(), format!("{}()", full_callee))
-    } else {
-        // Find first string argument
-        let mut cursor = args_node.walk();
-        let first_string = args_node
-            .children(&mut cursor)
-            .find(|c| c.kind() == "string" || c.kind() == "template_string");
-
-        match first_string {
-            Some(string_node) => {
-                let raw = base.get_node_text(&string_node);
-                let name = raw
-                    .trim_matches(|c| c == '"' || c == '\'' || c == '`')
-                    .to_string();
-                let sig = format!("{}(\"{}\")", full_callee, name);
-                (name, sig)
-            }
-            None => return None, // test/container blocks require a string name
+    let name = match category {
+        // Lifecycle calls take no name string; use the callee's base name.
+        TestCallCategory::Lifecycle => full_callee
+            .split('.')
+            .next()
+            .unwrap_or(&full_callee)
+            .to_string(),
+        // test/container blocks take the description as the first string argument.
+        _ => {
+            let args_node = node.child_by_field_name("arguments")?;
+            let mut cursor = args_node.walk();
+            let first_string = args_node
+                .children(&mut cursor)
+                .find(|c| c.kind() == "string" || c.kind() == "template_string")?;
+            let raw = base.get_node_text(&first_string);
+            raw.trim_matches(|c| c == '"' || c == '\'' || c == '`')
+                .to_string()
         }
     };
 
-    // Build metadata
-    let mut metadata = HashMap::new();
-    if is_test || is_lifecycle {
-        metadata.insert("is_test".to_string(), serde_json::json!(true));
-    }
-    if is_container {
-        metadata.insert("test_container".to_string(), serde_json::json!(true));
-    }
-    if is_lifecycle {
-        metadata.insert("test_lifecycle".to_string(), serde_json::json!(true));
-    }
-
-    let symbol = base.create_symbol(
+    Some(build_test_call_symbol(
+        base,
         &node,
-        symbol_name,
-        SymbolKind::Function,
-        SymbolOptions {
-            signature: Some(signature),
-            visibility: None,
-            parent_id: parent_id.map(|s| s.to_string()),
-            metadata: Some(metadata),
-            doc_comment: None,
-            annotations: Vec::new(),
-        },
-    );
-
-    Some(symbol)
+        &full_callee,
+        name,
+        category,
+        parent_id,
+    ))
 }

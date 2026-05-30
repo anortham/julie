@@ -44,6 +44,7 @@ pub(super) fn extract_class(
     }
 
     // Handle inheritance
+    let mut base_type_names: Vec<String> = Vec::new();
     if let Some(base_clause) = node
         .children(&mut node.walk())
         .find(|c| c.kind() == "base_class_clause")
@@ -52,9 +53,16 @@ pub(super) fn extract_class(
         if !bases.is_empty() {
             signature.push_str(&format!(" : {}", bases.join(", ")));
         }
+        // Canonical base-type signal (Miller bridge test-roles): clean type names
+        // (no access specifier, no template args) so the post-extraction classifier
+        // can flag a GoogleTest fixture (`: public ::testing::Test`) as a
+        // TestContainer via `test_base_types`.
+        base_type_names = helpers::extract_base_type_names(base, base_clause);
     }
 
     let doc_comment = base.find_doc_comment(&node);
+
+    let metadata = base_types_metadata(base_type_names);
 
     Some(base.create_symbol(
         &node,
@@ -64,11 +72,27 @@ pub(super) fn extract_class(
             signature: Some(signature),
             visibility: Some(super::visibility::extract_cpp_visibility(base, node)),
             parent_id: parent_id.map(String::from),
-            metadata: None,
+            metadata,
             doc_comment,
             annotations: Vec::new(),
         },
     ))
+}
+
+/// Build the `base_types` metadata map for a class/struct, or `None` when the
+/// type has no bases. Shared by [`extract_class`] and [`extract_struct`].
+fn base_types_metadata(
+    base_type_names: Vec<String>,
+) -> Option<std::collections::HashMap<String, serde_json::Value>> {
+    if base_type_names.is_empty() {
+        return None;
+    }
+    let mut metadata = std::collections::HashMap::new();
+    metadata.insert(
+        "base_types".to_string(),
+        serde_json::json!(base_type_names),
+    );
+    Some(metadata)
 }
 
 /// Extract struct declaration
@@ -91,6 +115,7 @@ pub(super) fn extract_struct(
     }
 
     // Handle inheritance (structs can inherit too)
+    let mut base_type_names: Vec<String> = Vec::new();
     if let Some(base_clause) = node
         .children(&mut node.walk())
         .find(|c| c.kind() == "base_class_clause")
@@ -99,6 +124,7 @@ pub(super) fn extract_struct(
         if !bases.is_empty() {
             signature.push_str(&format!(" : {}", bases.join(", ")));
         }
+        base_type_names = helpers::extract_base_type_names(base, base_clause);
     }
 
     // Check for alignas qualifier
@@ -113,6 +139,8 @@ pub(super) fn extract_struct(
 
     let doc_comment = base.find_doc_comment(&node);
 
+    let metadata = base_types_metadata(base_type_names);
+
     Some(base.create_symbol(
         &node,
         name,
@@ -121,7 +149,7 @@ pub(super) fn extract_struct(
             signature: Some(signature),
             visibility: Some(super::visibility::extract_cpp_visibility(base, node)),
             parent_id: parent_id.map(String::from),
-            metadata: None,
+            metadata,
             doc_comment,
             annotations: Vec::new(),
         },

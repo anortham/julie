@@ -63,3 +63,16 @@ sql = [
     "scalar",       # SQLite.swift
 ]
 route = []
+
+# Test-role annotation vocabulary (Miller bridge test-roles). Keys are the
+# normalized annotation_key form (lowercased, `@` stripped). Swift has two
+# frameworks: XCTest (XCTestCase subclasses + test* methods — the base-type rule
+# below + naming detection in test_detection.rs) and the newer Swift Testing
+# (`@Test` / `@Suite` macros, path-independent).
+[annotation_classes.test]
+test_case = ["test"]          # Swift Testing @Test
+test_container = ["suite"]    # Swift Testing @Suite (on a struct/class)
+# XCTest: a class extending XCTestCase is a test container even with no
+# annotation. Matched by last path segment in classify_test_role, so the
+# extractor's `base_types` metadata (["XCTestCase"]) lights it up.
+test_base_types = ["XCTestCase"]

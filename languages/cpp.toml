@@ -74,3 +74,29 @@ sql = [
     "prepare",
 ]
 route = []
+
+# Test-role classification (Miller bridge test detection).
+# C++ has no native test attributes, so the cpp extractor SYNTHESIZES annotation
+# markers for GoogleTest macros and records base types for fixtures:
+#   - GoogleTest TEST/TEST_F/TEST_P/TYPED_TEST/TYPED_TEST_P macros parse as
+#     function_definition nodes. The extractor (functions.rs) names them
+#     `Suite.Name`, sets is_test=true STRUCTURALLY (a graceful fallback), AND
+#     attaches a synthetic annotation whose key is the lowercased macro keyword. The
+#     mapping below turns that annotation into a ROLE — the value/pattern-
+#     parameterized `_P` variants are `parameterized_test`, the rest are plain
+#     `test_case`. The annotation path is what keeps the `_P` role distinction
+#     (structural is_test alone would collapse all five to test_case). No detect_cpp
+#     arm — the annotation path drives the role.
+#   - GoogleTest fixtures subclass `::testing::Test` / `::testing::TestWithParam<T>`.
+#     The extractor records clean `base_types` on the class, and this
+#     `test_base_types` entry flags those fixture classes as test containers
+#     (matched by last `.`/`:` segment, so `::testing::Test` matches `testing::Test`).
+#   - Catch2 `TEST_CASE("...")` is a call_expression statement (no symbol), handled
+#     call-style in test_calls.rs, not here.
+[annotation_classes.test]
+test_case = ["test", "test_f", "typed_test"]
+parameterized_test = ["test_p", "typed_test_p"]
+fixture_setup = []
+fixture_teardown = []
+test_container = []
+test_base_types = ["testing::Test", "testing::TestWithParam"]

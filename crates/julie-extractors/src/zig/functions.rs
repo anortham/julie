@@ -73,20 +73,34 @@ pub(super) fn extract_test(
     node: Node,
     parent_id: Option<&String>,
 ) -> Option<Symbol> {
-    // Extract test name from string node
-    let string_node = base.find_child_by_type(&node, "string")?;
-
-    // Get the actual test name from string_content
-    let string_content_node = base.find_child_by_type(&string_node, "string_content");
-    let test_name = if let Some(content_node) = string_content_node {
-        base.get_node_text(&content_node)
+    // A Zig `test_declaration` names its test with EITHER a string literal
+    // (`test "addition works" {}`) OR a bare identifier referencing a declaration
+    // (`test square {}`); a fully anonymous `test {}` is also legal. All three are
+    // unambiguously tests — `find_child_by_type` scans only the declaration's
+    // direct children, so an `identifier` here is the test name, never something
+    // inside the block.
+    let (test_name, signature) = if let Some(string_node) = base.find_child_by_type(&node, "string")
+    {
+        let name = base
+            .find_child_by_type(&string_node, "string_content")
+            .map(|content_node| base.get_node_text(&content_node))
+            .unwrap_or_else(|| {
+                // Fallback to the full string text, removing quotes
+                base.get_node_text(&string_node)
+                    .trim_matches('"')
+                    .to_string()
+            });
+        let signature = format!("test \"{name}\"");
+        (name, signature)
+    } else if let Some(ident_node) = base.find_child_by_type(&node, "identifier") {
+        let name = base.get_node_text(&ident_node);
+        let signature = format!("test {name}");
+        (name, signature)
     } else {
-        // Fallback to the full string text, removing quotes
-        let full_text = base.get_node_text(&string_node);
-        full_text.trim_matches('"').to_string()
+        // Anonymous `test {}` — emit a stable placeholder so the test is still
+        // surfaced and flagged.
+        ("test".to_string(), "test".to_string())
     };
-
-    let signature = format!("test \"{}\"", test_name);
     let doc_comment = base.extract_documentation(&node);
 
     let metadata = Some({

@@ -60,6 +60,9 @@
       "visibility": "Public",
       "parent_key": null,
       "metadata": {
+        "base_types": [
+          "Job"
+        ],
         "modifiers": "",
         "type": "class"
       },

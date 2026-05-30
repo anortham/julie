@@ -37,7 +37,8 @@ pub(super) fn extract_class(
     }
 
     // Check for inheritance and implementations
-    if let Some(superclass) = helpers::extract_superclass(extractor.base(), node) {
+    let superclass = helpers::extract_superclass(extractor.base(), node);
+    if let Some(ref superclass) = superclass {
         signature.push_str(&format!(" extends {}", superclass));
     }
 
@@ -57,6 +58,24 @@ pub(super) fn extract_class(
         ));
     }
 
+    // Class-level annotations (e.g. JUnit 5 `@Nested` test containers). The class
+    // extractor previously dropped these — capturing them lets the test-role
+    // classifier recognize annotated container classes.
+    let annotations = helpers::extract_annotations(extractor.base(), node);
+
+    // Canonical base-type signal (Miller bridge test-roles): superclass +
+    // implemented interfaces. Lets `src/analysis/test_roles.rs` flag a JUnit 3
+    // `extends TestCase` class as a TestContainer with no annotation.
+    let mut base_types: Vec<String> = Vec::new();
+    if let Some(superclass) = superclass {
+        base_types.push(superclass);
+    }
+    base_types.extend(interfaces);
+    let mut metadata = HashMap::new();
+    if !base_types.is_empty() {
+        metadata.insert("base_types".to_string(), serde_json::json!(base_types));
+    }
+
     // Extract JavaDoc comment
     let doc_comment = extractor.base().find_doc_comment(&node);
 
@@ -64,8 +83,13 @@ pub(super) fn extract_class(
         signature: Some(signature),
         visibility: Some(visibility),
         parent_id: parent_id.map(|s| s.to_string()),
+        metadata: if metadata.is_empty() {
+            None
+        } else {
+            Some(metadata)
+        },
         doc_comment,
-        ..Default::default()
+        annotations,
     };
 
     Some(

@@ -86,10 +86,22 @@ impl QmlExtractor {
                             .unwrap_or_else(|| base_type.clone());
 
                         let signature = Some(format!("extends {}", base_type));
+                        // Emit the root component's base type under the canonical
+                        // `base_types` key so the post-extraction test-role classifier
+                        // (src/analysis/test_roles.rs) can flag a `TestCase { ... }`
+                        // root as a Qt Quick Test container via `test_base_types`.
+                        let mut metadata = HashMap::new();
+                        metadata.insert(
+                            "base_types".to_string(),
+                            serde_json::Value::Array(vec![serde_json::Value::String(
+                                base_type.clone(),
+                            )]),
+                        );
                         let options = SymbolOptions {
                             parent_id: parent_id.clone(),
                             signature,
                             visibility: Some(crate::base::Visibility::Public),
+                            metadata: Some(metadata),
                             doc_comment: semantics::extract_qml_doc_comment(self, &node),
                             ..Default::default()
                         };

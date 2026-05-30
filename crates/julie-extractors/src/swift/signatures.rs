@@ -168,6 +168,59 @@ impl SwiftExtractor {
         None
     }
 
+    /// Collect inherited type / protocol names as a clean list (base-type signal
+    /// for test-role classification, Miller bridge test-roles).
+    ///
+    /// Same two-path walk as [`extract_inheritance`] but returns the individual
+    /// type names rather than a joined string, so `class FooTests: XCTestCase`
+    /// yields `["XCTestCase"]`. The `src/analysis/test_roles.rs` base-type rule
+    /// matches these by last path segment against the `test_base_types` config.
+    pub(super) fn extract_inheritance_list(&self, node: Node) -> Vec<String> {
+        // Path 1: standard type_inheritance_clause.
+        if let Some(inheritance) = node
+            .children(&mut node.walk())
+            .find(|c| c.kind() == "type_inheritance_clause")
+        {
+            let types: Vec<String> = inheritance
+                .children(&mut inheritance.walk())
+                .filter(|c| c.kind() == "type_identifier" || c.kind() == "type")
+                .map(|t| self.base.get_node_text(&t))
+                .collect();
+            if !types.is_empty() {
+                return types;
+            }
+        }
+
+        // Path 2: direct inheritance_specifier nodes after ":" (enums, attributed
+        // conformances). Mirror extract_inheritance but keep the bare type name —
+        // the attribute prefix (e.g. `@unchecked`) is irrelevant to base-type
+        // matching and would only pollute the last-segment compare.
+        let children: Vec<_> = node.children(&mut node.walk()).collect();
+        if let Some(start) = children.iter().position(|c| c.kind() == ":") {
+            let mut types: Vec<String> = Vec::new();
+            for child in &children[start + 1..] {
+                match child.kind() {
+                    "inheritance_specifier" => {
+                        let type_text = child
+                            .children(&mut child.walk())
+                            .find(|c| matches!(c.kind(), "user_type" | "type_identifier" | "type"))
+                            .map(|n| self.base.get_node_text(&n))
+                            .unwrap_or_else(|| self.base.get_node_text(child));
+                        types.push(type_text);
+                    }
+                    "class_body" | "struct_body" | "enum_body" | "protocol_body"
+                    | "where_clause" | "type_parameters" => break,
+                    _ => {}
+                }
+            }
+            if !types.is_empty() {
+                return types;
+            }
+        }
+
+        Vec::new()
+    }
+
     /// Implementation of extractWhereClause method
     pub(super) fn extract_where_clause(&self, node: Node) -> Option<String> {
         // Look for where clause in class/function declarations

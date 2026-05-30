@@ -45,6 +45,7 @@ pub mod modern;
 pub mod namespaces;
 pub mod robustness;
 pub mod templates;
+pub mod test_detection;
 pub mod testing;
 pub mod type_arguments;
 pub mod type_usage;

@@ -1,7 +1,9 @@
 //! Function and method extraction for C++
 //! Handles extraction of functions, methods, constructors, destructors, and operators
 
-use crate::base::{BaseExtractor, Symbol, SymbolKind, SymbolOptions, normalize_annotations};
+use crate::base::{
+    AnnotationMarker, BaseExtractor, Symbol, SymbolKind, SymbolOptions, normalize_annotations,
+};
 use crate::test_detection::is_test_symbol;
 use std::collections::HashMap;
 use tree_sitter::Node;
@@ -44,6 +46,29 @@ pub(super) fn extract_function(
     if name_node.kind() == "field_identifier" {
         return extract_method(base, node, func_node, &name, parent_id);
     }
+
+    // GoogleTest macros (`TEST(Suite, Name) { ... }`, `TEST_F`, `TEST_P`,
+    // `TYPED_TEST`, `TYPED_TEST_P`) parse as function_definitions whose declarator
+    // identifier IS the macro keyword and whose two "parameters" are the suite/
+    // fixture and the test name. When the rebuild succeeds we rename the symbol to
+    // `Suite.Name` AND remember the keyword so we can attach a synthetic annotation
+    // below. The role classifier maps that annotation_key via cpp.toml
+    // `[annotation_classes.test]` (test/test_f/typed_test → TestCase;
+    // test_p/typed_test_p → ParameterizedTest) — that annotation path is the ONLY
+    // way to preserve the parameterized-vs-plain role distinction the `_P` macros
+    // encode (a structural is_test alone would collapse them all to test_case). We
+    // ALSO set is_test structurally below as a graceful fallback if the TOML ever
+    // drifts. No detect_cpp arm needed.
+    let googletest_macro: Option<(String, String)> = if GTEST_MACROS.contains(&name.as_str()) {
+        googletest_suite_dot_name(base, func_node, &name)
+            .map(|suite_dot_name| (name.clone(), suite_dot_name))
+    } else {
+        None
+    };
+    let name = match &googletest_macro {
+        Some((_, suite_dot_name)) => suite_dot_name.clone(),
+        None => name,
+    };
 
     // Check if this is a constructor or destructor
     let is_constructor_flag = is_constructor(base, &name, node);
@@ -136,22 +161,39 @@ pub(super) fn extract_function(
     let visibility = declarations::extract_cpp_visibility(base, node);
 
     let doc_comment = base.find_doc_comment(&node);
-    let annotations = normalize_annotations(&extract_standard_attributes(base, node), "cpp");
+    let mut annotations = normalize_annotations(&extract_standard_attributes(base, node), "cpp");
+    // GoogleTest test macros carry no source attribute, so synthesize an annotation
+    // whose key is the lowercased macro keyword (`test`, `test_f`, `test_p`,
+    // `typed_test`, `typed_test_p`). The post-extraction role classifier maps it to
+    // a test role via cpp.toml `[annotation_classes.test]` and sets `is_test`.
+    if let Some((macro_keyword, _)) = &googletest_macro {
+        annotations.push(AnnotationMarker {
+            annotation: macro_keyword.clone(),
+            annotation_key: macro_keyword.to_ascii_lowercase(),
+            raw_text: None,
+            carrier: None,
+        });
+    }
     let annotation_keys = annotations
         .iter()
         .map(|annotation| annotation.annotation_key.clone())
         .collect::<Vec<_>>();
 
-    // Test detection
+    // Test detection. GoogleTest macros get their role from the synthetic annotation
+    // above (preserving test_p/typed_test_p → parameterized_test) AND are flagged
+    // is_test structurally here as a fallback; everything else routes through the
+    // shared name/annotation/path detector.
     let mut metadata = HashMap::new();
-    if is_test_symbol(
-        "cpp",
-        &name,
-        &base.file_path,
-        &kind,
-        &annotation_keys,
-        doc_comment.as_deref(),
-    ) {
+    if googletest_macro.is_some()
+        || is_test_symbol(
+            "cpp",
+            &name,
+            &base.file_path,
+            &kind,
+            &annotation_keys,
+            doc_comment.as_deref(),
+        )
+    {
         metadata.insert("is_test".to_string(), serde_json::Value::Bool(true));
     }
 
@@ -172,6 +214,43 @@ pub(super) fn extract_function(
             annotations,
         },
     ))
+}
+
+/// GoogleTest test-declaration macros. Each parses as a `function_definition`
+/// whose declarator identifier is the macro keyword and whose two "parameters"
+/// are the suite/fixture name and the test name.
+const GTEST_MACROS: &[&str] = &["TEST", "TEST_F", "TEST_P", "TYPED_TEST", "TYPED_TEST_P"];
+
+/// If `func_node` (a `function_declarator`) is a GoogleTest macro invocation
+/// (`TEST(Suite, Name)`, `TEST_F(Fixture, Name)`, …), return the synthesized
+/// `Suite.Name` symbol name; otherwise `None`.
+///
+/// tree-sitter parses `TEST(MathTest, AdditionWorks) { ... }` as a
+/// `function_definition` whose `function_declarator` has identifier `TEST` and a
+/// `parameter_list` of two `parameter_declaration`s, each a bare `type_identifier`
+/// (`MathTest`, `AdditionWorks`). We require exactly two such parameters so we
+/// don't mis-rename an ordinary 2-arg function that happens to be named `TEST`.
+fn googletest_suite_dot_name(
+    base: &BaseExtractor,
+    func_node: Node,
+    macro_name: &str,
+) -> Option<String> {
+    if !GTEST_MACROS.contains(&macro_name) {
+        return None;
+    }
+    let params = func_node.child_by_field_name("parameters")?;
+    let mut cursor = params.walk();
+    let names: Vec<String> = params
+        .named_children(&mut cursor)
+        .filter(|c| c.kind() == "parameter_declaration")
+        .filter_map(|p| p.child_by_field_name("type"))
+        .filter(|t| t.kind() == "type_identifier")
+        .map(|t| base.get_node_text(&t))
+        .collect();
+    match names.as_slice() {
+        [suite, test] => Some(format!("{suite}.{test}")),
+        _ => None,
+    }
 }
 
 /// Descend through `pointer_declarator`/`reference_declarator` wrappers to the

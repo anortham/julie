@@ -9,6 +9,7 @@ pub mod extractor;
 pub mod identifiers;
 mod literals;
 mod task14;
+mod test_detection; // Miller bridge test-roles: package:test call-style + @isTest
 mod type_arguments;
 
 use crate::base::SymbolKind;

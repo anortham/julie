@@ -74,7 +74,13 @@ pub fn is_test_symbol(
     match language {
         "rust" => detect_rust(annotation_keys),
         "python" => detect_python(name, file_path, annotation_keys),
-        "java" | "kotlin" => detect_java_kotlin(annotation_keys),
+        "java" | "kotlin" => {
+            // JUnit 4/5 annotations, OR JUnit 3 `testXxx` methods (no annotation,
+            // inside a `TestCase` subclass) — path-guarded like swift/php so a
+            // production method named `testConnection` isn't mis-flagged.
+            detect_java_kotlin(annotation_keys)
+                || (name.starts_with("test") && is_test_path(file_path))
+        }
         "scala" => detect_scala(name, file_path, annotation_keys),
         "elixir" => detect_elixir(name, file_path),
         "csharp" | "vbnet" | "razor" => detect_csharp(annotation_keys),
@@ -86,6 +92,9 @@ pub fn is_test_symbol(
         "ruby" => detect_ruby(name, file_path),
         "swift" => detect_swift(name, file_path),
         "dart" => detect_dart(name, file_path, annotation_keys),
+        "gdscript" => detect_gdscript(name, file_path),
+        "lua" => detect_lua(name, file_path),
+        "r" => detect_r(name, file_path),
         _ => detect_generic(name, file_path),
     }
 }
@@ -301,6 +310,27 @@ fn detect_dart(name: &str, file_path: &str, annotation_keys: &[String]) -> bool 
     }
     // Name prefix — requires test path to avoid false positives on production Dart functions
     name.starts_with("test") && is_test_path(file_path)
+}
+
+/// GDScript GUT (Godot Unit Test): test methods run by GUT are any `test`-prefixed
+/// method (`func test_foo` / `func testFoo`). The enclosing `extends GutTest` class
+/// is flagged a container independently via `test_base_types`. Path-guarded so a
+/// production method like `testConnection` isn't mis-flagged. Broader than the
+/// generic fallback, which only catches `test_`/`Test`.
+fn detect_gdscript(name: &str, file_path: &str) -> bool {
+    is_test_path(file_path) && name.starts_with("test")
+}
+
+/// Lua luaunit: test functions/methods are `testXxx` (camelCase) or `test_xxx`.
+/// busted (`describe`/`it`) is call-style and handled in `test_calls`, not here.
+fn detect_lua(name: &str, file_path: &str) -> bool {
+    is_test_path(file_path) && name.starts_with("test")
+}
+
+/// R RUnit: test functions are named `test.foo` (dot convention) or `test_foo`.
+/// testthat (`test_that("...")`) is call-style and handled in `test_calls`, not here.
+fn detect_r(name: &str, file_path: &str) -> bool {
+    is_test_path(file_path) && (name.starts_with("test.") || name.starts_with("test_"))
 }
 
 // ---------------------------------------------------------------------------
