@@ -942,6 +942,11 @@ mod registry_tests {
                 .unwrap()
                 .pending_relationships
         );
-        assert!(!capabilities_for_language("css").unwrap().relationships);
+        // CSS extracts `@import` directives as `references` relationship edges
+        // (see the blessed css entry in fixtures/extraction/capabilities.json:
+        // kind_coverage.relationships.supported = ["references"]). This assertion
+        // previously hardcoded the opposite and drifted out of sync with the
+        // capability golden.
+        assert!(capabilities_for_language("css").unwrap().relationships);
     }
 }
