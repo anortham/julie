@@ -57,7 +57,7 @@
 
 use crate::base::{BaseExtractor, Symbol};
 use crate::test_calls::{
-    build_test_call_symbol, classify_call_exact, TestCallCategory, TestCallVocab,
+    TestCallCategory, TestCallVocab, build_test_call_symbol, classify_call_exact,
 };
 use tree_sitter::Node;
 
@@ -156,9 +156,9 @@ pub(super) fn extract_kotlin_test_call(
         let inner = first_named;
         let callee_node = {
             let mut cursor = inner.walk();
-            inner.children(&mut cursor).find(|c| {
-                matches!(c.kind(), "identifier" | "simple_identifier")
-            })?
+            inner
+                .children(&mut cursor)
+                .find(|c| matches!(c.kind(), "identifier" | "simple_identifier"))?
         };
         full_callee = base.get_node_text(&callee_node);
 

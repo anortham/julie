@@ -33,7 +33,7 @@
 
 use crate::base::{BaseExtractor, Symbol};
 use crate::test_calls::{
-    build_test_call_symbol, classify_call_exact, TestCallCategory, TestCallVocab,
+    TestCallCategory, TestCallVocab, build_test_call_symbol, classify_call_exact,
 };
 use tree_sitter::Node;
 
@@ -46,18 +46,8 @@ use tree_sitter::Node;
 ///   `JustBeforeEach`, `JustAfterEach`, `DeferCleanup`
 const GINKGO_VOCAB: TestCallVocab = TestCallVocab {
     test: &[
-        "It",
-        "FIt",
-        "XIt",
-        "PIt",
-        "Specify",
-        "FSpecify",
-        "XSpecify",
-        "PSpecify",
-        "Entry",
-        "FEntry",
-        "XEntry",
-        "PEntry",
+        "It", "FIt", "XIt", "PIt", "Specify", "FSpecify", "XSpecify", "PSpecify", "Entry",
+        "FEntry", "XEntry", "PEntry",
     ],
     container: &[
         "Describe",

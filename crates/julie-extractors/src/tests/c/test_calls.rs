@@ -61,7 +61,9 @@ Test(math, addition) {
     let t = syms
         .iter()
         .find(|s| s.name == "math.addition")
-        .unwrap_or_else(|| panic!("expected a Criterion test symbol `math.addition`, got {syms:?}"));
+        .unwrap_or_else(|| {
+            panic!("expected a Criterion test symbol `math.addition`, got {syms:?}")
+        });
     assert_eq!(t.kind, SymbolKind::Function);
     assert!(is_test(t), "Criterion Test must be is_test=true, got {t:?}");
 }
@@ -82,7 +84,10 @@ Test(suite, with_setup, .init = setup_fn, .fini = teardown_fn) {
         .iter()
         .find(|s| s.name == "suite.with_setup")
         .unwrap_or_else(|| panic!("expected `suite.with_setup`, got {syms:?}"));
-    assert!(is_test(t), "Criterion Test with options must be is_test=true");
+    assert!(
+        is_test(t),
+        "Criterion Test with options must be is_test=true"
+    );
 }
 
 #[test]

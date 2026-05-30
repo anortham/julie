@@ -8,7 +8,7 @@ mod semantics;
 
 use crate::base::{
     BaseExtractor, Identifier, PendingRelationship, Relationship, StructuredPendingRelationship,
-    Symbol, UnresolvedTarget,
+    Symbol,
 };
 use crate::test_detection::is_test_symbol;
 use std::collections::HashMap;
@@ -210,7 +210,7 @@ impl QmlExtractor {
                             options,
                         );
                         self.symbols.push(symbol);
-                    } else if !is_inside_object_definition_binding(node) {
+                    } else if !semantics::is_inside_object_definition_binding(node) {
                         // Skip property bindings that are configuration properties of a
                         // property-value-source block (`PropertyAnimation on value { from: 0 }`).
                         // Those are internal to the animation type, not symbols of the
@@ -387,7 +387,11 @@ impl QmlExtractor {
                         {
                             let pending = self.base.create_pending_relationship(
                                 caller_symbol.id.clone(),
-                                self.build_unresolved_target(function_node, &function_name),
+                                semantics::build_unresolved_target(
+                                    &self.base,
+                                    function_node,
+                                    &function_name,
+                                ),
                                 crate::base::RelationshipKind::Calls,
                                 &node,
                                 Some(caller_symbol.id.clone()),
@@ -466,35 +470,6 @@ impl QmlExtractor {
         self.base.get_structured_pending_relationships()
     }
 
-    fn build_unresolved_target(
-        &self,
-        function_node: tree_sitter::Node,
-        fallback_name: &str,
-    ) -> UnresolvedTarget {
-        if function_node.kind() == "member_expression" {
-            let receiver = function_node
-                .child_by_field_name("object")
-                .map(|node| self.base.get_node_text(&node));
-            let property = function_node
-                .child_by_field_name("property")
-                .map(|node| self.base.get_node_text(&node))
-                .unwrap_or_else(|| fallback_name.to_string());
-            let display_name = receiver
-                .as_ref()
-                .map(|receiver| format!("{receiver}.{property}"))
-                .unwrap_or_else(|| property.clone());
-            return UnresolvedTarget {
-                display_name,
-                terminal_name: property,
-                receiver,
-                namespace_path: Vec::new(),
-                import_context: None,
-            };
-        }
-
-        UnresolvedTarget::simple(fallback_name.to_string())
-    }
-
     pub fn infer_types(&self, symbols: &[Symbol]) -> HashMap<String, String> {
         semantics::infer_types(symbols)
     }
@@ -502,21 +477,4 @@ impl QmlExtractor {
     pub fn extract_identifiers(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Identifier> {
         identifiers::extract_identifiers(self, tree, symbols)
     }
-}
-
-/// Returns `true` if `node` is inside a `ui_object_definition_binding` ancestor
-/// (i.e. inside a property-value-source block like `PropertyAnimation on value { ... }`).
-///
-/// Bindings inside such blocks are configuration properties of the animation type,
-/// not properties of the enclosing component — they must not be emitted as Property
-/// symbols of the outer scope.
-fn is_inside_object_definition_binding(node: tree_sitter::Node<'_>) -> bool {
-    let mut current = node;
-    while let Some(parent) = current.parent() {
-        if parent.kind() == "ui_object_definition_binding" {
-            return true;
-        }
-        current = parent;
-    }
-    false
 }

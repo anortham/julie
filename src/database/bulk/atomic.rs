@@ -21,48 +21,10 @@ use super::cleanup::{
 use super::identifiers::insert_identifiers_tx;
 use super::literals::insert_literals_tx;
 use super::relationships::insert_relationships_tx;
-use super::type_arguments::{TypeArgumentRow, insert_type_arguments_tx};
+use super::type_arguments::insert_type_arguments_tx;
 use super::types::insert_types_tx;
+pub(crate) use super::write_set::{AtomicPersistenceMetadata, CanonicalWriteSet};
 use super::{collect_referenced_symbol_ids, load_existing_symbol_ids_tx};
-
-#[derive(Clone, Copy, Default)]
-pub(crate) struct AtomicPersistenceMetadata<'a> {
-    pub(crate) parse_diagnostics_by_file:
-        &'a [(String, Vec<crate::extractors::base::ParseDiagnostic>)],
-    pub(crate) repair_entries: &'a [(String, String)],
-    pub(crate) mark_external_analysis_stale: bool,
-}
-
-/// Borrowed bundle of the canonical per-batch collections that every atomic
-/// write path persists together.
-///
-/// Introduced (plan `docs/plans/2026-05-29-extraction-enrichments-for-miller-bridge.md`,
-/// cross-cutting Rule 3) so adding a new collection — `type_arguments`,
-/// `literals`, … — is a single struct edit, and every construction site that
-/// fails to populate it becomes a compile error. That closes the trap where a
-/// 6th positional slice could be passed as `&[]` (or skipped) on one of the
-/// parallel write paths, silently dropping the new data on the live indexing
-/// path while extract-CLI tests pass green.
-///
-/// `Copy` because every field is a shared slice. Construct it once per batch —
-/// production paths build it via [`crate::indexing_core::batch::ExtractedBatch::canonical_write_set`]
-/// or an explicit literal so the compiler enforces full population.
-#[derive(Clone, Copy, Default)]
-pub(crate) struct CanonicalWriteSet<'a> {
-    pub(crate) files: &'a [FileInfo],
-    pub(crate) symbols: &'a [Symbol],
-    pub(crate) relationships: &'a [Relationship],
-    pub(crate) identifiers: &'a [crate::extractors::Identifier],
-    pub(crate) types: &'a [crate::extractors::base::TypeInfo],
-    /// Flattened ordered/nested generic type-argument rows (Miller bridge
-    /// Phase 2). Derived from the batch's `TypeArgumentUsage` trees before the
-    /// write; persisted into the `type_arguments` table.
-    pub(crate) type_arguments: &'a [TypeArgumentRow],
-    /// String-literal call-args at carrier sites (Miller bridge Phase 3),
-    /// already carrier-classified-and-gated upstream; persisted into the
-    /// `literals` table.
-    pub(crate) literals: &'a [crate::extractors::Literal],
-}
 
 #[derive(Default)]
 struct InsertCounts {

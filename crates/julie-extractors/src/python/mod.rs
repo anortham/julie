@@ -19,6 +19,7 @@ pub(crate) mod identifiers;
 pub(crate) mod imports;
 pub(crate) mod relationships;
 pub(crate) mod signatures;
+pub(crate) mod type_arguments;
 pub(crate) mod types;
 
 use crate::base::{

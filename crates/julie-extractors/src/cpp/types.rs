@@ -88,10 +88,7 @@ fn base_types_metadata(
         return None;
     }
     let mut metadata = std::collections::HashMap::new();
-    metadata.insert(
-        "base_types".to_string(),
-        serde_json::json!(base_type_names),
-    );
+    metadata.insert("base_types".to_string(), serde_json::json!(base_type_names));
     Some(metadata)
 }
 

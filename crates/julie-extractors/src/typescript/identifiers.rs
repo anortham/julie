@@ -3,10 +3,16 @@
 //! This module handles extraction of identifier usages for LSP-quality find_references functionality,
 //! including function calls, member access, and other identifier references.
 
-use crate::base::{BaseExtractor, Identifier, IdentifierKind, Symbol, extract_type_arguments};
+mod type_arguments;
+
+use crate::base::{Identifier, IdentifierKind, Symbol, extract_type_arguments};
 use crate::typescript::TypeScriptExtractor;
 use std::collections::HashMap;
 use tree_sitter::{Node, Tree};
+use type_arguments::{
+    decompose_ts_type_arg, is_ts_noise_type, is_type_declaration_name,
+    record_outermost_generic_type_arguments_ts,
+};
 
 /// Extract all identifier usages from the tree
 pub(super) fn extract_identifiers(
@@ -368,150 +374,4 @@ fn callee_text(extractor: &TypeScriptExtractor, function_node: Node) -> Option<S
             if text.is_empty() { None } else { Some(text) }
         }
     }
-}
-
-// ============================================================================
-// Type-argument capture helpers (Miller bridge Phase 2)
-// ============================================================================
-
-/// First `type_arguments` child of a `generic_type` (its `<...>`), if any.
-fn type_arguments_child(generic_type: Node<'_>) -> Option<Node<'_>> {
-    let mut cursor = generic_type.walk();
-    generic_type
-        .children(&mut cursor)
-        .find(|child| child.kind() == "type_arguments")
-}
-
-/// `TypeArgDecomposer` for TypeScript: maps a child of a `type_arguments` list to its
-/// applied argument. Skips unnamed nodes (punctuation `<`, `,`, `>`); for a nested
-/// `generic_type` returns the base name plus its inner `type_arguments` to recurse into;
-/// for every other named type node returns its source text as a leaf.
-fn decompose_ts_type_arg<'a>(
-    base: &BaseExtractor,
-    node: Node<'a>,
-) -> Option<(String, Option<Node<'a>>)> {
-    if !node.is_named() {
-        return None;
-    }
-    match node.kind() {
-        "generic_type" => {
-            // The `name` field of a `generic_type` is its head identifier/type_identifier.
-            let name = node
-                .child_by_field_name("name")
-                .map(|n| base.get_node_text(&n))
-                .unwrap_or_else(|| base.get_node_text(&node));
-            let nested = type_arguments_child(node);
-            Some((name, nested))
-        }
-        _ => Some((base.get_node_text(&node), None)),
-    }
-}
-
-/// If `name_node` is the `name` field of an *outermost* `generic_type` use site
-/// (e.g. the `Base` in `extends Base<Foo,Bar>` or the `Map` in `field: Map<K,V>`),
-/// record that generic's ordered/nested applied type arguments against `identifier`.
-///
-/// "Outermost" means the `generic_type`'s parent is NOT `type_arguments`; nested
-/// generics such as `Array<User>` inside `Map<string, Array<User>>` are skipped here
-/// because they ride along as `children` of the enclosing usage and must not be
-/// double-counted as separate top-level usages.
-fn record_outermost_generic_type_arguments_ts(
-    extractor: &mut TypeScriptExtractor,
-    name_node: Node,
-    identifier: &Identifier,
-) {
-    let Some(generic_type) = name_node.parent() else {
-        return;
-    };
-    if generic_type.kind() != "generic_type" {
-        return;
-    }
-    // A generic_type whose parent is type_arguments is itself nested inside another
-    // generic — its args ride along under the outer usage.
-    if generic_type
-        .parent()
-        .map(|p| p.kind() == "type_arguments")
-        .unwrap_or(false)
-    {
-        return;
-    }
-    let Some(arg_list) = type_arguments_child(generic_type) else {
-        return;
-    };
-    let arguments = extract_type_arguments(extractor.base(), arg_list, decompose_ts_type_arg);
-    extractor
-        .base_mut()
-        .record_type_arguments(identifier, arguments);
-}
-
-/// Check if a `type_identifier` node is a declaration name rather than a type reference.
-///
-/// In TypeScript tree-sitter, `type_identifier` appears as the `name` field of:
-/// - `interface_declaration` → `interface Foo {}` (declaration)
-/// - `type_alias_declaration` → `type Foo = ...` (declaration)
-/// - `class_declaration` / `abstract_class_declaration` → `class Foo {}` (declaration)
-/// - `type_parameter` → `<T extends Base>` (the `T` is a declaration)
-/// - `mapped_type_clause` → `[K in keyof T]` (the `K` is a declaration)
-///
-/// It also appears as the `name` field of reference contexts like `generic_type`
-/// and `nested_type_identifier` — those are NOT declarations.
-fn is_type_declaration_name(node: &Node) -> bool {
-    if let Some(parent) = node.parent() {
-        // Check if this node is the `name` field of a declaration or type param
-        if let Some(name_node) = parent.child_by_field_name("name") {
-            if name_node.id() == node.id() {
-                return matches!(
-                    parent.kind(),
-                    "interface_declaration"
-                        | "type_alias_declaration"
-                        | "class_declaration"
-                        | "abstract_class_declaration"
-                        | "type_parameter"
-                        | "mapped_type_clause"
-                );
-            }
-        }
-    }
-    false
-}
-
-/// Returns true for TypeScript types that are too common to be meaningful
-/// type references for centrality scoring.
-///
-/// Only filters types that are TypeScript compiler intrinsics (mapped/conditional
-/// utility types) and single-letter generics. Does NOT filter JavaScript runtime
-/// globals (Map, Set, Promise, Array, etc.) because user-defined types with those
-/// names must be trackable — and builtin references to non-existent symbols cause
-/// zero centrality impact anyway (Step 1b only boosts symbols in the symbols table).
-fn is_ts_noise_type(name: &str) -> bool {
-    // Single-letter names are almost always generic type parameters used in scope.
-    // Even when they appear as references (e.g. `: T`), they carry no cross-file signal.
-    if name.len() == 1
-        && name
-            .chars()
-            .next()
-            .map_or(false, |c| c.is_ascii_uppercase())
-    {
-        return true;
-    }
-
-    // TypeScript compiler utility types — these are never user-defined
-    matches!(
-        name,
-        "Record"
-            | "Partial"
-            | "Required"
-            | "Readonly"
-            | "Pick"
-            | "Omit"
-            | "Exclude"
-            | "Extract"
-            | "NonNullable"
-            | "ReturnType"
-            | "Parameters"
-            | "InstanceType"
-            | "ConstructorParameters"
-            | "ThisType"
-            | "Awaited"
-    )
 }

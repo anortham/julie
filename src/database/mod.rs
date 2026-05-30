@@ -32,6 +32,7 @@ mod repairs;
 mod revision_changes;
 mod revisions;
 mod schema;
+mod schema_enrichments;
 mod symbols;
 mod tool_calls;
 mod type_queries;

@@ -297,23 +297,36 @@ export default {
 
         // Should find CSS classes — canonical contract: prefixed name, class→Property
         let container = symbols.iter().find(|s| s.name == ".container");
-        assert!(container.is_some(), "Should find .container class (with dot prefix)");
+        assert!(
+            container.is_some(),
+            "Should find .container class (with dot prefix)"
+        );
         let container = container.unwrap();
         assert_eq!(container.kind, SymbolKind::Property);
         assert!(
-            container.signature.as_ref().unwrap().starts_with(".container"),
+            container
+                .signature
+                .as_ref()
+                .unwrap()
+                .starts_with(".container"),
             "Signature should start with selector"
         );
         assert_eq!(container.id, expected_symbol_id(container));
 
         let button = symbols.iter().find(|s| s.name == ".button");
-        assert!(button.is_some(), "Should find .button class (with dot prefix)");
+        assert!(
+            button.is_some(),
+            "Should find .button class (with dot prefix)"
+        );
         let button = button.unwrap();
         assert_eq!(button.kind, SymbolKind::Property);
         assert_eq!(button.id, expected_symbol_id(button));
 
         let disabled = symbols.iter().find(|s| s.name == ".disabled");
-        assert!(disabled.is_some(), "Should find .disabled class (with dot prefix)");
+        assert!(
+            disabled.is_some(),
+            "Should find .disabled class (with dot prefix)"
+        );
         let disabled = disabled.unwrap();
         assert_eq!(disabled.kind, SymbolKind::Property);
         assert_eq!(disabled.id, expected_symbol_id(disabled));
@@ -1163,7 +1176,10 @@ export default {
 
         // Find container class symbol — canonical: prefixed name '.container'
         let container = symbols.iter().find(|s| s.name == ".container");
-        assert!(container.is_some(), "Should find .container class (with dot prefix)");
+        assert!(
+            container.is_some(),
+            "Should find .container class (with dot prefix)"
+        );
 
         // Should extract CSS comment for style
         let container = container.unwrap();
@@ -1315,7 +1331,10 @@ mod vue_style_enhanced_tests {
         let app = symbols
             .iter()
             .find(|s| s.name == "#app" && s.kind == SymbolKind::Variable);
-        assert!(app.is_some(), "Should extract #app ID selector with hash prefix and Variable kind");
+        assert!(
+            app.is_some(),
+            "Should extract #app ID selector with hash prefix and Variable kind"
+        );
         assert!(
             app.unwrap().signature.as_ref().unwrap().starts_with("#app"),
             "Signature should start with the ID selector"
@@ -1324,9 +1343,17 @@ mod vue_style_enhanced_tests {
         let sidebar = symbols
             .iter()
             .find(|s| s.name == "#sidebar" && s.kind == SymbolKind::Variable);
-        assert!(sidebar.is_some(), "Should extract #sidebar ID selector with hash prefix and Variable kind");
         assert!(
-            sidebar.unwrap().signature.as_ref().unwrap().starts_with("#sidebar"),
+            sidebar.is_some(),
+            "Should extract #sidebar ID selector with hash prefix and Variable kind"
+        );
+        assert!(
+            sidebar
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .starts_with("#sidebar"),
             "Signature should start with the ID selector"
         );
     }
@@ -1354,7 +1381,12 @@ mod vue_style_enhanced_tests {
             "Should extract --primary-color custom property with kind Property"
         );
         assert!(
-            primary_color.unwrap().signature.as_ref().unwrap().starts_with("--primary-color:"),
+            primary_color
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .starts_with("--primary-color:"),
             "Signature should start with property name and colon"
         );
 
@@ -1366,7 +1398,12 @@ mod vue_style_enhanced_tests {
             "Should extract --font-size custom property with kind Property"
         );
         assert!(
-            font_size.unwrap().signature.as_ref().unwrap().starts_with("--font-size:"),
+            font_size
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .starts_with("--font-size:"),
             "Signature should start with property name and colon"
         );
     }
@@ -1401,7 +1438,12 @@ mod vue_style_enhanced_tests {
             "Should extract .container class selector with dot prefix and Property kind"
         );
         assert!(
-            container.unwrap().signature.as_ref().unwrap().starts_with(".container"),
+            container
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .starts_with(".container"),
             "Signature should start with class selector"
         );
 
@@ -1414,7 +1456,12 @@ mod vue_style_enhanced_tests {
             "Should extract #main-content ID selector with hash prefix and Variable kind"
         );
         assert!(
-            main_content.unwrap().signature.as_ref().unwrap().starts_with("#main-content"),
+            main_content
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .starts_with("#main-content"),
             "Signature should start with ID selector"
         );
 
@@ -1427,7 +1474,12 @@ mod vue_style_enhanced_tests {
             "Should extract --spacing custom property with kind Property"
         );
         assert!(
-            spacing.unwrap().signature.as_ref().unwrap().starts_with("--spacing:"),
+            spacing
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .starts_with("--spacing:"),
             "Signature should start with property name and colon"
         );
     }

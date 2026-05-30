@@ -10,6 +10,7 @@ use crate::extractors::{
     ExtractionResults, Identifier, Literal, PendingRelationship, Relationship, Symbol,
 };
 use crate::indexing_core::batch::ExtractedBatch;
+use crate::indexing_core::paths::relative_path_for_storage;
 use crate::tools::workspace::indexing::file_policy::{
     ExtractionMode, detect_language_for_indexing_with_content, determine_extraction_mode,
 };
@@ -492,13 +493,4 @@ pub(crate) async fn process_file_without_parser(
 
     trace!("Read {} bytes from file without parser", content.len());
     Ok((Vec::new(), Vec::new(), file_info))
-}
-
-fn relative_path_for_storage(file_path: &Path, workspace_root: &Path) -> String {
-    if file_path.is_absolute() {
-        crate::utils::paths::to_relative_unix_style(file_path, workspace_root)
-            .unwrap_or_else(|_| file_path.to_string_lossy().replace('\\', "/"))
-    } else {
-        file_path.to_string_lossy().replace('\\', "/")
-    }
 }

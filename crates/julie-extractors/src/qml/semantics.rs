@@ -1,5 +1,5 @@
 use super::QmlExtractor;
-use crate::base::{Symbol, SymbolKind, Visibility};
+use crate::base::{BaseExtractor, Symbol, SymbolKind, UnresolvedTarget, Visibility};
 use std::collections::HashMap;
 use tree_sitter::Node;
 
@@ -83,6 +83,48 @@ pub(super) fn infer_types(symbols: &[Symbol]) -> HashMap<String, String> {
     }
 
     types
+}
+
+/// Returns `true` if `node` is inside a `ui_object_definition_binding` ancestor
+/// (i.e. inside a property-value-source block like `PropertyAnimation on value { ... }`).
+pub(super) fn is_inside_object_definition_binding(node: Node<'_>) -> bool {
+    let mut current = node;
+    while let Some(parent) = current.parent() {
+        if parent.kind() == "ui_object_definition_binding" {
+            return true;
+        }
+        current = parent;
+    }
+    false
+}
+
+pub(super) fn build_unresolved_target(
+    base: &BaseExtractor,
+    function_node: Node,
+    fallback_name: &str,
+) -> UnresolvedTarget {
+    if function_node.kind() == "member_expression" {
+        let receiver = function_node
+            .child_by_field_name("object")
+            .map(|node| base.get_node_text(&node));
+        let property = function_node
+            .child_by_field_name("property")
+            .map(|node| base.get_node_text(&node))
+            .unwrap_or_else(|| fallback_name.to_string());
+        let display_name = receiver
+            .as_ref()
+            .map(|receiver| format!("{receiver}.{property}"))
+            .unwrap_or_else(|| property.clone());
+        return UnresolvedTarget {
+            display_name,
+            terminal_name: property,
+            receiver,
+            namespace_path: Vec::new(),
+            import_context: None,
+        };
+    }
+
+    UnresolvedTarget::simple(fallback_name.to_string())
 }
 
 fn is_qml_doc_comment(trimmed: &str) -> bool {

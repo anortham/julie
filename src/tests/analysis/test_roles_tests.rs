@@ -14,9 +14,19 @@ mod tests {
         annotations: Vec<AnnotationMarker>,
         metadata: Option<HashMap<String, serde_json::Value>>,
     ) -> crate::extractors::Symbol {
+        make_symbol_named("test_fn", kind, language, annotations, metadata)
+    }
+
+    fn make_symbol_named(
+        name: &str,
+        kind: SymbolKind,
+        language: &str,
+        annotations: Vec<AnnotationMarker>,
+        metadata: Option<HashMap<String, serde_json::Value>>,
+    ) -> crate::extractors::Symbol {
         crate::extractors::Symbol {
             id: "test-id".to_string(),
-            name: "test_fn".to_string(),
+            name: name.to_string(),
             kind,
             language: language.to_string(),
             file_path: "test.cs".to_string(),
@@ -240,6 +250,62 @@ mod tests {
 
         let role = classify_test_role(&symbol, None);
         assert_eq!(role, None);
+    }
+
+    #[test]
+    fn test_lifecycle_metadata_maps_to_fixture_roles_not_test_case() {
+        let mut configs = HashMap::new();
+        configs.insert("javascript".to_string(), TestRoleConfig::default());
+
+        let lifecycle_metadata = || {
+            HashMap::from([
+                ("is_test".to_string(), serde_json::Value::Bool(true)),
+                ("test_lifecycle".to_string(), serde_json::Value::Bool(true)),
+            ])
+        };
+
+        let mut symbols = vec![
+            make_symbol_named(
+                "beforeEach",
+                SymbolKind::Function,
+                "javascript",
+                vec![],
+                Some(lifecycle_metadata()),
+            ),
+            make_symbol_named(
+                "afterAll",
+                SymbolKind::Function,
+                "javascript",
+                vec![],
+                Some(lifecycle_metadata()),
+            ),
+        ];
+
+        assert_eq!(
+            classify_test_role(&symbols[0], configs.get("javascript")),
+            Some(TestRole::FixtureSetup)
+        );
+        assert_eq!(
+            classify_test_role(&symbols[1], configs.get("javascript")),
+            Some(TestRole::FixtureTeardown)
+        );
+
+        classify_symbols_by_role(&mut symbols, &configs);
+
+        for (symbol, expected_role) in [
+            (&symbols[0], "fixture_setup"),
+            (&symbols[1], "fixture_teardown"),
+        ] {
+            let metadata = symbol.metadata.as_ref().expect("classified metadata");
+            assert_eq!(
+                metadata.get("test_role").and_then(|value| value.as_str()),
+                Some(expected_role)
+            );
+            assert!(
+                !is_scorable_test(symbol),
+                "lifecycle hook {expected_role} must not be a scorable test"
+            );
+        }
     }
 
     // ---------------------------------------------------------------

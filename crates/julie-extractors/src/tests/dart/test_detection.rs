@@ -120,7 +120,10 @@ void main() {
         .iter()
         .find(|s| s.name == "adds")
         .unwrap_or_else(|| panic!("expected nested test symbol, got {syms:?}"));
-    assert!(meta_bool(test_sym, "is_test"), "nested test must be is_test");
+    assert!(
+        meta_bool(test_sym, "is_test"),
+        "nested test must be is_test"
+    );
     assert_eq!(
         test_sym.parent_id.as_deref(),
         Some(group_sym.id.as_str()),

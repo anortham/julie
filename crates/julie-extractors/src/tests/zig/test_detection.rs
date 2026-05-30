@@ -81,10 +81,12 @@ test {
 }
 "#,
     );
-    let t = syms
-        .iter()
-        .find(|s| is_test(s))
-        .unwrap_or_else(|| panic!("expected an is_test symbol for the anonymous test, got {syms:?}"));
+    let t = syms.iter().find(|s| is_test(s)).unwrap_or_else(|| {
+        panic!("expected an is_test symbol for the anonymous test, got {syms:?}")
+    });
     assert_eq!(t.kind, SymbolKind::Function);
-    assert_eq!(t.name, "test", "anonymous test uses the 'test' placeholder name");
+    assert_eq!(
+        t.name, "test",
+        "anonymous test uses the 'test' placeholder name"
+    );
 }

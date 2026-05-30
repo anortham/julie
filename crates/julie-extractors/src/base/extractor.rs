@@ -11,40 +11,12 @@ use tree_sitter::Node;
 
 use super::relationship_resolution::StructuredPendingRelationship;
 use super::span::{NormalizedSpan, normalize_file_path};
+use super::string_literals;
+use super::type_models::{Literal, LiteralKind, TypeArgument, TypeArgumentUsage};
 use super::types::{
-    ContextConfig, Identifier, Literal, LiteralKind, PendingRelationship, Relationship, Symbol,
-    TypeArgument, TypeArgumentUsage, TypeInfo, stable_location_id,
+    ContextConfig, Identifier, PendingRelationship, Relationship, Symbol, TypeInfo,
+    stable_location_id,
 };
-
-/// Strip one matching outer delimiter pair from a raw string-literal token,
-/// skipping any leading string prefix (`@`, `$`, `r`, `f`, `b`, `u`, …) before
-/// the opening quote. Handles triple-quoted (`"""`/`'''`) and single (`"`/`'`/
-/// `` ` ``) delimiters. Best-effort fallback used by
-/// [`BaseExtractor::decode_string_literal`] only when a string node exposes no
-/// inner fragment children.
-fn strip_string_delimiters(raw: &str) -> String {
-    let s = raw.trim();
-    let Some(qpos) = s.find(['"', '\'', '`']) else {
-        return s.to_string();
-    };
-    let s = &s[qpos..];
-    for q in ["\"\"\"", "'''"] {
-        if s.len() >= 2 * q.len() && s.starts_with(q) && s.ends_with(q) {
-            return s[q.len()..s.len() - q.len()].to_string();
-        }
-    }
-    let count = s.chars().count();
-    if count >= 2 {
-        let first = s.chars().next();
-        let last = s.chars().last();
-        if let (Some(f), Some(l)) = (first, last) {
-            if f == l && matches!(f, '"' | '\'' | '`') {
-                return s.chars().skip(1).take(count - 2).collect();
-            }
-        }
-    }
-    s.to_string()
-}
 
 /// Base implementation for language extractors
 ///
@@ -205,73 +177,7 @@ impl BaseExtractor {
     /// `string` tokens or C# `verbatim_string_literal`), it falls back to stripping
     /// one matching outer delimiter pair (plus any string prefix) from the raw text.
     pub fn decode_string_literal(&self, node: &Node) -> Option<String> {
-        let kind = node.kind();
-        if !(kind.contains("string") || kind.contains("char")) {
-            return None;
-        }
-        let mut out = String::new();
-        self.decode_string_children(node, &mut out);
-        if out.is_empty() {
-            out = strip_string_delimiters(&self.get_node_text(node));
-        }
-        Some(out)
-    }
-
-    /// Flatten a string node's named children into `out`, mapping interpolation
-    /// holes to `{}` and preserving content fragments. Recurses through wrapper
-    /// layers (grammars like Dart nest the real content under an intermediate
-    /// `string_literal_*` node) but never descends into a hole — the hole's inner
-    /// expression must not leak into the static shape. See `decode_string_literal`.
-    fn decode_string_children(&self, node: &Node, out: &mut String) {
-        let mut cursor = node.walk();
-        for child in node.named_children(&mut cursor) {
-            let ck = child.kind();
-            // Content is matched FIRST: some grammars name the literal text
-            // `interpolated_string_text`, which also contains "interpolat" — it is
-            // text, not a hole, so the content test must win.
-            if ck.contains("content")
-                || ck.contains("fragment")
-                || ck.contains("text")
-                || ck.contains("template_chars")
-                || ck == "escape_sequence"
-            {
-                out.push_str(&self.get_node_text(&child));
-            } else if Self::is_interpolation_hole(ck) {
-                out.push_str("{}");
-            } else if child.named_child_count() > 0 {
-                // Wrapper layer (e.g. Dart `string_literal_double_quotes`) — descend.
-                self.decode_string_children(&child, out);
-            }
-            // else: leaf delimiter marker (start/end/quote/brace/encoding) — skip.
-        }
-    }
-
-    /// True for an interpolation/substitution **expression** node (the hole), but
-    /// NOT for its delimiter sub-tokens. The `$` sigil (`interpolation_start`),
-    /// the `{`/`}` (`interpolation_brace`), and interpolation quotes all contain
-    /// "interpolat" yet must be skipped, not rendered as a `{}` hole.
-    ///
-    /// The shell expansion kinds (`simple_expansion` for `$x`, `expansion` for
-    /// `${x}`, `arithmetic_expansion` for `$((…))`, plus `command_substitution`
-    /// which already matches "substitution") are bash string children that nest
-    /// the variable in a `variable_name`; without this they'd be recursed into,
-    /// contribute nothing, and silently TRUNCATE the literal at the expansion.
-    /// These kinds never appear inside a non-shell language's string subtree, so
-    /// listing them here is safe for the language-agnostic decoder.
-    fn is_interpolation_hole(ck: &str) -> bool {
-        if matches!(
-            ck,
-            "simple_expansion" | "expansion" | "arithmetic_expansion"
-        ) {
-            return true;
-        }
-        (ck.contains("interpolat") || ck.contains("substitution"))
-            && !ck.ends_with("_start")
-            && !ck.ends_with("_end")
-            && !ck.ends_with("_quote")
-            && !ck.ends_with("_brace")
-            && !ck.ends_with("_open")
-            && !ck.ends_with("_close")
+        string_literals::decode_string_literal(self, node)
     }
 
     pub fn add_pending_relationship(&mut self, pending: PendingRelationship) {

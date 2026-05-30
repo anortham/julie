@@ -9,6 +9,7 @@ mod tests {
 
     use crate::analysis::literals::{LiteralCarrierConfig, classify_literals_by_carrier};
     use crate::extractors::{Literal, LiteralKind};
+    use crate::search::LanguageConfigs;
 
     /// Build a captured-state literal (kind=Other, as a reader emits it).
     fn make_literal(language: &str, carrier: Option<&str>, text: &str) -> Literal {
@@ -207,5 +208,22 @@ mod tests {
         );
         assert_eq!(literals[0].language, "typescript");
         assert_eq!(literals[0].kind, LiteralKind::Url);
+    }
+
+    #[test]
+    fn tsx_jsx_literals_use_parent_language_carrier_configs() {
+        // TSX/JSX extractors report their concrete language names, but their
+        // carrier vocabulary lives in the TypeScript/JavaScript configs.
+        let carrier_configs = LanguageConfigs::load_embedded().build_literal_carrier_configs();
+        let mut literals = vec![
+            make_literal("tsx", Some("fetch"), "/api/tsx"),
+            make_literal("jsx", Some("fetch"), "/api/jsx"),
+        ];
+
+        classify_literals_by_carrier(&mut literals, &carrier_configs);
+
+        assert_eq!(literals.len(), 2, "TSX/JSX carrier matches must survive");
+        assert_eq!(literals[0].kind, LiteralKind::Url);
+        assert_eq!(literals[1].kind, LiteralKind::Url);
     }
 }

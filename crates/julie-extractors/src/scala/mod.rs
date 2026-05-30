@@ -130,8 +130,11 @@ impl ScalaExtractor {
             // infix form `"subject" should "behaviour" in { }`. Both return None
             // for non-test nodes, so ordinary calls/infix fall through untouched.
             "call_expression" => {
-                symbol =
-                    test_calls::extract_scala_test_call(&mut self.base, &node, parent_id.as_deref());
+                symbol = test_calls::extract_scala_test_call(
+                    &mut self.base,
+                    &node,
+                    parent_id.as_deref(),
+                );
             }
             "infix_expression" => {
                 symbol = test_calls::extract_scala_flatspec_test(

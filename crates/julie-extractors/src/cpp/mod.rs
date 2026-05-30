@@ -10,6 +10,8 @@
 mod concepts;
 mod declarations;
 mod fields;
+mod function_declarators;
+mod function_signature_parts;
 mod functions;
 mod helpers;
 mod identifiers;

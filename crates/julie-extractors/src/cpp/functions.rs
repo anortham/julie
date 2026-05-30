@@ -8,7 +8,14 @@ use crate::test_detection::is_test_symbol;
 use std::collections::HashMap;
 use tree_sitter::Node;
 
-use super::{declarations, helpers};
+pub(super) use super::function_signature_parts::{
+    extract_basic_return_type, extract_function_modifiers, extract_function_parameters,
+    extract_noexcept_specifier,
+};
+use super::function_signature_parts::{
+    extract_const_qualifier, extract_method_modifiers, extract_trailing_return_type,
+};
+use super::{declarations, function_declarators, helpers};
 
 /// Extract function (definition or declaration)
 pub(super) fn extract_function(
@@ -35,7 +42,8 @@ pub(super) fn extract_function(
                 )
             })
         }) {
-            func_node = unwrap_to_function_declarator(declarator).unwrap_or(declarator);
+            func_node = function_declarators::unwrap_to_function_declarator(declarator)
+                .unwrap_or(declarator);
         }
     }
 
@@ -59,12 +67,13 @@ pub(super) fn extract_function(
     // encode (a structural is_test alone would collapse them all to test_case). We
     // ALSO set is_test structurally below as a graceful fallback if the TOML ever
     // drifts. No detect_cpp arm needed.
-    let googletest_macro: Option<(String, String)> = if GTEST_MACROS.contains(&name.as_str()) {
-        googletest_suite_dot_name(base, func_node, &name)
-            .map(|suite_dot_name| (name.clone(), suite_dot_name))
-    } else {
-        None
-    };
+    let googletest_macro: Option<(String, String)> =
+        if function_declarators::GTEST_MACROS.contains(&name.as_str()) {
+            function_declarators::googletest_suite_dot_name(base, func_node, &name)
+                .map(|suite_dot_name| (name.clone(), suite_dot_name))
+        } else {
+            None
+        };
     let name = match &googletest_macro {
         Some((_, suite_dot_name)) => suite_dot_name.clone(),
         None => name,
@@ -214,78 +223,6 @@ pub(super) fn extract_function(
             annotations,
         },
     ))
-}
-
-/// GoogleTest test-declaration macros. Each parses as a `function_definition`
-/// whose declarator identifier is the macro keyword and whose two "parameters"
-/// are the suite/fixture name and the test name.
-const GTEST_MACROS: &[&str] = &["TEST", "TEST_F", "TEST_P", "TYPED_TEST", "TYPED_TEST_P"];
-
-/// If `func_node` (a `function_declarator`) is a GoogleTest macro invocation
-/// (`TEST(Suite, Name)`, `TEST_F(Fixture, Name)`, …), return the synthesized
-/// `Suite.Name` symbol name; otherwise `None`.
-///
-/// tree-sitter parses `TEST(MathTest, AdditionWorks) { ... }` as a
-/// `function_definition` whose `function_declarator` has identifier `TEST` and a
-/// `parameter_list` of two `parameter_declaration`s, each a bare `type_identifier`
-/// (`MathTest`, `AdditionWorks`). We require exactly two such parameters so we
-/// don't mis-rename an ordinary 2-arg function that happens to be named `TEST`.
-fn googletest_suite_dot_name(
-    base: &BaseExtractor,
-    func_node: Node,
-    macro_name: &str,
-) -> Option<String> {
-    if !GTEST_MACROS.contains(&macro_name) {
-        return None;
-    }
-    let params = func_node.child_by_field_name("parameters")?;
-    let mut cursor = params.walk();
-    let names: Vec<String> = params
-        .named_children(&mut cursor)
-        .filter(|c| c.kind() == "parameter_declaration")
-        .filter_map(|p| p.child_by_field_name("type"))
-        .filter(|t| t.kind() == "type_identifier")
-        .map(|t| base.get_node_text(&t))
-        .collect();
-    match names.as_slice() {
-        [suite, test] => Some(format!("{suite}.{test}")),
-        _ => None,
-    }
-}
-
-/// Descend through `pointer_declarator`/`reference_declarator` wrappers to the
-/// inner `function_declarator`.
-///
-/// C++ wraps the declarator of a pointer- or reference-return function in one or
-/// more indirection nodes: `const char *f()` → `pointer_declarator >
-/// function_declarator`, `char **h()` → `pointer_declarator > pointer_declarator
-/// > function_declarator`, `int& g()` → `reference_declarator >
-/// function_declarator` (note: `reference_declarator` does not expose a
-/// `declarator` field, so we fall back to a child scan). Returns the
-/// `function_declarator` (which carries the name + `parameter_list`), or `None`
-/// when the declarator is not a function (e.g. a pointer variable).
-pub(super) fn unwrap_to_function_declarator(node: Node) -> Option<Node> {
-    let mut current = node;
-    loop {
-        match current.kind() {
-            "function_declarator" => return Some(current),
-            "pointer_declarator" | "reference_declarator" => {
-                let next = current.child_by_field_name("declarator").or_else(|| {
-                    current.children(&mut current.walk()).find(|c| {
-                        matches!(
-                            c.kind(),
-                            "function_declarator" | "pointer_declarator" | "reference_declarator"
-                        )
-                    })
-                });
-                match next {
-                    Some(n) => current = n,
-                    None => return None,
-                }
-            }
-            _ => return None,
-        }
-    }
 }
 
 /// Extract method (function inside a class)
@@ -472,137 +409,4 @@ pub(super) fn is_constructor(base: &BaseExtractor, name: &str, node: Node) -> bo
         current = parent.parent();
     }
     false
-}
-
-/// Extract function modifiers (virtual, static, explicit, inline, etc.)
-pub(super) fn extract_function_modifiers(base: &mut BaseExtractor, node: Node) -> Vec<String> {
-    let mut modifiers = Vec::new();
-    let modifier_types = ["virtual", "static", "explicit", "friend", "inline"];
-
-    helpers::collect_modifiers_recursive(base, node, &mut modifiers, &modifier_types);
-
-    modifiers
-}
-
-/// Extract method modifiers (checks multiple tree levels)
-fn extract_method_modifiers(
-    base: &mut BaseExtractor,
-    declaration_node: Node,
-    func_node: Node,
-) -> Vec<String> {
-    let mut modifiers = Vec::new();
-    let modifier_types = [
-        "virtual", "static", "explicit", "friend", "inline", "override",
-    ];
-
-    let mut nodes_to_check = vec![declaration_node, func_node];
-
-    // Add parent nodes to check
-    if let Some(parent) = declaration_node.parent() {
-        nodes_to_check.push(parent);
-        if let Some(grandparent) = parent.parent() {
-            nodes_to_check.push(grandparent);
-        }
-    }
-
-    // Check all these nodes for modifiers
-    for node in nodes_to_check {
-        if node.kind() == "field_declaration" || node.kind() == "declaration" {
-            // Check direct children for modifier keywords
-            for child in node.children(&mut node.walk()) {
-                if modifier_types.contains(&child.kind()) {
-                    let modifier = base.get_node_text(&child);
-                    if !modifiers.contains(&modifier) {
-                        modifiers.push(modifier);
-                    }
-                } else if child.kind() == "storage_class_specifier" {
-                    let text = base.get_node_text(&child);
-                    if modifier_types.contains(&text.as_str()) && !modifiers.contains(&text) {
-                        modifiers.push(text);
-                    }
-                }
-            }
-        }
-
-        // Also do recursive search within each node
-        helpers::collect_modifiers_recursive(base, node, &mut modifiers, &modifier_types);
-    }
-
-    modifiers
-}
-
-/// Extract return type from function node
-pub(super) fn extract_basic_return_type(base: &mut BaseExtractor, node: Node) -> String {
-    for child in node.children(&mut node.walk()) {
-        if matches!(
-            child.kind(),
-            "primitive_type"
-                | "type_identifier"
-                | "qualified_identifier"
-                | "auto"
-                | "placeholder_type_specifier"
-        ) {
-            return base.get_node_text(&child);
-        }
-    }
-    String::new()
-}
-
-/// Extract trailing return type (for auto return type deduction)
-fn extract_trailing_return_type(base: &mut BaseExtractor, node: Node) -> String {
-    let func_declarator = node
-        .children(&mut node.walk())
-        .find(|c| c.kind() == "function_declarator");
-
-    if let Some(declarator) = func_declarator {
-        let children: Vec<Node> = declarator.children(&mut declarator.walk()).collect();
-
-        for (i, child) in children.iter().enumerate() {
-            if child.kind() == "->" && i + 1 < children.len() {
-                return base.get_node_text(&children[i + 1]);
-            } else if child.kind() == "trailing_return_type" {
-                return child
-                    .children(&mut child.walk())
-                    .find(|c| {
-                        matches!(
-                            c.kind(),
-                            "primitive_type" | "type_identifier" | "qualified_identifier"
-                        )
-                    })
-                    .map(|type_node| base.get_node_text(&type_node))
-                    .unwrap_or_else(|| base.get_node_text(child));
-            }
-        }
-    }
-
-    String::new()
-}
-
-/// Extract function parameters as string
-pub(super) fn extract_function_parameters(base: &mut BaseExtractor, func_node: Node) -> String {
-    if let Some(param_list) = func_node
-        .children(&mut func_node.walk())
-        .find(|c| c.kind() == "parameter_list")
-    {
-        base.get_node_text(&param_list)
-    } else {
-        "()".to_string()
-    }
-}
-
-/// Check if function has const qualifier
-fn extract_const_qualifier(func_node: Node) -> bool {
-    func_node
-        .children(&mut func_node.walk())
-        .any(|c| c.kind() == "type_qualifier")
-}
-
-/// Extract noexcept specifier
-pub(super) fn extract_noexcept_specifier(base: &mut BaseExtractor, func_node: Node) -> String {
-    for child in func_node.children(&mut func_node.walk()) {
-        if child.kind() == "noexcept" {
-            return base.get_node_text(&child);
-        }
-    }
-    String::new()
 }

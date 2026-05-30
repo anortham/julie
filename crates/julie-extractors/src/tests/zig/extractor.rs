@@ -349,4 +349,3 @@ pub fn noComment() void {
         "Function without doc comment should have None"
     );
 }
-

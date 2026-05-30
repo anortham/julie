@@ -5,7 +5,7 @@
 use tree_sitter::Node;
 
 use super::BaseExtractor;
-use super::types::TypeArgument;
+use super::type_models::TypeArgument;
 
 /// Maps a candidate child of a type-argument list to its applied argument.
 ///

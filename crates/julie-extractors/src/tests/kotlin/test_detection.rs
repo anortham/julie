@@ -63,7 +63,10 @@ fn kotest_describespec_it_is_test() {
         .unwrap_or_else(|| panic!("expected materialized it() test symbol; got {syms:?}"));
     assert_eq!(t.kind, SymbolKind::Function);
     assert!(meta_bool(t, "is_test"), "it(...) must set is_test");
-    assert!(!meta_bool(t, "test_container"), "it() must not be a container");
+    assert!(
+        !meta_bool(t, "test_container"),
+        "it() must not be a container"
+    );
 }
 
 #[test]

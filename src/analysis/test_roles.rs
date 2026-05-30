@@ -103,6 +103,32 @@ fn symbol_base_types(symbol: &Symbol) -> Vec<String> {
     Vec::new()
 }
 
+fn metadata_bool(symbol: &Symbol, key: &str) -> bool {
+    symbol
+        .metadata
+        .as_ref()
+        .and_then(|m| m.get(key))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+}
+
+fn lifecycle_role_from_name(name: &str) -> TestRole {
+    let normalized = name
+        .chars()
+        .filter(|ch| *ch != '_' && *ch != '-')
+        .flat_map(char::to_lowercase)
+        .collect::<String>();
+
+    if normalized.starts_with("after")
+        || normalized.contains("teardown")
+        || normalized.contains("cleanup")
+    {
+        TestRole::FixtureTeardown
+    } else {
+        TestRole::FixtureSetup
+    }
+}
+
 /// Classify a single symbol's test role.
 ///
 /// 1. If `role_config` is provided, check each annotation against it.
@@ -115,9 +141,11 @@ fn symbol_base_types(symbol: &Symbol) -> Vec<String> {
 /// 3. Call-style container metadata: a symbol carrying `test_container=true` (set
 ///    by the call-style extractor for `describe`/`group`) is a `TestContainer`
 ///    regardless of kind.
-/// 4. Fall back to the extractor's `is_test` metadata flag (convention-based
+/// 4. Test lifecycle metadata (`beforeEach`, `afterAll`, `setUp`, `tearDown`)
+///    maps to fixture roles before the generic `is_test` fallback.
+/// 5. Fall back to the extractor's `is_test` metadata flag (convention-based
 ///    languages like Rust, Go, Python). If `is_test` was set, return `TestCase`.
-/// 5. Return `None` for non-test symbols.
+/// 6. Return `None` for non-test symbols.
 pub fn classify_test_role(
     symbol: &Symbol,
     role_config: Option<&TestRoleConfig>,
@@ -168,29 +196,24 @@ pub fn classify_test_role(
     // Function symbols carrying `test_container=true` — not a container KIND, so the
     // kind-gated annotation/base-type rules above miss them. This flag is set only
     // by that extractor, so treat it as a high-confidence TestContainer signal.
-    if symbol
-        .metadata
-        .as_ref()
-        .and_then(|m| m.get("test_container"))
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false)
-    {
+    if metadata_bool(symbol, "test_container") {
         return Some(TestRole::TestContainer);
     }
 
-    // Step 4: convention-based fallback from extractor's is_test flag
-    let is_test = symbol
-        .metadata
-        .as_ref()
-        .and_then(|m| m.get("is_test"))
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
+    // Step 4: call-style lifecycle metadata. Lifecycle hooks are test-related
+    // callables, but not scorable test cases.
+    if metadata_bool(symbol, "test_lifecycle") && is_callable_kind(&symbol.kind) {
+        return Some(lifecycle_role_from_name(&symbol.name));
+    }
+
+    // Step 5: convention-based fallback from extractor's is_test flag
+    let is_test = metadata_bool(symbol, "is_test");
 
     if is_test && is_callable_kind(&symbol.kind) {
         return Some(TestRole::TestCase);
     }
 
-    // Step 5: not a test symbol
+    // Step 6: not a test symbol
     None
 }
 

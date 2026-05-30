@@ -59,7 +59,10 @@ TEST_CASE("vector grows", "[vector]") {
         .find(|s| s.name == "vector grows")
         .unwrap_or_else(|| panic!("expected a TEST_CASE symbol `vector grows`, got {syms:?}"));
     assert_eq!(t.kind, SymbolKind::Function);
-    assert!(is_test(t), "Catch2 TEST_CASE must be is_test=true, got {t:?}");
+    assert!(
+        is_test(t),
+        "Catch2 TEST_CASE must be is_test=true, got {t:?}"
+    );
     assert!(
         !is_container(t),
         "a TEST_CASE is a test, not a container, got {t:?}"
@@ -109,7 +112,10 @@ SCENARIO("user logs in", "[auth]") {
         .iter()
         .find(|s| s.name == "user logs in")
         .unwrap_or_else(|| panic!("expected a SCENARIO symbol, got {syms:?}"));
-    assert!(is_test(s), "Catch2 SCENARIO must be is_test=true, got {s:?}");
+    assert!(
+        is_test(s),
+        "Catch2 SCENARIO must be is_test=true, got {s:?}"
+    );
 }
 
 #[test]
@@ -127,7 +133,10 @@ TEST_CASE_METHOD(DatabaseFixture, "query runs", "[db]") {
         .iter()
         .find(|s| s.name == "query runs")
         .unwrap_or_else(|| panic!("expected a TEST_CASE_METHOD symbol `query runs`, got {syms:?}"));
-    assert!(is_test(t), "TEST_CASE_METHOD must be is_test=true, got {t:?}");
+    assert!(
+        is_test(t),
+        "TEST_CASE_METHOD must be is_test=true, got {t:?}"
+    );
 }
 
 #[test]

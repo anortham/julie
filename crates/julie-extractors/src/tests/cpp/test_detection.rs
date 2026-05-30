@@ -189,7 +189,10 @@ int add(int a, int b) {
         .iter()
         .find(|s| s.name == "add")
         .unwrap_or_else(|| panic!("expected the `add` function, got {syms:?}"));
-    assert!(!is_test(f), "an ordinary function must not be is_test, got {f:?}");
+    assert!(
+        !is_test(f),
+        "an ordinary function must not be is_test, got {f:?}"
+    );
     let test_keys = ["test", "test_f", "test_p", "typed_test", "typed_test_p"];
     assert!(
         !test_keys.iter().any(|k| has_annotation_key(f, k)),

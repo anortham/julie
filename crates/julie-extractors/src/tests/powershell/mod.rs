@@ -1040,8 +1040,7 @@ function Run-DeploymentPipeline {
             for command_name in ["docker", "kubectl", "az", "Invoke-Command"] {
                 assert!(
                     identifiers.iter().any(|id| {
-                        id.name == command_name
-                            && id.kind == crate::base::IdentifierKind::Call
+                        id.name == command_name && id.kind == crate::base::IdentifierKind::Call
                     }),
                     "Should extract {} as a call identifier",
                     command_name
@@ -1816,4 +1815,3 @@ mod literals; // Miller bridge Phase 3b: string-literal command-argument capture
 mod test_detection; // Pester call-style test detection (Miller bridge test-roles)
 mod type_arguments;
 mod types; // Phase 4: Type extraction verification tests // Cross-file relationship resolution tests
-

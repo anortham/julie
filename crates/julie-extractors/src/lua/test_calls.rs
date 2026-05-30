@@ -21,7 +21,7 @@
 
 use crate::base::{BaseExtractor, Symbol};
 use crate::test_calls::{
-    build_test_call_symbol, classify_call_exact, TestCallCategory, TestCallVocab,
+    TestCallCategory, TestCallVocab, build_test_call_symbol, classify_call_exact,
 };
 use tree_sitter::Node;
 

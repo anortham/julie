@@ -16,6 +16,7 @@ mod definition_forms;
 mod helpers;
 mod identifiers;
 mod relationships;
+mod test_calls;
 mod types_inference;
 
 /// Elixir extractor that handles Elixir-specific constructs.

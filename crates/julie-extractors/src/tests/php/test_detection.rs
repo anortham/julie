@@ -89,7 +89,10 @@ beforeEach(function () {
         .iter()
         .find(|s| s.name == "computes totals correctly")
         .unwrap_or_else(|| panic!("expected a `test()` symbol, got {syms:?}"));
-    assert!(meta_bool(test_sym, "is_test"), "test() should be a test case");
+    assert!(
+        meta_bool(test_sym, "is_test"),
+        "test() should be a test case"
+    );
     assert!(
         !meta_bool(test_sym, "test_container"),
         "test() should not be a container"

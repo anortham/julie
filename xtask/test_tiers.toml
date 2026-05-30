@@ -107,7 +107,10 @@ expected_seconds = 35
 timeout_seconds = 120
 scope_label = "tooling"
 notes = "tantivy-backed search coverage"
-commands = ["cargo nextest run --lib tests::tools::search::tantivy_ -- --skip search_quality"]
+commands = [
+  "cargo nextest run --lib tests::tools::search::tantivy_ -- --skip search_quality",
+  "cargo nextest run --lib tests::tools::search::language_config_embedded_tests -- --skip search_quality",
+]
 
 [buckets.tools-search-line]
 # Line-mode search tests. line_mode.rs alone is ~63KB and dominates this slice;

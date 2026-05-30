@@ -6,13 +6,8 @@ ledger: every language is classified **IMPLEMENTED**, **PARTIAL**, or
 **VERIFIED-N/A** — no "we'll get to it" bucket. Each claim cites grammar
 `node-types.json` and/or extractor source.
 
-Owner: batch-c (task #53, research-only — no extractor edits in this pass).
-Evidence collected against the working tree at the time of writing. The wave-1
-adapters (#51 C/C++, #52 Lua/R) **landed mid-sweep**: all four now exist as
-per-language `<lang>/test_calls.rs` files on the shared core; C/C++/R are wired
-into their `mod.rs`, Lua wiring is in progress. (An earlier `LUA_VOCAB` +
-`extract_lua_test_call` left in the *shared* `test_calls.rs` is now superseded by
-`lua/test_calls.rs` and shows as `dead_code` until cleaned up.)
+Owner: implementation ledger for the Miller-bridge extractor updates.
+Evidence reflects the current branch after the Wave-3 adapters landed.
 
 ## What "call-style" means here
 
@@ -59,11 +54,10 @@ Pester, Bash shellspec/bats, Scala ScalaTest/MUnit, PHP Pest, Kotlin Kotest/Spek
 Swift Quick/Nimble, Go Ginkgo).
 
 ² Ruby/Elixir materialize via **bespoke per-language code that predates the
-shared core** — see the "Key corrections" section. Ruby is fully wired with
-canonical metadata; convergence onto the shared `build_test_call_symbol` stays
-deferred because that builder only emits `Function`, while Ruby/Elixir
-`describe` produce a `Namespace` symbol for parent tracking. Functionally
-complete, not a breadth gap.
+shared core**. Both are fully wired with canonical metadata. Convergence onto
+the shared `build_test_call_symbol` stays deferred because that builder only
+emits `Function`, while Ruby/Elixir `describe` produce a `Namespace` symbol for
+parent tracking. Functionally complete, not a breadth gap.
 
 ## Qualified-callee false-positive guard (2026-05-30 audit)
 
@@ -96,47 +90,41 @@ negative lock. Full SAFE/VULNERABLE positive-verification matrix below.
 | Dart | package:test | `dart/test_calls.rs` (#48) | `call_expression` (callee field `function`, name `string_literal`) | test/testWidgets→is_test, group→container, setUp/tearDown/setUpAll/tearDownAll→lifecycle. Pending fold onto shared builder (#45). |
 | C | Criterion | `c/test_calls.rs` (#51) — on shared core, wired `c/mod.rs:268` | macro/`call_expression` | batch-a, landed mid-sweep |
 | C++ | Catch2 | `cpp/test_calls.rs` (#51) — on shared core, wired `cpp/mod.rs:257` | `TEST_CASE(...)` call | batch-a, landed mid-sweep |
-| Lua | busted | `lua/test_calls.rs` (#52) — on shared core; wiring in progress | `function_call` describe/it | batch-b, landing |
+| Lua | busted | `lua/test_calls.rs` (#52) — on shared core, wired through `lua/core.rs:33` | `function_call` describe/it | container/test/lifecycle metadata |
 | R | testthat | `r/test_calls.rs` (#52) — on shared core, wired `r/mod.rs:444` | `call` test_that(...) | batch-b, landed mid-sweep |
+| PHP | Pest | `php/test_calls.rs` — on shared core, wired `php/mod.rs:136` | `function_call_expression` | test/it/describe/lifecycle |
+| Kotlin | Kotest / Spek | `kotlin/test_calls.rs` — on shared core, wired `kotlin/mod.rs:151` | `call_expression` | test/container/lifecycle |
+| Swift | Quick/Nimble | `swift/test_calls.rs` — on shared core, wired `swift/mod.rs:139` | `call_expression` | test/container/lifecycle |
+| Go | Ginkgo | `go/test_calls.rs` — on shared core, wired `go/mod.rs:217` | `call_expression` | Describe/Context/It/BeforeEach |
+| Scala | ScalaTest / MUnit / specs2 | `scala/test_calls.rs` — on shared core, wired `scala/mod.rs:134,137` | `call_expression`, `infix_expression` | FunSuite + FlatSpec styles |
+| PowerShell | Pester | `powershell/test_calls.rs` — on shared core, wired `powershell/mod.rs:135` | `command` | Describe/Context/It/lifecycle |
+| Bash | shellspec / bats | `bash/test_calls.rs` — on shared core, wired `bash/mod.rs:140` | `command`, `simple_command` | shellspec/bats DSL |
 
 ## IMPLEMENTED — bespoke (CONVERGENCE candidates, not from-scratch)
 
 These two already materialize their DSL calls with **bespoke per-language code**.
-Wave-2 work is *converging them onto the shared `build_test_call_symbol`* (so
-metadata stays identical and one builder owns it), not building from zero.
+They are complete for behavior; the only remaining difference from the shared
+core is implementation shape.
 
 | Lang | Framework | Current materialization | Metadata today | Gap vs shared core |
 |------|-----------|------------------------|----------------|--------------------|
 | Ruby | RSpec / minitest-spec | `ruby/calls.rs:20-46` `extract_rspec_block` | **Full + canonical** (`calls.rs:210-240`): `describe`/`context`/`feature`→`test_container` (Namespace); `it`/`specify`/`example`/`scenario`→`is_test` (Function); `before`/`after`/`around`→`is_test`+`test_lifecycle` | None functionally — just not routed through the shared builder. Pure refactor/convergence. |
-| Elixir | ExUnit | `elixir/calls.rs:51-52` | `test "…"`→`is_test` (`calls.rs:448`); `describe "…"`→`Namespace` symbol but **`metadata: None`** (`calls.rs:478-487`) — no `test_container` flag | (a) `describe` missing `test_container` metadata; (b) `setup`/`setup_all` absent from dispatch — **no lifecycle materialization**. Real gaps, not just convergence. |
+| Elixir | ExUnit | `elixir/calls.rs:51-53` | `test "…"`→`is_test`; `describe "…"`→`test_container`; `setup`/`setup_all`→`is_test` + `test_lifecycle` (`calls.rs:481`, `calls.rs:524`) | None functionally — bespoke path is complete. |
 
-## PARTIAL — call-style framework exists, materialization missing
+## Former PARTIAL closure evidence
 
-The call-node + string-node columns are the wave-2 adapter scope. Vocab marked
-"detect_* listed" already appears in `test_detection.rs` but is **dormant**
-(nothing materializes a symbol with that name).
+The original PARTIAL set has no remaining open rows. Each former gap now has a
+per-language adapter wired into symbol extraction.
 
-### Group A — primary idiom is call-style (highest wave-2 priority)
-
-| Lang | Framework | Call node (grammar) | Name-arg node | Today | Vocab for wave 2 |
-|------|-----------|---------------------|---------------|-------|------------------|
-| PowerShell | Pester | `command` (callee `command_name`) | `string_literal` / `expandable_string_literal` | `is_test` only on `function` defs (`powershell/functions.rs:50-58`); Pester `Describe`/`It`/… are commands → not materialized. `detect_powershell` vocab **dormant**. | Describe/Context→container; It→test; BeforeAll/AfterAll/BeforeEach/AfterEach→lifecycle (already in `detect_powershell:248-263`) |
-| Bash | shellspec / bats | `command` (callee `command_name`); bats `@test` may parse as `function_definition` — **verify in wave 2** | `string` / `raw_string` | `is_test` only on `function` defs (`bash/functions.rs:27-35`); command-form DSL not materialized. `detect_bash` vocab **dormant** for command form. | Describe/Context→container; It/Specify/Example→test; setup/teardown→lifecycle (in `detect_bash:236-246`) |
-| Scala | ScalaTest / MUnit / specs2 | `call_expression` (FunSuite `test("…")`) **and** `infix_expression` (FlatSpec `"x" should "y" in {…}`) | `string` / `interpolated_string` | `is_test` only on `def` declarations via path heuristic (`scala/declarations.rs:90-98`); call/infix DSL not materialized. | test→test; describe/feature→container; ScalaTest is style-pluralized — needs a real-world fixture to lock vocab |
-
-### Group B — secondary call-style framework; dominant idiom already handled
-
-Lower wave-2 priority: each language's **primary** test idiom is already covered
-(annotation/named/base-type), so these are additive. Framework existence is
-ecosystem knowledge; the **call node is grammar-verified**, the exact DSL vocab
-needs a real-world fixture before coding.
-
-| Lang | Secondary framework | Call node (grammar-verified) | Name-arg node | Dominant idiom (handled) |
-|------|--------------------|------------------------------|---------------|--------------------------|
-| PHP | Pest (`test()`/`it()`/`describe()`) | `function_call_expression` | `string` / `encapsed_string` | PHPUnit: name-prefix + `@test` (`detect_php`, test_detection.rs:202-220) |
-| Kotlin | Kotest / Spek (`describe`/`it`/`context`/`given`) | `call_expression` | `string_literal` | JUnit annotations (`detect_java_kotlin`) |
-| Swift | Quick/Nimble (`describe`/`context`/`it`/`beforeEach`) | `call_expression` | `line_string_literal` (string body) | XCTest base-type + Swift Testing `@Test` (#48) |
-| Go | Ginkgo (`Describe`/`Context`/`It`/`BeforeEach`) | `call_expression` | `interpreted_string_literal` | std `testing` `TestXxx`+`_test.go` (`detect_go`, test_detection.rs:183-188) |
+| Former gap | Closure evidence |
+|------------|------------------|
+| PowerShell Pester | `powershell/test_calls.rs`, `powershell/mod.rs:135` |
+| Bash shellspec / bats | `bash/test_calls.rs`, `bash/mod.rs:140` |
+| Scala ScalaTest / MUnit / specs2 | `scala/test_calls.rs`, `scala/mod.rs:134,137` |
+| PHP Pest | `php/test_calls.rs`, `php/mod.rs:136` |
+| Kotlin Kotest / Spek | `kotlin/test_calls.rs`, `kotlin/mod.rs:151` |
+| Swift Quick/Nimble | `swift/test_calls.rs`, `swift/mod.rs:139` |
+| Go Ginkgo | `go/test_calls.rs`, `go/mod.rs:217` |
 
 ## VERIFIED-N/A — test concept exists but is non-call-style (handled)
 
@@ -171,47 +159,3 @@ Markup/data/template/SFC languages with no in-file test-runner construct.
 | JSON | Data |
 | TOML | Config/data |
 | YAML | Config/data |
-
-## Key corrections to the original PARTIAL framing
-
-The #53 brief listed `ruby / elixir / powershell / bash / scala` as PARTIAL
-"call-style framework exists but only name-prefix detection." Verified against
-source, two of those are wrong and need re-bucketing:
-
-1. **Ruby is NOT name-prefix-only — it is fully bespoke-implemented.**
-   `ruby/calls.rs::extract_rspec_block` already materializes the full RSpec DSL
-   (container/example/lifecycle) with the exact `is_test`/`test_container`/
-   `test_lifecycle` metadata the shared core emits (`calls.rs:210-240`). Ruby
-   belongs in **IMPLEMENTED-bespoke** (convergence), not PARTIAL.
-
-2. **Elixir is bespoke-implemented with specific gaps**, not name-prefix-only.
-   `test "…"` is materialized with `is_test` and `describe` as a `Namespace`,
-   but `describe` lacks the `test_container` flag and `setup`/`setup_all` are
-   not handled at all. **IMPLEMENTED-bespoke with a 2-item gap list**, not
-   PARTIAL.
-
-3. **PowerShell / Bash / Scala are genuinely PARTIAL** — their `detect_*` vocab
-   is present but **dormant** because the extractor only flags
-   function/method *declarations*, never the command/call DSL. Confirmed: the
-   `is_test_symbol` call sites are all on declaration paths
-   (`powershell/functions.rs:50`, `bash/functions.rs:27`,
-   `scala/declarations.rs:90`).
-
-4. **Breadth sweep surfaced 4 additional PARTIAL languages** the brief did not
-   list — PHP (Pest), Kotlin (Kotest), Swift (Quick), Go (Ginkgo). Each has a
-   real, grammar-expressible call-style framework whose dominant sibling idiom
-   is already handled. Flagged so they are not silently dropped; deprioritized
-   as Group B.
-
-## Wave-2 scoping shortlist (priority order)
-
-1. **PowerShell, Bash** — `command`-node adapters; vocab already enumerated in
-   `detect_*`. Highest value (primary idiom, dormant vocab ready).
-2. **Scala** — needs both `call_expression` and `infix_expression` walking;
-   vocab needs a real-world fixture.
-3. **Elixir gap-fill** — add `test_container` to `describe`; add
-   `setup`/`setup_all` lifecycle arms (small, in `elixir/calls.rs`).
-4. **Ruby convergence** — refactor `extract_rspec_block` onto the shared builder
-   (no behavior change; metadata already matches).
-5. **Group B** (PHP/Kotlin/Swift/Go) — additive secondary frameworks; schedule
-   after a fixture confirms each framework's exact DSL vocab.

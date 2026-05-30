@@ -135,10 +135,7 @@ Describe "math module" {
         .iter()
         .find(|s| s.name == "AfterAll")
         .unwrap_or_else(|| panic!("expected an AfterAll lifecycle symbol, got {syms:?}"));
-    assert!(
-        meta_bool(after_all, "is_test"),
-        "AfterAll carries is_test"
-    );
+    assert!(meta_bool(after_all, "is_test"), "AfterAll carries is_test");
     assert!(
         meta_bool(after_all, "test_lifecycle"),
         "AfterAll is a lifecycle hook"
@@ -149,13 +146,19 @@ Describe "math module" {
         .iter()
         .find(|s| s.name == "BeforeEach")
         .unwrap_or_else(|| panic!("expected a BeforeEach lifecycle symbol, got {syms:?}"));
-    assert!(meta_bool(before_each, "test_lifecycle"), "BeforeEach is lifecycle");
+    assert!(
+        meta_bool(before_each, "test_lifecycle"),
+        "BeforeEach is lifecycle"
+    );
 
     let after_each = syms
         .iter()
         .find(|s| s.name == "AfterEach")
         .unwrap_or_else(|| panic!("expected an AfterEach lifecycle symbol, got {syms:?}"));
-    assert!(meta_bool(after_each, "test_lifecycle"), "AfterEach is lifecycle");
+    assert!(
+        meta_bool(after_each, "test_lifecycle"),
+        "AfterEach is lifecycle"
+    );
 }
 
 #[test]

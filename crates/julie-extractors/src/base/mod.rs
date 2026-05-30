@@ -16,11 +16,14 @@ pub mod body;
 pub mod creation_methods;
 pub mod embedded_span;
 pub mod extractor;
+pub mod kinds;
 pub mod relationship_resolution;
 mod results_normalization;
 pub mod span;
+mod string_literals;
 pub mod tree_methods;
 pub mod type_arguments;
+pub mod type_models;
 pub mod types;
 
 // Re-export key types for external use
@@ -28,17 +31,17 @@ pub use annotations::normalize_annotations;
 pub use body::BodySpan;
 pub use embedded_span::EmbeddedSpanOffset;
 pub use extractor::BaseExtractor;
+pub use kinds::{IdentifierKind, RelationshipKind, SymbolKind, TestRole, Visibility};
 pub use relationship_resolution::{
     LocalTargetResolution, ScopedSymbolIndex, StructuredPendingRelationship, UnresolvedTarget,
 };
 pub use span::{NormalizedSpan, RecordOffset, normalize_file_path};
 pub use tree_methods::{find_child_by_type, find_child_by_types};
 pub use type_arguments::{TypeArgDecomposer, extract_type_arguments};
+pub use type_models::{Literal, LiteralKind, TypeArgument, TypeArgumentUsage};
 pub use types::{
-    AnnotationMarker, ContextConfig, ExtractionResults, Identifier, IdentifierKind, Literal,
-    LiteralKind, ParseDiagnostic, ParseDiagnosticKind, PendingRelationship, Relationship,
-    RelationshipKind, Symbol, SymbolKind, SymbolOptions, TestRole, TypeArgument, TypeArgumentUsage,
-    TypeInfo, Visibility,
+    AnnotationMarker, ContextConfig, ExtractionResults, Identifier, ParseDiagnostic,
+    ParseDiagnosticKind, PendingRelationship, Relationship, Symbol, SymbolOptions, TypeInfo,
 };
 
 pub(crate) fn containing_symbol_at_line(symbols: &[Symbol], line_number: u32) -> Option<&Symbol> {

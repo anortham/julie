@@ -21,7 +21,8 @@ fn test_context_extraction_edge_cases() {
     };
 
     // Test case 1: Symbol at the beginning of file (not enough lines before)
-    let extractor = make("line 1\nline 2\nfunction test() {\nreturn 42;\n}\nline 6\nline 7\nline 8");
+    let extractor =
+        make("line 1\nline 2\nfunction test() {\nreturn 42;\n}\nline 6\nline 7\nline 8");
     let context = extractor.extract_code_context(2, 4); // function on line 3-5 (0-indexed: 2-4)
     assert!(context.is_some());
     let context_str = context.unwrap();

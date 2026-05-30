@@ -11,6 +11,7 @@ mod fast_search_unified_cutover_test;
 mod file_mode_index_tests;
 mod file_mode_tests;
 mod file_pattern_tests;
+mod language_config_embedded_tests;
 mod lean_format_tests;
 mod line_match_strategy_tests;
 mod line_mode;

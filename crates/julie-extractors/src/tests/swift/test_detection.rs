@@ -214,7 +214,10 @@ describe("math module") {
         .iter()
         .find(|s| s.name == "math module")
         .unwrap_or_else(|| panic!("expected describe container, got: {syms:?}"));
-    assert!(meta_bool(desc, "test_container"), "describe → test_container");
+    assert!(
+        meta_bool(desc, "test_container"),
+        "describe → test_container"
+    );
     assert!(!meta_bool(desc, "is_test"), "container is not a test case");
 
     let ctx = syms
@@ -228,7 +231,10 @@ describe("math module") {
         .find(|s| s.name == "should add two numbers")
         .unwrap_or_else(|| panic!("expected it test case, got: {syms:?}"));
     assert!(meta_bool(it, "is_test"), "it → is_test");
-    assert!(!meta_bool(it, "test_container"), "test case is not a container");
+    assert!(
+        !meta_bool(it, "test_container"),
+        "test case is not a container"
+    );
 
     for lifecycle_name in ["beforeEach", "afterEach", "beforeAll", "afterAll"] {
         let lc = syms

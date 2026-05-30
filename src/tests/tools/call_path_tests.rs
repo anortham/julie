@@ -4,11 +4,11 @@ use std::fs;
 use crate::database::FileInfo;
 use crate::extractors::{Relationship, RelationshipKind, Symbol, SymbolKind, Visibility};
 use crate::handler::JulieServerHandler;
+use crate::tests::helpers::workspace::mark_workspace_root;
 use crate::tools::navigation::call_path::{
     CallPathHop, CallPathResponse, CallPathTool, edge_label,
 };
 use crate::tools::workspace::ManageWorkspaceTool;
-use crate::tests::helpers::workspace::mark_workspace_root;
 use tempfile::TempDir;
 
 async fn setup_indexed_workspace(content: &str) -> Result<(TempDir, JulieServerHandler)> {

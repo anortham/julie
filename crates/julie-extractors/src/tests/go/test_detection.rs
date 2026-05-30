@@ -77,7 +77,10 @@ var _ = Describe("math module", func() {
         .iter()
         .find(|s| s.name == "math module")
         .unwrap_or_else(|| panic!("expected Describe container, got: {syms:?}"));
-    assert!(meta_bool(desc, "test_container"), "Describe → test_container");
+    assert!(
+        meta_bool(desc, "test_container"),
+        "Describe → test_container"
+    );
     assert!(!meta_bool(desc, "is_test"), "container is not a test case");
 
     let ctx = syms

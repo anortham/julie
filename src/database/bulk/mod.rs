@@ -12,6 +12,7 @@ pub(crate) mod literals;
 pub(crate) mod relationships;
 pub(crate) mod type_arguments;
 pub(crate) mod types;
+pub(crate) mod write_set;
 
 pub(crate) fn collect_referenced_symbol_ids(
     relationships: &[Relationship],

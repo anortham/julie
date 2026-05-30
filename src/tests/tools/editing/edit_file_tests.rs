@@ -4,13 +4,13 @@ use crate::daemon::database::DaemonDatabase;
 use crate::daemon::workspace_pool::WorkspacePool;
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::CallToolResult;
+use crate::tests::helpers::workspace::mark_workspace_root;
 use crate::tools::editing::edit_file::{
     EditFileTool, EditOccurrence, apply_edit, clear_before_commit_hook_for_test,
     set_before_commit_hook_for_test,
 };
 use crate::tools::workspace::ManageWorkspaceTool;
 use crate::workspace::registry::generate_workspace_id;
-use crate::tests::helpers::workspace::mark_workspace_root;
 use anyhow::Result;
 use std::fs;
 use std::path::PathBuf;

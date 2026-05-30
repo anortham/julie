@@ -34,7 +34,7 @@
 
 use crate::base::{BaseExtractor, Symbol};
 use crate::test_calls::{
-    build_test_call_symbol, classify_call_exact, TestCallCategory, TestCallVocab,
+    TestCallCategory, TestCallVocab, build_test_call_symbol, classify_call_exact,
 };
 use tree_sitter::Node;
 
@@ -43,7 +43,9 @@ use tree_sitter::Node;
 /// - `it` / `specify` (+ focused/excluded variants) → test case
 /// - `beforeEach` / `afterEach` / `beforeAll` / `afterAll` / `justBeforeEach` → lifecycle
 const QUICK_VOCAB: TestCallVocab = TestCallVocab {
-    test: &["it", "xit", "fit", "specify", "xspecify", "fspecify", "pending"],
+    test: &[
+        "it", "xit", "fit", "specify", "xspecify", "fspecify", "pending",
+    ],
     container: &[
         "describe",
         "xdescribe",
@@ -109,9 +111,7 @@ pub(super) fn extract_quick_test_call(
             // value_argument holds the literal in its `value` field; fall back
             // to the node itself for bare literals without a label.
             let value_node = if first_arg.kind() == "value_argument" {
-                first_arg
-                    .child_by_field_name("value")
-                    .unwrap_or(first_arg)
+                first_arg.child_by_field_name("value").unwrap_or(first_arg)
             } else {
                 first_arg
             };

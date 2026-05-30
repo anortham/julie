@@ -2,10 +2,10 @@ use anyhow::Result;
 use std::fs;
 
 use crate::handler::JulieServerHandler;
+use crate::tests::helpers::workspace::mark_workspace_root;
 use crate::tools::navigation::call_path::{CallPathHop, CallPathResponse, CallPathTool};
 use crate::tools::navigation::resolution::file_path_matches_suffix;
 use crate::tools::workspace::ManageWorkspaceTool;
-use crate::tests::helpers::workspace::mark_workspace_root;
 use tempfile::TempDir;
 
 // ---------------------------------------------------------------------------
