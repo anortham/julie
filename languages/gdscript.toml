@@ -39,3 +39,18 @@ important_patterns = [
 [embeddings]
 extra_kinds = ["constructor", "export"]
 variable_ratio = 0.40
+
+# String-literal call-argument carriers (Miller bridge Phase 3b). Bare entries
+# match any receiver via the gate's last-segment rule (`http.request` → `request`);
+# dotted entries match an exact `receiver.method` carrier. Each entry cites its
+# source library.
+[literal_carriers]
+url = [
+    "request",      # HTTPRequest.request (Godot built-in node)
+    "request_raw",  # HTTPRequest.request_raw (Godot built-in node)
+]
+sql = [
+    "query",                # godot-sqlite plugin (SQLite.query)
+    "query_with_bindings",  # godot-sqlite plugin (SQLite.query_with_bindings)
+]
+route = []

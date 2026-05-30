@@ -5,7 +5,7 @@ use super::helpers;
 /// - Function calls: `foo()`, `require("module")`
 /// - Method calls with colon syntax: `obj:method()`
 /// - Member access: `obj.field`, `obj.field.nested`
-use crate::base::{Identifier, IdentifierKind, Symbol};
+use crate::base::{BaseExtractor, Identifier, IdentifierKind, Symbol};
 use crate::lua::LuaExtractor;
 use std::collections::HashMap;
 use tree_sitter::{Node, Tree};
@@ -91,6 +91,9 @@ fn extract_identifier_from_node(
                     }
                 }
             }
+            // Phase 3b: capture string-literal call-arguments config-free; the
+            // carrier classification + bloat gate run later in the src/ pipeline.
+            record_lua_call_arg_literals(extractor, node, symbol_map);
         }
 
         // Method calls with colon syntax: obj:method()
@@ -163,4 +166,77 @@ fn find_containing_symbol_id(
         .base()
         .find_containing_symbol_from_map(&node, symbol_map)
         .map(|s| s.id.clone())
+}
+
+// ============================================================================
+// String-literal call-argument capture (Miller bridge Phase 3b)
+// ============================================================================
+
+/// Capture string-literal arguments of a Lua `function_call` as `Literal`
+/// records.
+///
+/// Config-free: `carrier` is the verbatim callee — a bare `identifier`
+/// (`load`), or the `table.field`/`table.method` join for a
+/// `dot_index_expression` (`http.request`) / `method_index_expression`
+/// (`conn:execute` → `conn.execute`). `kind` stays `Other`; the `src/` carrier
+/// gate sets the authoritative kind and drops non-carrier literals.
+/// `arg_position` counts over the full argument list.
+fn record_lua_call_arg_literals(
+    extractor: &mut LuaExtractor,
+    call_node: Node,
+    symbol_map: &HashMap<String, &Symbol>,
+) {
+    let Some(args_node) = call_node.child_by_field_name("arguments") else {
+        return;
+    };
+    let carrier = lua_carrier(extractor.base(), call_node);
+    let containing_symbol_id = find_containing_symbol_id(extractor, call_node, symbol_map);
+
+    let mut cursor = args_node.walk();
+    for (pos, arg) in args_node.named_children(&mut cursor).enumerate() {
+        if let Some(text) = extractor.base().decode_string_literal(&arg) {
+            extractor.base_mut().record_literal(
+                &arg,
+                text,
+                carrier.clone(),
+                pos as u32,
+                containing_symbol_id.clone(),
+            );
+        }
+    }
+}
+
+/// Derive a Lua `function_call`'s carrier from its `name` field.
+///
+/// `identifier` → bare name. `dot_index_expression` (`http.request`) →
+/// `table.field`. `method_index_expression` (`conn:execute`) → `table.method`
+/// (joined with `.` so the gate's last-segment rule matches a bare `execute`
+/// config and a dotted `http.request` config matches exactly).
+fn lua_carrier(base: &BaseExtractor, call_node: Node) -> Option<String> {
+    let name = call_node.child_by_field_name("name")?;
+    match name.kind() {
+        "identifier" => Some(base.get_node_text(&name)),
+        "dot_index_expression" => join_receiver_member(
+            name.child_by_field_name("table").map(|n| base.get_node_text(&n)),
+            name.child_by_field_name("field").map(|n| base.get_node_text(&n)),
+        ),
+        "method_index_expression" => join_receiver_member(
+            name.child_by_field_name("table").map(|n| base.get_node_text(&n)),
+            name.child_by_field_name("method").map(|n| base.get_node_text(&n)),
+        ),
+        _ => {
+            let text = base.get_node_text(&name);
+            if text.is_empty() { None } else { Some(text) }
+        }
+    }
+}
+
+/// Join a `receiver` and `member` into a `receiver.member` carrier, tolerating a
+/// missing receiver.
+fn join_receiver_member(receiver: Option<String>, member: Option<String>) -> Option<String> {
+    match (receiver, member) {
+        (Some(r), Some(m)) => Some(format!("{r}.{m}")),
+        (None, Some(m)) => Some(m),
+        _ => None,
+    }
 }

@@ -58,8 +58,8 @@ Status: ✅ implemented (arm + TOML + test) · ⬜ pending · 🚫 verified-N/A.
 | 3 | Python | `call` | ✅ | reference leg (`call` family) |
 | 4 | JavaScript | `call_expression` | ✅ | mirrors TS leg; fetch/axios/ky/got/ofetch + bare DB verbs + Prisma. `b05b2da6` |
 | 5 | Vue | `call_expression` | ✅ | mirrors TS leg (shared carriers). `b05b2da6` |
-| 6 | VB.NET | `invocation_expression` | ⬜ | mirrors C# (.NET HttpClient/Dapper/EF) |
-| 7 | Razor | `invocation_expression` | ⬜ | mirrors C# |
+| 6 | VB.NET | `invocation_expression` | ✅ | mirrors C#; HttpClient async + Dapper/ADO.NET/EF verbs; interpolation→{}. `330f66d6` |
+| 7 | Razor | `invocation_expression` | ✅ | mirrors C# (shared .NET carriers). `330f66d6` |
 | 8 | Java | `method_invocation` | ⬜ | `object`/`name`/`arguments`; HttpClient/RestTemplate/JDBC |
 | 9 | Kotlin | `call_expression` | ⬜ | OkHttp/Ktor/Exposed/JDBC |
 | 10 | Scala | `call_expression` | ⬜ | sttp/requests-scala; Doobie/Slick (interp — capture static) |
@@ -71,8 +71,8 @@ Status: ✅ implemented (arm + TOML + test) · ⬜ pending · 🚫 verified-N/A.
 | 16 | Ruby | `call` | ✅ | receiver.method/bare; Net::HTTP/HTTParty/RestClient/Faraday dotted + AR/mysql2/pg bare. `8781fe38` |
 | 17 | Elixir | `call` | ✅ | Module.function/bare; HTTPoison/Req/Tesla dotted, Ecto/Postgrex bare. `b05b2da6` |
 | 18 | R | `call` | ✅ | httr.GET/HEAD dotted-only (avoid base-R get/head); POST/PUT/etc bare; DBI db* verbs. Known limit: bare GET(url) dropped. `b05b2da6` |
-| 19 | GDScript | `call`, `attribute_call` | ⬜ | HTTPRequest `request`; SQLite plugin `query` |
-| 20 | Lua | `function_call` | ⬜ | http.request/socket.http; LuaSQL `execute` |
+| 19 | GDScript | `call`, `attribute_call` | ✅ | HTTPRequest request/request_raw; godot-sqlite query/query_with_bindings. `<next>` |
+| 20 | Lua | `function_call` | ✅ | luasocket/luasec/lua-requests dotted; LuaSQL/lsqlite3 execute/exec/prepare (`:` method calls). `<next>` |
 | 21 | QML | `call_expression` | ⬜ | XMLHttpRequest `open`/`send`; JS-in-QML |
 | 22 | C | `call_expression` | ⬜ | libcurl `curl_easy_setopt`(CURLOPT_URL); `sqlite3_exec`/`PQexec`/`mysql_query` |
 | 23 | C++ | `call_expression` | ⬜ | cpr/libcurl; sqlite3/`PQexec` |

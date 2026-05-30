@@ -119,6 +119,12 @@ impl GDScriptExtractor {
         identifiers::extract_identifiers(&mut self.base, tree, symbols)
     }
 
+    /// Read-only access to the underlying `BaseExtractor` (captured literals, etc.).
+    #[cfg(test)]
+    pub(crate) fn base(&self) -> &BaseExtractor {
+        &self.base
+    }
+
     /// Infer types from GDScript type annotations in signatures.
     ///
     /// GDScript supports explicit types: `func foo() -> String:`, `var x: int = 0`

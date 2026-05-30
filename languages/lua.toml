@@ -35,3 +35,25 @@ important_patterns = [
 [embeddings]
 extra_kinds = []
 variable_ratio = 0.50  # table-based function assignments
+
+# String-literal call-argument carriers (Miller bridge Phase 3b). Bare entries
+# match any receiver via the gate's last-segment rule (`conn:execute` →
+# `execute`); dotted entries match an exact `receiver.method` carrier. Each entry
+# cites its source library.
+[literal_carriers]
+url = [
+    "http.request",   # luasocket (socket.http)
+    "https.request",  # luasec (ssl.https)
+    "requests.get",   # lua-requests
+    "requests.post",  # lua-requests
+    "requests.put",   # lua-requests
+    "requests.delete",# lua-requests
+    "requests.patch", # lua-requests
+    "requests.head",  # lua-requests
+]
+sql = [
+    "execute",  # LuaSQL (conn:execute)
+    "exec",     # lsqlite3 (db:exec)
+    "prepare",  # LuaSQL / lsqlite3 (db:prepare)
+]
+route = []

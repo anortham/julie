@@ -80,6 +80,15 @@ fn extract_identifier_from_node(
                     }
                 }
             }
+            // Phase 3b: capture string-literal call-arguments config-free; the
+            // carrier classification + bloat gate run later in the src/ pipeline.
+            record_gdscript_call_arg_literals(base, node, symbol_map);
+        }
+
+        // `recv.method(args)` parses as `attribute { recv, attribute_call }`, so
+        // the call args live on the `attribute_call` node, not a `call` node.
+        "attribute_call" => {
+            record_gdscript_attribute_call_arg_literals(base, node, symbol_map);
         }
 
         "get_node" => {
@@ -270,4 +279,96 @@ fn attribute_call_name_node(node: Node) -> Option<Node> {
     attribute_call
         .children(&mut call_cursor)
         .find(|child| child.kind() == "identifier")
+}
+
+// ============================================================================
+// String-literal call-argument capture (Miller bridge Phase 3b)
+// ============================================================================
+
+/// Capture string-literal arguments of a bare GDScript `call` (`load("res://…")`,
+/// `query("SELECT …")`). Carrier is the plain `identifier` callee. `kind` stays
+/// `Other`; the `src/` carrier gate sets the authoritative kind and drops
+/// non-carrier literals. `arg_position` counts over the full argument list.
+fn record_gdscript_call_arg_literals(
+    base: &mut BaseExtractor,
+    call_node: Node,
+    symbol_map: &HashMap<String, &Symbol>,
+) {
+    let Some(args_node) = call_node.child_by_field_name("arguments") else {
+        return;
+    };
+    let carrier = gdscript_call_carrier(base, call_node);
+    let containing_symbol_id = find_containing_symbol_id(base, call_node, symbol_map);
+    record_gdscript_string_args(base, args_node, carrier, containing_symbol_id);
+}
+
+/// Capture string-literal arguments of a GDScript `attribute_call`
+/// (`http.request("https://…")`, `db.query("SELECT …")`). The method is the
+/// `attribute_call`'s `identifier` child; the receiver is its previous named
+/// sibling within the enclosing `attribute`, so the carrier is the
+/// `receiver.method` join (`http.request`).
+fn record_gdscript_attribute_call_arg_literals(
+    base: &mut BaseExtractor,
+    attr_call_node: Node,
+    symbol_map: &HashMap<String, &Symbol>,
+) {
+    let Some(args_node) = attr_call_node.child_by_field_name("arguments") else {
+        return;
+    };
+    let carrier = gdscript_attribute_call_carrier(base, attr_call_node);
+    let containing_symbol_id = find_containing_symbol_id(base, attr_call_node, symbol_map);
+    record_gdscript_string_args(base, args_node, carrier, containing_symbol_id);
+}
+
+/// Record every string-literal argument in `args_node` against `carrier`.
+/// Shared by the bare-`call` and `attribute_call` arms.
+fn record_gdscript_string_args(
+    base: &mut BaseExtractor,
+    args_node: Node,
+    carrier: Option<String>,
+    containing_symbol_id: Option<String>,
+) {
+    let mut cursor = args_node.walk();
+    for (pos, arg) in args_node.named_children(&mut cursor).enumerate() {
+        if let Some(text) = base.decode_string_literal(&arg) {
+            base.record_literal(
+                &arg,
+                text,
+                carrier.clone(),
+                pos as u32,
+                containing_symbol_id.clone(),
+            );
+        }
+    }
+}
+
+/// Carrier for a bare `call`: the plain `identifier` callee (the named child
+/// that is not the `arguments` node).
+fn gdscript_call_carrier(base: &BaseExtractor, call_node: Node) -> Option<String> {
+    let args_id = call_node.child_by_field_name("arguments").map(|n| n.id());
+    let mut cursor = call_node.walk();
+    let callee = call_node
+        .named_children(&mut cursor)
+        .find(|n| Some(n.id()) != args_id)?;
+    let text = base.get_node_text(&callee);
+    if text.is_empty() { None } else { Some(text) }
+}
+
+/// Carrier for an `attribute_call`: the `receiver.method` join, where the method
+/// is the `attribute_call`'s `identifier` child and the receiver is its previous
+/// named sibling within the enclosing `attribute`.
+fn gdscript_attribute_call_carrier(base: &BaseExtractor, attr_call_node: Node) -> Option<String> {
+    let mut cursor = attr_call_node.walk();
+    let method = attr_call_node
+        .named_children(&mut cursor)
+        .find(|n| n.kind() == "identifier")
+        .map(|n| base.get_node_text(&n));
+    let receiver = attr_call_node
+        .prev_named_sibling()
+        .map(|n| base.get_node_text(&n));
+    match (receiver, method) {
+        (Some(r), Some(m)) => Some(format!("{r}.{m}")),
+        (None, Some(m)) => Some(m),
+        _ => None,
+    }
 }

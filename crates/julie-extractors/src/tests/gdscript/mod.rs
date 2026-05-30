@@ -34,6 +34,7 @@ pub mod cross_file_pending;
 pub mod cross_file_relationships;
 pub mod functions;
 pub mod identifier_extraction;
+pub mod literals;
 pub mod modern;
 pub mod patterns;
 pub mod resources;
