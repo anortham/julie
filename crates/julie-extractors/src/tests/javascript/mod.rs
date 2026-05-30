@@ -10,6 +10,7 @@ pub mod identifier_extraction;
 pub mod jsdoc_comments;
 pub mod jsx_cross_file_pending;
 pub mod legacy_patterns;
+pub mod literals;
 pub mod modern_features;
 pub mod relationships;
 pub mod scoping;

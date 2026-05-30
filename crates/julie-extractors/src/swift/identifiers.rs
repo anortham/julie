@@ -73,6 +73,9 @@ impl SwiftExtractor {
                         break;
                     }
                 }
+                // Phase 3b: capture string-literal call-arguments (config-free;
+                // carrier classification + gate run later in the src/ pipeline).
+                self.record_call_arg_literals(node, symbol_map);
             }
 
             // Member access: object.property
@@ -160,6 +163,101 @@ impl SwiftExtractor {
         }
 
         None
+    }
+
+    /// Capture string-literal arguments of a Swift `call_expression` as `Literal`
+    /// records (Miller bridge Phase 3b).
+    ///
+    /// Config-free: `carrier` is the verbatim callee text; the URL/SQL
+    /// classification and the carrier gate run later in the `src/` pipeline.
+    /// Swift wraps args as `call_suffix` → `value_arguments` → `value_argument`
+    /// (each holding the literal in its `value` field, with an optional argument
+    /// label in `name`). `arg_position` is counted over the full argument list.
+    ///
+    /// NOTE: Swift string interpolation (`\(x)`) parses as `interpolated_expression`,
+    /// which the shared `decode_string_literal` does NOT recognize as a hole, so
+    /// interpolated literals decode without a `{}` placeholder. Plain string
+    /// literals (the common URL/SQL case) decode correctly. Flagged to the lead.
+    fn record_call_arg_literals(&mut self, call_node: Node, symbol_map: &HashMap<String, &Symbol>) {
+        // The callee is the first child; the args live in the `call_suffix`.
+        let mut callee: Option<Node> = None;
+        let mut call_suffix: Option<Node> = None;
+        let mut cursor = call_node.walk();
+        for child in call_node.children(&mut cursor) {
+            if child.kind() == "call_suffix" {
+                call_suffix = Some(child);
+            } else if callee.is_none() {
+                callee = Some(child);
+            }
+        }
+        let Some(call_suffix) = call_suffix else {
+            return;
+        };
+        let Some(value_args) = swift_value_arguments(call_suffix) else {
+            return;
+        };
+        let carrier = callee.and_then(|c| swift_carrier(&self.base, c));
+        let containing_symbol_id = self.find_containing_symbol_id(call_node, symbol_map);
+
+        let mut ac = value_args.walk();
+        for (pos, arg) in value_args.named_children(&mut ac).enumerate() {
+            // Labeled args (`url: "..."`) hold the literal in their `value` field.
+            let value = if arg.kind() == "value_argument" {
+                arg.child_by_field_name("value")
+            } else {
+                Some(arg)
+            };
+            if let Some(value) = value {
+                if let Some(text) = self.base.decode_string_literal(&value) {
+                    self.base.record_literal(
+                        &value,
+                        text,
+                        carrier.clone(),
+                        pos as u32,
+                        containing_symbol_id.clone(),
+                    );
+                }
+            }
+        }
+    }
+}
+
+/// Find the `value_arguments` child of a `call_suffix` (it also may hold a
+/// trailing `lambda_literal`), if present.
+fn swift_value_arguments(call_suffix: Node) -> Option<Node> {
+    let mut cursor = call_suffix.walk();
+    call_suffix
+        .children(&mut cursor)
+        .find(|c| c.kind() == "value_arguments")
+}
+
+/// Derive a Swift call's carrier from its callee.
+///
+/// Plain `simple_identifier` → its text (`URL`, `greet`). `navigation_expression`
+/// (`db.execute`, `AF.request`) → the `target.suffix` join so dotted client APIs
+/// match config (`af.request`) while bare DB verbs (`execute`/`prepare`) match
+/// any receiver via the gate's last-segment rule.
+fn swift_carrier(base: &BaseExtractor, callee: Node) -> Option<String> {
+    match callee.kind() {
+        "simple_identifier" => Some(base.get_node_text(&callee)),
+        "navigation_expression" => {
+            let target = callee
+                .child_by_field_name("target")
+                .map(|n| base.get_node_text(&n));
+            let suffix = callee
+                .child_by_field_name("suffix")
+                .and_then(|s| s.child_by_field_name("suffix"))
+                .map(|n| base.get_node_text(&n));
+            match (target, suffix) {
+                (Some(t), Some(s)) => Some(format!("{t}.{s}")),
+                (None, Some(s)) => Some(s),
+                _ => None,
+            }
+        }
+        _ => {
+            let text = base.get_node_text(&callee);
+            if text.is_empty() { None } else { Some(text) }
+        }
     }
 }
 

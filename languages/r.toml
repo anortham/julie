@@ -38,3 +38,26 @@ important_patterns = [
 [embeddings]
 # Default: global EMBEDDABLE_KINDS only, variable_ratio = 0.20
 extra_kinds = []
+
+# String-literal call-argument carriers (Miller bridge Phase 3b). Bare entries
+# match any call via the gate's last-segment rule; dotted entries match the exact
+# `package.function` carrier. `httr.GET`/`httr.HEAD` stay dotted so the bare
+# verbs do not flood base R's `get()` / `head()`; verbs that are not base R names
+# stay bare and catch both `httr::POST` and imported `POST`.
+[literal_carriers]
+url = [
+    "httr.GET",   # httr (namespace form; bare get avoided — base R get())
+    "httr.HEAD",  # httr (namespace form; bare head avoided — utils head())
+    "POST",       # httr
+    "PUT",        # httr
+    "DELETE",     # httr
+    "PATCH",      # httr
+    "VERB",       # httr
+]
+sql = [
+    "dbGetQuery",      # DBI
+    "dbExecute",       # DBI
+    "dbSendQuery",     # DBI
+    "dbSendStatement", # DBI
+]
+route = []

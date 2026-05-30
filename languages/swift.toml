@@ -41,3 +41,25 @@ important_patterns = [
 
 [embeddings]
 extra_kinds = ["constructor"]  # 129 in Alamofire; init methods
+
+# String-literal carrier vocabulary (Miller bridge Phase 3b). Keys are lowercased
+# at build time and matched case-insensitively; dotted entries match exactly,
+# bare entries match any receiver via the gate's last-segment rule.
+[literal_carriers]
+# Foundation's URL(string:) initializer is the canonical place a URL string
+# literal appears. Alamofire's AF.request takes the URL string directly (dotted
+# so a generic `.request` on arbitrary receivers does not flood).
+url = [
+    "url",          # Foundation URL(string:)
+    "af.request",   # Alamofire AF.request
+]
+# SQLite.swift / GRDB SQL verbs are called on a Connection/Database receiver
+# whose variable name varies (db, conn) — bare entries match any receiver via
+# last-segment. Verbs are distinctive enough not to flood.
+sql = [
+    "prepare",      # SQLite.swift / GRDB
+    "run",          # SQLite.swift
+    "execute",      # SQLite.swift / GRDB
+    "scalar",       # SQLite.swift
+]
+route = []

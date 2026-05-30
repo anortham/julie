@@ -1,4 +1,5 @@
 mod cross_file_pending;
+mod literals;
 
 #[cfg(test)]
 mod elixir_tests {

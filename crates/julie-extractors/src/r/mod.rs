@@ -447,6 +447,12 @@ impl RExtractor {
         identifiers::extract_identifiers(self, tree, symbols)
     }
 
+    /// Read-only access to the underlying `BaseExtractor` (captured literals, etc.).
+    #[cfg(test)]
+    pub(crate) fn base(&self) -> &BaseExtractor {
+        &self.base
+    }
+
     pub fn infer_types(&self, _symbols: &[Symbol]) -> HashMap<String, String> {
         HashMap::new()
     }

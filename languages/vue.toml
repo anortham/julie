@@ -41,3 +41,48 @@ important_patterns = [
 [embeddings]
 # Default: global EMBEDDABLE_KINDS only, variable_ratio = 0.20
 extra_kinds = []
+
+# String-literal call-arg carriers (Miller bridge Phase 3). Vue <script> blocks
+# are JavaScript/TypeScript, so the carrier vocabulary mirrors javascript.toml /
+# typescript.toml. Bare entries match any receiver via the gate's last-segment
+# rule; dotted entries match that exact `object.method`. Case-insensitive.
+[literal_carriers]
+url = [
+    "fetch",          # WHATWG Fetch (browser / Node 18+ global)
+    "$fetch",         # ofetch (Nuxt global alias)
+    "axios",          # axios (callable instance)
+    "axios.get",      # axios
+    "axios.post",     # axios
+    "axios.put",      # axios
+    "axios.delete",   # axios
+    "axios.patch",    # axios
+    "axios.request",  # axios
+    "axios.head",     # axios
+    "request",        # request / request-promise (legacy HTTP client)
+    "ky",             # ky (callable HTTP client)
+    "ky.get",         # ky
+    "ky.post",        # ky
+    "ky.put",         # ky
+    "ky.delete",      # ky
+    "ky.patch",       # ky
+    "ky.head",        # ky
+    "got",            # got (callable HTTP client)
+    "got.get",        # got
+    "got.post",       # got
+    "got.put",        # got
+    "got.delete",     # got
+    "got.patch",      # got
+    "ofetch",         # ofetch (callable HTTP client)
+]
+sql = [
+    "query",              # node-postgres / mysql2 / sequelize / typeorm
+    "execute",            # node DB drivers (generic execute)
+    "exec",               # sqlite3 / better-sqlite3
+    "raw",                # knex / sequelize raw SQL
+    "prepare",            # better-sqlite3 / node DB prepared statements
+    "$queryraw",          # Prisma raw query
+    "$executeraw",        # Prisma raw execute
+    "$queryrawunsafe",    # Prisma raw query (unsafe)
+    "$executerawunsafe",  # Prisma raw execute (unsafe)
+]
+route = []

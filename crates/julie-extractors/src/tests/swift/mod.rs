@@ -4,6 +4,7 @@
 mod cross_file_pending;
 mod cross_file_relationships;
 mod identifiers;
+mod literals;
 mod task14;
 mod type_arguments;
 

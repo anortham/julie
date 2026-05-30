@@ -48,3 +48,37 @@ important_patterns = [
 [embeddings]
 # Default: global EMBEDDABLE_KINDS only, variable_ratio = 0.20
 extra_kinds = []
+
+# String-literal call-argument carriers (Miller bridge Phase 3b). Bare entries
+# match any receiver via the gate's last-segment rule; dotted entries match the
+# exact `Module.function` carrier. Each entry cites its source library.
+[literal_carriers]
+url = [
+    "HTTPoison.get",     # httpoison
+    "HTTPoison.post",    # httpoison
+    "HTTPoison.put",     # httpoison
+    "HTTPoison.delete",  # httpoison
+    "HTTPoison.patch",   # httpoison
+    "HTTPoison.head",    # httpoison
+    "HTTPoison.request", # httpoison
+    "Req.get",           # req
+    "Req.post",          # req
+    "Req.put",           # req
+    "Req.delete",        # req
+    "Req.patch",         # req
+    "Req.head",          # req
+    "Req.request",       # req
+    "Tesla.get",         # tesla
+    "Tesla.post",        # tesla
+    "Tesla.put",         # tesla
+    "Tesla.delete",      # tesla
+    "Tesla.patch",       # tesla
+    "Tesla.head",        # tesla
+]
+sql = [
+    "query",    # Ecto Repo.query / Postgrex.query
+    "query!",   # Ecto Repo.query!
+    "execute",  # Ecto migration execute / SQL adapter
+    "prepare",  # Postgrex.prepare
+]
+route = []
