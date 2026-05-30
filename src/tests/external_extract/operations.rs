@@ -687,6 +687,127 @@ async fn extract_scan_persists_gated_url_and_sql_literals() {
     );
 }
 
+/// End-to-end coverage for the STRUCTURALLY-DISTINCT capture arms the
+/// call/invocation/member test above can't reach: the command grammar (Bash and
+/// PowerShell — carrier is the command/cmdlet name, args are command elements,
+/// not a `call_expression`) and the Rust macro arm (`sqlx::query!` — a
+/// `macro_invocation` token-tree, not a call). Proves all three flow through the
+/// same extractor → classify_literals_by_carrier → persist path, that the gate
+/// matches command-name and cmdlet carriers (case-insensitively for PowerShell's
+/// PascalCase cmdlets, while the verbatim carrier is still stored), and that
+/// non-carrier commands/macros (`echo`, `Write-Host`, `println!`) are dropped.
+#[tokio::test]
+async fn extract_scan_persists_command_grammar_and_macro_literals() {
+    let tmp = TempDir::new().expect("temp dir");
+    let root = tmp.path().join("repo");
+    std::fs::create_dir(&root).expect("repo dir");
+
+    // Bash command grammar: curl (url) + psql -c (sql) carriers; echo dropped.
+    fs::write(
+        root.join("deploy.sh"),
+        "deploy() {\n\
+         \x20   curl \"https://deploy.example.com/api\"\n\
+         \x20   psql -c \"SELECT id FROM jobs\"\n\
+         \x20   echo \"ignored shell message\"\n\
+         }\n",
+    )
+    .expect("write bash");
+    // PowerShell command grammar: Invoke-RestMethod (url) + Invoke-Sqlcmd (sql)
+    // via named params; Write-Host dropped. Cmdlets are PascalCase — the gate
+    // must match case-insensitively while persisting the verbatim carrier.
+    fs::write(
+        root.join("run.ps1"),
+        "function Sync-Data {\n\
+         \x20   Invoke-RestMethod -Uri \"https://ps.example.com/api\"\n\
+         \x20   Invoke-Sqlcmd -Query \"SELECT id FROM runs\"\n\
+         \x20   Write-Host \"ignored ps message\"\n\
+         }\n",
+    )
+    .expect("write powershell");
+    // Rust macro arm: sqlx::query! (sql, last-segment carrier `query`); the
+    // non-carrier println! macro must be captured config-free then dropped.
+    fs::write(
+        root.join("queries.rs"),
+        "async fn load() {\n\
+         \x20   sqlx::query!(\"SELECT id FROM accounts\");\n\
+         \x20   println!(\"ignored rust message\");\n\
+         }\n",
+    )
+    .expect("write rust");
+
+    let db_path = tmp.path().join("external.sqlite");
+    let report = run_external_scan(&scan_args(db_path.clone(), root.clone(), false))
+        .await
+        .expect("scan succeeds");
+    assert_eq!(report.files_scanned, 3, "three source files scanned");
+    assert_eq!(
+        report.literals_total, 5,
+        "exactly 5 carrier-gated literals (bash url+sql, ps url+sql, rust macro sql); got {}",
+        report.literals_total
+    );
+
+    let db = SymbolDatabase::new(&db_path).expect("open db");
+
+    // Bash: command-name carriers.
+    assert_eq!(
+        count_rows_where(
+            &db,
+            "literals",
+            "file_path = 'deploy.sh' AND kind = 'url' AND carrier = 'curl' AND literal_text = 'https://deploy.example.com/api'"
+        ),
+        1,
+        "bash curl must persist a url literal with command-name carrier"
+    );
+    assert_eq!(
+        count_rows_where(
+            &db,
+            "literals",
+            "file_path = 'deploy.sh' AND kind = 'sql' AND carrier = 'psql' AND literal_text LIKE '%FROM jobs%'"
+        ),
+        1,
+        "bash psql -c must persist a sql literal"
+    );
+
+    // PowerShell: cmdlet carriers matched case-insensitively, stored verbatim.
+    assert_eq!(
+        count_rows_where(
+            &db,
+            "literals",
+            "file_path = 'run.ps1' AND kind = 'url' AND carrier = 'Invoke-RestMethod' AND literal_text = 'https://ps.example.com/api'"
+        ),
+        1,
+        "PowerShell Invoke-RestMethod must persist a url literal with the verbatim PascalCase carrier"
+    );
+    assert_eq!(
+        count_rows_where(
+            &db,
+            "literals",
+            "file_path = 'run.ps1' AND kind = 'sql' AND carrier = 'Invoke-Sqlcmd' AND literal_text LIKE '%FROM runs%'"
+        ),
+        1,
+        "PowerShell Invoke-Sqlcmd must persist a sql literal"
+    );
+
+    // Rust macro arm: sqlx::query! captured via the macro token-tree, carrier is
+    // the bare last segment `query`, matched against the sql set.
+    assert_eq!(
+        count_rows_where(
+            &db,
+            "literals",
+            "file_path = 'queries.rs' AND kind = 'sql' AND carrier = 'query' AND literal_text LIKE '%FROM accounts%'"
+        ),
+        1,
+        "Rust sqlx::query! macro must persist a sql literal with last-segment carrier"
+    );
+
+    // The gate dropped every non-carrier command/macro callee.
+    assert_eq!(
+        count_rows_where(&db, "literals", "literal_text LIKE '%ignored%'"),
+        0,
+        "non-carrier echo / Write-Host / println! literals must be dropped by the gate"
+    );
+}
+
 #[tokio::test]
 async fn extract_scan_unchanged_produces_zero_revisions() {
     let tmp = TempDir::new().expect("temp dir");
