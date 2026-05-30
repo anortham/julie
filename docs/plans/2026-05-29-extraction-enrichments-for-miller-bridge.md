@@ -36,8 +36,8 @@ julie has **three independent version constants**. Confusing them will break Mil
 
 | Dial | Constant | Location | Current | Bump when |
 |---|---|---|---|---|
-| **Physical SQLite shape** | `LATEST_SCHEMA_VERSION: i32` | `src/database/migrations.rs:16` | **26** | A table/column/index is added or changed. Drives the migration mechanism. |
-| **Reader-facing extract contract** | `EXTRACT_CONTRACT_VERSION: i32` | `src/external_extract/metadata.rs:13` | **1** | The meaning/shape/population of data the external reader (Miller) consumes changes. Written into `external_extract_metadata` on every scan (`metadata.rs:144`); surfaced via `extract info`. **julie does not self-reject on mismatch** (`validate_external_extract_schema_policy`, `metadata.rs:73-94`, gates only on `schema_version`) — the reader (Miller) gates on it, with exact-equality. **See the contract-coordination section: this bump lands in the FINAL commit of the batch, not Phase 1.** |
+| **Physical SQLite shape** | `LATEST_SCHEMA_VERSION: i32` | `src/database/migrations.rs:16` | **28** (was 26 at plan start; →27 Phase 2, →28 Phase 3) | A table/column/index is added or changed. Drives the migration mechanism. |
+| **Reader-facing extract contract** | `EXTRACT_CONTRACT_VERSION: i32` | `src/external_extract/metadata.rs:13` | **2** (was 1; bumped 1→2 in the FINAL batch commit, in lockstep with schema 28) | The meaning/shape/population of data the external reader (Miller) consumes changes. Written into `external_extract_metadata` on every scan (`metadata.rs:144`); surfaced via `extract info`. **julie does not self-reject on mismatch** (`validate_external_extract_schema_policy`, `metadata.rs:73-94`, gates only on `schema_version`) — the reader (Miller) gates on it, with exact-equality. Lockstep guarded by `extract_contract_version_and_schema_are_at_phase3b_coordinated_values` (`src/tests/external_extract/info.rs`). |
 | **Extractor output drift** | `EXTRACTION_CONTRACT_VERSION: &str` | `crates/julie-extractors/src/lib.rs:120` (currently `"2026-05-11.body-span-v1"`) | string | The canonical extractor OUTPUT shape changes. **Drift detection is via `SEMANTIC_INDEX_ENGINE_VERSION`, NOT `capabilities.json`** — see below. |
 
 ### The `EXTRACTION_CONTRACT_VERSION` drift dial — correct update procedure
@@ -423,7 +423,7 @@ The breadth ledger (implemented capture-arm + carrier-config vs verified-N/A, pe
 - Migration test (fresh-at-latest + legacy-v27-upgrade-preserving-data + idempotent) and fresh-vs-migrated shape-equality test, per the Phase 2 pattern.
 - Storage roundtrip + the polyglot `operations.rs` test extended to assert `literals` counts for the `.cs`/`.ts` files.
 
-**Contract impact:** `schema_version`→28; **bump `EXTRACT_CONTRACT_VERSION` 1→2 in this batch's FINAL commit** (in lockstep with schema reaching 28 — see contract coordination); `EXTRACTION_CONTRACT_VERSION` batch suffix already bumped.
+**Contract impact:** `schema_version`→28; **`EXTRACT_CONTRACT_VERSION` bumped 1→2 in this batch's FINAL commit** (in lockstep with schema reaching 28 — see contract coordination); `EXTRACTION_CONTRACT_VERSION` batch suffix already bumped. ✅ DONE — bump landed with the lockstep guard `extract_contract_version_and_schema_are_at_phase3b_coordinated_values`.
 
 **Exit:** URL call-args and inline SQL literals are queryable structured records — decoded for interpolation/concatenation, classified by the shared config-driven carrier pass, cleaned on re-index, counted in `extract info` — for **every applicable language**, with TS + C# as the reference legs and a 100% implemented-vs-verified-N/A breadth ledger (Phase-2 pattern). `[literal_carriers]` config covers the common HTTP/DB client libraries per language; adding a client is a one-line TOML change. The non-calling formats (SQL/HTML/CSS/Regex/JSON/TOML/YAML/Markdown) are verified-N/A with cited grammar evidence.
 
@@ -457,6 +457,8 @@ For each new table (027, 028):
 - End-to-end: `julie-server extract --db /tmp/t.db --root <small-polyglot-fixture> --json scan` then inspect: `symbol_annotations` has class/property/**field** rows (P1); `type_arguments` has ordered/nested rows (P2); `literals` has Url+Sql rows (P3). Then `julie-server extract --db /tmp/t.db --json info` reports **non-zero `type_arguments` and `literals` counts** (proves Rule 4 wiring), `extract_contract_version=2`, and `schema_version=28`.
 - Record the final triple below so Miller's D5 gate moves in lockstep.
 
-## Final version triple (fill in on completion)
+## Final version triple (complete)
 
-> `(schema_version = __, extract_contract_version = __, EXTRACTION_CONTRACT_VERSION = "__")` — committed in <commit sha>. Notify the Miller gate owner to re-pin `MillerExtractContract` to these values at M4.
+> `(schema_version = 28, extract_contract_version = 2, EXTRACTION_CONTRACT_VERSION = "2026-05-29.bridge-anchors-v2")` — committed in `4b6ac0dd` (`4b6ac0ddc2de2577f1f1585dfa78db71b074ed61`). **Notify the Miller gate owner to re-pin `MillerExtractContract`/`JulieSchemaGate` to `(schema 28, contract 2)` at M4** (Miller's D5; today Miller correctly pins `(26, 1)` for M1 and these enrichments do not block its current milestones). The lockstep is guarded in-tree by `extract_contract_version_and_schema_are_at_phase3b_coordinated_values` (`src/tests/external_extract/info.rs`): any future change to either dial trips a red test and forces a coordinated Miller-gate update.
+>
+> **Phase 3b breadth:** all 26 applicable languages ship carrier-gated string-literal capture; the 8 non-calling formats (SQL/HTML/CSS/Regex/JSON/TOML/YAML/Markdown) are verified-N/A with cited grammar evidence. Ledger: `docs/plans/2026-05-29-phase3b-literals-breadth-ledger.md`.

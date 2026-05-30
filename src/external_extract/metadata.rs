@@ -10,7 +10,16 @@ use uuid::Uuid;
 use crate::database::{LATEST_SCHEMA_VERSION, SymbolDatabase};
 use crate::external_extract::lock::ExternalExtractOperationLock;
 
-pub const EXTRACT_CONTRACT_VERSION: i32 = 1;
+/// Version of the `julie-server extract` output contract consumed by the Miller
+/// bridge (`~/source/codesearch`), which gates ingestion with an exact-equality
+/// check on this value. Bump ONLY in lockstep with a coordinated Miller-gate
+/// update.
+///
+/// - v1: symbols, identifiers, relationships, types, type_arguments.
+/// - v2 (Phase 3b): adds carrier-gated string-literal records (`literals` table,
+///   migration 028 → schema 28) — URL/SQL/route literals passed to HTTP/DB-client
+///   calls across all applicable languages, with interpolation normalized to `{}`.
+pub const EXTRACT_CONTRACT_VERSION: i32 = 2;
 
 pub const REQUIRED_METADATA_KEYS: [&str; 9] = [
     "julie_version",

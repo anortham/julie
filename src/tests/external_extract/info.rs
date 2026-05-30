@@ -3,7 +3,7 @@ use tempfile::TempDir;
 
 use crate::database::{LATEST_SCHEMA_VERSION, SymbolDatabase};
 use crate::external_extract::{
-    ExternalInfoSchemaState, ensure_external_extract_metadata,
+    EXTRACT_CONTRACT_VERSION, ExternalInfoSchemaState, ensure_external_extract_metadata,
     mark_external_extract_analysis_current, open_external_extract_database,
     read_external_extract_info,
 };
@@ -208,4 +208,28 @@ fn extract_analysis_current_marker_rolls_back_on_partial_failure() {
         )
         .expect("read analysis state");
     assert_eq!(analysis_state, "stale");
+}
+
+#[test]
+fn extract_contract_version_and_schema_are_at_phase3b_coordinated_values() {
+    // Lockstep tripwire for the Miller bridge contract dials.
+    //
+    // The Miller resolver (~/source/codesearch) gates julie's `extract` output with an
+    // EXACT-equality check on `extract_contract_version`. Phase 3b added carrier-gated
+    // string-literal records, which ship in the `literals` table (migration 028 →
+    // schema 28) under contract v2. These two constants move in lockstep: changing
+    // either is a Miller-facing breaking change that requires updating Miller's expected
+    // version in the same coordinated release. This test exists so that any such change
+    // trips a red test and forces that deliberation rather than silently desyncing the
+    // bridge. If you bump one of these, update the other (when applicable), update
+    // Miller's gate, and record the new version triple in the Phase 3b plan docs.
+    assert_eq!(
+        EXTRACT_CONTRACT_VERSION, 2,
+        "extract contract is v2 since Phase 3b (string-literal records); \
+         update the Miller gate in ~/source/codesearch if you change this"
+    );
+    assert_eq!(
+        LATEST_SCHEMA_VERSION, 28,
+        "the literals table landed in migration 028; contract v2 ships with schema 28"
+    );
 }
