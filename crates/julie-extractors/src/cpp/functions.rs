@@ -16,12 +16,24 @@ pub(super) fn extract_function(
 ) -> Option<Symbol> {
     let mut func_node = node;
     if node.kind() == "function_definition" {
-        // Look for function_declarator or reference_declarator
-        let declarator = node
-            .children(&mut node.walk())
-            .find(|c| c.kind() == "function_declarator" || c.kind() == "reference_declarator");
-        if let Some(declarator) = declarator {
-            func_node = declarator;
+        // The declarator of a function_definition is wrapped in
+        // `pointer_declarator`/`reference_declarator` nodes when the return type is
+        // a pointer or reference (`const char *f()`, `int& g()`, `char **h()`).
+        // Descend through those wrappers to the inner `function_declarator` so the
+        // name, parameters, const-qualifier, and noexcept-spec all resolve and the
+        // symbol still spans the whole `node` (definition incl. body). Without this,
+        // pointer/reference-return free functions fall through to the bare
+        // `function_declarator` dispatch and get a declarator-only span. Mirrors the
+        // C extractor's pointer_declarator handling (c/helpers.rs).
+        if let Some(declarator) = node.child_by_field_name("declarator").or_else(|| {
+            node.children(&mut node.walk()).find(|c| {
+                matches!(
+                    c.kind(),
+                    "function_declarator" | "pointer_declarator" | "reference_declarator"
+                )
+            })
+        }) {
+            func_node = unwrap_to_function_declarator(declarator).unwrap_or(declarator);
         }
     }
 
@@ -160,6 +172,41 @@ pub(super) fn extract_function(
             annotations,
         },
     ))
+}
+
+/// Descend through `pointer_declarator`/`reference_declarator` wrappers to the
+/// inner `function_declarator`.
+///
+/// C++ wraps the declarator of a pointer- or reference-return function in one or
+/// more indirection nodes: `const char *f()` → `pointer_declarator >
+/// function_declarator`, `char **h()` → `pointer_declarator > pointer_declarator
+/// > function_declarator`, `int& g()` → `reference_declarator >
+/// function_declarator` (note: `reference_declarator` does not expose a
+/// `declarator` field, so we fall back to a child scan). Returns the
+/// `function_declarator` (which carries the name + `parameter_list`), or `None`
+/// when the declarator is not a function (e.g. a pointer variable).
+pub(super) fn unwrap_to_function_declarator(node: Node) -> Option<Node> {
+    let mut current = node;
+    loop {
+        match current.kind() {
+            "function_declarator" => return Some(current),
+            "pointer_declarator" | "reference_declarator" => {
+                let next = current.child_by_field_name("declarator").or_else(|| {
+                    current.children(&mut current.walk()).find(|c| {
+                        matches!(
+                            c.kind(),
+                            "function_declarator" | "pointer_declarator" | "reference_declarator"
+                        )
+                    })
+                });
+                match next {
+                    Some(n) => current = n,
+                    None => return None,
+                }
+            }
+            _ => return None,
+        }
+    }
 }
 
 /// Extract method (function inside a class)

@@ -213,11 +213,16 @@ impl CppExtractor {
             "concept_definition" => concepts::extract_concept(&mut self.base, node, parent_id),
             "function_definition" => functions::extract_function(&mut self.base, node, parent_id),
             "function_declarator" => {
-                // Only extract standalone function declarators
-                if node.parent().map(|p| p.kind()) != Some("function_definition") {
-                    functions::extract_function(&mut self.base, node, parent_id)
-                } else {
+                // Only extract standalone function declarators. A function_declarator
+                // that belongs to a function_definition — directly, OR nested inside
+                // `pointer_declarator`/`reference_declarator` wrappers for a
+                // pointer/reference return type — is handled by the enclosing
+                // function_definition (which extract_function now unwraps to), so
+                // skip it here to avoid a duplicate declarator-only symbol.
+                if declarator_belongs_to_function_definition(node) {
                     None
+                } else {
+                    functions::extract_function(&mut self.base, node, parent_id)
                 }
             }
             "declaration" => declarations::extract_declaration(&mut self.base, node, parent_id),
@@ -310,4 +315,25 @@ impl CppExtractor {
         // No reconstructible symbol found
         None
     }
+}
+
+/// Whether a `function_declarator` ultimately belongs to a `function_definition`.
+///
+/// Walks up the ancestor chain through `pointer_declarator`/`reference_declarator`
+/// wrappers (present for pointer/reference return types). Returns `true` if a
+/// `function_definition` encloses it — in which case the definition's dispatch
+/// (via `extract_function`, which unwraps those wrappers) owns the symbol and the
+/// bare-declarator fallback must stand down to avoid a duplicate. Returns `false`
+/// for genuinely standalone declarators (prototypes inside a `declaration`,
+/// function-pointer typedefs) that the fallback legitimately extracts.
+fn declarator_belongs_to_function_definition(node: Node) -> bool {
+    let mut current = node;
+    while let Some(parent) = current.parent() {
+        match parent.kind() {
+            "function_definition" => return true,
+            "pointer_declarator" | "reference_declarator" => current = parent,
+            _ => return false,
+        }
+    }
+    false
 }

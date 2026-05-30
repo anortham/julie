@@ -98,6 +98,78 @@ mod tests {
     }
 
     #[test]
+    fn test_pointer_and_reference_return_free_functions_extracted() {
+        // Regression (Phase 3b adjacent defect): a free function whose return
+        // type makes the declarator a `pointer_declarator` / `reference_declarator`
+        // wrapper (`const char *load()`, `char **grid()`, `int& ref()`) was never
+        // extracted as a symbol because extract_function only unwrapped a direct
+        // `function_declarator`. The C extractor handles this; C++ must too.
+        let cpp_code = r#"
+    const char *load() {
+        return "x";
+    }
+
+    char **grid() {
+        return 0;
+    }
+
+    int& ref(int x) {
+        return x;
+    }
+    "#;
+
+        let (mut extractor, tree) = parse_cpp(cpp_code);
+        let symbols = extractor.extract_symbols(&tree);
+
+        // EXACTLY ONE `load` symbol: before the fix the function_definition path
+        // returned None and the bare `function_declarator` fallback produced a
+        // single declarator-only symbol; a naive fix that only patches
+        // extract_function would then double-extract (definition + declarator).
+        let loads: Vec<_> = symbols.iter().filter(|s| s.name == "load").collect();
+        assert_eq!(
+            loads.len(),
+            1,
+            "exactly one `load` symbol (no duplicate from the declarator fallback), got {loads:?}"
+        );
+        let load = loads[0];
+        assert_eq!(
+            load.kind,
+            SymbolKind::Function,
+            "pointer-return free function is a Function"
+        );
+        // The symbol must span the FULL definition (including the `{ ... }` body),
+        // not just the `load()` declarator — otherwise a literal inside the body
+        // cannot anchor to it (the original Phase 3b breakage). The body lives on
+        // lines after the signature, so end_line must be strictly greater.
+        assert!(
+            load.end_line > load.start_line,
+            "symbol must span the full definition incl. body (start {}, end {})",
+            load.start_line,
+            load.end_line
+        );
+
+        let grid = symbols
+            .iter()
+            .find(|s| s.name == "grid")
+            .expect("double-pointer-return free function `grid` must be extracted");
+        assert_eq!(grid.kind, SymbolKind::Function);
+        assert!(
+            grid.end_line > grid.start_line,
+            "grid must span its full definition body"
+        );
+
+        let r#ref = symbols
+            .iter()
+            .find(|s| s.name == "ref")
+            .expect("reference-return free function `ref` must be extracted");
+        assert_eq!(r#ref.kind, SymbolKind::Function);
+        assert!(
+            r#ref.end_line > r#ref.start_line,
+            "ref must span its full definition body"
+        );
+    }
+
+    #[test]
     fn test_cpp_standard_attributes_persist_and_expand() {
         let cpp_code = r#"
     [[nodiscard, maybe_unused]]
