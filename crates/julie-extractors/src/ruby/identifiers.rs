@@ -86,6 +86,9 @@ fn extract_identifier_from_node(
                     }
                 }
             }
+            // Phase 3b: capture string-literal call-arguments config-free; the
+            // carrier classification + bloat gate run later in the src/ pipeline.
+            record_ruby_call_arg_literals(base, node, symbol_map);
         }
 
         // Type references: superclass, scope_resolution, include/extend args, etc.
@@ -137,4 +140,66 @@ fn find_containing_symbol_id(
 ) -> Option<String> {
     base.find_containing_symbol_from_map(&node, symbol_map)
         .map(|s| s.id.clone())
+}
+
+// ============================================================================
+// String-literal call-argument capture (Miller bridge Phase 3b)
+// ============================================================================
+
+/// Capture string-literal arguments of a Ruby `call` as `Literal` records.
+///
+/// Config-free: `carrier` is the verbatim callee — the bare `method` name for a
+/// receiverless call (`execute("…")`), or the `receiver.method` join for a
+/// member call (`Net::HTTP.get`, `conn.execute`). `kind` stays `Other`; the
+/// `src/` carrier gate sets the authoritative kind and drops non-carrier
+/// literals. `arg_position` counts over the full argument list. Keyword/hash
+/// args (`url: "…"`) are `pair` nodes, so the loop descends to a `value` field
+/// when present.
+fn record_ruby_call_arg_literals(
+    base: &mut BaseExtractor,
+    call_node: Node,
+    symbol_map: &HashMap<String, &Symbol>,
+) {
+    let Some(args_node) = call_node.child_by_field_name("arguments") else {
+        return;
+    };
+    let carrier = ruby_carrier(base, call_node);
+    let containing_symbol_id = find_containing_symbol_id(base, call_node, symbol_map);
+
+    let mut cursor = args_node.walk();
+    for (pos, arg) in args_node.named_children(&mut cursor).enumerate() {
+        // Keyword/hash args (`key: value`) hold the literal in their `value`
+        // field; positional string args have no `value` field, so use the arg.
+        let value = arg.child_by_field_name("value").unwrap_or(arg);
+        if let Some(text) = base.decode_string_literal(&value) {
+            base.record_literal(
+                &value,
+                text,
+                carrier.clone(),
+                pos as u32,
+                containing_symbol_id.clone(),
+            );
+        }
+    }
+}
+
+/// Derive a Ruby call's carrier from its `receiver`/`method` fields.
+///
+/// Plain receiverless call → bare `method` text (`execute`). Member call →
+/// `receiver.method` join so dotted client APIs match config exactly
+/// (`Net::HTTP.get`) and local-variable receivers still match a bare method
+/// config (`execute`) via the gate's last-segment rule (`conn.execute` →
+/// `execute`).
+fn ruby_carrier(base: &BaseExtractor, call_node: Node) -> Option<String> {
+    let method = call_node
+        .child_by_field_name("method")
+        .map(|n| base.get_node_text(&n));
+    let receiver = call_node
+        .child_by_field_name("receiver")
+        .map(|n| base.get_node_text(&n));
+    match (receiver, method) {
+        (Some(r), Some(m)) => Some(format!("{r}.{m}")),
+        (None, Some(m)) => Some(m),
+        _ => None,
+    }
 }

@@ -80,6 +80,9 @@ impl super::GoExtractor {
                         self.base.record_type_arguments(identifier, arguments);
                     }
                 }
+                // Phase 3b: capture string-literal call-arguments (config-free;
+                // carrier classification + gate run later in the src/ pipeline).
+                self.record_call_arg_literals(node, symbol_map);
             }
 
             // Member access: object.Field
@@ -134,6 +137,72 @@ impl super::GoExtractor {
         self.base
             .find_containing_symbol_from_map(&node, symbol_map)
             .map(|s| s.id.clone())
+    }
+
+    /// Capture string-literal arguments of a Go `call_expression` as `Literal`
+    /// records (Miller bridge Phase 3b).
+    ///
+    /// Config-free: `carrier` is the verbatim callee text; the URL/SQL
+    /// classification and the carrier gate run later in the `src/` pipeline.
+    /// Records one literal per string-like argument, with `arg_position` counted
+    /// over the full `argument_list`. Go has no string interpolation, so both
+    /// `interpreted_string_literal` and `raw_string_literal` decode to their
+    /// verbatim contents.
+    pub(super) fn record_call_arg_literals(
+        &mut self,
+        call_node: Node,
+        symbol_map: &HashMap<String, &Symbol>,
+    ) {
+        let Some(function_node) = call_node.child_by_field_name("function") else {
+            return;
+        };
+        let Some(args_node) = call_node.child_by_field_name("arguments") else {
+            return;
+        };
+        let carrier = go_carrier(&self.base, function_node);
+        let containing_symbol_id = self.find_containing_symbol_id(call_node, symbol_map);
+
+        let mut cursor = args_node.walk();
+        for (pos, arg) in args_node.named_children(&mut cursor).enumerate() {
+            if let Some(text) = self.base.decode_string_literal(&arg) {
+                self.base.record_literal(
+                    &arg,
+                    text,
+                    carrier.clone(),
+                    pos as u32,
+                    containing_symbol_id.clone(),
+                );
+            }
+        }
+    }
+}
+
+/// Derive a Go call's carrier from its callee.
+///
+/// Plain `identifier` → its text (`query`). `selector_expression`
+/// (`http.Get`, `db.Query`) → the `operand.field` join so dotted client APIs
+/// match config (`http.get`) exactly while bare DB verbs (`query`/`exec`) still
+/// match any receiver via the gate's last-segment rule.
+fn go_carrier(base: &BaseExtractor, function_node: Node) -> Option<String> {
+    match function_node.kind() {
+        "identifier" => Some(base.get_node_text(&function_node)),
+        "selector_expression" => {
+            let operand = function_node
+                .child_by_field_name("operand")
+                .map(|n| base.get_node_text(&n));
+            let field = function_node
+                .child_by_field_name("field")
+                .map(|n| base.get_node_text(&n));
+            match (operand, field) {
+                (Some(o), Some(f)) => Some(format!("{o}.{f}")),
+                (None, Some(f)) => Some(f),
+                _ => None,
+            }
+        }
+        _ => {
+            let text = base.get_node_text(&function_node);
+            if text.is_empty() { None } else { Some(text) }
+        }
     }
 }
 

@@ -32,3 +32,37 @@ important_patterns = [
 
 [embeddings]
 extra_kinds = ["constructor"]
+
+# String-literal carrier vocabulary (Miller bridge Phase 3b). Keys are lowercased
+# at build time and matched case-insensitively; dotted entries match exactly,
+# bare entries match any receiver via the gate's last-segment rule.
+[literal_carriers]
+# net/http package-level helpers take the URL as a string literal. Dotted so a
+# user type named `http` is required (avoids flooding generic `.Get`/`.Post`).
+url = [
+    "http.get",                  # net/http
+    "http.post",
+    "http.head",
+    "http.postform",
+    "http.newrequest",
+    "http.newrequestwithcontext",
+]
+# database/sql + sqlx query/exec/prepare methods are called on *DB/*Tx/*Stmt
+# receivers whose variable names vary (db, tx, conn), so bare entries match any
+# receiver via last-segment. Verbs are distinctive enough not to flood.
+sql = [
+    "query",                     # database/sql
+    "querycontext",
+    "queryrow",
+    "queryrowcontext",
+    "exec",
+    "execcontext",
+    "prepare",
+    "preparecontext",
+    "queryx",                    # sqlx
+    "queryrowx",
+    "namedexec",
+    "namedquery",
+    "mustexec",
+]
+route = []

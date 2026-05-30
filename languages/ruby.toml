@@ -44,3 +44,39 @@ important_patterns = [
 [embeddings]
 extra_kinds = []
 variable_ratio = 0.50  # method assignments, attr_accessor
+
+# String-literal call-argument carriers (Miller bridge Phase 3b). Bare entries
+# match any receiver via the gate's last-segment rule; dotted entries match the
+# exact `Receiver.method` carrier. Each entry cites its source library.
+[literal_carriers]
+url = [
+    "Net::HTTP.get",          # Ruby stdlib net/http
+    "Net::HTTP.post",         # Ruby stdlib net/http
+    "Net::HTTP.get_response", # Ruby stdlib net/http
+    "HTTParty.get",           # httparty gem
+    "HTTParty.post",          # httparty gem
+    "HTTParty.put",           # httparty gem
+    "HTTParty.delete",        # httparty gem
+    "HTTParty.patch",         # httparty gem
+    "HTTParty.head",          # httparty gem
+    "RestClient.get",         # rest-client gem
+    "RestClient.post",        # rest-client gem
+    "RestClient.put",         # rest-client gem
+    "RestClient.delete",      # rest-client gem
+    "RestClient.patch",       # rest-client gem
+    "RestClient.head",        # rest-client gem
+    "Faraday.get",            # faraday gem (module-level convenience)
+    "Faraday.post",           # faraday gem (module-level convenience)
+    "Faraday.put",            # faraday gem (module-level convenience)
+    "Faraday.delete",         # faraday gem (module-level convenience)
+    "Faraday.patch",          # faraday gem (module-level convenience)
+    "Faraday.head",           # faraday gem (module-level convenience)
+]
+sql = [
+    "execute",      # ActiveRecord connection / generic DB adapter
+    "exec_query",   # ActiveRecord connection
+    "find_by_sql",  # ActiveRecord model
+    "select_all",   # ActiveRecord connection
+    "query",        # mysql2 / pg client
+]
+route = []

@@ -8,6 +8,7 @@ mod error_handling;
 mod generics;
 mod identifiers;
 mod integration;
+mod literals;
 mod type_arguments;
 mod type_assertions;
 
