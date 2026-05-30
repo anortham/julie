@@ -212,6 +212,7 @@ impl LanguageConfigs {
                 "typescript",
                 include_str!("../../languages/typescript.toml"),
             ),
+            ("vbnet", include_str!("../../languages/vbnet.toml")),
             ("vue", include_str!("../../languages/vue.toml")),
             ("yaml", include_str!("../../languages/yaml.toml")),
             ("zig", include_str!("../../languages/zig.toml")),
@@ -342,19 +343,25 @@ impl LanguageConfigs {
 mod tests {
     use super::*;
 
-    /// Verify that ALL 33 embedded language configs parse successfully.
+    /// Verify that ALL 34 embedded language configs parse successfully.
     ///
     /// With the old warn+skip behavior, a broken TOML would silently reduce the
     /// count. With the new panic behavior, this test documents that all configs
     /// are present and valid. If this count fails, check that a new language was
     /// added to the embedded list in `load_embedded` and its .toml parses cleanly.
+    ///
+    /// 34 == every supported language has an embedded config. VB.NET was the last
+    /// holdout (added with the Phase 3b literal-carrier work): without an embedded
+    /// config its `[literal_carriers]` never loaded, so the gate silently dropped
+    /// every VB.NET literal. Keeping this at the full language count guarantees no
+    /// language ships a TOML on disk that the runtime never loads.
     #[test]
     fn test_all_embedded_language_configs_load_without_skips() {
         let configs = LanguageConfigs::load_embedded();
         assert_eq!(
             configs.len(),
-            33,
-            "Expected exactly 33 embedded language configs, got {}. \
+            34,
+            "Expected exactly 34 embedded language configs, got {}. \
              A broken TOML or missing entry would cause this count to be wrong.",
             configs.len()
         );
@@ -395,6 +402,35 @@ mod tests {
             "C# url carriers must include getasync; got {:?}",
             cs.url
         );
+
+        // Breadth guard (Phase 3b): a capture arm without an embedded config is
+        // dead — the extractor emits literals but the gate has no carrier
+        // vocabulary, so it drops them all. Assert a representative language per
+        // grammar family actually loaded its carriers. VB.NET is explicit here
+        // because it was the one language missing from `load_embedded`; this
+        // assertion is the regression guard for that class of gap.
+        for (lang, url_probe, sql_probe) in [
+            ("vbnet", "getasync", "query"),       // .NET invocation family
+            ("go", "http.get", "query"),          // call_expression family
+            ("ruby", "net::http.get", "execute"), // call family
+            ("python", "requests.get", "execute"),
+            ("kotlin", "url", "executequery"),
+            ("lua", "http.request", "execute"),   // function_call family
+        ] {
+            let cfg = carriers
+                .get(lang)
+                .unwrap_or_else(|| panic!("{lang} carrier config must be embedded + loaded"));
+            assert!(
+                cfg.url.contains(url_probe),
+                "{lang} url carriers must include {url_probe:?} (is the TOML embedded in load_embedded?); got {:?}",
+                cfg.url
+            );
+            assert!(
+                cfg.sql.contains(sql_probe),
+                "{lang} sql carriers must include {sql_probe:?}; got {:?}",
+                cfg.sql
+            );
+        }
     }
 
     #[test]
