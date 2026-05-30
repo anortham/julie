@@ -56,21 +56,21 @@ Status: ✅ implemented (arm + TOML + test) · ⬜ pending · 🚫 verified-N/A.
 | 1 | TypeScript | `call_expression` | ✅ | reference leg |
 | 2 | C# | `invocation_expression` | ✅ | reference leg |
 | 3 | Python | `call` | ✅ | reference leg (`call` family) |
-| 4 | JavaScript | `call_expression` | ⬜ | mirrors TS; shares JS grammar internals |
-| 5 | Vue | `call_expression` | ⬜ | `<script>` JS; mirrors TS |
+| 4 | JavaScript | `call_expression` | ✅ | mirrors TS leg; fetch/axios/ky/got/ofetch + bare DB verbs + Prisma. `b05b2da6` |
+| 5 | Vue | `call_expression` | ✅ | mirrors TS leg (shared carriers). `b05b2da6` |
 | 6 | VB.NET | `invocation_expression` | ⬜ | mirrors C# (.NET HttpClient/Dapper/EF) |
 | 7 | Razor | `invocation_expression` | ⬜ | mirrors C# |
 | 8 | Java | `method_invocation` | ⬜ | `object`/`name`/`arguments`; HttpClient/RestTemplate/JDBC |
 | 9 | Kotlin | `call_expression` | ⬜ | OkHttp/Ktor/Exposed/JDBC |
 | 10 | Scala | `call_expression` | ⬜ | sttp/requests-scala; Doobie/Slick (interp — capture static) |
-| 11 | Go | `call_expression` | ⬜ | `http.Get`/`client.Do`; `db.Query`/`Exec` (database/sql, sqlx) |
+| 11 | Go | `call_expression` | ✅ | `go_carrier` operand.field/bare; net/http dotted + database/sql+sqlx bare. `8781fe38` |
 | 12 | Rust | `call_expression` (+ macro) | ⬜ | reqwest; sqlx `query!`/`query` — note macro args |
-| 13 | Swift | `call_expression` | ⬜ | URLSession/Alamofire; SQLite.swift/GRDB |
+| 13 | Swift | `call_expression` | ✅ | URL(string:)+AF.request dotted; SQLite.swift/GRDB prepare/run/execute/scalar bare. `b05b2da6` |
 | 14 | Dart | `call_expression` | ⬜ | http/Dio; sqflite `rawQuery`/`execute` |
 | 15 | PHP | `function_call_expression`, `member_call_expression` | ⬜ | Guzzle/`Http::get`; PDO/mysqli `query`/`exec`/`prepare` |
-| 16 | Ruby | `call` | ⬜ | Net::HTTP/Faraday/HTTParty; AR `execute`/`find_by_sql` |
-| 17 | Elixir | `call` | ⬜ | HTTPoison/Req/Tesla; Ecto/Postgrex `query` |
-| 18 | R | `call` | ⬜ | httr/`GET`/`POST`; DBI `dbGetQuery`/`dbExecute`/`dbSendQuery` |
+| 16 | Ruby | `call` | ✅ | receiver.method/bare; Net::HTTP/HTTParty/RestClient/Faraday dotted + AR/mysql2/pg bare. `8781fe38` |
+| 17 | Elixir | `call` | ✅ | Module.function/bare; HTTPoison/Req/Tesla dotted, Ecto/Postgrex bare. `b05b2da6` |
+| 18 | R | `call` | ✅ | httr.GET/HEAD dotted-only (avoid base-R get/head); POST/PUT/etc bare; DBI db* verbs. Known limit: bare GET(url) dropped. `b05b2da6` |
 | 19 | GDScript | `call`, `attribute_call` | ⬜ | HTTPRequest `request`; SQLite plugin `query` |
 | 20 | Lua | `function_call` | ⬜ | http.request/socket.http; LuaSQL `execute` |
 | 21 | QML | `call_expression` | ⬜ | XMLHttpRequest `open`/`send`; JS-in-QML |

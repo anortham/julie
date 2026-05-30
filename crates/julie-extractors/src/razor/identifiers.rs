@@ -73,6 +73,9 @@ impl super::RazorExtractor {
                         break;
                     }
                 }
+                // Phase 3: capture string-literal call-arguments (config-free; the
+                // carrier classification + gate happen in the src/ pipeline).
+                self.record_razor_call_arg_literals(node, symbol_map);
             }
 
             // Member access: object.field
@@ -133,6 +136,72 @@ impl super::RazorExtractor {
         self.base
             .find_containing_symbol_from_map(&node, symbol_map)
             .map(|s| s.id.clone())
+    }
+
+    // ========================================================================
+    // String-literal call-argument capture (Miller bridge Phase 3)
+    // ========================================================================
+
+    /// Capture string-literal arguments of a Razor/C# `invocation_expression`
+    /// as `Literal` records. Config-free: `carrier` is the invoked method name
+    /// (mirrors the C# leg); the URL/SQL classification and the carrier gate run
+    /// later in the `src/` pipeline. Razor embeds C#, so each argument is wrapped
+    /// in an `argument` node whose value is its last named child. `arg_position`
+    /// is counted over the full argument list.
+    fn record_razor_call_arg_literals(&mut self, node: Node, symbol_map: &HashMap<String, &Symbol>) {
+        let Some(function) = node.child_by_field_name("function") else {
+            return;
+        };
+        let Some(args) = node.child_by_field_name("arguments") else {
+            return;
+        };
+        let carrier = razor_carrier(&self.base, function);
+        let containing_symbol_id = self.find_containing_symbol_id(node, symbol_map);
+
+        let mut cursor = args.walk();
+        for (pos, arg) in args.named_children(&mut cursor).enumerate() {
+            let value = if arg.kind() == "argument" {
+                let mut vc = arg.walk();
+                arg.named_children(&mut vc).last()
+            } else {
+                Some(arg)
+            };
+            if let Some(value) = value {
+                if let Some(text) = self.base.decode_string_literal(&value) {
+                    self.base.record_literal(
+                        &value,
+                        text,
+                        carrier.clone(),
+                        pos as u32,
+                        containing_symbol_id.clone(),
+                    );
+                }
+            }
+        }
+    }
+}
+
+/// Derive a Razor/C# call's carrier: the invoked method name with generic type
+/// arguments stripped (`conn.Query<User>` -> `Query`, `Execute` -> `Execute`).
+/// The receiver is dropped — Dapper/ADO/HttpClient carriers are matched by bare
+/// method name via the gate's last-segment rule, and the receiver is usually a
+/// local variable.
+fn razor_carrier(base: &BaseExtractor, function: Node) -> Option<String> {
+    let text = match function.kind() {
+        "identifier" | "generic_name" => base.get_node_text(&function),
+        "member_access_expression" => function
+            .child_by_field_name("name")
+            .map(|n| base.get_node_text(&n))?,
+        _ => base.get_node_text(&function),
+    };
+    let stripped = match text.find('<') {
+        Some(i) => text[..i].to_string(),
+        None => text,
+    };
+    if stripped.is_empty() {
+        None
+    } else {
+        Some(stripped)
     }
 }
 

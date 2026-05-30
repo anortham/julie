@@ -64,6 +64,9 @@ fn extract_identifier_from_node(
                     break;
                 }
             }
+            // Phase 3: capture string-literal call-arguments (config-free; the
+            // carrier classification + gate happen in the src/ pipeline).
+            record_vbnet_call_arg_literals(base, node, symbol_map);
         }
         "member_access_expression" | "member_access" => {
             if let Some(parent) = node.parent() {
@@ -159,4 +162,133 @@ fn find_containing_symbol_id(
 ) -> Option<String> {
     base.find_containing_symbol_from_map(&node, symbol_map)
         .map(|s| s.id.clone())
+}
+
+// ============================================================================
+// String-literal call-argument capture (Miller bridge Phase 3)
+// ============================================================================
+
+/// Capture string-literal arguments of a VB.NET `invocation` as `Literal`
+/// records. Config-free: `carrier` is the invoked method name (mirrors the C#
+/// leg); the URL/SQL classification and the carrier gate run later in the
+/// `src/` pipeline. VB wraps each call argument in an `argument` node, so the
+/// value expression is the argument's last named child (after any `name:=` for a
+/// named argument). `arg_position` is counted over the full argument list.
+fn record_vbnet_call_arg_literals(
+    base: &mut BaseExtractor,
+    node: Node,
+    symbol_map: &HashMap<String, &Symbol>,
+) {
+    let Some(target) = node.child_by_field_name("target") else {
+        return;
+    };
+    let Some(args) = node.child_by_field_name("arguments") else {
+        return;
+    };
+    let carrier = vbnet_carrier(base, target);
+    let containing_symbol_id = find_containing_symbol_id(base, node, symbol_map);
+
+    let mut cursor = args.walk();
+    for (pos, arg) in args.named_children(&mut cursor).enumerate() {
+        let value = if arg.kind() == "argument" {
+            let mut vc = arg.walk();
+            arg.named_children(&mut vc).last()
+        } else {
+            Some(arg)
+        };
+        if let Some(value) = value {
+            if let Some(text) = decode_vbnet_literal(base, &value) {
+                base.record_literal(
+                    &value,
+                    text,
+                    carrier.clone(),
+                    pos as u32,
+                    containing_symbol_id.clone(),
+                );
+            }
+        }
+    }
+}
+
+/// Derive a VB.NET call's carrier: the invoked method name (generics, if any,
+/// stripped). `target` is an `identifier` (bare call) or a `member_access`
+/// whose `member` field is the method name. The receiver is dropped — .NET
+/// HTTP/DB carriers are matched by bare method name via the gate's last-segment
+/// rule (`conn.Execute` -> `execute`), and the receiver is usually a local var.
+fn vbnet_carrier(base: &BaseExtractor, target: Node) -> Option<String> {
+    let text = match target.kind() {
+        "identifier" => base.get_node_text(&target),
+        "member_access" | "member_access_expression" => target
+            .child_by_field_name("member")
+            .or_else(|| target.child_by_field_name("name"))
+            .map(|n| base.get_node_text(&n))?,
+        _ => base.get_node_text(&target),
+    };
+    let stripped = match text.find('<') {
+        Some(i) => text[..i].to_string(),
+        None => text,
+    };
+    if stripped.is_empty() {
+        None
+    } else {
+        Some(stripped)
+    }
+}
+
+/// Decode a VB.NET call-argument string for capture.
+///
+/// Plain strings (`"..."`) are a single flat `string_literal` token, handled by
+/// the shared `decode_string_literal` delimiter-strip fallback. Interpolated
+/// strings appear as an `interpolated_string_literal` (either directly as the
+/// argument value or wrapped in a `string_literal` choice node). Their static
+/// text segments are **anonymous** tokens the base decoder's named-children walk
+/// cannot see, so they are decoded here to the shared `{}`-hole convention
+/// (`$"u/{id}"` -> `u/{}`), with escaped `""`/`{{`/`}}` resolved.
+fn decode_vbnet_literal(base: &BaseExtractor, value: &Node) -> Option<String> {
+    let interp = if value.kind() == "interpolated_string_literal" {
+        Some(*value)
+    } else if value.kind() == "string_literal" {
+        let mut cursor = value.walk();
+        value
+            .named_children(&mut cursor)
+            .find(|n| n.kind() == "interpolated_string_literal")
+    } else {
+        None
+    };
+    if let Some(interp) = interp {
+        return Some(decode_vbnet_interpolated(base, &interp));
+    }
+    base.decode_string_literal(value)
+}
+
+/// Decode a VB.NET `interpolated_string_literal` to the `{}`-hole convention by
+/// reconstructing from source: the gaps between `interpolation` children are
+/// filled verbatim from the file bytes and each interpolation becomes `{}`. This
+/// is robust whether or not the grammar exposes the (anonymous) static text
+/// segments as child nodes. The `$"` opener / `"` closer are then stripped and
+/// `""`/`{{`/`}}` escapes resolved.
+fn decode_vbnet_interpolated(base: &BaseExtractor, interp: &Node) -> String {
+    let bytes = base.content.as_bytes();
+    let total_end = interp.end_byte().min(bytes.len());
+    let mut out = String::new();
+    let mut pos = interp.start_byte().min(total_end);
+    let mut cursor = interp.walk();
+    for child in interp.named_children(&mut cursor) {
+        if child.kind() != "interpolation" {
+            continue;
+        }
+        let cs = child.start_byte().min(total_end);
+        if cs > pos {
+            out.push_str(&String::from_utf8_lossy(&bytes[pos..cs]));
+        }
+        out.push_str("{}");
+        pos = child.end_byte().min(total_end);
+    }
+    if pos < total_end {
+        out.push_str(&String::from_utf8_lossy(&bytes[pos..total_end]));
+    }
+    let mut s = out.as_str();
+    s = s.strip_prefix("$\"").unwrap_or(s);
+    s = s.strip_suffix('"').unwrap_or(s);
+    s.replace("\"\"", "\"").replace("{{", "{").replace("}}", "}")
 }

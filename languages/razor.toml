@@ -38,3 +38,48 @@ important_patterns = [
 [embeddings]
 # Default: global EMBEDDABLE_KINDS only, variable_ratio = 0.20
 extra_kinds = []
+
+# String-literal call-arg carriers (Miller bridge Phase 3). Razor embeds C#, so
+# the carrier is the invoked method name with generics stripped (receiver
+# dropped) — Dapper `conn.Query<T>(...)` matches `query`, HttpClient
+# `client.GetAsync(...)` matches `getasync`. Mirrors csharp.toml.
+# Case-insensitive (lowercased at load).
+[literal_carriers]
+url = [
+    "getasync",            # System.Net.Http.HttpClient
+    "getstringasync",      # HttpClient
+    "getbytearrayasync",   # HttpClient
+    "getstreamasync",      # HttpClient
+    "postasync",           # HttpClient
+    "putasync",            # HttpClient
+    "deleteasync",         # HttpClient
+    "patchasync",          # HttpClient
+    "sendasync",           # HttpClient
+]
+sql = [
+    "query",                       # Dapper
+    "queryasync",                  # Dapper
+    "queryfirst",                  # Dapper
+    "queryfirstasync",             # Dapper
+    "queryfirstordefault",         # Dapper
+    "queryfirstordefaultasync",    # Dapper
+    "querysingle",                 # Dapper
+    "querysingleasync",            # Dapper
+    "querysingleordefault",        # Dapper
+    "querysingleordefaultasync",   # Dapper
+    "querymultiple",               # Dapper
+    "querymultipleasync",          # Dapper
+    "execute",                     # Dapper / ADO.NET
+    "executeasync",                # Dapper
+    "executescalar",               # ADO.NET (DbCommand)
+    "executescalarasync",          # ADO.NET
+    "executereader",               # ADO.NET (DbCommand)
+    "executereaderasync",          # ADO.NET
+    "fromsqlraw",                  # EF Core
+    "fromsqlinterpolated",         # EF Core
+    "executesqlraw",               # EF Core
+    "executesqlrawasync",          # EF Core
+    "executesqlinterpolated",      # EF Core
+    "executesqlinterpolatedasync", # EF Core
+]
+route = []
