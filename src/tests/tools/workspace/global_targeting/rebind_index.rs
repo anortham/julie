@@ -6,10 +6,8 @@ async fn test_manage_workspace_open_uses_session_primary_binding_over_legacy_wor
     let indexes_dir = temp_dir.path().join("indexes");
     fs::create_dir_all(&indexes_dir).unwrap();
 
-    let primary_root = temp_dir.path().join("primary");
-    let target_root = temp_dir.path().join("target");
-    fs::create_dir_all(&primary_root).unwrap();
-    fs::create_dir_all(&target_root).unwrap();
+    let primary_root = make_isolated_workspace_root(temp_dir.path(), "primary");
+    let target_root = make_isolated_workspace_root(temp_dir.path(), "target");
     fs::write(primary_root.join("main.rs"), "fn primary() {}\n").unwrap();
     fs::write(target_root.join("lib.rs"), "fn target() {}\n").unwrap();
 
@@ -94,10 +92,8 @@ async fn test_manage_workspace_index_rebind_uses_workspace_pool_session_state() 
     let indexes_dir = temp_dir.path().join("indexes");
     fs::create_dir_all(&indexes_dir).unwrap();
 
-    let workspace_a_root = temp_dir.path().join("workspace-a");
-    let workspace_b_root = temp_dir.path().join("workspace-b");
-    fs::create_dir_all(&workspace_a_root).unwrap();
-    fs::create_dir_all(&workspace_b_root).unwrap();
+    let workspace_a_root = make_isolated_workspace_root(temp_dir.path(), "workspace-a");
+    let workspace_b_root = make_isolated_workspace_root(temp_dir.path(), "workspace-b");
     fs::write(workspace_a_root.join("main.rs"), "fn workspace_a() {}\n").unwrap();
     fs::write(workspace_b_root.join("lib.rs"), "fn workspace_b() {}\n").unwrap();
 
@@ -202,10 +198,8 @@ async fn test_manage_workspace_index_path_rebind_updates_daemon_stats_for_new_pr
     let indexes_dir = temp_dir.path().join("indexes");
     fs::create_dir_all(&indexes_dir).unwrap();
 
-    let workspace_a_root = temp_dir.path().join("workspace-a");
-    let workspace_b_root = temp_dir.path().join("workspace-b");
-    fs::create_dir_all(&workspace_a_root).unwrap();
-    fs::create_dir_all(&workspace_b_root).unwrap();
+    let workspace_a_root = make_isolated_workspace_root(temp_dir.path(), "workspace-a");
+    let workspace_b_root = make_isolated_workspace_root(temp_dir.path(), "workspace-b");
     fs::write(workspace_a_root.join("main.rs"), "fn workspace_a() {}\n").unwrap();
     fs::write(workspace_b_root.join("lib.rs"), "fn workspace_b() {}\n").unwrap();
 
@@ -284,10 +278,8 @@ async fn test_manage_workspace_index_path_succeeds_without_bound_primary_in_defe
     let indexes_dir = temp_dir.path().join("indexes");
     fs::create_dir_all(&indexes_dir).unwrap();
 
-    let startup_root = temp_dir.path().join("startup");
-    let target_root = temp_dir.path().join("target");
-    fs::create_dir_all(&startup_root).unwrap();
-    fs::create_dir_all(&target_root).unwrap();
+    let startup_root = make_isolated_workspace_root(temp_dir.path(), "startup");
+    let target_root = make_isolated_workspace_root(temp_dir.path(), "target");
     fs::write(startup_root.join("main.rs"), "fn startup() {}\n").unwrap();
     fs::write(target_root.join("lib.rs"), "fn target() {}\n").unwrap();
 
@@ -360,10 +352,8 @@ async fn test_manage_workspace_index_path_succeeds_without_bound_primary_in_defe
     let indexes_dir = temp_dir.path().join("indexes");
     fs::create_dir_all(&indexes_dir).unwrap();
 
-    let startup_root = temp_dir.path().join("startup");
-    let target_root = temp_dir.path().join("target");
-    fs::create_dir_all(&startup_root).unwrap();
-    fs::create_dir_all(&target_root).unwrap();
+    let startup_root = make_isolated_workspace_root(temp_dir.path(), "startup");
+    let target_root = make_isolated_workspace_root(temp_dir.path(), "target");
     fs::write(startup_root.join("main.rs"), "fn startup() {}\n").unwrap();
     fs::write(target_root.join("lib.rs"), "fn target() {}\n").unwrap();
 
@@ -432,10 +422,8 @@ async fn test_manage_workspace_open_rebound_primary_still_attaches_pool() {
     let indexes_dir = temp_dir.path().join("indexes");
     fs::create_dir_all(&indexes_dir).unwrap();
 
-    let workspace_a_root = temp_dir.path().join("workspace-a");
-    let workspace_b_root = temp_dir.path().join("workspace-b");
-    fs::create_dir_all(&workspace_a_root).unwrap();
-    fs::create_dir_all(&workspace_b_root).unwrap();
+    let workspace_a_root = make_isolated_workspace_root(temp_dir.path(), "workspace-a");
+    let workspace_b_root = make_isolated_workspace_root(temp_dir.path(), "workspace-b");
     fs::write(workspace_a_root.join("main.rs"), "fn workspace_a() {}\n").unwrap();
     fs::write(workspace_b_root.join("lib.rs"), "fn workspace_b() {}\n").unwrap();
 

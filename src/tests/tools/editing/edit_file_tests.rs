@@ -10,6 +10,7 @@ use crate::tools::editing::edit_file::{
 };
 use crate::tools::workspace::ManageWorkspaceTool;
 use crate::workspace::registry::generate_workspace_id;
+use crate::tests::helpers::workspace::mark_workspace_root;
 use anyhow::Result;
 use std::fs;
 use std::path::PathBuf;
@@ -311,6 +312,7 @@ impl Drop for ClearEditFileHook {
 #[serial_test::serial(edit_file_commit_hook)]
 async fn test_edit_file_apply_rejects_changed_target_before_commit() -> Result<()> {
     let temp_dir = TempDir::new()?;
+    mark_workspace_root(temp_dir.path());
     let src_dir = temp_dir.path().join("src");
     fs::create_dir_all(&src_dir)?;
     let file_path = src_dir.join("main.rs");
@@ -441,6 +443,7 @@ async fn test_edit_file_routes_to_target_workspace() -> Result<()> {
 #[tokio::test]
 async fn test_edit_file_dry_run_truncates_large_diff_preview() -> Result<()> {
     let temp_dir = TempDir::new()?;
+    mark_workspace_root(temp_dir.path());
     let src_dir = temp_dir.path().join("src");
     fs::create_dir_all(&src_dir)?;
     let file_path = src_dir.join("large.rs");
@@ -516,6 +519,7 @@ async fn test_edit_file_dry_run_truncates_large_diff_preview() -> Result<()> {
 #[tokio::test]
 async fn test_prepared_edit_drives_metrics_and_rejects_changed_target() -> Result<()> {
     let temp_dir = TempDir::new()?;
+    mark_workspace_root(temp_dir.path());
     let src_dir = temp_dir.path().join("src");
     fs::create_dir_all(&src_dir)?;
     let file_path = src_dir.join("main.rs");
@@ -574,6 +578,7 @@ async fn test_prepared_edit_drives_metrics_and_rejects_changed_target() -> Resul
 #[tokio::test]
 async fn test_prepared_edit_dry_run_matches_direct_output() -> Result<()> {
     let temp_dir = TempDir::new()?;
+    mark_workspace_root(temp_dir.path());
     fs::write(temp_dir.path().join("README.md"), "hello\n")?;
 
     let handler = JulieServerHandler::new(temp_dir.path().to_path_buf()).await?;

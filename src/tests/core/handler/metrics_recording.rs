@@ -1,4 +1,5 @@
 use super::*;
+use crate::tests::helpers::workspace::mark_workspace_root;
 
 /// Regression test for the per-tool-call `SymbolDatabase::new` cold-open in
 /// the metrics writer (`src/handler/tool_metrics.rs`).
@@ -134,6 +135,7 @@ async fn test_tool_failure_metrics_records_failed_handler_call() -> Result<()> {
     use std::time::Duration;
 
     let temp_dir = TempDir::new()?;
+    mark_workspace_root(temp_dir.path());
     std::fs::create_dir_all(temp_dir.path().join("src"))?;
     std::fs::write(temp_dir.path().join("src/lib.rs"), "pub fn hi() {}\n")?;
 
@@ -292,6 +294,7 @@ async fn test_deep_dive_failure_metrics_records_failed_handler_call() -> Result<
     use std::time::Duration;
 
     let temp_dir = TempDir::new()?;
+    mark_workspace_root(temp_dir.path());
     std::fs::create_dir_all(temp_dir.path().join("src"))?;
     std::fs::write(temp_dir.path().join("src/lib.rs"), "pub fn hi() {}\n")?;
 

@@ -8,6 +8,7 @@ use crate::tools::navigation::call_path::{
     CallPathHop, CallPathResponse, CallPathTool, edge_label,
 };
 use crate::tools::workspace::ManageWorkspaceTool;
+use crate::tests::helpers::workspace::mark_workspace_root;
 use tempfile::TempDir;
 
 async fn setup_indexed_workspace(content: &str) -> Result<(TempDir, JulieServerHandler)> {
@@ -19,6 +20,7 @@ async fn setup_indexed_workspace_files(
 ) -> Result<(TempDir, JulieServerHandler)> {
     let temp_dir = TempDir::new()?;
     let workspace_path = temp_dir.path().to_path_buf();
+    mark_workspace_root(workspace_path.as_path());
     for (path, content) in files {
         let full_path = workspace_path.join(path);
         if let Some(parent) = full_path.parent() {

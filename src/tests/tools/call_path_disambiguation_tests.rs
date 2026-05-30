@@ -5,6 +5,7 @@ use crate::handler::JulieServerHandler;
 use crate::tools::navigation::call_path::{CallPathHop, CallPathResponse, CallPathTool};
 use crate::tools::navigation::resolution::file_path_matches_suffix;
 use crate::tools::workspace::ManageWorkspaceTool;
+use crate::tests::helpers::workspace::mark_workspace_root;
 use tempfile::TempDir;
 
 // ---------------------------------------------------------------------------
@@ -16,6 +17,7 @@ async fn setup_multi_file_workspace(
 ) -> Result<(TempDir, JulieServerHandler)> {
     let temp_dir = TempDir::new()?;
     let workspace_path = temp_dir.path().to_path_buf();
+    mark_workspace_root(workspace_path.as_path());
 
     for (relative_path, content) in files {
         let full_path = workspace_path.join(relative_path);

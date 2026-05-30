@@ -4,6 +4,7 @@ use tempfile::TempDir;
 
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::CallToolResult;
+use crate::tests::helpers::workspace::mark_workspace_root;
 use crate::tools::workspace::ManageWorkspaceTool;
 
 fn extract_text(result: &CallToolResult) -> String {
@@ -19,6 +20,7 @@ fn extract_text(result: &CallToolResult) -> String {
 async fn setup_workspace(files: &[(&str, &str)]) -> Result<(TempDir, JulieServerHandler)> {
     let temp_dir = TempDir::new()?;
     let workspace_path = temp_dir.path().to_path_buf();
+    mark_workspace_root(workspace_path.as_path());
 
     for (relative_path, content) in files {
         let absolute_path = workspace_path.join(relative_path);

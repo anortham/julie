@@ -23,6 +23,8 @@ use crate::tools::navigation::resolution::{
 use crate::tools::workspace::ManageWorkspaceTool;
 use crate::workspace::registry::generate_workspace_id;
 
+use crate::tests::helpers::workspace::make_isolated_workspace_root;
+
 fn assert_workspace_resolution_failure(
     error: &anyhow::Error,
     expected_kind: WorkspaceResolutionFailureKind,
@@ -54,10 +56,8 @@ async fn setup_known_reference_search_workspace() -> (tempfile::TempDir, JulieSe
     let indexes_dir = temp_dir.path().join("indexes");
     fs::create_dir_all(&indexes_dir).unwrap();
 
-    let primary_root = temp_dir.path().join("primary");
-    let target_root = temp_dir.path().join("target");
-    fs::create_dir_all(&primary_root).unwrap();
-    fs::create_dir_all(&target_root).unwrap();
+    let primary_root = make_isolated_workspace_root(temp_dir.path(), "primary");
+    let target_root = make_isolated_workspace_root(temp_dir.path(), "target");
     fs::write(primary_root.join("main.rs"), "fn primary_marker() {}\n").unwrap();
     fs::write(
         target_root.join("lib.rs"),

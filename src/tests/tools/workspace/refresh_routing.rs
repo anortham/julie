@@ -15,6 +15,8 @@ use crate::tools::workspace::ManageWorkspaceTool;
 use crate::tools::workspace::indexing::route::IndexRoute;
 use crate::workspace::registry::generate_workspace_id;
 
+use crate::tests::helpers::workspace::make_isolated_workspace_root;
+
 fn extract_text_from_result(result: &CallToolResult) -> String {
     result
         .content
@@ -36,8 +38,7 @@ async fn test_primary_force_refresh_uses_full_index_path() {
     let indexes_dir = temp_dir.path().join("indexes");
     fs::create_dir_all(&indexes_dir).unwrap();
 
-    let primary_root = temp_dir.path().join("primary");
-    fs::create_dir_all(&primary_root).unwrap();
+    let primary_root = make_isolated_workspace_root(temp_dir.path(), "primary");
     fs::write(primary_root.join("main.rs"), "fn primary_marker() {}\n").unwrap();
 
     let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).unwrap());
@@ -101,10 +102,8 @@ async fn test_manage_workspace_refresh_force_uses_rebound_session_primary_root()
     let indexes_dir = temp_dir.path().join("indexes");
     fs::create_dir_all(&indexes_dir).unwrap();
 
-    let original_primary_root = temp_dir.path().join("original-primary");
-    let rebound_primary_root = temp_dir.path().join("rebound-primary");
-    fs::create_dir_all(&original_primary_root).unwrap();
-    fs::create_dir_all(&rebound_primary_root).unwrap();
+    let original_primary_root = make_isolated_workspace_root(temp_dir.path(), "original-primary");
+    let rebound_primary_root = make_isolated_workspace_root(temp_dir.path(), "rebound-primary");
     fs::write(
         original_primary_root.join("main.rs"),
         "fn original_primary_marker() {}\n",
@@ -204,10 +203,8 @@ async fn test_daemon_rebound_primary_storage_anchor_keeps_shared_index_root() {
     let indexes_dir = temp_dir.path().join("indexes");
     fs::create_dir_all(&indexes_dir).unwrap();
 
-    let startup_root = temp_dir.path().join("startup-primary");
-    let rebound_root = temp_dir.path().join("roots-primary");
-    fs::create_dir_all(&startup_root).unwrap();
-    fs::create_dir_all(&rebound_root).unwrap();
+    let startup_root = make_isolated_workspace_root(temp_dir.path(), "startup-primary");
+    let rebound_root = make_isolated_workspace_root(temp_dir.path(), "roots-primary");
 
     let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).unwrap());
     let pool = Arc::new(WorkspacePool::new(
@@ -258,7 +255,7 @@ async fn test_roots_list_error_falls_back_to_startup_hint() {
     let indexes_dir = temp_dir.path().join("indexes");
     fs::create_dir_all(&indexes_dir).unwrap();
 
-    let startup_root = temp_dir.path().join("startup-primary");
+    let startup_root = make_isolated_workspace_root(temp_dir.path(), "startup-primary");
     fs::create_dir_all(startup_root.join("src")).unwrap();
     fs::write(
         startup_root.join("src/lib.rs"),
@@ -345,12 +342,9 @@ async fn test_manage_workspace_refresh_force_reference_keeps_reference_snapshot_
     let indexes_dir = temp_dir.path().join("indexes");
     fs::create_dir_all(&indexes_dir).unwrap();
 
-    let loaded_primary_root = temp_dir.path().join("loaded-primary");
-    let rebound_primary_root = temp_dir.path().join("rebound-primary");
-    let reference_root = temp_dir.path().join("reference");
-    fs::create_dir_all(&loaded_primary_root).unwrap();
-    fs::create_dir_all(&rebound_primary_root).unwrap();
-    fs::create_dir_all(&reference_root).unwrap();
+    let loaded_primary_root = make_isolated_workspace_root(temp_dir.path(), "loaded-primary");
+    let rebound_primary_root = make_isolated_workspace_root(temp_dir.path(), "rebound-primary");
+    let reference_root = make_isolated_workspace_root(temp_dir.path(), "reference");
     fs::write(
         loaded_primary_root.join("main.rs"),
         "fn loaded_primary() {}\n",
@@ -454,12 +448,9 @@ async fn test_workspace_index_route_for_reference_keeps_reference_storage_under_
     let indexes_dir = temp_dir.path().join("indexes");
     fs::create_dir_all(&indexes_dir).unwrap();
 
-    let loaded_primary_root = temp_dir.path().join("loaded-primary");
-    let rebound_primary_root = temp_dir.path().join("rebound-primary");
-    let reference_root = temp_dir.path().join("reference");
-    fs::create_dir_all(&loaded_primary_root).unwrap();
-    fs::create_dir_all(&rebound_primary_root).unwrap();
-    fs::create_dir_all(&reference_root).unwrap();
+    let loaded_primary_root = make_isolated_workspace_root(temp_dir.path(), "loaded-primary");
+    let rebound_primary_root = make_isolated_workspace_root(temp_dir.path(), "rebound-primary");
+    let reference_root = make_isolated_workspace_root(temp_dir.path(), "reference");
     fs::write(
         loaded_primary_root.join("main.rs"),
         "fn loaded_primary() {}\n",
@@ -544,10 +535,8 @@ async fn test_manage_workspace_index_non_force_uses_rebound_session_primary_root
     let indexes_dir = temp_dir.path().join("indexes");
     fs::create_dir_all(&indexes_dir).unwrap();
 
-    let loaded_primary_root = temp_dir.path().join("loaded-primary");
-    let rebound_primary_root = temp_dir.path().join("rebound-primary");
-    fs::create_dir_all(&loaded_primary_root).unwrap();
-    fs::create_dir_all(&rebound_primary_root).unwrap();
+    let loaded_primary_root = make_isolated_workspace_root(temp_dir.path(), "loaded-primary");
+    let rebound_primary_root = make_isolated_workspace_root(temp_dir.path(), "rebound-primary");
     fs::write(
         loaded_primary_root.join("main.rs"),
         "fn loaded_primary() {}\n",
@@ -694,10 +683,8 @@ async fn test_manage_workspace_refresh_non_force_uses_rebound_session_primary_ro
     let indexes_dir = temp_dir.path().join("indexes");
     fs::create_dir_all(&indexes_dir).unwrap();
 
-    let loaded_primary_root = temp_dir.path().join("loaded-primary");
-    let rebound_primary_root = temp_dir.path().join("rebound-primary");
-    fs::create_dir_all(&loaded_primary_root).unwrap();
-    fs::create_dir_all(&rebound_primary_root).unwrap();
+    let loaded_primary_root = make_isolated_workspace_root(temp_dir.path(), "loaded-primary");
+    let rebound_primary_root = make_isolated_workspace_root(temp_dir.path(), "rebound-primary");
     fs::write(
         loaded_primary_root.join("main.rs"),
         "fn loaded_primary() {}\n",

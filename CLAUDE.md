@@ -138,7 +138,9 @@ For the tight edit-test loop during implementation:
 
 ### Known Pre-Existing Failures
 
-**One known pre-existing failure set remains:** the `tools-workspace-targeting` bucket (dev/full tiers) has 4 failing tests in `tests::tools::workspace::global_targeting::rebind_index` (the `test_manage_workspace_index_*` rebind cases). They assert that an explicit-path `index` rebinds the session primary, but `current_workspace_id()` resolves to the startup-cwd `tmp_*` workspace instead of the indexed `target_*` one. This is the pre-existing #33 primary-resolution bug: the rebind code path (`src/tools/workspace/commands/index.rs`, `src/handler.rs`, `src/daemon/session.rs`) is byte-identical to the v7.12.2 release, so it is NOT a regression from the test-role/literal work. **Every other dev/full bucket is green.** If a test OUTSIDE this set fails, it's a real regression — investigate it.
+**All tiers are currently green.** If a test fails, it's a real regression, not a known issue. Investigate it.
+
+(#33, resolved 2026-05-30): the `tools-workspace-targeting` rebind tests (`tests::tools::workspace::global_targeting::rebind_index`, `test_manage_workspace_index_*`) used to fail **only on a polluted dev box**, never on clean CI. Root cause was **test non-hermeticity, not a product bug**: the fixtures created marker-less temp workspaces under `$TMPDIR`, so `find_workspace_root` walked up past them to a stray `/private/tmp/Cargo.toml` and resolved every workspace to `tmp_*` instead of `target_*`. Product rebind code was correct and untouched. The resolution-critical fixtures now drop a `.git` marker via `make_isolated_workspace_root` / `mark_workspace_root` (`src/tests/helpers/workspace.rs`) so resolution stops at the temp workspace. Most other temp-workspace tests still assume a clean `$TMPDIR` (as CI always has) — **do not leave stray workspace markers (`Cargo.toml`, `.git`, `.julie`) in your system temp root**, or you will get spurious local-only failures.
 
 (Previous known failures in `core-embeddings` and `workspace_init` were resolved as of 2026-03-19.)
 

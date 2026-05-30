@@ -1,4 +1,5 @@
 use super::*;
+use crate::tests::helpers::workspace::mark_workspace_root;
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_edit_file_metrics_attribute_root_file_source_bytes() -> Result<()> {
@@ -6,6 +7,7 @@ async fn test_edit_file_metrics_attribute_root_file_source_bytes() -> Result<()>
     use std::time::Duration;
 
     let temp_dir = TempDir::new()?;
+    mark_workspace_root(temp_dir.path());
     let cargo_toml = temp_dir.path().join("Cargo.toml");
     let original = "[package]\nname = \"before\"\nversion = \"0.1.0\"\n";
     std::fs::write(&cargo_toml, original)?;
@@ -81,6 +83,7 @@ async fn test_edit_file_validation_errors_are_recorded_as_failures() -> Result<(
     use crate::tools::workspace::ManageWorkspaceTool;
 
     let temp_dir = TempDir::new()?;
+    mark_workspace_root(temp_dir.path());
     std::fs::write(temp_dir.path().join("README.md"), "hello\n")?;
 
     let handler = JulieServerHandler::new(temp_dir.path().to_path_buf()).await?;
@@ -137,6 +140,7 @@ async fn test_edit_file_empty_old_text_validation_precedes_file_io() -> Result<(
     use crate::tools::workspace::ManageWorkspaceTool;
 
     let temp_dir = TempDir::new()?;
+    mark_workspace_root(temp_dir.path());
     std::fs::write(temp_dir.path().join("README.md"), "hello\n")?;
 
     let handler = JulieServerHandler::new(temp_dir.path().to_path_buf()).await?;
@@ -179,6 +183,7 @@ async fn test_edit_file_metrics_include_input_and_edit_outcome() -> Result<()> {
     use crate::tools::workspace::ManageWorkspaceTool;
 
     let temp_dir = TempDir::new()?;
+    mark_workspace_root(temp_dir.path());
     std::fs::write(temp_dir.path().join("README.md"), "hello\n")?;
     let handler = JulieServerHandler::new(temp_dir.path().to_path_buf()).await?;
     ManageWorkspaceTool {
@@ -228,6 +233,7 @@ async fn test_edit_file_apply_metrics_record_conversion_outcome() -> Result<()> 
     use crate::tools::workspace::ManageWorkspaceTool;
 
     let temp_dir = TempDir::new()?;
+    mark_workspace_root(temp_dir.path());
     let file_path = temp_dir.path().join("README.md");
     std::fs::write(&file_path, "hello\n")?;
     let handler = JulieServerHandler::new(temp_dir.path().to_path_buf()).await?;
@@ -272,6 +278,7 @@ async fn test_edit_file_failed_apply_metrics_record_applied_false() -> Result<()
     use crate::tools::workspace::ManageWorkspaceTool;
 
     let temp_dir = TempDir::new()?;
+    mark_workspace_root(temp_dir.path());
     let file_path = temp_dir.path().join("README.md");
     std::fs::write(&file_path, "hello\n")?;
     let handler = JulieServerHandler::new(temp_dir.path().to_path_buf()).await?;
@@ -318,6 +325,7 @@ async fn test_rewrite_symbol_metrics_include_symbol_span_and_failure_kind() -> R
     use crate::tools::workspace::ManageWorkspaceTool;
 
     let temp_dir = TempDir::new()?;
+    mark_workspace_root(temp_dir.path());
     std::fs::create_dir_all(temp_dir.path().join("src"))?;
     std::fs::write(
         temp_dir.path().join("src/lib.rs"),
@@ -404,6 +412,7 @@ async fn test_rewrite_symbol_failed_apply_metrics_record_applied_false() -> Resu
     use crate::tools::workspace::ManageWorkspaceTool;
 
     let temp_dir = TempDir::new()?;
+    mark_workspace_root(temp_dir.path());
     std::fs::create_dir_all(temp_dir.path().join("src"))?;
     let file_path = temp_dir.path().join("src/lib.rs");
     std::fs::write(&file_path, "pub fn target() { println!(\"old\"); }\n")?;
@@ -454,6 +463,7 @@ async fn test_rename_symbol_metrics_include_reference_and_change_counts() -> Res
     use crate::tools::workspace::ManageWorkspaceTool;
 
     let temp_dir = TempDir::new()?;
+    mark_workspace_root(temp_dir.path());
     std::fs::write(
         temp_dir.path().join("main.rs"),
         "fn getUserData() { getUserData(); }\n",
