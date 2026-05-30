@@ -389,6 +389,30 @@ mod tests {
             ts.sql
         );
 
+        // TS↔JS HTTP-client parity: a `.ts` file imports the same npm clients as
+        // a `.js` file, so TypeScript's url carriers MUST be a superset of
+        // JavaScript's. This guards the ky/got/ofetch backport (added to JS/Vue
+        // first) from silently regressing TS out of parity with its own ecosystem.
+        let js = carriers
+            .get("javascript")
+            .expect("javascript carrier config");
+        for carrier in &js.url {
+            assert!(
+                ts.url.contains(carrier.as_str()),
+                "TS url carriers must be a superset of JS (shared npm ecosystem); \
+                 missing {carrier:?}. TS url = {:?}",
+                ts.url
+            );
+        }
+        // Spot-check the specific HTTP clients backported for parity.
+        for client in ["ky", "ky.get", "got", "got.get", "ofetch"] {
+            assert!(
+                ts.url.contains(client),
+                "TS url carriers must include backported HTTP client {client:?}; got {:?}",
+                ts.url
+            );
+        }
+
         let cs = carriers.get("csharp").expect("csharp carrier config");
         // Stored lowercase for case-insensitive matching even though the TOML
         // could be written either case.
@@ -415,8 +439,8 @@ mod tests {
             ("ruby", "net::http.get", "execute"), // call family
             ("python", "requests.get", "execute"),
             ("kotlin", "url", "executequery"),
-            ("lua", "http.request", "execute"),    // function_call family
-            ("bash", "curl", "psql"),              // command grammar (command-name carrier)
+            ("lua", "http.request", "execute"), // function_call family
+            ("bash", "curl", "psql"),           // command grammar (command-name carrier)
             ("powershell", "invoke-restmethod", "invoke-sqlcmd"), // command grammar (cmdlet carrier)
         ] {
             let cfg = carriers

@@ -58,19 +58,37 @@ schema_version = 1
 # callee text: a bare name (`fetch`) or `object.property` for well-known globals
 # (`axios.get`). Local-receiver DB carriers (`pool.query`) need the breadth-phase
 # matching strategy and are intentionally not listed here yet (reference leg = URL).
+# TypeScript and JavaScript share one npm ecosystem — a `.ts` file imports the
+# same HTTP clients as a `.js` file — so the url carriers are kept at parity with
+# javascript.toml (and vue.toml). When you add an HTTP client to one, add it to
+# all three; the breadth guard test asserts TS ⊇ JS for url carriers.
 [literal_carriers]
 url = [
-    "fetch",
-    "$fetch",
-    "axios",
-    "axios.get",
-    "axios.post",
-    "axios.put",
-    "axios.delete",
-    "axios.patch",
-    "axios.request",
-    "axios.head",
-    "request",
+    "fetch",          # WHATWG Fetch (browser / Node 18+ global)
+    "$fetch",         # ofetch (Nuxt global alias)
+    "axios",          # axios (callable instance)
+    "axios.get",      # axios
+    "axios.post",     # axios
+    "axios.put",      # axios
+    "axios.delete",   # axios
+    "axios.patch",    # axios
+    "axios.request",  # axios
+    "axios.head",     # axios
+    "request",        # request / request-promise (legacy HTTP client)
+    "ky",             # ky (callable HTTP client)
+    "ky.get",         # ky
+    "ky.post",        # ky
+    "ky.put",         # ky
+    "ky.delete",      # ky
+    "ky.patch",       # ky
+    "ky.head",        # ky
+    "got",            # got (callable HTTP client)
+    "got.get",        # got
+    "got.post",       # got
+    "got.put",        # got
+    "got.delete",     # got
+    "got.patch",      # got
+    "ofetch",         # ofetch (callable HTTP client)
 ]
 # Bare method names match any receiver via the gate's last-segment rule, so
 # local-variable DB receivers (`pool.query`, `db.execute`, `conn.exec`) are
