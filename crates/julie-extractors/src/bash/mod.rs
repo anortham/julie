@@ -17,6 +17,7 @@ mod functions;
 mod helpers;
 mod relationships;
 mod signatures;
+mod test_calls;
 mod types;
 mod variables;
 
@@ -133,7 +134,16 @@ impl BashExtractor {
             "function_definition" => self.extract_function(node, parent_id),
             "variable_assignment" => self.extract_variable(node, parent_id),
             "declaration_command" => self.extract_declaration(node, parent_id),
-            "command" | "simple_command" => self.extract_command(node, parent_id),
+            "command" | "simple_command" => {
+                // Try shellspec/bats DSL first; fall through to alias/source detection.
+                if let Some(sym) =
+                    test_calls::extract_bash_test_call(&mut self.base, node, parent_id)
+                {
+                    Some(sym)
+                } else {
+                    self.extract_command(node, parent_id)
+                }
+            }
             "for_statement" | "while_statement" | "if_statement" => None,
             _ => None,
         }

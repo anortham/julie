@@ -9,6 +9,7 @@ pub(super) mod properties;
 pub(super) mod protocol;
 pub(super) mod relationships;
 pub(super) mod signatures;
+pub(super) mod test_calls;
 pub(super) mod types;
 
 use crate::base::{BaseExtractor, PendingRelationship, StructuredPendingRelationship, Symbol};
@@ -131,6 +132,11 @@ impl SwiftExtractor {
             }
             "typealias_declaration" => {
                 symbol = self.extract_type_alias(node, parent_id.as_deref());
+            }
+            "call_expression" => {
+                // Quick/Nimble DSL: describe/context/it/beforeEach/…
+                symbol =
+                    test_calls::extract_quick_test_call(&mut self.base, node, parent_id.as_deref());
             }
             _ => {}
         }

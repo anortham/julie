@@ -25,6 +25,27 @@ fn is_container(sym: &Symbol) -> bool {
 }
 
 #[test]
+fn cpp_qualified_callee_is_not_materialized() {
+    // FALSE-POSITIVE GUARD (#66): `classify_call` keys on the segment before the
+    // first '.', so a member call whose RECEIVER is a vocab word
+    // (`TEST_CASE.configure("x")`) would otherwise be misclassified as a Catch2
+    // `TEST_CASE`. Catch2 macros are always bare identifiers, never a member
+    // access (`field_expression`), so a qualified callee must never materialize.
+    let syms = extract_symbols(
+        r#"
+void run() {
+    TEST_CASE.configure("setup");
+    SECTION.begin("phase");
+}
+"#,
+    );
+    assert!(
+        !syms.iter().any(|s| is_test(s) || is_container(s)),
+        "qualified callees `TEST_CASE.configure`/`SECTION.begin` must not materialize, got {syms:?}"
+    );
+}
+
+#[test]
 fn catch2_test_case_is_named_from_first_string_and_flagged() {
     let syms = extract_symbols(
         r#"

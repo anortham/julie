@@ -4,6 +4,7 @@ mod ast_debug;
 mod cross_file_pending;
 mod literals;
 mod task14;
+mod test_detection; // Miller bridge Wave-3: ScalaTest/MUnit call-style adapter
 mod type_arguments;
 
 use crate::base::{IdentifierKind, RelationshipKind, SymbolKind};

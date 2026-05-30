@@ -17,7 +17,9 @@
 //! `test_container` metadata is byte-identical to the other call-style paths.
 
 use crate::base::{BaseExtractor, Symbol};
-use crate::test_calls::{build_test_call_symbol, classify_call, TestCallCategory, TestCallVocab};
+use crate::test_calls::{
+    build_test_call_symbol, classify_call_exact, TestCallCategory, TestCallVocab,
+};
 use tree_sitter::Node;
 
 /// testthat vocabulary. `test_that` and BDD-style `it` are cases; `describe` is
@@ -43,7 +45,12 @@ pub(super) fn extract_r_test_call(
 
     let callee_node = node.child_by_field_name("function")?;
     let full_callee = base.get_node_text(&callee_node);
-    let category = classify_call(&full_callee, &R_VOCAB)?;
+    // Exact match only (#66): in R '.' is a normal identifier char (S3 dispatch
+    // names like `print.data.frame`), NOT a member operator — so `describe.default`
+    // is a single dotted `identifier`. Exact match never equates it to the dotless
+    // `describe`, closing the Mech-B vector a node-kind guard cannot (it IS a bare
+    // identifier). testthat DSL names are dotless.
+    let category = classify_call_exact(&full_callee, &R_VOCAB)?;
 
     let name = match category {
         // Defensive: no lifecycle vocab today, but keep the builder uniform.

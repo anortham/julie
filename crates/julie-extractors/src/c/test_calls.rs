@@ -24,7 +24,9 @@
 //! only the first two identifier arguments form the name.
 
 use crate::base::{BaseExtractor, Symbol};
-use crate::test_calls::{build_test_call_symbol, classify_call, TestCallCategory, TestCallVocab};
+use crate::test_calls::{
+    build_test_call_symbol, classify_call_exact, TestCallCategory, TestCallVocab,
+};
 use tree_sitter::Node;
 
 /// Criterion vocabulary. `Test` is the only test-case macro that parses as a
@@ -51,7 +53,10 @@ pub fn extract_c_test_call(
 
     let function_node = node.child_by_field_name("function")?;
     let full_callee = base.get_node_text(&function_node);
-    let category = classify_call(&full_callee, &CRITERION_VOCAB)?;
+    // Exact match only (#66): a qualified/member callee (`Test.run(...)`, function
+    // field = `field_expression`) never equals the dotless `Test` macro name, so
+    // the exact-matcher rejects it without the JS-only leading-segment split.
+    let category = classify_call_exact(&full_callee, &CRITERION_VOCAB)?;
     debug_assert_eq!(category, TestCallCategory::Test);
 
     // Criterion names a test by its first two identifier arguments (suite, name).

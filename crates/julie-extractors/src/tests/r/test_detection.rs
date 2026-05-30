@@ -20,6 +20,26 @@ fn meta_bool(s: &Symbol, key: &str) -> bool {
 }
 
 #[test]
+fn r_qualified_callee_is_not_materialized() {
+    // FALSE-POSITIVE GUARD (#66): `classify_call` keys on the segment before the
+    // first '.'. In R, '.' is a normal identifier char (S3 dispatch names like
+    // `print.data.frame`), NOT a member operator — so an ordinary S3-style call
+    // `describe.default("x")` is a single dotted identifier that would otherwise
+    // be misclassified as a testthat `describe`. Only an exact bare vocab name is
+    // a DSL call; any dotted callee must be rejected.
+    let code = r#"
+describe.default("widget config")
+"#;
+    let syms = extract_symbols(code);
+    assert!(
+        !syms
+            .iter()
+            .any(|s| meta_bool(s, "is_test") || meta_bool(s, "test_container")),
+        "dotted S3-style callee `describe.default(...)` must not materialize a test symbol, got {syms:?}"
+    );
+}
+
+#[test]
 fn testthat_test_that_describe_it_emit_test_role_metadata() {
     let code = r#"
 test_that("addition works", {

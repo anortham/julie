@@ -9,6 +9,7 @@ mod generics;
 mod identifiers;
 mod integration;
 mod literals;
+mod test_detection;
 mod type_arguments;
 mod type_assertions;
 

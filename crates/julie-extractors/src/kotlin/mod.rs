@@ -16,6 +16,7 @@ mod helpers;
 mod identifiers;
 mod properties;
 mod relationships;
+mod test_calls;
 mod types;
 
 use crate::base::{
@@ -140,6 +141,18 @@ impl KotlinExtractor {
             "type_alias" => {
                 symbol =
                     declarations::extract_type_alias(&mut self.base, &node, parent_id.as_deref());
+            }
+            // Kotest / Spek call-style tests (Miller bridge Wave-3).
+            // `describe("name") { it("name") { } }`, `test("n") { }`,
+            // `beforeEach { }`, etc. Returns None for non-DSL calls (no vocab
+            // match or no trailing lambda body), so ordinary call_expressions
+            // fall through untouched.
+            "call_expression" => {
+                symbol = test_calls::extract_kotlin_test_call(
+                    &mut self.base,
+                    &node,
+                    parent_id.as_deref(),
+                );
             }
             // ERROR recovery: when tree-sitter can't fully parse a class declaration
             // (e.g., due to unsupported syntax like `class Foo\nprivate constructor(...)`),

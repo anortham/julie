@@ -11,6 +11,7 @@ pub mod edge_cases;
 pub mod identifiers;
 pub mod literals;
 pub mod phpdoc_comments;
+pub mod test_detection;
 
 use crate::base::{Relationship, RelationshipKind, Symbol, SymbolKind, Visibility};
 use crate::php::PhpExtractor;
@@ -2054,15 +2055,29 @@ class Configuration
                 .contains("#[Validate(['required', 'integer', 'min:1'])]")
         );
 
-        let name_prop = symbols.iter().find(|s| s.name == "name");
-        assert!(name_prop.is_some());
+        // Find UserController's `$name` property specifically — the test fixture also has
+        // Route's promoted `$name` parameter (public, no attribute) and User's `$name` (public),
+        // so narrow to the private one which belongs to UserController.
+        let name_prop = symbols.iter().find(|s| {
+            s.name == "name"
+                && s.kind == SymbolKind::Property
+                && s.signature
+                    .as_ref()
+                    .map_or(false, |sig| sig.contains("private"))
+        });
+        assert!(
+            name_prop.is_some(),
+            "Should find UserController's private $name property"
+        );
         assert!(
             name_prop
                 .unwrap()
                 .signature
                 .as_ref()
                 .unwrap()
-                .contains("#[Validate(['required', 'string', 'max:255'])]")
+                .contains("#[Validate(['required', 'string', 'max:255'])]"),
+            "Private $name property should have #[Validate] attribute in signature, got: {}",
+            name_prop.unwrap().signature.as_ref().unwrap()
         );
 
         // Methods with attributes

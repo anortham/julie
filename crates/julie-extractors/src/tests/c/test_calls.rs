@@ -18,6 +18,36 @@ fn is_test(sym: &Symbol) -> bool {
 }
 
 #[test]
+fn c_qualified_callee_is_not_materialized() {
+    // FALSE-POSITIVE GUARD (#66): `classify_call` keys on the segment before the
+    // first '.', so a member call whose RECEIVER is a vocab word
+    // (`Test.run(...)`) would otherwise be misclassified as a Criterion `Test`.
+    // Criterion's `Test` macro is always a bare identifier, never a member access
+    // (`field_expression`), so a qualified callee must never materialize a test.
+    let syms = extract_symbols_with_name(
+        r#"
+int run_config(void) {
+    Test.run(alpha, beta);
+    return 0;
+}
+"#,
+        "src/config.c",
+    );
+    let has_role = |s: &Symbol| {
+        is_test(s)
+            || s.metadata
+                .as_ref()
+                .and_then(|m| m.get("test_container"))
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false)
+    };
+    assert!(
+        !syms.iter().any(has_role),
+        "qualified callee `Test.run(...)` must not materialize a test symbol, got {syms:?}"
+    );
+}
+
+#[test]
 fn criterion_test_is_named_suite_dot_name_and_flagged() {
     // NON-test path proves call-based (not name/path) detection.
     let syms = extract_symbols_with_name(

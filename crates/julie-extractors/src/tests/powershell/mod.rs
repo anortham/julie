@@ -1023,6 +1023,7 @@ function Run-DeploymentPipeline {
 
             let (mut extractor, tree) = create_extractor_and_parse(powershell_code);
             let symbols = extractor.extract_symbols(&tree);
+            let identifiers = extractor.extract_identifiers(&tree, &symbols);
 
             // Should extract the main deployment function
             let deployment_func = symbols.iter().find(|s| s.name == "Run-DeploymentPipeline");
@@ -1032,30 +1033,25 @@ function Run-DeploymentPipeline {
             );
             assert_eq!(deployment_func.unwrap().kind, SymbolKind::Function);
 
-            // Should extract DevOps tool calls
-            let devops_commands = symbols
-                .iter()
-                .filter(|s| {
-                    s.kind == SymbolKind::Function
-                        && ["docker", "kubectl", "az", "Invoke-Command"].contains(&s.name.as_str())
-                })
-                .collect::<Vec<_>>();
-            assert!(
-                devops_commands.len() >= 4,
-                "Should extract at least 4 DevOps commands"
-            );
-
-            let docker_cmd = devops_commands.iter().find(|c| c.name == "docker");
-            assert!(docker_cmd.is_some(), "Should extract docker command");
-
-            let kubectl_cmd = devops_commands.iter().find(|c| c.name == "kubectl");
-            assert!(kubectl_cmd.is_some(), "Should extract kubectl command");
-
-            let az_cmd = devops_commands.iter().find(|c| c.name == "az");
-            assert!(az_cmd.is_some(), "Should extract az command");
-
-            let invoke_cmd = devops_commands.iter().find(|c| c.name == "Invoke-Command");
-            assert!(invoke_cmd.is_some(), "Should extract Invoke-Command");
+            // DevOps commands are call identifiers, NOT symbols — the extractor models
+            // external tool invocations (docker, kubectl, az, Invoke-Command) as
+            // call-identifier references so they appear in relationships without
+            // polluting the symbol namespace.
+            for command_name in ["docker", "kubectl", "az", "Invoke-Command"] {
+                assert!(
+                    identifiers.iter().any(|id| {
+                        id.name == command_name
+                            && id.kind == crate::base::IdentifierKind::Call
+                    }),
+                    "Should extract {} as a call identifier",
+                    command_name
+                );
+                assert!(
+                    symbols.iter().all(|s| s.name != command_name),
+                    "DevOps command {} should not be emitted as a symbol",
+                    command_name
+                );
+            }
         }
     }
 
@@ -1817,5 +1813,7 @@ function Simple-Function {
 mod cross_file_pending;
 mod cross_file_relationships;
 mod literals; // Miller bridge Phase 3b: string-literal command-argument capture
+mod test_detection; // Pester call-style test detection (Miller bridge test-roles)
 mod type_arguments;
 mod types; // Phase 4: Type extraction verification tests // Cross-file relationship resolution tests
+

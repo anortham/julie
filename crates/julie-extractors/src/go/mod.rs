@@ -4,6 +4,7 @@ mod identifiers;
 mod relationships;
 mod signatures;
 mod specs;
+mod test_calls;
 mod types;
 
 use crate::base::{
@@ -211,6 +212,10 @@ impl GoExtractor {
             "function_declaration" => self.extract_function(node, parent_id),
             "method_declaration" => self.extract_method(node, parent_id),
             // "field_declaration" handled in walk_tree (can produce multiple symbols)
+            "call_expression" => {
+                // Ginkgo/Gomega DSL: Describe/Context/It/BeforeEach/…
+                test_calls::extract_ginkgo_test_call(&mut self.base, node, parent_id)
+            }
             "ERROR" => self.extract_from_error_node(node, parent_id),
             _ => None,
         }

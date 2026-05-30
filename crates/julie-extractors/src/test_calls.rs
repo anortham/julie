@@ -38,6 +38,15 @@ pub struct TestCallVocab<'a> {
 /// Classify a callee name against a vocabulary, returning its category if it is a
 /// recognized test-DSL call. Handles modifier chains (`it.skip`, `describe.only`,
 /// `test.todo`) by matching the segment before the first `.`.
+///
+/// ⚠️ JS/TS-ONLY VARIANT. The leading-segment split is a Jest/Vitest/Mocha idiom
+/// (`it.only`, `describe.skip`) where the DSL word leads the dotted chain. For any
+/// OTHER language this is a FALSE-POSITIVE FOOTGUN: a qualified/member callee whose
+/// receiver happens to be a vocab word — `it.register("w")` (member access),
+/// `describe.default(...)` (an R S3 method name), `Context.Helper` (a dotted
+/// bareword command) — collapses to its leading segment and misfires. Languages
+/// without dotted DSL modifiers MUST use [`classify_call_exact`] instead. Only
+/// JS/TS ([`extract_test_call`] / [`is_test_runner_call`]) may call this.
 pub fn classify_call(callee: &str, vocab: &TestCallVocab) -> Option<TestCallCategory> {
     let base = callee.split('.').next().unwrap_or(callee);
     if vocab.test.contains(&base) {
@@ -45,6 +54,26 @@ pub fn classify_call(callee: &str, vocab: &TestCallVocab) -> Option<TestCallCate
     } else if vocab.container.contains(&base) {
         Some(TestCallCategory::Container)
     } else if vocab.lifecycle.contains(&base) {
+        Some(TestCallCategory::Lifecycle)
+    } else {
+        None
+    }
+}
+
+/// Exact-match classifier for frameworks WITHOUT dotted DSL modifiers (every
+/// call-style language except JS/TS). A qualified/member callee (`it.register`,
+/// `describe.default`, `Context.Helper`) never equals a (dotless) vocab entry, so
+/// this closes the false-positive vector — both member-access (Mech A: dotted
+/// `field_expression`/`navigation_expression`/`selector` text) and dotted-bareword
+/// (Mech B: R S3 names, Bash/PowerShell command names that are a single dotted
+/// token a node-kind guard cannot catch) — with no `.`-split. Adapters still walk
+/// their own grammar to resolve the callee; this only decides the category.
+pub fn classify_call_exact(callee: &str, vocab: &TestCallVocab) -> Option<TestCallCategory> {
+    if vocab.test.contains(&callee) {
+        Some(TestCallCategory::Test)
+    } else if vocab.container.contains(&callee) {
+        Some(TestCallCategory::Container)
+    } else if vocab.lifecycle.contains(&callee) {
         Some(TestCallCategory::Lifecycle)
     } else {
         None

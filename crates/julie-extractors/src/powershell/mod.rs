@@ -21,6 +21,7 @@ pub mod helpers;
 pub mod identifiers;
 pub mod imports;
 pub mod relationships;
+pub mod test_calls;
 pub mod types;
 pub mod variables;
 
@@ -130,6 +131,11 @@ impl PowerShellExtractor {
                     } else {
                         None
                     }
+                } else if let Some(sym) =
+                    test_calls::extract_pester_test_call(&mut self.base, node, parent_id)
+                {
+                    // Pester DSL call — materialize as a Function with test-role metadata.
+                    Some(sym)
                 } else {
                     commands::extract_command(&mut self.base, node, parent_id)
                 }

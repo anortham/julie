@@ -40,23 +40,52 @@ materializes. A language whose `detect_*` arm lists call-DSL vocab
 (`describe`/`it`/…) but whose extractor never materializes those calls has a
 **dormant** heuristic — that is the PARTIAL signature.
 
-## Summary (34 / 34 accounted for)
+## Summary (34 / 34 accounted for) — COMPLETE as of 2026-05-30
+
+Every PARTIAL bucket from the original audit has been driven to IMPLEMENTED. No
+"we'll get to it" bucket remains.
 
 | Bucket | Count | Languages |
 |--------|-------|-----------|
-| **IMPLEMENTED — shared core** | 3 | JavaScript, TypeScript, Dart¹ |
-| **IMPLEMENTED — wave-1 in flight** | 4 | C, C++, Lua, R |
-| **IMPLEMENTED — bespoke (convergence candidates)** | 2 | Ruby, Elixir² |
-| **PARTIAL — vocab present, materialization dormant** | 3 | PowerShell, Bash, Scala |
-| **PARTIAL — secondary call-style framework unhandled** | 4 | PHP, Kotlin, Swift, Go |
+| **IMPLEMENTED — shared `test_calls` core** | 14 | JavaScript, TypeScript, Dart, C, C++, Lua, R, PHP, Kotlin, Swift, Go, Scala, PowerShell, Bash |
+| **IMPLEMENTED — bespoke** | 2 | Ruby, Elixir² |
 | **VERIFIED-N/A — test concept is non-call-style (handled)** | 8 | Rust, Python, Java, C#, VB.NET, GDScript, QML, Zig |
 | **VERIFIED-N/A — no in-file test concept** | 10 | Vue, Razor, SQL, HTML, CSS, Regex, Markdown, JSON, TOML, YAML |
 
-¹ Dart materializes via `dart/test_calls.rs` (#48) and is pending the fold onto
-the shared `build_test_call_symbol` (lead #45).
+16 languages materialize call-style tests; 18 are positively verified N/A. The
+former PARTIAL set — PowerShell/Bash/Scala (primary idiom) and PHP/Kotlin/Swift/Go
+(secondary framework) — all shipped Wave-3 adapters on the shared core (PowerShell
+Pester, Bash shellspec/bats, Scala ScalaTest/MUnit, PHP Pest, Kotlin Kotest/Spek,
+Swift Quick/Nimble, Go Ginkgo).
+
 ² Ruby/Elixir materialize via **bespoke per-language code that predates the
-shared core** — see the "Key corrections" section: these are *not* name-prefix
-gaps; Ruby is fully wired with canonical metadata.
+shared core** — see the "Key corrections" section. Ruby is fully wired with
+canonical metadata; convergence onto the shared `build_test_call_symbol` stays
+deferred because that builder only emits `Function`, while Ruby/Elixir
+`describe` produce a `Namespace` symbol for parent tracking. Functionally
+complete, not a breadth gap.
+
+## Qualified-callee false-positive guard (2026-05-30 audit)
+
+`classify_call` keys on the segment before the first `.` (for JS `it.only` /
+`describe.skip` modifier chains). That JS-ism is a footgun for every other
+language: a member/qualified callee whose **leading** segment is a vocab word
+(`it.register("x")`, R S3 `describe.default`, PowerShell `Context.Helper`) would
+false-positive. Fixed centrally: added `classify_call_exact` (exact membership,
+no split) used by all 12 non-JS adapters; JS/TS keep `classify_call`. Two
+mechanisms were closed — **A** member access in function position, and **B**
+dotted *bare* identifiers (R/Bash/PowerShell) that a node-kind guard cannot
+catch. Every adapter carries a `qualified_callee_is_not_materialized`-style
+negative lock. Full SAFE/VULNERABLE positive-verification matrix below.
+
+| Lang | Verdict | Evidence |
+|------|---------|----------|
+| C, C++, Dart, Scala, Lua | VULN→fixed (mech A) | member/`field_expression` callee text reached `classify_call`; now `classify_call_exact` |
+| R, PowerShell, Bash | VULN→fixed (mech B) | dotted bare `identifier`/`command_name`/`word` (S3 names, dotted barewords) |
+| PHP | SAFE | only fires on `function_call_expression`; member/static calls excluded; fn names dotless |
+| Swift | SAFE | callee = first DIRECT `simple_identifier`; member receiver nests in `navigation_expression` → not found |
+| Go | SAFE | `function.kind() != "identifier"` rejects `selector_expression` |
+| Kotlin | VULN→fixed | dropped `navigation_expression` from callee kinds (bare-identifier only) |
 
 ## IMPLEMENTED
 

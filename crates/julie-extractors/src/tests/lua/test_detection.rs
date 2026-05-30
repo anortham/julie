@@ -37,6 +37,24 @@ fn meta_bool(s: &Symbol, key: &str) -> bool {
 }
 
 #[test]
+fn lua_qualified_callee_is_not_materialized() {
+    // FALSE-POSITIVE GUARD (#66): `classify_call` keys on the segment before the
+    // first '.', so a dot-index method call whose RECEIVER is a vocab word
+    // (`it.register("x")`, a `dot_index_expression`) would otherwise be
+    // misclassified as a busted `it`. Only a bare-identifier callee is a DSL call.
+    let code = r#"
+it.register("plugin", function() end)
+"#;
+    let syms = symbols(code);
+    assert!(
+        !syms
+            .iter()
+            .any(|s| meta_bool(s, "is_test") || meta_bool(s, "test_container")),
+        "qualified callee `it.register(...)` must not materialize a test symbol, got {syms:?}"
+    );
+}
+
+#[test]
 fn busted_it_describe_before_each_emit_test_role_metadata() {
     let code = r#"
 describe("math helpers", function()

@@ -20,7 +20,9 @@
 //! the downstream `classify_symbols_by_role` pass treats them identically.
 
 use crate::base::{BaseExtractor, Symbol};
-use crate::test_calls::{build_test_call_symbol, classify_call, TestCallCategory, TestCallVocab};
+use crate::test_calls::{
+    build_test_call_symbol, classify_call_exact, TestCallCategory, TestCallVocab,
+};
 use tree_sitter::Node;
 
 /// busted vocabulary. `it` is a case, `describe`/`context` are containers, and
@@ -54,7 +56,10 @@ pub(super) fn extract_lua_test_call(
 
     let callee_node = node.child_by_field_name("name")?;
     let full_callee = base.get_node_text(&callee_node);
-    let category = classify_call(&full_callee, &LUA_VOCAB)?;
+    // Exact match only (#66): a dot-index method call (`it.register(...)`, name
+    // field = `dot_index_expression`) never equals a dotless busted DSL name, so
+    // the exact-matcher rejects it without the JS-only leading-segment split.
+    let category = classify_call_exact(&full_callee, &LUA_VOCAB)?;
 
     let name = match category {
         // Lifecycle calls take no description string; use the callee's base name.

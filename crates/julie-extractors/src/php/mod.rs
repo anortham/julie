@@ -8,6 +8,7 @@ mod identifiers;
 mod members;
 mod namespaces;
 mod relationships;
+mod test_calls;
 mod types;
 
 use crate::base::{
@@ -25,6 +26,7 @@ use identifiers::extract_identifier_from_node;
 use members::{extract_constant, extract_property};
 use namespaces::{extract_namespace, extract_use, extract_variable_assignment};
 use relationships::{extract_class_relationships, extract_interface_relationships};
+use test_calls::extract_php_pest_test_call;
 use types::{
     extract_anonymous_class, extract_class, extract_enum, extract_enum_case, extract_interface,
     extract_trait,
@@ -128,6 +130,10 @@ impl PhpExtractor {
             "anonymous_class" => extract_anonymous_class(self, node, parent_id.as_deref()),
             "assignment_expression" => {
                 extract_variable_assignment(self, node, parent_id.as_deref())
+            }
+            // Pest call-style tests: test(...)/it(...)/describe(...)/lifecycle hooks.
+            "function_call_expression" => {
+                extract_php_pest_test_call(&mut self.base, node, parent_id.as_deref())
             }
             _ => None,
         };

@@ -46,6 +46,26 @@ fn annotation_keys(symbol: &crate::base::Symbol) -> Vec<String> {
 }
 
 #[test]
+fn dart_qualified_callee_is_not_materialized() {
+    // FALSE-POSITIVE GUARD (#66): `classify_call` keys on the segment before the
+    // first '.', so a member call whose RECEIVER is a vocab word
+    // (`test.configure('x', ...)`) would otherwise be misclassified as a
+    // package:test `test`. Only a bare-identifier callee is a DSL call.
+    let code = r#"
+void run() {
+  test.configure('feature', () {});
+}
+"#;
+    let syms = symbols(code, "lib/run.dart");
+    assert!(
+        !syms
+            .iter()
+            .any(|s| meta_bool(s, "is_test") || meta_bool(s, "test_container")),
+        "qualified callee `test.configure(...)` must not materialize a test symbol, got {syms:?}"
+    );
+}
+
+#[test]
 fn test_call_materialized_as_is_test_symbol() {
     // `test('adds', () {})` — a package:test call. The extractor must materialize
     // a Function symbol named "adds" (the description) flagged is_test. Call-style

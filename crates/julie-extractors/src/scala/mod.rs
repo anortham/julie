@@ -13,6 +13,7 @@ mod helpers;
 mod identifiers;
 mod properties;
 mod relationships;
+mod test_calls;
 mod types;
 
 use crate::base::{
@@ -123,6 +124,21 @@ impl ScalaExtractor {
             "extension_definition" => {
                 symbol =
                     declarations::extract_extension(&mut self.base, &node, parent_id.as_deref());
+            }
+            // ScalaTest / MUnit call-style tests (Miller bridge Wave-3). Curried
+            // call form `test("n") { }` / `describe(...) { it(...) }`, and FlatSpec
+            // infix form `"subject" should "behaviour" in { }`. Both return None
+            // for non-test nodes, so ordinary calls/infix fall through untouched.
+            "call_expression" => {
+                symbol =
+                    test_calls::extract_scala_test_call(&mut self.base, &node, parent_id.as_deref());
+            }
+            "infix_expression" => {
+                symbol = test_calls::extract_scala_flatspec_test(
+                    &mut self.base,
+                    &node,
+                    parent_id.as_deref(),
+                );
             }
             _ => {}
         }
