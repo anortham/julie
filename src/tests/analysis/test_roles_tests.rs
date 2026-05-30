@@ -61,6 +61,7 @@ mod tests {
             fixture_setup: HashSet::from(["setup".to_string(), "test_initialize".to_string()]),
             fixture_teardown: HashSet::from(["teardown".to_string(), "test_cleanup".to_string()]),
             test_container: HashSet::from(["test_class".to_string(), "test_fixture".to_string()]),
+            test_base_types: HashSet::new(),
         }
     }
 
@@ -440,6 +441,94 @@ mod tests {
     // ---------------------------------------------------------------
     // TestRoleConfig::classify_annotation tests
     // ---------------------------------------------------------------
+
+    // ---------------------------------------------------------------
+    // base-type container rule (Phase 2a)
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn test_base_type_container_from_superclasses_metadata() {
+        // `class MyTests(unittest.TestCase)` — no annotation, but its recorded
+        // base type matches a configured test_base_types entry by LAST SEGMENT
+        // ("TestCase" catches "unittest.TestCase"). Container-kind => TestContainer.
+        let mut config = csharp_config();
+        config.test_base_types = HashSet::from(["TestCase".to_string()]);
+        let mut metadata = HashMap::new();
+        metadata.insert(
+            "superclasses".to_string(),
+            serde_json::json!(["unittest.TestCase"]),
+        );
+        let symbol = make_symbol(SymbolKind::Class, "python", vec![], Some(metadata));
+        assert_eq!(
+            classify_test_role(&symbol, Some(&config)),
+            Some(TestRole::TestContainer),
+            "class extending unittest.TestCase must be a test container"
+        );
+    }
+
+    #[test]
+    fn test_base_type_container_from_canonical_base_types_metadata() {
+        // The canonical cross-language `base_types` metadata key drives the rule
+        // too — e.g. Swift `class FooTests: XCTestCase`.
+        let mut config = csharp_config();
+        config.test_base_types = HashSet::from(["XCTestCase".to_string()]);
+        let mut metadata = HashMap::new();
+        metadata.insert("base_types".to_string(), serde_json::json!(["XCTestCase"]));
+        let symbol = make_symbol(SymbolKind::Class, "swift", vec![], Some(metadata));
+        assert_eq!(
+            classify_test_role(&symbol, Some(&config)),
+            Some(TestRole::TestContainer),
+            "class inheriting XCTestCase must be a test container via base_types"
+        );
+    }
+
+    #[test]
+    fn test_base_type_unrelated_base_is_not_container() {
+        // A class whose base type is not in test_base_types is not classified.
+        let mut config = csharp_config();
+        config.test_base_types = HashSet::from(["TestCase".to_string()]);
+        let mut metadata = HashMap::new();
+        metadata.insert("base_types".to_string(), serde_json::json!(["object"]));
+        let symbol = make_symbol(SymbolKind::Class, "python", vec![], Some(metadata));
+        assert_eq!(classify_test_role(&symbol, Some(&config)), None);
+    }
+
+    #[test]
+    fn test_base_type_match_on_callable_is_not_container() {
+        // A base-type match must only promote CONTAINER kinds. A method that
+        // somehow carries a base_types entry is never a TestContainer.
+        let mut config = csharp_config();
+        config.test_base_types = HashSet::from(["TestCase".to_string()]);
+        let mut metadata = HashMap::new();
+        metadata.insert(
+            "base_types".to_string(),
+            serde_json::json!(["unittest.TestCase"]),
+        );
+        let symbol = make_symbol(SymbolKind::Method, "python", vec![], Some(metadata));
+        assert_eq!(classify_test_role(&symbol, Some(&config)), None);
+    }
+
+    #[test]
+    fn test_base_type_annotation_still_takes_priority() {
+        // When both an annotation and a base type are present, the annotation
+        // path still resolves first (it runs before the base-type rule).
+        let mut config = csharp_config();
+        config.test_base_types = HashSet::from(["TestCase".to_string()]);
+        let mut metadata = HashMap::new();
+        metadata.insert("base_types".to_string(), serde_json::json!(["TestCase"]));
+        let symbol = make_symbol(
+            SymbolKind::Class,
+            "csharp",
+            vec![annotation("test_class")],
+            Some(metadata),
+        );
+        // test_class is a test_container annotation, so the result is the same
+        // role — assert it's classified (the annotation path provides it).
+        assert_eq!(
+            classify_test_role(&symbol, Some(&config)),
+            Some(TestRole::TestContainer)
+        );
+    }
 
     #[test]
     fn test_classify_annotation_priority_order() {

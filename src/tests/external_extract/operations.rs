@@ -848,11 +848,13 @@ async fn extract_scan_persists_test_role_metadata_across_languages() {
     )
     .expect("write csharp");
     // Python pytest: @pytest.fixture (fixture_setup via annotation), a
-    // convention-named test_* function (test_case via the is_test fallback), and
-    // a plain helper that must stay unclassified.
+    // convention-named test_* function (test_case via the is_test fallback), a
+    // unittest.TestCase subclass (test_container via the base-type rule — no
+    // annotation), and a plain helper that must stay unclassified.
     fs::write(
         root.join("test_calc.py"),
         "import pytest\n\
+         import unittest\n\
          \n\
          @pytest.fixture\n\
          def db():\n\
@@ -860,6 +862,10 @@ async fn extract_scan_persists_test_role_metadata_across_languages() {
          \n\
          def test_adds():\n\
          \x20   assert 1 + 1 == 2\n\
+         \n\
+         class CalcTestCase(unittest.TestCase):\n\
+         \x20   def test_add(self):\n\
+         \x20       self.assertEqual(1 + 1, 2)\n\
          \n\
          def helper():\n\
          \x20   return 0\n",
@@ -929,6 +935,19 @@ async fn extract_scan_persists_test_role_metadata_across_languages() {
         ),
         1,
         "convention-named test_adds must persist test_role=test_case"
+    );
+    // Python unittest.TestCase subclass -> test_container via the base-type rule
+    // (no annotation; matched on the recorded `superclasses` base type).
+    assert_eq!(
+        count_rows_where(
+            &db,
+            "symbols",
+            "name = 'CalcTestCase' AND file_path = 'test_calc.py' \
+             AND json_extract(metadata,'$.test_role') = 'test_container' \
+             AND json_extract(metadata,'$.is_test') = 1"
+        ),
+        1,
+        "unittest.TestCase subclass must persist test_role=test_container via base-type rule"
     );
 
     // Negatives: production symbols get NO test_role and NO is_test.

@@ -69,6 +69,10 @@ parameterized_test = ["pytest.mark.parametrize"]
 fixture_setup = ["pytest.fixture"]
 fixture_teardown = []
 test_container = []
+# Base classes that make a class a test container (matched by last segment, so
+# this catches both `TestCase` and `unittest.TestCase`). unittest + its common
+# stdlib subclasses are the dominant non-pytest Python test style.
+test_base_types = ["TestCase", "IsolatedAsyncioTestCase", "FunctionTestCase"]
 
 [test_evidence]
 assertion_identifiers = ["assert", "assertequal", "asserttrue", "assertfalse", "assertin", "assertisnone", "assertraises"]

@@ -22,6 +22,12 @@ pub struct TestRoleConfig {
     pub fixture_setup: HashSet<String>,
     pub fixture_teardown: HashSet<String>,
     pub test_container: HashSet<String>,
+    /// Base types (superclasses / inherited components) whose presence makes a
+    /// container-kind symbol a `TestContainer` even without a test annotation —
+    /// e.g. Python `unittest.TestCase`, Swift `XCTestCase`, JUnit 3 `TestCase`,
+    /// QML `TestCase`. Matched by last path segment, so `["TestCase"]` catches
+    /// both `TestCase` and `unittest.TestCase`.
+    pub test_base_types: HashSet<String>,
 }
 
 impl TestRoleConfig {
@@ -63,15 +69,52 @@ fn is_callable_kind(kind: &SymbolKind) -> bool {
     )
 }
 
+/// The last path/scope segment of a (possibly qualified) type name —
+/// `unittest.TestCase` -> `TestCase`, `app::TestCase` -> `TestCase`,
+/// `TestCase` -> `TestCase`. Lets `test_base_types = ["TestCase"]` match a base
+/// recorded as either the bare or the fully-qualified name across languages.
+fn last_type_segment(name: &str) -> &str {
+    name.rsplit(['.', ':']).next().unwrap_or(name).trim()
+}
+
+/// The base types (superclasses / inherited components) a symbol records.
+///
+/// Cross-language signal: extractors record base types under the canonical
+/// `base_types` metadata key; `superclasses` (Python's existing key) is accepted
+/// as an alias so Python works without an extractor change. Both hold a JSON
+/// array of type-name strings.
+fn symbol_base_types(symbol: &Symbol) -> Vec<String> {
+    let Some(metadata) = symbol.metadata.as_ref() else {
+        return Vec::new();
+    };
+    for key in ["base_types", "superclasses"] {
+        if let Some(value) = metadata.get(key)
+            && let Some(array) = value.as_array()
+        {
+            let names: Vec<String> = array
+                .iter()
+                .filter_map(|v| v.as_str().map(str::to_string))
+                .collect();
+            if !names.is_empty() {
+                return names;
+            }
+        }
+    }
+    Vec::new()
+}
+
 /// Classify a single symbol's test role.
 ///
 /// 1. If `role_config` is provided, check each annotation against it.
 ///    For `TestContainer`, the symbol must have a container kind (Class, Struct,
 ///    Module, Namespace). For all other roles, the symbol must have a callable
 ///    kind (Function, Method, Constructor).
-/// 2. Fall back to the extractor's `is_test` metadata flag (convention-based
+/// 2. Base-type containers: a container-kind symbol whose recorded base type
+///    (last segment) is in `test_base_types` is a `TestContainer` even without an
+///    annotation (Python `unittest.TestCase`, Swift `XCTestCase`, QML `TestCase`).
+/// 3. Fall back to the extractor's `is_test` metadata flag (convention-based
 ///    languages like Rust, Go, Python). If `is_test` was set, return `TestCase`.
-/// 3. Return `None` for non-test symbols.
+/// 4. Return `None` for non-test symbols.
 pub fn classify_test_role(
     symbol: &Symbol,
     role_config: Option<&TestRoleConfig>,
@@ -98,9 +141,26 @@ pub fn classify_test_role(
                 }
             }
         }
+
+        // Step 2: base-type container rule. Only container kinds, matched by last
+        // segment so dotted/qualified bases (`unittest.TestCase`) match a bare
+        // config entry (`TestCase`).
+        if !config.test_base_types.is_empty() && is_container_kind(&symbol.kind) {
+            let configured: HashSet<&str> = config
+                .test_base_types
+                .iter()
+                .map(|t| last_type_segment(t))
+                .collect();
+            if symbol_base_types(symbol)
+                .iter()
+                .any(|base| configured.contains(last_type_segment(base)))
+            {
+                return Some(TestRole::TestContainer);
+            }
+        }
     }
 
-    // Step 2: convention-based fallback from extractor's is_test flag
+    // Step 3: convention-based fallback from extractor's is_test flag
     let is_test = symbol
         .metadata
         .as_ref()

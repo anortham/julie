@@ -90,6 +90,11 @@ pub struct TestAnnotationClasses {
     pub fixture_teardown: Vec<String>,
     #[serde(default)]
     pub test_container: Vec<String>,
+    /// Base types / inherited components that mark a container as a test
+    /// container without an annotation (e.g. `unittest.TestCase`, `XCTestCase`,
+    /// QML `TestCase`). Matched by last path segment in `classify_test_role`.
+    #[serde(default)]
+    pub test_base_types: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -311,6 +316,7 @@ impl LanguageConfigs {
                     fixture_setup: tc.fixture_setup.iter().cloned().collect(),
                     fixture_teardown: tc.fixture_teardown.iter().cloned().collect(),
                     test_container: tc.test_container.iter().cloned().collect(),
+                    test_base_types: tc.test_base_types.iter().cloned().collect(),
                 };
                 (lang.clone(), role_config)
             })
