@@ -73,12 +73,12 @@ Status: ✅ implemented (arm + TOML + test) · ⬜ pending · 🚫 verified-N/A.
 | 18 | R | `call` | ✅ | httr.GET/HEAD dotted-only (avoid base-R get/head); POST/PUT/etc bare; DBI db* verbs. Known limit: bare GET(url) dropped. `b05b2da6` |
 | 19 | GDScript | `call`, `attribute_call` | ✅ | HTTPRequest request/request_raw; godot-sqlite query/query_with_bindings. `166e75aa` |
 | 20 | Lua | `function_call` | ✅ | luasocket/luasec/lua-requests dotted; LuaSQL/lsqlite3 execute/exec/prepare (`:` method calls). `166e75aa` |
-| 21 | QML | `call_expression` | ✅ | XMLHttpRequest open + Qt.openUrlExternally; LocalStorage tx.executeSql. `<az>` |
-| 22 | C | `call_expression` | ✅ | curl_easy_setopt (accepted over-capture); sqlite3_exec/prepare*, PQexec/prepare/execParams, mysql_query/real_query. `<az>` |
-| 23 | C++ | `call_expression` | ✅ | identifier/template_function/field/qualified callees; cpr/libcurl + sqlite3/PQexec. `<az>` |
-| 24 | Zig | `call_expression` | ✅ | VERIFIED applicable: std.Uri.parse/parseAfterScheme (url) + zig-sqlite exec/prepare (sql). `<az>` |
-| 25 | Bash | command (`commands.rs`, `command`/`command_name`) | ⬜ | curl/wget URL args; psql/mysql `-c "SQL"`. Command grammar, not call_expression — different arm shape |
-| 26 | PowerShell | `command`, `invocation_expression` | ⬜ | Invoke-RestMethod/Invoke-WebRequest; Invoke-Sqlcmd `-Query` |
+| 21 | QML | `call_expression` | ✅ | XMLHttpRequest open + Qt.openUrlExternally; LocalStorage tx.executeSql. `e32e06b2` |
+| 22 | C | `call_expression` | ✅ | curl_easy_setopt (accepted over-capture); sqlite3_exec/prepare*, PQexec/prepare/execParams, mysql_query/real_query. `e32e06b2` |
+| 23 | C++ | `call_expression` | ✅ | identifier/template_function/field/qualified callees; cpr/libcurl + sqlite3/PQexec. `e32e06b2` |
+| 24 | Zig | `call_expression` | ✅ | VERIFIED applicable: std.Uri.parse/parseAfterScheme (url) + zig-sqlite exec/prepare (sql). `e32e06b2` |
+| 25 | Bash | `command` (command-name carrier) | ✅ | curl/wget/http/https URL args; psql/mysql/mariadb/sqlite3 `-c "SQL"`. Command grammar — carrier is the command name; `$x` expansion → `{}`. `a3a078a4` |
+| 26 | PowerShell | `command` (cmdlet carrier) | ✅ | Invoke-RestMethod/Invoke-WebRequest/irm/iwr + Invoke-Sqlcmd/2 `-Query`; cmdlet-name carrier over command_elements; `$var`/`$(...)` → `{}` via PS byte-recon. `a3a078a4` |
 
 ### Verified-N/A (no HTTP/DB-client carrier concept) — with grammar evidence
 
@@ -104,10 +104,27 @@ Status: ✅ implemented (arm + TOML + test) · ⬜ pending · 🚫 verified-N/A.
 - `kind` is a read-time-reclassifiable hint; `literal_text` disambiguates, so
   modest over-capture is acceptable.
 
+## Interpolation normalization
+
+Dynamic insertions inside a captured string literal collapse to a `{}`
+placeholder so a resolver sees the static URL/SQL shape (`/users/{}`,
+`SELECT … WHERE id = {}`). Handled in the shared `decode_string_literal`
+(`base/extractor.rs`) for every grammar: interpolation/substitution **expression**
+nodes become `{}` while their delimiter sub-tokens (`_start`/`_end`/`_quote`/
+`_brace`) are skipped, content is matched first, and wrapper layers are recursed.
+Covers Swift `\(x)`, Dart `$x`/`${x}`, C# `{x}`, Ruby/Python/JS/TS, and bash
+`$x`/`${x}`/`$((…))`. PowerShell needs a leg-local byte-reconstruction
+(`decode_ps_string_literal`) because it tokenizes expandable-string static text as
+anonymous bytes; it blanks the outermost `variable`/`sub_expression` holes.
+
 ## Completion gate
 
-Phase 3b is done when every row above is ✅ or 🚫, the polyglot extract-scan
-integration test covers ≥1 language per grammar family end-to-end, and the FINAL
-commit bumps `EXTRACT_CONTRACT_VERSION` 1→2 in lockstep with schema 28 and
-records the final version triple in
-`docs/plans/2026-05-29-extraction-enrichments-for-miller-bridge.md`.
+Applicability matrix: **COMPLETE** — all 26 applicable rows ✅, all 8 N/A rows 🚫
+(`a3a078a4` closed the final two, Bash + PowerShell).
+
+Remaining for Phase 3b done (the FINAL commit):
+- the polyglot extract-scan integration test covers ≥1 language per grammar family
+  end-to-end (call/invocation/member-call/command/macro), and
+- the FINAL commit bumps `EXTRACT_CONTRACT_VERSION` 1→2 in lockstep with schema 28
+  and records the final version triple in
+  `docs/plans/2026-05-29-extraction-enrichments-for-miller-bridge.md`.
