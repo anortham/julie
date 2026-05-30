@@ -50,6 +50,7 @@ pub(super) fn dispatch_call(
         "require" => extract_require_call(extractor, node, parent_id),
         "test" => extract_test(extractor, node, parent_id),
         "describe" => extract_describe(extractor, node, symbols, parent_id),
+        "setup" | "setup_all" => extract_setup(extractor, node, &target_name, parent_id),
         _ => None,
     }
 }
@@ -475,6 +476,10 @@ fn extract_describe(
     let description = helpers::extract_first_string_arg(&extractor.base, node)?;
     let signature = format!("describe \"{}\"", description);
 
+    // Flag the container so the test-role classifier marks it a TestContainer.
+    let mut metadata = HashMap::new();
+    metadata.insert("test_container".to_string(), Value::Bool(true));
+
     let symbol = extractor.base.create_symbol(
         node,
         description,
@@ -483,7 +488,7 @@ fn extract_describe(
             signature: Some(signature),
             visibility: Some(Visibility::Private),
             parent_id: parent_id.map(String::from),
-            metadata: None,
+            metadata: Some(metadata),
             doc_comment: None,
             annotations: Vec::new(),
         },
@@ -497,4 +502,40 @@ fn extract_describe(
     }
 
     Some((symbol, true)) // children already visited
+}
+
+/// Extract an ExUnit `setup` / `setup_all` lifecycle hook as a Function symbol.
+///
+/// These hooks take no description string (the callee name IS the symbol name),
+/// so we materialize them with `is_test` + `test_lifecycle`, mirroring the JS
+/// `beforeEach` / Ruby `before` lifecycle convention. Returns `children_visited =
+/// false` so the normal traversal still descends the hook body (matching
+/// `extract_test`).
+fn extract_setup(
+    extractor: &mut ElixirExtractor,
+    node: &Node,
+    name: &str,
+    parent_id: Option<&str>,
+) -> Option<(Symbol, bool)> {
+    let signature = format!("{}()", name);
+
+    let mut metadata = HashMap::new();
+    metadata.insert("is_test".to_string(), Value::Bool(true));
+    metadata.insert("test_lifecycle".to_string(), Value::Bool(true));
+
+    let symbol = extractor.base.create_symbol(
+        node,
+        name.to_string(),
+        SymbolKind::Function,
+        SymbolOptions {
+            signature: Some(signature),
+            visibility: Some(Visibility::Private),
+            parent_id: parent_id.map(String::from),
+            metadata: Some(metadata),
+            doc_comment: None,
+            annotations: Vec::new(),
+        },
+    );
+
+    Some((symbol, false))
 }

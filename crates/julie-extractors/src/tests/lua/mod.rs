@@ -13,6 +13,7 @@ pub mod identifiers;
 pub mod literals;
 pub mod relationships;
 pub mod tables;
+pub mod test_detection; // busted call-style test detection (Miller bridge test-roles)
 pub mod variables;
 
 use crate::base::{SymbolKind, Visibility};

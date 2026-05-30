@@ -41,6 +41,7 @@ pub mod doxygen_comments;
 pub mod identifier_extraction;
 pub mod literals;
 pub mod pointers;
+pub mod test_calls;
 pub mod test_detection;
 pub mod preprocessor;
 pub mod relationships;

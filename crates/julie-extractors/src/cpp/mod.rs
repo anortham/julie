@@ -15,6 +15,7 @@ mod helpers;
 mod identifiers;
 mod relationships;
 mod signatures;
+mod test_calls;
 mod type_inference;
 mod typedefs;
 mod types;
@@ -248,6 +249,12 @@ impl CppExtractor {
                     }
                 }
                 result
+            }
+            "call_expression" => {
+                // Catch2 call-style tests (Miller bridge test-roles): `TEST_CASE("...")
+                // { ... }`, `SECTION(...)`, `SCENARIO(...)` parse as call_expressions.
+                // Non-test calls return None and fall through to child recursion.
+                test_calls::extract_cpp_test_call(&mut self.base, &node, parent_id)
             }
             "ERROR" => self.extract_from_error_node(node, parent_id),
             _ => None,

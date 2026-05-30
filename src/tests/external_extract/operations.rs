@@ -1106,6 +1106,222 @@ async fn extract_scan_persists_test_role_metadata_across_languages() {
     );
 }
 
+/// Call-style frameworks (tests are call expressions, not named functions or
+/// annotated methods) persist test_role end-to-end across C/C++/Lua/R/Elixir.
+/// These ride the shared `test_calls` core (C/C++/Lua/R) or a bespoke extractor
+/// (Elixir); all are config-free, so classification flows through the call-style
+/// container lever (test_container -> TestContainer) and the is_test fallback
+/// (test/case -> test_case). Lifecycle hooks assert only is_test (their precise
+/// fixture role is a separate refinement).
+#[tokio::test]
+async fn extract_scan_persists_call_style_test_roles() {
+    let tmp = TempDir::new().expect("temp dir");
+    let root = tmp.path().join("repo");
+    std::fs::create_dir(&root).expect("repo dir");
+
+    // C Criterion: `Test(suite, name)` parses as a call; name = "suite.name".
+    fs::write(
+        root.join("calc_criterion.c"),
+        "#include <criterion/criterion.h>\n\
+         \n\
+         Test(math_suite, addition) {\n\
+         \x20   cr_assert(2 + 2 == 4);\n\
+         }\n",
+    )
+    .expect("write c");
+    // C++ Catch2: TEST_CASE -> test_case, nested SECTION -> test_container.
+    fs::write(
+        root.join("calc_catch.cpp"),
+        "#include <catch2/catch_test_macros.hpp>\n\
+         \n\
+         TEST_CASE(\"addition works\", \"[math]\") {\n\
+         \x20   SECTION(\"positive numbers\") {\n\
+         \x20       REQUIRE(2 + 2 == 4);\n\
+         \x20   }\n\
+         }\n",
+    )
+    .expect("write cpp");
+    // Lua busted: describe -> container, it -> case, before_each -> lifecycle.
+    fs::write(
+        root.join("calc_spec.lua"),
+        "describe(\"math\", function()\n\
+         \x20 before_each(function() end)\n\
+         \x20 it(\"adds\", function() assert.equal(2, 1 + 1) end)\n\
+         end)\n",
+    )
+    .expect("write lua");
+    // R testthat: test_that -> case, describe -> container, nested it -> case.
+    fs::write(
+        root.join("calc_test.R"),
+        "test_that(\"addition works\", {\n\
+         \x20 expect_equal(1 + 1, 2)\n\
+         })\n\
+         describe(\"a widget\", {\n\
+         \x20 it(\"renders\", {\n\
+         \x20   expect_true(TRUE)\n\
+         \x20 })\n\
+         })\n",
+    )
+    .expect("write r");
+    // Elixir ExUnit: describe -> container, test -> case, setup -> lifecycle.
+    fs::write(
+        root.join("calc_test.exs"),
+        "defmodule CalcTest do\n\
+         \x20 use ExUnit.Case\n\
+         \n\
+         \x20 describe \"addition\" do\n\
+         \x20   setup do\n\
+         \x20     :ok\n\
+         \x20   end\n\
+         \n\
+         \x20   test \"adds two numbers\" do\n\
+         \x20     assert 1 + 1 == 2\n\
+         \x20   end\n\
+         \x20 end\n\
+         end\n",
+    )
+    .expect("write elixir");
+
+    let db_path = tmp.path().join("external.sqlite");
+    let report = run_external_scan(&scan_args(db_path.clone(), root.clone(), false))
+        .await
+        .expect("scan succeeds");
+    assert_eq!(report.files_scanned, 5, "five call-style source files scanned");
+
+    let db = SymbolDatabase::new(&db_path).expect("open db");
+
+    // C Criterion Test(suite, name) -> test_case named "suite.name".
+    assert_eq!(
+        count_rows_where(
+            &db,
+            "symbols",
+            "name = 'math_suite.addition' AND file_path = 'calc_criterion.c' \
+             AND json_extract(metadata,'$.test_role') = 'test_case'"
+        ),
+        1,
+        "Criterion Test(suite,name) must persist test_role=test_case named suite.name"
+    );
+    // C++ Catch2 TEST_CASE -> test_case.
+    assert_eq!(
+        count_rows_where(
+            &db,
+            "symbols",
+            "name = 'addition works' AND file_path = 'calc_catch.cpp' \
+             AND json_extract(metadata,'$.test_role') = 'test_case'"
+        ),
+        1,
+        "Catch2 TEST_CASE must persist test_role=test_case"
+    );
+    // C++ Catch2 SECTION -> test_container (via the call-style container lever).
+    assert_eq!(
+        count_rows_where(
+            &db,
+            "symbols",
+            "name = 'positive numbers' AND file_path = 'calc_catch.cpp' \
+             AND json_extract(metadata,'$.test_role') = 'test_container'"
+        ),
+        1,
+        "Catch2 SECTION must persist test_role=test_container"
+    );
+    // Lua busted describe -> test_container, it -> test_case, before_each -> is_test.
+    assert_eq!(
+        count_rows_where(
+            &db,
+            "symbols",
+            "name = 'math' AND file_path = 'calc_spec.lua' \
+             AND json_extract(metadata,'$.test_role') = 'test_container'"
+        ),
+        1,
+        "busted describe must persist test_role=test_container"
+    );
+    assert_eq!(
+        count_rows_where(
+            &db,
+            "symbols",
+            "name = 'adds' AND file_path = 'calc_spec.lua' \
+             AND json_extract(metadata,'$.test_role') = 'test_case'"
+        ),
+        1,
+        "busted it must persist test_role=test_case"
+    );
+    assert_eq!(
+        count_rows_where(
+            &db,
+            "symbols",
+            "name = 'before_each' AND file_path = 'calc_spec.lua' \
+             AND json_extract(metadata,'$.is_test') = 1"
+        ),
+        1,
+        "busted before_each lifecycle hook must persist is_test=true"
+    );
+    // R testthat test_that -> test_case, describe -> test_container, it -> test_case.
+    assert_eq!(
+        count_rows_where(
+            &db,
+            "symbols",
+            "name = 'addition works' AND file_path = 'calc_test.R' \
+             AND json_extract(metadata,'$.test_role') = 'test_case'"
+        ),
+        1,
+        "testthat test_that must persist test_role=test_case"
+    );
+    assert_eq!(
+        count_rows_where(
+            &db,
+            "symbols",
+            "name = 'a widget' AND file_path = 'calc_test.R' \
+             AND json_extract(metadata,'$.test_role') = 'test_container'"
+        ),
+        1,
+        "testthat describe must persist test_role=test_container"
+    );
+    // Elixir ExUnit describe -> test_container, test -> test_case, setup -> is_test.
+    assert_eq!(
+        count_rows_where(
+            &db,
+            "symbols",
+            "name = 'addition' AND file_path = 'calc_test.exs' \
+             AND json_extract(metadata,'$.test_role') = 'test_container'"
+        ),
+        1,
+        "ExUnit describe must persist test_role=test_container"
+    );
+    assert_eq!(
+        count_rows_where(
+            &db,
+            "symbols",
+            "name = 'adds two numbers' AND file_path = 'calc_test.exs' \
+             AND json_extract(metadata,'$.test_role') = 'test_case'"
+        ),
+        1,
+        "ExUnit test must persist test_role=test_case"
+    );
+    assert_eq!(
+        count_rows_where(
+            &db,
+            "symbols",
+            "name = 'setup' AND file_path = 'calc_test.exs' \
+             AND json_extract(metadata,'$.is_test') = 1 \
+             AND json_extract(metadata,'$.test_lifecycle') = 1"
+        ),
+        1,
+        "ExUnit setup hook must persist is_test=true and test_lifecycle=true"
+    );
+
+    // Negative: assertion-style calls (cr_assert/REQUIRE/expect_equal/assert.equal)
+    // must NOT become test symbols.
+    assert_eq!(
+        count_rows_where(
+            &db,
+            "symbols",
+            "name IN ('cr_assert','REQUIRE','expect_equal','expect_true','assert') \
+             AND json_extract(metadata,'$.test_role') IS NOT NULL"
+        ),
+        0,
+        "assertion-helper calls must not be classified as tests"
+    );
+}
+
 #[tokio::test]
 async fn extract_scan_unchanged_produces_zero_revisions() {
     let tmp = TempDir::new().expect("temp dir");

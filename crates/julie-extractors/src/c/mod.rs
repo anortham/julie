@@ -25,6 +25,7 @@ mod identifiers;
 mod relationships;
 mod signatures;
 mod structs;
+mod test_calls;
 mod typedefs;
 mod types;
 
@@ -258,6 +259,13 @@ impl CExtractor {
                 // Handle cases like "} PACKED NetworkHeader;" where NetworkHeader is in expression_statement
                 symbol =
                     typedefs::extract_from_expression_statement(self, node, parent_id.as_deref());
+            }
+            "call_expression" => {
+                // Criterion call-style tests (Miller bridge test-roles): `Test(suite,
+                // name) { ... }` parses as a call_expression. Non-test calls return
+                // None and fall through to normal child recursion.
+                symbol =
+                    test_calls::extract_c_test_call(&mut self.base, &node, parent_id.as_deref());
             }
             _ => {}
         }

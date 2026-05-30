@@ -5,6 +5,7 @@
 mod identifiers;
 mod idioms;
 mod relationships;
+mod test_calls;
 mod text_args;
 
 use crate::base::{BaseExtractor, Identifier, PendingRelationship, Relationship, Symbol};
@@ -435,6 +436,16 @@ impl RExtractor {
     }
 
     fn extract_from_call(&mut self, node: Node, parent_id: &Option<String>) -> Option<Symbol> {
+        // testthat call-style tests (`test_that`/`describe`/`it`) take priority.
+        // The shared core pushes nothing, so push here; a recognized container/
+        // test symbol becomes the parent for nested test calls. Non-DSL calls
+        // fall through to the existing S4/import detectors.
+        if let Some(test_sym) =
+            test_calls::extract_r_test_call(&mut self.base, &node, parent_id.as_deref())
+        {
+            self.symbols.push(test_sym.clone());
+            return Some(test_sym);
+        }
         idioms::extract_s4_call(self, node, parent_id)
             .or_else(|| idioms::extract_import_call(self, node, parent_id))
     }

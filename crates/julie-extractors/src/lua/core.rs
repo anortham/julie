@@ -24,7 +24,19 @@ pub(super) fn traverse_tree(
 
     match node.kind() {
         "function_call" => {
-            symbol = extract_bare_require_import(symbols, base, node, parent_id.as_deref());
+            // busted call-style tests (`describe`/`it`/`before_each` etc.) take
+            // priority; the shared core pushes nothing, so push here. Non-DSL
+            // calls fall through to the bare-`require` import detector (which
+            // pushes internally). Either result becomes the parent for nested
+            // test calls below.
+            if let Some(test_sym) =
+                super::test_calls::extract_lua_test_call(base, node, parent_id.as_deref())
+            {
+                symbols.push(test_sym.clone());
+                symbol = Some(test_sym);
+            } else {
+                symbol = extract_bare_require_import(symbols, base, node, parent_id.as_deref());
+            }
         }
         "function_definition_statement" | "function_declaration" => {
             symbol = functions::extract_function_definition_statement(
