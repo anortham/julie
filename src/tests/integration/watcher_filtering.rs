@@ -231,6 +231,24 @@ fn test_contains_blacklisted_directory() {
     assert!(contains_blacklisted_directory(Path::new(
         "/repo/.idea/workspace.xml"
     )));
+    // VCS metadata directories (parity with crate::paths::VCS_ROOT_MARKERS) must be
+    // excluded from indexing so a VCS root that is also a workspace-root boundary
+    // never has its internal state walked.
+    assert!(contains_blacklisted_directory(Path::new(
+        "/repo/.svn/wc.db"
+    )));
+    assert!(contains_blacklisted_directory(Path::new(
+        "/repo/.hg/store/data.i"
+    )));
+    assert!(contains_blacklisted_directory(Path::new(
+        "/repo/.bzr/checkout/dirstate"
+    )));
+    assert!(contains_blacklisted_directory(Path::new(
+        "/repo/.jj/repo/store/extra"
+    )));
+    assert!(contains_blacklisted_directory(Path::new(
+        "/repo/_darcs/inventory"
+    )));
 
     // Non-blacklisted directories
     assert!(!contains_blacklisted_directory(Path::new(
@@ -251,6 +269,26 @@ fn test_contains_blacklisted_directory() {
     assert!(!contains_blacklisted_directory(Path::new(
         "/repo/bin/cli.py"
     )));
+}
+
+/// Invariant: every VCS repository-root marker that workspace-root detection treats
+/// as a project boundary (`crate::paths::VCS_ROOT_MARKERS`) must ALSO be excluded
+/// from indexing via `BLACKLISTED_DIRECTORIES`. This locks the parity documented on
+/// `VCS_ROOT_MARKERS` so adding a new VCS there cannot silently leave its internal
+/// state dir indexable.
+#[test]
+fn test_vcs_root_markers_are_all_blacklisted_from_indexing() {
+    use crate::paths::VCS_ROOT_MARKERS;
+    use crate::tools::shared::BLACKLISTED_DIRECTORIES;
+
+    for marker in VCS_ROOT_MARKERS {
+        assert!(
+            BLACKLISTED_DIRECTORIES.contains(marker),
+            "VCS root marker {:?} must be present in BLACKLISTED_DIRECTORIES to keep \
+             crate::paths::VCS_ROOT_MARKERS and the indexing blacklist in parity",
+            marker
+        );
+    }
 }
 
 #[test]

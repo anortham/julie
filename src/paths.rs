@@ -1,5 +1,33 @@
 use std::path::{Path, PathBuf};
 
+/// Marker directories/files that identify a *version-control repository root*.
+///
+/// In their modern layouts these are outer boundaries: each VCS writes its
+/// metadata once, at the checkout root, not in every sub-directory. That
+/// non-nesting property is what makes them safe to treat as "stop the upward
+/// workspace-root walk here" boundaries — unlike build manifests (`Cargo.toml`,
+/// `package.json`, `go.mod`, `pyproject.toml`), which appear at BOTH a monorepo
+/// root AND every member package and would falsely halt discovery inside a
+/// Cargo-workspace member crate / npm-workspace package.
+///
+/// Caveat: Subversion BEFORE 1.7 (2011) wrote a `.svn` dir in every versioned
+/// sub-directory. On such a (now-obsolete) checkout the discovery walk would stop
+/// at the first sub-directory it visits; the only observable effect is that a
+/// first-time index started from a sub-dir creates `.julie/` there instead of at
+/// the working-copy root (once indexed at the root, the `.julie`-before-boundary
+/// ordering finds the root on subsequent walks). Modern SVN (1.7+) keeps a single
+/// root `.svn`. We accept this rare residual rather than drop SVN-root detection.
+///
+/// Authoritative source consumed by both workspace-root resolvers:
+/// - `crate::tools::workspace::ManageWorkspaceTool::find_workspace_root`
+///   (explicit-path resolver — returns the marker directory as the root)
+/// - `crate::workspace::JulieWorkspace::find_workspace_root`
+///   (upward `.julie` discovery walk — uses these as STOP boundaries)
+///
+/// Keep `crate::tools::shared::BLACKLISTED_DIRECTORIES` in parity with this list
+/// (enforced by `test_vcs_root_markers_are_all_blacklisted_from_indexing`).
+pub const VCS_ROOT_MARKERS: &[&str] = &[".git", ".hg", ".svn", ".jj", ".bzr", "_darcs"];
+
 /// Centralized path resolution for Julie daemon infrastructure.
 ///
 /// All daemon-related paths derive from `julie_home`. The default is `~/.julie/`,

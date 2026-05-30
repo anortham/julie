@@ -62,8 +62,13 @@ impl ManageWorkspaceTool {
     pub(crate) fn find_workspace_root(&self, start_path: &Path) -> Result<PathBuf> {
         // Trust `.julie` at the requested path, but not above it. Temp parents
         // and daemon cache roots can contain `.julie` without owning the child.
-        let ancestor_workspace_markers =
-            [".git", ".vscode", "Cargo.toml", "package.json", ".project"];
+        // VCS-repository roots (crate::paths::VCS_ROOT_MARKERS) are the authoritative
+        // project boundaries; build/IDE manifests are additional "this looks like a
+        // project root" hints for the explicit-path case. Within a single directory the
+        // first matching marker resolves THAT directory as the root, so the VCS-first
+        // order only affects which marker name is logged, not the resolved path; the
+        // nearest ancestor carrying any marker always wins.
+        let build_ide_markers = [".vscode", "Cargo.toml", "package.json", ".project"];
 
         // 🔥 CRITICAL FIX: Check if start_path itself has a .julie directory FIRST
         // This prevents walking up and finding a parent workspace when an explicit
@@ -99,7 +104,11 @@ impl ManageWorkspaceTool {
 
         // Walk up the directory tree looking for workspace markers
         loop {
-            for marker in &ancestor_workspace_markers {
+            for marker in crate::paths::VCS_ROOT_MARKERS
+                .iter()
+                .copied()
+                .chain(build_ide_markers.iter().copied())
+            {
                 let marker_path = current_path.join(marker);
                 if marker_path.exists() {
                     info!(

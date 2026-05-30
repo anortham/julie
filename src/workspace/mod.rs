@@ -361,10 +361,15 @@ impl JulieWorkspace {
 
     /// Find workspace root by searching up the directory tree.
     ///
-    /// Stops at project boundary markers (`.git` file or directory) to prevent
-    /// walking past worktrees or sibling projects into unrelated `.julie/` dirs
-    /// (e.g. a non-project `.julie/` directory from a parent path).
-    fn find_workspace_root(start_path: &Path) -> Result<Option<PathBuf>> {
+    /// Stops at VCS-repository-root boundary markers (`crate::paths::VCS_ROOT_MARKERS`
+    /// — `.git`, `.hg`, `.svn`, `.jj`, `.bzr`, `_darcs`; each matched as a file OR a
+    /// directory, so a git worktree/submodule `.git` *file* still counts) to prevent
+    /// walking past worktrees or sibling projects into unrelated `.julie/` dirs (e.g. a
+    /// non-project `.julie/` directory from a parent/temp path). Build manifests
+    /// (`Cargo.toml`, `package.json`) are deliberately NOT boundaries here: they also
+    /// appear in monorepo sub-packages and would falsely halt the walk inside a workspace
+    /// member. See `VCS_ROOT_MARKERS` for the pre-1.7-SVN nesting caveat.
+    pub(crate) fn find_workspace_root(start_path: &Path) -> Result<Option<PathBuf>> {
         let mut current = start_path.to_path_buf();
 
         // We use `DaemonPaths::is_any_known_julie_home` to detect the global
@@ -396,17 +401,23 @@ impl JulieWorkspace {
                 }
             }
 
-            // Treat .git (file or directory) as a project boundary.
-            // If this directory has .git but no .julie/, it's a project root
-            // that hasn't been indexed yet — stop here so the caller creates
-            // a new .julie/ instead of walking into an unrelated one (e.g. ~/.julie/).
-            let git_path = current.join(".git");
-            if git_path.exists() {
-                debug!(
-                    "Hit .git boundary at {} without finding .julie — stopping walk",
-                    current.display()
-                );
-                return Ok(None);
+            // Treat any VCS repository root as a project boundary. If this directory
+            // is a VCS root but has no .julie/, it's a project root that hasn't been
+            // indexed yet — stop here so the caller creates a new .julie/ instead of
+            // walking into an unrelated one (e.g. ~/.julie/, or a stray .julie left in
+            // a parent/temp dir). Build manifests (Cargo.toml/package.json) are
+            // intentionally excluded as boundaries because they also appear in monorepo
+            // sub-packages and would falsely halt the walk inside a workspace member crate.
+            for marker in crate::paths::VCS_ROOT_MARKERS {
+                let boundary = current.join(marker);
+                if boundary.exists() {
+                    debug!(
+                        "Hit {} boundary at {} without finding .julie — stopping walk",
+                        marker,
+                        current.display()
+                    );
+                    return Ok(None);
+                }
             }
 
             match current.parent() {

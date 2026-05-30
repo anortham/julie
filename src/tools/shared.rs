@@ -100,11 +100,13 @@ pub const BLACKLISTED_FILENAMES: &[&str] = &[
 
 /// Blacklisted directory names - directories to exclude from indexing
 pub const BLACKLISTED_DIRECTORIES: &[&str] = &[
-    // Version control
+    // Version control — keep in parity with crate::paths::VCS_ROOT_MARKERS
     ".git",
     ".svn",
     ".hg",
     ".bzr",
+    ".jj",
+    "_darcs",
     // IDE and editor directories
     ".vs",
     ".vscode",
