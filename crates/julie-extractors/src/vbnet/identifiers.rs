@@ -290,5 +290,7 @@ fn decode_vbnet_interpolated(base: &BaseExtractor, interp: &Node) -> String {
     let mut s = out.as_str();
     s = s.strip_prefix("$\"").unwrap_or(s);
     s = s.strip_suffix('"').unwrap_or(s);
-    s.replace("\"\"", "\"").replace("{{", "{").replace("}}", "}")
+    s.replace("\"\"", "\"")
+        .replace("{{", "{")
+        .replace("}}", "}")
 }

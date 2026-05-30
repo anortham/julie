@@ -217,12 +217,16 @@ fn lua_carrier(base: &BaseExtractor, call_node: Node) -> Option<String> {
     match name.kind() {
         "identifier" => Some(base.get_node_text(&name)),
         "dot_index_expression" => join_receiver_member(
-            name.child_by_field_name("table").map(|n| base.get_node_text(&n)),
-            name.child_by_field_name("field").map(|n| base.get_node_text(&n)),
+            name.child_by_field_name("table")
+                .map(|n| base.get_node_text(&n)),
+            name.child_by_field_name("field")
+                .map(|n| base.get_node_text(&n)),
         ),
         "method_index_expression" => join_receiver_member(
-            name.child_by_field_name("table").map(|n| base.get_node_text(&n)),
-            name.child_by_field_name("method").map(|n| base.get_node_text(&n)),
+            name.child_by_field_name("table")
+                .map(|n| base.get_node_text(&n)),
+            name.child_by_field_name("method")
+                .map(|n| base.get_node_text(&n)),
         ),
         _ => {
             let text = base.get_node_text(&name);

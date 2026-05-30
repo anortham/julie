@@ -162,7 +162,11 @@ impl super::JavaScriptExtractor {
     /// shape: `function` callee + `arguments` list, with tagged templates
     /// arriving as a `template_string` in the `arguments` field). `arg_position`
     /// is counted over the full (named) argument list.
-    fn record_call_arg_literals(&mut self, call_node: &Node, symbol_map: &HashMap<String, &Symbol>) {
+    fn record_call_arg_literals(
+        &mut self,
+        call_node: &Node,
+        symbol_map: &HashMap<String, &Symbol>,
+    ) {
         let Some(function_node) = call_node.child_by_field_name("function") else {
             return;
         };

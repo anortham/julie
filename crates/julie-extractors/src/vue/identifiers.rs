@@ -467,7 +467,8 @@ fn record_vue_call_arg_literals(
     };
     let carrier = vue_callee_text(function_node, script_content);
     let containing_span = offset.apply(NormalizedSpan::from_node(&call_node));
-    let containing_symbol_id = find_containing_symbol_id_for_span(base, containing_span, symbol_map);
+    let containing_symbol_id =
+        find_containing_symbol_id_for_span(base, containing_span, symbol_map);
 
     let mut cursor = args_node.walk();
     for (pos, arg) in args_node.named_children(&mut cursor).enumerate() {

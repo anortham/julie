@@ -51,7 +51,11 @@ function load() {
         "exactly one literal for the fetch arg, got {literals:?}"
     );
     let lit = urls[0];
-    assert_eq!(lit.carrier.as_deref(), Some("fetch"), "carrier is the callee");
+    assert_eq!(
+        lit.carrier.as_deref(),
+        Some("fetch"),
+        "carrier is the callee"
+    );
     assert_eq!(lit.arg_position, 0, "first argument");
     assert_eq!(
         lit.kind,

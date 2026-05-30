@@ -148,7 +148,11 @@ impl super::RazorExtractor {
     /// later in the `src/` pipeline. Razor embeds C#, so each argument is wrapped
     /// in an `argument` node whose value is its last named child. `arg_position`
     /// is counted over the full argument list.
-    fn record_razor_call_arg_literals(&mut self, node: Node, symbol_map: &HashMap<String, &Symbol>) {
+    fn record_razor_call_arg_literals(
+        &mut self,
+        node: Node,
+        symbol_map: &HashMap<String, &Symbol>,
+    ) {
         let Some(function) = node.child_by_field_name("function") else {
             return;
         };

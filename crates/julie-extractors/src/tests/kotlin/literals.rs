@@ -44,7 +44,11 @@ fun load(): String {
         .iter()
         .filter(|l| l.literal_text == "hello")
         .collect();
-    assert_eq!(hits.len(), 1, "exactly one literal for the arg, got {literals:?}");
+    assert_eq!(
+        hits.len(),
+        1,
+        "exactly one literal for the arg, got {literals:?}"
+    );
     let lit = hits[0];
     assert_eq!(lit.carrier.as_deref(), Some("greet"), "bare callee carrier");
     assert_eq!(lit.arg_position, 0, "first argument");
