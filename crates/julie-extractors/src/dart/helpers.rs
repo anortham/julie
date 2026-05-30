@@ -48,11 +48,6 @@ where
     }
 }
 
-/// Check if a class is marked as abstract
-pub(super) fn is_abstract_class(node: &Node) -> bool {
-    get_node_text(node).contains("abstract")
-}
-
 /// Check if a function is async
 pub(super) fn is_async_function(node: &Node, _content: &str) -> bool {
     // Check if the node text contains async (fallback)

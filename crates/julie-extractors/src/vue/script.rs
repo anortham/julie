@@ -330,6 +330,11 @@ fn push_node_symbol(
         metadata.insert("is_test".to_string(), Value::Bool(true));
     }
 
+    // Extract JSDoc comment from a preceding comment node in the tree-sitter tree.
+    // The key node (e.g. "methods") is a child of the pair/method_definition; the
+    // comment is a prev_named_sibling of that parent node inside the options object.
+    let doc_comment = extract_node_doc_comment(&node, &section.content);
+
     symbols.push(create_symbol_manual(
         base,
         name,
@@ -339,9 +344,36 @@ fn push_node_symbol(
         end_line,
         end_col,
         Some(name.to_string()),
-        None,
+        doc_comment,
         Some(metadata),
     ));
+}
+
+/// Walk backward through preceding named siblings of the node's parent to collect
+/// consecutive `comment` nodes. Returns the concatenated comment text or `None`.
+fn extract_node_doc_comment(node: &Node, content: &str) -> Option<String> {
+    // The node is a key/name node; its parent is the pair or method_definition
+    // whose preceding siblings may be comments.
+    let parent = node.parent()?;
+    let mut current = parent.prev_named_sibling();
+    let mut comments: Vec<String> = Vec::new();
+
+    while let Some(sibling) = current {
+        if sibling.kind() == "comment" {
+            comments.push(node_text(&sibling, content));
+            current = sibling.prev_named_sibling();
+        } else {
+            break;
+        }
+    }
+
+    if comments.is_empty() {
+        return None;
+    }
+
+    // Reverse so the topmost comment comes first
+    comments.reverse();
+    Some(comments.join("\n"))
 }
 
 fn node_text(node: &Node, content: &str) -> String {

@@ -295,22 +295,25 @@ export default {
         let mut extractor = create_extractor("styles.vue", vue_code);
         let symbols = extractor.extract_symbols(None);
 
-        // Should find CSS classes
-        let container = symbols.iter().find(|s| s.name == "container");
-        assert!(container.is_some());
+        // Should find CSS classes — canonical contract: prefixed name, class→Property
+        let container = symbols.iter().find(|s| s.name == ".container");
+        assert!(container.is_some(), "Should find .container class (with dot prefix)");
         let container = container.unwrap();
         assert_eq!(container.kind, SymbolKind::Property);
-        assert_eq!(container.signature.as_ref().unwrap(), ".container");
+        assert!(
+            container.signature.as_ref().unwrap().starts_with(".container"),
+            "Signature should start with selector"
+        );
         assert_eq!(container.id, expected_symbol_id(container));
 
-        let button = symbols.iter().find(|s| s.name == "button");
-        assert!(button.is_some());
+        let button = symbols.iter().find(|s| s.name == ".button");
+        assert!(button.is_some(), "Should find .button class (with dot prefix)");
         let button = button.unwrap();
         assert_eq!(button.kind, SymbolKind::Property);
         assert_eq!(button.id, expected_symbol_id(button));
 
-        let disabled = symbols.iter().find(|s| s.name == "disabled");
-        assert!(disabled.is_some());
+        let disabled = symbols.iter().find(|s| s.name == ".disabled");
+        assert!(disabled.is_some(), "Should find .disabled class (with dot prefix)");
         let disabled = disabled.unwrap();
         assert_eq!(disabled.kind, SymbolKind::Property);
         assert_eq!(disabled.id, expected_symbol_id(disabled));
@@ -405,9 +408,9 @@ export default {
             "Template component usages should NOT be extracted"
         );
 
-        // Style symbols
-        assert!(symbols.iter().find(|s| s.name == "app").is_some());
-        assert!(symbols.iter().find(|s| s.name == "header").is_some());
+        // Style symbols — canonical: class selectors keep their dot prefix
+        assert!(symbols.iter().find(|s| s.name == ".app").is_some());
+        assert!(symbols.iter().find(|s| s.name == ".header").is_some());
     }
 
     // Test removed: Vue now properly extracts types (no longer returns empty map)
@@ -1158,9 +1161,9 @@ export default {
         );
         let symbols = extractor.extract_symbols(None);
 
-        // Find container class symbol
-        let container = symbols.iter().find(|s| s.name == "container");
-        assert!(container.is_some(), "Should find .container class");
+        // Find container class symbol — canonical: prefixed name '.container'
+        let container = symbols.iter().find(|s| s.name == ".container");
+        assert!(container.is_some(), "Should find .container class (with dot prefix)");
 
         // Should extract CSS comment for style
         let container = container.unwrap();
@@ -1308,17 +1311,24 @@ mod vue_style_enhanced_tests {
         let mut extractor = create_extractor("id-selectors.vue", vue_code);
         let symbols = extractor.extract_symbols(None);
 
+        // Canonical contract: ID selector → name with '#' prefix, kind Variable
         let app = symbols
             .iter()
-            .find(|s| s.name == "app" && s.kind == SymbolKind::Property);
-        assert!(app.is_some(), "Should extract #app ID selector");
-        assert_eq!(app.unwrap().signature.as_ref().unwrap(), "#app");
+            .find(|s| s.name == "#app" && s.kind == SymbolKind::Variable);
+        assert!(app.is_some(), "Should extract #app ID selector with hash prefix and Variable kind");
+        assert!(
+            app.unwrap().signature.as_ref().unwrap().starts_with("#app"),
+            "Signature should start with the ID selector"
+        );
 
         let sidebar = symbols
             .iter()
-            .find(|s| s.name == "sidebar" && s.kind == SymbolKind::Property);
-        assert!(sidebar.is_some(), "Should extract #sidebar ID selector");
-        assert_eq!(sidebar.unwrap().signature.as_ref().unwrap(), "#sidebar");
+            .find(|s| s.name == "#sidebar" && s.kind == SymbolKind::Variable);
+        assert!(sidebar.is_some(), "Should extract #sidebar ID selector with hash prefix and Variable kind");
+        assert!(
+            sidebar.unwrap().signature.as_ref().unwrap().starts_with("#sidebar"),
+            "Signature should start with the ID selector"
+        );
     }
 
     #[test]
@@ -1335,28 +1345,29 @@ mod vue_style_enhanced_tests {
         let mut extractor = create_extractor("custom-props.vue", vue_code);
         let symbols = extractor.extract_symbols(None);
 
+        // Canonical contract: CSS custom property → kind Property, sig includes value
         let primary_color = symbols
             .iter()
-            .find(|s| s.name == "--primary-color" && s.kind == SymbolKind::Variable);
+            .find(|s| s.name == "--primary-color" && s.kind == SymbolKind::Property);
         assert!(
             primary_color.is_some(),
-            "Should extract --primary-color custom property"
+            "Should extract --primary-color custom property with kind Property"
         );
-        assert_eq!(
-            primary_color.unwrap().signature.as_ref().unwrap(),
-            "--primary-color"
+        assert!(
+            primary_color.unwrap().signature.as_ref().unwrap().starts_with("--primary-color:"),
+            "Signature should start with property name and colon"
         );
 
         let font_size = symbols
             .iter()
-            .find(|s| s.name == "--font-size" && s.kind == SymbolKind::Variable);
+            .find(|s| s.name == "--font-size" && s.kind == SymbolKind::Property);
         assert!(
             font_size.is_some(),
-            "Should extract --font-size custom property"
+            "Should extract --font-size custom property with kind Property"
         );
-        assert_eq!(
-            font_size.unwrap().signature.as_ref().unwrap(),
-            "--font-size"
+        assert!(
+            font_size.unwrap().signature.as_ref().unwrap().starts_with("--font-size:"),
+            "Signature should start with property name and colon"
         );
     }
 
@@ -1381,38 +1392,44 @@ mod vue_style_enhanced_tests {
         let mut extractor = create_extractor("mixed-styles.vue", vue_code);
         let symbols = extractor.extract_symbols(None);
 
-        // Class selector
+        // Class selector — canonical: prefixed name, kind Property
         let container = symbols
             .iter()
-            .find(|s| s.name == "container" && s.kind == SymbolKind::Property);
+            .find(|s| s.name == ".container" && s.kind == SymbolKind::Property);
         assert!(
             container.is_some(),
-            "Should extract .container class selector"
+            "Should extract .container class selector with dot prefix and Property kind"
         );
-        assert_eq!(container.unwrap().signature.as_ref().unwrap(), ".container");
+        assert!(
+            container.unwrap().signature.as_ref().unwrap().starts_with(".container"),
+            "Signature should start with class selector"
+        );
 
-        // ID selector
+        // ID selector — canonical: prefixed name '#', kind Variable
         let main_content = symbols
             .iter()
-            .find(|s| s.name == "main-content" && s.kind == SymbolKind::Property);
+            .find(|s| s.name == "#main-content" && s.kind == SymbolKind::Variable);
         assert!(
             main_content.is_some(),
-            "Should extract #main-content ID selector"
+            "Should extract #main-content ID selector with hash prefix and Variable kind"
         );
-        assert_eq!(
-            main_content.unwrap().signature.as_ref().unwrap(),
-            "#main-content"
+        assert!(
+            main_content.unwrap().signature.as_ref().unwrap().starts_with("#main-content"),
+            "Signature should start with ID selector"
         );
 
-        // CSS custom property
+        // CSS custom property — canonical: '--' name, kind Property, sig includes value
         let spacing = symbols
             .iter()
-            .find(|s| s.name == "--spacing" && s.kind == SymbolKind::Variable);
+            .find(|s| s.name == "--spacing" && s.kind == SymbolKind::Property);
         assert!(
             spacing.is_some(),
-            "Should extract --spacing custom property"
+            "Should extract --spacing custom property with kind Property"
         );
-        assert_eq!(spacing.unwrap().signature.as_ref().unwrap(), "--spacing");
+        assert!(
+            spacing.unwrap().signature.as_ref().unwrap().starts_with("--spacing:"),
+            "Signature should start with property name and colon"
+        );
     }
 
     #[test]

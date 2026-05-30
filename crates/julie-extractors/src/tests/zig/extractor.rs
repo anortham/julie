@@ -17,7 +17,7 @@ pub fn main() void {
 
     let workspace_root = PathBuf::from("/tmp/test");
     let mut extractor = ZigExtractor::new(
-        "Zig".to_string(),
+        "zig".to_string(),
         "test.zig".to_string(),
         code.to_string(),
         &workspace_root,
@@ -107,7 +107,7 @@ pub const Point = struct {
 
     let workspace_root = PathBuf::from("/tmp/test");
     let mut extractor = ZigExtractor::new(
-        "Zig".to_string(),
+        "zig".to_string(),
         "test.zig".to_string(),
         code.to_string(),
         &workspace_root,
@@ -135,7 +135,7 @@ fn test_zig_doc_comment_on_function() {
 
     let workspace_root = PathBuf::from("/tmp/test");
     let mut extractor = ZigExtractor::new(
-        "Zig".to_string(),
+        "zig".to_string(),
         "test.zig".to_string(),
         code.to_string(),
         &workspace_root,
@@ -185,7 +185,7 @@ fn test_zig_doc_comment_on_struct() {
 
     let workspace_root = PathBuf::from("/tmp/test");
     let mut extractor = ZigExtractor::new(
-        "Zig".to_string(),
+        "zig".to_string(),
         "test.zig".to_string(),
         code.to_string(),
         &workspace_root,
@@ -236,7 +236,7 @@ fn test_zig_doc_comment_on_enum() {
 
     let workspace_root = PathBuf::from("/tmp/test");
     let mut extractor = ZigExtractor::new(
-        "Zig".to_string(),
+        "zig".to_string(),
         "test.zig".to_string(),
         code.to_string(),
         &workspace_root,
@@ -283,7 +283,7 @@ fn test_zig_doc_comment_on_const() {
 
     let workspace_root = PathBuf::from("/tmp/test");
     let mut extractor = ZigExtractor::new(
-        "Zig".to_string(),
+        "zig".to_string(),
         "test.zig".to_string(),
         code.to_string(),
         &workspace_root,
@@ -330,7 +330,7 @@ pub fn noComment() void {
 
     let workspace_root = PathBuf::from("/tmp/test");
     let mut extractor = ZigExtractor::new(
-        "Zig".to_string(),
+        "zig".to_string(),
         "test.zig".to_string(),
         code.to_string(),
         &workspace_root,
@@ -349,3 +349,4 @@ pub fn noComment() void {
         "Function without doc comment should have None"
     );
 }
+

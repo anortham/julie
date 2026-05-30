@@ -2749,27 +2749,30 @@ interface class Ref<State extends Object?> {
             }
 
             // Verify that `final class AsyncData<T> extends AsyncValue<T>` produces
-            // a PendingRelationship with Extends kind targeting AsyncValue
-            let _rels = extractor.extract_relationships(&tree, &symbols);
-            let pending = extractor.get_pending_relationships();
+            // an Extends relationship targeting AsyncValue — i.e. the leading
+            // `final` modifier does not break inheritance extraction. AsyncValue is
+            // declared in the same file, so (per the convention exercised by
+            // test_infer_types_and_extract_relationships) it resolves to a direct
+            // relationship rather than a structured-pending one.
+            let rels = extractor.extract_relationships(&tree, &symbols);
             let async_data = classes.iter().find(|s| s.name == "AsyncData").unwrap();
-            let extends_pending = pending.iter().find(|p| {
-                p.from_symbol_id == async_data.id
-                    && p.kind == crate::base::RelationshipKind::Extends
+            let async_value = classes.iter().find(|s| s.name == "AsyncValue").unwrap();
+            let extends_rel = rels.iter().find(|r| {
+                r.from_symbol_id == async_data.id
+                    && r.kind == crate::base::RelationshipKind::Extends
             });
             assert!(
-                extends_pending.is_some(),
-                "AsyncData extends AsyncValue should produce a PendingRelationship. \
-                 Got pending: {:?}",
-                pending
-                    .iter()
-                    .map(|p| format!("{} -> {} ({:?})", p.from_symbol_id, p.callee_name, p.kind))
+                extends_rel.is_some(),
+                "final class AsyncData extends AsyncValue should produce an Extends \
+                 relationship. Got: {:?}",
+                rels.iter()
+                    .map(|r| format!("{} -> {} ({:?})", r.from_symbol_id, r.to_symbol_id, r.kind))
                     .collect::<Vec<_>>()
             );
             assert_eq!(
-                extends_pending.unwrap().callee_name,
-                "AsyncValue",
-                "PendingRelationship should target AsyncValue"
+                extends_rel.unwrap().to_symbol_id,
+                async_value.id,
+                "Extends relationship should target AsyncValue"
             );
         }
     }

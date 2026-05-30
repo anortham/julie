@@ -23,7 +23,22 @@ impl ScriptStyleExtractor {
         let attributes = HTMLHelpers::extract_attributes(base, node);
         let content = HTMLHelpers::extract_text_content(base, node);
 
-        if !attributes.contains_key("src") {
+        // Only delegate to the embedded JS extractor when the script type is
+        // actually JavaScript.  Non-JS types (e.g. application/ld+json,
+        // text/html, text/template) should produce a script-tag symbol so that
+        // attributes like `type` are preserved in the symbol's signature.
+        let script_type = attributes.get("type").map(|s| s.as_str()).unwrap_or("");
+        let is_javascript = script_type.is_empty()
+            || matches!(
+                script_type,
+                "text/javascript"
+                    | "application/javascript"
+                    | "module"
+                    | "text/ecmascript"
+                    | "application/ecmascript"
+            );
+
+        if !attributes.contains_key("src") && is_javascript {
             let symbols = content
                 .as_deref()
                 .map(|content| extract_embedded_javascript_symbols(base, node, content))
@@ -105,13 +120,14 @@ impl ScriptStyleExtractor {
         let attributes = HTMLHelpers::extract_attributes(base, node);
         let content = HTMLHelpers::extract_text_content(base, node);
 
-        let symbols = content
+        // Always extract the style-tag symbol so that preceding HTML comments
+        // (<!-- … -->) can be attached to it as doc_comment.  Embedded CSS
+        // symbols (class selectors, custom properties, etc.) are appended
+        // afterwards so callers that look for either find what they expect.
+        let embedded_css_symbols = content
             .as_deref()
             .map(|content| extract_embedded_css_symbols(base, node, content))
             .unwrap_or_default();
-        if !symbols.is_empty() {
-            return symbols;
-        }
 
         let signature =
             AttributeHandler::build_element_signature("style", &attributes, content.as_deref());
@@ -130,19 +146,19 @@ impl ScriptStyleExtractor {
             );
         }
 
-        if let Some(content) = content {
+        if let Some(ref content) = content {
             // Safely truncate UTF-8 string at character boundary
-            let truncated_content = BaseExtractor::truncate_string(&content, 100);
+            let truncated_content = BaseExtractor::truncate_string(content, 100);
             metadata.insert(
                 "content".to_string(),
                 serde_json::Value::String(truncated_content),
             );
         }
 
-        // Extract HTML comment
+        // Extract HTML comment (e.g. <!-- Theme overrides for dark mode -->)
         let doc_comment = base.find_doc_comment(&node);
 
-        vec![base.create_symbol(
+        let style_symbol = base.create_symbol(
             &node,
             "style".to_string(),
             SymbolKind::Variable,
@@ -154,7 +170,11 @@ impl ScriptStyleExtractor {
                 doc_comment,
                 annotations: Vec::new(),
             },
-        )]
+        );
+
+        let mut result = vec![style_symbol];
+        result.extend(embedded_css_symbols);
+        result
     }
 }
 

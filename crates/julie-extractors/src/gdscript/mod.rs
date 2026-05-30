@@ -305,6 +305,27 @@ impl GDScriptExtractor {
                     extracted_symbol = Some(symbol);
                 }
             }
+            "ERROR" => {
+                // Recover function declarations swallowed into ERROR leaf nodes.
+                //
+                // When a match body contains bare-identifier pattern labels
+                // (e.g. `NOTIFICATION_EXIT_TREE:`), GDScript's tree-sitter parser
+                // sometimes folds the immediately following `func name` declaration
+                // into a childless ERROR leaf.  The normal `function_definition` /
+                // `func` arms never fire in that case, causing the function to be
+                // silently lost.  This arm detects "ERROR text starts with `func `"
+                // and synthesises a minimal symbol so the declaration is preserved.
+                let effective_parent_id =
+                    self.determine_effective_parent_id(node, parent_id, symbols);
+                if let Some(symbol) = functions::try_recover_function_from_error(
+                    &mut self.base,
+                    node,
+                    effective_parent_id.as_ref(),
+                    symbols,
+                ) {
+                    extracted_symbol = Some(symbol);
+                }
+            }
             _ => {}
         }
 

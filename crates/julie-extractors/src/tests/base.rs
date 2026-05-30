@@ -6,16 +6,22 @@ use tree_sitter::Node;
 
 #[test]
 fn test_context_extraction_edge_cases() {
-    // Test case 1: Symbol at the beginning of file (not enough lines before)
-    let content = "line 1\nline 2\nfunction test() {\nreturn 42;\n}\nline 6\nline 7\nline 8";
     let workspace_root = std::path::PathBuf::from("/tmp/test");
-    let mut extractor = BaseExtractor::new(
-        "rust".to_string(),
-        "test.rs".to_string(),
-        content.to_string(),
-        &workspace_root,
-    );
+    // Each scenario uses a FRESHLY constructed extractor, mirroring production
+    // (one BaseExtractor per file). `line_ranges` is a cache computed in `new()`
+    // from `content`, so content must be supplied at construction — mutating
+    // `extractor.content` afterward desyncs the cache and panics on slice.
+    let make = |content: &str| {
+        BaseExtractor::new(
+            "rust".to_string(),
+            "test.rs".to_string(),
+            content.to_string(),
+            &workspace_root,
+        )
+    };
 
+    // Test case 1: Symbol at the beginning of file (not enough lines before)
+    let extractor = make("line 1\nline 2\nfunction test() {\nreturn 42;\n}\nline 6\nline 7\nline 8");
     let context = extractor.extract_code_context(2, 4); // function on line 3-5 (0-indexed: 2-4)
     assert!(context.is_some());
     let context_str = context.unwrap();
@@ -29,9 +35,7 @@ fn test_context_extraction_edge_cases() {
     assert!(context_str.contains("    6: line 6"));
 
     // Test case 2: Symbol at the end of file (not enough lines after)
-    let content = "line 1\nline 2\nline 3\nfunction test() {\nreturn 42;\n}";
-    extractor.content = content.to_string();
-
+    let extractor = make("line 1\nline 2\nline 3\nfunction test() {\nreturn 42;\n}");
     let context = extractor.extract_code_context(3, 5); // function on lines 4-6 (0-indexed: 3-5)
     assert!(context.is_some());
     let context_str = context.unwrap();
@@ -42,12 +46,12 @@ fn test_context_extraction_edge_cases() {
     assert!(context_str.contains("  ➤   6: }"));
 
     // Test case 3: Empty file
-    extractor.content = "".to_string();
+    let extractor = make("");
     let context = extractor.extract_code_context(0, 0);
     assert!(context.is_none());
 
     // Test case 4: Single line file
-    extractor.content = "single line".to_string();
+    let extractor = make("single line");
     let context = extractor.extract_code_context(0, 0);
     assert!(context.is_some());
     let context_str = context.unwrap();

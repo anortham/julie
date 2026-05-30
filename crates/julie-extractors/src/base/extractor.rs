@@ -52,7 +52,13 @@ fn strip_string_delimiters(raw: &str) -> String {
 pub struct BaseExtractor {
     pub language: String,
     pub file_path: String,
+    /// Source text. Set once at construction; `line_ranges` caches its line
+    /// boundaries. Do NOT mutate after `new()` — that desyncs `line_ranges` and
+    /// makes `extract_code_context` slice out of bounds. Build a fresh extractor
+    /// per file instead (the production pattern).
     pub content: String,
+    /// Byte ranges of each line in `content`, cached at construction for
+    /// `extract_code_context`. Invariant: derived from `content` in `new()`.
     line_ranges: Vec<Range<usize>>,
     pub symbol_map: HashMap<String, Symbol>,
     pub relationships: Vec<Relationship>,

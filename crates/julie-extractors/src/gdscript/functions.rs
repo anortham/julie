@@ -211,6 +211,91 @@ fn determine_function_kind(
     }
 }
 
+/// Attempt to recover a function declaration from an ERROR leaf node.
+///
+/// GDScript's indentation-sensitive parser can corrupt a `match` body when
+/// pattern labels are bare identifiers (e.g. `NOTIFICATION_EXIT_TREE:`).  The
+/// error-recovery pass sometimes folds the immediately following `func name`
+/// into a childless ERROR leaf.  In that state the normal `function_definition`
+/// and `func` traversal arms never fire, and the function is silently dropped.
+///
+/// This function detects the pattern — trimmed text starts with `"func "` and
+/// is followed by a valid GDScript identifier — and synthesises a minimal symbol
+/// for the recovered declaration.  If the next `arguments` sibling is present
+/// (the `()` is frequently parsed as a standalone `arguments` node) its text is
+/// included in the synthetic signature.
+pub(super) fn try_recover_function_from_error(
+    base: &mut BaseExtractor,
+    node: Node,
+    parent_id: Option<&String>,
+    symbols: &[Symbol],
+) -> Option<Symbol> {
+    let text = base.get_node_text(&node);
+    let trimmed = text.trim_start();
+    let after_func = trimmed.strip_prefix("func ")?;
+
+    // Collect the function name — all alphanumeric + underscore chars.
+    let func_name: String = after_func
+        .chars()
+        .take_while(|c| c.is_alphanumeric() || *c == '_')
+        .collect();
+    if func_name.is_empty() {
+        return None;
+    }
+
+    // Look for the `arguments` node that follows this ERROR sibling in the same
+    // parent (common when `func name()` is absorbed into error-recovery).
+    let params_text = node
+        .parent()
+        .and_then(|parent| {
+            let mut found_self = false;
+            let mut cursor = parent.walk();
+            for sib in parent.children(&mut cursor) {
+                if sib.id() == node.id() {
+                    found_self = true;
+                    continue;
+                }
+                if found_self && sib.kind() == "arguments" {
+                    return Some(base.get_node_text(&sib));
+                }
+            }
+            None
+        })
+        .unwrap_or_else(|| "()".to_string());
+
+    let signature = format!("func {}{}", func_name, params_text);
+    let visibility = if func_name.starts_with('_') {
+        Visibility::Private
+    } else {
+        Visibility::Public
+    };
+    let kind = determine_function_kind(base, &func_name, parent_id, symbols);
+
+    // Apply test-detection (same contract as `extract_function_definition`).
+    let mut metadata = HashMap::new();
+    if is_test_symbol("gdscript", &func_name, &base.file_path, &kind, &[], None) {
+        metadata.insert("is_test".to_string(), serde_json::Value::Bool(true));
+    }
+
+    Some(base.create_symbol(
+        &node,
+        func_name,
+        kind,
+        SymbolOptions {
+            signature: Some(signature),
+            visibility: Some(visibility),
+            parent_id: parent_id.cloned(),
+            metadata: if metadata.is_empty() {
+                None
+            } else {
+                Some(metadata)
+            },
+            doc_comment: None,
+            annotations: Vec::new(),
+        },
+    ))
+}
+
 /// Check if a function name appears in any setget property signature
 fn is_setget_function_in_symbols(function_name: &str, symbols: &[Symbol]) -> bool {
     symbols.iter().any(|s| {

@@ -5,13 +5,53 @@
 use super::helpers::*;
 use tree_sitter::Node;
 
+/// The Dart 3 leading class modifiers, in their grammar-allowed order. They are
+/// anonymous token children inlined directly into the class node before the
+/// `class` keyword via the grammar's hidden `_class_modifiers` /
+/// `_mixin_class_modifiers` rules (`sealed`, `abstract base/interface/final`,
+/// `mixin`, experimental `inline`).
+const CLASS_MODIFIER_KEYWORDS: &[&str] = &[
+    "sealed",
+    "abstract",
+    "base",
+    "interface",
+    "final",
+    "inline",
+    "mixin",
+];
+
+/// Collect the leading class modifiers in source order as a space-terminated
+/// prefix (e.g. `"sealed "`, `"abstract base "`, `"mixin "`, or `""` when none).
+/// Walks the class node's direct children and stops at the `class` keyword, so
+/// only true leading modifiers are captured — not occurrences of the same words
+/// inside the class body.
+fn extract_class_modifier_prefix(node: &Node) -> String {
+    let mut modifiers: Vec<&str> = Vec::new();
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        let kind = child.kind();
+        if kind == "class" {
+            break;
+        }
+        if CLASS_MODIFIER_KEYWORDS.contains(&kind) {
+            modifiers.push(kind);
+        }
+    }
+    if modifiers.is_empty() {
+        String::new()
+    } else {
+        format!("{} ", modifiers.join(" "))
+    }
+}
+
 /// Extract class signature with modifiers, generics, inheritance, and interfaces
 pub(super) fn extract_class_signature(node: &Node) -> Option<String> {
     let name_node = find_child_by_type(node, "identifier");
     let name = name_node.map(|n| get_node_text(&n))?;
 
-    let is_abstract = is_abstract_class(node);
-    let abstract_prefix = if is_abstract { "abstract " } else { "" };
+    // Dart 3 class modifiers (sealed/abstract/base/interface/final/mixin) are
+    // anonymous tokens before the `class` keyword — capture them all in order.
+    let abstract_prefix = extract_class_modifier_prefix(node);
 
     // Extract generic type parameters (e.g., <T>)
     let type_params_node = find_child_by_type(node, "type_parameters");
