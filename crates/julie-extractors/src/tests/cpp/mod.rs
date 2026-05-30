@@ -40,6 +40,7 @@ pub mod doxygen_comments;
 pub mod exceptions;
 pub mod functions;
 pub mod identifier_extraction;
+pub mod literals;
 pub mod modern;
 pub mod namespaces;
 pub mod robustness;

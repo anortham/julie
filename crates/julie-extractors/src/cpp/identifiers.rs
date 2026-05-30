@@ -32,6 +32,11 @@ impl CppExtractor {
         match node.kind() {
             // Function calls: foo(), bar.baz(), make_shared<Foo>()
             "call_expression" => {
+                // Phase 3: capture string-literal call-arguments (config-free; the
+                // carrier classification + gate happen in the src/ pipeline). Done
+                // first so it also covers template calls (`query<T>("SELECT ...")`),
+                // which the identifier logic below returns early for.
+                self.record_call_arg_literals(node, symbol_map);
                 if let Some(func_node) = node.child_by_field_name("function") {
                     // Template function call: make_shared<Foo>(), invoke<T>(), etc.
                     if func_node.kind() == "template_function" {
@@ -136,6 +141,84 @@ impl CppExtractor {
         self.base
             .find_containing_symbol_from_map(&node, symbol_map)
             .map(|s| s.id.clone())
+    }
+
+    /// Capture string-literal arguments of a C++ `call_expression` as `Literal`
+    /// records. Config-free: `carrier` is the called function name (or
+    /// `recv.method` for a member/qualified call); the URL/SQL classification and
+    /// the carrier gate run later in the `src/` pipeline. C++ wraps arguments in
+    /// an `argument_list` with no per-argument name wrapper, so each named child
+    /// is decoded directly. `arg_position` is counted over the full argument list,
+    /// so e.g. the URL in `curl_easy_setopt(h, CURLOPT_URL, "https://...")`
+    /// reports position 2.
+    fn record_call_arg_literals(&mut self, node: Node, symbol_map: &HashMap<String, &Symbol>) {
+        let Some(func_node) = node.child_by_field_name("function") else {
+            return;
+        };
+        let Some(args) = node.child_by_field_name("arguments") else {
+            return;
+        };
+        let carrier = cpp_carrier(&self.base, func_node);
+        let containing_symbol_id = self.find_containing_symbol_id(node, symbol_map);
+
+        let mut cursor = args.walk();
+        for (pos, arg) in args.named_children(&mut cursor).enumerate() {
+            if let Some(text) = self.base.decode_string_literal(&arg) {
+                self.base.record_literal(
+                    &arg,
+                    text,
+                    carrier.clone(),
+                    pos as u32,
+                    containing_symbol_id.clone(),
+                );
+            }
+        }
+    }
+}
+
+/// Truncate a callee segment at its first `<` so generic arguments don't leak
+/// into the carrier (`query<User>` -> `query`). Mirrors the C# leg's generic
+/// strip and keeps the gate's last-segment match working for template methods.
+fn strip_cpp_generics(text: &str) -> String {
+    match text.find('<') {
+        Some(i) => text[..i].to_string(),
+        None => text.to_string(),
+    }
+}
+
+/// Derive a C++ call's carrier. Plain `identifier` → its text (`PQexec`);
+/// `field_expression` (`db.exec(...)`, `repo.query<User>(...)`) → the
+/// `object.field` join (generics stripped from the field) so the gate's
+/// last-segment rule can match a bare config; `template_function`
+/// (`query<T>(...)`) → the `name` field; `qualified_identifier` (`ns::fn(...)`)
+/// → the trailing `name` segment.
+fn cpp_carrier(base: &BaseExtractor, func_node: Node) -> Option<String> {
+    match func_node.kind() {
+        "identifier" => Some(base.get_node_text(&func_node)),
+        "field_expression" => {
+            let object = func_node
+                .child_by_field_name("argument")
+                .map(|n| base.get_node_text(&n));
+            let field = func_node
+                .child_by_field_name("field")
+                .map(|n| strip_cpp_generics(&base.get_node_text(&n)));
+            match (object, field) {
+                (Some(o), Some(f)) => Some(format!("{o}.{f}")),
+                (None, Some(f)) => Some(f),
+                _ => None,
+            }
+        }
+        "template_function" => func_node
+            .child_by_field_name("name")
+            .map(|n| strip_cpp_generics(&base.get_node_text(&n))),
+        "qualified_identifier" => func_node
+            .child_by_field_name("name")
+            .map(|n| base.get_node_text(&n))
+            .or_else(|| Some(base.get_node_text(&func_node))),
+        _ => {
+            let text = base.get_node_text(&func_node);
+            if text.is_empty() { None } else { Some(text) }
+        }
     }
 }
 

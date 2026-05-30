@@ -116,6 +116,9 @@ fn extract_identifier_from_node(
                     }
                 }
             }
+            // Phase 3: capture string-literal call-arguments (config-free; the
+            // carrier classification + gate happen in the src/ pipeline).
+            record_qml_call_arg_literals(extractor, node, symbol_map);
         }
 
         // Member access: object.property (not part of a call)
@@ -254,6 +257,75 @@ fn find_containing_symbol_id(
     }
 
     None
+}
+
+// ============================================================================
+// String-literal call-argument capture (Miller bridge Phase 3)
+// ============================================================================
+
+/// Capture string-literal arguments of a QML `call_expression` as `Literal`
+/// records. Config-free: `carrier` is the called function (or `recv.method` for
+/// a member call); the URL/SQL classification and the carrier gate run later in
+/// the `src/` pipeline. QML-JS shares the TS grammar: the `arguments` field is an
+/// `arguments` node whose named children are the values directly (no per-argument
+/// wrapper). Tagged-template calls (`arguments` is a `template_string`) are
+/// skipped. `arg_position` is counted over the full argument list, so e.g. the
+/// URL in `xhr.open("GET", "https://...")` reports position 1.
+fn record_qml_call_arg_literals(
+    extractor: &mut QmlExtractor,
+    node: Node,
+    symbol_map: &HashMap<String, &Symbol>,
+) {
+    let Some(func_node) = node.child_by_field_name("function") else {
+        return;
+    };
+    let Some(args) = node.child_by_field_name("arguments") else {
+        return;
+    };
+    if args.kind() != "arguments" {
+        return; // tagged template_string — not a normal argument list
+    }
+    let carrier = qml_carrier(&extractor.base, func_node);
+    let containing_symbol_id = find_containing_symbol_id(extractor, node, symbol_map);
+
+    let mut cursor = args.walk();
+    for (pos, arg) in args.named_children(&mut cursor).enumerate() {
+        if let Some(text) = extractor.base.decode_string_literal(&arg) {
+            extractor.base.record_literal(
+                &arg,
+                text,
+                carrier.clone(),
+                pos as u32,
+                containing_symbol_id.clone(),
+            );
+        }
+    }
+}
+
+/// Derive a QML call's carrier. Plain `identifier` → its text; `member_expression`
+/// (`xhr.open(...)`, `Qt.openUrlExternally(...)`) → the `object.property` join so
+/// the gate's last-segment rule can match a bare config (`xhr.open` -> `open`).
+fn qml_carrier(base: &BaseExtractor, func_node: Node) -> Option<String> {
+    match func_node.kind() {
+        "identifier" => Some(base.get_node_text(&func_node)),
+        "member_expression" => {
+            let object = func_node
+                .child_by_field_name("object")
+                .map(|n| base.get_node_text(&n));
+            let property = func_node
+                .child_by_field_name("property")
+                .map(|n| base.get_node_text(&n));
+            match (object, property) {
+                (Some(o), Some(p)) => Some(format!("{o}.{p}")),
+                (None, Some(p)) => Some(p),
+                _ => None,
+            }
+        }
+        _ => {
+            let text = base.get_node_text(&func_node);
+            if text.is_empty() { None } else { Some(text) }
+        }
+    }
 }
 
 // ============================================================================

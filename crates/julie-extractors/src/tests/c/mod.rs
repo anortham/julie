@@ -39,6 +39,7 @@ pub mod cross_file_pending;
 pub mod cross_file_relationships;
 pub mod doxygen_comments;
 pub mod identifier_extraction;
+pub mod literals;
 pub mod pointers;
 pub mod preprocessor;
 pub mod relationships;

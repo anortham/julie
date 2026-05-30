@@ -40,3 +40,30 @@ important_patterns = [
 [embeddings]
 extra_kinds = []
 variable_ratio = 0.30  # 34% variables in jq
+
+# Miller bridge Phase 3: string-literal carriers. The extractor captures every
+# string call-argument config-free; this gate classifies a literal as url/sql
+# only when its carrier (called function, lowercased) matches below. Carriers are
+# matched exactly OR by last `.` segment, so `p->fn(...)` (carrier `p.fn`) matches
+# a bare `fn` config.
+[literal_carriers]
+# libcurl: `curl_easy_setopt(handle, CURLOPT_URL, "https://...")`. This also
+# matches non-URL string options (CURLOPT_USERAGENT etc.) — accepted over-capture
+# since there is no single dedicated URL-setter call in the C HTTP ecosystem.
+url = [
+    "curl_easy_setopt",
+]
+# SQLite (`sqlite3_exec`, `sqlite3_prepare*`), libpq (`PQexec`, `PQprepare`,
+# `PQexecParams`), MySQL/MariaDB (`mysql_query`, `mysql_real_query`).
+sql = [
+    "sqlite3_exec",
+    "sqlite3_prepare",
+    "sqlite3_prepare_v2",
+    "sqlite3_prepare_v3",
+    "pqexec",
+    "pqprepare",
+    "pqexecparams",
+    "mysql_query",
+    "mysql_real_query",
+]
+route = []

@@ -34,3 +34,22 @@ important_patterns = [
 [embeddings]
 # Default: global EMBEDDABLE_KINDS only, variable_ratio = 0.20
 extra_kinds = []
+
+# Miller bridge Phase 3: string-literal carriers. The extractor captures every
+# string call-argument config-free; this gate classifies a literal as url/sql
+# only when its carrier (called function, lowercased) matches below. Carriers are
+# matched exactly OR by last `.` segment, so `xhr.open(...)` (carrier `xhr.open`)
+# matches a bare `open` config. NOTE: QML's JS engine has no axios/fetch/ky — the
+# carriers here are Qt's QML-JS APIs, not the browser/Node HTTP libraries.
+[literal_carriers]
+# XMLHttpRequest.open(method, url) and Qt.openUrlExternally(url). Qt's other
+# `.open()` overloads (Dialog/Drawer/Menu) are arg-less, so flooding risk is low.
+url = [
+    "open",
+    "openurlexternally",
+]
+# Qt LocalStorage transaction API: `tx.executeSql("SELECT ...", [...])`.
+sql = [
+    "executesql",
+]
+route = []

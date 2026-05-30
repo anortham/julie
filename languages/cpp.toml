@@ -44,3 +44,33 @@ important_patterns = [
 [embeddings]
 extra_kinds = ["constructor"]
 variable_ratio = 0.40  # 39% variables in nlohmann-json
+
+# Miller bridge Phase 3: string-literal carriers. The extractor captures every
+# string call-argument config-free; this gate classifies a literal as url/sql
+# only when its carrier (called function, lowercased) matches below. Carriers are
+# matched exactly OR by last `.` segment, so `db.exec(...)` (carrier `db.exec`)
+# matches a bare `exec` config.
+[literal_carriers]
+# libcurl C API is usable from C++; same over-capture caveat as c.toml.
+url = [
+    "curl_easy_setopt",
+]
+# C SQLite/libpq/MySQL APIs plus SQLiteCpp's `db.exec(...)` / `db.execAndGet(...)`
+# and the common method-style `query(...)`/`prepare(...)` wrappers (matched by the
+# gate's last-segment rule).
+sql = [
+    "sqlite3_exec",
+    "sqlite3_prepare",
+    "sqlite3_prepare_v2",
+    "sqlite3_prepare_v3",
+    "pqexec",
+    "pqprepare",
+    "pqexecparams",
+    "mysql_query",
+    "mysql_real_query",
+    "exec",
+    "execandget",
+    "query",
+    "prepare",
+]
+route = []

@@ -62,6 +62,9 @@ fn extract_identifier_from_node(
                     containing_symbol_id,
                 );
             }
+            // Phase 3: capture string-literal call-arguments (config-free; the
+            // carrier classification + gate happen in the src/ pipeline).
+            record_c_call_arg_literals(extractor, node, symbol_map);
         }
 
         // Type references: typedef names, struct tags, enum tags in type positions.
@@ -143,4 +146,69 @@ fn find_containing_symbol_id(
         .base
         .find_containing_symbol_from_map(&node, symbol_map)
         .map(|s| s.id.clone())
+}
+
+// ============================================================================
+// String-literal call-argument capture (Miller bridge Phase 3)
+// ============================================================================
+
+/// Capture string-literal arguments of a C `call_expression` as `Literal`
+/// records. Config-free: `carrier` is the called function name (or `recv.field`
+/// for a function-pointer member call); the URL/SQL classification and the
+/// carrier gate run later in the `src/` pipeline. C has no named-argument
+/// wrappers, so each `argument_list` named child is decoded directly.
+/// `arg_position` is counted over the full argument list, so e.g. the URL in
+/// `curl_easy_setopt(h, CURLOPT_URL, "https://...")` reports position 2.
+fn record_c_call_arg_literals(
+    extractor: &mut CExtractor,
+    node: tree_sitter::Node,
+    symbol_map: &HashMap<String, &Symbol>,
+) {
+    let Some(func_node) = node.child_by_field_name("function") else {
+        return;
+    };
+    let Some(args) = node.child_by_field_name("arguments") else {
+        return;
+    };
+    let carrier = c_carrier(extractor, func_node);
+    let containing_symbol_id = find_containing_symbol_id(extractor, node, symbol_map);
+
+    let mut cursor = args.walk();
+    for (pos, arg) in args.named_children(&mut cursor).enumerate() {
+        if let Some(text) = extractor.base.decode_string_literal(&arg) {
+            extractor.base.record_literal(
+                &arg,
+                text,
+                carrier.clone(),
+                pos as u32,
+                containing_symbol_id.clone(),
+            );
+        }
+    }
+}
+
+/// Derive a C call's carrier. Plain `identifier` → its text (`sqlite3_exec`);
+/// `field_expression` (`p->fn`, `obj.fn` via function pointer) → the
+/// `object.field` join so the gate's last-segment rule can match a bare config.
+fn c_carrier(extractor: &CExtractor, func_node: tree_sitter::Node) -> Option<String> {
+    match func_node.kind() {
+        "identifier" => Some(extractor.base.get_node_text(&func_node)),
+        "field_expression" => {
+            let object = func_node
+                .child_by_field_name("argument")
+                .map(|n| extractor.base.get_node_text(&n));
+            let field = func_node
+                .child_by_field_name("field")
+                .map(|n| extractor.base.get_node_text(&n));
+            match (object, field) {
+                (Some(o), Some(f)) => Some(format!("{o}.{f}")),
+                (None, Some(f)) => Some(f),
+                _ => None,
+            }
+        }
+        _ => {
+            let text = extractor.base.get_node_text(&func_node);
+            if text.is_empty() { None } else { Some(text) }
+        }
+    }
 }

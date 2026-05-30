@@ -89,6 +89,9 @@ fn extract_identifier_from_node(
                     );
                 }
             }
+            // Phase 3: capture string-literal call-arguments (config-free; the
+            // carrier classification + gate happen in the src/ pipeline).
+            record_zig_call_arg_literals(base, node, symbol_map);
         }
 
         // Member access: point.x, user.account.balance
@@ -194,6 +197,64 @@ fn is_after_colon(parent: Node, child: Node) -> bool {
         }
     }
     false
+}
+
+// ============================================================================
+// String-literal call-argument capture (Miller bridge Phase 3)
+// ============================================================================
+
+/// Capture string-literal arguments of a Zig `call_expression` as `Literal`
+/// records. Config-free: `carrier` is the called function name or dotted path
+/// (e.g. `std.Uri.parse`); the URL/SQL classification and the carrier gate run
+/// later in the `src/` pipeline.
+///
+/// **Zig grammar detail**: `call_expression` has NO `arguments` wrapper node — the
+/// callee is the `function` field and the arguments are the *other* named children
+/// (punctuation is anonymous). We skip the function child by id and decode each
+/// remaining named child. `arg_position` is counted over the full argument list,
+/// so e.g. the URL in `std.Uri.parse("https://...")` reports position 0 and a SQL
+/// string in `db.exec(handle, "SELECT ...")` reports position 1.
+fn record_zig_call_arg_literals(
+    base: &mut BaseExtractor,
+    node: Node,
+    symbol_map: &HashMap<String, &Symbol>,
+) {
+    let Some(func_node) = node.child_by_field_name("function") else {
+        return;
+    };
+    let carrier = zig_carrier(base, func_node);
+    let containing_symbol_id = find_containing_symbol_id(base, node, symbol_map);
+    let func_id = func_node.id();
+
+    let mut cursor = node.walk();
+    let mut pos: u32 = 0;
+    // Collect args first to avoid borrowing `base` while the cursor borrows `node`.
+    let args: Vec<Node> = node
+        .named_children(&mut cursor)
+        .filter(|c| c.id() != func_id)
+        .collect();
+    for arg in args {
+        if let Some(text) = base.decode_string_literal(&arg) {
+            base.record_literal(
+                &arg,
+                text,
+                carrier.clone(),
+                pos,
+                containing_symbol_id.clone(),
+            );
+        }
+        pos += 1;
+    }
+}
+
+/// Derive a Zig call's carrier from its `function` field. A plain `identifier`
+/// (`exec`) yields its text; a `field_expression` (`std.Uri.parse`, `db.exec`)
+/// yields the full dotted source text so the gate can match either the exact
+/// dotted carrier (`std.uri.parse`) or, via the last-segment rule, a bare config
+/// (`exec`).
+fn zig_carrier(base: &BaseExtractor, func_node: Node) -> Option<String> {
+    let text = base.get_node_text(&func_node);
+    if text.is_empty() { None } else { Some(text) }
 }
 
 // ============================================================================

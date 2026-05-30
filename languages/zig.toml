@@ -36,3 +36,21 @@ important_patterns = [
 [embeddings]
 extra_kinds = []  # 4394 constants, but need filtering before embedding
 variable_ratio = 0.30
+
+# Miller bridge Phase 3: string-literal carriers. The extractor captures every
+# string call-argument config-free; this gate classifies a literal as url/sql
+# only when its carrier (called function / dotted path, lowercased) matches below.
+# Carriers match exactly OR by last `.` segment, so `std.Uri.parse(...)` (carrier
+# `std.uri.parse`) matches either `std.uri.parse` or a bare `parse`.
+[literal_carriers]
+# Zig std URL parsing: `std.Uri.parse("https://...")` / `std.Uri.parseAfterScheme`.
+url = [
+    "std.uri.parse",
+    "std.uri.parseafterscheme",
+]
+# zig-sqlite query API: `db.exec("...")`, `db.prepare("SELECT ...")`.
+sql = [
+    "exec",
+    "prepare",
+]
+route = []
