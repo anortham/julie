@@ -122,7 +122,7 @@ pub(crate) async fn handle_file_created_or_modified_static(
         detect_language_for_indexing_with_content(Path::new(&relative_path), &content_str);
     let extraction_mode = determine_extraction_mode(&language, &content_str);
 
-    let results = match extraction_mode {
+    let mut results = match extraction_mode {
         ExtractionMode::ParserBacked => {
             let relative_path_clone = relative_path.clone();
             let content_clone = content_str.clone();
@@ -282,19 +282,31 @@ pub(crate) async fn handle_file_created_or_modified_static(
                 &results.type_argument_usages,
             );
 
-        // Carrier classification + bloat gate (Miller bridge Phase 3). The
+        // Carrier classification + bloat gate (Miller bridge Phase 3) AND
+        // test-role classification (test-role enrichment Phase 1). The
         // single-file watcher is a distinct persistence path from the
         // pipeline/extract-CLI (which gate inside extract_files_for_indexing),
-        // so the same gate must run here too — otherwise live saves would inject
-        // ungated literals. Non-carrier literals are dropped before the write.
+        // so the same classification must run here too — otherwise live saves
+        // would inject ungated literals and unclassified test symbols. Non-carrier
+        // literals are dropped before the write; test_role/is_test are set on the
+        // symbols (including class/struct containers). Load configs once.
         let mut literals_vec = results.literals;
-        if !literals_vec.is_empty() {
+        if !literals_vec.is_empty() || !results.symbols.is_empty() {
             let configs = crate::search::LanguageConfigs::load_embedded();
-            let carrier_configs = configs.build_literal_carrier_configs();
-            crate::analysis::literals::classify_literals_by_carrier(
-                &mut literals_vec,
-                &carrier_configs,
-            );
+            if !literals_vec.is_empty() {
+                let carrier_configs = configs.build_literal_carrier_configs();
+                crate::analysis::literals::classify_literals_by_carrier(
+                    &mut literals_vec,
+                    &carrier_configs,
+                );
+            }
+            if !results.symbols.is_empty() {
+                let role_configs = configs.build_test_role_configs();
+                crate::analysis::test_roles::classify_symbols_by_role(
+                    &mut results.symbols,
+                    &role_configs,
+                );
+            }
         }
 
         let workspace_key = workspace_root.to_string_lossy();

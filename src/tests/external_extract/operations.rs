@@ -808,6 +808,152 @@ async fn extract_scan_persists_command_grammar_and_macro_literals() {
     );
 }
 
+/// Phase 1 of the test-role enrichment plan: the extract DB Miller reads must
+/// carry `symbols.metadata.test_role` (and `is_test`) for every test symbol the
+/// classifier recognizes — INCLUDING class/struct containers (`[TestClass]`),
+/// which the per-extractor `is_test` (callable-only) can never flag.
+///
+/// This is the test that proves the WIRING: `classify_symbols_by_role` runs on
+/// the extract-CLI persistence path, not only the live daemon pipeline. A unit
+/// test on `classify_symbols_by_role` alone would NOT catch the broken path —
+/// this reads the DB `run_external_scan` writes. RED before wiring: the extract
+/// path never classified, so every `test_role` is NULL and test classes have no
+/// `is_test`.
+#[tokio::test]
+async fn extract_scan_persists_test_role_metadata_across_languages() {
+    let tmp = TempDir::new().expect("temp dir");
+    let root = tmp.path().join("repo");
+    std::fs::create_dir(&root).expect("repo dir");
+
+    // C# MSTest: [TestClass] class (container), [TestInitialize] (fixture_setup),
+    // [TestMethod] (test_case). Plus a production class + method that must stay
+    // unclassified. Container + fixture come ONLY from the annotation classifier
+    // (the callable-only per-extractor is_test cannot flag a class).
+    fs::write(
+        root.join("CalculatorTests.cs"),
+        "using Microsoft.VisualStudio.TestTools.UnitTesting;\n\
+         \n\
+         [TestClass]\n\
+         public class CalculatorTests {\n\
+         \x20   [TestInitialize]\n\
+         \x20   public void Setup() { }\n\
+         \n\
+         \x20   [TestMethod]\n\
+         \x20   public void AddsNumbers() { }\n\
+         }\n\
+         \n\
+         public class Calculator {\n\
+         \x20   public int Add(int a, int b) { return a + b; }\n\
+         }\n",
+    )
+    .expect("write csharp");
+    // Python pytest: @pytest.fixture (fixture_setup via annotation), a
+    // convention-named test_* function (test_case via the is_test fallback), and
+    // a plain helper that must stay unclassified.
+    fs::write(
+        root.join("test_calc.py"),
+        "import pytest\n\
+         \n\
+         @pytest.fixture\n\
+         def db():\n\
+         \x20   return {}\n\
+         \n\
+         def test_adds():\n\
+         \x20   assert 1 + 1 == 2\n\
+         \n\
+         def helper():\n\
+         \x20   return 0\n",
+    )
+    .expect("write python");
+
+    let db_path = tmp.path().join("external.sqlite");
+    let report = run_external_scan(&scan_args(db_path.clone(), root.clone(), false))
+        .await
+        .expect("scan succeeds");
+    assert_eq!(report.files_scanned, 2, "two source files scanned");
+
+    let db = SymbolDatabase::new(&db_path).expect("open db");
+
+    // C# test CLASS -> test_container AND is_test (the previously-missing signal).
+    assert_eq!(
+        count_rows_where(
+            &db,
+            "symbols",
+            "name = 'CalculatorTests' AND file_path = 'CalculatorTests.cs' \
+             AND json_extract(metadata,'$.test_role') = 'test_container' \
+             AND json_extract(metadata,'$.is_test') = 1"
+        ),
+        1,
+        "[TestClass] class must persist test_role=test_container and is_test=true"
+    );
+    // [TestInitialize] method -> fixture_setup.
+    assert_eq!(
+        count_rows_where(
+            &db,
+            "symbols",
+            "name = 'Setup' AND file_path = 'CalculatorTests.cs' \
+             AND json_extract(metadata,'$.test_role') = 'fixture_setup'"
+        ),
+        1,
+        "[TestInitialize] method must persist test_role=fixture_setup"
+    );
+    // [TestMethod] method -> test_case.
+    assert_eq!(
+        count_rows_where(
+            &db,
+            "symbols",
+            "name = 'AddsNumbers' AND file_path = 'CalculatorTests.cs' \
+             AND json_extract(metadata,'$.test_role') = 'test_case'"
+        ),
+        1,
+        "[TestMethod] method must persist test_role=test_case"
+    );
+    // Python @pytest.fixture -> fixture_setup (annotation-driven).
+    assert_eq!(
+        count_rows_where(
+            &db,
+            "symbols",
+            "name = 'db' AND file_path = 'test_calc.py' \
+             AND json_extract(metadata,'$.test_role') = 'fixture_setup'"
+        ),
+        1,
+        "@pytest.fixture function must persist test_role=fixture_setup"
+    );
+    // Python convention test_* -> test_case (is_test fallback path).
+    assert_eq!(
+        count_rows_where(
+            &db,
+            "symbols",
+            "name = 'test_adds' AND file_path = 'test_calc.py' \
+             AND json_extract(metadata,'$.test_role') = 'test_case'"
+        ),
+        1,
+        "convention-named test_adds must persist test_role=test_case"
+    );
+
+    // Negatives: production symbols get NO test_role and NO is_test.
+    assert_eq!(
+        count_rows_where(
+            &db,
+            "symbols",
+            "file_path = 'CalculatorTests.cs' AND name IN ('Calculator','Add') \
+             AND json_extract(metadata,'$.test_role') IS NOT NULL"
+        ),
+        0,
+        "production class/method must not be classified as tests"
+    );
+    assert_eq!(
+        count_rows_where(
+            &db,
+            "symbols",
+            "name = 'helper' AND file_path = 'test_calc.py' \
+             AND json_extract(metadata,'$.test_role') IS NOT NULL"
+        ),
+        0,
+        "a plain helper in a test file must not be classified"
+    );
+}
+
 #[tokio::test]
 async fn extract_scan_unchanged_produces_zero_revisions() {
     let tmp = TempDir::new().expect("temp dir");

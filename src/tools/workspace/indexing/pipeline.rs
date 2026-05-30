@@ -42,20 +42,15 @@ pub(crate) async fn run_indexing_pipeline(
     info!("🚀 Processing {} languages", files_by_language.len());
 
     transition_stage(&mut state, route, IndexingStage::Extracting);
-    let (mut batch, extracted_records) =
+    let (batch, extracted_records) =
         extract_files_for_indexing_with_records(files_by_language, &route.workspace_root).await?;
     record_extracted_file_records(&mut state, extracted_records);
 
-    // Classify test roles from annotation configs before persisting.
-    // This enriches symbol metadata with test_role and is_test fields.
-    {
-        let configs = crate::search::LanguageConfigs::load_embedded();
-        let role_configs = configs.build_test_role_configs();
-        crate::analysis::test_roles::classify_symbols_by_role(
-            &mut batch.all_symbols,
-            &role_configs,
-        );
-    }
+    // Test-role classification (and literal carrier gating) now happens inside
+    // the shared chokepoint `extract_files_for_indexing_with_records` above, so
+    // the live pipeline, the external-extract CLI, and the watcher all classify
+    // through one source of truth. (Previously this was a pipeline-only call,
+    // which is exactly why the extract DB Miller reads lacked `test_role`.)
 
     let Some(db) = route.database_for_write(handler).await? else {
         transition_stage(&mut state, route, IndexingStage::Completed);

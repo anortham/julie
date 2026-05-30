@@ -240,21 +240,35 @@ pub async fn extract_files_for_indexing_with_records(
         }
     }
 
-    // Carrier classification + bloat gate (Miller bridge Phase 3). This is the
-    // shared chokepoint for BOTH the live indexing pipeline and the
-    // external-extract CLI (`operations.rs`) — both route through this function
-    // — so Miller's extract DB gets gated literals exactly like the live
-    // daemon. (The single-file watcher path runs the same gate separately.)
-    // Non-carrier literals are dropped here; only recognized url/sql/route
-    // literals survive into the batch. Skip the config load when nothing was
-    // captured (the common case for files without HTTP/DB calls).
-    if !batch.all_literals.is_empty() {
+    // Carrier classification (Miller bridge Phase 3) + test-role classification
+    // (test-role enrichment Phase 1). This is the shared chokepoint for BOTH the
+    // live indexing pipeline and the external-extract CLI (`operations.rs`) —
+    // both route through this function — so Miller's extract DB gets gated
+    // literals AND `test_role`/container `is_test` exactly like the live daemon.
+    // (The single-file watcher path runs the same gates separately.) The language
+    // configs are loaded once and reused for both gates; skip the load entirely
+    // when nothing was captured.
+    if !batch.all_literals.is_empty() || !batch.all_symbols.is_empty() {
         let configs = crate::search::LanguageConfigs::load_embedded();
-        let carrier_configs = configs.build_literal_carrier_configs();
-        crate::analysis::literals::classify_literals_by_carrier(
-            &mut batch.all_literals,
-            &carrier_configs,
-        );
+        // Non-carrier literals are dropped here; only recognized url/sql/route
+        // literals survive into the batch.
+        if !batch.all_literals.is_empty() {
+            let carrier_configs = configs.build_literal_carrier_configs();
+            crate::analysis::literals::classify_literals_by_carrier(
+                &mut batch.all_literals,
+                &carrier_configs,
+            );
+        }
+        // Annotation/convention-driven; sets metadata.test_role and is_test —
+        // including class/struct containers ([TestClass], @Nested) that the
+        // callable-only per-extractor is_test can never flag.
+        if !batch.all_symbols.is_empty() {
+            let role_configs = configs.build_test_role_configs();
+            crate::analysis::test_roles::classify_symbols_by_role(
+                &mut batch.all_symbols,
+                &role_configs,
+            );
+        }
     }
 
     Ok((batch, records))
