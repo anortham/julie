@@ -41,3 +41,30 @@ important_patterns = [
 [embeddings]
 extra_kinds = ["constructor"]
 variable_ratio = 0.50  # assignment patterns dominate
+
+# String-literal call-argument carriers (Miller bridge Phase 3b).
+# Carriers are matched against the verbatim callee captured by the extractor:
+# bare function name (`mysqli_query`), `object.name` for method calls
+# (`$pdo.query` → last segment `query`), or `scope.name` for static calls
+# (`Http.get`). Bare entries match any receiver via the gate's last-segment rule;
+# dotted entries match exactly. `$client->get(...)` is deliberately NOT covered —
+# a bare `get`/`post` would flood every fluent builder; Guzzle's verb-first
+# `$client->request('GET', $url)` is covered via bare `request` instead.
+[literal_carriers]
+url = [
+    "request",     # Guzzle GuzzleHttp\Client::request($method, $uri)
+    "Http.get",    # Laravel Illuminate\Support\Facades\Http (dotted facade)
+    "Http.post",   # Laravel Http facade
+    "Http.put",    # Laravel Http facade
+    "Http.patch",  # Laravel Http facade
+    "Http.delete", # Laravel Http facade
+    "Http.head",   # Laravel Http facade
+]
+sql = [
+    "query",          # PDO::query / mysqli::query
+    "exec",           # PDO::exec
+    "prepare",        # PDO::prepare / mysqli::prepare
+    "mysqli_query",   # ext-mysqli procedural
+    "mysqli_prepare", # ext-mysqli procedural
+]
+route = []

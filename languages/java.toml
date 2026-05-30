@@ -80,3 +80,35 @@ mock_identifiers = ["mock", "spy", "when", "verify"]
 [early_warnings]
 review_markers = ["permitall"]
 schema_version = 1
+
+# String-literal call-argument carriers (Miller bridge Phase 3b). Bare entries
+# match any receiver via the gate's last-segment rule (`st.execute` → `execute`);
+# dotted entries match an exact `Receiver.method` carrier. Each entry cites its
+# source library. (HttpClient.send/sendAsync take an HttpRequest, not a URL
+# string, so the URL literal rides on URI.create / RestTemplate / OkHttp .url.)
+[literal_carriers]
+url = [
+    "getForObject",   # Spring RestTemplate
+    "getForEntity",   # Spring RestTemplate
+    "postForObject",  # Spring RestTemplate
+    "postForEntity",  # Spring RestTemplate
+    "patchForObject", # Spring RestTemplate
+    "exchange",       # Spring RestTemplate
+    "url",            # OkHttp Request.Builder.url
+    "URI.create",     # java.net.URI (dotted)
+]
+sql = [
+    "execute",           # java.sql.Statement
+    "executeQuery",      # java.sql.Statement
+    "executeUpdate",     # java.sql.Statement
+    "executeLargeUpdate",# java.sql.Statement
+    "prepareStatement",  # java.sql.Connection
+    "prepareCall",       # java.sql.Connection
+    "query",             # Spring JdbcTemplate
+    "queryForObject",    # Spring JdbcTemplate
+    "queryForList",      # Spring JdbcTemplate
+    "queryForMap",       # Spring JdbcTemplate
+    "update",            # Spring JdbcTemplate
+    "batchUpdate",       # Spring JdbcTemplate
+]
+route = []

@@ -88,6 +88,9 @@ fn extract_identifier_from_node(
                     }
                 }
             }
+            // Phase 3b: capture string-literal call-arguments config-free; the
+            // carrier classification + bloat gate run later in the src/ pipeline.
+            record_java_call_arg_literals(extractor, node, symbol_map);
         }
 
         // Field access: object.field
@@ -287,4 +290,61 @@ fn find_containing_symbol_id(
         .base()
         .find_containing_symbol_from_map(&node, symbol_map)
         .map(|s| s.id.clone())
+}
+
+// ============================================================================
+// String-literal call-argument capture (Miller bridge Phase 3b)
+// ============================================================================
+
+/// Capture string-literal arguments of a Java `method_invocation` as `Literal`
+/// records.
+///
+/// Config-free: `carrier` is the verbatim callee — the bare `name` for a
+/// receiverless call, or the `object.name` join for a member call
+/// (`restTemplate.getForObject`, `st.execute`). `kind` stays `Other`; the
+/// `src/` carrier gate sets the authoritative kind and drops non-carrier
+/// literals. `arg_position` counts over the full argument list.
+fn record_java_call_arg_literals(
+    extractor: &mut JavaExtractor,
+    call_node: Node,
+    symbol_map: &HashMap<String, &Symbol>,
+) {
+    let Some(args_node) = call_node.child_by_field_name("arguments") else {
+        return;
+    };
+    let carrier = java_carrier(extractor.base(), call_node);
+    let containing_symbol_id = find_containing_symbol_id(extractor, call_node, symbol_map);
+
+    let mut cursor = args_node.walk();
+    for (pos, arg) in args_node.named_children(&mut cursor).enumerate() {
+        if let Some(text) = extractor.base().decode_string_literal(&arg) {
+            extractor.base_mut().record_literal(
+                &arg,
+                text,
+                carrier.clone(),
+                pos as u32,
+                containing_symbol_id.clone(),
+            );
+        }
+    }
+}
+
+/// Derive a Java `method_invocation`'s carrier from its `object`/`name` fields.
+///
+/// No `object` (bare call) → the `name` text. With `object` → `object.name` so
+/// dotted client APIs match config (`URI.create`) and local-variable receivers
+/// still match a bare method config (`execute`, `getForObject`) via the gate's
+/// last-segment rule (`st.execute` → `execute`).
+fn java_carrier(base: &BaseExtractor, call_node: Node) -> Option<String> {
+    let name = call_node
+        .child_by_field_name("name")
+        .map(|n| base.get_node_text(&n));
+    let object = call_node
+        .child_by_field_name("object")
+        .map(|n| base.get_node_text(&n));
+    match (object, name) {
+        (Some(o), Some(n)) => Some(format!("{o}.{n}")),
+        (None, Some(n)) => Some(n),
+        _ => None,
+    }
 }

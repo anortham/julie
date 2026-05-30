@@ -60,14 +60,14 @@ Status: ✅ implemented (arm + TOML + test) · ⬜ pending · 🚫 verified-N/A.
 | 5 | Vue | `call_expression` | ✅ | mirrors TS leg (shared carriers). `b05b2da6` |
 | 6 | VB.NET | `invocation_expression` | ✅ | mirrors C#; HttpClient async + Dapper/ADO.NET/EF verbs; interpolation→{}. `330f66d6` |
 | 7 | Razor | `invocation_expression` | ✅ | mirrors C# (shared .NET carriers). `330f66d6` |
-| 8 | Java | `method_invocation` | ⬜ | `object`/`name`/`arguments`; HttpClient/RestTemplate/JDBC |
+| 8 | Java | `method_invocation` | ✅ | RestTemplate get/postForObject + OkHttp url + URI.create; java.sql Statement/Connection + JdbcTemplate query/update verbs. `<jp>` |
 | 9 | Kotlin | `call_expression` | ✅ | Ktor client.get dotted (by-convention name; misses other receivers, bare get floods); OkHttp url; JDBC/Exposed verbs bare. `669c1edf` |
 | 10 | Scala | `call_expression` | ✅ | requests-scala dotted; Anorm SQL(...) + JDBC verbs bare. `669c1edf` |
 | 11 | Go | `call_expression` | ✅ | `go_carrier` operand.field/bare; net/http dotted + database/sql+sqlx bare. `8781fe38` |
-| 12 | Rust | `call_expression` (+ macro) | ✅ | call arm (reqwest/ureq dotted, sqlx/rusqlite bare) + macro_invocation arm for sqlx query!/query_as!/query_scalar! (dominant Rust SQL form). `<rd>` |
+| 12 | Rust | `call_expression` (+ macro) | ✅ | call arm (reqwest/ureq dotted, sqlx/rusqlite bare) + macro_invocation arm for sqlx query!/query_as!/query_scalar! (dominant Rust SQL form). `f7a7f899` |
 | 13 | Swift | `call_expression` | ✅ | URL(string:)+AF.request dotted; SQLite.swift/GRDB prepare/run/execute/scalar bare. `b05b2da6` |
-| 14 | Dart | `call_expression` | ✅ | package:http/Dio dotted; sqflite rawQuery/rawInsert/rawUpdate/rawDelete/execute bare. `<rd>` |
-| 15 | PHP | `function_call_expression`, `member_call_expression` | ⬜ | Guzzle/`Http::get`; PDO/mysqli `query`/`exec`/`prepare` |
+| 14 | Dart | `call_expression` | ✅ | package:http/Dio dotted; sqflite rawQuery/rawInsert/rawUpdate/rawDelete/execute bare. `f7a7f899` |
+| 15 | PHP | `function_call_expression`, `member_call_expression` | ✅ | Guzzle request (verb-then-url) + Laravel Http.* facade dotted; PDO/mysqli query/exec/prepare + procedural mysqli_query/prepare. `<jp>` |
 | 16 | Ruby | `call` | ✅ | receiver.method/bare; Net::HTTP/HTTParty/RestClient/Faraday dotted + AR/mysql2/pg bare. `8781fe38` |
 | 17 | Elixir | `call` | ✅ | Module.function/bare; HTTPoison/Req/Tesla dotted, Ecto/Postgrex bare. `b05b2da6` |
 | 18 | R | `call` | ✅ | httr.GET/HEAD dotted-only (avoid base-R get/head); POST/PUT/etc bare; DBI db* verbs. Known limit: bare GET(url) dropped. `b05b2da6` |
