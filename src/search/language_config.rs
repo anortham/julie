@@ -415,7 +415,9 @@ mod tests {
             ("ruby", "net::http.get", "execute"), // call family
             ("python", "requests.get", "execute"),
             ("kotlin", "url", "executequery"),
-            ("lua", "http.request", "execute"),   // function_call family
+            ("lua", "http.request", "execute"),    // function_call family
+            ("bash", "curl", "psql"),              // command grammar (command-name carrier)
+            ("powershell", "invoke-restmethod", "invoke-sqlcmd"), // command grammar (cmdlet carrier)
         ] {
             let cfg = carriers
                 .get(lang)
