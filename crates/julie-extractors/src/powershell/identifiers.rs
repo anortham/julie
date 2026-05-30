@@ -57,10 +57,12 @@ fn extract_identifier_from_node(
 
                 base.create_identifier(
                     &name_node,
-                    name,
+                    name.clone(),
                     IdentifierKind::Call,
                     containing_symbol_id,
                 );
+                // Miller bridge Phase 3b: capture string-literal command args.
+                record_command_arg_literals(base, node, &name, symbol_map);
             }
         }
 
@@ -236,6 +238,151 @@ fn decompose_powershell_type_arg<'a>(
         let type_name = children.iter().find(|c| c.kind() == "type_name")?;
         Some((base.get_node_text(type_name), None))
     }
+}
+
+// ============================================================================
+// String-literal command-argument capture (Miller bridge Phase 3b)
+// ============================================================================
+
+/// Capture string-literal arguments of a PowerShell `command` node.
+///
+/// PowerShell is a COMMAND grammar, not `call_expression`: a `command` has a
+/// `command_name` field and a `command_elements` field holding the argument list
+/// (whitespace separators, `command_parameter` flags like `-Uri`/`-Query`, and
+/// value expressions). The carrier is the cmdlet name itself
+/// (`Invoke-RestMethod`, `Invoke-WebRequest`, `Invoke-Sqlcmd`, …); this is
+/// config-free — `kind` is `Other` and the `src/` carrier gate reclassifies and
+/// drops, with `languages/powershell.toml` deciding which cmdlet names survive.
+///
+/// The string value is nested
+/// (`array_literal_expression > unary_expression > string_literal`), so each
+/// argument subtree is walked and the outermost string-bearing node is decoded.
+/// `arg_position` counts over the non-separator `command_elements` children, so a
+/// `-Uri`/`-Query` flag occupies a position and the quoted value that follows
+/// reports the next index (a positional `Invoke-WebRequest "url"` reports 0).
+fn record_command_arg_literals(
+    base: &mut BaseExtractor,
+    command_node: Node,
+    carrier: &str,
+    symbol_map: &HashMap<String, &Symbol>,
+) {
+    let Some(elements) = command_node.child_by_field_name("command_elements") else {
+        // command_expression / parameter-less forms have no element list.
+        return;
+    };
+    let containing_symbol_id = find_containing_symbol_id(base, command_node, symbol_map);
+    let mut position = 0u32;
+    let mut cursor = elements.walk();
+    for child in elements.children(&mut cursor) {
+        // Whitespace separators are not arguments; skip without advancing.
+        if child.kind() == "command_argument_sep" {
+            continue;
+        }
+        let mut strings = Vec::new();
+        collect_string_literals(child, &mut strings);
+        for string_node in strings {
+            if let Some(text) = decode_ps_string_literal(base, &string_node) {
+                base.record_literal(
+                    &string_node,
+                    text,
+                    Some(carrier.to_string()),
+                    position,
+                    containing_symbol_id.clone(),
+                );
+            }
+        }
+        position += 1;
+    }
+}
+
+/// Collect the outermost string-bearing nodes within an argument subtree.
+///
+/// PowerShell wraps a string value as
+/// `string_literal > {expandable,verbatim}_string_literal`; recursion stops at
+/// the first string-bearing node (kind contains `string`) so the wrapper and its
+/// inner variant are never double-counted.
+fn collect_string_literals<'a>(node: Node<'a>, out: &mut Vec<Node<'a>>) {
+    if node.kind().contains("string") {
+        out.push(node);
+        return;
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        collect_string_literals(child, out);
+    }
+}
+
+/// Decode a PowerShell string-literal node to its static shape, normalizing
+/// `$var` / `$(...)` interpolation inside expandable strings to `{}`.
+///
+/// Unlike most grammars, PowerShell tokenizes an expandable string's static text
+/// as ANONYMOUS bytes (only the `variable` / `sub_expression` holes are child
+/// nodes), so the shared `decode_string_literal` named-child walk cannot rebuild
+/// the surrounding text — it would collapse to bare `{}` and lose the URL. Here we
+/// reconstruct from the raw bytes, blanking each outermost interpolation hole, so
+/// `"https://api/users/$id"` → `https://api/users/{}` consistent with bash/Swift/
+/// Dart. Verbatim (single-quoted) and plain strings have no holes and fall back to
+/// the shared delimiter-stripping decoder.
+fn decode_ps_string_literal(base: &BaseExtractor, node: &Node) -> Option<String> {
+    let mut holes: Vec<(usize, usize)> = Vec::new();
+    collect_ps_interpolation_holes(*node, &mut holes);
+    if holes.is_empty() {
+        return base.decode_string_literal(node);
+    }
+    holes.sort_by_key(|&(start, _)| start);
+    let raw = base.get_node_text(node);
+    let base_off = node.start_byte();
+    let mut out = String::new();
+    let mut cursor = 0usize;
+    for (hole_start, hole_end) in holes {
+        let rel_start = hole_start.saturating_sub(base_off);
+        let rel_end = hole_end.saturating_sub(base_off);
+        // Guard against any overlap (nested holes already excluded) / bad ranges.
+        if rel_start >= cursor && rel_end <= raw.len() && rel_start <= rel_end {
+            out.push_str(&raw[cursor..rel_start]);
+            out.push_str("{}");
+            cursor = rel_end;
+        }
+    }
+    out.push_str(&raw[cursor..]);
+    Some(strip_ps_string_delimiters(&out))
+}
+
+/// Collect the OUTERMOST interpolation holes (`variable`, `sub_expression`) within
+/// a PowerShell string subtree, as absolute `(start_byte, end_byte)` ranges. A
+/// `$(...)` sub-expression is recorded whole (its nested `$vars` are not descended
+/// into) so the entire expression collapses to a single `{}`.
+fn collect_ps_interpolation_holes(node: Node, out: &mut Vec<(usize, usize)>) {
+    match node.kind() {
+        "variable" | "sub_expression" => {
+            out.push((node.start_byte(), node.end_byte()));
+        }
+        _ => {
+            let mut cursor = node.walk();
+            for child in node.children(&mut cursor) {
+                collect_ps_interpolation_holes(child, out);
+            }
+        }
+    }
+}
+
+/// Strip the outer quote pair from a reconstructed PowerShell string, including
+/// here-string (`@"…"@` / `@'…'@`) and the common `"…"` / `'…'` forms.
+fn strip_ps_string_delimiters(s: &str) -> String {
+    if s.len() >= 4
+        && ((s.starts_with("@\"") && s.ends_with("\"@"))
+            || (s.starts_with("@'") && s.ends_with("'@")))
+    {
+        return s[2..s.len() - 2].to_string();
+    }
+    let bytes = s.as_bytes();
+    if s.len() >= 2 {
+        let first = bytes[0];
+        if (first == b'"' || first == b'\'') && bytes[bytes.len() - 1] == first {
+            return s[1..s.len() - 1].to_string();
+        }
+    }
+    s.to_string()
 }
 
 /// Find the ID of the symbol that contains this node

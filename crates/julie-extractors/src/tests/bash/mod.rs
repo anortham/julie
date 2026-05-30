@@ -1586,4 +1586,5 @@ mod control_flow_verification;
 mod cross_file_pending;
 mod cross_file_relationships;
 mod doc_comments;
+mod literals; // Miller bridge Phase 3b: string-literal command-argument capture
 mod types; // Phase 4: Type extraction verification tests

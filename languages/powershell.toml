@@ -44,3 +44,26 @@ important_patterns = [
 [embeddings]
 # Default: global EMBEDDABLE_KINDS only, variable_ratio = 0.20
 extra_kinds = []
+
+# String-literal carrier vocabulary (Miller bridge Phase 3b). PowerShell is a
+# COMMAND grammar, so the carrier is the cmdlet NAME, not a method on a receiver.
+# Keys are lowercased at build time and matched case-insensitively. Cmdlet names
+# carry no `.`, so the gate's last-segment rule never fires here — every entry is
+# an exact lowercase cmdlet-name match. The quoted value after `-Uri`/`-Query`
+# (or a positional first arg) is the captured string literal.
+[literal_carriers]
+# Web cmdlets whose -Uri (or positional) arg is the URL, plus the canonical
+# `irm`/`iwr` aliases.
+url = [
+    "invoke-restmethod",
+    "invoke-webrequest",
+    "irm",
+    "iwr",
+]
+# Invoke-Sqlcmd takes the query via -Query (or positional). `invoke-sqlcmd2` is
+# the popular community module variant.
+sql = [
+    "invoke-sqlcmd",
+    "invoke-sqlcmd2",
+]
+route = []

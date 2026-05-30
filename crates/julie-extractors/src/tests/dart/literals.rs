@@ -8,10 +8,11 @@
 //! `db.rawQuery`), named-argument value descent, `arg_position`, and
 //! enclosing-symbol anchoring.
 //!
-//! NOTE: Dart interpolation (`$x`) nests text as `template_chars_*` which the
-//! shared decoder doesn't recognize, so no `{}` normalization is asserted here
-//! (flagged to the lead as a base-decoder gap). Plain literals decode via the
-//! delimiter-strip fallback.
+//! Dart interpolation (`$x` / `${x}`) nests under a `string_literal_*` wrapper as
+//! `template_chars_*` text plus a `template_substitution` hole; the shared
+//! decoder recurses the wrapper and normalizes the hole to a `{}` placeholder
+//! (see `interpolation_hole_is_normalized_to_placeholder`). Plain literals decode
+//! via the delimiter-strip fallback.
 
 use crate::base::{Literal, LiteralKind};
 use crate::dart::DartExtractor;
@@ -51,7 +52,11 @@ class Loader {
         .iter()
         .filter(|l| l.literal_text == "hello")
         .collect();
-    assert_eq!(hits.len(), 1, "exactly one literal for the arg, got {literals:?}");
+    assert_eq!(
+        hits.len(),
+        1,
+        "exactly one literal for the arg, got {literals:?}"
+    );
     let lit = hits[0];
     assert_eq!(lit.carrier.as_deref(), Some("greet"), "bare callee carrier");
     assert_eq!(lit.arg_position, 0, "first argument");
@@ -166,4 +171,29 @@ class L {
             "carrier is the bare callee for every arg"
         );
     }
+}
+
+#[test]
+fn interpolation_hole_is_normalized_to_placeholder() {
+    // `"SELECT * FROM users WHERE id = $id"` — Dart nests string content under a
+    // `string_literal_double_quotes` wrapper, with `template_chars_*` text and a
+    // `template_substitution` hole. The shared decoder must recurse through the
+    // wrapper, keep the `template_chars` text, and replace the substitution with
+    // `{}` (here the bare `$id` form) rather than falling back to the raw strip.
+    let code = r#"
+class Repo {
+  void one(String id) {
+    db.rawQuery("SELECT * FROM users WHERE id = $id");
+  }
+}
+"#;
+    let literals = capture(code);
+    let lit = literals
+        .iter()
+        .find(|l| l.literal_text.contains("SELECT"))
+        .unwrap_or_else(|| panic!("expected the interpolated SQL literal, got {literals:?}"));
+    assert_eq!(
+        lit.literal_text, "SELECT * FROM users WHERE id = {}",
+        "interpolation hole must normalize to a {{}} placeholder"
+    );
 }

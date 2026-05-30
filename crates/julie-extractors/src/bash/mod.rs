@@ -204,10 +204,12 @@ impl BashExtractor {
                     let containing_symbol_id = self.find_containing_symbol_id(node, symbol_map);
                     self.base.create_identifier(
                         &command_name_node,
-                        name,
+                        name.clone(),
                         crate::base::IdentifierKind::Call,
                         containing_symbol_id,
                     );
+                    // Miller bridge Phase 3b: capture string-literal command args.
+                    self.record_command_arg_literals(node, &name, symbol_map);
                 }
             }
             "subscript" => {
@@ -228,6 +230,50 @@ impl BashExtractor {
                 }
             }
             _ => {}
+        }
+    }
+
+    /// Capture string-literal arguments of a `command` node (Miller bridge Phase 3b).
+    ///
+    /// Bash commands are a COMMAND grammar, not `call_expression`: the carrier is
+    /// the command name itself (`curl`, `wget`, `psql`, `mysql`, `sqlite3`, …) and
+    /// the args are the repeated `argument`-field children. This is config-free —
+    /// `kind` is `Other` and the `src/` carrier gate reclassifies/drops; the
+    /// `[literal_carriers]` table in `languages/bash.toml` decides which command
+    /// names survive.
+    ///
+    /// Only string-bearing args are captured (`string`, `raw_string`,
+    /// `ansi_c_string`, `translated_string` — all decode via
+    /// `decode_string_literal`). A bare `word` arg such as the unquoted URL in
+    /// `curl https://x` is NOT a string literal and is intentionally skipped;
+    /// quoting (`curl "https://x"`) is required for capture, matching the
+    /// string-literal contract used by every other language.
+    ///
+    /// `arg_position` counts over the full `argument` list, so the SQL in
+    /// `psql -c "SELECT …"` (args `["-c", "SELECT …"]`) reports position 1.
+    fn record_command_arg_literals(
+        &mut self,
+        command_node: tree_sitter::Node,
+        carrier: &str,
+        symbol_map: &std::collections::HashMap<String, &Symbol>,
+    ) {
+        let containing_symbol_id = self.find_containing_symbol_id(command_node, symbol_map);
+        let args: Vec<tree_sitter::Node> = {
+            let mut cursor = command_node.walk();
+            command_node
+                .children_by_field_name("argument", &mut cursor)
+                .collect()
+        };
+        for (position, arg) in args.into_iter().enumerate() {
+            if let Some(text) = self.base.decode_string_literal(&arg) {
+                self.base.record_literal(
+                    &arg,
+                    text,
+                    Some(carrier.to_string()),
+                    position as u32,
+                    containing_symbol_id.clone(),
+                );
+            }
         }
     }
 

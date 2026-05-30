@@ -1816,5 +1816,6 @@ function Simple-Function {
 }
 mod cross_file_pending;
 mod cross_file_relationships;
+mod literals; // Miller bridge Phase 3b: string-literal command-argument capture
 mod type_arguments;
 mod types; // Phase 4: Type extraction verification tests // Cross-file relationship resolution tests

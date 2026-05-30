@@ -8,9 +8,9 @@
 //! dotted `db.execute`), labeled-argument `value` descent, `arg_position`, and
 //! enclosing-symbol anchoring.
 //!
-//! NOTE: Swift interpolation (`\(x)`) is `interpolated_expression`, which the
-//! shared `decode_string_literal` does not recognize as a hole, so no `{}`
-//! placeholder is asserted here (flagged to the lead as a base-decoder gap).
+//! Swift interpolation (`\(x)`) parses as an `interpolated_expression` named
+//! child; the shared `decode_string_literal` normalizes it to a `{}` placeholder
+//! (see `interpolation_hole_is_normalized_to_placeholder`).
 
 use crate::base::{Literal, LiteralKind};
 use crate::swift::SwiftExtractor;
@@ -48,7 +48,11 @@ func load() -> String {
         .iter()
         .filter(|l| l.literal_text == "hello")
         .collect();
-    assert_eq!(hits.len(), 1, "exactly one literal for the arg, got {literals:?}");
+    assert_eq!(
+        hits.len(),
+        1,
+        "exactly one literal for the arg, got {literals:?}"
+    );
     let lit = hits[0];
     assert_eq!(lit.carrier.as_deref(), Some("greet"), "bare callee carrier");
     assert_eq!(lit.arg_position, 0, "first argument");
@@ -100,8 +104,15 @@ func load() {
         .iter()
         .find(|l| l.literal_text == "https://api.example.com")
         .unwrap_or_else(|| panic!("expected a labeled-arg literal, got {literals:?}"));
-    assert_eq!(lit.carrier.as_deref(), Some("request"), "bare callee carrier");
-    assert_eq!(lit.arg_position, 0, "labeled arg is still the first argument");
+    assert_eq!(
+        lit.carrier.as_deref(),
+        Some("request"),
+        "bare callee carrier"
+    );
+    assert_eq!(
+        lit.arg_position, 0,
+        "labeled arg is still the first argument"
+    );
 }
 
 #[test]
@@ -147,4 +158,27 @@ func load() {
             "carrier is the bare callee for every arg"
         );
     }
+}
+
+#[test]
+fn interpolation_hole_is_normalized_to_placeholder() {
+    // `"users/\(id)/profile"` — Swift interpolation parses as an
+    // `interpolated_expression` named child (the `\(` `)` markers are anonymous
+    // siblings, the surrounding text is `line_str_text`). The shared decoder must
+    // replace the hole with `{}` so a resolver sees the static route shape
+    // (`users/{}/profile`) instead of silently dropping the hole.
+    let code = r#"
+func load(id: String) {
+    request(url: "users/\(id)/profile")
+}
+"#;
+    let literals = capture(code);
+    let lit = literals
+        .iter()
+        .find(|l| l.literal_text.contains("users/"))
+        .unwrap_or_else(|| panic!("expected the interpolated URL literal, got {literals:?}"));
+    assert_eq!(
+        lit.literal_text, "users/{}/profile",
+        "interpolation hole must normalize to a {{}} placeholder"
+    );
 }

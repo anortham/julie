@@ -179,14 +179,21 @@ impl BaseExtractor {
     /// for non-string nodes.
     ///
     /// Language-agnostic by design. Recognizes string-bearing nodes by kind
-    /// substring (`string`/`char`), then classifies each *named* child precisely:
-    /// - an interpolation/substitution **hole** (`interpolation`,
-    ///   `template_substitution`, or a kind ending in `_substitution`) becomes `{}`;
-    /// - a content/fragment child (kind contains `content`/`fragment`/`text`, or is
-    ///   `escape_sequence`) is appended verbatim;
-    /// - every other named child is a **delimiter marker** (`raw_string_start`,
-    ///   `interpolation_start`, `interpolation_quote`, encoding suffixes, …) and is
-    ///   skipped — so triple-quote and interpolation delimiters never leak.
+    /// substring (`string`/`char`), then recursively classifies each *named*
+    /// descendant precisely:
+    /// - an interpolation/substitution **hole** (any kind containing `interpolat`
+    ///   or `substitution` — e.g. `interpolation`, `template_substitution`,
+    ///   Swift's `interpolated_expression`, Dart's `template_substitution`,
+    ///   Kotlin's `interpolated_identifier`) becomes `{}`;
+    /// - a content/fragment child (kind contains `content`/`fragment`/`text`/
+    ///   `template_chars`, or is `escape_sequence`) is appended verbatim;
+    /// - a **wrapper** node with its own named children (e.g. Dart's
+    ///   `string_literal_double_quotes`, which nests the real content one level
+    ///   below the `string_literal`) is descended into;
+    /// - every other (leaf) named child is a **delimiter marker**
+    ///   (`raw_string_start`, `interpolation_start`, `interpolation_quote`,
+    ///   encoding suffixes, …) and is skipped — so triple-quote and interpolation
+    ///   delimiters never leak.
     ///
     /// When that yields nothing (a flat token whose body is anonymous, e.g. TS-less
     /// `string` tokens or C# `verbatim_string_literal`), it falls back to stripping
@@ -197,27 +204,68 @@ impl BaseExtractor {
             return None;
         }
         let mut out = String::new();
-        let mut cursor = node.walk();
-        for child in node.named_children(&mut cursor) {
-            let ck = child.kind();
-            if ck == "interpolation"
-                || ck == "template_substitution"
-                || ck.ends_with("_substitution")
-            {
-                out.push_str("{}");
-            } else if ck.contains("content")
-                || ck.contains("fragment")
-                || ck.contains("text")
-                || ck == "escape_sequence"
-            {
-                out.push_str(&self.get_node_text(&child));
-            }
-            // else: delimiter marker (start/end/quote/brace/encoding) — skip.
-        }
+        self.decode_string_children(node, &mut out);
         if out.is_empty() {
             out = strip_string_delimiters(&self.get_node_text(node));
         }
         Some(out)
+    }
+
+    /// Flatten a string node's named children into `out`, mapping interpolation
+    /// holes to `{}` and preserving content fragments. Recurses through wrapper
+    /// layers (grammars like Dart nest the real content under an intermediate
+    /// `string_literal_*` node) but never descends into a hole — the hole's inner
+    /// expression must not leak into the static shape. See `decode_string_literal`.
+    fn decode_string_children(&self, node: &Node, out: &mut String) {
+        let mut cursor = node.walk();
+        for child in node.named_children(&mut cursor) {
+            let ck = child.kind();
+            // Content is matched FIRST: some grammars name the literal text
+            // `interpolated_string_text`, which also contains "interpolat" — it is
+            // text, not a hole, so the content test must win.
+            if ck.contains("content")
+                || ck.contains("fragment")
+                || ck.contains("text")
+                || ck.contains("template_chars")
+                || ck == "escape_sequence"
+            {
+                out.push_str(&self.get_node_text(&child));
+            } else if Self::is_interpolation_hole(ck) {
+                out.push_str("{}");
+            } else if child.named_child_count() > 0 {
+                // Wrapper layer (e.g. Dart `string_literal_double_quotes`) — descend.
+                self.decode_string_children(&child, out);
+            }
+            // else: leaf delimiter marker (start/end/quote/brace/encoding) — skip.
+        }
+    }
+
+    /// True for an interpolation/substitution **expression** node (the hole), but
+    /// NOT for its delimiter sub-tokens. The `$` sigil (`interpolation_start`),
+    /// the `{`/`}` (`interpolation_brace`), and interpolation quotes all contain
+    /// "interpolat" yet must be skipped, not rendered as a `{}` hole.
+    ///
+    /// The shell expansion kinds (`simple_expansion` for `$x`, `expansion` for
+    /// `${x}`, `arithmetic_expansion` for `$((…))`, plus `command_substitution`
+    /// which already matches "substitution") are bash string children that nest
+    /// the variable in a `variable_name`; without this they'd be recursed into,
+    /// contribute nothing, and silently TRUNCATE the literal at the expansion.
+    /// These kinds never appear inside a non-shell language's string subtree, so
+    /// listing them here is safe for the language-agnostic decoder.
+    fn is_interpolation_hole(ck: &str) -> bool {
+        if matches!(
+            ck,
+            "simple_expansion" | "expansion" | "arithmetic_expansion"
+        ) {
+            return true;
+        }
+        (ck.contains("interpolat") || ck.contains("substitution"))
+            && !ck.ends_with("_start")
+            && !ck.ends_with("_end")
+            && !ck.ends_with("_quote")
+            && !ck.ends_with("_brace")
+            && !ck.ends_with("_open")
+            && !ck.ends_with("_close")
     }
 
     pub fn add_pending_relationship(&mut self, pending: PendingRelationship) {

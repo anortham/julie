@@ -38,3 +38,29 @@ important_patterns = [
 [embeddings]
 # Default: global EMBEDDABLE_KINDS only, variable_ratio = 0.20
 extra_kinds = []
+
+# String-literal carrier vocabulary (Miller bridge Phase 3b). Bash is a COMMAND
+# grammar, so the carrier is the command NAME (curl, psql, …), not a method on a
+# receiver. Keys are lowercased at build time and matched case-insensitively.
+# Command names carry no `.`, so the gate's last-segment rule never fires here —
+# every entry is an exact lowercase command-name match. Bare unquoted args
+# (e.g. `curl https://x`) are `word` nodes, not string literals, and are not
+# captured; the URL/SQL must be quoted.
+[literal_carriers]
+# HTTP clients whose quoted first arg is the URL: curl/wget, plus HTTPie's
+# `http`/`https` commands.
+url = [
+    "curl",
+    "wget",
+    "http",
+    "https",
+]
+# SQL CLIs that take an inline query (typically `psql -c "…"`, `mysql -e "…"`,
+# `sqlite3 db "…"`). The quoted query arg is the captured literal.
+sql = [
+    "psql",
+    "mysql",
+    "mariadb",
+    "sqlite3",
+]
+route = []
