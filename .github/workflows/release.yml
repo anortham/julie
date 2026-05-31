@@ -148,8 +148,13 @@ jobs:
         run: |
           VERSION="${{ steps.version.outputs.version }}"
 
-          # Create release notes
-          cat > release-notes.md << EOF
+          # Create release notes. Prefer a checked-in versioned note when one
+          # exists so contract releases do not publish generic notes.
+          NOTES_PATH="docs/release-notes/v${VERSION}.md"
+          if [ -f "${NOTES_PATH}" ]; then
+            cp "${NOTES_PATH}" release-notes.md
+          else
+            cat > release-notes.md << EOF
           ## Julie v${{ steps.version.outputs.version }}
 
           Cross-platform code intelligence server for AI coding agents.
@@ -179,6 +184,7 @@ jobs:
 
           See [README.md](https://github.com/${{ github.repository }}) for full documentation.
           EOF
+          fi
 
           # Create release
           gh release create "v${VERSION}" \
